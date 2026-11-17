@@ -490,6 +490,11 @@ export interface PluginTriggerListing {
   /** The version the listener runs at, the kind's own else its plugin's; a change restarts it. */
   readonly version: string;
   /**
+   * Whether the kind defines `receive` (COR-2168), so a file whose trigger is one takes requests at
+   * `/triggers/<workflow-id>`; a client shows that address (COR-2171).
+   */
+  readonly receives: boolean;
+  /**
    * The kind's configuration schema as JSON Schema (the fields a trigger holds besides `kind`), or
    * `null` when the schema cannot be written as one.
    */
@@ -542,7 +547,7 @@ export interface PluginEventListing {
  * so one `id` may list once for each family it serves. Carries no function.
  */
 export interface GuardrailListing {
-  /** `plugin:name`, the id an agent file's `guardrails` lists it by. */
+  /** `plugin:name`, the id an agent file's `guardrails` lists it by; an owner's guardrail's is its file's stem. */
   readonly id: string;
   /** What it guards: `input`, `output`, `tools` (tool calls) or `memory`, which no file can choose. */
   readonly family: 'input' | 'output' | 'tools' | 'memory';
@@ -555,10 +560,13 @@ export interface GuardrailListing {
    * out takes; `null` when it takes none, or when the schema cannot be written as one.
    */
   readonly configuration: Readonly<Record<string, unknown>> | null;
-  /** Who installed it: a running plugin, or the host through `BureauOptions.agentContributions`. */
-  readonly source: 'plugin' | 'host';
-  /** The contributing plugin's name, the first half of `id`. */
-  readonly plugin: string;
+  /**
+   * Who installed it: a running plugin, the host through `BureauOptions.agentContributions`, or the
+   * owner, as a file in the Bungalow's `guardrails` folder (COR-2120).
+   */
+  readonly source: 'plugin' | 'host' | 'bungalow';
+  /** The contributing plugin's name, the first half of `id`; `null` for an owner's guardrail, which no plugin holds. */
+  readonly plugin: string | null;
 }
 
 /** A model provider a running plugin contributes, without exposing executable code or values. */

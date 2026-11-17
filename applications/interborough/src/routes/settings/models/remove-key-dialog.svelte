@@ -5,18 +5,26 @@
    * provider's models. It names those agents, then says that Run now on their schedules is disabled
    * too and that chats and runs stay. The agents come from the Bureau's definitions (the ones whose
    * default model is on the provider), read when the dialog opens; Assistant and Echo are scripted
-   * and never named. The confirm button does not wait for that read, which is only information. The
-   * host never answers with a key and this dialog never holds one.
+   * and never named. The confirm button does not wait for that read, which is only information. When
+   * memory search uses, or is switching to, an embedder the provider's plugin adds, the dialog says
+   * that removing the key stops it (EM6-22); which providers offer an embedder is read from the
+   * plugins' contributions, never listed here. The host never answers with a key and this dialog
+   * never holds one.
    */
   import { ConfirmDialog } from '@lostgradient/cinder';
   import { createQuery, useQueryClient } from '@tanstack/svelte-query';
 
+  import { EMBEDDER_COPY } from '../../../app/copy/embedder.ts';
   import { MODELS_COPY } from '../../../app/copy/models.ts';
   import { showToast } from '../../../app/toast-host.svelte';
   import { agentLabel } from '../../../lib/agent-label.ts';
+  import { getEmbeddingStatus } from '../../../lib/bureau-embedding.ts';
+  import { listContributedProviders } from '../../../lib/bureau-plugin-kinds.ts';
+  import { getPlugins } from '../../../lib/host-plugins.ts';
   import { disconnectProvider, HostProviderError } from '../../../lib/host-providers.ts';
   import { listProviderAgents } from '../../../lib/provider-agents.ts';
   import { queryKeys } from '../../../lib/query.ts';
+  import { embedderName, providerEmbedder } from '../embedder-model.ts';
   import { providerDisplayName } from './format-model.ts';
   import { refreshAfterKeyChange } from './provider-cache.ts';
 
@@ -35,8 +43,54 @@
 
   const displayName = $derived(provider === null ? '' : providerDisplayName(provider));
   const open = $derived(provider !== null);
-  // Only these providers offer a memory embedder.
-  const hasEmbedder = $derived(provider === 'openai' || provider === 'gemini');
+
+  // Whether memory search depends on this provider's key is read, not listed: the provider's
+  // plugin says which embedders it adds (`GET /host/plugins`), and the embedding status says which
+  // one memory uses or is switching to. Both are only information for this confirmation, so a read
+  // that fails leaves the sentence out and never holds the confirm button.
+  const contributed = createQuery(
+    () => ({
+      queryKey: queryKeys.contributedProviders(),
+      queryFn: ({ signal }) => listContributedProviders({ signal }),
+      enabled: provider !== null,
+      retry: false,
+    }),
+    undefined,
+  );
+  const plugins = createQuery(
+    () => ({
+      queryKey: queryKeys.hostPlugins(),
+      queryFn: ({ signal }) => getPlugins({ signal }),
+      enabled: provider !== null,
+      retry: false,
+    }),
+    undefined,
+  );
+  const embedding = createQuery(
+    () => ({
+      queryKey: queryKeys.memoryEmbedding(),
+      queryFn: ({ signal }) => getEmbeddingStatus({ signal }),
+      enabled: provider !== null,
+      retry: false,
+      // The answer decides a sentence about what memory uses now, so it is read each time.
+      staleTime: 0,
+    }),
+    undefined,
+  );
+  const providerPlugin = $derived.by(() => {
+    const entry = (contributed.data ?? []).find((candidate) => candidate.name === provider);
+    return (plugins.data?.plugins ?? []).find(
+      (candidate) => candidate.descriptor.name === entry?.plugin,
+    );
+  });
+  const embedderInUse = $derived(
+    embedding.data === undefined ? undefined : providerEmbedder(providerPlugin, embedding.data),
+  );
+  const embedderNote = $derived(
+    embedderInUse === undefined
+      ? undefined
+      : EMBEDDER_COPY.removeKey(embedderName(embedderInUse, plugins.data?.plugins ?? [])),
+  );
 
   const agents = createQuery(
     () => ({
@@ -115,16 +169,16 @@
   }}
 >
   {#snippet options()}
-    {#if trimmedNames.length > 0 || hasEmbedder}
+    {#if trimmedNames.length > 0 || embedderNote !== undefined}
       <div class="ib-remove" data-testid="provider-remove-notes">
         {#if trimmedNames.length > 0}
           <p class="ib-remove__note" data-testid="provider-remove-trimmed">
             {copy.trimmedNote(trimmedNames, displayName)}
           </p>
         {/if}
-        {#if hasEmbedder}
+        {#if embedderNote !== undefined}
           <p class="ib-remove__note" data-testid="provider-remove-embedder">
-            {copy.embedderNote}
+            {embedderNote}
           </p>
         {/if}
       </div>

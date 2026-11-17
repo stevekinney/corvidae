@@ -110,6 +110,28 @@ describe('createGoalWorkflow', () => {
       expect(record.active).toBeUndefined();
     });
 
+    it('checks with the configuration read beside the validator, though the goal is changed before the check runs (COR-2117)', async () => {
+      const harness = createHarness({
+        // An update lands after the controller loaded the goal and before the check reads anything.
+        onValidate: () =>
+          harness.world.patchRecord({
+            validator: { name: 'other-validator', version: '2' },
+            validatorConfiguration: { phrase: 'B' },
+          }),
+      });
+      harness.world.patchRecord({ validatorConfiguration: { phrase: 'A' } });
+      await runGoal(harness, async (run) => {
+        await pollUntil(attemptRunning(harness, 0));
+        await finishAttempt(run, 0);
+      });
+
+      expect(harness.world.validatorRequests).toHaveLength(1);
+      expect(harness.world.validatorRequests[0]).toMatchObject({
+        validator: { name: 'test-validator', version: '1.0.0' },
+        validatorConfiguration: { phrase: 'A' },
+      });
+    });
+
     it('is addressable by its workflow id and starts the attempt exactly once', async () => {
       const harness = createHarness();
       await runGoal(harness, async (run) => {

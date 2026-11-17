@@ -602,6 +602,15 @@ export class SchemaFormState {
 
   /** Records validation issues from a failed submit or field-level check. */
   applyIssues(issues: SchemaFormValidationIssue[]): void {
+    // A check of a field that was started before these issues arrived (a blur from pressing the
+    // button that sent the value) answers about an older value, and would erase an issue on its
+    // field when it resumes: every check still running is out of date.
+    this.#touchedValidationSequences = Object.fromEntries(
+      Object.entries(this.#touchedValidationSequences).map(([key, sequence]) => [
+        key,
+        sequence + 1,
+      ]),
+    );
     this.#errors = issuesByPath(issues);
     this.clearSerializedValue();
   }

@@ -31,6 +31,7 @@ import { FRAMES_DROPPED_KIND, withFramesDroppedMarker } from './frames-dropped.t
 import {
   publishableErrorCode,
   publishableErrorKind,
+  publishableDeliveryOutcome,
   publishableFinishReason,
   publishablePluginStatus,
   publishableProblemCodes,
@@ -51,6 +52,8 @@ import {
   ChildWorkflowStartedRecordedEvent,
   DecisionMadeEvent,
   HandoffOccurredRecordedEvent,
+  HookDeliveryFailedEvent,
+  HookDeliveryGaveUpEvent,
   HookPlanFailedRecordedEvent,
   SteeringAppliedRecordedEvent,
   SteeringCommandFailedEvent,
@@ -71,6 +74,8 @@ import {
   ScorerThresholdBreachedEvent,
   SessionTaintEvent,
   TaskCleanupAcknowledgedEvent,
+  type TriggerEventKind,
+  TriggerLifecycleEvent,
   RunAbortSettledEvent,
   RecoveryAttemptedEvent,
   RecoveryLeaseReleasedEvent,
@@ -155,6 +160,20 @@ const isGoalEvent =
   (kind: GoalEventKind) =>
   (event: unknown): event is GoalLifecycleEvent =>
     event instanceof GoalLifecycleEvent && event.type === kind;
+
+/** The kinds every {@link TriggerLifecycleEvent} is published as. */
+const TRIGGER_EVENT_KINDS: readonly TriggerEventKind[] = [
+  'trigger.started',
+  'trigger.stopped',
+  'trigger.failed',
+  'trigger.fired',
+];
+
+/** A trigger event of one kind; every trigger kind shares {@link TriggerLifecycleEvent}. */
+const isTriggerEvent =
+  (kind: TriggerEventKind) =>
+  (event: unknown): event is TriggerLifecycleEvent =>
+    event instanceof TriggerLifecycleEvent && event.type === kind;
 
 /** An asset event of one kind; every forwarded asset kind shares {@link AssetLifecycleEvent}. */
 const isAssetEvent =
@@ -337,9 +356,15 @@ export const BUREAU_EVENT_CLASSIFICATION = {
   'asset.blob.purged': 'published',
   'asset.expired': 'published',
   'definitions.changed': 'published',
+  'trigger.started': 'published',
+  'trigger.stopped': 'published',
+  'trigger.failed': 'published',
+  'trigger.fired': 'published',
   'schedule.missed': 'published',
   'task.cleanup-acknowledged': 'published',
   'notification.created': 'published',
+  'hook.delivery.failed': 'published',
+  'hook.delivery.gave-up': 'published',
   diagnostic: 'published',
   'memory.governance': 'published',
   'decision.made': 'published',
@@ -696,6 +721,20 @@ const PROJECTIONS: readonly BureauEventProjection[] = [
     removed: [...event.removed],
     rejected: [...event.rejected],
   })),
+  // COR-2250: the file, the kind, its version, and for a fire its outcome, run and refusal code;
+  // never the payload or the idempotency key, which the event does not hold.
+  ...TRIGGER_EVENT_KINDS.map((kind) =>
+    projection(kind, isTriggerEvent(kind), (event) =>
+      definedFields({
+        workflowId: event.workflowId,
+        trigger: event.trigger,
+        version: event.version,
+        outcome: event.outcome,
+        runId: event.runId,
+        errorCode: event.errorCode,
+      }),
+    ),
+  ),
   projection(ScheduleMissedEvent.type, isInstance(ScheduleMissedEvent), (event) => ({
     scheduleId: event.scheduleId,
     missedCount: event.missedCount,
@@ -712,6 +751,20 @@ const PROJECTIONS: readonly BureauEventProjection[] = [
   projection(NotificationCreatedEvent.type, isInstance(NotificationCreatedEvent), (event) => ({
     notificationId: event.notificationId,
     kind: event.notificationKind,
+  })),
+  // Identifiers, the attempt's number, how it failed (a closed list) and an HTTP status: never the
+  // attempt's error text, which can hold a URL's token, and never the owner or the URL (COR-2099).
+  projection(HookDeliveryFailedEvent.type, isInstance(HookDeliveryFailedEvent), (event) => ({
+    hookId: event.hookId,
+    deliveryId: event.deliveryId,
+    attempt: event.attempt,
+    outcome: publishableDeliveryOutcome(event.outcome, 'error'),
+    ...(event.status === undefined ? {} : { status: event.status }),
+  })),
+  projection(HookDeliveryGaveUpEvent.type, isInstance(HookDeliveryGaveUpEvent), (event) => ({
+    hookId: event.hookId,
+    deliveryId: event.deliveryId,
+    attempts: event.attempts,
   })),
   // Level and scope only: a diagnostic's message and cause can carry error text and stacks.
   projection(DiagnosticEvent.type, isInstance(DiagnosticEvent), (event) => ({

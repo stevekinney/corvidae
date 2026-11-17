@@ -30,6 +30,7 @@ export const READ_OPERATIONS: ReadonlySet<string> = new Set([
   'chunks',
   'deliveries',
   'diagnostics',
+  'embedding',
   'events',
   'get',
   'inspect',

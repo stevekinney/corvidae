@@ -94,6 +94,8 @@ test.describe('a new agent', () => {
     await makeAgent(request, 'e2e-child-agent-preserve', { children: ['demo:echo'] });
     await page.goto('/agents/e2e-child-agent-preserve/edit');
     await expect(editor(page)).toHaveAttribute('data-state', 'ready');
+    // The frame's `ready` is its probe; the capture is of the form the page builds after its own read.
+    await expect(editor(page).locator('[data-editor="ready"]')).toBeVisible();
     await captureForDesignReview(page, {
       route: '/agents/:agent/edit',
       state: 'ready',
@@ -556,6 +558,8 @@ test.describe('an agent that exists', () => {
     // The editor keeps no second list of the versions that ran (sweep W60).
     await page.goto('/agents/e2e-history/edit');
     await expect(editor(page)).toHaveAttribute('data-state', 'ready');
+    // A count of none means something only once the page has built its form from its own read.
+    await expect(editor(page).locator('[data-editor="ready"]')).toBeVisible();
     await expect(page.getByTestId('agent-revision')).toHaveCount(0);
 
     await page.goto('/agents/e2e-history/settings');
@@ -706,6 +710,13 @@ test.describe('a file that changed outside Interborough', () => {
       await makeAgent(request, 'e2e-gone');
       await page.goto('/agents/e2e-gone/edit');
       await expect(editor(page)).toHaveAttribute('data-state', 'ready');
+      // The frame's `ready` says only that its probe answered: the page then reads the agent itself
+      // and builds the form. Wait for the form, as the stale tests above do, so the file is deleted
+      // after the form was filled and the save is what finds it gone.
+      await expect(editor(page).locator('[data-editor="ready"]')).toBeVisible();
+      await expect(page.getByRole('textbox', { name: /^Instructions/ })).toHaveValue(
+        BASE_DEFINITION.instructions,
+      );
       const path = await agentFilePath(request, 'e2e-gone');
       await rm(path);
 
@@ -718,6 +729,36 @@ test.describe('a file that changed outside Interborough', () => {
       await checkA11y(`deleted on disk at ${width}px`);
     });
   }
+
+  test('that was deleted on disk before the page read it is not found, not a server that did not answer', async ({
+    page,
+    request,
+  }) => {
+    await makeAgent(request, 'e2e-gone-early');
+    const path = await agentFilePath(request, 'e2e-gone-early');
+    // Hold the page's first read of the agent (the frame's probe is the first call, the page's own
+    // read the second), delete the file, then let the held read go on.
+    const released = Promise.withResolvers<void>();
+    const held = Promise.withResolvers<void>();
+    let reads = 0;
+    await page.route('**/jsonrpc', async (route) => {
+      const body = route.request().postDataJSON() as { method?: unknown } | null;
+      if (body?.method !== 'bureau.agents.definitions.get') return route.continue();
+      reads += 1;
+      if (reads !== 2) return route.continue();
+      held.resolve();
+      await released.promise;
+      return route.continue();
+    });
+    await page.goto('/agents/e2e-gone-early/edit');
+    await held.promise;
+    await rm(path);
+    released.resolve();
+
+    await expect(editor(page)).toHaveAttribute('data-state', 'not-found');
+    await expect(page.getByText(copy.loadFailed.title)).toHaveCount(0);
+    await page.unroute('**/jsonrpc');
+  });
 });
 
 test.describe('a file the Bureau cannot use', () => {

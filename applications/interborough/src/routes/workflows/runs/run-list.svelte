@@ -50,6 +50,7 @@
   import { isRunning, listAllTasks } from '../../../lib/bureau-tasks.ts';
   import { followLinks } from '../../../lib/follow-links.ts';
   import { viewerTimeZone } from '../../../lib/format/clock.ts';
+  import { usePluginTitle } from '../../../lib/plugin-title.svelte.ts';
   import { queryKeys } from '../../../lib/query.ts';
   import { router } from '../../../lib/router.svelte.ts';
   import { HOME_CLOCK_MILLISECONDS } from '../../home/home-clock.svelte.ts';
@@ -148,6 +149,9 @@
   function agentLabel(agentName: string): string {
     return agentLabelOf(agentName, agents.data);
   }
+
+  // A run a trigger started names its plugin by its title.
+  const pluginTitle = usePluginTitle();
 
   const everyRun = $derived(
     runListRows(
@@ -437,7 +441,7 @@
           >
             {#snippet children(entry: RunListEntry)}
               {#if entry.kind === 'run'}
-                <RunListRow row={entry.row} {now} {zone} {agentLabel} />
+                <RunListRow row={entry.row} {now} {zone} {agentLabel} {pluginTitle} />
               {:else}
                 <MissedRunsRow missed={entry.missed} {zone} {agentLabel} />
               {/if}

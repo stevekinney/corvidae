@@ -438,7 +438,7 @@ describe('Advanced', () => {
     const view = open('/health?advanced=open');
     await view.findByText('Open metrics ›');
     expect(view.getByText('Open alerts ›')).not.toBeNull();
-    expect(view.getByText('Open checks ›')).not.toBeNull();
+    expect(view.getByText('Open system checks ›')).not.toBeNull();
     const advanced = view.getByTestId('advanced-diagnostics');
     expect(advanced.querySelector('button[aria-expanded]')?.getAttribute('aria-expanded')).toBe(
       'true',

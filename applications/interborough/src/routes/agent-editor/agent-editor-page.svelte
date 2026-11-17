@@ -499,10 +499,39 @@
     return 'ready';
   });
 
+  /**
+   * The page's own read of the agent, or its Retry, answered that there is no such agent: it was
+   * deleted after the frame looked. That is the frame's not-found state, not a server that did not
+   * answer, so the frame is asked to look again instead.
+   */
+  const detailGone = $derived(
+    agentId !== undefined && detail.isError && agentFaultOf(detail.error).kind === 'not-found',
+  );
+  /**
+   * The frame looked again after the page's read found nothing, and still shows the page: the file
+   * was there again (deleted and written back between the two reads). The page's own read is then
+   * what failed, so it says so, with Retry, rather than waiting on a frame that will not change.
+   */
+  let frameStillFindsIt = $state(false);
+  $effect(() => {
+    // Read for each answer of the page's read, so a Retry that finds nothing asks the frame again.
+    void detail.errorUpdatedAt;
+    frameStillFindsIt = false;
+    if (!detailGone) return;
+    void queryClient
+      .invalidateQueries({ queryKey: queryKeys.view('agent-editor', agentId ?? null) })
+      .then(() => {
+        // A frame that found nothing has replaced this page with its not-found state by now.
+        frameStillFindsIt = true;
+        return undefined;
+      });
+  });
+
   // A new agent's form is built without its catalog when that fails (row 42v), so only the other
   // pages count a failed catalog as a page that could not be loaded.
   const loadFailed = $derived(
-    (catalog.isError && !freshAgent) || (agentId !== undefined && detail.isError),
+    (catalog.isError && !freshAgent) ||
+      (agentId !== undefined && detail.isError && (!detailGone || frameStillFindsIt)),
   );
   /** The agent to copy could not be read, or is a file with nothing to copy. */
   const copyFailed = $derived(

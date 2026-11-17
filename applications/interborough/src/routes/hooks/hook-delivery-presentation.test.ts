@@ -21,7 +21,6 @@ import {
   deliveryStamp,
   deliveryStatusWord,
   deliverySubject,
-  nextTryWords,
   payloadFieldText,
   retryKind,
 } from './hook-delivery-presentation.ts';
@@ -228,14 +227,6 @@ describe('sending a delivery again', () => {
       nextAttemptAt: START,
     });
     expect(retryKind(sending)).toBeUndefined();
-  });
-
-  test('says how long until the next try, in words', () => {
-    expect(nextTryWords(START + 40_000, START)).toBe('40 seconds');
-    expect(nextTryWords(START + 1_000, START)).toBe('1 second');
-    expect(nextTryWords(START + 5 * 60_000, START)).toBe('5 minutes');
-    expect(nextTryWords(START + 3 * 3_600_000, START)).toBe('3 hours');
-    expect(nextTryWords(START - 5_000, START)).toBe(COPY.nextTryDue);
   });
 });
 

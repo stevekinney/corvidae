@@ -126,6 +126,8 @@ describe('an event in plain words', () => {
     expect(eventArea('review.requested')).toBe('Reviews');
     expect(eventArea('session.saved')).toBe('Chats');
     expect(eventArea('steering.accepted')).toBe('Chats');
+    // COR-2250: the trigger events are grouped by their own area, not under Other.
+    expect(eventArea('trigger.fired')).toBe('Triggers');
     expect(eventArea('somethingnew.happened')).toBe('Other');
     // A family named like a property of every object is not an area.
     expect(eventArea('constructor.happened')).toBe('Other');

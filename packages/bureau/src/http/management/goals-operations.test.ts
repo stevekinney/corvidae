@@ -3,7 +3,9 @@
  * predicate and the operator scopes (read and write apart), `expectedRevision` on cancel, and
  * what a goal's view leaves out.
  */
+import type { Validator } from '@lostgradient/operative';
 import { afterEach, describe, expect, it } from 'bun:test';
+import { z } from 'zod';
 import { workspaceConformanceLedger } from '../workspace-conformance-ledger.test-support.ts';
 
 import { BUREAU_HANDLER_OPERATIONS, createBureauHandler } from '../create-bureau-handler.ts';
@@ -470,6 +472,120 @@ describe('bureau.goals.update', () => {
     });
     expect(changed.error).toBeUndefined();
     expect(await opened.bureau.goals.get(gAlice)).toHaveProperty('objective.prompt', NEW_PROMPT);
+  });
+});
+
+describe('a validator configuration (COR-2117)', () => {
+  const PHRASE = z.strictObject({ phrase: z.string().min(1) });
+  const configured: Validator = {
+    identity: { name: 'contains-phrase', version: '1' },
+    determinism: 'deterministic',
+    configuration: PHRASE,
+    validate: ({ result, configuration }) =>
+      result.content.includes(PHRASE.parse(configuration).phrase)
+        ? { kind: 'pass', evidence: [] }
+        : { kind: 'fail', feedback: 'missing', evidence: [], retryable: false },
+  };
+
+  async function serveConfigured(): Promise<OpenedBureau> {
+    const opened = await openBureau({
+      agents: { worker: workerAgent(hangUntilAborted) },
+      a2aAgents: ['worker'],
+      generate: hangUntilAborted,
+      validators: [configured, createCheckValidator()],
+    });
+    cleanups.push(() => opened.dispose());
+    return opened;
+  }
+
+  const issuePaths = (body: RpcBody): unknown[] =>
+    ((body.error?.data?.['issues'] ?? []) as { path: unknown }[]).map((issue) => issue.path);
+
+  it('answers InvalidParams naming the field a configuration the schema refuses, and one for a validator with no schema', async () => {
+    const opened = await serveConfigured();
+    const create = (validator: unknown, idempotencyKey: string) =>
+      rpc(
+        opened.handler,
+        'bureau.goals.create',
+        { ...NEW_GOAL, validator, idempotencyKey },
+        'alice-key',
+      );
+
+    const refused = await create(
+      { name: 'contains-phrase', version: '1', configuration: { phrase: '' } },
+      'refused',
+    );
+    // The whole answer, as recorded: the Interborough tests and captures build their refusal from it
+    // (`applications/interborough/src/lib/recorded-goal-refusal.test-support.ts`), so a change to
+    // where `issues` sits, what each path is, or how `data` is wrapped fails here first.
+    expect<unknown>(refused).toEqual({
+      jsonrpc: '2.0',
+      error: {
+        code: -32602,
+        message:
+          'The configuration for the validator "contains-phrase@1" is refused: phrase: Too small: expected string to have >=1 characters',
+        data: {
+          issues: [
+            {
+              path: ['validator', 'configuration', 'phrase'],
+              message: 'Too small: expected string to have >=1 characters',
+              code: 'custom',
+            },
+          ],
+          weftCode: 'InvalidParams',
+          httpStatus: 400,
+        },
+      },
+      id: 1,
+    });
+    expect(refused.error?.data?.['httpStatus']).toBe(400);
+    expect(issuePaths(refused)).toEqual([['validator', 'configuration', 'phrase']]);
+
+    const withoutSchema = await create(
+      { name: 'check', version: '1', configuration: { phrase: 'x' } },
+      'no-schema',
+    );
+    expect(withoutSchema.error?.data?.['httpStatus']).toBe(400);
+    expect(issuePaths(withoutSchema)).toEqual([['validator', 'configuration']]);
+
+    const accepted = await create(
+      { name: 'contains-phrase', version: '1', configuration: { phrase: 'staging fix' } },
+      'accepted',
+    );
+    expect(accepted.error).toBeUndefined();
+    // The view carries the check's own configuration, and null for a goal that named none.
+    expect(accepted.result?.['goal']).toMatchObject({
+      validator: { name: 'contains-phrase', version: '1' },
+      validatorConfiguration: { phrase: 'staging fix' },
+    });
+    const plain = await create({ name: 'check', version: '1' }, 'plain');
+    expect(plain.result?.['goal']).toMatchObject({ validatorConfiguration: null });
+    const listed = await rpc(opened.handler, 'bureau.goals.list', {}, 'alice-key');
+    const goals = listed.result?.['goals'] as { validatorConfiguration: unknown }[];
+    expect(goals.map((goal) => goal.validatorConfiguration)).toEqual([
+      { phrase: 'staging fix' },
+      null,
+    ]);
+  });
+
+  it('answers an update with a refused configuration InvalidParams naming the field', async () => {
+    const opened = await serveConfigured();
+    const created = await rpc(
+      opened.handler,
+      'bureau.goals.create',
+      {
+        ...NEW_GOAL,
+        validator: { name: 'contains-phrase', version: '1', configuration: { phrase: 'a' } },
+        idempotencyKey: 'to-update',
+      },
+      'alice-key',
+    );
+    const body = await updateAtCurrentRevision(opened, 'alice-key', idOf(created), {
+      validator: { name: 'contains-phrase', version: '1', configuration: { phrase: 5 } },
+    });
+
+    expect(body.error?.data?.['httpStatus']).toBe(400);
+    expect(issuePaths(body)).toEqual([['validator', 'configuration', 'phrase']]);
   });
 });
 

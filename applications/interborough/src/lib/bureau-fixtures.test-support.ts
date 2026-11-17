@@ -2,6 +2,7 @@
  * Task and review rows as the Bureau answers them, for the tests of the Tasks area and of
  * `/reviews`. Each is the whole wire shape, so a test changes only what it is about.
  */
+import type { CheckRow } from './bureau-checks.ts';
 import type { ChatContext, ContextDetail } from './bureau-client.ts';
 import type { Goal } from './bureau-goals.ts';
 import type { BureauHumanWait, BureauToolApproval } from './bureau-reviews.ts';
@@ -114,7 +115,8 @@ export function goalFixture(id: string, overrides: Partial<Goal> = {}): Goal {
     owner: 'anonymous:local',
     agentName: 'assistant',
     identity: { name: `Goal ${id}`, version: '1' },
-    validator: { name: 'reply-says-hello', version: '1' },
+    validator: { name: 'contains-phrase', version: '1' },
+    validatorConfiguration: { phrase: 'hello' },
     status: 'running',
     terminalReason: null,
     revision: 2,
@@ -150,6 +152,22 @@ export function goalAttemptFixture(
     completedAt: '2026-10-19T08:00:01.000Z',
     finishReason: null,
     usage: { steps: 1, tokens: 0, costUsd: null },
+    ...overrides,
+  };
+}
+
+/** One check result as `bureau.checks.list` shows it: a goal's verdict, unless a test says otherwise. */
+export function checkFixture(id: string, overrides: Partial<CheckRow> = {}): CheckRow {
+  return {
+    kind: 'goal.attempt.validated',
+    checkId: 'contains-phrase@1',
+    agentName: 'assistant',
+    outcome: 'pass',
+    timestamp: '2026-10-19T08:00:00.000Z',
+    runId: `run-${id}`,
+    goalRunId: `goal-${id}`,
+    attemptId: `attempt-${id}`,
+    score: null,
     ...overrides,
   };
 }

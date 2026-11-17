@@ -5,7 +5,7 @@
  * Playwright reuses a server already listening on the end-to-end port outside CI, and on a shared
  * host that is often another checkout's build, or a design-review capture's, on the default port
  * 7399. A gate that screenshots someone else's tree proves nothing, so this script picks a block of
- * free consecutive ports (the suite holds seven, from `endToEndPort()`), exports the first as
+ * free consecutive ports (the suite holds eight, from `endToEndPort()`), exports the first as
  * `INTERBOROUGH_E2E_PORT`, and sets `INTERBOROUGH_E2E_FRESH_SERVER`, which makes
  * `playwright.config.ts` refuse to reuse a server at all. `INTERBOROUGH_E2E_PORT` set by the caller
  * is honored, but only when its whole block is free; otherwise the run exits 2 instead of

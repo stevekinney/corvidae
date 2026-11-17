@@ -51,6 +51,10 @@ The `grid` variant lays the pairs out in as many equal columns as the list's own
 <DescriptionList {items} variant="grid" />
 ```
 
+### A note under a value
+
+Give an item a `note` for a muted second line under its definition: what the value is called elsewhere, such as a check read in words with its name and version beneath (`Contains phrase`, then `contains-phrase, version 1`). The note is plain text, read with the definition, and is left out when empty. Use it instead of a second row that states the same fact twice.
+
 ### Formatted values
 
 A definition can be a value the list formats, so every list shows timestamps, IDs and tags the same way:

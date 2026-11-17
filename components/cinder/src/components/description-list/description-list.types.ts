@@ -105,6 +105,12 @@ export type DescriptionListItem = {
    * @default false
    */
   wide?: boolean;
+  /**
+   * A muted second line under the definition, for what the value is called elsewhere (a check
+   * read in words, with its name and version beneath). It is plain text read with the definition,
+   * and is left out when empty.
+   */
+  note?: string;
 };
 export type DescriptionListProps = Omit<HTMLAttributes<HTMLDListElement>, 'class'> & {
   items: DescriptionListItem[];

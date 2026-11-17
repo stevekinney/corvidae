@@ -279,6 +279,19 @@ export const CONTRACT: Record<string, ComponentContract> = {
     snippets: { children: s0(true), confirmation: s0(true) },
   },
 
+  // A monospace value that breaks anywhere, with a CopyButton on its last line.
+  'copyable-value': {
+    kind: 'intersection',
+    html_attrs: 'HTMLAttributes',
+    props: {
+      value: { optional: false, type_kind: 'TSStringKeyword', default: REQUIRED },
+      label: { optional: true, type_kind: 'TSStringKeyword', default: NO_DEFAULT },
+      copiedLabel: { optional: true, type_kind: 'TSStringKeyword', default: NO_DEFAULT },
+      class: { optional: true, type_kind: 'TSStringKeyword', default: NO_DEFAULT },
+    },
+    snippets: {},
+  },
+
   // A split button: inside a ButtonGroup the trigger draws as a Button and takes its variant and
   // size from the Button beside it, unless `variant` or `size` set them.
   'dropdown-trigger': {

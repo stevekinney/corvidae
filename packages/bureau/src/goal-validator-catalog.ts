@@ -15,9 +15,17 @@
 
 import { sha256HexSync } from '@lostgradient/cryptography';
 import type { Validator, ValidatorIdentity } from '@lostgradient/operative';
+import { z, type ZodType } from 'zod';
 
 import { BUREAU_VERSION } from './bureau-version';
 import { BUREAU_PLUGIN_NAME } from './plugins/bureau-plugin';
+import {
+  createFileValidator,
+  type FileValidatorRuntime,
+  type ValidatorFileDefinition,
+  validatorFileVersion,
+} from './validator-file';
+import type { ValidatorFileLookup } from './validator-file-catalog';
 import { createVersionedCatalog, type VersionedCatalogSource } from './versioned-catalog';
 
 /**
@@ -26,13 +34,19 @@ import { createVersionedCatalog, type VersionedCatalogSource } from './versioned
  * plugin at the plugin's version.
  */
 export interface GoalValidatorSource {
-  /** `bureau` for a validator the host passed to Bureau, `plugin` for a contributed one. */
-  readonly kind: 'bureau' | 'plugin';
-  /** `bureau`, or the contributing plugin's name. */
+  /**
+   * `bureau` for a validator the host passed to Bureau, `plugin` for a contributed one, and
+   * `bungalow` for one the owner wrote as a file (COR-2119).
+   */
+  readonly kind: 'bureau' | 'plugin' | 'bungalow';
+  /** `bureau`, the contributing plugin's name, or `bungalow`. */
   readonly name: string;
-  /** Bureau's own version, or the plugin's. */
+  /** Bureau's own version, the plugin's, or the file's version (the digest of its definition). */
   readonly version: string;
 }
+
+/** The name an owner-defined validator's source carries. */
+export const BUNGALOW_VALIDATOR_SOURCE_NAME = 'bungalow';
 
 /** The source of a validator passed to Bureau's options rather than contributed by a plugin. */
 const GOAL_VALIDATOR_SOURCE: GoalValidatorSource = Object.freeze({
@@ -51,6 +65,12 @@ export interface GoalValidatorDescriptor {
   readonly identity: ValidatorIdentity;
   /** Absent when the validator did not declare it; only `'deterministic'` satisfies a goal that requires it. */
   readonly determinism?: 'deterministic' | 'stochastic' | undefined;
+  /**
+   * COR-2117 — the JSON Schema of the configuration a goal may give the validator, present only
+   * when the validator declares one. The digest covers it only then, so a validator without one
+   * keeps the digest it had.
+   */
+  readonly configuration?: Readonly<Record<string, unknown>> | undefined;
   /** Lowercase hex sha-256 over the canonical descriptor without the digest. */
   readonly descriptorDigest: string;
 }
@@ -61,6 +81,11 @@ export interface GoalValidatorCatalogEntry {
   readonly descriptor: GoalValidatorDescriptor;
   /** Who the validator comes from (COR-2111). Not part of the descriptor, so its digest is unchanged. */
   readonly source: GoalValidatorSource;
+  /**
+   * COR-2119 — for an owner-defined validator, the definition it runs from, which a goal that names
+   * it copies into its record. Absent for a validator the host or a plugin gave the Bureau.
+   */
+  readonly definition?: ValidatorFileDefinition | undefined;
 }
 
 export type GoalValidatorResolution =
@@ -81,24 +106,66 @@ export type GoalValidatorResolution =
     };
 
 export interface GoalValidatorCatalog {
-  /** Exact `(name, version)` lookup. Accepts runtime values: anything that is not a registered identity is `missing`. */
-  resolve(identity: { readonly name: unknown; readonly version: unknown }): GoalValidatorResolution;
+  /**
+   * Exact `(name, version)` lookup. Accepts runtime values: anything that is not a registered identity is `missing`.
+   *
+   * The frozen catalog is asked first, then the owner's validator files (COR-2119). `stored` is the
+   * definition a goal's record copied when it named an owner-defined validator: when it is the
+   * definition `identity` is the version of, the validator is built from it and the files are never
+   * read, so a goal runs the check it was created with whatever its file says now.
+   */
+  resolve(
+    identity: { readonly name: unknown; readonly version: unknown },
+    stored?: ValidatorFileDefinition,
+  ): GoalValidatorResolution;
   has(identity: { readonly name: unknown; readonly version: unknown }): boolean;
-  /** The serializable descriptors, in registration order. */
+  /** The serializable descriptors of the frozen catalog, in registration order. */
   descriptors(): GoalValidatorDescriptor[];
+  /** Every validator a goal may name: the frozen catalog's in registration order, then the ready validator files'. */
   entries(): GoalValidatorCatalogEntry[];
 }
 
-function describeValidator(validator: Validator): GoalValidatorDescriptor {
-  const { name, version } = validator.identity;
-  const determinism = validator.determinism;
-  const body = { identity: { name, version }, determinism: determinism ?? null };
+/**
+ * A configuration schema as the JSON Schema a client draws its form from, on its input side, which
+ * is what a person types. A schema Zod cannot write as one is `{}`: it still marks the validator as
+ * taking a configuration, and the schema itself still parses it.
+ */
+function configurationSchemaOf(schema: ZodType): Readonly<Record<string, unknown>> {
+  try {
+    return z.toJSONSchema(schema, { io: 'input', unrepresentable: 'any' });
+  } catch {
+    return {};
+  }
+}
+
+function describeConfigured(
+  identity: ValidatorIdentity,
+  determinism: Validator['determinism'],
+  configuration: Readonly<Record<string, unknown>> | undefined,
+): GoalValidatorDescriptor {
+  const { name, version } = identity;
+  const body = {
+    identity: { name, version },
+    determinism: determinism ?? null,
+    ...(configuration === undefined ? {} : { configuration }),
+  };
   const descriptorDigest = sha256HexSync(JSON.stringify(body));
   return Object.freeze({
     identity: Object.freeze({ name, version }),
     ...(determinism === undefined ? {} : { determinism }),
+    ...(configuration === undefined ? {} : { configuration }),
     descriptorDigest,
   });
+}
+
+function describeValidator(validator: Validator): GoalValidatorDescriptor {
+  return describeConfigured(
+    validator.identity,
+    validator.determinism,
+    validator.configuration === undefined
+      ? undefined
+      : configurationSchemaOf(validator.configuration),
+  );
 }
 
 /**
@@ -110,27 +177,32 @@ export function decodeGoalValidatorDescriptor(value: unknown): GoalValidatorDesc
   const record = value as Record<string, unknown>;
   if (
     !Object.keys(record).every((key) =>
-      ['identity', 'determinism', 'descriptorDigest'].includes(key),
+      ['identity', 'determinism', 'configuration', 'descriptorDigest'].includes(key),
     )
   ) {
     return undefined;
   }
   const identity = record['identity'] as Record<string, unknown> | null;
   const determinism = record['determinism'];
+  const configuration = record['configuration'];
   if (
     typeof identity !== 'object' ||
     identity === null ||
     typeof identity['name'] !== 'string' ||
     typeof identity['version'] !== 'string' ||
-    (determinism !== undefined && determinism !== 'deterministic' && determinism !== 'stochastic')
+    (determinism !== undefined &&
+      determinism !== 'deterministic' &&
+      determinism !== 'stochastic') ||
+    (configuration !== undefined &&
+      (typeof configuration !== 'object' || configuration === null || Array.isArray(configuration)))
   ) {
     return undefined;
   }
-  const expected = describeValidator({
-    identity: { name: identity['name'], version: identity['version'] },
+  const expected = describeConfigured(
+    { name: identity['name'], version: identity['version'] },
     determinism,
-    validate: () => ({ kind: 'canceled' }),
-  });
+    configuration as Readonly<Record<string, unknown>> | undefined,
+  );
   return record['descriptorDigest'] === expected.descriptorDigest ? expected : undefined;
 }
 
@@ -144,6 +216,10 @@ export function decodeGoalValidatorDescriptor(value: unknown): GoalValidatorDesc
 export function createGoalValidatorCatalog(
   validators: readonly Validator[] = [],
   sourceOf?: GoalValidatorSourceOf,
+  /** The owner's validator files, read when it is asked; the catalog of files is built after this one. */
+  files?: () => ValidatorFileLookup | undefined,
+  /** What an owner-defined validator needs of the Bureau, read when it runs: a judge asks a model through it. */
+  fileRuntime?: FileValidatorRuntime,
 ): GoalValidatorCatalog {
   const catalog = createVersionedCatalog<GoalValidatorCatalogEntry>();
   const entries: GoalValidatorCatalogEntry[] = [];
@@ -182,17 +258,65 @@ export function createGoalValidatorCatalog(
     entries.push(entry);
   }
 
-  const resolve: GoalValidatorCatalog['resolve'] = (identity) => {
+  /** The entry of an owner-defined validator: its definition run as the file kind says. */
+  const fileEntry = (
+    name: string,
+    definition: ValidatorFileDefinition,
+    version: string,
+  ): GoalValidatorCatalogEntry => {
+    const validator = createFileValidator(name, definition, fileRuntime);
+    const descriptor = describeValidator(validator);
+    return Object.freeze({
+      identity: descriptor.identity,
+      validator,
+      descriptor,
+      source: Object.freeze({
+        kind: 'bungalow',
+        name: BUNGALOW_VALIDATOR_SOURCE_NAME,
+        version,
+      }) satisfies GoalValidatorSource,
+      definition,
+    });
+  };
+
+  const resolve: GoalValidatorCatalog['resolve'] = (identity, stored) => {
+    // A goal that copied its definition runs from the copy, and asks nothing else.
+    if (
+      stored !== undefined &&
+      typeof identity.name === 'string' &&
+      identity.version === validatorFileVersion(stored)
+    ) {
+      return { ok: true, entry: fileEntry(identity.name, stored, identity.version) };
+    }
     const resolution = catalog.resolve('validator', identity);
     if (resolution.ok) return { ok: true, entry: resolution.entry.value };
-    const { reason, requested, availableVersions } = resolution;
-    return { ok: false, reason, requested, availableVersions };
+    // The owner's files, for what the frozen catalog cannot name: a file's version is its digest, so
+    // a name the files hold at another version is a version mismatch, as a frozen name is.
+    const file = typeof identity.name === 'string' ? files?.()?.find(identity.name) : undefined;
+    if (file === undefined) {
+      const { reason, requested, availableVersions } = resolution;
+      return { ok: false, reason, requested, availableVersions };
+    }
+    if (identity.version === file.version) {
+      return { ok: true, entry: fileEntry(file.name, file.definition, file.version) };
+    }
+    return {
+      ok: false,
+      reason: 'version-mismatch',
+      requested: resolution.requested,
+      availableVersions: [...resolution.availableVersions, file.version],
+    };
   };
 
   return Object.freeze({
     resolve,
     has: (identity: Parameters<typeof resolve>[0]) => resolve(identity).ok,
     descriptors: () => entries.map((entry) => entry.descriptor),
-    entries: () => [...entries],
+    entries: () => [
+      ...entries,
+      ...(files?.()
+        ?.ready()
+        .map((file) => fileEntry(file.name, file.definition, file.version)) ?? []),
+    ],
   });
 }

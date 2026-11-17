@@ -293,6 +293,7 @@ export {
 export type {
   McpAppBridge,
   McpAppBridgeOptions,
+  McpAppOpenLinkHandler,
   McpAppProps,
   McpAppResource,
   McpAppResourceLoader,

@@ -524,6 +524,15 @@ function planOf(
         `setup returned the panel "${app.name}" with the URI "${app.uri}", which is outside the plugin's namespace: a panel URI begins ui://${plugin}/.`,
       );
     }
+    // A panel calls Bureau operations through the host, so every tool it may call is a Bureau tool.
+    // Refusing the entry here fails setup once, rather than every call it would have refused.
+    for (const tool of app.allowedTools) {
+      if (!tool.startsWith('bureau.')) {
+        throw new TypeError(
+          `setup returned the panel "${app.name}" with the tool "${tool}" in allowedTools, which is not a Bureau tool: every allowedTools entry begins bureau.`,
+        );
+      }
+    }
     // A page panel declares a placement and needs no MCP opener, so the tool link is optional.
     if (app.opensFromTool !== undefined && !app.allowedTools.includes(app.opensFromTool)) {
       throw new TypeError(
@@ -545,7 +554,8 @@ function planOf(
       }
     }
     for (const placement of app.placements ?? []) checkPlacement(app, placement, agentTools);
-    contribute('panel', app.name);
+    // The title names the panel wherever a person reads it, as a workflow's title does.
+    contribute('panel', app.name, undefined, app.title);
     claims.push({ space: 'panel-uri', name: app.uri });
     // A tool links to one page, so the host cannot serve two apps opened from the same tool. A
     // placement takes no claim: a page path or a chat tool names no tool another plugin holds, and
@@ -791,7 +801,9 @@ class Contributed {
       const contributed: NonNullable<PluginContributions['scorers']>[number] = {
         ...judge,
         name: id(judge.name),
-        score: (run, signal) => judge.score(run, signal),
+        // The run's id (COR-2204) is the third argument: a wrapper that drops it leaves a plugin
+        // scorer unable to file a decision under the run it scores.
+        score: (run, signal, context) => judge.score(run, signal, context),
       };
       this.scorers.push(contributed);
       // COR-2200: the scorer catalog names each scorer's plugin and its version.

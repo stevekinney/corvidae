@@ -285,6 +285,16 @@
     padding: 0;
   }
 
+  /* A muted second line under the definition: what the value is called in the system (a check's
+     name and version beside its words), not a second value. */
+  .cinder-description-list__note {
+    display: block;
+    margin-block-start: var(--cinder-space-0-5);
+    font-size: var(--cinder-text-xs);
+    line-height: var(--cinder-leading-normal);
+    color: var(--cinder-text-muted);
+  }
+
   .cinder-description-list__system-tags,
   .cinder-description-list__empty {
     font-size: var(--cinder-text-xs);

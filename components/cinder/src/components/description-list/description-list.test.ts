@@ -405,6 +405,28 @@ describe('DescriptionList formatted values', () => {
     expect(text).toContain('No tags');
   });
 
+  test('a note is a muted second line under its definition, read with it, and absent when empty', () => {
+    const { container } = render(DescriptionList, {
+      items: [
+        { term: 'Check', definition: 'Contains phrase', note: 'contains-phrase, version 1' },
+        { term: 'Owner', definition: 'Steve', note: '' },
+        { term: 'Status', definition: 'Active' },
+      ],
+    });
+    const rows = [...container.querySelectorAll('.cinder-description-list__row')];
+    const note = rows[0]?.querySelector('dd .cinder-description-list__note');
+    expect(note?.textContent).toBe('contains-phrase, version 1');
+    // The note sits in the same definition as the value, so a reader hears them together.
+    expect(note?.closest('.cinder-description-list__definition')?.textContent).toContain(
+      'Contains phrase',
+    );
+    expect(rows[1]?.querySelector('.cinder-description-list__note')).toBeNull();
+    expect(rows[2]?.querySelector('.cinder-description-list__note')).toBeNull();
+    expect(descriptionListCss).toMatch(
+      /\.cinder-description-list__note\s*\{[^}]*color:\s*var\(--cinder-text-muted\)/,
+    );
+  });
+
   test('two-column variant mutes the term and draws no row dividers', () => {
     const rule = (selector: string) =>
       new RegExp(`${selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*\\{([^}]*)\\}`).exec(

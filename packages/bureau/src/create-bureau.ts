@@ -72,6 +72,7 @@ import { createAgentDiscoveryTool } from './create-agent-discovery-tool';
 import { createChildRunTools } from './child-run-tools';
 import { createAssetTools } from './asset-tools';
 import { createPluginEventPublisher } from './plugins/plugin-event-publish';
+import { createPluginDecide } from './plugins/plugin-host-decisions';
 import { createPluginRegistry, hostGuardrailRows } from './plugins/plugin-registry';
 import { createGoalForPlugin } from './goals';
 import {
@@ -116,6 +117,7 @@ import {
   createDiagnosticDispatcher,
   forwardAssetEvents,
   forwardDefinitionChanges,
+  forwardSkillChanges,
   forwardMemoryGovernance,
   forwardHostEvents,
   forwardMissedFires,
@@ -149,12 +151,18 @@ import {
   NotificationCreatedEvent,
   SessionTaintEvent,
   TaskCleanupAcknowledgedEvent,
+  TriggerLifecycleEvent,
   DiagnosticEvent,
 } from './events';
 import { createGoalAttemptFenceHost } from './goal-attempt-fence';
 import { createGoalWorkflowHost } from './goal-ports';
 import type { BureauGoals } from './goal-types';
 import { createGoalValidatorCatalog } from './goal-validator-catalog';
+import { createGuardrailFileCatalog, type GuardrailFileCatalog } from './guardrail-file-catalog';
+import { ownerGuardrailRows } from './owner-guardrails';
+import { forwardOwnerFileChanges, openOwnerFileCatalog } from './owner-file-startup';
+import type { GuardrailSource, ValidatorSource } from './sources/definition-source';
+import { createValidatorFileCatalog, type ValidatorFileCatalog } from './validator-file-catalog';
 import { createWorkflowContributions } from './workflow-contributions';
 import { composeBureauGoals } from './goals-composition';
 import { createAbandonedTaskSweeper, openProcessLease } from './process-lease';
@@ -177,7 +185,12 @@ import {
   toolGrantOf,
   validateSettingsOptions,
 } from './settings/settings-options';
-import { createModels, validateModelsOptions, type Models } from './models/create-models';
+import {
+  createModels,
+  findDecisionRow,
+  validateModelsOptions,
+  type Models,
+} from './models/create-models';
 import { createScorerSampler, type ScorerSampler } from './scorers';
 import { agentTaintThresholdField } from './agent-taint-threshold.ts';
 import { disposeRunEventFeed } from './run-event-feed-attachment.ts';
@@ -291,6 +304,7 @@ import { purgeChatLedgerEntries } from './chat-ledger-purge';
 import { createNotifications } from './notifications/create-notifications';
 import { createContexts } from './contexts/create-contexts';
 import { createTasks } from './tasks/create-tasks';
+import { readFailedHooks } from './tasks/failed-hooks';
 import { createReviews } from './reviews/create-reviews';
 import { createSchedules } from './schedules/create-schedules';
 import { createWebhookNotifier, type WebhookNotifier } from './webhook-notifier';
@@ -335,7 +349,7 @@ import {
   composeHooks,
   resumeHooks,
 } from './bureau-construction-support';
-import { NotifyingReviewIdSet } from './approval-state-records';
+import { createPendingApprovalPersistHook, NotifyingReviewIdSet } from './approval-state-records';
 import { validateAgentRunInput, createTasksRespondLedger } from './run-request-validation';
 import {
   type BureauCore,
@@ -596,6 +610,8 @@ async function constructBureau<const D extends AgentDefinitions>(
   validateDecisionsModelChoice(options.decisions, toBadRequest);
   const pluginRegistry = createPluginRegistry(composedPlugins.records, {
     guardrails: hostGuardrails,
+    // COR-2120: the owner's guardrail files, listed after the plugins', read as they stand.
+    owner: () => ownerGuardrailRows(guardrailFiles?.ready() ?? []),
   });
   // COR-1710 — the settings: validated here, read in `bootSettings` below, before the engine.
   const settingsLocked = validateSettingsOptions(options, toBadRequest);
@@ -757,6 +773,13 @@ async function constructBureau<const D extends AgentDefinitions>(
   const lateDecisions = createLateDecisions();
   // Built first: two validators registered under one name and version are a
   // startup error, and it should fail before the durable engine exists.
+  // COR-2119: the owner's validator files, whose catalog is built where the other file catalogs are
+  // (it needs the runtime) and read through this holder once it exists.
+  let validatorFiles: ValidatorFileCatalog | undefined;
+  /** COR-2120: the owner's guardrail files; built before the agent files, which read them. */
+  let guardrailFiles: GuardrailFileCatalog | undefined;
+  /** Advances when the model catalog is replaced, so a `judge` file is read against the new one. */
+  let modelCatalogRevision = 0;
   const goalValidatorCatalog = createGoalValidatorCatalog(
     lateDecisions.bindValidators(options.validators),
     // COR-2111: a plugin's validators are in the contribution catalog under the plugin's source.
@@ -764,6 +787,9 @@ async function constructBureau<const D extends AgentDefinitions>(
       const found = options.contributionCatalog?.resolve('validator', identity);
       return found?.ok === true ? found.entry.source : undefined;
     },
+    () => validatorFiles,
+    // COR-2123: a judge asks the Bureau's own decisions, which are composed later.
+    { decide: (request, decideOptions) => lateDecisions.source.decide(request, decideOptions) },
   );
   // COR-1510: a run the durable engine resumes on its own (a claim it reclaimed) before
   // `recoverDurableRuns` starts is still handed to `onRecoveredWorkflow`, ahead of its first step.
@@ -2647,6 +2673,20 @@ async function constructBureau<const D extends AgentDefinitions>(
       { cause: failures[0] },
     );
   };
+  // COR-1946: a Bureau over a store that outlives the process names itself on every task it admits
+  // and holds a lease under that name, which is how a later boot tells a task whose process is gone
+  // from one whose process is another Bureau still running over the same store. Opened before the
+  // workflow runtime, which runs a contributed trigger's listener only while it holds that
+  // trigger's record under this lease (COR-2167); it is first written in `start()`.
+  const processLease = openProcessLease({
+    kv: runtime.kv,
+    persistence: options.storage?.capabilities().persistence,
+    clock: runtimeServices.clock,
+    timers: runtimeServices.timers,
+    identifiers: runtimeServices.identifiers,
+    diagnose: (message, cause) =>
+      diagnose({ level: 'error', scope: 'task-registry', message: `[bureau] ${message}`, cause }),
+  });
   try {
     runtime.skillEvents.addEventListener(SkillLoadedEvent.type, (event) => {
       emitter.dispatch(new SkillLoadedEvent(event.skillName, event.correlation));
@@ -2681,6 +2721,10 @@ async function constructBureau<const D extends AgentDefinitions>(
     // COR-2098 — the plugin and secret changes the host reports, each after the host committed it.
     stopForwarding.push(
       forwardHostEvents(options.hostEvents, (event) => emitter.dispatch(event), diagnose),
+    );
+    // COR-2100 — the skill changes the host reports, each after it replaced the catalog it serves.
+    stopForwarding.push(
+      forwardSkillChanges(options.skillChanges, (event) => emitter.dispatch(event)),
     );
     // COR-1723 — the supplied governed memory's notifications, so its writes, forgets, and
     // corrections reach the emitter whoever constructed it.
@@ -2749,6 +2793,16 @@ async function constructBureau<const D extends AgentDefinitions>(
       onReplace: () => {
         // A replace after shutdown began has no one left to validate for.
         if (runAdmissionClosed) return;
+        modelCatalogRevision += 1;
+        validatorFiles?.refresh().catch((cause: unknown) =>
+          diagnose({
+            level: 'error',
+            scope: 'validator-files',
+            message:
+              '[bureau] could not validate validator files against the replaced model catalog',
+            cause,
+          }),
+        );
         fileAgents?.files.refresh().catch((cause: unknown) =>
           diagnose({
             level: 'error',
@@ -2935,6 +2989,41 @@ async function constructBureau<const D extends AgentDefinitions>(
       store: runtime.kv,
       nowISO: runtimeServices.clock.nowISO,
     });
+    // COR-2120: the owner's guardrail files, scanned before the agent files are, so an agent that
+    // names one finds it on its first scan. An edit revalidates the agent files (below), which is
+    // what makes the agents that name a changed file new agents.
+    await openOwnerFileCatalog({
+      option: 'guardrailSource',
+      kind: 'guardrail',
+      source: options.guardrailSource,
+      badRequest: toBadRequest,
+      stopForwarding,
+      onCreated: (files) => {
+        guardrailFiles = files;
+      },
+      create: (source: GuardrailSource) =>
+        createGuardrailFileCatalog({
+          source,
+          runtime: runtimeServices,
+          diagnose: (message, cause) =>
+            diagnose({
+              level: 'error',
+              scope: 'guardrail-files',
+              message: `[bureau] ${message}`,
+              cause,
+            }),
+        }),
+      onChange: () => {
+        fileAgents?.files.revalidate().catch((cause: unknown) =>
+          diagnose({
+            level: 'error',
+            scope: 'agent-files',
+            message: '[bureau] could not validate agent files against the changed guardrail files',
+            cause,
+          }),
+        );
+      },
+    });
     fileAgents =
       options.agentSource === undefined || options.models?.generate === undefined
         ? undefined
@@ -2957,6 +3046,13 @@ async function constructBureau<const D extends AgentDefinitions>(
               // COR-1828: a tool a person allowed for the rest of the chat skips its `on-changes` ask.
               rememberedTools: approvalGrantsOfRun,
               contributions: options.agentContributions,
+              // COR-2120: the owner's guardrails, which a file lists by their stems.
+              ownerGuardrails: () =>
+                (guardrailFiles?.ready() ?? []).map((file) => ({
+                  id: file.name,
+                  digest: file.digest,
+                  definition: file.definition,
+                })),
               // COR-1975: the skills a file's `skills` draws on, read through the host.
               ...(options.agentSkillCatalog === undefined
                 ? {}
@@ -3043,6 +3139,41 @@ async function constructBureau<const D extends AgentDefinitions>(
     // COR-1721 — after the first scan, so the files present at boot are not reported as added.
     stopForwarding.push(
       forwardDefinitionChanges('agents', agentCatalog, (event) => emitter.dispatch(event)),
+    );
+    // COR-2119: the owner's validator files, scanned before the first goal can be created so one that
+    // names a file finds it, and reported as `definitions.changed` after that first scan.
+    // After the first scan, so the files present at boot are not reported as added.
+    stopForwarding.push(
+      forwardOwnerFileChanges('guardrails', guardrailFiles, (event) => emitter.dispatch(event)),
+    );
+    await openOwnerFileCatalog({
+      option: 'validatorSource',
+      kind: 'validator',
+      source: options.validatorSource,
+      badRequest: toBadRequest,
+      stopForwarding,
+      onCreated: (files) => {
+        validatorFiles = files;
+      },
+      create: (source: ValidatorSource) =>
+        createValidatorFileCatalog({
+          source,
+          runtime: runtimeServices,
+          // A judge file names a row of the model catalog, as an agent file does, and is read again
+          // when the catalog is replaced.
+          modelKnown: (model) => findDecisionRow(models.catalog().descriptors, model) !== undefined,
+          revision: () => modelCatalogRevision,
+          diagnose: (message, cause) =>
+            diagnose({
+              level: 'error',
+              scope: 'validator-files',
+              message: `[bureau] ${message}`,
+              cause,
+            }),
+        }),
+    });
+    stopForwarding.push(
+      forwardOwnerFileChanges('validators', validatorFiles, (event) => emitter.dispatch(event)),
     );
     // COR-1527: the workflow files. The directory is scanned and the engine told about the documents
     // in `start()`, at the end of construction and before the engine recovers; the `agent` step runs
@@ -3138,6 +3269,10 @@ async function constructBureau<const D extends AgentDefinitions>(
               pluginRegistry.reportTriggerFailure(plugin, workflow, message),
             onTriggerRecovered: (plugin, workflow) =>
               pluginRegistry.clearTriggerFailure(plugin, workflow),
+            listenerLease: { processLease, kv: runtime.kv },
+            // COR-2250: what each contributed trigger did, on the Bureau's feed.
+            onTriggerEvent: (event) =>
+              emitter.dispatch(new TriggerLifecycleEvent(event.kind, event)),
             diagnose: (message, cause) =>
               diagnose({
                 level: 'error',
@@ -3158,6 +3293,17 @@ async function constructBureau<const D extends AgentDefinitions>(
   }
   // Every later step that fails is stopped the same way, by `createBureau`.
   construction.abandon = abandonConstruction;
+  // COR-2115 — a run rebuilt after a restart registers the pending-approval persist hook a started
+  // run does (`run-creation.ts`), so an approval a step takes after the restart is recorded on its
+  // session. Wired ahead of the resolver below, which every such run waits for.
+  runtime.setPendingApprovalPersistHook((runId, sessionId) =>
+    createPendingApprovalPersistHook(
+      runId,
+      sessionId,
+      pendingApprovalOverrides,
+      persistPendingApprovalOverrideWithRetry,
+    ),
+  );
   // AB-240: wire boot recovery's catalog branch NOW that the catalog exists —
   // `runtime` (built above, before this catalog) deliberately knows nothing
   // about it (see `RuntimeCompositionOptions`'s doc comment), so this is the
@@ -3467,18 +3613,6 @@ async function constructBureau<const D extends AgentDefinitions>(
   // COR-1915: what each run of a chat spent, which a file agent's `limits.cost.chat` is
   // measured against. A Bureau with no key-value store keeps it in memory, as it does its tasks.
   const chatSpendLedger = createChatSpendLedger({ kv: runtime.kv, diagnose });
-  // COR-1946: a Bureau over a store that outlives the process names itself on every task it admits
-  // and holds a lease under that name, which is how a later boot tells a task whose process is gone
-  // from one whose process is another Bureau still running over the same store.
-  const processLease = openProcessLease({
-    kv: runtime.kv,
-    persistence: options.storage?.capabilities().persistence,
-    clock: runtimeServices.clock,
-    timers: runtimeServices.timers,
-    identifiers: runtimeServices.identifiers,
-    diagnose: (message, cause) =>
-      diagnose({ level: 'error', scope: 'task-registry', message: `[bureau] ${message}`, cause }),
-  });
   const tasks = createTaskRegistry({
     kv: runtime.kv,
     clock: runtimeServices.clock,
@@ -4624,6 +4758,10 @@ async function constructBureau<const D extends AgentDefinitions>(
     eventHistory: readEventHistory,
     subscribeEventHistory: subscribeToEventHistory,
     steps: async (runId) => (await runtime.durable?.checkpointStore.loadSteps(runId)) ?? [],
+    // COR-2115: a live run's plan is the one its run holds (a recovered run's included), and the
+    // hooks that threw are the audit trail's, which store runs and catalog runs both write.
+    hookPlan: (runId) => store.getRun(runId)?.activeRun.describeHookPlan(),
+    failedHooks: (runId) => readFailedHooks(auditTrailInstance, runId),
     notFound: (message) => new BureauError(message, 'NOT_FOUND'),
     responder: {
       reviews,
@@ -4997,6 +5135,8 @@ async function constructBureau<const D extends AgentDefinitions>(
     // hook acts on. The instance carries the hook's tag; a step, child or attempt reaches it
     // through the parent its task records.
     startedByHook,
+    // COR-2099: a delivery's failures, on the emitter like any other event this process raises.
+    publish: (event) => emitter.dispatch(event),
     subjects: {
       run: subjectsOfRun,
       agentOfSchedule: (scheduleId) => schedules.agentName(scheduleId),
@@ -5566,6 +5706,17 @@ async function constructBureau<const D extends AgentDefinitions>(
         list: (filter) => host.schedules.list(filter),
       },
       goals: { create: (request) => createGoalForPlugin(goalsComposition.goals, request, plugin) },
+      // COR-2204: asked as `plugin:<name>`, whatever principal the plugin passes.
+      decisions: {
+        decide: createPluginDecide({
+          plugin,
+          decisions: host.decisions,
+          gate: record?.gate,
+          isDisposed: () => emitter.completed,
+          withShutdownSignal: withBackgroundShutdownSignal,
+          badRequest: toBadRequest,
+        }),
+      },
     };
   }
 }

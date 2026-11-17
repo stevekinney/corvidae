@@ -15,7 +15,7 @@
   <div data-testid="glyph">
     <DataList items={rows} key={(row) => row.id}>
       {#snippet children()}
-        <StackedListItem href="#archived">
+        <StackedListItem href="#archived" trailingGlyph>
           {#snippet title()}Archived chats{/snippet}
           {#snippet trailing()}<ChevronRight aria-hidden="true" size={16} />{/snippet}
         </StackedListItem>

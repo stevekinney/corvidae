@@ -1922,7 +1922,18 @@ describe('the files on a row', () => {
     return mount({ sessionId: 'session-1', title: 'Plan the week', agentName: 'seer' });
   };
 
-  const reloadWithWorkflowRevisionPanel = (results: string | readonly string[]) => {
+  const REPORT_SUMMARY_PANEL = {
+    plugin: 'reports',
+    app: 'summary',
+    title: 'Report summary',
+    uri: 'ui://reports/summary/v1',
+    opensFromTool: 'bureau.reports.summarize',
+    placements: [{ kind: 'chat-tool', agentTool: 'reports:summarize' }],
+  };
+  const reloadWithWorkflowRevisionPanel = (
+    results: string | readonly string[],
+    { tool = 'bureau__workflows-propose-update', panels = [WORKFLOW_REVISION_PANEL] } = {},
+  ) => {
     const proposalResults = typeof results === 'string' ? [results] : results;
     let appReads = 0;
     restore = bureau(
@@ -1942,7 +1953,7 @@ describe('the files on a row', () => {
                       id: callId,
                       type: 'function',
                       function: {
-                        name: 'bureau__workflows-propose-update',
+                        name: tool,
                         arguments: '{"id":"daily","expectedHash":"hash-1"}',
                       },
                     },
@@ -1960,10 +1971,13 @@ describe('the files on a row', () => {
         }
         if (url === '/host/panels') {
           appReads += 1;
-          return Response.json({ apps: [WORKFLOW_REVISION_PANEL] });
+          return Response.json({ apps: panels });
         }
         if (url.endsWith('/apps/workflow-revision-review')) {
           return Response.json({ html: '<div id="root">workflow review</div>' });
+        }
+        if (url.endsWith('/apps/summary')) {
+          return Response.json({ html: '<div id="root">report summary</div>' });
         }
         if (url.includes('/threads/')) {
           return sse([{ type: 'RUN_ERROR', message: 'none', code: 'RUN_NOT_FOUND' }]);
@@ -1993,6 +2007,65 @@ describe('the files on a row', () => {
       const frame = container.querySelector('iframe[title="Review workflow revision"]');
       expect(frame?.getAttribute('srcdoc')).toContain('workflow review');
     });
+  });
+
+  test('mounts the panel a second fixture agent tool names, not only the workflow proposal (COR-2214)', async () => {
+    const { container, appReads } = reloadWithWorkflowRevisionPanel(
+      JSON.stringify({ rows: 3, label: 'Weekly' }),
+      { tool: 'reports__summarize', panels: [WORKFLOW_REVISION_PANEL, REPORT_SUMMARY_PANEL] },
+    );
+
+    await waitFor(() => expect(appReads()).toBe(1));
+    await waitFor(() => {
+      const frame = container.querySelector('iframe[title="Report summary"]');
+      expect(frame?.getAttribute('srcdoc')).toContain('report summary');
+    });
+    expect(container.querySelector('iframe[title="Review workflow revision"]')).toBeNull();
+  });
+
+  test('mounts no panel for a tool no panel places itself on', async () => {
+    const { container, appReads } = reloadWithWorkflowRevisionPanel(JSON.stringify({ rows: 3 }), {
+      tool: 'reports__other',
+      panels: [REPORT_SUMMARY_PANEL],
+    });
+    await waitFor(() => expect(appReads()).toBe(1));
+    await quietFor(50);
+    expect(container.querySelector('iframe')).toBeNull();
+  });
+
+  test('mounts no panel for a result that is a list, not a JSON object', async () => {
+    const { container, appReads } = reloadWithWorkflowRevisionPanel(JSON.stringify([1, 2]), {
+      tool: 'reports__summarize',
+      panels: [REPORT_SUMMARY_PANEL],
+    });
+    await waitFor(() => expect(appReads()).toBe(1));
+    await quietFor(50);
+    expect(container.querySelector('iframe')).toBeNull();
+  });
+
+  test.each([
+    {
+      name: 'an invalid proposal',
+      result: {
+        status: 'invalid',
+        code: 'schema',
+        issues: [{ message: 'The trigger is unknown.' }],
+      },
+    },
+    {
+      name: 'a stale proposal, whose file changed since it was made',
+      result: {
+        status: 'conflict',
+        id: 'daily',
+        reason: 'workflow-file-changed',
+        currentHash: 'hash-2',
+      },
+    },
+  ])('mounts no panel for $name (the call did not do its work)', async ({ result }) => {
+    const { container, appReads } = reloadWithWorkflowRevisionPanel(JSON.stringify(result));
+    await waitFor(() => expect(appReads()).toBe(1));
+    await quietFor(50);
+    expect(container.querySelector('iframe')).toBeNull();
   });
 
   test('does not mount the workflow revision panel for a malformed proposal result', async () => {

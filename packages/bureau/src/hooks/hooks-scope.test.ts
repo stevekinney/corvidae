@@ -224,6 +224,18 @@ describe('a scoped hook', () => {
 });
 
 describe('writing a scope', () => {
+  it('[COR-2100, matrix 123] refuses a scope for definitions.changed, skills included: it names no agent, workflow or schedule', async () => {
+    const run = setup();
+    for (const scope of [
+      { kind: 'agent', id: 'alpha' },
+      { kind: 'workflow', id: 'nightly' },
+    ] as const) {
+      const refused = await refusal(run.notifyHook(['definitions.changed'], scope));
+      expect(refused.issues[0]?.path).toEqual(['scope']);
+      expect(refused.message).toContain('definitions.changed');
+    }
+  });
+
   it('refuses an event its kind cannot tell, on both sides of an update, naming the event', async () => {
     const run = setup();
     const created = await refusal(

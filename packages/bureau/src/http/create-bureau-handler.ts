@@ -203,6 +203,10 @@ import {
   type BureauAuditOperationHost,
 } from './management/audit-operations.ts';
 import {
+  type BureauChecksOperationHost,
+  checksListOperation,
+} from './management/checks-operations.ts';
+import {
   type BureauNotificationsOperationHost,
   bureauNotificationsOperations,
 } from './management/notifications-operations.ts';
@@ -439,6 +443,7 @@ export type BureauHandlerHost = BureauEventsOperationHost &
   BureauGoalsOperationHost &
   BureauMemoryOperationHost &
   BureauAuditOperationHost &
+  BureauChecksOperationHost &
   BureauNotificationsOperationHost &
   BureauAssetsOperationHost &
   BureauDecisionsOperationHost &
@@ -859,6 +864,7 @@ export const BUREAU_HANDLER_OPERATIONS = [
   ...bureauGoalsOperations,
   ...bureauMemoryOperations,
   auditQueryOperation,
+  checksListOperation,
   ...bureauNotificationsOperations,
   ...bureauAssetsOperations,
   ...bureauDecisionsOperations,
@@ -1418,6 +1424,13 @@ export function buildBureauHandlerHost(
     audit: {
       keepsTrail: () => bureau.internals.auditTrail !== undefined,
       query: bureau.audit.query,
+    },
+    checks: {
+      trail: () => bureau.internals.auditTrail,
+      ownerOfRecord: (record) =>
+        bureau.ownerOf({ kind: 'audit', runId: record.runId, detail: record.detail }),
+      goals: bureau.goals,
+      sessions: () => bureau.internals.sessionStore,
     },
     notifications: bureau.notifications,
     assets: bureau.assets,

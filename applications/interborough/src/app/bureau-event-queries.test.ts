@@ -27,6 +27,10 @@ const WATCHED = {
   fullView: queryKeys.view('goals', null),
   workers: queryKeys.workers.list(),
   agents: queryKeys.agents.list(),
+  // A workflow's page, and another's (COR-2171).
+  digestPage: queryKeys.workflowCatalog.detail('digest'),
+  digestHeadline: queryKeys.workflowCatalog.headline('digest'),
+  otherPage: queryKeys.workflowCatalog.detail('other'),
 };
 
 function seeded(): QueryClient {
@@ -63,6 +67,22 @@ describe('invalidateForBureauEvent', () => {
     const queryClient = seeded();
     expect(invalidateForBureauEvent(queryClient, { kind })).toBe(true);
     expect(invalidated(queryClient)).toEqual(REVIEWS_AND_TASKS);
+  });
+
+  test.each(['trigger.started', 'trigger.stopped', 'trigger.failed', 'trigger.fired'])(
+    '%s asks for the page and the runs of the workflow it names, and nothing else (COR-2171)',
+    (kind) => {
+      const queryClient = seeded();
+      const payload = { workflowId: 'digest', trigger: 'x:watch', version: '1' };
+      expect(invalidateForBureauEvent(queryClient, { kind, payload })).toBe(true);
+      expect(invalidated(queryClient)).toEqual(['digestHeadline', 'digestPage']);
+    },
+  );
+
+  test('a trigger event that names no workflow asks for every workflow page', () => {
+    const queryClient = seeded();
+    expect(invalidateForBureauEvent(queryClient, { kind: 'trigger.fired' })).toBe(true);
+    expect(invalidated(queryClient)).toEqual(['digestPage', 'otherPage']);
   });
 
   test.each(['run.removed', 'action', 'task.cleanup-acknowledged'])(

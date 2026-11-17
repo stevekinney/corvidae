@@ -557,6 +557,19 @@
     "$|anyOf[1].nextCursor",
     "$|anyOf[1].total"
   ],
+  "output:bureau.checks.list": [
+    "$.checks",
+    "$.checks[].agentName",
+    "$.checks[].attemptId",
+    "$.checks[].checkId",
+    "$.checks[].goalRunId",
+    "$.checks[].kind",
+    "$.checks[].outcome",
+    "$.checks[].runId",
+    "$.checks[].score",
+    "$.checks[].timestamp",
+    "$.nextCursor"
+  ],
   "output:bureau.contexts.archive": ["$.archivedAt", "$.changed", "$.id"],
   "output:bureau.contexts.delete": [
     "$.contextId",
@@ -1059,6 +1072,8 @@
     "$.goal.validator",
     "$.goal.validator.name",
     "$.goal.validator.version",
+    "$.goal.validatorConfiguration",
+    "$.goal.validatorConfiguration.*",
     "$.outcome"
   ],
   "output:bureau.goals.get": [
@@ -1104,7 +1119,9 @@
     "$.usage.tokens",
     "$.validator",
     "$.validator.name",
-    "$.validator.version"
+    "$.validator.version",
+    "$.validatorConfiguration",
+    "$.validatorConfiguration.*"
   ],
   "output:bureau.goals.list": [
     "$.goals",
@@ -1151,6 +1168,8 @@
     "$.goals[].validator",
     "$.goals[].validator.name",
     "$.goals[].validator.version",
+    "$.goals[].validatorConfiguration",
+    "$.goals[].validatorConfiguration.*",
     "$.nextOffset"
   ],
   "output:bureau.goals.update": ["$.goalRunId", "$.outcome", "$.revision", "$.status"],
@@ -1756,6 +1775,7 @@
     "$.triggers[].description",
     "$.triggers[].id",
     "$.triggers[].plugin",
+    "$.triggers[].receives",
     "$.triggers[].version"
   ],
   "output:bureau.reviews.get": [
@@ -2204,6 +2224,19 @@
     "$.children[].revision",
     "$.children[].runId",
     "$.children[].status",
+    "$.hooks",
+    "$.hooks.failed",
+    "$.hooks.failed[].count",
+    "$.hooks.failed[].hookId",
+    "$.hooks.failed[].hookPoint",
+    "$.hooks.failed[].lastFailedAt",
+    "$.hooks.failed[].source",
+    "$.hooks.plan",
+    "$.hooks.plan|anyOf[0][].hookPoint",
+    "$.hooks.plan|anyOf[0][].id",
+    "$.hooks.plan|anyOf[0][].priority",
+    "$.hooks.plan|anyOf[0][].replay",
+    "$.hooks.plan|anyOf[0][].source",
     "$.liveness",
     "$.liveness|anyOf[0].assessment",
     "$.liveness|anyOf[0].attempt",
@@ -2386,6 +2419,9 @@
   ],
   "output:bureau.validators.list": [
     "$.validators",
+    "$.validators[].configuration",
+    "$.validators[].configuration|anyOf[0].*",
+    "$.validators[].configuration|anyOf[0].*.*",
     "$.validators[].determinism",
     "$.validators[].name",
     "$.validators[].source",
