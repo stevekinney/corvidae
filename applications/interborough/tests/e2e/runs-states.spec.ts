@@ -328,6 +328,113 @@ for (const width of WIDTHS) {
   });
 }
 
+/** A workflow instance's task, as `bureau.tasks.list` answers it, for the states the sample world lacks. */
+function instanceTask(
+  id: string,
+  type: string,
+  fields: {
+    readonly createdAt: string;
+    readonly status: 'working';
+    readonly steps: { readonly total: number; readonly at: number };
+    readonly awaitingSignal?: string;
+    readonly wakeAt?: string;
+    readonly scheduleName?: string;
+  },
+) {
+  return {
+    id,
+    contextId: id,
+    agentName: null,
+    owner: 'anonymous:local',
+    actor: null,
+    kind: 'catalog',
+    origin: null,
+    status: fields.status,
+    finishReason: null,
+    statusMessage: null,
+    createdAt: fields.createdAt,
+    updatedAt: fields.createdAt,
+    cleanup: null,
+    openWaits: [],
+    wakeAt: fields.wakeAt ?? null,
+    workflow: {
+      type,
+      scheduleId: null,
+      scheduleName: fields.scheduleName ?? null,
+      tick: null,
+      steps: fields.steps,
+      awaitingSignal: fields.awaitingSignal ?? null,
+    },
+  };
+}
+
+for (const width of WIDTHS) {
+  test(`the row states the sample world lacks, a Running, a Waiting for a signal and a Scheduled row, at ${width} pixels (10h)`, async ({
+    page,
+  }) => {
+    // The sample world's own runs, with three more the Bureau would list in a busier world: a
+    // workflow running at step 2 of 4, one parked on the signal notes-approved, and one asleep until
+    // its due time (Monday, Nov 2, 11:00 AM Central, after the sample clock's 10:46 AM).
+    const extra = [
+      instanceTask('row-states-running', 'release-notes', {
+        createdAt: '2026-11-02T16:31:00.000Z',
+        status: 'working',
+        steps: { total: 4, at: 2 },
+      }),
+      instanceTask('row-states-waiting', 'release-notes', {
+        createdAt: '2026-11-02T16:20:00.000Z',
+        status: 'working',
+        steps: { total: 4, at: 2 },
+        awaitingSignal: 'notes-approved',
+      }),
+      instanceTask('row-states-scheduled', 'weekly-refund-audit', {
+        createdAt: '2026-11-02T16:40:00.000Z',
+        status: 'working',
+        steps: { total: 3, at: 1 },
+        wakeAt: '2026-11-02T17:00:00.000Z',
+        scheduleName: 'Weekly refund audit',
+      }),
+    ];
+    await page.route('**/bureau/jsonrpc', async (route) => {
+      const body = JSON.parse(route.request().postData() ?? '{}') as {
+        method?: string;
+        id?: unknown;
+      };
+      if (body.method !== 'bureau.tasks.list') {
+        await route.fallback();
+        return;
+      }
+      const response = await route.fetch();
+      const answer = (await response.json()) as {
+        result?: { tasks?: unknown[]; nextPageToken?: string | null };
+      };
+      const tasks = answer.result?.tasks ?? [];
+      await route.fulfill({
+        response,
+        json: { ...answer, result: { ...answer.result, tasks: [...tasks, ...extra] } },
+      });
+    });
+    await page.clock.setFixedTime(SAMPLE_NOW);
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto('/runs');
+    const main = page.locator('main');
+    await expect(main.locator('li[data-run="row-states-running"]')).toBeVisible();
+    await expect(main.locator('li[data-run="row-states-running"]')).toHaveAttribute(
+      'data-status',
+      'Running',
+    );
+    await expect(main.locator('li[data-run="row-states-waiting"]')).toHaveAttribute(
+      'data-status',
+      'Waiting',
+    );
+    await expect(main.locator('li[data-run="row-states-scheduled"]')).toHaveAttribute(
+      'data-status',
+      'Scheduled',
+    );
+    await captureForDesignReview(page, { route: '/runs', state: 'row states', source: SOURCE });
+  });
+}
+
 test.describe('a read in progress (10k, 10l, 14m, 14n, 14p, 52z)', () => {
   /** Holds every read of the runs until `release`, with the page's clock paused at the sample instant. */
   async function openLoading(page: Page, width: number): Promise<() => void> {
