@@ -7,7 +7,9 @@ import { outcomeOf, rethrow } from '../module-scope-scenario.test-support.ts';
 import { materializeTask, type TaskBank, type TaskControl } from './outcome-accounting.ts';
 
 const scratch = mkdtempSync(join(tmpdir(), 'task-bank-local-'));
-const bank = JSON.parse(await Bun.file('scripts/chef/fixtures/sdlc-task-bank.json').text()) as TaskBank;
+const bank = JSON.parse(
+  await Bun.file('scripts/chef/fixtures/sdlc-task-bank.json').text(),
+) as TaskBank;
 
 async function execute(taskId: string, control: TaskControl): Promise<number | null> {
   const task = bank.tasks.find((entry) => entry.id === taskId);
@@ -20,7 +22,18 @@ async function execute(taskId: string, control: TaskControl): Promise<number | n
 }
 
 const controlsOutcome = await outcomeOf(async () => {
-  for (const taskId of ['local-01', 'local-02', 'contract-01', 'contract-02', 'concurrency-01', 'concurrency-02', 'ui-01', 'ui-02', 'delivery-01', 'delivery-02']) {
+  for (const taskId of [
+    'local-01',
+    'local-02',
+    'contract-01',
+    'contract-02',
+    'concurrency-01',
+    'concurrency-02',
+    'ui-01',
+    'ui-02',
+    'delivery-01',
+    'delivery-02',
+  ]) {
     expect(await execute(taskId, 'buggy')).toBe(1);
     expect(await execute(taskId, 'empty')).toBe(1);
     expect(await execute(taskId, 'repaired')).toBe(0);
@@ -41,11 +54,27 @@ test('the materializer never allows an oracle replacement or filesystem escape',
 });
 
 const constantsOutcome = await outcomeOf(async () => {
-  for (const taskId of ['local-01', 'local-02', 'contract-01', 'contract-02', 'concurrency-01', 'concurrency-02', 'ui-01', 'ui-02', 'delivery-01', 'delivery-02']) {
+  for (const taskId of [
+    'local-01',
+    'local-02',
+    'contract-01',
+    'contract-02',
+    'concurrency-01',
+    'concurrency-02',
+    'ui-01',
+    'ui-02',
+    'delivery-01',
+    'delivery-02',
+  ]) {
     const task = bank.tasks.find((entry) => entry.id === taskId)!;
     const root = materializeTask(task, scratch, 'repaired');
-    writeFileSync(join(root, task.permittedPaths[0]!), 'export const parseAttemptCount = () => 12; export const uniqueKeys = () => []; export const serializeResult = () => ({ id: \'one\', state: \'failed\', retryable: false }); export const serializeReceipt = () => ({ key: \'zero\', sequence: 0, label: \'\' });\n');
-    const result = await runWithHangGuard(['bun', '--no-install', ...task.oracleArgv], { cwd: root });
+    writeFileSync(
+      join(root, task.permittedPaths[0]!),
+      "export const parseAttemptCount = () => 12; export const uniqueKeys = () => []; export const serializeResult = () => ({ id: 'one', state: 'failed', retryable: false }); export const serializeReceipt = () => ({ key: 'zero', sequence: 0, label: '' });\n",
+    );
+    const result = await runWithHangGuard(['bun', '--no-install', ...task.oracleArgv], {
+      cwd: root,
+    });
     expect(result.exitCode).toBe(1);
   }
 });

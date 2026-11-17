@@ -13,7 +13,7 @@
 // Exit codes: 0 verified, 1 invalid task bank, 2 invalid CLI usage.
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { isAbsolute, join, normalize, relative, resolve, sep } from 'node:path';
+import { isAbsolute, normalize, relative, resolve, sep } from 'node:path';
 import { initialize, read, release, reserve, settle } from './outcome-budget.ts';
 import {
   costOf,
@@ -245,7 +245,8 @@ function taskPathErrors(task: TaskSnapshot): string[] {
   for (const path of Object.keys(task.files)) {
     const normalized = normalizedTaskPath(path);
     if (normalized === undefined) errors.push(`${task.id} has an unsafe file path: ${path}.`);
-    else if (files.has(normalized)) errors.push(`${task.id} has duplicate normalized file path: ${path}.`);
+    else if (files.has(normalized))
+      errors.push(`${task.id} has duplicate normalized file path: ${path}.`);
     else files.add(normalized);
   }
   const permitted = new Set<string>();
@@ -253,20 +254,23 @@ function taskPathErrors(task: TaskSnapshot): string[] {
     const normalized = normalizedTaskPath(path);
     if (normalized === undefined) errors.push(`${task.id} has an unsafe permitted path: ${path}.`);
     else if (!files.has(normalized)) errors.push(`${task.id} permits missing file: ${path}.`);
-    else if (permitted.has(normalized)) errors.push(`${task.id} has duplicate permitted path: ${path}.`);
+    else if (permitted.has(normalized))
+      errors.push(`${task.id} has duplicate permitted path: ${path}.`);
     else permitted.add(normalized);
   }
   for (const path of Object.keys(task.repairedFiles)) {
     const normalized = normalizedTaskPath(path);
     if (normalized === undefined) errors.push(`${task.id} has an unsafe repaired path: ${path}.`);
-    else if (!permitted.has(normalized)) errors.push(`${task.id} repairs unpermitted path: ${path}.`);
+    else if (!permitted.has(normalized))
+      errors.push(`${task.id} repairs unpermitted path: ${path}.`);
     else if (normalized === normalizedTaskPath(task.oraclePath))
       errors.push(`${task.id} repairs its oracle: ${path}.`);
   }
   const oracle = normalizedTaskPath(task.oraclePath);
   if (oracle === undefined || !files.has(oracle)) errors.push(`${task.id} has no oracle file.`);
   for (const argument of task.oracleArgv) {
-    if (normalizedTaskPath(argument) === undefined) errors.push(`${task.id} has unsafe oracle argv: ${argument}.`);
+    if (normalizedTaskPath(argument) === undefined)
+      errors.push(`${task.id} has unsafe oracle argv: ${argument}.`);
   }
   return errors;
 }
@@ -284,7 +288,8 @@ export function verifyTaskBank(bank: TaskBank): string[] {
     families.set(task.family, group);
     if (!task.baseRevision || !task.deliveryBoundary || task.permittedPaths.length === 0)
       errors.push(`${task.id} is missing a frozen boundary.`);
-    if (task.acceptanceCases.length === 0) errors.push(`${task.id} has no independently stated cases.`);
+    if (task.acceptanceCases.length === 0)
+      errors.push(`${task.id} has no independently stated cases.`);
     errors.push(...taskPathErrors(task));
   }
   for (const [family, tasks] of families) {
@@ -297,7 +302,11 @@ export function verifyTaskBank(bank: TaskBank): string[] {
 export type TaskControl = 'buggy' | 'repaired' | 'empty';
 
 /** Materialize one frozen snapshot without ever allowing a control to replace its oracle. */
-export function materializeTask(task: TaskSnapshot, directory: string, control: TaskControl): string {
+export function materializeTask(
+  task: TaskSnapshot,
+  directory: string,
+  control: TaskControl,
+): string {
   const errors = taskPathErrors(task);
   if (errors.length > 0) throw new Error(errors.join('\n'));
   const root = resolve(directory, task.id, control);

@@ -79,7 +79,8 @@ export function validateBudgetRecord(
   }
   if (
     (hasUnknownSettlement && value.spentTokens !== 'unknown') ||
-    (!hasUnknownSettlement && (value.spentTokens === 'unknown' || value.spentTokens !== settledTotal))
+    (!hasUnknownSettlement &&
+      (value.spentTokens === 'unknown' || value.spentTokens !== settledTotal))
   )
     throw new Error('Malformed budget record.');
 }
@@ -122,7 +123,10 @@ export async function initialize(
 ): Promise<BudgetRecord> {
   if (!outcomeId || (allowance && (!valid(allowance.amount) || allowance.provenance === '')))
     throw new Error('Invalid allowance.');
-  const allowanceTokens = allowance && { amount: allowance.amount, provenance: allowance.provenance };
+  const allowanceTokens = allowance && {
+    amount: allowance.amount,
+    provenance: allowance.provenance,
+  };
   await mkdir(dirname(path), { recursive: true });
   const lock = await acquireHostLock({
     lockDirectory: `${path}.lock`,

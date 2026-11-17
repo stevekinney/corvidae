@@ -33,8 +33,10 @@ test('initialization snapshots a validated allowance before its first await', as
     const initialized = initialize(join(directory, 'record.json'), 'outcome', allowance);
     allowance.amount = -1;
     allowance.provenance = '';
-    await expect(initialized).resolves.toMatchObject({ allowanceTokens: { amount: 4, provenance: 'user' } });
-  } finally { rmSync(directory, { recursive: true, force: true }); }
+    expect(await initialized).toMatchObject({ allowanceTokens: { amount: 4, provenance: 'user' } });
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
 });
 
 test('rejects malformed durable fields before any persistent operation can use them', () => {
