@@ -61,6 +61,7 @@
     segmentSelectLabel,
     toControlValue,
     viewportLayout,
+    widerLayout,
   } from './filter-bar.utilities.ts';
 
   import type {
@@ -195,7 +196,7 @@
         viewport: cap,
         need,
         available,
-        widerNeed: needs.get(drawn === 'narrow' ? 'medium' : 'wide'),
+        widerNeed: needs.get(widerLayout(drawn)),
         mayProbe: !busy(),
       });
       waitingToProbe = next.waiting;
@@ -212,7 +213,7 @@
       typeof ResizeObserver === 'undefined'
         ? undefined
         : new ResizeObserver((entries) => {
-            const width = entries[0]?.contentRect.width;
+            const width = (entries as ResizeObserverEntry[] | undefined)?.[0]?.contentRect.width;
             if (typeof width !== 'number' || width === lastWidth) return;
             lastWidth = width;
             measureRequest += 1;
@@ -408,7 +409,7 @@
 {/snippet}
 
 {#snippet segmentsControl()}
-  {#if layout === 'wide'}
+  {#if layout === 'wide' || layout === 'search-folded'}
     <SegmentedControl
       id={`${generatedId}-segments`}
       class="cinder-filter-bar__segments"
@@ -708,7 +709,7 @@
         {:else}
           {@render searchButton()}
         {/if}
-      {:else if searchVisible && searchAtStart && layout === 'medium'}
+      {:else if searchVisible && searchAtStart && layout !== 'wide'}
         {@render searchButton()}
       {/if}
     {/if}

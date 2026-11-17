@@ -66,6 +66,8 @@ export type SelectableRowProps = SharedHtmlAttributes &
   PadUnion<SelectableRowDiscriminant> & {
     /** Density token surfaced as `data-cinder-density`. @default "comfortable" */
     density?: SelectableRowDensity;
+    /** Holds the description to two lines with an ellipsis, so a long one does not make the row grow. Set `false` to show the whole description. @default true */
+    clampDescription?: boolean;
     /** Whether the primary action represents the selected or current row. @default false */
     selected?: boolean;
     /** Leading visual such as an icon, avatar, marker, or status dot. */
@@ -88,6 +90,8 @@ export type SelectableRowProps = SharedHtmlAttributes &
 export interface SelectableRowSchemaProps {
   /** Density token surfaced as `data-cinder-density`. @default "comfortable" */
   density?: SelectableRowDensity;
+  /** Holds the description to two lines with an ellipsis, so a long one does not make the row grow. Set `false` to show the whole description. @default true */
+  clampDescription?: boolean;
   /** Whether the primary action represents the selected or current row. @default false */
   selected?: boolean;
   /** Accessible state mapping for selected button rows. Links always use `aria-current`. @default "pressed" */

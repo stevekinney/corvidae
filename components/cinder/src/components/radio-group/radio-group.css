@@ -138,7 +138,10 @@
     }
   }
 
-  .cinder-radio:checked {
+  /* A stacked SegmentedControl draws the same radio for a row that is a button (COR-2448): a span
+     carrying `.cinder-radio` and `data-cinder-checked` takes the input's checked look. */
+  .cinder-radio:checked,
+  .cinder-radio[data-cinder-checked] {
     background: var(--cinder-accent-solid);
     border-color: var(--cinder-accent-solid);
   }
@@ -179,7 +182,8 @@
     mask-size: 0.875rem 0.875rem;
   }
 
-  .cinder-radio:checked + .cinder-radio-row__indicator {
+  .cinder-radio:checked + .cinder-radio-row__indicator,
+  .cinder-radio[data-cinder-checked] + .cinder-radio-row__indicator {
     opacity: 1;
     -webkit-mask-image: var(--_cinder-radio-dot-mask);
     mask-image: var(--_cinder-radio-dot-mask);
@@ -187,7 +191,8 @@
 
   /* Forced Colors Mode override — see checkbox.css for rationale. */
   @media (forced-colors: active) {
-    .cinder-radio:checked + .cinder-radio-row__indicator {
+    .cinder-radio:checked + .cinder-radio-row__indicator,
+    .cinder-radio[data-cinder-checked] + .cinder-radio-row__indicator {
       forced-color-adjust: none;
       background-color: ButtonText;
     }

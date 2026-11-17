@@ -105,7 +105,7 @@ describe('Drawer', () => {
   test('body opts into the shared scroll-fade recipe with a surface-colored overlay, never a mask', async () => {
     const css = drawerCss;
     expect(css).toMatch(
-      /\.cinder-drawer__body\s*\{[^}]*--_cinder-scroll-fade-color:\s*var\(--cinder-surface\)/s,
+      /\.cinder-drawer__body\s*\{[^}]*--_cinder-scroll-fade-color:\s*var\(--cinder-surface-raised\)/s,
     );
     expect(css).not.toContain('mask-image:');
     expect(css).not.toMatch(/(?:-webkit-)?mask(?:-[a-z]+)?\s*:/);

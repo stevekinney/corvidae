@@ -156,12 +156,13 @@ test.describe('number input resting geometry', () => {
     expect(decrementBox).not.toBeNull();
     expect(Math.abs(incrementBox!.height - groupBox!.height)).toBeLessThanOrEqual(2);
     expect(Math.abs(decrementBox!.height - groupBox!.height)).toBeLessThanOrEqual(2);
-    expect(Math.abs(inputBox!.x + inputBox!.width - incrementBox!.x)).toBeLessThanOrEqual(1);
-    expect(Math.abs(incrementBox!.x + incrementBox!.width - decrementBox!.x)).toBeLessThanOrEqual(
+    // The steppers read minus then plus (COR-2449): the field, then decrement, then increment.
+    expect(Math.abs(inputBox!.x + inputBox!.width - decrementBox!.x)).toBeLessThanOrEqual(1);
+    expect(Math.abs(decrementBox!.x + decrementBox!.width - incrementBox!.x)).toBeLessThanOrEqual(
       1,
     );
     expect(
-      Math.abs(decrementBox!.x + decrementBox!.width - (groupBox!.x + groupBox!.width)),
+      Math.abs(incrementBox!.x + incrementBox!.width - (groupBox!.x + groupBox!.width)),
     ).toBeLessThanOrEqual(1);
   });
 });

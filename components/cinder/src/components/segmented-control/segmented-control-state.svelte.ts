@@ -34,6 +34,8 @@ export type SegmentedControlContextValue = {
   readonly variant: 'radiogroup' | 'tablist' | 'navigation';
   /** True when the whole control is disabled. */
   readonly controlDisabled: boolean;
+  /** True while the options do not fit and are drawn one per row, as a radio list. */
+  readonly stacked: boolean;
   /** Register a segment when its DOM node mounts. Returns an unregister fn. */
   register(registration: SegmentRegistration): () => void;
   /** True when a given value is currently selected. */

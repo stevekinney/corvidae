@@ -199,7 +199,7 @@
           aria-controls={rootId}
           onclick={() => (expanded = !expanded)}
         >
-          {expanded ? 'Show less' : 'Show all'}
+          {expanded ? 'Show less' : 'Show more'}
         </button>
       {/if}
       {#if actions}
