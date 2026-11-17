@@ -142,7 +142,12 @@ describe('QuotaMeter', () => {
   test('documents required props in component usage examples', async () => {
     const [quotaReadme, codeLocationReadme, citationReadme] = await Promise.all([
       Bun.file(new URL('../quota-meter/README.md', import.meta.url)).text(),
-      Bun.file(new URL('../code-location/README.md', import.meta.url)).text(),
+      Bun.file(
+        new URL(
+          '../../../../code-location/src/components/code-location/README.md',
+          import.meta.url,
+        ),
+      ).text(),
       Bun.file(new URL('../citation/README.md', import.meta.url)).text(),
     ]);
     expect(quotaReadme).toContain('<QuotaMeter used={72} />');

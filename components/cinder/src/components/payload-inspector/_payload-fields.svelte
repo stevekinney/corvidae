@@ -24,7 +24,7 @@
   import ChevronDown from '@lucide/svelte/icons/chevron-down';
   import ChevronRight from '@lucide/svelte/icons/chevron-right';
   import { SvelteMap } from 'svelte/reactivity';
-  import InlineLoading from '../inline-loading/inline-loading.svelte';
+  import InlineLoading from '@lostgradient/inline-loading/components/inline-loading/inline-loading.svelte';
   import SourceDiffViewer from '../source-diff-viewer/source-diff-viewer.svelte';
   import { countPatchChanges } from '../source-diff-viewer/source-diff-viewer.utilities.ts';
   import Tooltip from '../tooltip/tooltip.svelte';

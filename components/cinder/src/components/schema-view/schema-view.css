@@ -1,6 +1,6 @@
 @layer cinder.tokens, cinder.foundation, cinder.components, cinder.utilities;
-@import '../collapsible/collapsible.css';
-@import '../json-viewer/json-viewer.css';
+@import '@lostgradient/collapsible/collapsible.css';
+@import '@lostgradient/json-viewer/json-viewer.css';
 
 @layer cinder.components {
   /* ========================================

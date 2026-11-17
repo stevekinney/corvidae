@@ -1,7 +1,7 @@
 <script lang="ts">
   import { untrack, type Snippet } from 'svelte';
-  import Collapsible from '../collapsible/collapsible.svelte';
-  import type { CollapsibleTriggerState } from '../collapsible/collapsible.types.ts';
+  import Collapsible from '@lostgradient/collapsible/components/collapsible/collapsible.svelte';
+  import type { CollapsibleTriggerState } from '@lostgradient/collapsible/components/collapsible/collapsible.types.ts';
 
   let {
     initialOpen,

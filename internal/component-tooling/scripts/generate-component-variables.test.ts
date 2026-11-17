@@ -11,7 +11,7 @@ describe('component variable corpus lookup', () => {
 
   test('caches the parsed registry and supports packages without one', async () => {
     const componentDirectory = new URL(
-      '../../../components/cinder/src/components/accordion-item/',
+      '../../../components/accordion/src/components/accordion-item/',
       import.meta.url,
     ).pathname;
     const first = await readCorpusVariables(componentDirectory, 'accordion-item');

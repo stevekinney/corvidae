@@ -162,7 +162,7 @@ describe('Input rendering', () => {
   test('standalone FormField presentation is included by the Input sidecar', async () => {
     const css = await Bun.file(new URL('./input.css', import.meta.url)).text();
 
-    expect(css).toContain("@import '../form-field/form-field.css';");
+    expect(css).toContain("@import '@lostgradient/form-field/form-field.css';");
 
     const { container } = render(Input, {
       props: {

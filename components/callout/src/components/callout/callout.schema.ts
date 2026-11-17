@@ -1,0 +1,75 @@
+import type { ComponentSchema } from '@lostgradient/component-tooling/schema-types';
+
+const schema = {
+  $schema: 'https://json-schema.org/draft/2020-12/schema',
+  type: 'object',
+  properties: {
+    title: {
+      type: 'string',
+      description:
+        'Optional title rendered as a `<p class="cinder-callout__title">`.\n\nRendered as a paragraph rather than a heading element so the\ncallout does not inject an entry into the document outline. If a\ncallout genuinely participates in the outline (e.g. it titles a\nstandalone section), wrap it in a `<section>` with its own heading\nrather than promoting this prop to `<h*>`.\n\nWhen supplied and no `aria-label` or `aria-labelledby` is passed\non rest props, the title also becomes the `aria-label` of the\nroot element so the landmark or note has an accessible name.',
+    },
+    variant: {
+      enum: ['neutral', 'info', 'success', 'warning', 'danger'],
+      description:
+        "Visual + semantic variant. Default `'neutral'`, a quiet note of an icon and muted text with no tint; the status variants are tinted, so keep them for a warning or a blocking condition.",
+    },
+    semantic: {
+      enum: ['aside', 'note'],
+      description:
+        "Root semantics. Default `'aside'`; use `'note'` for static note semantics without a complementary landmark.",
+    },
+    actionLayout: {
+      enum: ['stacked', 'inline', 'beside', 'fit'],
+      description:
+        "Layout for the action slot. Default `'inline'`: one compact action at the trailing end of the message while it fits, wrapping under the message at its start edge when it cannot. `stacked` always puts the action under the message. `beside` keeps one icon-only action at the trailing end of the message at every width, so a phone's callout is not made a row taller by a glyph. `fit` is `inline` that keeps its action beside the message at every width, a phone's too, while both fit in one row, and drops it under the message, at the trailing edge, only when they cannot.",
+    },
+    dismissLabel: {
+      type: 'string',
+      description: "Accessible name of the dismiss button. Default `'Dismiss'`.",
+    },
+    class: {
+      type: 'string',
+      description:
+        'Extra classes appended to the root element. Pass via the explicit\n`class` prop — it is excluded from rest-prop spread, so writing\n`class="x"` inside spread attributes will not reach the root.',
+    },
+  },
+  additionalProperties: false,
+  metadata: {
+    unsupportedProps: [
+      {
+        name: 'action',
+        reason: 'function-or-snippet',
+        description:
+          'Optional action rendered under the message, usually one `Link` or `Button`, such as "Open\nattempt 5". Several actions sit in a row that wraps, and a button label never wraps. It is\ninteractive content, so it is the one part of a callout a person can act on; the callout\nitself stays static.',
+      },
+      {
+        name: 'children',
+        reason: 'function-or-snippet',
+        required: true,
+        description: 'Callout body content.',
+      },
+      {
+        name: 'icon',
+        reason: 'function-or-snippet',
+        description:
+          'Optional decorative icon rendered inside an `aria-hidden` wrapper.\n\nThe icon is a second visual channel alongside variant color — it\nhelps satisfy WCAG 1.4.1 (Use of Color) by ensuring the variant is\nconveyed by more than color alone. The accessible meaning still\nlives in `title` and/or `children`; the icon must not be the only\ncarrier of information.',
+      },
+      {
+        name: 'onDismiss',
+        reason: 'function-or-snippet',
+        description:
+          'When set, a compact dismiss button renders at the trailing end and calls this on activation.\nThe callout stays static: the caller removes it.',
+      },
+      {
+        name: 'progress',
+        reason: 'function-or-snippet',
+        description:
+          'Optional progress line rendered under the message inside the content column, usually a small\n`Progress`. It is decorative to the callout: give the Progress its own accessible name.',
+      },
+    ],
+  },
+} satisfies ComponentSchema;
+
+/** JSON Schema describing the props of this component. */
+export default schema as ComponentSchema;

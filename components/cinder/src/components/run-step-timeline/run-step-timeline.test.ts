@@ -2098,9 +2098,9 @@ describe('CSS snapshot', () => {
       'utf8',
     ) as string;
 
-    expect(css).toContain("@import '../badge/badge.css';");
-    expect(css).toContain("@import '../collapsible/collapsible.css';");
-    expect(css).toContain("@import '../link/link.css';");
+    expect(css).toContain("@import '@lostgradient/badge/badge.css';");
+    expect(css).toContain("@import '@lostgradient/collapsible/collapsible.css';");
+    expect(css).toContain("@import '@lostgradient/link/link.css';");
     expect(css).toContain("@import '../progress/progress.css';");
     expect(css).toContain("@import '../status-dot/status-dot.css';");
   });

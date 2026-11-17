@@ -1,5 +1,5 @@
 @layer cinder.tokens, cinder.foundation, cinder.components, cinder.utilities;
-@import '../calendar/calendar.css';
+@import '@lostgradient/calendar/calendar.css';
 
 @layer cinder.components {
   /* Compound with `.cinder-form-field` so this out-specificities the shared

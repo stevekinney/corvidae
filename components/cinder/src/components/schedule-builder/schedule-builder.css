@@ -1,7 +1,7 @@
 @layer cinder.tokens, cinder.foundation, cinder.components, cinder.utilities;
 @import '../chip/chip.css';
 @import '../combobox/combobox.css';
-@import '../form-field/form-field.css';
+@import '@lostgradient/form-field/form-field.css';
 @import '../input/input.css';
 @import '../number-input/number-input.css';
 @import '../select/select.css';

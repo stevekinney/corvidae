@@ -34,7 +34,7 @@
   } from '@lostgradient/foundation/_internal/collection.ts';
   import { handleRovingKeydown } from '@lostgradient/foundation/utilities/roving-tabindex.ts';
   import { devWarn } from '@lostgradient/foundation/utilities/dev-warn.ts';
-  import { default as Grid } from '../grid/index.ts';
+  import { default as Grid } from '@lostgradient/grid/components/grid/index.ts';
 
   let {
     value = $bindable(null),

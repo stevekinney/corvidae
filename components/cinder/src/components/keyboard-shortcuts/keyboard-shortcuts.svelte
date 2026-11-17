@@ -20,7 +20,7 @@
 
 <script lang="ts">
   import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
-  import Kbd from '../kbd/kbd.svelte';
+  import Kbd from '@lostgradient/kbd/components/kbd/kbd.svelte';
   import type { KeyboardShortcutsProps } from './keyboard-shortcuts.types.ts';
 
   let {

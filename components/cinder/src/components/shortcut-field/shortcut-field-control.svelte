@@ -7,7 +7,7 @@
    * earlier, not a self-computed guess. See shortcut-field.svelte and COR-443.
    */
   import { getFormFieldContext } from '@lostgradient/foundation/_internal/form-field-context.ts';
-  import Kbd from '../kbd/kbd.svelte';
+  import Kbd from '@lostgradient/kbd/components/kbd/kbd.svelte';
 
   let {
     value = $bindable<string[]>([]),

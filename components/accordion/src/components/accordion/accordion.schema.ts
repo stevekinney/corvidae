@@ -1,0 +1,31 @@
+import type { ComponentSchema } from '@lostgradient/component-tooling/schema-types';
+
+const schema = {
+  $schema: 'https://json-schema.org/draft/2020-12/schema',
+  type: 'object',
+  properties: {
+    multiple: {
+      type: 'boolean',
+      description: 'When true, multiple items may be expanded simultaneously.',
+      default: false,
+    },
+    class: {
+      type: 'string',
+      description: 'Additional CSS class merged with `.cinder-accordion`.',
+    },
+  },
+  additionalProperties: false,
+  metadata: {
+    unsupportedProps: [
+      {
+        name: 'children',
+        reason: 'function-or-snippet',
+        required: true,
+        description: 'AccordionItem children.',
+      },
+    ],
+  },
+} satisfies ComponentSchema;
+
+/** JSON Schema describing the props of this component. */
+export default schema as ComponentSchema;

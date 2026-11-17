@@ -29,7 +29,7 @@
   import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
   import { useReducedMotion } from '@lostgradient/foundation/utilities/use-reduced-motion.svelte.ts';
   import Button from '../button/button.svelte';
-  import Kbd from '../kbd/kbd.svelte';
+  import Kbd from '@lostgradient/kbd/components/kbd/kbd.svelte';
   import { setCommandListContext } from '@lostgradient/foundation/components/_internal/command-list-context.ts';
   import { createCommandListState } from '@lostgradient/foundation/components/_internal/create-command-list-state.svelte.ts';
   import { createSlidingDialogState } from '@lostgradient/foundation/components/_internal/create-sliding-dialog-state.svelte.ts';

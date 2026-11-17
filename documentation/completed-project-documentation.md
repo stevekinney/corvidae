@@ -81,7 +81,7 @@ The expanded pass has its own final validation; the successful run recorded abov
 - [internal/component-tooling/scripts/create-component.test.ts](../internal/component-tooling/scripts/create-component.test.ts)
 - [internal/component-tooling/scripts/create-component.ts](../internal/component-tooling/scripts/create-component.ts)
 - [components/cinder/src/components/citation/README.md](../components/cinder/src/components/citation/README.md)
-- [components/cinder/src/components/code-location/README.md](../components/cinder/src/components/code-location/README.md)
+- [components/code-location/src/components/code-location/README.md](../components/code-location/src/components/code-location/README.md)
 - [components/cinder/src/components/donut-chart/README.md](../components/cinder/src/components/donut-chart/README.md)
 - [components/cinder/src/components/drawer/drawer.a11y.md](../components/cinder/src/components/drawer/drawer.a11y.md)
 - [components/cinder/src/components/form/README.md](../components/cinder/src/components/form/README.md)

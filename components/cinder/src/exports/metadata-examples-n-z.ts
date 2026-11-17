@@ -1,5 +1,7 @@
 /** Generated root exports for component examples metadata. Do not edit. */
 
+import videoPlayerExamplesJson from '@lostgradient/media-player/components/video-player/video-player.examples.json' with { type: 'json' };
+import spinnerExamplesJson from '@lostgradient/spinner/components/spinner/spinner.examples.json' with { type: 'json' };
 import navigationBarExamplesJson from '../components/navigation-bar/navigation-bar.examples.json' with { type: 'json' };
 import numberInputExamplesJson from '../components/number-input/number-input.examples.json' with { type: 'json' };
 import pageHeaderExamplesJson from '../components/page-header/page-header.examples.json' with { type: 'json' };
@@ -50,7 +52,6 @@ import sparkbarExamplesJson from '../components/sparkbar/sparkbar.examples.json'
 import spectrogramExamplesJson from '../components/spectrogram/spectrogram.examples.json' with { type: 'json' };
 import spectrumChartExamplesJson from '../components/spectrum-chart/spectrum-chart.examples.json' with { type: 'json' };
 import speedDialExamplesJson from '../components/speed-dial/speed-dial.examples.json' with { type: 'json' };
-import spinnerExamplesJson from '../components/spinner/spinner.examples.json' with { type: 'json' };
 import spotlightExamplesJson from '../components/spotlight/spotlight.examples.json' with { type: 'json' };
 import stackExamplesJson from '../components/stack/stack.examples.json' with { type: 'json' };
 import stackedListItemExamplesJson from '../components/stacked-list-item/stacked-list-item.examples.json' with { type: 'json' };
@@ -79,7 +80,6 @@ import toolbarExamplesJson from '../components/toolbar/toolbar.examples.json' wi
 import tooltipExamplesJson from '../components/tooltip/tooltip.examples.json' with { type: 'json' };
 import transferListExamplesJson from '../components/transfer-list/transfer-list.examples.json' with { type: 'json' };
 import treeExamplesJson from '../components/tree/tree.examples.json' with { type: 'json' };
-import videoPlayerExamplesJson from '../components/video-player/video-player.examples.json' with { type: 'json' };
 import virtualListExamplesJson from '../components/virtual-list/virtual-list.examples.json' with { type: 'json' };
 import visuallyHiddenExamplesJson from '../components/visually-hidden/visually-hidden.examples.json' with { type: 'json' };
 import waveformExamplesJson from '../components/waveform/waveform.examples.json' with { type: 'json' };

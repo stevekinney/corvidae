@@ -28,7 +28,7 @@
   import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
   import { devWarn } from '@lostgradient/foundation/utilities/dev-warn.ts';
   import { commitValue } from '@lostgradient/foundation/utilities/value-change.ts';
-  import { default as FormField } from '../form-field/index.ts';
+  import { default as FormField } from '@lostgradient/form-field/components/form-field/index.ts';
   import FormFieldFrame from '@lostgradient/foundation/_internal/form-field-frame.svelte';
 
   let {

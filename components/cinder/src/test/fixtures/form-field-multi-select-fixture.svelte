@@ -12,7 +12,7 @@
 </script>
 
 <script lang="ts">
-  import FormField from '../../components/form-field/form-field.svelte';
+  import FormField from '@lostgradient/form-field/components/form-field/form-field.svelte';
   import MultiSelect from '../../components/multi-select/multi-select.svelte';
 
   let {

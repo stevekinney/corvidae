@@ -40,7 +40,7 @@
     planFold,
     summarizeFoldedNames,
   } from '@lostgradient/foundation/utilities/fold-middle.ts';
-  import Spinner from '../spinner/spinner.svelte';
+  import Spinner from '@lostgradient/spinner/components/spinner/spinner.svelte';
   import Timeline from '../timeline/timeline.svelte';
   import type { TimelineEntry } from '../timeline/timeline.types.ts';
   import Tooltip from '../tooltip/tooltip.svelte';

@@ -1,0 +1,29 @@
+import type { ComponentSchema } from '@lostgradient/component-tooling/schema-types';
+
+const schema = {
+  $schema: 'https://json-schema.org/draft/2020-12/schema',
+  type: 'object',
+  properties: {
+    locale: {
+      type: 'string',
+      description: 'BCP 47 locale tag used as the default for locale-aware descendants.',
+    },
+    direction: {
+      enum: ['ltr', 'rtl'],
+      description: 'Text direction exposed to direction-aware descendants.',
+    },
+  },
+  additionalProperties: false,
+  metadata: {
+    unsupportedProps: [
+      {
+        name: 'children',
+        reason: 'function-or-snippet',
+        description: 'Descendant content that should inherit the locale context.',
+      },
+    ],
+  },
+} satisfies ComponentSchema;
+
+/** JSON Schema describing the props of this component. */
+export default schema as ComponentSchema;

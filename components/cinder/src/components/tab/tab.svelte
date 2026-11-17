@@ -28,7 +28,7 @@
   import { rovingTabIndex } from '@lostgradient/foundation/_internal/collection.ts';
   import { getTabsContext } from '../tabs/tabs-context.ts';
   import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
-  import Badge from '../badge/badge.svelte';
+  import Badge from '@lostgradient/badge/components/badge/badge.svelte';
 
   let {
     value,

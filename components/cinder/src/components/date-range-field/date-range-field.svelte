@@ -32,8 +32,8 @@
   } from './date-range-field.types.ts';
   import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
   import { normalizeDateValue } from '@lostgradient/foundation/_internal/date-value.ts';
-  import Calendar from '../calendar/calendar.svelte';
-  import Grid from '../grid/grid.svelte';
+  import Calendar from '@lostgradient/calendar/components/calendar/calendar.svelte';
+  import Grid from '@lostgradient/grid/components/grid/grid.svelte';
   import Input from '../input/input.svelte';
   import Popover from '../popover/popover.svelte';
   import {

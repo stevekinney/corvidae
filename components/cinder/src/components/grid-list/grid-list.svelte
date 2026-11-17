@@ -16,7 +16,7 @@
 </script>
 
 <script lang="ts">
-  import { default as Grid, type GridProps } from '../grid/index.ts';
+  import { default as Grid, type GridProps } from '@lostgradient/grid/components/grid/index.ts';
   import type { GridListProps } from './grid-list.types.ts';
   import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
 

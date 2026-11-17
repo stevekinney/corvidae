@@ -21,7 +21,7 @@
   import { trackDockedBarHeight } from '@lostgradient/foundation/_internal/docked-bar-height.ts';
   import { trackKeyboardInset } from '@lostgradient/foundation/_internal/keyboard-inset.ts';
   import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
-  import Alert from '../alert/alert.svelte';
+  import Alert from '@lostgradient/alert/components/alert/alert.svelte';
   import type { FormActionsProps } from './form-actions.types.ts';
 
   let {

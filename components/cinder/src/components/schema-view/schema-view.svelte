@@ -24,8 +24,8 @@
   import type { SchemaViewFact, SchemaViewField } from './schema-view-fields.ts';
   import type { SchemaViewProps } from './schema-view.types.ts';
 
-  import Collapsible from '../collapsible/collapsible.svelte';
-  import JsonViewer from '../json-viewer/json-viewer.svelte';
+  import Collapsible from '@lostgradient/collapsible/components/collapsible/collapsible.svelte';
+  import JsonViewer from '@lostgradient/json-viewer/components/json-viewer/json-viewer.svelte';
   import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
   import {
     partitionRequiredFields,

@@ -389,11 +389,34 @@ function scaffold(plan: Plan): void {
       if (existsSync(absolute) && readdirSync(absolute).length === 0)
         rmSync(absolute, { recursive: true });
     }
-    // Every package configures TypeScript and tests the way core does.
-    for (const file of ['tsconfig.json', 'tsconfig.browser.json', 'bunfig.toml']) {
-      const source = join(root, core, file);
-      if (existsSync(source))
-        writeFileSync(join(root, directory, file), readFileSync(source, 'utf8'));
+    // Every package runs its tests the way core does; writeTsconfigs gives it core's compiler setup.
+    const bunfig = join(root, core, 'bunfig.toml');
+    if (existsSync(bunfig))
+      writeFileSync(join(root, directory, 'bunfig.toml'), readFileSync(bunfig, 'utf8'));
+  }
+}
+
+/** The ambient module shapes a package compiles against; core keeps its own in `src/ambient.d.ts`. */
+const AMBIENT = '../../internal/component-tooling/types/component-ambient.d.ts';
+
+/** Each extracted package's `tsconfig.json` and `tsconfig.browser.json`: core's, with the ambient shapes. */
+function writeTsconfigs(plan: Plan): void {
+  for (const file of ['tsconfig.json', 'tsconfig.browser.json']) {
+    const source = posix.join(plan.options.core, file);
+    if (!plan.pending.has(source) && !existsSync(join(plan.options.root, source))) continue;
+    const config = JSON.parse(read(plan, source)) as { include?: string[] };
+    const include = [...(config.include ?? ['src'])];
+    if (!include.includes(AMBIENT)) include.push(AMBIENT);
+    const text = `${JSON.stringify({ ...config, include }, null, 2)}\n`;
+    for (const name of plan.extracted) {
+      const directory = posix.join('components', name);
+      if (
+        !plan.pending.has(posix.join(directory, 'package.json')) &&
+        !existsSync(join(plan.options.root, directory, 'package.json'))
+      ) {
+        continue;
+      }
+      write(plan, posix.join(directory, file), text);
     }
   }
 }
@@ -526,7 +549,11 @@ function rewriteFile(plan: Plan, path: string): void {
     plan.result.rewrites.push({
       importer: path,
       specifier: `${named.specifier}${query}`,
-      target: posix.join(packageDirectory(plan, name), target),
+      // The tooling's modules resolve to the tooling workspace, whatever core still holds.
+      target:
+        name === 'tooling'
+          ? posix.join('internal/component-tooling', target)
+          : posix.join(packageDirectory(plan, name), target),
     });
   }
   for (const match of original.matchAll(PATH_STRING)) {
@@ -1235,6 +1262,7 @@ export async function extractFamilies(options: ExtractOptions): Promise<ExtractR
   }
   regenerateStylesheets(plan);
   writeManifests(plan);
+  writeTsconfigs(plan);
   shardAllowlists(plan);
   wireMetadata(plan);
   for (const path of plan.options.listFiles('.')) rewriteRepositoryPaths(plan, path);

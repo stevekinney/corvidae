@@ -103,10 +103,14 @@ test('composed color controls aggregate their dependency styles for à-la-carte 
   expect(colorFieldCss).not.toContain("@import '../button/button.css'");
   expect(colorFieldCss).toContain("@import '../color-picker/color-picker.css'");
   expect(colorFieldCss).toContain("@import '../popover/popover.css'");
-  expect(colorPickerCss).toContain("@import '../color-swatch-picker/color-swatch-picker.css'");
+  expect(colorPickerCss).toContain(
+    "@import '@lostgradient/color-swatch-picker/color-swatch-picker.css'",
+  );
   expect(colorPickerCss).toContain("@import '../copy-button/copy-button.css'");
 });
-const colorSwatchPickerCss = loadCss('../color-swatch-picker/color-swatch-picker.css');
+const colorSwatchPickerCss = loadCss(
+  '../../../../color-swatch-picker/src/components/color-swatch-picker/color-swatch-picker.css',
+);
 
 describe('color checker tokens', () => {
   test('checkerboard tokens keep the light arm and define a distinct dark arm', () => {

@@ -1,4 +1,4 @@
 {
   "extends": "@lostgradient/typescript/browser.json",
-  "include": ["src"]
+  "include": ["src", "../../internal/component-tooling/types/component-ambient.d.ts"]
 }

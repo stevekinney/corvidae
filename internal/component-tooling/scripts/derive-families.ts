@@ -105,8 +105,9 @@ const SPECIFIER =
   /(?:\bfrom\s*|\bimport\s*\(\s*|\bimport\s+|@import\s+(?:url\(\s*)?)(['"])([^'"\n]+)\1/g;
 const SIBLING_PACKAGE_PATH =
   /components\/(?:chat|editor|terminal)\/(?:src|components\.json)|['"]\.\.['"],\s*['"](?:chat|editor|terminal)['"],\s*['"]src['"]/;
+// The last alternative is the same path once the split names it by package (`split-layout.ts`).
 const COMPONENT_STYLESHEET_PATH =
-  /src\/components\/|components\.css|\.\.\/components\/|['"]components['"]\s*[,)]/;
+  /src\/components\/|components\.css|\.\.\/components\/|['"]components['"]\s*[,)]|@lostgradient\/(?!tokens\/|foundation\/|cinder\/)[\w-]+\/(?:components\/|[\w-]+\.css['"]|styles['"])/;
 
 export function isTestFile(path: string): boolean {
   return TEST_FILE.test(path);

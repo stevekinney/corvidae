@@ -79,13 +79,19 @@ describe('JsonSchemaEditor — Diff tab source contract', () => {
     const disclosureSource = `${source}\n${constraintsSource}`;
 
     expect(constraintsSource).toContain(
-      "import { default as Collapsible } from '../collapsible/index.ts'",
+      "import { default as Collapsible } from '@lostgradient/collapsible/components/collapsible/index.ts'",
     );
     expect(constraintsSource).toContain("import { default as Input } from '../input/index.ts'");
-    expect(constraintsSource).not.toContain("from '../collapsible/collapsible.svelte'");
+    expect(constraintsSource).not.toContain(
+      "from '@lostgradient/collapsible/components/collapsible/collapsible.svelte'",
+    );
     expect(constraintsSource).not.toContain("from '../input/input.svelte'");
-    expect(source).toContain("import { default as Collapsible } from '../collapsible/index.ts'");
-    expect(source).not.toContain("from '../collapsible/collapsible.svelte'");
+    expect(source).toContain(
+      "import { default as Collapsible } from '@lostgradient/collapsible/components/collapsible/index.ts'",
+    );
+    expect(source).not.toContain(
+      "from '@lostgradient/collapsible/components/collapsible/collapsible.svelte'",
+    );
     expect(disclosureSource).not.toContain('<details');
     expect(disclosureSource).not.toContain('<summary');
     expect(disclosureSource.match(/<Collapsible/g)?.length).toBe(3);

@@ -12,7 +12,7 @@
   import { ownEntry } from '@lostgradient/tokens/_internal/own-entry.ts';
   import Button from '../button/button.svelte';
   import Checkbox from '../checkbox/checkbox.svelte';
-  import Collapsible from '../collapsible/collapsible.svelte';
+  import Collapsible from '@lostgradient/collapsible/components/collapsible/collapsible.svelte';
   import Input from '../input/input.svelte';
   import JsonEditor from '../json-editor/json-editor.svelte';
   import NumberInput from '../number-input/number-input.svelte';

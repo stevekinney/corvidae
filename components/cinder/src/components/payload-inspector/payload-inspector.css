@@ -1,10 +1,10 @@
 @layer cinder.tokens, cinder.foundation, cinder.components, cinder.utilities;
-@import '../badge/badge.css';
+@import '@lostgradient/badge/badge.css';
 @import '../button/button.css';
 @import '../code-block/code-block.css';
 @import '../copy-button/copy-button.css';
-@import '../inline-loading/inline-loading.css';
-@import '../json-viewer/json-viewer.css';
+@import '@lostgradient/inline-loading/inline-loading.css';
+@import '@lostgradient/json-viewer/json-viewer.css';
 @import '../segmented-control/segmented-control.css';
 @import '../source-diff-viewer/source-diff-viewer.css';
 @import '../table/table.css';
