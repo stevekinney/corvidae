@@ -25,15 +25,18 @@ function tree(files: Record<string, string>): string {
 const manifest = (name: string, dependencies: Record<string, string> = {}): string =>
   JSON.stringify({ name, dependencies });
 
+// The synthetic Cinder sits in `components/kit`, not `components/core`: the split's extraction
+// rewrites every `components/core/src/...` path in the repository to the package that takes it, and
+// these paths name no real file.
 const BASE = {
   'applications/playground/package.json': JSON.stringify({
     name: '@lostgradient/playground',
     dependencies: { '@lostgradient/chat': 'workspace:*', '@lucide/svelte': 'catalog:' },
   }),
-  'components/core/package.json': manifest('@lostgradient/cinder', {
+  'components/kit/package.json': manifest('@lostgradient/cinder', {
     '@lucide/svelte': 'catalog:',
   }),
-  'components/core/src/components/button/button.svelte': '',
+  'components/kit/src/components/button/button.svelte': '',
   'components/chat/package.json': manifest('@lostgradient/chat', {
     '@lostgradient/cinder': 'workspace:*',
   }),
@@ -56,7 +59,7 @@ describe('planMoves', () => {
     expect(plan.moves.map(({ from, to }) => [from, to])).toEqual([
       [
         `${OLD}/button/basic.example.svelte`,
-        'components/core/src/components/button/examples/basic.example.svelte',
+        'components/kit/src/components/button/examples/basic.example.svelte',
       ],
       [
         `${OLD}/chat/basic.example.svelte`,
@@ -99,7 +102,7 @@ describe('planMoves', () => {
   });
 
   test('drops a file already at its destination and stops on a different one', () => {
-    const destination = 'components/core/src/components/button/examples';
+    const destination = 'components/kit/src/components/button/examples';
     const files = {
       ...BASE,
       [`${OLD}/button/same.example.svelte`]: 'same',
