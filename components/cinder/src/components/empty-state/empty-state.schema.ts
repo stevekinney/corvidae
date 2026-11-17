@@ -43,7 +43,7 @@ const schema = {
     layout: {
       enum: ['stacked', 'row', 'inline'],
       description:
-        "Whether the state stacks its parts and centres them (`'stacked'`), lays them on one row,\nwith the disc and the words at the start and the action at the end (`'row'`), or draws a 32px\ndisc beside the title and the sentence on one line (`'inline'`). A row reads as the line of a\nlist, such as \"Nothing is waiting on you\" with its link to the page that holds the rest, so it\nis the layout for a state inside a card; a row narrower than 26rem drops its action under the\nwords, starting where they start, as a grouped list row does. Inline\nsits among rows at the inline start, without the vertical padding of a region; use it with\n`size=\"compact\"`.",
+        "Whether the state stacks its parts and centres them (`'stacked'`), lays them on one row,\nwith the disc and the words at the start and the action at the end (`'row'`), or draws a 32px\ndisc beside the title and the sentence on one line (`'inline'`). A row reads as the line of a\nlist, such as \"Nothing is waiting on you\" with its link to the page that holds the rest, so it\nis the layout for a state inside a card; a row narrower than 26rem (a grouped list row's\ncontainer query) drops its action under the words, at the row's leading inset, as ErrorState's\nrow drops its retry. Inline sits among rows at the inline start, without the vertical padding of a region; use it with\n`size=\"compact\"`.",
       default: 'stacked',
     },
     bordered: {

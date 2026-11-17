@@ -388,7 +388,7 @@ describe('ErrorState row variant', () => {
   // COR-2489: on a phone the row's retry started under the glyph while EmptyState's row put its
   // action at the end, and the row switched at a 40rem viewport query while GroupedListItem
   // measures its own width at 26rem.
-  test('a narrow row drops the retry under the words, from where they start, on GroupedListItem’s container query', async () => {
+  test('a narrow row drops the retry under the words, at the row’s leading inset as EmptyState’s row does, on GroupedListItem’s container query', async () => {
     const css = await Bun.file(new URL('./error-state.css', import.meta.url)).text();
     const root = declarationsFor(css, ".cinder-error-state[data-cinder-variant='row']");
     expect(root.get('container')).toBe('cinder-error-state / inline-size');
@@ -409,19 +409,32 @@ describe('ErrorState row variant', () => {
       narrow,
       ".cinder-error-state[data-cinder-variant='row'] .cinder-error-state-action",
     );
+    // A line of its own from the row's leading inset, where the glyph starts.
     expect(action.get('flex-basis')).toBe('100%');
     expect(action.get('justify-content')).toBe('flex-start');
-    // Where the words start: past the 16px glyph and the row's 12px column gap.
-    const glyph = declarationsFor(css, '.cinder-error-state-glyph > svg');
-    expect(glyph.get('inline-size')).toBe('var(--cinder-space-4)');
+    expect(action.has('padding-inline-start')).toBe(false);
     const body = declarationsFor(
       css,
       ".cinder-error-state[data-cinder-variant='row'] .cinder-error-state-body",
     );
-    expect(body.get('gap')).toBe('var(--cinder-space-2) var(--cinder-space-3)');
-    expect(action.get('padding-inline-start')).toBe(
-      'calc(var(--cinder-space-4) + var(--cinder-space-3))',
+
+    // EmptyState's row starts its action at the same inset: the same leading padding, and an
+    // action placed from the row's first column.
+    const emptyStateCss = await Bun.file(
+      new URL('../empty-state/empty-state.css', import.meta.url),
+    ).text();
+    const emptyRow = declarationsFor(
+      emptyStateCss,
+      ".cinder-empty-state[data-cinder-layout='row']",
     );
+    expect(emptyRow.get('padding-inline')).toBe(body.get('padding-inline'));
+    const emptyStart = emptyStateCss.indexOf('@container cinder-empty-state');
+    const emptyAction = declarationsFor(
+      emptyStateCss.slice(emptyStart, emptyStateCss.indexOf('/* Inline:', emptyStart)),
+      ".cinder-empty-state[data-cinder-layout='row'] .cinder-empty-state-action",
+    );
+    expect(emptyAction.get('grid-area')).toBe('3 / 1 / auto / -1');
+    expect(emptyAction.get('justify-content')).toBe(action.get('justify-content'));
   });
 
   test('an icon given for the retry button is drawn', () => {

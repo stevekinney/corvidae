@@ -231,17 +231,13 @@
 
   /* Narrower than 26rem the row measures itself, as a grouped list row does (the same container
    * query kind and width, COR-2489): the action takes a line of its own under the words, starting
-   * where the words start, as ErrorState's row and a grouped list row place theirs. */
+   * at the row's 16px leading inset, where the disc starts. ErrorState's row starts its retry at
+   * the same inset, so the two place their action alike. */
   @container cinder-empty-state (width < 26rem) {
     .cinder-empty-state[data-cinder-layout='row'] .cinder-empty-state-action {
-      grid-area: 3 / 2 / auto / -1;
+      grid-area: 3 / 1 / auto / -1;
       justify-content: flex-start;
       margin-block-start: var(--cinder-space-2);
-    }
-
-    .cinder-empty-state[data-cinder-layout='row']:not(:has(.cinder-empty-state-icon))
-      .cinder-empty-state-action {
-      grid-area: 3 / 1 / auto / -1;
     }
   }
 

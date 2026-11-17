@@ -307,13 +307,12 @@
 
   /* Narrower than 26rem the row measures itself, as a grouped list row does (the same container
    * query kind and width, COR-2489): the retry takes a line of its own under the words, starting
-   * where the words start (past the 16px glyph and the 12px gap), as EmptyState's row and a
-   * grouped list row place theirs. */
+   * at the row's 16px leading inset, where the glyph starts. EmptyState's row starts its action at
+   * the same inset, so the two place their action alike. */
   @container cinder-error-state (width < 26rem) {
     .cinder-error-state[data-cinder-variant='row'] .cinder-error-state-action {
       flex-basis: 100%;
       justify-content: flex-start;
-      padding-inline-start: calc(var(--cinder-space-4) + var(--cinder-space-3));
     }
   }
 

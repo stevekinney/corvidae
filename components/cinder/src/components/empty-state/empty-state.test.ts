@@ -460,7 +460,7 @@ describe('EmptyState layout', () => {
   // COR-2489: on a phone the row's action sat at the row's end, while ErrorState's row put its retry
   // at the start, and the row switched at a 40rem viewport query while GroupedListItem measures its
   // own width at 26rem.
-  test('a narrow row drops the action under the words, from where they start, on GroupedListItem’s container query', () => {
+  test('a narrow row drops the action under the words, at the row’s leading inset as ErrorState’s row does, on GroupedListItem’s container query', () => {
     const root = declarationsFor(emptyStateCss, ".cinder-empty-state[data-cinder-layout='row']");
     expect(root.get('container')).toBe('cinder-empty-state / inline-size');
     expect(emptyStateCss).not.toMatch(/@media \(max-width: 40rem\)/);
@@ -480,14 +480,32 @@ describe('EmptyState layout', () => {
       narrow,
       ".cinder-empty-state[data-cinder-layout='row'] .cinder-empty-state-action",
     );
-    // The words' column (the second, after the disc) to the end, on a line of its own.
-    expect(action.get('grid-area')).toBe('3 / 2 / auto / -1');
+    // The whole row, from its first column, on a line of its own: it starts at the row's leading
+    // inset, where the disc starts.
+    expect(action.get('grid-area')).toBe('3 / 1 / auto / -1');
     expect(action.get('justify-content')).toBe('flex-start');
-    const withoutDisc = declarationsFor(
-      narrow,
-      ".cinder-empty-state[data-cinder-layout='row']:not(:has(.cinder-empty-state-icon)) .cinder-empty-state-action",
+    const row = declarationsFor(emptyStateCss, ".cinder-empty-state[data-cinder-layout='row']");
+
+    // ErrorState's row starts its retry at the same inset: the same leading padding, and an action
+    // that takes the row's full width from its start.
+    const errorStateCss = readFileSync(
+      new URL('../error-state/error-state.css', import.meta.url),
+      'utf8',
     );
-    expect(withoutDisc.get('grid-area')).toBe('3 / 1 / auto / -1');
+    const errorBody = declarationsFor(
+      errorStateCss,
+      ".cinder-error-state[data-cinder-variant='row'] .cinder-error-state-body",
+    );
+    expect(errorBody.get('padding-inline')).toBe(row.get('padding-inline'));
+    const errorStart = errorStateCss.indexOf('@container cinder-error-state');
+    const errorAction = declarationsFor(
+      errorStateCss.slice(errorStart, errorStateCss.indexOf('@media', errorStart)),
+      ".cinder-error-state[data-cinder-variant='row'] .cinder-error-state-action",
+    );
+    expect(errorAction.get('flex-basis')).toBe('100%');
+    expect(errorAction.get('justify-content')).toBe(action.get('justify-content'));
+    expect(errorAction.has('padding-inline-start')).toBe(false);
+    expect(action.has('padding-inline-start')).toBe(false);
   });
 
   test('a row keeps its parts in reading order: disc, title, description, action', () => {
