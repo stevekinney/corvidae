@@ -273,9 +273,10 @@ describe('renderBrief', () => {
   test('cuts a very long description and says so', () => {
     const text = renderBrief(issue('x'.repeat(40_000)), options);
     expect(text).toContain('description cut at 16000');
-    // Measure what the description adds, not the whole brief: charter rules grow on their own.
-    const added = text.length - renderBrief(issue('x'), options).length;
-    expect(added).toBeLessThan(16_200);
+    // The description adds at most its 16000 kept characters and the cut note; the charter
+    // rules and the other sections are the same in both briefs, so their length is not bounded here.
+    const withShortDescription = renderBrief(issue('x'), options);
+    expect(text.length - withShortDescription.length).toBeLessThan(16_000 + 100);
   });
 });
 
@@ -392,13 +393,12 @@ describe('charter rules', () => {
     const rule = normalize(
       charterRules.find((candidate) => candidate.startsWith('**Processes:**')) ?? '',
     );
-    for (const phrase of ['`pkill`', '`killall`', 'by name or pattern', 'by pid'])
+    for (const phrase of ['`pkill`', '`killall`', 'by name or pattern', 'by pid', 'it waits'])
       expect(rule, phrase).toContain(phrase);
     for (const path of ['.claude/agents/chef-worker.md', '.codex/agents/chef-worker.toml']) {
       const text = read(path);
       expect(text, path).toContain('never end a process by name or pattern');
       expect(text, path).toContain('by pid');
-      expect(text, path).toContain('at most five minutes for a test pool slot');
     }
   });
 

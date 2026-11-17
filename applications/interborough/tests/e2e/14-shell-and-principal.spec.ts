@@ -340,10 +340,11 @@ test('the sidebar groups Home, Work, Build and System, with System pinned to the
     'System',
   ]);
   // System sits below the rest, with the space between them.
-  const capabilities = await links.nth(9).boundingBox();
-  const hooks = await links.nth(10).boundingBox();
-  const health = await links.nth(11).boundingBox();
-  const settings = await links.nth(12).boundingBox();
+  // Indexed by name, so a new destination moves no box read onto the wrong row.
+  const capabilities = await links.nth(DESTINATIONS.indexOf('Capabilities')).boundingBox();
+  const hooks = await links.nth(DESTINATIONS.indexOf('Hooks')).boundingBox();
+  const health = await links.nth(DESTINATIONS.indexOf('Health')).boundingBox();
+  const settings = await links.nth(DESTINATIONS.indexOf('Settings')).boundingBox();
   expect((health?.y ?? 0) - (hooks?.y ?? 0)).toBeGreaterThan(
     ((hooks?.y ?? 0) - (capabilities?.y ?? 0)) * 2,
   );

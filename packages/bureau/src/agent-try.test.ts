@@ -403,12 +403,7 @@ describe('deleting a tried chat (COR-1911)', () => {
    *   (COR-1986), so a start that names the id is refused rather than recreating the chat.
    * - `appmbx:`: the chat's purged input mailbox keeps its header, sealed, so an admission that
    *   raced the purge is refused rather than recreating the mailbox.
-   * - `steering-log:v1:…:head`: the session's sealed steering log head, which the boot sweep
-   *   removes (COR-2098); only the head, never a log entry.
    */
-  const isKept = (key: string) =>
-    KEPT.some((prefix) => key.startsWith(prefix)) ||
-    (key.startsWith('steering-log:v1:') && key.endsWith(':head'));
   const KEPT = [
     'audit:v1:',
     'audit-sequence:v1:',
@@ -424,6 +419,30 @@ describe('deleting a tried chat (COR-1911)', () => {
     'context-tombstone:v1:',
     'appmbx:',
   ];
+
+  /**
+   * A steering log's head, which the session's ending leaves sealed while its entries and the keys
+   * they bound go (COR-2097): an admission that found the session before it ended and reads the log
+   * after is refused as sealed, rather than given a fresh log to append to. The boot sweep removes
+   * it. It is the only `steering-log:v1:` key a deleted chat may leave, and only sealed.
+   */
+  const isSteeringLogHead = (key: string) =>
+    key.startsWith('steering-log:v1:') && key.endsWith(':head');
+
+  /** The keys a deleted chat left that it may not: any outside `KEPT` but a sealed steering-log head. */
+  async function notKept(storage: Storage, left: readonly string[]): Promise<string[]> {
+    const kv = textValueStore(storage, { disposeUnderlyingStorage: false });
+    const unexpected: string[] = [];
+    for (const key of left) {
+      if (KEPT.some((prefix) => key.startsWith(prefix))) continue;
+      if (isSteeringLogHead(key)) {
+        const raw = await kv.get(key);
+        if (raw !== null && (JSON.parse(raw) as { sealed?: unknown }).sealed === true) continue;
+      }
+      unexpected.push(key);
+    }
+    return unexpected;
+  }
 
   /** The prefixes of the keys that are the chat, its runs, its tasks, its workflow and its agent. */
   const GONE = [
@@ -458,9 +477,11 @@ describe('deleting a tried chat (COR-1911)', () => {
     await deleted(bureau, tried.contextId);
 
     const left = await keysAddedSince(storage, keysBefore);
-    expect(left.filter((key) => !isKept(key))).toEqual([]);
+    expect(await notKept(storage, left)).toEqual([]);
     expect(
-      left.filter((key) => !isKept(key) && GONE.some((prefix) => key.startsWith(prefix))),
+      left.filter(
+        (key) => GONE.some((prefix) => key.startsWith(prefix)) && !isSteeringLogHead(key),
+      ),
     ).toEqual([]);
     expect(await filesIn(directory)).toEqual(filesBefore);
     expect(await bureau.contexts.get(tried.contextId)).toBeUndefined();
@@ -550,7 +571,7 @@ describe('deleting a tried chat (COR-1911)', () => {
 
     expect(report.deleted).toBe(true);
     const left = await keysAddedSince(storage, keysBefore);
-    expect(left.filter((key) => !isKept(key))).toEqual([]);
+    expect(await notKept(storage, left)).toEqual([]);
     expect(await bureau.tasks.get(tried.taskId)).toBeUndefined();
   });
 
