@@ -15,12 +15,15 @@ describe('DescriptionList record-details anatomy (fields variant)', () => {
     );
   });
 
-  test('the rows sit in one tinted group', () => {
+  test('the rows are flat by default and sit in one tinted group under framed', () => {
+    const flat = /\[data-cinder-variant='fields'\]\s*\{([^}]*)\}/s.exec(css)?.[1] ?? '';
+    expect(flat).not.toContain('background');
+    expect(flat).not.toContain('border-radius');
     expect(css).toMatch(
-      /\[data-cinder-variant='fields'\]\s*\{[^}]*background: var\(--cinder-surface-inset\)/s,
+      /\[data-cinder-variant='fields'\]\[data-cinder-framed\]\s*\{[^}]*background: var\(--cinder-surface-inset\)/s,
     );
     expect(css).toMatch(
-      /\[data-cinder-variant='fields'\]\s*\{[^}]*border-radius: var\(--cinder-radius-surface\)/s,
+      /\[data-cinder-variant='fields'\]\[data-cinder-framed\]\s*\{[^}]*border-radius: var\(--cinder-radius-surface\)/s,
     );
   });
 
@@ -29,7 +32,11 @@ describe('DescriptionList record-details anatomy (fields variant)', () => {
       /\[data-cinder-variant='fields'\] \.cinder-description-list__row\s*\{[^}]*min-block-size: 2\.75rem/s,
     );
     expect(css).toMatch(
-      /\[data-cinder-variant='fields'\]\s*\{[^}]*padding-inline-start: var\(--cinder-space-4\)/s,
+      /\[data-cinder-variant='fields'\]\[data-cinder-framed\]\s*\{[^}]*padding-inline-start: var\(--cinder-space-4\)/s,
+    );
+    // Flat, the rows start at the list's own edge: the inset belongs to the frame alone.
+    expect(css).toMatch(
+      /\[data-cinder-variant='fields'\] \.cinder-description-list__row\s*\{[^}]*padding-inline: 0 /s,
     );
     expect(css).toMatch(
       /\[data-cinder-variant='fields'\] \.cinder-description-list__row:last-child\s*\{[^}]*border-block-end-color: transparent/s,

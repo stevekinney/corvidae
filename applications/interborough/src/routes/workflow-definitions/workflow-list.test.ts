@@ -549,12 +549,10 @@ describe('the internal workflows page', () => {
     await waitFor(() =>
       expect(container.querySelectorAll('[data-workflow][data-engine]').length).toBe(3),
     );
-    expect([...container.querySelectorAll('th')].map((cell) => cell.textContent?.trim())).toEqual([
-      'Workflow',
-      'What it does',
-      'Runs',
-      'Last run',
-    ]);
+    // Column headers only: each row's name cell is a row header too (COR-2364).
+    expect(
+      [...container.querySelectorAll('thead th')].map((cell) => cell.textContent?.trim()),
+    ).toEqual(['Workflow', 'What it does', 'Runs', 'Last run']);
     expect(container.textContent).toContain(WORKFLOW_COPY.internal.description);
 
     const names = [...container.querySelectorAll('[data-workflow][data-engine]')].map((node) =>

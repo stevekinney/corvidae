@@ -185,8 +185,7 @@ describe('CIN-603: previously diluted border-tier indicators now clear the funct
 });
 
 describe('the warning indicator clears 3:1 on every surface a lone dot sits on', () => {
-  // A warning dot (StatusDot, the collapsed rail's count dot, Statistic's attention dot, the
-  // FilterBar toggle dot) is often the only sign of the warning, so WCAG 1.4.11 holds it to 3:1.
+  // A warning dot (StatusDot, Statistic's attention dot, the FilterBar toggle dot) is often the only sign of the warning, so WCAG 1.4.11 holds it to 3:1.
   // The bright `status.warning.solid` read about 1.9:1 on the light surfaces; the indicator token
   // is the darker step in light and the solid itself in dark.
   const indicator = values.readOklchToken('--cinder-status-warning-indicator');
@@ -205,11 +204,6 @@ describe('the warning indicator clears 3:1 on every surface a lone dot sits on',
   const componentsDirectory = join(dirname(fileURLToPath(import.meta.url)), '..', 'components');
   const dotSites: ReadonlyArray<readonly [name: string, file: string, selector: string]> = [
     ['StatusDot', 'status-dot/status-dot.css', "[data-cinder-status='warning'] {"],
-    [
-      'SideNavigationItem collapsed count dot',
-      'side-navigation-item/side-navigation-item.css',
-      '.cinder-side-navigation-item__count {\n    position: absolute;',
-    ],
     ['Statistic attention dot', 'statistic/statistic.css', '.cinder-statistic__attention {'],
     ['FilterBar toggle dot', 'filter-bar/filter-bar.css', '.cinder-filter-bar__dot {'],
     ['SettingRow dot', 'setting-row/setting-row.css', '.cinder-setting-row__dot {'],

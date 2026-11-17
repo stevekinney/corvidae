@@ -53,7 +53,7 @@ test.describe('Slider header and value', () => {
         // layout gap (the header renders exactly one child).
         const compactSingle = page.locator('#example-mount-compact-single .cinder-slider');
         await expect(compactSingle.locator('.cinder-slider__label')).toHaveCount(0);
-        await expect(compactSingle.locator('.cinder-slider__value')).toHaveText('7 notes · C4–B4');
+        await expect(compactSingle.locator('.cinder-slider__value')).toHaveText('7 notes (C4–B4)');
         const headerChildCount = await compactSingle
           .locator('.cinder-slider__header')
           .evaluate((element) => element.children.length);
@@ -69,7 +69,7 @@ test.describe('Slider header and value', () => {
         const formFieldSlider = page.locator('#example-mount-compact-formfield .cinder-slider');
         await expect(formFieldSlider.locator('.cinder-slider__label')).toHaveCount(0);
         await expect(formFieldSlider.locator('.cinder-slider__value')).toHaveText(
-          '7 notes · C4–B4',
+          '7 notes (C4–B4)',
         );
         await expect(
           page.locator('#example-mount-compact-formfield .cinder-form-field__label'),
@@ -92,7 +92,7 @@ test.describe('Slider header and value', () => {
     await page.keyboard.press('ArrowRight');
     await expect(compactThumb).toHaveAttribute('aria-valuenow', '8');
     await expect(page.locator('#example-mount-compact-single .cinder-slider__value')).toHaveText(
-      '8 notes · C4–B4',
+      '8 notes (C4–B4)',
     );
 
     // Disabled: the value stays visible and formatted even though the
@@ -101,7 +101,7 @@ test.describe('Slider header and value', () => {
     const disabledSlider = page.locator('#example-mount-compact-disabled .cinder-slider');
     const disabledThumb = disabledSlider.locator('[role="slider"]');
     await expect(disabledSlider.locator('.cinder-slider__label')).toHaveCount(0);
-    await expect(disabledSlider.locator('.cinder-slider__value')).toHaveText('7 notes · C4–B4');
+    await expect(disabledSlider.locator('.cinder-slider__value')).toHaveText('7 notes (C4–B4)');
     await expect(disabledThumb).toHaveAttribute('tabindex', '-1');
     await expect(disabledThumb).toHaveAttribute('aria-disabled', 'true');
   });
@@ -117,7 +117,7 @@ test.describe('Slider header and value', () => {
     // the DOM node wasn't left in a stale pre-hydration state).
     const singleValue = page.locator('#example-mount-compact-single .cinder-slider__value');
     const rangeValue = page.locator('#example-mount-compact-range .cinder-slider__value');
-    await expect(singleValue).toHaveText('7 notes · C4–B4');
+    await expect(singleValue).toHaveText('7 notes (C4–B4)');
     await expect(rangeValue).toHaveText('3–19');
 
     // Controlled updates: an external button — not the slider's own
@@ -125,7 +125,7 @@ test.describe('Slider header and value', () => {
     // `displayValue`'s output reacts to that externally-driven change the
     // same way it reacts to an internal one.
     await page.locator('#compact-single-increment').click();
-    await expect(singleValue).toHaveText('8 notes · C4–B4');
+    await expect(singleValue).toHaveText('8 notes (C4–B4)');
     await expect(page.locator('#example-mount-compact-single [role="slider"]')).toHaveAttribute(
       'aria-valuenow',
       '8',
@@ -140,7 +140,7 @@ test.describe('Slider header and value', () => {
     // the standalone compact single Slider in this fixture, so the
     // increment above should be reflected there too.
     await expect(page.locator('#example-mount-compact-formfield .cinder-slider__value')).toHaveText(
-      '8 notes · C4–B4',
+      '8 notes (C4–B4)',
     );
   });
 });

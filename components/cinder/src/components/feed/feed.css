@@ -151,12 +151,14 @@
   .cinder-feed-log__loading {
     display: flex;
     flex-direction: column;
-    gap: var(--cinder-space-2);
+    /* The loaded list's own gap and padding (.cinder-feed, .cinder-feed-log .cinder-feed), and one
+       line of the log's text per entry, so the log does not change height when its entries arrive. */
+    gap: var(--cinder-space-4);
     padding: var(--cinder-space-3);
   }
 
   .cinder-feed-log__skeleton {
-    block-size: 1.25rem;
+    block-size: calc(var(--cinder-text-sm) * var(--cinder-leading-normal));
     border-radius: var(--cinder-radius-sm);
     background: var(--cinder-surface-inset);
     animation: cinder-feed-log-skeleton-pulse var(--cinder-duration-pulse) ease-in-out infinite;

@@ -17,6 +17,7 @@ beforeEach(() => {
 });
 
 const { default: Text } = await import('./text.svelte');
+const { stubCutLayout } = await import('../../_internal/cut-layout-stub.ts');
 const { createRawSnippet } = await import('svelte');
 
 const textCss = await Bun.file(new URL('./text.css', import.meta.url)).text();
@@ -150,8 +151,14 @@ describe('Text clamp', () => {
   }
 
   afterEach(() => {
-    if (scrollHeight) Object.defineProperty(HTMLElement.prototype, 'scrollHeight', scrollHeight);
-    if (clientHeight) Object.defineProperty(HTMLElement.prototype, 'clientHeight', clientHeight);
+    // happy-dom defines these on `Element.prototype`, so `HTMLElement.prototype` has no own
+    // descriptor to put back: the stub is removed instead, or it leaks into every later file in
+    // the worker (a Drawer or Modal body would then measure as scrolling).
+    const prototype = HTMLElement.prototype as unknown as Record<string, unknown>;
+    if (scrollHeight) Object.defineProperty(prototype, 'scrollHeight', scrollHeight);
+    else delete prototype['scrollHeight'];
+    if (clientHeight) Object.defineProperty(prototype, 'clientHeight', clientHeight);
+    else delete prototype['clientHeight'];
   });
 
   test('holds the run to its lines through a custom property the stylesheet clamps with', () => {
@@ -166,7 +173,7 @@ describe('Text clamp', () => {
     );
   });
 
-  test('offers Show all only while the run is cut off', () => {
+  test('offers Show more only while the run is cut off', () => {
     measure({ scroll: 100, client: 100 });
     const { container } = render(Text, { clamp: 5, children: textSnippet('short reply') });
 
@@ -179,7 +186,7 @@ describe('Text clamp', () => {
     const root = container.querySelector('.cinder-text') as HTMLElement;
     const toggle = container.querySelector('.cinder-text__toggle') as HTMLButtonElement;
 
-    expect(toggle.textContent?.trim()).toBe('Show all');
+    expect(toggle.textContent?.trim()).toBe('Show more');
     expect(toggle.getAttribute('aria-expanded')).toBe('false');
     expect(toggle.getAttribute('aria-controls')).toBe(root.id);
 
@@ -200,7 +207,7 @@ describe('Text clamp', () => {
     expect(root.querySelector('button')).toBeNull();
   });
 
-  test("puts the page's own action beside Show all, after a comma in the stylesheet", () => {
+  test("puts the page's own action beside Show more, a space and a colour step apart", () => {
     measure({ scroll: 140, client: 100 });
     const { container } = render(Text, {
       clamp: 5,
@@ -209,9 +216,23 @@ describe('Text clamp', () => {
     });
     const footer = container.querySelector('.cinder-text__footer');
 
-    expect(footer?.textContent?.replace(/\s+/g, ' ').trim()).toBe('Show all Show raw payloads');
+    expect(footer?.textContent?.replace(/\s+/g, ' ').trim()).toBe('Show more Show raw payloads');
     expect(footer?.querySelector('.cinder-text__toggle + .cinder-text__actions')).not.toBeNull();
-    expect(textCss).toContain('.cinder-text__toggle + .cinder-text__actions::before');
+    expect(textCss).toMatch(
+      /\.cinder-text__toggle \+ \.cinder-text__actions\s*\{[^}]*font-weight:\s*var\(--cinder-font-normal\)/,
+    );
+    expect(textCss).toMatch(
+      /\.cinder-text__toggle\s*\{[^}]*font-weight:\s*var\(--cinder-font-medium\)/,
+    );
+    // A clear step between two accent-coloured controls: the footer's gap is space 2, and the
+    // action's margin tops it up to space 3, so the two do not read as one run of links.
+    expect(textCss).toMatch(/\.cinder-text__footer\s*\{[^}]*gap:\s*var\(--cinder-space-2\)/);
+    expect(textCss).toMatch(
+      /\.cinder-text__toggle \+ \.cinder-text__actions\s*\{[^}]*margin-inline-start:\s*calc\(var\(--cinder-space-3\) - var\(--cinder-space-2\)\)/,
+    );
+    expect(textCss).not.toContain('.cinder-text__actions::before');
+    expect(footer?.textContent).not.toContain(',');
+    expect(footer?.textContent).not.toContain(String.fromCodePoint(0xb7));
   });
 
   test('shows the action alone when the run fits', () => {
@@ -372,20 +393,90 @@ describe('Text middle truncation fit', () => {
 
 describe('Text truncate="end"', () => {
   const longName = `responsive-model-${'m'.repeat(300)}`;
+  let restoreLayout: () => void = () => {};
+  beforeEach(() => {
+    restoreLayout = stubCutLayout(true);
+  });
+  afterEach(() => restoreLayout());
 
-  test('renders the whole text on one cut line, with the whole of it in the title', () => {
+  test('a value that is not cut has no tab stop and no tooltip', async () => {
+    restoreLayout();
+    restoreLayout = stubCutLayout(false);
+    const { container } = render(Text, { truncate: 'end', text: 'short' });
+    const root = container.querySelector('.cinder-text') as HTMLElement;
+    expect(root.hasAttribute('tabindex')).toBe(false);
+    await fireEvent.focus(root);
+    expect(document.querySelector('[role="tooltip"]')).toBeNull();
+    expect(root.hasAttribute('aria-describedby')).toBe(false);
+  });
+
+  test('a value cut after it was measured whole takes the tab stop and the tooltip', async () => {
+    restoreLayout();
+    restoreLayout = stubCutLayout(false);
+    const { container, rerender } = render(Text, { truncate: 'end', text: 'short' });
+    const root = container.querySelector('.cinder-text') as HTMLElement;
+    expect(root.hasAttribute('tabindex')).toBe(false);
+    restoreLayout();
+    restoreLayout = stubCutLayout(true);
+    await rerender({ truncate: 'end', text: longName });
+    await waitFor(() => expect(root.getAttribute('tabindex')).toBe('0'));
+    await fireEvent.focus(root);
+    await waitFor(() =>
+      expect(document.querySelector('[role="tooltip"]')?.textContent?.trim()).toBe(longName),
+    );
+  });
+
+  test('renders the whole text on one cut line, focusable, with no native title', () => {
     const { container } = render(Text, { as: 'span', truncate: 'end', text: longName });
     const root = container.querySelector('.cinder-text');
     expect(root?.tagName).toBe('SPAN');
     expect(root?.getAttribute('data-cinder-truncate')).toBe('end');
     expect(root?.textContent).toBe(longName);
-    expect(root?.getAttribute('title')).toBe(longName);
-    expect(root?.hasAttribute('tabindex')).toBe(false);
+    expect(root?.hasAttribute('title')).toBe(false);
+    expect(root?.getAttribute('tabindex')).toBe('0');
   });
 
-  test('keeps a title the caller set', () => {
-    const { container } = render(Text, { truncate: 'end', text: longName, title: 'Model' });
-    expect(container.querySelector('.cinder-text')?.getAttribute('title')).toBe('Model');
+  test('opens the whole text in a tooltip on keyboard focus, or the title the caller set', async () => {
+    const { container } = render(Text, { truncate: 'end', text: longName });
+    const root = container.querySelector('.cinder-text') as HTMLElement;
+    await fireEvent.focus(root);
+    await waitFor(() =>
+      expect(document.querySelector('[role="tooltip"]')?.textContent?.trim()).toBe(longName),
+    );
+    expect(root.getAttribute('aria-describedby')).toBe(
+      document.querySelector('[role="tooltip"]')?.id ?? '',
+    );
+
+    cleanup();
+    const custom = render(Text, { truncate: 'end', text: longName, title: 'Model' });
+    const customRoot = custom.container.querySelector('.cinder-text') as HTMLElement;
+    expect(customRoot.hasAttribute('title')).toBe(false);
+    await fireEvent.focus(customRoot);
+    await waitFor(() =>
+      expect(document.querySelector('[role="tooltip"]')?.textContent?.trim()).toBe('Model'),
+    );
+  });
+
+  test('is reachable by focus inside a link', async () => {
+    const link = document.createElement('a');
+    link.href = '#run';
+    document.body.append(link);
+    render(Text, { target: link, props: { truncate: 'end', text: longName } });
+    const root = link.querySelector('.cinder-text') as HTMLElement;
+    await fireEvent.focus(root);
+    await waitFor(() =>
+      expect(document.querySelector('[role="tooltip"]')?.textContent?.trim()).toBe(longName),
+    );
+  });
+
+  test('inside a Tooltip the text is its trigger: one hover text, no title', async () => {
+    const { default: Fixture } = await import('./text-in-tooltip.fixture.svelte');
+    const { container } = render(Fixture, { text: longName });
+    const root = container.querySelector('.cinder-text') as HTMLElement;
+    expect(root.hasAttribute('title')).toBe(false);
+    await fireEvent.focus(root);
+    await waitFor(() => expect(document.querySelectorAll('[role="tooltip"]')).toHaveLength(1));
+    expect(document.querySelector('[role="tooltip"]')?.textContent?.trim()).toBe('Outer hint');
   });
 
   test('ends the line with an ellipsis in the typography of what holds it', () => {

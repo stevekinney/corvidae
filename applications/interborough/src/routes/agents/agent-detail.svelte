@@ -43,7 +43,7 @@
     Tabs,
     Tooltip,
   } from '@lostgradient/cinder';
-  import { Pencil, Plus } from '@lucide/svelte';
+  import { CopyPlus, Pencil, Plus } from '@lucide/svelte';
   import {
     createInfiniteQuery,
     createMutation,
@@ -454,16 +454,20 @@
   {#if plugin !== null}
     <!-- A plugin's agent, running or held back, has Duplicate here for a copy the owner keeps. A
          running agent defined in code is also changed in place, on its Settings and Access tabs. -->
-    <Button
-      data-changes
-      variant="secondary"
-      size="sm"
-      loading={reading || (duplicate.isPending && !confirmOpen)}
-      onclick={(event) => {
-        duplicateButton = event.currentTarget;
-        void startDuplicate();
-      }}>{copy.plugin.duplicate}</Button
-    >
+    <Tooltip text={copy.plugin.duplicate}>
+      <Button
+        data-changes
+        variant="secondary"
+        size="sm"
+        iconOnly
+        aria-label={copy.plugin.duplicate}
+        loading={reading || (duplicate.isPending && !confirmOpen)}
+        onclick={(event) => {
+          duplicateButton = event.currentTarget;
+          void startDuplicate();
+        }}><CopyPlus aria-hidden="true" size={14} /></Button
+      >
+    </Tooltip>
   {:else if listed?.kind === 'file'}
     <Button
       href={router.href(editPath)}
@@ -478,12 +482,17 @@
   {:else}
     <!-- An agent defined in code has no file to edit. Nothing is written here: the copy is named
          and created in the form. -->
-    <Button
-      href={router.href(duplicatePath)}
-      variant="secondary"
-      size="sm"
-      onclick={(event) => goTo(event, duplicatePath)}>{copy.duplicate}</Button
-    >
+    <Tooltip text={copy.duplicate}>
+      <Button
+        href={router.href(duplicatePath)}
+        variant="secondary"
+        size="sm"
+        iconOnly
+        aria-label={copy.duplicate}
+        onclick={(event) => goTo(event, duplicatePath)}
+        ><CopyPlus aria-hidden="true" size={14} /></Button
+      >
+    </Tooltip>
   {/if}
   {#if unavailable}
     <!-- Held, not removed: it keeps its place and its focus, and says why it is off. -->
