@@ -348,6 +348,47 @@ A reaction can also give a `dryRun(context)` with the same context as `run`: wha
 
 A reaction's configuration can hold a secret without storing it. Mark the field with `.meta({ secret: true })`, as in `token: z.string().meta({ secret: true })`: a hook then keeps `{ "$secret": "<key>" }` in that field, where the key names a secret the workspace has published, and a plain value in the field is refused when the hook is written. Each attempt resolves the key to the value published then and passes it to `run` as the string the schema declares. An attempt whose key has no value fails and is tried again; it never falls back to another value. Mark only fields reached through an object's properties (optional or not); a marker under an array or a record, and a marked field that is a union, are refused, because a reference has no single place to be kept there. A `.nullable()` field is a union, so `.meta({ secret: true }).nullable()` and `.nullable().meta({ secret: true })` are both refused: hold the secret in a field that is always a string, and make the field optional instead. A `{ secret: true }` inside a `default` or an `examples` value is data, never a marker. While the plugin itself needs setup (a secret it declared is missing), a delivery of its reactions waits, without making an attempt, until the secret is saved.
 
+A plugin can make hooks for its owner. A _default hook_ is declared in the descriptor's `hooks`, beside `setup`, and runs one of the plugin's own reactions. The host makes the hook when the plugin starts and reconciles it with this list at every later start: a new one is created, a changed one is replaced in place (it keeps its id and its deliveries), and one the descriptor no longer lists is withdrawn, which turns it off and keeps it. The owner can turn a default hook off and make an editable copy of it, and can change nothing else about it.
+
+```ts
+import { definePlugin } from '@lostgradient/interborough-plugin';
+import { z } from 'zod';
+
+export default definePlugin({
+  name: 'pager',
+  version: '1.0.0',
+  description: 'Pages someone when a run settles.',
+  secrets: ['pager-api-key'],
+  hooks: [
+    {
+      name: 'Page when a run settles',
+      events: ['run.settled'],
+      reaction: 'page',
+      configuration: { apiKey: { $secret: 'pager-api-key' }, team: 'on-call' },
+    },
+  ],
+  setup: () => ({
+    reactions: [
+      {
+        name: 'page',
+        version: '1',
+        description: 'Pages a team about the event.',
+        configuration: z.object({
+          apiKey: z.string().meta({ secret: true }),
+          team: z.string(),
+        }),
+        async run({ event, idempotencyKey, signal }) {
+          signal.throwIfAborted();
+          console.log(idempotencyKey, event.kind);
+        },
+      },
+    ],
+  }),
+});
+```
+
+A hook is `{ name, events, reaction, configuration?, scope? }`. `name` is the label and the key the hook is reconciled by (1 to 100 characters, unique among the plugin's hooks), so renaming a hook withdraws the old one and makes a new one. `reaction` names one of the plugin's `reactions`. `events` lists published event kinds: a kind of Bureau's catalog, or one a plugin declares as `<plugin>:<name>`. `configuration` is checked against the reaction's schema, and a secret field holds `{ "$secret": "<key>" }`, never a value. A hook that names a reaction the plugin does not contribute, lists an event kind that is not published, or repeats a name is skipped alone with a `hook-invalid` problem naming the hook and the field (`name`, `reaction` or `events`); one the hooks service refuses when it reconciles it (a configuration the schema refuses) is the same problem at `configuration` or `scope`. The plugin and its other hooks still load. A disabled plugin, or one whose setup failed, leaves its hooks as they are, and they run nothing until it runs again; a plugin the host no longer gives to the Bureau at all has its hooks withdrawn, never deleted.
+
 An interceptor has a member for each point of Operative's hook map (`onRunError`, `validateToolResult` and `selectTools` among them), and a point is written as the function or as `{ handler, replay, onError, priority }`. `replay: 'safe'` marks a hook with no external side effect, so a recovered durable run knows it can run again; a hook that says nothing is `effectful`. `onError` returns `'continue'` to go on to the next hook when this one throws, or `'abort'` to fail the step, which is also what a hook with no `onError` does. A `priority` sorts a higher number first, within a range of at most 999: a number below the one just above Operative's guardrails is raised to it, so a plugin never sorts behind them, and a number above 999 is lowered to it, because the host adds a tier's band to a priority and bands are 1000 apart, so a higher one would sort the plugin's hook ahead of the host's own invariants. The observing points (`onLLMInput`, `onLLMOutput`, `onRunComplete`, `onRunError`, `onRunAbort`) and `onError` are settled by Operative whatever `onError` says. While the plugin needs setup (a declared secret is missing), every hook of every interceptor refuses to run its handler.
 
 An interceptor that declares `appliesTo: 'every-agent'` runs for every run the host starts (file agents, code agents, dispatched agents and their children) without any agent file listing it. The host composes it in a `plugin` tier between its own hooks and the agent's, so its entries show `tier: 'plugin'` in a run's hook plan. An agent file that also lists it gets it once, in its own tier, as an interceptor it chose. While its plugin needs setup, such an interceptor refuses for an agent that lists it, as any chosen interceptor does, and is skipped for every other agent: its handlers do not run, and the run goes on as if it were absent, so a missing secret never fails an agent that did not choose it.

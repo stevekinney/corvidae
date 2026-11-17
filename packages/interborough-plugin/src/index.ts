@@ -54,6 +54,7 @@ export type {
 export type {
   PluginDescriptor,
   PluginEmptyConfigurationSchema,
+  PluginHook,
   PluginSecretDeclaration,
   PluginSecrets,
   PluginSetupContext,

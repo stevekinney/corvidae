@@ -304,6 +304,7 @@ import {
 } from './run-authority.ts';
 import { type CreatedHooks } from './hooks/create-hooks';
 import { createRunHookOrigins } from './hooks/run-hook-origins';
+import { reconcilePluginHooks } from './hooks/reconcile-plugin-hooks';
 import { BureauError, TaskRespondError, toBadRequest } from './bureau-errors';
 import { isCommittedElsewhere, terminalActionTimestamp } from './durable-run-waits';
 import {
@@ -5455,6 +5456,9 @@ async function constructBureau<const D extends AgentDefinitions>(
     );
     if (options.maintenance !== 'manual') runtime.durable?.engine.scheduler.start();
   }
+  // COR-2180 — the hooks the running plugins declare, before the deliveries a restart resumes are
+  // matched against them. Never rejects: a refused hook is the plugin's `hook-invalid` problem.
+  await reconcilePluginHooks({ hooks: hooksInstance?.hooks, plugins: pluginRegistry, diagnose });
   resumeHooks({ hooks: hooksInstance, engine: webhookNotifierInstance?.engine, diagnose });
   if (hasDeferredGatewayAuthority) {
     durableRecoveryDeferred = true;

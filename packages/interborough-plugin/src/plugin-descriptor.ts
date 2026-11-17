@@ -47,6 +47,32 @@ export interface PluginSetupContext<TConfiguration = unknown> {
   readonly approvals: (tools: readonly string[]) => ToolPolicyHooks;
 }
 
+/**
+ * A hook a plugin declares as a default (COR-2180): one the host makes for the owner when the plugin
+ * runs, and reconciles with this list at each start. The owner can turn it off and copy it, and can
+ * change nothing else about it.
+ */
+export interface PluginHook {
+  /**
+   * The hook's label and the key it is reconciled by, 1 to 100 characters and unique among the
+   * plugin's hooks. Renaming a hook withdraws the old one and makes a new one.
+   */
+  readonly name: string;
+  /** The published event kinds the hook fires on: a Bureau kind, or a `<plugin>:<name>` kind a plugin declares. */
+  readonly events: readonly string[];
+  /** The name of one of this plugin's `reactions`: what the hook does. */
+  readonly reaction: string;
+  /** The reaction's configuration, checked against the schema the reaction declares. */
+  readonly configuration?: unknown;
+  /** The one subject the hook fires for; every kind in `events` must be one an event can be told by. Omitted, it fires for the whole Bureau. */
+  readonly scope?: {
+    /** What `id` names. */
+    readonly kind: 'agent' | 'workflow' | 'schedule';
+    /** The agent's name, the workflow's identifier, or the schedule's id. */
+    readonly id: string;
+  };
+}
+
 /** The schema a plugin without a `configuration` declares: an object with no members. */
 export type PluginEmptyConfigurationSchema = z.ZodType<Record<string, never>>;
 
@@ -75,6 +101,14 @@ export interface PluginDescriptor<
   readonly secrets?: readonly PluginSecretDeclaration[];
   /** The directory of agent, workflow and skill files the plugin ships. */
   readonly content?: URL;
+  /**
+   * Hooks the plugin makes for its owner (COR-2180): default hooks that run one of its `reactions`.
+   * A hook that names a reaction the plugin does not contribute, lists an event kind that is not
+   * published, or repeats a name is skipped alone, with a `hook-invalid` problem naming it; the
+   * plugin's other contributions still load. A plugin that is disabled leaves its hooks as they are
+   * (they run nothing), and one the host no longer knows has its hooks withdrawn, never deleted.
+   */
+  readonly hooks?: readonly PluginHook[];
   /** Builds the plugin's contributions once at startup. */
   setup?(
     context: PluginSetupContext<z.output<TConfigurationSchema>>,

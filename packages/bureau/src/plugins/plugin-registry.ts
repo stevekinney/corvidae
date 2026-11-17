@@ -13,6 +13,7 @@ import { z } from 'zod';
 import {
   isGuardrailFactory,
   type PluginGuardrails,
+  type PluginHook,
   type PluginHost,
   type PluginSetupContext,
   type PluginSetupResult,
@@ -24,6 +25,7 @@ import type {
   BureauPluginEntry,
   BureauPlugins,
   GuardrailListing,
+  HookInvalidPath,
   PluginContribution,
   PluginContributionListing,
   PluginContributionReferences,
@@ -49,6 +51,11 @@ export interface PluginRecord {
   readonly problems: readonly PluginProblem[];
   /** What it registered. */
   readonly contributions: readonly PluginContribution[];
+  /**
+   * The hooks its descriptor declares that composition accepted (COR-2180), copied; absent when
+   * there are none. The Bureau reconciles them once its hooks exist.
+   */
+  readonly hooks?: readonly PluginHook[];
   /** Whether the secrets it declared are set; absent when it declares none or does not run. */
   readonly gate?: PluginSecretGate;
   /**
@@ -147,6 +154,19 @@ export interface PluginRegistry {
   reportTriggerFailure(plugin: string, workflow: string, message: string): void;
   /** Removes the `trigger-failed` problem of `workflow`, once its listener is not failed. */
   clearTriggerFailure(plugin: string, workflow: string): void;
+  /**
+   * Records the hooks of `plugin` that were refused when they were reconciled (COR-2180), replacing
+   * what an earlier call recorded: the plugin lists one `hook-invalid` problem for each. A name that
+   * is no running plugin is ignored.
+   */
+  reportHookProblems(
+    plugin: string,
+    problems: readonly { readonly hook: string; readonly path: HookInvalidPath }[],
+  ): void;
+  /** The plugins that run, each with the hooks it declares that composition accepted, in load order. */
+  declaredHooks(): readonly { readonly plugin: string; readonly hooks: readonly PluginHook[] }[];
+  /** The name of every plugin the host gave the Bureau, whether or not it runs. */
+  knownPlugins(): ReadonlySet<string>;
 }
 
 /** What one ready agent's definition names. */
@@ -373,6 +393,8 @@ export function createPluginRegistry(
   const changedApps = new Map<string, Map<string, PanelChange>>();
   // The listeners that failed (COR-2165), by plugin name, then workflow, with the message.
   const failedTriggers = new Map<string, Map<string, string>>();
+  // The hooks reconcile refused (COR-2180), by plugin name, as the problems that name them.
+  const refusedHooks = new Map<string, PluginProblem[]>();
   const pinned: PinnedTally = new Map();
   let reads: PluginReferenceReads | undefined;
   const started = Promise.withResolvers<void>();
@@ -403,6 +425,7 @@ export function createPluginRegistry(
         workflow,
         message,
       })),
+      ...(refusedHooks.get(name) ?? []),
       ...(laterProblems.get(name) ?? []),
     ];
   };
@@ -552,6 +575,23 @@ export function createPluginRegistry(
     clearTriggerFailure(plugin, workflow) {
       failedTriggers.get(plugin)?.delete(workflow);
     },
+    reportHookProblems(plugin, problems) {
+      const running = records.some(
+        (candidate) => candidate.status === 'running' && candidate.entry.descriptor.name === plugin,
+      );
+      if (!running) return;
+      refusedHooks.set(
+        plugin,
+        problems.map(({ hook, path }): PluginProblem => ({ code: 'hook-invalid', hook, path })),
+      );
+    },
+    declaredHooks: () =>
+      records.flatMap((record) =>
+        record.status === 'running'
+          ? [{ plugin: record.entry.descriptor.name, hooks: record.hooks ?? [] }]
+          : [],
+      ),
+    knownPlugins: () => new Set(records.map((record) => record.entry.descriptor.name)),
     async start(hostFor) {
       const hosts = new Map<string, PluginHost>();
       for (const record of records) {

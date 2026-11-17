@@ -18,6 +18,46 @@ export const renamedStart: PluginSetupResult = { start: () => undefined };
 // @ts-expect-error -- `afterStart` was renamed `start`
 export const staleAfterStart: PluginSetupResult = { afterStart: () => undefined };
 
+// COR-2180: a descriptor's `hooks` take the declared shape, and a stale or malformed one fails.
+export const withHooks: PluginDescriptor = {
+  ...base,
+  hooks: [
+    {
+      name: 'Post settled runs',
+      events: ['run.settled'],
+      reaction: 'post-message',
+      configuration: { channel: 'ops' },
+      scope: { kind: 'agent', id: 'writer' },
+    },
+    { name: 'Post started runs', events: ['run.started'], reaction: 'post-message' },
+  ],
+};
+
+export const hookWithoutReaction: PluginDescriptor = {
+  ...base,
+  // @ts-expect-error -- a hook names the reaction it runs
+  hooks: [{ name: 'Post', events: ['run.settled'] }],
+};
+
+export const hookWithoutEvents: PluginDescriptor = {
+  ...base,
+  // @ts-expect-error -- a hook lists the events it fires on
+  hooks: [{ name: 'Post', reaction: 'post-message' }],
+};
+
+export const hookWithUnknownScopeKind: PluginDescriptor = {
+  ...base,
+  hooks: [
+    {
+      name: 'Post',
+      events: ['run.settled'],
+      reaction: 'post-message',
+      // @ts-expect-error -- a hook is scoped to an agent, a workflow or a schedule
+      scope: { kind: 'planet', id: 'earth' },
+    },
+  ],
+};
+
 export const readApprovals = (context: PluginSetupContext) => context.approvals;
 
 // @ts-expect-error -- `toolApprovalHooks` was renamed `approvals`
