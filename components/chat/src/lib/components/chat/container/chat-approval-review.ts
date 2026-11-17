@@ -143,13 +143,16 @@ export function approvalArrivalBox(
   const room = approvalReminderRoom(
     transcript.closest('.chat-container') ?? transcript.parentElement,
   );
-  // A header the host lays over the top of the transcript (`--cinder-chat-overlay-inset-start`,
-  // which also pads the transcript's first row clear of it) hides that much of the box.
-  const covered = Number.parseFloat(
-    getComputedStyle(transcript).getPropertyValue('--cinder-chat-overlay-inset-start'),
-  );
+  // A header the host lays over the top of the transcript (`--cinder-chat-overlay-inset-start`)
+  // hides that much of the box. The box starts below it by the transcript's own top padding, which
+  // is the overlay's height plus the timeline's padding: the gap the first row of a short chat
+  // gets, so a card is never placed flush against, or under, the header.
+  const style = getComputedStyle(transcript);
+  const covered = Number.parseFloat(style.getPropertyValue('--cinder-chat-overlay-inset-start'));
+  const padding = Number.parseFloat(style.paddingTop);
+  const clear = Number.isFinite(covered) && covered > 0 ? covered : 0;
   return {
-    top: box.top + (Number.isFinite(covered) ? covered : 0),
+    top: box.top + (clear > 0 && Number.isFinite(padding) ? Math.max(padding, clear) : 0),
     bottom: box.bottom + room,
     left: box.left,
     right: box.right,
@@ -206,6 +209,26 @@ export function pendingApprovalCard(
     root?.querySelector<HTMLElement>(PENDING_APPROVAL_CARD_SELECTOR) ??
     null
   );
+}
+
+/**
+ * The box of a pending approval to keep clear of the header and the composer: the card and the rail
+ * row that labels it ("Issue refund 4471, Waiting on you"), the one above it in the same message,
+ * as one unit. The labelling row sits above the card, so a card placed on its own top leaves the
+ * row's top under the header, where it takes no tap.
+ */
+export function approvalUnitBox(card: HTMLElement): Pick<DOMRectReadOnly, 'top' | 'bottom'> {
+  const box = card.getBoundingClientRect();
+  const message = card.closest<HTMLElement>('article[data-message-id]');
+  // The nearest row before the card in document order is the one that labels it.
+  let label: HTMLElement | undefined;
+  for (const row of message?.querySelectorAll<HTMLElement>('.cinder-tool-call-rail__row') ?? []) {
+    if (row.compareDocumentPosition(card) & Node.DOCUMENT_POSITION_FOLLOWING) label = row;
+  }
+  return {
+    top: Math.min(box.top, label?.getBoundingClientRect().top ?? box.top),
+    bottom: box.bottom,
+  };
 }
 
 /** The time an approval's `expiresAt` names, in epoch milliseconds, or `undefined` for none. */

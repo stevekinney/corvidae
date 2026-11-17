@@ -33,6 +33,7 @@ export {
   approvalArrivalBox,
   approvalArrivalShift,
   approvalTallerThanTranscript,
+  approvalUnitBox,
 } from './container/chat-approval-review.ts';
 export type { ChatMarkdownNode, MarkdownNodeOverride } from './message/chat-message-parts.ts';
 export { default as ChatNote } from './message/parts/note-part.svelte';

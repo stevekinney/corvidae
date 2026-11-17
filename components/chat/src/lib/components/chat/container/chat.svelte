@@ -69,6 +69,7 @@
     approvalArrivalBox,
     approvalArrivalShift,
     approvalRowVisible,
+    approvalUnitBox,
     focusPendingApproval,
     PENDING_APPROVAL_CARD_SELECTOR,
     pendingApprovalCard,
@@ -1790,7 +1791,8 @@
       // A layout not yet measured (zero-sized boxes) says nothing about where the card stands, so
       // the reminder stays available; the resize that measures it places the card.
       if (cardBox.height <= 0 || viewportBox.bottom - viewportBox.top <= 0) return settled();
-      const shift = approvalArrivalShift(cardBox, viewportBox);
+      // The card and the row that labels it are placed as one unit.
+      const shift = approvalArrivalShift(approvalUnitBox(card), viewportBox);
       if (shift === 0) {
         movedFrom = undefined;
         return settled();

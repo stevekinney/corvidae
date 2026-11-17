@@ -59,6 +59,7 @@
   import {
     approvalArrivalBox,
     approvalArrivalShift,
+    approvalUnitBox,
     Chat,
     ChatNote,
     ChatQuestion,
@@ -824,12 +825,13 @@
   function bringApprovalIntoView(row: HTMLElement): void {
     const transcript = row.closest<HTMLElement>('.chat-timeline');
     if (transcript !== null) {
-      const card = row.getBoundingClientRect();
+      // The card and the row that labels it, as one unit.
+      const card = approvalUnitBox(row);
       // Chat's own rule against Chat's own box, the transcript without the reminder, so this and
       // Chat's arrival placement agree and the reminder cannot move the card (COR-2327).
       const box = approvalArrivalBox(transcript);
       // A layout not yet measured (zero-sized boxes) says nothing about fit: centre the card.
-      if (card.height > 0 && box.bottom - box.top > 0) {
+      if (card.bottom - card.top > 0 && box.bottom - box.top > 0) {
         transcript.scrollTop += approvalArrivalShift(card, box);
         return;
       }
