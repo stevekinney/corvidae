@@ -374,7 +374,7 @@ describe('AccordionItem', () => {
 
     const css = await Bun.file(new URL('./accordion-item.css', import.meta.url)).text();
     const tokenCss = await Bun.file(
-      new URL('../../styles/tokens-base.css', import.meta.url),
+      new URL('../../../../tokens/src/styles/tokens-base.css', import.meta.url),
     ).text();
     // Declared on `:root` like every other public token. These aliases were briefly
     // deferred out of `:root` so a scoped ancestor override could reach them, but that

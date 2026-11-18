@@ -204,6 +204,7 @@
         "@floating-ui/dom": "catalog:",
         "@lezer/highlight": "catalog:",
         "@lostgradient/markdown": "workspace:*",
+        "@lostgradient/tokens": "workspace:*",
         "@lucide/svelte": "catalog:",
         "@shikijs/engine-oniguruma": "catalog:",
         "@shikijs/langs": "catalog:",
@@ -303,6 +304,30 @@
         "@types/bun": "catalog:",
         "happy-dom": "catalog:",
         "oxlint": "catalog:",
+        "svelte-check": "catalog:",
+        "typescript": "catalog:",
+      },
+    },
+    "components/tokens": {
+      "name": "@lostgradient/tokens",
+      "dependencies": {
+        "ajv": "catalog:",
+        "culori": "catalog:",
+        "postcss-value-parser": "catalog:",
+        "svelte": "catalog:",
+      },
+      "devDependencies": {
+        "@lostgradient/component-tooling": "workspace:*",
+        "@lostgradient/testing": "workspace:*",
+        "@lostgradient/typescript": "workspace:*",
+        "@shikijs/themes": "catalog:",
+        "@types/bun": "catalog:",
+        "@types/culori": "catalog:",
+        "ajv-formats": "catalog:",
+        "oxlint": "catalog:",
+        "oxlint-tsgolint": "catalog:",
+        "postcss": "catalog:",
+        "prettier": "catalog:",
         "svelte-check": "catalog:",
         "typescript": "catalog:",
       },
@@ -1457,6 +1482,8 @@
     "@lostgradient/terminal-example": ["@lostgradient/terminal-example@workspace:applications/terminal-example"],
 
     "@lostgradient/testing": ["@lostgradient/testing@workspace:testing/testing"],
+
+    "@lostgradient/tokens": ["@lostgradient/tokens@workspace:components/tokens"],
 
     "@lostgradient/typescript": ["@lostgradient/typescript@workspace:internal/typescript"],
 

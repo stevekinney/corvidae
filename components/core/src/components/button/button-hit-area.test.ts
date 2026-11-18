@@ -10,7 +10,9 @@ import { readFileSync } from 'node:fs';
 import { declarationsFor } from '@lostgradient/component-tooling/test/css.ts';
 
 const buttonCss = await Bun.file(new URL('./button.css', import.meta.url)).text();
-const tokens = await Bun.file(new URL('../../styles/tokens-base.css', import.meta.url)).text();
+const tokens = await Bun.file(
+  new URL('../../../../tokens/src/styles/tokens-base.css', import.meta.url),
+).text();
 
 const rem = (name: string): number => {
   const space = new RegExp(`--cinder-space-${name.replace('.', '-')}:\\s*([\\d.]+)rem;`).exec(

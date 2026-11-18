@@ -15,7 +15,10 @@ const { default: AppBar } = await import('./app-bar.svelte');
 const { default: PairingHarness } = await import('./app-bar-pairing-harness.test.svelte');
 
 const stylesheet = readFileSync(new URL('./app-bar.css', import.meta.url), 'utf8');
-const tokens = readFileSync(new URL('../../styles/tokens-base.css', import.meta.url), 'utf8');
+const tokens = readFileSync(
+  new URL('../../../../tokens/src/styles/tokens-base.css', import.meta.url),
+  'utf8',
+);
 
 const icon = createRawSnippet(() => ({ render: () => '<span class="harness-icon"></span>' }));
 

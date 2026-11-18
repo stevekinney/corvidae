@@ -12,8 +12,8 @@ import { describe, expect, test } from 'bun:test';
 
 import { extractRootBlock } from '@lostgradient/component-tooling/test/token-introspection.ts';
 
-const TOKENS_DIR = join(import.meta.dir, 'tokens');
-const TOKENS_BASE_PATH = join(import.meta.dir, 'tokens-base.css');
+const TOKENS_DIR = join(import.meta.dir, '../../../tokens/src/styles/tokens');
+const TOKENS_BASE_PATH = join(import.meta.dir, '../../../tokens/src/styles/tokens-base.css');
 
 function extractReducedMotionRootBlock(css: string): string {
   const reducedMotionMatch = css.match(

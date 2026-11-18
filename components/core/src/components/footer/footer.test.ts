@@ -98,7 +98,7 @@ describe('Footer', () => {
     // hand -- and until it was, this test would compare the footer's real gaps against
     // stale numbers and report a hierarchy break that does not exist.
     const tokensCss = await Bun.file(
-      new URL('../../styles/tokens-base.css', import.meta.url),
+      new URL('../../../../tokens/src/styles/tokens-base.css', import.meta.url),
     ).text();
 
     const tokenPx: Record<string, number> = {};

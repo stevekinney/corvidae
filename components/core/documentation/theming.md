@@ -8,7 +8,7 @@ This page documents that contract, gives you a minimal Svelte recipe for a user-
 
 ## The contract
 
-Every semantic color token in [`tokens-base.css`](../src/styles/tokens-base.css) is defined like this:
+Every semantic color token in [`tokens-base.css`](../../tokens/src/styles/tokens-base.css) is defined like this:
 
 ```css
 --cinder-surface-canvas: light-dark(oklch(96.5% 0.012 245), oklch(15% 0.035 245));
@@ -295,7 +295,7 @@ Cinder deliberately does not ship a second namespace of legacy, product-specific
 
 When an application migrates from another token system, keep the temporary mapping in that application, update call sites to the Cinder tokens, and delete the mapping when the migration finishes. Do not add those aliases to Cinder's token registry or published styles.
 
-The set of tokens you can safely override is exactly the table in [`tokens.md`](./tokens.md) — the global `--cinder-*` design tokens declared in `tokens-base.css`. You do **not** override a component's own implementation variables; those are not a stable API.
+The set of tokens you can safely override is exactly the table in [`tokens.md`](../../tokens/documentation/tokens.md) — the global `--cinder-*` design tokens declared in `tokens-base.css`. You do **not** override a component's own implementation variables; those are not a stable API.
 
 How do you know an override actually reaches a component, rather than hitting a hard-coded value the override can't touch? Two layers enforce it:
 
@@ -336,7 +336,7 @@ The static guards catch leaks in source. A leak that only manifests when styles 
 
 The theme builder is the `/theme-builder` route of the playground application (`applications/playground`, package `@lostgradient/playground`). From the repository root, `bun run --filter=@lostgradient/playground dev` serves it, preferring port 5555; the application's static export (`bun run --filter=@lostgradient/playground build`) includes the route as well. The builder belongs to that private application. Cinder itself ships no builder component.
 
-In the builder you browse every public token, edit it for the context you are previewing (light or dark crossed with default, reduced, or forced reduced motion), and watch Cinder components restyle in an isolated preview. The registry it edits, and how each token may be edited, is described in [Editing the full registry in the theme builder](./tokens.md#editing-the-full-registry-in-the-theme-builder). Your work is a draft saved in the browser (the toolbar shows Saved locally or Unsaved locally), edits are undoable, and a Checks pane reports on the current revision. The interaction and layout contract is [`theme-builder.md`](./theme-builder.md).
+In the builder you browse every public token, edit it for the context you are previewing (light or dark crossed with default, reduced, or forced reduced motion), and watch Cinder components restyle in an isolated preview. The registry it edits, and how each token may be edited, is described in [Editing the full registry in the theme builder](../../tokens/documentation/tokens.md#editing-the-full-registry-in-the-theme-builder). Your work is a draft saved in the browser (the toolbar shows Saved locally or Unsaved locally), edits are undoable, and a Checks pane reports on the current revision. The interaction and layout contract is [`theme-builder.md`](./theme-builder.md).
 
 ### Export formats
 

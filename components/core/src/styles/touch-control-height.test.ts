@@ -10,7 +10,9 @@ import { describe, expect, test } from 'bun:test';
 import { cinderComponentFile } from '@lostgradient/component-tooling/scripts/discover-component-directories.ts';
 
 const foundation = await Bun.file(new URL('./foundation.css', import.meta.url)).text();
-const tokens = await Bun.file(new URL('./tokens-base.css', import.meta.url)).text();
+const tokens = await Bun.file(
+  new URL('../../../tokens/src/styles/tokens-base.css', import.meta.url),
+).text();
 const stackedListItem = await Bun.file(
   new URL('../components/stacked-list-item/stacked-list-item.css', import.meta.url),
 ).text();

@@ -1,3 +1,4 @@
+import { ownEntry } from '@lostgradient/tokens/_internal/own-entry.ts';
 import type {
   BarChartDatum,
   BarChartMode,
@@ -6,7 +7,6 @@ import type {
   BarChartSeries,
   ChartAxisConfiguration,
 } from '../../components/chart.types.ts';
-import { ownEntry } from '../own-entry.ts';
 import { HORIZONTAL_CATEGORY_LABEL_GAP } from './chart-layout.ts';
 import {
   chartPaletteColor,

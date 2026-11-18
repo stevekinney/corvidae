@@ -7,7 +7,7 @@
 import { describe, expect, test } from 'bun:test';
 
 import { declarationsFor } from '@lostgradient/component-tooling/test/css.ts';
-import { readOklchToken } from '../../styles/token-contrast-test-readers.ts';
+import { readOklchToken } from '@lostgradient/tokens/styles/token-contrast-test-readers.ts';
 import {
   AA_TEXT,
   type OklchColor,
@@ -18,7 +18,7 @@ import {
   oklchToLinearSrgb,
   relativeLuminance,
   wcagLuminance,
-} from '../../tokens/runtime/contrast/index.ts';
+} from '@lostgradient/tokens/tokens/runtime/contrast/index.ts';
 
 const navigationItemCss = await Bun.file(new URL('./navigation-item.css', import.meta.url)).text();
 
@@ -56,7 +56,7 @@ describe('selected vertical NavigationItem fill', () => {
       ).get('background'),
     ).toBe('var(--cinder-selected-background)');
     const tokensCss = await Bun.file(
-      new URL('../../styles/tokens-base.css', import.meta.url),
+      new URL('../../../../tokens/src/styles/tokens-base.css', import.meta.url),
     ).text();
     expect(tokensCss).toContain('--cinder-selected-background: var(--cinder-accent-background);');
   });

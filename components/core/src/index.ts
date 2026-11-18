@@ -1415,6 +1415,8 @@ export type { ZoomPanViewerProps } from './components/zoom-pan-viewer/index.ts';
 // </generated:component-exports>
 
 // Hand-authored root exports: everything that is not a component barrel.
+export { THEME_CHANGING_ATTRIBUTE, guardThemeTransitions } from '@lostgradient/tokens';
+export type { ThemeTransitionGuardOptions } from '@lostgradient/tokens';
 export { setCodeHighlighterContext } from './_internal/code-highlighter-context.ts';
 export type { FormFieldContext } from './_internal/form-field-context.ts';
 export type {
@@ -1479,33 +1481,27 @@ export type {
   SortableItemContext,
   SortableReorderChange,
 } from './utilities/sortable-controller.types.ts';
-export {
-  THEME_CHANGING_ATTRIBUTE,
-  guardThemeTransitions,
-} from './utilities/theme-transition-guard.ts';
-export type { ThemeTransitionGuardOptions } from './utilities/theme-transition-guard.ts';
 // The full-registry adapter keeps its own module so that only a consumer that
 // imports `fullShikiHighlighter` bundles Shiki's complete grammar and theme
 // registries. Nothing else in cinder imports `default.ts`.
-export { shikiHighlighter as fullShikiHighlighter } from './highlighters/shiki/default.ts';
-export { default as tokenResolver } from './tokens/cinder.resolver.json' with { type: 'json' };
-export { default as tokenIndex } from './tokens/index.json' with { type: 'json' };
-export { default as motionDefaultTokens } from './tokens/modes/motion-default.tokens.json' with { type: 'json' };
-export { default as motionForcedReducedTokens } from './tokens/modes/motion-forced-reduced.tokens.json' with { type: 'json' };
-export { default as motionReducedTokens } from './tokens/modes/motion-reduced.tokens.json' with { type: 'json' };
 export {
   TOKEN_REGISTRY,
-  type TokenRegistry,
-  type TokenRegistryEntry,
-} from './tokens/registry.generated.ts';
-export { default as resolvedDarkReducedMotionTokens } from './tokens/resolved/dark-reduced-motion.json' with { type: 'json' };
-export { default as resolvedDarkTokens } from './tokens/resolved/dark.json' with { type: 'json' };
-export { default as resolvedLightReducedMotionTokens } from './tokens/resolved/light-reduced-motion.json' with { type: 'json' };
-export { default as resolvedLightTokens } from './tokens/resolved/light.json' with { type: 'json' };
-export { default as colorTokens } from './tokens/sets/colors.tokens.json' with { type: 'json' };
-export { default as componentTokens } from './tokens/sets/components.tokens.json' with { type: 'json' };
-export { default as foundationTokens } from './tokens/sets/foundation.tokens.json' with { type: 'json' };
-export { default as semanticTokens } from './tokens/sets/semantic.tokens.json' with { type: 'json' };
-export { default as darkThemeTokens } from './tokens/themes/dark.tokens.json' with { type: 'json' };
-export { default as lightThemeTokens } from './tokens/themes/light.tokens.json' with { type: 'json' };
+  colorTokens,
+  componentTokens,
+  darkThemeTokens,
+  foundationTokens,
+  lightThemeTokens,
+  motionDefaultTokens,
+  motionForcedReducedTokens,
+  motionReducedTokens,
+  resolvedDarkReducedMotionTokens,
+  resolvedDarkTokens,
+  resolvedLightReducedMotionTokens,
+  resolvedLightTokens,
+  semanticTokens,
+  tokenIndex,
+  tokenResolver,
+} from '@lostgradient/tokens';
+export type { TokenRegistry, TokenRegistryEntry } from '@lostgradient/tokens';
+export { shikiHighlighter as fullShikiHighlighter } from './highlighters/shiki/default.ts';
 export { createBodyScrollLock, dockedToBottom, scrollEdgeFade } from './utilities/attachments.ts';

@@ -23,8 +23,8 @@ export const defaultOutputRoot = join(repositoryRoot, 'tmp/cinder-design-system/
 /** The repository-relative source paths `tokens.json` records in its `meta`. */
 export const sourcePaths = {
   tokens: [
-    'components/core/src/tokens/resolved/light.json',
-    'components/core/src/tokens/resolved/dark.json',
+    'components/tokens/src/tokens/resolved/light.json',
+    'components/tokens/src/tokens/resolved/dark.json',
   ],
   styles: ['components/core/src/styles/all.css'],
   // Each package's manifest is built from the authored `<name>.meta.json` under these: core's

@@ -36,7 +36,7 @@ const tabsCss = loadCss('../components/tabs/tabs.css');
 const areaChartCss = loadCss('../components/area-chart/area-chart.css');
 const barChartCss = loadCss('../components/bar-chart/bar-chart.css');
 const lineChartCss = loadCss('../components/line-chart/line-chart.css');
-const tokensBaseCss = loadCss('../styles/tokens-base.css');
+const tokensBaseCss = loadCss('../../../tokens/src/styles/tokens-base.css');
 
 // Issue #460 — forced-colors fallback additions for 9 components that used
 // transparent-outline + box-shadow without a @media (forced-colors: active) block.

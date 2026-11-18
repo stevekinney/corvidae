@@ -7,7 +7,9 @@
 import { describe, expect, test } from 'bun:test';
 
 const skeletonCss = await Bun.file(new URL('./skeleton.css', import.meta.url)).text();
-const tokens = await Bun.file(new URL('../../styles/tokens-base.css', import.meta.url)).text();
+const tokens = await Bun.file(
+  new URL('../../../../tokens/src/styles/tokens-base.css', import.meta.url),
+).text();
 
 const INK_STEP =
   '--cinder-skeleton-background: color-mix(in oklch, var(--cinder-border-ink), transparent 88%);';

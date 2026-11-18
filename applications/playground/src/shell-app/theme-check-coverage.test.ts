@@ -23,7 +23,7 @@ const registry = JSON.parse(
       '..',
       '..',
       'components',
-      'core',
+      'tokens',
       'src',
       'tokens',
       'registry.generated.json',

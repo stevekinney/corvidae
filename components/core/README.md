@@ -90,7 +90,7 @@ import { guardThemeTransitions } from '@lostgradient/cinder';
 const stopGuarding = guardThemeTransitions();
 ```
 
-To author a complete theme, use the theme builder: the `/theme-builder` route of the playground application (`bun run --filter=@lostgradient/playground dev`). It edits every public token, reports scoped accessibility findings, and exports a Cinder Theme v1 source file, deployment CSS, and portable DTCG. See [Theming](./documentation/theming.md#the-theme-builder) for the export formats, a worked example, and what the accessibility checks do and do not cover, and [Design tokens](./documentation/tokens.md#editing-the-full-registry-in-the-theme-builder) for how the registry is exposed for editing.
+To author a complete theme, use the theme builder: the `/theme-builder` route of the playground application (`bun run --filter=@lostgradient/playground dev`). It edits every public token, reports scoped accessibility findings, and exports a Cinder Theme v1 source file, deployment CSS, and portable DTCG. See [Theming](./documentation/theming.md#the-theme-builder) for the export formats, a worked example, and what the accessibility checks do and do not cover, and [Design tokens](../tokens/documentation/tokens.md#editing-the-full-registry-in-the-theme-builder) for how the registry is exposed for editing.
 
 Public tokens use the `--cinder-` prefix. Internal implementation variables use `--_cinder-`; do not redefine those.
 

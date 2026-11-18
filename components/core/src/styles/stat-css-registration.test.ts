@@ -13,7 +13,7 @@ describe('stat CSS registration', () => {
   });
 
   test('keeps monospace token and platform font identifiers canonical', async () => {
-    const tokensBaseCssPath = join(import.meta.dir, 'tokens-base.css');
+    const tokensBaseCssPath = join(import.meta.dir, '../../../tokens/src/styles/tokens-base.css');
     const contents = await Bun.file(tokensBaseCssPath).text();
 
     expect(contents).toContain('--cinder-font-mono');

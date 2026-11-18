@@ -22,7 +22,7 @@ const formSection = await sheet('../form-section/form-section.css');
 const input = await sheet('../input/input.css');
 const card = await sheet('../card/card.css');
 const feed = await sheet('../feed/feed.css');
-const tokens = await sheet('../../styles/tokens-base.css');
+const tokens = await sheet('../../../../tokens/src/styles/tokens-base.css');
 const foundation = await sheet('../../styles/foundation.css');
 
 /** A loaded status-first list draws no border of its own: not the list, and not a row. */

@@ -25,7 +25,9 @@ const tokenExports = {
 test.each(Object.entries(tokenExports))(
   'the package root exposes complete %s data',
   async (name, file) => {
-    const expected: unknown = await Bun.file(join(import.meta.dir, 'tokens', file)).json();
+    const expected: unknown = await Bun.file(
+      join(import.meta.dir, '../../tokens/src/tokens', file),
+    ).json();
     expect(Reflect.get(cinder, name)).toEqual(expected);
   },
 );

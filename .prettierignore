@@ -29,7 +29,7 @@ applications/playground/src/.tmp-*/
 # carries no formatter, and a type test imports these files.
 packages/backchannel/src/__fixtures__/probe-client/
 # Standalone schema validators are machine-generated Ajv output, checked against exact generator output.
-components/core/src/tokens/runtime/*-validator.generated.js
+components/tokens/src/tokens/runtime/*-validator.generated.js
 # React 18's published UMD builds, byte-exact, which the design-system render check loads into its harness.
 components/core/scripts/design-system/vendor/
 # DR-5 (COR-513) diff-review export golden fixtures are byte-exact generated agent-handoff
@@ -46,7 +46,7 @@ packages/bureau/src/http/__fixtures__/wire-golden/
 .env
 .env.*
 # Interoperability fixtures are pinned by SHA-256 (manifest.json); formatting would change their bytes.
-components/core/scripts/tokens/fixtures/theme-builder/interoperability/
+components/tokens/scripts/tokens/fixtures/theme-builder/interoperability/
 # CIN-588 raw measurement output, kept byte-for-byte as the harness wrote it (comparison-*.json is compare's text output).
 applications/playground/docs/decisions/cin-588-results/
 # A2UI specification schemas are vendored byte-for-byte and pinned by SHA-256 (PROVENANCE.json); formatting would change their bytes.

@@ -5,7 +5,7 @@
  */
 import { describe, expect, test } from 'bun:test';
 
-import { readOklchToken } from '../../styles/token-contrast-test-readers.ts';
+import { readOklchToken } from '@lostgradient/tokens/styles/token-contrast-test-readers.ts';
 import {
   AA_TEXT,
   clampRgb,
@@ -13,7 +13,7 @@ import {
   contrastRatio,
   oklchToLinearSrgb,
   relativeLuminance,
-} from '../../tokens/runtime/contrast/index.ts';
+} from '@lostgradient/tokens/tokens/runtime/contrast/index.ts';
 
 const css = await Bun.file(new URL('./banner.css', import.meta.url)).text();
 
