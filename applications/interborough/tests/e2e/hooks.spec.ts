@@ -360,9 +360,9 @@ async function serveBureau(
       });
       return;
     }
-    await route.fulfill({
-      json: { jsonrpc: '2.0', id: body.id, result: answer(body.params ?? {}) },
-    });
+    // An answer may be held (a promise), so a test can show the page while a read is in flight.
+    const result: unknown = await answer(body.params ?? {});
+    await route.fulfill({ json: { jsonrpc: '2.0', id: body.id, result } });
   });
   return calls;
 }
@@ -491,6 +491,39 @@ function listed(record: ReturnType<typeof hookRecord>, lastDelivery: unknown = n
   return { ...record, lastDelivery, problems: [] };
 }
 
+/**
+ * The delivery `DELIVERED` summarises, as `bureau.hooks.deliveries` lists it for `hookId`, so a hook's
+ * page says the same delivery word its list row does (R10-07).
+ */
+function deliveredRecord(hookId: string) {
+  return {
+    id: 'delivery-1',
+    hookId,
+    owner: 'anonymous:local',
+    actionType: 'plugin',
+    kind: 'review.requested',
+    test: false,
+    status: 'delivered',
+    request: null,
+    work: null,
+    attempts: [
+      {
+        number: 1,
+        startedAt: Date.UTC(2026, 10, 2),
+        finishedAt: Date.UTC(2026, 10, 2),
+        outcome: 'completed',
+        status: null,
+        responseExcerpt: null,
+        responseTruncated: null,
+        error: null,
+      },
+    ],
+    maxAttempts: 5,
+    createdAt: Date.UTC(2026, 10, 2),
+    updatedAt: Date.UTC(2026, 10, 2),
+  };
+}
+
 const DELIVERED = {
   id: 'delivery-1',
   kind: 'review.requested',
@@ -564,7 +597,11 @@ async function openHooks(
       hooks: hooks.map((hook) => listed(hook, hook.enabled ? DELIVERED : null)),
     }),
     'bureau.hooks.get': (params) => hooks.find((hook) => hook.id === params['hookId']),
-    'bureau.hooks.deliveries': () => ({ deliveries: [] }),
+    // The same delivery the list's row summarises, so the row and the page say one word (R10-07).
+    'bureau.hooks.deliveries': (params) => {
+      const hook = hooks.find((candidate) => candidate.id === params['hookId']);
+      return { deliveries: hook?.enabled === true ? [deliveredRecord(hook.id)] : [] };
+    },
     'bureau.plugins.contributions': CONTRIBUTIONS,
     ...extra,
   });
@@ -653,17 +690,116 @@ test('[default-hook-toggle-failed] a switch the Bureau refuses says so in a toas
   await openHooks(page, '/hooks', [DEFAULT_ON], {
     'bureau.hooks.update': { status: 500, message: 'The server broke.' },
   });
-  await captureForDesignReview(page, {
-    route: '/hooks',
-    state: 'default-hook-toggle-failed',
-    source: SOURCE,
-  });
   const toggle = page.locator('li[data-hook="default-on"]').getByRole('switch');
   await toggle.click();
   // R10-24
   await expect(page.locator('.cinder-toast', { hasText: HOOKS_COPY.toggleFailed })).toBeVisible();
   await expect(toggle).toHaveAttribute('aria-checked', 'true');
+  // Captured once the toast says so and the switch is back, not while the list is still loading.
+  await captureForDesignReview(page, {
+    route: '/hooks',
+    state: 'default-hook-toggle-failed',
+    source: SOURCE,
+  });
 });
+
+// R10-25: a default hook appears in each list state like any other hook.
+for (const width of WIDTHS) {
+  test(`[default-hooks-loading] a list holding a default hook keeps its header while it loads, then draws the hook with Plugin, at ${width} pixels`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width, height: 900 });
+    let release: () => void = () => undefined;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    await openHooks(page, '/hooks', [DEFAULT_ON, OWNER_PLUGIN_HOOK], {
+      'bureau.hooks.list': async () => {
+        await held;
+        return { hooks: [listed(DEFAULT_ON, DELIVERED), listed(OWNER_PLUGIN_HOOK, DELIVERED)] };
+      },
+    });
+    const main = page.locator('main');
+    await expect(main.getByRole('heading', { level: 1, name: 'Hooks' })).toBeVisible();
+    await expect(main.locator('.cinder-skeleton-row').first()).toBeVisible();
+    await captureForDesignReview(page, {
+      route: '/hooks',
+      state: 'default-hooks-loading',
+      source: SOURCE,
+    });
+    release();
+    await expect(main.locator('li[data-hook]')).toHaveCount(2);
+    await expect(
+      main.locator('li[data-hook="default-on"]').getByTestId('hook-plugin-badge'),
+    ).toHaveText(HOOKS_COPY.pluginBadge);
+  });
+
+  test(`[default-hooks-filtered] a search keeps a default hook that matches, with Plugin, at ${width} pixels`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await openHooks(page, '/hooks?q=settled', [DEFAULT_ON, OWNER_PLUGIN_HOOK]);
+    const main = page.locator('main');
+    await expect(main.locator('li[data-hook]')).toHaveCount(1);
+    await expect(
+      main.locator('li[data-hook="default-on"]').getByTestId('hook-plugin-badge'),
+    ).toHaveText(HOOKS_COPY.pluginBadge);
+    await captureForDesignReview(page, {
+      route: '/hooks',
+      state: 'default-hooks-filtered',
+      source: SOURCE,
+    });
+  });
+
+  test(`[hook-page-loading] a hook's page shows placeholders while it is read, at ${width} pixels`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width, height: 900 });
+    let release: () => void = () => undefined;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    await openHooks(page, '/hooks/default-on', [DEFAULT_ON], {
+      'bureau.hooks.get': async () => {
+        await held;
+        return DEFAULT_ON;
+      },
+    });
+    const loading = page.getByTestId('hook-loading');
+    await expect(loading).toBeAttached();
+    await expect(loading.locator('.cinder-skeleton').first()).toBeVisible();
+    await captureForDesignReview(page, {
+      route: '/hooks/:hook',
+      state: 'hook-page-loading',
+      source: SOURCE,
+    });
+    release();
+    await expect(
+      page.getByTestId('hook-header').getByRole('heading', { level: 1, name: 'Post settled runs' }),
+    ).toBeVisible();
+  });
+
+  test(`[hook-page-error] a hook's page that could not be read says so, at ${width} pixels`, async ({
+    page,
+    pageErrors,
+  }) => {
+    pageErrors.expectEvery({
+      pattern: loggedFailedResponse(500, /\/bureau\/jsonrpc/),
+      reason:
+        'the test answers the read of the hook with the failure the Bureau gives when it breaks',
+    });
+    await page.setViewportSize({ width, height: 900 });
+    await openHooks(page, '/hooks/default-on', [DEFAULT_ON], {
+      'bureau.hooks.get': { status: 500, message: 'The server broke.' },
+    });
+    await expect(page.locator('main')).toContainText(copy.loadFailed);
+    await captureForDesignReview(page, {
+      route: '/hooks/:hook',
+      state: 'hook-page-error',
+      source: SOURCE,
+    });
+  });
+}
 
 for (const width of WIDTHS) {
   test(`[default-hook-on] a default hook’s page is read only, with the switch, Duplicate, one note and its configuration as pairs, at ${width} pixels`, async ({
@@ -674,6 +810,11 @@ for (const width of WIDTHS) {
     await openHooks(page, '/hooks/default-on', [DEFAULT_ON]);
     const head = page.getByTestId('hook-header');
     await expect(head.getByRole('heading', { level: 1, name: 'Post settled runs' })).toBeVisible();
+    // R10-07: the page says the delivery word its row in the list says.
+    await expect(head.locator('[data-status-word]')).toHaveAttribute(
+      'data-status-word',
+      'Delivered',
+    );
     await captureForDesignReview(page, {
       route: '/hooks/:hook',
       state: 'default-hook-on',
@@ -1233,27 +1374,35 @@ const RECEIPTED = {
   updatedAt: Date.UTC(2026, 10, 2, 15, 0, 1),
 };
 
-test('[hook-delivery-receipt] a delivery whose reaction made something shows its summary, a link to it and its reference', async ({
-  page,
-}) => {
-  await openHooks(page, '/hooks/owner-plugin', [OWNER_PLUGIN_HOOK], {
-    'bureau.hooks.deliveries': () => ({ deliveries: [RECEIPTED] }),
+// At 375 the capture also takes the 320 phone, so each of these states is seen at 320 and 1280.
+for (const width of WIDTHS) {
+  test(`[hook-delivery-receipt] a delivery whose reaction made something shows its summary, a link to it and its reference, at ${width} pixels`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await openHooks(page, '/hooks/owner-plugin', [OWNER_PLUGIN_HOOK], {
+      'bureau.hooks.deliveries': () => ({ deliveries: [RECEIPTED] }),
+    });
+    const item = page
+      .getByTestId('hook-deliveries')
+      .locator('li[data-delivery="delivery-receipt"]');
+    await item.locator('button[aria-expanded]').first().click();
+    const facts = item.getByTestId('hook-delivery-facts');
+    await expect(facts.getByText('Posted the review to #ops')).toBeVisible();
+    await expect(facts.getByRole('link', { name: 'slack.example' })).toHaveAttribute(
+      'href',
+      'https://slack.example/archives/C0SAMPLE/p1730559600000100',
+    );
+    await expect(facts.locator('code', { hasText: 'C0SAMPLE/1730559600.000100' })).toBeVisible();
+    // R10-23: the event is its words; its raw kind is no visible word in the row or the facts.
+    await expect(page.getByTestId('hook-deliveries')).not.toContainText('review.requested');
+    await captureForDesignReview(page, {
+      route: '/hooks/:hook',
+      state: 'hook-delivery-receipt',
+      source: SOURCE,
+    });
   });
-  const item = page.getByTestId('hook-deliveries').locator('li[data-delivery="delivery-receipt"]');
-  await item.locator('button[aria-expanded]').first().click();
-  const facts = item.getByTestId('hook-delivery-facts');
-  await expect(facts.getByText('Posted the review to #ops')).toBeVisible();
-  await expect(facts.getByRole('link', { name: 'slack.example' })).toHaveAttribute(
-    'href',
-    'https://slack.example/archives/C0SAMPLE/p1730559600000100',
-  );
-  await expect(facts.locator('code', { hasText: 'C0SAMPLE/1730559600.000100' })).toBeVisible();
-  await captureForDesignReview(page, {
-    route: '/hooks/:hook',
-    state: 'hook-delivery-receipt',
-    source: SOURCE,
-  });
-});
+}
 
 const UNAVAILABLE_HOOK = hookRecord('owner-unavailable', {
   name: 'My Slack post that lost its action',
@@ -1264,34 +1413,138 @@ const INVALID_HOOK = hookRecord('owner-invalid', {
   declaredBy: null,
 });
 
-for (const [state, record, problem, word] of [
-  ['hook-reaction-unavailable', UNAVAILABLE_HOOK, { code: 'reaction-unavailable' }, 'Unavailable'],
-  [
-    'hook-configuration-invalid',
-    INVALID_HOOK,
-    { code: 'configuration-invalid', issues: [{ path: ['channel'], code: 'invalid_type' }] },
-    'Needs attention',
-  ],
-] as const) {
-  test(`[${state}] a hook the Bureau lists with a ${problem.code} problem says ${word} in its row`, async ({
+for (const width of WIDTHS) {
+  for (const [state, record, problem, word] of [
+    [
+      'hook-reaction-unavailable',
+      UNAVAILABLE_HOOK,
+      { code: 'reaction-unavailable' },
+      'Unavailable',
+    ],
+    [
+      'hook-configuration-invalid',
+      INVALID_HOOK,
+      { code: 'configuration-invalid', issues: [{ path: ['channel'], code: 'invalid_type' }] },
+      'Needs attention',
+    ],
+  ] as const) {
+    test(`[${state}] a hook the Bureau lists with a ${problem.code} problem says ${word} in its row and its page, at ${width} pixels`, async ({
+      page,
+    }) => {
+      await page.setViewportSize({ width, height: 900 });
+      await openHooks(page, '/hooks', [record], {
+        'bureau.hooks.list': () => ({
+          hooks: [{ ...record, lastDelivery: DELIVERED, problems: [problem] }],
+        }),
+        // A reaction the Bureau does not register is one its plugin no longer contributes.
+        ...(problem.code === 'reaction-unavailable'
+          ? {
+              'bureau.plugins.contributions': contributions(
+                reaction('calendar', 'add', { availability: 'needs-setup' }),
+              ),
+            }
+          : {}),
+      });
+      await expect(page.locator('[data-view="hooks"]')).toHaveAttribute('data-state', 'ready');
+      const row = page.locator(`li[data-hook="${record.id}"]`);
+      await expect(row.locator('.cinder-status-dot')).toHaveCount(1);
+      await expect(row.locator('[data-status-word]')).toHaveAttribute('data-status-word', word);
+      await captureForDesignReview(page, { route: '/hooks', state, source: SOURCE });
+
+      // The hook's own page says the same word in its header.
+      await page.goto(`/hooks/${record.id}`);
+      const head = page.getByTestId('hook-header');
+      await expect(head.locator('[data-status-word]')).toHaveAttribute('data-status-word', word);
+      if (problem.code === 'reaction-unavailable') {
+        // R10-17: one verdict. The stored pairs read only, and Send a test event is off with its reason.
+        await expect(page.getByTestId('hook-test-reason')).toHaveText(
+          copy.check.testNoLongerOffered('Slack'),
+        );
+        await expect(page.getByRole('button', { name: copy.check.test })).toHaveAttribute(
+          'aria-disabled',
+          'true',
+        );
+        await expect(page.getByTestId('contributed-action')).toHaveCount(0);
+        await expect(page.getByTestId('stored-configuration')).toContainText(
+          copy.action.storedConfiguration,
+        );
+      } else {
+        // COR-2182: the sentence ends in the next step, and the field the Bureau names is marked.
+        await expect(head.getByTestId('hook-standing-sentence')).toHaveText(
+          standing.configurationInvalid('Slack', 'Post message', true),
+        );
+        const action = page.getByTestId('contributed-action');
+        await expect(action.getByLabel('Channel')).toHaveAttribute('aria-invalid', 'true');
+        await expect(action).toContainText(copy.action.configurationIssue('Slack'));
+      }
+      await captureForDesignReview(page, { route: '/hooks/:hook', state, source: SOURCE });
+    });
+  }
+}
+
+// R10-19: a saved plugin action with no dry run says why it has no test.
+test('[plugin-hook-no-test] a saved hook whose action has no test says so, and Send a test event is off', async ({
+  page,
+}) => {
+  await openHooks(page, '/hooks/owner-plugin', [OWNER_PLUGIN_HOOK], {
+    'bureau.plugins.contributions': contributions(
+      reaction('slack', 'post-message', { dryRun: false }),
+      reaction('calendar', 'add', { availability: 'needs-setup' }),
+    ),
+  });
+  await expect(page.getByTestId('hook-test-reason')).toHaveText(copy.check.testNotOffered);
+  await expect(page.getByRole('button', { name: copy.check.test })).toHaveAttribute(
+    'aria-disabled',
+    'true',
+  );
+  await captureForDesignReview(page, {
+    route: '/hooks/:hook',
+    state: 'plugin-hook-no-test',
+    source: SOURCE,
+  });
+});
+
+// R10-13 and R10-11: the secret's list open, with one long key cut in its middle.
+test('[plugin-hook-secret-list] the secret Select lists the keys by plugin with Set or Missing, a long key cut in its middle', async ({
+  page,
+}) => {
+  const longKey = 'slack-workspace-admin-bot-token-for-the-reviews-channel';
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await openHooks(page, '/hooks/owner-plugin', [OWNER_PLUGIN_HOOK], {}, () => [
+    pluginStanding('slack', 'Slack', 'running', [...SLACK_KEYS, { key: longKey, set: true }]),
+    pluginStanding('pager', 'Pager', 'disabled'),
+    pluginStanding('calendar', 'Calendar', 'needs-setup', [{ key: 'calendar-token', set: false }]),
+  ]);
+  const token = page.getByTestId('contributed-action').getByRole('combobox', { name: /^Token/ });
+  await token.click();
+  const long = page.getByRole('option', { name: new RegExp(`^${longKey}`) });
+  await expect(long).toContainText('Set');
+  await expect(long.locator('.cinder-text')).toHaveAttribute('data-cinder-truncate', 'middle');
+  await captureForDesignReview(page, {
+    route: '/hooks/:hook',
+    state: 'plugin-hook-secret-list',
+    source: SOURCE,
+  });
+  await page.keyboard.press('Escape');
+});
+
+// R10-23: the event picker's list open, each event in words.
+for (const width of WIDTHS) {
+  test(`[new-hook-event-picker] the event picker lists events in words, at ${width} pixels`, async ({
     page,
   }) => {
-    await openHooks(page, '/hooks', [record], {
-      'bureau.hooks.list': () => ({
-        hooks: [{ ...record, lastDelivery: DELIVERED, problems: [problem] }],
-      }),
+    await page.setViewportSize({ width, height: 900 });
+    await openHooks(page, '/hooks/new', []);
+    const picker = page.getByRole('combobox', { name: copy.event.label });
+    await picker.click();
+    await expect(page.locator('[role="option"]').nth(5)).toBeVisible();
+    await expect(page.getByRole('option', { name: 'A schedule misses a run' })).toBeAttached();
+    await captureForDesignReview(page, {
+      route: '/hooks/new',
+      state: 'new-hook-event-picker',
+      source: SOURCE,
     });
-    await expect(page.locator('[data-view="hooks"]')).toHaveAttribute('data-state', 'ready');
-    const row = page.locator(`li[data-hook="${record.id}"]`);
-    await expect(row.locator('.cinder-status-dot')).toHaveCount(1);
-    await expect(row.locator('[data-status-word]')).toHaveAttribute('data-status-word', word);
-    await captureForDesignReview(page, { route: '/hooks', state, source: SOURCE });
-
-    // The hook's own page says the same word in its header.
-    await page.goto(`/hooks/${record.id}`);
-    const head = page.getByTestId('hook-header');
-    await expect(head.locator('[data-status-word]')).toHaveAttribute('data-status-word', word);
-    await captureForDesignReview(page, { route: '/hooks/:hook', state, source: SOURCE });
+    await page.keyboard.press('Escape');
   });
 }
 
@@ -1341,6 +1594,14 @@ for (const width of [320, ...WIDTHS] as const) {
     // An action whose plugin needs setup shows the note and can still be chosen.
     const needsSetup = page.getByRole('option', { name: /^Add/ });
     await expect(needsSetup).toContainText(action.needsSetup);
+    // R10-21: the Action list open, grouped by plugin, at the smallest phone and on a desktop.
+    if (width !== 375) {
+      await captureForDesignReview(page, {
+        route: '/hooks/new',
+        state: 'new-hook-plugin-action-open',
+        source: SOURCE,
+      });
+    }
     await page.getByRole('option', { name: /^Post message/ }).click();
     await expect(page.getByTestId('contributed-action').getByLabel('Channel')).toBeVisible();
     await checkA11y(`hooks — a new hook that runs a plugin’s action at ${width}px`);
