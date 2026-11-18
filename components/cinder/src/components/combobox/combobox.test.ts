@@ -137,6 +137,38 @@ describe('Combobox', () => {
     });
   });
 
+  test('a click on the field that kept focus after a pick opens the list again, and a click on an open list leaves it open', async () => {
+    // A multi-pick field (the hooks event picker) clears itself after each pick and keeps focus, so
+    // focus alone never reopens it: the second click must.
+    const { container } = render(Combobox, { id: 'editable-fruit', options: fruits });
+    const input = requiredInstance(container.querySelector('#editable-fruit'), HTMLInputElement);
+    input.focus();
+    await fireEvent.focus(input);
+    await fireEvent.mouseDown(await findOption('Apple'));
+    await waitFor(() => expect(input.getAttribute('aria-expanded')).toBe('false'));
+    expect(container.querySelector('[role="listbox"]')).toBeNull();
+
+    await fireEvent.click(input);
+    await waitFor(() => expect(input.getAttribute('aria-expanded')).toBe('true'));
+    // The field still reads "Apple", which the list is narrowed by.
+    await findOption('Apple');
+
+    // Not a toggle: a click on a field whose list is open keeps it open.
+    await fireEvent.click(input);
+    expect(input.getAttribute('aria-expanded')).toBe('true');
+  });
+
+  test('a click on a disabled field opens nothing', async () => {
+    const { container } = render(Combobox, {
+      id: 'editable-fruit',
+      options: fruits,
+      disabled: true,
+    });
+    const input = requiredInstance(container.querySelector('#editable-fruit'), HTMLInputElement);
+    await fireEvent.click(input);
+    expect(input.getAttribute('aria-expanded')).toBe('false');
+  });
+
   test('user can select a different option after the first selection', async () => {
     const { container } = render(Combobox, { id: 'editable-fruit', options: fruits });
     const input = requiredInstance(container.querySelector('#editable-fruit'), HTMLInputElement);
