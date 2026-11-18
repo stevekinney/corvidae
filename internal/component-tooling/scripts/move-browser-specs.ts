@@ -352,7 +352,8 @@ export async function stylesheetOrderSource(
     const css = readFileSync(join(directory, stylesheet), 'utf8');
     const imports: string[] = [];
     for (const match of css.matchAll(/^\/\* (.+?\.css) \*\/$/gm)) {
-      const path = resolve(browserRoot, match[1]!);
+      // The bundler names each stylesheet by its path from the working directory.
+      const path = resolve(process.cwd(), match[1]!);
       if (path.includes('/node_modules/') || !existsSync(path)) continue;
       const specifier = posix.relative(browserRoot.split(sep).join('/'), path.split(sep).join('/'));
       imports.push(`import '${specifier.startsWith('.') ? specifier : `./${specifier}`}';`);
