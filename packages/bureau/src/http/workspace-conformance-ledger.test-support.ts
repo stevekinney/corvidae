@@ -53,7 +53,9 @@ export function workspaceConformanceLedger(testFile: string) {
           ? 'not-found'
           : response.status === 200 && response.body?.error === undefined
             ? 'success'
-            : `unexpected:${response.status}:${String(errorStatus)}`;
+            : response.status === 200 && errorStatus === 409
+              ? 'conflict'
+              : `unexpected:${response.status}:${String(errorStatus)}`;
   }
   function verifyOutcome(
     operation: string,

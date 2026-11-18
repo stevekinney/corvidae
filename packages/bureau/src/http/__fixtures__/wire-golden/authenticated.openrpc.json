@@ -10807,6 +10807,123 @@
       }
     },
     {
+      "description": "Lets the last stopped turn of one of the caller’s own contexts go on: the run itself, from where it stopped, its reply so far kept, with no new message from the person. No kind of stop can be resumed yet, so every call is refused and nothing is started or written. A run the person stopped, or that failed, has ended its workflow, and the engine cannot go on with the same run: a `Conflict` with reason `run-not-resumable`. A run whose process stopped is recovered by the Bureau itself from where it was: `turn-recovering`. A reply the model cut at its token limit is a finished turn: `turn-finished`. A run still going is `turn-running`, and one waiting on an approval or a question `turn-awaiting-person`, which goes on once it is answered. A later run of the context is `not-latest-turn`, and a run the context does not have is `NotFound`. An archived context is a `Conflict` with reason `context-archived`. A Bureau that is shutting down is `Unavailable` with reason `shutting-down`. Another owner’s context and a missing one answer `NotFound`, whatever run they name; another owner’s needs both `bureau.contexts:read` and `bureau.contexts:write`. No scope is needed for the caller’s own.",
+      "errors": [
+        {
+          "$ref": "#/components/errors/Unauthorized"
+        },
+        {
+          "$ref": "#/components/errors/Forbidden"
+        },
+        {
+          "$ref": "#/components/errors/InvalidParams"
+        },
+        {
+          "$ref": "#/components/errors/EngineFailure"
+        },
+        {
+          "$ref": "#/components/errors/NotFound"
+        },
+        {
+          "$ref": "#/components/errors/Conflict"
+        },
+        {
+          "$ref": "#/components/errors/UnsupportedCapability"
+        },
+        {
+          "$ref": "#/components/errors/Unavailable"
+        }
+      ],
+      "name": "bureau.contexts.resumeturn",
+      "paramStructure": "by-name",
+      "params": [
+        {
+          "name": "commandId",
+          "required": true,
+          "schema": {
+            "description": "The caller’s own identifier for the command; a retry of it is answered the same.",
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        {
+          "name": "contextId",
+          "required": true,
+          "schema": {
+            "description": "The identifier of the context whose turn to resume.",
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        {
+          "name": "runId",
+          "required": true,
+          "schema": {
+            "description": "The run whose turn to resume: the context’s last run, which stopped.",
+            "minLength": 1,
+            "type": "string"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "required": true,
+        "schema": {
+          "additionalProperties": false,
+          "properties": {
+            "contextId": {
+              "type": "string"
+            },
+            "runId": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "contextId",
+            "runId"
+          ],
+          "type": "object"
+        }
+      },
+      "summary": "Resume a context’s last stopped turn",
+      "tags": [
+        {
+          "name": "Contexts"
+        }
+      ],
+      "x-weft-access": {
+        "kind": "authenticated"
+      },
+      "x-weft-paramsSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "commandId": {
+            "description": "The caller’s own identifier for the command; a retry of it is answered the same.",
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          },
+          "contextId": {
+            "description": "The identifier of the context whose turn to resume.",
+            "minLength": 1,
+            "type": "string"
+          },
+          "runId": {
+            "description": "The run whose turn to resume: the context’s last run, which stopped.",
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "contextId",
+          "commandId",
+          "runId"
+        ],
+        "type": "object"
+      }
+    },
+    {
       "description": "Gives one of the caller’s own contexts a `title`, which `bureau.contexts.list` and `get` show in place of the one derived from its first message, and which `titleContains` matches; a caller holding `bureau.contexts:write` renames any owner’s. `title: null` removes it, and the derived title returns. A rename is not activity: the context’s `updatedAt`, and so its place in a listing, does not move. Setting the title a context already has is not an error, so a retry is safe. A blank title and one over 200 characters are `InvalidParams`. Another owner’s context and a missing one answer `NotFound`. A Bureau that is shutting down is `Unavailable` with reason `shutting-down`. Answers a receipt, `{ contextId, title }`, with the title now stored (`null` once removed) and nothing else of the context: read it with `bureau.contexts.get`, which needs `bureau.contexts:read` for another owner’s. The call writes no audit entry.",
       "errors": [
         {
@@ -10923,7 +11040,7 @@
       }
     },
     {
-      "description": "Archives one of the caller’s own contexts; a caller holding `bureau.contexts:write` archives any owner’s. An archived context accepts no new work: starting a task in it, `bureau.contexts.input`, `bureau.contexts.steer`, `bureau.contexts.regenerate` and `bureau.contexts.discardturn` are each a `Conflict` with reason `context-archived` until it is unarchived (`bureau.contexts.unarchive`), and a schedule’s fire into it fails; reading, renaming, deleting, forking, forgetting grants and the window keep working. `bureau.contexts.list` and `get` show when in `archivedAt`, and `list` filters by it with `archived`. A context with a task running, or waiting on an approval or an answer, is a `Conflict` with reason `context-busy`, and nothing is stored: stop or answer the task first. A goal’s session (origin `goal`) cannot be archived, because the goal writes its attempts to it whatever it records: it is a `Conflict` with reason `context-not-archivable`, and the goal is stopped with `bureau.goals.cancel` instead. Archiving is not activity: the context’s `updatedAt`, and so its place in a listing, does not move. Archiving an archived context is not an error: it answers `changed: false` with the time it was first archived, so a retry is safe. Another owner’s context and a missing one answer `NotFound`. A Bureau that is shutting down is `Unavailable` with reason `shutting-down`. Answers a receipt, `{ id, changed, archivedAt }`, and nothing else of the context. The call writes no audit entry.",
+      "description": "Archives one of the caller’s own contexts; a caller holding `bureau.contexts:write` archives any owner’s. An archived context accepts no new work: starting a task in it, `bureau.contexts.input`, `bureau.contexts.steer`, `bureau.contexts.regenerate`, `bureau.contexts.discardturn` and `bureau.contexts.resumeturn` are each a `Conflict` with reason `context-archived` until it is unarchived (`bureau.contexts.unarchive`), and a schedule’s fire into it fails; reading, renaming, deleting, forking, forgetting grants and the window keep working. `bureau.contexts.list` and `get` show when in `archivedAt`, and `list` filters by it with `archived`. A context with a task running, or waiting on an approval or an answer, is a `Conflict` with reason `context-busy`, and nothing is stored: stop or answer the task first. A goal’s session (origin `goal`) cannot be archived, because the goal writes its attempts to it whatever it records: it is a `Conflict` with reason `context-not-archivable`, and the goal is stopped with `bureau.goals.cancel` instead. Archiving is not activity: the context’s `updatedAt`, and so its place in a listing, does not move. Archiving an archived context is not an error: it answers `changed: false` with the time it was first archived, so a retry is safe. Another owner’s context and a missing one answer `NotFound`. A Bureau that is shutting down is `Unavailable` with reason `shutting-down`. Answers a receipt, `{ id, changed, archivedAt }`, and nothing else of the context. The call writes no audit entry.",
       "errors": [
         {
           "$ref": "#/components/errors/Unauthorized"

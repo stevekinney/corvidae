@@ -162,7 +162,7 @@ export type SchedulesMembers = AssertNever<
   >
 >;
 
-// `contexts` has exactly the nineteen operations.
+// `contexts` has exactly the twenty operations.
 export type ContextsMembers = AssertNever<
   Exclude<
     keyof BureauContexts,
@@ -183,6 +183,7 @@ export type ContextsMembers = AssertNever<
     | 'fork'
     | 'regenerate'
     | 'discardTurn'
+    | 'resumeTurn'
     | 'events'
     | 'subscribeEvents'
   >

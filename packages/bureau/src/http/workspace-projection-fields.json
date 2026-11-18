@@ -875,6 +875,7 @@
   ],
   "output:bureau.contexts.regenerate": ["$.contextId", "$.messageId", "$.revision"],
   "output:bureau.contexts.rename": ["$.contextId", "$.title"],
+  "output:bureau.contexts.resumeturn": ["$.contextId", "$.runId"],
   "output:bureau.contexts.retract": [
     "$.outcome",
     "$.receipt",

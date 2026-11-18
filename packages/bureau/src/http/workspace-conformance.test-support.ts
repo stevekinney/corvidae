@@ -27,6 +27,17 @@ export const WORKSPACE_EXPECTED_OUTCOMES = {
     'membership-denied',
     'membership-denied',
   ],
+  // COR-2437: an operation whose owner reaches the Bureau's own judgment and is refused there
+  // (`bureau.contexts.resumeturn`, which resumes no kind of stop yet), while everyone else is
+  // answered exactly as for a missing context.
+  'owner-conflict': [
+    'conflict',
+    'not-found',
+    'not-found',
+    'not-found',
+    'membership-denied',
+    'membership-denied',
+  ],
   'owner-collection': [
     'own-records',
     'empty',
@@ -180,6 +191,7 @@ export const WORKSPACE_CONFORMANCE_GROUPS = [
       ['bureau.contexts.fork', 'owner'],
       ['bureau.contexts.regenerate', 'owner'],
       ['bureau.contexts.discardturn', 'owner'],
+      ['bureau.contexts.resumeturn', 'owner-conflict'],
       ['bureau.contexts.rename', 'owner'],
       ['bureau.contexts.archive', 'owner'],
       ['bureau.contexts.unarchive', 'owner'],
