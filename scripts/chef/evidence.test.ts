@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'bun:test';
+import { zipSync } from 'fflate';
 import { createHash } from 'node:crypto';
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -248,4 +249,46 @@ test('local collection rejects a NUL argv before starting its process and execut
     ).records[0]?.status,
   ).toBe('pass');
   expect(calls).toBe(1);
+});
+
+test('provider collector treats corrupt JUnit artifacts as pending and failed JUnit assertions as failures', () => {
+  const providerPlan = {
+    ...plan,
+    obligations: [{ ...plan.obligations[0]!, executionBoundary: 'provider' as const }],
+  };
+  const request = {
+    repository: 'acme/widgets',
+    revision: 'a'.repeat(40),
+    base: 'c'.repeat(40),
+    integrationTree: 'b'.repeat(40),
+    environment: 'workflow',
+    plan: providerPlan,
+    authority: { runId: 'run', ownerId: 'owner', resource: 'COR-1', generation: 1 },
+    operationId: 'operation',
+    providerRuns: [{ id: 1, obligation: 'AC1:bun test x', job: 'test', artifact: 'junit' }],
+  };
+  const archive = (xml: string) => zipSync({ 'report.xml': new TextEncoder().encode(xml) });
+  const transport = (xml: string) => ({
+    run: () => ({
+      revision: request.revision,
+      status: 'completed',
+      conclusion: 'success',
+      environment: 'workflow',
+    }),
+    job: () => ({ conclusion: 'success', inventory: ['test'], assertionPassed: null }),
+    artifact: () => ({ present: true, id: 2 }),
+    downloadArtifact: () => archive(xml),
+  });
+  expect(
+    collectProviderEvidence(
+      request,
+      transport('<testsuite><testcase name="x">\uffff</testcase></testsuite>'),
+    ).records[0]?.status,
+  ).toBe('pending');
+  expect(
+    collectProviderEvidence(
+      request,
+      transport('<testsuite><testcase name="x"><failure /></testcase></testsuite>'),
+    ).records[0]?.status,
+  ).toBe('fail');
 });

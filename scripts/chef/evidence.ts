@@ -1,6 +1,12 @@
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, statSync } from 'node:fs';
+import { isAbsolute, resolve } from 'node:path';
+import { createGitHubEvidenceTransport, inspectArtifact, parseJUnit } from './evidence-provider.ts';
+import { EvidenceRequestError, type ProviderEvidenceTransport } from './evidence-transport.ts';
 import type { VerificationObligation, VerificationPlan } from './verification-plan.ts';
+
+export { createGitHubEvidenceTransport } from './evidence-provider.ts';
+export { EvidenceRequestError, type ProviderEvidenceTransport } from './evidence-transport.ts';
 
 export type EvidenceStatus =
   'pass' | 'reused-pass' | 'fail' | 'pending' | 'canceled' | 'skipped' | 'not-applicable';
@@ -38,8 +44,6 @@ export interface EvidenceValidation {
   records: EvidenceRecord[];
 }
 
-export class EvidenceRequestError extends Error {}
-
 export interface VerificationRequest {
   repository: string;
   revision: string;
@@ -52,24 +56,35 @@ export interface VerificationRequest {
   providerRuns: { id: number; obligation: string; job: string; artifact?: string }[];
 }
 
-export interface ProviderEvidenceTransport {
-  run(id: number): { revision: string; status: string; conclusion: string; environment: string };
-  job(
-    id: number,
-    job: string,
-  ): { conclusion: string; inventory: string[]; assertionPassed: boolean | null };
-  artifact(id: number, artifact: string): { present: boolean };
-}
-
 export interface LocalEvidenceProcess {
   run(
     argv: string[],
     cwd: string,
-  ): { exitCode: number; inventory: string[]; assertionPassed: boolean | null };
+  ): {
+    exitCode: number;
+    inventory: string[];
+    assertionPassed: boolean | null;
+    reportPaths?: string[];
+  };
 }
 
-function sha256(text: string): string {
+function sha256(text: string | Uint8Array): string {
   return createHash('sha256').update(text).digest('hex');
+}
+
+function safeArtifactName(name: string): boolean {
+  return /^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(name);
+}
+
+function commandArgv(command: string): string[] {
+  const argv = command.trim().split(/\s+/);
+  if (
+    argv.length === 0 ||
+    argv[0] === '' ||
+    argv.some((part) => part.includes('\0') || part.startsWith('-'))
+  )
+    throw new EvidenceRequestError('verification request has invalid command argv');
+  return argv;
 }
 
 /** Reads a coordinator-pinned request. Its contents are requests, never evidence. */
@@ -126,12 +141,7 @@ export function readVerificationRequest(path: string, digest: string): Verificat
       obligation.environmentToolchain.trim() === ''
     )
       throw new EvidenceRequestError('verification request has malformed plan obligation');
-    const argv = obligation.commandOrProviderJob.trim().split(/\s+/);
-    if (
-      obligation.executionBoundary !== 'provider' &&
-      argv.some((part) => part === '' || part.includes('\0') || part.startsWith('-'))
-    )
-      throw new EvidenceRequestError('verification request has invalid command argv');
+    if (obligation.executionBoundary !== 'provider') commandArgv(obligation.commandOrProviderJob);
     obligations.set(key, obligation);
   }
   const providerKeys = new Set<string>();
@@ -145,10 +155,7 @@ export function readVerificationRequest(path: string, digest: string): Verificat
       providerKeys.has(run.obligation)
     )
       throw new EvidenceRequestError('verification request has invalid provider run');
-    if (
-      run.artifact !== undefined &&
-      (!/^[A-Za-z0-9][A-Za-z0-9._/-]*$/.test(run.artifact) || run.artifact.includes('..'))
-    )
+    if (run.artifact !== undefined && !safeArtifactName(run.artifact))
       throw new EvidenceRequestError('verification request has invalid artifact identifier');
     providerKeys.add(run.obligation);
   }
@@ -168,34 +175,58 @@ export function collectProviderEvidence(
     records: request.providerRuns.map((entry) => {
       const run = transport.run(entry.id);
       const job = transport.job(entry.id, entry.job);
+      const obligation =
+        request.plan.obligations.find((item) => obligationKey(item) === entry.obligation) ??
+        (() => {
+          throw new EvidenceRequestError('provider run has unknown obligation');
+        })();
       const artifact =
         entry.artifact === undefined ? true : transport.artifact(entry.id, entry.artifact).present;
+      let inventory = job.inventory;
+      let assertionPassed = job.assertionPassed;
+      let artifactUsable = artifact;
+      if (entry.artifact !== undefined) {
+        const metadata = transport.artifact(entry.id, entry.artifact);
+        try {
+          if (
+            !metadata.present ||
+            metadata.id === undefined ||
+            transport.downloadArtifact === undefined
+          )
+            throw new EvidenceRequestError('required artifact unavailable');
+          const parsed = inspectArtifact(transport.downloadArtifact(metadata.id), metadata.digest);
+          inventory = parsed.inventory;
+          assertionPassed = parsed.assertionPassed;
+        } catch {
+          assertionPassed = false;
+          artifactUsable = false;
+        }
+      }
       const status: EvidenceStatus =
-        run.status === 'completed' &&
-        run.conclusion === 'success' &&
-        job.conclusion === 'success' &&
-        artifact
-          ? 'pass'
-          : run.status === 'cancelled'
-            ? 'canceled'
-            : run.status === 'completed'
-              ? 'fail'
-              : 'pending';
+        run.status === 'cancelled'
+          ? 'canceled'
+          : run.status === 'completed' && run.conclusion === 'skipped'
+            ? 'skipped'
+            : run.status !== 'completed' || !artifactUsable
+              ? 'pending'
+              : run.status === 'completed' &&
+                  run.conclusion === 'success' &&
+                  job.conclusion === 'success' &&
+                  assertionPassed !== false &&
+                  artifact
+                ? 'pass'
+                : 'fail';
       return {
         obligation: entry.obligation,
         status,
         revision: run.revision,
         integrationTree: request.integrationTree,
         environment: run.environment,
-        command:
-          request.plan.obligations.find((item) => obligationKey(item) === entry.obligation)
-            ?.commandOrProviderJob ?? entry.job,
-        relevantInputs:
-          request.plan.obligations.find((item) => obligationKey(item) === entry.obligation)
-            ?.relevantInputs ?? [],
-        inventory: job.inventory,
+        command: obligation.commandOrProviderJob,
+        relevantInputs: obligation.relevantInputs,
+        inventory,
         exitCode: job.conclusion === 'success' ? 0 : 1,
-        assertionPassed: job.assertionPassed,
+        assertionPassed,
         artifact: entry.artifact,
       };
     }),
@@ -206,9 +237,13 @@ export function collectProviderEvidence(
 export function collectProviderEvidenceFromRequest(
   path: string,
   digest: string,
-  transport: ProviderEvidenceTransport,
+  transport?: ProviderEvidenceTransport,
 ): CollectedEvidence {
-  return collectProviderEvidence(readVerificationRequest(path, digest), transport);
+  const request = readVerificationRequest(path, digest);
+  return collectProviderEvidence(
+    request,
+    transport ?? createGitHubEvidenceTransport(request.repository),
+  );
 }
 
 /** Executes the request's explicit argv through the coordinator-owned process boundary. */
@@ -217,26 +252,36 @@ export function collectLocalEvidence(
   process: LocalEvidenceProcess,
   cwd: string,
 ): CollectedEvidence {
+  if (!isAbsolute(cwd) || !existsSync(cwd) || !statSync(cwd).isDirectory())
+    throw new EvidenceRequestError('local collection cwd is not a readable directory');
+  const safeCwd = resolve(cwd);
   return {
     source: 'coordinator',
     records: request.plan.obligations
       .filter((item) => item.executionBoundary !== 'provider')
       .map((item) => {
-        const argv = item.commandOrProviderJob.trim().split(/\s+/);
-        if (argv.length === 0 || argv[0] === '')
-          throw new EvidenceRequestError('verification command is empty');
-        const result = process.run(argv, cwd);
+        const result = process.run(commandArgv(item.commandOrProviderJob), safeCwd);
+        let inventory = result.inventory;
+        let assertionPassed = result.assertionPassed;
+        for (const reportPath of result.reportPaths ?? []) {
+          const path = resolve(safeCwd, reportPath);
+          if (!path.startsWith(`${safeCwd}/`) || !existsSync(path) || !statSync(path).isFile())
+            throw new EvidenceRequestError('local report path is invalid');
+          const parsed = parseJUnit(new Uint8Array(readFileSync(path)));
+          inventory = [...inventory, ...parsed.inventory];
+          if (!parsed.assertionPassed) assertionPassed = false;
+        }
         return {
           obligation: obligationKey(item),
-          status: result.exitCode === 0 && result.assertionPassed !== false ? 'pass' : 'fail',
+          status: result.exitCode === 0 && assertionPassed !== false ? 'pass' : 'fail',
           revision: request.revision,
           integrationTree: request.integrationTree,
           environment: request.environment,
           command: item.commandOrProviderJob,
           relevantInputs: item.relevantInputs,
-          inventory: result.inventory,
+          inventory,
           exitCode: result.exitCode,
-          assertionPassed: result.assertionPassed,
+          assertionPassed,
         };
       }),
   };
@@ -246,10 +291,15 @@ export function collectLocalEvidence(
 export function collectLocalEvidenceFromRequest(
   path: string,
   digest: string,
-  process: LocalEvidenceProcess,
-  cwd: string,
+  executor: LocalEvidenceProcess = {
+    run(argv, cwd) {
+      const result = Bun.spawnSync(argv, { cwd, stdout: 'pipe', stderr: 'pipe' });
+      return { exitCode: result.exitCode, inventory: [], assertionPassed: null };
+    },
+  },
+  cwd = process.cwd(),
 ): CollectedEvidence {
-  return collectLocalEvidence(readVerificationRequest(path, digest), process, cwd);
+  return collectLocalEvidence(readVerificationRequest(path, digest), executor, cwd);
 }
 
 function obligationKey(obligation: VerificationObligation): string {
