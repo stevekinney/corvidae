@@ -19,7 +19,7 @@ import {
   type Message,
 } from 'conversationalist';
 import { afterEach, describe, expect, it } from 'bun:test';
-import { MemoryStorage } from '@lostgradient/storage';
+import { MemoryStorage, type Storage } from '@lostgradient/storage';
 import { z } from 'zod';
 
 import type { AgentDefinitions } from './agent-catalog';
@@ -117,8 +117,18 @@ function sessionOf(
 ): AgentSession {
   const history = historyOf(rows);
   const status = last.status ?? 'aborted';
+  // The marker the run's terminal save leaves: a running run has left none of its own yet.
+  const marker =
+    status === 'running'
+      ? { lastRunId: R0, lastRunStatus: 'completed' }
+      : { lastRunId: R1, lastRunStatus: status };
   return {
-    ...createAgentSession({ id: CRAFTED, agentName: 'agent', conversationHistory: history }),
+    ...createAgentSession({
+      id: CRAFTED,
+      agentName: 'agent',
+      conversationHistory: history,
+      metadata: marker,
+    }),
     runs: [
       refOf(R0, 0, 'completed', historyOf(FINISHED)),
       refOf(
@@ -165,7 +175,8 @@ describe('which turn may be discarded', () => {
       const judged = judgeDiscardableTurn(session, runId);
       return judged.ok ? 'discardable' : judged.reason;
     };
-    expect(reasonOf(sessionOf(stopped), 'elsewhere:0')).toBe('nothing-to-discard');
+    // A run whose end the chat does not record (here, one it never held) counts as going.
+    expect(reasonOf(sessionOf(stopped), 'elsewhere:0')).toBe('turn-running');
     expect(reasonOf(sessionOf(stopped), R0)).toBe('not-latest-turn');
     expect(reasonOf(sessionOf(stopped, { status: 'running' }))).toBe('turn-running');
     expect(reasonOf(sessionOf(stopped, { status: 'completed' }))).toBe('turn-finished');
@@ -274,11 +285,11 @@ function stoppableAgent(options: { readonly fail?: boolean; readonly finish?: bo
   });
 }
 
-async function openBureau(agent = stoppableAgent()) {
+async function openBureau(agent = stoppableAgent(), storage: Storage = new MemoryStorage()) {
   const bureau = await createBureau<AgentDefinitions>({
     models: { catalog: createVendorCatalog().descriptors },
     agents: { agent },
-    storage: new MemoryStorage(),
+    storage,
     durable: true,
   });
   cleanups.push(() => bureau.dispose());
@@ -317,6 +328,11 @@ async function statusOf(bureau: Bureau<AgentDefinitions>, runId: string) {
 async function untilEnded(bureau: Bureau<AgentDefinitions>, contextId: string, runId: string) {
   await waitForTaskState(bureau, runId);
   await waitForCondition(() => hasSettled(bureau, runId), 'the run has ended');
+  // The run's terminal save, which writes its rows, records its end in the chat after that.
+  await waitForCondition(async () => {
+    const session = await bureau.contexts.get(contextId);
+    return session?.metadata['lastRunId'] === runId;
+  }, 'the chat records the run’s end');
   return (await bureau.contexts.get(contextId))!;
 }
 
@@ -458,6 +474,31 @@ describe('discarding a stopped turn', () => {
       return entry?.state === 'completed';
     }, 'the drain completes the command from its receipt');
     expect(await discard(bureau, run.contextId, run.id, 'crashed')).toEqual(result);
+  });
+
+  it('stays discarded after a restart and its recovery, and the same command answers the same', async () => {
+    const storage = new MemoryStorage();
+    const first = await openBureau(stoppableAgent(), storage);
+    const { run } = await stoppedTurn(first);
+    const result = await discard(first, run.contextId, run.id);
+    const after = (await first.contexts.get(run.contextId))!;
+    await waitForCondition(async () => {
+      const pending = await first.internals.sessionStore!.outbox.pending();
+      return !pending.some(
+        (entry) =>
+          entry.kind === 'session.attachment' &&
+          entry.namespace === DISCARD_RECEIPT_OUTBOX_NAMESPACE,
+      );
+    }, 'the receipt is drained');
+    await cleanups.pop()!();
+
+    const restarted = await openBureau(stoppableAgent(), storage);
+    // Boot recovery has classified and reattached what the first process left before this resolves.
+    await restarted.recovery();
+
+    const reread = await restarted.contexts.get(run.contextId);
+    expect(reread?.conversationHistory.ids).toEqual(after.conversationHistory.ids);
+    expect(await discard(restarted, run.contextId, run.id)).toEqual(result);
   });
 
   it('discards a turn that failed after it wrote a step', async () => {

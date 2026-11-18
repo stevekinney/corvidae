@@ -904,6 +904,12 @@ describe('identifiers grant nothing', () => {
               ...(operation.name === 'bureau.schedules.update'
                 ? { scheduleId: bobScheduleId }
                 : {}),
+              // COR-2437: discarding or resuming a turn names the context and its run; the run is
+              // bob's while the context is probed, and the context bob's while the run is.
+              ...(operation.name === 'bureau.contexts.discardturn' ||
+              operation.name === 'bureau.contexts.resumeturn'
+                ? { contextId: bob.run.contextId, runId: bob.run.id }
+                : {}),
               [parameter]: requested,
               decision: 'approve',
               input: { id: 'input-1', payload: 'hello' },

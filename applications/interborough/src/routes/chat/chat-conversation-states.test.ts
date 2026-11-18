@@ -310,6 +310,71 @@ describe('a reply that failed partway (19p)', () => {
   });
 });
 
+describe('a reply the person stopped (COR-2437)', () => {
+  const BILLING = [{ id: 'user-1', role: 'user', content: 'Rename the billing tables' }] as Record<
+    string,
+    unknown
+  >[];
+  const canceled = (): unknown => ({
+    tasks: [
+      {
+        ...tasksOf('failed-partway')[0],
+        id: 'run-billing',
+        contextId: 'session-1',
+        status: 'canceled',
+        finishReason: 'aborted',
+        statusMessage: null,
+      },
+    ],
+    nextPageToken: null,
+  });
+
+  test('is Stopped on the turn with Discard and no Continue, and no status line under it', async () => {
+    serve(billingThreadWithPartialReply(BILLING), { answers: { 'bureau.tasks.list': canceled } });
+    const { container, findByText, findByRole } = mount();
+
+    expect(await findByText(ENDED_PARTIAL_REPLY)).not.toBeNull();
+    const discard = await findByRole('button', { name: 'Discard' });
+    expect(discard.closest('.chat-turn-outcome')?.getAttribute('data-kind')).toBe('stopped');
+    // No kind of stop can be resumed yet (`bureau.contexts.resumeturn` refuses each), so the turn
+    // offers no Continue.
+    expect(container.querySelector('.chat-turn-outcome button[class*="primary"]') === null).toBe(
+      true,
+    );
+    expect(container.textContent).not.toContain('The run was stopped.');
+  });
+
+  test('Discard removes the reply through the Bureau by its run, and the turn reads as the person’s message alone', async () => {
+    const thread = billingThreadWithPartialReply(BILLING);
+    const served = serve(thread, {
+      answers: {
+        'bureau.tasks.list': canceled,
+        'bureau.contexts.discardturn': (params) => {
+          // The Bureau removed the run's rows: the thread read again holds the person's message.
+          thread.splice(BILLING.length);
+          return { contextId: 'session-1', runId: params['runId'], removed: 1, revision: 4 };
+        },
+      },
+    });
+    const { container, findByText, findByRole } = mount();
+    expect(await findByText(ENDED_PARTIAL_REPLY)).not.toBeNull();
+
+    await fireEvent.click(await findByRole('button', { name: 'Discard' }));
+
+    await waitFor(() => expect(container.textContent?.includes(ENDED_PARTIAL_REPLY)).toBe(false));
+    const call = served.calls.find((entry) => entry.method === 'bureau.contexts.discardturn');
+    expect(call?.params).toMatchObject({ contextId: 'session-1', runId: 'run-billing' });
+    expect(String(call?.params['commandId'])).toMatch(/^discard:/);
+    expect(container.textContent).toContain('Rename the billing tables');
+    expect(container.querySelector('.chat-turn-outcome') === null).toBe(true);
+    // The run's task still says it was stopped, so the person's message keeps the plain line that
+    // says so, which tells why it has no reply, and offers nothing more to do.
+    expect(
+      notes(container).map((note) => note.textContent?.replaceAll(/\s+/g, ' ').trim()),
+    ).toEqual(['Stopped The run was stopped.']);
+    expect(notes(container)[0]?.querySelector('button') === null).toBe(true);
+  });
+});
 describe('an existing chat with no message yet (COR-2285 V1)', () => {
   const withExamples = {
     'bureau.agents.list': () => ({

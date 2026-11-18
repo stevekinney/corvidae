@@ -261,8 +261,10 @@ function isRowOfRun(id: string, runId: string): boolean {
 /**
  * Judges whether the turn of `runId` may be discarded from `session`'s history as it stands, and
  * names its rows when it may. Pure, so the removal judges again what it writes over. Which run is
- * the context's last, and whether it ended without finishing, are the task registry's to say; a
- * session that also keeps a ref of the run (`AgentSession.runs`) is held to it as well.
+ * the context's last is the task registry's to say; that the run's end is in the chat is the
+ * session's own marker of its last run, written by the save that records the run's rows, so the
+ * compare-and-swap fences the removal on it. A session that also keeps a ref of the run
+ * (`AgentSession.runs`) is held to it as well.
  *
  * The turn starts at the first row the run wrote (every row a run writes carries its id: a step's
  * text, call or result, or an answer to its question) and runs to the end of the history, so the
@@ -280,6 +282,19 @@ export function judgeDiscardableTurn(
   const ref = session.runs.find((candidate) => candidate.runId === runId);
   if (ref !== undefined && session.runs.at(-1)?.runId !== runId) {
     return refuse('not-latest-turn', 'Only the turn of the context’s last run can be discarded.');
+  }
+  // The run's end, as its own terminal save records it in the chat (`lastRunId` and
+  // `lastRunStatus`). That save lands after the task record settles, and it writes the run's rows:
+  // a discard before it would be undone by it, so until it lands the run counts as going.
+  if (session.metadata['lastRunId'] !== runId) {
+    return refuse('turn-running', 'The run has not recorded its end in the chat yet.');
+  }
+  const recorded = session.metadata['lastRunStatus'];
+  if (recorded === 'completed') {
+    return refuse('turn-finished', 'The turn finished normally, and a finished turn is kept.');
+  }
+  if (recorded !== 'aborted' && recorded !== 'error') {
+    return refuse('turn-running', 'The turn is still going: cancel it before discarding it.');
   }
   if (ref?.status === 'running') {
     return refuse('turn-running', 'The turn is still going: cancel it before discarding it.');

@@ -450,9 +450,10 @@ export interface BureauContexts {
    * stopped, its reply so far kept, with no new message from the person. No kind of stop can be
    * resumed today, so this throws a {@link SessionResumeRefusedError} naming why, and starts or
    * writes nothing: a run the person stopped, or that failed, has ended its workflow, which the
-   * engine cannot go on with (`run-not-resumable`); a run whose process stopped is recovered by the
-   * Bureau itself (`turn-recovering`); a reply cut at the token limit is a finished turn
-   * (`turn-finished`); a run still going is `turn-running`, and one waiting on an approval or a
+   * engine cannot go on with (`run-not-resumable`); a run whose process stopped is taken up by the
+   * Bureau that next boots, which goes on from its checkpoint or ends it when it cannot
+   * (`turn-recovering`); a reply cut at the token limit ends its step as any reply with no tool
+   * call does, so the run finishes normally (`turn-finished`); a run still going is `turn-running`, and one waiting on an approval or a
    * question `turn-awaiting-person`; a later run is `not-latest-turn`, and a run the context does
    * not have `run-not-found`. It does not authorize the caller. Throws a `BureauError`
    * `NOT_FOUND` for a context this Bureau does not hold, a `ContextArchivedError` for an archived
