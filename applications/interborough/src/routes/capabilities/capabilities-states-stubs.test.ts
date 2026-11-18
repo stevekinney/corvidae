@@ -7,6 +7,8 @@
 import { describe, expect, test } from 'bun:test';
 
 import {
+  BLOCKED_AGENT_LIST,
+  DELETE_BRANCH_TOOL,
   DEMO_PLUGIN,
   githubNotLoaded,
   githubWithAddress,
@@ -126,6 +128,13 @@ describe('the stubs of the capabilities states spec', () => {
         ],
       }),
     });
+    const dangerous = await getAgentCatalog({
+      fetch: bureauAnswering({ models: [], tools: [DELETE_BRANCH_TOOL] }),
+    });
+    expect(dangerous.tools[0]?.userApprovals).toEqual({ 'branch-cleaner': 'blocked' });
+    expect(agentSummarySchema.parse(BLOCKED_AGENT_LIST.agents[0]).displayName).toBe(
+      'An agent allowed Delete branch',
+    );
     expect(catalog.tools[0]?.users).toHaveLength(4);
     expect(catalog.tools[0]?.userApprovals).toEqual({
       'release-writer': 'always',

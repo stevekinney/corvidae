@@ -18,7 +18,9 @@ import { z } from 'zod';
 
 import {
   createToolApprovalHooks,
+  defaultToolApproval,
   grantLoosensTool,
+  readToolDefaultApproval,
   TOOL_APPROVAL_DEFAULT_MODE,
   TOOL_APPROVAL_MODES,
   type ToolApprovalMode,
@@ -114,6 +116,56 @@ describe('createToolApprovalHooks', () => {
       expect(await outcomeOf(readOnly, 'subject')).toBe('success');
       expect(await outcomeOf(mutating, 'subject')).toBe('action_required');
     }
+  });
+
+  describe('a tool that carries its own Default asks level (COR-2436)', () => {
+    const own = (level: string, kind: Kind = 'mutating') => ({
+      ...METADATA[kind],
+      defaultApproval: level,
+    });
+
+    it('runs a changing tool without asking when its default is never, asks a read when it is always', async () => {
+      const never = createToolbox([subject(own('never'))], {
+        policy: createToolApprovalHooks({}),
+      });
+      const always = createToolbox([subject(own('always', 'read-only'))], {
+        policy: createToolApprovalHooks({}),
+      });
+
+      expect(await outcomeOf(never)).toBe('success');
+      expect(await outcomeOf(always)).toBe('action_required');
+    });
+
+    it('lets an agent’s own approvals entry replace it in either direction, Blocked included', async () => {
+      const loosened = createToolbox([subject(own('always'))], {
+        policy: createToolApprovalHooks({ subject: 'never' }),
+      });
+      const tightened = createToolbox([subject(own('never'))], {
+        policy: createToolApprovalHooks({ subject: 'blocked' }),
+      });
+
+      expect(await outcomeOf(loosened)).toBe('success');
+      expect(await outcomeOf(tightened)).toBe('error');
+    });
+
+    it('ignores a default that is not never, on-changes or always, and follows the hook’s own default', async () => {
+      for (const level of ['blocked', 'sometimes', 7]) {
+        const toolbox = createToolbox([subject({ ...METADATA.mutating, defaultApproval: level })], {
+          policy: createToolApprovalHooks({}),
+        });
+        expect(await outcomeOf(toolbox)).toBe('action_required');
+      }
+    });
+
+    it('is the level the catalog reports for the tool', () => {
+      expect(defaultToolApproval('mutating', 'never')).toBe('allow');
+      expect(defaultToolApproval('read-only', 'always')).toBe('ask');
+      expect(defaultToolApproval('mutating', 'on-changes')).toBe('ask');
+      expect(defaultToolApproval('read-only', undefined)).toBe('allow');
+      expect(readToolDefaultApproval({ defaultApproval: 'always' })).toBe('always');
+      expect(readToolDefaultApproval({ defaultApproval: 'blocked' })).toBeUndefined();
+      expect(readToolDefaultApproval(undefined)).toBeUndefined();
+    });
   });
 
   it('takes another default for a tool the map leaves out when it is given one', async () => {

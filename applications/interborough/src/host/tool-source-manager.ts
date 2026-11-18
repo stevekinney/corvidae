@@ -166,6 +166,7 @@ import {
   refusingWhen,
   unmatchedToolSettings,
   withAcceptsSecrets,
+  withDefaultApproval,
 } from './tool-source-tool-settings.ts';
 import {
   createToolSourceVault,
@@ -1885,7 +1886,12 @@ export function createToolSourceManager(options: ToolSourceManagerOptions): Tool
         if (enabled) {
           // Every saved source's tool is rebuilt behind this gate, so a retired source's tool cannot
           // run. The rebuild copies the configuration whole, so the loader's version survives it.
-          const offered = acceptsSecrets ? withAcceptsSecrets(tool) : tool;
+          const withSecrets = acceptsSecrets ? withAcceptsSecrets(tool) : tool;
+          // The owner's own Default asks pick rides on the tool, so an agent's approval hook
+          // enforces it and the catalog reports it (COR-2436); no pick keeps the tier's rule.
+          const picked = entry.tools.get(tool.name)?.approval;
+          const offered =
+            picked === undefined ? withSecrets : withDefaultApproval(withSecrets, picked);
           catalog[name] = refusingWhen(offered, () =>
             retired.has(source.id)
               ? `Tool source "${source.id}" was removed or changed, so this tool no longer runs. Start the host again: a changed source then loads as it now stands, and a removed one is gone.`

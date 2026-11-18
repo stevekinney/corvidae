@@ -99,10 +99,29 @@ const ARMORER_MODE: Readonly<Record<ToolApprovalMode, ApprovalMode>> = {
  * with no tier (it declares none) asks, because Armorer never lets a call it cannot classify
  * through unasked. The tool catalog reports it as each tool's default approval.
  */
-export function defaultToolApproval(tier: CapabilityTier | undefined): 'allow' | 'ask' {
-  return evaluateApprovalStatus(tier, ARMORER_MODE[TOOL_APPROVAL_DEFAULT_MODE]) === 'allow'
-    ? 'allow'
-    : 'ask';
+export function defaultToolApproval(
+  tier: CapabilityTier | undefined,
+  level: Exclude<ToolApprovalMode, 'blocked'> = TOOL_APPROVAL_DEFAULT_MODE as Exclude<
+    ToolApprovalMode,
+    'blocked'
+  >,
+): 'allow' | 'ask' {
+  return evaluateApprovalStatus(tier, ARMORER_MODE[level]) === 'allow' ? 'allow' : 'ask';
+}
+
+/** The metadata key a tool carries its own Default asks level under (COR-2436). */
+export const TOOL_DEFAULT_APPROVAL_KEY = 'defaultApproval';
+
+/**
+ * The Default asks level a tool carries in its metadata (`never`, `on-changes` or `always`: the
+ * host sets it from a tool source's saved setting), or `undefined` when it carries none or a value
+ * that is not one of those. Blocked is never a tool's default: it belongs to one agent's file.
+ */
+export function readToolDefaultApproval(
+  metadata: Readonly<Record<string, unknown>> | undefined,
+): Exclude<ToolApprovalMode, 'blocked'> | undefined {
+  const value = metadata?.[TOOL_DEFAULT_APPROVAL_KEY];
+  return value === 'never' || value === 'on-changes' || value === 'always' ? value : undefined;
 }
 
 /** What {@link decideToolApproval} reads about one call. */
@@ -522,7 +541,8 @@ export function createToolApprovalHooks(
     async beforeExecute(context: ToolPolicyContext): Promise<ToolPolicyDecision> {
       const key = governed === undefined ? context.toolName : governed.get(context.toolName);
       if (key === undefined) return { allow: true, status: 'allow' };
-      const setting = modes.get(key) ?? defaultMode;
+      // The agent's own entry first, then the level the tool's source gives it, then the hook's.
+      const setting = modes.get(key) ?? readToolDefaultApproval(context.metadata) ?? defaultMode;
       const chat = chatPermissionOf(context);
       const { mode, unreadable } = chat ?? (await modeOfChat());
       const tier = resolveCapabilityTier(context.metadata, context.tags);

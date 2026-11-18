@@ -15,7 +15,7 @@
    * Connect name. A change to where the source is or how it signs in drops the sign-in, because
    * the host took it for that description alone.
    */
-  import { Button, Link } from '@lostgradient/cinder';
+  import { Button, Link, Text } from '@lostgradient/cinder';
   import { KeyRound } from '@lucide/svelte';
 
   import { CAPABILITIES_COPY } from '../../app/copy/capabilities.ts';
@@ -42,8 +42,9 @@
     signIn: string | undefined;
     /**
      * What the sign-in has to say, for the page to draw under the Sign in choice (rows 34k, 34l,
-     * 34y): the waiting line as a description, a cancel or a blocked window as a note, and a
-     * refusal as an error, which the page gives its Try again. `undefined` when there is nothing.
+     * 34y): a cancel or a blocked window as a note, and a refusal as an error, which the page
+     * gives its Try again. (The waiting line is drawn here, under the button.) `undefined` when
+     * there is nothing.
      */
     notice?: SignInNotice | undefined;
   }
@@ -67,10 +68,6 @@
   // What the sign-in says goes to the page, which draws it under the Sign in choice.
   $effect(() => {
     switch (current.kind) {
-      case 'waiting':
-      case 'starting':
-        notice = { description: copy.approve(named) };
-        break;
       case 'canceled':
         notice = { note: current.declined ? copy.declined(named) : copy.canceled(named) };
         break;
@@ -219,6 +216,10 @@
         >
       {/if}
     </div>
+    <!-- Below the button, as row 34y says: the line that tells what to do while the window is open. -->
+    <Text variant="caption" class="ib-connect__sign-in-line" data-testid="connect-sign-in-approve"
+      >{copy.approve(named)}</Text
+    >
   {:else}
     <!-- The button keeps its label in every state (row 34k): Try again is the message's own action. -->
     <div class="ib-connect__sign-in-row">
@@ -259,6 +260,11 @@
     flex-wrap: wrap;
     gap: var(--cinder-space-3);
     align-items: center;
+  }
+
+  .ib-connect__sign-in :global(.ib-connect__sign-in-line) {
+    margin: 0;
+    color: var(--cinder-text-muted);
   }
 
   .ib-connect__signed-in {

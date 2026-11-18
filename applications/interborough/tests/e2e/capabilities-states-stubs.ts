@@ -223,6 +223,42 @@ export const USED_BY_DEFINITIONS = {
   })),
 };
 
+/**
+ * The dangerous tool the sample world keeps off, as the catalog lists it once an agent is allowed it
+ * (rows 31w, 31x): its Branch input is required, and one agent has it blocked.
+ */
+export const DELETE_BRANCH_TOOL = {
+  name: 'github__delete_branch',
+  description: 'Deletes a branch of a repository.',
+  shortDescription: 'Deletes a branch of a repository.',
+  title: 'Delete branch',
+  inputSchema: {
+    type: 'object',
+    properties: { branch: { type: 'string', description: 'The branch to delete.' } },
+    required: ['branch'],
+  },
+  tier: 'dangerous',
+  defaultApproval: 'ask',
+  source: 'host',
+  plugin: null,
+  users: ['branch-cleaner'],
+  userApprovals: { 'branch-cleaner': 'blocked' },
+};
+
+/** `bureau.agents.list` with the agent that has Delete branch blocked, named as the row names it. */
+export const BLOCKED_AGENT_LIST = {
+  agents: [
+    {
+      name: 'branch-cleaner',
+      displayName: 'An agent allowed Delete branch',
+      description: null,
+      definitionRevision: 1,
+      kind: 'file',
+      a2a: false,
+    },
+  ],
+};
+
 /** `bureau.agents.list` with the agent that uses the skill (row 31m). */
 export const SKILL_AGENTS = {
   agents: [

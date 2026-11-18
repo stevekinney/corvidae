@@ -593,6 +593,38 @@ describe('bureau.agents.catalog', () => {
     expect(tool).toMatchObject({ tier: null, defaultApproval: 'ask' });
   });
 
+  it('reports the Default asks level a tool carries as its default approval (COR-2436)', async () => {
+    const picked = (name: string, level: string, metadata: Record<string, unknown>) =>
+      createTool({
+        name,
+        description: 'A tool whose source set its Default asks',
+        input: z.object({}),
+        metadata: { ...metadata, defaultApproval: level },
+        execute: async () => 'done',
+      });
+    const tools = {
+      'quiet-write': picked('quiet-write', 'never', { mutates: true }),
+      'careful-read': picked('careful-read', 'always', { readOnly: true }),
+      'not-a-level': picked('not-a-level', 'blocked', { mutates: true }),
+    };
+    const directory = await mkdtemp(join(tmpdir(), 'bureau-tool-catalog-picked-'));
+    roots.push(directory);
+    const served = await serve({
+      directory,
+      overrides: { agentSource: agentFileDirectory(directory, { tools }) },
+    });
+
+    const response = await callAs(served.local, 'bureau.agents.catalog', {});
+
+    const byName = Object.fromEntries(
+      listOf(response, 'tools').map((entry) => [String(entry['name']), entry]),
+    );
+    expect(byName['quiet-write']).toMatchObject({ tier: 'mutating', defaultApproval: 'allow' });
+    expect(byName['careful-read']).toMatchObject({ tier: 'read-only', defaultApproval: 'ask' });
+    // Blocked is no tool's default: the tier's rule stands.
+    expect(byName['not-a-level']).toMatchObject({ tier: 'mutating', defaultApproval: 'ask' });
+  });
+
   it('drops a user when the agent file is gone', async () => {
     const served = await serveTools();
     await served.put(

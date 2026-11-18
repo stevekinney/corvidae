@@ -197,7 +197,7 @@ describe('signing in before the source is saved', () => {
     expect(getByRole('link', { name: signInCopy.tryAgain })).not.toBeNull();
   });
 
-  test('says the waiting line as the choice’s description, in the shared help style', async () => {
+  test('says the waiting line below the Waiting button, as the button’s own line (row 34y)', async () => {
     serve({ outcome: 'waiting' });
     landAt('/capabilities/connect');
     const { getByRole, findByTestId } = render(QueryPage, {
@@ -206,11 +206,15 @@ describe('signing in before the source is saved', () => {
     await signIn(getByRole);
     await findByTestId('connect-sign-in-waiting');
 
-    const group = document.body.querySelector('#connect-authentication');
-    const describedBy = group?.getAttribute('aria-describedby') ?? '';
-    const description = document.getElementById(describedBy.split(' ')[0] ?? '');
-    expect(description?.className).toContain('cinder-form-field__description');
-    expect(description?.textContent?.trim()).toBe(signInCopy.approve('GitHub'));
+    const button = document.body.querySelector('[data-testid="connect-sign-in-waiting"]')!;
+    const line = document.body.querySelector('[data-testid="connect-sign-in-approve"]')!;
+    expect(line.textContent?.trim()).toBe(signInCopy.approve('GitHub'));
+    // A Cinder Text, after the button in the document, and not the choice's description above it.
+    expect(line.className).toContain('cinder-text');
+    expect(button.compareDocumentPosition(line) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(
+      document.body.querySelector('#connect-authentication')?.hasAttribute('aria-describedby'),
+    ).toBe(false);
   });
 
   test('says why the provider refused, from the host’s reason, with Try again, and keeps every field', async () => {

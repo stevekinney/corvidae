@@ -11,6 +11,8 @@ import type { Page, Route } from '@playwright/test';
 
 import { CAPABILITIES_COPY } from '../../src/app/copy/capabilities.ts';
 import {
+  BLOCKED_AGENT_LIST,
+  DELETE_BRANCH_TOOL,
   DEMO_PLUGIN,
   githubNotLoaded,
   githubWithAddress,
@@ -246,7 +248,8 @@ for (const width of WIDTHS) {
       await expect(instructions.getByTestId('skill-instructions-raw')).toBeVisible();
       // Used by: Workflow author, with the skill's own description beside it (31m).
       const users = page.getByTestId('skill-detail').getByTestId('capability-users');
-      await expect(users).toContainText('workflow-author');
+      await expect(users).toContainText('Workflow author');
+      await expect(users).not.toContainText('workflow-author');
       await expect(users).toContainText(`Loads it when relevant: ${RELEASE_NOTES_DESCRIPTION}`);
       await captureForDesignReview(page, {
         route: '/capabilities',
@@ -276,6 +279,35 @@ for (const width of WIDTHS) {
       await captureForDesignReview(page, {
         route: '/capabilities',
         state: 'tool used by four agents',
+        source: SOURCE,
+      });
+    });
+
+    test('the blocked, dangerous tool: Delete branch with its required Branch input and its collapsed JSON schema (31w, 31x)', async ({
+      page,
+    }) => {
+      await amendOperation(page, 'bureau.agents.catalog', (result) => ({
+        ...result,
+        tools: [
+          ...(result['tools'] as { name: string }[]).filter(
+            (tool) => tool.name !== DELETE_BRANCH_TOOL.name,
+          ),
+          DELETE_BRANCH_TOOL,
+        ],
+      }));
+      await answerOperation(page, 'bureau.agents.list', BLOCKED_AGENT_LIST);
+      await open(page, width, `/capabilities?tool=${DELETE_BRANCH_TOOL.name}`);
+      const detail = page.getByTestId('tool-detail');
+      await expect(detail.getByTestId('tool-risk')).toContainText('Dangerous');
+      const users = detail.getByTestId('capability-users');
+      await expect(users).toContainText('An agent allowed Delete branch');
+      await expect(users).toContainText(copy.tool.userAsks.blocked);
+      await expect(detail.getByTestId('tool-input-schema')).toContainText('Branch');
+      await expect(detail.getByTestId('tool-input-schema')).toContainText('The branch to delete.');
+      await expect(page.getByTestId('tool-blocked-note')).toHaveText(copy.tool.blockedNote);
+      await captureForDesignReview(page, {
+        route: '/capabilities',
+        state: 'blocked dangerous tool',
         source: SOURCE,
       });
     });

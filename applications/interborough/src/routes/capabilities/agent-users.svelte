@@ -6,7 +6,11 @@
    */
   import { Button, EmptyState, Link, SectionHeading } from '@lostgradient/cinder';
 
+  import { createQuery } from '@tanstack/svelte-query';
+
+  import { agentLabel } from '../../lib/agent-label.ts';
   import { agentPath } from '../../lib/agent-paths.ts';
+  import { agentsListQuery } from '../../lib/agent-queries.ts';
   import { router } from '../../lib/router.svelte.ts';
 
   /** The action that fills an empty list: a label and where it goes. */
@@ -33,6 +37,10 @@
   }
 
   let { heading, users, note, empty }: Props = $props();
+
+  // The names the Agents list shows, from the same query and helper the shell's bell and the search
+  // palette use; an agent the list does not hold reads as its identifier in words.
+  const agents = createQuery(agentsListQuery, undefined);
 
   function go(event: MouseEvent, path: string): void {
     if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
@@ -81,10 +89,11 @@
     <ul class="ib-capability__users">
       {#each users as user (user)}
         <li>
-          <a
-            class="ib-capability__identifier"
+          <!-- The agent's name as the Agents list shows it ("Workflow author"), never its identifier. -->
+          <Link
             href={router.href(agentPath(user))}
-            onclick={(event) => go(event, agentPath(user))}>{user}</a
+            onclick={(event) => go(event, agentPath(user))}
+            data-agent={user}>{agentLabel(user, agents.data)}</Link
           >
           {#if note !== undefined}
             <span class="ib-capability__user-note" data-testid="capability-user-note"

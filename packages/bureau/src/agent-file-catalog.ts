@@ -128,6 +128,7 @@ import {
 import {
   createToolApprovalHooks,
   defaultToolApproval,
+  readToolDefaultApproval,
   type ToolApprovalMode,
 } from './tool-approval';
 import { type AgentRevisionRecord, createAgentRevisionStore } from './agent-revision-store';
@@ -266,8 +267,11 @@ export interface AgentToolDescription {
    * What happens by default when an agent calls the tool: the rule a file agent's tool follows
    * when its `approvals` says nothing (COR-1913, `TOOL_APPROVAL_DEFAULT_MODE`, `on-changes`)
    * applied to {@link AgentToolDescription.tier}, so `allow` for a read-only tool and `ask` for a
-   * tool that changes something, is dangerous, or declares nothing. A file's own `approvals`
-   * entry for the tool replaces it for that agent: this is the default, not any one agent's setting.
+   * tool that changes something, is dangerous, or declares nothing. A tool that carries its own
+   * Default asks level in its metadata (`defaultApproval`: `never`, `on-changes` or `always`, which
+   * the host sets from a tool source's saved setting, COR-2436) follows that level instead, and the
+   * agent hooks enforce it the same way. A file's own `approvals` entry for the tool replaces it
+   * for that agent: this is the default, not any one agent's setting.
    */
   readonly defaultApproval: Exclude<ApprovalStatus, 'deny'>;
   /**
@@ -319,7 +323,8 @@ export function describeToolCapability(
   return {
     inputSchema,
     tier: tier ?? null,
-    defaultApproval: defaultToolApproval(tier),
+    // The level the tool's own source gives it (its Default asks, COR-2436), else the tier's rule.
+    defaultApproval: defaultToolApproval(tier, readToolDefaultApproval(tool.metadata)),
   };
 }
 

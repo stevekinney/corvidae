@@ -146,6 +146,28 @@ describe('a saved source’s name, description and choice of tools', () => {
     expect(Object.keys(second.tools()).toSorted()).toEqual(['pets__create-pet', 'pets__list-pets']);
   });
 
+  test('a picked Default asks level rides on the loaded tool, where Bureau enforces and reports it (COR-2436)', async () => {
+    const home = memoryHome();
+    const keys = await keysOf();
+    const first = managerOver(home, keys);
+    await first.connect({
+      id: 'pets',
+      source: petsSource,
+      credentials: { key: 'k' },
+      principal: owner,
+      tools: { 'create-pet': { approval: 'never' }, 'list-pets': { approval: 'always' } },
+    });
+    await first.close();
+
+    const second = managerOver(home, keys);
+    await second.start();
+    const tools = second.tools();
+
+    // A pick is carried in the tool's metadata; a tool with no pick carries none.
+    expect(tools['pets__create-pet']?.metadata?.['defaultApproval']).toBe('never');
+    expect(tools['pets__list-pets']?.metadata?.['defaultApproval']).toBe('always');
+  });
+
   test('a connect that changes only a label writes it and keeps the tools and credentials', async () => {
     const home = memoryHome();
     const manager = managerOver(home, await keysOf());

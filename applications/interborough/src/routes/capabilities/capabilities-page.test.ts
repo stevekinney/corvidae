@@ -197,14 +197,14 @@ describe('the Tools tab', () => {
     expect(detail.querySelector('[data-testid="tool-input-schema"]')?.textContent).toContain(
       'Where the file is.',
     );
-    expect(getByRole('link', { name: 'assistant' }).getAttribute('href')).toBe('/agents/assistant');
+    expect(getByRole('link', { name: 'Assistant' }).getAttribute('href')).toBe('/agents/assistant');
     // The open tool is in the address, and the router has read it back.
     expect(router.search.get('tool')).toBe('read-file');
 
     // A user opens its page in the application; a modified click is left to the browser.
-    await fireEvent.click(getByRole('link', { name: 'assistant' }), { ctrlKey: true });
+    await fireEvent.click(getByRole('link', { name: 'Assistant' }), { ctrlKey: true });
     expect(router.pathname).toBe('/capabilities');
-    await fireEvent.click(getByRole('link', { name: 'assistant' }));
+    await fireEvent.click(getByRole('link', { name: 'Assistant' }));
     expect(router.pathname).toBe('/agents/assistant');
   });
 
@@ -233,6 +233,12 @@ describe('the Tools tab', () => {
     // Sorted as the host sends them: a default is marked as one, a stated level is not, Blocked is
     // said as belonging to that agent.
     expect(notes).toEqual(['Asks: Never (the default)', 'Asks: Always', 'Blocked on this agent']);
+    // Each agent is a Cinder Link named as the Agents list names it, never by its identifier.
+    const links = [...detail.querySelectorAll<HTMLElement>('[data-testid="capability-users"] a')];
+    expect(links.map((link) => link.dataset['agent'])).toEqual(['assistant', 'planner', 'writer']);
+    expect(links[0]?.textContent?.trim()).toBe(AGENT.displayName);
+    expect(links[1]?.textContent?.trim()).toBe('Planner');
+    expect(links.every((link) => link.className.includes('cinder-link'))).toBe(true);
     expect(detail.querySelector('[data-testid="tool-blocked-note"]')?.textContent).toBe(
       copy.tool.blockedNote,
     );
@@ -578,7 +584,7 @@ describe('the Skills tab', () => {
     landAt('/capabilities?tab=skills&skill=home%2Fsummarize');
     const { container, findByRole } = mount();
 
-    const link = await findByRole('link', { name: 'assistant' });
+    const link = await findByRole('link', { name: 'Assistant' });
     expect(link.getAttribute('href')).toBe('/agents/assistant');
     const detail = container.querySelector('[data-testid="skill-detail"]')!;
     expect(detail.querySelector('[data-testid="skill-unavailable"]')).toBeNull();
@@ -650,7 +656,7 @@ describe('the Skills tab', () => {
     );
     expect(container.textContent).not.toContain(copy.skill.noUsers.title);
     release?.();
-    await findByRole('link', { name: 'assistant' });
+    await findByRole('link', { name: 'Assistant' });
 
     await fireEvent.click(container.querySelectorAll('[data-skill-row="summarize"]')[1]!);
     await waitFor(() => {
