@@ -215,6 +215,20 @@ describe('failingTests', () => {
       { kind: 'unknown', job: 'Tests', diagnostic: 'unparseable test error' },
     ]);
   });
+
+  test.each(['bun --bun playwright test tests/e2e/x.spec.ts', 'run-gated-browser-suite'])(
+    'keeps a qualified Playwright failure known for %s',
+    (command) => {
+      const log = [
+        `Browser\tUNKNOWN STEP\t2026-11-17T19:18:57Z ##[group]Run ${command}`,
+        'Browser\tUNKNOWN STEP\t2026-11-17T19:18:58Z   1) [chromium] › tests/e2e/x.spec.ts:9:3 › keeps its identity',
+        'Browser\tUNKNOWN STEP\t2026-11-17T19:18:59Z ##[error]Process completed with exit code 1.',
+      ].join('\n');
+      expect(failureRecords(log).get('Browser')).toEqual([
+        { kind: 'test', job: 'Browser', identity: 'tests/e2e/x.spec.ts:9:3 › keeps its identity' },
+      ]);
+    },
+  );
 });
 
 describe('compare', () => {

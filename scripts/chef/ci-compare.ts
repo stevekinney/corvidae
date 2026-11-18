@@ -265,7 +265,7 @@ function qualifiedTestSteps(log: string): Set<string> {
       if (currentStep !== undefined) qualified.add(currentStep);
       continue;
     }
-    const failed = BUN_FAILURE.exec(line);
+    const failed = BUN_FAILURE.exec(line) ?? PLAYWRIGHT_FAILURE.exec(line);
     if (failed !== null) {
       const job = failed[1] ?? '';
       const currentStep = current.get(job);
