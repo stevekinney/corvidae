@@ -120,6 +120,7 @@ describe('createToolApprovalHooks', () => {
   });
 
   describe('the level a tool is enforced at, with and without a pick (COR-2436 review)', () => {
+    const allowAll = async (): Promise<'allow-all'> => 'allow-all';
     const TIERS = ['read-only', 'mutating', 'dangerous', undefined] as const;
     const PICKS = [undefined, 'never', 'on-changes', 'always'] as const;
     const metadataOf = (tier: (typeof TIERS)[number], pick: (typeof PICKS)[number]) => ({
@@ -142,14 +143,14 @@ describe('createToolApprovalHooks', () => {
 
     it('asks about a dangerous tool with no pick in an allow-all chat and after a remembered grant', async () => {
       const dangerous = metadataOf('dangerous', undefined);
-      const allowAll = createToolbox([subject(dangerous)], {
-        policy: createToolApprovalHooks({}, { permissionMode: async () => 'allow-all' }),
+      const inAllowAll = createToolbox([subject(dangerous)], {
+        policy: createToolApprovalHooks({}, { permissionMode: allowAll }),
       });
       const remembered = createToolbox([subject(dangerous)], {
         policy: createToolApprovalHooks({}, { remembered: async () => true }),
       });
 
-      expect(await outcomeOf(allowAll)).toBe('action_required');
+      expect(await outcomeOf(inAllowAll)).toBe('action_required');
       expect(await outcomeOf(remembered)).toBe('action_required');
     });
 
@@ -159,7 +160,7 @@ describe('createToolApprovalHooks', () => {
           if (tier === undefined) continue;
           const level = enforcedDefaultApproval(metadataOf(tier, pick), tier);
           const toolbox = createToolbox([subject(metadataOf(tier, pick))], {
-            policy: createToolApprovalHooks({}, { permissionMode: async () => 'allow-all' }),
+            policy: createToolApprovalHooks({}, { permissionMode: allowAll }),
           });
           const outcome = await outcomeOf(toolbox);
           if (level === 'always') expect(outcome).toBe('action_required');
@@ -174,7 +175,7 @@ describe('createToolApprovalHooks', () => {
         toolApproval: undefined,
         tools: { subject: tool(pick) },
         reportedName: 'subject',
-        mode: 'default' as const,
+        mode: 'on-changes' as const,
       });
 
       expect(grantLoosensTool(input(undefined))).toBe(true);
@@ -198,7 +199,7 @@ describe('createToolApprovalHooks', () => {
       const toolbox = createToolbox(Object.values(tools), {
         policy: createToolApprovalHooks(undefined, {
           tools,
-          permissionMode: async () => 'allow-all',
+          permissionMode: allowAll,
         }),
       });
 
