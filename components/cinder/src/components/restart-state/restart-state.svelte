@@ -3,7 +3,7 @@
    * @cinder
    * @category overlay
    * @status beta
-   * @purpose The screen people see while the Interborough host restarts: a page takeover with the steps, the reconnect attempts with Retry now, and what to check and run if it fails.
+   * @purpose The screen people see while the Interborough host restarts: a page takeover with the steps, the reconnect attempts with Try again, and what to check and run if it fails.
    * @tag overlay
    * @tag restart
    * @tag progress
@@ -54,7 +54,7 @@
     attempt,
     maxAttempts = BANNER_MAX_ATTEMPTS,
     retryInSeconds,
-    retryLabel = 'Retry now',
+    retryLabel = 'Try again',
     onRetry,
     checkTitle = 'What to check',
     check,

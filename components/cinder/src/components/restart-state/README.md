@@ -9,7 +9,7 @@ The screen people see while the Interborough host restarts.
 It has three phases, one card each:
 
 - **`restarting`**: the heading, a sentence that names what is happening and says that running work picks up where it stopped, and the steps as a status list ([`Steps`](../steps/README.md) with `variant="status"`). `currentStep` is how many steps are done; the next one spins.
-- **`reconnecting`**: the host stopped and has not answered. The sentence counts the attempts ("Trying again in 4 s. Attempt 3 of 8.") and a meter of one segment per attempt fills as they pass. Retry now tries at once. [`restartRetryDelaySeconds`](#choosing-the-wait) gives the wait before each attempt: 1, 2, 4, then 8 seconds.
+- **`reconnecting`**: the host stopped and has not answered. The sentence counts the attempts ("Trying again in 4 s. Attempt 3 of 8.") and a meter of one segment per attempt fills as they pass. Try again tries at once. [`restartRetryDelaySeconds`](#choosing-the-wait) gives the wait before each attempt: 1, 2, 4, then 8 seconds.
 - **`failed`**: the host never answered. The card turns red, says what was saved before the host stopped, what to check, the error behind a disclosure, and the exact command to start the host again, with a copy icon button at the end of its row. Keep waiting is the one primary action. There is no restart-again action, because the route that restarts lives on the host that is not answering.
 
 The card is drawn inside a chromeless [`Modal`](../modal/README.md), so it gets the scrim, the focus trap and the scroll lock for free, with Escape, the backdrop and a close button all switched off.
@@ -57,7 +57,7 @@ The card is drawn inside a chromeless [`Modal`](../modal/README.md), so it gets 
 | `open` | `boolean` | yes | — | Whether the state is showing. It never closes itself: nothing the person can press dismisses it, because the host is not answering and the page behind it would show nothing true. The page closes it when the host is back, and says what applied in a banner. |
 | `phase` | `"restarting"` \| `"reconnecting"` \| `"failed"` | yes | — | Which of the three states to show. |
 | `retryInSeconds` | `number` | no | — | Seconds until the next automatic attempt in `reconnecting`. Adds "Trying again in 4 s." |
-| `retryLabel` | `string` | no | `"Retry now"` | Label of the button that tries at once in `reconnecting`. |
+| `retryLabel` | `string` | no | `"Try again"` | Label of the button that tries at once in `reconnecting`: "Try again", Cinder's one word for asking again. |
 | `steps` | `string`[] | no | `["Saved your choice","Stopped the server","Starting Interborough","Checking plugins"]` | The labels of the steps, in order, for `restarting`. |
 | `title` | `string` | no | — | Heading of the state. Defaults to the phase's own words: "Restarting Interborough", "Waiting for Interborough", "Interborough didn’t come back". |
 | `details` | `(opaque)` | no | — | The error behind a failure, shown behind the `detailsLabel` disclosure in `failed`. Left out, the disclosure does not show. Not expressible in JSON Schema; see the component types for the signature. |

@@ -32,12 +32,12 @@
     },
     "retryLabel": {
       "type": "string",
-      "description": "Label of the Retry button. A preset labels it \"Retry now\" unless this says otherwise.",
-      "default": "Retry"
+      "description": "Label of the Retry button: \"Try again\", Cinder's one word for asking again (ErrorState's and\nLoadMore's too), with or without a preset, unless this says otherwise.",
+      "default": "Try again"
     },
     "retryVariant": {
       "enum": ["primary", "secondary"],
-      "description": "How prominent the Retry button is. A preset makes it `primary` where Retry now is the way back\n(`stopped`) and `secondary` everywhere else, so one action at a time looks primary."
+      "description": "How prominent the Retry button is. A preset makes it `primary` where Try again is the way back\n(`stopped`) and `secondary` everywhere else, so one action at a time looks primary."
     },
     "staleDataLabel": {
       "type": "string",

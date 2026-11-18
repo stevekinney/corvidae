@@ -59,8 +59,9 @@ const schema = {
     },
     retryLabel: {
       type: 'string',
-      description: 'Label of the button that tries at once in `reconnecting`.',
-      default: 'Retry now',
+      description:
+        'Label of the button that tries at once in `reconnecting`: "Try again", Cinder\'s one word for\nasking again.',
+      default: 'Try again',
     },
     checkTitle: {
       type: 'string',

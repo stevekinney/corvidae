@@ -1,6 +1,6 @@
 /**
  * The shell's restart flow (`shell:restart-flow`): the command is read while the host answers, the
- * attempts back off 1, 2, 4 and 8 seconds and stop after 8, Retry now probes at once, and Keep
+ * attempts back off 1, 2, 4 and 8 seconds and stop after 8, Try again probes at once, and Keep
  * waiting watches again. The host is a stand-in (`plugins-host.test-support.ts`); the real routes
  * are exercised by `src/host/host-plugins.test.ts`.
  */
@@ -106,7 +106,7 @@ describe('HostRestartFlow', () => {
     expect(restartActivity.active).toBe(false);
   });
 
-  test('Retry now probes at once instead of waiting out the countdown, and counts from the first attempt', async () => {
+  test('Try again probes at once instead of waiting out the countdown, and counts from the first attempt', async () => {
     restartProbing.retryDelayMs = () => 3_600_000;
     const restart = start({ downFor: 1 });
     const done = restart.run([{ name: 'demo', enabled: true }], false, { changes: ['demo'] });

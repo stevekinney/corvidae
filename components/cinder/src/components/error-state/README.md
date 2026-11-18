@@ -30,7 +30,7 @@ The retry button is the primary action, with a refresh glyph, and the only prima
   title="Couldn't load runs"
   description="Interborough didn't answer. Your runs are safe; they're stored on this machine."
   retryStatus="Retrying in 8 s (attempt 3 of 8)"
-  retryLabel="Retry now"
+  retryLabel="Try again"
   onRetry={() => console.log('retry')}
 >
   {#snippet secondaryAction()}

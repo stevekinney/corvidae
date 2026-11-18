@@ -1,7 +1,7 @@
 <script lang="ts">
   /**
    * What the person sees while the host restarts, drawn by Cinder's `RestartState`: the steps while
-   * the host still answers, the reconnect attempts once it stops (with Retry now), and, when it
+   * the host still answers, the reconnect attempts once it stops (with Try again), and, when it
    * never answers, what to check and the exact command to start it again, with Keep waiting as the
    * one way on. It cannot be dismissed while the restart runs, because the host does not answer and
    * the page behind it would show nothing true. When the host answers again it closes and the page

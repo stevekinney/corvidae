@@ -846,7 +846,7 @@ describe('offline', () => {
     expect(container.textContent).toContain(
       'Your edits are kept in the form. Save is off until you’re back. Retrying in 60 s.',
     );
-    expect(container.textContent).toContain('Retry now');
+    expect(container.textContent).toContain('Try again');
     // What was typed stays in the form.
     expect(parsed(textarea(container).value)['name']).toBe('digest');
   });

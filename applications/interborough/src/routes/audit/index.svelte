@@ -192,7 +192,7 @@
   // While Who or the search is set, read on until the log is read or a bound is reached, so what
   // they narrow to is not only what the first page held.
   $effect(() => {
-    // A read that failed is not asked again on its own: the banner's Retry now does that.
+    // A read that failed is not asked again on its own: the banner's Try again does that.
     if (!narrowing || !trail.hasNextPage || trail.isFetchingNextPage || trail.isError) return;
     if (searchedPages >= NARROWING_PAGES) return;
     void trail.fetchNextPage();

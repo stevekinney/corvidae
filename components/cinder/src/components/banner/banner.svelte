@@ -72,7 +72,7 @@
     'back-online': { variant: 'success', label: 'Connection restored' },
   };
 
-  /** Presets that never offer Retry now, with or without `onRetry`. */
+  /** Presets that never offer Try again, with or without `onRetry`. */
   const WITHOUT_RETRY: readonly BannerPreset[] = ['restarting', 'restart-failed', 'back-online'];
 
   let {
@@ -207,7 +207,8 @@
   // The age of the data reads as a relative notice only where the words are the page's own.
   const showsStaleNotice = $derived(dataUpdatedAt !== undefined && generated === undefined);
   const resolvedDismissible = $derived(preset ? false : dismissible);
-  const resolvedRetryLabel = $derived(retryLabel ?? (preset ? 'Retry now' : 'Retry'));
+  // One word for asking again everywhere, the same as ErrorState's and LoadMore's (COR-2489).
+  const resolvedRetryLabel = $derived(retryLabel ?? 'Try again');
   const resolvedRetryVariant = $derived(
     retryVariant ?? (presetConfiguration?.primaryRetry ? 'primary' : 'secondary'),
   );

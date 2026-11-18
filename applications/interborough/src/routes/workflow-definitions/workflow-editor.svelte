@@ -44,6 +44,7 @@
 
   import {
     CONNECTION_MAX_ATTEMPTS,
+    CONNECTION_RETRY_LABEL,
     connectionBannerPreset,
     getConnection,
   } from '../../app/connection.svelte.ts';
@@ -386,6 +387,7 @@
     <!-- While the host restarts, the restart dialog is the one account of it. -->
     <Banner
       preset={connectionBannerPreset(connection)}
+      retryLabel={CONNECTION_RETRY_LABEL}
       consequence={connection.browserOffline
         ? editor.offlineConsequence
         : editor.unreachableConsequence}

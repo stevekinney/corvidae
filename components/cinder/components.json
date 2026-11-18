@@ -4618,7 +4618,7 @@
       "exportName": "RestartState",
       "category": "overlay",
       "status": "beta",
-      "purpose": "The screen people see while the Interborough host restarts: a page takeover with the steps, the reconnect attempts with Retry now, and what to check and run if it fails.",
+      "purpose": "The screen people see while the Interborough host restarts: a page takeover with the steps, the reconnect attempts with Try again, and what to check and run if it fails.",
       "tags": ["overlay", "restart", "progress"],
       "useWhen": [
         "The person confirmed a restart and the page must say what is happening while the host stops answering.",

@@ -1219,8 +1219,8 @@ describe('restarting', () => {
     await waitFor(() => expect(card.getAttribute('data-cinder-phase')).toBe('reconnecting'));
     expect(card.textContent).toContain('Attempt 1 of 8.');
     expect(container.querySelector('[data-testid="restart-back"]')).toBeNull();
-    // Retry now probes at once, without waiting out the minute the countdown has left.
-    await fireEvent.click(within(card).getByRole('button', { name: 'Retry now' }));
+    // Try again probes at once, without waiting out the minute the countdown has left.
+    await fireEvent.click(within(card).getByRole('button', { name: 'Try again' }));
     await backBanner(container);
   });
 

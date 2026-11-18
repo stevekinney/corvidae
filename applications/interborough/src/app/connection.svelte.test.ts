@@ -29,6 +29,23 @@ describe('the connection banner’s retry', () => {
     const banner = shell.slice(start, shell.indexOf('/>', start));
     expect(banner).toContain('retryLabel={CONNECTION_RETRY_LABEL}');
   });
+
+  test('every page that draws the connection banner itself passes the same label', () => {
+    for (const page of [
+      '../routes/schedules/schedule-list.svelte',
+      '../routes/goals/goal-list.svelte',
+      '../routes/workflow-definitions/workflow-editor.svelte',
+      '../routes/workflow-definitions/workflow-detail.svelte',
+      '../routes/agents/agent-access.svelte',
+    ]) {
+      const source = readFileSync(new URL(page, import.meta.url), 'utf8');
+      const start = source.indexOf('preset={connectionBannerPreset(');
+      expect(start, page).toBeGreaterThan(-1);
+      expect(source.slice(start, source.indexOf('/>', start)), page).toContain(
+        'retryLabel={CONNECTION_RETRY_LABEL}',
+      );
+    }
+  });
 });
 
 const monitors: ConnectionMonitor[] = [];
@@ -218,7 +235,7 @@ describe('ConnectionMonitor', () => {
     stop();
   });
 
-  test('counts each probe from 1 and stops after eight failures, leaving Retry now', async () => {
+  test('counts each probe from 1 and stops after eight failures, leaving Try again', async () => {
     let probes = 0;
     const monitor = open(async () => {
       probes += 1;
@@ -259,7 +276,7 @@ describe('ConnectionMonitor', () => {
     expect(monitor.retryInSeconds).toBeUndefined();
   });
 
-  test('Retry now after the probes stopped counts from 1 again and finds the server when it is back', async () => {
+  test('Try again after the probes stopped counts from 1 again and finds the server when it is back', async () => {
     let answers = false;
     let recovered = 0;
     const monitor = open(
@@ -282,7 +299,7 @@ describe('ConnectionMonitor', () => {
     expect(recovered).toBe(1);
   });
 
-  test('Retry now while the server is still down starts the count again', async () => {
+  test('Try again while the server is still down starts the count again', async () => {
     const monitor = new ConnectionMonitor({
       probe: async () => {
         throw new TypeError('Failed to fetch');

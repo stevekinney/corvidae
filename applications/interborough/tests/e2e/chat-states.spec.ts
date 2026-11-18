@@ -390,12 +390,12 @@ test.describe('Restarting after Enable and restart (frame i: 20f)', () => {
       source: SOURCE,
     });
 
-    // Once the host stops answering the banner counts the attempts and offers Retry now; the
+    // Once the host stops answering the banner counts the attempts and offers Try again; the
     // conversation is still readable.
     releaseRestart();
     await expect(banner).toHaveAttribute('data-cinder-preset', 'reconnecting');
     await expect(banner).toContainText('Reconnecting');
-    await expect(banner.getByRole('button', { name: 'Retry now' })).toBeVisible();
+    await expect(banner.getByRole('button', { name: 'Try again' })).toBeVisible();
     await expect(page.getByRole('dialog')).toHaveCount(0);
     expect(await opacityOf(card)).toBe(1);
   });
