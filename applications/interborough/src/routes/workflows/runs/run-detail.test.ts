@@ -805,6 +805,35 @@ describe('a failed run', () => {
     ).toBeTruthy();
   });
 
+  test('a failed run only the Bureau holds says why before Input and output, not only in the rail', async () => {
+    const view = open('/runs/run-1', {
+      tasks: [
+        taskFixture({
+          id: 'run-1',
+          status: 'failed',
+          finishReason: 'error',
+          statusMessage:
+            'Agent "assistant" failed: {"cause":{"message":"GitHub didn’t answer (HTTP 503)"}}',
+        }),
+      ],
+      scopes: BUREAU_ONLY,
+    });
+    const failure = await waitFor(() => {
+      const element = view.container.querySelector('[data-run-failure]');
+      if (element === null) throw new Error('no failure drawn');
+      return element;
+    });
+    expect(failure.textContent).toContain(RUN_DETAIL_COPY.instance.whyItFailed);
+    expect(failure.textContent).toContain('GitHub didn’t answer');
+    expect(failure.textContent).not.toContain('{');
+    expect(failure.closest('aside')).toBeNull();
+    const inputOutput = view.container.querySelector('[data-section="input-output"]');
+    expect(inputOutput).not.toBeNull();
+    expect(
+      failure.compareDocumentPosition(inputOutput as Node) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
   test('a failed instance draws its step failure, in What happened, before Input and output', () => {
     // A failed instance says why on the step that failed, so What happened leads; any other
     // instance keeps Input and output first. (run-detail-engine-runs.test.ts renders the page.)
