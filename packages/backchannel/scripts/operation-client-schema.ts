@@ -1,5 +1,5 @@
-import { PACKAGE_AUTHORIZATION_SCOPE_PATTERN } from '@lostgradient/backchannel';
-import { compareStrings } from '@lostgradient/backchannel/internals';
+import { PACKAGE_AUTHORIZATION_SCOPE_PATTERN } from '../src/index.ts';
+import { compareStrings } from '../src/internals.ts';
 
 const UNSUPPORTED_COMBINATOR = Symbol('unsupported-combinator');
 
@@ -118,7 +118,7 @@ export function schemaToNode(schema: Record<string, unknown>): TypeNode {
  * The TypeScript type for a package authorization scope. A JSON Schema
  * `pattern` has no general TypeScript form, but this one does, and emitting
  * `string` instead would swallow the built-in scope literals it is unioned
- * with (`weft.system.principal`'s `scopes`).
+ * with (the `scopes` of the principal operation).
  */
 const PACKAGE_AUTHORIZATION_SCOPE_TYPE = '`${string}.${string}:${string}`';
 

@@ -2,7 +2,9 @@ import type { ConnectionLease } from './connection-lease.ts';
 import type { OperationRegistry } from './operation-catalog.ts';
 import type { Principal } from './principal.ts';
 
+/** Where a JSON-RPC WebSocket session sends its outgoing frames. */
 export type JsonRpcWebSocketEmitter = {
+  /** Sends one frame to the peer. */
   send(message: string): void;
 };
 
@@ -26,7 +28,10 @@ export type JsonRpcWebSocketSessionOptions = {
   readonly discoverDocument?: () => Record<string, unknown>;
 };
 
+/** One JSON-RPC session over a WebSocket: feed it incoming frames, and close it when the socket closes. */
 export type JsonRpcWebSocketSession = {
+  /** Handles one incoming frame. */
   handleMessage(frame: string): Promise<void>;
+  /** Closes the session and releases its subscriptions. */
   close(): Promise<void>;
 };

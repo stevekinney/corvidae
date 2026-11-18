@@ -23,7 +23,7 @@ import {
  *
  * @example
  * ```ts
- * import { authContextToPrincipal } from '@lostgradient/weft';
+ * import { authContextToPrincipal } from '@lostgradient/backchannel';
  *
  * const principal = authContextToPrincipal({ method: 'api-key' });
  * console.log(principal.method); // 'api-key'
@@ -76,7 +76,7 @@ const UNAUTHENTICATED_LOCAL_AUTH_CONTEXT: AuthContext = Object.freeze({
  *
  * @example
  * ```ts
- * import { authContextToPrincipal, unauthenticatedLocalAuthContext } from '@lostgradient/weft';
+ * import { authContextToPrincipal, unauthenticatedLocalAuthContext } from '@lostgradient/backchannel';
  *
  * const principal = authContextToPrincipal(unauthenticatedLocalAuthContext());
  * console.log(principal.method); // 'unauthenticated-local'

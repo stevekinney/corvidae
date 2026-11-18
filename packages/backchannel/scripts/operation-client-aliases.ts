@@ -1,4 +1,4 @@
-import { compareStrings } from '@lostgradient/backchannel/internals';
+import { compareStrings } from '../src/internals.ts';
 import { canonicalKey, renderNode, type TypeNode } from './operation-client-schema.ts';
 
 /**

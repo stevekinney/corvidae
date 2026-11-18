@@ -32,6 +32,7 @@ import {
 } from './route-model.ts';
 import { zodToJsonSchema } from './zod-json-schema.ts';
 
+/** The names of the security schemes an OpenAPI document declares. */
 export type OpenApiSecuritySchemeName = 'bearerAuth' | 'apiKeyAuth';
 
 // ---------------------------------------------------------------------------
@@ -407,6 +408,7 @@ function emitDirectRoutes(
   }
 }
 
+/** Generates an OpenAPI document from a registry. */
 export function generateOpenApiDocument(options: OpenApiOptions): Record<string, unknown> {
   const infoBlock = applyDiscoveryInfo(
     resolveDocumentTitleAndVersion(options, options.discoveryInfo),

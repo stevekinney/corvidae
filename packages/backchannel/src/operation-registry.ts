@@ -82,6 +82,7 @@ type SubscriptionOperationInput<
   >;
 };
 
+/** What {@link defineOperation} accepts: the unary, stream or subscription authoring shape, selected by `kind`. */
 export type OperationDefinitionInput<
   InputSchema extends z.ZodObject,
   OutputSchema extends z.ZodType,
@@ -100,6 +101,7 @@ type DispatchEntry<Result, Host> = {
   ) => Promise<DispatchResult<Result>>;
 };
 
+/** The result of {@link defineOperation} for a `kind: 'unary'` operation. */
 export type UnarySchemaOperationDefinition<
   InputSchema extends z.ZodObject,
   OutputSchema extends z.ZodType,
@@ -107,6 +109,7 @@ export type UnarySchemaOperationDefinition<
 > = UnaryOperationInput<InputSchema, OutputSchema, Host> &
   DispatchEntry<z.input<OutputSchema>, Host>;
 
+/** The result of {@link defineOperation} for a `kind: 'stream'` operation. */
 export type StreamSchemaOperationDefinition<
   InputSchema extends z.ZodObject,
   OutputSchema extends z.ZodType,
@@ -115,6 +118,7 @@ export type StreamSchemaOperationDefinition<
 > = StreamOperationInput<InputSchema, OutputSchema, EventSchema, Host> &
   DispatchEntry<z.input<OutputSchema> | StreamOperationInvocation<z.input<EventSchema>>, Host>;
 
+/** The result of {@link defineOperation} for a `kind: 'subscription'` operation. */
 export type SubscriptionSchemaOperationDefinition<
   InputSchema extends z.ZodObject,
   OutputSchema extends z.ZodType,
@@ -123,6 +127,7 @@ export type SubscriptionSchemaOperationDefinition<
 > = SubscriptionOperationInput<InputSchema, OutputSchema, EventSchema, Host> &
   DispatchEntry<SubscriptionOperationInvocation<z.input<EventSchema>, z.input<OutputSchema>>, Host>;
 
+/** The result of {@link defineOperation}: an operation of any kind, carrying its frozen metadata and its dispatch entry. */
 export type SchemaOperationDefinition<
   InputSchema extends z.ZodObject,
   OutputSchema extends z.ZodType,
@@ -141,6 +146,7 @@ export function defineOperation<
 >(
   input: UnaryOperationInput<InputSchema, OutputSchema, Host>,
 ): UnarySchemaOperationDefinition<InputSchema, OutputSchema, Host>;
+/** Defines a stream operation. */
 export function defineOperation<
   InputSchema extends z.ZodObject,
   OutputSchema extends z.ZodType,
@@ -149,6 +155,7 @@ export function defineOperation<
 >(
   input: StreamOperationInput<InputSchema, OutputSchema, EventSchema, Host>,
 ): StreamSchemaOperationDefinition<InputSchema, OutputSchema, EventSchema, Host>;
+/** Defines a subscription operation. */
 export function defineOperation<
   InputSchema extends z.ZodObject,
   OutputSchema extends z.ZodType,
