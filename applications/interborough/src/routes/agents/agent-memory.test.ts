@@ -985,6 +985,30 @@ describe('forgetting a memory', () => {
     );
   });
 
+  test('sends a forget for the agent it was made on, even once the page shows another agent (COR-2429)', async () => {
+    const served = bureau({
+      'bureau.agents.list': () => ({
+        agents: [AGENT, { ...AGENT, name: 'other', displayName: 'Other' }],
+      }),
+    });
+    const view = open();
+    const detail = await openDetails(view, AISLE.content);
+    await fireEvent.click(
+      within(detail).getByRole('button', { name: MEMORY_COPY.forget.iconLabel }),
+    );
+    await forgetToastOf(view);
+
+    // The person moves to another agent's memory while the toast still offers Undo.
+    router.navigate('/agents/other/memory');
+    await closeForgetToast(view);
+
+    await waitFor(() =>
+      expect(served.callsTo('bureau.memory.forget').map((call) => call.params)).toEqual([
+        { agentId: 'assistant', id: AISLE.id },
+      ]),
+    );
+  });
+
   test('sends the forget when the page is left while the toast shows', async () => {
     const served = bureau();
     const view = open();

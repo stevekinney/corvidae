@@ -10,6 +10,7 @@ import { afterEach, beforeEach, describe, expect, jest, spyOn, test } from 'bun:
 import { quietFor } from '@lostgradient/testing/wait-until';
 import { CHAT_COPY } from '../../app/copy/chat.ts';
 import { toolApprovalFixture } from '../../lib/bureau-fixtures.test-support.ts';
+import { readyAgent } from '../../lib/bureau-stub.test-support.ts';
 import { settle, until } from '../../lib/fake-timers.test-support.ts';
 import { BureauEventSource } from '../../lib/live-source/bureau-event-source.svelte.ts';
 import {
@@ -737,6 +738,48 @@ describe('an existing session', () => {
     });
 
     expect(await findByText('Start with Monday.')).not.toBeNull();
+  });
+
+  test('offers no Regenerate on a chat whose agent a person disabled (COR-2429, design review 2)', async () => {
+    const served = bureau(
+      {
+        'bureau.contexts.get': () => CONTEXT,
+        'bureau.tasks.list': () => ({ tasks: [], nextPageToken: null }),
+        // The list leaves a disabled agent out; its definition says it is disabled.
+        'bureau.agents.list': () => ({ agents: [] }),
+        'bureau.agents.definitions.get': () => ({
+          ...readyAgent({ id: 'assistant' }),
+          state: 'disabled',
+        }),
+      },
+      (url) => {
+        if (url.endsWith('/messages')) {
+          return Response.json({
+            threadId: 'session-1',
+            messages: [
+              { id: 'u1', role: 'user', content: 'First question' },
+              { id: 'a1', role: 'assistant', content: 'First answer' },
+            ],
+          });
+        }
+        if (url.includes('/threads/')) {
+          return sse([{ type: 'RUN_ERROR', message: 'none', code: 'RUN_NOT_FOUND' }]);
+        }
+        return undefined;
+      },
+    );
+    restore = served.restore;
+    landAt('/chats/session-1');
+
+    const { container, findByText } = mount({
+      sessionId: 'session-1',
+      title: 'Plan the week',
+      agentName: 'assistant',
+    });
+    await findByText('First answer');
+    await findByText(/is disabled, so this chat is read-only/);
+
+    expect(container.querySelector('.chat-message-regenerate-button')).toBeNull();
   });
 
   test('keeps regeneration failure status on its affected answer only', async () => {

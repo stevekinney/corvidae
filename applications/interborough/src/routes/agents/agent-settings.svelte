@@ -83,7 +83,7 @@
     modelGroups,
     NO_RESTRICTIONS,
   } from '../agent-editor/agent-editor-models.ts';
-  import { formatContext, providerDisplayName } from '../settings/models/format-model.ts';
+  import { providerDisplayName } from '../settings/models/format-model.ts';
   import type { OverridesWriter } from './agent-overrides.ts';
   import AgentPluginNote from './agent-plugin-note.svelte';
   import AgentVersions from './agent-versions.svelte';
@@ -275,26 +275,26 @@
       : [{ value: model, label: model === '' ? copy.modelNone : modelName(model) }, ...offered];
   });
 
-  /** What the chosen model can do, in one muted line. */
+  /**
+   * The catalog's own row of the model, when the field offers none: a provider whose key is not
+   * saved keeps its rows in the catalog, `unavailable` (COR-2143), and the field leaves them out,
+   * but what the model can do is still known from its row (row 38u, design review 2). Found by its
+   * identifier or by one of its aliases (`anthropic/sonnet`).
+   */
+  const ownRow = $derived(
+    modelRow ??
+      catalog.data?.models.find(
+        (row) =>
+          `${row.provider}/${row.model}` === model ||
+          row.aliases.some((entry) => `${row.provider}/${entry.alias}` === model),
+      ),
+  );
+
+  /** What the chosen model can do, in one muted line, connected or not. */
   const abilityLine = $derived.by(() => {
+    if (ownRow === undefined) return '';
     const words = AGENT_EDITOR_COPY.model;
-    if (modelRow === undefined) {
-      // Row 38u: with no provider connected the catalog holds no row for the model, so the line
-      // is read from what the host knows of the provider's models.
-      // By its identifier or by one of its aliases (`anthropic/sonnet`).
-      const known = providers.data?.models.find(
-        (entry) =>
-          `${entry.provider}/${entry.model}` === model ||
-          entry.aliases.some((alias) => `${entry.provider}/${alias}` === model),
-      );
-      if (known === undefined) return '';
-      return [
-        ...(known.tools ? [words.abilities.tools] : []),
-        ...(known.images ? [words.abilities.images] : []),
-        words.context(formatContext(known.contextWindowTokens)),
-      ].join(', ');
-    }
-    const abilities = abilitiesOf(modelRow);
+    const abilities = abilitiesOf(ownRow);
     return [
       ...abilities.has.map((ability) => words.abilities[ability]),
       words.context(abilities.context),
@@ -625,7 +625,7 @@
                 title={copy.noProvider.title(unconnected)}
                 data-testid="agent-settings-no-provider"
               >
-                <p>{copy.noProvider.description(name)}</p>
+                <p>{copy.noProvider.description(shownName)}</p>
                 {#snippet action()}
                   <Button
                     href={router.href(SETTINGS_MODELS_PATH)}

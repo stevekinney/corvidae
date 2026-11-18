@@ -11,6 +11,7 @@ import { afterEach, describe, expect, test } from 'bun:test';
 import { AGENT_PAGE_COPY } from '../../app/copy/agents.ts';
 import type { AgentVersion } from '../../lib/agent-definitions.ts';
 import {
+  catalogFixture,
   installBureauStub,
   readyAgent,
   type BureauHandler,
@@ -148,44 +149,34 @@ describe('the Settings form (rows 38u to 38w)', () => {
     expect(within(reason).getByRole('link', { name: copy.noProvider.action })).not.toBeNull();
   });
 
-  test('says what the model can do from the host’s list when the catalog has no row for it (row 38u, design review 1)', async () => {
+  test('says what the model can do from its catalog row while its provider is not connected (row 38u, design review 2)', async () => {
     landAt('/agents/researcher/settings');
-    stub = installBureauStub(
+    serve(
       {
-        'bureau.agents.list': () => ({ agents: [FILE_AGENT] }),
-        'bureau.agents.definitions.get': () => DETAIL,
-        'bureau.contexts.list': () => ({ contexts: [], nextOffset: null }),
-        'bureau.memory.list': () => ({ memories: [], nextOffset: null }),
-        'bureau.hooks.list': () => ({ hooks: [] }),
-        'bureau.agents.versions.list': () => ({ versions: VERSIONS }),
-        'bureau.agents.definitions.revisions': () => ({ revisions: [] }),
-        // A host with no provider connected: the catalog offers no model.
-        'bureau.agents.catalog': () => ({ models: [], tools: [] }),
+        // No key saved: the catalog keeps the provider's rows, `unavailable` (COR-2143), and the
+        // Model field offers none of them. The file names the model by its alias.
+        'bureau.agents.catalog': () =>
+          catalogFixture({
+            models: [
+              {
+                provider: 'anthropic',
+                model: 'claude-sonnet-5',
+                aliases: [{ alias: 'sonnet', resolvesTo: 'claude-sonnet-5' }],
+                availability: 'unavailable',
+                contextWindowTokens: 1_000_000,
+                modalities: { text: { input: true }, image: { input: true } },
+              },
+            ],
+          }),
       },
-      {
-        hostProviders: [{ name: 'anthropic', hasKey: false, connected: false }],
-        hostModels: [
-          {
-            provider: 'anthropic',
-            // The file names it by its alias, `anthropic/sonnet`.
-            model: 'claude-sonnet-5',
-            aliases: ['sonnet'],
-            contextWindowTokens: 1_000_000,
-            maxOutputTokens: 64_000,
-            streaming: true,
-            tools: true,
-            structuredOutput: true,
-            images: true,
-            off: false,
-          },
-        ],
-      },
+      [{ name: 'anthropic', hasKey: false, connected: false }],
     );
     const { findByTestId } = mount();
 
     const abilities = await findByTestId('agent-settings-abilities');
-    // Worded as the catalog's row would be.
-    await waitFor(() => expect(abilities.textContent).toBe('Tools, Images, 1M context window'));
+    await waitFor(() =>
+      expect(abilities.textContent).toBe('Tools, Images, Streaming, 1M context window'),
+    );
   });
 
   test('does not say the provider is not connected when it is keyless, which needs no key (COR-2414)', async () => {
@@ -339,7 +330,7 @@ describe('the Versions list and a version opened read-only (rows 38x, 39t, 39u, 
     await fireEvent.click(await findByRole('button', { name: 'Restore Version 3' }));
     const dialog = await findByRole('dialog', { name: 'Restore Version 3?' });
     expect(dialog.textContent).toContain(
-      'Restoring Version 3 removes Version 4’s changes: Instructions and Tools. This makes Version 5, and Version 4 stays in the list.',
+      'Restoring Version 3 removes Version 4’s changes (Instructions and Tools). This makes Version 5, and Version 4 stays in the list.',
     );
     expect(within(dialog).getByRole('button', { name: 'Cancel' })).not.toBeNull();
   });

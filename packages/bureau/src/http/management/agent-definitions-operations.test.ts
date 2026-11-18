@@ -1209,6 +1209,31 @@ describe('bureau.agents.disable and bureau.agents.enable (COR-2429)', () => {
     expect(trail?.map((entry) => entry.type)).toEqual(['agent.disabled', 'agent.enabled']);
   });
 
+  it('audits one disable for two sent at once, and one enable for two sent at once', async () => {
+    const served = await serve();
+    await seed(served);
+
+    const disables = await Promise.all([
+      callAs(served.local, 'bureau.agents.disable', { id: 'alpha' }),
+      callAs(served.local, 'bureau.agents.disable', { id: 'alpha' }),
+    ]);
+    const enables = await Promise.all([
+      callAs(served.local, 'bureau.agents.enable', { id: 'alpha' }),
+      callAs(served.local, 'bureau.agents.enable', { id: 'alpha' }),
+    ]);
+
+    expect(disables.map((answer) => answer.result)).toEqual([
+      { id: 'alpha', disabled: true },
+      { id: 'alpha', disabled: true },
+    ]);
+    expect(enables.map((answer) => answer.result)).toEqual([
+      { id: 'alpha', disabled: false },
+      { id: 'alpha', disabled: false },
+    ]);
+    const trail = await served.bureau.internals.auditTrail?.query({ runId: 'agent:alpha' });
+    expect(trail?.map((entry) => entry.type)).toEqual(['agent.disabled', 'agent.enabled']);
+  });
+
   it('keeps an agent disabled across a restart over the same store', async () => {
     const storage = new MemoryStorage();
     const first = await serve({ overrides: { storage } });

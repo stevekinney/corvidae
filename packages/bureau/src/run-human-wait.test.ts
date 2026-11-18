@@ -656,7 +656,8 @@ describe('a bureau.run() park after a restart', () => {
     const run = await crashed.tasks.start('asker', 'deploy', { principal: 'alice' });
     await nextReview(crashed, run.id);
     expect(await crashed.agents.disable('asker', { disabledBy: 'operator' })).toMatchObject({
-      id: 'asker',
+      record: { id: 'asker' },
+      changed: true,
     });
 
     const after = newSeen();

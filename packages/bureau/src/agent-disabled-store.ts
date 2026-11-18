@@ -71,11 +71,27 @@ export interface AgentDisabledStore {
   isDisabled(id: string): boolean;
   /** The record of `id`, as last read, or `undefined` when it is enabled. */
   record(id: string): AgentDisabledRecord | undefined;
-  /** Disable `id`. Disabling an agent that is already disabled keeps its first record. */
-  disable(id: string, options: { readonly disabledBy: string }): Promise<AgentDisabledRecord>;
-  /** Enable `id`. Enabling an agent that is not disabled writes nothing. */
-  enable(id: string): Promise<void>;
+  /**
+   * Disable `id`. Disabling an agent that is already disabled keeps its first record and writes
+   * nothing. The write is fenced on what was read, so of two disables at once exactly one writes:
+   * it resolves `changed: true`, and the other `changed: false` with the first one's record.
+   */
+  disable(id: string, options: { readonly disabledBy: string }): Promise<AgentDisabledToggle>;
+  /**
+   * Enable `id`, resolving whether this call changed anything. Enabling an agent that is not
+   * disabled writes nothing; of two enables at once exactly one resolves `true`.
+   */
+  enable(id: string): Promise<boolean>;
 }
+
+/** What {@link AgentDisabledStore.disable} did: the agent's record, and whether this call wrote it. */
+export interface AgentDisabledToggle {
+  readonly record: AgentDisabledRecord;
+  readonly changed: boolean;
+}
+
+/** How many times a fenced write is tried again when the record moved under it. */
+const FENCED_WRITE_ATTEMPTS = 3;
 
 export interface AgentDisabledStoreOptions {
   /** The store. Defaults to a memory store, which a restart forgets. */
@@ -113,23 +129,51 @@ export function createAgentDisabledStore(options: AgentDisabledStoreOptions): Ag
     },
     async disable(id, disableOptions) {
       const key = agentDisabledKey(id);
-      const existing = parseRecord(await store.get(key));
-      if (existing !== undefined && existing.id === id) {
-        disabled.set(id, existing);
-        return existing;
+      for (let attempt = 0; attempt < FENCED_WRITE_ATTEMPTS; attempt += 1) {
+        const text = await store.get(key);
+        const existing = parseRecord(text);
+        if (existing !== undefined && existing.id === id) {
+          disabled.set(id, existing);
+          return { record: existing, changed: false };
+        }
+        const record: AgentDisabledRecord = {
+          id,
+          disabledAt: options.nowISO(),
+          disabledBy: disableOptions.disabledBy,
+        };
+        // Written only over what was read (nothing, or a record that is not this agent's), so a
+        // disable that lost the race reads the winner's record on the next pass.
+        const committed = await store.conditionalBatch(
+          [{ key, expectedValue: text }],
+          [{ type: 'set', key, value: JSON.stringify(record) }],
+        );
+        if (committed) {
+          disabled.set(id, record);
+          return { record, changed: true };
+        }
       }
-      const record: AgentDisabledRecord = {
-        id,
-        disabledAt: options.nowISO(),
-        disabledBy: disableOptions.disabledBy,
-      };
-      await store.set(key, JSON.stringify(record));
-      disabled.set(id, record);
-      return record;
+      throw new Error(`The disabled record of agent "${id}" kept changing; try again.`);
     },
     async enable(id) {
-      await store.delete(agentDisabledKey(id));
-      disabled.delete(id);
+      const key = agentDisabledKey(id);
+      for (let attempt = 0; attempt < FENCED_WRITE_ATTEMPTS; attempt += 1) {
+        const text = await store.get(key);
+        if (text === null) {
+          disabled.delete(id);
+          return false;
+        }
+        const committed = await store.conditionalBatch(
+          [{ key, expectedValue: text }],
+          [{ type: 'delete', key }],
+        );
+        if (committed) {
+          disabled.delete(id);
+          // A key that held no readable record of this agent was no gate on it.
+          const held = parseRecord(text);
+          return held !== undefined && held.id === id;
+        }
+      }
+      throw new Error(`The disabled record of agent "${id}" kept changing; try again.`);
     },
   };
 }

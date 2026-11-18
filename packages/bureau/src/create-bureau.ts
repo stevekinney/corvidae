@@ -3366,11 +3366,12 @@ async function constructBureau<const D extends AgentDefinitions>(
           // COR-2429: the same holds for the gate, so an agent another Bureau disabled starts nothing.
           await agentDisabled.reload(name);
         }
-        // COR-2429: a run being resumed (`recorded`) finishes on a disabled agent, as a file
-        // agent's resumes from its snapshot; only a run that is starting is refused.
+        // COR-2429: a run with evidence it already started finishes on a disabled agent, as a
+        // file agent's resumes from its snapshot; a run that is starting is refused, whatever
+        // `recorded` it carries (a scheduled fire passes one on its first attempt too).
         agent = isTryAgentName(name)
           ? tryAgents.find(name, ownerOrLocal(context.principal))
-          : agentCatalog.find(name, { includeDisabled: recorded !== undefined });
+          : agentCatalog.find(name, { includeDisabled: recorded?.alreadyStarted === true });
         agentBinding = agent === undefined ? undefined : readFileAgentBinding(agent);
       }
     } catch (error) {

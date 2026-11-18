@@ -469,6 +469,8 @@ export function createSessionAgentRuns(core: CompositionCore, peers: SessionAgen
         definitionRevision: sessionRecordedRevision(session.metadata, recordedHash),
         // COR-2230 — the pin this run wrote, when it is the session's latest pinning run.
         ...sessionRecordedPin(session.metadata, runId),
+        // COR-2429 — a session run being recovered started before the restart.
+        alreadyStarted: true,
       },
       { sessionId: session.id, metadata: session.metadata },
     );

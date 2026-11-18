@@ -75,6 +75,11 @@
   /** A memory forgotten on the page whose forget waits for its toast to close. */
   type Waiting = {
     readonly id: string;
+    /**
+     * The agent the memory belongs to, read at the click: the page may show another agent by the
+     * time the toast closes, and the forget must go to this one (COR-2429).
+     */
+    readonly agentId: string;
     toast: string | undefined;
     /** Undo was pressed: nothing is sent. */
     undone: boolean;
@@ -85,29 +90,34 @@
   let destroyed = false;
 
   /** What a forget answered: the receipt above the list, and the memory back when it stays. */
-  function settled(id: string, result: Awaited<ReturnType<typeof forgetMemory>>): void {
+  function settled(
+    owner: string,
+    id: string,
+    result: Awaited<ReturnType<typeof forgetMemory>>,
+  ): void {
     if (result.deletion === 'exempt') holds.set(id, 'held');
     if (result.deletion !== 'completed') hidden.delete(id);
     // A memory that is gone has no details to read again: the outcome stays on screen.
     void queryClient.invalidateQueries(
       result.deletion === 'completed'
-        ? memoryListingsFilter(agentId)
-        : { queryKey: queryKeys.memory.all(agentId) },
+        ? memoryListingsFilter(owner)
+        : { queryKey: queryKeys.memory.all(owner) },
     );
   }
 
   const forget = createMutation(() => ({
-    mutationFn: (id: string) => forgetMemory(agentId, id),
+    mutationFn: (target: { readonly agentId: string; readonly id: string }) =>
+      forgetMemory(target.agentId, target.id),
     onMutate: () => {
       failure = undefined;
       outcome = undefined;
     },
-    onSuccess: (result, id) => {
-      outcome = { id, result };
-      settled(id, result);
+    onSuccess: (result, target) => {
+      outcome = { id: target.id, result };
+      settled(target.agentId, target.id, result);
     },
-    onError: (error, id) => {
-      hidden.delete(id);
+    onError: (error, target) => {
+      hidden.delete(target.id);
       failure = memoryFaultOf(error);
     },
   }));
@@ -125,17 +135,17 @@
     entry.sent = true;
     if (waiting === entry) waiting = undefined;
     if (!destroyed) {
-      forget.mutate(entry.id);
+      forget.mutate({ agentId: entry.agentId, id: entry.id });
       return;
     }
-    void sendAfterLeaving(entry.id);
+    void sendAfterLeaving(entry);
   }
 
   /** The forget the page held back, sent once it is gone: only one that did not complete says so. */
-  async function sendAfterLeaving(id: string): Promise<void> {
+  async function sendAfterLeaving(entry: Waiting): Promise<void> {
     try {
-      const result = await forgetMemory(agentId, id);
-      settled(id, result);
+      const result = await forgetMemory(entry.agentId, entry.id);
+      settled(entry.agentId, entry.id, result);
       if (result.deletion !== 'completed' && toasts) {
         showToast(MEMORY_COPY.forget.outcome[result.deletion].title, { variant: 'warning' });
       }
@@ -156,7 +166,13 @@
       if (before.toast !== undefined) dismissToast(before.toast);
       send(before);
     }
-    const entry: Waiting = { id: memory.id, toast: undefined, undone: false, sent: false };
+    const entry: Waiting = {
+      id: memory.id,
+      agentId,
+      toast: undefined,
+      undone: false,
+      sent: false,
+    };
     waiting = entry;
     // The page opens the next memory while this one is still in its list, then it leaves.
     onForgotten(memory.id);
@@ -185,7 +201,7 @@
       if (entry === undefined || entry.undone || entry.sent) return;
       entry.sent = true;
       waiting = undefined;
-      void forgetMemory(agentId, entry.id, {
+      void forgetMemory(entry.agentId, entry.id, {
         fetch: (input, init) => fetch(input, { ...init, keepalive: true }),
       }).catch(() => undefined);
     };

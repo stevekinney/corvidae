@@ -54,7 +54,11 @@
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: var(--cinder-space-4) var(--weft-outlet-gutter) var(--cinder-space-6);
+  /* The end keeps room under a toast that stays until it is acted on (an Undo), so what the page
+     holds can be scrolled clear of it on a phone (`--cinder-toast-reserve`, Cinder's ToastRegion). */
+  padding: var(--cinder-space-4) var(--weft-outlet-gutter)
+    calc(var(--cinder-space-6) + var(--cinder-toast-reserve, 0px));
+  scroll-padding-block-end: var(--cinder-toast-reserve, 0px);
 }
 
 .weft-shell-outlet[data-width='reading'] {

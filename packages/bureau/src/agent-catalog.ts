@@ -53,8 +53,8 @@ import { effectiveCodeAgent, type EffectiveCodeAgentDeployment } from './code-ag
 import type { AgentRevision, AgentSnapshotStore } from './agent-snapshot-store';
 import { ownerOrLocal } from './owner-of-record';
 import {
-  type AgentDisabledRecord,
   type AgentDisabledStore,
+  type AgentDisabledToggle,
   createAgentDisabledStore,
 } from './agent-disabled-store';
 
@@ -308,19 +308,21 @@ export interface BureauAgentCatalog<D extends AgentDefinitions> {
    * as `disabled` and can still be read ({@link detail}, {@link models}, its versions, overrides,
    * chats and memory), and {@link find}, which every start of a run by an agent's name asks, no
    * longer holds it, so no run, chat, schedule, workflow step or hook can start on it. Disabling a disabled agent keeps its
-   * first record. Resolves `undefined`, writing nothing, when the catalog lists no agent `id` or
-   * lists it `unavailable` (a disabled plugin's agent, which runs nothing already).
+   * first record and resolves `changed: false`. Resolves `undefined`, writing nothing, when the
+   * catalog lists no agent `id` or lists it `unavailable` (a disabled plugin's agent, which runs
+   * nothing already).
    */
   disable(
     id: string,
     options: { readonly disabledBy: string },
-  ): Promise<AgentDisabledRecord | undefined>;
+  ): Promise<AgentDisabledToggle | undefined>;
   /**
-   * COR-2429 — enable the agent `id` again, so every lookup holds it as before. Resolves `false`,
-   * writing nothing, when the catalog lists no agent `id`; enabling an agent that is not disabled
-   * writes nothing and resolves `true`.
+   * COR-2429 — enable the agent `id` again, so every lookup holds it as before, resolving whether
+   * this call changed anything. Resolves `undefined`, writing nothing, when the catalog lists no
+   * agent `id`; enabling an agent that is not disabled writes nothing and resolves
+   * `{ changed: false }`.
    */
-  enable(id: string): Promise<boolean>;
+  enable(id: string): Promise<{ readonly changed: boolean } | undefined>;
   /** COR-2429 — whether a person disabled the agent `id`. */
   isDisabled(id: string): boolean;
   /**
@@ -786,9 +788,8 @@ export function createAgentCatalog<D extends AgentDefinitions>(
       return gate.disable(id, disableOptions);
     },
     async enable(id) {
-      if (!catalog.list().some((candidate) => candidate.id === id)) return false;
-      await gate.enable(id);
-      return true;
+      if (!catalog.list().some((candidate) => candidate.id === id)) return undefined;
+      return { changed: await gate.enable(id) };
     },
     isDisabled(id) {
       return gate.isDisabled(id);

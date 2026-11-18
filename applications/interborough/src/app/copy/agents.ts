@@ -1084,7 +1084,8 @@ export const AGENT_PAGE_COPY = {
           current === revision + 1
             ? `Version ${String(current)}’s changes`
             : `the changes of Versions ${String(revision + 1)} to ${String(current)}`;
-        const what = changes === '' ? '' : `: ${changes}`;
+        // In parentheses, so a summary's own colons and a quoted line's period never double up.
+        const what = changes === '' ? '' : ` (${changes})`;
         return `Restoring Version ${String(revision)} removes ${removed}${what}. This makes Version ${String(current + 1)}, and Version ${String(current)} stays in the list. Running chats keep the version they started with.`;
       },
       confirm: (revision: number): string => `Restore Version ${String(revision)}`,

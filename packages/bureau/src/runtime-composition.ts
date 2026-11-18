@@ -908,6 +908,8 @@ async function buildRuntimeComposition(
         definitionRevision: record.definitionRevision,
         // COR-2230 — the pin the run started with; a record from before it holds neither.
         ...pinOf(record.agentPluginVersion, record.agentOverrideHash),
+        // COR-2429 — a catalog run's record is written once its dispatch admitted it.
+        alreadyStarted: true,
       },
     );
     if (resolution.status === 'missing-agent') {

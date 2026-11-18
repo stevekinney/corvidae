@@ -67,6 +67,26 @@ describe('Undo toasts (rows 04w, 06x, 48s, 66g, 78v)', () => {
     expect(container.querySelector('.cinder-toast')).not.toBeNull();
   });
 
+  test('reserves room at the bottom of the page while an Undo toast stays, and none for a toast that leaves on its own (COR-2429)', async () => {
+    const root = document.documentElement;
+    const { api, container } = await mountRegion();
+
+    api.show('Saved.', { variant: 'success' });
+    await tick();
+    expect(root.style.getPropertyValue('--cinder-toast-reserve')).toBe('');
+
+    const id = api.show('Forgot “The user prefers aisle seats.”.', { undo: () => {} });
+    await waitFor(() =>
+      expect(root.style.getPropertyValue('--cinder-toast-reserve')).toMatch(/px$/),
+    );
+
+    api.dismiss(id);
+    await waitFor(() =>
+      expect(container.querySelector('[data-cinder-undo]')?.outerHTML ?? null).toBeNull(),
+    );
+    await waitFor(() => expect(root.style.getPropertyValue('--cinder-toast-reserve')).toBe(''));
+  });
+
   test('another toast still dismisses itself', async () => {
     jest.useFakeTimers();
     const { api, container } = await mountRegion();

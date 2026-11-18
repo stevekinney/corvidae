@@ -101,6 +101,37 @@
   let politeStack: InternalToastItem[] = $state([]);
   let assertiveStack: InternalToastItem[] = $state([]);
 
+  /**
+   * While a toast that stays until it is acted on (an Undo, an error: no timer) is shown at the
+   * bottom of the viewport, the document element carries `--cinder-toast-reserve`: how far up from
+   * the viewport's bottom edge the region reaches, in pixels. A page's scrolling area pads its end
+   * by it, so nothing it holds stays under such a toast (a memory's "Came from" on a 320px phone,
+   * COR-2429). A toast that leaves on its own reserves nothing; the property is removed once none
+   * stays.
+   */
+  const TOAST_RESERVE_PROPERTY = '--cinder-toast-reserve';
+  const staysUntilActedOn = $derived(
+    [...politeStack, ...assertiveStack].some((toast) => toast.duration <= 0 && !toast.leaving),
+  );
+  $effect(() => {
+    const element = regionElement;
+    if (element === null || !staysUntilActedOn || !position.startsWith('bottom')) return;
+    const root = document.documentElement;
+    const update = (): void => {
+      const reach = Math.ceil(window.innerHeight - element.getBoundingClientRect().top);
+      root.style.setProperty(TOAST_RESERVE_PROPERTY, `${String(Math.max(0, reach))}px`);
+    };
+    update();
+    const observer = typeof ResizeObserver === 'function' ? new ResizeObserver(update) : undefined;
+    observer?.observe(element);
+    window.addEventListener('resize', update);
+    return () => {
+      observer?.disconnect();
+      window.removeEventListener('resize', update);
+      root.style.removeProperty(TOAST_RESERVE_PROPERTY);
+    };
+  });
+
   // Track auto-dismiss timers so we can cancel on dismiss / unmount.
   const timers: Map<string, TimerRecord> = new Map();
   const removalTimers: Map<string, () => void> = new Map();

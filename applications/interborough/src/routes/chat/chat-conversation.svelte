@@ -535,6 +535,9 @@
   // stays readable. Archive is refused while a run goes or waits on the person, so no approval or
   // question can wait under the bar.
   const archivedAt = $derived(choosing ? null : (context.data?.archivedAt ?? null));
+  // A read-only chat offers no Regenerate or Try again: either would start a run its agent may not
+  // start (COR-2429, design review 2).
+  const mayRegenerate = $derived(archivedAt === null && !agentDisabled && !agentUnavailable);
   let archiving = $state(false);
   /**
    * Archives the chat or unarchives it (`chat-archive.ts`). Unarchived from the bar, the composer
@@ -2114,6 +2117,8 @@
             <p class="weft-chat-approval__message">
               {session.regeneration.error ?? CHAT_COPY.regeneration.failed}
             </p>
+          {/if}
+          {#if session.regeneration.status === 'failed' && mayRegenerate}
             <Button
               size="sm"
               variant="secondary"
@@ -2131,7 +2136,7 @@
         id={`chat-${sessionId}`}
         conversation={choosing ? unstartedConversation : shown}
         adapter={chatAdapter}
-        {...archivedAt === null ? { onRegenerate: regenerateAnswer } : {}}
+        {...mayRegenerate ? { onRegenerate: regenerateAnswer } : {}}
         messageStatus={regenerationStatus}
         {availability}
         {...choosing ? { empty: newChatEmpty } : {}}

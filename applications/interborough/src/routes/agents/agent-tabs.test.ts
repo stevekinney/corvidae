@@ -579,7 +579,8 @@ describe('the Settings tab', () => {
     await fireEvent.click(await findByRole('button', { name: 'Restore Version 3' }));
     const dialog = await findByRole('dialog', { name: 'Restore Version 3?' });
     expect(dialog.textContent).toContain(
-      'Restoring Version 3 removes Version 4’s changes: Instructions: added “Refunds over $25 need approval.”; Tools: added Issue refund.',
+      // One colon each, and no period doubled after the quoted line (design review 2).
+      'Restoring Version 3 removes Version 4’s changes (Instructions: added “Refunds over $25 need approval.”; Tools: added Issue refund). This makes Version 5',
     );
   });
 

@@ -243,6 +243,14 @@ export type SessionAgentRunResolution =
 export interface CatalogRunRecordedDefinition extends AgentDefinitionPin {
   readonly agentDefinitionHash: string | undefined;
   readonly definitionRevision?: number | undefined;
+  /**
+   * COR-2429 — `true` only where there is evidence the run already started: a catalog run's own
+   * record, a session run being recovered or restored, a scheduled fire whose first attempt
+   * recorded a reference or wrote its session. Only such a run finishes on an agent a person
+   * disabled; anything else, a scheduled fire's first attempt among them, is a start and is
+   * refused. Every caller that sets it is listed in `agent-disabled-start-paths.test.ts`.
+   */
+  readonly alreadyStarted?: boolean | undefined;
 }
 /**
  * Who keeps the managed assets a run's rows reference (COR-1581): the session the run writes into,

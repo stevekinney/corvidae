@@ -80,14 +80,12 @@ export const agentsDisableOperation = defineOperation<
   unknownKeyPolicy,
   invoke: async ({ input: request, host, principal }) => {
     const definitions = requireAccess(host, principal, 'bureau.agents:write', request.id);
-    const wasDisabled = definitions.agents
-      .list()
-      .some((listing) => listing.id === request.id && listing.state === 'disabled');
-    const record = await definitions.agents.disable(request.id, {
+    const toggled = await definitions.agents.disable(request.id, {
       disabledBy: ownerOfPrincipal(principal) ?? 'local',
     });
-    if (record === undefined) throw resourceNotFound('agent', request.id);
-    if (!wasDisabled) await auditToggle(host, principal, 'agent.disabled', request.id);
+    if (toggled === undefined) throw resourceNotFound('agent', request.id);
+    // Only the call that wrote the record audits it: of two disables at once, one (COR-2429).
+    if (toggled.changed) await auditToggle(host, principal, 'agent.disabled', request.id);
     return { id: request.id, disabled: true };
   },
 });
@@ -114,13 +112,9 @@ export const agentsEnableOperation = defineOperation<
   unknownKeyPolicy,
   invoke: async ({ input: request, host, principal }) => {
     const definitions = requireAccess(host, principal, 'bureau.agents:write', request.id);
-    const wasDisabled = definitions.agents
-      .list()
-      .some((listing) => listing.id === request.id && listing.state === 'disabled');
-    if (!(await definitions.agents.enable(request.id))) {
-      throw resourceNotFound('agent', request.id);
-    }
-    if (wasDisabled) await auditToggle(host, principal, 'agent.enabled', request.id);
+    const toggled = await definitions.agents.enable(request.id);
+    if (toggled === undefined) throw resourceNotFound('agent', request.id);
+    if (toggled.changed) await auditToggle(host, principal, 'agent.enabled', request.id);
     return { id: request.id, disabled: false };
   },
 });
