@@ -423,6 +423,14 @@
     color: var(--cinder-text-muted);
   }
 
+  /* A chosen `code` option: Text cuts the label in its middle, so the value is a flex box that gives
+     it the room left and never an ellipsis of its own. */
+  .cinder-select__value[data-cinder-code] {
+    display: flex;
+    overflow: visible;
+    overflow-wrap: normal;
+  }
+
   .cinder-select__value[data-cinder-placeholder] {
     color: var(--cinder-text-muted);
   }

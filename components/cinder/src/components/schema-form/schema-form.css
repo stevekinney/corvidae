@@ -253,24 +253,26 @@
   }
 
   /* A secret field is a Select of saved keys. A key is an identifier, so it is monospace wherever
-   * the field shows one: the trigger, the warning and a read-only value. */
+   * the field shows one, and only there: the trigger and the options draw it through Select's
+   * `code` option, and the warning and a read-only value through Text. The field's label, help and
+   * placeholder are words, set in the form's face. */
   .cinder-schema-form__secret {
     display: grid;
     gap: var(--cinder-space-2);
     min-width: 0;
   }
 
-  .cinder-schema-form__secret-select,
   .cinder-schema-form__secret-key {
     font-family: var(--cinder-font-mono);
   }
 
   /* A key is cut in its middle (Text truncate="middle"), never wrapped. In the warning's sentence its
-   * tooltip wrapper stays in the line and shrinks to the line's width, so a long key gives way. */
+   * tooltip wrapper stays in the line on the sentence's baseline and shrinks to the line's width,
+   * so a long key gives way. */
   .cinder-schema-form__secret-warning .cinder-tooltip-wrapper.cinder-text__tooltip {
     display: inline-flex;
     max-inline-size: 100%;
-    vertical-align: bottom;
+    vertical-align: baseline;
   }
 
   /* A read-only secret: its key and its Set or Missing dot on one line, the key giving way first. */

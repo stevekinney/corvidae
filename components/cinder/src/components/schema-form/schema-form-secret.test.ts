@@ -136,6 +136,40 @@ describe('a secret field', () => {
     expect(key.querySelector('.cinder-text__head')?.textContent).toBe(long.slice(0, -4));
     expect(key.querySelector('.cinder-text__tail')?.textContent).toBe(long.slice(-4));
     expect(row.querySelector('[role="tooltip"]')?.textContent).toBe(long);
+    // Its accessible name is the whole key and its note, never the two boxes of the cut.
+    expect(row.getAttribute('aria-label')).toBe(`${long} Set`);
+  });
+
+  test('the trigger draws a long chosen key as its option does: monospace, cut in its middle, the whole key in a tooltip (R10-13)', async () => {
+    const long = `plugin-${'x'.repeat(60)}-api-key`;
+    const { container } = await mount({
+      secrets: { keys: [{ key: long, group: 'Plugin', set: true }] },
+      value: { channel: 'ops', token: { $secret: long } },
+    });
+    const value = requiredValue(trigger(container).querySelector('.cinder-select__value'));
+    expect(value.hasAttribute('data-cinder-code')).toBe(true);
+    const key = requiredInstance(value.querySelector('.cinder-text'), HTMLElement);
+    expect(key.getAttribute('data-cinder-variant')).toBe('code');
+    expect(key.getAttribute('data-cinder-truncate')).toBe('middle');
+    // The trigger is the field's one Tab stop: the key in it is not another.
+    expect(key.getAttribute('tabindex')).toBe('-1');
+    expect(value.querySelector('[role="tooltip"]')?.textContent).toBe(long);
+  });
+
+  test('sets only keys in monospace: the field root, so its label, help and placeholder, keeps the form’s face (R10-13)', async () => {
+    const { readFileSync } = await import('node:fs');
+    const css = readFileSync(new URL('./schema-form.css', import.meta.url), 'utf8');
+    const monospaced = [
+      ...css.matchAll(/([^{}]+)\{[^{}]*font-family:\s*var\(--cinder-font-mono\)/g),
+    ]
+      .map((match) => match[1] ?? '')
+      .join(',');
+    expect(monospaced).toContain('.cinder-schema-form__secret-key');
+    expect(monospaced).not.toContain('.cinder-schema-form__secret-select');
+    // The key in the warning sits on the sentence's baseline.
+    expect(css).toMatch(
+      /__secret-warning \.cinder-tooltip-wrapper\.cinder-text__tooltip \{[^}]*vertical-align: baseline;/,
+    );
   });
 
   test('submits { "$secret": key } and nothing else, and reports no other value as a draft', async () => {

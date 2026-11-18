@@ -419,6 +419,18 @@
   }
 
   const ariaLabel = $derived((rest as { 'aria-label'?: string })['aria-label']);
+
+  /**
+   * The accessible name of a `code` option: its whole label, then what the row adds, as the row
+   * reads. Its middle cut draws the label as two boxes, which an accessible name taken from the
+   * content would split in two.
+   */
+  function codeOptionName(option: SelectOption<T>): string {
+    const words = [option.description, option.note].filter(
+      (part): part is string => part !== undefined && part !== '',
+    );
+    return [`${option.label}${option.suffix ? `, ${option.suffix}` : ''}`, ...words].join(' ');
+  }
 </script>
 
 {#snippet optionRow(option: SelectOption<T>, index: number)}
@@ -430,6 +442,7 @@
     role="option"
     class="cinder-_option-row cinder-select__option"
     aria-selected={selected}
+    aria-label={option.code ? codeOptionName(option) : undefined}
     aria-disabled={option.disabled || undefined}
     data-cinder-active={index === activeIndex || undefined}
     onmousedown={(event) => {
@@ -526,8 +539,16 @@
         >
       {/if}
       {#if selectedOption}
-        <span class="cinder-select__value"
-          >{selectedOption.label}{#if selectedOption.triggerSuffix}<span
+        <!-- A chosen identifier is drawn as its option draws it: monospace, cut in its middle with
+             the whole label in a tooltip, and out of the Tab order, since the trigger is the stop. -->
+        <span class="cinder-select__value" data-cinder-code={selectedOption.code ? '' : undefined}
+          >{#if selectedOption.code}<Text
+              variant="code"
+              as="span"
+              truncate="middle"
+              text={selectedOption.label}
+              tabindex={-1}
+            />{:else}{selectedOption.label}{/if}{#if selectedOption.triggerSuffix}<span
               class="cinder-select__suffix">{`, ${selectedOption.triggerSuffix}`}</span
             >{/if}</span
         >

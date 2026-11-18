@@ -935,10 +935,26 @@ for (const width of WIDTHS) {
     await expect(token).toContainText('slack-bot-token');
     await expect(action.locator('input[type="password"]')).toHaveCount(0);
     await expect(action.getByText(HOOKS_COPY.secrets.help)).toBeVisible();
+    // R10-13: only keys are monospace. The field's label and help are set in the page's face, and
+    // the trigger draws the chosen key in monospace, cut in its middle.
+    const fontOf = (locator: typeof token) =>
+      locator.evaluate((node) => {
+        const probe = document.createElement('span');
+        probe.style.fontFamily = 'var(--cinder-font-mono)';
+        node.append(probe);
+        const fonts = [getComputedStyle(node).fontFamily, getComputedStyle(probe).fontFamily];
+        probe.remove();
+        return fonts;
+      });
+    const [helpFont, helpMono] = await fontOf(action.getByText(HOOKS_COPY.secrets.help));
+    expect(helpFont).not.toBe(helpMono);
+    const chosenKey = token.locator('.cinder-select__value .cinder-text');
+    await expect(chosenKey).toHaveAttribute('data-cinder-truncate', 'middle');
+    const [chosenFont, chosenMono] = await fontOf(chosenKey);
+    expect(chosenFont).toBe(chosenMono);
     await token.click();
-    // A key's option is found by its text: Text's middle cut draws the key as two boxes, which
-    // Chromium's accessible name joins with a space.
-    const keyOption = (key: string) => page.getByRole('option').filter({ hasText: key });
+    // A key's option is named by its whole key, never the two boxes of its middle cut.
+    const keyOption = (key: string) => page.getByRole('option', { name: new RegExp(`^${key}`) });
     await expect(keyOption('slack-bot-token')).toContainText('Set');
     await expect(keyOption('slack-signing-key')).toContainText('Missing');
     await expect(page.locator('.cinder-select__group').filter({ hasText: 'Slack' })).toBeVisible();
