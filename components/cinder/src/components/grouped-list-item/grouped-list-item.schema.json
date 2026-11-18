@@ -7,36 +7,17 @@
       "description": "What the leading slot holds.",
       "default": "icon"
     },
-    "leadValue": {
-      "anyOf": [
-        {
-          "type": "string"
-        },
-        {
-          "type": "number"
-        }
-      ],
-      "description": "The number or word of a time-led row's lead, such as `45` or `9:30`, drawn in semibold on the title's first line. Pair it with `leadUnit`. Ignored when a `lead` snippet is given. A range of times never goes here."
+    "timeWindow": {
+      "type": "string",
+      "description": "The time window a time-led row leads with, such as `3–6 pm`, `10 pm–1 am` or `All day`, drawn right-aligned, bold and tabular on one line on the title's first line. Ignored when a `lead` snippet is given."
     },
-    "leadUnit": {
-      "enum": [
-        "min left",
-        "left",
-        "min to go",
-        "starts",
-        "Mon",
-        "Tue",
-        "Wed",
-        "Thu",
-        "Fri",
-        "Sat",
-        "Sun"
-      ],
-      "description": "The small unit under the lead number, from a closed vocabulary. Used with `leadValue`."
+    "timeCaption": {
+      "type": "string",
+      "description": "Free text in a small line under the time window, such as `45 min left`, `starts in 1 h` or `Sun to Tue`. Leave it out and the lead draws no empty line. Used with `timeWindow`."
     },
     "urgency": {
       "enum": ["urgent", "soon"],
-      "description": "How pressing the lead is. `urgent` uses the warning text colour and `soon` is muted; left unset, the lead uses the default text colour. Used with `leadValue`."
+      "description": "How pressing the row is. `urgent` draws only the caption in the warning text colour and `soon` mutes the window; left unset, both use their default colours. Used with `timeWindow`."
     },
     "staleAge": {
       "type": "string",

@@ -13,10 +13,14 @@ import { captureForDesignReview, withPointerCleanup } from '../tests/e2e/design-
 import {
   captureCount,
   captureDesignReview,
+  capturedRoutes,
   hostEnvironment,
   parseArguments,
   portIsFree,
   probeSocketHandlers,
+  routesMissingFromTitles,
+  SHOWCASE_SPECIFICATION_PATHS,
+  specificationsThatRanNothing,
   type CaptureEnvironment,
 } from './design-review-capture.ts';
 import { endToEndPort } from './environment-configuration.ts';
@@ -71,8 +75,9 @@ describe('parseArguments', () => {
       'tests/e2e/run-page-states.spec.ts',
       'tests/e2e/run-page-live-states.spec.ts',
       'tests/e2e/goal-page-states.spec.ts',
-      'tests/e2e/responsive.spec.ts',
+      // The view states are a showcase specification too, run once where first listed.
       'tests/e2e/15-view-states.spec.ts',
+      'tests/e2e/responsive.spec.ts',
     ]);
     expect(options.grep).toBeUndefined();
     expect(options.out).toEndWith('/tmp/design-review/2026-11-02T08-30-00-000Z');
@@ -139,6 +144,7 @@ describe('parseArguments', () => {
       'tests/e2e/run-page-states.spec.ts',
       'tests/e2e/run-page-live-states.spec.ts',
       'tests/e2e/goal-page-states.spec.ts',
+      'tests/e2e/15-view-states.spec.ts',
     ]);
     expect(specificationsOf(['--data', 'stress'])).toEqual([
       'tests/e2e/responsive.spec.ts',
@@ -191,6 +197,7 @@ describe('parseArguments', () => {
       'tests/e2e/run-page-states.spec.ts',
       'tests/e2e/run-page-live-states.spec.ts',
       'tests/e2e/goal-page-states.spec.ts',
+      'tests/e2e/15-view-states.spec.ts',
       'tests/e2e/responsive.spec.ts',
     ]);
     // `--specs` alone keeps meaning what it always meant: one of the stress specifications.
@@ -216,6 +223,108 @@ describe('parseArguments', () => {
     expect(parseArguments(['--color', 'dark'], NOW)).toBe('unknown flag --color');
     expect(parseArguments(['--grep'], NOW)).toBe('--grep needs a value');
     expect(parseArguments(['--out', '--scheme', 'dark'], NOW)).toBe('--out needs a value');
+  });
+});
+
+/**
+ * The showcase specifications whose titles do not yet name every route they capture, so a route
+ * filter can skip their captures. This list only shrinks: a specification leaves it once its
+ * titles name its routes, and none may join it.
+ */
+const TITLES_WITHOUT_ROUTES: readonly string[] = [
+  'tests/e2e/shell-chrome.spec.ts',
+  'tests/e2e/shell-search.spec.ts',
+  'tests/e2e/schedules-list.spec.ts',
+  'tests/e2e/schedules-states.spec.ts',
+  'tests/e2e/schedules-edit.spec.ts',
+  'tests/e2e/schedules-detail.spec.ts',
+  'tests/e2e/health-overview.spec.ts',
+  'tests/e2e/health-states.spec.ts',
+  'tests/e2e/health-workers-states.spec.ts',
+  'tests/e2e/health-storage.spec.ts',
+  'tests/e2e/health-audit.spec.ts',
+  'tests/e2e/health-audit-states.spec.ts',
+  'tests/e2e/settings-allowed-models.spec.ts',
+  'tests/e2e/first-run.spec.ts',
+  'tests/e2e/home.spec.ts',
+  'tests/e2e/chat-list.spec.ts',
+  'tests/e2e/chat-page.spec.ts',
+  'tests/e2e/chat-responsive.spec.ts',
+  'tests/e2e/chat-tool-call-turn.spec.ts',
+  'tests/e2e/chat-states.spec.ts',
+  'tests/e2e/chat-new.spec.ts',
+  'tests/e2e/chat-new-states.spec.ts',
+  'tests/e2e/chat-new-workflows.spec.ts',
+  'tests/e2e/agent-duplicate.spec.ts',
+  'tests/e2e/agent-plugin-editing.spec.ts',
+  'tests/e2e/chat-availability.spec.ts',
+  'tests/e2e/chat-archive.spec.ts',
+  'tests/e2e/workflow-builder-cards.spec.ts',
+];
+
+describe('the showcase specifications’ titles', () => {
+  const applicationDirectory = join(import.meta.dir, '..');
+
+  test('name, in the test or the describe around it, every route the test captures', async () => {
+    const missing: string[] = [];
+    for (const specification of SHOWCASE_SPECIFICATION_PATHS) {
+      if (TITLES_WITHOUT_ROUTES.includes(specification)) continue;
+      const source = await readFile(join(applicationDirectory, specification), 'utf8');
+      for (const { title, route } of routesMissingFromTitles(source)) {
+        missing.push(`${specification}: "${title}" captures ${route}`);
+      }
+    }
+    expect(missing).toEqual([]);
+  });
+
+  test('the allowance only shrinks: every specification on it still misses a route', async () => {
+    for (const specification of TITLES_WITHOUT_ROUTES) {
+      const source = await readFile(join(applicationDirectory, specification), 'utf8');
+      expect(routesMissingFromTitles(source).length, specification).toBeGreaterThan(0);
+    }
+  });
+
+  test('find a capture whose route neither its test nor its describe names', () => {
+    const source = [
+      "test.describe('/runs at 375 pixels', () => {",
+      "  test('the list', async () => { await capture({ route: '/runs' }); });",
+      "  test('the page', async () => { await capture({ route: '/runs/:run' }); });",
+      '});',
+      "test('a run', async () => { await capture({ route: '/goals' }); });",
+    ].join('\n');
+    // `/runs` in the describe does not name `/runs/:run`, which a `--grep '/runs/:run'` asks for.
+    expect(routesMissingFromTitles(source)).toEqual([
+      { title: 'the page', route: '/runs/:run' },
+      { title: 'a run', route: '/goals' },
+    ]);
+    expect(capturedRoutes(source)).toEqual(['/runs', '/runs/:run', '/goals']);
+  });
+});
+
+describe('specificationsThatRanNothing', () => {
+  const sources: Record<string, string> = {
+    'tests/e2e/run-page-states.spec.ts': "capture({ route: '/runs/:run' })",
+    'tests/e2e/chat-page.spec.ts': "capture({ route: '/chats/:chat' })",
+  };
+  const sourceOf = (path: string) => sources[path] ?? '';
+  const listed = Object.keys(sources);
+
+  test('names a listed specification that captures a route the filter matches and ran no test', () => {
+    const report = { suites: [{ file: 'chat-page.spec.ts', specs: [{}] }] };
+    expect(specificationsThatRanNothing(report, listed, '/runs', sourceOf)).toEqual([
+      'tests/e2e/run-page-states.spec.ts',
+    ]);
+  });
+
+  test('leaves out one the filter does not reach, and one that ran, nested suites included', () => {
+    const report = {
+      suites: [{ file: 'run-page-states.spec.ts', suites: [{ specs: [{}, {}] }] }],
+    };
+    expect(specificationsThatRanNothing(report, listed, '/runs', sourceOf)).toEqual([]);
+    // Without a filter every listed specification must run.
+    expect(specificationsThatRanNothing(report, listed, undefined, sourceOf)).toEqual([
+      'tests/e2e/chat-page.spec.ts',
+    ]);
   });
 });
 
@@ -420,8 +529,16 @@ describe('captureDesignReview', () => {
     ).toBe(0);
     expect(calls.probed).toEqual([endToEndPort()]);
     expect(calls.commands.map((call) => call.variables)).toEqual([
-      { INTERBOROUGH_DESIGN_REVIEW_CAPTURE: out, INTERBOROUGH_DESIGN_REVIEW_COLOR_SCHEME: 'light' },
-      { INTERBOROUGH_DESIGN_REVIEW_CAPTURE: out, INTERBOROUGH_DESIGN_REVIEW_COLOR_SCHEME: 'dark' },
+      {
+        INTERBOROUGH_DESIGN_REVIEW_CAPTURE: out,
+        INTERBOROUGH_DESIGN_REVIEW_COLOR_SCHEME: 'light',
+        PLAYWRIGHT_JSON_OUTPUT_NAME: join(out, 'playwright-light.json'),
+      },
+      {
+        INTERBOROUGH_DESIGN_REVIEW_CAPTURE: out,
+        INTERBOROUGH_DESIGN_REVIEW_COLOR_SCHEME: 'dark',
+        PLAYWRIGHT_JSON_OUTPUT_NAME: join(out, 'playwright-dark.json'),
+      },
     ]);
     expect(calls.commands[0]?.command).toEqual([
       'bun',
@@ -430,6 +547,7 @@ describe('captureDesignReview', () => {
       'test',
       '--config',
       'playwright.config.ts',
+      '--reporter=list,json',
       'tests/e2e/15-view-states.spec.ts',
       '--grep',
       'agents',
@@ -443,13 +561,40 @@ describe('captureDesignReview', () => {
       specifications: ['tests/e2e/15-view-states.spec.ts'],
       grep: 'agents',
       runs: [
-        { scheme: 'light', exitCode: 0 },
-        { scheme: 'dark', exitCode: 0 },
+        { scheme: 'light', exitCode: 0, ranNothing: [] },
+        { scheme: 'dark', exitCode: 0, ranNothing: [] },
       ],
       clean: true,
       geometry: { captures: 3, measured: 0, coarse: 0, unscaled: 0, findings: 0 },
     });
     expect(calls.out).not.toContain('geometry findings');
+  });
+
+  test('exits 1 and names a listed specification the filter reaches that ran no test', async () => {
+    const stand = standIn({ manifestLines: 2 });
+    const calls = stand.calls;
+    // The stand-in Playwright writes a report in which the view states ran nothing.
+    const environment: CaptureEnvironment = {
+      ...stand.environment,
+      run: async (command, variables) => {
+        const code = await stand.environment.run(command, variables);
+        await writeFile(
+          variables['PLAYWRIGHT_JSON_OUTPUT_NAME'] ?? '',
+          JSON.stringify({ suites: [] }),
+        );
+        return code;
+      },
+    };
+    expect(
+      await captureDesignReview(
+        ['--out', directory, '--specs', 'states', '--scheme', 'light', '--grep', '/runs'],
+        environment,
+      ),
+    ).toBe(1);
+    expect(calls.err).toContain('tests/e2e/15-view-states.spec.ts ran no test in light');
+    const summary = JSON.parse(await readFile(join(directory, 'summary.json'), 'utf8'));
+    expect(summary.clean).toBe(false);
+    expect(summary.runs[0].ranNothing).toEqual(['tests/e2e/15-view-states.spec.ts']);
   });
 
   test('audits what the captures measured and names the geometry report', async () => {

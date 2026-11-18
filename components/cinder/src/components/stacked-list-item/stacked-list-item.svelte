@@ -341,6 +341,12 @@
             </div>
           {:else if description || meta}
             <div class="cinder-stacked-list-item__line-two" title={metaTooltip}>
+              {#if wrapMeta && status}
+                <!-- Under `wrapMeta` a phone row reads line two as one run of text (the dot, the
+                     word, then the meta), so a wrapped line returns to the row's leading edge.
+                     Drawn only in that form; the status column is hidden there (stylesheet). -->
+                <span class="cinder-stacked-list-item__status-inline">{@render status()}</span>
+              {/if}
               {#if description}
                 <div class="cinder-stacked-list-item__description">{@render description()}</div>
               {/if}

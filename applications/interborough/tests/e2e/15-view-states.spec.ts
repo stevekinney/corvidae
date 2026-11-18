@@ -506,7 +506,7 @@ function healthCount(page: Page, label: string) {
 }
 
 for (const width of WIDTHS) {
-  test(`health reads each band on its own: a read the engine refuses shows a dash in the counts and the cards at ${width} pixels`, async ({
+  test(`health (/health) reads each band on its own: a read the engine refuses shows a dash in the counts and the cards at ${width} pixels`, async ({
     page,
     checkA11y,
     pageErrors,
@@ -550,7 +550,7 @@ for (const width of WIDTHS) {
     await checkA11y(`health with refused reads at ${width}px`);
   });
 
-  test(`health reads what a principal's scopes allow, and the rest of the page stays, at ${width} pixels`, async ({
+  test(`health (/health) reads what a principal's scopes allow, and the rest of the page stays, at ${width} pixels`, async ({
     page,
     checkA11y,
   }) => {
@@ -573,7 +573,7 @@ for (const width of WIDTHS) {
     await checkA11y(`health with locked reads at ${width}px`);
   });
 
-  test(`health shows its heading and tabs while the list of what needs attention is still being read at ${width} pixels`, async ({
+  test(`health (/health) shows its heading and tabs while the list of what needs attention is still being read at ${width} pixels`, async ({
     page,
     checkA11y,
   }) => {
@@ -922,7 +922,7 @@ for (const width of WIDTHS) {
 }
 
 for (const width of WIDTHS) {
-  test(`an address no route names shows the not-found page inside the shell at ${width} pixels, and passes axe`, async ({
+  test(`an address no route names (/nonsense/route) shows the not-found page inside the shell at ${width} pixels, and passes axe`, async ({
     page,
     checkA11y,
   }) => {
@@ -953,7 +953,7 @@ for (const width of WIDTHS) {
     await expect(page).toHaveURL(/\/$/);
   });
 
-  test(`a run that does not exist is the not-found page, with Runs › Not found for a breadcrumb, at ${width} pixels`, async ({
+  test(`a run that does not exist (/runs/no-such-run) is the not-found page, with Runs › Not found for a breadcrumb, at ${width} pixels`, async ({
     page,
     checkA11y,
     pageErrors,
@@ -1606,7 +1606,7 @@ test.describe('trigger state', () => {
       'failed',
       'stopped',
     ] as const) {
-      test(`trigger state: the workflow page's status line, ${state}, at ${width} pixels`, async ({
+      test(`trigger state (/workflows/:workflow): the workflow page's status line, ${state}, at ${width} pixels`, async ({
         page,
         checkA11y,
       }) => {
@@ -1641,7 +1641,7 @@ test.describe('trigger state', () => {
       });
     }
 
-    test(`trigger state: a trigger that receives, with its address and a copy control, at ${width} pixels`, async ({
+    test(`trigger state (/workflows/:workflow): a trigger that receives, with its address and a copy control, at ${width} pixels`, async ({
       page,
       checkA11y,
     }) => {
@@ -1665,7 +1665,7 @@ test.describe('trigger state', () => {
       await checkA11y(`trigger state receives at ${width}px`);
     });
 
-    test(`trigger state: a workflow with no plugin trigger shows no status line, at ${width} pixels`, async ({
+    test(`trigger state (/workflows/:workflow): a workflow with no plugin trigger shows no status line, at ${width} pixels`, async ({
       page,
       checkA11y,
     }) => {
@@ -1682,7 +1682,7 @@ test.describe('trigger state', () => {
       await checkA11y(`trigger state none at ${width}px`);
     });
 
-    test(`trigger state: a trigger-started run on the workflow's Runs tab, at ${width} pixels`, async ({
+    test(`trigger state (/workflows/:workflow?tab=runs): a trigger-started run on the workflow's Runs tab, at ${width} pixels`, async ({
       page,
       checkA11y,
     }) => {
@@ -1718,7 +1718,7 @@ test.describe('trigger state', () => {
       await checkA11y(`trigger state workflow runs tab at ${width}px`);
     });
 
-    test(`trigger state: a trigger-started run on /runs, with Started by and line two, at ${width} pixels`, async ({
+    test(`trigger state (/runs): a trigger-started run on /runs, with Started by and line two, at ${width} pixels`, async ({
       page,
       request,
       checkA11y,
@@ -1758,7 +1758,7 @@ test.describe('trigger state', () => {
       await checkA11y(`trigger state runs list at ${width}px`);
     });
 
-    test(`trigger state: Retry now while the retry is pending, at ${width} pixels`, async ({
+    test(`trigger state (/workflows/:workflow): Retry now while the retry is pending, at ${width} pixels`, async ({
       page,
       checkA11y,
     }) => {
@@ -1782,7 +1782,7 @@ test.describe('trigger state', () => {
       release();
     });
 
-    test(`trigger state: the state after a successful Retry now, at ${width} pixels`, async ({
+    test(`trigger state (/workflows/:workflow): the state after a successful Retry now, at ${width} pixels`, async ({
       page,
       checkA11y,
     }) => {
@@ -1812,7 +1812,7 @@ test.describe('trigger state', () => {
       ['refused', listenerCopy.retryFailed],
       ['forbidden', listenerCopy.retryForbidden],
     ] as const) {
-      test(`trigger state: a ${answer} Retry now says so beside the control, at ${width} pixels`, async ({
+      test(`trigger state (/workflows/:workflow): a ${answer} Retry now says so beside the control, at ${width} pixels`, async ({
         page,
         checkA11y,
       }) => {
@@ -1834,7 +1834,7 @@ test.describe('trigger state', () => {
       });
     }
 
-    test(`trigger state: a refused configuration offers Edit, not Retry now, at ${width} pixels`, async ({
+    test(`trigger state (/workflows/:workflow): a refused configuration offers Edit, not Retry now, at ${width} pixels`, async ({
       page,
       checkA11y,
     }) => {
@@ -1861,7 +1861,7 @@ test.describe('trigger state', () => {
       await checkA11y(`trigger state configuration refused at ${width}px`);
     });
 
-    test(`trigger state: a failed trigger with no try scheduled, at ${width} pixels`, async ({
+    test(`trigger state (/workflows/:workflow): a failed trigger with no try scheduled, at ${width} pixels`, async ({
       page,
       checkA11y,
     }) => {
@@ -1883,7 +1883,7 @@ test.describe('trigger state', () => {
       await checkA11y(`trigger state failed with no retry at ${width}px`);
     });
 
-    test(`trigger state: a trigger that has started a run, at ${width} pixels`, async ({
+    test(`trigger state (/workflows/:workflow): a trigger that has started a run, at ${width} pixels`, async ({
       page,
       checkA11y,
     }) => {
@@ -1906,7 +1906,7 @@ test.describe('trigger state', () => {
       await checkA11y(`trigger state last started a run at ${width}px`);
     });
 
-    test(`trigger state: the run page of a trigger-started run, with Started by, at ${width} pixels`, async ({
+    test(`trigger state (/runs/:run): the run page of a trigger-started run, with Started by, at ${width} pixels`, async ({
       page,
       request,
       pageErrors,
@@ -1950,7 +1950,7 @@ test.describe('trigger state', () => {
       await checkA11y(`trigger state run page at ${width}px`);
     });
 
-    test(`trigger state: the hook event picker open on its Triggers group, at ${width} pixels`, async ({
+    test(`trigger state (/hooks/new): the hook event picker open on its Triggers group, at ${width} pixels`, async ({
       page,
       checkA11y,
     }) => {

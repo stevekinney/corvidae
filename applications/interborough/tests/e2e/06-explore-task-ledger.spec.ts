@@ -93,7 +93,7 @@ test('a leased second attempt shows its fenced history, lease clocks, and heartb
   await expect(first.getByText('Superseded', { exact: true })).toBeVisible();
   await expect(first.getByText('worker-disconnect')).toBeVisible();
   await expect(timeline.getByText('Attempt 2, current')).toBeVisible();
-  await expect(timeline.locator('[data-attempt="2"]').getByText(/→ still held$/)).toBeVisible();
+  await expect(timeline.locator('[data-attempt="2"]').getByText(/→ still held\s*$/)).toBeVisible();
 
   const session = clock(page, 'session-lease');
   await expect(session.getByText('Active', { exact: true })).toBeVisible();

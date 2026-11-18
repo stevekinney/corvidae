@@ -74,6 +74,7 @@
     redact,
     formatValue,
     jsonOnly,
+    fieldsValue,
     streaming = false,
     failed = false,
     failedMessage = "Couldn't load the full result.",
@@ -202,13 +203,22 @@
   const copyDisabled = $derived(mode === 'failed' || mode === 'streaming');
   const showSwitch = $derived(mode === 'ready' || mode === 'streaming' || mode === 'invalid');
 
+  // What the Fields view lays out and counts: the caller's `fieldsValue` when it gives one (secrets
+  // hidden the same way), else the payload itself. The JSON view and Copy keep the stored payload.
+  const fieldsSource = $derived(
+    fieldsValue === undefined || arriving || mode !== 'ready'
+      ? shown
+      : maskSecrets(fieldsValue, redact),
+  );
   // The top-level fields only the JSON view shows, and the payload the Fields view lays out without them.
-  const hiddenFields = $derived(arriving ? [] : jsonOnlyKeysOf(shown, jsonOnly));
-  const fieldsShown = $derived(withoutKeys(shown, hiddenFields));
+  const hiddenFields = $derived(arriving ? [] : jsonOnlyKeysOf(fieldsSource, jsonOnly));
+  const fieldsShown = $derived(withoutKeys(fieldsSource, hiddenFields));
 
   const countText = $derived.by((): string | undefined => {
     if (bare) return undefined;
-    if (mode === 'ready') return headerCount(shown, { bytes, jsonOnly: hiddenFields.length });
+    if (mode === 'ready') {
+      return headerCount(fieldsSource, { bytes, jsonOnly: hiddenFields.length });
+    }
     if (mode === 'streaming') return headerCount(shown, { streaming: true });
     if (mode === 'invalid' || mode === 'text') return 'Text';
     if (mode === 'oversize' && bytes !== undefined) return formatBytes(bytes);
@@ -298,12 +308,20 @@
     <p class="cinder-payload-inspector__empty">{emptyLabel}</p>
   {:else}
     <div class="cinder-payload-inspector__header">
+      <!-- A labelled card sets its count as a muted line under the label, start-aligned, so the
+           count never takes a line of its own at the inline end; an unlabelled card keeps it with
+           the copy button (27c). -->
       {#if label !== undefined}
-        <span class="cinder-payload-inspector__label"
-          >{label}{#if labelCode !== undefined && labelCode !== ''}, <code
-              class="cinder-payload-inspector__label-code">{labelCode}</code
-            >{/if}</span
-        >
+        <div class="cinder-payload-inspector__title">
+          <span class="cinder-payload-inspector__label"
+            >{label}{#if labelCode !== undefined && labelCode !== ''}, <code
+                class="cinder-payload-inspector__label-code">{labelCode}</code
+              >{/if}</span
+          >
+          {#if !bare && countText !== undefined}
+            <span class="cinder-payload-inspector__size">{countText}</span>
+          {/if}
+        </div>
       {/if}
       {#if showSwitch}
         <SegmentedControl
@@ -321,7 +339,7 @@
       {/if}
       {#if !bare}
         <div class="cinder-payload-inspector__header-actions">
-          {#if countText !== undefined}
+          {#if label === undefined && countText !== undefined}
             <span class="cinder-payload-inspector__size">{countText}</span>
           {/if}
           {#if truncated}

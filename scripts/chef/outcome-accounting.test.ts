@@ -1,0 +1,320 @@
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import {
+  accountOutcome,
+  assessBudget,
+  validatePolicySnapshot,
+  verifyTaskBank,
+  type OutcomeRecord,
+} from './outcome-accounting.ts';
+
+let sandbox: string;
+
+beforeEach(() => {
+  sandbox = mkdtempSync(join(tmpdir(), 'outcome-accounting-'));
+});
+afterEach(() => {
+  rmSync(sandbox, { recursive: true, force: true });
+});
+
+function write(name: string, entries: unknown[]): string {
+  const path = join(sandbox, name);
+  writeFileSync(path, `${entries.map((entry) => JSON.stringify(entry)).join('\n')}\n`);
+  return path;
+}
+
+function codex(total: number, input: number, output: number, timestamp: string) {
+  return {
+    type: 'event_msg',
+    timestamp,
+    payload: {
+      type: 'token_count',
+      info: {
+        total_token_usage: { total_tokens: total },
+        last_token_usage: {
+          input_tokens: input,
+          cached_input_tokens: 0,
+          cache_write_input_tokens: 0,
+          output_tokens: output,
+        },
+      },
+    },
+  };
+}
+
+function outcome(path: string): OutcomeRecord {
+  return {
+    id: 'outcome-1',
+    source: 'COR-1',
+    task: 'accounting',
+    provider: 'codex',
+    requestedModel: 'gpt-test',
+    observedModel: 'gpt-test',
+    requestedEffort: 'high',
+    observedEffort: 'high',
+    policyRevision: 'policy@1',
+    requiredCriteria: ['AC1'],
+    completedCriteria: ['AC1'],
+    deliveryState: 'delivered',
+    reviewerEffort: 'low',
+    humanInterventions: ['approval'],
+    verificationMilliseconds: 20,
+    attempts: [
+      {
+        id: 'root',
+        kind: 'root',
+        status: 'failed',
+        transcriptPaths: [path],
+        endedAt: '2026-11-17T20:58:06.000Z',
+      },
+      {
+        id: 'resume',
+        kind: 'restart',
+        status: 'accepted',
+        transcriptPaths: [path, path],
+        startedAt: '2026-11-17T20:58:07.283Z',
+      },
+    ],
+  };
+}
+
+describe('outcome accounting', () => {
+  test('scopes a cumulative Codex transcript to linked resumed attempts and deduplicates paths', () => {
+    const path = write('rollout.jsonl', [
+      { type: 'session_meta', payload: {} },
+      { type: 'turn_context', payload: { model: 'gpt-test' } },
+      codex(11, 10, 1, '2026-11-17T20:58:06.000Z'),
+      codex(33, 20, 2, '2026-11-17T20:58:08.000Z'),
+    ]);
+    const result = accountOutcome(outcome(path), {
+      'gpt-test': { asOf: '2026-11-17', input: 1, output: 1, cacheRead: 1, cacheWrite: 1 },
+    });
+    expect(result.tokens).toEqual({ uncachedInput: 30, cacheRead: 0, cacheWrite: 0, output: 3 });
+    expect(result.includedTranscriptPaths).toHaveLength(1);
+    expect(result.cost).toBeCloseTo(0.000033);
+    expect(result.outcomeSuccess).toBe(true);
+    expect(result.deliveryThroughput).toBe(1);
+  });
+
+  test('keeps missing usage and unknown pricing unknown instead of calling either zero', () => {
+    const path = write('broken.jsonl', [
+      { type: 'session_meta', payload: {} },
+      { type: 'event_msg', payload: { type: 'token_count', info: {} } },
+    ]);
+    const result = accountOutcome(outcome(path));
+    expect(result.incompleteUsage).toEqual(
+      expect.arrayContaining([expect.objectContaining({ kind: 'missing-usage' })]),
+    );
+    expect(result.cost).toBe('unknown');
+  });
+
+  test('does not price malformed Codex or Claude counters as zero usage', () => {
+    const malformed = [
+      { type: 'session_meta', payload: {} },
+      { type: 'turn_context', payload: { model: 'gpt-test' } },
+      {
+        type: 'event_msg',
+        payload: {
+          type: 'token_count',
+          info: {
+            total_token_usage: {},
+            last_token_usage: { input_tokens: -1, cached_input_tokens: 0, output_tokens: 1 },
+          },
+        },
+      },
+    ];
+    const path = write('malformed-counters.jsonl', malformed);
+    const result = accountOutcome(outcome(path), {
+      'gpt-test': { asOf: '2026-11-17', input: 1, output: 1, cacheRead: 1, cacheWrite: 1 },
+    });
+    expect(result.cost).toBe('unknown');
+    expect(result.incompleteUsage.length).toBeGreaterThan(0);
+  });
+
+  test('keeps a valid Codex call incomplete when a later cumulative counter is invalid', () => {
+    const price = {
+      'gpt-test': { asOf: '2026-11-17', input: 1, output: 1, cacheRead: 1, cacheWrite: 1 },
+    };
+    const valid = codex(11, 10, 1, '2026-11-17T20:58:08.000Z');
+    for (const mutate of [
+      (entry: ReturnType<typeof codex>) =>
+        delete (entry.payload.info.total_token_usage as Partial<{ total_tokens: number }>)[
+          'total_tokens'
+        ],
+      (entry: ReturnType<typeof codex>) => (entry.payload.info.total_token_usage.total_tokens = -1),
+      (entry: ReturnType<typeof codex>) =>
+        (entry.payload.info.last_token_usage.cached_input_tokens = 11),
+    ]) {
+      const invalid = structuredClone(valid);
+      invalid.timestamp = '2026-11-17T20:58:09.000Z';
+      mutate(invalid);
+      const result = accountOutcome(
+        outcome(
+          write(`mixed-${JSON.stringify(invalid.payload.info)}.jsonl`, [
+            { type: 'session_meta', payload: {} },
+            { type: 'turn_context', payload: { model: 'gpt-test' } },
+            valid,
+            invalid,
+          ]),
+        ),
+        price,
+      );
+      expect(result.tokens).toEqual({ uncachedInput: 10, cacheRead: 0, cacheWrite: 0, output: 1 });
+      expect(result.incompleteUsage.length).toBeGreaterThan(0);
+      expect(result.cost).toBe('unknown');
+    }
+    expect(
+      accountOutcome(
+        outcome(
+          write('codex-valid.jsonl', [
+            { type: 'session_meta', payload: {} },
+            { type: 'turn_context', payload: { model: 'gpt-test' } },
+            valid,
+          ]),
+        ),
+        price,
+      ).cost,
+    ).toBeCloseTo(0.000011);
+  });
+
+  test('does not price a valid Claude call complete after malformed Claude messages', () => {
+    const price = {
+      'claude-test': { asOf: '2026-11-17', input: 1, output: 1, cacheRead: 1, cacheWrite: 1 },
+    };
+    const usage = { input_tokens: 10, output_tokens: 1 };
+    const result = accountOutcome(
+      outcome(
+        write('claude-mixed.jsonl', [
+          {
+            type: 'assistant',
+            timestamp: '2026-11-17T20:58:08.000Z',
+            message: { id: 'valid', model: 'claude-test', usage },
+          },
+          { type: 'assistant', timestamp: '2026-11-17T20:58:09.000Z' },
+          { type: 'assistant', timestamp: '2026-11-17T20:58:10.000Z', message: 'invalid' },
+          {
+            type: 'assistant',
+            timestamp: '2026-11-17T20:58:11.000Z',
+            message: { id: 'nonstring-model', model: 42, usage },
+          },
+        ]),
+      ),
+      price,
+    );
+    expect(result.tokens).toEqual({ uncachedInput: 10, cacheRead: 0, cacheWrite: 0, output: 1 });
+    expect(result.incompleteUsage).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ message: 'Model call message is not an object.' }),
+        expect.objectContaining({ message: 'Model call has no string model.' }),
+      ]),
+    );
+    expect(result.cost).toBe('unknown');
+  });
+
+  test('keeps malformed Claude token fields incomplete while pricing a valid control', () => {
+    const price = {
+      'claude-test': { asOf: '2026-11-17', input: 1, output: 1, cacheRead: 1, cacheWrite: 1 },
+    };
+    const entry = (usage: Record<string, number>) => ({
+      type: 'assistant',
+      timestamp: '2026-11-17T20:58:08.000Z',
+      message: { id: 'm1', model: 'claude-test', usage, content: [{ type: 'text', text: 'x' }] },
+    });
+    for (const usage of [
+      { input_tokens: -1, output_tokens: 1 },
+      { input_tokens: 1, output_tokens: -1 },
+      { input_tokens: 1, output_tokens: 1, cache_read_input_tokens: -1 },
+      { input_tokens: 1, output_tokens: 1, cache_creation_input_tokens: -1 },
+    ]) {
+      const result = accountOutcome(
+        outcome(write(`claude-${JSON.stringify(usage)}.jsonl`, [entry(usage)])),
+        price,
+      );
+      expect(result.incompleteUsage.length).toBeGreaterThan(0);
+      expect(result.cost).toBe('unknown');
+    }
+    expect(
+      accountOutcome(
+        outcome(
+          write('claude-valid.jsonl', [
+            entry({
+              input_tokens: 1,
+              output_tokens: 1,
+              cache_read_input_tokens: 0,
+              cache_creation_input_tokens: 0,
+            }),
+          ]),
+        ),
+        price,
+      ).cost,
+    ).toBeCloseTo(0.000002);
+  });
+
+  test('preserves absent allowances and stops dispatch when cumulative reservations reach one', () => {
+    expect(assessBudget({ spentTokens: 12, reservedTokens: 4 })).toMatchObject({
+      allowanceTokens: 'unknown',
+      mayDispatch: true,
+      hardLimitEnforced: false,
+    });
+    expect(
+      assessBudget({
+        allowanceTokens: 16,
+        spentTokens: 12,
+        reservedTokens: 4,
+      }),
+    ).toMatchObject({
+      cumulativeCommittedTokens: 16,
+      softLimitReached: true,
+      mayDispatch: false,
+      hardLimitEnforced: false,
+    });
+  });
+
+  test('does not call an accepted attempt successful before complete delivery', () => {
+    const path = write('empty.jsonl', [{ type: 'session_meta', payload: {} }]);
+    const record = outcome(path);
+    record.deliveryState = 'pending';
+    record.completedCriteria = [];
+    const result = accountOutcome(record);
+    expect(result).toMatchObject({ outcomeSuccess: false, deliveryThroughput: 0 });
+    expect(result.incompleteUsage).toEqual([
+      expect.objectContaining({ message: expect.stringContaining('no model calls') }),
+    ]);
+  });
+
+  test('freezes two tasks in every family with one held out', async () => {
+    const bank = JSON.parse(await Bun.file('scripts/chef/fixtures/sdlc-task-bank.json').text());
+    expect(verifyTaskBank(bank)).toEqual([]);
+  });
+
+  test('rejects a writable candidate as an oracle entrypoint before materialization', async () => {
+    const bank = JSON.parse(await Bun.file('scripts/chef/fixtures/sdlc-task-bank.json').text());
+    const invalid = structuredClone(bank);
+    invalid.tasks[0].oracleArgv = ['candidate.ts'];
+    expect(verifyTaskBank(invalid)).toContain('local-01 must execute only its oracle: oracle.ts.');
+  });
+
+  test('rejects malformed and mismatched frozen policy source hashes before Git reads', async () => {
+    const snapshot = JSON.parse(
+      await Bun.file('scripts/chef/fixtures/sdlc-policy-baseline.json').text(),
+    ) as { baseRevision: string; repository: string; sources: Record<string, string> };
+    const malformed = structuredClone(snapshot);
+    malformed.sources['AGENTS.md'] = 'not-a-sha256';
+    expect(validatePolicySnapshot(malformed)).toContain(
+      'Task bank policy snapshot has an invalid source digest: AGENTS.md.',
+    );
+    const traversal = structuredClone(snapshot);
+    delete traversal.sources['AGENTS.md'];
+    traversal.sources['../AGENTS.md'] = 'a'.repeat(64);
+    expect(validatePolicySnapshot(traversal)).toContain(
+      'Task bank policy snapshot has an unsafe source path: ../AGENTS.md.',
+    );
+    const mismatch = structuredClone(snapshot);
+    mismatch.sources['AGENTS.md'] = 'a'.repeat(64);
+    expect(validatePolicySnapshot(mismatch, () => new TextEncoder().encode('different'))).toContain(
+      'Task bank policy snapshot source digest differs at its base: AGENTS.md.',
+    );
+  });
+});

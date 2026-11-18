@@ -49,7 +49,7 @@ describe('GroupedListItem', () => {
     expect(css).toMatch(/\.cinder-grouped-list-item__trailing \{[^}]*align-self: flex-start/);
     expect(css).toMatch(/\.cinder-grouped-list-item__chevron \{[^}]*align-self: flex-start/);
     expect(css).toMatch(
-      /\.cinder-grouped-list-item--actions, \.cinder-grouped-list-item--trailing \{ container: cinder-grouped-list-item \/ inline-size; \}/,
+      /\.cinder-grouped-list-item--actions, \.cinder-grouped-list-item--trailing, \.cinder-grouped-list-item--timed \{ container: cinder-grouped-list-item \/ inline-size; \}/,
     );
     // Narrower than 26rem the subtitle takes the full width under the title and the value.
     expect(css).toMatch(
@@ -209,7 +209,7 @@ describe('GroupedListItem', () => {
     expect(css).toMatch(/\.cinder-grouped-list-item__actions \{[^}]*z-index: 1/);
     // The row measures its own width (a container query), never the viewport's.
     expect(css).toMatch(
-      /\.cinder-grouped-list-item--actions, \.cinder-grouped-list-item--trailing \{ container: cinder-grouped-list-item \/ inline-size; \}/,
+      /\.cinder-grouped-list-item--actions, \.cinder-grouped-list-item--trailing, \.cinder-grouped-list-item--timed \{ container: cinder-grouped-list-item \/ inline-size; \}/,
     );
     expect(css).not.toMatch(/@media \(width/);
     const phone =

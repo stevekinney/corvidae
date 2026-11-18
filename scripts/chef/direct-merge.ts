@@ -50,7 +50,7 @@ import { appendFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import type { AcquireHostLockOptions } from '../run-exclusively.ts';
 import { fetchWithRetry } from './fetch-retry.ts';
-import { mainCiHealth, mainCiWarning } from './main-ci.ts';
+import { mainCiComparisonWarning, mainCiHealth, mainCiWarning } from './main-ci.ts';
 import { withMergeLock } from './merge-gate.ts';
 import { defaultRunner, UsageError, type Runner } from './process-runner.ts';
 import { loadRepositoryConfig } from './repository-config.ts';
@@ -246,11 +246,13 @@ export function directMerge(
 
   // main health: a warning in the report, never a refusal
   if (options.checkMainHealth === true) {
-    const warning = mainCiWarning(
-      mainCiHealth(runner, config.repository, defaultBranch),
-      defaultBranch,
-    );
-    if (warning !== undefined) report.mainHealthWarning = warning;
+    const health = mainCiHealth(runner, config.repository, defaultBranch);
+    const warning = mainCiWarning(health, defaultBranch);
+    if (warning !== undefined)
+      report.mainHealthWarning =
+        health.red && health.run !== undefined
+          ? `${warning}\n${mainCiComparisonWarning(runner, health.run, options.configPath)}`
+          : warning;
   }
 
   // 4. guards, on the tree that will be pushed
