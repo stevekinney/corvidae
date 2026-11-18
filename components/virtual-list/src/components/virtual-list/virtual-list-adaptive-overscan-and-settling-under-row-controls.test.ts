@@ -31,7 +31,7 @@ describe('VirtualList — adaptive overscan and settling under row controls', ()
   // `measurementStore.measuredTotalSize`) rather than the `itemHeight` estimate — is
   // now exercised behaviourally in a real browser, where events carry real
   // timestamps and the velocity tracker actually reports a nonzero value. See
-  // `scripts/browser-fixtures/tests/virtual-list.playwright.ts`'s adaptive-overscan
+  // `components/core/browser/tests/virtual-list.playwright.ts`'s adaptive-overscan
   // suite (COR-376), which drives `dynamicSize` rows to a real measured height well
   // away from the `itemHeight` estimate and asserts the adaptive row count tracks it.
   // The arithmetic itself stays covered in `adaptive-overscan.test.ts`.

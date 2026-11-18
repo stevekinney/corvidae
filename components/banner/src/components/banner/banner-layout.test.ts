@@ -4,7 +4,7 @@
  * actions-under-the-message at every width); the message is capped at 68 characters, and a button
  * label never wraps. happy-dom does not compute styles from stylesheets, so the layout is pinned
  * against the CSS source, as `callout.test.ts` does for Callout, and measured in a browser by
- * `scripts/browser-fixtures/tests/banner-actions-layout.playwright.ts`.
+ * `components/banner/browser/tests/banner-actions-layout.playwright.ts`.
  */
 
 import { describe, expect, test } from 'bun:test';

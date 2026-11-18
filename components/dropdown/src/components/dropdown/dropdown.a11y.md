@@ -46,7 +46,7 @@ Unchanged from the prior revision: when the browser supports the Popover API (`s
 
 ## Touch target
 
-Under a coarse pointer `Dropdown.Trigger` paints at a Button's painted height (32px at the default density) and reaches 44px through a positioned pseudo-element that takes no layout space, as Button does, so a row of triggers and buttons keeps one height. A fine pointer draws it at `--cinder-button-height-md` as before. `scripts/browser-fixtures/tests/dropdown-trigger-hit-area.playwright.ts` measures both in a browser.
+Under a coarse pointer `Dropdown.Trigger` paints at a Button's painted height (32px at the default density) and reaches 44px through a positioned pseudo-element that takes no layout space, as Button does, so a row of triggers and buttons keeps one height. A fine pointer draws it at `--cinder-button-height-md` as before. `components/dropdown/browser/tests/dropdown-trigger-hit-area.playwright.ts` measures both in a browser.
 
 ## Outside-click dismissal
 

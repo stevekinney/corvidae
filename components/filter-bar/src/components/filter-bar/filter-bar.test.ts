@@ -1050,7 +1050,7 @@ describe('FilterBar styles', () => {
 
   // WCAG 1.4.4: at 200% text the folded select keeps its value. It is never narrower than its
   // content, and its prefix wraps away (and is clipped) before the value is truncated. The layout
-  // itself is proven in scripts/browser-fixtures/tests/filter-bar-fit.playwright.ts.
+  // itself is proven in components/filter-bar/browser/tests/filter-bar-fit.playwright.ts.
   test('the folded select keeps its value: a content floor, and a prefix that drops first', () => {
     expect(filterBarCss).toMatch(
       /data-cinder-layout='narrow'\]\s+\.cinder-filter-bar__row\s+> \.cinder-form-field\.cinder-filter-bar__segments-select \{[^}]*min-inline-size: min-content;/,

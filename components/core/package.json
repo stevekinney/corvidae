@@ -40,7 +40,8 @@
     "check:test-cleanup": "bun ../../internal/component-tooling/scripts/check-test-cleanup.ts",
     "lint:fix": "oxlint --deny-warnings --fix --type-aware --tsconfig ./tsconfig.json src scripts browser",
     "test:browser": "bun browser/harness.ts prepare && bun ../../scripts/host-slots.ts --slots=4 -- bun --bun playwright test --config browser/playwright.config.ts --project=chromium --workers=4",
-    "test:curated-highlighter": "bun browser/scripts/verify-curated-build.ts"
+    "test:curated-highlighter": "bun browser/scripts/verify-curated-build.ts",
+    "test:browser:engines": "bun browser/harness.ts prepare && bun ../../scripts/host-slots.ts --slots=4 -- bun --bun playwright test --config browser/playwright.config.ts --workers=4"
   },
   "dependencies": {
     "@codemirror/autocomplete": "catalog:",
@@ -260,15 +261,18 @@
     "zod": "catalog:"
   },
   "devDependencies": {
-    "@lostgradient/typescript": "workspace:*",
+    "@lostgradient/environmentalist": "catalog:",
     "@lostgradient/testing": "workspace:*",
+    "@lostgradient/typescript": "workspace:*",
     "@playwright/test": "catalog:",
+    "@testing-library/dom": "catalog:",
     "@testing-library/jest-dom": "catalog:",
     "@testing-library/svelte": "catalog:",
     "@types/bun": "catalog:",
     "@types/culori": "catalog:",
     "@types/js-yaml": "catalog:",
     "@types/qrcode": "catalog:",
+    "@xterm/xterm": "catalog:",
     "chalk": "catalog:",
     "change-case": "catalog:",
     "happy-dom": "catalog:",
@@ -283,9 +287,7 @@
     "svelte-check": "catalog:",
     "svelte2tsx": "catalog:",
     "ts-morph": "catalog:",
-    "typescript": "catalog:",
-    "@testing-library/dom": "catalog:",
-    "@lostgradient/environmentalist": "catalog:"
+    "typescript": "catalog:"
   },
   "sideEffects": [
     "./src/index.ts",

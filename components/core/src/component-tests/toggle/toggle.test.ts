@@ -718,7 +718,7 @@ describe('Toggle — standalone and label position', () => {
 });
 
 // happy-dom cannot measure layout, so the rendered sizes are asserted in
-// `scripts/browser-fixtures/tests/toggle-size.playwright.ts`. These cases read the stylesheet and
+// `components/toggle/browser/tests/toggle-size.playwright.ts`. These cases read the stylesheet and
 // assert only the values that hold whatever mechanism draws the track inside the hit area.
 describe('Toggle — size contract in the stylesheet (COR-1552)', () => {
   const css = readFileSync(

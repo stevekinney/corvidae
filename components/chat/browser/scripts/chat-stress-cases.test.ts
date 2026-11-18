@@ -2,7 +2,7 @@ import { describe, expect, it } from 'bun:test';
 import { readFileSync } from 'node:fs';
 
 import { isStreamingMessage } from '@lostgradient/chat';
-import casesData from '../../../../scripts/browser-fixtures/src/fixtures/chat-stress.json';
+import casesData from '../fixtures/chat-stress.json';
 import {
   OWNER_AUDIT_SCENARIO_MAPPING,
   STRESS_CASE_COUNT,
@@ -13,8 +13,8 @@ import {
   stressCaseProblems,
   type StressCase,
   type StressStep,
-} from '../../../../scripts/browser-fixtures/src/fixtures/chat-stress/stress-cases.ts';
-import { buildStressSetup } from '../../../../scripts/browser-fixtures/src/fixtures/chat-stress/stress-scenarios.ts';
+} from '../fixtures/chat-stress/stress-cases.ts';
+import { buildStressSetup } from '../fixtures/chat-stress/stress-scenarios.ts';
 
 const cases = parseStressCases(casesData);
 const LONG_TOOL = 'orders_reconciliation_ledger_export_with_a_very_long_generated_identifier_v2';
@@ -546,10 +546,7 @@ describe('stressCaseProblems', () => {
 
 describe('the design-review rows', () => {
   const rows = readFileSync(
-    new URL(
-      '../../../../scripts/browser-fixtures/src/fixtures/chat-stress.rows.txt',
-      import.meta.url,
-    ),
+    new URL('../../../../components/chat/browser/fixtures/chat-stress.rows.txt', import.meta.url),
     'utf8',
   )
     .split('\n')

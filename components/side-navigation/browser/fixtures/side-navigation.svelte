@@ -1,0 +1,50 @@
+<script lang="ts">
+  import { default as NavigationItem } from '@lostgradient/navigation-item/components/navigation-item/index.ts';
+  import { default as SideNavigation } from '@lostgradient/side-navigation/components/side-navigation/index.ts';
+
+  type FixtureProps = {
+    active?: string;
+    projectsExpanded?: boolean;
+  };
+
+  let { active = 'phoenix', projectsExpanded = true }: FixtureProps = $props();
+</script>
+
+<div id="example-mount-basic" class="side-navigation-fixture">
+  <SideNavigation ariaLabel="Workspace">
+    <SideNavigation.Item href="/dashboard" active={active === 'dashboard'}>
+      Dashboard
+    </SideNavigation.Item>
+    <SideNavigation.Group label="Projects" bind:expanded={projectsExpanded}>
+      <SideNavigation.Item href="/projects/phoenix" active={active === 'phoenix'}>
+        Phoenix
+      </SideNavigation.Item>
+      <SideNavigation.Item href="/projects/atlas" active={active === 'atlas'}>
+        Atlas
+      </SideNavigation.Item>
+      {#if projectsExpanded}
+        <SideNavigation.Item href="/projects/beacon" active={active === 'beacon'}>
+          Beacon
+        </SideNavigation.Item>
+      {/if}
+    </SideNavigation.Group>
+    <SideNavigation.Group label="Settings">
+      <SideNavigation.Item href="/settings/team">Team</SideNavigation.Item>
+      <SideNavigation.Item href="/settings/billing" hidden>Billing</SideNavigation.Item>
+    </SideNavigation.Group>
+  </SideNavigation>
+
+  <nav aria-label="Standalone entries">
+    <NavigationItem href="/standalone/first">Standalone first</NavigationItem>
+    {#if projectsExpanded}
+      <NavigationItem href="/standalone/second">Standalone second</NavigationItem>
+    {/if}
+    <NavigationItem href="/standalone/hidden" hidden>Standalone hidden</NavigationItem>
+  </nav>
+</div>
+
+<style>
+  .side-navigation-fixture {
+    inline-size: 18rem;
+  }
+</style>
