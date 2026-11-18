@@ -24,7 +24,7 @@ test.use({ baseURL: E2E_SHOWCASE_URL, timezoneId: SAMPLE_TIME_ZONE });
 
 const SOURCE = 'chat-new-states.spec.ts';
 const REFUND_ASK = 'Please refund order 4471, it arrived damaged.';
-const HOST_REQUESTS = /\/(v1|bureau|api|host)\//;
+const HOST_REQUESTS = /\/(v1|bureau|api|host)\/|\/jsonrpc$/;
 const REFUSED = /net::ERR_CONNECTION_(REFUSED|FAILED)|net::ERR_FAILED|Failed to load resource/;
 
 const trail = (page: Page) => page.getByRole('navigation', { name: 'Breadcrumb' });
@@ -70,7 +70,7 @@ async function pausedClock(page: Page): Promise<void> {
 }
 
 /** The agents' reads: the Bureau's list of agents, and the host's list of plugins that says which can run. */
-const AGENT_READS = /\/(bureau\/jsonrpc|host\/plugins)$/;
+const AGENT_READS = /\/(jsonrpc|host\/plugins)$/;
 
 /** Holds the agents' reads until the returned function is called. */
 async function holdAgentReads(page: Page): Promise<() => void> {
@@ -95,7 +95,7 @@ async function answerAgents(
   page: Page,
   answer: { readonly agents: unknown[] } | { readonly status: number },
 ): Promise<void> {
-  await page.route('**/bureau/jsonrpc', async (route) => {
+  await page.route('**/jsonrpc', async (route) => {
     const body = JSON.parse(route.request().postData() ?? '{}') as {
       method?: string;
       id?: unknown;
@@ -213,7 +213,7 @@ test.describe('New chat when the agents cannot be loaded (24p)', () => {
     await captureForDesignReview(page, { route: '/chats/new', state: 'error', source: SOURCE });
     await checkA11y('New chat when the agents cannot be loaded');
 
-    await page.unroute('**/bureau/jsonrpc');
+    await page.unroute('**/jsonrpc');
     await retry.click();
     await expect(welcome(page)).toBeVisible();
     await expect(field(page)).toBeEnabled();

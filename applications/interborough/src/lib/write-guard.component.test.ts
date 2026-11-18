@@ -1,5 +1,5 @@
 /**
- * The guard reads "is the server unreachable" from inside `fetch` and `callBureau`, which run in
+ * The guard reads "is the server unreachable" from inside `fetch` and the Bureau client, which run in
  * effects. A tracked read made the effect that opened the Bureau's event stream run again each time
  * the server stopped answering, which restarted the stream (COR-1839, found by the task-follower
  * spec). This pins that reading it does not make the caller depend on it.

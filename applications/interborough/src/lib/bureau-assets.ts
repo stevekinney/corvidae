@@ -10,9 +10,9 @@
  */
 import type { ChatAttachmentFailureKind } from '@lostgradient/chat';
 import { HttpClientError } from '@lostgradient/weft';
-import { z } from 'zod';
 
-import { BUREAU_PATH, callBureau, type Fetcher } from './bureau-client.ts';
+import { bureauClient } from './bureau-api.ts';
+import { BUREAU_PATH, type Fetcher } from './bureau-client.ts';
 
 /**
  * The words the AG-UI mount and its snapshots use for a managed asset
@@ -96,9 +96,6 @@ export type UploadedAsset = {
   readonly mediaType: string | null;
 };
 
-const sessionSchema = z.object({ uploadId: z.string() });
-const assetSchema = z.object({ assetId: z.string(), mediaType: z.string().nullable() });
-
 /** The asset rejection codes a person can do something about: the file itself is the problem. */
 const REJECTED_REASONS: ReadonlySet<string> = new Set([
   'safety-gate-flagged',
@@ -166,14 +163,13 @@ export async function uploadAsset(
   } = {},
 ): Promise<UploadedAsset> {
   const { signal, onProgress } = options;
-  const call = async (
+  const call = async <Result>(
     step: 'create' | 'append' | 'complete',
-    method: string,
-    params: unknown,
-  ): Promise<unknown> => {
+    send: (callOptions: { signal?: AbortSignal; fetch?: Fetcher }) => Promise<Result>,
+  ): Promise<Result> => {
     signal?.throwIfAborted();
     try {
-      return await callBureau(method, params, {
+      return await send({
         ...(signal === undefined ? {} : { signal }),
         ...(options.fetch === undefined ? {} : { fetch: options.fetch }),
       });
@@ -186,26 +182,32 @@ export async function uploadAsset(
 
   // The Bureau declines a session for no bytes, and there is nothing to attach in an empty file.
   if (file.size === 0) throw new AttachmentUploadError('upload-failed');
-  const session = sessionSchema.parse(
-    await call('create', 'bureau.assets.uploads.create', {
-      declaredByteLength: file.size,
-      ...(file.type === '' ? {} : { declaredMediaType: file.type }),
-    }),
+  const session = await call('create', (callOptions) =>
+    bureauClient['bureau.assets.uploads.create'](
+      {
+        declaredByteLength: file.size,
+        ...(file.type === '' ? {} : { declaredMediaType: file.type }),
+      },
+      callOptions,
+    ),
   );
   try {
     for (let start = 0; start < file.size; start += UPLOAD_CHUNK_BYTES) {
       const chunk = new Uint8Array(
         await file.slice(start, start + UPLOAD_CHUNK_BYTES).arrayBuffer(),
       );
-      await call('append', 'bureau.assets.uploads.append', {
-        uploadId: session.uploadId,
-        chunk: toBase64(chunk),
-      });
+      await call('append', (callOptions) =>
+        bureauClient['bureau.assets.uploads.append'](
+          { uploadId: session.uploadId, chunk: toBase64(chunk) },
+          callOptions,
+        ),
+      );
       onProgress?.((start + chunk.length) / file.size);
     }
-    return assetSchema.parse(
-      await call('complete', 'bureau.assets.uploads.complete', { uploadId: session.uploadId }),
+    const asset = await call('complete', (callOptions) =>
+      bureauClient['bureau.assets.uploads.complete']({ uploadId: session.uploadId }, callOptions),
     );
+    return { assetId: asset.assetId, mediaType: asset.mediaType };
   } catch (error) {
     // A cancelled upload leaves an open session holding its chunks until it expires, so the
     // Bureau is asked to discard it now.
@@ -223,8 +225,7 @@ export async function uploadAsset(
  */
 async function abortUpload(uploadId: string, fetch: Fetcher | undefined): Promise<void> {
   try {
-    await callBureau(
-      'bureau.assets.uploads.abort',
+    await bureauClient['bureau.assets.uploads.abort'](
       { uploadId },
       fetch === undefined ? {} : { fetch },
     );

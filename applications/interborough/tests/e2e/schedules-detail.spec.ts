@@ -294,7 +294,7 @@ test('the menu holds Delete schedule only, below its button, and deleting asks f
 
 /** Answers the Bureau's start of a workflow with a run, so Run now makes none in the world. */
 async function answerStart(page: Page): Promise<void> {
-  await page.route('**/bureau/jsonrpc', async (route: Route) => {
+  await page.route('**/jsonrpc', async (route: Route) => {
     const body = route.request().postDataJSON() as { id?: unknown; method?: string };
     if (body.method !== 'bureau.workflows.start') {
       await route.fallback();
@@ -577,7 +577,7 @@ test('Run once now starts one run, not one per miss', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 1000 });
   // The Bureau's run now is answered by the specification, so no run is made in the world.
   const starts: string[] = [];
-  await page.route('**/bureau/jsonrpc', async (route: Route) => {
+  await page.route('**/jsonrpc', async (route: Route) => {
     const body = route.request().postDataJSON() as { id?: unknown; method?: string };
     if (body.method !== 'bureau.schedules.runnow') {
       await route.fallback();
@@ -951,7 +951,7 @@ test('Daily summary shown stale: the summary drops "in 16 hours", the runs are a
   const skip = main.getByRole('button', { name: /^Skip Tue Nov 3, 3:00 AM/ });
   await expect(skip).toBeEnabled();
 
-  await page.route(/\/(v1|bureau|api)\//, (route) => route.abort('connectionrefused'));
+  await page.route(/\/(v1|bureau|api)\/|\/jsonrpc$/, (route) => route.abort('connectionrefused'));
   await page.evaluate(() => window.dispatchEvent(new Event('visibilitychange')));
   const banner = page.getByRole('region', { name: 'Connection problem' });
   await expect(banner).toBeVisible();

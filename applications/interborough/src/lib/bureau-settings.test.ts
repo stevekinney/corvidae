@@ -236,7 +236,8 @@ describe('the settings stream', () => {
     let opened = 0;
     const seen = [];
     for await (const event of followSettingsEvents({
-      fetch: () => Promise.resolve(new Response(body)),
+      fetch: () =>
+        Promise.resolve(new Response(body, { headers: { 'content-type': 'text/event-stream' } })),
       onOpen: () => {
         opened += 1;
       },

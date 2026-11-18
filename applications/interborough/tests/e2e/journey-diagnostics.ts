@@ -8,7 +8,7 @@ import type { APIRequestContext, Page, TestInfo } from '@playwright/test';
 
 import { E2E_JOURNEY_URL } from './e2e-constants.ts';
 
-const WATCHED = ['/bureau/ag-ui/', '/bureau/jsonrpc'];
+const WATCHED = ['/bureau/ag-ui/', '/jsonrpc'];
 
 /** Starts recording; `stop` ends it and `lines` is what was seen. */
 export function recordBureauTraffic(page: Page): { lines: string[]; stop: () => void } {

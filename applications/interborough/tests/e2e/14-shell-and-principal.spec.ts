@@ -563,7 +563,7 @@ test('replaces the booted workspace before releasing an old chat listing', async
   await page.route('**/host/fixture-lifetime-change', async (route) => {
     await route.fulfill({ status: 409, headers: { 'x-interborough-identity-mismatch': '1' } });
   });
-  await page.route('**/bureau/jsonrpc', async (route) => {
+  await page.route('**/jsonrpc', async (route) => {
     const body = route.request().postDataJSON() as { id?: unknown; method?: string };
     if (body.method !== 'bureau.contexts.list') {
       await route.fallback();

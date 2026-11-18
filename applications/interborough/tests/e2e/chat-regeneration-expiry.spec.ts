@@ -23,7 +23,7 @@ function recordRequests(page: Page) {
   const starts: Array<Record<string, unknown>> = [];
   page.on('request', (request) => {
     if (request.method() !== 'POST') return;
-    if (request.url().endsWith('/bureau/jsonrpc')) {
+    if (request.url().endsWith('/jsonrpc')) {
       const body = request.postDataJSON() as { method?: string; params?: Record<string, unknown> };
       if (body.method === 'bureau.contexts.regenerate') regeneration.push(body.params ?? {});
     }
@@ -315,7 +315,7 @@ test('a failed regeneration keeps the answer, says so on its row, and Regenerate
   const threadId = newThreadId('regeneration-retry');
   await runToEnd(request, REGENERATION_PROOF_AGENT, threadId, 'Verify the proof record');
   const attempts: Array<Record<string, unknown>> = [];
-  await page.route('**/bureau/jsonrpc', async (route) => {
+  await page.route('**/jsonrpc', async (route) => {
     const body = route.request().postDataJSON() as {
       method?: string;
       params?: Record<string, unknown>;
@@ -426,8 +426,7 @@ for (const viewport of VIEWPORTS) {
       expect(await textCoveredByAnotherElement(answer)).toEqual([]);
       await answer.hover();
       const regenerationResponsePromise = page.waitForResponse(
-        (response) =>
-          response.request().method() === 'POST' && response.url().endsWith('/bureau/jsonrpc'),
+        (response) => response.request().method() === 'POST' && response.url().endsWith('/jsonrpc'),
       );
       await page.getByRole('button', { name: 'Regenerate', exact: true }).click();
       const regenerationResponse = await regenerationResponsePromise;
