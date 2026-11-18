@@ -865,7 +865,19 @@ describe('the Bureau’s own runs (COR-2423)', () => {
       chats: [],
     });
     expect(runStatusWord(row, NOW)).toBe('Scheduled');
-    expect(runLineTwo(row, context)).toContain('Tool runner, due today at 11:00 AM');
+    expect(runLineTwo(row, context)).toBe('Schedule, Tool runner, due today at 11:00 AM');
+    // What holds its schedule comes before its agent, and no cadence: the due time is the point.
+    const held = runLineTwo(row, {
+      ...context,
+      scheduleCadence: () => 'every Monday at 11:00 AM',
+      scheduleHolds: (scheduleId, agentName) =>
+        scheduleId === 'weekly-refund-audit' && agentName === 'tool-runner'
+          ? ['Order refund can’t load', 'no provider is connected']
+          : [],
+    });
+    expect(held).toBe(
+      'Schedule, Order refund can’t load, no provider is connected, Tool runner, due today at 11:00 AM',
+    );
     expect(isRunRowRunning(row, NOW)).toBe(false);
     // Once the time has passed it is running again.
     expect(runStatusWord(row, NOW + 3_600_000)).toBe('Running');

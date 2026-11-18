@@ -26,6 +26,10 @@
       "enum": ["leading", "line-two"],
       "description": "Where the status sits. Default `leading`."
     },
+    "phoneWidth": {
+      "enum": ["row", "viewport"],
+      "description": "Which width decides the row's phone form: the row's own (`row`, the default) or the window's\n(`viewport`), each below 640px. Pass `viewport` on the rows of a list that fills the page's\ncontent column, so a tablet with a navigation rail keeps the leading status column."
+    },
     "titleLines": {
       "enum": [1, 2],
       "description": "How many lines the title may take before an ellipsis. Default `2`; the status and the time\nstay beside the first line, and the full title is the row's `tooltip`. A title never grows a\nrow without bound, and an unbroken value (an identifier) wraps anywhere."
@@ -145,6 +149,11 @@
         "name": "meta",
         "reason": "function-or-snippet",
         "description": "Line two: muted metadata, kind first, then agent, then detail. Pieces are told apart by a space\nand a step, never by a comma or a dot, and never as a bare run of words in one weight and one\ncolour: each piece is its own element, and a piece that stands apart takes a step in face,\nweight or colour (the status word is semibold beside the muted line; inside the line, an\nidentifier in a `Text` of `variant=\"code\"`, or a reason in a tone). It starts under the title\n(not under the status) and ends in an ellipsis rather than wrapping. A line that must carry a\ncontrol (an error with its own \"Try again\") may put one in."
+      },
+      {
+        "name": "metaCompact",
+        "reason": "function-or-snippet",
+        "description": "Line two on a phone, in place of `meta`: the few words a narrow row has room for (the missed\nruns' \"Schedule since Oct 30\" for the wide \"Schedule Assistant every day at 3:00 AM missed 4\ntimes since Oct 30\"). Only one of the two is drawn, so a screen reader reads line two once;\nkeep `metaTooltip` the whole line. With `wrapMeta` the status leads it, once, on line two, and\nthe time and a group row's disclosure stay on line one."
       },
       {
         "name": "onRetryClick",

@@ -19,6 +19,7 @@
     StackedListItemDensity,
     StackedListItemGroupLayout,
     StackedListItemLeadingTone,
+    StackedListItemPhoneWidth,
     StackedListItemProps,
     StackedListItemStatusPlacement,
     StackedListItemTitleLines,
@@ -53,12 +54,14 @@
     status,
     statusColumn,
     statusPlacement = 'leading',
+    phoneWidth = 'row',
     title,
     titleLines = 2,
     tooltip,
     time,
     description,
     meta,
+    metaCompact,
     metaTooltip,
     wrapMeta = false,
     detail,
@@ -144,9 +147,19 @@
     const entry = (entries as ResizeObserverEntry[] | undefined)?.at(-1);
     if (entry) rowWidth = entry.contentRect.width;
   });
+  // A row asked to follow the window (`phoneWidth="viewport"`) takes the phone form from the
+  // viewport alone, and the stylesheet's container queries pass it by (`data-cinder-phone-width`).
+  const viewportWidth = $derived(phoneWidth === 'viewport');
   const phone = $derived(
-    rowWidth !== undefined && rowWidth > 0 ? rowWidth < PHONE_ROW_WIDTH : phoneViewport.current,
+    viewportWidth
+      ? phoneViewport.current
+      : rowWidth !== undefined && rowWidth > 0
+        ? rowWidth < PHONE_ROW_WIDTH
+        : phoneViewport.current,
   );
+  // Line two's text: on a phone the compact form when the row has one, else `meta`. Only one is
+  // drawn, so line two is read once.
+  const lineMeta = $derived(phone && metaCompact !== undefined ? metaCompact : meta);
   // Under `wrapMeta` a phone row reads line two as one run of text (the dot, the word, then the
   // meta), so a wrapped line returns to the row's leading edge. The status is drawn once, either in
   // its column or at the start of line two, never both: a second copy would be a second image with
@@ -161,7 +174,7 @@
       statusPlacement === 'leading' &&
       phone &&
       error === undefined &&
-      (description !== undefined || meta !== undefined),
+      (description !== undefined || lineMeta !== undefined),
   );
   const hasActions = $derived(actions !== undefined && actions.length > 0);
   // On a phone two or more actions are one menu button, unless the row asks to keep them as
@@ -247,7 +260,7 @@
     isLines && status && 'cinder-stacked-list-item--has-status',
     isLines &&
       !description &&
-      !meta &&
+      !lineMeta &&
       error === undefined &&
       'cinder-stacked-list-item--no-line-two',
     isBand && 'cinder-stacked-list-item--band',
@@ -265,6 +278,7 @@
   )}
   data-cinder-density={resolvedDensity}
   data-cinder-phone={phone ? '' : undefined}
+  data-cinder-phone-width={viewportWidth ? 'viewport' : undefined}
   data-cinder-viewport-phone={statusPlacement === 'line-two' && phoneViewport.current
     ? ''
     : undefined}
@@ -372,7 +386,7 @@
                 </Button>
               {/if}
             </div>
-          {:else if description || meta}
+          {:else if description || lineMeta}
             <div class="cinder-stacked-list-item__line-two" title={lineMetaTooltip}>
               {#if statusInline && status}
                 <!-- The row's only copy of its status in this form (see `statusInline`). -->
@@ -381,8 +395,13 @@
               {#if description}
                 <div class="cinder-stacked-list-item__description">{@render description()}</div>
               {/if}
-              {#if meta}
-                <div class="cinder-stacked-list-item__meta">{@render meta()}</div>
+              {#if lineMeta}
+                <div
+                  class="cinder-stacked-list-item__meta"
+                  data-cinder-meta-compact={lineMeta === metaCompact ? '' : undefined}
+                >
+                  {@render lineMeta()}
+                </div>
               {/if}
             </div>
           {/if}
@@ -399,9 +418,9 @@
               {@render description()}
             </div>
           {/if}
-          {#if meta}
+          {#if lineMeta}
             <div class="cinder-stacked-list-item__meta" title={lineMetaTooltip}>
-              {@render meta()}
+              {@render lineMeta()}
             </div>
           {/if}
         {/if}

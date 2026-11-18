@@ -103,12 +103,19 @@ describe('the words of the missed row', () => {
       'Fri, Oct 30, 4:00 AM',
     ]);
     expect(missedDay(missed.since, ZONE)).toBe('Oct 30');
-    const line = missedLineTwo(missed, ZONE, (name) => (name === 'assistant' ? 'Assistant' : name));
-    // The point of the row leads, so a line cut short drops the cadence first.
-    expect(line.startsWith('Schedule, missed 4 times since Oct 30, Assistant, every day at ')).toBe(
-      true,
+    const label = (name: string) => (name === 'assistant' ? 'Assistant' : name);
+    // Each width's line two, as its row draws it: the whole line ends on how many runs were missed
+    // (09q), a tablet's leaves the cadence out (05x), and a phone's says only since when (05w).
+    const line = missedLineTwo(missed, ZONE, label);
+    expect(line).toMatch(/^Schedule, Assistant, every day at .+, missed 4 times since Oct 30$/);
+    expect(missedLineTwo(missed, ZONE, label, 'wide')).toBe(line);
+    expect(missedLineTwo(missed, ZONE, label, 'tablet')).toBe(
+      'Schedule, Assistant, missed 4 times since Oct 30',
     );
-    expect(line).not.toContain(String.fromCodePoint(0xb7));
+    expect(missedLineTwo(missed, ZONE, label, 'compact')).toBe('Schedule, since Oct 30');
+    for (const form of ['wide', 'tablet', 'compact'] as const) {
+      expect(missedLineTwo(missed, ZONE, label, form)).not.toContain(String.fromCodePoint(0xb7));
+    }
   });
 });
 

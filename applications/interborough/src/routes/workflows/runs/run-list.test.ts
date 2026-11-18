@@ -304,6 +304,11 @@ describe('the records page', () => {
         view.container.querySelector(`[data-run="${id ?? ''}"]`)?.textContent ?? '',
       ).not.toContain(String.fromCodePoint(0xb7));
     }
+    // The list fills the content column, so its rows take the phone form from the window: on a
+    // tablet beside the rail the status leads in its column (row 05x).
+    for (const row of view.container.querySelectorAll('li[data-run]')) {
+      expect(row.getAttribute('data-cinder-phone-width')).toBe('viewport');
+    }
   });
 
   test('shows ten runs, says how many there are, and Load more shows the rest', async () => {
@@ -343,6 +348,11 @@ describe('the runs a schedule missed', () => {
     expect(row.textContent).toContain('Daily summary');
     expect(row.textContent).toContain('Missed runs');
     expect(row.textContent).toContain('missed 2 times since');
+    // It follows the window, leads its line two once with the status on a phone (`wrapMeta`), and
+    // keeps the whole line as its tooltip (rows 05w, 05x).
+    expect(row.getAttribute('data-cinder-phone-width')).toBe('viewport');
+    expect(row.classList.contains('cinder-stacked-list-item--wrap-meta')).toBe(true);
+    expect(row.querySelector('[title*="missed 2 times since"]')).not.toBeNull();
 
     await fireEvent.click(within(row).getByRole('button', { name: /Show/ }));
     const occurrences = within(row).getByRole('list', {

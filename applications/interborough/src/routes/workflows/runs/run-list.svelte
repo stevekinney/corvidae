@@ -45,6 +45,7 @@
   import { TASK_COPY } from '../../../app/copy/tasks.ts';
   import { useBureauEventsLive } from '../../../app/live-polling.svelte.ts';
   import { agentLabel as agentLabelOf } from '../../../lib/agent-label.ts';
+  import { readScheduleAttention } from '../../../lib/bureau-attention.ts';
   import { listAgents, listAllContexts } from '../../../lib/bureau-client.ts';
   import { listAllGoals } from '../../../lib/bureau-goals.ts';
   import { listAllTasks } from '../../../lib/bureau-tasks.ts';
@@ -57,6 +58,7 @@
   import { getPrincipalStore } from '../../../lib/scopes.svelte.ts';
   import { HOME_CLOCK_MILLISECONDS } from '../../home/home-clock.svelte.ts';
   import { REVIEW_POLL_MILLISECONDS } from '../../reviews/reviews-data.ts';
+  import { loadModelAgents } from '../../schedules/schedule-row-context.ts';
   import MissedRunsRow from './missed-runs-row.svelte';
   import { readRunSchedules } from './missed-runs.ts';
   import RunListRow from './run-list-row.svelte';
@@ -73,6 +75,7 @@
     runListEntries,
     runListRows,
     runSegmentCounts,
+    runStatusWord,
     serializeRunFilter,
     visibleRunSegments,
     type RunFilter,
@@ -215,6 +218,50 @@
     }, period);
     return () => clearInterval(timer);
   });
+
+  // The agents of the schedules' runs that are due, which are the only rows that say whether a
+  // provider is connected for them (row 10h): only a list that has one asks, as the Schedules
+  // list does, whether no provider is connected and which of those agents needs a model.
+  const dueScheduleAgents = $derived(
+    [
+      ...new Set(
+        everyRun
+          .filter(
+            (row) =>
+              row.origin.kind === 'schedule' &&
+              row.agentName !== null &&
+              runStatusWord(row, now) === 'Scheduled',
+          )
+          .map((row) => row.agentName ?? ''),
+      ),
+    ].toSorted(),
+  );
+  const providerHold = createQuery(
+    () => ({
+      queryKey: ['runs', 'provider-hold', dueScheduleAgents.join(',')] as const,
+      queryFn: async ({ signal }: { signal: AbortSignal }) => {
+        const [attention, modelAgents] = await Promise.all([
+          readScheduleAttention({ signal }),
+          loadModelAgents(dueScheduleAgents, { signal }),
+        ]);
+        return { noProvider: attention.noProvider, modelAgents };
+      },
+      enabled: dueScheduleAgents.length > 0,
+      retry: false,
+    }),
+    undefined,
+  );
+  // What holds a schedule from starting its due run (row 10h): the workflow whose file cannot
+  // load, and no provider for an agent whose definition names a model.
+  function scheduleHolds(scheduleId: string, agentName: string | null): readonly string[] {
+    const blocked = schedules.data?.blockers?.get(scheduleId);
+    const provider = providerHold.data;
+    const needsModel = agentName !== null && provider?.modelAgents.has(agentName) === true;
+    return [
+      ...(blocked === undefined ? [] : [blocked]),
+      ...(provider?.noProvider === true && needsModel ? [TASK_COPY.list.holds.noProvider] : []),
+    ];
+  }
 
   const agentNames = $derived(
     [
@@ -484,6 +531,8 @@
                   {agentLabel}
                   {pluginTitle}
                   {scheduleCadence}
+                  {scheduleHolds}
+                  phoneWidth="viewport"
                   readable={entry.row.engineRun !== true || engineReadable}
                 />
               {:else}

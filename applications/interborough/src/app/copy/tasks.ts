@@ -93,6 +93,11 @@ export const TASK_COPY = {
     attempt: (number: number, of: number): string => `attempt ${String(number)} of ${String(of)}`,
     /** When a canceled run stopped, and how long it had run. The event names no one who canceled it. */
     canceledAt: (time: string, duration: string): string => `canceled at ${time} after ${duration}`,
+    /** What holds a due run's schedule from starting it, said before its agent (row 10h). */
+    holds: {
+      cannotLoad: (workflow: string): string => `${workflow} can’t load`,
+      noProvider: 'no provider is connected',
+    },
     /** The collapsed row of the runs a schedule missed. */
     missed: {
       /** The title of a schedule with no name of its own. */
@@ -100,6 +105,8 @@ export const TASK_COPY = {
       /** Line two's last part: how many runs were missed, and since when. */
       since: (count: number, day: string): string =>
         `missed ${String(count)} ${count === 1 ? 'time' : 'times'} since ${day}`,
+      /** A phone's line two's last part: since when, the count being in the status (row 05w). */
+      sinceDay: (day: string): string => `since ${day}`,
       /** The accessible name of the list of missed occurrences under the expanded row. */
       occurrencesLabel: 'Missed occurrences',
       viewSchedule: 'View schedule',

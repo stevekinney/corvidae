@@ -24,4 +24,10 @@ export default [
     name: 'wrap-meta',
     host: './stacked-list-item-wrap-meta.fixture.svelte',
   },
+  // The missed runs' group row with a compact line two (`metaCompact`): the few words on a phone,
+  // the whole line wider, and a row that follows the window keeping its status column (05w, 05x).
+  {
+    name: 'meta-compact',
+    host: './stacked-list-item-meta-compact.fixture.svelte',
+  },
 ];

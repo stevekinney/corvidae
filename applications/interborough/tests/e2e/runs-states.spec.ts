@@ -18,10 +18,12 @@ import {
   SAMPLE_NOW_MILLISECONDS,
   SAMPLE_TIME_ZONE,
 } from '../../fixtures/sample-now.ts';
+import { readSampleWorldRecords } from '../../fixtures/sample-world-records.ts';
 import { SIGNAL_WAIT_WORD } from '../../src/app/copy/tasks.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
 import { E2E_SHOWCASE_URL } from './e2e-constants.ts';
 import { expect, loggedFailedResponse, test } from './fixtures.ts';
+import { readBoxes } from './read-boxes.ts';
 
 test.use({ baseURL: E2E_SHOWCASE_URL, timezoneId: SAMPLE_TIME_ZONE });
 
@@ -122,6 +124,17 @@ test.describe('/runs: the list on a phone, a tablet and in the dark', () => {
       () => document.documentElement.scrollWidth > document.documentElement.clientWidth,
     );
     expect(scrolls, 'the page never scrolls sideways').toBe(false);
+    // The missed runs read "Schedule, since Oct 30" on line two, led once by the status, with the
+    // date and Show on line one (05w).
+    const missed = main.locator('li[data-missed-schedule]');
+    await expect(missed.locator('.cinder-stacked-list-item__line-two')).toHaveText(
+      /^Missed runs,?\s*4\s*Schedule, since Oct 30$/,
+    );
+    await expect(missed.locator('.cinder-stacked-list-item__status-inline')).toHaveCount(1);
+    await expect(missed.locator('.cinder-stacked-list-item__time')).toContainText('Oct 30');
+    await expect(
+      missed.locator('.cinder-stacked-list-item__time').getByRole('button', { name: /Show/ }),
+    ).toBeVisible();
     await captureForDesignReview(page, { route: '/runs', state: 'ready', source: SOURCE });
     await checkA11y('runs on a phone');
   });
@@ -138,8 +151,32 @@ test.describe('/runs: the list on a phone, a tablet and in the dark', () => {
     await expect(bar.getByRole('button', { name: 'Agent', exact: true })).toBeVisible();
     await expect(bar.getByRole('button', { name: 'Search runs' })).toBeVisible();
     await expect(headerCreate(page)).toHaveAttribute('data-cinder-variant', 'secondary');
+    // The status leads each row in its fixed column, never on line two (05x): the rows follow the
+    // window, which is no phone, though the rail leaves each row under 640px.
+    const main = page.locator('main');
+    const rows = main.locator('li[data-run], li[data-missed-schedule]');
+    await expect(rows.first()).toBeVisible();
+    await expect(main.locator('.cinder-stacked-list-item__status-inline')).toHaveCount(0);
+    const { status, title } = await readBoxes(page, {
+      status: rows.first().locator('.cinder-stacked-list-item__status'),
+      title: rows.first().locator('.cinder-stacked-list-item__title'),
+    });
+    expect(status.x + status.width).toBeLessThanOrEqual(title.x + 1);
+    // The missed runs' line two leaves the cadence out (05x).
+    await expect(
+      main.locator('li[data-missed-schedule] .cinder-stacked-list-item__line-two'),
+    ).toHaveText('Schedule, Assistant, missed 4 times since Oct 30');
     await captureForDesignReview(page, { route: '/runs', state: 'ready', source: SOURCE });
     await checkA11y('runs on a tablet');
+  });
+
+  test('wide, the missed runs say the schedule’s cadence before how many runs it missed (09q)', async ({
+    page,
+  }) => {
+    await openRuns(page, 1280);
+    await expect(
+      page.locator('main li[data-missed-schedule] .cinder-stacked-list-item__line-two'),
+    ).toHaveText(/^Schedule, Assistant, every day at .+, missed 4 times since Oct 30$/);
   });
 
   test('in the dark keeps every segment with its count, the day bands and the rows legible (07j)', async ({
@@ -372,6 +409,34 @@ function instanceTask(
   };
 }
 
+/**
+ * A schedule's own run, as `bureau.tasks.list` answers it: started by the scheduler for the
+ * schedule `scheduleId`, and asleep until `wakeAt`, so the list reads it Scheduled (row 10h).
+ */
+function scheduleRunTask(
+  id: string,
+  scheduleId: string,
+  fields: { readonly createdAt: string; readonly wakeAt: string; readonly agentName: string },
+) {
+  return {
+    id,
+    contextId: id,
+    agentName: fields.agentName,
+    owner: 'anonymous:local',
+    actor: 'system:scheduler',
+    kind: 'schedule-fire',
+    origin: { kind: 'schedule', scheduleId, fireId: `${id}-fire` },
+    status: 'working',
+    finishReason: null,
+    statusMessage: null,
+    createdAt: fields.createdAt,
+    updatedAt: fields.createdAt,
+    cleanup: null,
+    openWaits: [],
+    wakeAt: fields.wakeAt,
+  };
+}
+
 /** The task of the step an instance is at, which names the agent the step runs as. */
 function stepTask(instance: ReturnType<typeof instanceTask>, agentName: string) {
   return {
@@ -405,20 +470,19 @@ for (const width of WIDTHS) {
         awaitingSignal: 'notes-approved',
         agentName: 'assistant',
       }),
-      instanceTask('row-states-scheduled', 'weekly-refund-audit', {
+    ];
+    // Each instance with the task of the step it is at, which names the agent that step runs as,
+    // and the Weekly refund audit schedule's own run, due at 11:00 AM: a schedule's row, which says
+    // what holds the schedule (its Order refund file can't load, and no provider is connected).
+    const world = await readSampleWorldRecords(E2E_SHOWCASE_URL);
+    const extra = [
+      ...instances.flatMap((instance) => [instance, stepTask(instance, instance.agentName)]),
+      scheduleRunTask('row-states-scheduled', world.schedules.weeklyRefundAudit, {
         createdAt: '2026-11-02T16:40:00.000Z',
-        status: 'working',
-        steps: { total: 3, at: 1 },
         wakeAt: '2026-11-02T17:00:00.000Z',
-        scheduleName: 'Weekly refund audit',
         agentName: 'tool-runner',
       }),
     ];
-    // Each instance with the task of the step it is at, which names the agent that step runs as.
-    const extra = instances.flatMap((instance) => [
-      instance,
-      stepTask(instance, instance.agentName),
-    ]);
     await page.route('**/bureau/jsonrpc', async (route) => {
       const body = JSON.parse(route.request().postData() ?? '{}') as {
         method?: string;
@@ -451,9 +515,14 @@ for (const width of WIDTHS) {
       'data-status',
       SIGNAL_WAIT_WORD,
     );
-    await expect(main.locator('li[data-run="row-states-scheduled"]')).toHaveAttribute(
-      'data-status',
-      'Scheduled',
+    const scheduled = main.locator('li[data-run="row-states-scheduled"]');
+    await expect(scheduled).toHaveAttribute('data-status', 'Scheduled');
+    // A schedule's row, as 10h draws it: named by the schedule, and what holds it before its agent.
+    await expect(scheduled.locator('.cinder-stacked-list-item__title')).toHaveText(
+      'Weekly refund audit',
+    );
+    await expect(scheduled.locator('.cinder-stacked-list-item__line-two')).toContainText(
+      'Schedule, Order refund can’t load, no provider is connected, Tool runner, due today at 11:00 AM',
     );
     await captureForDesignReview(page, { route: '/runs', state: 'row states', source: SOURCE });
   });
@@ -516,14 +585,29 @@ test.describe('/runs: a read in progress (10k, 10l, 14m, 14n, 14p, 52z)', () => 
   test('in the narrow bar form is skeleton rows under the real day band, with a Status select and a Filter button (52z)', async ({
     page,
   }) => {
-    const release = await openLoading(page, 768);
+    // A phone's width, where the bar takes its narrow form; the capture repeats it at 320 pixels.
+    const release = await openLoading(page, 375);
     const main = page.locator('main');
+    await expect(main.locator('.cinder-skeleton-row')).toHaveCount(0);
     await page.clock.runFor(300);
-    await expect(main.locator('.cinder-skeleton-list')).toBeVisible();
+    // Nothing is drawn for the first 300 ms: the capture waits for the skeleton rows, and proves
+    // them again after its own resize to 320 pixels.
+    const skeletonDrawn = async (shown: Page) => {
+      const shownMain = shown.locator('main');
+      await expect(shownMain.locator('.cinder-skeleton-row').first()).toBeVisible();
+      await expect(shownMain.locator('.cinder-skeleton-day-band')).toHaveCount(1);
+    };
+    await skeletonDrawn(page);
+    // The narrow bar: a Status select with no count, and a Filter button.
+    const bar = filterBar(page);
+    await expect(bar.getByRole('button', { name: /^Filter/ })).toBeVisible();
+    await expect(bar).toContainText('Status');
+    await expect(main.getByRole('heading', { level: 1, name: 'Runs' })).toBeVisible();
     await captureForDesignReview(page, {
       route: '/runs',
       state: 'loading, narrow bar',
       source: SOURCE,
+      ready: skeletonDrawn,
     });
     await page.clock.resume();
     release();

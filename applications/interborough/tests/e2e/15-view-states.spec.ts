@@ -456,10 +456,22 @@ for (const view of VIEW_NAMES) {
             await expect(frame.getByRole('heading', { level: 1 })).toHaveText(title ?? '');
           }
         }
+        // The Runs list draws nothing for its first 300 ms and then its skeleton rows (row 52z):
+        // its loading capture waits for them, and re-proves them after the capture's own resize to
+        // 320 pixels, so the frame is never the blank moment before them.
+        const skeletonDrawn =
+          view === 'runs' && outcome === 'loading'
+            ? async (shown: Page) =>
+                expect(
+                  shown.locator(`[data-view="${view}"] .cinder-skeleton-row`).first(),
+                ).toBeVisible()
+            : undefined;
+        await skeletonDrawn?.(page);
         await captureForDesignReview(page, {
           route: PATHS[view],
           state: outcome,
           source: '15-view-states.spec.ts',
+          ready: skeletonDrawn,
         });
         await checkA11y(`${view} — ${outcome} at ${width}px`);
         // No view scrolls the page sideways at the phone width, in any state: a table scrolls
