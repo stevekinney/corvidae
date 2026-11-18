@@ -75,6 +75,7 @@ describe('parseArguments', () => {
       'tests/e2e/run-page-states.spec.ts',
       'tests/e2e/run-page-live-states.spec.ts',
       'tests/e2e/goal-page-states.spec.ts',
+      'tests/e2e/capabilities-states.spec.ts',
       // The view states are a showcase specification too, run once where first listed.
       'tests/e2e/15-view-states.spec.ts',
       'tests/e2e/responsive.spec.ts',
@@ -144,6 +145,7 @@ describe('parseArguments', () => {
       'tests/e2e/run-page-states.spec.ts',
       'tests/e2e/run-page-live-states.spec.ts',
       'tests/e2e/goal-page-states.spec.ts',
+      'tests/e2e/capabilities-states.spec.ts',
       'tests/e2e/15-view-states.spec.ts',
     ]);
     expect(specificationsOf(['--data', 'stress'])).toEqual([
@@ -197,6 +199,7 @@ describe('parseArguments', () => {
       'tests/e2e/run-page-states.spec.ts',
       'tests/e2e/run-page-live-states.spec.ts',
       'tests/e2e/goal-page-states.spec.ts',
+      'tests/e2e/capabilities-states.spec.ts',
       'tests/e2e/15-view-states.spec.ts',
       'tests/e2e/responsive.spec.ts',
     ]);

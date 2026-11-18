@@ -144,7 +144,7 @@ for (const width of WIDTHS) {
     }
   });
 
-  test.describe(`lost tools and skills, at ${width} pixels`, () => {
+  test.describe(`/capabilities lost tools and skills, at ${width} pixels`, () => {
     test('a failed source keeps its last listing: the tool, its warning, Reconnect and the kept asks level (30n, 30o)', async ({
       page,
     }) => {
@@ -280,7 +280,7 @@ for (const width of WIDTHS) {
       });
     });
 
-    test('the agent’s Access tab states the same asks vocabulary (30d)', async ({ page }) => {
+    test('/agents/:agent/access states the same asks vocabulary (30d)', async ({ page }) => {
       await open(page, width, '/agents/workflow-author/access');
       await expect(page.locator('[data-tool]').first()).toBeVisible();
       await captureForDesignReview(page, {
@@ -291,7 +291,7 @@ for (const width of WIDTHS) {
     });
   });
 
-  test.describe(`sources, at ${width} pixels`, () => {
+  test.describe(`/capabilities sources, at ${width} pixels`, () => {
     test('the GitHub source with its address and sentence, and a secondary Test connection (31o)', async ({
       page,
     }) => {
@@ -386,7 +386,7 @@ async function ledgerIsEditable(page: Page): Promise<void> {
 }
 
 for (const width of WIDTHS) {
-  test.describe(`Edit connection, at ${width} pixels`, () => {
+  test.describe(`/capabilities/connect Edit connection, at ${width} pixels`, () => {
     test('opens Connect tools on the saved source with the breadcrumb Capabilities › Edit connection (32m)', async ({
       page,
     }) => {
@@ -471,7 +471,7 @@ const signInStart = (page: Page) => page.getByTestId('connect-sign-in-start');
 const signInState = (page: Page) => page.getByTestId('connect-sign-in');
 
 for (const width of WIDTHS) {
-  test.describe(`Sign in on Connect tools, at ${width} pixels`, () => {
+  test.describe(`/capabilities/connect Sign in on Connect tools, at ${width} pixels`, () => {
     test('is a segmented control with OAuth’s note, and idle offers Sign in to GitHub with a key icon (33g)', async ({
       page,
     }) => {
