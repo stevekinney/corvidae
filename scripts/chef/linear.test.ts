@@ -1759,7 +1759,7 @@ describe('claim', () => {
       input,
     );
     expect(changed.code).toBe(1);
-    expect(changed.output).toContain('retains unresolved operation');
+    expect(changed.output).toContain('held remotely by run-a');
     expect(claimLines(fake)).toHaveLength(1);
 
     const exact = await run(['claim', 'COR-1', '--run', 'run-a', '--branch', 'branch-a'], input);
@@ -1779,7 +1779,7 @@ describe('claim', () => {
     expect(fake.issues[0]?.stateId).toBe('s-todo');
   });
 
-  test('a checkpoint by the same run updates the comment in place and keeps since', async () => {
+  test('a changed claim intent is refused while the original marker is live', async () => {
     const fake = fakeLinear();
     await take(fake, 'run-a');
     const later = () => new Date('2026-10-22T15:00:00Z');
@@ -1787,11 +1787,8 @@ describe('claim', () => {
       ['claim', 'COR-1', '--run', 'run-a', '--branch', 'branch-run-a', '--head', 'def5678'],
       withClock(fake, later),
     );
-    expect(result.code).toBe(0);
+    expect(result.code).toBe(1);
     expect(claimLines(fake)).toHaveLength(1);
-    expect(claimLines(fake)[0]?.body.split('\n')[0]).toBe(
-      'Claim: run run-a, branch branch-run-a, since 2026-10-22T12:00:00.000Z, checkpoint 2026-10-22T15:00:00.000Z, head def5678, status held',
-    );
   });
 
   test('a checkpoint without --head keeps the recorded head', async () => {

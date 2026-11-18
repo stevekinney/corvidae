@@ -1329,12 +1329,12 @@ export async function claimIssue(
   if (
     current !== undefined &&
     claimIsLive(current.marker, now) &&
-    !sameProviderAuthority(current.marker.identity, options.identity)
+    !sameProviderIdentity(current.marker.identity, options.identity)
   )
     return refuse(current);
   const own =
     current?.marker.run === options.run &&
-    sameProviderAuthority(current.marker.identity, options.identity)
+    sameProviderIdentity(current.marker.identity, options.identity)
       ? current
       : undefined;
   const held = own !== undefined && own.marker.status === 'held';
@@ -1643,7 +1643,9 @@ function identifierArgument(parsed: Parsed, count: number): string[] {
 async function withLocalAuthority(
   dependencies: LinearDependencies,
   request: { resource: string; runId: string; ownerId: string },
-  inspectClaim: () => Promise<{ holder: string; live: boolean } | undefined>,
+  inspectClaim: () => Promise<
+    { holder: string; live: boolean; identity?: ProviderOperationIdentity } | undefined
+  >,
   action: string,
   fingerprint: () => string,
   inspect: (authority: ProviderOperationIdentity) => Promise<Outcome | undefined>,
@@ -1657,8 +1659,31 @@ async function withLocalAuthority(
     hostId: hostname(),
   });
   return stateModule.withProviderTransitionLock(store, request.resource, async () => {
+    const operationFingerprint = fingerprint();
+    let priorAuthority: { generation: number } | undefined;
+    try {
+      priorAuthority = stateModule.currentAuthority(store, request);
+    } catch {
+      // A missing, cancelled or foreign snapshot cannot prove ownership of a live provider marker.
+    }
+    const priorIdentity =
+      priorAuthority === undefined
+        ? undefined
+        : {
+            ownerId: request.ownerId,
+            generation: priorAuthority.generation,
+            operationId: `${request.resource}:${priorAuthority.generation}:${action}:${operationFingerprint.slice(0, 16)}`,
+            intentFingerprint: operationFingerprint,
+          };
     const acquired = await stateModule.acquireDispatchWithinTransition(store, request, {
-      inspectClaim,
+      inspectClaim: async () => {
+        const remote = await inspectClaim();
+        return remote?.live === true &&
+          priorIdentity !== undefined &&
+          sameProviderIdentity(remote.identity, priorIdentity)
+          ? undefined
+          : remote;
+      },
     });
     if (!acquired.granted)
       return {
@@ -1666,7 +1691,6 @@ async function withLocalAuthority(
         summary: `Refused: ${request.resource} ${acquired.reason}.`,
         data: { claimed: false, leased: false, holder: null },
       };
-    const operationFingerprint = fingerprint();
     const operationId = `${request.resource}:${acquired.authority.generation}:${action}:${operationFingerprint.slice(0, 16)}`;
     const identity: ProviderOperationIdentity = {
       ownerId: acquired.authority.ownerId,
@@ -1970,14 +1994,10 @@ export async function run(
           async () => {
             const project = await resolveProject(client, target as string);
             const current = await latestLease(client, project.id);
-            if (
-              current === undefined ||
-              (current.marker.run === runId && current.marker.identity !== undefined)
-            )
-              return undefined;
+            if (current === undefined) return undefined;
             if (!leaseIsLive(current.marker, now))
-              return { holder: current.marker.run, live: false };
-            return { holder: current.marker.run, live: true };
+              return { holder: current.marker.run, live: false, identity: current.marker.identity };
+            return { holder: current.marker.run, live: true, identity: current.marker.identity };
           },
           'lease',
           () => intentFingerprint({ resource: `project:${target}`, run: runId, action: 'lease' }),
@@ -2036,14 +2056,10 @@ export async function run(
           },
           async () => {
             const current = latestClaim(await fetchComments(client, target as string));
-            if (
-              current === undefined ||
-              (current.marker.run === runId && current.marker.identity !== undefined)
-            )
-              return undefined;
+            if (current === undefined) return undefined;
             if (!claimIsLive(current.marker, now))
-              return { holder: current.marker.run, live: false };
-            return { holder: current.marker.run, live: true };
+              return { holder: current.marker.run, live: false, identity: current.marker.identity };
+            return { holder: current.marker.run, live: true, identity: current.marker.identity };
           },
           'claim',
           () =>
