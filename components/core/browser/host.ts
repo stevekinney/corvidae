@@ -3,7 +3,14 @@
  * slug, the theme guard an application installs, and the full-registry code highlighter. It is the
  * root suite's former `src/main.ts`, unchanged in what it imports and in what order, so each
  * package's fixture page loads the same stylesheets in the same order as the root page did.
+ *
+ * `stylesheet-order.ts` comes first. A page's stylesheets keep the order in which its modules first
+ * reach them, and the move (`move-browser-specs.ts`) points the fixtures it gives a Cinder package at
+ * that package's modules rather than core's barrel, which reaches them in another order; the file
+ * records the root page's order, taken before the move, so every package's page keeps it.
  */
+import './stylesheet-order.ts';
+
 import type { Component } from 'svelte';
 
 import {
