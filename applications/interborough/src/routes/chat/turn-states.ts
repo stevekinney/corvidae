@@ -78,16 +78,21 @@ export type TurnStop = {
  * How the last turn of `conversation` ended, read from its status line: `stopped` for a run the
  * person stopped, `failed` (its line's sentence as the cause) for one that failed, or `undefined`
  * when it did neither, when the turn has no reply for Chat to draw the state on, or when the line
- * is the notice of a chat the server ended.
+ * is the notice of a chat the server ended. A turn that went on (COR-2437) holds its stopped run's
+ * line too, so only the line of the run that wrote the last reply (`stopped:<run>`) is its stop.
  */
 export function lastTurnStop(conversation: ConversationHistory): TurnStop | undefined {
-  if (lastAssistantId(conversation) === undefined) return undefined;
+  const last = lastAssistantId(conversation);
+  if (last === undefined) return undefined;
+  const lastRun = /^(.+):step:\d+$/u.exec(last)?.[1];
   for (const id of conversation.ids.slice(lastTurnStart(conversation))) {
     const row = Object.hasOwn(conversation.messages, id) ? conversation.messages[id] : undefined;
     if (row === undefined) continue;
     const note = (resolveMessageNotes(row) ?? []).find(
       (entry): entry is Extract<MessageNoteInfo, { kind: 'stopped' }> =>
-        entry.kind === 'stopped' && entry.notice !== true,
+        entry.kind === 'stopped' &&
+        entry.notice !== true &&
+        (lastRun === undefined || entry.id === `stopped:${lastRun}`),
     );
     if (note === undefined) continue;
     return {

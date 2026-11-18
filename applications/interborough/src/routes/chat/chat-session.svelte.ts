@@ -40,6 +40,7 @@ import {
   forgetContextGrants,
   forkRefusalReason,
   regenerateContext,
+  resumeContextTurn,
   retractContextInput,
   sendContextInput,
   wireCodeOf,
@@ -62,6 +63,7 @@ import {
   type ChatRunWiring,
   type GrantNotLoosened,
   type HumanRequest,
+  type LastRunEnd,
   type Refusal,
   type RunUsage,
 } from './run-wiring.ts';
@@ -224,6 +226,13 @@ export class ChatSessionState {
   discarding = $state<{ readonly runId: string; readonly commandId: string } | undefined>(
     undefined,
   );
+  /** The resume of the last stopped turn in flight (COR-2437), by the run it goes on from. */
+  resuming = $state<{ readonly runId: string; readonly commandId: string } | undefined>(undefined);
+  /**
+   * How the chat's last run ended, as its record said when the thread was last read (COR-2437):
+   * whether a failure is one the Bureau can go on from. `undefined` once a run starts.
+   */
+  lastRunEnd = $state<LastRunEnd | undefined>(undefined);
   /** The questions the run is waiting on the person to answer; the next message answers one. */
   humanRequests = $state.raw<readonly HumanRequest[]>([]);
   /** Whether the session opened on a run that was going, and is still reading it. */
@@ -332,6 +341,8 @@ export class ChatSessionState {
   #regenerationPromise: Promise<void> | undefined;
   /** The discard command a failed Discard is tried again under, by the run it removes the turn of. */
   #discardCommand: { readonly runId: string; readonly commandId: string } | undefined;
+  /** The resume command a failed Continue is tried again under, by the run it goes on from. */
+  #resumeCommand: { readonly runId: string; readonly commandId: string } | undefined;
   #readerAbort: AbortController | undefined;
   #activeTurn: Promise<unknown> = Promise.resolve();
   /**
@@ -363,7 +374,11 @@ export class ChatSessionState {
       onRunStopped: (at) => {
         this.stoppedAt = at;
       },
+      onLastRunRead: (run) => {
+        this.lastRunEnd = run;
+      },
       onRunStarted: () => {
+        this.lastRunEnd = undefined;
         this.#attachedRun = true;
         // The run's start keeps the thread, so its history can be read from now on.
         this.#opened = true;
@@ -731,6 +746,40 @@ export class ChatSessionState {
       return false;
     } finally {
       this.discarding = undefined;
+    }
+  }
+
+  /**
+   * Lets the last stopped turn go on, by its run, through the Bureau
+   * (`bureau.contexts.resumeturn`, COR-2437): a continuation run starts on the thread with no
+   * message from the person, and the page reads the thread again, which joins that run as it goes.
+   * Resolves `false` when nothing was started: the Bureau refused it, or it could not be reached.
+   * A failed resume is tried again under the same command, so one that started a run before its
+   * answer was lost is answered with that run instead of starting another.
+   */
+  async resumeTurn(runId: string): Promise<boolean> {
+    if (this.#closed?.() === true || this.streaming || this.attaching || this.transportActive) {
+      return false;
+    }
+    if (this.resuming !== undefined || this.discarding !== undefined) return false;
+    const earlier = this.#resumeCommand;
+    const commandId =
+      earlier?.runId === runId ? earlier.commandId : `resume:${crypto.randomUUID()}`;
+    this.#resumeCommand = { runId, commandId };
+    this.resuming = { runId, commandId };
+    try {
+      await resumeContextTurn(
+        { contextId: this.sessionId, commandId, runId },
+        { signal: this.#abort.signal },
+      );
+      this.#resumeCommand = undefined;
+      this.lastRunEnd = undefined;
+      await this.refresh();
+      return true;
+    } catch {
+      return false;
+    } finally {
+      this.resuming = undefined;
     }
   }
 

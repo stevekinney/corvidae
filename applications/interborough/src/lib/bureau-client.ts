@@ -407,6 +407,33 @@ export async function discardContextTurn(
   );
 }
 
+const contextResumeTurnReceiptSchema = z.object({
+  contextId: z.string().min(1),
+  runId: z.string().min(1),
+  resumedRunId: z.string().min(1),
+});
+
+/** The continuation run returned by `bureau.contexts.resumeturn`. */
+export type ContextResumeTurnReceipt = z.infer<typeof contextResumeTurnReceiptSchema>;
+
+/**
+ * Lets the chat's last stopped turn go on (`bureau.contexts.resumeturn`, COR-2437): a continuation
+ * run starts on the thread with no message from the person. An exact retry under the same
+ * `commandId` answers the run it started and starts no second.
+ */
+export async function resumeContextTurn(
+  input: {
+    readonly contextId: string;
+    readonly commandId: string;
+    readonly runId: string;
+  },
+  options?: { readonly signal?: AbortSignal; readonly fetch?: Fetcher },
+): Promise<ContextResumeTurnReceipt> {
+  return contextResumeTurnReceiptSchema.parse(
+    await callBureau('bureau.contexts.resumeturn', input, options),
+  );
+}
+
 /** Replaces the final ended assistant answer without starting a new turn or running tools. */
 export async function regenerateContext(
   input: {

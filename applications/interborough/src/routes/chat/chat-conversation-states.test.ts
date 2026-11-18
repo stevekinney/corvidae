@@ -278,6 +278,8 @@ describe('a reply that failed partway (19p)', () => {
     expect(alert.closest('.chat-turn-outcome')?.getAttribute('data-kind')).toBe('failed');
     expect(container.querySelector('.chat-note[data-failed]') === null).toBe(true);
     expect(await findByRole('button', { name: 'Retry' })).not.toBeNull();
+    // The provider dropped the connection (finish reason `error`): the turn can go on (COR-2437).
+    expect(await findByRole('button', { name: 'Continue' })).not.toBeNull();
     await waitFor(() =>
       expect(container.querySelector('[data-testid="chat-header"]')?.textContent).toContain(
         'Failed',
@@ -305,19 +307,48 @@ describe('a reply the person stopped (COR-2437)', () => {
     nextPageToken: null,
   });
 
-  test('is Stopped on the turn with Discard and no Continue, and no status line under it', async () => {
+  test('is Stopped on the turn with Discard and Continue, Continue last, and no status line under it', async () => {
     serve(billingThreadWithPartialReply(BILLING), { answers: { 'bureau.tasks.list': canceled } });
     const { container, findByText, findByRole } = mount();
 
     expect(await findByText(ENDED_PARTIAL_REPLY)).not.toBeNull();
     const discard = await findByRole('button', { name: 'Discard' });
-    expect(discard.closest('.chat-turn-outcome')?.getAttribute('data-kind')).toBe('stopped');
-    // No kind of stop can be resumed yet (`bureau.contexts.resumeturn` refuses each), so the turn
-    // offers no Continue.
-    expect(container.querySelector('.chat-turn-outcome button[class*="primary"]') === null).toBe(
-      true,
-    );
+    const outcome = discard.closest('.chat-turn-outcome');
+    expect(outcome?.getAttribute('data-kind')).toBe('stopped');
+    expect(
+      [...(outcome?.querySelectorAll('button') ?? [])].map((button) => button.textContent?.trim()),
+    ).toEqual(['Discard', 'Continue']);
     expect(container.textContent).not.toContain('The run was stopped.');
+  });
+
+  // AC3 (COR-2437): Continue goes on from the stopped reply through the Bureau, by its run, with
+  // no message from the person, and the page joins the run that goes on.
+  test('Continue resumes the turn through the Bureau by its run, and the turn reads on from the partial reply', async () => {
+    const thread = billingThreadWithPartialReply(BILLING);
+    const CONTINUED = 'the payments table, and every query still reads them.';
+    const served = serve(thread, {
+      answers: {
+        'bureau.tasks.list': canceled,
+        'bureau.contexts.resumeturn': (params) => {
+          // The continuation run went on and finished: the thread read again holds its reply. Its
+          // hidden continuation row is never served (the AG-UI messages leave hidden rows out).
+          thread.push({ id: 'run-continued:step:0', role: 'assistant', content: CONTINUED });
+          return { contextId: 'session-1', runId: 'run-continued', resumedRunId: params['runId'] };
+        },
+      },
+    });
+    const { container, findByText, findByRole } = mount();
+    expect(await findByText(ENDED_PARTIAL_REPLY)).not.toBeNull();
+
+    await fireEvent.click(await findByRole('button', { name: 'Continue' }));
+
+    expect(await findByText(CONTINUED)).not.toBeNull();
+    const call = served.calls.find((entry) => entry.method === 'bureau.contexts.resumeturn');
+    expect(call?.params).toMatchObject({ contextId: 'session-1', runId: 'run-billing' });
+    expect(String(call?.params['commandId'])).toMatch(/^resume:/);
+    // No message of the person's was sent, and the partial reply stays.
+    expect(served.calls.some((entry) => entry.method === 'bureau.contexts.input')).toBe(false);
+    expect(container.textContent).toContain(ENDED_PARTIAL_REPLY);
   });
 
   test('Discard removes the reply through the Bureau by its run, and the turn reads as the person’s message alone', async () => {

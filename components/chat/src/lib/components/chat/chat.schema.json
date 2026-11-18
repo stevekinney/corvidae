@@ -344,7 +344,7 @@
       {
         "name": "onContinueTurn",
         "reason": "function-or-snippet",
-        "description": "Called with a stopped turn's id when the person chooses Continue. Continue shows only when this is set."
+        "description": "Called with a stopped or failed turn's id when the person chooses Continue: the primary button beside Discard on a stopped turn, and beside Retry in a failed turn's alert. Continue shows only when this is set, so a host sets it only for a turn it can go on from."
       },
       {
         "name": "onDiscardTurn",

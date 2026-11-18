@@ -269,6 +269,10 @@ export const CHAT_COPY = {
   discardTurn: {
     failed: 'The stopped reply wasn’t discarded. Try again.',
   },
+  /** Continue on a stopped or failed reply (COR-2437). */
+  continueTurn: {
+    failed: 'The reply didn’t continue. Try again.',
+  },
   regeneration: {
     action: 'Regenerate',
     running: 'Regenerating…',

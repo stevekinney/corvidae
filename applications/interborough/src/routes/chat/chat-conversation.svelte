@@ -183,7 +183,7 @@
     toolInfoByName,
     type ToolCallEntry,
   } from './tool-activity.ts';
-  import { failedStopNoteId, withEndedLine, withStopLine } from './stop-line.ts';
+  import { failedStopNoteId, interruptedTool, withEndedLine, withStopLine } from './stop-line.ts';
   import ToolCalls from './tool-calls.svelte';
   import SessionTasks from './session-tasks.svelte';
 
@@ -1068,6 +1068,26 @@
     if (discardableRun === undefined) return;
     if (!(await session.discardTurn(discardableRun))) {
       showToast(CHAT_COPY.discardTurn.failed, { variant: 'danger', duration: 0 });
+    }
+  }
+  // The run of the last turn that may go on (COR-2437): one the person stopped, or one whose
+  // record says it failed on a cause worth trying again (finish reason `error`). A turn that
+  // stopped inside a tool call is not offered: going on would run the call again unasked, and the
+  // Bureau refuses it; Retry runs the turn again through its approval instead.
+  const continuableRun = $derived.by(() => {
+    if (lastStop === undefined || lastAssistant === undefined) return undefined;
+    const runId = replyStepOf(lastAssistant)?.runId;
+    if (runId === undefined || interruptedTool(lined, toolInfo) !== undefined) return undefined;
+    if (lastStop.state.kind === 'stopped') return runId;
+    const ended = session.lastRunEnd;
+    return ended?.id === runId && ended.status === 'failed' && ended.finishReason === 'error'
+      ? runId
+      : undefined;
+  });
+  async function continueTurn(): Promise<void> {
+    if (continuableRun === undefined) return;
+    if (!(await session.resumeTurn(continuableRun))) {
+      showToast(CHAT_COPY.continueTurn.failed, { variant: 'danger', duration: 0 });
     }
   }
 
@@ -2217,8 +2237,15 @@
         messageTurnState={turnState}
         onRetryConnection={() => void session.reconnect()}
         {...session.canRetryTurn ? { onRetryTurn: () => void retryTurn() } : {}}
-        {...discardableRun !== undefined && session.discarding === undefined
+        {...discardableRun !== undefined &&
+        session.discarding === undefined &&
+        session.resuming === undefined
           ? { onDiscardTurn: () => void discardTurn() }
+          : {}}
+        {...continuableRun !== undefined &&
+        session.resuming === undefined &&
+        session.discarding === undefined
+          ? { onContinueTurn: () => void continueTurn() }
           : {}}
         onComposerInput={rememberDraft}
         questionDock={dockedRequest === undefined ? undefined : hostQuestionDock}

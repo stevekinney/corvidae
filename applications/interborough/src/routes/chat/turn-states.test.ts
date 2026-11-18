@@ -81,8 +81,8 @@ describe('the stopped and failed turn (COR-2437)', () => {
       messages: Object.fromEntries(rows.map((row) => [row.id, row])),
     } as unknown as typeof base;
   };
-  const stoppedLine = { kind: 'stopped', id: 'stop', reason: 'The run was stopped.' };
-  const failedLine = { kind: 'stopped', id: 'fail', reason: 'It failed.', failed: true };
+  const stoppedLine = { kind: 'stopped', id: 'stopped:run', reason: 'The run was stopped.' };
+  const failedLine = { kind: 'stopped', id: 'stopped:run', reason: 'It failed.', failed: true };
 
   test('reads the last turn the person stopped as stopped, and one whose run failed as failed with its line', () => {
     const stopped = historyOf([
@@ -92,10 +92,26 @@ describe('the stopped and failed turn (COR-2437)', () => {
     expect(lastTurnStop(stopped)).toEqual({
       state: { kind: 'stopped' },
       rowId: 'run:step:0',
-      noteId: 'stop',
+      noteId: 'stopped:run',
     });
     const failed = historyOf([noted('u1', 'user'), noted('run:step:0', 'assistant', [failedLine])]);
     expect(lastTurnStop(failed)?.state).toEqual({ kind: 'failed', cause: 'It failed.' });
+  });
+
+  // COR-2437: a turn that went on holds its stopped run's line on record; the continuation that
+  // wrote the last reply did not stop, so the turn draws no stop.
+  test('reads nothing for a turn that went on after its run stopped', () => {
+    const hiddenContinuation: Message = { ...noted('run:continuation', 'user'), hidden: true };
+    expect(
+      lastTurnStop(
+        historyOf([
+          noted('u1', 'user'),
+          noted('run:step:0', 'assistant', [stoppedLine]),
+          hiddenContinuation,
+          noted('next:step:0', 'assistant'),
+        ]),
+      ),
+    ).toBeUndefined();
   });
 
   test('reads nothing for a server’s notice, an earlier turn, or a turn with no reply to draw on', () => {

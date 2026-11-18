@@ -460,7 +460,11 @@ export type ChatProps = Omit<HTMLAttributes<HTMLElement>, 'class' | 'onsubmit'> 
   messageTurnState?: ((message: Message) => ChatTurnState | undefined) | undefined;
   /** Called with a reconnecting turn's id when the person chooses Retry. Retry shows only when this is set. */
   onRetryConnection?: ((messageId: string) => void) | undefined;
-  /** Called with a stopped turn's id when the person chooses Continue. Continue shows only when this is set. */
+  /**
+   * Called with a stopped or failed turn's id when the person chooses Continue: the primary
+   * button beside Discard on a stopped turn, and beside Retry in a failed turn's alert. Continue
+   * shows only when this is set, so a host sets it only for a turn it can go on from.
+   */
   onContinueTurn?: ((messageId: string) => void) | undefined;
   /** Called with a stopped turn's id when the person chooses Discard. Discard shows only when this is set; the host removes the turn from the conversation. */
   onDiscardTurn?: ((messageId: string) => void) | undefined;

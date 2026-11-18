@@ -1069,7 +1069,11 @@
         semantic="note"
         class="chat-turn-callout chat-turn-alert"
         title={withoutAnswer ? turnWords.failedBeforeAnswer : turnWords.incomplete}
-        {...onRetryTurn ? { action: retryTurnAction } : {}}
+        {...onContinueTurn
+          ? { action: failedTurnActions }
+          : onRetryTurn
+            ? { action: retryTurnAction }
+            : {}}
       >
         {#snippet icon()}<CircleAlert aria-hidden="true" />{/snippet}
         <p class="chat-turn-text chat-turn-failure-body" dir="auto">
@@ -1104,6 +1108,29 @@
     label={turn.kind === 'empty' ? turnWords.tryAgain : turnWords.retry}
     onclick={() => onRetryTurn?.(message.id)}
   />
+{/snippet}
+
+<!-- A failed turn the host can go on from (COR-2437): Retry first, and Continue, the primary
+     choice, last so it is trailing-most, as beside a stopped turn. -->
+{#snippet failedTurnActions()}
+  <span class="chat-turn-actions">
+    {#if onRetryTurn}
+      {@render retryTurnAction()}
+    {/if}
+    {#if onContinueTurn}
+      <Button
+        type="button"
+        class="chat-turn-action"
+        size="sm"
+        variant="primary"
+        aria-describedby={`${messageId}-continue-description`}
+        onclick={() => onContinueTurn(message.id)}>{turnWords.continue}</Button
+      >
+      <span id={`${messageId}-continue-description`} class="cinder-sr-only"
+        >{turnWords.continueDescription}</span
+      >
+    {/if}
+  </span>
 {/snippet}
 
 <div

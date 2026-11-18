@@ -237,6 +237,18 @@ export type ChatRunWiringOptions = {
    * stopped. A call the run left without an answer was interrupted then.
    */
   readonly onRunStopped?: (at: number) => void;
+  /**
+   * Told, for a thread read again, how its last run ended as its record says: its id, status and
+   * finish reason (COR-2437), so the page offers Continue only on a stop the Bureau can go on from.
+   */
+  readonly onLastRunRead?: (run: LastRunEnd) => void;
+};
+
+/** How a chat's last run ended, as its record says. */
+export type LastRunEnd = {
+  readonly id: string;
+  readonly status: string;
+  readonly finishReason: string | null;
 };
 
 /** What the page is told when a grant the person asked for did not loosen the tool. */
@@ -1755,6 +1767,13 @@ export function createChatRunWiring(options: ChatRunWiringOptions): ChatRunWirin
           ? undefined
           : Date.parse(lastRun.updatedAt);
       if (stoppedAt !== undefined && Number.isFinite(stoppedAt)) options.onRunStopped?.(stoppedAt);
+      if (lastRun !== undefined) {
+        options.onLastRunRead?.({
+          id: lastRun.id,
+          status: lastRun.status,
+          finishReason: lastRun.finishReason,
+        });
+      }
       const noted = await withTaskNotes(thread, lastRun, {
         fetch: send,
         ...(signal === undefined ? {} : { signal }),

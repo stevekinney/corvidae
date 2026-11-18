@@ -202,6 +202,22 @@ describe('R5: failed partway', () => {
     expect(container.querySelector('.chat-message-body')?.textContent).toContain('Order 4398');
   });
 
+  // COR-2437: a host that can go on from the failure offers Continue, the primary choice, after Retry.
+  test('a failure the host can go on from offers Continue after Retry, at the inline end', async () => {
+    const continueTurn = mock((_messageId: string) => undefined);
+    const { container, getByRole } = mount({
+      turnState: { kind: 'failed', cause: 'The model provider dropped the connection.' },
+      onRetryTurn: () => undefined,
+      onContinueTurn: continueTurn,
+    });
+    const buttons = [...(outcome(container)?.querySelectorAll('button') ?? [])];
+    expect(buttons.map((button) => button.textContent?.trim())).toEqual(['Retry', 'Continue']);
+    const continuing = getByRole('button', { name: 'Continue' });
+    expect(continuing.getAttribute('data-cinder-variant')).toBe('primary');
+    await fireEvent.click(continuing);
+    expect(continueTurn).toHaveBeenCalledWith('a1');
+  });
+
   test('without a host sentence, the alert says what Retry keeps in Chat’s words', () => {
     const { container } = mount({ turnState: { kind: 'failed', cause: 'Timed out.' } });
     expect(

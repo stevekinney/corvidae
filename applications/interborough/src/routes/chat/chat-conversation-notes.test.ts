@@ -94,6 +94,8 @@ describe('a chat opened again', () => {
     const outcome = reason.closest('.chat-turn-outcome');
     expect(outcome?.getAttribute('data-kind')).toBe('failed');
     expect(outcome?.textContent).toContain('The reply stopped partway');
+    // A spent budget would stop a continuation again, so the turn offers no Continue (COR-2437).
+    expect(outcome?.textContent).not.toContain('Continue');
   });
 
   test('says what the agent remembered, and the link opens its memory without leaving the app', async () => {

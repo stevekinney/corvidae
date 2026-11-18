@@ -453,7 +453,7 @@ const TURN_WIDTHS = [
 
 test.describe('/chats/:chat: a turn that stopped or failed (COR-2437)', () => {
   for (const viewport of TURN_WIDTHS) {
-    test(`the stopped turn says Stopped with Discard and no Continue, at ${viewport.width}`, async ({
+    test(`the stopped turn says Stopped with Discard and Continue, at ${viewport.width}`, async ({
       page,
       request,
     }) => {
@@ -465,8 +465,8 @@ test.describe('/chats/:chat: a turn that stopped or failed (COR-2437)', () => {
       const outcome = transcript(page).locator('.chat-turn-outcome[data-kind="stopped"]');
       await expect(outcome).toContainText('Stopped. The answer above is partial.');
       await expect(outcome.getByRole('button', { name: 'Discard' })).toBeVisible();
-      // No kind of stop can be resumed yet, so no Continue is offered.
-      await expect(outcome.getByRole('button', { name: 'Continue' })).toHaveCount(0);
+      // Continue, the primary choice, sits at the inline end, after Discard.
+      await expect(outcome.getByRole('button')).toHaveText(['Discard', 'Continue']);
       await expect(transcript(page).locator('.chat-note')).toHaveCount(0);
       await captureForDesignReview(page, {
         route: '/chats/:chat',
@@ -475,7 +475,10 @@ test.describe('/chats/:chat: a turn that stopped or failed (COR-2437)', () => {
       });
     });
 
-    test(`the failed turn says why with Retry, at ${viewport.width}`, async ({ page, request }) => {
+    test(`the failed turn says why with Retry and Continue, at ${viewport.width}`, async ({
+      page,
+      request,
+    }) => {
       await page.setViewportSize(viewport);
       await connectProvider(page);
       await openStatesChat(page, request, 'failed-partway');
@@ -483,7 +486,8 @@ test.describe('/chats/:chat: a turn that stopped or failed (COR-2437)', () => {
 
       const outcome = transcript(page).locator('.chat-turn-outcome[data-kind="failed"]');
       await expect(outcome).toContainText('the model provider dropped the connection');
-      await expect(outcome.getByRole('button', { name: 'Retry' })).toBeVisible();
+      // The provider dropped the connection, a cause worth trying again: Continue is offered.
+      await expect(outcome.getByRole('button')).toHaveText(['Retry', 'Continue']);
       await expect(transcript(page).locator('.chat-note[data-failed]')).toHaveCount(0);
       await captureForDesignReview(page, {
         route: '/chats/:chat',
@@ -537,6 +541,61 @@ test.describe('/chats/:chat: a turn that stopped or failed (COR-2437)', () => {
     await expect(transcript(page).getByText(FAILED_PARTWAY_REPLY)).toHaveCount(0);
     await expect(transcript(page).getByText(REFUND_TITLE)).toBeVisible();
     expect(discarded).toEqual([
+      expect.objectContaining({ contextId: STOPPED_PARTWAY_THREAD, runId: STOPPED_PARTWAY_RUN }),
+    ]);
+  });
+
+  test('Continue goes on from the stopped reply through the Bureau, by its run', async ({
+    page,
+    request,
+  }) => {
+    await connectProvider(page);
+    await openStatesChat(page, request, 'stopped-partway');
+    await expect(transcript(page).getByText(FAILED_PARTWAY_REPLY)).toBeVisible();
+    const continued = 'card, and the refund is on its way.';
+    const resumed: Record<string, unknown>[] = [];
+    await page.route('**/bureau/jsonrpc', async (route) => {
+      const body = route.request().postDataJSON() as {
+        id?: unknown;
+        method?: string;
+        params?: Record<string, unknown>;
+      };
+      if (body.method !== 'bureau.contexts.resumeturn') {
+        await route.fallback();
+        return;
+      }
+      resumed.push(body.params ?? {});
+      await route.fulfill({
+        json: {
+          jsonrpc: '2.0',
+          id: body.id,
+          result: {
+            contextId: STOPPED_PARTWAY_THREAD,
+            runId: 'run-states-continued',
+            resumedRunId: STOPPED_PARTWAY_RUN,
+          },
+        },
+      });
+    });
+    // The thread read again holds the continuation's reply after the partial one; its hidden
+    // continuation row is never served.
+    await page.route(`**/ag-ui/threads/${STOPPED_PARTWAY_THREAD}/messages`, (route) =>
+      route.fulfill({
+        json: {
+          threadId: STOPPED_PARTWAY_THREAD,
+          messages: [
+            ...stoppedPartwayMessages(),
+            { id: 'run-states-continued:step:0', role: 'assistant', content: continued },
+          ],
+        },
+      }),
+    );
+
+    await transcript(page).getByRole('button', { name: 'Continue' }).click();
+
+    await expect(transcript(page).getByText(continued)).toBeVisible();
+    await expect(transcript(page).getByText(FAILED_PARTWAY_REPLY)).toBeVisible();
+    expect(resumed).toEqual([
       expect.objectContaining({ contextId: STOPPED_PARTWAY_THREAD, runId: STOPPED_PARTWAY_RUN }),
     ]);
   });

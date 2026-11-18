@@ -21,6 +21,7 @@ import {
   listContexts,
   regenerateContext,
   renameContext,
+  resumeContextTurn,
   retractContextInput,
   sendContextInput,
   steerContext,
@@ -211,6 +212,22 @@ describe('the Bureau’s context operations', () => {
       id: 'bureau.contexts.regenerate',
       method: 'bureau.contexts.regenerate',
       params: { contextId: 'c1', commandId: 'regenerate:1', messageId: 'answer-1' },
+    });
+  });
+
+  test('resumeContextTurn uses the durable context operation and validates its receipt', async () => {
+    const stub = answering(result({ contextId: 'c1', runId: 'run-2', resumedRunId: 'run-1' }));
+
+    const receipt = await withStub(stub.fetch, () =>
+      resumeContextTurn({ contextId: 'c1', commandId: 'resume:1', runId: 'run-1' }),
+    );
+
+    expect(receipt).toEqual({ contextId: 'c1', runId: 'run-2', resumedRunId: 'run-1' });
+    expect(stub.calls[0]?.body).toEqual({
+      jsonrpc: '2.0',
+      id: 'bureau.contexts.resumeturn',
+      method: 'bureau.contexts.resumeturn',
+      params: { contextId: 'c1', commandId: 'resume:1', runId: 'run-1' },
     });
   });
 
