@@ -25,11 +25,18 @@ export function preloadMarkdownPipeline(
   // harnesses from evaluating the browser-only rendering graph.
   if (typeof window === 'undefined' || window !== globalThis) return undefined;
 
-  return (pipelinePromise ??= (loadPipeline?.() ?? import('@lostgradient/markdown'))
+  if (pipelinePromise !== undefined) return pipelinePromise;
+  const loading: Promise<MarkdownPipeline | undefined> = (
+    loadPipeline?.() ?? import('@lostgradient/markdown')
+  )
     .then(({ renderMarkdownWithMath }) => ({ renderMarkdownWithMath }))
     .catch(() => {
-      // Allow a later stream to retry after a transient chunk-load failure.
-      pipelinePromise = undefined;
+      // Allow a later stream to retry after a transient chunk-load failure. Only this load's own
+      // cache entry is cleared: a load that was forgotten, and rejects after a newer one began,
+      // must not throw the newer one away.
+      if (pipelinePromise === loading) pipelinePromise = undefined;
       return undefined;
-    }));
+    });
+  pipelinePromise = loading;
+  return loading;
 }

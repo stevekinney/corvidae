@@ -54,4 +54,30 @@ describe('markdown pipeline preloader', () => {
     expect(loadedPipeline?.renderMarkdownWithMath).toBe(pipeline.renderMarkdownWithMath);
     expect(loadCount).toBe(2);
   });
+
+  // A load an earlier file began, forgotten and then rejected, cleared the newer load's cache entry
+  // and made this file load three times on CI (COR-2437).
+  test('a forgotten load that rejects later leaves the newer load cached', async () => {
+    installBrowserRealm();
+    const stale = Promise.withResolvers<never>();
+    expect(preloadMarkdownPipeline(() => stale.promise)).toBeDefined();
+    forgetMarkdownPipeline();
+    let loadCount = 0;
+    const pipeline = { renderMarkdownWithMath: async () => ({ html: '<p>ready</p>' }) };
+    const fresh = preloadMarkdownPipeline(async () => {
+      loadCount += 1;
+      return pipeline;
+    });
+
+    stale.reject(new Error('chunk unavailable'));
+    await fresh;
+
+    expect(
+      preloadMarkdownPipeline(async () => {
+        loadCount += 1;
+        return pipeline;
+      }),
+    ).toBe(fresh);
+    expect(loadCount).toBe(1);
+  });
 });
