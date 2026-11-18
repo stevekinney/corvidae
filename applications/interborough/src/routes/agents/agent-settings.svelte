@@ -80,6 +80,7 @@
   import { LeaveGuard, router } from '../../lib/router.svelte.ts';
   import {
     abilitiesOf,
+    abilitiesSentence,
     modelGroups,
     NO_RESTRICTIONS,
   } from '../agent-editor/agent-editor-models.ts';
@@ -295,10 +296,11 @@
     if (ownRow === undefined) return '';
     const words = AGENT_EDITOR_COPY.model;
     const abilities = abilitiesOf(ownRow);
-    return [
+    // As a sentence reads: "Tools, images, streaming, 1M context window" (design review 3).
+    return abilitiesSentence([
       ...abilities.has.map((ability) => words.abilities[ability]),
       words.context(abilities.context),
-    ].join(', ');
+    ]);
   });
 
   /** The provider of the model, when the host says it holds no key (row 38u). */

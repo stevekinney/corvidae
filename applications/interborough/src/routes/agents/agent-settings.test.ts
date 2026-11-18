@@ -175,7 +175,8 @@ describe('the Settings form (rows 38u to 38w)', () => {
 
     const abilities = await findByTestId('agent-settings-abilities');
     await waitFor(() =>
-      expect(abilities.textContent).toBe('Tools, Images, Streaming, 1M context window'),
+      // As a sentence reads, lower case after the first word (design review 3).
+      expect(abilities.textContent).toBe('Tools, images, streaming, 1M context window'),
     );
   });
 
