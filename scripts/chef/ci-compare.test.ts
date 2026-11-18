@@ -145,9 +145,47 @@ describe('failingTests', () => {
         'Tests\tUNKNOWN STEP\t2026-11-17T19:18:58Z ##[error]Process completed with exit code 1.',
       ].join('\n');
       expect(failureRecords(log).get('Tests')).toEqual([
-        { kind: 'unknown', job: 'Tests', command },
+        { kind: 'unknown', job: 'Tests', step: `${command}#1`, command },
       ]);
     }
+  });
+
+  test('keeps an identityless failed launcher unknown when another launcher in its job named a test', () => {
+    const known = 'src/known.test.ts › known failure > remains known';
+    const log = [
+      'Tests\tUNKNOWN STEP\t2026-11-17T19:18:57Z ##[group]Run bun run test:self',
+      'Tests\tUNKNOWN STEP\t2026-11-17T19:18:58Z ##[group]src/known.test.ts:',
+      'Tests\tUNKNOWN STEP\t2026-11-17T19:18:59Z (fail) known failure > remains known [1ms]',
+      'Tests\tUNKNOWN STEP\t2026-11-17T19:19:00Z ##[error]Process completed with exit code 1.',
+      'Tests\tUNKNOWN STEP\t2026-11-17T19:19:01Z ##[group]Run bun run test:browser-fixtures',
+      'Tests\tUNKNOWN STEP\t2026-11-17T19:19:02Z ##[error]Process completed with exit code 1.',
+    ].join('\n');
+    const records = failureRecords(log).get('Tests') ?? [];
+    expect(records).toContainEqual({ kind: 'test', job: 'Tests', identity: known });
+    expect(records).toContainEqual({
+      kind: 'unknown',
+      job: 'Tests',
+      step: 'bun run test:browser-fixtures#2',
+      command: 'bun run test:browser-fixtures',
+    });
+    expect(
+      compare(
+        {
+          id: 'candidate',
+          status: 'completed',
+          conclusion: 'failure',
+          jobs: [{ name: 'Tests', tests: [], failures: records }],
+        },
+        [
+          {
+            id: 'main',
+            status: 'completed',
+            conclusion: 'failure',
+            jobs: [{ name: 'Other', tests: [known] }],
+          },
+        ],
+      ).hasNew,
+    ).toBe(true);
   });
 });
 
