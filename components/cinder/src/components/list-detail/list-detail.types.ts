@@ -166,13 +166,13 @@ export type ListDetailProps<T> = Omit<HTMLAttributes<HTMLDivElement>, 'children'
    */
   maximumListWidth?: number;
   /**
-   * Offers a toggle that hides the list pane while an item is open and the panes sit side by side
-   * or one above the other, so the detail takes the whole width. The toggle is one control in one
-   * place, the start corner of the list's header, which is also where a narrow rail holds it once
-   * the list is hidden (no rail is drawn while the list shows), so it is always on screen, never
-   * beside the header's own actions, and does not move or lose focus as it flips. With no item open the list shows
-   * and there is no toggle, and below `pushBelow`, where one pane shows at a time, there is
-   * nothing to hide.
+   * Offers a toggle that hides the list pane while the panes sit side by side or one above the
+   * other, so the detail takes the whole width. The toggle is one control in one place, the start
+   * corner of the list's header, which is also where a narrow rail holds it once the list is hidden
+   * (no rail is drawn while the list shows), so it is always on screen, never beside the header's
+   * own actions, and does not move or lose focus as it flips. It is drawn with or without an open
+   * item, so its corner is never empty; hidden with nothing open, the detail shows its empty state.
+   * Below `pushBelow`, where one pane shows at a time, there is nothing to hide.
    * @default false
    */
   listCollapsible?: boolean;

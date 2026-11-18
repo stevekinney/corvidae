@@ -770,23 +770,42 @@ describe('ListDetail', () => {
       expect(listPane.getAttribute('style')).toContain('--_cinder-resizable-panel-size: 410px');
     });
 
-    test('shows the list, with no toggle, while no item is open', async () => {
+    test('draws the toggle with no item open, so its corner is never empty, and keeps focus on it as the list hides and shows', async () => {
       const { container, getByRole, queryByRole } = render(ListDetailFixture, {
-        props: { selectionLocation: memoryLocation(), listCollapsible: true, listCollapsed: true },
+        props: { selectionLocation: memoryLocation(), listCollapsible: true },
       });
       await measure(container, 1000);
 
       expect(getByRole('region', { name: 'Chats' })).toBeTruthy();
-      expect(container.querySelector('.cinder-list-detail__list-toggle')).toBeNull();
-      expect(queryByRole('button', { name: 'Show list' })).toBeNull();
+      const hide = getByRole('button', { name: 'Hide list' });
+      expect(hide.closest('.cinder-list-detail__toggle')).not.toBeNull();
+      expect(container.querySelector('.cinder-list-detail__rail')).toBeNull();
 
-      // An item opens: the remembered choice applies, the list hides, and focus, which was on the
-      // row that went with it, moves to the toggle that brings the list back.
-      await fireEvent.click(primaryOf(container, 'beta'));
+      // Hiding it with nothing open leaves the detail's empty state, the rail, and focus on the
+      // same button.
+      await fireEvent.click(hide);
       await tick();
       await tick();
       expect(queryByRole('region', { name: 'Chats' })).toBeNull();
-      expect(document.activeElement).toBe(getByRole('button', { name: 'Show list' }));
+      expect(container.querySelector('.cinder-list-detail__rail')).not.toBeNull();
+      const show = getByRole('button', { name: 'Show list' });
+      expect(show).toBe(hide);
+      expect(document.activeElement).toBe(show);
+
+      await fireEvent.click(show);
+      await tick();
+      await tick();
+      expect(getByRole('region', { name: 'Chats' })).toBeTruthy();
+      expect(document.activeElement).toBe(getByRole('button', { name: 'Hide list' }));
+    });
+
+    test('a remembered hidden list is hidden with nothing open too, and the toggle brings it back', async () => {
+      const { container, getByRole, queryByRole } = render(ListDetailFixture, {
+        props: { selectionLocation: memoryLocation(), listCollapsible: true, listCollapsed: true },
+      });
+      await measure(container, 1000);
+      expect(queryByRole('region', { name: 'Chats' })).toBeNull();
+      expect(getByRole('button', { name: 'Show list' })).toBeTruthy();
     });
 
     test('the toggle has one rule for both states, at the header corner, and the rail draws none of its own', async () => {

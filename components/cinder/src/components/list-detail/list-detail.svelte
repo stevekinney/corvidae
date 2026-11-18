@@ -148,12 +148,11 @@
     const stored = readStoredListCollapsed(resolveStorage(storage), storageKey);
     if (stored !== null) listCollapsed = stored;
   });
-  // The list is hidden only beside an open item, where both panes could show: one pane at a time
-  // has nothing to hide, and with nothing open the list is all there is to choose from.
-  // The toggle's start corner of the header is kept while the panes sit side by side and the list
-  // can be hidden, with or without an open item, so the header does not move when one opens.
-  const toggleSlot = $derived(listCollapsible && !narrow);
-  const toggleShown = $derived(listCollapsible && !narrow && selectedEntry !== undefined);
+  // The toggle is drawn, and its corner of the header held, whenever the panes sit side by side and
+  // the list can be hidden, with or without an open item: the corner is never empty, and the header
+  // does not move when an item opens. One pane at a time has nothing to hide. Hiding the list with
+  // nothing open leaves the detail's empty state, with the way back on the rail.
+  const toggleShown = $derived(listCollapsible && !narrow);
   const collapsed = $derived(toggleShown && listCollapsed);
 
   /** Hides or shows the list, remembers it, and moves focus to the toggle, which has moved. */
@@ -371,7 +370,7 @@
           {@render header()}
         </CompactActions>
       </header>
-    {:else if toggleSlot}
+    {:else if toggleShown}
       <!-- No header of its own: an empty one holds the toggle's place at the top of the list. -->
       <header
         class="cinder-list-detail__header"
@@ -498,7 +497,7 @@
   data-cinder-flush-detail={flushDetail ? '' : undefined}
   data-cinder-showing={narrow ? (selectedEntry ? 'detail' : 'list') : undefined}
   data-cinder-list-collapsed={collapsed ? '' : undefined}
-  data-cinder-toggle-slot={toggleSlot && !collapsed ? '' : undefined}
+  data-cinder-toggle-slot={toggleShown && !collapsed ? '' : undefined}
 >
   {#if narrow}
     {#if selectedEntry}

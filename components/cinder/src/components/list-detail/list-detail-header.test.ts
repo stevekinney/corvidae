@@ -74,11 +74,11 @@ describe('ListDetail pane header with actions', () => {
     expect(text).not.toContain('data-cinder-list-detail-header-start');
   });
 
-  test('the slot is kept while the panes sit side by side and the list can be hidden, with no item open', () => {
+  test('the corner is held and the toggle is drawn in it while the panes sit side by side and the list can be hidden, with no item open', () => {
     const { container } = render(Harness, { props: { collapsible: true } });
     // Happy-dom measures no width, which ListDetail treats as wide: side by side.
     const root = container.querySelector('.cinder-list-detail')!;
     expect(root.hasAttribute('data-cinder-toggle-slot')).toBe(true);
-    expect(container.querySelector('.cinder-list-detail__toggle')).toBeNull();
+    expect(container.querySelector('.cinder-list-detail__toggle button')).not.toBeNull();
   });
 });
