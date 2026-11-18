@@ -133,7 +133,10 @@ for (const width of WIDTHS) {
       page,
     }) => {
       await githubIs(page, 'failed', 'The source could not be reached.');
-      await open(page, width, '/capabilities?tool=github__create_issue');
+      // The count rule is read on the list: on a phone an open tool takes the pane the list is in.
+      await open(page, width, '/capabilities');
+      await expect(page.locator('[data-tool-row][data-lost]')).toHaveCount(2);
+      await page.goto('/capabilities?tool=github__create_issue');
       const detail = page.getByTestId('tool-detail');
       await expect(detail.getByTestId('tool-approval')).toContainText('Asks: On changes');
       await expect(detail.getByTestId('tool-lost-text')).toHaveText(
@@ -143,8 +146,6 @@ for (const width of WIDTHS) {
       await expect(detail.getByTestId('capability-users-empty')).toContainText(
         copy.tool.lost.noUsers,
       );
-      // The count rule: the catalog's tools, then the lost ones, each marked.
-      await expect(page.locator('[data-tool-row][data-lost]')).toHaveCount(2);
       await captureForDesignReview(page, {
         route: '/capabilities',
         state: 'lost tool, failed source',
