@@ -11,6 +11,7 @@
   import type { WorkflowState } from '@lostgradient/weft';
 
   import { RUN_DETAIL_COPY, RUN_PAGE_COPY } from '../../../app/copy/runs.ts';
+  import { TASK_COPY } from '../../../app/copy/tasks.ts';
   import type { ChatContext } from '../../../lib/bureau-client.ts';
   import type { WorkflowFileRun } from '../../../lib/workflow-files.ts';
   import type { Goal } from '../../../lib/bureau-goals.ts';
@@ -65,6 +66,11 @@
     recordOrigin?: object | null | undefined;
     /** Who is viewing the page: their own run reads "You" in Started by. */
     viewer?: string | null | undefined;
+    /**
+     * The path of the session a goal's attempt or a schedule's fire ran in, which the header does
+     * not link (rows 55f, 55j): the rail's Session fact opens it.
+     */
+    session?: string | undefined;
   }
 
   let {
@@ -83,6 +89,7 @@
     missedSince,
     recordOrigin = undefined,
     viewer = undefined,
+    session = undefined,
   }: RunDetailsProps = $props();
 
   const principal = getPrincipalStore();
@@ -191,6 +198,9 @@
         term: RUN_PAGE_COPY.facts.startedBy,
         definition: startedBy,
       });
+    }
+    if (session !== undefined) {
+      list.push({ id: 'session', term: RUN_PAGE_COPY.facts.session, definition: sessionLink });
     }
     if (goal !== undefined) {
       list.push({ id: 'goal', term: RUN_DETAIL_COPY.facts.goal, definition: goalLink });
@@ -317,6 +327,15 @@
     {@const path = scheduleDetailPath(schedule.id)}
     <a class="ib-run-value" href={router.href(path)} onclick={(event) => open(event, path)}
       >{schedule.description ?? schedule.id}</a
+    >
+  {/if}
+{/snippet}
+
+{#snippet sessionLink()}
+  {#if session !== undefined}
+    {@const path = session}
+    <a class="ib-run-value" href={router.href(path)} onclick={(event) => open(event, path)}
+      >{TASK_COPY.openSession}</a
     >
   {/if}
 {/snippet}
