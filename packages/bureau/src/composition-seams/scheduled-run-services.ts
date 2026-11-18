@@ -95,7 +95,11 @@ import {
 import { mayUseAutomationInput, recoverRunWorkspaceAuthority } from '../run-authority.ts';
 import { ownerOrLocal } from '../owner-of-record';
 import { ContextArchivedError } from '../bureau-errors';
-import { registerTrailingOnStep, scheduledFireApprovalMetadata } from '../bureau-invariant-hooks';
+import {
+  BUREAU_PINNED_LAST_PRIORITY,
+  registerTrailingOnStep,
+  scheduledFireApprovalMetadata,
+} from '../bureau-invariant-hooks';
 import { scheduledAgentRunOptions } from '../session-agent-options';
 import { serializeUnknownError } from '../serialization';
 import { storedScheduleInput, workflowScheduleBinding } from '../workflow-schedule.ts';
@@ -144,19 +148,27 @@ class ScheduledFireHistoryChangedError extends NonRecoverablePolicyError {
 }
 
 /**
- * Ahead of every other `prepareStep` handler, whichever tier registered it: the guard runs before
- * memory recall or the input scan read the step's conversation.
+ * Where the fire's history guard reads the chat among the first step's `prepareStep` handlers,
+ * whichever tier registered them: first, so memory recall and the input scan never read a
+ * discarded reply (the scan may taint the chat over what it reads), and last, the moment before
+ * the step's `beforeGenerate` handlers and its model call.
  */
-const SCHEDULED_FIRE_HISTORY_GUARD_PRIORITY =
-  Number.MAX_SAFE_INTEGER - HOOK_TIER_PRIORITY_BANDS.bureau;
+const SCHEDULED_FIRE_HISTORY_GUARDS = [
+  {
+    id: 'bureau:scheduled-fire-history-guard',
+    priority: Number.MAX_SAFE_INTEGER - HOOK_TIER_PRIORITY_BANDS.bureau,
+  },
+  { id: 'bureau:scheduled-fire-history-recheck', priority: BUREAU_PINNED_LAST_PRIORITY },
+] as const;
 
 /**
  * COR-2437 — refuses a fire whose read of the chat (`loadedIds`) holds a row a discard removed
  * since: a fire saves no start of its own, so a discard that judged the chat before the fire was
  * admitted can commit after the fire read it. The chat is read again as the fire's first step is
- * prepared, so its model is not asked over the discarded reply. It narrows the window rather than
- * closing it: a discard that passed its checks before the fire was admitted can still commit
- * between this read and the model call, since the fire has not moved the chat's revision yet. The
+ * prepared, first and last of its `prepareStep` handlers, so its model is not asked over the
+ * discarded reply. It narrows the window rather than closing it: a discard that passed its checks
+ * before the fire was admitted can still commit between the last read and the model call (the
+ * `beforeGenerate` handlers run there), since the fire has not moved the chat's revision yet. The
  * fire's saves keep such a discard out of the chat all the same.
  */
 function registerScheduledFireHistoryGuard(
@@ -166,26 +178,25 @@ function registerScheduledFireHistoryGuard(
   runId: string,
   loadedIds: readonly string[],
 ): void {
-  let checked = false;
-  hooks.on(
-    'prepareStep',
-    async () => {
-      if (checked) return;
-      const current = await store.load(sessionId);
-      const discarded = new Set(discardedRowIdsOf(current?.metadata));
-      if (loadedIds.some((id) => discarded.has(id))) {
-        throw new ScheduledFireHistoryChangedError(runId, sessionId);
-      }
-      checked = true;
-    },
-    {
-      id: 'bureau:scheduled-fire-history-guard',
-      priority: SCHEDULED_FIRE_HISTORY_GUARD_PRIORITY,
+  for (const { id, priority } of SCHEDULED_FIRE_HISTORY_GUARDS) {
+    // Each reads the chat at the fire's first step only: a later step's history is the one the
+    // fire's own saves kept the discard out of.
+    let checked = false;
+    hooks.on(
+      'prepareStep',
+      async () => {
+        if (checked) return;
+        const current = await store.load(sessionId);
+        const discarded = new Set(discardedRowIdsOf(current?.metadata));
+        if (loadedIds.some((loaded) => discarded.has(loaded))) {
+          throw new ScheduledFireHistoryChangedError(runId, sessionId);
+        }
+        checked = true;
+      },
       // A read; a replayed step reads the chat again.
-      replay: 'safe',
-      onError: () => 'abort',
-    },
-  );
+      { id, priority, replay: 'safe', onError: () => 'abort' },
+    );
+  }
 }
 
 /**

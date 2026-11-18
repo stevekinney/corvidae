@@ -9,6 +9,7 @@ import {
   createAgentSession,
   type AgentSession,
   type GenerateContext,
+  type OperativeHookMap,
   type RunRef,
 } from '@lostgradient/operative';
 import { createTool } from 'armorer';
@@ -20,7 +21,7 @@ import {
 } from 'conversationalist';
 import { afterEach, describe, expect, it } from 'bun:test';
 import { MemoryStorage, type Storage } from '@lostgradient/storage';
-import { createManualRuntimeServices } from '@lostgradient/lifecycle';
+import { createManualRuntimeServices, HookRegistry } from '@lostgradient/lifecycle';
 import { z } from 'zod';
 
 import type { AgentDefinitions } from './agent-catalog';
@@ -280,7 +281,13 @@ let askedOver: string[][] = [];
  * An agent whose first step thinks and calls a tool, and whose second waits until the run is
  * stopped. `fail` makes the first step throw instead.
  */
-function stoppableAgent(options: { readonly fail?: boolean; readonly finish?: boolean } = {}) {
+function stoppableAgent(
+  options: {
+    readonly fail?: boolean;
+    readonly finish?: boolean;
+    readonly hooks?: HookRegistry<OperativeHookMap>;
+  } = {},
+) {
   secondStep = Promise.withResolvers<void>();
   askedOver = [];
   const noop = createTool({
@@ -292,6 +299,7 @@ function stoppableAgent(options: { readonly fail?: boolean; readonly finish?: bo
   return createAgent({
     name: 'agent',
     tools: { noop },
+    ...(options.hooks === undefined ? {} : { hooks: options.hooks }),
     generate: async (context: GenerateContext) => {
       if (options.fail === true) throw new Error('the model failed');
       const history = context.conversation.current;
@@ -630,10 +638,18 @@ describe('a discard racing a new message', () => {
 
   // A schedule's fire saves no start of its own: it reads the chat, and its first save is after its
   // first step. The discard here passes its check of the chat's runs before the fire is admitted,
-  // and commits after the fire read the chat.
-  it('refuses a schedule’s fire that read the chat before the discard committed, before its model is asked over the discarded reply', async () => {
-    const bureau = await openBureau();
+  // and commits while the fire waits at `held`, after it read the chat.
+  async function discardWhileFireHeld(
+    bureau: Bureau<AgentDefinitions>,
+    held: {
+      /** Called once the stopped turn ended: from here, the fire is the only run to reach `held`. */
+      readonly arm: () => void;
+      readonly reached: Promise<void>;
+      readonly release: () => void;
+    },
+  ) {
     const { run } = await stoppedTurn(bureau);
+    held.arm();
     const schedule = await bureau.schedules.create({
       agentName: 'agent',
       input: 'check in',
@@ -642,24 +658,9 @@ describe('a discard racing a new message', () => {
       principal: ALICE,
     });
     const sessions = bureau.internals.sessionStore!;
-    const tasks = bureau.internals.taskRegistry;
     const update = sessions.update.bind(sessions);
-    const bindIncarnation = tasks.bindIncarnation.bind(tasks);
-    const fireRead = Promise.withResolvers<void>();
-    const discardCommitted = Promise.withResolvers<void>();
     let fired: Promise<string> | undefined;
-    // The fire binds its task to the chat right after it read it: it waits there for the discard.
-    (tasks as { bindIncarnation: typeof tasks.bindIncarnation }).bindIncarnation = async (
-      taskId,
-      incarnation,
-    ) => {
-      (tasks as { bindIncarnation: typeof tasks.bindIncarnation }).bindIncarnation =
-        bindIncarnation;
-      fireRead.resolve();
-      await discardCommitted.promise;
-      return bindIncarnation(taskId, incarnation);
-    };
-    // The discard's write starts the fire and lets it read the chat before it commits.
+    // The discard's write starts the fire and lets it reach `held` before it commits.
     (sessions as { update: typeof sessions.update }).update = async (id, updater, options) => {
       (sessions as { update: typeof sessions.update }).update = update;
       fired = bureau.schedules.runNow(schedule!.id).then((started) => {
@@ -668,13 +669,13 @@ describe('a discard racing a new message', () => {
         expect(workflowId).not.toBe('');
         return workflowId;
       });
-      await fireRead.promise;
+      await held.reached;
       return update(id, updater, options);
     };
     const askedBefore = askedOver.length;
 
     const discarded = await discard(bureau, run.contextId, run.id);
-    discardCommitted.resolve();
+    held.release();
     const afterDiscard = (await bureau.contexts.get(run.contextId))!;
     const workflowId = await fired!;
     let result: unknown;
@@ -698,16 +699,75 @@ describe('a discard racing a new message', () => {
       errorMessage: expect.stringContaining('history-changed'),
     });
     await waitForCondition(() => hasSettled(bureau, workflowId), 'the fire’s task has ended');
-    expect(await statusOf(bureau, workflowId)).toBe('failed');
+    // The task view holds no message text: the reason is the run's, above.
+    expect(await bureau.tasks.get(workflowId)).toMatchObject({
+      status: 'failed',
+      finishReason: 'error',
+    });
     // The refused fire wrote nothing to the chat.
     const after = (await bureau.contexts.get(run.contextId))!;
     expect(after.conversationHistory.ids).toEqual(afterDiscard.conversationHistory.ids);
-    // The schedule is not paused by it, and its next fire runs on the chat the discard left.
+    return { run, scheduleId: schedule!.id };
+  }
+
+  it('refuses a schedule’s fire that read the chat before the discard committed, before its model is asked over the discarded reply', async () => {
+    const bureau = await openBureau();
+    const tasks = bureau.internals.taskRegistry;
+    const bindIncarnation = tasks.bindIncarnation.bind(tasks);
+    const reached = Promise.withResolvers<void>();
+    const released = Promise.withResolvers<void>();
+    // The fire binds its task to the chat right after it read it: it waits there for the discard.
+    const hold: typeof tasks.bindIncarnation = async (taskId, incarnation) => {
+      (tasks as { bindIncarnation: typeof tasks.bindIncarnation }).bindIncarnation =
+        bindIncarnation;
+      reached.resolve();
+      await released.promise;
+      return bindIncarnation(taskId, incarnation);
+    };
+
+    const { run, scheduleId } = await discardWhileFireHeld(bureau, {
+      arm: () => {
+        (tasks as { bindIncarnation: typeof tasks.bindIncarnation }).bindIncarnation = hold;
+      },
+      reached: reached.promise,
+      release: released.resolve,
+    });
+
+    // The schedule is still active, and its next fire runs on the chat the discard left.
+    expect(await bureau.schedules.get(scheduleId)).toMatchObject({ status: 'active' });
     secondStep = Promise.withResolvers<void>();
-    const next = await bureau.schedules.runNow(schedule!.id);
+    const next = await bureau.schedules.runNow(scheduleId);
     await secondStep.promise;
     expect(askedOver.at(-1)?.some((id) => id.startsWith(`${run.id}:step:`))).toBe(false);
     if (next !== undefined && 'workflowId' in next) await bureau.tasks.cancel(next.workflowId);
+  });
+
+  it('refuses a fire whose discard commits while its first step is prepared, after the chat was read again', async () => {
+    const reached = Promise.withResolvers<void>();
+    const released = Promise.withResolvers<void>();
+    let armed = false;
+    // The agent's own `prepareStep` runs after the fire's first read of the chat and before its
+    // last: the fire waits there for the discard.
+    const hooks = new HookRegistry<OperativeHookMap>({ source: 'agent' });
+    hooks.on(
+      'prepareStep',
+      async () => {
+        if (!armed) return;
+        armed = false;
+        reached.resolve();
+        await released.promise;
+      },
+      { id: 'agent:hold-the-fire', replay: 'safe' },
+    );
+    const bureau = await openBureau(stoppableAgent({ hooks }));
+
+    await discardWhileFireHeld(bureau, {
+      arm: () => {
+        armed = true;
+      },
+      reached: reached.promise,
+      release: released.resolve,
+    });
   });
 });
 

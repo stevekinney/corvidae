@@ -374,9 +374,9 @@ export const DISCARDED_ROWS_METADATA_KEY = 'discardedRowIds';
  * Why dropping the oldest is safe: an id matters only to a save whose read of the chat predates
  * its discard. Such a reader is a run start between its read and its start save, which the start
  * save refuses, or a schedule's fire between its read and its first save, which its first step
- * refuses and whose saves leave the id out (the base-less recovery, steering and shutdown saves
- * write rows of a run newer than the discarded one, and a discard is refused while such a run is
- * the chat's newest). An id
+ * refuses and whose saves leave the id out. A base-less save (recovery, steering, shutdown) is
+ * reasoned not to carry a discarded row rather than tested: it is a save of a run newer than the
+ * discarded one, and a discard is refused while such a run is the chat's newest. An id
  * is dropped only after later discards of the same chat removed this many rows, each of them
  * needing a later run of that chat to start, stop and be discarded; a reader would have to stay
  * between its read and its first save across all of them.
