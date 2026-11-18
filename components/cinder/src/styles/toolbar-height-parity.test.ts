@@ -34,6 +34,16 @@ parse(await read('./tokens-base.css')).walkRules((rule: Rule) => {
     if (declaration.prop.startsWith('--')) rootValues.set(declaration.prop, declaration.value);
   });
 });
+// The painted heights a Button and a SegmentedControl draw at (COR-2489) are the foundation's own
+// `:root` values; the fine-pointer ones, so only a top-level `:root`, never the coarse block.
+parse(await read('./foundation.css')).walkRules((rule: Rule) => {
+  if (rule.selector !== ':root' || rule.parent?.type !== 'root') return;
+  rule.walkDecls((declaration) => {
+    if (declaration.prop.startsWith('--_cinder-painted-height-')) {
+      rootValues.set(declaration.prop, declaration.value);
+    }
+  });
+});
 
 const sheets = new Map<string, Root>();
 async function sheet(path: string): Promise<Root> {
