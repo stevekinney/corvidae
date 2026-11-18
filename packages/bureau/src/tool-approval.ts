@@ -109,9 +109,6 @@ export function defaultToolApproval(
   return evaluateApprovalStatus(tier, ARMORER_MODE[level]) === 'allow' ? 'allow' : 'ask';
 }
 
-/** The metadata key a tool carries its own Default asks level under (COR-2436). */
-export const TOOL_DEFAULT_APPROVAL_KEY = 'defaultApproval';
-
 /**
  * The Default asks level a tool carries in its metadata (`never`, `on-changes` or `always`: the
  * host sets it from a tool source's saved setting), or `undefined` when it carries none or a value
@@ -120,7 +117,8 @@ export const TOOL_DEFAULT_APPROVAL_KEY = 'defaultApproval';
 export function readToolDefaultApproval(
   metadata: Readonly<Record<string, unknown>> | undefined,
 ): Exclude<ToolApprovalMode, 'blocked'> | undefined {
-  const value = metadata?.[TOOL_DEFAULT_APPROVAL_KEY];
+  // A tool carries its own Default asks level in its metadata under `defaultApproval` (COR-2436).
+  const value = metadata?.['defaultApproval'];
   return value === 'never' || value === 'on-changes' || value === 'always' ? value : undefined;
 }
 
