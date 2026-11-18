@@ -11,6 +11,7 @@ import type { ReviewListEntry } from '@lostgradient/weft';
 import { contextDetailFixture } from './bureau-fixtures.test-support.ts';
 import type { BureauReview, EngineReview } from './bureau-reviews.ts';
 import {
+  isBureauCall,
   StubFault,
   urlOf,
   type BureauCall,
@@ -283,7 +284,7 @@ export function installBureauWorld(world: BureauWorld): BureauWorldStub {
         items: world.weftReviews.filter((entry) => status === null || entry.status === status),
       });
     }
-    if (url.pathname !== '/bureau/jsonrpc' || typeof init?.body !== 'string') {
+    if (!isBureauCall(url.pathname, init?.body) || typeof init?.body !== 'string') {
       return new Response('Not found', { status: 404 });
     }
     const parsed: unknown = JSON.parse(init.body);

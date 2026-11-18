@@ -59,7 +59,7 @@ function declareOutage(
 
 const banner = (page: Page) => page.getByRole('region', { name: 'Connection problem' });
 
-const HOST_REQUESTS = /\/(v1|bureau|api)\//;
+const HOST_REQUESTS = /\/(v1|bureau|api)\/|\/jsonrpc$/;
 const REFUSED = 'net::ERR_CONNECTION_REFUSED';
 
 /** The host stops: every request to it is refused, while the page's own code still loads. */

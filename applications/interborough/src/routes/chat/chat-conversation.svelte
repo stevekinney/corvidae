@@ -40,7 +40,7 @@
    * the address becomes `/chats/:chat` by replacing the history entry, with this page kept
    * mounted (`router.navigate`'s `keep`), and the agent is fixed from then on.
    */
-  import { onMount, tick, untrack } from 'svelte';
+  import { onDestroy, onMount, tick, untrack } from 'svelte';
   import { MediaQuery } from 'svelte/reactivity';
   import type { McpUiHostContext } from '@modelcontextprotocol/ext-apps/app-bridge';
 
@@ -57,9 +57,9 @@
     type ApprovalResolution,
   } from '@lostgradient/cinder';
   import {
-    approvalArrivalBox,
-    approvalArrivalShift,
+    approvalPlacementShift,
     Chat,
+    CHAT_OVERLAY_INSET_START_PROPERTY,
     ChatNote,
     ChatQuestion,
     createConversationHistory,
@@ -126,6 +126,7 @@
   import { downloadText } from '../audit/audit-export.ts';
   import { useMinuteClock } from '../home/home-clock.svelte.ts';
   import { modelInUse } from './agent-model.ts';
+  import { createApprovalPlacement } from './approval-placement.ts';
   import BranchOrigin from './branch-origin.svelte';
   import ChatApproval from './chat-approval.svelte';
   import { branchPointIds } from './branch-points.ts';
@@ -768,6 +769,31 @@
   }
 
   let route = $state<HTMLElement | undefined>();
+  let head = $state<HTMLElement | undefined>();
+  // The header is laid over the top of the conversation on a translucent ground, so the transcript
+  // scrolls under it. Its height is the transcript's top inset (Chat's overlay inset property,
+  // read by Chat for the first row, for scrolling to a row and for placing an approval), kept as
+  // the header grows and shrinks with its banners and alerts.
+  $effect(() => {
+    const element = head;
+    const owner = route;
+    if (element === undefined || owner === undefined || typeof ResizeObserver === 'undefined')
+      return;
+    const write = (): void => {
+      owner.style.setProperty(
+        CHAT_OVERLAY_INSET_START_PROPERTY,
+        `${element.getBoundingClientRect().height}px`,
+      );
+      approvalPlacement.headerChanged();
+    };
+    write();
+    const observer = new ResizeObserver(write);
+    observer.observe(element);
+    return () => {
+      observer.disconnect();
+      owner.style.removeProperty(CHAT_OVERLAY_INSET_START_PROPERTY);
+    };
+  });
   /** The frames to wait for the approval's row to be drawn before giving up on bringing the person to it. */
   const ARRIVAL_FRAMES = 20;
   /**
@@ -800,18 +826,30 @@
   function bringApprovalIntoView(row: HTMLElement): void {
     const transcript = row.closest<HTMLElement>('.chat-timeline');
     if (transcript !== null) {
-      const card = row.getBoundingClientRect();
-      // Chat's own rule against Chat's own box, the transcript without the reminder, so this and
-      // Chat's arrival placement agree and the reminder cannot move the card (COR-2327).
-      const box = approvalArrivalBox(transcript);
-      // A layout not yet measured (zero-sized boxes) says nothing about fit: centre the card.
-      if (card.height > 0 && box.bottom - box.top > 0) {
-        transcript.scrollTop += approvalArrivalShift(card, box);
+      // Chat's own rule (the card and the row that labels it as one unit, in the box under the
+      // header, resting at the end only where that clears the header), so this and Chat's arrival
+      // placement agree and the reminder cannot move the card (COR-2327).
+      const shift = approvalPlacementShift(transcript, row);
+      // A layout not yet measured says nothing about fit: centre the card.
+      if (shift !== null) {
+        transcript.scrollTop += shift;
+        approvalPlacement.placed(transcript);
+        placedApprovalRow = row;
         return;
       }
     }
     row.scrollIntoView?.({ block: 'center' });
   }
+
+  // The header's title and status arrive after the chat opens, so it is taller when it settles than
+  // when the approval was placed: while the arrival placement is in force (until the person's first
+  // scrolling input; never the placement's own scroll, nor where focus is), a change in the header's
+  // height places the approval again (`approval-placement.ts`).
+  let placedApprovalRow: HTMLElement | undefined;
+  const approvalPlacement = createApprovalPlacement(() => {
+    if (placedApprovalRow?.isConnected) bringApprovalIntoView(placedApprovalRow);
+  });
+  onDestroy(() => approvalPlacement.release());
 
   /** Scrolls the first approval's row into view and focuses it, once it is drawn. */
   async function focusApproval(): Promise<void> {
@@ -2006,7 +2044,7 @@
     <!-- The header, the runs line and the alerts sit in the conversation's own column, at the
          transcript's inset, so the title, each line under it, the transcript and the composer share
          one left edge at every width (COR-2327 B4). -->
-    <div class="weft-chat-head">
+    <div class="weft-chat-head cinder-translucent-surface" bind:this={head}>
       <!-- While the host restarts for this chat's plugin the conversation stays on screen at full
          contrast, and the shared restart preset says what is happening above the heading (row 20e):
          no action while the restart is asked for, Retry now once the host stopped answering. A

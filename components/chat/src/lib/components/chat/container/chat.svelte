@@ -67,7 +67,7 @@
   import {
     approvalActionRow,
     approvalArrivalBox,
-    approvalArrivalRestShift,
+    approvalPlacementShift,
     approvalRowVisible,
     focusPendingApproval,
     PENDING_APPROVAL_CARD_SELECTOR,
@@ -1791,12 +1791,10 @@
       // the reminder stays available; the resize that measures it places the card.
       if (cardBox.height <= 0 || viewportBox.bottom - viewportBox.top <= 0) return settled();
       // A card that fits rests at the end the transcript pins itself to, so the pin and this
-      // placement agree on one position whichever runs last.
-      const shift = approvalArrivalRestShift(
-        cardBox,
-        viewportBox,
-        scroller.scrollHeight - scroller.clientHeight - scroller.scrollTop,
-      );
+      // placement agree on one position whichever runs last. The card and the row that labels it
+      // are one unit, and the box starts below the header overlay, so the end is chosen only while
+      // the unit's top still clears the overlay there.
+      const shift = approvalPlacementShift(scroller, card) ?? 0;
       if (shift === 0) {
         movedFrom = undefined;
         return settled();
@@ -3245,6 +3243,16 @@
     overflow-y: auto;
     scroll-padding-block: var(--cinder-space-2);
     padding: var(--cinder-chat-timeline-padding) var(--cinder-chat-reading-inline-padding);
+    /* A header the host lays over the top of the transcript (so the transcript scrolls under it)
+     * names its height here: the first row starts clear of it, and a row scrolled to rests
+     * under it, never behind it. 0 when nothing is laid over. */
+    --_cinder-chat-overlay-inset-start: var(--cinder-chat-overlay-inset-start, 0px);
+    padding-block-start: calc(
+      var(--cinder-chat-timeline-padding) + var(--_cinder-chat-overlay-inset-start)
+    );
+    scroll-padding-block-start: calc(
+      var(--cinder-space-2) + var(--_cinder-chat-overlay-inset-start)
+    );
     display: flex;
     flex-direction: column;
     /* The gap between rows, named so a row that adjusts its own spacing reads the width's value. */
@@ -3262,7 +3270,7 @@
 
   .chat-timeline-focus-label {
     position: sticky;
-    inset-block-start: var(--cinder-space-2);
+    inset-block-start: calc(var(--cinder-space-2) + var(--_cinder-chat-overlay-inset-start));
     align-self: flex-start;
     z-index: 2;
     inline-size: 0;
@@ -3396,20 +3404,31 @@
    * dims its last message (COR-2327). */
   .chat-timeline-mask-fade {
     --_chat-timeline-fade-size: var(--cinder-space-6);
+    /* The start edge is the transcript's top edge as the person sees it: with a header laid over the
+     * transcript (`--cinder-chat-overlay-inset-start`) that is the header's bottom edge, where a
+     * scrolled message would otherwise meet the header in a flat line, and the fade begins there.
+     * It is as long as the timeline's own top padding, so the first row at rest, which stands that
+     * far under the header, is never dimmed (the end edge keeps the full size). */
+    --_chat-timeline-fade-start-size: var(--cinder-chat-timeline-padding);
+    --_chat-timeline-fade-top: var(--_cinder-chat-overlay-inset-start, 0px);
     --_chat-timeline-fade-start: 0px;
     --_chat-timeline-fade-end: 0px;
 
+    /* Under the header the content stays (it shows through the header's ground); at the header's
+     * bottom edge the mask drops to nothing and rises over the start size. With no header the top is
+     * 0 and this is the plain transparent-to-black fade. */
     mask-image: linear-gradient(
       to bottom,
-      transparent,
-      black var(--_chat-timeline-fade-start),
+      black var(--_chat-timeline-fade-top),
+      transparent var(--_chat-timeline-fade-top),
+      black calc(var(--_chat-timeline-fade-top) + var(--_chat-timeline-fade-start)),
       black calc(100% - var(--_chat-timeline-fade-end)),
       transparent
     );
   }
 
   .chat-timeline-mask-fade[data-cinder-overflows-start] {
-    --_chat-timeline-fade-start: var(--_chat-timeline-fade-size);
+    --_chat-timeline-fade-start: var(--_chat-timeline-fade-start-size);
   }
 
   .chat-timeline-mask-fade[data-cinder-overflows] {
@@ -3835,8 +3854,16 @@
      Uses --cinder-chat-narrow-* tokens so each density gets an appropriate
      reduced value (comfortable → space-3/space-2; compact → space-1-5/space-1). */
   @container (max-width: 480px) {
+    /* The start fade is as long as the timeline's top padding here too. */
+    .chat-timeline-mask-fade {
+      --_chat-timeline-fade-start-size: var(--cinder-chat-narrow-padding);
+    }
+
     .chat-timeline {
       padding: var(--cinder-chat-narrow-padding);
+      padding-block-start: calc(
+        var(--cinder-chat-narrow-padding) + var(--_cinder-chat-overlay-inset-start)
+      );
       --_cinder-chat-row-gap: var(--cinder-chat-narrow-gap);
     }
 

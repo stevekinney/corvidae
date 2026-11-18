@@ -64,6 +64,19 @@
   );
 }
 
+/* The chat page is a list pane and a conversation that each carry their own inset (the list's
+ * header inset, Chat's reading column inset and composer dock), so the outlet pads neither: the
+ * list is flush to the navigation rail and to the top bar, and the composer's gap under it is
+ * Chat's own dock padding, equal to its side inset, not that plus the outlet's 24px (36px on a
+ * phone, 40px wide). The phone gutter below puts back what a conversation needs there. It is keyed
+ * on the outlet's own `data-width="panes"`, which the route's kind sets from the first frame
+ * (`views.ts`), not on a descendant that appears when the page's code has loaded: the panes measure
+ * their container once and keep a saved list width as a share of it, so an outlet that changed its
+ * padding after that first measure widened the list. */
+.weft-shell-outlet[data-width='panes'] {
+  padding: 0;
+}
+
 .weft-shell-outlet__skeleton {
   display: flex;
   flex-direction: column;
@@ -369,11 +382,14 @@
 
   /* A conversation insets its own column (`chat.css`: the header, the transcript, the reminder and
    * the composer share Chat's narrow inset, --cinder-space-3, from its container query). On a phone
-   * the outlet gives it only what is left of the phone gutter, so the column's shared edge stands
-   * --cinder-space-4 from the screen, as on every other phone page, and the composer gains the
-   * width (COR-2327). */
-  .weft-shell-outlet:has(.weft-chat-route) {
-    --weft-outlet-gutter: calc(var(--cinder-space-4) - var(--cinder-space-3));
+   * the outlet gives it only what is left of the phone gutter, on the sides and under the
+   * composer alike, so the composer stands --cinder-space-4 from the screen's edges and from the
+   * tab bar, as on every other phone page (COR-2327). The composer's own bottom padding is the
+   * other part of that gap, so the outlet's bottom padding, the duplicate that made it 36px, is
+   * only the gutter's remainder. */
+  .weft-shell-outlet[data-width='panes']:has(.weft-chat-route) {
+    padding-inline: calc(var(--cinder-space-4) - var(--cinder-space-3));
+    padding-block-end: calc(var(--cinder-space-4) - var(--cinder-space-3));
   }
 }
 

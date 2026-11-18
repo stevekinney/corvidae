@@ -457,7 +457,7 @@ describe('hasAvailableModel', () => {
   });
 });
 
-/** The error `callBureau` throws for a fault envelope's `error.data`. */
+/** The error the Bureau client throws for a fault envelope's `error.data`. */
 function wireFault(data: Record<string, unknown>, message = 'It failed.'): HttpClientError {
   const status = typeof data['httpStatus'] === 'number' ? data['httpStatus'] : 500;
   return new HttpClientError(status, message, { data });

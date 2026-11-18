@@ -24,7 +24,6 @@ import { describe, expect, test } from 'bun:test';
 import { RESUME_ROUND_CHANGED_MESSAGE } from '@lostgradient/bureau';
 import { quietFor, waitUntil, yieldEventLoopTurn } from '@lostgradient/testing/wait-until';
 import type { Fetcher } from '../../lib/bureau-client.ts';
-import { BUREAU_PATH } from '../../lib/bureau-client.ts';
 import ChatAssets from './chat-assets.svelte';
 import { assetsOf } from './chat-assets.ts';
 import { AG_UI_PATH, createChatRunWiring, openingTurn } from './run-wiring.ts';
@@ -2495,7 +2494,7 @@ describe('what a reloaded thread says of its last run', () => {
 
     const history = await wiring.history(THREAD);
 
-    expect(sent[1]).toMatchObject({ url: `${BUREAU_PATH}/jsonrpc`, method: 'POST' });
+    expect(sent[1]).toMatchObject({ url: '/jsonrpc', method: 'POST' });
     expect(sent[1]?.body).toMatchObject({
       method: 'bureau.tasks.list',
       params: { contextId: THREAD },

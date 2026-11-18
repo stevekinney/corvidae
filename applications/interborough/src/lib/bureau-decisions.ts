@@ -2,31 +2,20 @@
  * The models that can answer decisions (`bureau.decisions.models`), as the Bureau reports them: each
  * catalog row that can decide, whether it is available or needs setup, and the row that answers as
  * the fallback. The page only renders this list; which rows can decide and which one answers are the
- * Bureau's rules (`packages/bureau/src/decisions/create-decisions.ts`), parsed here at the boundary.
+ * Bureau's rules (`packages/bureau/src/decisions/create-decisions.ts`).
  */
-import { z } from 'zod';
-
-import { callBureau, type Fetcher } from './bureau-client.ts';
+import { bureauClient, type BureauOutput } from './bureau-api.ts';
+import type { Fetcher } from './bureau-client.ts';
 
 type Options = { readonly signal?: AbortSignal; readonly fetch?: Fetcher };
 
-const rowSchema = z.object({
-  provider: z.string(),
-  model: z.string(),
-  availability: z.enum(['available', 'needs-setup']),
-  decisionOnly: z.boolean(),
-  /** The row a decision goes to now, as the Bureau's `decide` chooses it; at most one row, none when nothing can answer. */
-  answering: z.boolean(),
-  /** The row the language-model fallback uses; at most one row. */
-  fallback: z.boolean(),
-  /** Whether the Bureau's fallback rule can ever use the row (it returns structured output); the fallback model is chosen among these only. */
-  canBeFallback: z.boolean(),
-});
-
-const modelsSchema = z.object({ rows: z.array(rowSchema) });
-
-/** One catalog row that can answer decisions. `<provider>/<model>` is what a decision setting stores. */
-export type DecisionModelRow = z.infer<typeof rowSchema>;
+/**
+ * One catalog row that can answer decisions. `<provider>/<model>` is what a decision setting stores.
+ * `answering` is the row a decision goes to now, at most one, none when nothing can answer;
+ * `fallback` is the row the language-model fallback uses; `canBeFallback` says whether the Bureau's
+ * fallback rule can ever use the row (it returns structured output).
+ */
+export type DecisionModelRow = BureauOutput<'bureau.decisions.models'>['rows'][number];
 
 /** The name a decision setting stores for a row: `<provider>/<model>`. */
 export function decisionRowName(row: Pick<DecisionModelRow, 'provider' | 'model'>): string {
@@ -35,5 +24,6 @@ export function decisionRowName(row: Pick<DecisionModelRow, 'provider' | 'model'
 
 /** The rows that can answer decisions, in catalog order, each with its availability. */
 export async function listDecisionModels(options?: Options): Promise<readonly DecisionModelRow[]> {
-  return modelsSchema.parse(await callBureau('bureau.decisions.models', {}, options)).rows;
+  const answer = await bureauClient['bureau.decisions.models']({}, options);
+  return answer.rows;
 }

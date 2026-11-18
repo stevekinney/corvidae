@@ -68,7 +68,7 @@ const approval = (
     action: {
       type: 'approval',
       risk: 'high',
-      operation: { kind: 'tool' },
+      operation: { kind: 'other' },
       ...(message === undefined ? {} : { message }),
     },
   },

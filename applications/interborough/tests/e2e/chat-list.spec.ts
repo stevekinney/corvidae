@@ -47,7 +47,7 @@ async function answerOperation(
   method: string,
   answer: (route: Route, id: unknown) => Promise<void> | void,
 ): Promise<void> {
-  await page.route('**/bureau/jsonrpc', async (route) => {
+  await page.route('**/jsonrpc', async (route) => {
     const body = JSON.parse(route.request().postData() ?? '{}') as {
       method?: string;
       id?: unknown;
@@ -184,13 +184,16 @@ test.describe('the chat list hidden beside an open chat (COR-2327 AC1)', () => {
     await expect(detail.getByRole('heading', { level: 1, name: refund })).toBeVisible();
     const detailBefore = await detail.boundingBox();
 
-    const hide = list(page).locator('header').getByRole('button', { name: 'Hide chats' });
+    // One control in one place: on the rail at the start edge, not beside the list's "+".
+    const hide = page.getByRole('button', { name: 'Hide chats' });
     await expect(hide).toBeVisible();
+    await expect(list(page).getByRole('button', { name: 'Hide chats' })).toHaveCount(0);
     await hide.click();
 
     // The list is gone, not squeezed: nothing of it is on the page, and the chat takes its width.
     await expect(list(page)).toHaveCount(0);
     const show = page.getByRole('button', { name: 'Show chats' });
+    // The same control, in the same rail, now saying what it does next.
     await expect(show).toBeFocused();
     const detailAfter = await detail.boundingBox();
     expect(detailAfter!.width).toBeGreaterThan(detailBefore!.width + 150);
@@ -210,7 +213,7 @@ test.describe('the chat list hidden beside an open chat (COR-2327 AC1)', () => {
 
     await page.getByRole('button', { name: 'Show chats' }).click();
     await expect(page.locator('[data-chat]')).toHaveCount(CHAT_COUNT);
-    await expect(list(page).getByRole('button', { name: 'Hide chats' })).toBeFocused();
+    await expect(page.getByRole('button', { name: 'Hide chats' })).toBeFocused();
   });
 });
 
@@ -281,7 +284,7 @@ test.describe('one left edge for the open chat (COR-2327 B4)', () => {
       await openChats(page, width);
       await row(page, refund).getByRole('link').first().click();
       await expectOneEdge(page, `${width}, list shown`);
-      await list(page).locator('header').getByRole('button', { name: 'Hide chats' }).click();
+      await page.getByRole('button', { name: 'Hide chats' }).click();
       await expect(list(page)).toHaveCount(0);
       await expectOneEdge(page, `${width}, list hidden`);
       await page.getByRole('button', { name: 'Show chats' }).click();
@@ -490,7 +493,7 @@ test.describe('the states of the chat list', () => {
   }) => {
     // The test answers the list's read with a 500, and Chromium logs each such response.
     pageErrors.expectEvery({
-      pattern: loggedFailedResponse(500, /\/bureau\/jsonrpc/),
+      pattern: loggedFailedResponse(500, /\/jsonrpc/),
       reason: 'the test answers the chat list with a 500',
     });
     await answerOperation(page, 'bureau.contexts.list', (route) =>

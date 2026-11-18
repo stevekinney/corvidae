@@ -22,10 +22,10 @@ export interface ImpactNotice {
 
 /** One breaking change in words. */
 export function describeBreakingChange(change: WorkflowImpactChange): string {
-  const step = change.step ?? 0;
+  const step = 'step' in change ? change.step : 0;
   switch (change.kind) {
     case 'step-signal':
-      return copy.changes.stepSignal(step, String(change.from), String(change.to));
+      return copy.changes.stepSignal(step, change.from, change.to);
     case 'step-removed':
       return copy.changes.stepRemoved(step);
     case 'step-replaced':

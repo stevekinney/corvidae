@@ -62,7 +62,8 @@ export function bureau(
     if (answer === undefined)
       return Response.json({ error: `unexpected ${String(method)}` }, { status: 500 });
     try {
-      return Response.json({ jsonrpc: '2.0', id: method, result: answer(record) });
+      // A handler may hold its answer, as a Bureau that has not answered yet does.
+      return Response.json({ jsonrpc: '2.0', id: method, result: await answer(record) });
     } catch (error) {
       // A handler may fail as the Bureau does: a wire fault code, its status and its payload.
       if (!(error instanceof StubFault)) throw error;

@@ -1269,7 +1269,7 @@ describe('the Reviews view', () => {
     expect(await findByTestId('content')).not.toBeNull();
     expect(frame(container).dataset['state']).toBe('ready');
     expect(methods).toEqual(['bureau.reviews.list']);
-    expect(paths).toEqual(['/bureau/jsonrpc']);
+    expect(paths).toEqual(['/jsonrpc']);
   });
 
   test('is ready when the Bureau fails with a 5xx, because the page shows what its other source can', async () => {

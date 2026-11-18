@@ -1,9 +1,8 @@
 /**
- * The memory client parses what the Bureau's memory operations answer and sorts the faults they
+ * The memory client reads what the Bureau's memory operations answer and sorts the faults they
  * throw into the few the Memory page tells apart. A fault is told by its wire code and, where one
  * code carries two refusals, by `data.reason`.
  */
-import { rejectionOf } from '@lostgradient/testing';
 import { HttpClientError } from '@lostgradient/weft';
 import { describe, expect, test } from 'bun:test';
 
@@ -45,7 +44,7 @@ function answering(result: unknown, bodies: unknown[] = []): Fetcher {
   };
 }
 
-/** The error `callBureau` throws for a fault envelope's `error.data`. */
+/** The error the Bureau client throws for a fault envelope's `error.data`. */
 function wireFault(data: Record<string, unknown>, message = 'It failed.'): HttpClientError {
   const status = typeof data['httpStatus'] === 'number' ? data['httpStatus'] : 500;
   return new HttpClientError(status, message, { data });
@@ -144,22 +143,6 @@ describe('the memory operations', () => {
     expect(detail.memory.kind).toBe('fact');
     expect(detail.memory.writer).toBe('agent');
     expect(detail.history).toEqual([HISTORY]);
-  });
-
-  test('refuses a memory that names no kind or writer, because the page words a memory by them', async () => {
-    const withoutKind = { ...MEMORY, kind: undefined };
-
-    expect(
-      await rejectionOf(
-        getMemory('tool-runner', MEMORY.id, {
-          fetch: answering({
-            memory: withoutKind,
-            lineage: { runId: null, corrects: null, correctedBy: null },
-            history: [],
-          }),
-        }),
-      ),
-    ).toBeDefined();
   });
 
   test('sends the kind a memory is added as, and answers the memory as the list shows it', async () => {

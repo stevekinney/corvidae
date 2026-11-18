@@ -185,7 +185,7 @@ test.describe('Settings › Data and retention', () => {
     pageErrors,
   }) => {
     pageErrors.expectEvery({
-      pattern: loggedFailedResponse(500, /\/bureau\/jsonrpc/),
+      pattern: loggedFailedResponse(500, /\/jsonrpc/),
       reason: 'the test answers the refresh of the settings with a 500 to draw the banner',
     });
     await page.setViewportSize({ width: 1280, height: 900 });
@@ -194,7 +194,7 @@ test.describe('Settings › Data and retention', () => {
     await expect(audit.getByRole('spinbutton')).toHaveValue('90');
 
     // The next read of the settings fails, and the window regaining focus asks for one.
-    await page.route('**/bureau/jsonrpc', async (route) => {
+    await page.route('**/jsonrpc', async (route) => {
       const body = route.request().postDataJSON() as { method?: string } | null;
       if (body?.method === 'bureau.settings.get') {
         await route.fulfill({ status: 500, json: { error: 'The server broke.' } });

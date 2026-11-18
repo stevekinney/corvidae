@@ -46,6 +46,10 @@
     }
   }
 
+  /* A header a page lays over scrolling content takes `.cinder-translucent-surface`
+   * (`styles/components/_translucent-surface.css`): the canvas at 90%, where this bar keeps its own
+   * 82% mix, which its tests pin and which carries only default-ink titles and icons. */
+
   .cinder-app-bar__leading,
   .cinder-app-bar__trailing {
     display: flex;

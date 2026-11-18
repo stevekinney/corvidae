@@ -134,7 +134,7 @@ async function drawRowStatesOutsideTheSampleWorld(page: Page): Promise<void> {
       body['total'] = items.length;
     });
   });
-  await page.route('**/bureau/jsonrpc', async (route) => {
+  await page.route('**/jsonrpc', async (route) => {
     const { method, params } = bureauRequest(route);
     if (method === 'bureau.schedules.list') {
       await changed(route, (body) => {
