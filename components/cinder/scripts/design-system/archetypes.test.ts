@@ -7,18 +7,23 @@ import {
   archetypeExportName,
   archetypePreviewHtml,
   ARCHETYPES_GROUP,
+  cardWidthOf,
+  measuredCardHeight,
   readArchetypePreviews,
+  withCardHeight,
 } from './archetypes.ts';
 import { buildBundleCss } from './css.ts';
 import { archetypesRoot, assetsRoot, cinderRoot } from './paths.ts';
 
 /**
  * The pages the design system must publish: the six the issue names at minimum, and the brand
- * book's other archetypes except Conversation, whose composer is the mounted `MarkdownEditor`.
+ * book's other archetypes, Conversation too, whose composer is the `MarkdownEditor` the page mounts
+ * from the bundle.
  */
 const REQUIRED_ARCHETYPES = [
   'browse',
   'collection',
+  'conversation',
   'detail',
   'flow',
   'focus-list',
@@ -153,8 +158,49 @@ describe('the checked-in archetype pages', () => {
   test('leave the system stylesheets to the frame, as the cover card does', () => {
     for (const { name, text } of pageSources()) {
       expect({ name, links: /<link\b/.test(text) }).toEqual({ name, links: false });
-      expect({ name, scripts: /<script\b/.test(text) }).toEqual({ name, scripts: false });
+      // Only the page that mounts its composer from the bundle carries a script.
+      expect({ name, scripts: /<script\b/.test(text) }).toEqual({
+        name,
+        scripts: name === 'conversation.html',
+      });
     }
+  });
+
+  // COR-2445 AC8 (COR-2307 AC3): Form draws the filled Input, and Conversation draws its composer
+  // by mounting MarkdownEditor from the bundle that sits beside the cards.
+  test('Form uses the filled Input on every field', () => {
+    const form = read(join(archetypesRoot, 'form.html'));
+    const inputs = form.match(/<input\b[^>]*>/g) ?? [];
+    expect(inputs.length).toBeGreaterThan(0);
+    for (const input of inputs) expect(input).toContain('data-cinder-appearance="filled"');
+  });
+
+  test('Conversation mounts its MarkdownEditor composer through the bundle', () => {
+    const page = read(join(archetypesRoot, 'conversation.html'));
+    expect(page).toContain('<script src="../bundle.js"></script>');
+    expect(page).toContain("window.Cinder.mount('MarkdownEditor'");
+    expect(page).toContain('data-cinder-composer');
+    expect(page).toContain('class="cinder-message"');
+  });
+});
+
+// COR-2445 AC9 (COR-2307): the build measures each card's height instead of writing a static one.
+describe('measured card heights', () => {
+  test('a measured height replaces the number checked in, within the range the design system takes', () => {
+    const page = `${CARD_MARKER}\n<!doctype html>`;
+    expect(measuredCardHeight(880)).toBe(888);
+    expect(measuredCardHeight(10)).toBe(120);
+    expect(measuredCardHeight(9000)).toBe(4000);
+    expect(withCardHeight(page, 912)).toBe(page.replace('height=100', 'height=912'));
+    expect(() => withCardHeight('<!doctype html>', 1)).toThrow('@dsCard');
+    expect(cardWidthOf(page)).toBe(760);
+    expect(cardWidthOf(page.replace('height=100', 'height=100 width=1040'))).toBe(1040);
+  });
+
+  test('the build writes the measured heights it reads from the render check', () => {
+    const build = read(join(import.meta.dir, 'build.ts'));
+    expect(build).toContain('archetypeCheck.heights');
+    expect(build).toContain('withCardHeight(archetype.html, height)');
   });
 });
 
