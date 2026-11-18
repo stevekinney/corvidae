@@ -109,7 +109,7 @@ const BUN_TEST_FILE = /^([^\t]+)\t.*?##\[group\](.+?\.test\.ts):\s*$/;
 /** Bun's assertion header when a failed test is printed without a `(fail)` summary line. */
 const BUN_ASSERTION = /^([^\t]+)\t.*?error: (expect\(.+\))\s*$/;
 /** The assertion's specific expected value, which makes its file-qualified identity stable. */
-const BUN_EXPECTED = /^([^\t]+)\t.*?Expected to contain: (.+)\s*$/;
+const BUN_EXPECTED = /^([^\t]+)\t.*?Expected (?:to contain|substring): (.+)\s*$/;
 const BUN_ERROR = /^([^\t]+)\t.*?error: /;
 const BUN_SCRIPT_EXIT = /^script ".+" exited with code \d+$/;
 /** Turbo's per-workspace task heading in a failed GitHub Actions log. */
@@ -135,7 +135,7 @@ interface TestContext {
   command: string;
   task?: string | undefined;
   file?: string | undefined;
-  assertion?: string | undefined;
+  assertion?: { message: string; expected?: string | undefined } | undefined;
   unparseable?: boolean | undefined;
 }
 
@@ -158,9 +158,20 @@ function testEvidence(log: string): TestEvidence[] {
       unparseable: true,
     });
   };
+  const finishAssertion = (job: string, context: TestContext | undefined) => {
+    if (context?.assertion === undefined) return;
+    if (context.assertion.expected === undefined) markUnknown(job, context);
+    else
+      found.push({
+        job,
+        step: context.step,
+        command: context.command,
+        identity: identity(context, `${context.assertion.message} › ${context.assertion.expected}`),
+      });
+    context.assertion = undefined;
+  };
   const finish = (job: string) => {
-    const context = contexts.get(job);
-    if (context?.assertion !== undefined) markUnknown(job, context);
+    finishAssertion(job, contexts.get(job));
   };
   const identity = (context: TestContext, value: string) =>
     `${context.task === undefined ? '' : `${context.task} › `}${context.file} › ${value}`;
@@ -187,6 +198,7 @@ function testEvidence(log: string): TestEvidence[] {
     if (file !== null) {
       const context = contexts.get(file[1] ?? '');
       if (context !== undefined) {
+        finishAssertion(file[1] ?? '', context);
         context.file = file[2] ?? '';
         context.assertion = undefined;
       } else unscopedFiles.add(file[1] ?? '');
@@ -195,7 +207,7 @@ function testEvidence(log: string): TestEvidence[] {
     const assertion = BUN_ASSERTION.exec(line);
     if (assertion !== null) {
       const context = contexts.get(assertion[1] ?? '');
-      if (context?.file !== undefined) context.assertion = assertion[2] ?? '';
+      if (context?.file !== undefined) context.assertion = { message: assertion[2] ?? '' };
       else markUnknown(assertion[1] ?? '', context);
       continue;
     }
@@ -204,13 +216,7 @@ function testEvidence(log: string): TestEvidence[] {
       const job = expected[1] ?? '';
       const context = contexts.get(job);
       if (context?.file !== undefined && context.assertion !== undefined) {
-        found.push({
-          job,
-          step: context.step,
-          command: context.command,
-          identity: identity(context, `${context.assertion} › ${expected[2] ?? ''}`),
-        });
-        context.assertion = undefined;
+        context.assertion.expected = expected[2] ?? '';
       } else markUnknown(job, context);
       continue;
     }
@@ -218,14 +224,17 @@ function testEvidence(log: string): TestEvidence[] {
     if (bun !== null) {
       const job = bun[1] ?? '';
       const context = contexts.get(job);
-      if (context?.file !== undefined)
+      if (context?.file !== undefined) {
         found.push({
           job,
           step: context.step,
           command: context.command,
           identity: identity(context, bun[2] ?? ''),
         });
-      else markUnknown(job, context);
+        // The summary is terminal evidence for the assertion that preceded it. Otherwise a
+        // `toThrow` assertion's Expected substring leaks through `finish` as a second unknown.
+        context.assertion = undefined;
+      } else markUnknown(job, context);
       continue;
     }
     const playwright = PLAYWRIGHT_FAILURE.exec(line);
