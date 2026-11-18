@@ -42,10 +42,18 @@ for (const fixtureName of ['described-narrow', 'error-narrow'] as const) {
       };
     });
     expect(read.stacked).toBe(true);
-    for (const inside of [read.control, read.group, read.message]) {
+    // The control keeps room for its focus ring and hands it straight back with a negative margin
+    // (COR-2312), so its box may stand a ring's width (2px) outside the container's; the message
+    // has no such room and stays inside.
+    const RING = 3;
+    for (const [inside, room] of [
+      [read.control, RING],
+      [read.group, RING],
+      [read.message, 1],
+    ] as const) {
       expect(inside).not.toBeNull();
-      expect(inside!.left).toBeGreaterThanOrEqual(read.container!.left - 1);
-      expect(inside!.right).toBeLessThanOrEqual(read.container!.right + 1);
+      expect(inside!.left).toBeGreaterThanOrEqual(read.container!.left - room);
+      expect(inside!.right).toBeLessThanOrEqual(read.container!.right + room);
     }
     expect(read.groupOverflow).toBeLessThanOrEqual(1);
     expect(read.messageOverflow).toBeLessThanOrEqual(1);
