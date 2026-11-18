@@ -357,6 +357,15 @@ const rowIds = (container: HTMLElement) =>
   Array.from(container.querySelectorAll<HTMLElement>('li[data-hook]')).map(
     (element) => element.dataset['hook'],
   );
+/**
+ * The word in a row's status column. A wrapMeta row draws its status a second time at the start of
+ * line two, for a phone, so the word is read from the column rather than found by text.
+ */
+const statusWord = (container: HTMLElement, id: string) =>
+  row(container, id)
+    ?.querySelector('.cinder-stacked-list-item__status')
+    ?.textContent?.replaceAll(/\s+/g, ' ')
+    .trim();
 /** Line two of a row: the hook's sentence, and what else it is limited to. */
 const lineTwo = (container: HTMLElement, id: string) =>
   row(container, id)?.querySelector<HTMLElement>('.ib-hooks__line')?.textContent?.trim();
@@ -381,9 +390,7 @@ describe('the hooks list', () => {
     );
 
     await waitFor(() => expect(row(view.container, 'broken')).not.toBeNull());
-    await waitFor(() =>
-      expect(within(row(view.container, 'broken')!).getByText('Gave up')).not.toBeNull(),
-    );
+    await waitFor(() => expect(statusWord(view.container, 'broken')).toBe('Gave up'));
     await waitFor(() => expect(rowIds(view.container)).toEqual(['broken', 'quiet', 'fresh']));
 
     // The name is the bold title and the link to the hook; line two is the sentence, in words.
@@ -398,10 +405,8 @@ describe('the hooks list', () => {
         name: 'When a review is waiting, send a webhook to example.com',
       }),
     ).not.toBeNull();
-    expect(within(row(view.container, 'quiet')!).getByText('Delivered')).not.toBeNull();
-    expect(
-      within(row(view.container, 'fresh')!).getByText(HOOKS_COPY.row.noDelivery),
-    ).not.toBeNull();
+    expect(statusWord(view.container, 'quiet')).toBe('Delivered');
+    expect(statusWord(view.container, 'fresh')).toBe(HOOKS_COPY.row.noDelivery);
     expect(view.container.querySelector('[data-view="hooks"]')?.getAttribute('data-state')).toBe(
       'ready',
     );
