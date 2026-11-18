@@ -457,6 +457,30 @@ describe('what is not stored', () => {
     expect(page.html).toBe('<html>build 2</html>');
   });
 
+  test('an input saved during the build is not stored when the file clock trails now', async () => {
+    const sources = await panelSources();
+    const directory = await temporary('panel-build-cache-');
+    for (const file of sources.graph) await utimes(file, 5, 5);
+    let saved = false;
+    const cache = createPanelBuildCache({
+      directory,
+      // Linux stamps a write from a clock that lags `Date.now()`; running `now` ahead stands in.
+      now: () => Date.now() + 500,
+      readBytes: async (path) => {
+        if (!saved && path === sources.imported) {
+          saved = true;
+          await writeFile(path, 'export const model = 2;\n');
+        }
+        return new Uint8Array(await Bun.file(path).arrayBuffer());
+      },
+    });
+    const { counter, build } = countingBuild(sources.graph);
+    await cache.serve(PANEL, sources.inputs, build);
+    expect(saved).toBe(true);
+    await cache.serve(PANEL, sources.inputs, build);
+    expect(counter.runs).toBe(2);
+  });
+
   test('a page built with no recorded input files is served and not stored', async () => {
     const sources = await panelSources();
     const directory = await temporary('panel-build-cache-');

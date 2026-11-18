@@ -293,10 +293,28 @@ describe('charter rules', () => {
     expect(rule).toContain('never to `main`');
     expect(rule).toContain('do not wait for the focused checks before that push');
     expect(rule).toContain('still gate ready-for-review');
+    expect(rule).toContain('record its returned run ID in the ready-for-review receipt');
     for (const path of ['.claude/agents/chef-worker.md', '.codex/agents/chef-worker.toml']) {
       const text = readFileSync(join(import.meta.dir, '../..', path), 'utf8');
       expect(text).toContain(`${pushRule.charAt(0).toUpperCase()}${pushRule.slice(1)}`);
     }
+  });
+
+  test('requires every rendered brief to record one final branch CI receipt', () => {
+    expect(pushRule).toContain(
+      'After the final push run `gh workflow run main.yml --ref <branch>` once per batch',
+    );
+    expect(pushRule).not.toContain('When the brief requires branch CI');
+    expect(renderBrief(issue(description), { paths: [], verify: [], model: 'Sonnet' })).toContain(
+      'record its returned run ID in the ready-for-review receipt',
+    );
+  });
+
+  test('requires an owned-PID and worktree leftovers receipt before handoff', () => {
+    expect(charterRules.join('\n')).toContain(
+      'leftovers.ts --worktree <owned-worktree> --pids <owned-pid,...>',
+    );
+    expect(charterRules.join('\n')).toContain('a live owned PID is a reported charter defect');
   });
 
   // The charter rules are the one source of the worker-facing rules. Each pair names a phrase of a
@@ -393,12 +411,13 @@ describe('charter rules', () => {
     const rule = normalize(
       charterRules.find((candidate) => candidate.startsWith('**Processes:**')) ?? '',
     );
-    for (const phrase of ['`pkill`', '`killall`', 'by name or pattern', 'by pid', 'it waits'])
+    for (const phrase of ['`pkill`', '`killall`', 'by name or pattern', 'by pid'])
       expect(rule, phrase).toContain(phrase);
     for (const path of ['.claude/agents/chef-worker.md', '.codex/agents/chef-worker.toml']) {
       const text = read(path);
       expect(text, path).toContain('never end a process by name or pattern');
       expect(text, path).toContain('by pid');
+      expect(text, path).toContain('at most five minutes for a test pool slot');
     }
   });
 
