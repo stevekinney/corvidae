@@ -218,6 +218,48 @@ describe('Home while it loads (02c, 02d)', () => {
     expect(box?.getAttribute('rows')).toBe('3');
   });
 
+  // COR-2489 design round: Home moved 32px on a phone when its data arrived. The Needs you
+  // placeholder's button blocks were the 44px coarse control height while the loaded rows' buttons
+  // are drawn at their 28px painted height. Each placeholder takes the height its control is drawn
+  // at, through the same token, so nothing below moves at any pointer.
+  test('each placeholder is drawn at the height of the control it stands for', async () => {
+    installed = installHome(sampleHomeWorld());
+    const hold = holdOpen();
+    installed.stub.on('bureau.contexts.list', async () => {
+      await hold.released;
+      return { contexts: SAMPLE_CHATS, nextOffset: null };
+    });
+    const { container } = render(HomeHarness, { props: { client: installed.client } } as never);
+    await waitFor(() => expect(container.querySelector('[data-mode="loading"]')).not.toBeNull());
+    const cinder = (path: string) =>
+      readFileSync(new URL(path, import.meta.resolve('@lostgradient/cinder')), 'utf8').replace(
+        /\s+/g,
+        ' ',
+      );
+    // The row button blocks: a small Button's painted height, which a coarse pointer does not raise.
+    expect(
+      cardOf(container, 'Needs you').querySelectorAll('.cinder-skeleton-action-bar').length,
+    ).toBeGreaterThan(0);
+    expect(cinder('./components/skeleton/skeleton.css')).toMatch(
+      /\.cinder-skeleton-action-bar \{[^}]*block-size: var\(--_cinder-painted-height-sm\);/,
+    );
+    expect(cinder('./components/button/button.css')).toContain(
+      'min-height: var(--_cinder-painted-height-sm);',
+    );
+    // The agent picker: a small Select, drawn at the small control height, as its block is.
+    const blocks = [
+      ...cardOf(container, 'Start a chat').querySelectorAll<HTMLElement>('.cinder-skeleton'),
+    ];
+    expect(blocks.some((block) => block.style.height === 'var(--cinder-control-height-sm)')).toBe(
+      true,
+    );
+    expect(cinder('./components/select/select.css')).toMatch(
+      /\.cinder-select\[data-cinder-size='sm'\] \{ min-height: var\(--cinder-control-height-sm\);/,
+    );
+    hold.release();
+    await waitFor(() => expect(container.querySelector('[data-mode="overview"]')).not.toBeNull());
+  });
+
   test('the placeholders have the layout of the page they stand for', async () => {
     // The loading page and the page share one layout component, so the same four cards sit in the
     // same two columns and the placeholders keep a card's own title row.
