@@ -83,6 +83,18 @@ const SPECIFICATIONS = {
  * delivery with a receipt and a hook with a problem (`hooks.spec.ts`), and the Hooks list in each
  * state of its board (`hooks-states.spec.ts`).
  */
+/**
+ * Home's states that `home.spec.ts` holds only at 1280, which it captures at 1280 and at a phone,
+ * 375 and so 320 (`captureForDesignReviewWithPhone`, COR-2489).
+ */
+export const HOME_STATES_CAPTURED_ON_A_PHONE = [
+  'loading',
+  'still loading',
+  'one card fails',
+  'nothing waiting',
+  'something needs you',
+] as const;
+
 const SHOWCASE_SPECIFICATIONS = [
   'tests/e2e/00-showcase.spec.ts',
   'tests/e2e/shell-chrome.spec.ts',

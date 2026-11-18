@@ -185,6 +185,35 @@ export async function captureForDesignReview(
   }, restorePointer);
 }
 
+/** The phone a state held only at a desktop width is captured at as well, with 320 by 640 after it. */
+export const DESIGN_REVIEW_PHONE = { width: 375, height: 812 } as const;
+
+/**
+ * Captures a state at the width the page is at and then at a phone (375, and so 320 as well), for a
+ * state a specification holds only at a desktop width (COR-2489: Home's loading, still-loading,
+ * one-card-fails, nothing-waiting and something-needs-you states were recorded only at 1280). The
+ * viewport is put back after, so the specification's own assertions run at the width they expect.
+ * In an ordinary run it does nothing and leaves the viewport alone.
+ */
+export async function captureForDesignReviewWithPhone(
+  page: Page,
+  capture: DesignReviewCapture,
+): Promise<void> {
+  if (designReviewCaptureDirectory() === undefined) return;
+  await captureForDesignReview(page, capture);
+  const viewportSize = page.viewportSize();
+  if (viewportSize === null || viewportSize.width <= PHONE_WIDTH_MAXIMUM) return;
+  await page.setViewportSize(DESIGN_REVIEW_PHONE);
+  await nextFrame(page);
+  try {
+    await captureForDesignReview(page, capture);
+  } finally {
+    await page.setViewportSize(viewportSize);
+    await nextFrame(page);
+    await capture.ready?.(page);
+  }
+}
+
 /** Screenshots and measures the page at the size it is at, and appends its line to the manifest. */
 async function captureViewport(
   page: Page,
