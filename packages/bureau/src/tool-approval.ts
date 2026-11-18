@@ -122,6 +122,24 @@ export function readToolDefaultApproval(
   return value === 'never' || value === 'on-changes' || value === 'always' ? value : undefined;
 }
 
+/**
+ * The level a tool asks at when an agent's `approvals` says nothing about it, the one value every
+ * reader shares (the hook, the catalog's `defaultAsks`, the grant check): the pick its source
+ * stored, else Always for a dangerous tool (design rows 30i and 33i), Never for a tool that only
+ * reads, and On changes for the rest. A read at Never and at On changes both run, so only the
+ * words differ there; a dangerous tool at Always asks even in an "allow all" chat and after a
+ * remembered grant.
+ */
+export function enforcedDefaultApproval(
+  metadata: Readonly<Record<string, unknown>> | undefined,
+  tier: CapabilityTier | undefined,
+): Exclude<ToolApprovalMode, 'blocked'> {
+  const picked = readToolDefaultApproval(metadata);
+  if (picked !== undefined) return picked;
+  if (tier === 'dangerous') return 'always';
+  return tier === 'read-only' ? 'never' : (TOOL_APPROVAL_DEFAULT_MODE as 'on-changes');
+}
+
 /** What {@link decideToolApproval} reads about one call. */
 export interface ToolApprovalInput {
   /** The chat's permission mode. */
@@ -179,10 +197,13 @@ export function grantLoosensTool(input: GrantLoosensToolInput): boolean {
   const { toolApproval, tools, reportedName, mode } = input;
   const key = tools === undefined ? undefined : keysByReportedName(tools).get(reportedName);
   const tool = key === undefined ? undefined : new Map(Object.entries(tools ?? {})).get(key);
+  const tier = tool === undefined ? undefined : resolveCapabilityTier(tool.metadata, tool.tags);
+  // The agent's own entry, else the level the tool is enforced at: the hook's own order.
   const setting =
     (key === undefined ? undefined : new Map(Object.entries(toolApproval ?? {})).get(key)) ??
-    TOOL_APPROVAL_DEFAULT_MODE;
-  const tier = tool === undefined ? undefined : resolveCapabilityTier(tool.metadata, tool.tags);
+    (tool === undefined
+      ? TOOL_APPROVAL_DEFAULT_MODE
+      : enforcedDefaultApproval(tool.metadata, tier));
   return decideToolApproval({ mode, setting, tier, remembered: true }) === 'allow';
 }
 
@@ -539,11 +560,15 @@ export function createToolApprovalHooks(
     async beforeExecute(context: ToolPolicyContext): Promise<ToolPolicyDecision> {
       const key = governed === undefined ? context.toolName : governed.get(context.toolName);
       if (key === undefined) return { allow: true, status: 'allow' };
-      // The agent's own entry first, then the level the tool's source gives it, then the hook's.
-      const setting = modes.get(key) ?? readToolDefaultApproval(context.metadata) ?? defaultMode;
+      const tier = resolveCapabilityTier(context.metadata, context.tags);
+      // The agent's own entry first, then the tool's pick, then Always for a dangerous tool, then
+      // the hook's own default.
+      const setting =
+        modes.get(key) ??
+        readToolDefaultApproval(context.metadata) ??
+        (tier === 'dangerous' ? 'always' : defaultMode);
       const chat = chatPermissionOf(context);
       const { mode, unreadable } = chat ?? (await modeOfChat());
-      const tier = resolveCapabilityTier(context.metadata, context.tags);
       let status = decideToolApproval({ mode, setting, tier, remembered: false });
       // The grant is read only when it would change the answer.
       if (

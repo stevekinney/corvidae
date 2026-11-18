@@ -194,6 +194,16 @@ describe('a tool’s row', () => {
   test('names its source: Built in, or the server, plugin or skill read as words', () => {
     expect(toolRowSource({ ...TOOL, source: 'bureau' })).toBe('Built in');
     expect(toolRowSource({ ...TOOL, name: 'github__list_branches' })).toBe('Github');
+    // A dangerous tool a source picked Never for reads Never, as the hook enforces it, in the chip,
+    // the word and Used by alike; with no pick it reads Always.
+    const never = { ...TOOL, tier: 'dangerous' as const, defaultApproval: 'allow' as const };
+    expect(defaultAsks({ ...never, defaultAsks: 'never' })).toBe('never');
+    expect(asksLabel({ ...never, defaultAsks: 'never' })).toBe('Asks: Never');
+    expect(asksWord({ ...never, defaultAsks: 'never' })).toBe('Never');
+    expect(userAsks({ ...never, defaultAsks: 'never', userApprovals: {} }, 'writer').text).toBe(
+      'Asks: Never (the default)',
+    );
+    expect(defaultAsks({ ...TOOL, tier: 'dangerous', defaultApproval: 'ask' })).toBe('always');
     // A saved name wins over the identifier read as words: the row says "GitHub", as the chip does.
     const names = sourceNamesOf([{ id: 'github', name: 'GitHub' }]);
     expect(toolRowSource({ ...TOOL, name: 'github__list_branches' }, names)).toBe('GitHub');

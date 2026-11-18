@@ -1889,9 +1889,14 @@ export function createToolSourceManager(options: ToolSourceManagerOptions): Tool
           const withSecrets = acceptsSecrets ? withAcceptsSecrets(tool) : tool;
           // The owner's own Default asks pick rides on the tool, so an agent's approval hook
           // enforces it and the catalog reports it (COR-2436); no pick keeps the tier's rule.
-          const picked = entry.tools.get(tool.name)?.approval;
-          const offered =
-            picked === undefined ? withSecrets : withDefaultApproval(withSecrets, picked);
+          // With no pick it carries the level the page shows (`tierApproval`: Always for a
+          // dangerous tool, Never for a read, On changes for the rest), so what Sources and
+          // Capabilities say is what the hook does, in an "allow all" chat and after a remembered
+          // grant too.
+          const picked =
+            entry.tools.get(tool.name)?.approval ??
+            tierApproval(resolveCapabilityTier(tool.metadata, tool.tags) ?? null);
+          const offered = withDefaultApproval(withSecrets, picked);
           catalog[name] = refusingWhen(offered, () =>
             retired.has(source.id)
               ? `Tool source "${source.id}" was removed or changed, so this tool no longer runs. Start the host again: a changed source then loads as it now stands, and a removed one is gone.`

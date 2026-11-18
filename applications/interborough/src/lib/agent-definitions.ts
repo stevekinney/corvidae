@@ -448,6 +448,12 @@ const catalogSchema = z.object({
       tier: z.enum(['read-only', 'mutating', 'dangerous']).nullable(),
       /** What happens by default when an agent calls the tool (Armorer's tier rule). */
       defaultApproval: z.enum(['allow', 'ask']),
+      /**
+       * The level the tool is enforced at when an agent's file states none (`never`, `on-changes` or
+       * `always`): the one its source picked, else Always for a dangerous tool. A Bureau that sends
+       * none leaves it to the tier's rule.
+       */
+      defaultAsks: z.enum(['never', 'on-changes', 'always']).optional(),
       /** `skill` for a tool a skill brings, else `bureau` for a tool Bureau adds, `plugin` for one a plugin contributes, `host` for one the host provides (an MCP server's). */
       source: z.enum(['host', 'bureau', 'plugin', 'skill']),
       /** The plugin that contributes the tool (`source` is `plugin`, or `skill` for a plugin's skill), else `null`. */

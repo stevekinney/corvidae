@@ -606,6 +606,14 @@ describe('bureau.agents.catalog', () => {
       'quiet-write': picked('quiet-write', 'never', { mutates: true }),
       'careful-read': picked('careful-read', 'always', { readOnly: true }),
       'not-a-level': picked('not-a-level', 'blocked', { mutates: true }),
+      'risky-never': picked('risky-never', 'never', { dangerous: true }),
+      'risky-unpicked': createTool({
+        name: 'risky-unpicked',
+        description: 'Dangerous, with no pick',
+        input: z.object({}),
+        metadata: { dangerous: true },
+        execute: async () => 'done',
+      }),
     };
     const directory = await mkdtemp(join(tmpdir(), 'bureau-tool-catalog-picked-'));
     roots.push(directory);
@@ -623,6 +631,21 @@ describe('bureau.agents.catalog', () => {
     expect(byName['careful-read']).toMatchObject({ tier: 'read-only', defaultApproval: 'ask' });
     // Blocked is no tool's default: the tier's rule stands.
     expect(byName['not-a-level']).toMatchObject({ tier: 'mutating', defaultApproval: 'ask' });
+    // The three-level value the hook enforces, for every reader to show: a dangerous tool picked
+    // Never reads Never, not Always; one with no pick reads Always.
+    expect(byName['quiet-write']).toMatchObject({ defaultAsks: 'never' });
+    expect(byName['careful-read']).toMatchObject({ defaultAsks: 'always' });
+    expect(byName['not-a-level']).toMatchObject({ defaultAsks: 'on-changes' });
+    expect(byName['risky-never']).toMatchObject({
+      tier: 'dangerous',
+      defaultApproval: 'allow',
+      defaultAsks: 'never',
+    });
+    expect(byName['risky-unpicked']).toMatchObject({
+      tier: 'dangerous',
+      defaultApproval: 'ask',
+      defaultAsks: 'always',
+    });
   });
 
   it('drops a user when the agent file is gone', async () => {

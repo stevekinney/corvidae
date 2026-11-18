@@ -330,7 +330,8 @@ export const CAPABILITIES_COPY = {
       acceptsSecretsLabel: (tool: string): string => `Accepts secrets: ${tool}`,
       acceptsSecretsHelp:
         'A tool that accepts secrets may receive the plaintext of an answer a person marks secret. Leave it off unless the tool needs the secret.',
-      takesEffect: 'Takes effect when Interborough starts again',
+      takesEffect:
+        'Takes effect when Interborough starts again, which is also when a Default asks level picked before now begins to be enforced',
       saveFailed: 'The setting could not be saved',
       locked: 'This host keeps its configuration in its deployment, so it cannot be changed here.',
     },

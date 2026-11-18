@@ -56,24 +56,31 @@ export function riskTooltip(tier: ToolTier): string {
   return TOOL.chips.riskTooltip[tier];
 }
 
+/** What the asks level of a tool is read from: its tier and default, and the level the Bureau enforces, when it says. */
+type AsksSource = Pick<CatalogTool, 'tier' | 'defaultApproval'> &
+  Pick<Partial<CatalogTool>, 'defaultAsks'>;
+
 /**
  * The asks level a tool has when an agent's file says nothing about it, in the words Access uses:
  * a dangerous tool defaults to Always (design row 30i), one that changes something or declares
  * nothing to On changes, and one that only reads to Never. Blocked is never a default: it belongs
  * to one agent's file, which the catalog does not carry.
  */
-export function defaultAsks(tool: Pick<CatalogTool, 'tier' | 'defaultApproval'>): ToolApproval {
+export function defaultAsks(tool: AsksSource): ToolApproval {
+  // The level the hook enforces, which the Bureau reports: a dangerous tool picked Never reads
+  // Never here and in every reader of this one value (the editor's "equals the default" rule too).
+  if (tool.defaultAsks !== undefined) return tool.defaultAsks;
   if (tool.tier === 'dangerous') return 'always';
   return tool.defaultApproval === 'ask' ? 'on-changes' : 'never';
 }
 
 /** The words of the asks chip: "Asks: Never". */
-export function asksLabel(tool: Pick<CatalogTool, 'tier' | 'defaultApproval'>): string {
+export function asksLabel(tool: AsksSource): string {
   return TOOL.chips.asks(AGENT_PAGE_COPY.access.approvals[defaultAsks(tool)]);
 }
 
 /** The sentence the asks chip's tooltip says: what the level does, then the four values. */
-export function asksTooltip(tool: Pick<CatalogTool, 'tier' | 'defaultApproval'>): string {
+export function asksTooltip(tool: AsksSource): string {
   return `${TOOL.chips.asksTooltip[defaultAsks(tool)]} ${TOOL.chips.asksValues}`;
 }
 
@@ -130,7 +137,7 @@ export function toolHeading(tool: Pick<CatalogTool, 'name' | 'title'>): string {
 }
 
 /** The word of the asks level a tool defaults to, as the Access tab says it: "Never", "On changes", "Always". */
-export function asksWord(tool: Pick<CatalogTool, 'tier' | 'defaultApproval'>): string {
+export function asksWord(tool: AsksSource): string {
   return AGENT_PAGE_COPY.access.approvals[defaultAsks(tool)];
 }
 
@@ -140,7 +147,7 @@ export function asksWord(tool: Pick<CatalogTool, 'tier' | 'defaultApproval'>): s
  * agent, so it reads "Blocked on this agent" here and is never a property of the tool.
  */
 export function userAsks(
-  tool: Pick<CatalogTool, 'tier' | 'defaultApproval' | 'userApprovals'>,
+  tool: AsksSource & Pick<CatalogTool, 'userApprovals'>,
   user: string,
   /**
    * The agents defined in code: the catalog carries no level for one, because its code sets it,

@@ -128,7 +128,7 @@ import {
 import {
   createToolApprovalHooks,
   defaultToolApproval,
-  readToolDefaultApproval,
+  enforcedDefaultApproval,
   type ToolApprovalMode,
 } from './tool-approval';
 import { type AgentRevisionRecord, createAgentRevisionStore } from './agent-revision-store';
@@ -275,6 +275,12 @@ export interface AgentToolDescription {
    */
   readonly defaultApproval: Exclude<ApprovalStatus, 'deny'>;
   /**
+   * The level the tool is enforced at when an agent's file states none, one value every reader
+   * and the approval hook share (`enforcedDefaultApproval`): the pick its source stored, else
+   * Always for a dangerous tool, Never for a tool that only reads, On changes for the rest.
+   */
+  readonly defaultAsks: Exclude<ToolApprovalMode, 'blocked'>;
+  /**
    * Where the tool comes from: `skill` for a tool a skill brings (its `metadata.skill` names the
    * skill, COR-2009), whoever registered it; otherwise `bureau` for a tool Bureau adds itself (the
    * settings and workflow tools, and the built-in `bureau` plugin's), `plugin` for a tool another
@@ -312,8 +318,9 @@ export interface AgentToolDescription {
  */
 export function describeToolCapability(
   tool: Pick<Tool, 'metadata' | 'tags' | 'toJSON'>,
-): Pick<AgentToolDescription, 'inputSchema' | 'tier' | 'defaultApproval'> {
+): Pick<AgentToolDescription, 'inputSchema' | 'tier' | 'defaultApproval' | 'defaultAsks'> {
   const tier = resolveCapabilityTier(tool.metadata, tool.tags);
+  const asks = enforcedDefaultApproval(tool.metadata, tier);
   let inputSchema: Readonly<Record<string, unknown>> | null;
   try {
     inputSchema = { ...tool.toJSON().input };
@@ -323,8 +330,9 @@ export function describeToolCapability(
   return {
     inputSchema,
     tier: tier ?? null,
-    // The level the tool's own source gives it (its Default asks, COR-2436), else the tier's rule.
-    defaultApproval: defaultToolApproval(tier, readToolDefaultApproval(tool.metadata)),
+    // What the enforced level means for an ordinary call, and the level itself (COR-2436).
+    defaultApproval: defaultToolApproval(tier, asks),
+    defaultAsks: asks,
   };
 }
 

@@ -135,6 +135,7 @@
     "$.models[].tools",
     "$.tools",
     "$.tools[].defaultApproval",
+    "$.tools[].defaultAsks",
     "$.tools[].description",
     "$.tools[].inputSchema",
     "$.tools[].inputSchema|anyOf[0].*",

@@ -168,6 +168,34 @@ describe('a saved source’s name, description and choice of tools', () => {
     expect(tools['pets__list-pets']?.metadata?.['defaultApproval']).toBe('always');
   });
 
+  test('a tool with no pick carries the level its tier gives, so the page and the hook agree for every tier (COR-2436 review)', async () => {
+    const home = memoryHome();
+    const keys = await keysOf();
+    const first = managerOver(home, keys);
+    await first.connect({
+      id: 'pets',
+      source: petsSource,
+      credentials: { key: 'k' },
+      principal: owner,
+    });
+    await first.close();
+
+    const second = managerOver(home, keys);
+    await second.start();
+    const standing = await standingOf(second);
+    const tools = second.tools();
+
+    // Every offered tool, picked or not, carries the level the Sources page reports for it: a
+    // dangerous tool with no pick asks Always, a read runs, a change asks on changes.
+    const offered = standing?.tools.filter((tool) => tool.enabled) ?? [];
+    expect(offered.length).toBeGreaterThan(1);
+    for (const tool of offered) {
+      expect(tools[tool.name]?.metadata?.['defaultApproval']).toBe(tool.approval);
+    }
+    const tiers = new Set(offered.map((tool) => tool.tier));
+    expect(tiers.size).toBeGreaterThan(1);
+  });
+
   test('a connect that changes only a label writes it and keeps the tools and credentials', async () => {
     const home = memoryHome();
     const manager = managerOver(home, await keysOf());
