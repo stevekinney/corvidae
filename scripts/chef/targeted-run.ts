@@ -95,6 +95,16 @@ function readAppFixtureSlugs(): string[] {
   );
 }
 
+/**
+ * The bunfig a unit test file runs under, as its workspace's `test` script runs it. Interborough
+ * runs `src/host` and `fixtures` under the default bunfig and every other test under
+ * `bunfig.ui.toml`, whose preload compiles Svelte and sets up the DOM.
+ */
+export function unitConfigFor(workspace: string, path: string): string {
+  if (workspace !== 'applications/interborough') return '';
+  return /^(src\/host|fixtures)\//.test(path) ? '' : './bunfig.ui.toml';
+}
+
 /** The inputs a branch's changed files reach; unknown component directories are left out. */
 export function deriveInputs(changed: string[], known: ReadonlySet<string>): TargetedInputs {
   const slugs = new Set<string>();
@@ -113,23 +123,27 @@ export function deriveInputs(changed: string[], known: ReadonlySet<string>): Tar
       /^((?:applications|components|packages|plugins|testing|internal)\/[\w.-]+)\/(.+\.test\.ts)$/.exec(
         file,
       );
-    if (unit?.[1] !== undefined && unit[2] !== undefined)
-      unitByWorkspace.set(unit[1], [...(unitByWorkspace.get(unit[1]) ?? []), unit[2]]);
+    if (unit?.[1] !== undefined && unit[2] !== undefined) {
+      const lane = `${unit[1]}\0${unitConfigFor(unit[1], unit[2])}`;
+      unitByWorkspace.set(lane, [...(unitByWorkspace.get(lane) ?? []), unit[2]]);
+    }
   }
-  let unitWorkspace = '';
+  // One unit run takes one workspace and one bunfig, so the busiest lane wins.
+  let unitLane = '';
   let unitPaths: string[] = [];
-  for (const [workspace, paths] of unitByWorkspace)
+  for (const [lane, paths] of unitByWorkspace)
     if (paths.length > unitPaths.length) {
-      unitWorkspace = workspace;
+      unitLane = lane;
       unitPaths = paths;
     }
+  const [unitWorkspace = '', unitConfig = ''] = unitLane === '' ? [] : unitLane.split('\0');
   return {
     fixtureComponents: [...slugs].toSorted(),
     fixtureSpecs,
     e2eSpecs,
     unitWorkspace,
     unitPaths,
-    unitConfig: '',
+    unitConfig,
   };
 }
 
@@ -235,15 +249,17 @@ export function run(
       explicit.e2eSpecs.length +
       explicit.unitPaths.length >
     0;
-  const inputs = given
-    ? explicit
-    : {
-        ...deriveInputs(
-          git(runner, ['diff', '--name-only', 'origin/main...HEAD']).split('\n').filter(Boolean),
-          dependencies.knownSlugs(),
-        ),
-        unitConfig: explicit.unitConfig,
-      };
+  // A deleted file has nothing to run, so the derived selection reads only files the branch keeps.
+  const derived = (): TargetedInputs => {
+    const inputs = deriveInputs(
+      git(runner, ['diff', '--name-only', '--diff-filter=d', 'origin/main...HEAD'])
+        .split('\n')
+        .filter(Boolean),
+      dependencies.knownSlugs(),
+    );
+    return explicit.unitConfig === '' ? inputs : { ...inputs, unitConfig: explicit.unitConfig };
+  };
+  const inputs = given ? explicit : derived();
   const ref = parsed.values['ref'] ?? git(runner, ['rev-parse', '--abbrev-ref', 'HEAD']);
   if (!/^[\w./-]+$/.test(ref)) throw new UsageError(`'${ref}' is not a branch name.`);
   const problems = validateInputs(inputs, dependencies);

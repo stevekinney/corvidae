@@ -15,6 +15,7 @@ const known = new Set(['approval-card', 'description-list', 'terminal']);
 function fake(
   changed: string[],
   existing: string[] = [],
+  deleted: string[] = [],
 ): {
   dependencies: TargetedDependencies;
   calls: string[][];
@@ -22,7 +23,11 @@ function fake(
   const calls: string[][] = [];
   const runner: Runner = (command) => {
     calls.push(command);
-    if (command[1] === 'diff') return { code: 0, stdout: `${changed.join('\n')}\n`, stderr: '' };
+    if (command[1] === 'diff') {
+      // `--diff-filter=d` leaves deleted files out, as git does.
+      const listed = command.includes('--diff-filter=d') ? changed : [...changed, ...deleted];
+      return { code: 0, stdout: `${listed.join('\n')}\n`, stderr: '' };
+    }
     if (command[1] === 'rev-parse') return { code: 0, stdout: 'chef/x\n', stderr: '' };
     return { code: 0, stdout: '', stderr: '' };
   };
@@ -66,7 +71,49 @@ describe('deriveInputs', () => {
   });
 });
 
+describe('unit lanes', () => {
+  test('an Interborough UI test runs under bunfig.ui.toml, a host test under the default', () => {
+    expect(
+      deriveInputs(['applications/interborough/src/views/standalone-view.test.ts'], known),
+    ).toMatchObject({
+      unitWorkspace: 'applications/interborough',
+      unitPaths: ['src/views/standalone-view.test.ts'],
+      unitConfig: './bunfig.ui.toml',
+    });
+    expect(
+      deriveInputs(['applications/interborough/src/host/panel-build-cache.test.ts'], known),
+    ).toMatchObject({ unitPaths: ['src/host/panel-build-cache.test.ts'], unitConfig: '' });
+  });
+
+  test('host and UI tests in one diff never share a run: the busier lane is selected', () => {
+    const inputs = deriveInputs(
+      [
+        'applications/interborough/src/host/a.test.ts',
+        'applications/interborough/src/views/b.test.ts',
+        'applications/interborough/src/routes/c.test.ts',
+      ],
+      known,
+    );
+    expect(inputs.unitPaths).toEqual(['src/views/b.test.ts', 'src/routes/c.test.ts']);
+    expect(inputs.unitConfig).toBe('./bunfig.ui.toml');
+  });
+
+  test('another workspace keeps its default bunfig', () => {
+    expect(deriveInputs(['packages/bureau/src/x.test.ts'], known).unitConfig).toBe('');
+  });
+});
+
 describe('run', () => {
+  test('a deleted test is left out of the derived selection instead of refusing the run', () => {
+    const { dependencies } = fake(
+      ['packages/bureau/src/kept.test.ts'],
+      ['packages/bureau/package.json', 'packages/bureau/src/kept.test.ts'],
+      ['packages/bureau/src/removed.test.ts'],
+    );
+    const result = run(['--dry-run', '--json'], dependencies);
+    expect(JSON.parse(result.output).inputs.unitPaths).toEqual(['src/kept.test.ts']);
+  });
+
   test('builds the command from the diff and passes only inputs that name something', () => {
     const { dependencies, calls } = fake([
       'components/cinder/src/components/description-list/description-list.svelte',
