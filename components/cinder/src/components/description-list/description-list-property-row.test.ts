@@ -128,16 +128,17 @@ describe('DescriptionList fields: the PropertyRow trailing chevron', () => {
     );
   });
 
-  test("the label takes InspectorRow's sizes: the body size, and the small size below 700px", () => {
+  test("the label takes InspectorRow's sizes: the body size beside its value, the small size stacked", () => {
     expect(css).toMatch(
       /\.cinder-description-list\[data-cinder-variant='fields'\] dt\s*\{[^}]*font-size: var\(--cinder-text-base\)/s,
     );
-    expect(containerBlock('cinder-description-list (width < 700px)')).toMatch(
-      /\[data-cinder-variant='fields'\]:not\(\[data-cinder-framed\]\) dt\s*\{[^}]*font-size: var\(--cinder-text-sm\)/s,
+    // Only a stacked row drops the label to the small size; beside its value it keeps the body
+    // size, so the two share a baseline whatever the list's surface.
+    expect(containerBlock('(width < 23rem)')).toMatch(
+      /\.cinder-description-list\[data-cinder-variant='fields'\] dt\s*\{[^}]*font-size: var\(--cinder-text-sm\)/s,
     );
-    expect(containerBlock('cinder-description-list (width < 42.75rem)')).toMatch(
-      /\[data-cinder-variant='fields'\]\[data-cinder-framed\] dt\s*\{[^}]*font-size: var\(--cinder-text-sm\)/s,
-    );
+    expect(containerBlock('cinder-description-list (width < 42.75rem)')).not.toMatch(/font-size/);
+    expect(css).not.toMatch(/@container cinder-description-list \(width < 700px\)/);
   });
 });
 

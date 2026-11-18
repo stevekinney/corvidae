@@ -170,8 +170,8 @@
     border-block-end-color: transparent;
   }
 
-  /* The label is set in the body size, as an InspectorRow's is; on a phone it drops to the small
-   * size above its value (below). */
+  /* The label is set in the body size, as an InspectorRow's is; when the row stacks it drops to
+   * the small size above its value (below). */
   .cinder-description-list[data-cinder-variant='fields'] dt {
     color: var(--cinder-text-muted);
     font-size: var(--cinder-text-base);
@@ -191,33 +191,29 @@
   }
 
   /* Below 700px of the list's own width, as an Inspector below 700px of its own (COR-2394), a framed
-   * group takes the raised fill of a grouped list and the label takes the small size an
-   * InspectorRow's label takes, so a list and an Inspector of one width agree. A size query measures
-   * the content box, so a framed list, with its 1rem start padding, switches at 42.75rem. */
-  @container cinder-description-list (width < 700px) {
-    .cinder-description-list[data-cinder-variant='fields']:not([data-cinder-framed]) dt {
-      font-size: var(--cinder-text-sm);
-    }
-  }
-
+   * group takes the raised fill of a grouped list, so a list and an Inspector of one width agree. A
+   * size query measures the content box, so a framed list, with its 1rem start padding, switches at
+   * 42.75rem. */
   @container cinder-description-list (width < 42.75rem) {
     .cinder-description-list[data-cinder-variant='fields'][data-cinder-framed]::before {
       background: var(--cinder-surface-raised);
-    }
-
-    .cinder-description-list[data-cinder-variant='fields'][data-cinder-framed] dt {
-      font-size: var(--cinder-text-sm);
     }
   }
 
   /* Below 23rem (368px) of the list's own width, too narrow for the 140px label, its 12px gap and a
    * readable value beside them, the term stacks above its value: a phone-width list at 375 does, a
    * rail or a drawer at desktop width does not. The list is the container, so the query restyles
-   * its rows: each leaves the shared track list for one column of its own. */
+   * its rows: each leaves the shared track list for one column of its own. A stacked label takes
+   * the small size an InspectorRow's stacked label takes; a label beside its value keeps the body
+   * size, so the two share a baseline. */
   @container (width < 23rem) {
     .cinder-description-list[data-cinder-variant='fields'] .cinder-description-list__row {
       grid-template-columns: minmax(0, 1fr);
       gap: var(--cinder-space-1);
+    }
+
+    .cinder-description-list[data-cinder-variant='fields'] dt {
+      font-size: var(--cinder-text-sm);
     }
   }
 
