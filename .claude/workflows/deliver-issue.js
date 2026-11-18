@@ -75,7 +75,7 @@ function prepare(issue, run) {
   return agent(
     [
       `Prepare chef delivery of ${issue}. Invoke no skills. Make no Linear or GitHub writes.`,
-      `Run \`bun scripts/chef/brief.ts ${issue}${run ? ` --run ${run}` : ''} --json\`. A non-zero exit means another run holds the issue: return no briefPath and list that holder as the only blocker. The brief path is \`path\` in its output (tmp/chef/briefs/${issue}.md). Read the brief's open-blockers section and list each open blocker identifier in "blockers" (empty when it says None).`,
+      `Resolve the immutable current revision with \`git rev-parse HEAD\`, then run \`bun scripts/chef/brief.ts ${issue} --repository stevekinney/corvidae --base <that-40-character-sha>${run ? ` --run ${run}` : ''} --json\`. A non-zero exit means preparation refused: return no briefPath and list the structured blockers when present. The brief path is \`path\` in its output (tmp/chef/briefs/${issue}.md). Read the brief's open-blockers section and list each open blocker identifier in "blockers" (empty when it says None).`,
       'Return briefPath and blockers.',
     ].join('\n'),
     {

@@ -646,7 +646,16 @@ describe('run', () => {
 
   test('writes <ID>.md in the output directory and reports it', async () => {
     const result = await run(
-      ['COR-7', '--out-dir', sandbox, '--repository', 'corvidae', '--base', 'base', '--json'],
+      [
+        'COR-7',
+        '--out-dir',
+        sandbox,
+        '--repository',
+        'stevekinney/corvidae',
+        '--base',
+        '0123456789abcdef0123456789abcdef01234567',
+        '--json',
+      ],
       dependencies,
     );
     expect(result.code).toBe(0);
@@ -660,7 +669,16 @@ describe('run', () => {
     const scratches: string[] = [];
     for (let attempt = 0; attempt < 2; attempt += 1) {
       const result = await run(
-        ['COR-7', '--out-dir', sandbox, '--repository', 'corvidae', '--base', 'base', '--json'],
+        [
+          'COR-7',
+          '--out-dir',
+          sandbox,
+          '--repository',
+          'stevekinney/corvidae',
+          '--base',
+          '0123456789abcdef0123456789abcdef01234567',
+          '--json',
+        ],
         dependencies,
       );
       const parsed = JSON.parse(result.output) as { path: string; scratch: string };
@@ -720,9 +738,9 @@ describe('run', () => {
         '--out-dir',
         sandbox,
         '--repository',
-        'corvidae',
+        'stevekinney/corvidae',
         '--base',
-        'base',
+        '0123456789abcdef0123456789abcdef01234567',
         '--json',
       ],
       {
@@ -747,7 +765,16 @@ describe('run', () => {
 
   test('writes the open blockers it reads from Linear', async () => {
     const result = await run(
-      ['COR-7', '--out-dir', sandbox, '--repository', 'corvidae', '--base', 'base', '--json'],
+      [
+        'COR-7',
+        '--out-dir',
+        sandbox,
+        '--repository',
+        'stevekinney/corvidae',
+        '--base',
+        '0123456789abcdef0123456789abcdef01234567',
+        '--json',
+      ],
       {
         ...dependencies,
         fetch: answer(true),
@@ -759,7 +786,15 @@ describe('run', () => {
 
   test('returns the validated assignment, verification plan, and blocked dispatch gate in JSON', async () => {
     const result = await run(
-      ['COR-7', '--stdout', '--json', '--repository', 'corvidae', '--base', 'base-7'],
+      [
+        'COR-7',
+        '--stdout',
+        '--json',
+        '--repository',
+        'stevekinney/corvidae',
+        '--base',
+        '0123456789abcdef0123456789abcdef01234567',
+      ],
       {
         ...dependencies,
         fetch: answer(true),
@@ -808,9 +843,9 @@ describe('run', () => {
         '--out-dir',
         sandbox,
         '--repository',
-        'corvidae',
+        'stevekinney/corvidae',
         '--base',
-        'base',
+        '0123456789abcdef0123456789abcdef01234567',
         '--run',
         'run-a',
         '--json',
@@ -839,7 +874,16 @@ describe('run', () => {
     };
     for (const extra of [['--run', 'run-b'], []]) {
       const result = await run(
-        ['COR-7', '--out-dir', sandbox, '--repository', 'corvidae', '--base', 'base', ...extra],
+        [
+          'COR-7',
+          '--out-dir',
+          sandbox,
+          '--repository',
+          'stevekinney/corvidae',
+          '--base',
+          '0123456789abcdef0123456789abcdef01234567',
+          ...extra,
+        ],
         held,
       );
       expect(result.code).toBe(1);
@@ -860,9 +904,9 @@ describe('run', () => {
           '--out-dir',
           sandbox,
           '--repository',
-          'corvidae',
+          'stevekinney/corvidae',
           '--base',
-          'base',
+          '0123456789abcdef0123456789abcdef01234567',
           '--run',
           'run-b',
         ],

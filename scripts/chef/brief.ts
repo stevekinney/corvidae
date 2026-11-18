@@ -51,7 +51,7 @@
 //
 // Exit codes: 0 brief written, 1 issue not found or API failure, 2 invalid CLI usage.
 
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   type Blocker,
@@ -398,6 +398,7 @@ export interface BriefOptions {
   repository?: string | undefined;
   /** Coordinator-pinned base revision for a dispatchable assignment. */
   base?: string | undefined;
+  classification?: 'behavior' | 'no-behavior' | undefined;
   /** Coordinator-supplied content digests for required external context. */
   sourceContext?: ReadonlyMap<string, string> | undefined;
   /** Omitted when the blockers were not read; the brief then says so instead of "None". */
@@ -413,6 +414,26 @@ export interface BriefOptions {
   scratch?: string | undefined;
   /** The parent of every brief's scratch directory; `readBrief` appends `<issue>-<short id>`. */
   scratchRoot?: string | undefined;
+}
+
+function sourceContext(path: string | undefined): ReadonlyMap<string, string> | undefined {
+  if (path === undefined) return undefined;
+  const parsed: unknown = JSON.parse(readFileSync(path, 'utf8'));
+  if (!Array.isArray(parsed)) throw new UsageError('--context must be a JSON array.');
+  const entries = parsed.map((entry) => {
+    if (
+      typeof entry !== 'object' ||
+      entry === null ||
+      typeof (entry as Record<string, unknown>)['locator'] !== 'string' ||
+      typeof (entry as Record<string, unknown>)['content'] !== 'string'
+    )
+      throw new UsageError('--context entries require string locator and content fields.');
+    const value = entry as { locator: string; content: string; digest?: unknown };
+    if (value.digest !== undefined && value.digest !== digest(value.content))
+      throw new UsageError('--context digest does not match its content.');
+    return [value.locator, value.content] as const;
+  });
+  return new Map(entries);
 }
 
 /** A directory name unique to one brief of `identifier`: `COR-7-1a2b3c4d`. */
@@ -677,7 +698,7 @@ function assignmentOf(issue: IssueSummary, options: BriefOptions): Assignment {
       'commit',
       'push assigned branch',
     ],
-    classification: /\bno[- ]behavior\b/i.test(description) ? 'no-behavior' : 'behavior',
+    classification: options.classification ?? 'behavior',
   };
   identity.digest = digest(
     JSON.stringify({ ...assignment, identity: { ...assignment.identity, digest: undefined } }),
@@ -889,7 +910,7 @@ export async function run(
   runner: Runner = defaultRunner,
 ): Promise<{ code: number; output: string }> {
   const parsed = parseOptions(argv, {
-    values: ['out-dir', 'model', 'run', 'repository', 'base'],
+    values: ['out-dir', 'model', 'run', 'repository', 'base', 'classification', 'context'],
     repeated: ['path', 'verify'],
     flags: ['json', 'stdout'],
   });
@@ -901,7 +922,7 @@ export async function run(
     new Set(identifiers).size !== identifiers.length
   )
     throw new UsageError(
-      'Usage: brief.ts <ID> [<ID>...] [--path <file>]... [--verify <command>]... [--model <name>] [--repository <name> --base <sha>] [--run <id>] [--out-dir <dir>] [--stdout] [--json]',
+      'Usage: brief.ts <ID> [<ID>...] [--path <file>]... [--verify <command>]... [--model <name>] [--repository <name> --base <sha>] [--classification <behavior|no-behavior>] [--context <json>] [--run <id>] [--out-dir <dir>] [--stdout] [--json]',
     );
   const batch = identifiers.length > 1;
   const stdout = parsed.flags.has('stdout');
@@ -915,6 +936,17 @@ export async function run(
       ? {}
       : { repository: parsed.values['repository'] }),
     ...(parsed.values['base'] === undefined ? {} : { base: parsed.values['base'] }),
+    ...(parsed.values['context'] === undefined
+      ? {}
+      : { sourceContext: sourceContext(parsed.values['context']) }),
+    ...(parsed.values['classification'] === undefined
+      ? {}
+      : parsed.values['classification'] === 'behavior' ||
+          parsed.values['classification'] === 'no-behavior'
+        ? { classification: parsed.values['classification'] }
+        : (() => {
+            throw new UsageError('--classification must be behavior or no-behavior.');
+          })()),
     ...(parsed.values['run'] === undefined ? {} : { run: parsed.values['run'] }),
   };
   const json = parsed.flags.has('json');

@@ -13,8 +13,8 @@ const assignment = (overrides: Partial<Assignment> = {}): Assignment => ({
   identity: {
     identifier: 'COR-7',
     revision: '2026-11-17',
-    repository: 'corvidae',
-    base: 'base',
+    repository: 'stevekinney/corvidae',
+    base: '0123456789abcdef0123456789abcdef01234567',
     digest: digest('assignment'),
   },
   criteria: [{ id: 'AC1', text: 'Works.' }],

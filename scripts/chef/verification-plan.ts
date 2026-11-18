@@ -144,10 +144,8 @@ export function gateAssignment(
   const valid =
     assignment.version === assignmentVersion &&
     assignment.identity.identifier !== '' &&
-    assignment.identity.repository !== '' &&
-    assignment.identity.repository !== 'unresolved' &&
-    assignment.identity.base !== '' &&
-    assignment.identity.base !== 'unresolved' &&
+    /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(assignment.identity.repository) &&
+    /^[0-9a-f]{40}$/i.test(assignment.identity.base) &&
     assignment.criteria.every((criterion) => criterion.id !== '' && criterion.text !== '') &&
     (assignment.criteria.length > 0 || assignment.classification === 'no-behavior');
   const blocked =
