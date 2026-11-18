@@ -21,7 +21,8 @@ test.describe('a panel placed on a run’s page', () => {
     expectEngineMissesForRuns(pageErrors);
   });
 
-  test.afterEach(async () => {
+  test.afterEach(async ({ page }) => {
+    await page.close();
     await deleteChats(threads.splice(0));
   });
 
