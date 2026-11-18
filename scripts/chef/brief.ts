@@ -511,6 +511,13 @@ export function renderBrief(issue: IssueSummary, options: BriefOptions): string 
 }
 
 function scratchLines(options: BriefOptions): string[] {
+  const contexts =
+    options.scratch === undefined || options.sourceContext === undefined
+      ? []
+      : [...options.sourceContext].map(
+          ([locator, content]) =>
+            `- ${locator} → ${digest(content)} → \`${join(options.scratch, `context-${digest(content)}.txt`)}\``,
+        );
   return options.scratch === undefined
     ? []
     : [
@@ -518,7 +525,22 @@ function scratchLines(options: BriefOptions): string[] {
         '',
         `\`${options.scratch}\` is yours alone, created for this brief. Keep your logs and temporary files there and nowhere shared.`,
         '',
+        ...(contexts.length === 0
+          ? []
+          : [
+              '## Verified context snapshots',
+              '',
+              'Use these pinned bytes; do not refetch live sources.',
+              ...contexts,
+              '',
+            ]),
       ];
+}
+
+function writeContextSnapshots(options: BriefOptions, scratch: string | undefined): void {
+  if (scratch === undefined || options.sourceContext === undefined) return;
+  for (const [, content] of options.sourceContext)
+    writeFileSync(join(scratch, `context-${digest(content)}.txt`), content, { flag: 'wx' });
 }
 
 /** The files, verification and charter sections that close every brief. */
@@ -895,6 +917,7 @@ export async function writeBatchBrief(
     );
   mkdirSync(options.outDirectory, { recursive: true });
   if (brief.scratch !== undefined) mkdirSync(brief.scratch, { recursive: true });
+  writeContextSnapshots(options, brief.scratch);
   const path = join(options.outDirectory, `${brief.identifier}.md`);
   writeFileSync(path, brief.text);
   return {
@@ -922,6 +945,7 @@ export async function writeBrief(
     );
   mkdirSync(options.outDirectory, { recursive: true });
   if (brief.scratch !== undefined) mkdirSync(brief.scratch, { recursive: true });
+  writeContextSnapshots(options, brief.scratch);
   const path = join(options.outDirectory, `${brief.identifier}.md`);
   writeFileSync(path, brief.text);
   return {
@@ -1040,6 +1064,7 @@ export async function run(
     }
     mkdirSync(outDirectory, { recursive: true });
     if (brief.scratch !== undefined) mkdirSync(brief.scratch, { recursive: true });
+    writeContextSnapshots(pinnedOptions, brief.scratch);
     const path = join(outDirectory, `${brief.identifier}.md`);
     writeFileSync(path, brief.text);
     const result = {
