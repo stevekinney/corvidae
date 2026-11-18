@@ -11,9 +11,9 @@
 //   e2e specs           `applications/interborough/tests/e2e/*.spec.ts`, as `tests/e2e/*.spec.ts`
 //   unit files          `*.test.ts` files of the one workspace holding the most of them
 //
-// The valid slugs are the ones `components.playwright.ts` accepts: the manifest's, which are the
-// directories of `*/*-fixtures.ts` under the fixture roots plus the declared application fixtures.
-// The slug check is the workflow's own `parseComponentFilter`.
+// The valid slugs are the ones `components.playwright.ts` accepts: the generated manifest's, which
+// this script regenerates first with `prepare-manifest.ts`. The slug check is the workflow's own
+// `parseComponentFilter`.
 //
 // Usage:
 //   bun scripts/chef/targeted-run.ts [--ref <branch>] [--fixture-components a,b]
@@ -24,10 +24,11 @@
 // A newer dispatch on a ref cancels the older one. Exit codes: 0 dispatched (or printed), 2 invalid
 // input, with nothing dispatched.
 
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 import { parseComponentFilter } from '../../testing/testing/src/helpers/component-filter.ts';
+import { loadManifest } from '../../testing/testing/src/helpers/manifest.ts';
 import {
   defaultRunner,
   emitResult,
@@ -67,32 +68,31 @@ export interface TargetedDependencies {
   knownSlugs: () => ReadonlySet<string>;
 }
 
-/** The slugs `components.playwright.ts` accepts, without running the manifest's extraction. */
-export function manifestSlugs(): ReadonlySet<string> {
-  const slugs = new Set<string>();
-  for (const root of ['components/cinder/src/components', 'components/chat/src/lib/components']) {
-    const cwd = resolve(REPOSITORY_ROOT, root);
-    if (!existsSync(cwd)) continue;
-    for (const path of new Bun.Glob('*/*-fixtures.ts').scanSync({ cwd }))
-      slugs.add(path.split('/')[0] ?? '');
-  }
-  const declarations = readAppFixtureSlugs();
-  for (const slug of declarations) slugs.add(slug);
-  return slugs;
+/**
+ * Where `scripts/browser-fixtures/scripts/prepare-manifest.ts` writes the root suite's manifest
+ * (`defaultManifestLayout.outputDirectory`), which `components.playwright.ts` reads its slugs from.
+ */
+export const MANIFEST_PATH = resolve(
+  REPOSITORY_ROOT,
+  'scripts/browser-fixtures/.playwright/manifest.json',
+);
+
+/**
+ * The slugs `components.playwright.ts` accepts: the generated manifest's own entries, never a copy
+ * of the layout's fixture roots, which went stale when a package moved its fixtures.
+ */
+export function manifestSlugs(path = MANIFEST_PATH): ReadonlySet<string> {
+  return new Set(loadManifest(path).map((entry) => entry.slug));
 }
 
-function readAppFixtureSlugs(): string[] {
-  const source = new Bun.Glob('src/app-fixture-declarations.ts').scanSync({
-    cwd: resolve(REPOSITORY_ROOT, 'scripts/browser-fixtures'),
-    absolute: true,
-  });
-  const [path] = [...source];
-  if (path === undefined) return [];
-  const text = readFileSync(path, 'utf8');
-  // Keys of the declaration object: `name: [` or `'name': [`, one per line.
-  return [...text.matchAll(/^\s*(?:'([\w-]+)'|([\w-]+)):\s*[\w[]/gmu)].map(
-    (match) => match[1] ?? match[2] ?? '',
-  );
+/** Regenerates the manifest (a no-op when its inputs are unchanged), then reads its slugs. */
+function preparedSlugs(runner: Runner): ReadonlySet<string> {
+  const result = runner(['bun', 'scripts/browser-fixtures/scripts/prepare-manifest.ts']);
+  if (result.code !== 0)
+    throw new UsageError(
+      `prepare-manifest.ts failed: ${result.stderr.trim().split('\n')[0] ?? ''}`,
+    );
+  return manifestSlugs();
 }
 
 /**
@@ -223,7 +223,7 @@ export function run(
   dependencies: TargetedDependencies = {
     runner: defaultRunner,
     exists: (path) => existsSync(resolve(REPOSITORY_ROOT, path)),
-    knownSlugs: manifestSlugs,
+    knownSlugs: () => preparedSlugs(defaultRunner),
   },
 ): { code: number; output: string } {
   const parsed = parseOptions(argv, {

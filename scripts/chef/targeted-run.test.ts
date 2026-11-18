@@ -1,9 +1,15 @@
 import { describe, expect, test } from 'bun:test';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
+import { defaultManifestLayout } from '../browser-fixtures/scripts/prepare-manifest.ts';
 
 import type { Runner } from './process-runner.ts';
 import {
   buildCommand,
   deriveInputs,
+  MANIFEST_PATH,
   manifestSlugs,
   run,
   UsageError,
@@ -234,10 +240,20 @@ describe('the workflow and the manifest', () => {
       expect(workflow).toContain(`      ${argument.split('=')[0]}:`);
   });
 
-  test('the repository manifest holds slugs the fixture suite knows', () => {
-    const slugs = manifestSlugs();
-    expect(slugs.has('button')).toBe(true);
-    expect(slugs.has('terminal')).toBe(true);
-    expect(slugs.has('chat-stress')).toBe(true);
+  // The slugs come from the generated manifest the suite reads, not a copy of its fixture roots:
+  // a glob of those roots lost `terminal` when the terminal package took over its fixtures.
+  test('the slugs are the generated manifest entries, at the path prepare-manifest writes', () => {
+    const directory = mkdtempSync(join(tmpdir(), 'targeted-run-manifest-'));
+    const path = join(directory, 'manifest.json');
+    writeFileSync(
+      path,
+      JSON.stringify({ digest: 'x', entries: [{ slug: 'terminal' }, { slug: 'button' }] }),
+    );
+    try {
+      expect([...manifestSlugs(path)].toSorted()).toEqual(['button', 'terminal']);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+    expect(MANIFEST_PATH).toBe(join(defaultManifestLayout.outputDirectory, 'manifest.json'));
   });
 });
