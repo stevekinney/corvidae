@@ -46,9 +46,11 @@ describe('Home’s states on a phone', () => {
   });
 
   test('home.spec.ts captures each of them with the phone as well, and the phone is 375 wide', async () => {
-    const source = (
-      await readFile(new URL('../tests/e2e/home.spec.ts', import.meta.url), 'utf8')
-    ).replaceAll(/\s+/g, ' ');
+    const specification = await readFile(
+      new URL('../tests/e2e/home.spec.ts', import.meta.url),
+      'utf8',
+    );
+    const source = specification.replaceAll(/\s+/g, ' ');
     for (const state of HOME_STATES_CAPTURED_ON_A_PHONE) {
       expect(source, state).toContain(
         `captureForDesignReviewWithPhone(page, { route: '/', state: '${state}',`,
