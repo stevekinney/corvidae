@@ -5139,6 +5139,8 @@ async function constructBureau<const D extends AgentDefinitions>(
     startedByHook,
     // COR-2099: a delivery's failures, on the emitter like any other event this process raises.
     publish: (event) => emitter.dispatch(event),
+    // COR-2226: the kinds running plugins declare, which a hook may list pinned to their version.
+    declaredEvents: () => pluginRegistry.plugins.events(),
     subjects: {
       run: subjectsOfRun,
       agentOfSchedule: (scheduleId) => schedules.agentName(scheduleId),

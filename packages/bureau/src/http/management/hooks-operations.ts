@@ -47,7 +47,6 @@ import { defineOperation, type OperationFault, type Principal } from '@lostgradi
 import { z } from 'zod';
 
 import { isSharedWebhook } from '../../hooks/workspace-hook-events.ts';
-import { PUBLISHED_BUREAU_EVENT_KINDS } from '../../bureau-event-feed.ts';
 import {
   type BureauHooks,
   HOOK_SECRET_MAXIMUM_LENGTH,
@@ -77,12 +76,15 @@ export type BureauHooksOperationHost = BureauOwnershipHost & {
 
 const hookId = z.string().min(1).max(256).describe('The identifier of the hook.');
 
+/** The longest event kind an entry of `events` may be, a plugin kind's pin included. */
+const EVENT_KIND_MAXIMUM_LENGTH = 256;
+
 const eventKinds = z
-  .array(z.enum(PUBLISHED_BUREAU_EVENT_KINDS))
+  .array(z.string().min(1).max(EVENT_KIND_MAXIMUM_LENGTH))
   .min(1)
   .max(64)
   .describe(
-    'The published Bureau event kinds the hook fires on, the kinds `bureau.events` serves. A hook cannot list `hook.test`: only `bureau.hooks.test` sends it.',
+    'The event kinds the hook fires on, the kinds `bureau.events.catalog` lists: a published Bureau kind, or a kind a running plugin declares (`<plugin>:<name>`), which the hook stores pinned to the declaration’s version (`<plugin>:<name>@<version>`) and which then fires only while that version is loaded. A pinned kind is accepted only at the version loaded now, or, on `bureau.hooks.update`, when the hook already lists it. Any other kind is `InvalidParams` on `events`. A hook cannot list `hook.test`: only `bureau.hooks.test` sends it.',
   );
 
 const urlField = z
@@ -188,7 +190,11 @@ const hookSchema = z.object({
   action: hookActionSchema.describe(
     'What the hook does for each event. A hook stored before actions existed is a `webhook`.',
   ),
-  events: z.array(z.string()),
+  events: z
+    .array(z.string())
+    .describe(
+      'The event kinds the hook fires on: a published Bureau kind as it is, and a kind a plugin declares pinned to the version it was written at, `<plugin>:<name>@<version>`.',
+    ),
   scope: z
     .object({ kind: z.string(), id: z.string() })
     .nullable()
@@ -369,6 +375,18 @@ const hookProblemSchema = z.discriminatedUnion('code', [
         'Every field the reaction’s schema refuses, by its path and Zod’s code, never a message.',
       ),
   }),
+  z.object({
+    code: z.literal('event-missing'),
+    kind: z
+      .string()
+      .describe('The entry of `events` that is missing, pinned: `<plugin>:<name>@<version>`.'),
+    loadedVersion: z
+      .string()
+      .nullable()
+      .describe(
+        'The version of the kind loaded now; `null` when no running plugin declares the kind.',
+      ),
+  }),
 ]);
 
 const listedHookSchema = hookSchema.extend({
@@ -380,7 +398,7 @@ const listedHookSchema = hookSchema.extend({
   problems: z
     .array(hookProblemSchema)
     .describe(
-      'Why a plugin hook cannot do what it says, as codes. `reaction-unavailable`: its reaction is not registered (its plugin is disabled, removed or dropped the kind), or it is a default hook its plugin withdrew, so it writes no delivery. `configuration-invalid`: the reaction’s schema now refuses the configuration the hook stored. Empty when nothing is wrong, and for every other action.',
+      'Why a hook cannot do what it says, as codes. `reaction-unavailable`: its reaction is not registered (its plugin is disabled, removed or dropped the kind), or it is a default hook its plugin withdrew, so it writes no delivery. `configuration-invalid`: the reaction’s schema now refuses the configuration the hook stored. These two are a plugin hook’s only. `event-missing`, for a hook of any action: a plugin kind it lists is missing, because its plugin is not loaded (`loadedVersion: null`) or is loaded at another version, so that kind fires nothing while the others still fire. Empty when nothing is wrong.',
     ),
 });
 
@@ -462,14 +480,23 @@ function listedHookViewOf(hook: ListedHook): z.infer<typeof listedHookSchema> {
   return {
     ...hookViewOf(hook),
     lastDelivery: hook.lastDelivery === null ? null : deliverySummaryViewOf(hook.lastDelivery),
-    problems: hook.problems.map((problem) =>
-      problem.code === 'reaction-unavailable'
-        ? { code: problem.code }
-        : {
+    problems: hook.problems.map((problem): z.infer<typeof hookProblemSchema> => {
+      switch (problem.code) {
+        case 'reaction-unavailable':
+          return { code: problem.code };
+        case 'configuration-invalid':
+          return {
             code: problem.code,
             issues: problem.issues.map(({ path, code }) => ({ path: [...path], code })),
-          },
-    ),
+          };
+        case 'event-missing':
+          return {
+            code: problem.code,
+            kind: problem.kind,
+            loadedVersion: problem.loadedVersion ?? null,
+          };
+      }
+    }),
   };
 }
 
@@ -733,7 +760,7 @@ export const hooksCreateOperation = defineOperation<
   mcpExposable: false,
   summary: 'Create a hook',
   description:
-    'Creates a hook owned by the caller: when a published Bureau event of one of `events` happens, its `action` runs. `action` is `{ type: "webhook", url }` (or `url` alone, its shorthand), `{ type: "start-workflow", workflowId, input? }`, `{ type: "notify", title? }` or `{ type: "plugin", plugin, kind, configuration? }` (an action kind a plugin contributes; its configuration is checked against the kind’s schema, and an unknown kind is `InvalidParams` on `action.kind`). A webhook sends `url` a POST whose body is `{ id, hookId, kind, bureauId, emittedAtMs, test, payload, source? }`, `source` being the plugin whose contribution emitted the event and absent for an event from Bureau core, and whose `X-Signature` header (`t=<unix seconds>,v1=<hex>`, an HMAC-SHA256 of `<t>.<body>` under `signingSecret`) lets the receiver verify it; a delivery that fails is retried with backoff and resumed after a restart, and its request, response excerpt and attempts are kept (`bureau.hooks.deliveries`). `signingSecret` is refused for the other actions and is write-only; a webhook created without one gets a secret the Bureau generates (`whsec_` and 24 hexadecimal digits), returned as `signingSecret` on this answer and never again (`null` otherwise). `start-workflow` starts the workflow as the owner, with the event’s payload (or, with `input: "event"`, `{ kind, bureauId, emittedAtMs, payload, source? }`) as its input; input the workflow refuses fails that delivery without a retry, a delivery retried or resumed starts one run, and the events of a run a hook started start nothing (that delivery fails, `Skipped`), so hooks do not chain. A delivery is made for each publication of an event, and the `goal.*` events are at-least-once. It needs a caller allowed to start workflows, and an owner who may (in v1 the deployment’s owner of record), else `Forbidden` (`data.reason: "workflow authority"`); an unknown or paused workflow is `InvalidParams`. `notify` writes the owner a notification per event, once per delivery, and cannot list `notification.created` or a `hook.delivery.*` kind (`InvalidParams` on `events`). The caller needs no scope to own a hook, but needs `bureau.events:observe-all`, because a hook observes the whole Bureau’s events. `scope` makes the hook fire only for one agent, workflow or schedule, read from each event and the Bureau’s records; an event it cannot place is out of scope. A scope some listed kind cannot be told by (`scopes` in `bureau.events.catalog`) is `InvalidParams` on `scope`. An unacceptable URL, event list or secret is `InvalidParams`. A deployment that keeps secrets elsewhere refuses with `Forbidden` (`data.reason: "deployment"`). A Bureau without hooks, or without an encryption key, answers `UnsupportedCapability`.',
+    'Creates a hook owned by the caller: when a published Bureau event of one of `events` happens, its `action` runs. `events` may list a kind a running plugin declares, which the hook stores pinned to the kind’s version (`plugin:name@version`, the `version` `bureau.events.catalog` gives) and which fires only while that version is loaded. `action` is `{ type: "webhook", url }` (or `url` alone, its shorthand), `{ type: "start-workflow", workflowId, input? }`, `{ type: "notify", title? }` or `{ type: "plugin", plugin, kind, configuration? }` (an action kind a plugin contributes; its configuration is checked against the kind’s schema, and an unknown kind is `InvalidParams` on `action.kind`). A webhook sends `url` a POST whose body is `{ id, hookId, kind, bureauId, emittedAtMs, test, payload, source? }`, `source` being the plugin whose contribution emitted the event and absent for an event from Bureau core, and whose `X-Signature` header (`t=<unix seconds>,v1=<hex>`, an HMAC-SHA256 of `<t>.<body>` under `signingSecret`) lets the receiver verify it; a delivery that fails is retried with backoff and resumed after a restart, and its request, response excerpt and attempts are kept (`bureau.hooks.deliveries`). `signingSecret` is refused for the other actions and is write-only; a webhook created without one gets a secret the Bureau generates (`whsec_` and 24 hexadecimal digits), returned as `signingSecret` on this answer and never again (`null` otherwise). `start-workflow` starts the workflow as the owner, with the event’s payload (or, with `input: "event"`, `{ kind, bureauId, emittedAtMs, payload, source? }`) as its input; input the workflow refuses fails that delivery without a retry, a delivery retried or resumed starts one run, and the events of a run a hook started start nothing (that delivery fails, `Skipped`), so hooks do not chain. A delivery is made for each publication of an event, and the `goal.*` events are at-least-once. It needs a caller allowed to start workflows, and an owner who may (in v1 the deployment’s owner of record), else `Forbidden` (`data.reason: "workflow authority"`); an unknown or paused workflow is `InvalidParams`. `notify` writes the owner a notification per event, once per delivery, and cannot list `notification.created` or a `hook.delivery.*` kind (`InvalidParams` on `events`). The caller needs no scope to own a hook, but needs `bureau.events:observe-all`, because a hook observes the whole Bureau’s events. `scope` makes the hook fire only for one agent, workflow or schedule, read from each event and the Bureau’s records; an event it cannot place is out of scope. A scope some listed kind cannot be told by (`scopes` in `bureau.events.catalog`) is `InvalidParams` on `scope`. An unacceptable URL, event list or secret is `InvalidParams`. A deployment that keeps secrets elsewhere refuses with `Forbidden` (`data.reason: "deployment"`). A Bureau without hooks, or without an encryption key, answers `UnsupportedCapability`.',
   destructive: false,
   tags: ['Hooks'],
   inputSchema: createInput,

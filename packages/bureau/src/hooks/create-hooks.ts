@@ -68,6 +68,12 @@ import { captureRunWorkspaceAuthority } from '../run-authority.ts';
  * to create or change a hook. Events that happen while the Bureau is down are not replayed;
  * deliveries already created are resumed.
  *
+ * A hook may also list a kind a running plugin declares (COR-2226), which it stores pinned to the
+ * declaration's version (`reports:digest-ready@1.0.0`) and which fires only while that version is
+ * loaded. A pinned kind whose plugin is gone or loaded at another version is `missing`: it fires
+ * nothing, `hooks.list` says so as an `event-missing` problem, and the hook's other kinds still
+ * fire. See `hook-event-kinds.ts`.
+ *
  * ## Scope
  *
  * A hook may name one subject, an agent, a workflow or a schedule, as `scope` (COR-1978), and then
@@ -89,7 +95,7 @@ import { ownerFromPrincipal, ownerOrLocal } from '../owner-of-record.ts';
 import type { BureauNotifications } from '../notifications/notification-types.ts';
 import { NOTIFICATION_FIELD_LIMITS } from '../notifications/notification-types.ts';
 import type { BureauWorkflows } from '../workflow-runtime.ts';
-import { PUBLISHED_BUREAU_EVENT_KINDS, type BureauEventEnvelope } from '../bureau-event-feed.ts';
+import type { BureauEventEnvelope } from '../bureau-event-feed.ts';
 import { BUREAU_EVENT_CATALOG, type BureauEventOrigin } from '../bureau-event-catalog.ts';
 import {
   createBureauEventFormatter,
@@ -104,6 +110,14 @@ import {
   type HookEventToDeliver,
 } from './hook-delivery.ts';
 import { type DeletedChatReference, purgeChatHookDeliveries } from './chat-hook-purge.ts';
+import {
+  type DeclaredHookEventKind,
+  declaredVersionsOf,
+  hookEventInputOf,
+  hookEventKindOf,
+  hookEventsMatch,
+  resolveHookEvent,
+} from './hook-event-kinds.ts';
 import { generateHookSigningSecret } from './hook-signature.ts';
 import {
   createHookStore,
@@ -181,8 +195,6 @@ const SCOPE_ID_MAXIMUM_LENGTH = 256;
 /** How long dispatch keeps the hooks it read. */
 const HOOK_CACHE_MILLISECONDS = 5_000;
 
-const PUBLISHED_KINDS: ReadonlySet<string> = new Set(PUBLISHED_BUREAU_EVENT_KINDS);
-
 /** Stands in for the hook that started a run when the lookup failed. */
 const CHAIN_UNKNOWN = '\u0000unknown';
 
@@ -229,7 +241,11 @@ export interface HookCreateInput {
   readonly url?: string;
   /** What the hook does. Give this or `url`, not both. */
   readonly action?: HookActionInput;
-  /** The published Bureau event kinds the hook fires on. */
+  /**
+   * The event kinds the hook fires on: published Bureau kinds, and kinds a running plugin declares
+   * (`<plugin>:<name>`), which the hook stores pinned to the declaration's version (COR-2226). A
+   * kind given pinned (`<plugin>:<name>@<version>`) must be pinned to the version loaded now.
+   */
   readonly events: readonly string[];
   /** The one subject the hook fires for; every kind in `events` must be one it can be told by. Omitted, it fires for the whole Bureau. */
   readonly scope?: HookScopeInput;
@@ -253,7 +269,10 @@ export interface HookUpdateInput {
   readonly url?: string;
   /** The hook's action again, with new fields. Its `type` must be the hook's: the type is fixed at creation. */
   readonly action?: HookActionInput;
-  /** The new event kinds, replacing the list. */
+  /**
+   * The new event kinds, replacing the list, read as `create` reads them; a pinned kind that is
+   * `missing` now is kept when the hook already lists it, so a hook whose plugin is gone still saves.
+   */
   readonly events?: readonly string[];
   /** A new subject, or `null` so the hook fires for the whole Bureau again. */
   readonly scope?: HookScopeInput | null;
@@ -276,7 +295,10 @@ export interface HookUpdateInput {
 export interface HookDeclaration {
   /** The hook's label and its reconcile key, 1 to 100 characters, unique within the declarations. */
   readonly name: string;
-  /** The published Bureau event kinds the hook fires on. */
+  /**
+   * The event kinds the hook fires on: published Bureau kinds and kinds a running plugin declares,
+   * each of the latter pinned to its version as the hook is reconciled (COR-2226).
+   */
   readonly events: readonly string[];
   /** The name of the plugin's reaction kind the hook runs. */
   readonly reaction: string;
@@ -504,6 +526,12 @@ export interface HooksDependencies {
    * exist.
    */
   readonly actionKinds?: readonly HookActionKindRegistration[] | undefined;
+  /**
+   * COR-2226 — the event kinds running plugins declare, each at its version (`plugins.events()`).
+   * Asked when a hook is written, for each event dispatched and for each `list`, so what a hook
+   * lists is read against what is loaded then. Omitted, no plugin declares a kind.
+   */
+  readonly declaredEvents?: (() => readonly DeclaredHookEventKind[]) | undefined;
   /** The Bureau's identifier, sent in each delivery. */
   readonly bureauId: string;
   /** Mints identifiers. */
@@ -942,19 +970,62 @@ function isPermanentReactionError(error: unknown): error is Error {
   );
 }
 
-function checkedEvents(events: readonly string[]): string[] {
+/** A hook's events as `create`, `update` or a declaration asks for them, checked and pinned. */
+interface CheckedEvents {
+  /** What the hook stores: each kind once, a declared kind pinned to its version (COR-2226). */
+  readonly events: string[];
+  /** The pinned entries among them that are `missing` now, each with why. */
+  readonly missing: readonly { readonly entry: string; readonly message: string }[];
+}
+
+/**
+ * Checks the kinds a hook is asked to list against the kinds `declared` now, and pins each declared
+ * one. Each kind is kept once, and of two entries for one kind the one pinned to the version loaded
+ * now wins. A kind no one publishes is refused here; a pinned kind that is `missing` is returned
+ * for the caller, which refuses it unless the hook already lists it ({@link assertNoMissingEvents}).
+ */
+function checkedEvents(
+  events: readonly string[],
+  declared: ReadonlyMap<string, string>,
+): CheckedEvents {
   if (!Array.isArray(events) || events.length === 0) {
     invalid('events', 'A hook needs at least one event kind');
   }
   if (events.length > MAXIMUM_EVENT_KINDS) {
     invalid('events', `A hook lists at most ${MAXIMUM_EVENT_KINDS} event kinds`);
   }
+  const byKind = new Map<string, string>();
+  const missing = new Map<string, string>();
   for (const kind of events) {
-    if (typeof kind !== 'string' || !PUBLISHED_KINDS.has(kind)) {
+    if (typeof kind !== 'string') {
       invalid('events', `"${String(kind)}" is not a published Bureau event kind`);
     }
+    const input = hookEventInputOf(kind, declared);
+    if (!input.ok && input.reason === 'unknown') invalid('events', input.message);
+    const listed = hookEventKindOf(input.entry);
+    const previous = byKind.get(listed);
+    if (previous !== undefined && !(missing.has(previous) && input.ok)) continue;
+    if (previous !== undefined) missing.delete(previous);
+    byKind.set(listed, input.entry);
+    if (!input.ok) missing.set(input.entry, input.message);
   }
-  return [...new Set(events)];
+  return {
+    events: [...byKind.values()],
+    missing: [...missing].map(([entry, message]) => ({ entry, message })),
+  };
+}
+
+/**
+ * Refuses a pinned kind that is `missing` now unless `listed`, the hook's events before the write,
+ * already has it: a hook whose plugin is gone still saves, and nothing new is pinned to a version
+ * that is not loaded.
+ */
+function assertNoMissingEvents(
+  missing: CheckedEvents['missing'],
+  listed: readonly string[] = [],
+): void {
+  const refused = missing.find(({ entry }) => !listed.includes(entry));
+  if (refused !== undefined) invalid('events', refused.message);
 }
 
 function checkedSecret(secret: unknown): string {
@@ -1067,7 +1138,14 @@ export function createHooks(dependencies: HooksDependencies): CreatedHooks {
    * plugin withdrew (R8 turned it off) is `reaction-unavailable` too, though the plugin may still
    * register the reaction: the plugin no longer offers the hook, which stays off and runs nothing.
    */
-  function problemsOf(hook: HookRecord): readonly HookProblem[] {
+  function problemsOf(
+    hook: HookRecord,
+    declared: ReadonlyMap<string, string>,
+  ): readonly HookProblem[] {
+    return [...actionProblemsOf(hook), ...eventProblemsOf(hook, declared)];
+  }
+
+  function actionProblemsOf(hook: HookRecord): readonly HookProblem[] {
     if (hook.action.type !== 'plugin') return [];
     if (reactionUnavailable(hook) || hook.declaredBy?.withdrawn === true) {
       return [{ code: 'reaction-unavailable' }];
@@ -1078,6 +1156,35 @@ export function createHooks(dependencies: HooksDependencies): CreatedHooks {
     const paths = 'refusal' in secretFields ? [] : secretFields.paths;
     const checked = parsedConfiguration(registration, hook.action.configuration, paths);
     return checked.ok ? [] : [{ code: 'configuration-invalid', issues: checked.issues }];
+  }
+
+  /**
+   * COR-2226 — an `event-missing` problem for each kind `hook` lists that fires nothing now: a
+   * pinned plugin kind whose plugin is not loaded, or is loaded at another version. Any action's
+   * hook may have one, and its other kinds still fire.
+   */
+  function eventProblemsOf(
+    hook: HookRecord,
+    declared: ReadonlyMap<string, string>,
+  ): readonly HookProblem[] {
+    return hook.events.flatMap((entry): HookProblem[] => {
+      const resolution = resolveHookEvent(entry, declared);
+      if (resolution.status !== 'missing') return [];
+      return [
+        {
+          code: 'event-missing',
+          kind: entry,
+          ...(resolution.loadedVersion === undefined
+            ? {}
+            : { loadedVersion: resolution.loadedVersion }),
+        },
+      ];
+    });
+  }
+
+  /** The kinds running plugins declare now, each at its version (COR-2226). */
+  function declaredNow(): ReadonlyMap<string, string> {
+    return declaredVersionsOf(dependencies.declaredEvents?.() ?? []);
   }
 
   /** The action `input` asks for: `action`, or the webhook that `url` stands for. */
@@ -1381,10 +1488,13 @@ export function createHooks(dependencies: HooksDependencies): CreatedHooks {
     if (cachedHooks === undefined || now - cachedHooks.readAt > HOOK_CACHE_MILLISECONDS) {
       cachedHooks = { hooks: await store.listHooks(), readAt: now };
     }
+    // Read after the store, so a plugin kind matches the version loaded as the event is matched.
+    const declared = declaredNow();
     return cachedHooks.hooks.filter(
       (hook) =>
         hook.enabled &&
-        hook.events.includes(kind) &&
+        // A plugin's kind matches only an entry pinned to the version loaded now (COR-2226).
+        hookEventsMatch(hook.events, kind, declared) &&
         // A default hook whose plugin contributes no such reaction now (the plugin is disabled, or
         // its setup failed) fires nothing and writes no delivery. An owner's hook of a missing
         // plugin still does: its delivery fails where a person can read why.
@@ -1455,7 +1565,9 @@ export function createHooks(dependencies: HooksDependencies): CreatedHooks {
     async create(input) {
       // The caller owns `input`: every field is read and checked before the first await.
       const action = actionOfCreate(input);
-      const events = checkedEvents(input.events);
+      const checkedKinds = checkedEvents(input.events, declaredNow());
+      assertNoMissingEvents(checkedKinds.missing);
+      const events = checkedKinds.events;
       const scope = input.scope === undefined ? undefined : checkedScope(input.scope);
       // A webhook created without a secret gets one generated here, and shown once on the answer.
       const generated =
@@ -1541,7 +1653,9 @@ export function createHooks(dependencies: HooksDependencies): CreatedHooks {
         input.action === undefined
           ? undefined
           : checkedAction(input.action, urlPolicy, actionKinds);
-      const events = input.events === undefined ? undefined : checkedEvents(input.events);
+      const checkedKinds =
+        input.events === undefined ? undefined : checkedEvents(input.events, declaredNow());
+      const events = checkedKinds?.events;
       const scope =
         input.scope === null || input.scope === undefined ? input.scope : checkedScope(input.scope);
       const secret =
@@ -1588,6 +1702,8 @@ export function createHooks(dependencies: HooksDependencies): CreatedHooks {
             currentRevision: before.revision,
           });
         }
+        // A kind the hook already lists stays, though it is missing now (COR-2226).
+        if (checkedKinds !== undefined) assertNoMissingEvents(checkedKinds.missing, before.events);
         const nextName = name === undefined ? before.name : (name ?? undefined);
         const nextScope = scope === undefined ? before.scope : (scope ?? undefined);
         const { name: _previousName, scope: _previousScope, ...rest } = before;
@@ -1747,12 +1863,13 @@ export function createHooks(dependencies: HooksDependencies): CreatedHooks {
           }
         }
       }
+      const declared = declaredNow();
       return listed.map((hook) => {
         const last = newest.get(hook.id);
         return {
           ...viewOf(hook),
           lastDelivery: last === undefined ? null : deliverySummaryOf(last),
-          problems: problemsOf(hook),
+          problems: problemsOf(hook, declared),
         };
       });
     },
@@ -1883,6 +2000,7 @@ export function createHooks(dependencies: HooksDependencies): CreatedHooks {
       invalid('plugin', 'A declaration names the plugin that declares it');
     }
     if (!Array.isArray(declarations)) invalid('declarations', 'The declarations must be a list');
+    const declared = declaredNow();
     const names = new Set<string>();
     return declarations.map((declaration, index): CheckedDeclaration => {
       if (typeof declaration !== 'object' || declaration === null || Array.isArray(declaration)) {
@@ -1892,7 +2010,9 @@ export function createHooks(dependencies: HooksDependencies): CreatedHooks {
         const name = checkedName(declaration.name);
         if (names.has(name)) invalid('name', `The name "${name}" is declared twice`);
         names.add(name);
-        const events = checkedEvents(declaration.events);
+        const checkedKinds = checkedEvents(declaration.events, declared);
+        assertNoMissingEvents(checkedKinds.missing);
+        const events = checkedKinds.events;
         const scope = declaration.scope === undefined ? undefined : checkedScope(declaration.scope);
         const action = checkedAction(
           {
