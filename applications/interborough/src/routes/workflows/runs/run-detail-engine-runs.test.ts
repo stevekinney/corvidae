@@ -198,6 +198,12 @@ describe('an instance of a workflow file opened from the Runs list', () => {
     });
     expect(header).toContain('Release notes');
     const block = await view.findByTestId('run-step-failure');
+    // COR-2489: why it failed leads, above Input and output.
+    const inputOutput = view.container.querySelector('[data-section="input-output"]');
+    expect(inputOutput).not.toBeNull();
+    expect(
+      block.compareDocumentPosition(inputOutput as Node) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
     expect(block.textContent).toContain('Step 2, Collect merged changes, failed after 2 tries');
     expect(block.textContent).toContain('Why it failed');
     expect(block.textContent).toContain('GitHub did not answer (HTTP 503)');
