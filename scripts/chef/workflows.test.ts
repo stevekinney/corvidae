@@ -207,6 +207,8 @@ describe('workflow scripts', () => {
       },
     );
     const prompt = delivery.calls[0]?.prompt ?? '';
+    expect(prompt).toContain('--base "$(git rev-parse HEAD)"');
+    expect(prompt).not.toContain('<that-40-character-sha>');
     expect(prompt).toContain(
       "--context '/coordinator/boards/with space/'\"'\"'quoted'\"'\"'; touch nope'",
     );

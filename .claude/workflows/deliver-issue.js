@@ -91,7 +91,7 @@ function briefCommand(issue, run, context, classification) {
     '--repository',
     'stevekinney/corvidae',
     '--base',
-    '<that-40-character-sha>',
+    '"$(git rev-parse HEAD)"',
   ];
   if (classification !== null) arguments_.push('--classification', shellArgument(classification));
   if (context !== null) arguments_.push('--context', shellArgument(context));
