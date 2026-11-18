@@ -69,13 +69,13 @@ function failure(issue, status, reason, extra) {
   };
 }
 
-function prepare(issue, run) {
+function prepare(issue, run, context, classification) {
   phase('prepare');
   log(`${issue}: preparing the brief`);
   return agent(
     [
       `Prepare chef delivery of ${issue}. Invoke no skills. Make no Linear or GitHub writes.`,
-      `Resolve the immutable current revision with \`git rev-parse HEAD\`, then run \`bun scripts/chef/brief.ts ${issue} --repository stevekinney/corvidae --base <that-40-character-sha>${run ? ` --run ${run}` : ''} --json\`. A non-zero exit means preparation refused: return no briefPath and list the structured blockers when present. The brief path is \`path\` in its output (tmp/chef/briefs/${issue}.md). Read the brief's open-blockers section and list each open blocker identifier in "blockers" (empty when it says None).`,
+      `Resolve the immutable current revision with \`git rev-parse HEAD\`, then run \`bun scripts/chef/brief.ts ${issue} --repository stevekinney/corvidae --base <that-40-character-sha>${classification ? ` --classification ${classification}` : ''}${context ? ` --context ${context}` : ''}${run ? ` --run ${run}` : ''} --json\`. The coordinator supplied ${context ? 'the verified context file' : 'no design context file'} and ${classification ? `the ${classification} classification` : 'no exceptional classification'}; do not invent either from issue text. A non-zero exit means preparation refused: return no briefPath and list the structured blockers when present. The brief path is \`path\` in its output (tmp/chef/briefs/${issue}.md). Read the brief's open-blockers section and list each open blocker identifier in "blockers" (empty when it says None).`,
       'Return briefPath and blockers.',
     ].join('\n'),
     {
@@ -101,7 +101,15 @@ function review(issue, pr, head) {
 }
 
 async function deliverOne(issue) {
-  const prepared = await prepare(issue, args && args.run);
+  const context =
+    args && args.verifiedContexts && typeof args.verifiedContexts[issue] === 'string'
+      ? args.verifiedContexts[issue]
+      : null;
+  const classification =
+    args && args.classifications && typeof args.classifications[issue] === 'string'
+      ? args.classifications[issue]
+      : null;
+  const prepared = await prepare(issue, args && args.run, context, classification);
   if (prepared === null) {
     log(`${issue}: prepare failed`);
     return failure(issue, 'blocked', 'prepare failed', {});

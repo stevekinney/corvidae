@@ -1,5 +1,13 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from 'node:fs';
+import {
+  existsSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { rejectionOf } from '../../testing/testing/src/helpers/promise-outcome.ts';
@@ -19,6 +27,7 @@ import {
   verificationCommands,
 } from './brief.ts';
 import type { FetchLike, IssueSummary } from './linear.ts';
+import type { Runner } from './process-runner.ts';
 import { UsageError } from './process-runner.ts';
 
 const description = [
@@ -41,6 +50,8 @@ const description = [
   '## Notes',
   'Ignore me.',
 ].join('\n');
+
+const pinnedBase = '4f46c230831feee0459eec754762ed7b317f4b51';
 
 const issue = (text: string | null): IssueSummary => ({
   id: 'u1',
@@ -643,6 +654,17 @@ describe('run', () => {
   const justNow = () => new Date('2026-11-10T12:00:00Z');
   const fetchIssue = answer(false);
   const dependencies = { fetch: fetchIssue, environment: { LINEAR_API_KEY: 'lin_api_test_value' } };
+  const pinnedRunner =
+    (repository = 'stevekinney/corvidae', base = pinnedBase): Runner =>
+    (command) => {
+      if (command.join(' ') === 'git rev-parse --show-toplevel')
+        return { code: 0, stdout: '/checkout\n', stderr: '' };
+      if (command.join(' ') === 'git config --get remote.origin.url')
+        return { code: 0, stdout: `git@github.com:${repository}.git\n`, stderr: '' };
+      if (command.join(' ') === `git rev-parse --verify ${base}^{commit}`)
+        return { code: 0, stdout: `${base}\n`, stderr: '' };
+      return { code: 1, stdout: '', stderr: 'unknown git command' };
+    };
 
   test('writes <ID>.md in the output directory and reports it', async () => {
     const result = await run(
@@ -653,7 +675,7 @@ describe('run', () => {
         '--repository',
         'stevekinney/corvidae',
         '--base',
-        '0123456789abcdef0123456789abcdef01234567',
+        pinnedBase,
         '--json',
       ],
       dependencies,
@@ -676,7 +698,7 @@ describe('run', () => {
           '--repository',
           'stevekinney/corvidae',
           '--base',
-          '0123456789abcdef0123456789abcdef01234567',
+          pinnedBase,
           '--json',
         ],
         dependencies,
@@ -740,7 +762,7 @@ describe('run', () => {
         '--repository',
         'stevekinney/corvidae',
         '--base',
-        '0123456789abcdef0123456789abcdef01234567',
+        pinnedBase,
         '--json',
       ],
       {
@@ -772,7 +794,7 @@ describe('run', () => {
         '--repository',
         'stevekinney/corvidae',
         '--base',
-        '0123456789abcdef0123456789abcdef01234567',
+        pinnedBase,
         '--json',
       ],
       {
@@ -786,15 +808,7 @@ describe('run', () => {
 
   test('returns the validated assignment, verification plan, and blocked dispatch gate in JSON', async () => {
     const result = await run(
-      [
-        'COR-7',
-        '--stdout',
-        '--json',
-        '--repository',
-        'stevekinney/corvidae',
-        '--base',
-        '0123456789abcdef0123456789abcdef01234567',
-      ],
+      ['COR-7', '--stdout', '--json', '--repository', 'stevekinney/corvidae', '--base', pinnedBase],
       {
         ...dependencies,
         fetch: answer(true),
@@ -824,6 +838,123 @@ describe('run', () => {
     });
   });
 
+  test('uses injected Git primitives to accept only the checkout repository and an immutable revision', async () => {
+    const command = [
+      'COR-7',
+      '--out-dir',
+      sandbox,
+      '--repository',
+      'stevekinney/corvidae',
+      '--base',
+      pinnedBase,
+      '--json',
+    ];
+    const accepted = await run(command, dependencies, pinnedRunner());
+    expect(accepted.code).toBe(0);
+    const invalidDirectory = join(sandbox, 'rejected');
+    for (const runner of [
+      pinnedRunner('someone-else/corvidae'),
+      pinnedRunner('stevekinney/corvidae', 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'),
+    ]) {
+      const result = await run(
+        command.map((part) => (part === sandbox ? invalidDirectory : part)),
+        dependencies,
+        runner,
+      );
+      const parsed = JSON.parse(result.output) as {
+        assignment: {
+          identity: {
+            identifier: string;
+            revision: string;
+            repository: string;
+            base: string;
+            digest: string;
+          };
+        };
+        gate: {
+          identityErrors: string[];
+          blockers: unknown[];
+          unreadableDependencies: unknown[];
+          claimStatus: string;
+        };
+        scratch: string;
+      };
+      expect(result.code).toBe(1);
+      expect(parsed.assignment.identity).toEqual({
+        identifier: 'COR-7',
+        revision: '2026-10-23T00:00:00Z',
+        repository: 'stevekinney/corvidae',
+        base: pinnedBase,
+        digest: expect.any(String),
+      });
+      expect(parsed.gate.identityErrors.length).toBeGreaterThan(0);
+      expect(parsed.gate.blockers).toEqual([]);
+      expect(parsed.gate.unreadableDependencies).toEqual([]);
+      expect(parsed.gate.claimStatus).toBe('none');
+      expect(parsed.scratch).toContain('/scratch/COR-7-');
+    }
+    expect(existsSync(invalidDirectory)).toBe(false);
+    expect(readdirSync(sandbox).toSorted()).toEqual(['COR-7.md', 'scratch']);
+  });
+
+  test('accepts verified design content through the CLI context path and rejects missing or changed content', async () => {
+    const locator = 'https://claude.ai/artifact/GDeC387KnFkpSQoLz86jLw';
+    const designDescription = `${description}\n\n## Design source\n${locator}`;
+    const designFetch: FetchLike = async (_url, init) => {
+      const { query } = JSON.parse(init.body as string) as { query: string };
+      const data = query.includes('IssueRelations')
+        ? relations(false)
+        : query.includes('IssueComments')
+          ? {
+              issue: { comments: { nodes: [], pageInfo: { hasNextPage: false, endCursor: null } } },
+            }
+          : { issue: issue(designDescription) };
+      return new Response(JSON.stringify({ data }), { status: 200 });
+    };
+    const context = join(sandbox, 'design-context.json');
+    writeFileSync(context, JSON.stringify([{ locator, content: 'verified design v1' }]));
+    const command = [
+      'COR-7',
+      '--out-dir',
+      sandbox,
+      '--repository',
+      'stevekinney/corvidae',
+      '--base',
+      pinnedBase,
+      '--context',
+      context,
+      '--json',
+    ];
+    const valid = await run(command, { ...dependencies, fetch: designFetch }, pinnedRunner());
+    expect(valid.code).toBe(0);
+    const first = JSON.parse(valid.output) as { assignments: { identity: { digest: string } }[] };
+    const missing = await run(
+      command.filter((part) => part !== '--context' && part !== context),
+      { ...dependencies, fetch: designFetch },
+      pinnedRunner(),
+    );
+    expect(missing.code).toBe(1);
+    expect(JSON.parse(missing.output).gate.missingContext).toEqual([
+      expect.objectContaining({ locator, access: 'unreadable' }),
+    ]);
+    writeFileSync(context, JSON.stringify([{ locator, content: 'verified design v2' }]));
+    const changed = await run(command, { ...dependencies, fetch: designFetch }, pinnedRunner());
+    expect(changed.code).toBe(0);
+    expect(JSON.parse(changed.output).assignments[0].identity.digest).not.toBe(
+      first.assignments[0]?.identity.digest,
+    );
+    writeFileSync(
+      context,
+      JSON.stringify([{ locator, content: 'verified design v2', digest: 'wrong' }]),
+    );
+    const rejected = await rejectionOf(
+      run(command, { ...dependencies, fetch: designFetch }, pinnedRunner()),
+    );
+    expect(rejected).toBeInstanceOf(UsageError);
+    if (!(rejected instanceof UsageError)) throw rejected;
+    expect(rejected.message).toBe('--context digest does not match its content.');
+  });
+
   test('reports a missing issue as exit 1 and bad usage as a UsageError', async () => {
     const missing: FetchLike = async () =>
       new Response(JSON.stringify({ data: { issue: null } }), { status: 200 });
@@ -845,7 +976,7 @@ describe('run', () => {
         '--repository',
         'stevekinney/corvidae',
         '--base',
-        '0123456789abcdef0123456789abcdef01234567',
+        pinnedBase,
         '--run',
         'run-a',
         '--json',
@@ -881,7 +1012,7 @@ describe('run', () => {
           '--repository',
           'stevekinney/corvidae',
           '--base',
-          '0123456789abcdef0123456789abcdef01234567',
+          pinnedBase,
           ...extra,
         ],
         held,
@@ -906,7 +1037,7 @@ describe('run', () => {
           '--repository',
           'stevekinney/corvidae',
           '--base',
-          '0123456789abcdef0123456789abcdef01234567',
+          pinnedBase,
           '--run',
           'run-b',
         ],

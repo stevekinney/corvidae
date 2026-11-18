@@ -89,4 +89,17 @@ describe('assignment gate and verification plan', () => {
       createVerificationPlan({ assignment: noBehavior, commands: [], policy: 'p' }).obligations,
     ).toEqual(expect.arrayContaining([expect.objectContaining({ criterionId: 'STATIC' })]));
   });
+
+  test('rejects duplicate derived and explicit criterion identities without renumbering inserts', () => {
+    const duplicates = criterionRecords('## Acceptance criteria\n- Same.\n- Same.');
+    const explicit = criterionRecords('## Acceptance criteria\n- AC1: First.\n- AC1: Second.');
+    expect(gateAssignment(assignment({ criteria: duplicates }), 'none')).toMatchObject({
+      status: 'invalid',
+      dispatchable: false,
+    });
+    expect(gateAssignment(assignment({ criteria: explicit }), 'none')).toMatchObject({
+      status: 'invalid',
+      dispatchable: false,
+    });
+  });
 });

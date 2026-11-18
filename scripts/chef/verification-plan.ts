@@ -89,6 +89,7 @@ export interface AssignmentGate {
   blockers: AssignmentDependency[];
   unreadableDependencies: AssignmentDependency[];
   missingContext: SourceReference[];
+  identityErrors: string[];
   claimStatus: 'none' | 'held' | 'released' | 'foreign' | 'unknown';
   dispatchable: boolean;
 }
@@ -133,6 +134,7 @@ export function classifyRisks(
 export function gateAssignment(
   assignment: Assignment,
   claimStatus: AssignmentGate['claimStatus'],
+  identityErrors: readonly string[] = [],
 ): AssignmentGate {
   const blockers = assignment.dependencies.filter((dependency) => dependency.status === 'open');
   const unreadableDependencies = assignment.dependencies.filter(
@@ -147,6 +149,9 @@ export function gateAssignment(
     /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(assignment.identity.repository) &&
     /^[0-9a-f]{40}$/i.test(assignment.identity.base) &&
     assignment.criteria.every((criterion) => criterion.id !== '' && criterion.text !== '') &&
+    new Set(assignment.criteria.map((criterion) => criterion.id)).size ===
+      assignment.criteria.length &&
+    identityErrors.length === 0 &&
     (assignment.criteria.length > 0 || assignment.classification === 'no-behavior');
   const blocked =
     blockers.length > 0 ||
@@ -158,6 +163,7 @@ export function gateAssignment(
     blockers,
     unreadableDependencies,
     missingContext,
+    identityErrors: [...identityErrors],
     claimStatus,
     dispatchable: valid && !blocked,
   };

@@ -115,6 +115,14 @@ describe('workflow scripts', () => {
     const prompt = call.slice(0, call.indexOf('label:'));
     expect(prompt).toContain('asks for a pull request');
   });
+
+  test('deliver-issue.js passes only coordinator-supplied context and classification to brief preparation', () => {
+    const source = readFileSync(join(workflowsDirectory, 'deliver-issue.js'), 'utf8');
+    expect(source).toContain('args.verifiedContexts');
+    expect(source).toContain('args.classifications');
+    expect(source).toContain(' --context ${context}');
+    expect(source).toContain(' --classification ${classification}');
+  });
 });
 
 describe('codex-protocol.md', () => {
