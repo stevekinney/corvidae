@@ -24,13 +24,19 @@ import type { RestBindingDescription } from './rest-binding.ts';
 import { GENERIC_SUBSCRIPTION_ROUTE_PREFIX, toOpenApiPath } from './route-model.ts';
 import { zodToJsonSchema } from './zod-json-schema.ts';
 
+/** Options for generating an AsyncAPI document from an {@link OperationRegistry}. */
 export type AsyncApiOptions = {
+  /** The operations to describe. */
   registry: OperationRegistry;
   /** REST bindings used to resolve SSE channel addresses. Unused with `subscriptionTransport: 'http-route'`. */
   restBindings: ReadonlyArray<RestBindingDescription>;
+  /** The document title. */
   title?: string;
+  /** The document version. */
   version?: string;
+  /** The facts the document reports, such as the server URL. */
   discoveryInfo?: DiscoveryInfo;
+  /** The server URL to list. */
   serverUrl?: string;
   /**
    * How subscription operations are served. `'websocket'` (the default) is

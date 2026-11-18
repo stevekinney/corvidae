@@ -22,7 +22,7 @@
  *
  * @example
  * ```ts
- * import { AUTHORIZATION_SCOPES } from '@lostgradient/weft';
+ * import { AUTHORIZATION_SCOPES } from '@lostgradient/backchannel';
  *
  * console.log(AUTHORIZATION_SCOPES.includes('workflows:read'));
  * ```
@@ -56,7 +56,7 @@ export const AUTHORIZATION_SCOPES = [
  *
  * @example
  * ```ts
- * import { type BuiltInAuthorizationScope } from '@lostgradient/weft';
+ * import { type BuiltInAuthorizationScope } from '@lostgradient/backchannel';
  *
  * const scope: BuiltInAuthorizationScope = 'workflows:read';
  * console.log(scope);
@@ -72,7 +72,7 @@ export type BuiltInAuthorizationScope = (typeof AUTHORIZATION_SCOPES)[number];
  *
  * @example
  * ```ts
- * import { type PackageAuthorizationScope } from '@lostgradient/weft';
+ * import { type PackageAuthorizationScope } from '@lostgradient/backchannel';
  *
  * const scope: PackageAuthorizationScope = 'bureau.tasks:read';
  * console.log(scope);
@@ -87,7 +87,7 @@ export type PackageAuthorizationScope = `${string}.${string}:${string}`;
  *
  * @example
  * ```ts
- * import { type AuthorizationScope } from '@lostgradient/weft';
+ * import { type AuthorizationScope } from '@lostgradient/backchannel';
  *
  * const builtIn: AuthorizationScope = 'workflows:read';
  * const registered: AuthorizationScope = 'bureau.tasks:read';
@@ -105,7 +105,7 @@ export type AuthorizationScope = BuiltInAuthorizationScope | PackageAuthorizatio
  *
  * @example
  * ```ts
- * import { PACKAGE_AUTHORIZATION_SCOPE_PATTERN } from '@lostgradient/weft';
+ * import { PACKAGE_AUTHORIZATION_SCOPE_PATTERN } from '@lostgradient/backchannel';
  *
  * console.log(PACKAGE_AUTHORIZATION_SCOPE_PATTERN.test('bureau.tasks:read'));
  * ```
@@ -125,7 +125,7 @@ const SCOPE_LOOKUP = new Set<string>(AUTHORIZATION_SCOPES);
  *
  * @example
  * ```ts
- * import { isAuthorizationScope } from '@lostgradient/weft';
+ * import { isAuthorizationScope } from '@lostgradient/backchannel';
  *
  * console.log(isAuthorizationScope('workflows:read'));
  * console.log(isAuthorizationScope('not-a-scope'));
@@ -142,7 +142,7 @@ export function isAuthorizationScope(value: string): value is BuiltInAuthorizati
  *
  * @example
  * ```ts
- * import { isPackageAuthorizationScope } from '@lostgradient/weft';
+ * import { isPackageAuthorizationScope } from '@lostgradient/backchannel';
  *
  * console.log(isPackageAuthorizationScope('bureau.tasks:read'));
  * console.log(isPackageAuthorizationScope('workflows:read'));

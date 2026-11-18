@@ -28,6 +28,7 @@ export type OperationHandlerAuthenticator = OperationHandlerAuthenticate & {
   readonly ready: Promise<void>;
 };
 
+/** Options for {@link createOperationHandlerAuthenticator}. */
 export type OperationHandlerAuthenticatorOptions = {
   /**
    * Package scopes the handler's operations require beyond Weft's built-in
@@ -58,7 +59,7 @@ export type OperationHandlerAuthenticatorOptions = {
  *
  * @example
  * ```ts
- * import { createOperationHandler, createOperationHandlerAuthenticator } from '@lostgradient/weft';
+ * import { createOperationHandler, createOperationHandlerAuthenticator } from '@lostgradient/backchannel';
  *
  * const handler = createOperationHandler({
  *   operations: [],

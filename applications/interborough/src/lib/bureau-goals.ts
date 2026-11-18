@@ -198,8 +198,11 @@ export async function listAllGoals(options?: Options): Promise<Goal[]> {
  * and the configuration its schema takes, when it takes one.
  */
 export type GoalValidatorChoice = {
+  /** The validator's name, as the Bureau lists it. */
   readonly name: string;
+  /** The validator's version, as the Bureau lists it. */
   readonly version: string;
+  /** The validator's configuration, validated by the Bureau against the validator's own schema. */
   readonly configuration?: unknown;
 };
 
@@ -283,6 +286,7 @@ export async function cancelGoal(
  * yet made; an attempt already made keeps the check it ran against.
  */
 export type GoalChange = {
+  /** The goal's new prompt; omitted when it is unchanged. */
   readonly prompt?: string;
   /**
    * The agent the goal's next attempts run as; an attempt already made keeps the agent it ran as.

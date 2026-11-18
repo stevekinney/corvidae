@@ -23,6 +23,9 @@ applications/playground/.tmp/
 applications/playground/src/.tmp-*/
 # Generated declaration fixtures are checked against exact generator output and typechecked.
 **/*.generated.d.ts
+# The fixture client for the generic client generator is its exact, unformatted output: the package
+# carries no formatter, and a type test imports these files.
+packages/backchannel/src/__fixtures__/probe-client/
 # Standalone schema validators are machine-generated Ajv output, checked against exact generator output.
 components/cinder/src/tokens/runtime/*-validator.generated.js
 # React 18's published UMD builds, byte-exact, which the design-system render check loads into its harness.

@@ -97,6 +97,7 @@ export type OperationHandlerOptions<Host> = {
    * registered subscription (a mount cannot claim one, so the two never overlap).
    */
   readonly publicPaths?: ReadonlyArray<string>;
+  /** The facts the discovery documents report, such as the server URL. */
   readonly discoveryInfo?: DiscoveryInfo;
   /**
    * A binary encoding for `GET /v1/health`: when a request accepts `application/msgpack` and this
@@ -221,7 +222,7 @@ function normalizedPathname(request: Request): string {
  *
  * @example
  * ```ts
- * import { createOperationHandler, defineOperation } from '@lostgradient/weft';
+ * import { createOperationHandler, defineOperation } from '@lostgradient/backchannel';
  * import { z } from 'zod';
  *
  * const echo = defineOperation({

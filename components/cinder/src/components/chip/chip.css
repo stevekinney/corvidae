@@ -335,6 +335,30 @@
     line-height: 0;
   }
 
+  /* The visible cue of a suggested chip that is not colour (COR-2441, WCAG 1.4.1): a small sparkle
+     glyph before the label, in the same accent as the neutral suggested label. The words
+     "Suggested" stay for assistive technology. */
+  .cinder-chip__suggested-mark {
+    position: relative;
+    display: inline-block;
+    inline-size: 0.875rem;
+    /* A zero-height box on the baseline, with the glyph hung from it: the glyph takes no part in
+       the line box, so the label's own line sets the chip's height and baseline in any font, with
+       or without the glyph (a 14px glyph in a 15px line grew the line by 0.6px on Linux's font). */
+    block-size: 0;
+    margin-inline-end: var(--cinder-space-1);
+    vertical-align: baseline;
+    color: var(--cinder-accent-text);
+  }
+
+  .cinder-chip__suggested-mark > svg {
+    position: absolute;
+    inset-inline-start: 0;
+    /* The glyph's bottom edge sits a fifth of an em under the baseline, centring it on the
+       lowercase letters. */
+    inset-block-end: -0.2em;
+  }
+
   /* ----------------------------------------
  * Remove button
  * ---------------------------------------- */

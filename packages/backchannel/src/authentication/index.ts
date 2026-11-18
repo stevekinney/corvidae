@@ -250,7 +250,7 @@ export function tlsOptionsVerifyClientCertificates(
  *
  * @example
  * ```ts
- * import { validateAuthConfig } from '@lostgradient/weft';
+ * import { validateAuthConfig } from '@lostgradient/backchannel';
  *
  * // Throws if config is invalid (e.g. missing secret for HS256)
  * validateAuthConfig({
@@ -279,7 +279,7 @@ export function validateAuthConfig(config: AuthConfig): void {
  *
  * @example
  * ```ts
- * import { createAuthenticator } from '@lostgradient/weft';
+ * import { createAuthenticator } from '@lostgradient/backchannel';
  *
  * const authenticate = await createAuthenticator({
  *   apiKeys: ['my-secret-key'],

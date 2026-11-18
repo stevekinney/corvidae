@@ -22,7 +22,10 @@ export class SubscriptionElementValidationError extends Error {
   /** Stable machine-readable discriminant; equals the class name, as a `WeftError`'s does. */
   readonly code = 'SubscriptionElementValidationError';
 
-  constructor(public readonly fault: OperationFault) {
+  constructor(
+    /** The fault that validation produced. */
+    public readonly fault: OperationFault,
+  ) {
     super('subscription element failed schema validation');
     this.name = this.code;
   }

@@ -23,9 +23,13 @@ export type JsonRpcSocket<Data> = {
 
 /** What a session keeps on its socket. */
 export interface JsonRpcSocketData {
+  /** The path the socket upgraded on. */
   pathname: string;
+  /** The kind of connection, for logging. */
   connectionType: string;
+  /** The authenticated caller. */
   principal?: Principal;
+  /** The session attached to the socket. */
   jsonRpcSession?: JsonRpcWebSocketSession;
   /** Current workspace authority, captured from the authenticated upgrade request. */
   revalidateWorkspace?: () => Promise<boolean>;
@@ -56,6 +60,7 @@ async function workspaceAllowed(
   return allowed;
 }
 
+/** Wraps a socket as an emitter that rechecks workspace authority before each frame. */
 export function workspaceEmitter(
   ws: Pick<JsonRpcSocket<JsonRpcSocketData>, 'data' | 'send' | 'close'>,
 ) {
@@ -90,6 +95,7 @@ async function admitWorkspaceMessage(
   });
 }
 
+/** Routes one incoming WebSocket frame to the session attached to the socket. */
 export function handleJsonRpcWebSocketMessage(
   ws: Pick<JsonRpcSocket<JsonRpcSocketData>, 'data' | 'close'>,
   rawMessage: string | Uint8Array,
@@ -116,6 +122,7 @@ export function handleJsonRpcWebSocketMessage(
   });
 }
 
+/** Opens a JSON-RPC session on a socket and registers it among the active sessions. */
 export function openGenericJsonRpcWebSocketSession(options: {
   ws: Pick<JsonRpcSocket<JsonRpcSocketData>, 'data' | 'send' | 'close'>;
   registry: OperationRegistry;
@@ -142,6 +149,7 @@ export function openGenericJsonRpcWebSocketSession(options: {
   }
 }
 
+/** Closes a session and releases its subscriptions. */
 export function closeJsonRpcWebSocketSession(options: {
   session: JsonRpcWebSocketSession | undefined;
   activeSessions: Set<JsonRpcWebSocketSession>;
