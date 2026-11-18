@@ -845,6 +845,7 @@
                 catchUp={trigger.catchUp ?? false}
                 onCatchUpChange={(next) => write(setScheduleFields(text, { catchUp: next }))}
                 catchUpLabel={WORKFLOW_COPY.runSetup.catchUpLabel}
+                fireZone
               />
               {#if mode === 'edit' && trigger.name !== null && trigger.name.trim() !== ''}
                 <div data-testid="workflow-builder-schedule-note">

@@ -115,12 +115,22 @@ describe('ScheduleBuilder', () => {
     });
 
     test('COR-2432 (row 65q): a weekly schedule on one weekday reads "Every Friday"; several days read "Custom days"', async () => {
-      const { getByLabelText } = render(ScheduleBuilder, {
+      const { getByLabelText, queryByRole } = render(ScheduleBuilder, {
         props: { value: { cron: '0 11 * * 5', timeZone: 'UTC' } },
       });
       const select = requiredInstance(getByLabelText('Repeats'), HTMLSelectElement);
       expect(select.value).toBe('custom-days');
       expect(select.selectedOptions[0]?.textContent?.trim()).toBe('Every Friday');
+      // Design correction 2: no day chips under one weekday; Custom days follows it in the list.
+      const labels = () => Array.from(select.options, (option) => option.textContent?.trim());
+      expect(queryByRole('group', { name: 'Days of week' })).toBeNull();
+      expect(labels().slice(3, 5)).toEqual(['Every Friday', 'Custom days']);
+      // Choosing Custom days brings the chips back, with Friday chosen, and the value is unchanged.
+      await fireEvent.change(select, { target: { value: 'custom-days:choose' } });
+      await waitFor(() => expect(queryByRole('group', { name: 'Days of week' })).not.toBeNull());
+      expect(select.value).toBe('custom-days');
+      expect(select.selectedOptions[0]?.textContent?.trim()).toBe('Custom days');
+      expect(getByLabelText('Friday').getAttribute('aria-pressed')).toBe('true');
       await fireEvent.click(getByLabelText('Tuesday'));
       expect(select.selectedOptions[0]?.textContent?.trim()).toBe('Custom days');
     });
@@ -271,9 +281,13 @@ describe('ScheduleBuilder', () => {
 
     test('Custom days cannot clear its last day', async () => {
       const onValueChange = mock();
-      const { getByRole } = render(ScheduleBuilder, {
+      const { getByRole, getByLabelText } = render(ScheduleBuilder, {
         value: { cron: '0 9 * * 3', timeZone: 'UTC' },
         onValueChange,
+      });
+      // One weekday reads "Every Wednesday" with no chips; Custom days shows them (row 65q).
+      await fireEvent.change(getByLabelText('Repeats'), {
+        target: { value: 'custom-days:choose' },
       });
 
       const wednesday = getByRole('button', { name: 'Wednesday' });
