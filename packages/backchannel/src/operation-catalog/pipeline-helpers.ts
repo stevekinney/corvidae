@@ -17,10 +17,12 @@ export const UNSAFE_PROTOTYPE_KEYS: ReadonlySet<string> = new Set([
   'constructor',
 ]);
 
+/** Maps a transport to its key in {@link UnknownKeyPolicy}. */
 export function transportToPolicyKey(transport: TransportKind): keyof UnknownKeyPolicy {
   return transport === 'http-rest' ? 'http' : 'jsonRpc';
 }
 
+/** Maps a transport to its key in {@link TransportAvailability}. */
 export function transportToAvailabilityKey(
   transport: Exclude<TransportKind, 'mcp'>,
 ): keyof TransportAvailability {
@@ -151,7 +153,9 @@ export function classifyEngineError(
 export class UndeclaredFaultError extends Error {
   /** Stable machine-readable discriminant; equals the class name, as a `WeftError`'s does. */
   readonly code = 'UndeclaredFaultError';
+  /** The operation that produced it. */
   readonly operationName: string;
+  /** The code the operation produced. */
   readonly faultCode: string;
 
   constructor(operationName: string, faultCode: string) {

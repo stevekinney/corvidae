@@ -111,11 +111,11 @@ const INK_TIERS = [
   ['--cinder-border-muted', { light: 0.05, dark: 0.08 }],
   ['--cinder-border', { light: 0.09, dark: 0.12 }],
   ['--cinder-border-strong', { light: 0.15, dark: 0.15 }],
-  ['--cinder-border-control', { light: 0.32, dark: 0.32 }],
-  ['--cinder-border-control-hover', { light: 0.42, dark: 0.42 }],
+  ['--cinder-border-control', { light: 0.32, dark: 0.38 }],
+  ['--cinder-border-control-hover', { light: 0.42, dark: 0.44 }],
   ['--cinder-border-contrast', { light: 0.48, dark: 0.48 }],
   ['--cinder-border-contrast-hover', { light: 0.58, dark: 0.58 }],
-  ['--cinder-button-border', { light: 0.32, dark: 0.32 }],
+  ['--cinder-button-border', { light: 0.32, dark: 0.38 }],
 ] as const;
 
 /** The one tier whose dark arm is the opaque literal below, not a step over the ink. */
@@ -134,14 +134,14 @@ const DARK_VALUES: readonly ExpectedColor[] = [
   ['--cinder-surface-upcoming-marker', [0.185, 0.024, 265]],
   ['--cinder-surface-canvas', [0.145, 0.022, 265]],
   ['--cinder-border-ink', [1, 0, 0]],
-  ['--cinder-border-control', [1, 0, 0], 0.32],
-  ['--cinder-border-control-hover', [1, 0, 0], 0.42],
+  ['--cinder-border-control', [1, 0, 0], 0.38],
+  ['--cinder-border-control-hover', [1, 0, 0], 0.44],
   ['--cinder-border-contrast-hover', [1, 0, 0], 0.58],
-  ['--cinder-border-faint', [0.33, 0.03, 245]],
+  ['--cinder-border-faint', [0.33, 0.03, 265]],
   ['--cinder-text-default', [0.95, 0.01, 265]],
   ['--cinder-text-muted', [0.78, 0.01, 265]],
   ['--cinder-text-subtle', [0.68, 0.01, 265]],
-  ['--cinder-accent-contrast', [0.15, 0.035, 245]],
+  ['--cinder-accent-contrast', [0.15, 0.035, 270]],
   ['--cinder-accent-text', [0.72, 0.14, 270]],
   ['--cinder-accent-text-hover', [0.64, 0.14, 270]],
   ['--cinder-accent-solid', [0.72, 0.14, 270]],
@@ -216,8 +216,8 @@ describe('COR-2450: the light overlay backdrop dims the page by a quarter', () =
     expectColor('light', ['--cinder-overlay-backdrop', [0.2, 0.03, 245], 0.25]);
   });
 
-  test('the dark scrim keeps alpha 0.65', () => {
-    expectColor('dark', ['--cinder-overlay-backdrop', [0.08, 0.02, 245], 0.65]);
+  test('the dark scrim keeps alpha 0.65 and is a neutral at hue 265 (COR-2441)', () => {
+    expectColor('dark', ['--cinder-overlay-backdrop', [0.08, 0.02, 265], 0.65]);
   });
 });
 
@@ -254,9 +254,9 @@ describe('COR-2010: the dark arm moves the inset, inverse chip, control edge and
     expectColor('dark', ['--cinder-text-inverse', [0.185, 0.024, 265]]);
   });
 
-  test('the contrast tier is the opaque oklch(56% .05 248), which clears 3:1 on raised', () => {
+  test('the contrast tier is the opaque oklch(64% .03 265), which clears 3:1 on raised', () => {
     for (const property of OPAQUE_IN_DARK) {
-      expectColor('dark', [property, [0.56, 0.05, 248]]);
+      expectColor('dark', [property, [0.64, 0.03, 265]]);
     }
   });
 
@@ -264,7 +264,7 @@ describe('COR-2010: the dark arm moves the inset, inverse chip, control edge and
   // the white enabled control beside it. It is now the inset, the fill a disabled Button uses.
   test('the disabled control fill is the inset in light and fill.disabled in dark', () => {
     expectColor('light', ['--cinder-control-background-disabled', [0.955, 0.002, 265]]);
-    expectColor('dark', ['--cinder-control-background-disabled', [0.3, 0.015, 245]]);
+    expectColor('dark', ['--cinder-control-background-disabled', [0.3, 0.015, 265]]);
   });
 
   test('the skeleton fill is a 12% step of the border ink in both arms, never an opaque surface', () => {
@@ -305,5 +305,78 @@ describe('COR-2308: the dark arm ships the neutral ladder', () => {
   test('the neutral status border follows the structural border tier in each arm', () => {
     expect(contexts.dark.get('--cinder-status-neutral-border')?.alpha).toBe(0.12);
     expect(contexts.light.get('--cinder-status-neutral-border')?.alpha).toBe(0.09);
+  });
+});
+
+// COR-2441 (COR-2308): the dark neutrals were authored at the old navy hue, 245, and read blue
+// beside the hue-265 surfaces. Only status colors and the accent keep a chromatic hue.
+describe('COR-2441: no dark neutral keeps hue 245', () => {
+  const NEUTRALS = [
+    '--cinder-border-faint',
+    '--cinder-border-control',
+    '--cinder-border-control-hover',
+    '--cinder-border-contrast',
+    '--cinder-text-disabled',
+    '--cinder-fill-disabled',
+    '--cinder-control-background-disabled',
+    '--cinder-accent-contrast',
+    '--cinder-overlay-backdrop',
+    '--cinder-toggle-track-off-resting',
+    '--cinder-toggle-track-off-hover-resting',
+    '--cinder-checker-base',
+    '--cinder-checker-tile',
+  ];
+
+  for (const property of NEUTRALS) {
+    test(`${property} is not hue 245 in the dark arm`, () => {
+      const color = contexts.dark.get(property);
+      if (color === undefined) return;
+      const [, chroma, hue] = color.components;
+      // Hue is meaningless at zero chroma.
+      if (chroma === 0) return;
+      expect(hue, property).not.toBe(245);
+    });
+  }
+
+  test('the resolved dark neutrals for the tokens the issue names exist', () => {
+    for (const property of [
+      '--cinder-border-faint',
+      '--cinder-fill-disabled',
+      '--cinder-accent-contrast',
+      '--cinder-overlay-backdrop',
+      '--cinder-toggle-track-off-resting',
+      '--cinder-checker-base',
+    ]) {
+      expect(contexts.dark.get(property), `${property} is missing`).toBeDefined();
+    }
+  });
+});
+
+// COR-2440 AC15. Owner decision of 2026-11-17 ("which dark borders reach 3:1": controls only): the
+// dark control edges (control, control hover, the button border) clear 3:1
+// (check-token-contrast-borders.test.ts), while the structural edges stay quiet at 8%, 12% and
+// 15% of the ink. The contrast tier, which `prefers-contrast: more` aliases the control edge to,
+// stays heavier than the resting control edge it replaces.
+describe('COR-2440 AC15: the retuned dark border ladder and prefers-contrast: more', () => {
+  test('the dark structural tiers stay quiet (owner decision, 2026-11-17)', () => {
+    const alphas = [
+      '--cinder-border-muted',
+      '--cinder-border',
+      '--cinder-border-strong',
+      '--cinder-status-neutral-border',
+    ].map((property) => contexts.dark.get(property)?.alpha);
+    expect(alphas).toEqual([0.08, 0.12, 0.15, 0.12]);
+  });
+
+  test('more contrast keeps a stronger border than the resting control edge', async () => {
+    const css = await Bun.file(new URL('../styles/tokens-base.css', import.meta.url)).text();
+    const block = css.slice(css.indexOf('@media (prefers-contrast: more)'));
+    expect(block).toContain('--cinder-border-control: var(--cinder-border-contrast);');
+    expect(block).toContain('--cinder-border-control-hover: var(--cinder-border-contrast-hover);');
+    const contrastLightness = contexts.dark.get('--cinder-border-contrast')?.components[0] ?? 0;
+    expect(contrastLightness).toBeGreaterThan(0.6);
+    expect(contexts.dark.get('--cinder-border-contrast-hover')?.alpha).toBeGreaterThan(
+      contexts.dark.get('--cinder-border-control-hover')?.alpha ?? 1,
+    );
   });
 });

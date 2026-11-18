@@ -46,6 +46,8 @@ The top card is a focus stop. With it focused, `ArrowRight` accepts, `ArrowLeft`
 
 By default a card shows an `eyebrow`, a `title` and a `description`. Pass a `card` snippet to draw your own body for each item; the card's accessible name, stamps and gestures remain the deck's. A link, button or field inside a card keeps working: a drag does not start on it.
 
+A decided card leaves as a copy that plays its exit for about 200 ms, so for that moment the `card` snippet is rendered a second time for the same item (the copy is inert and hidden from assistive technology). A custom body therefore must not rely on unique ids or on one-time side effects such as a focus call or an analytics event in its markup; derive an id from the item and leave effects to `onDecision`.
+
 ## Props
 
 <!-- generated:props:start -->
@@ -56,7 +58,7 @@ By default a card shows an `eyebrow`, a `title` and a `description`. Pass a `car
 | `class` | `string` | no | — | Custom class merged with `.cinder-decision-deck`. |
 | `emptyDescription` | `string` | no | — | Supporting line of the empty state. Left unset, it says how many cards were left for later. |
 | `emptyTitle` | `string` | no | — | Title of the empty state shown when every card is decided. Defaults to "All caught up". |
-| `keyboardHint` | `string` | no | — | Hidden text that names the keys on a focused card, read after the card's name. Defaults to a sentence naming ArrowRight, ArrowLeft and ArrowDown. |
+| `keyboardHint` | `string` | no | — | Hidden text that names the keys on a focused card, read after the card's name. Defaults to a sentence naming the arrow keys, which follow the reading direction (accept is the arrow toward the inline-end edge). |
 | `label` | `string` | no | — | Accessible name of the deck, such as "Review queue". Left unset, the deck is unnamed. |
 | `laterLabel` | `string` | no | — | Text of the later button. Defaults to "Later". |
 | `rejectLabel` | `string` | no | — | Text of the reject button and the reject stamp. Defaults to "Reject". |

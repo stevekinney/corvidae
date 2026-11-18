@@ -92,5 +92,18 @@
     {#snippet recent()}
       <HomeCard title={HOME_COPY.recent.title}><Skeleton variant="grouped" rows={3} /></HomeCard>
     {/snippet}
+    {#snippet workflowActivity()}
+      <!-- The bands' real headings over rows with their glyph and their time, so neither heading
+           nor the text's leading edge moves when the rows arrive; the time bar ends where the
+           times do, before the chevron's column every band row keeps. -->
+      <HomeCard title={HOME_COPY.activity.fleet.title}>
+        <Skeleton variant="grouped" rows={3} leading trailing chevronColumn />
+      </HomeCard>
+    {/snippet}
+    {#snippet agentActivity()}
+      <HomeCard title={HOME_COPY.activity.bureau.title}>
+        <Skeleton variant="grouped" rows={3} leading trailing chevronColumn />
+      </HomeCard>
+    {/snippet}
   </HomeLayout>
 </Skeleton>

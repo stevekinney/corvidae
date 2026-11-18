@@ -101,11 +101,7 @@ test.describe('the hooks list states', () => {
     );
     // The hook that is off leads with Off, says no time, and keeps its switch off.
     const refund = rows.nth(4);
-    // A wrapMeta row draws its status word twice, in the status column and at the start of line
-    // two, and shows one of them at a width; the one shown is the one a person reads.
-    await expect(
-      refund.locator('[data-status-word="Off"]').filter({ visible: true }),
-    ).toBeVisible();
+    await expect(refund.locator('[data-status-word="Off"]')).toBeVisible();
     await expect(refund.locator('[data-last-delivery]')).toHaveCount(0);
     await expect(refund.getByRole('switch')).toHaveAttribute('aria-checked', 'false');
     await expect(refund).toContainText('only for Tool runner');
@@ -326,10 +322,7 @@ test.describe('the hooks list states', () => {
       const rows = main.locator('li[data-hook]');
       await expect(rows).toHaveCount(2);
       await expect(rows.first()).toHaveAttribute('data-hook', 'hook-gave-up');
-      // Of the wrapMeta row's two copies of its status word, the one shown at this width.
-      await expect(
-        rows.first().locator('[data-status-word="Gave up"]').filter({ visible: true }),
-      ).toBeVisible();
+      await expect(rows.first().locator('[data-status-word="Gave up"]')).toBeVisible();
       await expect(rows.first()).toContainText(
         'When a run fails, send a webhook to events.pagerduty.com',
       );
@@ -356,7 +349,8 @@ test.describe('the hooks list states', () => {
     const row = page.locator('main li[data-hook="hook-long"]');
 
     await expect(row).toBeVisible();
-    await expect(row.locator(`[title*="${url}"]`).first()).toBeAttached();
+    // A linked row's tooltip is the row's own, the title then line two (COR-2227).
+    expect(await row.getAttribute('title')).toContain(url);
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
       375,
     );

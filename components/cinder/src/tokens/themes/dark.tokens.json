@@ -100,7 +100,7 @@
     "faint": {
       "$value": {
         "colorSpace": "oklch",
-        "components": [0.33, 0.03, 245]
+        "components": [0.33, 0.03, 265]
       }
     },
     "$root": {
@@ -120,11 +120,11 @@
         "$value": {
           "colorSpace": "oklch",
           "components": [1, 0, 0],
-          "alpha": 0.32
+          "alpha": 0.38
         },
         "$extensions": {
           "com.lostgradient.cinder": {
-            "cssRecipe": "color-mix(in oklch, var(--cinder-border-ink), transparent 68%)"
+            "cssRecipe": "color-mix(in oklch, var(--cinder-border-ink), transparent 62%)"
           }
         }
       },
@@ -132,11 +132,11 @@
         "$value": {
           "colorSpace": "oklch",
           "components": [1, 0, 0],
-          "alpha": 0.42
+          "alpha": 0.44
         },
         "$extensions": {
           "com.lostgradient.cinder": {
-            "cssRecipe": "color-mix(in oklch, var(--cinder-border-ink), transparent 58%)"
+            "cssRecipe": "color-mix(in oklch, var(--cinder-border-ink), transparent 56%)"
           }
         }
       }
@@ -145,11 +145,11 @@
       "$root": {
         "$value": {
           "colorSpace": "oklch",
-          "components": [0.56, 0.05, 248]
+          "components": [0.64, 0.03, 265]
         },
         "$extensions": {
           "com.lostgradient.cinder": {
-            "cssRecipe": "oklch(56% 0.05 248)"
+            "cssRecipe": "oklch(64% 0.03 265)"
           }
         }
       },
@@ -208,7 +208,7 @@
     "disabled": {
       "$value": {
         "colorSpace": "oklch",
-        "components": [0.64, 0.02, 245]
+        "components": [0.64, 0.02, 265]
       }
     },
     "inverse": {
@@ -227,7 +227,7 @@
     "disabled": {
       "$value": {
         "colorSpace": "oklch",
-        "components": [0.3, 0.015, 245]
+        "components": [0.3, 0.015, 265]
       }
     }
   },
@@ -244,7 +244,7 @@
     "contrast": {
       "$value": {
         "colorSpace": "oklch",
-        "components": [0.15, 0.035, 245]
+        "components": [0.15, 0.035, 270]
       }
     },
     "active": {},
@@ -423,7 +423,7 @@
       "$type": "color",
       "$value": {
         "colorSpace": "oklch",
-        "components": [0.08, 0.02, 245],
+        "components": [0.08, 0.02, 265],
         "alpha": 0.65
       }
     }
@@ -654,22 +654,22 @@
       "off-resting": {
         "$value": {
           "colorSpace": "oklch",
-          "components": [0.58, 0.02, 245]
+          "components": [0.58, 0.02, 265]
         },
         "$extensions": {
           "com.lostgradient.cinder": {
-            "cssRecipe": "oklch(58% 0.02 245)"
+            "cssRecipe": "oklch(58% 0.02 265)"
           }
         }
       },
       "off-hover-resting": {
         "$value": {
           "colorSpace": "oklch",
-          "components": [0.64, 0.02, 245]
+          "components": [0.64, 0.02, 265]
         },
         "$extensions": {
           "com.lostgradient.cinder": {
-            "cssRecipe": "oklch(64% 0.02 245)"
+            "cssRecipe": "oklch(64% 0.02 265)"
           }
         }
       }
@@ -1247,14 +1247,14 @@
       "$type": "color",
       "$value": {
         "colorSpace": "oklch",
-        "components": [0.28, 0.02, 245]
+        "components": [0.28, 0.02, 265]
       }
     },
     "tile": {
       "$type": "color",
       "$value": {
         "colorSpace": "oklch",
-        "components": [0.38, 0.02, 245]
+        "components": [0.38, 0.02, 265]
       }
     }
   },

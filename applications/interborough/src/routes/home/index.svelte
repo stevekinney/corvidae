@@ -9,7 +9,9 @@
    * it (`home-counts.svelte`), what is running and what needs attention at the left, each one
    * grouped list, the box that
    * starts a chat at the right, and the chats you were last in across the full width below
-   * (`home-layout.svelte`).
+   * (`home-layout.svelte`), then the last region, the two activity bands: Workflow activity and
+   * Agent activity (`home-workflow-activity.svelte`, `home-agent-activity.svelte`), which the
+   * first-run checklist does not show.
    *
    * Each card reads on its own, so one that cannot be read says so in its own place and the rest
    * stay live. Running now is there only while a run is going.
@@ -48,6 +50,8 @@
   import HomeRecentChats from './home-recent-chats.svelte';
   import HomeRunningNow from './home-running-now.svelte';
   import HomeStartChat from './home-start-chat.svelte';
+  import HomeAgentActivity from './home-agent-activity.svelte';
+  import HomeWorkflowActivity from './home-workflow-activity.svelte';
 
   // The day and the zone's name follow the clock the page reads, so a page left open past midnight
   // says the new day.
@@ -120,6 +124,8 @@
     attention={mode === 'overview' || otherProblems ? attentionCard : undefined}
     startChatAside={mode === 'overview' ? startChatCard : undefined}
     recent={recentCard}
+    workflowActivity={mode === 'checklist' ? undefined : workflowActivityBand}
+    agentActivity={mode === 'checklist' ? undefined : agentActivityBand}
   />
 {/if}
 
@@ -147,6 +153,8 @@
 {#snippet startChatCard()}<HomeStartChat />{/snippet}
 {#snippet attentionCard()}<HomeNeedsAttention omitProviderNotice={mode === 'checklist'} />{/snippet}
 {#snippet recentCard()}<HomeRecentChats />{/snippet}
+{#snippet workflowActivityBand()}<HomeWorkflowActivity />{/snippet}
+{#snippet agentActivityBand()}<HomeAgentActivity />{/snippet}
 
 <style>
   .ib-home-stopped {

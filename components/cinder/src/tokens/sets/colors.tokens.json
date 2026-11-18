@@ -480,7 +480,7 @@
           "cssProperty": "--cinder-checker-base",
           "public": true,
           "category": "color",
-          "cssRecipe": "light-dark(#fff, oklch(28% 0.02 245))"
+          "cssRecipe": "light-dark(#fff, oklch(28% 0.02 265))"
         }
       }
     },
@@ -497,7 +497,7 @@
           "cssProperty": "--cinder-checker-tile",
           "public": true,
           "category": "color",
-          "cssRecipe": "light-dark(#ccc, oklch(38% 0.02 245))"
+          "cssRecipe": "light-dark(#ccc, oklch(38% 0.02 265))"
         }
       }
     }

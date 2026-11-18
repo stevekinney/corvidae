@@ -121,6 +121,17 @@
   // A group row is not a link: its only control is the disclosure button. A row that failed to
   // load is not a link either: its details are the thing that is missing.
   const linkHref = $derived(details === undefined && error === undefined ? href : undefined);
+  // A linked row's title link covers every line, so a tooltip on line two could never be reached
+  // (COR-2227): the linked row draws one tooltip on the row itself, the title, a line break, then
+  // line two, and none on its lines. An unlinked row keeps one tooltip per line.
+  const rowTooltip = $derived(
+    linkHref === undefined
+      ? undefined
+      : [tooltip, metaTooltip].filter((part) => part !== undefined && part !== '').join('\n') ||
+          undefined,
+  );
+  const lineTooltip = $derived(linkHref === undefined ? tooltip : undefined);
+  const lineMetaTooltip = $derived(linkHref === undefined ? metaTooltip : undefined);
   // The phone form is the row's own width below 640px, not the viewport's (COR-2448), so a row in
   // a 360px pane of a wide window takes it and a row in a wide column of a narrow window does not.
   // The stylesheet asks the same question with a container query; the script needs the answer for
@@ -135,6 +146,22 @@
   });
   const phone = $derived(
     rowWidth !== undefined && rowWidth > 0 ? rowWidth < PHONE_ROW_WIDTH : phoneViewport.current,
+  );
+  // Under `wrapMeta` a phone row reads line two as one run of text (the dot, the word, then the
+  // meta), so a wrapped line returns to the row's leading edge. The status is drawn once, either in
+  // its column or at the start of line two, never both: a second copy would be a second image with
+  // the same name to a screen reader and a second match to a text query. The script decides, from
+  // the same row width as the phone form, and the stylesheet keys line two's span on the class this
+  // sets, so the placement and its styles cannot disagree. A row with no text line two (none, or a
+  // failure) keeps its status in the column.
+  const statusInline = $derived(
+    isLines &&
+      wrapMeta &&
+      status !== undefined &&
+      statusPlacement === 'leading' &&
+      phone &&
+      error === undefined &&
+      (description !== undefined || meta !== undefined),
   );
   const hasActions = $derived(actions !== undefined && actions.length > 0);
   // On a phone two or more actions are one menu button, unless the row asks to keep them as
@@ -186,7 +213,11 @@
 </script>
 
 {#snippet titleRegion()}
-  <div class="cinder-stacked-list-item__title" data-cinder-title-lines={titleLines} title={tooltip}>
+  <div
+    class="cinder-stacked-list-item__title"
+    data-cinder-title-lines={titleLines}
+    title={lineTooltip}
+  >
     {#if linkHref !== undefined}
       <a
         class="cinder-stacked-list-item__title-link"
@@ -225,6 +256,7 @@
     details !== undefined && `cinder-stacked-list-item--tone-${tone}`,
     selected && 'cinder-stacked-list-item--selected',
     wrapMeta && 'cinder-stacked-list-item--wrap-meta',
+    statusInline && 'cinder-stacked-list-item--status-inline',
     isLines && `cinder-stacked-list-item--status-${statusPlacement}`,
     linkHref !== undefined && 'cinder-stacked-list-item--linked',
     actionsAsMenu && 'cinder-stacked-list-item--collapsed-actions',
@@ -239,6 +271,7 @@
   data-cinder-expanded={details !== undefined && expanded ? '' : undefined}
   data-cinder-selected={selected ? '' : undefined}
   aria-current={selected && linkHref === undefined ? 'true' : undefined}
+  title={rowTooltip}
   {...safeRest}
   {@attach measureRow}
 >
@@ -278,7 +311,7 @@
     </div>
   {:else}
     <div class="cinder-stacked-list-item__layout">
-      {#if isLines && status}
+      {#if isLines && status && !statusInline}
         <div class="cinder-stacked-list-item__status">
           {@render status()}
         </div>
@@ -340,11 +373,9 @@
               {/if}
             </div>
           {:else if description || meta}
-            <div class="cinder-stacked-list-item__line-two" title={metaTooltip}>
-              {#if wrapMeta && status}
-                <!-- Under `wrapMeta` a phone row reads line two as one run of text (the dot, the
-                     word, then the meta), so a wrapped line returns to the row's leading edge.
-                     Drawn only in that form; the status column is hidden there (stylesheet). -->
+            <div class="cinder-stacked-list-item__line-two" title={lineMetaTooltip}>
+              {#if statusInline && status}
+                <!-- The row's only copy of its status in this form (see `statusInline`). -->
                 <span class="cinder-stacked-list-item__status-inline">{@render status()}</span>
               {/if}
               {#if description}
@@ -364,12 +395,14 @@
           {/if}
         {:else}
           {#if description}
-            <div class="cinder-stacked-list-item__description" title={metaTooltip}>
+            <div class="cinder-stacked-list-item__description" title={lineMetaTooltip}>
               {@render description()}
             </div>
           {/if}
           {#if meta}
-            <div class="cinder-stacked-list-item__meta" title={metaTooltip}>{@render meta()}</div>
+            <div class="cinder-stacked-list-item__meta" title={lineMetaTooltip}>
+              {@render meta()}
+            </div>
           {/if}
         {/if}
       </div>

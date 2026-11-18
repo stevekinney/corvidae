@@ -33,7 +33,7 @@ import {
  *
  * @example
  * ```ts
- * import { principalFromJwtClaims, type JwtClaims } from '@lostgradient/weft';
+ * import { principalFromJwtClaims, type JwtClaims } from '@lostgradient/backchannel';
  *
  * const claims: JwtClaims = {
  *   sub: 'user-123',
@@ -79,7 +79,7 @@ export type WorkspaceIdentity = {
  *
  * @example
  * ```ts
- * import { principalFromApiKey, type AuthenticatedPrincipal } from '@lostgradient/weft';
+ * import { principalFromApiKey, type AuthenticatedPrincipal } from '@lostgradient/backchannel';
  *
  * const principal: AuthenticatedPrincipal = principalFromApiKey({
  *   subject: 'local-tool',
@@ -91,10 +91,15 @@ export type WorkspaceIdentity = {
 export type AuthenticatedPrincipal = {
   /** Supplied by the host after credential verification, never by request metadata. */
   readonly workspace?: WorkspaceIdentity;
+  /** How the principal authenticated. */
   readonly method: 'jwt' | 'api-key' | 'mtls' | 'stdio-local' | 'unauthenticated-local';
+  /** The scopes the principal holds. */
   readonly scopes: ReadonlySet<AuthorizationScope>;
+  /** The verified JWT claims, when the method is `jwt`. */
   readonly claims: JwtClaims | undefined;
+  /** The normalized subject, when the credential names one. */
   readonly subject: string | undefined;
+  /** Whether the principal holds a scope. */
   hasScope(scope: AuthorizationScope): boolean;
 };
 
@@ -105,13 +110,14 @@ export type AuthenticatedPrincipal = {
  *
  * @example
  * ```ts
- * import { anonymousPrincipal, type UnauthenticatedPrincipal } from '@lostgradient/weft';
+ * import { anonymousPrincipal, type UnauthenticatedPrincipal } from '@lostgradient/backchannel';
  *
  * const principal: UnauthenticatedPrincipal = anonymousPrincipal();
  * console.log(principal.method);
  * ```
  */
 export type UnauthenticatedPrincipal = {
+  /** Always `unauthenticated`. */
   readonly method: 'unauthenticated';
 };
 
@@ -120,7 +126,7 @@ export type UnauthenticatedPrincipal = {
  *
  * @example
  * ```ts
- * import { anonymousPrincipal, type Principal } from '@lostgradient/weft';
+ * import { anonymousPrincipal, type Principal } from '@lostgradient/backchannel';
  *
  * const principal: Principal = anonymousPrincipal();
  * console.log(principal.method);
@@ -136,7 +142,7 @@ export type Principal = AuthenticatedPrincipal | UnauthenticatedPrincipal;
  *
  * @example
  * ```ts
- * import { principalFromJwtClaims } from '@lostgradient/weft';
+ * import { principalFromJwtClaims } from '@lostgradient/backchannel';
  *
  * const principal = principalFromJwtClaims({
  *   sub: 'user-123',
@@ -168,7 +174,7 @@ export function principalFromJwtClaims(
  *
  * @example
  * ```ts
- * import { principalFromApiKey } from '@lostgradient/weft';
+ * import { principalFromApiKey } from '@lostgradient/backchannel';
  *
  * const principal = principalFromApiKey({
  *   subject: 'automation',
@@ -198,7 +204,7 @@ export function principalFromApiKey(options: {
  *
  * @example
  * ```ts
- * import { principalFromMutualTls } from '@lostgradient/weft';
+ * import { principalFromMutualTls } from '@lostgradient/backchannel';
  *
  * const principal = principalFromMutualTls({
  *   subject: 'client-cert-subject',
@@ -228,7 +234,7 @@ export function principalFromMutualTls(options: {
  *
  * @example
  * ```ts
- * import { anonymousPrincipal } from '@lostgradient/weft';
+ * import { anonymousPrincipal } from '@lostgradient/backchannel';
  *
  * const principal = anonymousPrincipal();
  * console.log(principal.method);
@@ -249,7 +255,7 @@ export function anonymousPrincipal(): UnauthenticatedPrincipal {
  *
  * @example
  * ```ts
- * import { principalFromStdioLocal } from '@lostgradient/weft';
+ * import { principalFromStdioLocal } from '@lostgradient/backchannel';
  *
  * const principal = principalFromStdioLocal();
  * console.log(principal.hasScope('workflows:write'));
@@ -279,7 +285,7 @@ export function principalFromStdioLocal(): AuthenticatedPrincipal {
  *
  * @example
  * ```ts
- * import { principalFromUnauthenticatedLocal } from '@lostgradient/weft';
+ * import { principalFromUnauthenticatedLocal } from '@lostgradient/backchannel';
  *
  * const principal = principalFromUnauthenticatedLocal();
  * console.log(principal.method); // 'unauthenticated-local'

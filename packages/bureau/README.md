@@ -1041,7 +1041,7 @@ import {
   waitForCondition,
   type GenerateFunction,
 } from '@lostgradient/operative';
-import { principalFromApiKey } from '@lostgradient/weft';
+import { principalFromApiKey } from '@lostgradient/backchannel';
 import { BunSQLiteStorage } from '@lostgradient/storage-bun-sqlite';
 
 const storage = new BunSQLiteStorage('./bureau.sqlite');
@@ -1220,7 +1220,7 @@ import {
 } from '@a2a-js/sdk/client';
 import { createBureau, createBureauHandler, createMemoryAssetStorage } from '@lostgradient/bureau';
 import { createAgent, waitForCondition, type GenerateFunction } from '@lostgradient/operative';
-import { principalFromApiKey } from '@lostgradient/weft';
+import { principalFromApiKey } from '@lostgradient/backchannel';
 import { MemoryStorage } from '@lostgradient/storage';
 
 const publicUrl = 'https://agents.example.com';
@@ -1715,7 +1715,7 @@ import {
   type BackendDescriptor,
   type GenerateFunction,
 } from '@lostgradient/operative';
-import { principalFromApiKey } from '@lostgradient/weft';
+import { principalFromApiKey } from '@lostgradient/backchannel';
 
 declare function anthropicRows(): readonly BackendDescriptor[];
 

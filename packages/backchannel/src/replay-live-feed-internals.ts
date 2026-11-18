@@ -14,6 +14,7 @@ import type {
 } from './replay-live-feed-types.ts';
 import type { SequencedEventEnvelope } from './sequence-cursor.ts';
 
+/** Builds a queue that runs the operations it is given one at a time, in order. */
 export function createSerialOperationQueue(): <T>(operation: () => Promise<T>) => Promise<T> {
   let queue = Promise.resolve();
   return <T>(operation: () => Promise<T>): Promise<T> => {
@@ -31,6 +32,7 @@ type DurableSubscriptionOptions = {
   readonly lifecycleSignal?: AbortSignal;
 };
 
+/** Builds the subscription a replay-and-live feed hands out: replay first, then live envelopes. */
 export function createDurableSubscription<TEnvelope extends SequencedEventEnvelope>(
   backend: ReplayLiveFeedBackend<TEnvelope>,
   options: DurableSubscriptionOptions,
@@ -129,7 +131,9 @@ async function waitForAppendOrPoll(
 /** Thrown when a replay window exceeds the caller's configured limit. */
 export class ReplayWindowExceededError extends Error {
   constructor(
+    /** How many envelopes the replay window held. */
     readonly count: number,
+    /** The most envelopes the caller allowed. */
     readonly limit: number,
   ) {
     super(`Replay window is ${count} events; maximum is ${limit}.`);

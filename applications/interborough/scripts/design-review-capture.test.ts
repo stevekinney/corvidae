@@ -12,6 +12,7 @@ import { join } from 'node:path';
 import {
   captureForDesignReview,
   DESIGN_REVIEW_PHONE,
+  nextFrame,
   withPointerCleanup,
 } from '../tests/e2e/design-review-capture.ts';
 import {
@@ -98,6 +99,7 @@ describe('parseArguments', () => {
       'tests/e2e/api-reference.spec.ts',
       'tests/e2e/first-run.spec.ts',
       'tests/e2e/home.spec.ts',
+      'tests/e2e/home-activity.spec.ts',
       'tests/e2e/chat-list.spec.ts',
       'tests/e2e/chat-page.spec.ts',
       'tests/e2e/chat-responsive.spec.ts',
@@ -167,6 +169,7 @@ describe('parseArguments', () => {
       'tests/e2e/api-reference.spec.ts',
       'tests/e2e/first-run.spec.ts',
       'tests/e2e/home.spec.ts',
+      'tests/e2e/home-activity.spec.ts',
       'tests/e2e/chat-list.spec.ts',
       'tests/e2e/chat-page.spec.ts',
       'tests/e2e/chat-responsive.spec.ts',
@@ -220,6 +223,7 @@ describe('parseArguments', () => {
       'tests/e2e/api-reference.spec.ts',
       'tests/e2e/first-run.spec.ts',
       'tests/e2e/home.spec.ts',
+      'tests/e2e/home-activity.spec.ts',
       'tests/e2e/chat-list.spec.ts',
       'tests/e2e/chat-page.spec.ts',
       'tests/e2e/chat-responsive.spec.ts',
@@ -500,6 +504,62 @@ describe('captureForDesignReview readiness', () => {
       else process.env['INTERBOROUGH_DESIGN_REVIEW_COLOR_SCHEME'] = previousScheme;
       await rm(directory, { recursive: true, force: true });
     }
+  });
+});
+
+describe('nextFrame', () => {
+  test('ends under a stopped page clock, which never delivers an animation frame', async () => {
+    // COR-2227: Home's loading capture stops the clock (`page.clock.pauseAt`), and Playwright's
+    // fake clock owns `requestAnimationFrame`, so a frame wait built on it never ended once the
+    // page outgrew its viewport. Here a frame comes only as a layout observation, as it does then.
+    const scope = globalThis as unknown as Record<string, unknown>;
+    const saved = {
+      requestAnimationFrame: scope['requestAnimationFrame'],
+      ResizeObserver: scope['ResizeObserver'],
+    };
+    let observations = 0;
+    let animationFramesAsked = 0;
+    // An observation made inside an observer's callback is skipped for that frame and reported as
+    // a ResizeObserver loop error, so each observation must start outside any callback.
+    let delivering = false;
+    let observedWhileDelivering = 0;
+    scope['requestAnimationFrame'] = () => {
+      animationFramesAsked += 1;
+      return 0;
+    };
+    scope['ResizeObserver'] = class {
+      readonly #callback: () => void;
+      #disconnected = false;
+      constructor(callback: () => void) {
+        this.#callback = callback;
+      }
+      observe(): void {
+        observations += 1;
+        if (delivering) observedWhileDelivering += 1;
+        queueMicrotask(() => {
+          if (this.#disconnected) return;
+          delivering = true;
+          try {
+            this.#callback();
+          } finally {
+            delivering = false;
+          }
+        });
+      }
+      disconnect(): void {
+        this.#disconnected = true;
+      }
+    };
+    const page = { evaluate: async (pageFunction: () => Promise<void>) => pageFunction() };
+    try {
+      await nextFrame(page as never);
+    } finally {
+      scope['requestAnimationFrame'] = saved.requestAnimationFrame;
+      scope['ResizeObserver'] = saved.ResizeObserver;
+    }
+    expect(animationFramesAsked).toBe(0);
+    expect(observations).toBe(2);
+    expect(observedWhileDelivering).toBe(0);
   });
 });
 

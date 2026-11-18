@@ -533,6 +533,23 @@ test.describe('Home on a new installation that lists Assistant', () => {
     await expect(stepsOf(page)).toHaveCount(3);
     await captureForDesignReview(page, { route: '/', state: 'first run', source: SOURCE });
   });
+
+  test('shows neither activity band while the checklist shows (COR-2227, F7-07)', async ({
+    page,
+  }) => {
+    for (const width of [1280, 375]) {
+      await openFirstRun(page, width);
+      await expect(stepsOf(page)).toHaveCount(3);
+      await expect(page.locator('[data-page="home"]')).toHaveAttribute('data-mode', 'checklist');
+      await expect(page.getByTestId('home-activity')).toHaveCount(0);
+      await expect(page.locator('[data-home-card="Workflow activity"]')).toHaveCount(0);
+      await expect(page.locator('[data-home-card="Agent activity"]')).toHaveCount(0);
+      // Recent chats is the checklist page's last region.
+      await expect(
+        page.locator('[data-page="home"] > :last-child[data-home-card="Recent chats"]'),
+      ).toHaveCount(1);
+    }
+  });
 });
 
 test.describe('Home with a run going', () => {
@@ -683,10 +700,13 @@ test.describe('Home while it loads (02c, 02d, 02e, 02f)', () => {
       'Needs attention',
       'Start a chat',
       'Recent chats',
+      'Workflow activity',
+      'Agent activity',
     ]);
-    // The rows are Cinder's grouped placeholders, in the grouped lists' own shape.
+    // The rows are Cinder's grouped placeholders, in the grouped lists' own shape; the activity
+    // bands' have a glyph block and a time bar (COR-2227).
     await expect(body.locator('.cinder-skeleton-group[data-cinder-variant="grouped"]')).toHaveCount(
-      3,
+      5,
     );
     await expect(body.getByRole('textbox')).toHaveCount(0);
     await expect(body.getByRole('listitem')).toHaveCount(0);
