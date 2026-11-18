@@ -12,6 +12,12 @@ const schema = {
       type: 'boolean',
       description: 'Render the trailing disclosure caret. Defaults to true.',
     },
+    iconOnly: {
+      type: 'boolean',
+      description:
+        'The trigger shows only an icon (its name in visually hidden text): it is drawn square, as tall\nas it is wide, at its size, so a "More actions" menu in a row of buttons is a square, never a\npill. Pair it with `caretVisible={false}`.',
+      default: false,
+    },
     variant: {
       enum: [
         'primary',

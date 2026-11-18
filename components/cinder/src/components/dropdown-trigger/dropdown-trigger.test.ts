@@ -118,6 +118,49 @@ describe('DropdownTrigger', () => {
     expect(foundation).toContain('--_cinder-painted-height-md: 2rem;');
   });
 
+  // COR-2489 design round: the run header's "More actions" was a 50x32 pill beside 24px buttons.
+  // In a header's actions the trigger is drawn as a Button at the row's compact size, and an
+  // icon-only trigger is square there and outside a header.
+  test('in a header the trigger is a compact Button, and an icon-only trigger is square', async () => {
+    const { default: HeaderFixture } =
+      await import('../../test/fixtures/dropdown-trigger-header-fixture.svelte');
+    const { container } = render(HeaderFixture);
+    const inHeader = requiredInstance(container.querySelector('.in-header'), HTMLElement);
+    const button = requiredInstance(
+      container.querySelector('.cinder-page-header .cinder-button:not(.cinder-dropdown-trigger)'),
+      HTMLElement,
+    );
+    expect(inHeader.classList.contains('cinder-button')).toBe(true);
+    expect(inHeader.dataset['cinderSize']).toBe(button.dataset['cinderSize']);
+    expect(inHeader.dataset['cinderSize']).toBe('xs');
+    expect(inHeader.hasAttribute('data-cinder-compact')).toBe(true);
+    expect(button.hasAttribute('data-cinder-compact')).toBe(true);
+    expect(inHeader.dataset['cinderVariant']).toBe('secondary');
+    expect(inHeader.dataset['cinderHitTarget']).toBe('44');
+    expect(inHeader.hasAttribute('data-cinder-icon-only')).toBe(true);
+
+    // Outside a header it keeps its own bordered face, marked icon-only.
+    const loose = requiredInstance(container.querySelector('.loose'), HTMLElement);
+    expect(loose.classList.contains('cinder-button')).toBe(false);
+    expect(loose.hasAttribute('data-cinder-compact')).toBe(false);
+    expect(loose.hasAttribute('data-cinder-icon-only')).toBe(true);
+
+    // The Button's icon-only rules square a compact trigger; the trigger's own face is squared
+    // in dropdown.css at its height on each pointer.
+    const buttonCss = readFileSync(new URL('../button/button.css', import.meta.url), 'utf8');
+    expect(buttonCss).toMatch(
+      /\.cinder-button\[data-cinder-compact\]\[data-cinder-icon-only\] \{\s*min-width: var\(--_cinder-compact-control-height\);/,
+    );
+    const css = readFileSync(new URL('../dropdown/dropdown.css', import.meta.url), 'utf8');
+    const square =
+      /\.cinder-dropdown-trigger:not\(\.cinder-button\)\[data-cinder-icon-only\] \{([^}]*)\}/g;
+    const [fine, coarse] = [...css.matchAll(square)].map((match) => match[1] ?? '');
+    expect(fine).toContain('aspect-ratio: 1;');
+    expect(fine).toContain('padding-inline: 0;');
+    expect(fine).toContain('min-inline-size: var(--cinder-button-height-md);');
+    expect(coarse).toContain('min-inline-size: var(--_cinder-painted-height-md);');
+  });
+
   test('the internal anchor-name declaration wins when a consumer style redeclares it', () => {
     const { container } = render(Fixture, {
       props: { triggerStyle: 'anchor-name: --consumer-injected;' },

@@ -222,6 +222,14 @@ describe('the run page header', () => {
     expect(view.getByRole('button', { name: 'More actions' })).not.toBeNull();
   });
 
+  test('draws More actions square at the size of the buttons beside it (COR-2489 design round)', () => {
+    const view = renderHeader({ task: taskFixture({ id: 'run-1', status: 'completed' }) });
+    const more = view.getByRole('button', { name: 'More actions' });
+    expect(more.hasAttribute('data-cinder-icon-only')).toBe(true);
+    expect(more.hasAttribute('data-cinder-compact')).toBe(true);
+    expect(more.dataset['cinderSize']).toBe('xs');
+  });
+
   test('a task offers Cancel run beside More, and the engine’s own cancel is not offered twice', async () => {
     const view = renderHeader({
       task: taskFixture({ id: 'run-1', status: 'working' }),

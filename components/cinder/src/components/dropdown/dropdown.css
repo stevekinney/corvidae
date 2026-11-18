@@ -33,6 +33,14 @@
       box-shadow var(--cinder-duration-fast) var(--cinder-ease-standard);
   }
 
+  /* An icon-only trigger (`iconOnly`) is square, never a pill (COR-2489). One drawn as a Button
+     takes the Button's own icon-only rules, which square it at its size, compact in a header. */
+  .cinder-dropdown-trigger:not(.cinder-button)[data-cinder-icon-only] {
+    padding-inline: 0;
+    aspect-ratio: 1;
+    min-inline-size: var(--cinder-button-height-md);
+  }
+
   /* On a coarse pointer the trigger paints at a Button's painted height, as a Button beside it does,
      and reaches 44px through a positioned pseudo-element that takes no layout space: the raised
      `--cinder-button-height-md` would otherwise draw it 44px tall in a row of 32px buttons. A fine
@@ -50,6 +58,23 @@
       position: absolute;
       inset-block: min(0px, calc((100% - var(--cinder-touch-target-min)) / 2));
       inset-inline: min(0px, calc((100% - var(--cinder-touch-target-min)) / 2));
+    }
+
+    .cinder-dropdown-trigger:not(.cinder-button)[data-cinder-icon-only] {
+      min-inline-size: var(--_cinder-painted-height-md);
+    }
+
+    /* A compact icon-only trigger reaches (44px - 24px) / 2 past its face, so after a compact
+       button across a header's 8px gap the menu steps away by the 2px rest, as two compact
+       Buttons do (button.css, COR-2388); the trigger sits in the Dropdown's own wrapper. */
+    .cinder-button[data-cinder-compact]
+      + .cinder-dropdown:has(
+        > .cinder-dropdown-trigger[data-cinder-compact][data-cinder-icon-only]
+      ) {
+      margin-inline-start: calc(
+        (var(--cinder-touch-target-min) - var(--_cinder-compact-control-height)) / 2 -
+          var(--cinder-space-2)
+      );
     }
   }
 
