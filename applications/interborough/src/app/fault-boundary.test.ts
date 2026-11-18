@@ -147,7 +147,7 @@ describe('FaultBoundary', () => {
     // (which would be named after `error.name`, `'HttpClientError'`) exists.
     const buttons = getAllByRole('button');
     expect(buttons).toHaveLength(1);
-    expect(buttons[0]?.textContent?.trim()).toBe('Retry');
+    expect(buttons[0]?.textContent?.trim()).toBe('Try again');
   });
 
   test('onFault reports the classified treatment and the raw error exactly once, before the banner is interactive', async () => {
@@ -176,7 +176,7 @@ describe('FaultBoundary', () => {
     // the boundary only re-renders children when `reset()` runs.
     expect(await findByRole('alert')).not.toBeNull();
 
-    await fireEventClick(await findByRole('button', { name: 'Retry' }));
+    await fireEventClick(await findByRole('button', { name: 'Try again' }));
 
     expect(await findByTestId('recovered')).not.toBeNull();
     expect(queryByRole('alert')).toBeNull();

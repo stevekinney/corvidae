@@ -385,7 +385,7 @@ describe('the past runs of a schedule', () => {
 
     await findByText(SCHEDULE_COPY.detail.missedFailed, { exact: false });
     failing = false;
-    await fireEvent.click(await findByRole('button', { name: 'Retry' }));
+    await fireEvent.click(await findByRole('button', { name: 'Try again' }));
 
     await findByText(/^Missed once on /);
   });

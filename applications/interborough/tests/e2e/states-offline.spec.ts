@@ -148,7 +148,7 @@ test.describe('the server stops answering while a page with data is open', () =>
     // (Playwright reads `aria-disabled` as disabled, so the property is what says what the page set.)
     await expect(save).toHaveJSProperty('disabled', false);
     // What reads or moves is not held.
-    await expect(page.getByRole('button', { name: 'Retry' })).toBeEnabled();
+    await expect(page.getByRole('button', { name: 'Try again' })).toBeEnabled();
     await expect(page.getByRole('link', { name: 'Agents' }).first()).toBeVisible();
 
     await startHost(page);

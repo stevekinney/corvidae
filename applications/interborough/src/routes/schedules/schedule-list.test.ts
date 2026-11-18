@@ -410,7 +410,7 @@ describe('a workflow filter and a Bureau that did not say what the schedules sta
   test('says so over the rows it has, and Retry asks again', async () => {
     const world = sampleWorld({ failBureauSchedules: true, failBureauFiles: true });
     const { container, findByRole } = open('/schedules', world);
-    const retry = await findByRole('button', { name: 'Retry' });
+    const retry = await findByRole('button', { name: 'Try again' });
     expect(container.textContent).toContain(SCHEDULE_COPY.overlayFailed.title);
     world.failBureauSchedules = false;
     world.failBureauFiles = false;

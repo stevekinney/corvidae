@@ -85,6 +85,9 @@
   const copy = RUN_DETAIL_COPY.io;
   const hasAnswer = $derived(answerHtml !== undefined && answerHtml.trim() !== '');
   const errorStack = $derived(workflow?.errorStack ?? '');
+  // Why a run only the Bureau holds failed, in one line of its own words; empty when it said
+  // nothing that reads, so no heading is drawn over nothing.
+  const bureauFailure = $derived(task?.statusMessage ? oneLine(task.statusMessage) : '');
   const scheduled = $derived(task !== undefined && isScheduleFire(task));
   const agent = $derived(
     task?.agentName === null || task?.agentName === undefined
@@ -261,12 +264,12 @@
         </Collapsible>
       {/if}
     </div>
-  {:else if task !== undefined && workflow === undefined && task.status === 'failed' && task.statusMessage}
+  {:else if task !== undefined && workflow === undefined && task.status === 'failed' && bureauFailure !== ''}
     <!-- A run only the Bureau holds says why in its own words, here and not only in the rail, which
          sits under everything on a phone (COR-2489). -->
     <Section
       title={RUN_DETAIL_COPY.instance.whyItFailed}
-      description={oneLine(task.statusMessage)}
+      description={bureauFailure}
       data-run-failure
     />
   {:else if record !== undefined && workflow === undefined && !failureOnStep}

@@ -172,7 +172,7 @@ describe('a list that failed', () => {
     } as never);
     await findByText('The Bureau broke.');
     failing = false;
-    await fireEvent.click(await findByRole('button', { name: 'Retry' }));
+    await fireEvent.click(await findByRole('button', { name: 'Try again' }));
     await waitFor(() => expect(rows(container).length).toBe(1));
   });
 });
