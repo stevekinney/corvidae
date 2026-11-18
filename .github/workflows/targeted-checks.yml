@@ -184,5 +184,15 @@ jobs:
       - run: |
           cd "$UNIT_WORKSPACE"
           config=""
+          # Interborough runs every test outside src/host and fixtures under bunfig.ui.toml (its
+          # `test` script); a dispatch that leaves unit_config out gets that, not a DOM-less run.
+          if [ -z "$UNIT_CONFIG" ] && [ "$UNIT_WORKSPACE" = applications/interborough ]; then
+            host=0
+            for path in $UNIT_PATHS; do
+              case "$path" in src/host|src/host/*|fixtures|fixtures/*) host=1 ;; esac
+            done
+            if [ "$host" = 0 ]; then UNIT_CONFIG=./bunfig.ui.toml; fi
+            if [ "$host" = 1 ]; then echo "::notice::host-lane paths run under the default bunfig; dispatch UI tests separately with unit_config=./bunfig.ui.toml"; fi
+          fi
           if [ -n "$UNIT_CONFIG" ]; then config="--config=$UNIT_CONFIG"; fi
           bun test $config --conditions browser --conditions svelte $UNIT_PATHS

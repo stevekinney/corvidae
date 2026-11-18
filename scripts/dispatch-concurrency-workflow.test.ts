@@ -40,4 +40,13 @@ describe('workflow_dispatch concurrency', () => {
     expect(job).toContain('turbo run lint typecheck --affected');
     expect(job).not.toContain('if:');
   });
+
+  // A dispatch without unit_config ran Interborough UI tests DOM-less (run 44371426895).
+  test('an Interborough unit run outside src/host defaults to bunfig.ui.toml', () => {
+    const text = workflow('targeted-checks.yml');
+    const job = text.slice(text.indexOf('\n  unit:\n'));
+    expect(job).toContain('[ "$UNIT_WORKSPACE" = applications/interborough ]');
+    expect(job).toContain('src/host|src/host/*|fixtures|fixtures/*) host=1');
+    expect(job).toContain('UNIT_CONFIG=./bunfig.ui.toml');
+  });
 });
