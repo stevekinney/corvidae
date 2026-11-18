@@ -32,7 +32,9 @@ export type ChatQuestionDockLabels = {
   sent: string;
   /** What a failed send says. Default `The answer could not be sent. Try again.`. */
   failed: string;
+  /** Host-overridable text. The default reads `Yes`. */
   yes: string;
+  /** Host-overridable text. The default reads `No`. */
   no: string;
 };
 

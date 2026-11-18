@@ -1,10 +1,13 @@
 import type { OperationFault } from './operation-fault.ts';
 
+/** The default limit on a REST request body: 1 MiB. */
 export const DEFAULT_REST_MAX_BODY_BYTES = 1 * 1024 * 1024;
 
 const CONTENT_LENGTH_PATTERN = /^(0|[1-9]\d*)$/;
 
+/** Options for reading a REST request body. */
 export type RestBodyReadOptions = {
+  /** The largest body to accept, in bytes. */
   readonly maxBodyBytes?: number;
 };
 
@@ -58,6 +61,7 @@ async function cancelReaderAfterPayloadOverflow(
   }
 }
 
+/** Reads a request body, refusing one larger than the limit with a `PayloadTooLarge` fault. */
 export async function readRestBodyBounded(
   request: Request,
   options?: RestBodyReadOptions,
@@ -95,6 +99,7 @@ export async function readRestBodyBounded(
   return bytes;
 }
 
+/** Reads a request body within the size limit and decodes it as UTF-8. */
 export async function readRestTextBody(
   request: Request,
   options?: RestBodyReadOptions,
@@ -102,6 +107,7 @@ export async function readRestTextBody(
   return new TextDecoder('utf-8').decode(await readRestBodyBounded(request, options));
 }
 
+/** Reads a request body within the size limit and parses it as JSON. */
 export async function readRestJsonBody(
   request: Request,
   options?: RestBodyReadOptions,
@@ -109,6 +115,7 @@ export async function readRestJsonBody(
   return JSON.parse(await readRestTextBody(request, options)) as unknown;
 }
 
+/** Reads a JSON request body within the size limit, or `undefined` when the body is empty. */
 export async function readOptionalRestJsonBody(
   request: Request,
   options?: RestBodyReadOptions,

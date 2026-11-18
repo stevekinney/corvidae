@@ -1,15 +1,17 @@
 import { describe, expect, it } from 'bun:test';
 
-import { createCatalogSnapshot } from '../src/server/weft-catalog-snapshot.ts';
 import {
   aliasNameFor,
   assignAliasNames,
   isHoistWorthy,
   selectAliases,
 } from './operation-client-aliases.ts';
-import { canonicalKey, type TypeNode } from './operation-client-schema.ts';
+import { canonicalKey, schemaToNode, type TypeNode } from './operation-client-schema.ts';
 
-import { generatedSourcesText } from './operation-client-test-support.ts';
+function compareAliasEntries(first: [string, string], second: [string, string]): number {
+  return first[0] < second[0] ? -1 : 1;
+}
+
 const object = (...names: string[]): TypeNode => ({
   kind: 'object',
   fields: names.map((name) => ({
@@ -42,13 +44,6 @@ const nestedPair = (): { inner: TypeNode; outer: TypeNode } => {
 const primitiveNode = (text: string): TypeNode => ({ kind: 'primitive', text });
 
 describe('alias selection thresholds', () => {
-  it('does not alias the 1-field key object in real output', async () => {
-    const source = await generatedSourcesText(createCatalogSnapshot());
-    // The attribute element { gt, gte, key, lt, lte, value } is aliased, but a
-    // bare { readonly "key": string } object must never become its own alias.
-    expect(source).not.toMatch(/type Shared\w+ = \{ readonly "key": string; \};/);
-  });
-
   it('hoists a >=3-field object that repeats twice', () => {
     expect(isHoistWorthy(object('a', 'b', 'c'), 2)).toBe(true);
   });
@@ -172,6 +167,49 @@ describe('aliasNameFor — stable naming', () => {
       .slice('Shared'.length)
       .replace(/_[0-9a-f]{8}$/, '');
     expect(hint.length).toBeLessThanOrEqual(24);
+  });
+});
+
+describe('canonical keys and alias names', () => {
+  it('canonical keys are independent of property insertion order', () => {
+    // Exercises the field-sort defense: two objects with the same fields in
+    // different declaration order must dedupe to one alias, never two.
+    const forward = schemaToNode({
+      type: 'object',
+      properties: { a: { type: 'string' }, b: { type: 'number' } },
+    });
+    const reverse = schemaToNode({
+      type: 'object',
+      properties: { b: { type: 'number' }, a: { type: 'string' } },
+    });
+    expect(canonicalKey(forward)).toBe(canonicalKey(reverse));
+  });
+
+  it('assigns alias names independent of candidate insertion order', () => {
+    const left = schemaToNode({
+      type: 'object',
+      properties: { gt: { type: 'number' }, lt: { type: 'number' }, eq: { type: 'number' } },
+    });
+    const right = schemaToNode({
+      type: 'object',
+      properties: { x: { type: 'string' }, y: { type: 'string' }, z: { type: 'string' } },
+    });
+    const forward = assignAliasNames(
+      new Map([
+        [canonicalKey(left), left],
+        [canonicalKey(right), right],
+      ]),
+    );
+    const reverse = assignAliasNames(
+      new Map([
+        [canonicalKey(right), right],
+        [canonicalKey(left), left],
+      ]),
+    );
+
+    expect([...forward.entries()].toSorted(compareAliasEntries)).toEqual(
+      [...reverse.entries()].toSorted(compareAliasEntries),
+    );
   });
 });
 

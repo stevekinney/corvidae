@@ -27,7 +27,7 @@ import type { AuthMethod } from './types.ts';
  *
  * @example
  * ```ts
- * import { type AuthAuditEvent } from '@lostgradient/weft';
+ * import { type AuthAuditEvent } from '@lostgradient/backchannel';
  *
  * const event: AuthAuditEvent = {
  *   outcome: 'success',
@@ -69,7 +69,7 @@ export type AuthAuditEvent = {
  *
  * @example
  * ```ts
- * import { type AuthAuditEvent, type AuthAuditSink } from '@lostgradient/weft';
+ * import { type AuthAuditEvent, type AuthAuditSink } from '@lostgradient/backchannel';
  *
  * const collected: AuthAuditEvent[] = [];
  * const sink: AuthAuditSink = (event) => collected.push(event);
@@ -85,7 +85,7 @@ export type AuthAuditSink = (event: AuthAuditEvent) => void;
  *
  * @example
  * ```ts
- * import { defaultAuthAuditSink } from '@lostgradient/weft';
+ * import { defaultAuthAuditSink } from '@lostgradient/backchannel';
  *
  * defaultAuthAuditSink({
  *   outcome: 'failure',

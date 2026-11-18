@@ -63,7 +63,7 @@ export type GetPrincipalInput = z.infer<typeof getPrincipalInput>;
  *
  * @example
  * ```ts
- * import { type GetPrincipalOutput } from '@lostgradient/weft';
+ * import { type GetPrincipalOutput } from '@lostgradient/backchannel';
  *
  * const anonymous: GetPrincipalOutput = {
  *   method: 'unauthenticated',
@@ -75,6 +75,7 @@ export type GetPrincipalInput = z.infer<typeof getPrincipalInput>;
  */
 export type GetPrincipalOutput = z.infer<typeof getPrincipalOutput>;
 
+/** The operation that reports the caller's resolved principal and granted scopes; public, so an unauthenticated caller gets the `unauthenticated` method rather than an error. */
 export const getPrincipalOperation = defineOperation({
   name: 'weft.system.principal',
   mcpExposable: false,
@@ -120,6 +121,7 @@ export const getPrincipalOperation = defineOperation({
   },
 });
 
+/** The REST binding of {@link getPrincipalOperation}. */
 export const getPrincipalRestBinding: UnknownRestBinding = {
   method: 'GET',
   path: '/v1/principal',

@@ -74,6 +74,7 @@ export type RestBindingDescription = {
   readonly success: ResponseShape;
 };
 
+/** What the REST input readers need from their caller: the body limit. */
 export type RestInputContext = RestBodyReadOptions;
 
 /**
@@ -82,6 +83,7 @@ export type RestInputContext = RestBodyReadOptions;
  * schema accepts, and `shapeSuccess` consumes the output without casts.
  */
 export type RestBinding<Input, Output> = {
+  /** The HTTP method. */
   readonly method: HttpMethod;
   /** Express-style path with `:name` placeholders (e.g., `/v1/workflows/:id`). */
   readonly path: string;

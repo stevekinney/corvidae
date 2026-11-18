@@ -25,7 +25,7 @@
  * calling the in-process `Bun.build()` API: `Bun.build()` invoked from inside
  * a running `bun:test` worker fails to resolve this project's cross-directory
  * relative imports (e.g. `src/cli/generated/*` importing
- * `../operation-client-runtime.ts`) even though the identical entry point
+ * `@lostgradient/backchannel/client`) even though the identical entry point
  * bundles cleanly via the `bun build` CLI or a plain (non-test) script. A
  * subprocess sidesteps whatever resolver state `bun:test` leaks into nested
  * `Bun.build()` calls.

@@ -28,7 +28,7 @@
  *
  * @example
  * ```ts
- * import { type RateLimitConfig } from '@lostgradient/weft';
+ * import { type RateLimitConfig } from '@lostgradient/backchannel';
  *
  * const rateLimit: RateLimitConfig = {
  *   maxRequests: 100,
@@ -55,7 +55,7 @@ export type RateLimitConfig = {
  *
  * @example
  * ```ts
- * import { type RateLimitDecision } from '@lostgradient/weft';
+ * import { type RateLimitDecision } from '@lostgradient/backchannel';
  *
  * function describe(decision: RateLimitDecision): string {
  *   return decision.allowed ? 'ok' : `retry after ${decision.retryAfterSeconds}s`;
@@ -82,7 +82,7 @@ export type RateLimitDecision = {
  *
  * @example
  * ```ts
- * import { createRateLimiter, type RateLimiter } from '@lostgradient/weft';
+ * import { createRateLimiter, type RateLimiter } from '@lostgradient/backchannel';
  *
  * const limiter: RateLimiter = createRateLimiter({ maxRequests: 2, windowMs: 1_000 });
  * console.log(limiter.check('caller-1').allowed); // true
@@ -92,7 +92,9 @@ export type RateLimitDecision = {
  * ```
  */
 export type RateLimiter = {
+  /** Counts one attempt for the key and says whether it is allowed. */
   check(key: string): RateLimitDecision;
+  /** Stops the limiter's timers and forgets its counts. */
   dispose(): void;
 };
 
@@ -111,7 +113,7 @@ const DEFAULT_MAX_TRACKED_KEYS = 10_000;
  *
  * @example
  * ```ts
- * import { validateRateLimitConfig } from '@lostgradient/weft';
+ * import { validateRateLimitConfig } from '@lostgradient/backchannel';
  *
  * validateRateLimitConfig({ maxRequests: 100, windowMs: 60_000 });
  * console.log('config is valid');
@@ -139,7 +141,7 @@ export function validateRateLimitConfig(config: RateLimitConfig): void {
  *
  * @example
  * ```ts
- * import { createRateLimiter } from '@lostgradient/weft';
+ * import { createRateLimiter } from '@lostgradient/backchannel';
  *
  * let clock = 0;
  * const limiter = createRateLimiter({ maxRequests: 1, windowMs: 1_000 }, () => clock);

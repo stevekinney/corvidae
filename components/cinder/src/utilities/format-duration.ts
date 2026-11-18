@@ -16,6 +16,7 @@ function elapsedMilliseconds(
 
 /** Format a duration in milliseconds to a human-readable string (e.g., "45s", "3m 12s", "2h 15m"). */
 export function formatDuration(milliseconds: number | null): string;
+/** Format the time from `start` to `end`, each a date, a date string or epoch milliseconds. */
 export function formatDuration(
   start: Date | string | number | null,
   end: Date | string | number | null,
