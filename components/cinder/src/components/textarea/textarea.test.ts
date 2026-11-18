@@ -1,8 +1,8 @@
 /// <reference lib="dom" />
 import { describe, expect, test } from 'bun:test';
 
+import { injectStrippedStyles } from '@lostgradient/component-tooling/test/css.ts';
 import { requiredInstance, setupHappyDom } from '@lostgradient/testing';
-import { injectStrippedStyles } from '../../test/css.ts';
 
 // setupHappyDom() MUST run before any `@testing-library/svelte` import. testing-library
 // reads `globalThis.document` / `window` at module-init (top-level, not inside test bodies),

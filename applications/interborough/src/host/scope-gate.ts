@@ -69,6 +69,8 @@ export const BUREAU_METHOD_SCOPES: ReadonlyMap<string, ApiScope> = new Map<strin
   ['bureau.agents.definitions.delete', 'agents:write'],
   ['bureau.agents.versions.restore', 'agents:write'],
   ['bureau.agents.overrides.update', 'agents:write'],
+  ['bureau.agents.disable', 'agents:write'],
+  ['bureau.agents.enable', 'agents:write'],
   ['bureau.hooks.create', 'hooks:write'],
   ['bureau.hooks.update', 'hooks:write'],
   ['bureau.hooks.delete', 'hooks:write'],
@@ -76,6 +78,8 @@ export const BUREAU_METHOD_SCOPES: ReadonlyMap<string, ApiScope> = new Map<strin
   ['bureau.hooks.test', 'hooks:write'],
   ['bureau.hooks.draft.test', 'hooks:write'],
   ['bureau.hooks.deliveries.retry', 'hooks:write'],
+  // COR-2181: a copy is a new hook the caller owns.
+  ['bureau.hooks.duplicate', 'hooks:write'],
   ['bureau.settings.update', 'settings:write'],
   // COR-2188: cancelling the embedding switch changes what `memory.embedder` asked for.
   ['bureau.memory.embedding.cancel', 'settings:write'],

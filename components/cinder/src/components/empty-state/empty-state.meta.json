@@ -1,0 +1,19 @@
+{
+  "$schema": "../../../../../internal/component-tooling/src/schemas/component-meta.schema.json",
+  "category": "feedback",
+  "status": "stable",
+  "purpose": "Centered placeholder with optional icon, title, description, and call-to-action for views that have no data to render.",
+  "tags": ["feedback", "empty"],
+  "useWhen": [
+    "Communicating that a list, table, or workspace has no items yet and suggesting a next step.",
+    "Replacing a primary content region after a filter or search returns no results.",
+    "Confirming all work is finished (done kind), or that a filter hid every item (filtered kind).",
+    "Saying a thing doesn't exist (not-found kind), or that a recoverable condition blocks the view (blocked kind).",
+    "Saying that a setting the person chose, such as a disabled plugin, holds content back with the disabled kind."
+  ],
+  "avoidWhen": [
+    { "reason": "Indicating that data is still loading — use skeleton or spinner instead." },
+    { "reason": "Reporting a transient error — use alert, banner, or toast-region." }
+  ],
+  "related": ["skeleton", "spinner"]
+}

@@ -333,10 +333,19 @@ test.describe('on a phone', () => {
     const controls = bar.locator('button:visible, a:visible');
     await expect(controls.first()).toHaveAccessibleName('Open navigation');
     await expect(bar.getByRole('navigation', { name: 'Breadcrumb' })).toHaveText('Home');
+    // Each control is a Button's own square icon face and reaches 44px through the Button's hit
+    // area, which takes no layout, so the faces sit one step (4px) apart and neighbours' hit areas
+    // may overlap invisibly (COR-2445).
+    const faces = [];
     for (const name of [/^Search everything/, /^Notifications/, 'Quick settings']) {
-      const control = bar.getByRole('button', { name });
-      expect(await widthOf(control)).toBeGreaterThanOrEqual(44);
-      expect(await heightOf(control)).toBeGreaterThanOrEqual(44);
+      const box = await boxOf(bar.getByRole('button', { name }));
+      expect(box.width).toBeCloseTo(box.height, 0);
+      faces.push(box);
+    }
+    for (let index = 1; index < faces.length; index += 1) {
+      const gap = faces[index]!.x - (faces[index - 1]!.x + faces[index - 1]!.width);
+      expect(gap).toBeCloseTo(4, 0);
+      expect(faces[index]!.height).toBeCloseTo(faces[0]!.height, 0);
     }
     await expect(bar.locator('.weft-shell-search-trigger__kbd')).toBeHidden();
     await expectNoSidewaysScroll(page, 'phone');
@@ -482,7 +491,7 @@ test.describe('at the limits', () => {
     await captureForDesignReview(page, { route: '/', state: 'drawer open at 320', source: SOURCE });
   });
 
-  test('at 200% text nothing clips: the bar grows, its controls stay 44px, the title keeps room (05i)', async ({
+  test('at 200% text nothing clips: the bar grows, its controls stay Button faces, the title keeps room (05i)', async ({
     page,
   }) => {
     await open(page, '/runs', 375, 812, false);
@@ -492,8 +501,8 @@ test.describe('at the limits', () => {
     for (const name of [/^Search everything/, /^Notifications/, 'Quick settings']) {
       const control = bar.getByRole('button', { name });
       const box = await boxOf(control);
-      expect(box.width).toBeGreaterThanOrEqual(44);
-      expect(box.height).toBeGreaterThanOrEqual(44);
+      expect(box.width).toBeGreaterThan(0);
+      expect(box.height).toBeGreaterThan(0);
       boxes.push(box);
     }
     const barBox = await boxOf(bar);
@@ -501,9 +510,23 @@ test.describe('at the limits', () => {
       expect(box.y).toBeGreaterThanOrEqual(barBox.y);
       expect(box.y + box.height).toBeLessThanOrEqual(barBox.y + barBox.height);
     }
-    // The trail still has room to name the page.
+    // The icons do not grow with the text: larger text grows the words, and faces that doubled
+    // left the title room for one letter.
+    for (const box of boxes) {
+      expect(box.width).toBeLessThanOrEqual(36);
+      expect(box.height).toBeLessThanOrEqual(36);
+    }
+    // The trail still has room to name the page, whole.
     const trail = await boxOf(bar.getByRole('navigation', { name: 'Breadcrumb' }));
     expect(trail.width).toBeGreaterThan(40);
+    const current = bar
+      .getByRole('navigation', { name: 'Breadcrumb' })
+      .locator('[aria-current="page"]');
+    await expect(current).toHaveText('Runs');
+    expect(
+      await current.evaluate((element) => element.scrollWidth <= element.clientWidth + 1),
+      'the page title is not cut at 200% text',
+    ).toBe(true);
     await expectNoSidewaysScroll(page, '200% text on a phone');
     await captureForDesignReview(page, { route: '/runs', state: '200% text', source: SOURCE });
 
@@ -693,5 +716,87 @@ test.describe('the top bar’s popovers on the sample world', () => {
     await expect(rows).toHaveCount(before);
     await expect(panel.getByRole('heading', { level: 2 })).toHaveText('Notifications');
     await expect(page.getByRole('banner').locator('.weft-notification-bell__dot')).toHaveCount(0);
+  });
+});
+
+test.describe('on a touch phone the top bar controls reach 44px through hit areas (COR-2445)', () => {
+  test.use({ hasTouch: true, isMobile: true });
+
+  test('each control has a 44px hit area that takes no layout space', async ({ page }) => {
+    await open(page, '/', 375, 812, false);
+    // One read of each control's `::before` hit area. Neighbours' hit areas may overlap invisibly.
+    const controls = await page.evaluate(() =>
+      [...document.querySelectorAll('header.weft-shell-topbar button')]
+        .filter((button) => button.getBoundingClientRect().width > 0)
+        .map((button) => {
+          const hit = getComputedStyle(button, '::before');
+          return {
+            name: button.getAttribute('aria-label') ?? button.textContent?.trim(),
+            hitWidth: Number.parseFloat(hit.width),
+            hitHeight: Number.parseFloat(hit.height),
+          };
+        }),
+    );
+    expect(controls.length).toBeGreaterThanOrEqual(4);
+    for (const control of controls) {
+      expect(control.hitWidth, `${control.name} hit width`).toBeGreaterThanOrEqual(44);
+      expect(control.hitHeight, `${control.name} hit height`).toBeGreaterThanOrEqual(44);
+    }
+  });
+
+  // A hit area read from styles can be clipped by the control's own `overflow`: the search
+  // trigger's was, so a tap just above or below its glyph landed on the bar. This asks the
+  // browser what a tap reaches, 18px above and below each face's centre (inside the 44px area,
+  // outside the 32px face), in one pass.
+  test('a tap just above or below each face still reaches its control', async ({ page }) => {
+    await open(page, '/', 375, 812, false);
+    const reached = await page.evaluate(() =>
+      [...document.querySelectorAll('header.weft-shell-topbar button')]
+        .filter((button) => button.getBoundingClientRect().width > 0)
+        .map((button) => {
+          const box = button.getBoundingClientRect();
+          const x = box.left + box.width / 2;
+          const y = box.top + box.height / 2;
+          const at = (offset: number) => {
+            const target = document.elementFromPoint(x, y + offset);
+            return target !== null && (target === button || button.contains(target));
+          };
+          return {
+            name: button.getAttribute('aria-label') ?? button.textContent?.trim(),
+            faceHeight: box.height,
+            above: at(-18),
+            below: at(18),
+          };
+        }),
+    );
+    expect(reached.length).toBeGreaterThanOrEqual(4);
+    for (const control of reached) {
+      expect(control.faceHeight, `${control.name} face`).toBeLessThanOrEqual(36);
+      expect(control.above, `${control.name} tap above the face`).toBe(true);
+      expect(control.below, `${control.name} tap below the face`).toBe(true);
+    }
+  });
+
+  // On a touch tablet the search control is the wide field, which clips its label sideways. It
+  // must not clip its own hit area: a tap just above or below the field still reaches it.
+  test('on a touch tablet a tap just above or below the search field still reaches it', async ({
+    page,
+  }) => {
+    await open(page, '/', 768, 1024);
+    const field = page.getByRole('banner').getByRole('button', { name: /^Search everything/ });
+    await expect(field).toBeVisible();
+    const reached = await field.evaluate((button) => {
+      const box = button.getBoundingClientRect();
+      const x = box.left + box.width / 2;
+      const y = box.top + box.height / 2;
+      const reach = (box.height < 44 ? (44 - box.height) / 2 - 1 : 0) + box.height / 2;
+      const at = (offset: number) => {
+        const target = document.elementFromPoint(x, y + offset);
+        return target !== null && (target === button || button.contains(target));
+      };
+      return { height: box.height, above: at(-reach), below: at(reach) };
+    });
+    expect(reached.above, 'tap above the field').toBe(true);
+    expect(reached.below, 'tap below the field').toBe(true);
   });
 });

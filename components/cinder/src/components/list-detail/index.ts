@@ -5,7 +5,6 @@ export default ListDetail;
 export { LIST_DETAIL_SHORTCUTS } from './list-detail.constants.ts';
 export type { ListDetailShortcut } from './list-detail.constants.ts';
 export type {
-  ListDetailHeaderContext,
   ListDetailListBodyContext,
   ListDetailProps,
   ListDetailRowContext,

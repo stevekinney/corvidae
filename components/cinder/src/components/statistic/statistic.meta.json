@@ -1,0 +1,17 @@
+{
+  "$schema": "../../../../../internal/component-tooling/src/schemas/component-meta.schema.json",
+  "category": "data-display",
+  "status": "stable",
+  "purpose": "Single key metric with a label, formatted value, and optional change indicator that pairs into a statistic-group dashboard tile.",
+  "tags": ["data-display", "metric"],
+  "useWhen": [
+    "Highlighting one important number such as revenue, signups, or error rate.",
+    "Composing a dashboard tile alongside other Statistic instances inside statistic-group."
+  ],
+  "avoidWhen": [
+    { "reason": "Conveying status with a short label or icon — use badge instead." },
+    { "reason": "Showing tabular numeric breakdowns — use table or data-list instead." }
+  ],
+  "related": ["statistic-group", "badge"],
+  "composeOnly": true
+}

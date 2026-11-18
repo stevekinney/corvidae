@@ -1,16 +1,4 @@
 <script lang="ts" module>
-  /**
-   * @cinder
-   * @category form
-   * @status stable
-   * @purpose Free-form text input with asynchronous suggestion hints rendered in a listbox popover.
-   * @tag form
-   * @tag autocomplete
-   * @useWhen Accepting arbitrary text while offering completions from a local or remote source.
-   * @useWhen Keeping the user's text as the committed value while suggestions remain optional hints.
-   * @avoidWhen Requiring the final value to come from a fixed option list — use combobox instead.
-   * @related combobox, search-field, popover
-   */
   export type {
     AutocompleteProps,
     AutocompleteSuggestion,

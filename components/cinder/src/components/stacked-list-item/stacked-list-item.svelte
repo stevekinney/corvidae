@@ -1,19 +1,4 @@
 <script lang="ts" module>
-  /**
-   * @cinder
-   * @category data-display
-   * @status stable
-   * @purpose Dense list row with leading, status, title, time, description, meta, and trailing slots; the status-first two-line row has a fixed 128px status column, a two-line title clamp and a whole-row link.
-   * @tag list
-   * @tag row
-   * @tag status
-   * @useWhen Listing entities vertically with consistent leading icons or avatars and trailing actions.
-   * @useWhen Linking each row to a detail view by passing href, which makes the whole row one link.
-   * @useWhen Listing runs, goals, schedules or agents with a status word, bold title and time on line one and muted meta on line two.
-   * @avoidWhen Comparing tabular data across columns — use table instead.
-   * @avoidWhen Rendering cards in a responsive grid — use grid-list instead.
-   * @related grid-list-item, table-row, avatar
-   */
   export type {
     StackedListItemAction,
     StackedListItemDensity,
@@ -54,6 +39,7 @@
     statusColumn,
     statusPlacement = 'leading',
     title,
+    badge,
     titleLines = 2,
     tooltip,
     time,
@@ -121,6 +107,25 @@
   // A group row is not a link: its only control is the disclosure button. A row that failed to
   // load is not a link either: its details are the thing that is missing.
   const linkHref = $derived(details === undefined && error === undefined ? href : undefined);
+  // A linked row's title link covers every line, so a tooltip on line two could never be reached
+  // (COR-2227): the linked row draws one tooltip on the row itself, the title, a line break, then
+  // line two, and none on its lines. An unlinked row keeps one tooltip per line.
+  const rowTooltip = $derived(
+    linkHref === undefined
+      ? undefined
+      : [tooltip, metaTooltip].filter((part) => part !== undefined && part !== '').join('\n') ||
+          undefined,
+  );
+  // A time given as text is drawn as its parts, each kept whole: the day with its comma, then the
+  // clock after the last comma ("Yesterday," and "6:00 PM"; "Mon, Nov 2," and "3:00 AM"). Where
+  // the row lets its time wrap, it breaks only there.
+  const timeParts = $derived.by(() => {
+    if (typeof time !== 'string') return undefined;
+    const comma = time.lastIndexOf(', ');
+    return comma < 0 ? [time] : [time.slice(0, comma + 1), time.slice(comma + 2)];
+  });
+  const lineTooltip = $derived(linkHref === undefined ? tooltip : undefined);
+  const lineMetaTooltip = $derived(linkHref === undefined ? metaTooltip : undefined);
   // The phone form is the row's own width below 640px, not the viewport's (COR-2448), so a row in
   // a 360px pane of a wide window takes it and a row in a wide column of a narrow window does not.
   // The stylesheet asks the same question with a container query; the script needs the answer for
@@ -186,7 +191,23 @@
 </script>
 
 {#snippet titleRegion()}
-  <div class="cinder-stacked-list-item__title" data-cinder-title-lines={titleLines} title={tooltip}>
+  {#if badge}
+    <!-- The mark sits after the title, outside its clamp: the title gives way, the mark is never cut. -->
+    <div class="cinder-stacked-list-item__title-row">
+      {@render titleText()}
+      <span class="cinder-stacked-list-item__badge">{@render badge()}</span>
+    </div>
+  {:else}
+    {@render titleText()}
+  {/if}
+{/snippet}
+
+{#snippet titleText()}
+  <div
+    class="cinder-stacked-list-item__title"
+    data-cinder-title-lines={titleLines}
+    title={lineTooltip}
+  >
     {#if linkHref !== undefined}
       <a
         class="cinder-stacked-list-item__title-link"
@@ -239,6 +260,7 @@
   data-cinder-expanded={details !== undefined && expanded ? '' : undefined}
   data-cinder-selected={selected ? '' : undefined}
   aria-current={selected && linkHref === undefined ? 'true' : undefined}
+  title={rowTooltip}
   {...safeRest}
   {@attach measureRow}
 >
@@ -303,7 +325,11 @@
         {#if isLines}
           {#if time || details}
             <div class="cinder-stacked-list-item__time">
-              {#if time}{@render time()}{/if}
+              {#if timeParts !== undefined}<span class="cinder-stacked-list-item__time-text"
+                  >{#each timeParts as part, index (index)}{#if index > 0}{' '}{/if}<span
+                      class="cinder-stacked-list-item__time-part">{part}</span
+                    >{/each}</span
+                >{:else if typeof time === 'function'}{@render time()}{/if}
               {#if details}
                 <button
                   type="button"
@@ -340,7 +366,7 @@
               {/if}
             </div>
           {:else if description || meta}
-            <div class="cinder-stacked-list-item__line-two" title={metaTooltip}>
+            <div class="cinder-stacked-list-item__line-two" title={lineMetaTooltip}>
               {#if description}
                 <div class="cinder-stacked-list-item__description">{@render description()}</div>
               {/if}
@@ -358,12 +384,14 @@
           {/if}
         {:else}
           {#if description}
-            <div class="cinder-stacked-list-item__description" title={metaTooltip}>
+            <div class="cinder-stacked-list-item__description" title={lineMetaTooltip}>
               {@render description()}
             </div>
           {/if}
           {#if meta}
-            <div class="cinder-stacked-list-item__meta" title={metaTooltip}>{@render meta()}</div>
+            <div class="cinder-stacked-list-item__meta" title={lineMetaTooltip}>
+              {@render meta()}
+            </div>
           {/if}
         {/if}
       </div>

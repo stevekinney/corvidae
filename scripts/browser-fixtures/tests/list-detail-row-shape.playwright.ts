@@ -7,8 +7,8 @@
  * text edge. Read in a browser on the `grouped-selection` fixture, the documented tools example.
  */
 
+import { fixtureRoute } from '@lostgradient/testing/playwright/overlay-fixture';
 import { expect, test, type Page } from '@playwright/test';
-import { fixtureRoute } from './overlay-fixture.ts';
 
 const RADIUS = '6px';
 const INSET = 8;

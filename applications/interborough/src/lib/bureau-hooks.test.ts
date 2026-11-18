@@ -1,9 +1,8 @@
 /**
  * The browser's door to the Bureau's hooks (COR-1858): each call sends exactly what the editor
- * means, and an answer is parsed at the boundary, so a hook or a delivery that the Bureau shaped
- * differently is refused instead of read wrongly.
+ * means, and an answer is read as the generated client types it, with the defaults the browser
+ * keeps for a Bureau that predates a field.
  */
-import { throwingRejectionOf } from '@lostgradient/testing';
 import { afterEach, describe, expect, test } from 'bun:test';
 
 import {
@@ -136,15 +135,6 @@ describe('the Bureau’s hooks', () => {
     expect(hooks.map((hook) => hook.action.type)).toEqual(['start-workflow', 'notify', 'plugin']);
   });
 
-  test('refuse an answer of a shape the browser does not know', async () => {
-    stub = installBureauStub({
-      'bureau.hooks.get': () => ({ ...HOOK, action: { type: 'carrier-pigeon' } }),
-      'bureau.hooks.list': () => ({ hooks: [{ ...HOOK, revision: 'one' }] }),
-    });
-    expect(await throwingRejectionOf(getHook('hook-1'))).toThrow();
-    expect(await throwingRejectionOf(listHooks())).toThrow();
-  });
-
   test('are created from the events, the action, and the secret, which goes out and never comes back', async () => {
     stub = installBureauStub({ 'bureau.hooks.create': () => HOOK });
     const made = await createHook({
@@ -239,15 +229,6 @@ describe('the Bureau’s hooks', () => {
     expect(deliveryBody({ request: { url: 'u', headers: {}, body: 'not json' } })).toBeUndefined();
   });
 
-  test('refuse a delivery whose request has no body, rather than show a payload that is not there', async () => {
-    stub = installBureauStub({
-      'bureau.hooks.deliveries': () => ({
-        deliveries: [{ ...DELIVERY, request: { url: 'https://example.com/a' } }],
-      }),
-    });
-    expect(await throwingRejectionOf(listHookDeliveries('hook-1', 20))).toThrow();
-  });
-
   test('carry a generated signing secret on the create answer alone, and null when the person chose it', async () => {
     stub = installBureauStub({
       'bureau.hooks.create': (params) =>
@@ -289,11 +270,6 @@ describe('the Bureau’s hooks', () => {
 
     await replaceHookSecret('hook-1');
     expect(stub.callsTo('bureau.hooks.secret.replace')[1]?.params).toEqual({ hookId: 'hook-1' });
-  });
-
-  test('refuse a replaced-secret answer that carries no secret', async () => {
-    stub = installBureauStub({ 'bureau.hooks.secret.replace': () => HOOK });
-    expect(await throwingRejectionOf(replaceHookSecret('hook-1'))).toThrow();
   });
 
   test('test a webhook before it is saved, sending only the URL and the secret the person chose', async () => {

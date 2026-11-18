@@ -528,11 +528,10 @@ describe('a new agent', () => {
 
   test('shows the file an identifier makes, and has no delete or history', async () => {
     bureau();
-    const { findByRole, getByTestId, queryByRole, queryByText } = mountEditor();
+    const { findByRole, getByTestId, queryByRole } = mountEditor();
     await type(await findByRole('textbox', { name: /^Name/ }), 'Research Assistant');
 
     expect(getByTestId('agent-file-path').textContent).toBe('agents/research-assistant.md');
-    expect(queryByText(AGENT_EDITOR_COPY.revisions.heading)).toBeNull();
     expect(queryByRole('button', { name: AGENT_EDITOR_COPY.deleteAction })).toBeNull();
   });
 

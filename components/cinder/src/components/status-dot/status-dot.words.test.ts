@@ -21,6 +21,7 @@ const expectedTones: ReadonlyArray<readonly [string, string]> = [
   ['Running', 'info'],
   ['Running, checking the result', 'info'],
   ['Waiting', 'pending'],
+  ['Waiting for a signal', 'pending'],
   ['Scheduled', 'pending'],
   ['Done', 'success'],
   ['Done, refund not issued', 'neutral'],
@@ -43,6 +44,9 @@ const expectedTones: ReadonlyArray<readonly [string, string]> = [
   ['Missed runs, 4', 'warning'],
   ['Available', 'success'],
   ['Unavailable', 'neutral'],
+  ['Disabled', 'neutral'],
+  ['Set', 'success'],
+  ['Missing', 'neutral'],
   ['Needs setup', 'neutral'],
   ['Needs attention', 'warning'],
   ['Needs sign-in', 'warning'],
@@ -103,7 +107,8 @@ describe('statusForStatusDotWord', () => {
     expect(statusForStatusDotWord('toString, x')).toBeUndefined();
   });
 
-  test('red is reserved for eight words and amber for six', () => {
+  // COR-2227: "Warning" and "Critical" are an event's severity in a history list, and nothing else.
+  test('red is reserved for nine words and amber for seven', () => {
     const entries = Object.entries(statusDotWordTones);
     expect(entries.filter(([, tone]) => tone === 'danger').map(([word]) => word)).toEqual([
       'Failed',
@@ -114,6 +119,7 @@ describe('statusForStatusDotWord', () => {
       'Not loaded',
       "Couldn't check",
       'Tripped',
+      'Critical',
     ]);
     expect(entries.filter(([, tone]) => tone === 'warning').map(([word]) => word)).toEqual([
       'Waiting on you',
@@ -122,7 +128,15 @@ describe('statusForStatusDotWord', () => {
       'Needs sign-in',
       'Disconnected',
       'Waiting for a secret',
+      'Warning',
     ]);
+  });
+
+  test('an event’s severity reads Warning in amber and Critical in red, and "Warned" stays neutral', () => {
+    expect(statusForStatusDotWord('Warning')).toBe('warning');
+    expect(statusForStatusDotWord('Critical')).toBe('danger');
+    expect(statusForStatusDotWord('Warned')).toBe('neutral');
+    expect(statusForStatusDotWord('Info')).toBeUndefined();
   });
 
   test('only "Check met" among the check outcomes is green, and a guardrail action or a flag is never coloured', () => {

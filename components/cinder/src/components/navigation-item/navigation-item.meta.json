@@ -1,0 +1,16 @@
+{
+  "$schema": "../../../../../internal/component-tooling/src/schemas/component-meta.schema.json",
+  "category": "navigation",
+  "status": "stable",
+  "purpose": "Single wayfinding item that renders as an anchor when given href or as a button when given onclick, with active-state aria-current.",
+  "tags": ["navigation", "link"],
+  "useWhen": [
+    "Rendering one entry in a navigation bar, sidebar, or side-navigation group.",
+    "Switching the active view or section while signalling current location via aria-current."
+  ],
+  "avoidWhen": [
+    { "reason": "Showing a hierarchical trail of ancestors — use breadcrumbs instead." },
+    { "reason": "Triggering a generic action unrelated to navigation — use button instead." }
+  ],
+  "related": ["navigation-bar", "side-navigation-item", "breadcrumbs", "tab"]
+}

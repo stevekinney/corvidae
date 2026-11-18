@@ -1,19 +1,20 @@
 /// <reference lib="dom" />
 import { afterEach, describe, expect, mock, spyOn, test } from 'bun:test';
 
+import { readComponentSchema } from '@lostgradient/component-tooling/scripts/lib/metadata-files.ts';
+import { injectStrippedStyles } from '@lostgradient/component-tooling/test/css.ts';
 import {
   prepareSvelteServerSource,
   renderSvelteOnServer,
   requiredInstance,
   setupHappyDom,
 } from '@lostgradient/testing';
-import { injectStrippedStyles } from '../../test/css.ts';
 
 setupHappyDom();
 
 const { cleanup, fireEvent, render, waitFor } = await import('@testing-library/svelte');
 const { default: JsonEditor } = await import('./json-editor.svelte');
-const { default: schema } = await import('./json-editor.schema.ts');
+const schema = readComponentSchema('json-editor');
 const jsonEditorSource = new URL('./json-editor.svelte', import.meta.url).pathname;
 await prepareSvelteServerSource(jsonEditorSource);
 // Server rendering spawns a Bun process, so it runs once at module scope, off bun's per-test clock.

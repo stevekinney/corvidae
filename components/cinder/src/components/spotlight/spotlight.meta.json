@@ -1,0 +1,17 @@
+{
+  "$schema": "../../../../../internal/component-tooling/src/schemas/component-meta.schema.json",
+  "category": "data-display",
+  "status": "beta",
+  "purpose": "The one focal value of a screen, set at display size in neutral text, with an optional liveness dot and a caveat line for staleness directly under it.",
+  "tags": ["focal", "value", "display"],
+  "useWhen": [
+    "Giving a screen one value to read first, such as a deadline or the number of items that need you.",
+    "Showing that a value may be stale with a caveat directly under it."
+  ],
+  "avoidWhen": [
+    { "reason": "Showing several metrics side by side — use statistic-group." },
+    { "reason": "Showing a metric with a label and a change indicator — use statistic." }
+  ],
+  "related": [],
+  "rationale": "Nearest alternative: Statistic — Spotlight is a single neutral focal value with no label, tile or change indicator."
+}

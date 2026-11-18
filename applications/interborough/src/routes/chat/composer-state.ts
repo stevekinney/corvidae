@@ -47,6 +47,11 @@ export interface ComposerFacts {
   readonly archived?: ArchivedChat | undefined;
   /** The chat's agent, when it comes from a plugin that is disabled. */
   readonly unavailable?: UnavailableAgent | undefined;
+  /**
+   * The chat's agent, when a person disabled it (COR-2429): the chat is read-only until the agent
+   * is enabled, which `enable` does.
+   */
+  readonly disabledAgent?: { readonly agent: string; readonly enable: () => void } | undefined;
   /** The host stopped the chat when it restarted, so its run cannot continue. */
   readonly ended: boolean;
   /** The agent needs a model, and no provider is connected. */
@@ -93,6 +98,13 @@ export function composerStatusOf(facts: ComposerFacts): ChatComposerStatus | und
       kind: 'blocked',
       reason: COPY.pluginDisabled(facts.unavailable.agent, facts.unavailable.plugin),
       action: { label: COPY.enableAndRestart, onclick: facts.unavailable.enable },
+    };
+  }
+  if (facts.disabledAgent !== undefined) {
+    return {
+      kind: 'blocked',
+      reason: COPY.agentDisabled(facts.disabledAgent.agent),
+      action: { label: COPY.enableAgent, onclick: facts.disabledAgent.enable },
     };
   }
   if (facts.ended) {

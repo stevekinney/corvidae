@@ -1,0 +1,18 @@
+{
+  "$schema": "../../../../../internal/component-tooling/src/schemas/component-meta.schema.json",
+  "category": "data-display",
+  "status": "stable",
+  "purpose": "Collapsible panel within an accordion that toggles its content visibility under a heading button.",
+  "tags": ["disclosure", "collapsible"],
+  "useWhen": [
+    "Rendering one expandable section inside an accordion parent.",
+    "Disabling a single section while leaving siblings interactive via the disabled prop."
+  ],
+  "avoidWhen": [
+    {
+      "reason": "Standing alone outside an accordion — it requires the accordion context to function."
+    }
+  ],
+  "related": ["accordion"],
+  "composeOnly": true
+}

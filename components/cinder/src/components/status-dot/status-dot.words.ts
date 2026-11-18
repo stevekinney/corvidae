@@ -7,15 +7,21 @@ import type { StatusDotStatus } from './status-dot.types.ts';
  *
  * - Amber (`warning`) is only for waiting on you and Needs attention: "Waiting on you", "Missed
  *   runs", "Disconnected", "Needs attention", "Needs sign-in" and "Waiting for a secret" (a
- *   workflow trigger that cannot start until its plugin has a secret).
+ *   workflow trigger that cannot start until its plugin has a secret), and for "Warning", an
+ *   event's severity in a history list as its formatter or rule gave it.
  * - Red (`danger`) is only for "Failed", "Failed for good", "Gave up", "Can't load", "Not loaded"
- *   and "Can't find workflow" (a schedule whose workflow was deleted, which can't run at all), and
- *   for a check that could not do its job: "Couldn't check" (the check itself broke) and "Tripped"
- *   (a tripwire guardrail halted the run).
+ *   and "Can't find workflow" (a schedule whose workflow was deleted, which can't run at all), for
+ *   a check that could not do its job: "Couldn't check" (the check itself broke) and "Tripped"
+ *   (a tripwire guardrail halted the run), and for "Critical", an event's severity in a history
+ *   list as its formatter or rule gave it.
+ * - "Warning" and "Critical" mean an event's severity and nothing else; an info event has no word.
+ *   "Warned" stays a check's outcome on the Checks page.
  * - Everything else that finished or stopped is neutral, and "Waiting" and "Scheduled" are the
  *   hollow `pending` ring.
  *
- * Some words are scoped: "Ended" is chats only, "Delivered" and "Retrying" are hooks only, and
+ * Some words are scoped: "Disabled" is a plugin that is turned off, "Set" and "Missing" are a secret
+ * a plugin declared (a key that is saved, and one that is not: neutral, because a missing secret is
+ * a state, not a failure; the plugin's own "Needs setup" says what waits on it), "Ended" is chats only, "Delivered" and "Retrying" are hooks only, and
  * "Connected", "Draining" and "Disconnected" are workers only, "Listening", "Ready", "Standby" and
  * "Waiting for a secret" are a workflow trigger's states ("Failed" and "Stopped" serve it too),
  * "Failed for good" is a task that ran out of tries, and "Live" and "Reconnecting…" are for the line above a streaming run's steps.
@@ -30,6 +36,7 @@ export const statusDotWordTones = {
   'Waiting on you': 'warning',
   Running: 'info',
   Waiting: 'pending',
+  'Waiting for a signal': 'pending',
   Scheduled: 'pending',
   Done: 'success',
   'Done, refund not issued': 'neutral',
@@ -52,6 +59,9 @@ export const statusDotWordTones = {
   'Missed runs': 'warning',
   Available: 'success',
   Unavailable: 'neutral',
+  Disabled: 'neutral',
+  Set: 'success',
+  Missing: 'neutral',
   'Needs setup': 'neutral',
   'Needs attention': 'warning',
   'Needs sign-in': 'warning',
@@ -76,6 +86,8 @@ export const statusDotWordTones = {
   Redacted: 'neutral',
   Tripped: 'danger',
   Flagged: 'neutral',
+  Warning: 'warning',
+  Critical: 'danger',
 } as const satisfies Record<string, StatusDotStatus>;
 
 /** A status word the word-to-tone table knows, such as `'Waiting on you'` or `'Failed'`. */

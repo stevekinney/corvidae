@@ -47,14 +47,22 @@
     deliverySubject,
     retryKind,
   } from './hook-delivery-presentation.ts';
-  import { deliveryFailed } from './hook-presentation.ts';
+  import { deliveryFailed, kindsReadingAlike } from './hook-presentation.ts';
 
   interface Props {
     /** The hook whose log this is, or `undefined` for a hook not yet saved, which has none. */
     hookId: string | undefined;
+    /** The events the hook listens to, which decide when a delivery's raw kind is shown. */
+    events?: readonly string[];
   }
 
-  let { hookId }: Props = $props();
+  let { hookId, events = [] }: Props = $props();
+
+  /**
+   * The kinds whose words another of the hook's events shares: only these show their raw kind beside
+   * the words, as the event picker does (R10-23).
+   */
+  const alike = $derived(kindsReadingAlike(events));
 
   const copy = HOOKS_COPY.editor.deliveries;
   const DELIVERIES_SHOWN = 20;
@@ -221,7 +229,7 @@
             {#snippet trigger()}
               <span class="ib-hook-deliveries__line">
                 <span class="ib-hook-deliveries__subject">{deliverySubject(delivery)}</span>
-                {#if !delivery.test}
+                {#if !delivery.test && alike.has(delivery.kind)}
                   <code class="ib-hook-deliveries__kind" data-testid="event-kind"
                     >{delivery.kind}</code
                   >
@@ -237,6 +245,7 @@
             {/snippet}
             <HookDeliveryDetail
               {delivery}
+              {alike}
               retrying={retrying.isPending}
               onRetry={() => retrying.mutate(delivery)}
             />

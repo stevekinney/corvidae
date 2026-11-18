@@ -1,0 +1,20 @@
+{
+  "$schema": "../../../../../internal/component-tooling/src/schemas/component-meta.schema.json",
+  "category": "data-display",
+  "status": "stable",
+  "purpose": "Collapsible tree visualization of an arbitrary JSON value with hard depth and byte caps and a fallback for oversized payloads.",
+  "tags": ["json", "inspector", "tree"],
+  "useWhen": [
+    "Inspecting structured API responses, debug payloads, or configuration documents inside an admin or developer surface.",
+    "Rendering a JSON-serializable value with predictable initial-collapse behavior and no virtualization needs."
+  ],
+  "avoidWhen": [
+    {
+      "reason": "The payload is large enough to need search, filter, or virtualization — compose a custom viewer instead."
+    },
+    {
+      "reason": "Showing arbitrary source code rather than a JSON value — code-block is the right surface for that."
+    }
+  ],
+  "related": ["code-block", "tree"]
+}

@@ -1,14 +1,4 @@
 <script lang="ts" module>
-  /**
-   * @cinder
-   * @category data-display
-   * @status beta
-   * @purpose Compact chip that identifies a source file and optional line and column.
-   * @tag code-location
-   * @useWhen Showing a source location beside an error, review comment, or code reference.
-   * @avoidWhen Displaying editable source code.
-   * @rationale Nearest alternative: Chip — CodeLocation owns canonical file/line formatting.
-   */
   export type { CodeLocationProps } from './code-location.types.ts';
 </script>
 

@@ -1,0 +1,108 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "component-meta.schema.json",
+  "title": "Cinder component metadata",
+  "description": "Authored metadata for one component, in `<name>.meta.json` beside its `<name>.svelte`. Generated from `internal/component-tooling/src/manifest.meta.ts` by `bun internal/component-tooling/scripts/convert-component-metadata.ts`; do not edit.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "$schema",
+    "category",
+    "status",
+    "purpose",
+    "tags",
+    "useWhen",
+    "avoidWhen",
+    "related"
+  ],
+  "properties": {
+    "$schema": { "type": "string" },
+    "category": {
+      "enum": [
+        "action",
+        "overlay",
+        "form",
+        "feedback",
+        "navigation",
+        "data-display",
+        "layout",
+        "typography",
+        "domain"
+      ],
+      "description": "The closed category vocabulary."
+    },
+    "status": {
+      "enum": ["stable", "beta", "alpha", "domain-suite"],
+      "description": "The closed status vocabulary."
+    },
+    "purpose": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200,
+      "description": "One sentence: what the component is for."
+    },
+    "tags": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+    "useWhen": { "type": "array", "items": { "type": "string", "minLength": 1, "maxLength": 140 } },
+    "avoidWhen": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["reason"],
+        "properties": {
+          "reason": { "type": "string", "minLength": 1, "maxLength": 140 },
+          "alternative": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$", "maxLength": 64 }
+        }
+      }
+    },
+    "related": { "type": "array", "items": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" } },
+    "rationale": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Why no related + avoidWhen pair applies; name the nearest alternative."
+    },
+    "a11y": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "pattern": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "keyboard": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["keys", "action"],
+            "properties": {
+              "keys": { "type": "string", "minLength": 1, "maxLength": 120 },
+              "action": { "type": "string", "minLength": 1, "maxLength": 120 }
+            }
+          }
+        },
+        "notes": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1, "maxLength": 280 }
+        }
+      }
+    },
+    "compound": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["parts"],
+      "description": "A compound root: the part components composed inside it, in display order.",
+      "properties": {
+        "parts": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" }
+        }
+      }
+    },
+    "composeOnly": {
+      "const": true,
+      "description": "A compound part with no standalone use: only ever rendered inside its root, so the playground lists it under the root."
+    }
+  }
+}

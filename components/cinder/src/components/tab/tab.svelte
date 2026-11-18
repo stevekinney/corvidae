@@ -1,18 +1,4 @@
 <script lang="ts" module>
-  /**
-   * @cinder
-   * @category navigation
-   * @status stable
-   * @purpose Single selectable tab trigger inside a tabs composite that registers with the parent context and controls a matching tab-panel or caller-owned panel id.
-   * @tag navigation
-   * @tag tabs
-   * @useWhen Declaring one tab heading inside a tabs ancestor with a stable value identifier.
-   * @useWhen Pairing one-to-one with a tab-panel that shares the same value to wire aria-controls.
-   * @useWhen Pointing multiple tab triggers at a caller-owned panel with the controls prop.
-   * @avoidWhen Used outside a tabs ancestor — the component throws at construction.
-   * @avoidWhen Rendering a generic action button — use button instead.
-   * @related tabs, tab-list, tab-panel
-   */
   // `Tab.value` is treated as immutable after mount. The component reads
   // `value` via `untrack` at the top-level registration call and inside
   // every registration-related effect so that changing `value` at runtime

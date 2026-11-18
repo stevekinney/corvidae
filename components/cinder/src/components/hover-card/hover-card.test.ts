@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
 import { parse, type Declaration } from 'postcss';
 import { createRawSnippet, flushSync } from 'svelte';
 
+import { captureZeroDelayTimers } from '@lostgradient/component-tooling/test/zero-delay-timers.ts';
 import {
   expectNoLeakedTimers,
   requiredInstance,
@@ -13,7 +14,6 @@ import {
   trackTimers,
 } from '@lostgradient/testing';
 import { quietFor } from '@lostgradient/testing/wait-until';
-import { captureZeroDelayTimers } from '../../test/zero-delay-timers.ts';
 
 setupHappyDom();
 

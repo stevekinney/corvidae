@@ -1,0 +1,17 @@
+{
+  "$schema": "../../../../../internal/component-tooling/src/schemas/component-meta.schema.json",
+  "category": "action",
+  "status": "alpha",
+  "purpose": "Native video element with its own controls for play, pause, replay, seeking, elapsed and total time, mute, and full screen.",
+  "tags": ["media", "video"],
+  "useWhen": [
+    "Playing a single video from an https, http, or blob URL with accessible controls.",
+    "Showing a poster image until the viewer starts playback."
+  ],
+  "avoidWhen": [
+    {
+      "reason": "You need streaming protocols, caption authoring, or playlists — wire those separately."
+    }
+  ],
+  "related": ["audio-player", "image"]
+}

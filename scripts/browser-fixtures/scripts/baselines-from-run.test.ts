@@ -56,6 +56,21 @@ describe('baselines from a run', () => {
     expect(describePlan(plan, false)).toContain('Dry run');
   });
 
+  // COR-2080: a package suite's actual goes back to that package's own baselines.
+  it("maps a package browser suite's actual to the package's baselines", () => {
+    const plan = mapActual(
+      'playwright-packages/terminal/browser/test-results/case/terminal/light-mobile-lab-actual.png',
+      () => true,
+    );
+    expect(plan).toEqual({
+      kind: 'changed',
+      actual:
+        'playwright-packages/terminal/browser/test-results/case/terminal/light-mobile-lab-actual.png',
+      baseline:
+        'components/terminal/browser/snapshots/chromium/linux/terminal/light-mobile-lab.png',
+    });
+  });
+
   it('does not guess a baseline for a name outside the screenshot pattern', () => {
     const none = () => false;
     expect(mapActual('a/button/weird-actual.png', none).kind).toBe('unmatched');

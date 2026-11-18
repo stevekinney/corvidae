@@ -1,6 +1,6 @@
 /**
  * The browser's view of the Bureau's hooks: `bureau.hooks.*` (COR-1939, COR-1940) and the event
- * catalog a hook chooses its events from (`bureau.events.catalog`), parsed at the boundary.
+ * catalog a hook chooses its events from (`bureau.events.catalog`), through the generated client.
  *
  * A hook belongs to the principal that created it. When one of its events happens, its action runs:
  * a `webhook` sends the event, signed, to a URL; `start-workflow` starts a workflow; `notify` writes
@@ -20,30 +20,27 @@
  * `update` names the revision of the hook the caller read, so a hook that changed since is refused
  * (`StaleRevision`) instead of being overwritten.
  */
-import { z } from 'zod';
-
-import { callBureau, type Fetcher } from './bureau-client.ts';
+import { bureauClient, type BureauInput, type BureauOutput } from './bureau-api.ts';
+import type { Fetcher } from './bureau-client.ts';
 
 type Options = { readonly signal?: AbortSignal; readonly fetch?: Fetcher };
 
-const actionSchema = z.discriminatedUnion('type', [
-  z.object({ type: z.literal('webhook'), url: z.string() }),
-  z.object({
-    type: z.literal('start-workflow'),
-    workflowId: z.string(),
-    input: z.enum(['payload', 'event']),
-  }),
-  z.object({ type: z.literal('notify'), title: z.string().nullable() }),
-  z.object({
-    type: z.literal('plugin'),
-    plugin: z.string(),
-    kind: z.string(),
-    configuration: z.unknown().optional(),
-  }),
-]);
+/** One hook as `bureau.hooks.get` and `update` show it. */
+export type Hook = Omit<BureauOutput<'bureau.hooks.get'>, 'action'> & {
+  readonly action: HookAction;
+};
 
-/** What a hook does for each event, tagged by `type`. */
-export type HookAction = z.infer<typeof actionSchema>;
+type WireAction = BureauOutput<'bureau.hooks.get'>['action'];
+
+/**
+ * What a hook does for each event, tagged by `type`. A hook of an action kind a plugin contributes
+ * reads as `plugin`, whose `configuration` is absent from a Bureau that does not say.
+ */
+export type HookAction =
+  | Exclude<WireAction, { readonly type: 'plugin' }>
+  | (Omit<Extract<WireAction, { readonly type: 'plugin' }>, 'configuration'> & {
+      readonly configuration?: unknown;
+    });
 
 /**
  * The built-in kinds of action a person can choose when writing a hook. The kinds running plugins
@@ -68,63 +65,41 @@ export type HookScopeInput = {
   readonly id: string;
 };
 
-const scopeSchema = z.object({ kind: z.string(), id: z.string() });
+/** The one subject a hook fires for, as the Bureau holds it. */
+export type HookScope = NonNullable<Hook['scope']>;
 
 /**
- * The one subject a hook fires for, as the Bureau holds it. `kind` is a string, not the enum: a home
- * on a newer release may hold a kind this page does not know, and one hook must not fail the list.
+ * Where a default hook comes from (COR-2181): the plugin that declared it, whether the owner turned
+ * it off (`ownerDisabled`), and whether the plugin no longer declares it (`withdrawn`), so it is off
+ * and cannot be turned on. The owner can turn it on or off and copy it, and changes nothing else.
  */
-export type HookScope = z.infer<typeof scopeSchema>;
+export type HookDeclaredBy = NonNullable<Hook['declaredBy']>;
 
-const hookSchema = z.object({
-  id: z.string(),
-  owner: z.string(),
-  name: z.string().nullable(),
-  action: actionSchema,
-  events: z.array(z.string()),
-  scope: scopeSchema.nullable(),
-  enabled: z.boolean(),
-  createdAt: z.number(),
-  updatedAt: z.number(),
-  revision: z.number().int(),
-});
+/** A wire value whose `Keys` a Bureau that predates them leaves out. */
+type WithoutNewer<Value, Keys extends keyof Value> = Omit<Value, Keys> & {
+  readonly [Key in Keys]?: Value[Key] | undefined;
+};
 
-/** One hook as `bureau.hooks.get`, `create` and `update` show it. */
-export type Hook = z.infer<typeof hookSchema>;
-
-const createdHookSchema = hookSchema.extend({ signingSecret: z.string().nullable().default(null) });
+/**
+ * A hook as a Bureau that predates default hooks has it: one the owner made, with no `declaredBy`.
+ * The server's schema always sends the field, so this default belongs to the browser, applied to
+ * the typed result.
+ */
+export function hookOf<Value extends { readonly declaredBy?: HookDeclaredBy | null | undefined }>(
+  hook: Value,
+): Omit<Value, 'declaredBy'> & { readonly declaredBy: HookDeclaredBy | null } {
+  return { ...hook, declaredBy: hook.declaredBy ?? null };
+}
 
 /**
  * A hook as `bureau.hooks.create` answers it: the hook, and the signing secret the Bureau made for
  * a webhook created without one, shown this once. `null` when the person chose the secret, or the
  * action has none.
  */
-export type CreatedHook = z.infer<typeof createdHookSchema>;
-
-const replacedSecretSchema = hookSchema.extend({ signingSecret: z.string() });
+export type CreatedHook = BureauOutput<'bureau.hooks.create'>;
 
 /** A hook as `bureau.hooks.secret.replace` answers it, with its new signing secret, shown this once. */
-export type HookWithNewSecret = z.infer<typeof replacedSecretSchema>;
-
-const attemptSchema = z.object({
-  number: z.number().int(),
-  startedAt: z.number(),
-  finishedAt: z.number().nullable(),
-  outcome: z.enum([
-    'sending',
-    'response',
-    'network-error',
-    'interrupted',
-    'refused',
-    'completed',
-    'rejected',
-    'error',
-  ]),
-  status: z.number().int().nullable(),
-  responseExcerpt: z.string().nullable(),
-  responseTruncated: z.boolean().nullable(),
-  error: z.string().nullable(),
-});
+export type HookWithNewSecret = BureauOutput<'bureau.hooks.secret.replace'>;
 
 /** Every status a delivery can have. */
 export const HOOK_DELIVERY_STATUSES = [
@@ -139,34 +114,121 @@ export const HOOK_DELIVERY_STATUSES = [
 /** Where a delivery stands. */
 export type HookDeliveryStatus = (typeof HOOK_DELIVERY_STATUSES)[number];
 
-const deliverySchema = z.object({
-  id: z.string(),
-  hookId: z.string(),
-  actionType: z.enum(['webhook', 'start-workflow', 'notify', 'plugin']),
-  kind: z.string(),
-  test: z.boolean(),
-  status: z.enum(HOOK_DELIVERY_STATUSES),
-  request: z
-    .object({
-      url: z.string(),
-      headers: z.record(z.string(), z.string()),
-      body: z.string(),
-    })
-    .nullable(),
-  attempts: z.array(attemptSchema),
-  maxAttempts: z.number().int(),
-  // Absent from an answer of a Bureau that predates it, which then reads as no try being due.
-  nextAttemptAt: z.number().nullable().default(null),
-  createdAt: z.number(),
-  updatedAt: z.number(),
-});
-
 /**
  * One delivery of one event to a hook: where it stands, every attempt made, the request a webhook
  * delivery sent (its URL, its headers without the signature, and its exact JSON body), and, while
  * it waits out its backoff, when its next try is due (`nextAttemptAt`, epoch milliseconds).
  */
-export type HookDelivery = z.infer<typeof deliverySchema>;
+export type HookDelivery = Pick<
+  BureauOutput<'bureau.hooks.test'>,
+  | 'id'
+  | 'hookId'
+  | 'actionType'
+  | 'kind'
+  | 'test'
+  | 'status'
+  | 'request'
+  | 'maxAttempts'
+  | 'createdAt'
+  | 'updatedAt'
+> & {
+  readonly attempts: readonly HookAttempt[];
+  readonly nextAttemptAt: number | null;
+};
+
+type WireAttempt = BureauOutput<'bureau.hooks.test'>['attempts'][number];
+
+/**
+ * One try of a delivery: when it started and ended, how it ended, the status, an excerpt of the
+ * answer, the error, and what a completed try made (`receipt`).
+ */
+export type HookAttempt = Pick<
+  WireAttempt,
+  | 'number'
+  | 'startedAt'
+  | 'finishedAt'
+  | 'outcome'
+  | 'status'
+  | 'responseExcerpt'
+  | 'responseTruncated'
+  | 'error'
+  | 'receipt'
+>;
+
+/** What a completed attempt made, as the Bureau shows it: a run, a notification, or a plugin reaction's receipt. */
+export type HookReceipt = NonNullable<HookAttempt['receipt']>;
+
+/** An attempt as a Bureau that predates receipts, or a reaction's `id`, `url` and `summary`, sends it. */
+type AttemptAnswer = Omit<WireAttempt, 'receipt'> & {
+  readonly receipt?: Partial<HookReceipt> | null | undefined;
+};
+
+/**
+ * An attempt as a Bureau that predates receipts has it: with none, and a receipt with no field it
+ * does not send. The server's schema always sends them, so this default belongs to the browser,
+ * applied to the typed result.
+ */
+export function attemptOf(attempt: AttemptAnswer): HookAttempt {
+  const receipt = attempt.receipt ?? null;
+  return {
+    number: attempt.number,
+    startedAt: attempt.startedAt,
+    finishedAt: attempt.finishedAt,
+    outcome: attempt.outcome,
+    status: attempt.status,
+    responseExcerpt: attempt.responseExcerpt,
+    responseTruncated: attempt.responseTruncated,
+    error: attempt.error,
+    receipt:
+      receipt === null
+        ? null
+        : {
+            runId: receipt.runId ?? null,
+            notificationId: receipt.notificationId ?? null,
+            id: receipt.id ?? null,
+            url: receipt.url ?? null,
+            summary: receipt.summary ?? null,
+          },
+  };
+}
+
+/**
+ * A created hook as a Bureau that does not say has it: with no signing secret, and one the owner
+ * made. The server's schema always sends both fields, so these defaults belong to the browser,
+ * applied to the typed result.
+ */
+export function createdHookOf(
+  hook: WithoutNewer<CreatedHook, 'signingSecret' | 'declaredBy'>,
+): CreatedHook {
+  return { ...hookOf(hook), signingSecret: hook.signingSecret ?? null };
+}
+
+/**
+ * A delivery as a Bureau that predates `nextAttemptAt` has it: with no try due, and each attempt as
+ * {@link attemptOf} reads it. The server's schema always sends the field, so this default belongs
+ * to the browser, applied to the typed result.
+ */
+export function deliveryOf(
+  delivery: Omit<BureauOutput<'bureau.hooks.test'>, 'nextAttemptAt' | 'attempts'> & {
+    readonly attempts: readonly AttemptAnswer[];
+    readonly nextAttemptAt?: number | null | undefined;
+  },
+): HookDelivery {
+  return {
+    id: delivery.id,
+    hookId: delivery.hookId,
+    actionType: delivery.actionType,
+    kind: delivery.kind,
+    test: delivery.test,
+    status: delivery.status,
+    request: delivery.request,
+    attempts: delivery.attempts.map(attemptOf),
+    maxAttempts: delivery.maxAttempts,
+    nextAttemptAt: delivery.nextAttemptAt ?? null,
+    createdAt: delivery.createdAt,
+    updatedAt: delivery.updatedAt,
+  };
+}
 
 /**
  * The body a webhook delivery sent, parsed, for showing the payload: the envelope `{ id, hookId,
@@ -182,32 +244,27 @@ export function deliveryBody(delivery: Pick<HookDelivery, 'request'>): unknown {
   }
 }
 
-const deliverySummarySchema = z.object({
-  id: z.string(),
-  kind: z.string(),
-  test: z.boolean(),
-  status: z.enum(HOOK_DELIVERY_STATUSES),
-  lastAttempt: attemptSchema
-    .pick({
-      number: true,
-      startedAt: true,
-      finishedAt: true,
-      outcome: true,
-      status: true,
-      error: true,
-    })
-    .nullable(),
-  createdAt: z.number(),
-  updatedAt: z.number(),
-});
-
 /** A hook's newest delivery as a list shows it: where it stands and how its last attempt ended. */
-export type HookDeliverySummary = z.infer<typeof deliverySummarySchema>;
+export type HookDeliverySummary = NonNullable<ListedHook['lastDelivery']>;
 
-const listedHookSchema = hookSchema.extend({ lastDelivery: deliverySummarySchema.nullable() });
+/** One hook as `bureau.hooks.list` shows it, with its newest delivery and what is wrong with it. */
+export type ListedHook = Omit<BureauOutput<'bureau.hooks.list'>['hooks'][number], 'action'> & {
+  readonly action: HookAction;
+};
 
-/** One hook as `bureau.hooks.list` shows it, with its newest delivery. */
-export type ListedHook = z.infer<typeof listedHookSchema>;
+/** Why a plugin hook cannot do what it says: its reaction is not registered, or its configuration is refused now. */
+export type HookProblem = ListedHook['problems'][number];
+
+/**
+ * A listed hook as a Bureau that predates default hooks and hook problems has it: one the owner
+ * made, with nothing wrong. The server's schema always sends both fields, so these defaults belong
+ * to the browser, applied to the typed result.
+ */
+export function listedHookOf(
+  hook: WithoutNewer<BureauOutput<'bureau.hooks.list'>['hooks'][number], 'declaredBy' | 'problems'>,
+): ListedHook {
+  return { ...hookOf(hook), problems: hook.problems ?? [] };
+}
 
 /** The caller's hooks, oldest first; `scope` narrows them to the hooks of exactly that subject. */
 export async function listHooks(
@@ -215,15 +272,13 @@ export async function listHooks(
   options?: Options,
 ): Promise<ListedHook[]> {
   const params = filter?.scope === undefined ? {} : { scope: filter.scope };
-  const answer = z
-    .object({ hooks: z.array(listedHookSchema) })
-    .parse(await callBureau('bureau.hooks.list', params, options));
-  return answer.hooks;
+  const answer = await bureauClient['bureau.hooks.list'](params, options);
+  return answer.hooks.map(listedHookOf);
 }
 
 /** One hook by its identifier; a hook that is not the caller's is `NotFound`. */
 export async function getHook(hookId: string, options?: Options): Promise<Hook> {
-  return hookSchema.parse(await callBureau('bureau.hooks.get', { hookId }, options));
+  return hookOf(await bureauClient['bureau.hooks.get']({ hookId }, options));
 }
 
 /** What a hook is written from. */
@@ -247,7 +302,8 @@ export type HookInput = {
         readonly type: 'plugin';
         readonly plugin: string;
         readonly kind: string;
-        readonly configuration: Readonly<Record<string, unknown>>;
+        /** An object the editor drew, or, unedited, whatever the hook stored (which may be no object). */
+        readonly configuration?: unknown;
       };
   /**
    * The secret a webhook is signed with, 16 to 256 characters. Sealed on arrival and never
@@ -259,11 +315,24 @@ export type HookInput = {
 };
 
 /**
+ * The event kinds as the operations name them. The page reads them from the event catalog as
+ * strings, and the Bureau refuses a kind it does not know, so the names are passed on as they are.
+ */
+function eventNames(events: readonly string[]): BureauInput<'bureau.hooks.create'>['events'] {
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+  return events as BureauInput<'bureau.hooks.create'>['events'];
+}
+
+/**
  * Creates a hook the caller owns. A webhook created without a signing secret answers with the one
  * the Bureau made, as `signingSecret`, this once; nothing reads it back afterwards.
  */
 export async function createHook(input: HookInput, options?: Options): Promise<CreatedHook> {
-  return createdHookSchema.parse(await callBureau('bureau.hooks.create', input, options));
+  const created = await bureauClient['bureau.hooks.create'](
+    { ...input, events: eventNames(input.events) },
+    options,
+  );
+  return createdHookOf(created);
 }
 
 /**
@@ -277,9 +346,7 @@ export async function replaceHookSecret(
   options?: Options,
 ): Promise<HookWithNewSecret> {
   const params = expectedRevision === undefined ? { hookId } : { hookId, expectedRevision };
-  return replacedSecretSchema.parse(
-    await callBureau('bureau.hooks.secret.replace', params, options),
-  );
+  return hookOf(await bureauClient['bureau.hooks.secret.replace'](params, options));
 }
 
 /** What `update` changes; a field left out stays. A `null` name removes it. */
@@ -305,14 +372,37 @@ export async function updateHook(
   change: HookChange,
   options?: Options,
 ): Promise<Hook> {
-  return hookSchema.parse(
-    await callBureau('bureau.hooks.update', { hookId, expectedRevision, ...change }, options),
+  const { events, ...rest } = change;
+  const updated = await bureauClient['bureau.hooks.update'](
+    {
+      hookId,
+      expectedRevision,
+      ...rest,
+      ...(events === undefined ? {} : { events: eventNames(events) }),
+    },
+    options,
   );
+  return hookOf(updated);
+}
+
+/**
+ * Makes an off copy of a hook the caller owns and may change (`bureau.hooks.duplicate`): the same
+ * action, events and scope, named `name` (else as the hook is), with no `declaredBy`, so a default
+ * hook a plugin declared becomes one the owner can edit. A webhook's copy gets a new signing secret,
+ * shown once.
+ */
+export async function duplicateHook(
+  hookId: string,
+  name?: string,
+  options?: Options,
+): Promise<CreatedHook> {
+  const params = name === undefined ? { hookId } : { hookId, name };
+  return createdHookOf(await bureauClient['bureau.hooks.duplicate'](params, options));
 }
 
 /** Deletes a hook, its secret and its delivery records. */
 export async function deleteHook(hookId: string, options?: Options): Promise<void> {
-  await callBureau('bureau.hooks.delete', { hookId }, options);
+  await bureauClient['bureau.hooks.delete']({ hookId }, options);
 }
 
 /**
@@ -321,7 +411,7 @@ export async function deleteHook(hookId: string, options?: Options): Promise<voi
  * write a real notification.
  */
 export async function testHook(hookId: string, options?: Options): Promise<HookDelivery> {
-  return deliverySchema.parse(await callBureau('bureau.hooks.test', { hookId }, options));
+  return deliveryOf(await bureauClient['bureau.hooks.test']({ hookId }, options));
 }
 
 /** The webhook a person is writing, tested before it is saved. */
@@ -341,7 +431,7 @@ export async function testHookDraft(draft: HookDraft, options?: Options): Promis
     draft.signingSecret === undefined
       ? { url: draft.url }
       : { url: draft.url, signingSecret: draft.signingSecret };
-  return deliverySchema.parse(await callBureau('bureau.hooks.draft.test', params, options));
+  return deliveryOf(await bureauClient['bureau.hooks.draft.test'](params, options));
 }
 
 /**
@@ -355,8 +445,8 @@ export async function retryHookDelivery(
   deliveryId: string,
   options?: Options,
 ): Promise<HookDelivery> {
-  return deliverySchema.parse(
-    await callBureau('bureau.hooks.deliveries.retry', { hookId, deliveryId }, options),
+  return deliveryOf(
+    await bureauClient['bureau.hooks.deliveries.retry']({ hookId, deliveryId }, options),
   );
 }
 
@@ -366,27 +456,24 @@ export async function listHookDeliveries(
   limit: number,
   options?: Options,
 ): Promise<HookDelivery[]> {
-  const answer = z
-    .object({ deliveries: z.array(deliverySchema) })
-    .parse(await callBureau('bureau.hooks.deliveries', { hookId, limit }, options));
-  return answer.deliveries;
+  const answer = await bureauClient['bureau.hooks.deliveries']({ hookId, limit }, options);
+  return answer.deliveries.map(deliveryOf);
 }
 
-const catalogSchema = z.object({
-  events: z.array(
-    z.object({
-      kind: z.string(),
-      description: z.string(),
-      origin: z.enum(['run', 'external', 'unattributed']),
-      scopes: z.array(z.enum(HOOK_SCOPE_KINDS)),
-    }),
-  ),
-});
-
 /** One event kind a hook can listen to, with what the Bureau says about it. */
-export type HookEventKind = z.infer<typeof catalogSchema>['events'][number];
+export type HookEventKind = Pick<
+  BureauOutput<'bureau.events.catalog'>['events'][number],
+  'kind' | 'description' | 'origin' | 'scopes'
+>;
 
 /** Every event kind a hook can listen to, in the order the Bureau documents them. */
 export async function listHookEventKinds(options?: Options): Promise<HookEventKind[]> {
-  return catalogSchema.parse(await callBureau('bureau.events.catalog', {}, options)).events;
+  const catalog = await bureauClient['bureau.events.catalog']({}, options);
+  // The page reads the kind, what it is, where it comes from and what it can be scoped to.
+  return catalog.events.map(({ kind, description, origin, scopes }) => ({
+    kind,
+    description,
+    origin,
+    scopes,
+  }));
 }

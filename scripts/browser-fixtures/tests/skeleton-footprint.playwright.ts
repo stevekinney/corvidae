@@ -6,8 +6,8 @@
  * DataList of two StackedListItem rows. happy-dom performs no layout, so it is measured here.
  */
 
+import { fixtureRoute } from '@lostgradient/testing/playwright/overlay-fixture';
 import { expect, test } from '@playwright/test';
-import { fixtureRoute } from './overlay-fixture.ts';
 
 const WIDTHS = [
   { name: 'desktop', width: 1280 },

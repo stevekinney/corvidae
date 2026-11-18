@@ -53,7 +53,7 @@ import { readEnvironmentConfiguration } from '../src/environment-configuration.t
 import { prebuildPageBundlesInBatches } from '../src/page-bundle.ts';
 import { REPOSITORY_ROOT } from '../src/playground-paths.ts';
 import { handleRequest } from '../src/playground-server.ts';
-import { COMPOUND_COMPONENT_FAMILIES } from '../src/shell-app/compound-families.ts';
+import { COMPOUND_COMPONENT_FAMILIES } from '../src/shell-app/compound-families.generated.ts';
 import { THEME_BUILDER_PATH, THEME_PREVIEW_PATH } from '../src/theme-builder-page.ts';
 import { createExportReport, EXPORT_REPORT_PATH, writeExportReport } from './export-report.ts';
 import { assertInitialRoutePayloadBudgets, assetUrlsFromHtml } from './initial-route-payload.ts';

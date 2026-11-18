@@ -25,10 +25,25 @@ export const EVENTS_MAXIMUM = 64;
 const NAME_MAXIMUM_LENGTH = 100;
 
 /** The fields a problem can belong to, which the page maps to the control that holds each. */
-export type HookProblemField = 'event' | 'only-for' | 'url' | 'workflow' | 'name';
+export type HookProblemField = 'event' | 'only-for' | 'action' | 'url' | 'workflow' | 'name';
 
 /** One reason the hook cannot be saved yet, said beside the field it belongs to. */
 export type HookProblem = { readonly field: HookProblemField; readonly message: string };
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/** `value` as JSON text with every object's keys in order, so two configurations that differ only in key order are equal. */
+function stableText(value: unknown): string {
+  return JSON.stringify(value, (_key, member: unknown) =>
+    isPlainObject(member)
+      ? Object.fromEntries(
+          Object.entries(member).toSorted(([left], [right]) => left.localeCompare(right)),
+        )
+      : member,
+  );
+}
 
 /** Whether `text` reads as a web address the Bureau could accept: http or https, no user name or password. */
 function isWebAddress(text: string): boolean {
@@ -60,11 +75,22 @@ export class HookFormState {
   contributedKind = $state<{ readonly plugin: string; readonly kind: string } | null>(null);
   /** The fields of the contributed kind's configuration. */
   contributedConfiguration = $state<Record<string, unknown>>({});
-  /** Whether the hook's action is one a plugin contributed, which the editor keeps and does not edit. */
+  /** Whether the hook's action is one a plugin contributed; its kind is fixed and its configuration is edited. */
   pluginAction = $state(false);
+  /** Whether a new hook's action is "Run an action from a plugin": the action itself is chosen next. */
+  choosePlugin = $state(false);
 
   /** What the form held when it was last loaded from a hook, to tell whether anything was typed since. */
   private baseline = $state('');
+
+  /**
+   * The plugin action's configuration exactly as the loaded hook stored it, which may be a value the
+   * editor cannot draw (a string, an array, or nothing): it is sent back unchanged unless the
+   * configuration was edited. `null` until a plugin hook is loaded.
+   */
+  private storedConfiguration = $state.raw<{ readonly value: unknown } | null>(null);
+  /** The editable configuration as it was loaded, to tell whether it was edited since. */
+  private configurationBaseline = '';
 
   /** Whether the hook is not yet written. */
   readonly isNew: boolean;
@@ -85,6 +111,7 @@ export class HookFormState {
       this.workflowId,
       this.workflowInput,
       this.title,
+      this.choosePlugin,
       this.contributedKind,
       this.contributedConfiguration,
     ]);
@@ -101,6 +128,8 @@ export class HookFormState {
     this.events = [...hook.events];
     this.scopeKind = hook.scope?.kind ?? '';
     this.scopeId = hook.scope?.id ?? '';
+    this.storedConfiguration = null;
+    this.configurationBaseline = '';
     switch (hook.action.type) {
       case 'webhook':
         this.actionType = 'webhook';
@@ -115,11 +144,36 @@ export class HookFormState {
         this.actionType = 'notify';
         this.title = hook.action.title ?? '';
         break;
-      case 'plugin':
+      case 'plugin': {
         this.pluginAction = true;
+        // The kind is fixed once the hook is made, and its configuration is the hook's to change
+        // (COR-2181): a secret field in it holds `{ "$secret": key }`, never a value.
+        this.contributedKind = { plugin: hook.action.plugin, kind: hook.action.kind };
+        const configuration = hook.action.configuration;
+        this.storedConfiguration = { value: configuration };
+        this.contributedConfiguration = isPlainObject(configuration) ? { ...configuration } : {};
+        this.configurationBaseline = stableText(this.contributedConfiguration);
         break;
+      }
     }
     this.baseline = this.fingerprint();
+  }
+
+  /**
+   * Whether the form can draw the configuration it was loaded with: an object, or none. A string or
+   * an array it cannot, so the draft the form shows at mount is no edit and must not replace it.
+   */
+  get storedConfigurationDrawable(): boolean {
+    const stored = this.storedConfiguration;
+    return stored === null || stored.value === undefined || isPlainObject(stored.value);
+  }
+
+  /** Whether the plugin action's configuration differs from the one the form was loaded with. */
+  private get configurationEdited(): boolean {
+    return (
+      this.storedConfiguration === null ||
+      stableText(this.contributedConfiguration) !== this.configurationBaseline
+    );
   }
 
   /** The scope as the hook's sentence reads it: `null` until both of its fields are chosen. */
@@ -131,7 +185,7 @@ export class HookFormState {
 
   /** The kind of action the form writes: a built-in one, or `plugin` for a contributed kind. */
   get effectiveType(): HookActionType | 'plugin' {
-    return this.contributedKind === null ? this.actionType : 'plugin';
+    return this.contributedKind === null && !this.choosePlugin ? this.actionType : 'plugin';
   }
 
   /** The action as the hook's sentence reads it. */
@@ -182,7 +236,9 @@ export class HookFormState {
     if (this.scopeKind !== '' && this.scopeId === '') {
       found.push({ field: 'only-for', message: copy.onlyFor.required });
     }
-    if (!this.pluginAction && this.contributedKind === null) {
+    if (this.choosePlugin && this.contributedKind === null) {
+      found.push({ field: 'action', message: copy.action.pluginRequired });
+    } else if (!this.pluginAction && this.contributedKind === null) {
       if (this.actionType === 'webhook') {
         const url = this.url.trim();
         if (url === '') found.push({ field: 'url', message: copy.webhook.urlMissing });
@@ -207,12 +263,18 @@ export class HookFormState {
   /** The action as the Bureau takes it. */
   private action(): HookInput['action'] {
     if (this.contributedKind !== null) {
-      return {
+      const action = {
         type: 'plugin',
         plugin: this.contributedKind.plugin,
         kind: this.contributedKind.kind,
-        configuration: { ...this.contributedConfiguration },
-      };
+      } as const;
+      // An unedited configuration goes back as it was stored, never as the `{}` the editor drew
+      // for a value it cannot draw.
+      if (!this.configurationEdited && this.storedConfiguration !== null) {
+        const stored = this.storedConfiguration.value;
+        return stored === undefined ? action : { ...action, configuration: stored };
+      }
+      return { ...action, configuration: { ...this.contributedConfiguration } };
     }
     switch (this.actionType) {
       case 'webhook':
@@ -254,7 +316,15 @@ export class HookFormState {
       case 'notify':
         return current.type !== 'notify' || (draft.title ?? null) !== current.title;
       case 'plugin':
-        return true;
+        // The kind is fixed; only its configuration can differ, and only by an edit: a
+        // configuration nobody edited is not sent, so a rename never replaces it.
+        return (
+          current.type !== 'plugin' ||
+          draft.plugin !== current.plugin ||
+          draft.kind !== current.kind ||
+          (this.configurationEdited &&
+            stableText(draft.configuration) !== stableText(current.configuration ?? {}))
+        );
     }
   }
 
@@ -270,8 +340,8 @@ export class HookFormState {
   }
 
   /**
-   * What `bureau.hooks.update` changes. A hook whose action a plugin contributed keeps it: the
-   * editor changes its name and events only. The action goes
+   * What `bureau.hooks.update` changes. A hook that runs a plugin's action keeps the kind (it is
+   * fixed) and changes its configuration, which goes as the whole configuration. The action goes
    * only when it differs from the hook's, because the Bureau asks again whether a workflow is
    * allowed whenever an action is sent, and a rename is never held up by a workflow since paused.
    * The scope goes only when it changed, so a kind this page does not know is left as it is, and the
@@ -288,9 +358,7 @@ export class HookFormState {
       name: this.name.trim() === '' ? null : this.name.trim(),
       ...(eventsChanged ? { events: [...this.events] } : {}),
       ...(scopeChanged ? { scope: this.scope() ?? null } : {}),
-      ...(hook.action.type === 'plugin' || !this.actionChanged(hook)
-        ? {}
-        : { action: this.action() }),
+      ...(this.actionChanged(hook) ? { action: this.action() } : {}),
     };
   }
 }

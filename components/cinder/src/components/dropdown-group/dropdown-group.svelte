@@ -1,17 +1,4 @@
 <script lang="ts" module>
-  /**
-   * @cinder
-   * @category overlay
-   * @status stable
-   * @purpose Accessible group boundary that clusters related dropdown-item rows inside a dropdown-menu.
-   * @tag overlay
-   * @tag menu
-   * @useWhen Grouping related dropdown actions under one accessible heading.
-   * @useWhen Pairing dropdown-label with a role='group' container inside dropdown-menu.
-   * @avoidWhen Rendering a clickable row — use dropdown-item.
-   * @avoidWhen Separating sections without a group label — use dropdown-separator.
-   * @related dropdown, dropdown-menu, dropdown-item, dropdown-label, dropdown-separator
-   */
   export type { DropdownGroupProps } from './dropdown-group.types.ts';
 </script>
 

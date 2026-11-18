@@ -1,19 +1,4 @@
 <script lang="ts" module>
-  /**
-   * @cinder
-   * @category data-display
-   * @status stable
-   * @purpose Card for any payload: sentence-case fields by default, a Fields / JSON switch, count and size, one copy action, secret masking, and states from streaming to failed.
-   * @tag json
-   * @tag inspector
-   * @tag payload
-   * @useWhen Inspecting workflow inputs, signal payloads, activity results, or API response bodies in a dashboard.
-   * @useWhen Displaying a structured payload with a visible label, byte size, and copy affordance.
-   * @useWhen Reading a payload as data first, with the raw JSON one switch away.
-   * @avoidWhen Rendering a raw code block only — use code-block directly instead.
-   * @avoidWhen Needing search, filtering, or virtualization over large collections — compose a custom viewer.
-   * @related json-viewer, code-block, copy-button, schema-view
-   */
   export type {
     PayloadInspectorField,
     PayloadInspectorProps,

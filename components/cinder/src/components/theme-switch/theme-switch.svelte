@@ -1,19 +1,4 @@
 <script lang="ts" module>
-  /**
-   * @cinder
-   * @category form
-   * @status beta
-   * @purpose Three-position Light, System, Dark switch on a quiet sky and night track, for choosing a color theme.
-   * @tag form
-   * @tag switch
-   * @tag theme
-   * @tag appearance
-   * @useWhen Letting a person choose between a light theme, a dark theme, and following their system setting.
-   * @useWhen Placing the theme choice in a header, a user menu, or a settings page as one compact control.
-   * @avoidWhen Flipping a single setting on or off — use toggle instead.
-   * @avoidWhen Picking one option from a longer list of labeled choices — use segmented-control instead.
-   * @related toggle, segmented-control
-   */
   export type { ThemeSwitchProps, ThemeSwitchValue } from './theme-switch.types.ts';
 </script>
 

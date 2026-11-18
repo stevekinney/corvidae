@@ -1,22 +1,8 @@
 <script lang="ts" module>
-  /**
-   * @cinder
-   * @category data-display
-   * @status beta
-   * @purpose Row of a grouped list with leading icon, avatar, thumbnail or control, a fixed lead column, title, subtitle, and trailing value, photo, chevron, action and text actions; the whole row is the link.
-   * @tag list
-   * @tag row
-   * @useWhen Listing entities inside a grouped list, each with a leading glyph, a title and a secondary line.
-   * @useWhen Linking each row to a detail view by passing href, which makes the whole row one link.
-   * @useWhen Ending a row with the button that is its point, such as Review on an approval, which stays a button on a phone.
-   * @avoidWhen Showing a row with a fixed status column, details or a disclosure — use stacked-list-item.
-   * @avoidWhen Comparing values across columns — use table.
-   * @related grouped-list, stacked-list-item, avatar
-   * @rationale Nearest alternative: StackedListItem — a grouped-list row has no border of its own; the group draws one rounded surface and inset separators.
-   */
   export type {
     GroupedListItemAction,
     GroupedListItemLeadingKind,
+    GroupedListItemLines,
     GroupedListItemProps,
     GroupedListItemUrgency,
   } from './grouped-list-item.types.ts';
@@ -44,6 +30,12 @@
     action,
     actions,
     chevron,
+    chevronColumn = false,
+    titleLines,
+    subtitleLines,
+    tooltip,
+    subtitleTooltip,
+    arriving = false,
     selected = false,
     suggested = false,
     suggestedLabel = 'Suggested',
@@ -55,6 +47,14 @@
   }: GroupedListItemProps = $props();
 
   const showChevron = $derived(chevron ?? href !== undefined);
+
+  // One native tooltip on the row, never one per line: on a linked row the link's cover lies over
+  // every line, so a tooltip on the subtitle could never be reached. The title, a line break, then
+  // the subtitle's text; whichever is set, alone, when only one is.
+  const rowTooltip = $derived(
+    [tooltip, subtitleTooltip].filter((part) => part !== undefined && part !== '').join('\n') ||
+      undefined,
+  );
 
   // A `lead` snippet wins; otherwise a time window makes the row time-led.
   const timed = $derived(!lead && timeWindow !== undefined);
@@ -92,8 +92,16 @@
     timed && 'cinder-grouped-list-item--timed',
     hasActions && 'cinder-grouped-list-item--actions',
     trailing !== undefined && 'cinder-grouped-list-item--trailing',
+    showChevron && 'cinder-grouped-list-item--chevron',
+    // A row whose title's first line is not at the top of its content keeps its chevron in the flow.
+    (suggested ||
+      (leading !== undefined && (leadingKind === 'avatar' || leadingKind === 'media'))) &&
+      'cinder-grouped-list-item--flow-chevron',
+    !showChevron && chevronColumn && 'cinder-grouped-list-item--chevron-column',
+    arriving && 'cinder-grouped-list-item--arriving',
     className,
   )}
+  title={rowTooltip}
   data-cinder-selected={selected ? '' : undefined}
   data-cinder-suggested={suggested ? '' : undefined}
   aria-current={selected && href === undefined ? 'true' : undefined}
@@ -121,7 +129,7 @@
       {#if suggested}
         <span class="cinder-grouped-list-item__suggested">{suggestedLabel}</span>
       {/if}
-      <div class="cinder-grouped-list-item__title">
+      <div class="cinder-grouped-list-item__title" data-cinder-lines={titleLines}>
         {#if href !== undefined}
           <a
             class="cinder-grouped-list-item__link"
@@ -135,7 +143,9 @@
         {/if}
       </div>
       {#if subtitle}
-        <div class="cinder-grouped-list-item__subtitle">{@render subtitle()}</div>
+        <div class="cinder-grouped-list-item__subtitle" data-cinder-lines={subtitleLines}>
+          {@render subtitle()}
+        </div>
       {/if}
     </div>
     {#if staleAge}

@@ -3,7 +3,7 @@ import { setupHappyDom } from '@lostgradient/testing';
 import { afterEach, describe, expect, test } from 'bun:test';
 import { existsSync, readFileSync } from 'node:fs';
 
-import { declarationsFor } from '../../test/css.ts';
+import { declarationsFor } from '@lostgradient/component-tooling/test/css.ts';
 setupHappyDom();
 const { cleanup } = await import('@testing-library/svelte');
 const { resetEscapeStack } = await import('../../_internal/overlay.ts');
@@ -23,6 +23,22 @@ describe('NavigationBar responsive CSS', () => {
     expect(navigationBarCss).toContain('@container cinder-navigation-bar (max-width: 47.99rem)');
     expect(navigationBarCss).toMatch(
       /\.cinder-navigation-bar__items\[data-cinder-mobile-panel\]\[data-cinder-visible\][\s\S]*?\.cinder-navigation-item\[data-variant='mobile'\][\s\S]*?inline-size:\s*100%;/,
+    );
+  });
+
+  test('a bottom bar under 360px drops its edge and tab padding so five labels fit (COR-2445)', () => {
+    // The bar cannot query its own size, so its inline padding sits on the tab row.
+    expect(navigationBarCss).toMatch(
+      /\.cinder-navigation-bar\[data-cinder-placement='bottom'\]\s*\{[^}]*padding-inline:\s*0;/,
+    );
+    expect(navigationBarCss).toMatch(
+      /\.cinder-navigation-bar__items \{[^}]*padding-inline:\s*var\(--cinder-space-1\);[^}]*margin-block:/,
+    );
+    expect(navigationBarCss).toMatch(
+      /data-variant='mobile'\]\s*\{[^}]*padding-inline:\s*var\(--cinder-space-0-5\);/,
+    );
+    expect(navigationBarCss).toMatch(
+      /@container cinder-navigation-bar \(min-width: 22\.5rem\)[\s\S]*?padding-inline:\s*var\(--cinder-space-2\);/,
     );
   });
 

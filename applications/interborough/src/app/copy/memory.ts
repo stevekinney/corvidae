@@ -185,12 +185,11 @@ export const MEMORY_COPY = {
     action: 'Forget',
     /** The name of the icon button that forgets the open memory. */
     iconLabel: 'Forget this memory',
-    dialog: {
-      title: 'Forget this memory?',
-      description: (excerpt: string): string =>
-        `The agent stops recalling “${excerpt}”, and it leaves this list and search. A copy of it that a chat already saved is not scrubbed.`,
-      confirm: 'Forget memory',
-    },
+    /**
+     * The toast the trash button shows, with its Undo (row 45r): there is no question first. The
+     * forget is sent once the toast closes.
+     */
+    toast: (excerpt: string): string => `Forgot “${excerpt}”.`,
     /** The words for each state the deletion can answer with. */
     outcome: {
       completed: {

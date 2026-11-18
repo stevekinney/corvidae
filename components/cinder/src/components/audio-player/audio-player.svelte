@@ -1,15 +1,4 @@
 <script lang="ts" module>
-  /**
-   * @cinder
-   * @category action
-   * @status alpha
-   * @purpose Native audio element with its own controls for play, pause, replay, seeking, and elapsed and total time.
-   * @tag media
-   * @tag audio
-   * @useWhen Playing a single audio track from an https, http, or blob URL with accessible controls.
-   * @avoidWhen You need streaming protocols, caption authoring, or playlists — wire those separately.
-   * @related video-player
-   */
   export type { AudioPlayerProps } from './audio-player.types.ts';
 </script>
 

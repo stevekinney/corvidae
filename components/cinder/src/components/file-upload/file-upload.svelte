@@ -1,16 +1,4 @@
 <script lang="ts" module>
-  /**
-   * @cinder
-   * @category form
-   * @status stable
-   * @purpose File picker and drag-and-drop surface that validates files locally and can render upload progress rows.
-   * @tag form
-   * @tag upload
-   * @useWhen Collecting one or more files while keeping the native picker available for keyboard and assistive-technology users.
-   * @useWhen Showing per-file upload progress or rejection errors below a prominent dropzone surface.
-   * @avoidWhen You only need a hidden native file input with no custom UI.
-   * @related form-field, progress, input
-   */
   export type {
     FileUploadEntry,
     FileUploadProps,

@@ -37,8 +37,8 @@ import {
   updateAgent,
   type AgentDefinitionInput,
 } from '../lib/agent-definitions.ts';
+import { bureauClient } from '../lib/bureau-api.ts';
 import type { Fetcher } from '../lib/bureau-client.ts';
-import { callBureau } from '../lib/bureau-client.ts';
 import { urlOf } from '../lib/bureau-stub.test-support.ts';
 import { getHostPaths } from '../lib/host-paths.ts';
 import { enableDemoPlugin } from './demo-plugin-home.ts';
@@ -401,10 +401,11 @@ type ChatRow = { readonly id: string; readonly origin: string; readonly agentNam
 
 /** The chats the Bureau lists, every one or only those of an `origin`. */
 async function chatRows(fetcher: Fetcher, origin?: string): Promise<ChatRow[]> {
-  const page = (await callBureau('bureau.contexts.list', origin === undefined ? {} : { origin }, {
-    fetch: fetcher,
-  })) as { contexts: ChatRow[] };
-  return page.contexts;
+  const page = await bureauClient['bureau.contexts.list'](
+    origin === undefined ? {} : { origin: origin as 'try' },
+    { fetch: fetcher },
+  );
+  return [...page.contexts];
 }
 
 /** The ids of the throwaway chats (`origin: 'try'`) the Bureau holds. */
@@ -426,8 +427,7 @@ describe('trying a definition that is not saved', () => {
     expect(listed.some((agent) => agent.id === tried.agentName)).toBe(false);
 
     // The chat is labelled `try`, and the chat list leaves it out unless it is asked for.
-    const context = await callBureau(
-      'bureau.contexts.get',
+    const context = await bureauClient['bureau.contexts.get'](
       { contextId: tried.contextId },
       { fetch: fetcher },
     );
@@ -437,11 +437,10 @@ describe('trying a definition that is not saved', () => {
     expect(await triedChatIds(fetcher)).toEqual([tried.contextId]);
 
     // Deleting the chat ends it, and the agent with it.
-    const deleted = (await callBureau(
-      'bureau.contexts.delete',
+    const deleted = await bureauClient['bureau.contexts.delete'](
       { contextId: tried.contextId },
       { fetch: fetcher },
-    )) as { receipt: string };
+    );
     expect(['applied', 'cleaned-up']).toContain(deleted.receipt);
     expect(await triedChatIds(fetcher)).toEqual([]);
   });

@@ -1,15 +1,4 @@
 <script lang="ts" module>
-  /**
-   * @cinder
-   * @category form
-   * @status beta
-   * @purpose Explains why a setting is policy-managed, identifies its source, and exposes the policy scope as a badge.
-   * @tag form
-   * @tag policy
-   * @useWhen A control is unavailable because an administrator or policy source owns its value.
-   * @avoidWhen A control is unavailable for a temporary or non-policy reason.
-   * @related setting-row, badge, tooltip
-   */
   export type { PolicyLockProps } from './policy-lock.types.ts';
 </script>
 

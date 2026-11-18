@@ -16,36 +16,43 @@
  * when any were held, however many reconnects the replay took. Only envelopes after the ping reach a
  * subscriber one by one.
  *
+ * **The recent window.** The source keeps the latest {@link BUREAU_RECENT_CAP} envelopes it has
+ * received, held-back replay and live alike, once each by cursor, so a view that lists recent
+ * events (Home's Agent activity, COR-2227) reads them with {@link BureauEventSource.recent} when it
+ * opens and again on every resync, instead of being sent the replay one envelope at a time. A gap
+ * empties it, because the replay that follows is the feed's new history.
+ *
  * **Refusals.** A refused request (a stale cursor, a `bureauId` the host no longer answers to) drops
  * the cursor and the cached `bureauId`, so the next attempt starts over instead of replaying the
  * same refusal, and asks for a resync once it has caught up.
  *
- * **Transport.** The same fetch-stream reader `FleetEventSource` uses (`./sse-reader.ts`); `status`
- * means what it means there, and is `'live'` only while the connection is open and has delivered a
- * frame or the `replayComplete` ping.
+ * **Transport.** The generated client's `bureau.events` subscription (`../bureau-api.ts`), which
+ * yields each envelope with its id and one replay-complete marker; `status` means what it means for
+ * `FleetEventSource`, and is `'live'` only while the connection is open and has delivered an
+ * envelope or the replay-complete marker. A stream that reports an error ends, and is reconnected
+ * from the last id like any other end.
  */
-import { BUREAU_PATH, getBureauId } from '../bureau-client.ts';
+import { CatalogClientError, type SubscriptionMessage } from '@lostgradient/backchannel/client';
+
+import { bureauClient } from '../bureau-api.ts';
+import { getBureauId } from '../bureau-client.ts';
 import { computeReconnectDelayMs } from './backoff.ts';
 import {
+  BUREAU_GAP_KIND,
   BUREAU_RESYNC_KIND,
   isRecoveryKind,
-  isReplayCompletePing,
-  parseBureauEventFrame,
+  readBureauEventFrame,
   type BureauEventFrame,
 } from './bureau-event-frame.ts';
-import { readServerSentEventStream, type ServerSentEventFrame } from './sse-reader.ts';
 import type { LiveSource, LiveSourceStatus } from './types.ts';
+
+/** How many of the latest envelopes a source keeps for {@link BureauEventSource.recent}: one format batch. */
+export const BUREAU_RECENT_CAP = 200;
 
 /** Options for a Bureau event source. */
 export interface BureauEventSourceConfig {
   /** Overrides the reconnect backoff curve; tests inject a near-zero function. */
   readonly computeReconnectDelayMs?: (attempt: number) => number;
-}
-
-function isEventStreamResponse(response: Response): boolean {
-  const contentType = response.headers.get('Content-Type');
-  if (contentType === null) return false;
-  return contentType.split(';', 1)[0]?.trim().toLowerCase() === 'text/event-stream';
 }
 
 /**
@@ -58,7 +65,7 @@ export class BureauEventSource implements LiveSource<BureauEventFrame> {
 
   /** Reconnect attempts since the last frame or ping; `0` while `live`, `connecting` and `closed`. */
   get reconnectAttempt(): number {
-    return this.#reconnectAttempt;
+    return this.#reconnectAttemptShown;
   }
 
   /** True once the current connection's replay has ended (the `replayComplete` ping). Resets at every connect. */
@@ -66,12 +73,33 @@ export class BureauEventSource implements LiveSource<BureauEventFrame> {
     return this.#caughtUp;
   }
 
+  /**
+   * Every connection that failed or dropped since the source was made. Unlike `reconnectAttempt`,
+   * which a ping or a frame resets to 0, it never goes down, so a view that ignores the failures
+   * before some moment (a Try again) compares it with the count it read then and still sees a
+   * connection that answered and dropped after it.
+   */
+  get failedConnections(): number {
+    return this.#failedConnectionsShown;
+  }
+
   readonly #computeReconnectDelayMs: (attempt: number) => number;
   readonly #subscribers = new Set<(frame: BureauEventFrame) => void>();
+
+  /** The latest envelopes received, oldest first, each cursor once. */
+  readonly #recent: BureauEventFrame[] = [];
+  readonly #recentCursors = new Set<string>();
 
   #abortController: AbortController | null = null;
   #reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   #reconnectAttempt = 0;
+  // What `reconnectAttempt` reads: reactive, so a view can tell a failed attempt from one still
+  // waiting, and apart from the count the source reads itself, so a subscriber's effect that opens
+  // the connection never comes to depend on it.
+  #reconnectAttemptShown = $state(0);
+  // `failedConnections`, kept apart from the count the source writes, as `reconnectAttempt` is.
+  #failedConnections = 0;
+  #failedConnectionsShown = $state(0);
   #caughtUp = $state(false);
   #lastEventId: string | undefined;
   #bureauId: string | undefined;
@@ -98,6 +126,24 @@ export class BureauEventSource implements LiveSource<BureauEventFrame> {
     };
   }
 
+  /**
+   * The latest envelopes this source has received, oldest first, at most `limit` of them (and never
+   * more than {@link BUREAU_RECENT_CAP}): the replay it held back as well as what arrived live, and
+   * no recovery signal. A view that lists recent events reads its window here when it opens and on
+   * every resync, then follows what is dispatched after.
+   */
+  recent(limit: number = BUREAU_RECENT_CAP): readonly BureauEventFrame[] {
+    return limit <= 0 ? [] : this.#recent.slice(-limit);
+  }
+
+  /** Connects now instead of waiting out the backoff, when a reconnect is waiting; otherwise does nothing. */
+  retryNow(): void {
+    if (this.#closed || this.#reconnectTimer === null) return;
+    clearTimeout(this.#reconnectTimer);
+    this.#reconnectTimer = null;
+    void this.#connect();
+  }
+
   whenConnected(): Promise<void> {
     return this.#connected.promise;
   }
@@ -115,7 +161,7 @@ export class BureauEventSource implements LiveSource<BureauEventFrame> {
   #ensureConnected(): void {
     if (this.#closed || this.#abortController !== null || this.#reconnectTimer !== null) return;
     this.#connected = Promise.withResolvers();
-    this.#reconnectAttempt = 0;
+    this.#setReconnectAttempt(0);
     void this.#connect();
   }
 
@@ -153,22 +199,24 @@ export class BureauEventSource implements LiveSource<BureauEventFrame> {
   async #fetchAndDrain(controller: AbortController): Promise<boolean> {
     try {
       this.#bureauId ??= await getBureauId({ signal: controller.signal });
-      const response = await fetch(this.#eventsUrl(this.#bureauId), {
-        headers: this.#requestHeaders(),
-        signal: controller.signal,
-      });
-      if (!response.ok) {
-        this.#startOver();
-        return true;
-      }
-      if (!isEventStreamResponse(response)) return true;
-
-      for await (const frame of readServerSentEventStream(response, controller.signal)) {
-        this.#handleFrame(frame);
+      const messages = bureauClient['bureau.events'](
+        { bureauId: this.#bureauId },
+        {
+          signal: controller.signal,
+          ...(this.#lastEventId === undefined ? {} : { lastEventId: this.#lastEventId }),
+        },
+      );
+      for await (const message of messages) {
+        this.#handleMessage(message);
         if (this.#closed) return false;
       }
       return !controller.signal.aborted;
-    } catch {
+    } catch (error) {
+      // A refused request says the cursor or the id it named may be wrong.
+      if (error instanceof CatalogClientError && error.code >= 400 && error.code <= 599) {
+        this.#startOver();
+        return true;
+      }
       return !controller.signal.aborted;
     }
   }
@@ -179,44 +227,54 @@ export class BureauEventSource implements LiveSource<BureauEventFrame> {
     if (this.#lastEventId !== undefined) {
       this.#lastEventId = undefined;
       this.#resyncPending = true;
+      // The replay from nothing that follows is the window now.
+      this.#forgetRecent();
     }
   }
 
-  #eventsUrl(bureauId: string): string {
-    return `${BUREAU_PATH}/v1/subscriptions/bureau.events?${new URLSearchParams({ bureauId }).toString()}`;
-  }
-
-  #requestHeaders(): Record<string, string> {
-    const headers: Record<string, string> = { Accept: 'text/event-stream' };
-    if (this.#lastEventId !== undefined) headers['Last-Event-ID'] = this.#lastEventId;
-    return headers;
-  }
-
-  #handleFrame(frame: ServerSentEventFrame): void {
-    if (frame.event === 'ping') {
-      this.#reconnectAttempt = 0;
-      if (isReplayCompletePing(frame.data)) {
-        this.#markLive();
-        this.#caughtUp = true;
-        this.#flushResync();
-      }
+  #handleMessage(message: SubscriptionMessage<unknown>): void {
+    if (message.type === 'replay-complete') {
+      this.#setReconnectAttempt(0);
+      this.#markLive();
+      this.#caughtUp = true;
+      this.#flushResync();
       return;
     }
-    // `event: error` precedes the server closing the stream; the end of the stream that follows
-    // drives the same reconnect path as any other drop.
-    if (frame.event === 'error') return;
-
-    const envelope = parseBureauEventFrame(frame.data);
+    const envelope = readBureauEventFrame(message.data);
     if (envelope === null) return;
-    this.#lastEventId = frame.id ?? envelope.cursor;
-    this.#reconnectAttempt = 0;
+    this.#lastEventId = message.id;
+    this.#setReconnectAttempt(0);
     this.#markLive();
+    if (envelope.kind === BUREAU_GAP_KIND) this.#forgetRecent();
+    else if (!isRecoveryKind(envelope.kind)) this.#remember(envelope);
     if (!this.#caughtUp && !isRecoveryKind(envelope.kind)) {
       // Replay backlog: held back, and answered by one resync when the replay ends.
       this.#resyncPending = true;
       return;
     }
     this.#dispatch(envelope);
+  }
+
+  #setReconnectAttempt(attempt: number): void {
+    this.#reconnectAttempt = attempt;
+    this.#reconnectAttemptShown = attempt;
+  }
+
+  #remember(envelope: BureauEventFrame): void {
+    if (this.#recentCursors.has(envelope.cursor)) return;
+    this.#recent.push(envelope);
+    this.#recentCursors.add(envelope.cursor);
+    const excess = this.#recent.length - BUREAU_RECENT_CAP;
+    if (excess > 0) {
+      for (const dropped of this.#recent.splice(0, excess)) {
+        this.#recentCursors.delete(dropped.cursor);
+      }
+    }
+  }
+
+  #forgetRecent(): void {
+    this.#recent.length = 0;
+    this.#recentCursors.clear();
   }
 
   #flushResync(): void {
@@ -243,7 +301,9 @@ export class BureauEventSource implements LiveSource<BureauEventFrame> {
   #scheduleReconnect(): void {
     if (this.#closed || this.#subscribers.size === 0) return;
     this.status = 'reconnecting';
-    this.#reconnectAttempt += 1;
+    this.#failedConnections += 1;
+    this.#failedConnectionsShown = this.#failedConnections;
+    this.#setReconnectAttempt(this.#reconnectAttempt + 1);
     const delay = this.#computeReconnectDelayMs(this.#reconnectAttempt);
     // poll-reason: timer
     this.#reconnectTimer = setTimeout(() => {

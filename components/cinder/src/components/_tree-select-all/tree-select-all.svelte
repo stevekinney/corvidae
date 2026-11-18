@@ -1,17 +1,4 @@
 <script lang="ts" module>
-  /**
-   * @cinder
-   * @category data-display
-   * @status stable
-   * @purpose Context control for selecting or clearing a Tree level in checkbox multi-selection mode.
-   * @tag tree
-   * @tag selection
-   * @useWhen Adding select-all and select-none controls to a Tree selectionControls snippet.
-   * @useWhen Selecting a registered tree level without placing non-treeitem controls inside role="tree".
-   * @avoidWhen Rendering outside a Tree component — it requires Tree selectionControls context.
-   * @avoidWhen Selecting arbitrary data that is not represented by registered tree items or selectionScopeIds.
-   * @related tree, tree-item
-   */
   export type { TreeSelectAllProps } from './tree-select-all.types.ts';
 </script>
 

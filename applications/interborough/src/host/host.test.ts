@@ -237,6 +237,8 @@ describe('the identity of every request', () => {
     expect(called.result?.['structuredContent']).toEqual({
       reviews: [],
       nextPageToken: null,
+      // How many reviews the listing holds in all (COR-2426).
+      total: 0,
     });
   });
 

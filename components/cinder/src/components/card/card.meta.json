@@ -1,0 +1,16 @@
+{
+  "$schema": "../../../../../internal/component-tooling/src/schemas/component-meta.schema.json",
+  "category": "layout",
+  "status": "stable",
+  "purpose": "Surface container that groups related content with optional header, title, description, and footer regions.",
+  "tags": ["layout", "container"],
+  "useWhen": [
+    "Grouping a self-contained unit of content such as a summary, preview, or settings panel.",
+    "Composing a list of comparable items where each needs its own framed region."
+  ],
+  "avoidWhen": [
+    { "reason": "Rendering a bare visual surface without slotted regions — use surface instead." },
+    { "reason": "Presenting a single key metric — use statistic or statistic-group instead." }
+  ],
+  "related": ["surface", "statistic", "stacked-list-item", "section-heading"]
+}

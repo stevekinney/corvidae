@@ -878,9 +878,9 @@ describe('ApprovalCard decision layout stylesheet', () => {
     expect(css).toContain(
       '@container (inline-size < 24rem) { .cinder-approval-card--row .cinder-approval-card__line-tool-name { display: none; }',
     );
-    // "Approval from Tool runner, 3 min ago" breaks only on a card narrower than 14rem.
+    // "Approval from Tool runner 3 min ago" breaks only on a card narrower than 14rem.
     expect(css).toMatch(
-      /@container \(inline-size < 14rem\) \{ \.cinder-approval-card__line \.cinder-approval-card__time-separator \{ display: none; \}/,
+      /@container \(inline-size < 14rem\) \{ \.cinder-approval-card__line time \{ display: block; margin-inline-start: 0; \}/,
     );
     expect(css).not.toContain('@container (inline-size < 17rem)');
     // The decided input is the waiting grid: no summary line and no indent of its own; only a

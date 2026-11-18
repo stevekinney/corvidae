@@ -1,0 +1,16 @@
+{
+  "$schema": "../../../../../internal/component-tooling/src/schemas/component-meta.schema.json",
+  "category": "data-display",
+  "status": "stable",
+  "purpose": "Row within a table that groups header or body cells and participates in row-selection state when configured.",
+  "tags": ["table", "row"],
+  "useWhen": [
+    "Grouping table-cell or table-header-cell children into a single horizontal record.",
+    "Wiring per-row selection by passing the selection prop in a selectable table."
+  ],
+  "avoidWhen": [
+    { "reason": "Standing alone outside a table — it requires the table section context." }
+  ],
+  "related": ["table-body", "table-cell"],
+  "composeOnly": true
+}

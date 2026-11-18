@@ -1003,6 +1003,19 @@
       }
     }
   },
+  "toast.reserve-padding": {
+    "$type": "dimension",
+    "$value": { "value": 0, "unit": "px" },
+    "$description": "Room a page's scrolling area keeps at its end for a toast that stays until it is acted on (an Undo, a failure): ToastRegion sets it on the document element, to how far up from the viewport's bottom edge a bottom-anchored region reaches, while such a toast is shown, and 0 otherwise.",
+    "$extensions": {
+      "com.lostgradient.cinder": {
+        "cssProperty": "--cinder-toast-reserve-padding",
+        "public": true,
+        "category": "spacing",
+        "cssRecipe": null
+      }
+    }
+  },
   "content.width": {
     "$value": { "value": 72, "unit": "rem" },
     "$description": "Maximum inline size for primary page content. Caps line length and keeps content readable on wide viewports. Used by page layout styles; consumers can override per scope.",
@@ -1525,6 +1538,19 @@
         "palette": { "family": "neutral", "role": "surface-canvas" }
       }
     }
+  },
+  "surface.translucent": {
+    "$type": "color",
+    "$value": { "colorSpace": "oklch", "components": [0.145, 0.012, 265], "alpha": 0.9 },
+    "$extensions": {
+      "com.lostgradient.cinder": {
+        "cssRecipe": "color-mix(in oklch, var(--cinder-surface-canvas) 90%, transparent)",
+        "cssProperty": "--cinder-surface-translucent",
+        "public": true,
+        "category": "color"
+      }
+    },
+    "$description": "The canvas at 90%, for a header or bar that content scrolls under, drawn with a backdrop blur (`.cinder-translucent-surface`; AppBar keeps its own 82% mix), and opaque canvas where the platform cannot blur or `prefers-reduced-transparency` is set. The 90% is the least the canvas can keep so that the body and status text on it hold 4.5:1 over the worst backdrop, pure black or pure white, in both themes (`translucent-surface-contrast.test.ts`)."
   },
   "polarity.ink": {
     "$value": { "colorSpace": "oklch", "components": [1, 0, 0] },

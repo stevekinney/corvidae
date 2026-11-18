@@ -76,7 +76,10 @@ const SPECIFICATIONS = {
  * agent whose plugin is disabled (`agent-plugin-editing.spec.ts`), and an open chat with no
  * message yet, one deleted while open, and both with no model provider (`chat-availability.spec.ts`),
  * and the workflow builder's step cards: a step of every kind, empty lists, the catalog loading and
- * failing, the add menu, and the read-only phone (`workflow-builder-cards.spec.ts`).
+ * failing, the add menu, and the read-only phone (`workflow-builder-cards.spec.ts`), and the hook
+ * editor and its deliveries: a plugin hook, a default hook, a withdrawn one, the secret field, a
+ * delivery with a receipt and a hook with a problem (`hooks.spec.ts`), and the Hooks list in each
+ * state of its board (`hooks-states.spec.ts`).
  */
 const SHOWCASE_SPECIFICATIONS = [
   'tests/e2e/00-showcase.spec.ts',
@@ -104,6 +107,8 @@ const SHOWCASE_SPECIFICATIONS = [
   'tests/e2e/api-reference.spec.ts',
   'tests/e2e/first-run.spec.ts',
   'tests/e2e/home.spec.ts',
+  // Home's two activity bands in each state their design rows name (COR-2227).
+  'tests/e2e/home-activity.spec.ts',
   'tests/e2e/chat-list.spec.ts',
   'tests/e2e/chat-page.spec.ts',
   'tests/e2e/chat-responsive.spec.ts',
@@ -118,6 +123,12 @@ const SHOWCASE_SPECIFICATIONS = [
   // An archived chat, the Archived chats row and view, and a refused archive.
   'tests/e2e/chat-archive.spec.ts',
   'tests/e2e/workflow-builder-cards.spec.ts',
+  // Disable and Enable of an agent and its read-only chat, Forgot with Undo, a memory whose chat was
+  // deleted, Restore, skills and reference documents; Reviews loading, resolved elsewhere, a
+  // workflow review, Denied and a Done list longer than a page (COR-2429, COR-2426).
+  'tests/e2e/agents-reviews-design-states.spec.ts',
+  'tests/e2e/hooks.spec.ts',
+  'tests/e2e/hooks-states.spec.ts',
 ] as const;
 
 type Scheme = 'light' | 'dark';

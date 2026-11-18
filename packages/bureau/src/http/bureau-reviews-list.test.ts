@@ -72,6 +72,7 @@ async function call(
         resolution?: Record<string, unknown>;
       }>;
       nextPageToken: string | null;
+      total?: number;
     };
     error?: {
       data?: { httpStatus?: number; issues?: Array<{ path: string[]; code: string }> };
@@ -290,6 +291,38 @@ describe('bureau.reviews.list as one inbox (COR-1828)', () => {
     });
     expect(ids(second)).toEqual(['bureau:approval:old']);
     expect(second.result?.nextPageToken).toBeNull();
+  });
+
+  it('gives the whole listing’s total on every page, counting only what the caller is shown (COR-2426)', async () => {
+    const host = hostOf({
+      resolved: [
+        resolvedRecord('approval:one', 1_000, 'api-key:tester'),
+        resolvedRecord('approval:two', 2_000, 'api-key:tester'),
+        resolvedRecord('approval:three', 3_000, 'api-key:tester'),
+        // Another owner's decision is neither listed nor counted.
+        resolvedRecord('approval:theirs', 4_000, 'api-key:stranger'),
+      ],
+      engine: [engineReview('e-done', 100, 2_500)],
+    });
+
+    const first = await call(host, READER_KEY, 'bureau.reviews.list', {
+      status: 'resolved',
+      limit: 2,
+    });
+    const second = await call(host, READER_KEY, 'bureau.reviews.list', {
+      status: 'resolved',
+      limit: 2,
+      pageToken: first.result?.nextPageToken,
+    });
+
+    expect([first, second].map((page) => page.result?.reviews.length)).toEqual([2, 2]);
+    expect(second.result?.nextPageToken).toBeNull();
+    expect([first, second].map((page) => page.result?.total)).toEqual([4, 4]);
+    // A caller who is not shown the engine's reviews counts the Bureau's own alone.
+    const owner = await call(host, OWNER_KEY, 'bureau.reviews.list', { status: 'resolved' });
+    expect(owner.result?.total).toBe(3);
+    const pending = await call(host, OWNER_KEY, 'bureau.reviews.list', {});
+    expect(pending.result?.total).toBe(0);
   });
 
   it('keeps only the reviews decided at or after resolvedAfter, from both sources', async () => {

@@ -6,8 +6,8 @@
  * row of its own, and a short input (three pairs) draws no "Show all". It holds at every density.
  */
 import { loadManifest, type Viewport } from '@lostgradient/testing';
+import { expect, test } from '@lostgradient/testing/playwright/component-page-fixture';
 import type { Page } from '@playwright/test';
-import { expect, test } from './component-page-fixture.ts';
 
 const narrowPhone = { name: 'mobile', width: 320, height: 640 } as const satisfies Viewport;
 const desktop = { name: 'desktop', width: 1280, height: 900 } as const satisfies Viewport;

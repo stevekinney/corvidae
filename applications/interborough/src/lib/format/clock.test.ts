@@ -16,9 +16,21 @@ import {
   timesShowIn,
   viewerTimeZone,
   waitedFor,
+  waitingFor,
   zoneLabel,
   zoneName,
 } from './clock.ts';
+
+describe('waitingFor', () => {
+  const MINUTE = 60_000;
+  test('counts whole minutes and turns to hours at the hour, never "60 min" (row 25f)', () => {
+    expect(waitingFor(0, 10_000)).toBe('1 min');
+    expect(waitingFor(0, 4 * MINUTE + 50_000)).toBe('4 min');
+    expect(waitingFor(0, 59 * MINUTE + 50_000)).toBe('59 min');
+    expect(waitingFor(0, 60 * MINUTE)).toBe('1 h');
+    expect(waitingFor(0, 25 * 60 * MINUTE)).toBe('1 day');
+  });
+});
 
 const ZONE = 'America/Chicago';
 const NOW = Date.parse('2026-11-02T10:46:00-06:00');

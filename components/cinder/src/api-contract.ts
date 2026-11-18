@@ -403,6 +403,13 @@ export const CONTRACT: Record<string, ComponentContract> = {
       // Text actions (COR-2329): buttons at the end of the row, full width under it on a phone.
       actions: { optional: true, type_kind: 'TSArrayType', default: NO_DEFAULT },
       chevron: { optional: true, type_kind: 'TSBooleanKeyword', default: NO_DEFAULT },
+      // COR-2227: the clamps, the one row tooltip, the chevron's column, and a row that arrives.
+      chevronColumn: { optional: true, type_kind: 'TSBooleanKeyword', default: L(false) },
+      titleLines: { optional: true, type_kind: 'TSTypeReference', default: NO_DEFAULT },
+      subtitleLines: { optional: true, type_kind: 'TSTypeReference', default: NO_DEFAULT },
+      tooltip: { optional: true, type_kind: 'TSStringKeyword', default: NO_DEFAULT },
+      subtitleTooltip: { optional: true, type_kind: 'TSStringKeyword', default: NO_DEFAULT },
+      arriving: { optional: true, type_kind: 'TSBooleanKeyword', default: L(false) },
       selected: { optional: true, type_kind: 'TSBooleanKeyword', default: L(false) },
       suggested: { optional: true, type_kind: 'TSBooleanKeyword', default: L(false) },
       suggestedLabel: { optional: true, type_kind: 'TSStringKeyword', default: L('Suggested') },
@@ -565,7 +572,7 @@ export const CONTRACT: Record<string, ComponentContract> = {
       empty: s0(true),
       listEmpty: s0(true),
       listFooter: s0(true),
-      header: sp(1, true),
+      header: s0(true),
     },
   },
 
@@ -778,6 +785,10 @@ export const CONTRACT: Record<string, ComponentContract> = {
       rows: { optional: true, type_kind: 'TSNumberKeyword', default: L(3) },
       // COR-2329: a button block at the end of each `grouped` row.
       action: { optional: true, type_kind: 'TSBooleanKeyword', default: L(false) },
+      // COR-2227: a `grouped` row's icon block and its trailing bar.
+      leading: { optional: true, type_kind: 'TSBooleanKeyword', default: L(false) },
+      trailing: { optional: true, type_kind: 'TSBooleanKeyword', default: L(false) },
+      chevronColumn: { optional: true, type_kind: 'TSBooleanKeyword', default: L(false) },
       dayBand: { optional: true, type_kind: 'TSBooleanKeyword', default: L(false) },
       statusColumn: { optional: true, type_kind: 'TSBooleanKeyword', default: L(true) },
       framed: { optional: true, type_kind: 'TSBooleanKeyword', default: L(false) },

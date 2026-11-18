@@ -43,7 +43,7 @@ function recordResumes(page: Page): SentEntry[][] {
 function recordResolutions(page: Page): Array<Record<string, unknown>> {
   const sent: Array<Record<string, unknown>> = [];
   page.on('request', (outgoing) => {
-    if (outgoing.method() !== 'POST' || !outgoing.url().endsWith('/bureau/jsonrpc')) return;
+    if (outgoing.method() !== 'POST' || !outgoing.url().endsWith('/jsonrpc')) return;
     const body = outgoing.postDataJSON() as { method?: string; params?: Record<string, unknown> };
     if (body.method === 'bureau.reviews.resolve') sent.push(body.params ?? {});
   });

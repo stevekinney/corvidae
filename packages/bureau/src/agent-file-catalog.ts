@@ -361,9 +361,10 @@ export interface AgentListing {
   /**
    * `ready` runs; `invalid` is a file that cannot be used (see `problem`); `unavailable` is a code
    * agent of a disabled plugin (COR-2009), listed read-only so it can be read and duplicated, never
-   * run (see `unavailable`).
+   * run (see `unavailable`); `disabled` is an agent a person disabled (COR-2429), which can be read
+   * and enabled again, and runs nothing until then.
    */
-  readonly state: 'ready' | 'invalid' | 'unavailable';
+  readonly state: 'ready' | 'invalid' | 'unavailable' | 'disabled';
   /** The display label. For an invalid file, the identifier. */
   readonly name: string;
   readonly description: string | null;

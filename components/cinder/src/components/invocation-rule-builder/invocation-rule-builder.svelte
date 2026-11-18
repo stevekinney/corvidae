@@ -1,17 +1,4 @@
 <script lang="ts" module>
-  /**
-   * @cinder
-   * @category form
-   * @status beta
-   * @purpose Render and edit conditional automation rules composed of conditions and actions.
-   * @tag automation
-   * @tag rules
-   * @useWhen Building a UI for configuring which agents or services run based on event conditions.
-   * @useWhen You only need conditions (no actions) — pass mode="conditions" for a constrained operator set and typed value inputs.
-   * @useWhen Your data is one flat implicit-AND conditions list — pass mode="flat-conditions" without rule-group metadata.
-   * @avoidWhen You need to execute, validate, or persist rules — cinder owns none of that logic.
-   * @related capability-gate, steps
-   */
   export type {
     InvocationRule,
     InvocationRuleAction,

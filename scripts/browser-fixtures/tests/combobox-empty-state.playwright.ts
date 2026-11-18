@@ -1,5 +1,5 @@
-import { expect, test } from './component-page-fixture.ts';
-import { fixtureRoute } from './overlay-fixture.ts';
+import { expect, test } from '@lostgradient/testing/playwright/component-page-fixture';
+import { fixtureRoute } from '@lostgradient/testing/playwright/overlay-fixture';
 
 // Regression for COR-499: Combobox used to render its "No results" message
 // as a fake, disabled `role="option"` row inside the open listbox — a

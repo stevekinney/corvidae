@@ -19,7 +19,7 @@
     extractReviewSections,
     humanizeKey,
   } from './review-domain.ts';
-  import { decidedByName, resolutionLabel } from './review-items.ts';
+  import { decidedByName, resolutionLabel, reviewTitle } from './review-items.ts';
   import ReviewSource from './review-source.svelte';
 
   interface EngineReviewPaneProps {
@@ -45,12 +45,38 @@
   });
   const metadataEntries = $derived(extractReviewMetadataEntries(review.artifact));
   const resolution = $derived(review.resolution);
+  /**
+   * The draft as a flat record, when every field holds one value (text, a number, yes or no): it is
+   * drawn as plain rows inside the Draft block, with no inspector card inside the pane (row 25p).
+   */
+  const flatFields = $derived.by(() => {
+    if (sections !== null && sections !== undefined) return undefined;
+    const artifact = review.artifact;
+    if (typeof artifact !== 'object' || artifact === null || Array.isArray(artifact)) {
+      return undefined;
+    }
+    const entries = Object.entries(artifact);
+    if (entries.length === 0) return undefined;
+    const flat = entries.every(
+      ([, value]) =>
+        typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean',
+    );
+    return flat
+      ? entries.map(([key, value]) => ({ term: humanizeKey(key), definition: String(value) }))
+      : undefined;
+  });
+  /** The heading, as the list row says it: the draft's own title when it has one (row 25o). */
+  const heading = $derived(reviewTitle(review));
 </script>
 
 <div class="ib-review-pane" data-kind="engine-review" data-review={review.id}>
   <p class="ib-review-pane__eyebrow">{REVIEWS_COPY.workflowEyebrow}</p>
-  <h2 class="ib-review-pane__question">{review.reviewType}</h2>
+  <h2 class="ib-review-pane__question">{heading}</h2>
   <ReviewSource {review} {waiting} />
+  {#if review.message !== undefined}
+    <!-- COR-2426, row 25o: what the workflow's author says to the reviewer. -->
+    <p class="ib-review-pane__intro" data-testid="review-intro">{review.message}</p>
+  {/if}
 
   {#if resolution !== undefined}
     <div class="ib-review-resolution" data-testid="review-resolution">
@@ -68,7 +94,9 @@
     </div>
   {/if}
 
-  {#if metadataEntries.length > 0}
+  {#if sections && metadataEntries.length > 0}
+    <!-- A review decided by section keeps what else its artifact says above the sections; a draft
+         says it once, in the Draft block (row 25p). -->
     <DescriptionList
       variant="two-column"
       items={metadataEntries.map(([key, value]) => ({
@@ -99,7 +127,12 @@
           />
         {/if}
       </div>
-      <ArtifactView value={review.artifact} label={REVIEWS_COPY.artifactLabel} />
+      {#if flatFields !== undefined}
+        <!-- One flat block: the draft's fields as rows, no card inside the pane (row 25p). -->
+        <DescriptionList variant="fields" items={flatFields} data-testid="review-draft-fields" />
+      {:else}
+        <ArtifactView value={review.artifact} label={REVIEWS_COPY.artifactLabel} />
+      {/if}
     </div>
   {/if}
 

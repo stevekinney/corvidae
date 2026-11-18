@@ -1,19 +1,4 @@
 <script lang="ts" module>
-  /**
-   * @cinder
-   * @category feedback
-   * @status stable
-   * @purpose Inline static note or aside that highlights supporting commentary alongside body content without claiming live-region urgency.
-   * @tag feedback
-   * @tag notice
-   * @useWhen Drawing attention to tangential information nested inside prose, documentation, or article content.
-   * @useWhen Calling out a tip, note, or caveat that belongs next to the content it qualifies.
-   * @useWhen Explaining a state in a quiet neutral note that is not a problem, with one link or button at its end.
-   * @avoidWhen Announcing a transient or urgent status — use alert or banner instead.
-   * @avoidWhen Communicating a page-wide system message — use banner so it reads as a landmark region.
-   * @avoidWhen Wrapping a form control or an inline choice, such as a segmented-control — place it in the page flow with a plain label instead.
-   * @related alert, banner
-   */
   export type { CalloutProps, CalloutSemantic, CalloutVariant } from './callout.types.ts';
 </script>
 

@@ -5,7 +5,7 @@
 import { rejectionOf } from '@lostgradient/testing';
 import { afterEach, describe, expect, test } from 'bun:test';
 
-import { callBureau } from './bureau-client.ts';
+import { bureauClient } from './bureau-api.ts';
 import { ServerUnreachableError } from './faults.ts';
 import { armWriteGuard, classifyRequest, isReadOperation, READ_OPERATIONS } from './write-guard.ts';
 
@@ -60,6 +60,11 @@ describe('classifyRequest', () => {
   test('reading the embedding is a read, and canceling its switch is a write', () => {
     expect(isReadOperation('bureau.memory.embedding')).toBe(true);
     expect(isReadOperation('bureau.memory.embedding.cancel')).toBe(false);
+  });
+
+  // COR-2227: Home's Agent activity words its events while the server is down too.
+  test('formatting events is a read', () => {
+    expect(isReadOperation('bureau.events.format')).toBe(true);
   });
 
   test('archiving and unarchiving a chat are writes', () => {
@@ -127,13 +132,13 @@ describe('armWriteGuard', () => {
       return Response.json({ jsonrpc: '2.0', id: 'x', result: { ok: true } });
     };
     expect(
-      await rejectionOf(callBureau('bureau.tasks.cancel', { taskId: 't' }, { fetch: fetcher })),
+      await rejectionOf(bureauClient['bureau.tasks.cancel']({ taskId: 't' }, { fetch: fetcher })),
     ).toBeInstanceOf(ServerUnreachableError);
     expect(sent).toBe(0);
-    await callBureau('bureau.tasks.get', { taskId: 't' }, { fetch: fetcher });
+    await bureauClient['bureau.tasks.get']({ taskId: 't' }, { fetch: fetcher });
     expect(sent).toBe(1);
     state.down = false;
-    await callBureau('bureau.tasks.cancel', { taskId: 't' }, { fetch: fetcher });
+    await bureauClient['bureau.tasks.cancel']({ taskId: 't' }, { fetch: fetcher });
     expect(sent).toBe(2);
   });
 

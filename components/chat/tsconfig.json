@@ -3,6 +3,12 @@
   "compilerOptions": {
     "types": ["bun"]
   },
-  "include": ["src", "scripts"],
-  "exclude": ["node_modules", "coverage", "**/.cinder-ssr-*", "**/.chat-ssr-*"]
+  "include": ["src", "scripts", "browser"],
+  "exclude": [
+    "node_modules",
+    "coverage",
+    "browser/.playwright",
+    "**/.cinder-ssr-*",
+    "**/.chat-ssr-*"
+  ]
 }

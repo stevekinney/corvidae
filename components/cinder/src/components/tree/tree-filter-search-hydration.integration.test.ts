@@ -1,8 +1,8 @@
 /// <reference lib="dom" />
+import { checkBuildFlagHydrationSafety } from '@lostgradient/component-tooling/test/hydration-safety.ts';
 import { requiredInstance, setupHappyDom } from '@lostgradient/testing';
 import { afterEach, describe, expect, test } from 'bun:test';
 import { flushSync } from 'svelte';
-import { checkBuildFlagHydrationSafety } from '../../test/hydration-safety.ts';
 import {
   flushTreeFilterStatus,
   treeItem,

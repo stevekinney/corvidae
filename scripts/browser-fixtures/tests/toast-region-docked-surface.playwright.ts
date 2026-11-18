@@ -7,8 +7,8 @@
  * fixture's baselines alone. The boxes are read in one pass, once the toast has finished arriving.
  */
 
+import { fixtureRoute } from '@lostgradient/testing/playwright/overlay-fixture';
 import { expect, test, type Page } from '@playwright/test';
-import { fixtureRoute } from './overlay-fixture.ts';
 
 type Box = { top: number; bottom: number; left: number; right: number };
 

@@ -1,0 +1,10 @@
+{
+  "$schema": "../../../../../internal/component-tooling/src/schemas/component-meta.schema.json",
+  "category": "form",
+  "status": "beta",
+  "purpose": "Explains why a setting is policy-managed, identifies its source, and exposes the policy scope as a badge.",
+  "tags": ["form", "policy"],
+  "useWhen": ["A control is unavailable because an administrator or policy source owns its value."],
+  "avoidWhen": [{ "reason": "A control is unavailable for a temporary or non-policy reason." }],
+  "related": ["setting-row", "badge", "tooltip"]
+}

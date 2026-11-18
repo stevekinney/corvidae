@@ -361,6 +361,36 @@
     border-color: transparent;
   }
 
+  /* link — the one action that ends a sentence of state ("Add the key"): an underlined accent word
+   * in the sentence's own type, as `Link underline="always"` draws one, with no fill, no border and
+   * no padding, so the line is never taller or wider for it. Under a coarse pointer its 44px hit
+   * area is the pseudo-element below, which takes no layout. */
+  .cinder-button[data-cinder-variant='link'] {
+    min-height: 0;
+    padding: 0;
+    background: transparent;
+    color: var(--cinder-accent-text);
+    border-color: transparent;
+    font-size: inherit;
+    font-weight: inherit;
+    line-height: inherit;
+    text-decoration: underline;
+    text-underline-offset: 0.15em;
+  }
+
+  .cinder-button[data-cinder-variant='link'][data-cinder-loading] {
+    background: transparent;
+    color: var(--cinder-accent-text);
+    border-color: transparent;
+  }
+
+  .cinder-button[data-cinder-variant='link']:disabled:not([data-cinder-loading]),
+  .cinder-button[data-cinder-variant='link'][aria-disabled='true']:not([data-cinder-loading]) {
+    background: transparent;
+    color: var(--cinder-text-disabled);
+    border-color: transparent;
+  }
+
   .cinder-button[data-cinder-icon-only][data-cinder-variant='ghost'] {
     background: var(--cinder-surface);
     background: color-mix(in oklch, var(--cinder-surface), var(--cinder-text-default) 4%);
@@ -547,6 +577,11 @@
 
     .cinder-button[data-cinder-variant='soft']:hover:not(:disabled):not([aria-disabled='true']) {
       background: color-mix(in oklch, var(--cinder-accent-solid), transparent 80%);
+    }
+
+    /* A link keeps its underline on hover, as Link does: the rule above takes every button's off. */
+    .cinder-button[data-cinder-variant='link']:hover {
+      text-decoration: underline;
     }
 
     .cinder-button[data-cinder-variant='soft-danger']:hover:not(:disabled):not(
@@ -757,6 +792,12 @@
 
     .cinder-button[data-cinder-hit-target='44'][data-cinder-compact][data-cinder-icon-only] {
       min-width: var(--_cinder-compact-control-height);
+    }
+
+    /* A link is the word alone at every size and in a compact header: the hit area above reaches
+       44px without the face growing. */
+    .cinder-button[data-cinder-hit-target='44'][data-cinder-variant='link'] {
+      min-height: 0;
     }
 
     /* Two neighbouring compact icon-only buttons each reach (44px - 24px) / 2 past their face, so
