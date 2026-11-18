@@ -269,7 +269,7 @@ test.describe('the long turn beside the chat list (21o, 21p, 21q)', () => {
     ).toBeVisible();
 
     await expect(rail(page).locator('.cinder-tool-call-rail__summary')).toHaveText(
-      /^\s*Used 30 tools,\s*1 failed,\s*1 waiting on you,\s*18s\s*$/,
+      /^\s*Used 30 tools\s*1 failed\s*1 waiting on you\s*18s\s*$/,
     );
     // The rail: the first three calls, one fold of the twenty-four between, then the failed call,
     // the approved one and the one that waits.

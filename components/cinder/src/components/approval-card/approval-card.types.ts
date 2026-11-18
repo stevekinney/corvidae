@@ -232,7 +232,7 @@ export type ApprovalCardProps = Omit<HTMLAttributes<HTMLElement>, 'class' | 'chi
     said?: string;
     /** The small line above the question in the `detail` layout, beside the risk glyph. Default `Tool approval`. */
     eyebrow?: string;
-    /** The words before the tool in the `detail` layout: "It wants to run Issue refund `issue-refund`, Dangerous". Default `It wants to run`. */
+    /** The words before the tool in the `detail` layout: "It wants to run Issue refund `issue-refund` Dangerous". Default `It wants to run`. */
     toolPrefix?: string;
     /** When the approval was asked. Written as relative time ("4 min ago") while the approval is pending. */
     requestedAt?: string | number | Date;
@@ -354,7 +354,7 @@ export type ApprovalCardSchemaProps = {
   said?: string;
   /** The small line above the question in the `detail` layout, beside the risk glyph. Default `Tool approval`. */
   eyebrow?: string;
-  /** The words before the tool in the `detail` layout: "It wants to run Issue refund `issue-refund`, Dangerous". Default `It wants to run`. */
+  /** The words before the tool in the `detail` layout: "It wants to run Issue refund `issue-refund` Dangerous". Default `It wants to run`. */
   toolPrefix?: string;
   /** When the approval was asked, as an ISO timestamp. Written as relative time ("4 min ago") while the approval is pending. */
   requestedAt?: string;
