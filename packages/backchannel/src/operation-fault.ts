@@ -101,10 +101,9 @@ export type OperationFault =
     }
   | { code: 'Unprocessable'; message: string; data: UnprocessableFaultData }
   | { code: 'PayloadTooLarge'; message: string; data: { maxBytes: number } }
-  // `Timeout` allows callers to construct `data: { operationName: undefined }`
-  // legally — the wire serializers strip undefined-valued keys via
-  // `filterDefined`. Spelling `| undefined` explicitly accepts that under
-  // `exactOptionalPropertyTypes`.
+  // `Timeout` allows callers to construct `data: { operationName: undefined }` legally — the wire
+  // serializers strip undefined-valued keys via `filterDefined`. Spelling `| undefined` explicitly
+  // accepts that under `exactOptionalPropertyTypes`.
   | {
       code: 'Timeout';
       message: string;

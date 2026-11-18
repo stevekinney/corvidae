@@ -1095,6 +1095,11 @@ describe('the step builder in the editor', () => {
         .querySelector('[data-testid="workflow-builder-schedule-note"]')
         ?.textContent?.trim(),
     ).toBe(WORKFLOW_COPY.builder.scheduleDefinedNote('Release notes digest'));
+    // Design correction: a weekly schedule on one weekday reads "Every Friday" in Repeats (row 65q).
+    const repeats = container.querySelector<HTMLSelectElement>(
+      '[data-testid="schedule-when"] select[id$="-repeats"]',
+    );
+    expect(repeats?.selectedOptions[0]?.textContent?.trim()).toBe('Every Friday');
   });
 
   test('COR-2432: Cancel on a changed form asks to discard, Keep editing stays, and an untouched form leaves at once (row 66h)', async () => {

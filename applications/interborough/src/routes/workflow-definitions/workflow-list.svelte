@@ -104,12 +104,15 @@
 
   // The files that are not JSON, whose rows name the line their page marks (row 60g). The list does
   // not carry a file's text, so each is read once; a read that fails leaves the Bureau's words.
-  const brokenNames = $derived(
-    workflows.filter((row) => row.problem?.code === 'invalid-json').map((row) => row.name),
+  const brokenFiles = $derived(
+    workflows
+      .filter((row) => row.problem?.code === 'invalid-json')
+      .map((row) => [row.name, row.file?.hash ?? null] as const),
   );
+  const brokenNames = $derived(brokenFiles.map(([name]) => name));
   const brokenLines = createQuery(
     () => ({
-      queryKey: queryKeys.workflowCatalog.brokenLines(brokenNames),
+      queryKey: queryKeys.workflowCatalog.brokenLines(brokenFiles),
       queryFn: async ({ signal }) => {
         const located = await Promise.all(
           brokenNames.map(async (name) => {
