@@ -326,10 +326,7 @@ describe('chat stress visual measurement', () => {
     // from the opposite state, and reports whether the control ended icon-only.
     const compactAfterFitting = async (width: number): Promise<boolean> => {
       const source = await Bun.file(
-        new URL(
-          '../../../foundation/src/utilities/fit-label-to-row.ts',
-          import.meta.url,
-        ),
+        new URL('../../../foundation/src/utilities/fit-label-to-row.ts', import.meta.url),
       ).text();
       const script = new Bun.Transpiler({ loader: 'ts' })
         .transformSync(source)
