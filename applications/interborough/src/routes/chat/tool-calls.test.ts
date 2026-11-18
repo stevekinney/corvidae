@@ -152,7 +152,7 @@ describe('a turn’s tool calls', () => {
     ).toBe('expired');
   });
 
-  test('a failed step says Failed in words, what went wrong, its diagnostic, Copy error and Retry this step (COR-2283 R1 and R7)', async () => {
+  test('a failed step says Failed in words, what went wrong, its diagnostic, Copy error and Retry (COR-2283 R1 and R7)', async () => {
     const retried: string[] = [];
     const written: string[] = [];
     const clipboard = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
@@ -191,13 +191,14 @@ describe('a turn’s tool calls', () => {
       expect(rowOf(container, 'c1')?.textContent).not.toContain('→');
       const links = [...failure.querySelectorAll<HTMLButtonElement>('button')];
       const named = (name: string) => links.find((link) => link.textContent?.trim() === name);
-      expect(named('Retry this step')).not.toBeUndefined();
+      // Retry runs the turn again, so it reads as every control that re-runs a turn does.
+      expect(named('Retry')).not.toBeUndefined();
 
       await fireEvent.click(named('Copy error')!);
       expect(written).toEqual([
         'Mail server didn’t reply.\nConnecting to smtp.example.com:587 timed out.\nCode: ETIMEDOUT',
       ]);
-      await fireEvent.click(named('Retry this step')!);
+      await fireEvent.click(named('Retry')!);
       expect(retried).toEqual(['c1']);
     } finally {
       if (clipboard === undefined) Reflect.deleteProperty(navigator, 'clipboard');
@@ -205,7 +206,7 @@ describe('a turn’s tool calls', () => {
     }
   });
 
-  test('a failed step offers no Retry this step where the page cannot run it again', () => {
+  test('a failed step offers no Retry where the page cannot run it again', () => {
     const { container } = render(Harness, {
       props: {
         entries: [entry({ callId: 'c1', state: 'failed', summary: 'Down.' })],
@@ -213,7 +214,7 @@ describe('a turn’s tool calls', () => {
     } as never);
     const failure = container.querySelector<HTMLElement>('.cinder-tool-call-rail__failure')!;
     expect(failure.textContent).toContain('Copy error');
-    expect(failure.textContent).not.toContain('Retry this step');
+    expect(failure.textContent).not.toContain('Retry');
   });
 
   test('a running turn says Step N of M, where the call under way falls among the calls so far (COR-2283 R1)', () => {

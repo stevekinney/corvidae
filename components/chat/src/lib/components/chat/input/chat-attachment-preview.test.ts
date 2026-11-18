@@ -115,7 +115,7 @@ describe('chat attachment chip', () => {
     const chip = target.querySelector('.chat-attachment-preview')!;
     expect(chip.hasAttribute('data-error')).toBe(true);
     expect(chip.getAttribute('data-failure-kind')).toBe('network');
-    expect(glyphClass(target)).toContain('lucide-rotate-ccw');
+    expect(glyphClass(target)).toContain('lucide-refresh-cw');
     const main = chip.querySelector<HTMLButtonElement>('button.chat-attachment-preview-main')!;
     expect(main.getAttribute('aria-label')).toBe('Retry the report');
     main.click();

@@ -24,6 +24,11 @@ const schema = {
       description:
         'Whether the "new messages" indicator is currently visible above the composer. Bindable; cleared automatically when the viewport reaches the bottom. Default `false`.',
     },
+    hostQuestionDocked: {
+      type: 'boolean',
+      description:
+        "Whether Chat draws the host's `questionDock` in the composer's place right now. Bindable, and\nset by Chat alone: it is `false` while no `questionDock` is passed, while a question Chat docks\nitself comes first, and while the composer is replaced (a blocked row, an archived or read-only\nnotice, or an availability state), which keeps the dock away. A host that takes its question out\nof its row to dock it keeps it in the row while this is `false`, so the question is drawn\nexactly once. Default `false`.",
+    },
     class: {
       type: 'string',
       description: 'Additional class name merged onto the outer Chat layout element.',

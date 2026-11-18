@@ -192,6 +192,8 @@ describe('isChatTurnState', () => {
       expect(isChatTurnState(state)).toBe(true);
     }
     expect(isChatTurnState({ kind: 'failed', cause: 'Timed out.' })).toBe(true);
+    expect(isChatTurnState({ kind: 'stopped', reason: 'The server restarted.' })).toBe(true);
+    expect(isChatTurnState({ kind: 'stopped', reason: 3 })).toBe(false);
   });
 
   test('rejects a value that is not a turn state', () => {

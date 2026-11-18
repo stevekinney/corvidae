@@ -137,6 +137,7 @@
     atBottom = $bindable(true),
     unreadCount = $bindable(0),
     newMessageIndicatorVisible = $bindable(false),
+    hostQuestionDocked = $bindable(false),
     onatbottombindingchange,
     onunreadcountbindingchange,
     onNewMessageIndicatorVisibleBindingChange,
@@ -521,6 +522,12 @@
       !isComposerNoticeStatus(composerStatus) &&
       !availabilityReplacesComposer(availability),
   );
+  // Told to the host before the DOM updates, so a host that keeps its question in its row while
+  // Chat does not dock it never draws it twice or not at all (COR-2437 AC6).
+  $effect.pre(() => {
+    const docked = hostDocksQuestion;
+    if (untrack(() => hostQuestionDocked) !== docked) hostQuestionDocked = docked;
+  });
 
   // Once every question of the round is answered the dock has nothing to ask: the round ends, so a
   // question asked later starts a new one.

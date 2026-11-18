@@ -43,6 +43,7 @@
     atBottom = $bindable(true),
     unreadCount = $bindable(0),
     newMessageIndicatorVisible = $bindable(false),
+    hostQuestionDocked = $bindable(false),
     ...rest
   }: ChatProps = $props();
 
@@ -178,6 +179,7 @@
   {atBottom}
   {unreadCount}
   {newMessageIndicatorVisible}
+  bind:hostQuestionDocked
   class={mergedClassName}
   onatbottombindingchange={handleAtBottomBindingChange}
   onunreadcountbindingchange={handleUnreadCountBindingChange}

@@ -131,6 +131,48 @@ describe('the runs of a chat session', () => {
     expect(sentence(container)?.getAttribute('href')).toBe('/runs/run-1');
   });
 
+  // The design review of 38cbd2dec: a stop and a failure were said three times (the header, this
+  // line, and Chat's alert on the turn); while the alert is drawn this line says nothing of them.
+  test('say nothing of a run that ended while Chat draws the turn’s alert', async () => {
+    for (const status of ['canceled', 'failed'] as const) {
+      stub = installBureauWorld(
+        emptyBureauWorld({ tasks: [taskFixture({ id: 'run-1', contextId: 'session-1', status })] }),
+      );
+      const view = render(QueryPage, {
+        props: {
+          page: SessionTasks,
+          pageProps: { sessionId: 'session-1', streaming: false, turnAlertShown: true },
+        },
+      } as never);
+      await waitFor(() => expect(stub?.callsTo('bureau.tasks.list').length).toBe(1));
+      expect(view.container.querySelector('.weft-chat-strip')).toBeNull();
+      view.unmount();
+      stub.restore();
+    }
+    stub = undefined;
+  });
+
+  // Note 5 of the same review: answered in Reviews, the header said Running while this line, read
+  // before the Bureau continued the run, still said a run waited. One state, said once.
+  test('say nothing of one run, waiting or working, while the header says Running', async () => {
+    for (const status of ['input-required', 'working'] as const) {
+      stub = installBureauWorld(
+        emptyBureauWorld({ tasks: [taskFixture({ id: 'run-1', contextId: 'session-1', status })] }),
+      );
+      const view = render(QueryPage, {
+        props: {
+          page: SessionTasks,
+          pageProps: { sessionId: 'session-1', streaming: false, headerSaysRunning: true },
+        },
+      } as never);
+      await waitFor(() => expect(stub?.callsTo('bureau.tasks.list').length).toBe(1));
+      expect(view.container.querySelector('.weft-chat-strip')).toBeNull();
+      view.unmount();
+      stub.restore();
+    }
+    stub = undefined;
+  });
+
   test('say nothing when the only run finished well', async () => {
     const { container } = mount('session-1', [taskFixture({ id: 'run-1', status: 'completed' })]);
     await waitFor(() => expect(stub?.callsTo('bureau.tasks.list').length).toBe(1));

@@ -24,9 +24,27 @@
      * the header, and the line stays out, so a phone keeps the room for the transcript (COR-2327 B1).
      */
     headerSaysWaiting?: boolean;
+    /**
+     * Whether the chat's header says Running. One run working is then said once, by the header, and
+     * a run the listing still shows waiting is one the person has answered and the chat is
+     * continuing, so the line says neither: one state, said once.
+     */
+    headerSaysRunning?: boolean;
+    /**
+     * Whether Chat draws how the last turn ended (stopped or failed) as an alert on it. The run line
+     * then says nothing of runs that ended, so a stop or a failure is said once, by the alert, beside
+     * the header's status word.
+     */
+    turnAlertShown?: boolean;
   }
 
-  let { sessionId, streaming, headerSaysWaiting = false }: SessionTasksProps = $props();
+  let {
+    sessionId,
+    streaming,
+    headerSaysWaiting = false,
+    headerSaysRunning = false,
+    turnAlertShown = false,
+  }: SessionTasksProps = $props();
 
   const PAGE_SIZE = 50;
 
@@ -76,7 +94,7 @@
     const first = rows[0];
     if (first === undefined) return undefined;
     if (needing[0] !== undefined) {
-      if (needing.length === 1 && headerSaysWaiting) return undefined;
+      if (headerSaysRunning || (needing.length === 1 && headerSaysWaiting)) return undefined;
       return {
         text: CHAT_COPY.strip.waiting(needing.length),
         taskId: needing[0].id,
@@ -84,8 +102,10 @@
       };
     }
     if (going[0] !== undefined) {
+      if (going.length === 1 && headerSaysRunning) return undefined;
       return { text: CHAT_COPY.strip.working(going.length), taskId: going[0].id, tone: 'info' };
     }
+    if (turnAlertShown) return undefined;
     if (rows.length === 1) {
       if (first.status === 'failed')
         return { text: CHAT_COPY.strip.failedOne, taskId: first.id, tone: 'danger' };

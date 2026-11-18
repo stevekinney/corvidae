@@ -32,7 +32,7 @@
     FileText,
     FileVideo,
     Progress,
-    RotateCcw,
+    RefreshCw,
     TriangleAlert,
   } from '@lostgradient/cinder';
   import { classNames } from '../../../utilities/class-names.ts';
@@ -88,7 +88,7 @@
         ariaLabel={attachment.status === 'uploading' ? labels.uploadingFile : labels.readingFile}
       />
     {:else if failed && canRetry(attachment)}
-      <RotateCcw class="cinder-icon-sm" aria-hidden="true" />
+      <RefreshCw class="cinder-icon-sm" aria-hidden="true" />
     {:else if failed}
       <TriangleAlert class="cinder-icon-sm" aria-hidden="true" />
     {:else}

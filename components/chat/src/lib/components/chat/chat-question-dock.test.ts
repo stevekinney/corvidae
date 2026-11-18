@@ -51,6 +51,8 @@ afterAll(() => {
 
 const { render, fireEvent, cleanup } = await import('@testing-library/svelte');
 const { default: Chat } = await import('./chat.svelte');
+const { default: HostQuestionDockHarness } =
+  await import('./host-question-dock-harness.test.svelte');
 
 afterEach(() => {
   cleanup();
@@ -1004,5 +1006,72 @@ describe('a question the host draws (questionDock, COR-2437)', () => {
     await settle();
 
     expect(container.querySelector('[data-chat-question-dock="host"]')).toBeNull();
+  });
+
+  // The design review of 38cbd2dec: the page took its question out of its row to dock it, and Chat,
+  // with no provider connected, would not dock it, so it was drawn nowhere. `hostQuestionDocked`
+  // says which, so the host can keep it in its row.
+  describe('says whether it docks it, through hostQuestionDocked', () => {
+    /** Renders Chat bound to `hostQuestionDocked`, and reads the value and the dock. */
+    async function docked(name: string, props: Record<string, unknown>) {
+      const { container } = render(HostQuestionDockHarness, {
+        id: name,
+        conversation: appendUserMessage(createConversationHistory({ id: name }), 'deploy'),
+        ...props,
+      } as never);
+      await settle();
+      return {
+        bound: container.querySelector('[data-bound]')?.getAttribute('data-bound') === 'true',
+        drawn: container.querySelector('[data-chat-question-dock="host"]') !== null,
+      };
+    }
+
+    test('true while the dock is drawn, with the composer live', async () => {
+      expect(await docked('bound-live', { questionDock: hostQuestion })).toEqual({
+        bound: true,
+        drawn: true,
+      });
+    });
+
+    test('true in a compact composer, as in a full one', async () => {
+      expect(
+        await docked('bound-compact', { questionDock: hostQuestion, composerCompact: true }),
+      ).toEqual({ bound: true, drawn: true });
+    });
+
+    test('false with no question to dock', async () => {
+      expect(await docked('bound-none', {})).toEqual({ bound: false, drawn: false });
+    });
+
+    for (const [state, props] of [
+      ['a blocked composer', { composerStatus: { kind: 'blocked', reason: 'Sending is off' } }],
+      ['an archived chat', { composerStatus: { kind: 'archived', when: 'May 3' } }],
+      ['a read-only chat', { composerStatus: { kind: 'read-only' } }],
+      ['no model provider', { availability: { kind: 'unconfigured', onConnect: () => undefined } }],
+    ] as const) {
+      test(`false with ${state}, which keeps the dock away`, async () => {
+        expect(
+          await docked(`bound-${state.replaceAll(' ', '-')}`, {
+            questionDock: hostQuestion,
+            ...props,
+          }),
+        ).toEqual({ bound: false, drawn: false });
+      });
+    }
+
+    test('false while a question Chat docks itself comes first', async () => {
+      const { container } = render(HostQuestionDockHarness, {
+        id: 'bound-own-first',
+        conversation: single('bound-own-first', ENVIRONMENT),
+        questionPlacement: 'docked',
+        questionDock: hostQuestion,
+        onInputSubmit: () => undefined,
+      } as never);
+      await settle();
+
+      expect(dockOf(container)).not.toBeNull();
+      expect(container.querySelector('[data-chat-question-dock="host"]')).toBeNull();
+      expect(container.querySelector('[data-bound]')?.getAttribute('data-bound')).toBe('false');
+    });
   });
 });

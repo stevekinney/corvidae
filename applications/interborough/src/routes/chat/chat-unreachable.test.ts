@@ -1,8 +1,9 @@
 /**
- * While the server does not answer, a warning drawer sits above the composer (COR-2284 C5): it
- * names Interborough when only the host is down (row 17b's words) and is Chat's offline drawer when
- * the browser itself is offline. The box keeps what was typed, Send is off and is described by the
- * reason, and both come back as they were when the server answers again.
+ * While the server does not answer, a warning drawer sits above the composer (COR-2284 C5). While the
+ * shell's banner says what is down, the drawer says only what is true of the draft; while the page
+ * draws the banner itself, it names Interborough when only the host is down (row 17b's words) and is
+ * Chat's offline drawer when the browser itself is offline. The box keeps what was typed, Send is off
+ * and is described by the reason, and both come back as they were when the server answers again.
  */
 import { cleanup, fireEvent, waitFor } from '@testing-library/svelte';
 import { afterEach, describe, expect, test } from 'bun:test';
@@ -55,7 +56,10 @@ describe('the chat composer while the server does not answer', () => {
     // Waits assert a boolean, never an element: a failed element assertion serializes the whole
     // happy-dom graph into its message, seconds of blocked loop per retry.
     await waitFor(() => expect(drawer() === null).toBe(false));
-    expect(drawer()?.textContent).toContain(CHAT_COPY.composer.hostUnreachable);
+    // The shell's banner says Interborough can't be reached, so the drawer says only what is true
+    // of the draft (the design review of 38cbd2dec: the outage was said twice).
+    expect(drawer()?.textContent).toContain(CHAT_COPY.composer.draftKeptUntilReachable);
+    expect(drawer()?.textContent).not.toContain('reach Interborough');
     expect(drawer()?.getAttribute('data-cinder-variant')).toBe('warning');
     // The host is down, not the network: the drawer does not say the person is offline.
     expect(drawer()?.textContent).not.toContain('offline');
@@ -79,10 +83,24 @@ describe('the chat composer while the server does not answer', () => {
     expect(send()?.disabled).toBe(false);
   });
 
-  test('is Chat’s offline drawer when the browser itself is offline', async () => {
+  test('says only what is true of the draft when the browser itself is offline, since the shell’s banner says so', async () => {
     const monitor = monitorThatIs(false);
     const view = mountWith(monitor);
     await view.findByText('Second answer');
+
+    monitor.setBrowserOffline(true);
+
+    await waitFor(() => expect(view.container.querySelector(DRAWER) === null).toBe(false));
+    const drawer = view.container.querySelector(DRAWER)!;
+    expect(drawer.textContent).toContain(CHAT_COPY.composer.draftKept);
+    expect(drawer.textContent).not.toContain('offline');
+  });
+
+  test('is Chat’s offline drawer, in its own words, while the page itself draws the banner', async () => {
+    const monitor = monitorThatIs(false);
+    const view = mountWith(monitor);
+    await view.findByText('Second answer');
+    const release = monitor.claimBanner();
 
     monitor.setBrowserOffline(true);
 
@@ -92,6 +110,7 @@ describe('the chat composer while the server does not answer', () => {
       ),
     );
     expect(view.container.querySelector(DRAWER)?.textContent).toContain('Your draft is saved here');
+    release();
   });
 
   test('shows no drawer and no blocked row while the server answers', async () => {

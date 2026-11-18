@@ -6,7 +6,8 @@
  * The server being unreachable comes first, as a warning drawer above the box (COR-2284 C5): Chat's
  * offline drawer when the browser is offline, and one that says Interborough can't be reached when
  * only the host is down (row 17b's words). The draft stays in the box and Send is off until the
- * server answers (Retry lives in the banner, so the drawer has no action). Otherwise a blocked row says the first of these that holds,
+ * server answers (Retry lives in the banner, so the drawer has no action). While the shell's banner
+ * already says what is down, the drawer says only what is true of the draft. Otherwise a blocked row says the first of these that holds,
  * because each makes the ones after it moot: the host is restarting after a plugin was enabled, the
  * chat is archived (Chat's neutral Archived bar, with New chat and the primary Unarchive), the
  * chat's agent comes from a disabled plugin, the host stopped the chat when it restarted, a chat
@@ -52,6 +53,8 @@ export interface ComposerFacts {
   readonly unreachable: boolean;
   /** The browser itself reports that it is offline, so the server's silence is the network's. */
   readonly browserOffline?: boolean | undefined;
+  /** The shell's banner says the browser is offline or the server can't be reached. */
+  readonly outageBannerShown?: boolean | undefined;
   /** The host is restarting after the person enabled a plugin. */
   readonly restarting: boolean;
   /**
@@ -98,6 +101,16 @@ const COPY = CHAT_COPY.composer;
 /** The status the composer shows for `facts`, or `undefined` for the plain composer with its hint. */
 export function composerStatusOf(facts: ComposerFacts): ChatComposerStatus | undefined {
   if (facts.unreachable) {
+    // The shell's banner already says what is down: the drawer says only what is true of the draft,
+    // so the outage is said once and the box stays above the fold on a phone.
+    if (facts.outageBannerShown === true) {
+      return {
+        kind: 'drawer-notice',
+        tone: 'warning',
+        text: facts.browserOffline === true ? COPY.draftKept : COPY.draftKeptUntilReachable,
+        sendDisabledReason: COPY.unreachable,
+      };
+    }
     // The browser itself is offline: Chat's offline drawer says so in its own words. Only the host
     // is down: the same warning drawer names the host, as row 17b does, with Send off for that reason.
     if (facts.browserOffline === true) return { kind: 'offline' };

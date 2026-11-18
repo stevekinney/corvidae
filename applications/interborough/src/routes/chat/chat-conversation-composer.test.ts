@@ -312,8 +312,9 @@ describe('a blocked composer', () => {
       } as never);
 
       const drawer = () => container.querySelector<HTMLElement>('[data-chat-composer-drawer]');
-      await waitFor(() => expect(drawer()).not.toBeNull());
-      expect(drawer()?.textContent).toContain(COPY.hostUnreachable);
+      await waitFor(() => expect(drawer() === null).toBe(false));
+      // The shell's banner names the outage, so the drawer says only what is true of the draft.
+      expect(drawer()?.textContent).toContain(COPY.draftKeptUntilReachable);
       expect(row(container)).toBeNull();
       expect(composer(container)).not.toBeNull();
       expect([...drawer()!.querySelectorAll('a, button')]).toEqual([]);

@@ -193,8 +193,11 @@ export const CHAT_COPY = {
     runFinishedNoReply: 'Run finished, no reply',
     /** A failed step's machine code, at the end of its diagnostic. */
     errorCode: (code: string): string => `Code: ${code}`,
-    /** The links under a failed step (COR-2283 R7). */
-    retryStep: 'Retry this step',
+    /**
+     * The links under a failed step (COR-2283 R7). Retry runs the turn again, so it reads as every
+     * other control that re-runs a turn does; "Try again" is for reading a page again.
+     */
+    retryStep: 'Retry',
     copyError: 'Copy error',
     copied: 'Copied',
     /**
@@ -531,6 +534,13 @@ export const CHAT_COPY = {
      * host is named, not the network, and the draft stays (COR-2284 C5, row 17b).
      */
     hostUnreachable: 'Can’t reach Interborough. Your draft is kept here.',
+    /**
+     * The drawer while the shell's banner already says the browser is offline: only what is true of
+     * the draft, so the outage is said once.
+     */
+    draftKept: 'Your draft is saved here. Send comes back when you reconnect.',
+    /** The same, while the banner says only Interborough can't be reached. */
+    draftKeptUntilReachable: 'Your draft is saved here. Send comes back when Interborough answers.',
     /** Why Send is off while the host is down, read with Send. */
     unreachable: 'Sending is off until Interborough is reachable',
     restarting: 'Sending resumes when Interborough is back.',
@@ -596,6 +606,7 @@ export const CHAT_COPY = {
     running: 'Running',
     failed: 'Failed',
     ended: 'Ended',
+    stopped: 'Stopped',
     done: 'Done',
   },
   /**

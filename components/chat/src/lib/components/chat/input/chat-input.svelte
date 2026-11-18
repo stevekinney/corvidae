@@ -246,7 +246,7 @@
     List,
     Paperclip,
     ListOrdered,
-    RotateCcw,
+    RefreshCw,
     scrollEdgeFade,
     SendHorizontal,
     Square,
@@ -2047,7 +2047,7 @@
                     onclick={() => runFailureLineAction()}
                   >
                     {#if failureLine.action === 'retry'}
-                      <RotateCcw class="cinder-icon-xs" aria-hidden="true" />
+                      <RefreshCw class="cinder-icon-xs" aria-hidden="true" />
                     {:else}
                       <X class="cinder-icon-xs" aria-hidden="true" />
                     {/if}

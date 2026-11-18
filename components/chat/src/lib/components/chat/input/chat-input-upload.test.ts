@@ -164,7 +164,7 @@ describe('an attachment with an upload hook', () => {
     const retry = line.querySelector<HTMLButtonElement>('button')!;
     expect(retry.getAttribute('aria-label')).toBe('Retry photo.png');
     expect(retry.textContent?.trim()).toBe('');
-    expect(retry.querySelector('svg')?.getAttribute('class')).toContain('lucide-rotate-ccw');
+    expect(retry.querySelector('svg')?.getAttribute('class')).toContain('lucide-refresh-cw');
     // Send is described by the line, not by a second sentence.
     expect(send.getAttribute('aria-describedby')).toContain(line.id);
 
@@ -424,7 +424,7 @@ describe('the failure line under the strip', () => {
     // A retry glyph stands where the file's glyph was.
     expect(
       target.querySelector('.chat-attachment-preview-glyph svg')?.getAttribute('class'),
-    ).toContain('lucide-rotate-ccw');
+    ).toContain('lucide-refresh-cw');
     unmount(instance);
   });
 
