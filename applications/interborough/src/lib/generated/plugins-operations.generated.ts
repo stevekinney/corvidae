@@ -10,6 +10,7 @@ export type PluginsOperationTypes = {
         readonly plugin: string;
       }>;
       readonly reactions: ReadonlyArray<{
+        readonly availability: 'available' | 'needs-setup';
         readonly configuration: Record<string, unknown> | null;
         readonly description: string;
         readonly dryRun: boolean;

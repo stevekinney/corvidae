@@ -350,11 +350,56 @@ A reaction that rejects fails that attempt, and its delivery is tried again unti
 
 The `signal` a reaction's `run` receives aborts when the host shuts down, when the reaction's `timeoutMilliseconds` have passed, and when its hook is disabled or deleted; pass it to whatever `run` waits on. The attempt ends when the signal aborts even if `run` ignores it. A shutdown leaves the delivery to be resumed; a timeout ends the attempt in error (`The reaction timed out after N ms`) and it is tried again; a disabled or deleted hook ends the delivery `aborted`. `timeoutMilliseconds` is a positive safe integer, and a reaction that sets none gets the host's webhook request timeout (10 seconds by default).
 
+A reaction can say what it made. Resolve `{ receipt: { id, url, summary } }` from `run` (or `dryRun`) and the delivery keeps it on the attempt and shows it: the summary as text, the `url` as a link. The host drops a `url` that is not `https:`, a `summary` over 200 characters, an `id` over 200 characters, and anything that is not text; the delivery still completes, and the host records one warning. Put nothing secret in a receipt: the owner reads it as it is.
+
+A reaction's context has `format(event)`, which writes an event as the host's activity views do: the title, the optional `body`, `icon` and `link`, and the `tier`, always set (`info` when the formatter gave none), of the formatter that claims the event's kind, or `{ title: event.kind, tier: 'info' }` when none does or the formatter throws. It never throws, so a reaction that posts a message calls it and uses the sentence as it is. A `notify` hook does the same: its notification's title and body are the formatter's, computed on the event as the hook's owner sees it.
+
 A reaction's context also carries `hookId`, `owner` (the principal that owns the hook) and `attempt` (1-based: an attempt a restart interrupted counts, and an attempt dropped because the plugin needs setup does not). `maxAttempts` sets how many attempts a new delivery of the reaction may make, an integer from 1 to 20, where a reaction that sets none gets the host's own limit; the host skips a plugin whose reaction sets another value (a `setup-failed` problem). A delivery keeps the limit it was made with.
 
 A reaction can also give a `dryRun(context)` with the same context as `run`: what `hooks.test` calls, with one attempt that is not retried (a person can retry it by hand; an attempt a shutdown interrupted still counts as the one, so a restart does not call it again, and a test whose plugin needed setup makes its attempt once the plugin is set up), and never `run`. Do everything `run` does except the effect that cannot be taken back. Without a `dryRun`, a hook of the reaction cannot be tested, and the Test button stays off. `bureau.plugins.contributions` says which reactions have one.
 
 A reaction's configuration can hold a secret without storing it. Mark the field with `.meta({ secret: true })`, as in `token: z.string().meta({ secret: true })`: a hook then keeps `{ "$secret": "<key>" }` in that field, where the key names a secret the workspace has published, and a plain value in the field is refused when the hook is written. Each attempt resolves the key to the value published then and passes it to `run` as the string the schema declares. An attempt whose key has no value fails and is tried again; it never falls back to another value. Mark only fields reached through an object's properties (optional or not); a marker under an array or a record, and a marked field that is a union, are refused, because a reference has no single place to be kept there. A `.nullable()` field is a union, so `.meta({ secret: true }).nullable()` and `.nullable().meta({ secret: true })` are both refused: hold the secret in a field that is always a string, and make the field optional instead. A `{ secret: true }` inside a `default` or an `examples` value is data, never a marker. While the plugin itself needs setup (a secret it declared is missing), a delivery of its reactions waits, without making an attempt, until the secret is saved.
+
+A plugin can make hooks for its owner. A _default hook_ is declared in the descriptor's `hooks`, beside `setup`, and runs one of the plugin's own reactions. The host makes the hook when the plugin starts and reconciles it with this list at every later start: a new one is created, a changed one is replaced in place (it keeps its id and its deliveries), and one the descriptor no longer lists is withdrawn, which turns it off and keeps it. The owner can turn a default hook off and make an editable copy of it, and can change nothing else about it.
+
+```ts
+import { definePlugin } from '@lostgradient/interborough-plugin';
+import { z } from 'zod';
+
+export default definePlugin({
+  name: 'pager',
+  version: '1.0.0',
+  description: 'Pages someone when a run settles.',
+  secrets: ['pager-api-key'],
+  hooks: [
+    {
+      name: 'Page when a run settles',
+      events: ['run.settled'],
+      reaction: 'page',
+      configuration: { apiKey: { $secret: 'pager-api-key' }, team: 'on-call' },
+    },
+  ],
+  setup: () => ({
+    reactions: [
+      {
+        name: 'page',
+        version: '1',
+        description: 'Pages a team about the event.',
+        configuration: z.object({
+          apiKey: z.string().meta({ secret: true }),
+          team: z.string(),
+        }),
+        async run({ event, idempotencyKey, signal }) {
+          signal.throwIfAborted();
+          console.log(idempotencyKey, event.kind);
+        },
+      },
+    ],
+  }),
+});
+```
+
+A hook is `{ name, events, reaction, configuration?, scope? }`. `name` is the label and the key the hook is reconciled by (1 to 100 characters, unique among the plugin's hooks), so renaming a hook withdraws the old one and makes a new one. `reaction` names one of the plugin's `reactions`. `events` lists kinds of Bureau's event catalog (`PUBLISHED_BUREAU_EVENT_KINDS`, such as `run.settled`); a kind a plugin declares as `<plugin>:<name>` is not one a hook can list today. `configuration` is checked against the reaction's schema, and a secret field holds `{ "$secret": "<key>" }`, never a value. A hook that names a reaction the plugin does not contribute, lists an event kind that is not published, or repeats a name is skipped alone with a `hook-invalid` problem naming the hook and the field (`name`, `reaction` or `events`); one the hooks service refuses when it reconciles it (a configuration the schema refuses, or a `<plugin>:<name>` kind in `events`) is the same problem at `configuration`, `scope` or `events`. The plugin and its other hooks still load. A disabled plugin, or one whose setup failed, leaves its hooks as they are, and they run nothing until it runs again; a plugin the host no longer gives to the Bureau at all has its hooks withdrawn, never deleted.
 
 An interceptor has a member for each point of Operative's hook map (`onRunError`, `validateToolResult` and `selectTools` among them), and a point is written as the function or as `{ handler, replay, onError, priority }`. `replay: 'safe'` marks a hook with no external side effect, so a recovered durable run knows it can run again; a hook that says nothing is `effectful`. `onError` returns `'continue'` to go on to the next hook when this one throws, or `'abort'` to fail the step, which is also what a hook with no `onError` does. A `priority` sorts a higher number first, within a range of at most 999: a number below the one just above Operative's guardrails is raised to it, so a plugin never sorts behind them, and a number above 999 is lowered to it, because the host adds a tier's band to a priority and bands are 1000 apart, so a higher one would sort the plugin's hook ahead of the host's own invariants. The observing points (`onLLMInput`, `onLLMOutput`, `onRunComplete`, `onRunError`, `onRunAbort`) and `onError` are settled by Operative whatever `onError` says. While the plugin needs setup (a declared secret is missing), every hook of every interceptor refuses to run its handler.
 

@@ -69,6 +69,29 @@ export type HookScopeInput = {
 export type HookScope = NonNullable<Hook['scope']>;
 
 /**
+ * Where a default hook comes from (COR-2181): the plugin that declared it, whether the owner turned
+ * it off (`ownerDisabled`), and whether the plugin no longer declares it (`withdrawn`), so it is off
+ * and cannot be turned on. The owner can turn it on or off and copy it, and changes nothing else.
+ */
+export type HookDeclaredBy = NonNullable<Hook['declaredBy']>;
+
+/** A wire value whose `Keys` a Bureau that predates them leaves out. */
+type WithoutNewer<Value, Keys extends keyof Value> = Omit<Value, Keys> & {
+  readonly [Key in Keys]?: Value[Key] | undefined;
+};
+
+/**
+ * A hook as a Bureau that predates default hooks has it: one the owner made, with no `declaredBy`.
+ * The server's schema always sends the field, so this default belongs to the browser, applied to
+ * the typed result.
+ */
+export function hookOf<Value extends { readonly declaredBy?: HookDeclaredBy | null | undefined }>(
+  hook: Value,
+): Omit<Value, 'declaredBy'> & { readonly declaredBy: HookDeclaredBy | null } {
+  return { ...hook, declaredBy: hook.declaredBy ?? null };
+}
+
+/**
  * A hook as `bureau.hooks.create` answers it: the hook, and the signing secret the Bureau made for
  * a webhook created without one, shown this once. `null` when the person chose the secret, or the
  * action has none.
@@ -113,9 +136,14 @@ export type HookDelivery = Pick<
   readonly nextAttemptAt: number | null;
 };
 
-/** One try of a delivery: when it started and ended, how it ended, the status, an excerpt of the answer, and the error. */
+type WireAttempt = BureauOutput<'bureau.hooks.test'>['attempts'][number];
+
+/**
+ * One try of a delivery: when it started and ended, how it ended, the status, an excerpt of the
+ * answer, the error, and what a completed try made (`receipt`).
+ */
 export type HookAttempt = Pick<
-  BureauOutput<'bureau.hooks.test'>['attempts'][number],
+  WireAttempt,
   | 'number'
   | 'startedAt'
   | 'finishedAt'
@@ -124,24 +152,65 @@ export type HookAttempt = Pick<
   | 'responseExcerpt'
   | 'responseTruncated'
   | 'error'
+  | 'receipt'
 >;
 
+/** What a completed attempt made, as the Bureau shows it: a run, a notification, or a plugin reaction's receipt. */
+export type HookReceipt = NonNullable<HookAttempt['receipt']>;
+
+/** An attempt as a Bureau that predates receipts, or a reaction's `id`, `url` and `summary`, sends it. */
+type AttemptAnswer = Omit<WireAttempt, 'receipt'> & {
+  readonly receipt?: Partial<HookReceipt> | null | undefined;
+};
+
 /**
- * A created hook as a Bureau that does not say has it: with no signing secret. The server's schema
- * always sends the field, so this default belongs to the browser, applied to the typed result.
+ * An attempt as a Bureau that predates receipts has it: with none, and a receipt with no field it
+ * does not send. The server's schema always sends them, so this default belongs to the browser,
+ * applied to the typed result.
  */
-export function createdHookOf(
-  hook: Omit<CreatedHook, 'signingSecret'> & { readonly signingSecret?: string | null | undefined },
-): CreatedHook {
-  return { ...hook, signingSecret: hook.signingSecret ?? null };
+export function attemptOf(attempt: AttemptAnswer): HookAttempt {
+  const receipt = attempt.receipt ?? null;
+  return {
+    number: attempt.number,
+    startedAt: attempt.startedAt,
+    finishedAt: attempt.finishedAt,
+    outcome: attempt.outcome,
+    status: attempt.status,
+    responseExcerpt: attempt.responseExcerpt,
+    responseTruncated: attempt.responseTruncated,
+    error: attempt.error,
+    receipt:
+      receipt === null
+        ? null
+        : {
+            runId: receipt.runId ?? null,
+            notificationId: receipt.notificationId ?? null,
+            id: receipt.id ?? null,
+            url: receipt.url ?? null,
+            summary: receipt.summary ?? null,
+          },
+  };
 }
 
 /**
- * A delivery as a Bureau that predates `nextAttemptAt` has it: with no try due. The server's schema
- * always sends the field, so this default belongs to the browser, applied to the typed result.
+ * A created hook as a Bureau that does not say has it: with no signing secret, and one the owner
+ * made. The server's schema always sends both fields, so these defaults belong to the browser,
+ * applied to the typed result.
+ */
+export function createdHookOf(
+  hook: WithoutNewer<CreatedHook, 'signingSecret' | 'declaredBy'>,
+): CreatedHook {
+  return { ...hookOf(hook), signingSecret: hook.signingSecret ?? null };
+}
+
+/**
+ * A delivery as a Bureau that predates `nextAttemptAt` has it: with no try due, and each attempt as
+ * {@link attemptOf} reads it. The server's schema always sends the field, so this default belongs
+ * to the browser, applied to the typed result.
  */
 export function deliveryOf(
-  delivery: Omit<BureauOutput<'bureau.hooks.test'>, 'nextAttemptAt'> & {
+  delivery: Omit<BureauOutput<'bureau.hooks.test'>, 'nextAttemptAt' | 'attempts'> & {
+    readonly attempts: readonly AttemptAnswer[];
     readonly nextAttemptAt?: number | null | undefined;
   },
 ): HookDelivery {
@@ -153,7 +222,7 @@ export function deliveryOf(
     test: delivery.test,
     status: delivery.status,
     request: delivery.request,
-    attempts: delivery.attempts,
+    attempts: delivery.attempts.map(attemptOf),
     maxAttempts: delivery.maxAttempts,
     nextAttemptAt: delivery.nextAttemptAt ?? null,
     createdAt: delivery.createdAt,
@@ -178,10 +247,24 @@ export function deliveryBody(delivery: Pick<HookDelivery, 'request'>): unknown {
 /** A hook's newest delivery as a list shows it: where it stands and how its last attempt ended. */
 export type HookDeliverySummary = NonNullable<ListedHook['lastDelivery']>;
 
-/** One hook as `bureau.hooks.list` shows it, with its newest delivery. */
+/** One hook as `bureau.hooks.list` shows it, with its newest delivery and what is wrong with it. */
 export type ListedHook = Omit<BureauOutput<'bureau.hooks.list'>['hooks'][number], 'action'> & {
   readonly action: HookAction;
 };
+
+/** Why a plugin hook cannot do what it says: its reaction is not registered, or its configuration is refused now. */
+export type HookProblem = ListedHook['problems'][number];
+
+/**
+ * A listed hook as a Bureau that predates default hooks and hook problems has it: one the owner
+ * made, with nothing wrong. The server's schema always sends both fields, so these defaults belong
+ * to the browser, applied to the typed result.
+ */
+export function listedHookOf(
+  hook: WithoutNewer<BureauOutput<'bureau.hooks.list'>['hooks'][number], 'declaredBy' | 'problems'>,
+): ListedHook {
+  return { ...hookOf(hook), problems: hook.problems ?? [] };
+}
 
 /** The caller's hooks, oldest first; `scope` narrows them to the hooks of exactly that subject. */
 export async function listHooks(
@@ -190,12 +273,12 @@ export async function listHooks(
 ): Promise<ListedHook[]> {
   const params = filter?.scope === undefined ? {} : { scope: filter.scope };
   const answer = await bureauClient['bureau.hooks.list'](params, options);
-  return [...answer.hooks];
+  return answer.hooks.map(listedHookOf);
 }
 
 /** One hook by its identifier; a hook that is not the caller's is `NotFound`. */
 export async function getHook(hookId: string, options?: Options): Promise<Hook> {
-  return bureauClient['bureau.hooks.get']({ hookId }, options);
+  return hookOf(await bureauClient['bureau.hooks.get']({ hookId }, options));
 }
 
 /** What a hook is written from. */
@@ -219,7 +302,8 @@ export type HookInput = {
         readonly type: 'plugin';
         readonly plugin: string;
         readonly kind: string;
-        readonly configuration: Readonly<Record<string, unknown>>;
+        /** An object the editor drew, or, unedited, whatever the hook stored (which may be no object). */
+        readonly configuration?: unknown;
       };
   /**
    * The secret a webhook is signed with, 16 to 256 characters. Sealed on arrival and never
@@ -262,7 +346,7 @@ export async function replaceHookSecret(
   options?: Options,
 ): Promise<HookWithNewSecret> {
   const params = expectedRevision === undefined ? { hookId } : { hookId, expectedRevision };
-  return bureauClient['bureau.hooks.secret.replace'](params, options);
+  return hookOf(await bureauClient['bureau.hooks.secret.replace'](params, options));
 }
 
 /** What `update` changes; a field left out stays. A `null` name removes it. */
@@ -289,7 +373,7 @@ export async function updateHook(
   options?: Options,
 ): Promise<Hook> {
   const { events, ...rest } = change;
-  return bureauClient['bureau.hooks.update'](
+  const updated = await bureauClient['bureau.hooks.update'](
     {
       hookId,
       expectedRevision,
@@ -298,6 +382,22 @@ export async function updateHook(
     },
     options,
   );
+  return hookOf(updated);
+}
+
+/**
+ * Makes an off copy of a hook the caller owns and may change (`bureau.hooks.duplicate`): the same
+ * action, events and scope, named `name` (else as the hook is), with no `declaredBy`, so a default
+ * hook a plugin declared becomes one the owner can edit. A webhook's copy gets a new signing secret,
+ * shown once.
+ */
+export async function duplicateHook(
+  hookId: string,
+  name?: string,
+  options?: Options,
+): Promise<CreatedHook> {
+  const params = name === undefined ? { hookId } : { hookId, name };
+  return createdHookOf(await bureauClient['bureau.hooks.duplicate'](params, options));
 }
 
 /** Deletes a hook, its secret and its delivery records. */

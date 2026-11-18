@@ -19,6 +19,7 @@ import type {
 } from '../../lib/bureau-hooks.ts';
 import { faultTreatment, isNetworkFailure } from '../../lib/faults.ts';
 import { clockTime, dayLabel } from '../health/health-times.ts';
+import { humanizeName } from '../settings/plugins/plugin-presentation.ts';
 import { HOOKS_COPY } from './hook-copy.ts';
 import {
   eventClauses,
@@ -61,7 +62,7 @@ function actionClause(action: EditorHook['action']): string {
     case 'notify':
       return HOOKS_COPY.sentence.notify;
     case 'plugin':
-      return HOOKS_COPY.sentence.plugin(action.plugin, action.kind);
+      return HOOKS_COPY.sentence.plugin(humanizeName(action.plugin), humanizeName(action.kind));
   }
 }
 
@@ -279,12 +280,82 @@ export function pluginTestOutcome(
 ): TestOutcome {
   const copy = COPY.check;
   if (delivery.status === 'delivered') {
-    return { tone: 'success', text: copy.testPluginRan(kind), link: 'log' };
+    return { tone: 'success', text: copy.testPluginRan(humanizeName(kind)), link: 'log' };
   }
   if (delivery.status === 'pending') {
-    return { tone: 'warning', text: copy.testPluginWaiting(plugin), link: 'log' };
+    return { tone: 'warning', text: copy.testPluginWaiting(humanizeName(plugin)), link: 'log' };
   }
   return { tone: 'danger', text: copy.testPluginFailed, link: 'log' };
+}
+
+/**
+ * What a refusal says is wrong at a field of a plugin action's configuration (COR-2181, row R10-22):
+ * each issue the Bureau named under `action.configuration`, as the path inside the configuration and
+ * the Bureau's own message, so the field it belongs to can show it. An issue anywhere else, and a
+ * failure that is no refusal, is none.
+ */
+export function configurationIssuesOf(
+  error: unknown,
+): { readonly path: readonly string[]; readonly message: string }[] {
+  if (!(error instanceof HttpClientError)) return [];
+  const issues: unknown = error.data?.['issues'];
+  if (!Array.isArray(issues)) return [];
+  const found: { path: readonly string[]; message: string }[] = [];
+  for (const issue of issues as unknown[]) {
+    if (typeof issue !== 'object' || issue === null) continue;
+    const { path, message } = issue as { path?: unknown; message?: unknown };
+    if (!Array.isArray(path) || typeof message !== 'string') continue;
+    const [first, second, ...rest] = path as unknown[];
+    if (first !== 'action' || second !== 'configuration') continue;
+    found.push({ path: rest.map(String), message });
+  }
+  return found;
+}
+
+/**
+ * A schema that draws a stored configuration as read-only pairs when the action's own schema is not
+ * listed (its plugin is off, dropped the action, or withdrew the hook; row R10-08). Each saved key is
+ * a field in the order it was saved: a secret reference reads as its key, a number or boolean as
+ * itself, and anything else as JSON. With no schema, nothing says which string the action marks
+ * `writeOnly`, so every saved string, and any value holding one, is concealed (`writeOnly`, which
+ * SchemaForm reads as "Hidden") rather than risk showing one in clear. No value is invented and
+ * none is left out. `null` when there is nothing to show: no saved key, or a configuration that is
+ * not an object.
+ */
+export function storedConfigurationSchema(configuration: unknown): Record<string, unknown> | null {
+  if (typeof configuration !== 'object' || configuration === null || Array.isArray(configuration)) {
+    return null;
+  }
+  const properties: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(configuration)) {
+    properties[key] = storedFieldSchema(value);
+  }
+  return Object.keys(properties).length === 0 ? null : { type: 'object', properties };
+}
+
+function storedFieldSchema(value: unknown): Record<string, unknown> {
+  if (typeof value === 'string') return { type: 'string', writeOnly: true };
+  if (typeof value === 'number') return { type: 'number' };
+  if (typeof value === 'boolean') return { type: 'boolean' };
+  if (
+    typeof value === 'object' &&
+    value !== null &&
+    !Array.isArray(value) &&
+    Object.keys(value).length === 1 &&
+    typeof Object.getOwnPropertyDescriptor(value, '$secret')?.value === 'string'
+  ) {
+    return { type: 'string', secret: true };
+  }
+  return holdsString(value, 0) ? { writeOnly: true } : {};
+}
+
+/** Whether a string sits anywhere inside `value`, which would be drawn in clear as JSON. */
+function holdsString(value: unknown, depth: number): boolean {
+  if (typeof value === 'string') return true;
+  if (typeof value !== 'object' || value === null) return false;
+  // Deeper than any configuration is written is treated as holding one, so nothing is shown.
+  if (depth > 32) return true;
+  return Object.values(value).some((member) => holdsString(member, depth + 1));
 }
 
 /**

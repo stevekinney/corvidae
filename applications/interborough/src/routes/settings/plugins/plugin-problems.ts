@@ -284,6 +284,19 @@ export function problemView(problem: PluginProblem, plugin?: PluginStanding): Pr
         ...panel.monospace,
       };
     }
+    case 'hook-invalid': {
+      const path = text(problem, 'path');
+      return {
+        status: { label: words.hookInvalid.status, dot: WARNING },
+        title: words.hookInvalid.title,
+        body: words.hookInvalid.body(
+          text(problem, 'hook'),
+          Object.hasOwn(words.hookInvalid.fields, path)
+            ? (words.hookInvalid.fields[path] ?? path)
+            : (words.hookInvalid.fields['declaration'] ?? 'declaration'),
+        ),
+      };
+    }
     case 'panel-changed': {
       const panel = panelWords(problem, plugin);
       return {

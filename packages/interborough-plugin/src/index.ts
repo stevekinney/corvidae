@@ -25,6 +25,7 @@ export type {
   PluginProvider,
   PluginReaction,
   PluginReactionContext,
+  PluginReceipt,
   PluginSetupResult,
   PluginToolGuardrail,
   PluginToolGuardrailEntry,
@@ -54,6 +55,7 @@ export type {
 export type {
   PluginDescriptor,
   PluginEmptyConfigurationSchema,
+  PluginHook,
   PluginSecretDeclaration,
   PluginSecrets,
   PluginSetupContext,

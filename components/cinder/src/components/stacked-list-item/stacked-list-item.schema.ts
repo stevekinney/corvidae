@@ -142,6 +142,12 @@ const schema = {
           'Text actions at the end of the row. On a tablet or desktop each is a secondary small button;\non a phone (below 640px) two or more collapse into one menu button with the same actions, and\na single action stays its own compact secondary button. Either is a 44px target under a coarse\npointer.',
       },
       {
+        name: 'badge',
+        reason: 'function-or-snippet',
+        description:
+          'A short mark after the title, such as a neutral extra-small `Badge` reading "Plugin". It sits\n6px after the title, outside the title\'s line clamp: the title gives up its room and ends in\nan ellipsis first, and the mark is never cut and never takes a line of its own.',
+      },
+      {
         name: 'description',
         reason: 'function-or-snippet',
         description: 'Secondary description below the title.',
@@ -192,7 +198,7 @@ const schema = {
         name: 'time',
         reason: 'function-or-snippet',
         description:
-          'The time, or the next run, at the right edge of line one, aligned to its top. Pass a\n`RelativeTime` or a plain string.',
+          'The time, or the next run, at the right edge of line one, aligned to its top. Pass a\n`RelativeTime` or a plain string. A string keeps its day and its clock each whole: on a phone\nrow with a control at its end, "Yesterday, 6:00 PM" breaks only after the comma.',
       },
       {
         name: 'title',

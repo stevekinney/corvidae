@@ -17,6 +17,7 @@ import { SAMPLE_TIME_ZONE } from '../../fixtures/sample-now.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
 import { E2E_SHOWCASE_URL } from './e2e-constants.ts';
 import { expect, test } from './fixtures.ts';
+import { textLines } from './text-lines.ts';
 
 test.use({ baseURL: E2E_SHOWCASE_URL, timezoneId: SAMPLE_TIME_ZONE });
 
@@ -85,6 +86,12 @@ for (const width of WIDTHS) {
       for (const row of await words.all()) {
         const box = await row.boundingBox();
         expect(box?.height ?? 0).toBeGreaterThanOrEqual(44);
+      }
+      // A row with no control at its end has room for its next run on line one, so the time is
+      // never broken ("Next Fri Nov / 6, 11:00 AM", COR-2181).
+      for (const next of await main.getByTestId('schedule-next').all()) {
+        const { lines } = await textLines(next);
+        expect(lines, await next.innerText()).toBeLessThanOrEqual(1);
       }
     }
     await captureForDesignReview(page, { route: '/schedules', state: 'ready', source: SOURCE });

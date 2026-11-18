@@ -17,6 +17,7 @@ import {
   latestDelivery,
   pluginTestOutcome,
   statusAnswer,
+  storedConfigurationSchema,
   summaryOf,
   testOutcome,
   thenSummary,
@@ -37,6 +38,7 @@ function attempt(overrides: Partial<Attempt> = {}): Attempt {
     responseExcerpt: null,
     responseTruncated: null,
     error: null,
+    receipt: null,
     ...overrides,
   };
 }
@@ -62,6 +64,47 @@ function delivery(
     ...overrides,
   };
 }
+
+describe('a stored configuration with no schema to draw it (row R10-08)', () => {
+  test('has one field per saved key, in order: a reference is a secret, and anything else keeps its kind', () => {
+    const schema = storedConfigurationSchema({
+      channel: 'ops',
+      token: { $secret: 'slack-bot-token' },
+      limit: 3,
+      loud: true,
+      routes: ['a', 'b'],
+      odd: { $secret: 'k', extra: 1 },
+      sizes: [1, 2],
+    });
+    // With no schema, a string may be one the action marks writeOnly: every string, and any value
+    // holding one, is concealed; a number, a boolean and a reference's key are shown.
+    expect(schema).toEqual({
+      type: 'object',
+      properties: {
+        channel: { type: 'string', writeOnly: true },
+        token: { type: 'string', secret: true },
+        limit: { type: 'number' },
+        loud: { type: 'boolean' },
+        routes: { writeOnly: true },
+        odd: { writeOnly: true },
+        sizes: {},
+      },
+    });
+    // Nothing to show is no schema at all.
+    expect(storedConfigurationSchema({})).toBeNull();
+    expect(storedConfigurationSchema(null)).toBeNull();
+    expect(storedConfigurationSchema(['a'])).toBeNull();
+    expect(Object.keys(schema?.['properties'] as object)).toEqual([
+      'channel',
+      'token',
+      'limit',
+      'loud',
+      'routes',
+      'odd',
+      'sizes',
+    ]);
+  });
+});
 
 describe('a hook as the editor’s sentence', () => {
   test('says the clause of the event, what it covers, and what it does, with a full stop', () => {
@@ -115,7 +158,7 @@ describe('a hook as the editor’s sentence', () => {
         { events: ['run.error'], action: { type: 'plugin', plugin: 'pager', kind: 'page' } },
         undefined,
       ),
-    ).toBe('When a run fails, run page from pager.');
+    ).toBe('When a run fails, run Page from Pager.');
     expect(
       editorSentence({ events: ['run.error'], action: { type: 'webhook', url: '' } }, undefined),
     ).toBe('When a run fails, send a webhook.');
@@ -273,12 +316,12 @@ describe('what a test event came to', () => {
     expect(ran).toEqual({
       tone: 'success',
       link: 'log',
-      text: 'Test ran. page checked the event without doing it; nothing was sent.',
+      text: 'Test ran. Page checked the event without doing it; nothing was sent.',
     });
     expect(pluginTestOutcome(delivery('pending', [], { test: true }), 'pager', 'page')).toEqual({
       tone: 'warning',
       link: 'log',
-      text: 'pager needs setup before this test can run. It runs once setup is done.',
+      text: 'Pager needs setup before this test can run. It runs once setup is done.',
     });
     for (const status of ['exhausted', 'failed', 'aborted'] as const) {
       expect(pluginTestOutcome(delivery(status, [], { test: true }), 'pager', 'page')).toEqual({

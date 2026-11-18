@@ -22,6 +22,7 @@ const schema = {
         'ghost',
         'ghost-danger',
         'ghost-accent',
+        'link',
       ],
       description:
         "Draws the trigger as a Button of this variant. Inside a ButtonGroup (a split button) the\ntrigger is always drawn as a Button, and without this it takes the variant of the Button\nbeside it, so the two halves are one control with one seam; with neither it is `soft`,\nButton's default. Outside a group, without this, the trigger keeps its own bordered face.",

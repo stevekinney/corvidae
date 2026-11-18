@@ -96,7 +96,7 @@ Row — a small warning glyph, the title and description read as one sentence, a
 | --- | --- | --- | --- | --- |
 | `bordered` | `boolean` | no | `false` | Draws the state inside a bordered, rounded box, for a list or page body that has no container of its own. Leave it off when a card or panel already surrounds the state. It applies to the centred layout; the `'flat'` variant has no box. |
 | `class` | `string` | no | — | Additional class merged onto the `.cinder-error-state` root element. |
-| `description` | `string` | yes | — | Secondary descriptive text rendered as a paragraph below the title. |
+| `description` | `string` | yes | — | Secondary descriptive text rendered as a paragraph below the title. A `'row'` whose title is its whole sentence passes `''` and draws no second paragraph. |
 | `detail` | `string` | no | — | Optional technical detail, such as a fault code. It sits behind a disclosure labelled `detailsLabel`, so the plain-words description stays the first thing a person reads. |
 | `detailsLabel` | `string` | no | `"Show the error details"` | Label of the disclosure that holds `detail`. |
 | `headingLevel` | `1` \| `2` \| `3` \| `4` \| `5` \| `6` | no | `2` | Heading level for the title element. |
