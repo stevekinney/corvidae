@@ -13,6 +13,7 @@ import { runWithHangGuard } from '../../testing/testing/src/hang-guard.ts';
 import {
   collectLocalEvidence,
   collectLocalEvidenceFromRequest,
+  collectProviderEvidenceFromRequest,
   reuseLocalEvidence,
   validateEvidence,
   type LocalEvidenceProcess,
@@ -341,6 +342,64 @@ const values = await (async () => {
     reportDigest: createHash('sha256').update(readFileSync(report)).digest('hex'),
   };
 })();
+
+const unsafeProviderRequest = (() => {
+  const directory = mkdtempSync(join(scratch, 'unsafe-provider-'));
+  const path = join(directory, 'request.json');
+  const text = JSON.stringify({
+    repository: 'acme/widgets',
+    revision: 'a'.repeat(40),
+    base: 'b'.repeat(40),
+    integrationTree: 'c'.repeat(40),
+    environment: 'runner',
+    authority: { runId: 'run', ownerId: 'owner', resource: 'COR-1', generation: 1 },
+    operationId: 'operation',
+    plan: {
+      version: 1,
+      obligations: [
+        {
+          criterionId: 'AC1',
+          risk: 'root-scripts',
+          commandOrProviderJob: 'test',
+          expectedInventory: [],
+          relevantInputs: ['../outside'],
+          environmentToolchain: 'runner',
+          executionBoundary: 'provider',
+          producer: 'fixture',
+          selectionReason: 'test',
+        },
+      ],
+      risks: {},
+      invalidatedBy: {},
+    },
+    providerRuns: [
+      { id: 1, obligation: 'AC1:test', job: 'test', workflow: 'workflow', event: 'push' },
+    ],
+  });
+  writeFileSync(path, text);
+  let reads = 0;
+  let rejected = false;
+  try {
+    collectProviderEvidenceFromRequest(path, createHash('sha256').update(text).digest('hex'), {
+      run: () => {
+        reads += 1;
+        throw new Error('must not read');
+      },
+      job: () => {
+        throw new Error('must not read');
+      },
+      artifact: () => ({ present: false, expired: false }),
+    });
+  } catch {
+    rejected = true;
+  }
+  return { reads, rejected };
+})();
+
+test('request-file provider collection rejects unsafe paths before transport reads', () => {
+  expect(unsafeProviderRequest.rejected).toBe(true);
+  expect(unsafeProviderRequest.reads).toBe(0);
+});
 
 test('collects an actual clean checkout receipt', () =>
   expect(values.clean.records[0]?.status).toBe('pass'));

@@ -1,4 +1,5 @@
 import { expect, test } from 'bun:test';
+import { zipSync } from 'fflate';
 import { createHash } from 'node:crypto';
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -112,6 +113,62 @@ test('provider results remain derived from authenticated transport, not request 
   expect(
     collectProviderEvidence(parsed, transport({ conclusion: 'failure' })).records[0]?.status,
   ).toBe('fail');
+});
+
+test('test obligations require structured proof and terminal job states are classified first', () => {
+  const unknownAssertion = {
+    ...transport(),
+    job: () => ({ ...transport().job(), assertionPassed: null }),
+  };
+  expect(collectProviderEvidence(request, unknownAssertion).records[0]?.status).toBe('pending');
+  const skippedJob = {
+    ...transport(),
+    job: () => ({ ...transport().job(), conclusion: 'skipped' }),
+  };
+  expect(collectProviderEvidence(request, skippedJob).records[0]?.status).toBe('skipped');
+});
+
+test('programmatic provider collectors reject unsafe inputs before any read', () => {
+  const unsafeRequest = {
+    ...request,
+    plan: { ...plan, obligations: [{ ...plan.obligations[0]!, relevantInputs: ['../outside'] }] },
+  };
+  let reads = 0;
+  const guarded = {
+    ...transport(),
+    run: () => {
+      reads += 1;
+      return transport().run();
+    },
+  };
+  expect(() => collectProviderEvidence(unsafeRequest, guarded)).toThrow();
+  expect(reads).toBe(0);
+});
+
+test('provider archive identity remains part of ordinary validation', () => {
+  const archive = zipSync({
+    'results/report.xml': new TextEncoder().encode(
+      '<testsuite><testcase name="x.test.ts"/></testsuite>',
+    ),
+  });
+  const digest = `sha256:${createHash('sha256').update(archive).digest('hex')}`;
+  const artifactRequest = {
+    ...request,
+    providerRuns: [{ ...request.providerRuns[0]!, artifact: 'junit' }],
+  };
+  const collected = collectProviderEvidence(artifactRequest, {
+    ...transport(),
+    artifact: () => ({ present: true, expired: false, id: 4, digest }),
+    downloadArtifact: () => archive,
+  });
+  const expected = {
+    revision: request.revision,
+    integrationTree: request.integrationTree,
+    environment: 'runner-1',
+  };
+  expect(validateEvidence(plan, collected, expected).ok).toBe(true);
+  collected.records[0]!.provider!.artifact!.expired = true;
+  expect(validateEvidence(plan, collected, expected).ok).toBe(false);
 });
 
 // spawn-free: the injected transport proves malformed input prevents provider access.

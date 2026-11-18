@@ -38,6 +38,7 @@ export interface EvidenceRecord {
     event: string;
     jobId: number;
     jobName: string;
+    artifactRequired: boolean;
     artifact?: { id: number; digest: string; archiveDigest: string; expired: boolean };
   };
 }
@@ -111,6 +112,16 @@ function safeArtifactName(name: string): boolean {
   return /^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(name);
 }
 
+function safeProviderInput(path: unknown): path is string {
+  return (
+    typeof path === 'string' &&
+    path !== '' &&
+    !path.includes('\0') &&
+    !isAbsolute(path) &&
+    !path.split(/[\\/]/).some((part) => part === '..' || part === '')
+  );
+}
+
 function commandArgv(command: string): string[] {
   const argv = command.trim().split(/\s+/);
   if (
@@ -164,6 +175,19 @@ export function readVerificationRequest(path: string, digest: string): Verificat
     !Array.isArray(request.providerRuns)
   )
     throw new EvidenceRequestError('verification request has invalid plan or provider runs');
+  return validateVerificationRequest(request);
+}
+
+function validateVerificationRequest(request: VerificationRequest): VerificationRequest {
+  if (
+    !/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(request.repository) ||
+    !/^[0-9a-f]{40}$/.test(request.revision) ||
+    !/^[0-9a-f]{40}$/.test(request.base) ||
+    !/^[0-9a-f]{40,64}$/.test(request.integrationTree) ||
+    request.environment === '' ||
+    request.operationId === ''
+  )
+    throw new EvidenceRequestError('verification request has invalid identity');
   const obligations = new Map<string, VerificationObligation>();
   for (const obligation of request.plan.obligations) {
     const key = obligationKey(obligation);
@@ -173,7 +197,7 @@ export function readVerificationRequest(path: string, digest: string): Verificat
       !Array.isArray(obligation.expectedInventory) ||
       !Array.isArray(obligation.relevantInputs) ||
       !obligation.expectedInventory.every((entry) => typeof entry === 'string' && entry !== '') ||
-      !obligation.relevantInputs.every((entry) => typeof entry === 'string' && entry !== '') ||
+      !obligation.relevantInputs.every(safeProviderInput) ||
       obligation.commandOrProviderJob.trim() === '' ||
       obligation.environmentToolchain.trim() === ''
     )
@@ -209,6 +233,7 @@ export function collectProviderEvidence(
   request: VerificationRequest,
   transport: ProviderEvidenceTransport,
 ): CollectedEvidence {
+  validateVerificationRequest(request);
   return collected(
     'provider',
     request.providerRuns.map((entry) => {
@@ -247,10 +272,17 @@ export function collectProviderEvidence(
           artifactUsable = false;
         }
       }
+      const requiresStructuredAssertion = obligation.expectedInventory.some((item) =>
+        /\.test\.[cm]?[jt]sx?$/.test(item),
+      );
       const status: EvidenceStatus =
-        run.status === 'cancelled' || job.status === 'cancelled'
+        run.status === 'cancelled' ||
+        run.conclusion === 'cancelled' ||
+        job.status === 'cancelled' ||
+        job.conclusion === 'cancelled'
           ? 'canceled'
-          : run.status === 'completed' && run.conclusion === 'skipped'
+          : (run.status === 'completed' && run.conclusion === 'skipped') ||
+              (job.status === 'completed' && job.conclusion === 'skipped')
             ? 'skipped'
             : run.repository !== request.repository ||
                 run.revision !== request.revision ||
@@ -262,6 +294,8 @@ export function collectProviderEvidence(
                 job.name !== entry.job ||
                 job.runtime !== request.environment ||
                 run.status !== 'completed' ||
+                job.status !== 'completed' ||
+                (requiresStructuredAssertion && assertionPassed !== true) ||
                 !artifactUsable
               ? 'pending'
               : run.status === 'completed' &&
@@ -291,6 +325,7 @@ export function collectProviderEvidence(
           event: run.event,
           jobId: job.id,
           jobName: job.name,
+          artifactRequired: entry.artifact !== undefined,
           ...(metadata?.id === undefined ||
           metadata.digest === undefined ||
           archiveDigest === undefined
@@ -320,6 +355,34 @@ export function collectProviderEvidenceFromRequest(
     request,
     transport ?? createGitHubEvidenceTransport(request.repository),
   );
+}
+
+/** Recollects authenticated provider state before reusing a provider receipt. */
+export function reuseProviderEvidence(
+  evidence: CollectedEvidence,
+  request: VerificationRequest,
+  transport: ProviderEvidenceTransport,
+): CollectedEvidence {
+  if (!issuedCollections.has(evidence) || evidence.source !== 'provider')
+    throw new EvidenceRequestError('provider evidence was not returned by a collector');
+  const current = collectProviderEvidence(request, transport);
+  const records = current.records.map((record) => {
+    const prior = evidence.records.find((candidate) => candidate.obligation === record.obligation);
+    const sameArchive =
+      prior?.provider?.artifact?.id === record.provider?.artifact?.id &&
+      prior?.provider?.artifact?.digest === record.provider?.artifact?.digest &&
+      prior?.provider?.artifact?.archiveDigest === record.provider?.artifact?.archiveDigest;
+    const sameProvider =
+      prior?.provider?.runId === record.provider?.runId &&
+      prior?.provider?.attempt === record.provider?.attempt &&
+      prior?.provider?.jobId === record.provider?.jobId &&
+      sameArchive;
+    return {
+      ...record,
+      status: sameProvider && record.status === 'pass' ? 'reused-pass' : record.status,
+    };
+  });
+  return collected('provider', records);
 }
 
 /** Executes the request's explicit argv through the coordinator-owned process boundary. */
@@ -567,6 +630,16 @@ function obligationKey(obligation: VerificationObligation): string {
 }
 
 function artifactIsIntact(record: EvidenceRecord, cwd?: string): boolean {
+  if (record.provider !== undefined) {
+    if (!record.provider.artifactRequired) return true;
+    const artifact = record.provider.artifact;
+    return (
+      artifact !== undefined &&
+      !artifact.expired &&
+      /^sha256:[0-9a-f]{64}$/.test(artifact.digest) &&
+      artifact.digest === `sha256:${artifact.archiveDigest}`
+    );
+  }
   if (record.artifacts !== undefined)
     return record.artifacts.every(({ path, digest }) => {
       try {
