@@ -37,12 +37,18 @@
   margin-block-start: var(--cinder-space-6);
 }
 
+/* The rail's blocks are Cinder Sections, spaced as the main column's are: a margin on each block
+ * after the first in place of a gap, which would add to the margin Cinder puts between two
+ * Sections (COR-2489: the rail's Sections sat 44px apart). */
 .ib-run__rail {
   display: flex;
   flex-direction: column;
-  gap: var(--cinder-space-3);
   inline-size: 100%;
   min-width: 0;
+}
+
+.ib-run__rail > * + * {
+  margin-block-start: var(--cinder-space-6);
 }
 
 /* Beside the sections, the rail holds its place while the page scrolls past it. */
@@ -52,17 +58,6 @@
     position: sticky;
     inset-block-start: var(--cinder-space-4);
   }
-}
-
-.ib-run__section {
-  display: flex;
-  flex-direction: column;
-  gap: var(--cinder-space-3);
-  min-width: 0;
-}
-
-.ib-run__panels {
-  gap: var(--cinder-space-4);
 }
 
 .ib-run__actions {
@@ -89,12 +84,6 @@
   margin: 0;
   color: var(--cinder-text-muted);
   font-size: var(--cinder-text-sm);
-}
-
-.ib-run__heading-2 {
-  margin: 0;
-  font-size: var(--cinder-text-md);
-  font-weight: 600;
 }
 
 .ib-run__heading-3 {
