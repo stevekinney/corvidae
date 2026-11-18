@@ -28,7 +28,7 @@ test.use({ baseURL: E2E_SHOWCASE_URL, timezoneId: SAMPLE_TIME_ZONE });
 const SOURCE = 'runs-states.spec.ts';
 const WIDTHS = [1280, 375] as const;
 /** Every request the page makes of the host, which a test takes away to make the server stop answering. */
-const HOST_REQUESTS = /\/(v1|bureau|api)\//;
+const HOST_REQUESTS = /\/(v1|bureau|api)\/|\/jsonrpc$/;
 
 /** The runs the sample world holds, as the segments count them (Nov 3 correction). */
 const SEGMENTS = [
@@ -97,7 +97,7 @@ async function answerOperation(
   method: string,
   answer: (route: Route, id: unknown) => Promise<void> | void,
 ): Promise<void> {
-  await page.route('**/bureau/jsonrpc', async (route) => {
+  await page.route('**/jsonrpc', async (route) => {
     const body = JSON.parse(route.request().postData() ?? '{}') as {
       method?: string;
       id?: unknown;
@@ -297,7 +297,7 @@ for (const width of WIDTHS) {
     }) => {
       // The test answers the runs' read with a 500, and Chromium logs each such response.
       pageErrors.expectEvery({
-        pattern: loggedFailedResponse(500, /\/bureau\/jsonrpc/),
+        pattern: loggedFailedResponse(500, /\/jsonrpc/),
         reason: 'the test answers the runs list with a 500',
       });
       await answerOperation(page, 'bureau.tasks.list', (route) =>
@@ -334,7 +334,7 @@ for (const width of WIDTHS) {
       await checkA11y(`runs failing at ${width}px`);
 
       // The server comes back, and Try again reads the runs.
-      await page.unroute('**/bureau/jsonrpc');
+      await page.unroute('**/jsonrpc');
       await primaries(page).first().click();
       await expect(main.locator('li[data-run]').first()).toBeVisible();
       await expect(headerCreate(page)).not.toHaveAttribute('aria-disabled', 'true');

@@ -1,4 +1,3 @@
-import { rejectionOf } from '@lostgradient/testing';
 import { HttpClientError } from '@lostgradient/weft';
 import { describe, expect, test } from 'bun:test';
 
@@ -82,7 +81,7 @@ describe('the task operations', () => {
     );
     expect(stub.calls).toEqual([
       {
-        url: '/bureau/jsonrpc',
+        url: '/jsonrpc',
         method: 'bureau.tasks.list',
         params: {
           contextId: 'session-1',
@@ -150,11 +149,6 @@ describe('the task operations', () => {
     ]);
   });
 
-  test('a task the Bureau answers with an unknown state is a fault, not data to show', async () => {
-    const stub = answering({ ...TASK, status: 'exploded' });
-    expect(await rejectionOf(withFetch(stub.fetch, () => getTask('run-1')))).toBeInstanceOf(Error);
-  });
-
   test('inspect names the task and the step, and reads that step’s reply details', async () => {
     const stub = answering({
       schemaVersion: 'bureau.task-inspection.v1',
@@ -205,23 +199,6 @@ describe('the task operations', () => {
   test('inspect answers nothing for a step the run did not record', async () => {
     const stub = answering({ steps: [] });
     expect(await withFetch(stub.fetch, () => inspectTaskStep('run-1', 4))).toBeNull();
-  });
-
-  test('inspect refuses a plan reason code it does not know', async () => {
-    const stub = answering({
-      steps: [
-        {
-          step: 0,
-          messageId: null,
-          planReason: { code: 'whim', detail: 'x', rejected: [] },
-          hasEffectiveContext: false,
-          effectiveContext: null,
-        },
-      ],
-    });
-    expect(
-      await rejectionOf(withFetch(stub.fetch, () => inspectTaskStep('run-1', 0))),
-    ).toBeInstanceOf(Error);
   });
 
   test('cancel names the task and answers the receipt, with the task when the caller may read it', async () => {

@@ -319,7 +319,7 @@ test('opens from the sidebar and from g then h', async ({ page }) => {
 // so `--grep "\[default-hooks\]"` runs one.
 
 const SOURCE = 'hooks.spec.ts';
-const BUREAU_CALLS = '**/bureau/jsonrpc';
+const BUREAU_CALLS = '**/jsonrpc';
 const header = HOOKS_COPY.editor.header;
 const defaults = HOOKS_COPY.defaultHook;
 const standing = HOOKS_COPY.standing;
@@ -752,7 +752,7 @@ test('[default-hook-toggle-failed] a switch the Bureau refuses says so in a toas
   pageErrors,
 }) => {
   pageErrors.expectEvery({
-    pattern: loggedFailedResponse(500, /\/bureau\/jsonrpc/),
+    pattern: loggedFailedResponse(500, /\/jsonrpc/),
     reason: 'the test answers the update with the failure the Bureau gives when it cannot save',
   });
   await openHooks(page, '/hooks', [DEFAULT_ON], {
@@ -852,7 +852,7 @@ for (const width of WIDTHS) {
     pageErrors,
   }) => {
     pageErrors.expectEvery({
-      pattern: loggedFailedResponse(500, /\/bureau\/jsonrpc/),
+      pattern: loggedFailedResponse(500, /\/jsonrpc/),
       reason:
         'the test answers the read of the hook with the failure the Bureau gives when it breaks',
     });
@@ -1100,7 +1100,7 @@ test('[default-hook-duplicate-failed] a Duplicate the Bureau refuses says so in 
   pageErrors,
 }) => {
   pageErrors.expectEvery({
-    pattern: loggedFailedResponse(500, /\/bureau\/jsonrpc/),
+    pattern: loggedFailedResponse(500, /\/jsonrpc/),
     reason: 'the test answers the duplicate with the failure the Bureau gives when it cannot save',
   });
   await openHooks(page, '/hooks/default-on', [DEFAULT_ON], {
@@ -1369,7 +1369,7 @@ test('[plugin-hook-save-failed] a refused save keeps every value and shows the r
   pageErrors,
 }) => {
   pageErrors.expectEvery({
-    pattern: loggedFailedResponse(400, /\/bureau\/jsonrpc/),
+    pattern: loggedFailedResponse(400, /\/jsonrpc/),
     reason:
       'the test answers the update with the refusal the Bureau gives a configuration it rejects',
   });

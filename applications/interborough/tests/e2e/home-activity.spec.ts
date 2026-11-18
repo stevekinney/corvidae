@@ -156,7 +156,7 @@ async function wordEvents(
   page: Page,
   wordings: ReadonlyMap<string, Wording> | 'fail',
 ): Promise<void> {
-  await page.route('**/bureau/jsonrpc', async (route) => {
+  await page.route('**/jsonrpc', async (route) => {
     const body = JSON.parse(route.request().postData() ?? '{}') as {
       id?: unknown;
       method?: string;
@@ -382,7 +382,7 @@ test.describe('Home activity bands (COR-2227)', () => {
     });
     const worded = page.waitForResponse(
       (response) =>
-        response.url().endsWith('/bureau/jsonrpc') &&
+        response.url().endsWith('/jsonrpc') &&
         (response.request().postData() ?? '').includes('"stacked-arrival"'),
     );
     await page.evaluate(
@@ -413,7 +413,7 @@ test.describe('Home activity bands (COR-2227)', () => {
     });
     await wordEvents(page, READY_WORDS);
     // No run is going: the Bureau lists no working or submitted task.
-    await page.route('**/bureau/jsonrpc', async (route) => {
+    await page.route('**/jsonrpc', async (route) => {
       const body = JSON.parse(route.request().postData() ?? '{}') as {
         id?: unknown;
         method?: string;
@@ -551,7 +551,7 @@ test.describe('Home activity bands (COR-2227)', () => {
     );
     // F7-48: the third chat Home lists was last active on Thursday, Oct 29, so Recent chats shows
     // all three time forms too. Only a list with a third chat is rewritten.
-    await page.route('**/bureau/jsonrpc', async (route) => {
+    await page.route('**/jsonrpc', async (route) => {
       const body = JSON.parse(route.request().postData() ?? '{}') as { method?: string };
       if (body.method !== 'bureau.contexts.list') {
         await route.fallback();
@@ -932,7 +932,7 @@ async function holdArrivalsOnReviewLink(page: Page, width: number) {
   await link.focus();
   const worded = page.waitForResponse(
     (response) =>
-      response.url().endsWith('/bureau/jsonrpc') &&
+      response.url().endsWith('/jsonrpc') &&
       (response.request().postData() ?? '').includes('"held-arrival"'),
   );
   await page.evaluate(

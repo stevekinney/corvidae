@@ -1,75 +1,64 @@
 /**
  * What running plugins add to workflows and hooks (COR-1893): `bureau.plugins.contributions` (the trigger
  * kinds a workflow file's trigger can name, and the hook action kinds a hook can run, each with its
- * configuration as JSON Schema), parsed at the boundary.
+ * configuration as JSON Schema), through the generated client.
  */
-import { z } from 'zod';
-
-import { callBureau, type Fetcher } from './bureau-client.ts';
+import { bureauClient, type BureauOutput } from './bureau-api.ts';
+import type { Fetcher } from './bureau-client.ts';
 
 type Options = { readonly signal?: AbortSignal; readonly fetch?: Fetcher };
 
-const configurationSchema = z.record(z.string(), z.unknown()).nullable();
+type Contributions = BureauOutput<'bureau.plugins.contributions'>;
 
-const triggerKindSchema = z.object({
-  plugin: z.string(),
-  id: z.string(),
-  description: z.string(),
-  version: z.string(),
-  /**
-   * Whether the kind receives requests (COR-2168): a file whose trigger is one is sent its deliveries
-   * at `/triggers/<workflow-id>`, which the workflow page shows with a copy control (COR-2171).
-   */
-  receives: z.boolean(),
-  configuration: configurationSchema,
-});
+/**
+ * A trigger kind a running plugin contributes. `id` is `plugin:name`, the `kind` of a workflow
+ * file's trigger. `receives` says whether the kind receives requests (COR-2168): a file whose
+ * trigger is one is sent its deliveries at `/triggers/<workflow-id>`, which the workflow page shows
+ * with a copy control (COR-2171).
+ */
+export type ContributedTriggerKind = Contributions['triggers'][number];
 
-const hookActionKindSchema = z.object({
-  plugin: z.string(),
-  kind: z.string(),
-  description: z.string(),
-  version: z.string(),
-  /** Whether `hooks.test` can call the kind's `dryRun`: a hook of a kind without one cannot be tested. */
-  dryRun: z.boolean(),
-  /**
-   * Whether the kind can run now: `needs-setup` while a secret its plugin declared is missing
-   * (COR-2181). Absent from an answer of a Bureau that predates it, which then reads as available.
-   */
-  availability: z.enum(['available', 'needs-setup']).default('available'),
-  configuration: configurationSchema,
-});
+/**
+ * A hook action kind a running plugin contributes: the `plugin` and `kind` of a `{ type: 'plugin' }`
+ * action. `dryRun` says whether `hooks.test` can call the kind's `dryRun`: a hook of a kind without
+ * one cannot be tested. `availability` is `needs-setup` while a secret its plugin declared is
+ * missing (COR-2181).
+ */
+export type ContributedHookActionKind = Contributions['reactions'][number];
 
-/** A trigger kind a running plugin contributes. `id` is `plugin:name`, the `kind` of a workflow file's trigger. */
-export type ContributedTriggerKind = z.infer<typeof triggerKindSchema>;
-
-/** A hook action kind a running plugin contributes: the `plugin` and `kind` of a `{ type: 'plugin' }` action. */
-export type ContributedHookActionKind = z.infer<typeof hookActionKindSchema>;
-
-const kindsSchema = z.object({
-  triggers: z.array(triggerKindSchema),
-  reactions: z.array(hookActionKindSchema),
-});
+/**
+ * A hook action kind as a Bureau that predates `availability` has it: available. The server's
+ * schema always sends the field, so this default belongs to the browser, applied to the typed result.
+ */
+export function hookActionKindOf(
+  kind: Omit<ContributedHookActionKind, 'availability'> & {
+    readonly availability?: ContributedHookActionKind['availability'] | undefined;
+  },
+): ContributedHookActionKind {
+  return { ...kind, availability: kind.availability ?? 'available' };
+}
 
 /** Everything the running plugins contribute that a file or a hook can name. */
-export type ContributedKinds = z.infer<typeof kindsSchema>;
+export type ContributedKinds = {
+  readonly triggers: readonly ContributedTriggerKind[];
+  readonly reactions: readonly ContributedHookActionKind[];
+};
 
 /** The trigger and hook action kinds of the running plugins, each with its configuration schema. */
 export async function listContributedKinds(options?: Options): Promise<ContributedKinds> {
-  return kindsSchema.parse(await callBureau('bureau.plugins.contributions', {}, options));
+  const contributions = await bureauClient['bureau.plugins.contributions']({}, options);
+  return {
+    triggers: contributions.triggers,
+    reactions: contributions.reactions.map(hookActionKindOf),
+  };
 }
-
-const providersSchema = z.object({
-  providers: z.array(
-    z.object({ plugin: z.string(), name: z.string(), configuration: configurationSchema }),
-  ),
-});
 
 /**
  * A model provider a running plugin contributes: its `name` (what the host's providers list calls
  * it), the `plugin` that holds its configuration, and that configuration as JSON Schema (`null`
  * when it could not be written as one).
  */
-export type ContributedProvider = z.infer<typeof providersSchema>['providers'][number];
+export type ContributedProvider = Contributions['providers'][number];
 
 /**
  * The model providers of the running plugins, each with its plugin's configuration schema
@@ -79,8 +68,8 @@ export type ContributedProvider = z.infer<typeof providersSchema>['providers'][n
 export async function listContributedProviders(
   options?: Options,
 ): Promise<readonly ContributedProvider[]> {
-  return providersSchema.parse(await callBureau('bureau.plugins.contributions', {}, options))
-    .providers;
+  const answer = await bureauClient['bureau.plugins.contributions']({}, options);
+  return answer.providers;
 }
 
 /** The id a hook action kind is chosen by: `plugin:kind`. A plugin and a kind name hold no `:`. */
