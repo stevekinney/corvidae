@@ -19,13 +19,22 @@
   overflow: hidden;
 }
 
-/* One pane at a time (a phone): the pane follows the page, as Cinder's ListDetail lays it out, so
-   the frame neither fixes its height nor clips. A docked bar in the pane (a workflow review's Send
-   back and Approve) then sticks to the bottom of the page's own scrolling area, which ends where
-   the tab bar starts, instead of to the bottom of a clipped frame below the fold (row 25q). */
-.ib-reviews__frame:has(.cinder-list-detail[data-cinder-layout='stacked']) {
-  block-size: auto;
-  overflow: visible;
+/* The frame's width is ListDetail's, so the host measures it for the query below. */
+.ib-reviews__frame-host {
+  container: reviews-frame / inline-size;
+  min-inline-size: 0;
+}
+
+/* One pane at a time (ListDetail below its `pushBelow` of 600px, as reviews-panel.svelte passes
+   it): the pane follows the page, as ListDetail lays it out, so the frame neither fixes its height
+   nor clips. A docked bar in the pane (a workflow review's Send back and Approve) then sticks to
+   the bottom of the page's own scrolling area, which ends where the tab bar starts, instead of to
+   the bottom of a clipped frame below the fold (row 25q). */
+@container reviews-frame (inline-size < 600px) {
+  .ib-reviews__frame {
+    block-size: auto;
+    overflow: visible;
+  }
 }
 
 /* The keys that move through the list, said once at its head. */

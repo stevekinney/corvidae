@@ -529,147 +529,156 @@
     />
   {/if}
 {:else if phase !== 'failed'}
-  <!-- svelte-ignore a11y_no_static_element_interactions -->
-  <div
-    class="ib-reviews__frame"
-    data-shortcut-region="list-detail"
-    data-mode={mode}
-    bind:this={frameElement}
-    onkeydown={handleFrameKeydown}
-  >
-    <ListDetail
-      items={visible}
-      key={(item: InboxItem) => item.key}
-      label={REVIEWS_COPY.listLabel[mode]}
-      detailLabel={REVIEWS_COPY.detailLabel}
-      backLabel={REVIEWS_COPY.heading}
-      emptyTitle={REVIEWS_COPY.noReviewSelected}
-      emptyDescription={REVIEWS_COPY.chooseReview}
-      loading={phase === 'loading'}
-      loadingRows={3}
-      loadingLabel={REVIEWS_COPY.loading}
-      openFirst={mode === 'waiting'}
-      defaultListWidth={listWidth}
-      bind:selectedKey
-      selectionParameter="review"
-      selectionLocation={selection}
-      storageKey="interborough-reviews"
-      {...gone ? { empty: goneDetail } : {}}
-      {...mode === 'done' ? { groupBy: dayGroup } : {}}
+  <!-- The host is measured, so the frame below can follow the page once ListDetail shows one pane
+       at a time (below its `pushBelow`, 600px of its own width, the frame's width): reviews.css. -->
+  <div class="ib-reviews__frame-host">
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <div
+      class="ib-reviews__frame"
+      data-shortcut-region="list-detail"
+      data-mode={mode}
+      bind:this={frameElement}
+      onkeydown={handleFrameKeydown}
     >
-      {#snippet header()}
-        <p class="ib-reviews__hint">{REVIEWS_COPY.keysHint}</p>
-      {/snippet}
-      {#snippet list(item, row)}
-        <SelectableRow
-          selected={row.selected}
-          selectedState="current"
-          onclick={row.open}
-          data-review-row={item.key}
-          data-kind={item.review.kind}
-        >
-          {#snippet title()}<span class="ib-review-row__title">{reviewTitle(item.review)}</span
-            >{/snippet}
-          {#snippet description()}
-            {@const agent = agentOf(item.review)}
-            {@const line = reviewLineTwo(
-              item.review,
-              agent === undefined ? undefined : agentLabel(displayName(agent), undefined),
-            )}
-            <!-- The agent's name takes the ellipsis; the risk follows the time, never a cut name. -->
-            <span class="ib-review-row__kind">
-              <span class="ib-review-row__from"
-                >{line.kind}{line.from === undefined ? '' : ` ${line.from}`}</span
-              >
-            </span>
-          {/snippet}
-          {#snippet meta()}
-            {#if mode === 'done'}
-              {@const decidedAt = item.review.resolution?.decidedAt ?? item.review.requestedAt}
-              <StatusDot
-                status={resolutionTone(item.review)}
-                label={resolutionWord(item.review, viewer)}
-              />
-              <time datetime={new Date(decidedAt).toISOString()}>{clockTime(decidedAt, zone)}</time>
-            {:else}
-              {@const risk = reviewLineTwo(item.review, undefined).risk}
-              <!-- "3 min ago, can't be undone" (rows 07c, 07f): on the line of the time, which is
+      <ListDetail
+        pushBelow={600}
+        items={visible}
+        key={(item: InboxItem) => item.key}
+        label={REVIEWS_COPY.listLabel[mode]}
+        detailLabel={REVIEWS_COPY.detailLabel}
+        backLabel={REVIEWS_COPY.heading}
+        emptyTitle={REVIEWS_COPY.noReviewSelected}
+        emptyDescription={REVIEWS_COPY.chooseReview}
+        loading={phase === 'loading'}
+        loadingRows={3}
+        loadingLabel={REVIEWS_COPY.loading}
+        openFirst={mode === 'waiting'}
+        defaultListWidth={listWidth}
+        bind:selectedKey
+        selectionParameter="review"
+        selectionLocation={selection}
+        storageKey="interborough-reviews"
+        {...gone ? { empty: goneDetail } : {}}
+        {...mode === 'done' ? { groupBy: dayGroup } : {}}
+      >
+        {#snippet header()}
+          <p class="ib-reviews__hint">{REVIEWS_COPY.keysHint}</p>
+        {/snippet}
+        {#snippet list(item, row)}
+          <SelectableRow
+            selected={row.selected}
+            selectedState="current"
+            onclick={row.open}
+            data-review-row={item.key}
+            data-kind={item.review.kind}
+          >
+            {#snippet title()}<span class="ib-review-row__title">{reviewTitle(item.review)}</span
+              >{/snippet}
+            {#snippet description()}
+              {@const agent = agentOf(item.review)}
+              {@const line = reviewLineTwo(
+                item.review,
+                agent === undefined ? undefined : agentLabel(displayName(agent), undefined),
+              )}
+              <!-- The agent's name takes the ellipsis; the risk follows the time, never a cut name. -->
+              <span class="ib-review-row__kind">
+                <span class="ib-review-row__from"
+                  >{line.kind}{line.from === undefined ? '' : ` ${line.from}`}</span
+                >
+              </span>
+            {/snippet}
+            {#snippet meta()}
+              {#if mode === 'done'}
+                {@const decidedAt = item.review.resolution?.decidedAt ?? item.review.requestedAt}
+                <StatusDot
+                  status={resolutionTone(item.review)}
+                  label={resolutionWord(item.review, viewer)}
+                />
+                <time datetime={new Date(decidedAt).toISOString()}
+                  >{clockTime(decidedAt, zone)}</time
+                >
+              {:else}
+                {@const risk = reviewLineTwo(item.review, undefined).risk}
+                <!-- "3 min ago, can't be undone" (rows 07c, 07f): on the line of the time, which is
                    never cut short, so nothing sits between a cut name and the comma. -->
-              <span class="ib-review-row__when"
-                ><RelativeTime date={item.review.requestedAt} />{#if risk !== undefined}<span
-                    class="ib-review-row__risk"
-                    data-testid="review-row-risk">, {risk}</span
-                  >{/if}</span
-              >
-            {/if}
-          {/snippet}
-        </SelectableRow>
-        {#if mode === 'done' && item.key === lastKey && onLoadMore !== undefined}
-          <LoadMore
-            {hasMore}
-            loading={loadingMore}
-            {onLoadMore}
-            buttonLabel={REVIEWS_COPY.loadMore}
-            endOfListMessage=""
-          />
-        {/if}
-      {/snippet}
-      {#snippet detail(item)}
-        <div class="ib-reviews__detail" bind:this={detailElement}>
-          <!-- One pane per review: a draft, a note or a section decision made on one never carries to
+                <span class="ib-review-row__when"
+                  ><RelativeTime date={item.review.requestedAt} />{#if risk !== undefined}<span
+                      class="ib-review-row__risk"
+                      data-testid="review-row-risk">, {risk}</span
+                    >{/if}</span
+                >
+              {/if}
+            {/snippet}
+          </SelectableRow>
+          {#if mode === 'done' && item.key === lastKey && onLoadMore !== undefined}
+            <LoadMore
+              {hasMore}
+              loading={loadingMore}
+              {onLoadMore}
+              buttonLabel={REVIEWS_COPY.loadMore}
+              endOfListMessage=""
+            />
+          {/if}
+        {/snippet}
+        {#snippet detail(item)}
+          <div class="ib-reviews__detail" bind:this={detailElement}>
+            <!-- One pane per review: a draft, a note or a section decision made on one never carries to
                the next, so the answer posted always belongs to the review shown. -->
-          {#key item.key}
-            {#if lingering.has(item.key)}
-              <!-- No longer waiting, while its row stays a moment (rows 26g, 26h). -->
-              {@render goneDetail()}
-            {:else if item.review.kind === 'tool-approval'}
-              {@const review = item.review}
-              <ApprovalPane
-                {review}
-                bind:note={() => notes.get(review.id) ?? '', (value) => notes.set(review.id, value)}
-                deciding={resolving}
-                outcome={outcome?.reviewId === review.id ? outcome : undefined}
-                onDecide={(action) => decide(review, action)}
-              />
-            {:else if item.review.kind === 'human-wait'}
-              {@const review = item.review}
-              <QuestionPane
-                {review}
-                answering={resolving}
-                outcome={outcome?.reviewId === review.id ? outcome : undefined}
-                onAnswer={(answer) =>
-                  onAnswer(
-                    review,
-                    answer,
-                    advancer(
-                      item.key,
-                      REVIEWS_COPY.announce(REVIEWS_COPY.announced.answered, reviewTitle(review)),
-                    ),
-                  )}
-              />
-            {:else}
-              <EngineReviewPane
-                review={item.review}
-                {submitting}
-                {submitGate}
-                {viewer}
-                onSubmit={(reviewId, submission) =>
-                  onSubmit(
-                    reviewId,
-                    submission,
-                    advancer(
-                      item.key,
-                      REVIEWS_COPY.announce(
-                        engineDecisionWord(submission.decision),
-                        reviewTitle(item.review),
+            {#key item.key}
+              {#if lingering.has(item.key)}
+                <!-- No longer waiting, while its row stays a moment (rows 26g, 26h). -->
+                {@render goneDetail()}
+              {:else if item.review.kind === 'tool-approval'}
+                {@const review = item.review}
+                <ApprovalPane
+                  {review}
+                  bind:note={
+                    () => notes.get(review.id) ?? '', (value) => notes.set(review.id, value)
+                  }
+                  deciding={resolving}
+                  outcome={outcome?.reviewId === review.id ? outcome : undefined}
+                  onDecide={(action) => decide(review, action)}
+                />
+              {:else if item.review.kind === 'human-wait'}
+                {@const review = item.review}
+                <QuestionPane
+                  {review}
+                  answering={resolving}
+                  outcome={outcome?.reviewId === review.id ? outcome : undefined}
+                  onAnswer={(answer) =>
+                    onAnswer(
+                      review,
+                      answer,
+                      advancer(
+                        item.key,
+                        REVIEWS_COPY.announce(REVIEWS_COPY.announced.answered, reviewTitle(review)),
                       ),
-                    ),
-                  )}
-              />
-            {/if}
-          {/key}
-        </div>
-      {/snippet}
-    </ListDetail>
+                    )}
+                />
+              {:else}
+                <EngineReviewPane
+                  review={item.review}
+                  {submitting}
+                  {submitGate}
+                  {viewer}
+                  onSubmit={(reviewId, submission) =>
+                    onSubmit(
+                      reviewId,
+                      submission,
+                      advancer(
+                        item.key,
+                        REVIEWS_COPY.announce(
+                          engineDecisionWord(submission.decision),
+                          reviewTitle(item.review),
+                        ),
+                      ),
+                    )}
+                />
+              {/if}
+            {/key}
+          </div>
+        {/snippet}
+      </ListDetail>
+    </div>
   </div>
 {/if}
