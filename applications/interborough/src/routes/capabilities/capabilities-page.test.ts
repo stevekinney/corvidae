@@ -1004,6 +1004,16 @@ describe('a skill’s page', () => {
     expect(section.hasAttribute('data-clamped')).toBe(false);
     // The raw file is a disclosure, last in the section.
     expect(detail.querySelector('[data-testid="skill-instructions-raw"]')).not.toBeNull();
+    // A flat disclosure, as SchemaView's is, not a bordered box inside the detail.
+    expect(
+      detail
+        .querySelector('[data-testid="skill-instructions-raw"]')
+        ?.closest('[data-cinder-variant]')
+        ?.getAttribute('data-cinder-variant') ??
+        detail
+          .querySelector('[data-testid="skill-instructions-raw"]')
+          ?.getAttribute('data-cinder-variant'),
+    ).toBe('flat');
     // Used by says when the agent loads it, in the skill's own words.
     await waitFor(() =>
       expect(

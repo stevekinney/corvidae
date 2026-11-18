@@ -94,7 +94,8 @@
         {copy.truncated}
       </p>
     {/if}
-    <Collapsible trigger={copy.raw} data-testid="skill-instructions-raw">
+    <!-- Flat, as SchemaView's own disclosure is: not a box inside the detail's box. -->
+    <Collapsible variant="flat" trigger={copy.raw} data-testid="skill-instructions-raw">
       <pre
         class="ib-skill-instructions__raw"
         aria-label={copy.rawLabel(heading)}>{instructions.text}</pre>

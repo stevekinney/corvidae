@@ -327,7 +327,10 @@
         >
       </div>
     </Alert>
-  {:else}
+  {:else if !(source.state === 'needs-authorization' && table.remembered && stateWords === sourceStateDescription(source.state))}
+    <!-- A kept listing is shown under the status, and the line under its table says the tools are
+         paused until the sign-in: saying "sign in so it can list its tools" above a table that
+         lists them is false and a third mention of the same need. -->
     <p class="ib-capability__prose" data-testid="source-state-description">{stateWords}</p>
   {/if}
 

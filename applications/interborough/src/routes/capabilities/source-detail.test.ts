@@ -286,6 +286,10 @@ describe('a source that needs a sign-in', () => {
     expect(table.hasAttribute('data-paused')).toBe(true);
     expect(rowOf(detail, 'ledger__post_entry').querySelector('select')?.value).toBe('on-changes');
     expect(textIn(detail, '[data-testid="tools-paused"]')).toBe(copy.source.tools.paused);
+    // The need to sign in is said by the status and the line under the table, not a third time by a
+    // sentence that says the server cannot list its tools above a table that lists them.
+    expect(detail.querySelector('[data-testid="source-state-description"]')).toBeNull();
+    expect(detail.textContent).not.toContain(copy.source.stateDescriptions['needs-authorization']);
   });
 
   test('a source that failed shows its last listing, paused, and says the tools wait for it', async () => {
