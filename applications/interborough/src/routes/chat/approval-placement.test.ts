@@ -62,11 +62,25 @@ describe('placing the approval again when the header grows', () => {
     setHeader(transcript, 59);
     expect(approvalPlacementShift(transcript, card)).toBe(0);
 
-    // The header settles at 115px: the line is 52 + 127 = 179, and the row at 123 must come down.
+    // The header settles at 115px: the line is 52 + 127 = 179. From there to the end fade's line
+    // (487 less 32) is 276px and the unit is 302px, so it cannot all show. The decision row, the
+    // card's bottom, outranks the row that labels it: the unit comes down only until that bottom is
+    // on the fade line, the card's top is clear of the header, and the label passes under it.
     setHeader(transcript, 115);
     const shift = approvalPlacementShift(transcript, card);
-    expect(shift).toBe(-56);
+    expect(shift).toBe(-30);
+    expect(425 - shift!).toBe(487 - 32);
+    expect(180 - shift!).toBeGreaterThanOrEqual(179);
+  });
+
+  test('a unit that fits under the grown header rests with its labelling row clear of it', () => {
+    const { transcript, card } = layout();
+    // A shorter card: the unit is 222px and the room under the 115px header is 276px.
+    card.getBoundingClientRect = () => ({ top: 180, bottom: 345, left: 0, right: 320 }) as DOMRect;
+    setHeader(transcript, 115);
+    const shift = approvalPlacementShift(transcript, card);
     expect(123 - shift!).toBeGreaterThanOrEqual(179);
+    expect(345 - shift!).toBeLessThanOrEqual(487 - 32);
   });
 
   test('the header changing places it again while the placement is in force, with no other gate', () => {

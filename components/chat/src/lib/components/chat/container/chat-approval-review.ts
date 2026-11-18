@@ -212,12 +212,18 @@ export function approvalReminderRoom(root: ParentNode | null | undefined): numbe
 }
 
 /**
+ * The custom property a host sets, on Chat or any ancestor of it, to the height of a header it
+ * lays over the top of the transcript. Chat owns the name; a host writes it through this constant.
+ */
+export const CHAT_OVERLAY_INSET_START_PROPERTY = '--cinder-chat-overlay-inset-start';
+
+/**
  * The height of a header the host lays over the top of the transcript
  * (`--cinder-chat-overlay-inset-start`), or 0 when none is.
  */
 export function approvalOverlayCovered(transcript: HTMLElement): number {
   const covered = Number.parseFloat(
-    getComputedStyle(transcript).getPropertyValue('--cinder-chat-overlay-inset-start'),
+    getComputedStyle(transcript).getPropertyValue(CHAT_OVERLAY_INSET_START_PROPERTY),
   );
   return Number.isFinite(covered) && covered > 0 ? covered : 0;
 }

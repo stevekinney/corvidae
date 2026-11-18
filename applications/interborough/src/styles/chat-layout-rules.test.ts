@@ -59,7 +59,10 @@ describe('the chat page’s layout', () => {
     expect(rule).toMatch(/inset-inline:\s*0/);
     const source = await read('../routes/chat/chat-conversation.svelte');
     expect(source).toContain('class="weft-chat-head cinder-translucent-surface"');
-    expect(source).toContain("'--cinder-chat-overlay-inset-start'");
+    // Chat owns the property's name; the page writes it through Chat's constant.
+    expect(source).toContain(
+      'owner.style.setProperty(\n        CHAT_OVERLAY_INSET_START_PROPERTY,',
+    );
   });
 
   test('the conversation is one centred reading column of at most 760px', async () => {
