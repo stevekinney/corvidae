@@ -24,7 +24,7 @@ export const productOracles: Record<string, ProductOracle> = {
     text: 'Open alert dialog',
     behavior: 'alert-dialog',
   },
-  'approval-card': { selector: `[class*="cinder-approval-card"]`, text: 'deploy-cloud' },
+  'approval-card': { selector: `[class*="cinder-approval-card"]`, text: 'Run the release script?' },
   'aspect-ratio': { selector: `[class*="cinder-aspect-ratio"]`, text: '16:9' },
   autocomplete: { selector: `[class*="cinder-autocomplete"]`, text: 'Destination city' },
   avatar: { selector: `[class*="cinder-avatar"]`, descendant: 'img' },

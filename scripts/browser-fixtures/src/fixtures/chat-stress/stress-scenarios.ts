@@ -16,6 +16,7 @@ import {
   updateStreamingMessage,
   type ChatApprovalDetails,
   type ChatCapabilities,
+  type ChatLabels,
   type ChatTurnState,
   type ConversationHistory,
   type Message,
