@@ -156,7 +156,8 @@
       settle(standing);
     };
     window.addEventListener('message', listen);
-    // poll-reason: timer — a window closed by the person posts nothing, and no event says so.
+    // A window closed by the person posts nothing, and no event says so.
+    // poll-reason: timer
     const watch = setInterval(() => {
       if (popup.closed) {
         clearInterval(watch);
