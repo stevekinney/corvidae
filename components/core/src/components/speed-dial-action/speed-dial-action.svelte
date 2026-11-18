@@ -7,7 +7,7 @@
 
 <script lang="ts">
   import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
-  import FloatingAction from '../floating-action/floating-action.svelte';
+  import FloatingAction from '@lostgradient/floating-action/components/floating-action/floating-action.svelte';
   import { isRedispatchedPortaledEvent } from '../portal/portal.utilities.svelte.ts';
   import { getSpeedDialContext } from '../speed-dial/speed-dial.context.ts';
   import type { SpeedDialActionProps } from './speed-dial-action.types.ts';

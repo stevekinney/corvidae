@@ -17,10 +17,12 @@ const skeleton = await sheet('./skeleton.css');
 const stackedListItem = await sheet('../stacked-list-item/stacked-list-item.css');
 const dataList = await sheet('../data-list/data-list.css');
 const groupedListItem = await sheet('../grouped-list-item/grouped-list-item.css');
-const formField = await sheet('../form-field/form-field.css');
-const formSection = await sheet('../form-section/form-section.css');
+const formField = await sheet('../../../../form-field/src/components/form-field/form-field.css');
+const formSection = await sheet(
+  '../../../../form-section/src/components/form-section/form-section.css',
+);
 const input = await sheet('../input/input.css');
-const card = await sheet('../card/card.css');
+const card = await sheet('../../../../card/src/components/card/card.css');
 const feed = await sheet('../feed/feed.css');
 const tokens = await sheet('../../../../tokens/src/styles/tokens-base.css');
 const foundation = await sheet('../../../../foundation/src/styles/foundation.css');

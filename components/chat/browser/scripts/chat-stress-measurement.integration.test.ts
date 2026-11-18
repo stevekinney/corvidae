@@ -1462,7 +1462,7 @@ describe('chat stress visual measurement', () => {
     // The shipped stylesheet on the real markup of a notice: a glyph, the words, and an action that
     // is stacked under the words on a phone and beside them on a wide notice.
     const stylesheet = Bun.file(
-      new URL('../../../core/src/components/callout/callout.css', import.meta.url),
+      new URL('../../../callout/src/components/callout/callout.css', import.meta.url),
     ).text();
     const glyph =
       '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>';

@@ -5,7 +5,7 @@
   import DropdownItem from '../dropdown-item/dropdown-item.svelte';
   import DropdownMenu from '../dropdown-menu/dropdown-menu.svelte';
   import DropdownTrigger from '../dropdown-trigger/dropdown-trigger.svelte';
-  import Link from '../link/link.svelte';
+  import Link from '@lostgradient/link/components/link/link.svelte';
   import Select from '../select/select.svelte';
   import Toggle from '../toggle/toggle.svelte';
   import StaleRegion from './stale-region.svelte';

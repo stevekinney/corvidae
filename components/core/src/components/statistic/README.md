@@ -10,13 +10,13 @@ Single metric tile displaying a labelled numeric value with optional trend or un
 
 ## Choosing something else
 
-- Code-change line counts (+/- additions and removals) — use [`DiffStatistics`](../diff-statistics/README.md), which is purpose-built for that display.
+- Code-change line counts (+/- additions and removals) — use [`DiffStatistics`](../../../../diff-statistics/src/components/diff-statistics/README.md), which is purpose-built for that display.
 - Long lists of data points — use a [`Table`](../table/README.md) or [`DataList`](../data-list/README.md) instead.
 
 ## Related components
 
 - [`StatisticGroup`](../statistic-group/README.md) — grid wrapper for multiple `Statistic` tiles with shared layout.
-- [`DiffStatistics`](../diff-statistics/README.md) — specialised display for added, modified, and removed line counts.
+- [`DiffStatistics`](../../../../diff-statistics/src/components/diff-statistics/README.md) — specialised display for added, modified, and removed line counts.
 
 ## Usage
 

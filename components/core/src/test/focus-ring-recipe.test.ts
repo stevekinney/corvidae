@@ -47,7 +47,9 @@ const tokensBaseCss = loadCss('../../../tokens/src/styles/tokens-base.css');
 // transparent-outline + var(--_cinder-focus-ring-shadow) recipe from issue #460's
 // remediation set; Button diverges on purpose, composing its ring from
 // var(--_cinder-button-ring, ...) so variants can retint it.
-const mediaControlsCss = loadCss('../components/_internal/media-controls.css');
+const mediaControlsCss = loadCss(
+  '../../../media-player/src/components/_internal/media-controls.css',
+);
 const permissionMatrixCss = loadCss('../components/permission-matrix/permission-matrix.css');
 const shareCardCss = loadCss('../components/share-card/share-card.css');
 const transferListCss = loadCss('../components/transfer-list/transfer-list.css');
@@ -56,7 +58,9 @@ const menuBarCss = loadCss('../components/menu-bar/menu-bar.css');
 
 // Focus-ring sweep targets (15f4d777) — colored outline-only recipes converted
 // to the shared Strategy B / B-inset recipe.
-const accordionItemCss = loadCss('../components/accordion-item/accordion-item.css');
+const accordionItemCss = loadCss(
+  '../../../accordion/src/components/accordion-item/accordion-item.css',
+);
 const collapsibleCss = loadCss('../components/collapsible/collapsible.css');
 const drawerCss = loadCss('../components/drawer/drawer.css');
 const jsonSchemaEditorCss = loadCss('../components/json-schema-editor/json-schema-editor.css');
@@ -966,7 +970,7 @@ describe('filled controls paint a gap before the ring (COR-1498)', () => {
     },
     {
       name: 'Calendar range start',
-      source: css('../components/calendar/calendar.css'),
+      source: css('../../../calendar/src/components/calendar/calendar.css'),
       selector: '.cinder-calendar__day[data-range-start]:focus-visible',
       expected: FILLED_BOX_SHADOW,
     },

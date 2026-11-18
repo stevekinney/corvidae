@@ -4,7 +4,7 @@
    * mismatched ids — the FormField's id is "field-id" but the Input's id
    * is "input-id". Used to test the dev-only id-mismatch console.warn.
    */
-  import FormField from '../../components/form-field/form-field.svelte';
+  import FormField from '@lostgradient/form-field/components/form-field/form-field.svelte';
   import Input from '../../components/input/input.svelte';
 </script>
 

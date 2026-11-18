@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Card } from './index.ts';
+  import { Card } from '@lostgradient/card/components/card/index.ts';
 </script>
 
 <div class="card-suggested-fixture">

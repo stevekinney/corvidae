@@ -215,7 +215,7 @@ describe('FindBar', () => {
     const css = readFileSync(new URL('./find-bar.css', import.meta.url), 'utf8');
 
     expect(css).toContain("@import '../button/button.css';");
-    expect(css).toContain("@import '../form-field/form-field.css';");
+    expect(css).toContain("@import '@lostgradient/form-field/form-field.css';");
     expect(css).toContain("@import '../input/input.css';");
   });
 });

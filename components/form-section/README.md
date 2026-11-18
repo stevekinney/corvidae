@@ -1,0 +1,3 @@
+# @lostgradient/form-section
+
+This package holds the `form-section` component, which the Cinder package split (P-COR-101) moved out of `@lostgradient/cinder`. `@lostgradient/cinder` re-exports what it holds.

@@ -1,5 +1,5 @@
 @layer cinder.tokens, cinder.foundation, cinder.components, cinder.utilities;
-@import '../grid/grid.css';
+@import '@lostgradient/grid/grid.css';
 @layer cinder.components {
   /* ========================================
  * GRID LIST

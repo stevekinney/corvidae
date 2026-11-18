@@ -31,7 +31,7 @@
 <script lang="ts">
   import { onDestroy } from 'svelte';
   import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
-  import Alert from '../alert/alert.svelte';
+  import Alert from '@lostgradient/alert/components/alert/alert.svelte';
   import Badge from '../badge/badge.svelte';
   import Button from '../button/button.svelte';
   import Checkbox from '../checkbox/checkbox.svelte';

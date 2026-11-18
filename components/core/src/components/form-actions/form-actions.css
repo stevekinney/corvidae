@@ -1,5 +1,5 @@
 @layer cinder.tokens, cinder.foundation, cinder.components, cinder.utilities;
-@import '../alert/alert.css';
+@import '@lostgradient/alert/alert.css';
 @import '../button/button.css';
 
 @layer cinder.components {

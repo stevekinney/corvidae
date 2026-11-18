@@ -4,7 +4,7 @@
 
 <script lang="ts">
   import Badge from '../badge/badge.svelte';
-  import Grid from '../grid/grid.svelte';
+  import Grid from '@lostgradient/grid/components/grid/grid.svelte';
   import Tooltip from '../tooltip/tooltip.svelte';
   import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
   import type { ParameterFieldProps } from './parameter-field.types.ts';

@@ -7,7 +7,8 @@ import { requiredInstance, setupHappyDom } from '@lostgradient/testing';
 setupHappyDom();
 
 const { cleanup, render } = await import('@testing-library/svelte');
-const { default: FormField } = await import('./form-field.svelte');
+const { default: FormField } =
+  await import('@lostgradient/form-field/components/form-field/form-field.svelte');
 const { default: FormFieldInputFixture } = await import('./form-field-input-fixture.test.svelte');
 
 afterEach(() => {
@@ -96,7 +97,9 @@ describe('FormField error presentation (rows 42l, 34d, 34m, 34t)', () => {
   });
 
   test('the error action is an accent link and the glyph shares a block with the words (rows 34d, 47k)', async () => {
-    const css = await Bun.file(new URL('./form-field.css', import.meta.url)).text();
+    const css = await Bun.file(
+      new URL('../../../../form-field/src/components/form-field/form-field.css', import.meta.url),
+    ).text();
     const action =
       /\.cinder-form-field__error :where\(a, button\) \{([^}]*)\}/s.exec(css)?.[1] ?? '';
     expect(action).toContain('color: var(--cinder-accent-text)');

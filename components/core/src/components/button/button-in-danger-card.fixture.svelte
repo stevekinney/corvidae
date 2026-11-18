@@ -1,5 +1,5 @@
 <script lang="ts">
-  import Card from '../card/card.svelte';
+  import Card from '@lostgradient/card/components/card/card.svelte';
   import Button from './button.svelte';
 </script>
 

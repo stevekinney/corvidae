@@ -1,7 +1,7 @@
 @layer cinder.tokens, cinder.foundation, cinder.components, cinder.utilities;
 /* The stacked form draws Radio's own indicator. radio-group.css overrides form-field.css's column
  * direction at equal specificity, so it must come after it wherever it is first pulled in. */
-@import '../form-field/form-field.css';
+@import '@lostgradient/form-field/form-field.css';
 @import '../radio-group/radio-group.css';
 
 @layer cinder.components {

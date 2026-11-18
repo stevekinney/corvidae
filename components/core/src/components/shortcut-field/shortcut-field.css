@@ -1,6 +1,6 @@
 @layer cinder.tokens, cinder.foundation, cinder.components, cinder.utilities;
-@import '../kbd/kbd.css';
-@import '../form-field/form-field.css';
+@import '@lostgradient/kbd/kbd.css';
+@import '@lostgradient/form-field/form-field.css';
 
 @layer cinder.components {
   /* The outer element is now FormFieldFrame's `.cinder-form-field` root

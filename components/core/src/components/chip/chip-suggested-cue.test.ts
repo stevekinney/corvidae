@@ -14,7 +14,9 @@ const { render } = await import('@testing-library/svelte');
 const { default: Chip } = await import('./chip.svelte');
 
 const chipCss = await Bun.file(new URL('./chip.css', import.meta.url)).text();
-const cardCss = await Bun.file(new URL('../card/card.css', import.meta.url)).text();
+const cardCss = await Bun.file(
+  new URL('../../../../card/src/components/card/card.css', import.meta.url),
+).text();
 const rowCss = await Bun.file(
   new URL('../grouped-list-item/grouped-list-item.css', import.meta.url),
 ).text();

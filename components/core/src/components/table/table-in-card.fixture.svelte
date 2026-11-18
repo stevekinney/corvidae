@@ -9,7 +9,7 @@
 </script>
 
 <script lang="ts">
-  import Card from '../card/card.svelte';
+  import Card from '@lostgradient/card/components/card/card.svelte';
   import TableBody from '../table-body/table-body.svelte';
   import TableCell from '../table-cell/table-cell.svelte';
   import TableHeaderCell from '../table-header-cell/table-header-cell.svelte';
