@@ -45,6 +45,19 @@ describe('RadioGroup', () => {
     expect(container.querySelector('legend')?.textContent?.trim()).toBe('Pick one');
   });
 
+  test('labelVisible={false} keeps the legend as the group’s name, drawn for screen readers only', () => {
+    const { container } = render(Wrapper, {
+      label: 'When to run',
+      labelVisible: false,
+      name: 'when',
+      value: 'now',
+      options: [{ id: 'when-now', value: 'now', label: 'Now' }],
+    });
+    const legend = requiredInstance(container.querySelector('fieldset > legend'), HTMLElement);
+    expect(legend.textContent?.trim()).toBe('When to run');
+    expect(legend.classList.contains('cinder-sr-only')).toBe(true);
+  });
+
   test('renders one radio input per option, sharing a name', () => {
     const { container } = render(Wrapper, {
       name: 'choice',

@@ -721,11 +721,21 @@ describe('the design of the page', () => {
   test('names a titled workflow with its identifier beside it once, and says what it is for', async () => {
     const view = open('/workflows/release-notes/run');
     const root = await ready(view.container);
-    expect(words(view.getByRole('heading', { level: 1 }))).toBe('Run Release notes release-notes');
-    expect(root.querySelector('[data-testid="run-setup-identifier"]')?.textContent).toBe(
-      'release-notes',
-    );
+    // Design correction 2, N1: the identifier is the header's own, small beside the heading.
+    expect(words(view.getByRole('heading', { level: 1 }))).toBe('Run Release notes');
+    const identifier = root.querySelector('.cinder-page-header__identifier');
+    expect(identifier?.textContent).toBe('release-notes');
+    expect(identifier?.closest('h1')).toBeNull();
     expect(root.textContent).toContain('Collects merged changes into a draft.');
+  });
+
+  test('design correction 2, N4: says When once, the choice’s own name kept for screen readers', async () => {
+    const view = open('/workflows/release-notes/run');
+    const root = await ready(view.container);
+    const legend = root.querySelector('fieldset.cinder-radio-group > legend');
+    expect(legend?.textContent?.trim()).toBe(COPY.whenLabel);
+    expect(legend?.classList.contains('cinder-sr-only')).toBe(true);
+    expect(view.getByRole('heading', { name: COPY.whenHeading })).toBeTruthy();
   });
 
   test('names a file with no title by its identifier alone', async () => {
@@ -923,9 +933,7 @@ describe('On a schedule, for a file', () => {
   test('says it is a schedule in the heading, the breadcrumb, the input lead and the button', async () => {
     const view = await schedule();
     await waitFor(() =>
-      expect(words(view.getByRole('heading', { level: 1 }))).toBe(
-        'Schedule Release notes release-notes',
-      ),
+      expect(words(view.getByRole('heading', { level: 1 }))).toBe('Schedule Release notes'),
     );
     expect(view.root.textContent).toContain(COPY.scheduleInputLead);
     expect(primary(view.root).textContent?.trim()).toBe(COPY.scheduleAction);
@@ -1020,7 +1028,7 @@ describe('On a schedule, for a file', () => {
     );
     await waitFor(() => expect(primary(view.root).textContent?.trim()).toBe(COPY.startAction));
     expect(field(view.root, 'Branch').value).toBe('main');
-    expect(words(view.getByRole('heading', { level: 1 }))).toBe('Run Release notes release-notes');
+    expect(words(view.getByRole('heading', { level: 1 }))).toBe('Run Release notes');
   });
 });
 

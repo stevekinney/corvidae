@@ -178,13 +178,15 @@
   }
 </script>
 
+<!-- A titled workflow's identifier is PageHeader's own, small beside the title (note N1); a file
+     with no title is named by its identifier in the heading itself. -->
 {#snippet headingText()}
   {scheduling
     ? copy.scheduleVerb
-    : copy.runVerb}{' '}{#if identity.titled}{identity.name}{' '}{/if}<code
-    class="ib-identifier"
-    data-testid="run-setup-identifier">{type}</code
-  >
+    : copy.runVerb}{' '}{#if identity.titled}{identity.name}{:else}<code
+      class="ib-workflow-row__id"
+      data-testid="run-setup-identifier">{type}</code
+    >{/if}
 {/snippet}
 
 {#snippet notice()}
@@ -237,6 +239,7 @@
     headingLevel={1}
     title={headingText}
     titleText={`${scheduling ? copy.scheduleVerb : copy.runVerb} ${identity.name}`}
+    {...identity.titled ? { identifier: type } : {}}
     {...identity.description === null ? {} : { description: identity.description }}
   />
 

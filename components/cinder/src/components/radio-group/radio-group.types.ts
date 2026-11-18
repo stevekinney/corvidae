@@ -30,6 +30,12 @@ export type RadioGroupProps = {
    * is a `<legend>` because the group is a fieldset.
    */
   label?: string;
+  /**
+   * Whether the label is drawn. `false` keeps it as the group's accessible name only, for a group
+   * that sits under a heading already saying the same thing ("When" over "When to run").
+   * @default true
+   */
+  labelVisible?: boolean;
   /** Helper text displayed below the group; wired via `aria-describedby` on the fieldset. */
   description?: string;
   /** Validation error message; sets `aria-invalid="true"` on the group's children. */

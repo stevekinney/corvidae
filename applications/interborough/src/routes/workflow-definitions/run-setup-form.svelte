@@ -498,6 +498,7 @@
       <RadioGroup
         name="run-setup-when"
         label={copy.whenLabel}
+        labelVisible={false}
         variant="card"
         bind:value={whenChoice}
       >

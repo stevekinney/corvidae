@@ -31,6 +31,7 @@ Each option's circle sits beside the first line of its label, never the middle o
 | `disabled` | `boolean` | no | — | Disables the entire group. |
 | `error` | `string` | no | — | Validation error message; sets `aria-invalid="true"` on the group's children. |
 | `label` | `string` | no | — | Visible group caption. Rendered as a `<legend>` inside the `<fieldset>`. Named `label` for consistency with every other form control — the element is a `<legend>` because the group is a fieldset. |
+| `labelVisible` | `boolean` | no | `true` | Whether the label is drawn. `false` keeps it as the group's accessible name only, for a group that sits under a heading already saying the same thing ("When" over "When to run"). |
 | `name` | `string` | yes | — | Shared `name` for all radios in the group; required for native form submission. |
 | `required` | `boolean` | no | — | When true, marks the group's radios as required for form submission. |
 | `value` | `string` | no | — | Bound selected value. |

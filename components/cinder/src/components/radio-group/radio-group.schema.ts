@@ -18,6 +18,12 @@ const schema = {
       description:
         'Visible group caption. Rendered as a `<legend>` inside the `<fieldset>`.\nNamed `label` for consistency with every other form control — the element\nis a `<legend>` because the group is a fieldset.',
     },
+    labelVisible: {
+      type: 'boolean',
+      description:
+        'Whether the label is drawn. `false` keeps it as the group\'s accessible name only, for a group\nthat sits under a heading already saying the same thing ("When" over "When to run").',
+      default: true,
+    },
     description: {
       type: 'string',
       description:

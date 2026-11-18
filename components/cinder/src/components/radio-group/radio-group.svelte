@@ -31,6 +31,7 @@
     value = $bindable(''),
     name,
     label: legend,
+    labelVisible = true,
     description,
     error,
     disabled = false,
@@ -101,7 +102,7 @@
   data-variant={variant === 'card' ? 'card' : undefined}
 >
   {#if legend}
-    <legend class="cinder-radio-group__legend">
+    <legend class={classNames('cinder-radio-group__legend', !labelVisible && 'cinder-sr-only')}>
       {legend}
       {#if required}
         <span class="cinder-_required-marker" aria-hidden="true"></span>

@@ -4,6 +4,7 @@
     name: string;
     value?: string;
     label?: string;
+    labelVisible?: boolean;
     description?: string;
     error?: string;
     disabled?: boolean;
@@ -29,6 +30,7 @@
     name,
     value = $bindable(''),
     label,
+    labelVisible,
     description,
     error,
     disabled = false,
@@ -42,6 +44,7 @@
   {name}
   bind:value
   {...label !== undefined ? { label } : {}}
+  {...labelVisible !== undefined ? { labelVisible } : {}}
   {...description !== undefined ? { description } : {}}
   {...error !== undefined ? { error } : {}}
   {...variant !== undefined ? { variant } : {}}
