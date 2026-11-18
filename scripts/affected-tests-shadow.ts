@@ -121,13 +121,14 @@ function changedBetween(root: string, base: string, revision: string): string[] 
     .filter(Boolean);
 }
 
-function replayRevision(
+export function replayRevision(
   root: string,
   input: { name: string; revision: string; base: string; provider: unknown; failureLog?: string },
 ) {
   const changed = changedBetween(root, input.base, input.revision);
   const tree = treeAt(root, input.revision);
   const selection = selectTests({ changed, tree, workspaces: workspacesAt(tree) });
+  const selected = selection.workspaces.flatMap((workspace) => [...workspace.tests.keys()]);
   const jobs = (input.provider as { jobs?: { name?: string; conclusion?: string }[] }).jobs ?? [];
   const fullRunFailures = jobs
     .filter((job) => job.conclusion === 'failure')
@@ -147,7 +148,7 @@ function replayRevision(
     revision: input.revision,
     base: input.base,
     changed,
-    selected: selection.workspaces.flatMap((workspace) => [...workspace.tests.keys()]),
+    selected,
     fullRunFailures,
     attributedFailures,
     omittedFailures: omitted,

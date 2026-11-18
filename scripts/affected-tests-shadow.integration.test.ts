@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 
-import { omittedFailures } from './affected-tests-shadow.ts';
+import { omittedFailures, replayRevision } from './affected-tests-shadow.ts';
 
 describe('shadow failure accounting', () => {
   test('records an attributable selected failure without an omission', () => {
@@ -20,5 +20,17 @@ describe('shadow failure accounting', () => {
 
   test('does not turn absent failure evidence into a miss', () => {
     expect(omittedFailures(['scripts/a.test.ts'], [])).toEqual([]);
+  });
+
+  test('replays a revision through the supported entrypoint without a stale selection reference', () => {
+    const replay = replayRevision(process.cwd(), {
+      name: 'entrypoint control',
+      revision: '5888509145ffe2884eced68e8ca11f71c1d16e06',
+      base: '5888509145ffe2884eced68e8ca11f71c1d16e06',
+      provider: { jobs: [] },
+    });
+    expect(replay.changed).toEqual([]);
+    expect(replay.selected).toEqual([]);
+    expect(replay.omittedFailures).toEqual([]);
   });
 });
