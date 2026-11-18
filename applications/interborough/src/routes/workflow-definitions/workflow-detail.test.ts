@@ -1053,7 +1053,12 @@ describe('design correction: the header of a file that cannot load (row 62v)', (
         refund: [
           historyEntry({
             description,
-            trigger: { kind: 'schedule', name: 'Weekly refund audit', spec: '0 11 * * 1' },
+            trigger: {
+              kind: 'schedule',
+              name: 'Weekly refund audit',
+              spec: '0 11 * * 1',
+              timezone: 'America/Chicago',
+            },
           }),
         ],
       },

@@ -334,7 +334,14 @@ export function triggerSummary(
 ): TriggerSummary | null {
   if (trigger === null) return null;
   if (trigger['kind'] === 'schedule' && typeof trigger['spec'] === 'string') {
-    return { kind: 'schedule', words: cadenceText(specCadence(trigger['spec'])).full };
+    // A cron is read in the zone the file names (UTC when it names none), as the Bureau reads it,
+    // so a file's 11:00 AM in Chicago never reads as 5:00 AM (design correction, row 62v).
+    const zone = trigger['timezone'];
+    const cadence = {
+      ...specCadence(trigger['spec']),
+      ...(typeof zone === 'string' ? { timeZone: zone } : {}),
+    };
+    return { kind: 'schedule', words: cadenceText(cadence).full };
   }
   if (trigger['kind'] === 'signal' && typeof trigger['name'] === 'string') {
     return { kind: 'signal', name: trigger['name'] };

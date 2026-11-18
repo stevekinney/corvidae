@@ -430,6 +430,20 @@ describe('a schedule trigger’s spec in words', () => {
     });
   });
 
+  test('design correction: reads a cron in the zone the file names, never as UTC (row 62v)', () => {
+    const viewer = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    const inChicago = triggerSummary({
+      kind: 'schedule',
+      spec: '0 11 * * 1',
+      timezone: 'America/Chicago',
+    });
+    const words = inChicago?.kind === 'schedule' ? inChicago.words : '';
+    // The time is said in the viewer's zone, with the schedule's own beside it where they differ,
+    // so 11:00 AM in Chicago is in the words wherever the viewer is.
+    expect(words).toContain('11:00 AM');
+    if (viewer === 'America/Chicago') expect(words).toBe('Every Monday at 11:00 AM');
+  });
+
   test('names a signal trigger by its signal, and says nothing for a trigger it cannot read', () => {
     expect(triggerSummary({ kind: 'signal', name: 'deploy' })).toEqual({
       kind: 'signal',
