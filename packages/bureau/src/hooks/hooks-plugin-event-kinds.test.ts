@@ -148,6 +148,29 @@ describe('create', () => {
     expect(await h.hooks.list()).toEqual([]);
   });
 
+  it('refuses an entry that is not a string, saying each event kind must be a string', async () => {
+    const { h } = plugins();
+    const refused = await refusal(h.hook([7 as unknown as string]));
+    expect(refused.issues[0]).toEqual({
+      path: ['events'],
+      message: 'Each event kind must be a string',
+    });
+  });
+
+  it('refuses an entry longer than the 256 characters the wire allows, given or once pinned, at events', async () => {
+    // 254 characters bare, 260 once pinned.
+    const long = `reports:${'x'.repeat(246)}`;
+    const { h } = plugins([{ kind: long, version: '1.0.0' }]);
+    const given = await refusal(h.hook([`run.settled${'x'.repeat(250)}`]));
+    expect(given.issues[0]?.path).toEqual(['events']);
+    expect(given.issues[0]?.message).toContain('at most 256 characters');
+    const pinned = await refusal(h.hooks.create({ events: [long], action: { type: 'notify' } }));
+    expect(long.length).toBeLessThanOrEqual(256);
+    expect(pinned.issues[0]?.path).toEqual(['events']);
+    expect(pinned.issues[0]?.message).toContain('longer than 256 characters');
+    expect(await h.hooks.list()).toEqual([]);
+  });
+
   it('accepts a notify hook on a plugin’s kind, and a plugin action on another plugin’s kind', async () => {
     const { h } = plugins();
     const notify = await h.hooks.create({ events: [OWN], action: { type: 'notify' } });

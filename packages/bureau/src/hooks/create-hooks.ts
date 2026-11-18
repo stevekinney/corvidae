@@ -183,6 +183,9 @@ export const HOOK_TEST_EVENT_KIND = 'hook.test';
 /** The most event kinds one hook may list. */
 const MAXIMUM_EVENT_KINDS = 64;
 
+/** The longest entry of a hook's `events`, as given and as stored: a plugin kind's pin included. */
+export const HOOK_EVENT_KIND_MAXIMUM_LENGTH = 256;
+
 /** The shortest and longest signing secret, in characters. */
 export const HOOK_SECRET_MINIMUM_LENGTH = 16;
 export const HOOK_SECRET_MAXIMUM_LENGTH = 256;
@@ -1015,11 +1018,23 @@ function checkedEvents(
   const byKind = new Map<string, string>();
   const missing = new Map<string, string>();
   for (const kind of events) {
-    if (typeof kind !== 'string') {
-      invalid('events', `"${String(kind)}" is not a published Bureau event kind`);
+    if (typeof kind !== 'string') invalid('events', 'Each event kind must be a string');
+    if (kind.length > HOOK_EVENT_KIND_MAXIMUM_LENGTH) {
+      invalid(
+        'events',
+        `An event kind is at most ${HOOK_EVENT_KIND_MAXIMUM_LENGTH} characters, and "${kind.slice(0, 40)}…" is ${kind.length}`,
+      );
     }
     const input = hookEventInputOf(kind, declared);
     if (!input.ok && input.reason === 'unknown') invalid('events', input.message);
+    // A kind within the bound can pass it once pinned; the stored entry is bounded too, so the
+    // hook's own events are never refused when they are sent back.
+    if (input.entry.length > HOOK_EVENT_KIND_MAXIMUM_LENGTH) {
+      invalid(
+        'events',
+        `"${kind.slice(0, 40)}…" pinned to its version is longer than ${HOOK_EVENT_KIND_MAXIMUM_LENGTH} characters`,
+      );
+    }
     const listed = hookEventKindOf(input.entry);
     const previous = byKind.get(listed);
     if (previous !== undefined && !(missing.has(previous) && input.ok)) continue;

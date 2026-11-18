@@ -49,6 +49,7 @@ import { z } from 'zod';
 import { isSharedWebhook } from '../../hooks/workspace-hook-events.ts';
 import {
   type BureauHooks,
+  HOOK_EVENT_KIND_MAXIMUM_LENGTH,
   HOOK_SECRET_MAXIMUM_LENGTH,
   HOOK_SECRET_MINIMUM_LENGTH,
 } from '../../hooks/create-hooks.ts';
@@ -76,11 +77,8 @@ export type BureauHooksOperationHost = BureauOwnershipHost & {
 
 const hookId = z.string().min(1).max(256).describe('The identifier of the hook.');
 
-/** The longest event kind an entry of `events` may be, a plugin kind's pin included. */
-const EVENT_KIND_MAXIMUM_LENGTH = 256;
-
 const eventKinds = z
-  .array(z.string().min(1).max(EVENT_KIND_MAXIMUM_LENGTH))
+  .array(z.string().min(1).max(HOOK_EVENT_KIND_MAXIMUM_LENGTH))
   .min(1)
   .max(64)
   .describe(
