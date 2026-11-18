@@ -365,6 +365,49 @@ async function captureOffMode(page: Page, key: ArtifactKey): Promise<void> {
   });
 }
 
+/**
+ * Where a missing baseline's actual goes: `<test output>/<slug>/<name>-actual.png`, the path
+ * Playwright gives the actual of a failed comparison, which `baselines-from-run.ts` maps to the
+ * baseline it would create (`new`).
+ */
+export function missingBaselineActualPath(
+  key: ArtifactKey,
+  testInfo: Pick<TestInfo, 'outputPath'>,
+): string {
+  const [slug, fileName] = screenshotName(key);
+  return testInfo.outputPath(slug, `${fileName.replace(/\.png$/u, '')}-actual.png`);
+}
+
+/**
+ * Writes the page's screenshot as the missing baseline's actual before block mode fails. Without
+ * it a new fixture uploads nothing, and the baseline can only be a placeholder. A failure to write
+ * it never hides the missing-baseline error.
+ */
+export async function writeMissingBaselineActual(
+  page: Pick<Page, 'screenshot'>,
+  key: ArtifactKey,
+  testInfo: Pick<TestInfo, 'outputPath'>,
+  options?: CaptureScreenshotOptions,
+): Promise<string | undefined> {
+  const path = missingBaselineActualPath(key, testInfo);
+  try {
+    await mkdir(dirname(path), { recursive: true });
+    await page.screenshot({
+      path,
+      fullPage: false,
+      animations: 'disabled',
+      caret: 'hide',
+      ...(options?.masks !== undefined && options.masks.length > 0
+        ? { mask: masksToLocators(page as Page, options.masks) }
+        : {}),
+    });
+    return path;
+  } catch {
+    // The caller is about to throw the missing-baseline error, which is the failure to report.
+    return undefined;
+  }
+}
+
 async function captureBlockMode(
   page: Page,
   key: ArtifactKey,
@@ -378,6 +421,7 @@ async function captureBlockMode(
   const baseline = screenshotBaselinePath(key, testInfo);
   const guard = blockBaselineGuard(baseline, existsSync(baseline), testInfo.config.updateSnapshots);
   if (!guard.ok) {
+    await writeMissingBaselineActual(page, key, testInfo, options);
     throw new Error(guard.message);
   }
 
