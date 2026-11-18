@@ -1,3 +1,5 @@
+import { RETRY_LABEL } from '../../app/copy/views.ts';
+
 /**
  * The words the hooks pages (`/hooks`, `/hooks/new`, `/hooks/:hook`) use outside the view states,
  * which are `VIEW_COPY.hooks`. A hook is read as a sentence, so most of this is the pieces the
@@ -450,8 +452,9 @@ export const HOOKS_COPY = {
       },
       /** The buttons that send a delivery again. */
       retry: 'Retry delivery',
-      retryNow: 'Retry now',
-      /** The line beside Retry now: when the next try is due, from `nextTryWords` (`lib/format/next-try.ts`). */
+      /** Sends a delivery waiting out its backoff at once: the one label every page's retry has (COR-2489). */
+      retryNow: RETRY_LABEL,
+      /** The line beside the retry: when the next try is due, from `nextTryWords` (`lib/format/next-try.ts`). */
       nextTry: (when: string): string => `Next try in ${when}`,
       retried: {
         delivered: 'Retried. The delivery went through.',

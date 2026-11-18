@@ -6,6 +6,7 @@
 import { HttpClientError } from '@lostgradient/weft';
 import { describe, expect, test } from 'bun:test';
 
+import { RETRY_LABEL } from '../../app/copy/views.ts';
 import type { HookDelivery } from '../../lib/bureau-hooks.ts';
 import { ServerUnreachableError } from '../../lib/faults.ts';
 import { clockTime, dayLabel } from '../health/health-times.ts';
@@ -217,6 +218,12 @@ describe('sending a delivery again', () => {
       nextAttemptAt: START + 40_000,
     });
     expect(retryKind(waiting)).toBe('retry-now');
+  });
+
+  test('the retry of a delivery waiting on its next try has the one label every page’s retry has (COR-2489)', () => {
+    expect(HOOKS_COPY.editor.deliveries.retryNow).toBe(RETRY_LABEL);
+    // Sending a failed delivery again is a different action, and keeps its own words.
+    expect(HOOKS_COPY.editor.deliveries.retry).toBe('Retry delivery');
   });
 
   test('offers nothing for a delivered, stopped or mid-send delivery, or one with no try due', () => {
