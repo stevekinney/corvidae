@@ -132,8 +132,9 @@ export function overrideVersionView(
     summary: summarizeVersion({
       changedKeys: record.changedKeys,
       current: record.overrides,
-      previous: record.version === 1 ? {} : previous?.overrides,
-      first: false,
+      previous: previous?.overrides,
+      // A code agent's first saved version reads Created, as a file agent's does (design review 1).
+      first: record.version === 1,
     }),
   };
 }

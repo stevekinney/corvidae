@@ -72,6 +72,7 @@
     type AgentFault,
     type Effort,
   } from '../../lib/agent-definitions.ts';
+  import { agentLabel } from '../../lib/agent-label.ts';
   import { AGENT_TABS, agentTabPath, pluginOfAgent } from '../../lib/agent-paths.ts';
   import { getProviders } from '../../lib/host-providers.ts';
   import { keyedByOccurrence } from '../../lib/list-keys.ts';
@@ -82,7 +83,7 @@
     modelGroups,
     NO_RESTRICTIONS,
   } from '../agent-editor/agent-editor-models.ts';
-  import { providerDisplayName } from '../settings/models/format-model.ts';
+  import { formatContext, providerDisplayName } from '../settings/models/format-model.ts';
   import type { OverridesWriter } from './agent-overrides.ts';
   import AgentPluginNote from './agent-plugin-note.svelte';
   import AgentVersions from './agent-versions.svelte';
@@ -276,9 +277,24 @@
 
   /** What the chosen model can do, in one muted line. */
   const abilityLine = $derived.by(() => {
-    if (modelRow === undefined) return '';
-    const abilities = abilitiesOf(modelRow);
     const words = AGENT_EDITOR_COPY.model;
+    if (modelRow === undefined) {
+      // Row 38u: with no provider connected the catalog holds no row for the model, so the line
+      // is read from what the host knows of the provider's models.
+      // By its identifier or by one of its aliases (`anthropic/sonnet`).
+      const known = providers.data?.models.find(
+        (entry) =>
+          `${entry.provider}/${entry.model}` === model ||
+          entry.aliases.some((alias) => `${entry.provider}/${alias}` === model),
+      );
+      if (known === undefined) return '';
+      return [
+        ...(known.tools ? [words.abilities.tools] : []),
+        ...(known.images ? [words.abilities.images] : []),
+        words.context(formatContext(known.contextWindowTokens)),
+      ].join(', ');
+    }
+    const abilities = abilitiesOf(modelRow);
     return [
       ...abilities.has.map((ability) => words.abilities[ability]),
       words.context(abilities.context),
@@ -468,6 +484,8 @@
     (detail?.source === 'code' || overrides !== undefined) && !unavailable,
   );
   const disabled = $derived(detail?.state === 'disabled');
+  /** The agent's name as the agents list says it ("Tool runner"), for the Disable block and question. */
+  const shownName = $derived(agentLabel(name, undefined));
   let confirmingDisable = $state(false);
 
   // What finds the agent, read once the disable question opens: the same read the delete question uses.
@@ -718,16 +736,18 @@
       {#if viewing === null && overrides === undefined}
         <!-- Demoted: the dialog holds the solid danger button (row 39a). -->
         <section class="ib-agent-section" aria-label={copy.deleteHeading}>
-          <SectionHeading level={2} title={copy.deleteHeading} description={copy.deleteNote} />
-          <div>
-            <Button
-              data-changes
-              variant="ghost-danger"
-              size="sm"
-              disabled={hash === null || removal.isPending}
-              onclick={() => (confirmingDelete = true)}>{copy.deleteAction}</Button
-            >
-          </div>
+          <!-- The action at the inline end, as the Disable block's is. -->
+          <SectionHeading level={2} title={copy.deleteHeading} description={copy.deleteNote}>
+            {#snippet actions()}
+              <Button
+                data-changes
+                variant="ghost-danger"
+                size="sm"
+                disabled={hash === null || removal.isPending}
+                onclick={() => (confirmingDelete = true)}>{copy.deleteAction}</Button
+              >
+            {/snippet}
+          </SectionHeading>
         </section>
       {/if}
     {/if}
@@ -740,36 +760,42 @@
         aria-label={disabled ? copy.disable.enabledHeading : copy.disable.heading}
         data-testid="agent-disable"
       >
+        <!-- The action sits at the inline end, through the heading's actions (design review 1). -->
         {#if disabled}
           <SectionHeading
             level={2}
             title={copy.disable.enabledHeading}
-            description={copy.disable.enabledNote(name)}
-          />
-          <div>
-            <Button
-              data-changes
-              variant="secondary"
-              size="sm"
-              loading={toggle.isPending}
-              onclick={() => toggle.mutate('enable')}>{copy.disable.enable}</Button
-            >
-          </div>
+            description={copy.disable.enabledNote(shownName)}
+          >
+            {#snippet actions()}
+              <Button
+                data-changes
+                variant="secondary"
+                size="sm"
+                loading={toggle.isPending}
+                onclick={() => toggle.mutate('enable')}>{copy.disable.enable}</Button
+              >
+            {/snippet}
+          </SectionHeading>
         {:else}
           <SectionHeading
             level={2}
             title={copy.disable.heading}
-            description={copy.disable.note(name, plugin === null ? null : pluginTitle || plugin)}
-          />
-          <div>
-            <Button
-              data-changes
-              variant="ghost-danger"
-              size="sm"
-              disabled={toggle.isPending}
-              onclick={() => (confirmingDisable = true)}>{copy.disable.action}</Button
-            >
-          </div>
+            description={copy.disable.note(
+              shownName,
+              plugin === null ? null : pluginTitle || plugin,
+            )}
+          >
+            {#snippet actions()}
+              <Button
+                data-changes
+                variant="ghost-danger"
+                size="sm"
+                disabled={toggle.isPending}
+                onclick={() => (confirmingDisable = true)}>{copy.disable.action}</Button
+              >
+            {/snippet}
+          </SectionHeading>
         {/if}
       </section>
     {/if}
@@ -779,7 +805,7 @@
 <!-- Reversible, so it asks without a typed confirmation (row 40d). -->
 <ConfirmDialog
   bind:open={confirmingDisable}
-  title={copy.disable.dialog.title(name)}
+  title={copy.disable.dialog.title(shownName)}
   description={copy.disable.dialog.description(chats, dependentsLine(disableReferences.data))}
   confirmLabel={copy.disable.dialog.confirm}
   destructive

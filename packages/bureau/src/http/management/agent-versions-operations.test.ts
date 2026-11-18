@@ -145,8 +145,9 @@ describe('bureau.agents.versions.list', () => {
     );
 
     expect(versions.map((entry) => [entry['revision'], entry['summary']])).toEqual([
-      [2, 'Instructions: added “Ask before any refund.”; Limits: changed'],
-      [1, 'Instructions: added “Answer briefly.”'],
+      // What changed, by name: the limit set, not only that limits changed (design review 1).
+      [2, 'Instructions: added “Ask before any refund.”; Limits: Steps 20'],
+      [1, 'Created'],
     ]);
   });
 

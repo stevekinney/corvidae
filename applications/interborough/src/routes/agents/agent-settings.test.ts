@@ -148,6 +148,46 @@ describe('the Settings form (rows 38u to 38w)', () => {
     expect(within(reason).getByRole('link', { name: copy.noProvider.action })).not.toBeNull();
   });
 
+  test('says what the model can do from the host’s list when the catalog has no row for it (row 38u, design review 1)', async () => {
+    landAt('/agents/researcher/settings');
+    stub = installBureauStub(
+      {
+        'bureau.agents.list': () => ({ agents: [FILE_AGENT] }),
+        'bureau.agents.definitions.get': () => DETAIL,
+        'bureau.contexts.list': () => ({ contexts: [], nextOffset: null }),
+        'bureau.memory.list': () => ({ memories: [], nextOffset: null }),
+        'bureau.hooks.list': () => ({ hooks: [] }),
+        'bureau.agents.versions.list': () => ({ versions: VERSIONS }),
+        'bureau.agents.definitions.revisions': () => ({ revisions: [] }),
+        // A host with no provider connected: the catalog offers no model.
+        'bureau.agents.catalog': () => ({ models: [], tools: [] }),
+      },
+      {
+        hostProviders: [{ name: 'anthropic', hasKey: false, connected: false }],
+        hostModels: [
+          {
+            provider: 'anthropic',
+            // The file names it by its alias, `anthropic/sonnet`.
+            model: 'claude-sonnet-5',
+            aliases: ['sonnet'],
+            contextWindowTokens: 1_000_000,
+            maxOutputTokens: 64_000,
+            streaming: true,
+            tools: true,
+            structuredOutput: true,
+            images: true,
+            off: false,
+          },
+        ],
+      },
+    );
+    const { findByTestId } = mount();
+
+    const abilities = await findByTestId('agent-settings-abilities');
+    // Worded as the catalog's row would be.
+    await waitFor(() => expect(abilities.textContent).toBe('Tools, Images, 1M context window'));
+  });
+
   test('does not say the provider is not connected when it is keyless, which needs no key (COR-2414)', async () => {
     landAt('/agents/researcher/settings');
     serve({}, [{ name: 'anthropic', hasKey: false, connected: true }]);
@@ -397,6 +437,12 @@ describe('disabling an agent defined in code (rows 38y and 40d, COR-2429)', () =
     );
     expect(within(settings).queryByRole('button', { name: 'Delete agent' })).toBeNull();
 
+    // The action sits at the inline end, in the heading's actions (design review 1).
+    expect(
+      block
+        .querySelector('.cinder-section-heading__actions')
+        ?.contains(within(block).getByRole('button', { name: 'Disable agent' })),
+    ).toBe(true);
     await fireEvent.click(within(block).getByRole('button', { name: 'Disable agent' }));
     const dialog = await findByRole('dialog', { name: 'Disable Assistant?' });
     await waitFor(() =>
@@ -424,6 +470,55 @@ describe('disabling an agent defined in code (rows 38y and 40d, COR-2429)', () =
       ]),
     );
     await findByRole('button', { name: 'Disable agent' });
+  });
+
+  test('names the agent as the agents list does, not by its identifier (design review 1)', async () => {
+    landAt('/agents/tool-runner/settings');
+    serve({
+      // A built-in agent with no name of its own, which the Bureau names by its identifier.
+      'bureau.agents.list': () => ({
+        agents: [{ ...AGENT, name: 'tool-runner', displayName: 'tool-runner' }],
+      }),
+      'bureau.agents.definitions.get': () => ({
+        ...readyAgent({ id: 'tool-runner' }),
+        source: 'code' as const,
+        hash: null,
+        definition: null,
+        codeDefinition: {
+          name: 'tool-runner',
+          description: null,
+          model: 'anthropic/sonnet',
+          models: [],
+          tools: [],
+          skills: [],
+          card: [],
+          instructions: null,
+        },
+        state: 'ready',
+      }),
+      'bureau.agents.overrides.get': () => ({
+        id: 'tool-runner',
+        hash: 'hash-0',
+        version: null,
+        overrides: {},
+        ownTools: [],
+      }),
+      'bureau.agents.versions.list': () => ({ versions: [] }),
+      'bureau.agents.catalog': () => ({ models: [], tools: [] }),
+      'bureau.contexts.list': () => ({ contexts: [], nextOffset: null }),
+      'bureau.agents.references': () => ({
+        agentName: 'tool-runner',
+        schedules: [],
+        workflows: [],
+        hooks: [],
+      }),
+    });
+    const { findByRole, findByTestId } = mount();
+
+    const block = await findByTestId('agent-disable');
+    expect(block.textContent).toContain('Tool runner is built in');
+    await fireEvent.click(within(block).getByRole('button', { name: 'Disable agent' }));
+    await findByRole('dialog', { name: 'Disable Tool runner?' });
   });
 });
 

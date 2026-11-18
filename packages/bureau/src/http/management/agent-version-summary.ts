@@ -71,16 +71,68 @@ function isStringList(value: unknown): value is readonly string[] {
   return Array.isArray(value) && value.every((entry) => typeof entry === 'string');
 }
 
-function listChange(current: readonly string[], previous: readonly string[]): string {
+/**
+ * A tool or skill as a person reads it: its name after any `plugin:` namespace, its separators as
+ * spaces, the first letter capitalized (`issue-refund` is "Issue refund"), as the agent page names it.
+ */
+function displayNameOf(identifier: string): string {
+  const bare = identifier
+    .slice(identifier.indexOf(':') + 1)
+    .replace(/[-_]+/g, ' ')
+    .trim();
+  return bare === '' ? identifier : bare.charAt(0).toUpperCase() + bare.slice(1);
+}
+
+/** The keys whose entries are named for a person to read, not as identifiers. */
+const NAMED_LISTS: ReadonlySet<string> = new Set(['tools', 'skills']);
+
+function listChange(
+  current: readonly string[],
+  previous: readonly string[],
+  name: (entry: string) => string,
+): string {
   const before = new Set(previous);
   const after = new Set(current);
-  const added = current.filter((entry) => !before.has(entry));
-  const removed = previous.filter((entry) => !after.has(entry));
+  const added = current.filter((entry) => !before.has(entry)).map(name);
+  const removed = previous.filter((entry) => !after.has(entry)).map(name);
   const parts = [
     ...(added.length === 0 ? [] : [`added ${listed(added)}`]),
     ...(removed.length === 0 ? [] : [`removed ${listed(removed)}`]),
   ];
   return parts.length === 0 ? 'reordered' : parts.join(', ');
+}
+
+function isScalarRecord(
+  value: unknown,
+): value is Readonly<Record<string, string | number | boolean>> {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    !Array.isArray(value) &&
+    Object.values(value).every(
+      (entry) =>
+        typeof entry === 'string' || typeof entry === 'number' || typeof entry === 'boolean',
+    )
+  );
+}
+
+/**
+ * What a record of single values (an agent's `approvals`, tool to how it asks) changed: each entry
+ * set, changed or removed, by name, such as "Issue refund always, Lookup order removed".
+ */
+function recordChange(
+  current: Readonly<Record<string, string | number | boolean>>,
+  previous: Readonly<Record<string, string | number | boolean>>,
+): string {
+  const parts: string[] = [];
+  for (const [key, value] of Object.entries(current)) {
+    const before = Object.hasOwn(previous, key) ? previous[key] : undefined;
+    if (before !== value) parts.push(`${displayNameOf(key)} ${String(value)}`);
+  }
+  for (const key of Object.keys(previous)) {
+    if (!Object.hasOwn(current, key)) parts.push(`${displayNameOf(key)} removed`);
+  }
+  return parts.length === 0 ? 'changed' : parts.join(', ');
 }
 
 function absent(value: unknown): boolean {
@@ -91,7 +143,22 @@ function absent(value: unknown): boolean {
 function changeOf(key: string, current: unknown, previous: unknown): string {
   if (key === 'instructions') return instructionsChange(current, previous);
   if (isStringList(current) || isStringList(previous)) {
-    return listChange(isStringList(current) ? current : [], isStringList(previous) ? previous : []);
+    const name = NAMED_LISTS.has(key) ? displayNameOf : (entry: string) => entry;
+    return listChange(
+      isStringList(current) ? current : [],
+      isStringList(previous) ? previous : [],
+      name,
+    );
+  }
+  if (
+    (isScalarRecord(current) || absent(current)) &&
+    (isScalarRecord(previous) || absent(previous)) &&
+    !(absent(current) && absent(previous))
+  ) {
+    return recordChange(
+      isScalarRecord(current) ? current : {},
+      isScalarRecord(previous) ? previous : {},
+    );
   }
   const now = shown(current);
   const before = shown(previous);
