@@ -9,7 +9,7 @@ import { Conversation, createConversationHistory } from 'conversationalist';
 
 import { createSessionPersistence } from './bureau-session-persistence';
 import { ContextHistoryChangedError } from './bureau-errors';
-import { removeSessionTurn } from './session-discard';
+import { DISCARDED_ROWS_METADATA_KEY, removeSessionTurn } from './session-discard';
 
 describe('createSessionPersistence', () => {
   it('matches native object-spread semantics for malformed incoming strings and arrays', async () => {
@@ -224,6 +224,41 @@ describe('createSessionPersistence', () => {
       );
 
       expect(over.stored().conversationHistory.ids).toEqual(['u1', 'u2']);
+    });
+
+    // A chat stored before discards named their rows has no `discardedRowIds`: a start and a
+    // terminal save over it merge as they did, and neither adds the key.
+    it('reads a chat stored before discards named their rows as before', async () => {
+      const over = persistenceOver(['u1', 'run:step:0']);
+      expect(Object.hasOwn(over.stored().metadata, DISCARDED_ROWS_METADATA_KEY)).toBe(false);
+      const conversation = rows(['u1', 'run:step:0']);
+      const base = conversation.current;
+      conversation.appendMessages({ role: 'user', content: 'next', id: 'u2' } as never);
+      await over.persistence.saveSession(
+        'session-raced',
+        conversation,
+        {},
+        undefined,
+        base,
+        undefined,
+        undefined,
+        true,
+      );
+      conversation.appendMessages({
+        role: 'assistant',
+        content: 'reply',
+        id: 'next:step:0',
+      } as never);
+
+      await over.persistence.saveSession('session-raced', conversation, {}, undefined, base);
+
+      expect(over.stored().conversationHistory.ids).toEqual([
+        'u1',
+        'run:step:0',
+        'u2',
+        'next:step:0',
+      ]);
+      expect(Object.hasOwn(over.stored().metadata, DISCARDED_ROWS_METADATA_KEY)).toBe(false);
     });
   });
 });

@@ -36,6 +36,9 @@ import {
   DISCARD_AUDIT_TYPE,
   DISCARD_OPERATION_VERSION,
   DISCARD_RECEIPT_OUTBOX_NAMESPACE,
+  DISCARDED_ROW_IDS_LIMIT,
+  DISCARDED_ROWS_METADATA_KEY,
+  discardedRowIdsOf,
   discardReceiptAnswersClaim,
   discardReceiptPayload,
   judgeDiscardableTurn,
@@ -215,6 +218,25 @@ describe('removeSessionTurn', () => {
     // The earlier run's boundary, and the session it was given, are unchanged.
     expect(conversationThroughRun(removed, 0)).toEqual(conversationThroughRun(session, 0));
     expect(session.conversationHistory.ids).toHaveLength(FINISHED.length + STOPPED.length);
+  });
+
+  it('names the removed rows as discarded after those an earlier discard named, the oldest dropped past the limit', () => {
+    const at = '2026-11-18T01:00:00.000Z';
+    const session = sessionOf([...FINISHED, ...STOPPED]);
+    // A chat stored before discards named their rows reads as one with none.
+    expect(discardedRowIdsOf(session.metadata)).toEqual([]);
+    const earlier = Array.from({ length: DISCARDED_ROW_IDS_LIMIT }, (_, index) => `old-${index}`);
+    const named = {
+      ...session,
+      metadata: { ...session.metadata, [DISCARDED_ROWS_METADATA_KEY]: earlier },
+    };
+
+    const removed = removeSessionTurn(named, R1, ['new-0', 'new-1'], at);
+
+    expect(discardedRowIdsOf(removed.metadata)).toEqual([...earlier.slice(2), 'new-0', 'new-1']);
+    // A discard larger than the limit keeps every id of its own.
+    const large = Array.from({ length: DISCARDED_ROW_IDS_LIMIT + 1 }, (_, index) => `n-${index}`);
+    expect(discardedRowIdsOf(removeSessionTurn(named, R1, large, at).metadata)).toEqual(large);
   });
 });
 
@@ -604,6 +626,88 @@ describe('a discard racing a new message', () => {
     );
     expect(askedOver.at(-1)?.some((id) => id.startsWith(`${run.id}:step:`))).toBe(false);
     await bureau.tasks.cancel(next.id);
+  });
+
+  // A schedule's fire saves no start of its own: it reads the chat, and its first save is after its
+  // first step. The discard here passes its check of the chat's runs before the fire is admitted,
+  // and commits after the fire read the chat.
+  it('refuses a schedule’s fire that read the chat before the discard committed, before its model is asked over the discarded reply', async () => {
+    const bureau = await openBureau();
+    const { run } = await stoppedTurn(bureau);
+    const schedule = await bureau.schedules.create({
+      agentName: 'agent',
+      input: 'check in',
+      spec: '1h',
+      sessionId: run.contextId,
+      principal: ALICE,
+    });
+    const sessions = bureau.internals.sessionStore!;
+    const tasks = bureau.internals.taskRegistry;
+    const update = sessions.update.bind(sessions);
+    const bindIncarnation = tasks.bindIncarnation.bind(tasks);
+    const fireRead = Promise.withResolvers<void>();
+    const discardCommitted = Promise.withResolvers<void>();
+    let fired: Promise<string> | undefined;
+    // The fire binds its task to the chat right after it read it: it waits there for the discard.
+    (tasks as { bindIncarnation: typeof tasks.bindIncarnation }).bindIncarnation = async (
+      taskId,
+      incarnation,
+    ) => {
+      (tasks as { bindIncarnation: typeof tasks.bindIncarnation }).bindIncarnation =
+        bindIncarnation;
+      fireRead.resolve();
+      await discardCommitted.promise;
+      return bindIncarnation(taskId, incarnation);
+    };
+    // The discard's write starts the fire and lets it read the chat before it commits.
+    (sessions as { update: typeof sessions.update }).update = async (id, updater, options) => {
+      (sessions as { update: typeof sessions.update }).update = update;
+      fired = bureau.schedules.runNow(schedule!.id).then((started) => {
+        const workflowId =
+          started !== undefined && 'workflowId' in started ? started.workflowId : '';
+        expect(workflowId).not.toBe('');
+        return workflowId;
+      });
+      await fireRead.promise;
+      return update(id, updater, options);
+    };
+    const askedBefore = askedOver.length;
+
+    const discarded = await discard(bureau, run.contextId, run.id);
+    discardCommitted.resolve();
+    const afterDiscard = (await bureau.contexts.get(run.contextId))!;
+    const workflowId = await fired!;
+    let terminal:
+      | { status: string; result?: { finishReason?: string; errorMessage?: string } }
+      | null
+      | undefined;
+    // A fire whose model was asked waits in its second step, so either ends the wait.
+    await waitForCondition(async () => {
+      if (askedOver.length > askedBefore) return true;
+      const state = await bureau.durableEngine()!.get(workflowId);
+      if (state === null || state === undefined) return false;
+      if (state.status === 'pending' || state.status === 'running') return false;
+      terminal = state;
+      return true;
+    }, 'the fire has ended or asked its model');
+
+    expect(discarded.removed).toBeGreaterThan(0);
+    // Its model was never asked, so never over the discarded reply.
+    expect(askedOver.slice(askedBefore)).toEqual([]);
+    // The fire's outcome, in the schedule's words: its run ended on the refusal.
+    expect(terminal?.result).toMatchObject({ finishReason: 'error', errorKind: 'policy' });
+    expect(terminal?.result?.errorMessage).toContain('history-changed');
+    await waitForCondition(() => hasSettled(bureau, workflowId), 'the fire’s task has ended');
+    expect(await statusOf(bureau, workflowId)).toBe('failed');
+    // The refused fire wrote nothing to the chat.
+    const after = (await bureau.contexts.get(run.contextId))!;
+    expect(after.conversationHistory.ids).toEqual(afterDiscard.conversationHistory.ids);
+    // The schedule is not paused by it, and its next fire runs on the chat the discard left.
+    secondStep = Promise.withResolvers<void>();
+    const next = await bureau.schedules.runNow(schedule!.id);
+    await secondStep.promise;
+    expect(askedOver.at(-1)?.some((id) => id.startsWith(`${run.id}:step:`))).toBe(false);
+    if (next !== undefined && 'workflowId' in next) await bureau.tasks.cancel(next.workflowId);
   });
 });
 

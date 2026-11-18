@@ -9,6 +9,7 @@ import {
   type AgentSession,
   type DurableRunDeps,
   type JSONValue,
+  NonRecoverablePolicyError,
   type OnStepHook,
   type OperativeHookMap,
   type PersistedSessionTaint,
@@ -44,7 +45,7 @@ import {
   type ConversationHistory,
   createConversationHistory,
 } from 'conversationalist';
-import type { HookRegistry } from '@lostgradient/lifecycle';
+import { HOOK_TIER_PRIORITY_BANDS, type HookRegistry } from '@lostgradient/lifecycle';
 import {
   KEYS,
   type WorkflowServicesResolution,
@@ -123,6 +124,68 @@ export interface ScheduledRunServicesPeers {
     recorded?: CatalogRunRecordedDefinition,
     session?: SessionTaintSource,
   ) => Promise<SessionAgentRunResolution>;
+}
+
+/**
+ * COR-2437 — a fire refused because a turn of the chat it read was discarded before its first model
+ * call. A policy verdict, so no `onError` hook can retry or skip the step into a model call; the
+ * fire ends failed with it, and the schedule's next fire reads the chat as the discard left it.
+ */
+class ScheduledFireHistoryChangedError extends NonRecoverablePolicyError {
+  readonly reason = 'history-changed';
+  readonly contextId: string;
+  constructor(runId: string, sessionId: string) {
+    super(
+      `scheduled fire ${runId} read session "${sessionId}" before a turn in it was discarded, so it was not run over that turn (history-changed)`,
+    );
+    this.name = 'ScheduledFireHistoryChangedError';
+    this.contextId = sessionId;
+  }
+}
+
+/**
+ * Ahead of every other `prepareStep` handler, whichever tier registered it: the guard runs before
+ * memory recall or the input scan read the step's conversation.
+ */
+const SCHEDULED_FIRE_HISTORY_GUARD_PRIORITY =
+  Number.MAX_SAFE_INTEGER - HOOK_TIER_PRIORITY_BANDS.bureau;
+
+/**
+ * COR-2437 — refuses a fire whose read of the chat (`loadedIds`) holds a row a discard removed
+ * since: a fire saves no start of its own, so a discard that judged the chat before the fire was
+ * admitted can commit after the fire read it. The chat is read again as the fire's first step is
+ * prepared, so its model is not asked over the discarded reply. It narrows the window rather than
+ * closing it: a discard that passed its checks before the fire was admitted can still commit
+ * between this read and the model call, since the fire has not moved the chat's revision yet. The
+ * fire's saves keep such a discard out of the chat all the same.
+ */
+function registerScheduledFireHistoryGuard(
+  hooks: HookRegistry<OperativeHookMap>,
+  store: SessionStore,
+  sessionId: string,
+  runId: string,
+  loadedIds: readonly string[],
+): void {
+  let checked = false;
+  hooks.on(
+    'prepareStep',
+    async () => {
+      if (checked) return;
+      const current = await store.load(sessionId);
+      const discarded = new Set(discardedRowIdsOf(current?.metadata));
+      if (loadedIds.some((id) => discarded.has(id))) {
+        throw new ScheduledFireHistoryChangedError(runId, sessionId);
+      }
+      checked = true;
+    },
+    {
+      id: 'bureau:scheduled-fire-history-guard',
+      priority: SCHEDULED_FIRE_HISTORY_GUARD_PRIORITY,
+      // A read; a replayed step reads the chat again.
+      replay: 'safe',
+      onError: () => 'abort',
+    },
+  );
 }
 
 /**
@@ -332,11 +395,11 @@ export function createScheduledRunServices(
                 context.conversation.current,
                 baseConversationHistory,
                 // COR-2437: a row a discard removed is not written back by a fire's save. A fire
-                // can overlap a discard: a discard needs its run to be the chat's newest task, so it
-                // can only commit between a fire's read of the chat and its admission, and that
-                // fire's first step may then be asked over the discarded reply once. Its saves keep
-                // the discard (this set), so the chat never holds the reply again
-                // (`provider-resolution-merge.test.ts`); the read itself is not fenced.
+                // can overlap a discard: one that judged the chat before the fire was admitted can
+                // commit after the fire read it. The fire is refused before its first model call
+                // when it was (`registerScheduledFireHistoryGuard`), and its saves keep the discard
+                // (this set) for the instant that check cannot see, so the chat never holds the
+                // reply again (`provider-resolution-merge.test.ts`).
                 new Set(discardedRowIdsOf(existing?.metadata)),
               )
             : context.conversation.current,
@@ -854,6 +917,15 @@ export function createScheduledRunServices(
               },
       },
     );
+    if (existing !== undefined) {
+      registerScheduledFireHistoryGuard(
+        runRuntime.hooks,
+        store,
+        sessionId,
+        runId,
+        baseConversationHistory.ids,
+      );
+    }
     const skillRecovery = await runRuntime.skillsRecovered;
     if (skillSnapshot.status === 'unverifiable' || skillRecovery.refused.length > 0) {
       options.onLog?.({

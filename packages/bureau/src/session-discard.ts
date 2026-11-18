@@ -366,6 +366,29 @@ function withoutRows(
  */
 export const DISCARDED_ROWS_METADATA_KEY = 'discardedRowIds';
 
+/**
+ * The most discarded row ids a session keeps (COR-2437). A discard adds the ids it removed after
+ * those already kept, and the oldest discards' ids are dropped past this many; a discard's own ids
+ * are always kept whole, however many it removed.
+ *
+ * Why dropping the oldest is safe: an id matters only to a save whose read of the chat predates
+ * its discard. Such a reader is a run start between its read and its start save, which the start
+ * save refuses, or a schedule's fire between its read and its first save, which its first step
+ * refuses and whose saves leave the id out (the base-less recovery, steering and shutdown saves
+ * write rows of a run newer than the discarded one, and a discard is refused while such a run is
+ * the chat's newest). An id
+ * is dropped only after later discards of the same chat removed this many rows, each of them
+ * needing a later run of that chat to start, stop and be discarded; a reader would have to stay
+ * between its read and its first save across all of them.
+ */
+export const DISCARDED_ROW_IDS_LIMIT = 512;
+
+/** `previous` with `removed` after it, the oldest of `previous` dropped past the limit. */
+function withDiscardedRowIds(previous: readonly string[], removed: readonly string[]): string[] {
+  const keptOfPrevious = Math.max(DISCARDED_ROW_IDS_LIMIT - removed.length, 0);
+  return [...(keptOfPrevious === 0 ? [] : previous.slice(-keptOfPrevious)), ...removed];
+}
+
 /** The ids of the rows discards removed from the session whose metadata is `metadata`. */
 export function discardedRowIdsOf(
   metadata: Readonly<Record<string, unknown>> | undefined,
@@ -394,7 +417,10 @@ export function removeSessionTurn(
     // write them back (`discardedRowIdsOf`).
     metadata: {
       ...session.metadata,
-      [DISCARDED_ROWS_METADATA_KEY]: [...discardedRowIdsOf(session.metadata), ...removed],
+      [DISCARDED_ROWS_METADATA_KEY]: withDiscardedRowIds(
+        discardedRowIdsOf(session.metadata),
+        removed,
+      ),
     },
     conversationHistory: {
       ...history,
