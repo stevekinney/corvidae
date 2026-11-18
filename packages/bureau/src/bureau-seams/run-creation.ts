@@ -222,6 +222,32 @@ function unresolvedStart(
     : new BureauError(describeDefinitionDrift(agentName, resolution.drift), 'CONFLICT');
 }
 
+/**
+ * COR-2429 — whether a start only continues an existing chat whose conversation ends in a tool
+ * result: it brings no message, no input parts and no rows of its own, so it answers the decided
+ * outcome of an approval an earlier run of the chat parked on, and finishes what that run started.
+ */
+function continuesStartedRun(
+  session: unknown,
+  conversation: {
+    readonly current: { readonly ids: readonly string[]; readonly messages: object };
+  },
+  request: {
+    readonly message?: unknown;
+    readonly inputParts?: unknown;
+    readonly appendMessages?: readonly unknown[] | undefined;
+  },
+): boolean {
+  if (session === undefined) return false;
+  if (request.message !== undefined || request.inputParts !== undefined) return false;
+  if ((request.appendMessages?.length ?? 0) > 0) return false;
+  const { ids, messages } = conversation.current;
+  const last = ids.at(-1);
+  if (last === undefined || !Object.hasOwn(messages, last)) return false;
+  const row: unknown = Reflect.get(messages, last);
+  return typeof row === 'object' && row !== null && Reflect.get(row, 'toolResult') !== undefined;
+}
+
 /** Builds the run creation functions of one Bureau. Synchronous, and registers nothing. */
 export function createRunCreation<D extends AgentDefinitions>(
   core: BureauCore<D>,
@@ -306,10 +332,19 @@ export function createRunCreation<D extends AgentDefinitions>(
     // COR-323 — every run belongs to a catalog agent. The implicit `bureau` agent, which ran on
     // Bureau-wide `generate`/`toolbox` options, no longer exists, so a session stored under it
     // answers as any unknown agent does.
-    const resolution = await runtime.resolveSessionAgentRun(agentName, runId, owner, undefined, {
-      sessionId,
-      metadata: session?.metadata,
-    });
+    // COR-2429 — a run that only continues the chat as it stands, which ends in a tool result (the
+    // decided outcome of an approval a run parked on), finishes what that run started: it runs on
+    // an agent a person disabled since, as a resumed run does. Any run that brings a message of its
+    // own is a new turn, and a disabled agent starts none.
+    const resolution = await runtime.resolveSessionAgentRun(
+      agentName,
+      runId,
+      owner,
+      continuesStartedRun(session, conversation, request)
+        ? { agentDefinitionHash: undefined, alreadyStarted: true }
+        : undefined,
+      { sessionId, metadata: session?.metadata },
+    );
     if (resolution.status === 'missing-agent') throw peers.missingAgentError(agentName);
     if (resolution.status === 'not-durable-capable') {
       throw new BureauError(

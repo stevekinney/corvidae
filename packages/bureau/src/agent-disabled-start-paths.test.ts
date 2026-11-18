@@ -3,13 +3,14 @@
  * it finishes. Two guards:
  *
  * - **Every place a run looks an agent up by name is listed.** The source of every lookup of an
- *   agent for a run (`agentCatalog.find`, `bureau.agents.find`, `resolveSessionAgentRun`) and every
+ *   agent for a run (`agentCatalog.find`, `agentCatalog.findToStart`, `bureau.agents.find`,
+ *   `resolveSessionAgentRun`) and every
  *   grant of the resume exemption (`alreadyStarted:`) is counted per file and compared with the
  *   table below, which says what each one is. A new start path fails here until it is listed, and
  *   so does a new exemption, which must name its evidence that the run already started.
  * - **Each start path refuses a disabled agent, and a resume finishes.** One table of starts, each
- *   run on a Bureau whose agent was disabled after the setup it needs, none of which may call the
- *   agent's model.
+ *   run on a Bureau whose agent was disabled after the setup it needs, by that Bureau or by another
+ *   over the same store, none of which may call the agent's model.
  */
 import { readdirSync, readFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
@@ -33,7 +34,7 @@ import { SessionRegenerateRefusedError } from './session-regenerate';
 
 const SOURCE_ROOT = import.meta.dir;
 const LOOKUP =
-  /\bagentCatalog\.find\(|\bbureau\.agents\.find\(|\bresolveSessionAgentRun\(|\balreadyStarted:/g;
+  /\bagentCatalog\.find(?:ToStart)?\(|\bbureau\.agents\.find\(|\bresolveSessionAgentRun\(|\balreadyStarted:/g;
 
 /**
  * Every source file that looks an agent up for a run, how many times, and why each is safe for a
@@ -42,8 +43,8 @@ const LOOKUP =
  */
 const LISTED: Readonly<Record<string, { readonly count: number; readonly why: string }>> = {
   'bureau-catalog-dispatch.ts': {
-    count: 5,
-    why: 'a durable catalog run, a child run, and a workflow step, goal attempt or trigger dispatch: each starts through find(), which a disabled agent is not in',
+    count: 6,
+    why: 'a child run and a goal attempt are planned through findToStart(), which reads the gate from the store, so the find() of the start in the same turn sees a disable another Bureau wrote; a workflow step is checked by findToStart() in child-runs.ts first; a durable catalog run re-reads its overrides',
   },
   'create-bureau.ts': {
     count: 2,
@@ -62,7 +63,10 @@ const LISTED: Readonly<Record<string, { readonly count: number; readonly why: st
     count: 2,
     why: 'a scheduled fire: alreadyStarted only when its first attempt recorded a reference or wrote its session',
   },
-  'bureau-seams/run-creation.ts': { count: 1, why: 'a new chat or task run: no recorded, refused' },
+  'bureau-seams/run-creation.ts': {
+    count: 2,
+    why: 'a new chat or task run: refused; alreadyStarted only for a start that brings nothing of its own and continues a chat ending in a decided tool result, which finishes the run that parked on it',
+  },
   'bureau-seams/session-regeneration.ts': {
     count: 1,
     why: 'Regenerate or Try again: no recorded, refused',
@@ -71,7 +75,10 @@ const LISTED: Readonly<Record<string, { readonly count: number; readonly why: st
     count: 2,
     why: 'a session run restored after it started (alreadyStarted)',
   },
-  'bureau-seams/child-runs.ts': { count: 1, why: 'a child run or handoff: find(), refused' },
+  'bureau-seams/child-runs.ts': {
+    count: 1,
+    why: 'a workflow step: findToStart(), which reads the gate from the store, refused',
+  },
   'bureau-seams/schedule-operations.ts': {
     count: 2,
     why: 'creating or retargeting a schedule: find(), refused',
@@ -133,7 +140,16 @@ afterEach(async () => {
   for (const bureau of opened.splice(0)) await bureau.dispose();
 });
 
-async function fixture(maintenance?: 'manual'): Promise<Fixture> {
+/**
+ * Where the agent is disabled: on the Bureau the run starts on, or on another Bureau over the same
+ * store, whose disable the first learns only from the store (COR-2429).
+ */
+type DisabledBy = 'this Bureau' | 'another Bureau on the same store';
+
+async function fixture(
+  maintenance?: 'manual',
+  disabledBy: DisabledBy = 'this Bureau',
+): Promise<Fixture> {
   let calls = 0;
   const helper: GenerateFunction = async () => {
     calls += 1;
@@ -152,25 +168,31 @@ async function fixture(maintenance?: 'manual'): Promise<Fixture> {
           ],
         }
       : { content: 'thanks', toolCalls: [] };
-  const bureau = await createBureau<AgentDefinitions>({
-    agents: {
-      helper: createAgent({ generate: helper, toolbox: createToolbox([]) }),
-      asker: createAgent({
-        generate: asking,
-        toolbox: createToolbox([]),
-        stopWhen: stopWhen.some(stopWhen.toolCalled('requestHumanInput'), stopWhen.noToolCalls()),
-      }),
-    },
-    storage: new MemoryStorage(),
-    durable: true,
-    ...(maintenance === undefined ? {} : { maintenance }),
-  });
-  opened.push(bureau);
+  const storage = new MemoryStorage();
+  const open = async () => {
+    const opening = await createBureau<AgentDefinitions>({
+      agents: {
+        helper: createAgent({ generate: helper, toolbox: createToolbox([]) }),
+        asker: createAgent({
+          generate: asking,
+          toolbox: createToolbox([]),
+          stopWhen: stopWhen.some(stopWhen.toolCalled('requestHumanInput'), stopWhen.noToolCalls()),
+        }),
+      },
+      storage,
+      durable: true,
+      ...(maintenance === undefined ? {} : { maintenance }),
+    });
+    opened.push(opening);
+    return opening;
+  };
+  const bureau = await open();
+  const disabler = disabledBy === 'this Bureau' ? bureau : await open();
   return {
     bureau,
     calls: () => calls,
     disable: async () => {
-      await bureau.agents.disable('helper', { disabledBy: 'operator' });
+      await disabler.agents.disable('helper', { disabledBy: 'operator' });
     },
   };
 }
@@ -212,8 +234,7 @@ const STARTS: ReadonlyArray<{
       await disable();
       return outcomeOf(async () => {
         const run = await bureau.tasks.start('helper', 'hello');
-        const finished = await bureau.tasks.wait(run.id);
-        return finished?.status;
+        return settled(bureau, run.id);
       });
     },
   },
@@ -268,7 +289,6 @@ const STARTS: ReadonlyArray<{
     path: 'Regenerate or Try again on a chat',
     start: async ({ bureau, calls, disable }) => {
       const run = await bureau.tasks.start('helper', 'hello', { principal: 'alice' });
-      await bureau.tasks.wait(run.id);
       const answer = `${run.id}:step:0`;
       await waitUntil(async () => {
         const stored = await bureau.contexts.get(run.contextId);
@@ -300,25 +320,29 @@ const STARTS: ReadonlyArray<{
           input: 'go',
         });
         if (dispatched.outcome !== 'started') return dispatched.outcome;
-        const finished = await bureau.tasks.wait(dispatched.child.childRunId);
-        return finished?.status;
+        return settled(bureau, dispatched.child.childRunId);
       });
     },
   },
 ];
 
 describe('a start of a run on a disabled agent (COR-2429)', () => {
-  for (const { path, maintenance, start } of STARTS) {
-    it(`is refused: ${path}, and its model is never asked`, async () => {
-      const opened = await fixture(maintenance);
-      const before = opened.calls();
+  const DISABLERS: readonly DisabledBy[] = ['this Bureau', 'another Bureau on the same store'];
+  for (const disabledBy of DISABLERS) {
+    for (const { path, maintenance, start } of STARTS) {
+      it(`is refused: ${path}, disabled by ${disabledBy}, and its model is never asked`, async () => {
+        // No maintenance pass runs between the disable and the start, so nothing but the start
+        // path itself can have read the gate again from the store.
+        const opened = await fixture(maintenance ?? 'manual', disabledBy);
+        const before = opened.calls();
 
-      const outcome = await start(opened);
+        const outcome = await start(opened);
 
-      expect(outcome).toBe('refused');
-      // Regenerate's setup asks once before the agent is disabled; nothing asks after.
-      expect(opened.calls()).toBe(path.startsWith('Regenerate') ? before + 1 : before);
-    });
+        expect(outcome).toBe('refused');
+        // Regenerate's setup asks once before the agent is disabled; nothing asks after.
+        expect(opened.calls()).toBe(path.startsWith('Regenerate') ? before + 1 : before);
+      });
+    }
   }
 
   it('lets a run that already started finish, parked on a question when the agent was disabled', async () => {

@@ -197,6 +197,13 @@ export interface BureauAgentCatalog<D extends AgentDefinitions> {
    */
   find(name: string, options?: AgentFindOptions): AnyRunnableAgent | undefined;
   /**
+   * COR-2429 — the agent `name` for a run that is starting, after reading the disabled gate of
+   * `name` from the store again: another Bureau on the same store may have disabled it since this
+   * one last read it. Every path that starts a run on an agent by name (a child, a workflow step, a
+   * goal attempt) asks this before it starts, and `find` after it in the same turn sees what it read.
+   */
+  findToStart(name: string): Promise<AnyRunnableAgent | undefined>;
+  /**
    * Narrows a runtime `string` to a known literal key of `D` where
    * TypeScript permits it (a type predicate) — `if (catalog.has(name))`
    * lets `catalog.get(name)` (literal-key-only) compile on the narrowed
@@ -700,6 +707,12 @@ export function createAgentCatalog<D extends AgentDefinitions>(
       // COR-2429: every lookup of an agent by name comes through here, so a disabled agent is held
       // by none of them, except the resume of a run it already started.
       if (findOptions?.includeDisabled !== true && gate.isDisabled(name)) return undefined;
+      const code = byName.get(name);
+      return code === undefined ? files?.find(name) : effectiveOf(name, code.agent);
+    },
+    async findToStart(name) {
+      await gate.reload(name);
+      if (gate.isDisabled(name)) return undefined;
       const code = byName.get(name);
       return code === undefined ? files?.find(name) : effectiveOf(name, code.agent);
     },
