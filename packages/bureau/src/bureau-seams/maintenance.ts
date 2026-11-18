@@ -1077,6 +1077,8 @@ export function createMaintenance<D extends AgentDefinitions>(
         await core.runCreationLedger?.prune();
         await core.forkLedger.prune();
         await core.regenerateLedger.prune();
+        // COR-2437: a discard's receipts expire as a regeneration's do.
+        await core.discardLedger.prune();
       } catch (error: unknown) {
         diagnose({
           level: 'error',
@@ -1403,6 +1405,7 @@ export function createMaintenance<D extends AgentDefinitions>(
           await core.runCreationLedger?.prune();
           await core.forkLedger.prune();
           await core.regenerateLedger.prune();
+          await core.discardLedger.prune();
         } catch (error: unknown) {
           diagnose({
             level: 'error',

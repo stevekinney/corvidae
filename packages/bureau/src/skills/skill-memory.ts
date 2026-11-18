@@ -19,10 +19,18 @@ export interface MemoryLike {
  * Structural interface for a conversation, compatible with Conversation from
  * conversationalist without importing it.
  */
+/**
+ * Conversationalist's `MODEL_ONLY_METADATA_KEY`, named here as this file names its shapes
+ * without importing it: a row the model is sent and people are never shown (COR-2437).
+ */
+const MODEL_ONLY_KEY = 'conversationalist:modelOnly';
+
 export interface ConversationLike {
-  getMessages(options?: {
-    includeHidden?: boolean;
-  }): ReadonlyArray<{ role: string; content: string | ReadonlyArray<unknown> }>;
+  getMessages(options?: { includeHidden?: boolean }): ReadonlyArray<{
+    role: string;
+    content: string | ReadonlyArray<unknown>;
+    metadata?: Readonly<Record<string, unknown>>;
+  }>;
 }
 
 /**
@@ -86,6 +94,8 @@ function extractLastUserMessage(conversation: ConversationLike): string | undefi
   const messages = conversation.getMessages();
   for (let i = messages.length - 1; i >= 0; i--) {
     const message = messages[i]!;
+    // A model-only row is the product's instruction (COR-2437), never what the person asked.
+    if (message.metadata?.[MODEL_ONLY_KEY] === true) continue;
     if (message.role === 'user' && typeof message.content === 'string') {
       return message.content;
     }

@@ -11,11 +11,12 @@ import {
   type GenerateContext,
   stopWhen,
 } from '@lostgradient/operative';
-import { createTool } from 'armorer';
+import { createTool, createToolbox, type Toolbox } from 'armorer';
 import {
   Conversation,
   type ConversationHistory,
   createConversationHistory,
+  MODEL_ONLY_METADATA_KEY,
 } from 'conversationalist';
 import { afterEach, describe, expect, it } from 'bun:test';
 import { MemoryStorage, type Storage } from '@lostgradient/storage';
@@ -24,7 +25,10 @@ import { z } from 'zod';
 import type { AgentDefinitions } from './agent-catalog';
 import { BureauShuttingDownError, ContextArchivedError } from './bureau-errors';
 import { createBureau } from './create-bureau';
+import { snapshotMessages } from './http/ag-ui-messages';
 import {
+  CONTINUATION_INSTRUCTION,
+  continuationInstructionId,
   continuationRowId,
   CONTINUATION_OF_METADATA_KEY,
   judgeResumableTurn,
@@ -54,7 +58,10 @@ let secondStep = Promise.withResolvers<void>();
  * An agent whose first step calls a tool; its second fails, finishes, or waits to be stopped. A
  * step that answers a continuation row records the rows the model is sent and finishes the turn.
  */
-function agentThat(second: 'waits' | 'fails' | 'finishes') {
+function agentThat(
+  second: 'waits' | 'fails' | 'finishes',
+  continuation: 'answers' | 'fails' = 'answers',
+) {
   secondStep = Promise.withResolvers<void>();
   continuedOver = [];
   return createAgent({
@@ -70,9 +77,15 @@ function agentThat(second: 'waits' | 'fails' | 'finishes') {
     generate: async (context: GenerateContext) => {
       const history = context.conversation.current;
       const lastId = history.ids.at(-1) ?? '';
-      if (lastId.endsWith(':continuation')) {
+      // A continuation is asked over a history ending in its instruction turn.
+      if (lastId.endsWith(':continuation:instruction')) {
         continuedOver.push(history.ids.filter((id) => history.messages[id]?.hidden !== true));
-        return { content: 'and so the answer goes on.', toolCalls: [] };
+        return continuation === 'answers'
+          ? { content: 'and so the answer goes on.', toolCalls: [] }
+          : { content: 'going on', toolCalls: [{ id: 'c-2', name: 'noop', arguments: {} }] };
+      }
+      if (history.messages[lastId]?.toolResult?.callId === 'c-2') {
+        throw new Error('the continuation failed');
       }
       if (history.messages[lastId]?.toolResult === undefined) {
         return { content: 'thinking', toolCalls: [{ id: 'c-1', name: 'noop', arguments: {} }] };
@@ -165,14 +178,32 @@ describe('a resumed turn', () => {
     const marker = after.conversationHistory.messages[continuationRowId(run.id)];
     expect(marker?.hidden).toBe(true);
     expect(marker?.metadata?.[CONTINUATION_OF_METADATA_KEY]).toBe(run.id);
-    const added = after.conversationHistory.ids.slice(kept.length + 1);
+    // The one instruction turn the continuation is prompted with: a user turn the model is sent
+    // and people are never shown.
+    const instructionId = continuationInstructionId(run.id);
+    expect(after.conversationHistory.ids[kept.length + 1]).toBe(instructionId);
+    const instruction = after.conversationHistory.messages[instructionId];
+    expect(instruction?.role).toBe('user');
+    expect(instruction?.content).toBe(CONTINUATION_INSTRUCTION);
+    expect(instruction?.hidden).toBe(false);
+    expect(instruction?.metadata?.[MODEL_ONLY_METADATA_KEY]).toBe(true);
+    const added = after.conversationHistory.ids.slice(kept.length + 2);
     expect(added.length).toBeGreaterThan(0);
     expect(added.every((id) => id.startsWith(`${result.runId}:step:`))).toBe(true);
     expect(after.conversationHistory.messages[added.at(-1)!]?.content).toBe(
       'and so the answer goes on.',
     );
-    // The model was sent the history as it stood: the partial turn is its last part.
-    expect(continuedOver).toEqual([[...kept]]);
+    // The model was sent the history as it stood, ending in the instruction turn, after the
+    // partial reply; the hidden row is not sent.
+    expect(continuedOver).toEqual([[...kept, instructionId]]);
+    // The instruction is never the chat's words: its preview is the continuation's reply.
+    const listed = await bureau.contexts.list();
+    const summary = listed.find((entry) => entry.id === run.contextId);
+    expect(summary?.lastMessagePreview).toBe('and so the answer goes on.');
+    // Nor is it in the thread the page reads: the AG-UI snapshot leaves both rows out.
+    const shown = JSON.stringify(snapshotMessages(after.conversationHistory));
+    expect(shown).not.toContain(CONTINUATION_INSTRUCTION);
+    expect(shown).toContain('and so the answer goes on.');
     // The stopped run's task still says it was stopped; the continuation is the chat's newest.
     const stopped = await bureau.tasks.get(run.id);
     expect(stopped?.status).toBe('canceled');
@@ -209,6 +240,31 @@ describe('a resumed turn', () => {
     await restarted.recovery();
     expect(await resume(restarted, run.contextId, run.id)).toEqual(started);
     expect(await tasksOf(restarted, run.contextId)).toEqual([started.runId, run.id]);
+  });
+});
+
+// COR-2437: the instruction turn belongs to the continuation it prompted; a discard of that
+// continuation takes it away, and the stopped run's turn stays as it was.
+describe('a continuation that stopped in its turn', () => {
+  it('is discarded with its instruction turn, and a second resume of the stopped run answers the same run', async () => {
+    const bureau = await openBureau(agentThat('waits', 'fails'));
+    const { run, before } = await stoppedTurn(bureau);
+    const started = await resume(bureau, run.contextId, run.id);
+    await untilEnded(bureau, run.contextId, started.runId);
+
+    const discarded = await bureau.contexts.discardTurn(run.contextId, {
+      owner: ALICE,
+      commandId: 'discard-continuation',
+      runId: started.runId,
+    });
+
+    const after = (await bureau.contexts.get(run.contextId))!;
+    expect(discarded.removed).toBeGreaterThan(1);
+    expect(after.conversationHistory.ids).toEqual([
+      ...before.conversationHistory.ids,
+      continuationRowId(run.id),
+    ]);
+    expect(await resume(bureau, run.contextId, run.id)).toEqual(started);
   });
 });
 
@@ -268,6 +324,193 @@ describe('a resume racing', () => {
     expect(session.conversationHistory.ids).not.toContain(continuationRowId(run.id));
     await bureau.tasks.cancel(message.id);
   });
+});
+
+// COR-2437 review, settled by test: a call the person approved, and the run then stopped while the
+// approved tool was still going. Whatever the turn holds then, a resume never continues past the
+// call and never runs it again: the tool runs once.
+describe('a resume after an approved call that never finished', () => {
+  /**
+   * A run whose one call needs approval; the person approves it, and the run is stopped while the
+   * approved tool is still going. `parks` decides how the run waits on the approval: ending its
+   * step there (`stopWhen.pendingApproval()`), or holding the turn open.
+   */
+  async function approvedThenStopped(parks: boolean) {
+    const started = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    const charges: number[] = [];
+    const toolbox = createToolbox(
+      [
+        createTool({
+          name: 'charge-card',
+          version: '1.0.0',
+          description: 'Charge a payment card',
+          input: z.object({ cents: z.number() }),
+          async execute({ cents }) {
+            charges.push(cents);
+            started.resolve();
+            // The tool is still going when the run is stopped, and only then lets go.
+            await release.promise;
+            return { charged: cents };
+          },
+        }),
+      ],
+      {
+        approvalSecret: 'resume-approval-secret',
+        policy: {
+          beforeExecute() {
+            return {
+              allow: false,
+              status: 'needs_approval',
+              reason: 'Operator approval required',
+              action: { message: 'Approve charge' },
+            };
+          },
+        },
+      },
+    ) as unknown as Toolbox;
+    const bureau = await createBureau<AgentDefinitions>({
+      models: { catalog: createVendorCatalog().descriptors },
+      agents: {
+        default: createAgent({
+          // Charges once, and answers in words once the charge has its result.
+          generate: async (context: GenerateContext) => {
+            const history = context.conversation.current;
+            const charged = history.ids.some(
+              (id) => history.messages[id]?.toolResult?.callId === 'charge-1',
+            );
+            return charged
+              ? { content: 'charged', toolCalls: [] }
+              : {
+                  content: 'charging',
+                  toolCalls: [{ id: 'charge-1', name: 'charge-card', arguments: { cents: 100 } }],
+                };
+          },
+          toolbox,
+          stopWhen: parks
+            ? stopWhen.some(stopWhen.pendingApproval(), stopWhen.noToolCalls())
+            : stopWhen.noToolCalls(),
+        }),
+      },
+      storage: new MemoryStorage(),
+      durable: true,
+    });
+    cleanups.push(() => bureau.dispose());
+    const run = await bureau.tasks.start('default', 'go', { principal: ALICE });
+    await waitForCondition(
+      () => bureau.reviews.list().some((review) => review.runId === run.id),
+      'the approval is waiting',
+    );
+    const review = bureau.reviews.list().find((entry) => entry.runId === run.id)!;
+    // The approved call runs as the approval resolves, so the resolve is not awaited before the
+    // run is stopped inside it.
+    const resolving = bureau.reviews
+      .resolve({ id: review.id, decision: 'approve', principal: ALICE })
+      .catch(() => undefined);
+    await started.promise;
+    await bureau.tasks.cancel(run.id);
+    release.resolve();
+    await resolving;
+    await waitForTaskState(bureau, run.id);
+    await waitForCondition(async () => {
+      const record = await bureau.internals.taskRegistry.record(run.id);
+      const session = await bureau.contexts.get(run.contextId);
+      return record?.settled !== undefined && session?.metadata['lastRunId'] === run.id;
+    }, 'the stopped run is recorded');
+    return { bureau, run, charges };
+  }
+
+  it('a run that ended its step at the approval is a finished turn, and the tool runs once', async () => {
+    const { bureau, run, charges } = await approvedThenStopped(true);
+
+    expect(await refusalOf(resume(bureau, run.contextId, run.id))).toBe('turn-finished');
+    expect(charges).toEqual([100]);
+  });
+
+  it('a run that held its turn open is never continued past the call, and the tool runs once', async () => {
+    const { bureau, run, charges } = await approvedThenStopped(false);
+    // The approved call's row is the tool's own result, never a placeholder left by the approval.
+    const session = (await bureau.contexts.get(run.contextId))!;
+    const results = session.conversationHistory.ids
+      .map((id) => session.conversationHistory.messages[id]?.toolResult)
+      .filter((result) => result !== undefined);
+    expect(results.map((result) => result.outcome)).not.toContain('action_required');
+
+    const outcome = await refusalOf(resume(bureau, run.contextId, run.id));
+    expect(['turn-interrupted-call', 'turn-finished']).toContain(outcome);
+    expect(charges).toEqual([100]);
+  });
+});
+
+// COR-2437 review, settled by test: a run a goal's attempt or a schedule's fire owns is that
+// owner's to account for. Discarding or resuming it would change the attempt's or the fire's
+// outcome behind its back, so both refuse it with `turn-owned-elsewhere`, and change nothing.
+describe('a run a goal or a schedule owns', () => {
+  async function stoppedRunOwnedBy(
+    admission: Partial<Parameters<Bureau['internals']['taskRegistry']['recordAdmission']>[0]>,
+  ) {
+    const bureau = await openBureau(agentThat('finishes'));
+    const conversation = new Conversation(createConversationHistory({ id: 'owned' }));
+    conversation.appendUserMessage('go');
+    conversation.appendMessages({
+      role: 'assistant',
+      content: 'partial',
+      id: 'owned-run:step:0',
+    } as never);
+    await bureau.internals.sessionStore!.save(
+      createAgentSession({
+        id: 'owned',
+        agentName: 'agent',
+        conversationHistory: conversation.current,
+        metadata: { sessionOwner: ALICE, lastRunId: 'owned-run', lastRunStatus: 'aborted' },
+      }),
+    );
+    const saved = (await bureau.contexts.get('owned'))!;
+    await bureau.internals.taskRegistry.recordAdmission({
+      taskId: 'owned-run',
+      contextId: 'owned',
+      incarnation: saved.incarnation,
+      agentName: 'agent',
+      owner: ALICE,
+      origin: { kind: 'api' },
+      message: 'go',
+      ...admission,
+    });
+    await bureau.internals.taskRegistry.recordSettled('owned-run', {
+      at: new Date().toISOString(),
+      status: 'canceled',
+      finishReason: 'aborted',
+      message: null,
+    });
+    return { bureau, saved };
+  }
+
+  for (const [owner, admission] of [
+    ['a goal’s attempt', { origin: { kind: 'goal', goalRunId: 'goal-1', attemptId: 'attempt-1' } }],
+    [
+      'a schedule’s fire',
+      {
+        kind: 'schedule-fire',
+        origin: { kind: 'schedule', scheduleId: 'schedule-1', fireId: 'owned-run' },
+      },
+    ],
+  ] as const) {
+    it(`refuses to discard or resume a run of ${owner}, and changes nothing`, async () => {
+      const { bureau, saved } = await stoppedRunOwnedBy(admission);
+
+      expect(await refusalOf(resume(bureau, 'owned', 'owned-run'))).toBe('turn-owned-elsewhere');
+      expect(
+        await refusalOf(
+          bureau.contexts.discardTurn('owned', {
+            owner: ALICE,
+            commandId: 'discard-owned',
+            runId: 'owned-run',
+          }),
+        ),
+      ).toBe('discard:turn-owned-elsewhere');
+      expect(await bureau.contexts.get('owned')).toEqual(saved);
+    });
+  }
 });
 
 describe('a resume refused', () => {
@@ -385,6 +628,7 @@ describe('which turn may go on', () => {
     readonly id: string;
     readonly role: string;
     readonly call?: string;
+    readonly outcome?: string;
     readonly metadata?: object;
   };
   const sessionOf = (rows: readonly Row[], status = 'aborted'): AgentSession => {
@@ -399,7 +643,7 @@ describe('which turn may go on', () => {
           ? { toolCall: { id: row.call, name: 'noop', arguments: {} } }
           : {}),
         ...(row.role === 'tool-result'
-          ? { toolResult: { callId: row.call, outcome: 'success', content: 'ok' } }
+          ? { toolResult: { callId: row.call, outcome: row.outcome ?? 'success', content: 'ok' } }
           : {}),
       } as never);
     }
@@ -430,6 +674,20 @@ describe('which turn may go on', () => {
 
   it('refuses a turn stopped inside a call, one a follow-up reached, one that went on, and one with no rows', () => {
     expect(reasonOf(sessionOf(turn.slice(0, 3)))).toBe('turn-interrupted-call');
+    // An approval's placeholder row is not the tool's result: the call never finished.
+    expect(
+      reasonOf(
+        sessionOf([
+          ...turn.slice(0, 3),
+          {
+            id: `${R}:step:0:result:c-1`,
+            role: 'tool-result',
+            call: 'c-1',
+            outcome: 'action_required',
+          },
+        ]),
+      ),
+    ).toBe('turn-interrupted-call');
     expect(
       reasonOf(
         sessionOf([

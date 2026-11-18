@@ -39,6 +39,7 @@ import {
   type CommandLedgerIdentity,
   createCommandLedger,
 } from './command-ledger';
+import { CONTINUATION_INSTRUCTION_OF_METADATA_KEY } from './session-resume';
 
 /** The key prefix of the discard command ledger, apart from every other ledger's. */
 export const DISCARD_LEDGER_KEY_PREFIX = 'command-ledger:discard-turn:v1';
@@ -83,6 +84,8 @@ export type SessionDiscardRefusalReason =
   | 'follow-ups-queued'
   /** The run ended before it wrote anything after the person's message. */
   | 'nothing-to-discard'
+  /** A goal's attempt or a schedule's fire owns the run, and accounts for how it ended. */
+  | 'turn-owned-elsewhere'
   /** The context changed, or was deleted or created again, after the attempt read it. */
   | 'history-changed'
   /** The command identifier was used to discard another run's turn. */
@@ -253,6 +256,23 @@ export type UndiscardableTurn = {
   readonly message: string;
 };
 
+/** The origins of a plain chat run: one a person or a client started in the chat. */
+const PLAIN_CHAT_ORIGINS: ReadonlySet<string> = new Set(['chat', 'person', 'api']);
+
+/**
+ * Whether a run's task record says something other than the chat owns the run (COR-2437): a
+ * schedule's fire, a goal's attempt, or a task another run, an agent, a trigger or the system
+ * started. Their owners account for how the run ended, so neither a discard nor a resume may
+ * change it. A record with no origin, written before origins were kept, is a plain chat run.
+ */
+export function isRunOwnedElsewhere(record: {
+  readonly kind?: string | undefined;
+  readonly origin?: { readonly kind: string } | undefined;
+}): boolean {
+  if (record.kind === 'schedule-fire') return true;
+  return record.origin !== undefined && !PLAIN_CHAT_ORIGINS.has(record.origin.kind);
+}
+
 /** Whether `id` is a row run `runId` wrote: a step's text, call or result, or an answer to its question. */
 function isRowOfRun(id: string, runId: string): boolean {
   return parseStepRowIdentifier(id)?.runId === runId || id.startsWith(`${runId}:signal:`);
@@ -319,7 +339,16 @@ export function judgeDiscardableTurn(
   if (turn.length === 0) {
     return refuse('nothing-to-discard', 'The run wrote nothing after the person’s message.');
   }
-  return { ok: true, removed: turn };
+  // A continuation's model-only instruction turn (COR-2437) belongs to the run it prompted, and
+  // goes with its turn. It is the product's, never the person's message, so it never keeps a turn.
+  const before = start > 0 ? ids[start - 1] : undefined;
+  const instruction =
+    before === undefined
+      ? undefined
+      : getOwn(session.conversationHistory.messages, before)?.metadata?.[
+          CONTINUATION_INSTRUCTION_OF_METADATA_KEY
+        ];
+  return { ok: true, removed: instruction === undefined ? turn : [before!, ...turn] };
 }
 
 function withoutRows(

@@ -196,6 +196,17 @@ export type ChatRegenerationState = {
   readonly error?: string;
 };
 
+/**
+ * Whether a Discard or a Continue that failed with `error` is tried again under the same command
+ * (COR-2437): only after the Bureau refused that command outright, which released it. After an
+ * answer of `command-in-doubt`, which the same command would get for as long as it is sent, and
+ * after a failure that brought no answer, the next try is a new command.
+ */
+export function keepsCommandAfter(error: unknown): boolean {
+  const code = wireCodeOf(error);
+  return code !== undefined && forkRefusalReason(error) !== 'command-in-doubt';
+}
+
 export class ChatSessionState {
   conversation = $state.raw<ConversationHistory>(createConversationHistory({ id: '' }));
   /** Parsed approval rail identities retained across hidden attach/resume reconciliation. */
@@ -720,15 +731,15 @@ export class ChatSessionState {
    * Removes the last turn the person stopped, by its run, through the Bureau
    * (`bureau.contexts.discardturn`, COR-2437), then reads the thread again so the rows go. The
    * person's message stays. Resolves `false` when nothing was removed: the Bureau refused it, or it
-   * could not be reached. A second call while one is in flight is the same command.
+   * could not be reached. A second call while one is in flight does nothing.
    */
   async discardTurn(runId: string): Promise<boolean> {
     if (this.#closed?.() === true || this.streaming || this.attaching || this.transportActive) {
       return false;
     }
     if (this.discarding !== undefined) return false;
-    // A discard that failed is tried again under the same command, so one that did commit before
-    // its answer was lost is answered from the Bureau's record instead of being refused.
+    // The command is kept for the next Discard only after the Bureau refused it outright
+    // (`keepsCommandAfter`); after any other answer the next Discard is a new command.
     const earlier = this.#discardCommand;
     const commandId =
       earlier?.runId === runId ? earlier.commandId : `discard:${crypto.randomUUID()}`;
@@ -742,7 +753,8 @@ export class ChatSessionState {
       this.#discardCommand = undefined;
       await this.refresh();
       return true;
-    } catch {
+    } catch (error) {
+      if (!keepsCommandAfter(error)) this.#discardCommand = undefined;
       return false;
     } finally {
       this.discarding = undefined;
@@ -754,8 +766,8 @@ export class ChatSessionState {
    * (`bureau.contexts.resumeturn`, COR-2437): a continuation run starts on the thread with no
    * message from the person, and the page reads the thread again, which joins that run as it goes.
    * Resolves `false` when nothing was started: the Bureau refused it, or it could not be reached.
-   * A failed resume is tried again under the same command, so one that started a run before its
-   * answer was lost is answered with that run instead of starting another.
+   * The command is kept for the next Continue only after the Bureau refused it outright
+   * (`keepsCommandAfter`); after any other answer the next Continue is a new command.
    */
   async resumeTurn(runId: string): Promise<boolean> {
     if (this.#closed?.() === true || this.streaming || this.attaching || this.transportActive) {
@@ -776,7 +788,8 @@ export class ChatSessionState {
       this.lastRunEnd = undefined;
       await this.refresh();
       return true;
-    } catch {
+    } catch (error) {
+      if (!keepsCommandAfter(error)) this.#resumeCommand = undefined;
       return false;
     } finally {
       this.resuming = undefined;

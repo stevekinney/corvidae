@@ -18,6 +18,13 @@
  *   holder's.
  * - Nothing is exposed before it is committed: an entry is in the map before its handle is
  *   returned, and leaves the map before its session is disposed.
+ * - One principal for its whole life (COR-2437 review): the registry is this module's one
+ *   instance, `chatSessions`, and lives exactly as long as the page. Interborough has no sign-out
+ *   and no way to change who the page acts as without a full page load (the host decides the
+ *   principal, `lib/host-session.ts` only reads it), and a full page load starts a new registry.
+ *   A retained session is therefore never handed to another principal; a principal change that
+ *   arrives with a page load disposes every retained session with the page.
+ *   `chat-session-registry-principal.test.ts` holds both facts.
  */
 import { ChatSessionState, type ChatSessionOptions } from './chat-session.svelte.ts';
 

@@ -17,6 +17,7 @@ import {
 import {
   Conversation,
   isConversationHistory,
+  isModelOnlyMessage,
   type Message,
   type MessageInput,
   getOwn,
@@ -65,7 +66,8 @@ export function replaceInputText(stored: SessionInputPayload, text: string): Ses
 
 /** The text of the last user row in `rows`, or `''` when there is none. */
 function lastUserTextOf(rows: ReadonlyArray<Message> | undefined): string {
-  const last = rows?.findLast((row) => row.role === 'user');
+  // A model-only row (COR-2437: the product's instruction) is not the person's text.
+  const last = rows?.findLast((row) => row.role === 'user' && !isModelOnlyMessage(row));
   if (last === undefined) return '';
   if (typeof last.content === 'string') return last.content;
   return last.content.map((part) => (part.type === 'text' ? part.text : '')).join('');

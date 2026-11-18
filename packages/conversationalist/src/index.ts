@@ -254,6 +254,7 @@ export {
   isTextualMimeType,
   mimeTypeFitsModality,
 } from './media-types';
+export * from './model-only';
 export {
   contentSourceDisplayUrl,
   copyContent,

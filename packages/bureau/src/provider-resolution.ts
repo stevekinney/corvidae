@@ -151,7 +151,9 @@ export function appendConversationMessages(
   const candidateIds = new Set(candidate.ids);
   const currentIds = new Set(current.ids);
   const currentPreservedIds = current.ids.filter((id) => candidateIds.has(id) || !baseIds.has(id));
-  const candidateOnlyIds = candidate.ids.filter((id) => !currentIds.has(id));
+  // COR-2437: a row the candidate did not add (it was in the base it was built from) is not new.
+  // Missing from the stored chat, it was removed by another writer (a discard), and stays removed.
+  const candidateOnlyIds = candidate.ids.filter((id) => !currentIds.has(id) && !baseIds.has(id));
   const ids = [...currentPreservedIds, ...candidateOnlyIds];
   const messages: Record<string, ConversationHistory['messages'][string]> = {};
 

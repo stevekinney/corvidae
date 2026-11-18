@@ -11,7 +11,7 @@ import { MEMORY_CAPABILITIES, createMemoryAuthority, requestPrincipal } from '@l
 import type { PrepareStepHook, OnStepHook } from '@lostgradient/operative';
 import { MEMORY_EVIDENCE_METADATA_KEY } from '@lostgradient/operative';
 import type { ToolRequestContext } from 'armorer';
-import { Conversation, getOwn, messageText } from 'conversationalist';
+import { Conversation, getOwn, isModelOnlyMessage, messageText } from 'conversationalist';
 import type { BureauMemoryAuthorityOptions } from './bureau-types/options';
 
 /** COR-41 — what Bureau delegates to a run when the deployment configures nothing else. */
@@ -249,7 +249,10 @@ export function createMemoryRecallHook(
     // part array (COR-716). Recall never runs against an older message because
     // the current one carries media, and a prompt with no text recalls nothing.
     const messages = context.conversation.getMessages();
-    const latestUserMessage = messages.findLast((message) => message.role === 'user');
+    // A model-only row is the product's instruction (COR-2437), never what the person asked.
+    const latestUserMessage = messages.findLast(
+      (message) => message.role === 'user' && !isModelOnlyMessage(message),
+    );
     const query = latestUserMessage === undefined ? '' : messageText(latestUserMessage);
 
     // Stale rows are withdrawn on every step, step 0 included: a session's

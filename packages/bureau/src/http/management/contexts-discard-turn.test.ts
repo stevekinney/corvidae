@@ -243,6 +243,7 @@ describe('bureau.contexts.discardturn refusals', () => {
     'follow-up-delivered',
     'follow-ups-queued',
     'nothing-to-discard',
+    'turn-owned-elsewhere',
     'history-changed',
     'command-conflict',
     'command-in-doubt',

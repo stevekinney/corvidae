@@ -429,7 +429,8 @@ export interface BureauContexts {
    * normally (`turn-finished`), one a later run or row follows (`not-latest-turn`), one whose
    * process stopped before it recorded its end (`turn-outcome-unknown`), one a follow-up was
    * delivered into (`follow-up-delivered`), a context with a follow-up still queued
-   * (`follow-ups-queued`), and a run that wrote nothing (`nothing-to-discard`). The removal is one
+   * (`follow-ups-queued`), a run that wrote nothing (`nothing-to-discard`), and a run a goal's
+   * attempt or a schedule's fire owns (`turn-owned-elsewhere`). The removal is one
    * compare-and-swap fenced on the incarnation and revision the attempt read, judged again on what
    * it writes over, and its commit carries the discard's receipt and its audit entry
    * (`context.turn-discarded`) to the session outbox. The run's task record is kept as it is: it
@@ -452,14 +453,18 @@ export interface BureauContexts {
    * have been stopped by the person or have failed on finish reason `error`. The start is one
    * atomic session write that appends a hidden continuation row naming the stopped run and the
    * command, names the new run as the chat's last, and judges the history again inside its update,
-   * so a message, a discard or another resume that lands first wins. A repeated `commandId`
+   * so a message, a discard or another resume that lands first wins. The continuation is prompted
+   * by one model-only instruction turn after the partial reply (`CONTINUATION_INSTRUCTION`, a
+   * user turn the model is sent and people are never shown), so every provider is asked over a
+   * history ending in a user turn. A repeated `commandId`
    * answers the run it started, after a restart too, and never starts a second; the same
    * `commandId` for another run is `command-conflict`. Anything else throws a
    * {@link SessionResumeRefusedError} and starts nothing: `run-not-found`, `not-latest-turn`,
    * `turn-running`, `turn-awaiting-person`, `turn-recovering` (a run whose process stopped, which
    * the Bureau that next boots takes up), `turn-finished` (a reply cut at the token limit
    * included), `run-not-resumable` (a failure going on would meet again), `turn-interrupted-call`,
-   * `follow-up-delivered`, `follow-ups-queued` and `nothing-to-resume`. It does not authorize the
+   * `follow-up-delivered`, `follow-ups-queued`, `nothing-to-resume` and `turn-owned-elsewhere` (a
+   * goal's attempt or a schedule's fire owns the run). It does not authorize the
    * caller. Throws a `BureauError` `NOT_FOUND` for a context this Bureau does not hold, a
    * `ContextArchivedError` for an archived one, and a `BureauShuttingDownError` when Bureau is
    * shutting down.

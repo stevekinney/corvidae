@@ -3,7 +3,7 @@ import { createDefaultRuntimeServices, TypedEventTarget } from '@lostgradient/li
 import type { ConditionalTextValueStore } from '@lostgradient/storage';
 import type { JSONValue } from 'armorer/protocol';
 import type { ConversationHistory, Message } from 'conversationalist';
-import { getOwn, messageText } from 'conversationalist';
+import { getOwn, isModelOnlyMessage, messageText } from 'conversationalist';
 
 import type { AgentSession } from '../agent-session';
 import type { OperativeEventMap } from '../events';
@@ -278,12 +278,22 @@ export function clipText(text: string, limit: number): string {
   return trimmed;
 }
 
-/** The text of a visible message of `roles`, or `undefined` for a hidden or text-free one. */
+/**
+ * The text of a visible message of `roles`, or `undefined` for a hidden, model-only (COR-2437: the
+ * product's instruction to the model, never a person's words) or text-free one.
+ */
 function visibleText(
   message: Message | undefined,
   roles: readonly Message['role'][],
 ): string | undefined {
-  if (message === undefined || message.hidden || !roles.includes(message.role)) return undefined;
+  if (
+    message === undefined ||
+    message.hidden ||
+    isModelOnlyMessage(message) ||
+    !roles.includes(message.role)
+  ) {
+    return undefined;
+  }
   const text = messageText(message).trim();
   return text === '' ? undefined : text;
 }

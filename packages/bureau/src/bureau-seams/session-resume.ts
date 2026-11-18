@@ -17,12 +17,14 @@ import {
   type ResumeTurnResult,
   SessionResumeRefusedError,
   commandContinuesAnotherRun,
+  continuationInstruction,
   continuationRow,
   judgeResumableTurn,
   startedContinuation,
 } from '../session-resume';
 import { forEachOpenReceipt } from '../session-input-settlement';
 import { TASK_OWNER_LOST_FINISH_REASON } from '../task-registry';
+import { isRunOwnedElsewhere } from '../session-discard';
 import {
   type AgentSession,
   type SessionStore,
@@ -131,7 +133,12 @@ export function createSessionResume<D extends AgentDefinitions>(
         sessionId,
         principal: owner,
         origin: { kind: 'chat' },
-        appendMessages: [continuationRow(runId, commandId, owner, runtimeServices.clock.nowISO())],
+        // Both rows in the save that starts the run: the hidden row the command is found by, and
+        // the model-only instruction turn the continuation is asked over.
+        appendMessages: [
+          continuationRow(runId, commandId, owner, runtimeServices.clock.nowISO()),
+          continuationInstruction(runId, runtimeServices.clock.nowISO()),
+        ],
         // Judged again inside the save that starts the run: whatever landed since wins.
         startGuard: (current: AgentSession | undefined) => {
           if (current === undefined || current.incarnation !== session.incarnation) {
@@ -195,6 +202,12 @@ export function createSessionResume<D extends AgentDefinitions>(
       record.incarnation !== session.incarnation
     ) {
       return refuse('run-not-found', `The context has no run "${runId}".`);
+    }
+    if (isRunOwnedElsewhere(record)) {
+      return refuse(
+        'turn-owned-elsewhere',
+        'A goal’s attempt or a schedule’s fire owns the run, and accounts for how it ended.',
+      );
     }
     const newest = await core.tasks.enumerate({ contextId: session.id, limit: 1, offset: 0 });
     if (newest.tasks[0]?.id !== runId) {
