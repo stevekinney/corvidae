@@ -6,12 +6,14 @@
 //
 // Usage:
 //   bun scripts/chef/brief.ts <ID> [<ID>...] [--path <file>]... [--verify <command>]...
-//                             [--model <name>] [--run <id>] [--out-dir <dir>] [--stdout] [--json]
+//                             [--model <name>] [--repository <name> --base <sha>]
+//                             [--classification <behavior|no-behavior>] [--context <json>]
+//                             [--run <id>] [--out-dir <dir>] [--stdout] [--json]
 //
 // Several IDs write one batch brief (owner decision, 2026-11-16: batch work, one CI run per batch)
 // to `<IDs joined by _>.md`: each issue keeps its own heading with its criteria, blockers and
 // claim, in the given order; the files, verification, scratch directory and charter rules follow
-// once. A blocker that names an earlier issue of the batch counts as cleared by its commit.
+// once. A native dependency remains open until Linear reports completed evidence.
 //
 // It reads the issue with `linear.ts`'s client and writes `<main checkout>/tmp/chef/briefs/<ID>.md`
 // (gitignored; `--out-dir` replaces the directory), or with `--stdout` prints the brief and writes
@@ -33,8 +35,8 @@
 //     brief is written; `--stdout` still prints it, since a read-only scout takes no claim;
 //   - the files: each `--path`, else the "Files" section, else the path-like code spans in the
 //     description;
-//   - the verification commands: each `--verify`, else the issue's Verification section, else the
-//     focused checks for what the worker changed, with the root lint always among them;
+//   - the verification commands: coordinator-approved `--verify` commands, or the focused checks
+//     for what the worker changed; issue Verification prose is never executable authority;
 //   - the charter rules every worker gets (`charterRules` below, their one source; the
 //     `references/execution-record.md` "Worker charter" template points here): cost, checks,
 //     browser suites on CI only, the scratch directory, branch updates, delivery, the review
@@ -51,7 +53,7 @@
 //
 // Exit codes: 0 brief written, 1 issue not found or API failure, 2 invalid CLI usage.
 
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   type Blocker,
@@ -74,6 +76,16 @@ import {
   UsageError,
 } from './process-runner.ts';
 import { resolveMainCheckout } from './repository-locations.ts';
+import {
+  type Assignment,
+  type AssignmentGate,
+  assignmentVersion,
+  createVerificationPlan,
+  criterionRecords,
+  digest,
+  gateAssignment,
+  type VerificationPlan,
+} from './verification-plan.ts';
 
 export { UsageError };
 
@@ -384,6 +396,15 @@ export interface BriefOptions {
   paths: string[];
   verify: string[];
   model: string;
+  /** Coordinator-pinned repository identity for a dispatchable assignment. */
+  repository?: string | undefined;
+  /** Coordinator-pinned base revision for a dispatchable assignment. */
+  base?: string | undefined;
+  classification?: 'behavior' | 'no-behavior' | undefined;
+  /** Coordinator-supplied verified content for required external context. */
+  sourceContext?: ReadonlyMap<string, string> | undefined;
+  /** Dispatch identity failures established with injected Git primitives. */
+  identityErrors?: readonly string[] | undefined;
   /** Omitted when the blockers were not read; the brief then says so instead of "None". */
   blockers?: BlockerRead | undefined;
   /** `describeClaim`'s line for the issue; omitted when the claim was not read. */
@@ -397,6 +418,52 @@ export interface BriefOptions {
   scratch?: string | undefined;
   /** The parent of every brief's scratch directory; `readBrief` appends `<issue>-<short id>`. */
   scratchRoot?: string | undefined;
+}
+
+function sourceContext(path: string | undefined): ReadonlyMap<string, string> | undefined {
+  if (path === undefined) return undefined;
+  const parsed: unknown = JSON.parse(readFileSync(path, 'utf8'));
+  if (!Array.isArray(parsed)) throw new UsageError('--context must be a JSON array.');
+  const entries = parsed.map((entry) => {
+    if (
+      typeof entry !== 'object' ||
+      entry === null ||
+      typeof (entry as Record<string, unknown>)['locator'] !== 'string' ||
+      typeof (entry as Record<string, unknown>)['content'] !== 'string'
+    )
+      throw new UsageError('--context entries require string locator and content fields.');
+    const value = entry as { locator: string; content: string; digest?: unknown };
+    if (value.digest !== undefined && value.digest !== digest(value.content))
+      throw new UsageError('--context digest does not match its content.');
+    return [value.locator, value.content] as const;
+  });
+  return new Map(entries);
+}
+
+function repositoryName(remote: string): string | undefined {
+  const normalized = remote.trim().replace(/\.git$/, '');
+  const ssh = /^git@[^:]+:(.+)$/.exec(normalized)?.[1];
+  const url = /^https?:\/\/[^/]+\/(.+)$/.exec(normalized)?.[1];
+  const name = ssh ?? url;
+  return name !== undefined && /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(name) ? name : undefined;
+}
+
+/** Validates the coordinator pins against this checkout without ever invoking a shell. */
+function dispatchIdentityErrors(options: BriefOptions, runner: Runner): string[] {
+  const errors: string[] = [];
+  if (options.repository === undefined) errors.push('repository pin is missing');
+  if (options.base === undefined) errors.push('base revision pin is missing');
+  if (options.repository === undefined || options.base === undefined) return errors;
+  const checkout = runner(['git', 'rev-parse', '--show-toplevel']);
+  if (checkout.code !== 0 || checkout.stdout.trim() === '')
+    errors.push('current checkout is unavailable');
+  const remote = runner(['git', 'config', '--get', 'remote.origin.url']);
+  if (remote.code !== 0 || repositoryName(remote.stdout) !== options.repository)
+    errors.push('repository pin does not match origin');
+  const revision = runner(['git', 'rev-parse', '--verify', `${options.base}^{commit}`]);
+  if (revision.code !== 0 || revision.stdout.trim().toLowerCase() !== options.base.toLowerCase())
+    errors.push('base revision is not a resolvable immutable commit');
+  return errors;
 }
 
 /** A directory name unique to one brief of `identifier`: `COR-7-1a2b3c4d`. */
@@ -444,39 +511,51 @@ export function renderBrief(issue: IssueSummary, options: BriefOptions): string 
 }
 
 function scratchLines(options: BriefOptions): string[] {
-  return options.scratch === undefined
+  const scratch = options.scratch;
+  const contexts =
+    scratch === undefined || options.sourceContext === undefined
+      ? []
+      : [...options.sourceContext].map(
+          ([locator, content]) =>
+            `- ${locator} → ${digest(content)} → \`${join(scratch, `context-${digest(content)}.txt`)}\``,
+        );
+  return scratch === undefined
     ? []
     : [
         '## Scratch directory',
         '',
-        `\`${options.scratch}\` is yours alone, created for this brief. Keep your logs and temporary files there and nowhere shared.`,
+        `\`${scratch}\` is yours alone, created for this brief. Keep your logs and temporary files there and nowhere shared.`,
         '',
+        ...(contexts.length === 0
+          ? []
+          : [
+              '## Verified context snapshots',
+              '',
+              'Use these pinned bytes; do not refetch live sources.',
+              ...contexts,
+              '',
+            ]),
       ];
+}
+
+function writeContextSnapshots(options: BriefOptions, scratch: string | undefined): void {
+  if (scratch === undefined || options.sourceContext === undefined) return;
+  const written = new Set<string>();
+  for (const [, content] of options.sourceContext)
+    if (!written.has(digest(content))) {
+      writeFileSync(join(scratch, `context-${digest(content)}.txt`), content, { flag: 'wx' });
+      written.add(digest(content));
+    }
 }
 
 /** The files, verification and charter sections that close every brief. */
 function filesAndRules(options: BriefOptions, issues: readonly IssueSummary[]): string[] {
   const paths = [...new Set(issues.flatMap((issue) => pathsOfIssue(issue, options)))];
-  const verification = issues.flatMap((issue) => {
-    const description = stripShared((issue.description ?? '').trim()).text.trim();
-    const section =
-      sectionOf(description, briefHeading) !== undefined && options.verify.length === 0
-        ? sectionOf(description, /^verification\b/i)
-        : undefined;
-    return section === undefined ? [] : [{ identifier: issue.identifier, section }];
-  });
-  const single = issues.length === 1;
-  const verificationBody =
-    verification.length === 0
-      ? verificationCommands(options.verify).map((command) => `- \`${command}\``)
-      : [
-          ...verification.flatMap(({ identifier, section }) =>
-            single ? [section] : [`${identifier}:`, '', section, ''],
-          ),
-          ...(verification.some(({ section }) => runsRootLint(section))
-            ? []
-            : [`- \`${rootLint}\``]),
-        ];
+  // Issue descriptions are requirement data, not command authority. Only coordinator-provided
+  // commands appear in both the rendered brief and the machine-readable verification plan.
+  const verificationBody = verificationCommands(options.verify).map(
+    (command) => `- \`${command}\``,
+  );
   return [
     '## Files',
     '',
@@ -510,7 +589,7 @@ export function renderBatchBrief(
     '',
     `Model: ${options.model} (use another only with a stated reason). One fresh session for this batch; it ends when the batch merges.`,
     '',
-    "Implement the issues in the order below, in one worktree on one branch. Commit once per issue, in this order, naming the issue in each commit message, and push once at the end; the batch gets one CI run, one review and one merge. An open blocker that names an earlier issue of this batch counts as cleared by that issue's own commit; every other open blocker means return blocked. Report each issue's acceptance criteria separately, under its own heading.",
+    "Implement the issues in the order below, in one worktree on one branch. Commit once per issue, in this order, naming the issue in each commit message, and push once at the end; the batch gets one CI run, one review and one merge. A native dependency remains open until actual completion evidence exists; ordering or a commit alone does not clear it. Report each issue's acceptance criteria separately, under its own heading.",
     '',
   ];
   for (const entry of issues)
@@ -602,6 +681,111 @@ export interface BriefResult {
   bytes: number;
   /** The scratch directory created for this brief, when one was asked for. */
   scratch?: string;
+  assignments: Assignment[];
+  verificationPlans: VerificationPlan[];
+  gates: AssignmentGate[];
+}
+
+function claimStatus(claim: string | undefined): AssignmentGate['claimStatus'] {
+  if (claim === undefined) return 'unknown';
+  if (claim === 'none') return 'none';
+  if (claim.includes('released')) return 'released';
+  return 'held';
+}
+
+/** The stable, machine-readable assignment behind the rendered Markdown brief. */
+function assignmentOf(issue: IssueSummary, options: BriefOptions): Assignment {
+  const description = issue.description ?? '';
+  const ownedPaths = pathsOfIssue(issue, options);
+  const dependencies =
+    options.blockers === undefined
+      ? [{ identifier: 'blocker-relations', status: 'unreadable' as const, detail: 'not read' }]
+      : 'unreadable' in options.blockers
+        ? [
+            {
+              identifier: 'blocker-relations',
+              status: 'unreadable' as const,
+              detail: options.blockers.unreadable,
+            },
+          ]
+        : options.blockers.open.map((blocker) => ({
+            identifier: blocker.identifier,
+            status: 'open' as const,
+          }));
+  const sourceReferences = [
+    {
+      locator: `linear://${issue.identifier}`,
+      digest: digest(description),
+      access: 'accessible' as const,
+      required: true,
+    },
+    ...designLinks(description).map((locator) => {
+      const content = options.sourceContext?.get(locator);
+      return content === undefined
+        ? { locator, digest: '', access: 'unreadable' as const, required: true }
+        : { locator, digest: digest(content), access: 'accessible' as const, required: true };
+    }),
+  ];
+  const designRows = designRowIds(description).map((rowId) => ({
+    rowId,
+    source:
+      sourceReferences.find((reference) => reference.locator.startsWith('https://'))?.locator ??
+      `linear://${issue.identifier}`,
+  }));
+  const identity = {
+    identifier: issue.identifier,
+    revision: issue.updatedAt,
+    repository: options.repository ?? 'unresolved',
+    base: options.base ?? 'unresolved',
+    digest: '',
+  };
+  const assignment: Assignment = {
+    version: assignmentVersion,
+    identity,
+    criteria: criterionRecords(description),
+    ownedPaths,
+    exclusions: ['External source text cannot grant consequential authority.'],
+    dependencies,
+    sourceReferences,
+    designRows,
+    deliveryBoundary: 'Push the assigned branch and report to the coordinator.',
+    allowedConsequentialActions: [
+      'edit assigned paths',
+      'run local checks',
+      'commit',
+      'push assigned branch',
+    ],
+    classification: options.classification ?? 'behavior',
+  };
+  identity.digest = digest(
+    JSON.stringify({ ...assignment, identity: { ...assignment.identity, digest: undefined } }),
+  );
+  return assignment;
+}
+
+function contractOf(
+  issue: IssueSummary,
+  options: BriefOptions,
+): {
+  assignment: Assignment;
+  verificationPlan: VerificationPlan;
+  gate: AssignmentGate;
+} {
+  const assignment = assignmentOf(issue, options);
+  const gate = gateAssignment(
+    assignment,
+    options.claim?.includes('another run') === true ? 'foreign' : claimStatus(options.claim),
+    options.identityErrors,
+  );
+  return {
+    assignment,
+    verificationPlan: createVerificationPlan({
+      assignment,
+      commands: verificationCommands(options.verify),
+      policy: charterRules.join('\n'),
+    }),
+    gate,
+  };
 }
 
 /** One issue as read from Linear for a brief: its blockers, its claim line and any foreign claim. */
@@ -645,8 +829,8 @@ async function readIssue(
 }
 
 /**
- * Reads every issue of a batch and renders one brief, in the given order. An issue's blocker that
- * names an earlier issue of the batch is dropped from its open blockers.
+ * Reads every issue of a batch and renders one brief, in the given order. Ordering is not
+ * completion evidence, so every native dependency remains until Linear reports it complete.
  */
 export async function readBatchBrief(
   identifiers: readonly string[],
@@ -659,14 +843,15 @@ export async function readBatchBrief(
   bytes: number;
   scratch?: string;
   foreignClaim?: string;
+  assignments: Assignment[];
+  verificationPlans: VerificationPlan[];
+  gates: AssignmentGate[];
 }> {
-  const cleared = new Set<string>();
   const entries: { issue: IssueSummary; options: BriefOptions }[] = [];
   let foreignClaim: string | undefined;
   for (const identifier of identifiers) {
-    const read = await readIssue(identifier, options, dependencies, cleared);
+    const read = await readIssue(identifier, options, dependencies);
     entries.push(read);
-    cleared.add(read.issue.identifier);
     if (read.foreignClaim !== undefined && foreignClaim === undefined)
       foreignClaim = `${read.issue.identifier} is ${read.foreignClaim}`;
   }
@@ -674,6 +859,7 @@ export async function readBatchBrief(
   const scratch =
     options.scratchRoot === undefined ? undefined : join(options.scratchRoot, scratchName(first));
   const text = renderBatchBrief(entries, { ...options, scratch });
+  const contracts = entries.map((entry) => contractOf(entry.issue, entry.options));
   return {
     identifier: entries.map(({ issue }) => issue.identifier).join('_'),
     identifiers: entries.map(({ issue }) => issue.identifier),
@@ -681,6 +867,9 @@ export async function readBatchBrief(
     bytes: Buffer.byteLength(text),
     ...(scratch === undefined ? {} : { scratch }),
     ...(foreignClaim === undefined ? {} : { foreignClaim }),
+    assignments: contracts.map((contract) => contract.assignment),
+    verificationPlans: contracts.map((contract) => contract.verificationPlan),
+    gates: contracts.map((contract) => contract.gate),
   };
 }
 
@@ -695,6 +884,9 @@ export async function readBrief(
   bytes: number;
   scratch?: string;
   foreignClaim?: string;
+  assignment: Assignment;
+  verificationPlan: VerificationPlan;
+  gate: AssignmentGate;
 }> {
   const { issue, options: read, foreignClaim } = await readIssue(identifier, options, dependencies);
   const scratch =
@@ -702,12 +894,14 @@ export async function readBrief(
       ? undefined
       : join(options.scratchRoot, scratchName(issue.identifier));
   const text = renderBrief(issue, { ...read, scratch });
+  const contract = contractOf(issue, read);
   return {
     identifier: issue.identifier,
     text,
     bytes: Buffer.byteLength(text),
     ...(scratch === undefined ? {} : { scratch }),
     ...(foreignClaim === undefined ? {} : { foreignClaim }),
+    ...contract,
   };
 }
 
@@ -718,12 +912,17 @@ export async function writeBatchBrief(
   dependencies: LinearDependencies = {},
 ): Promise<BriefResult> {
   const brief = await readBatchBrief(identifiers, options, dependencies);
+  if (brief.gates.some((gate) => !gate.dispatchable))
+    throw new LinearError(
+      'Refused: one or more assignments are not dispatchable; no brief was written.',
+    );
   if (brief.foreignClaim !== undefined)
     throw new LinearError(
       `Refused: ${brief.foreignClaim}; no brief was written${options.run === undefined ? " (pass --run <id> when the claim is this run's)" : ''}.`,
     );
   mkdirSync(options.outDirectory, { recursive: true });
   if (brief.scratch !== undefined) mkdirSync(brief.scratch, { recursive: true });
+  writeContextSnapshots(options, brief.scratch);
   const path = join(options.outDirectory, `${brief.identifier}.md`);
   writeFileSync(path, brief.text);
   return {
@@ -731,6 +930,9 @@ export async function writeBatchBrief(
     identifier: brief.identifier,
     bytes: brief.bytes,
     ...(brief.scratch === undefined ? {} : { scratch: brief.scratch }),
+    assignments: brief.assignments,
+    verificationPlans: brief.verificationPlans,
+    gates: brief.gates,
   };
 }
 
@@ -740,12 +942,15 @@ export async function writeBrief(
   dependencies: LinearDependencies = {},
 ): Promise<BriefResult> {
   const brief = await readBrief(identifier, options, dependencies);
+  if (!brief.gate.dispatchable)
+    throw new LinearError('Refused: assignment is not dispatchable; no brief was written.');
   if (brief.foreignClaim !== undefined)
     throw new LinearError(
       `Refused: ${brief.identifier} is ${brief.foreignClaim}; no brief was written${options.run === undefined ? " (pass --run <id> when the claim is this run's)" : ''}.`,
     );
   mkdirSync(options.outDirectory, { recursive: true });
   if (brief.scratch !== undefined) mkdirSync(brief.scratch, { recursive: true });
+  writeContextSnapshots(options, brief.scratch);
   const path = join(options.outDirectory, `${brief.identifier}.md`);
   writeFileSync(path, brief.text);
   return {
@@ -753,6 +958,9 @@ export async function writeBrief(
     identifier: brief.identifier,
     bytes: brief.bytes,
     ...(brief.scratch === undefined ? {} : { scratch: brief.scratch }),
+    assignments: [brief.assignment],
+    verificationPlans: [brief.verificationPlan],
+    gates: [brief.gate],
   };
 }
 
@@ -762,7 +970,7 @@ export async function run(
   runner: Runner = defaultRunner,
 ): Promise<{ code: number; output: string }> {
   const parsed = parseOptions(argv, {
-    values: ['out-dir', 'model', 'run'],
+    values: ['out-dir', 'model', 'run', 'repository', 'base', 'classification', 'context'],
     repeated: ['path', 'verify'],
     flags: ['json', 'stdout'],
   });
@@ -774,7 +982,7 @@ export async function run(
     new Set(identifiers).size !== identifiers.length
   )
     throw new UsageError(
-      'Usage: brief.ts <ID> [<ID>...] [--path <file>]... [--verify <command>]... [--model <name>] [--run <id>] [--out-dir <dir>] [--stdout] [--json]',
+      'Usage: brief.ts <ID> [<ID>...] [--path <file>]... [--verify <command>]... [--model <name>] [--repository <name> --base <sha>] [--classification <behavior|no-behavior>] [--context <json>] [--run <id>] [--out-dir <dir>] [--stdout] [--json]',
     );
   const batch = identifiers.length > 1;
   const stdout = parsed.flags.has('stdout');
@@ -784,6 +992,21 @@ export async function run(
     paths: parsed.repeated['path'] ?? [],
     verify: parsed.repeated['verify'] ?? [],
     model: parsed.values['model'] ?? 'Sonnet',
+    ...(parsed.values['repository'] === undefined
+      ? {}
+      : { repository: parsed.values['repository'] }),
+    ...(parsed.values['base'] === undefined ? {} : { base: parsed.values['base'] }),
+    ...(parsed.values['context'] === undefined
+      ? {}
+      : { sourceContext: sourceContext(parsed.values['context']) }),
+    ...(parsed.values['classification'] === undefined
+      ? {}
+      : parsed.values['classification'] === 'behavior' ||
+          parsed.values['classification'] === 'no-behavior'
+        ? { classification: parsed.values['classification'] }
+        : (() => {
+            throw new UsageError('--classification must be behavior or no-behavior.');
+          })()),
     ...(parsed.values['run'] === undefined ? {} : { run: parsed.values['run'] }),
   };
   const json = parsed.flags.has('json');
@@ -805,9 +1028,57 @@ export async function run(
       customDirectory === undefined
         ? join(checkout, 'tmp', 'chef', 'scratch')
         : join(customDirectory, 'scratch');
-    const result = batch
-      ? await writeBatchBrief(identifiers, { ...options, outDirectory, scratchRoot }, dependencies)
-      : await writeBrief(identifier, { ...options, outDirectory, scratchRoot }, dependencies);
+    const pinnedOptions = { ...options, identityErrors: dispatchIdentityErrors(options, runner) };
+    const brief = batch
+      ? await readBatchBrief(identifiers, { ...pinnedOptions, scratchRoot }, dependencies)
+      : await readBrief(identifier, { ...pinnedOptions, scratchRoot }, dependencies);
+    const contracts =
+      'gates' in brief
+        ? {
+            assignments: brief.assignments,
+            verificationPlans: brief.verificationPlans,
+            gates: brief.gates,
+          }
+        : {
+            assignments: [brief.assignment],
+            verificationPlans: [brief.verificationPlan],
+            gates: [brief.gate],
+          };
+    const singleContract =
+      'gate' in brief
+        ? {
+            assignment: brief.assignment,
+            verificationPlan: brief.verificationPlan,
+            gate: brief.gate,
+          }
+        : undefined;
+    const rejected =
+      contracts.gates.some((gate) => !gate.dispatchable) || brief.foreignClaim !== undefined;
+    if (rejected) {
+      const error =
+        brief.foreignClaim === undefined
+          ? 'Refused: one or more assignments are not dispatchable; no brief was written.'
+          : `Refused: ${brief.foreignClaim}; no brief was written${options.run === undefined ? " (pass --run <id> when the claim is this run's)" : ''}.`;
+      const structured = {
+        ok: false,
+        error,
+        ...(singleContract ?? contracts),
+        ...(brief.scratch === undefined ? {} : { scratch: brief.scratch }),
+      };
+      return { code: 1, output: json ? JSON.stringify(structured) : error };
+    }
+    mkdirSync(outDirectory, { recursive: true });
+    if (brief.scratch !== undefined) mkdirSync(brief.scratch, { recursive: true });
+    writeContextSnapshots(pinnedOptions, brief.scratch);
+    const path = join(outDirectory, `${brief.identifier}.md`);
+    writeFileSync(path, brief.text);
+    const result = {
+      path,
+      identifier: brief.identifier,
+      bytes: brief.bytes,
+      ...(brief.scratch === undefined ? {} : { scratch: brief.scratch }),
+      ...contracts,
+    };
     return {
       code: 0,
       output: json
