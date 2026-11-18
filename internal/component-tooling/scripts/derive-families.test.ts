@@ -136,6 +136,23 @@ describe('deriveFamilies', () => {
     expectNoPackageCycle(derived);
   });
 
+  test('fixture hosts follow their declarations to core, which name them by a ./ path', () => {
+    const tree = baseTree();
+    // Button's declarations name two hosts; one mounts card (a higher layer) and goes to core.
+    tree.set('src/components/button/in-card.fixture.svelte', svelte('../card/card.svelte'));
+    tree.set('src/components/button/plain.fixture.svelte', svelte('./button.svelte'));
+    tree.set(
+      'src/components/button/button-fixtures.ts',
+      "export default [{ name: 'a', host: './in-card.fixture.svelte' }, { name: 'b', host: './plain.fixture.svelte' }];\n",
+    );
+    const derived = derive(tree);
+    expect(derived.testMoves.map(({ file }) => file).toSorted()).toEqual([
+      'src/components/button/button-fixtures.ts',
+      'src/components/button/in-card.fixture.svelte',
+      'src/components/button/plain.fixture.svelte',
+    ]);
+  });
+
   test('a bare file name names the file beside the test that has one, not a namesake elsewhere', () => {
     const tree = baseTree();
     // Button's fixture goes to core; card's test reads its own fixture of the same name.

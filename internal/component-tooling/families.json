@@ -2561,6 +2561,12 @@
       "because": "it mounts \"button\", whose tests mount \"card\" in turn (src/components/card/card-footer.fixture.svelte -> src/components/button/index.ts)"
     },
     {
+      "file": "src/components/card/card-suggested.fixture.svelte",
+      "from": "card",
+      "to": "core",
+      "because": "src/components/card/card-fixtures.ts, which core owns, declares it as a fixture host, which sits beside its declarations"
+    },
+    {
       "file": "src/components/checkbox-group/checkbox-group.test.ts",
       "from": "checkbox-group",
       "to": "core",

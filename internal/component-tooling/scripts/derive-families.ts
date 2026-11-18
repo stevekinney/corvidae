@@ -654,7 +654,26 @@ function moveToCore(
     for (const importer of importersOf(context, next.file)) {
       queue.push({ file: importer, because: `it imports or builds ${next.file}, which core owns` });
     }
+    for (const host of fixtureHostsOf(context, next.file)) {
+      queue.push({
+        file: host,
+        because: `${next.file}, which core owns, declares it as a fixture host, which sits beside its declarations`,
+      });
+    }
   }
+}
+
+/**
+ * The fixture hosts a component's fixture declarations (`<name>-fixtures.ts`) name: each
+ * `host: './<name>.fixture.svelte'` beside them. The fixture extraction requires that relative
+ * `./` path, so the hosts go wherever their declarations go.
+ */
+function fixtureHostsOf(context: Context, file: string): string[] {
+  if (!file.endsWith('-fixtures.ts')) return [];
+  const content = context.files.get(file) ?? '';
+  return [...content.matchAll(/\bhost:\s*(['"`])\.\/([^'"`]+\.fixture\.svelte)\1/g)]
+    .map((match) => posix.join(posix.dirname(file), match[2] ?? ''))
+    .filter((host) => context.files.has(host));
 }
 
 function familyOf(owner: string | undefined): owner is string {

@@ -1277,6 +1277,13 @@ function deadPaths(plan: Plan): string[] {
     if (!existsSync(absolute)) continue;
     const text = readFileSync(absolute, 'utf8');
     if (isGenerated(text)) continue;
+    // A component's fixture declarations name each host beside them by `./`; one the split put in
+    // another package than its declarations (a `../` host) is a placement the map must fix.
+    if (path.endsWith('-fixtures.ts')) {
+      for (const match of text.matchAll(/\bhost:\s*(['"`])(\.\.\/[^'"`]+)\1/g)) {
+        dead.push(`${path}: the fixture host ${match[2]} is not beside its declarations.`);
+      }
+    }
     const home = packageOf(plan, path);
     const before = home === undefined ? path : posix.join(core, home.virtual);
     const check = (written: string, reached: string): boolean => {
