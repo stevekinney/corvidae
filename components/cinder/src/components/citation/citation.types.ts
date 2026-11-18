@@ -36,6 +36,13 @@ export type CitationSource = {
   url?: string;
   /** An excerpt from the source, shown in quotation marks under its title. */
   detail?: string;
+  /**
+   * The words of the answer this source backs, as they read in it, such as "Revenue grew 12% in
+   * 2025". A host that draws the answer (Chat) puts a marker for the source in the text right after
+   * those words, on every width, and leaves the text as it was. Without it, or when the words are
+   * not in the answer, the source is listed with the others only. Trimmed, at most 500 characters.
+   */
+  claim?: string;
 };
 
 /** The words Citation draws itself. */

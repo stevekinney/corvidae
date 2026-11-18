@@ -1,6 +1,7 @@
 <script lang="ts" module>
   import type { HTMLAttributes } from 'svelte/elements';
   import type { MarkdownNodeOverride } from './chat-message-parts.ts';
+  import type { InlineCitations } from './inline-citations.ts';
 
   export type MessageContentProps = Omit<HTMLAttributes<HTMLDivElement>, 'class'> & {
     /** Raw markdown/text content to render */
@@ -17,6 +18,8 @@
     class?: string;
     /** Optional renderer seam for fenced code, table, and Mermaid nodes. */
     markdownNode?: MarkdownNodeOverride | undefined;
+    /** Citations drawn at their claims in the text (board row M4). */
+    citations?: InlineCitations | undefined;
   };
 </script>
 
@@ -38,6 +41,7 @@
     overrideContent,
     class: className,
     markdownNode,
+    citations,
     ...rest
   }: MessageContentProps = $props();
 
@@ -129,7 +133,12 @@
   {...rest}
 >
   {#if displayContent}
-    <MarkdownPreview content={displayContent} {markdownNode} />
+    <!-- A marker anchors only in a finished answer: while it streams the claim may not be whole. -->
+    <MarkdownPreview
+      content={displayContent}
+      {markdownNode}
+      citations={streaming ? undefined : citations}
+    />
   {/if}
   {#if openFence}
     <!-- The open fence's code renders as it arrives: a caret after its final character, a

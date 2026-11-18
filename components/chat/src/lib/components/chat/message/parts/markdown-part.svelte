@@ -10,9 +10,13 @@
 </script>
 
 <script lang="ts">
+  import { getInlineCitations } from '../inline-citations.ts';
   import MessageContent from '../message-content.svelte';
 
   let { part, markdownNode }: MarkdownPartProps = $props();
+
+  // The message's citations drawn at their claims in this text (board row M4), when it has any.
+  const inlineCitations = getInlineCitations();
 </script>
 
 <!--
@@ -27,4 +31,5 @@
   streaming={part.streaming}
   expanded={part.expanded}
   {markdownNode}
+  citations={inlineCitations?.()}
 />
