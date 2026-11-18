@@ -100,8 +100,9 @@ describe('TimelineTab', () => {
   });
 
   // COR-2489: with no step chosen the detail pane was the frame's whole height (about 1,300px at
-  // 1280) with "Choose a step" centred in it. The empty pane is as tall as what it says.
-  test('with no step chosen, the detail pane is only as tall as "Choose a step"', async () => {
+  // 1280) with "Choose a step" centred in it. With no step chosen the frame is as tall as what it
+  // holds, up to the same height.
+  test('with no step chosen, the frame is only as tall as what it holds', async () => {
     const entries = [
       entry({ step: 1, operationLabel: 'reserveFlight' }),
       entry({ step: 2, operationLabel: 'reserveHotel' }),
@@ -115,22 +116,20 @@ describe('TimelineTab', () => {
       },
     });
     await waitFor(() => expect(getAllByText('Choose a step').length).toBeGreaterThan(0));
-    // The empty state is the detail body's own child, which is what the frame's rule names.
-    const detail = container.querySelector('[data-testid="run-steps"] .cinder-list-detail__detail');
-    const empty = detail?.querySelector(
-      ':scope > .cinder-list-detail__detail-body > .cinder-empty-state',
-    );
-    expect(empty?.textContent).toContain('Choose a step');
+    const frame = container.querySelector('[data-testid="run-steps"]');
+    expect(frame?.hasAttribute('data-step-chosen')).toBe(false);
 
     const source = readFileSync(new URL('./timeline-tab.svelte', import.meta.url), 'utf8');
-    const rule =
-      /\.ib-steps-frame\s+:global\(\s*\.cinder-list-detail__detail:has\(> \.cinder-list-detail__detail-body > \.cinder-empty-state\)\s*\)\s*\{([^}]*)\}/.exec(
-        source,
-      )?.[1];
+    const rule = /\.ib-steps-frame:not\(\[data-step-chosen\]\) \{([^}]*)\}/.exec(source)?.[1];
     expect(rule).toContain('block-size: auto;');
-    expect(rule).toContain('align-self: flex-start;');
-    // A chosen step's pane keeps the frame's height: the frame itself is unchanged.
+    expect(rule).toContain('max-block-size: max(24rem, 60dvh);');
+    expect(rule).toContain('overflow-y: auto;');
+    // A chosen step keeps the frame's height: the frame's own rule is unchanged.
     expect(source).toMatch(/\.ib-steps-frame \{\s*block-size: max\(24rem, 60dvh\);/);
+
+    // Choosing a step marks the frame, so it takes that height again.
+    await fireEvent.click(getAllByText('Reserve flight')[0] as HTMLElement);
+    await waitFor(() => expect(frame?.hasAttribute('data-step-chosen')).toBe(true));
   });
 
   test('lists the steps in order, each in words and in code, with the count in the list header', async () => {
