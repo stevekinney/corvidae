@@ -4,6 +4,7 @@ import { readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import {
+  isTestFile,
   owningWorkspace,
   type SourceTree,
   type WorkspaceDescription,
@@ -48,12 +49,12 @@ function failureLocation(identity: string): { workspace: string; file: string } 
   return { workspace: match[1].trim(), file: normalizedPath(match[2].trim()) };
 }
 
-function selectedLocations(
-  selected: readonly string[],
+function testLocations(
+  tests: readonly string[],
   workspaces: readonly WorkspaceDescription[],
 ): Map<string, Set<string>> {
   const locations = new Map<string, Set<string>>();
-  for (const test of selected) {
+  for (const test of tests) {
     const workspace = owningWorkspace(test, workspaces);
     const relative = workspace.directory === '' ? test : test.slice(workspace.directory.length + 1);
     const file = normalizedPath(relative);
@@ -62,6 +63,27 @@ function selectedLocations(
     locations.set(file, matches);
   }
   return locations;
+}
+
+function failureResolution(
+  selected: readonly string[],
+  inventory: readonly string[],
+  workspaces: readonly WorkspaceDescription[],
+  failure: string,
+): 'selected' | 'omitted' | 'ambiguous' | 'unknown' {
+  const location = failureLocation(failure);
+  if (location === undefined) return 'unknown';
+  const qualified = `${location.workspace}›${location.file}`;
+  const allCandidates = testLocations(inventory, workspaces).get(location.file);
+  if (allCandidates === undefined) return 'unknown';
+  const selectedCandidates =
+    testLocations(selected, workspaces).get(location.file) ?? new Set<string>();
+  if (allCandidates.has(qualified))
+    return selectedCandidates.has(qualified) ? 'selected' : 'omitted';
+  if (allCandidates.size !== 1) return 'ambiguous';
+  const [onlyCandidate] = allCandidates;
+  if (onlyCandidate === undefined) return 'unknown';
+  return selectedCandidates.has(onlyCandidate) ? 'selected' : 'omitted';
 }
 
 function terminalEvidence(provider: ProviderEvidence): { failures: string[]; reason?: string } {
@@ -95,15 +117,11 @@ export function omittedFailures(
   selected: readonly string[],
   failures: readonly string[],
   workspaces: readonly WorkspaceDescription[],
+  inventory: readonly string[] = selected,
 ): string[] {
-  const locations = selectedLocations(selected, workspaces);
-  return failures.filter((failure) => {
-    const location = failureLocation(failure);
-    if (location === undefined) return true;
-    const candidates = locations.get(location.file);
-    if (candidates === undefined) return true;
-    return !candidates.has(`${location.workspace}›${location.file}`) && candidates.size !== 1;
-  });
+  return failures.filter(
+    (failure) => failureResolution(selected, inventory, workspaces, failure) === 'omitted',
+  );
 }
 
 /** Serialize qualified and residual parser evidence without hiding an unknown behind a known test. */
@@ -112,6 +130,7 @@ export function classifyFailureRecords(
   records: readonly FailureRecord[],
   failedJobs: readonly string[],
   workspaces: readonly WorkspaceDescription[],
+  inventory: readonly string[] = selected,
 ) {
   const attributedFailures = records.flatMap((record) =>
     record.identity !== undefined && failureLocation(record.identity) !== undefined
@@ -124,7 +143,9 @@ export function classifyFailureRecords(
       .filter(
         (record) =>
           record.kind === 'unknown' ||
-          (record.identity !== undefined && failureLocation(record.identity) === undefined),
+          (record.identity !== undefined &&
+            failureResolution(selected, inventory, workspaces, record.identity) !== 'selected' &&
+            failureResolution(selected, inventory, workspaces, record.identity) !== 'omitted'),
       )
       .map((record) => ({
         job: record.job,
@@ -145,7 +166,7 @@ export function classifyFailureRecords(
   ];
   return {
     attributedFailures,
-    omittedFailures: omittedFailures(selected, attributedFailures, workspaces),
+    omittedFailures: omittedFailures(selected, attributedFailures, workspaces, inventory),
     unclassifiedFailures,
   };
 }
@@ -245,6 +266,7 @@ export function replayRevision(
   const workspaces = discoverWorkspacesInTree(tree);
   const selection = selectTests({ changed, tree, workspaces });
   const selected = selection.workspaces.flatMap((workspace) => [...workspace.tests.keys()]);
+  const inventory = [...tree.paths].filter(isTestFile);
   const evidence = terminalEvidence(input.provider as ProviderEvidence);
   const fullRunFailures = evidence.failures;
   const records: FailureRecord[] =
@@ -258,7 +280,13 @@ export function replayRevision(
             ),
           ).values(),
         ].flatMap((group) => group);
-  const classified = classifyFailureRecords(selected, records, fullRunFailures, workspaces);
+  const classified = classifyFailureRecords(
+    selected,
+    records,
+    fullRunFailures,
+    workspaces,
+    inventory,
+  );
   return {
     name: input.name,
     disposition:

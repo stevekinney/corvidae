@@ -140,7 +140,17 @@ describe('shadow failure accounting', () => {
         [
           '@lostgradient/interborough › src/host/remote-persistence-conformance.slow.test.ts › OAuth attempts',
         ],
-        [],
+        [
+          {
+            name: '@lostgradient/interborough',
+            directory: 'applications/interborough',
+            dependencies: [],
+            exports: null,
+            preloads: [],
+            testScripts: [],
+          },
+        ],
+        ['applications/interborough/src/host/remote-persistence-conformance.slow.test.ts'],
       ),
     ).toEqual([
       '@lostgradient/interborough › src/host/remote-persistence-conformance.slow.test.ts › OAuth attempts',
@@ -245,6 +255,7 @@ describe('shadow failure accounting', () => {
         selected,
         ['@lostgradient/bureau › test/skills/client/admission.test.ts › failure'],
         workspaces,
+        ['packages/bureau/test/skills/client/admission.test.ts'],
       ),
     ).toHaveLength(1);
     expect(
@@ -252,6 +263,7 @@ describe('shadow failure accounting', () => {
         selected,
         ['@lostgradient/evaluation › src/auth.test.ts › failure'],
         workspaces,
+        ['testing/evaluation/src/auth.test.ts'],
       ),
     ).toHaveLength(1);
     expect(
@@ -262,6 +274,19 @@ describe('shadow failure accounting', () => {
         workspaces,
       ).unclassifiedFailures,
     ).toHaveLength(1);
+    const sameRelativePath = '@lostgradient/bureau › src/index.test.ts › failure';
+    const fullInventory = [
+      'testing/evaluation/src/index.test.ts',
+      'packages/bureau/src/index.test.ts',
+    ];
+    expect(
+      omittedFailures(
+        ['testing/evaluation/src/index.test.ts'],
+        [sameRelativePath],
+        workspaces,
+        fullInventory,
+      ),
+    ).toEqual([sameRelativePath]);
   });
 
   test('keeps incomplete provider evidence inconclusive through both public routes', () => {
