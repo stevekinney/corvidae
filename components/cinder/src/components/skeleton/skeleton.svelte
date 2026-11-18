@@ -32,6 +32,9 @@
     variant = 'row',
     rows = 3,
     action = false,
+    leading = false,
+    trailing = false,
+    chevronColumn = false,
     statusMarker = 'bar',
     statusColumn = true,
     framed = false,
@@ -210,13 +213,28 @@
             class={classNames(
               'cinder-skeleton-grouped-row',
               action && 'cinder-skeleton-grouped-row--action',
+              leading && 'cinder-skeleton-grouped-row--leading',
             )}
           >
+            {#if leading}
+              <!-- The row's icon slot: the bars start where the row's text starts. -->
+              <div class="cinder-skeleton-grouped-leading">
+                <div class="cinder-skeleton cinder-skeleton-icon-block"></div>
+              </div>
+            {/if}
             <div class="cinder-skeleton-grouped-content">
               <!-- Each bar sits in a line box of the text it stands for, so the row is as tall. -->
               <div class="cinder-skeleton-grouped-text">
                 <div class="cinder-skeleton-grouped-line cinder-skeleton-grouped-line--title">
                   <div class="cinder-skeleton cinder-skeleton-title-bar"></div>
+                  {#if trailing}
+                    <div
+                      class={classNames(
+                        'cinder-skeleton cinder-skeleton-trailing-bar',
+                        chevronColumn && 'cinder-skeleton-trailing-bar--chevron-column',
+                      )}
+                    ></div>
+                  {/if}
                 </div>
                 <div class="cinder-skeleton-grouped-line cinder-skeleton-grouped-line--subtitle">
                   <div class="cinder-skeleton cinder-skeleton-meta-bar"></div>

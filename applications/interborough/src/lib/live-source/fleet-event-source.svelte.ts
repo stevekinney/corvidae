@@ -150,7 +150,7 @@ export class FleetEventSource implements LiveSource<FleetEventFrame> {
    * (`backoff.ts` deliberately leaves attempt-capping to callers).
    */
   get reconnectAttempt(): number {
-    return this.#reconnectAttempt;
+    return this.#reconnectAttemptShown;
   }
 
   /**
@@ -173,6 +173,16 @@ export class FleetEventSource implements LiveSource<FleetEventFrame> {
     return this.#caughtUp;
   }
 
+  /**
+   * Every connection that failed or dropped since the source was made. Unlike `reconnectAttempt`,
+   * which a ping or a frame resets to 0, it never goes down, so a view that ignores the failures
+   * before some moment (a Try again) compares it with the count it read then and still sees a
+   * connection that answered and dropped after it.
+   */
+  get failedConnections(): number {
+    return this.#failedConnectionsShown;
+  }
+
   readonly #baseUrl: string;
   readonly #headers: Record<string, string>;
   readonly #connectionFilter: FleetEventFilter | undefined;
@@ -186,6 +196,13 @@ export class FleetEventSource implements LiveSource<FleetEventFrame> {
   #abortController: AbortController | null = null;
   #reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   #reconnectAttempt = 0;
+  // What `reconnectAttempt` reads: reactive, so a view can tell a failed attempt from one still
+  // waiting, and apart from the count the source reads itself, so a subscriber's effect that opens
+  // the connection never comes to depend on it.
+  #reconnectAttemptShown = $state(0);
+  // `failedConnections`, kept apart from the count the source writes, as `reconnectAttempt` is.
+  #failedConnections = 0;
+  #failedConnectionsShown = $state(0);
   #caughtUp = $state(false);
   #lastEventId: string | undefined;
   #closed = false;
@@ -222,6 +239,14 @@ export class FleetEventSource implements LiveSource<FleetEventFrame> {
     return limit <= 0 ? [] : this.#recent.slice(-limit);
   }
 
+  /** Connects now instead of waiting out the backoff, when a reconnect is waiting; otherwise does nothing. */
+  retryNow(): void {
+    if (this.#closed || this.#reconnectTimer === null) return;
+    clearTimeout(this.#reconnectTimer);
+    this.#reconnectTimer = null;
+    void this.#connect();
+  }
+
   whenConnected(): Promise<void> {
     return this.#connected.promise;
   }
@@ -239,7 +264,7 @@ export class FleetEventSource implements LiveSource<FleetEventFrame> {
   #ensureConnected(): void {
     if (this.#closed || this.#abortController !== null || this.#reconnectTimer !== null) return;
     this.#connected = Promise.withResolvers();
-    this.#reconnectAttempt = 0;
+    this.#setReconnectAttempt(0);
     void this.#connect();
   }
 
@@ -300,7 +325,7 @@ export class FleetEventSource implements LiveSource<FleetEventFrame> {
 
   #handleFrame(frame: ServerSentEventFrame): void {
     if (frame.event === 'ping') {
-      this.#reconnectAttempt = 0;
+      this.#setReconnectAttempt(0);
       if (isReplayCompletePing(frame.data)) {
         this.#markLive();
         this.#caughtUp = true;
@@ -315,9 +340,14 @@ export class FleetEventSource implements LiveSource<FleetEventFrame> {
     const envelope = parseFleetEventFrame(frame.data);
     if (envelope === null) return;
     this.#lastEventId = frame.id ?? envelope.cursor;
-    this.#reconnectAttempt = 0;
+    this.#setReconnectAttempt(0);
     this.#markLive();
     this.#dispatch(envelope);
+  }
+
+  #setReconnectAttempt(attempt: number): void {
+    this.#reconnectAttempt = attempt;
+    this.#reconnectAttemptShown = attempt;
   }
 
   #markLive(): void {
@@ -340,7 +370,9 @@ export class FleetEventSource implements LiveSource<FleetEventFrame> {
   #scheduleReconnect(): void {
     if (this.#closed || this.#subscribers.size === 0) return;
     this.status = 'reconnecting';
-    this.#reconnectAttempt += 1;
+    this.#failedConnections += 1;
+    this.#failedConnectionsShown = this.#failedConnections;
+    this.#setReconnectAttempt(this.#reconnectAttempt + 1);
     const delay = this.#computeReconnectDelayMs(this.#reconnectAttempt);
     // poll-reason: timer
     this.#reconnectTimer = setTimeout(() => {

@@ -571,6 +571,7 @@ export { default as GroupedListItem } from './components/grouped-list-item/index
 export type {
   GroupedListItemAction,
   GroupedListItemLeadingKind,
+  GroupedListItemLines,
   GroupedListItemProps,
   GroupedListItemUrgency,
 } from './components/grouped-list-item/index.ts';

@@ -27,6 +27,32 @@
       "type": "boolean",
       "description": "Draws a trailing chevron. Left unset, a row with `href` draws one."
     },
+    "chevronColumn": {
+      "type": "boolean",
+      "description": "Keeps the chevron's column on a row that draws no chevron, as reserved space at the end of\nits content at every width, so the trailing values that share their title's first line end on\none edge in a list that mixes linked and unlinked rows.",
+      "default": false
+    },
+    "titleLines": {
+      "enum": [1, 2],
+      "description": "The most lines the title takes, at every width, before it ends in an ellipsis. Left unset,\nthe title wraps unclamped. The whole title stays in the document and in the row's accessible\ntext; pass `tooltip` so a pointer can read what the clamp cut."
+    },
+    "subtitleLines": {
+      "enum": [1, 2],
+      "description": "The most lines the subtitle takes, at every width, before it ends in an ellipsis. Left unset,\nthe subtitle wraps unclamped."
+    },
+    "tooltip": {
+      "type": "string",
+      "description": "The full title as text. With `subtitleTooltip` it is the row's one native tooltip, on the row\nitself rather than on a line, so a pointer reads it anywhere on a linked row: the title, a line\nbreak, then the subtitle's text."
+    },
+    "subtitleTooltip": {
+      "type": "string",
+      "description": "The subtitle's full text, the second line of the row's one native tooltip (see `tooltip`)."
+    },
+    "arriving": {
+      "type": "boolean",
+      "description": "Fades the row in over the fast duration when it is drawn, for a row that has just arrived in a\nlive list. With reduced motion it appears at once.",
+      "default": false
+    },
     "selected": {
       "type": "boolean",
       "description": "Marks the row as the current one with a tint.",
