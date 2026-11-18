@@ -570,8 +570,17 @@
   const starts = $derived.by(() => {
     if (file === undefined) return schedulesSummary(schedules.data ?? null);
     const trigger = headerVersion?.trigger ?? null;
+    const summary = triggerSummary(trigger);
+    // The file's own schedule, when the engine holds it paused (a file that can't load has it
+    // held), starts nothing: the line says so, so it never promises a run (row 62v).
+    const own = schedules.data ?? [];
+    const paused =
+      summary?.kind === 'schedule' &&
+      own.length > 0 &&
+      own.every((schedule) => schedule.status === 'paused');
+    if (summary !== null) return paused ? { ...summary, paused: true } : summary;
     // A trigger a plugin contributes says what starts it in its kind's own description.
-    return triggerSummary(trigger) ?? pluginTriggerSummary(trigger, pluginKinds.data?.triggers);
+    return pluginTriggerSummary(trigger, pluginKinds.data?.triggers);
   });
   const engineType = isEngineType(type);
   // A file that loaded declares its schemas itself; otherwise the engine's contract does.

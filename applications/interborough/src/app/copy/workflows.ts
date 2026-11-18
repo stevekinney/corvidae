@@ -218,6 +218,8 @@ export const WORKFLOW_COPY = {
     header: {
       /** "Starts every Friday at 11:00 AM": what starts the workflow, read from its trigger. */
       starts: (when: string): string => `Starts ${when}`,
+      /** The same, while the schedule that would start it is paused (row 62v). */
+      startsPaused: (when: string): string => `Starts ${when} (paused)`,
       /** The words around a signal's identifier, which is set in monospace between them. */
       startsOnSignal: { before: 'Starts when a signal arrives (', after: ')' },
       /** "Starts when GitHub sends a push": `what` is a plugin trigger kind's own description, in the words of `pluginTriggerSummary`. */

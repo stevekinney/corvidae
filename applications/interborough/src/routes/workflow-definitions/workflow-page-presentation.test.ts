@@ -28,6 +28,12 @@ describe('what starts a workflow', () => {
     ]);
   });
 
+  test('design correction 2, B5: says a paused schedule is paused (row 62v)', () => {
+    expect(
+      startsPart({ kind: 'schedule', words: 'Every Monday at 11:00 AM', paused: true }),
+    ).toEqual([{ text: 'Starts every Monday at 11:00 AM (paused)' }]);
+  });
+
   test('sets the signal in monospace, and counts several schedules', () => {
     expect(startsPart({ kind: 'signal', name: 'message-received' })).toEqual([
       { text: WORKFLOW_COPY.page.header.startsOnSignal.before },

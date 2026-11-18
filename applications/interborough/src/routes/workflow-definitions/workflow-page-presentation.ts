@@ -58,7 +58,8 @@ export function startsPart(
   if (trigger.count !== undefined && trigger.count > 1) {
     return [{ text: copy.startsFromMany(trigger.count) }];
   }
-  return [{ text: copy.starts(afterStarts(trigger.words)) }];
+  const when = afterStarts(trigger.words);
+  return [{ text: trigger.paused === true ? copy.startsPaused(when) : copy.starts(when) }];
 }
 
 /**

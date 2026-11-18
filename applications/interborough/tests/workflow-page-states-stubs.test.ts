@@ -10,6 +10,7 @@ import {
   parseWorkflowText,
   workflowFileDetailSchema,
   workflowFileRunsPageSchema,
+  workflowHistorySchema,
   workflowValidationSchema,
 } from '../src/lib/workflow-files.ts';
 import { documentProblemOf } from '../src/routes/workflow-definitions/workflow-issue-line.ts';
@@ -17,11 +18,15 @@ import { workflowRunRow } from '../src/routes/workflow-definitions/workflow-run-
 import { runStatusWord } from '../src/routes/workflows/runs/run-rows.ts';
 import {
   asOutsideSchedule,
+  asRefundHistory,
+  asRefundOutsideSchedule,
   asSignalStarted,
   listWithSignalStarted,
   MORNING_BRIEFING_SAMPLE_TEXT,
   MORNING_BRIEFING_TEXT,
   OUTSIDE_SCHEDULE_ID,
+  REFUND_SIGNAL,
+  REFUND_VERSIONS,
   REFUSED_LINE,
   refusedValidation,
   TRIAGE_SIGNAL,
@@ -94,6 +99,49 @@ describe('the waiting run (rows 63n, 63o)', () => {
 
   test('an empty page parses', () => {
     expect(workflowFileRunsPageSchema.parse(withNoRuns({ runs: [FAILED_RUN] })).runs).toEqual([]);
+  });
+});
+
+describe('Order refund as row 62v draws it (design correction 2, B5)', () => {
+  test('four saved versions, the newest started by refund-requested, parse as the History tab reads them', () => {
+    const one = {
+      version: '1.0.0',
+      current: true,
+      savedAt: '2026-11-01T10:00:00.000Z',
+      hash: 'hash-1',
+      workflowVersion: 'sha256:1',
+      origin: 'write',
+      actor: null,
+      surface: 'web',
+      title: null,
+      description: 'Looks up an order, waits for a person to approve, then issues the refund.',
+      trigger: { kind: 'schedule', spec: '0 11 * * 1' },
+      steps: [],
+      inputSchema: null,
+      outputSchema: null,
+      outputName: null,
+      previousVersion: null,
+      changes: [],
+      compatibility: null,
+      runs: null,
+    };
+    const { revisions } = workflowHistorySchema.parse(asRefundHistory({ revisions: [one] }));
+    expect(revisions.map((revision) => revision.version)).toEqual([
+      '1.3.0',
+      '1.2.0',
+      '1.1.0',
+      '1.0.0',
+    ]);
+    expect(revisions).toHaveLength(REFUND_VERSIONS);
+    expect(revisions[0]?.trigger).toEqual({ kind: 'signal', name: REFUND_SIGNAL });
+    expect(revisions.filter((revision) => revision.current)).toHaveLength(1);
+  });
+
+  test('the outside schedule is the active Weekly refund audit', () => {
+    const answer = asRefundOutsideSchedule({ items: [{ id: 'own', status: 'paused' }] });
+    expect(answer['items']).toEqual([
+      { id: 'weekly-refund-audit', description: 'Weekly refund audit', status: 'active' },
+    ]);
   });
 });
 

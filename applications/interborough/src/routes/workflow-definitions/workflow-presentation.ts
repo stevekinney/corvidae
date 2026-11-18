@@ -340,6 +340,8 @@ export type TriggerSummary =
       readonly words: string;
       /** How many schedules start the type, when it is more than one. */
       readonly count?: number;
+      /** The schedule is paused, so it starts nothing until it is resumed (row 62v). */
+      readonly paused?: boolean;
     }
   | { readonly kind: 'signal'; readonly name: string };
 

@@ -1075,6 +1075,10 @@ describe('design correction: the header of a file that cannot load (row 62v)', (
     );
     expect(root.textContent).not.toContain('Also started by');
     expect(root.textContent).toContain(description);
+    // Design correction 2, B5: the first line says the schedule is paused too, never promising a run.
+    expect(testId(root, 'workflow-line-starts')?.textContent).toMatch(
+      /Starts every Monday at .+ \(paused\)/,
+    );
   });
 });
 

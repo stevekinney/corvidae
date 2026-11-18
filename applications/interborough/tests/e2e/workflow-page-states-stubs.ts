@@ -204,3 +204,51 @@ export function asOutsideSchedule(answer: JsonRecord): JsonRecord {
     })),
   };
 }
+
+/** The signal Order refund starts on as row 62v draws it. */
+export const REFUND_SIGNAL = 'refund-requested';
+
+/** The number of saved versions row 62v's History tab counts ("History 4"). */
+export const REFUND_VERSIONS = 4;
+
+/**
+ * Order refund's saved versions as row 62v draws them (`bureau.workflows.history`): four, the
+ * newest started by the signal `refund-requested`, so the header of the file that can't load reads
+ * that version's trigger. The seed holds one version that a schedule starts; this stands in for the
+ * row's variant until the seed changes.
+ */
+export function asRefundHistory(answer: JsonRecord): JsonRecord {
+  const revisions = Array.isArray(answer['revisions']) ? (answer['revisions'] as JsonRecord[]) : [];
+  const [newest] = revisions;
+  if (newest === undefined) return answer;
+  const versions = Array.from({ length: REFUND_VERSIONS }, (_unused, index) => {
+    const minor = REFUND_VERSIONS - 1 - index;
+    return {
+      ...newest,
+      version: `1.${String(minor)}.0`,
+      current: index === 0,
+      previousVersion: minor === 0 ? null : `1.${String(minor - 1)}.0`,
+      changes: minor === 0 ? [] : newest['changes'],
+      compatibility: minor === 0 ? null : (newest['compatibility'] ?? null),
+      trigger: { kind: 'signal', name: REFUND_SIGNAL },
+    };
+  });
+  return { ...answer, revisions: versions };
+}
+
+/**
+ * The engine's page of schedules for Order refund as row 62v draws it: the Weekly refund audit
+ * schedule, active, running the workflow from outside its file.
+ */
+export function asRefundOutsideSchedule(answer: JsonRecord): JsonRecord {
+  const items = Array.isArray(answer['items']) ? (answer['items'] as JsonRecord[]) : [];
+  return {
+    ...answer,
+    items: items.map((item) => ({
+      ...item,
+      id: 'weekly-refund-audit',
+      description: 'Weekly refund audit',
+      status: 'active',
+    })),
+  };
+}

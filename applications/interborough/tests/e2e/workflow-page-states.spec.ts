@@ -30,10 +30,14 @@ import { expect, test } from './fixtures.ts';
 import { jsonEditor, replaceJsonEditorText } from './json-editor-support.ts';
 import {
   asOutsideSchedule,
+  asRefundHistory,
+  asRefundOutsideSchedule,
   asSignalStarted,
   listWithSignalStarted,
   MORNING_BRIEFING_SAMPLE_TEXT,
   MORNING_BRIEFING_TEXT,
+  REFUND_SIGNAL,
+  REFUND_VERSIONS,
   REFUSED_LINE,
   refusedValidation,
   unwritableAnswer,
@@ -291,6 +295,46 @@ for (const width of WIDTHS) {
         route: '/workflows/:workflow',
         tab: 'code',
         state: 'a file that can’t load, Edit as JSON',
+        source: SOURCE,
+      });
+    });
+
+    test('Order refund as row 62v draws it: started by a signal, also by the Weekly refund audit schedule, History 4 (62v)', async ({
+      page,
+    }) => {
+      const world = await readSampleWorldRecords(E2E_SHOWCASE_URL);
+      const id = world.workflows.orderRefund;
+      await rewriteOperation(page, 'bureau.workflows.history', (answer, params) =>
+        params['id'] === id ? asRefundHistory(answer) : answer,
+      );
+      await page.route(
+        (url) => url.pathname.endsWith('/schedules') && url.searchParams.get('workflowType') === id,
+        async (route: Route) => {
+          const response = await route.fetch();
+          await route.fulfill({
+            response,
+            json: asRefundOutsideSchedule((await response.json()) as JsonRecord),
+          });
+        },
+      );
+      await openWorkflow(page, `/workflows/${encodeURIComponent(id)}`, width);
+      const starts = detail(page).getByTestId('workflow-line-starts');
+      await expect(starts).toContainText('Starts when a signal arrives');
+      await expect(starts.locator('code', { hasText: REFUND_SIGNAL })).toBeVisible();
+      await expect(detail(page).getByTestId('workflow-line-schedule')).toContainText(
+        'Also started by the Weekly refund audit schedule',
+      );
+      // A phone folds the tabs into one select, so the count is read where they are tabs.
+      if (width === 1280) {
+        await expect(
+          detail(page).getByRole('tab', {
+            name: new RegExp(`History\\s*${String(REFUND_VERSIONS)}`),
+          }),
+        ).toBeVisible();
+      }
+      await captureForDesignReview(page, {
+        route: '/workflows/:workflow',
+        state: 'a file that can’t load, as row 62v draws it',
         source: SOURCE,
       });
     });
