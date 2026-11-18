@@ -6,7 +6,29 @@
 import { describe, expect, test } from 'bun:test';
 
 import { taskFixture } from '../../../lib/bureau-fixtures.test-support.ts';
-import { howItRanOpensFirst, runStatusLine, startedAgoPhrases } from './run-status-line.ts';
+import {
+  howItRanOpensFirst,
+  phrasesWithStep,
+  runStatusLine,
+  startedAgoPhrases,
+} from './run-status-line.ts';
+
+describe('phrasesWithStep (56g)', () => {
+  const going = { failed: false, over: false, waitingForSignal: false };
+
+  test('a run going on adds its step after the other parts', () => {
+    expect(phrasesWithStep(['12 s so far'], 'step 2 of 4', going)).toEqual([
+      '12 s so far',
+      'step 2 of 4',
+    ]);
+  });
+
+  test('a run waiting for a signal, one that failed and one that is over say no step', () => {
+    expect(phrasesWithStep([], 'step 2 of 4', { ...going, waitingForSignal: true })).toEqual([]);
+    expect(phrasesWithStep(['x'], 'step 2 of 4', { ...going, failed: true })).toEqual(['x']);
+    expect(phrasesWithStep(undefined, 'step 2 of 4', { ...going, over: true })).toBeUndefined();
+  });
+});
 
 const STARTED = Date.parse('2026-11-02T10:45:00-06:00');
 

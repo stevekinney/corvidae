@@ -174,6 +174,10 @@ export const BUREAU_RESERVED_KEY_FAMILIES: readonly ReservedKeyFamily[] = [
   ),
   kept('bureau-workflow-cancelled-run:v1:', 'a workflow run’s cancellation record, not a chat’s'),
   kept(
+    'bureau-workflow-retry:v1:',
+    'a workflow file run’s retry receipt (its retry count and the step and retry id asked for), not a chat’s',
+  ),
+  kept(
     'bureau-workflow-revision:v1:',
     'a workflow’s saved version (its file content, who saved it, and what changed), not a chat’s',
   ),

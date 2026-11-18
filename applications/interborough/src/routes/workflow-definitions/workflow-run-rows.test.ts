@@ -232,7 +232,12 @@ describe('COR-2431: how far an instance got, what it waits for, and why it faile
     expect(counts.running).toBe(0);
     const line = runLineTwo(row, LINE);
     expect(line).toContain(TASK_COPY.list.waitingForSignal('notes-approved'));
-    expect(line).toContain(TASK_COPY.list.stepOf(4, 4));
+    // Off its page it says nothing of its step (10h); on its own workflow's page, how far it got
+    // follows what it waits for (row 63o).
+    expect(line).not.toContain(TASK_COPY.list.stepOf(4, 4));
+    expect(runLineTwo(row, { ...LINE, withinWorkflow: true })).toContain(
+      `${TASK_COPY.list.waitingForSignal('notes-approved')}${TASK_COPY.list.separator}${TASK_COPY.list.stepOf(4, 4)}`,
+    );
   });
 
   test('a run waiting for a person (no awaited signal) is Waiting on you, never the hollow Waiting', () => {

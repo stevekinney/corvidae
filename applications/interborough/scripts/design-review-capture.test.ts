@@ -306,28 +306,73 @@ describe('the showcase specifications’ titles', () => {
 
 describe('specificationsThatRanNothing', () => {
   const sources: Record<string, string> = {
-    'tests/e2e/run-page-states.spec.ts': "capture({ route: '/runs/:run' })",
-    'tests/e2e/chat-page.spec.ts': "capture({ route: '/chats/:chat' })",
+    'tests/e2e/run-page-states.spec.ts': [
+      'test.describe(`/runs/:run at ${String(width)} pixels`, () => {',
+      "  test('a failed instance', async () => { capture({ route: '/runs/:run' }); });",
+      '});',
+    ].join('\n'),
+    // Captures `/runs`, but under a title that does not name it, so `--grep '/runs|/goals'` does
+    // not reach it (the titles test is what catches that), and it must not be flagged here.
+    'tests/e2e/shell-chrome.spec.ts':
+      "test('at 200% text the shell reflows', async () => { capture({ route: '/runs' }); });",
+    'tests/e2e/chat-page.spec.ts':
+      "test('/chats/:chat opens the details', async () => { capture({ route: '/chats/:chat' }); });",
   };
   const sourceOf = (path: string) => sources[path] ?? '';
   const listed = Object.keys(sources);
 
-  test('names a listed specification that captures a route the filter matches and ran no test', () => {
-    const report = { suites: [{ file: 'chat-page.spec.ts', specs: [{}] }] };
-    expect(specificationsThatRanNothing(report, listed, '/runs', sourceOf)).toEqual([
+  /**
+   * One file's suite as CI's capture writes it: Playwright names the file from the configuration's
+   * `testDir` (`./tests`), so `e2e/run-page-states.spec.ts`, and nests the describes under it.
+   */
+  const ciSuite = (file: string, specs: number) => ({
+    title: file,
+    file,
+    column: 0,
+    line: 0,
+    specs: [],
+    suites: [
+      {
+        title: '/runs/:run at 1280 pixels',
+        file,
+        line: 41,
+        column: 3,
+        specs: Array.from({ length: specs }, (_, index) => ({
+          title: `test ${String(index)}`,
+          ok: true,
+          tags: [],
+          tests: [{ projectName: 'chromium', status: 'expected', results: [{ status: 'passed' }] }],
+          file,
+          line: 42,
+          column: 5,
+        })),
+      },
+    ],
+  });
+
+  test('counts a report written as CI writes it, file paths from testDir, as the listed specification', () => {
+    const report = {
+      config: { rootDir: '/__w/corvidae/corvidae/applications/interborough/tests' },
+      suites: [ciSuite('e2e/run-page-states.spec.ts', 5), ciSuite('e2e/chat-page.spec.ts', 1)],
+    };
+    expect(specificationsThatRanNothing(report, listed, '/runs|/goals', sourceOf)).toEqual([]);
+    expect(specificationsThatRanNothing(report, listed, undefined, sourceOf)).toEqual([
+      'tests/e2e/shell-chrome.spec.ts',
+    ]);
+  });
+
+  test('names a specification whose titles the filter matches and that ran no test', () => {
+    const report = { suites: [ciSuite('e2e/chat-page.spec.ts', 1)] };
+    expect(specificationsThatRanNothing(report, listed, '/runs|/goals', sourceOf)).toEqual([
       'tests/e2e/run-page-states.spec.ts',
     ]);
   });
 
-  test('leaves out one the filter does not reach, and one that ran, nested suites included', () => {
-    const report = {
-      suites: [{ file: 'run-page-states.spec.ts', suites: [{ specs: [{}, {}] }] }],
-    };
-    expect(specificationsThatRanNothing(report, listed, '/runs', sourceOf)).toEqual([]);
-    // Without a filter every listed specification must run.
-    expect(specificationsThatRanNothing(report, listed, undefined, sourceOf)).toEqual([
-      'tests/e2e/chat-page.spec.ts',
-    ]);
+  test('does not flag one whose titles the filter does not match, whatever it captures', () => {
+    const report = { suites: [ciSuite('e2e/run-page-states.spec.ts', 2)] };
+    expect(specificationsThatRanNothing(report, listed, '/runs|/goals', sourceOf)).not.toContain(
+      'tests/e2e/shell-chrome.spec.ts',
+    );
   });
 });
 

@@ -39,7 +39,9 @@ describe('wrapMeta on a phone', () => {
     );
     expect(stylesheet).toMatch(/\.cinder-stacked-list-item__status-inline \{\s*display: none;/);
     expect(phoneRules).toContain('@container cinder-stacked-list-item (max-width: 639.98px)');
-    expect(phoneRules).toMatch(/__line-two \{\s*grid-column: status \/ trailing;/);
+    // Ends at the line before the actions' column, never under the actions (`trailing-start`).
+    expect(phoneRules).toMatch(/__line-two \{[^}]*grid-column: status \/ trailing-start;/);
+    expect(phoneRules).not.toMatch(/grid-column: status \/ trailing;/);
     expect(phoneRules).toMatch(/__status-inline \{[^}]*display: inline-flex;/);
     expect(phoneRules).toMatch(/__description\) \{\s*display: inline;/);
   });

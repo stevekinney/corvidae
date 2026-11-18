@@ -806,8 +806,10 @@ describe('the Bureau’s own runs (COR-2423)', () => {
       chats: [],
     });
     expect(runStatusWord(row, NOW)).toBe('Waiting');
-    // What it waits for comes before how far it got (row 63o).
-    expect(runLineTwo(row, context)).toBe(
+    // What it waits for, and nothing of its step (10h).
+    expect(runLineTwo(row, context)).toBe('API, waiting for the signal notes-approved');
+    // On its own workflow's page, how far it got follows what it waits for (row 63o).
+    expect(runLineTwo(row, { ...context, withinWorkflow: true })).toBe(
       'API, waiting for the signal notes-approved, step 2 of 4',
     );
     expect(isRunRowRunning(row, NOW)).toBe(false);

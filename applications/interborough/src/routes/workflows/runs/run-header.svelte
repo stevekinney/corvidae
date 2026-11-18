@@ -40,6 +40,8 @@
   import RunCancel from './run-cancel.svelte';
   import RunCancelNote from './run-cancel-note.svelte';
   import { durationWords } from './run-rows.ts';
+  // A clause joined to the status line by a comma starts in lower case ("Running, started 40 s ago").
+  import { reasonClause } from '../../../lib/reason-clause.ts';
 
   interface RunHeaderProps {
     runId: string;
@@ -231,7 +233,7 @@
     />{/if}{#if stepNote !== undefined}{`, ${stepNote}`}{/if}{#if startedAt !== undefined && showStamp},
     <time datetime={new Date(startedAt).toISOString()} title={utcStamp(startedAt)}
       >{dayStamp(startedAt)}</time
-    >{/if}{#if tookMilliseconds !== undefined}{`, ${tookWord} ${durationWords(tookMilliseconds)}`}{/if}{#each phrases as phrase (phrase)}{`, ${phrase}`}{/each}{#each waitingForSignals as signal (signal)}{`, ${signalWords} `}<code
+    >{/if}{#if tookMilliseconds !== undefined}{`, ${tookWord} ${durationWords(tookMilliseconds)}`}{/if}{#each phrases as phrase (phrase)}{`, ${reasonClause(phrase)}`}{/each}{#each waitingForSignals as signal (signal)}{`, ${signalWords} `}<code
       class="ib-identifier">{signal}</code
     >{/each}{#if note !== undefined}{`, ${note}`}{/if}
 {/snippet}

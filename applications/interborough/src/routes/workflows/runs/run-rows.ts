@@ -922,18 +922,22 @@ export function runLineTwo(row: RunRow, context: RunLineContext): string {
       break;
     case 'submitted':
     case 'working':
-      // What it waits for comes first, then how far it got: "waiting for the signal
-      // notes-approved, step 4 of 4" (row 63o).
-      if (awaiting !== null) parts.push(copy.waitingForSignal(awaiting));
-      if (steps !== null && steps !== undefined && reached !== null) {
-        parts.push(copy.stepOf(reached, steps.total));
-      }
-      if (awaiting === null) {
-        parts.push(
-          runStatusWord(row, context.now) === 'Scheduled' && row.dueAt != null
-            ? copy.dueAt(dueWords(row.dueAt, context.now, context.zone))
-            : copy.runningFor(durationWords(context.now - row.startedAt)),
-        );
+      // Only a run that is running says its step (10h: "step 2 of 4, running 1 min 12 s"); one
+      // waiting for a signal or for its time says what it waits for and nothing of its step. On its
+      // own workflow's page, a run parked on a signal says how far it got after what it waits for:
+      // "waiting for the signal notes-approved, step 4 of 4" (row 63o).
+      if (awaiting !== null) {
+        parts.push(copy.waitingForSignal(awaiting));
+        if (onItsPage && steps !== null && steps !== undefined && reached !== null) {
+          parts.push(copy.stepOf(reached, steps.total));
+        }
+      } else if (runStatusWord(row, context.now) === 'Scheduled' && row.dueAt != null) {
+        parts.push(copy.dueAt(dueWords(row.dueAt, context.now, context.zone)));
+      } else {
+        if (steps !== null && steps !== undefined && reached !== null) {
+          parts.push(copy.stepOf(reached, steps.total));
+        }
+        parts.push(copy.runningFor(durationWords(context.now - row.startedAt)));
       }
       break;
     case 'canceled':
