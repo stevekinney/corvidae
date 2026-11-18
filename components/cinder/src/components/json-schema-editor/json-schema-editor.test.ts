@@ -1323,6 +1323,18 @@ describe('JsonSchemaEditor — controlled and uncontrolled schema inputs', () =>
 });
 
 describe('JsonSchemaEditor — the fields form (COR-2432, row 65s)', () => {
+  test('a narrow table fits its container instead of Table’s max-content width, which a fixed layout reads as unbounded', async () => {
+    const { readFileSync } = await import('node:fs');
+    const css = readFileSync(new URL('./json-schema-editor.css', import.meta.url), 'utf8');
+    const narrow = css.slice(css.indexOf('@container cinder-jse-properties'));
+    const rule =
+      /\.cinder-table-scroll > \.cinder-table\.cinder-jse-property-table,\s*\.cinder-table\.cinder-jse-property-table \{([^}]*)\}/.exec(
+        narrow,
+      )?.[1] ?? '';
+    expect(rule).toContain('table-layout: fixed');
+    expect(rule).toContain('min-inline-size: 0');
+  });
+
   const schema: JsonSchemaValue = {
     type: 'object',
     required: ['branch'],

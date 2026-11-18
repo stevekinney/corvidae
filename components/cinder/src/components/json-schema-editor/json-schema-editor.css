@@ -263,8 +263,15 @@
      up, move down and delete go into one icon menu, so nothing sits past the right edge and the
      table never scrolls sideways to reach a row's own actions. */
   @container cinder-jse-properties (max-width: 36rem) {
-    .cinder-jse-property-table {
+    /* The table fits its container: a fixed layout over the container's width. Table's own
+       `min-inline-size: max-content` is dropped here, because a fixed table whose Field column has
+       no width reads its max-content as unbounded and scrolls sideways (row 65s). The selector
+       outweighs Table's `.cinder-table-scroll > .cinder-table` whichever loads first. */
+    .cinder-table-scroll > .cinder-table.cinder-jse-property-table,
+    .cinder-table.cinder-jse-property-table {
       table-layout: fixed;
+      inline-size: 100%;
+      min-inline-size: 0;
     }
 
     .cinder-jse-property-table__description-heading,
