@@ -1,5 +1,6 @@
 /// <reference lib="dom" />
 import { afterEach, describe, expect, jest, test } from 'bun:test';
+import { readFileSync } from 'node:fs';
 import { createRawSnippet, flushSync } from 'svelte';
 
 import { declarationsFor } from '@lostgradient/component-tooling/test/css.ts';
@@ -585,14 +586,40 @@ describe('Skeleton grouped variant', () => {
     expect(css).toMatch(
       /\.cinder-skeleton-grouped-content \{[^}]*border-block-end: 1px solid var\(--cinder-border-faint\)/,
     );
+    // COR-2489: the button block is a Button's painted height, never the 44px coarse control height
+    // a Button is not drawn at, so the placeholder row is as tall as the loaded row on a phone.
     expect(css).toMatch(
-      /\.cinder-skeleton-action-bar \{[^}]*block-size: var\(--cinder-button-height-sm\)/,
+      /\.cinder-skeleton-action-bar \{[^}]*block-size: var\(--_cinder-painted-height-sm\)/,
     );
+    expect(css).not.toMatch(/\.cinder-skeleton-action-bar \{[^}]*--cinder-button-height-sm/);
+    const button = readFileSync(new URL('../button/button.css', import.meta.url), 'utf8');
+    expect(button).toContain('min-height: var(--_cinder-painted-height-sm);');
     // The row measures its own width at GroupedListItem's threshold, never the viewport's.
     expect(css).toMatch(
       /@container cinder-skeleton-grouped-row \(width < 26rem\) \{ \.cinder-skeleton-grouped-row--action > \.cinder-skeleton-grouped-content \{ flex-wrap: wrap; \}/,
     );
     expect(css).not.toMatch(/@media \(width/);
+  });
+
+  // COR-2489: on a phone the slow-load line cut its Cancel to "Ca...".
+  test('the slow-load line wraps its words and never shrinks Cancel', () => {
+    const label = declarationsFor(skeletonCss, '.cinder-skeleton-status-label');
+    expect(label.get('flex')).toBe('1 1 0');
+    expect(label.get('min-inline-size')).toBe('0');
+    const cancel = declarationsFor(skeletonCss, '.cinder-skeleton-status > .cinder-button');
+    expect(cancel.get('flex')).toBe('none');
+  });
+
+  // COR-2489: the Runs list's slow-load line was painted over its day band's words.
+  test('a list that leads with a day band places the slow-load line under the band', () => {
+    const flat = skeletonCss.replace(/\s+/g, ' ');
+    expect(flat).toContain(
+      ".cinder-skeleton-group[data-cinder-variant='list']:has( > .cinder-skeleton-list > .cinder-skeleton-day-band:first-child ) > .cinder-skeleton-status { margin-block-start: calc( var(--cinder-text-xs) * var(--cinder-leading-normal) + 2 * var(--cinder-space-2) + 1px );",
+    );
+    // The band is that tall: its padding, one xs line box (its bar sits in one) and its rule.
+    const band = declarationsFor(skeletonCss, '.cinder-skeleton-day-band');
+    expect(band.get('padding-block')).toBe('var(--cinder-space-2)');
+    expect(band.get('border-block-end')).toBe('1px solid var(--cinder-border-muted)');
   });
 });
 
