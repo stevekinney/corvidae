@@ -7,11 +7,7 @@ import {
   openClientEventSubscription,
   type WorkflowEventStreamHost,
 } from './open-event-subscription.ts';
-import {
-  parseServerSentEventChunk,
-  SseWorkflowEventSubscription,
-  workflowEventsSseUrl,
-} from './sse-event-stream.ts';
+import { SseWorkflowEventSubscription, workflowEventsSseUrl } from './sse-event-stream.ts';
 
 const originalFetch = globalThis.fetch;
 
@@ -88,27 +84,6 @@ describe('workflowEventsSseUrl', () => {
       'http://localhost:7233/v1/workflows/a%2Fb/events/sse',
     );
     expect(workflowEventsSseUrl('/weft', 'wf-1')).toBe('/weft/v1/workflows/wf-1/events/sse');
-  });
-});
-
-describe('parseServerSentEventChunk', () => {
-  it('yields no frame for a block of only comments', () => {
-    expect(parseServerSentEventChunk(': keep-alive\n\n')).toEqual({ frames: [], remainder: '' });
-  });
-
-  it('parses multiline data, comments, ids, and named events', () => {
-    const parsed = parseServerSentEventChunk(
-      ': ignored\nid: 7\nevent: workflow:started\ndata: first\ndata: second\n\n',
-    );
-
-    expect(parsed.frames).toEqual([
-      {
-        id: '7',
-        event: 'workflow:started',
-        data: 'first\nsecond',
-      },
-    ]);
-    expect(parsed.remainder).toBe('');
   });
 });
 

@@ -37,7 +37,7 @@ import type { SequencedEventEnvelope } from './sequence-cursor.ts';
  *
  * @example
  * ```ts
- * import { bindFeedLifetime, createReplayLiveFeed } from '@lostgradient/weft';
+ * import { bindFeedLifetime, createReplayLiveFeed } from '@lostgradient/backchannel';
  * declare const backend: Parameters<typeof createReplayLiveFeed>[0];
  * const lifetime = new AbortController();
  * const feed = bindFeedLifetime(createReplayLiveFeed(backend), lifetime.signal);

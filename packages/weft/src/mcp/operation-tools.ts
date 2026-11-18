@@ -131,7 +131,8 @@ const CONTEXT_KEY = 'weftOperationMount';
  *
  * @example
  * ```ts
- * import { createOperationHandler, createOperationMcpMount, defineOperation } from '@lostgradient/weft';
+ * import { createOperationHandler, defineOperation } from '@lostgradient/backchannel';
+ * import { createOperationMcpMount } from '@lostgradient/weft';
  * import { z } from 'zod';
  *
  * const echo = defineOperation({

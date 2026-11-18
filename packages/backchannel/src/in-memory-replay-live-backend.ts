@@ -31,6 +31,7 @@ const INCARNATION_PATTERN =
 /** How many envelopes an in-memory log retains before dropping its oldest. */
 const DEFAULT_MAX_EVENTS = 10_000;
 
+/** An in-memory {@link ReplayLiveFeedBackend}: a bounded log of envelopes with an append method, for hosts and tests that have no durable event log. */
 export type InMemoryReplayLiveBackend<TEnvelope extends SequencedEventEnvelope> =
   ReplayLiveFeedBackend<TEnvelope> & {
     /** Records an envelope and delivers it to live subscribers. */
@@ -41,9 +42,11 @@ export type InMemoryReplayLiveBackend<TEnvelope extends SequencedEventEnvelope> 
     dispose(): void;
   };
 
+/** Options for {@link createInMemoryReplayLiveBackend}. */
 export type InMemoryReplayLiveBackendOptions = {
   /** Retention bound. Defaults to 10,000 envelopes. */
   maxEvents?: number;
+  /** Builds the envelope that tells a subscriber its cursor fell outside the retained window. */
   createGapEnvelope?: (options: {
     requestedCursor: Cursor;
     firstRetainedSequence: number;
@@ -51,6 +54,7 @@ export type InMemoryReplayLiveBackendOptions = {
   }) => SequencedEventEnvelope;
 };
 
+/** Creates an {@link InMemoryReplayLiveBackend} that keeps at most `maxEvents` envelopes and signals a gap to a cursor from an earlier incarnation. */
 export function createInMemoryReplayLiveBackend<TEnvelope extends SequencedEventEnvelope>(
   options: InMemoryReplayLiveBackendOptions = {},
 ): InMemoryReplayLiveBackend<TEnvelope> {
