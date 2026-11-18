@@ -349,7 +349,8 @@ test.describe('the hooks list states', () => {
     const row = page.locator('main li[data-hook="hook-long"]');
 
     await expect(row).toBeVisible();
-    await expect(row.locator(`[title*="${url}"]`).first()).toBeAttached();
+    // A linked row's tooltip is the row's own, the title then line two (COR-2227).
+    expect(await row.getAttribute('title')).toContain(url);
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
       375,
     );

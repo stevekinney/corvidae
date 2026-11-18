@@ -22,6 +22,29 @@ The title steps down with its `level`, so a section inside a section reads as pa
 </Section>
 ```
 
+### Sections side by side or in a gap
+
+A section that directly follows another section takes a `--cinder-space-8` top margin, the space between sections in a page's flow. A flex or grid parent that spaces its sections with `gap` therefore gives each section a wrapper of its own: two adjacent sections in a gap container add that margin to the gap, so stacked sections sit twice as far apart and, side by side, the second one starts lower than the first.
+
+```svelte
+<script lang="ts">
+  import { Section } from '@lostgradient/cinder';
+</script>
+
+<div class="bands">
+  <div><Section title="Workflow activity"><p>No workflow activity yet.</p></Section></div>
+  <div><Section title="Agent activity"><p>No agent activity yet.</p></Section></div>
+</div>
+
+<style>
+  .bands {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--cinder-space-8);
+  }
+</style>
+```
+
 ## Props
 
 <!-- generated:props:start -->

@@ -23,7 +23,7 @@ There are eight archetypes. Each names its components and its focal element; the
 | Overview: a whole system at a glance | `Spotlight`, [`StatisticGroup`](../src/components/statistic-group/README.md) of [`Statistic`](../src/components/statistic/README.md) tiles, [`Card`](../src/components/card/README.md), [`Sparkbar`](../src/components/sparkbar/README.md), [`Meter`](../src/components/meter/README.md) | The `Spotlight`; it is the only archetype with stat tiles or cards |
 | Browse: finding and reading records | [`SearchField`](../src/components/search-field/README.md), `SegmentedControl`, `GroupedList` rows with an optional photo at the end, [`KeyFacts`](../src/components/key-facts/README.md), [`WeekSchedule`](../src/components/week-schedule/README.md), [`Image`](../src/components/image/README.md) | The record being read, or the results while searching; rows, not a grid of cards |
 
-Two choices recur across them. History and audit lists are a `Timeline`, not a hand-drawn list. Prototype text entry is a `MarkdownEditor`, not a textarea.
+Two choices recur across them. History and audit lists are a `Timeline`, not a hand-drawn list; a recent-activity summary on an overview page is a `GroupedList` of `GroupedListItem` rows with `StatusDot` words, and its full history stays a `Timeline`. Prototype text entry is a `MarkdownEditor`, not a textarea.
 
 ## Operational surfaces
 

@@ -112,6 +112,8 @@ const schema = {
               'Redacted',
               'Tripped',
               'Flagged',
+              'Warning',
+              'Critical',
             ],
             description:
               'For a `run`: the status word that leads the row ("Done", "Running", "Failed"), which sets its dot and its tone.',
