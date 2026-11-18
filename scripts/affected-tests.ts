@@ -249,6 +249,35 @@ export function explain(selection: Selection, changed: readonly string[]): strin
   return output.join('\n');
 }
 
+/** A machine-readable selection explanation, including every deliberately unselected test. */
+export function explainJson(selection: Selection, changed: readonly string[]) {
+  const selected = new Set<string>();
+  const obligations = selection.workspaces.flatMap((workspace) =>
+    [...workspace.tests].map(([path, reason]) => {
+      selected.add(path);
+      return { path, workspace: workspace.name, reason: describeReason(reason) };
+    }),
+  );
+  const exclusions = selection.workspaces.flatMap((workspace) =>
+    workspace.allTests
+      .filter((path) => !selected.has(path))
+      .map((path) => ({
+        path,
+        workspace: workspace.name,
+        reason:
+          'no static import, path-literal, fallback, or workspace rule reaches this changed input',
+      })),
+  );
+  return {
+    changed: [...changed],
+    repositoryRule: selection.repositoryRule,
+    obligations,
+    exclusions,
+    coverage:
+      'The full CI suite remains the audit reference; this is a direct-selection explanation.',
+  };
+}
+
 // --- Running -----------------------------------------------------------------------------------
 
 export function turbo(
@@ -458,13 +487,7 @@ async function main(): Promise<number> {
   );
 
   if (options.command === 'json') {
-    const view = selection.workspaces.map((workspace) => ({
-      name: workspace.name,
-      mode: workspace.mode,
-      total: workspace.total,
-      tests: [...workspace.tests.keys()],
-    }));
-    console.log(JSON.stringify({ repositoryRule: selection.repositoryRule, view }, null, 2));
+    console.log(JSON.stringify(explainJson(selection, changed), null, 2));
     return 0;
   }
   if (options.command === 'explain') {

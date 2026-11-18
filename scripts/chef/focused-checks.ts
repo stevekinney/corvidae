@@ -610,6 +610,18 @@ export interface FocusedResult {
   output: string;
 }
 
+/** Work deliberately left to the provider's full-suite audit, never counted as a local pass. */
+export function broaderObligations(browserTests: readonly string[]): string[] {
+  const obligations = [
+    'Full CI remains required for transitive consumers, dynamic entrypoints, browser fixtures, and isolated tests not selected directly.',
+  ];
+  if (browserTests.length > 0)
+    obligations.push(
+      `${browserTests.join(', ')} require provider browser execution: ${BROWSER_CI_COMMAND}.`,
+    );
+  return obligations;
+}
+
 /** Plan, and unless `dryRun`, run the focused checks for the change at `root`. */
 export async function runChecks(
   root: string,
@@ -700,6 +712,7 @@ export async function runChecks(
     warnings.push(
       `${browserTests.join(', ')} launch a browser, which workers never run on the host, so no lane runs them; after pushing, run \`${BROWSER_CI_COMMAND}\`.`,
     );
+  const broader = broaderObligations(browserTests);
   const results: StepResult[] = [];
   for (const step of steps) {
     const command = step.command.join(' ');
@@ -734,7 +747,11 @@ export async function runChecks(
   // A signal or a hang means a step gave no verdict, so it outranks a failure that did.
   const code =
     killed.length > 0 ? 3 : hung.length > 0 ? 4 : failed.length + pending.length > 0 ? 1 : 0;
-  if (options.json) return { code, output: JSON.stringify({ ok, steps: results, warnings }) };
+  if (options.json)
+    return {
+      code,
+      output: JSON.stringify({ ok, steps: results, warnings, broaderObligations: broader }),
+    };
   const named = (group: StepResult[]) => group.map((step) => step.name).join(', ');
   const summary = options.dryRun
     ? `focused-checks: dry run, ${results.length} steps planned`
@@ -751,6 +768,7 @@ export async function runChecks(
       (step) =>
         `focused-checks: ${step.name}: hung (no result within ${STEP_HANG_GUARD_MILLISECONDS / 60_000} minutes; stopped)`,
     ),
+    ...broader.map((obligation) => `focused-checks: pending broader obligation: ${obligation}`),
     summary,
   ];
   return { code, output: lines.join('\n') };
