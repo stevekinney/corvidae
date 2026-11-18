@@ -61,6 +61,7 @@ const values = await (async () => {
             executionBoundary: 'coordinator',
             producer: 'fixture',
             selectionReason: 'test',
+            evidenceKind: 'test-report',
           },
         ],
         risks: {
@@ -367,13 +368,21 @@ const unsafeProviderRequest = (() => {
           executionBoundary: 'provider',
           producer: 'fixture',
           selectionReason: 'test',
+          evidenceKind: 'test-report',
         },
       ],
       risks: {},
       invalidatedBy: {},
     },
     providerRuns: [
-      { id: 1, obligation: 'AC1:test', job: 'test', workflow: 'workflow', event: 'push' },
+      {
+        id: 1,
+        obligation: 'AC1:test',
+        job: 'test',
+        workflow: 'workflow',
+        workflowPath: '.github/workflows/main.yml',
+        event: 'push',
+      },
     ],
   });
   writeFileSync(path, text);

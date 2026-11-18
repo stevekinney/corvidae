@@ -22,6 +22,7 @@ interface GitHubObject {
   name?: unknown;
   repository?: unknown;
   run_attempt?: unknown;
+  path?: unknown;
   runner_name?: unknown;
   status?: unknown;
   steps?: unknown;
@@ -117,6 +118,7 @@ export function createGitHubEvidenceTransport(
         status: string(value.status),
         conclusion: string(value.conclusion),
         workflow: string(value.name),
+        workflowPath: string(value.path),
         event: string(value.event),
         attempt: integer(value.run_attempt) ?? 0,
       };

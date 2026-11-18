@@ -6,6 +6,7 @@ export interface ProviderRun {
   status: string;
   conclusion: string;
   workflow: string;
+  workflowPath: string;
   event: string;
   attempt: number;
 }

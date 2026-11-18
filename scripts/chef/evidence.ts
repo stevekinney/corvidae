@@ -19,6 +19,7 @@ export interface EvidenceRecord {
   checkedTree?: string | undefined;
   environment: string;
   command: string;
+  evidenceKind: 'process-exit' | 'test-report';
   relevantInputs: string[];
   inventory: string[];
   artifact?: string | undefined;
@@ -36,6 +37,7 @@ export interface EvidenceRecord {
     repository: string;
     workflow: string;
     event: string;
+    workflowPath: string;
     jobId: number;
     jobName: string;
     artifactRequired: boolean;
@@ -85,6 +87,7 @@ export interface VerificationRequest {
     job: string;
     workflow: string;
     event: string;
+    workflowPath: string;
     artifact?: string;
   }[];
   localRuns?: {
@@ -196,6 +199,7 @@ function validateVerificationRequest(request: VerificationRequest): Verification
       !['worker', 'coordinator', 'provider'].includes(obligation.executionBoundary) ||
       !Array.isArray(obligation.expectedInventory) ||
       !Array.isArray(obligation.relevantInputs) ||
+      !['process-exit', 'test-report'].includes(obligation.evidenceKind) ||
       !obligation.expectedInventory.every((entry) => typeof entry === 'string' && entry !== '') ||
       !obligation.relevantInputs.every(safeProviderInput) ||
       obligation.commandOrProviderJob.trim() === '' ||
@@ -214,6 +218,7 @@ function validateVerificationRequest(request: VerificationRequest): Verification
       run.job === '' ||
       run.workflow === '' ||
       run.event === '' ||
+      run.workflowPath === '' ||
       obligation?.executionBoundary !== 'provider' ||
       providerKeys.has(run.obligation)
     )
@@ -272,9 +277,6 @@ export function collectProviderEvidence(
           artifactUsable = false;
         }
       }
-      const requiresStructuredAssertion = obligation.expectedInventory.some((item) =>
-        /\.test\.[cm]?[jt]sx?$/.test(item),
-      );
       const status: EvidenceStatus =
         run.status === 'cancelled' ||
         run.conclusion === 'cancelled' ||
@@ -290,12 +292,16 @@ export function collectProviderEvidence(
                 content.integrationTree !== request.integrationTree ||
                 content.relevantInputs.some((input) => input.endsWith(':')) ||
                 run.workflow !== entry.workflow ||
+                run.workflowPath !== entry.workflowPath ||
                 run.event !== entry.event ||
                 job.name !== entry.job ||
                 job.runtime !== request.environment ||
                 run.status !== 'completed' ||
                 job.status !== 'completed' ||
-                (requiresStructuredAssertion && assertionPassed !== true) ||
+                (obligation.evidenceKind === 'test-report' &&
+                  (entry.artifact === undefined ||
+                    assertionPassed !== true ||
+                    inventory.length === 0)) ||
                 !artifactUsable
               ? 'pending'
               : run.status === 'completed' &&
@@ -313,6 +319,7 @@ export function collectProviderEvidence(
         integrationTree: content?.integrationTree ?? '',
         environment: job.runtime,
         command: obligation.commandOrProviderJob,
+        evidenceKind: obligation.evidenceKind,
         relevantInputs: content?.relevantInputs ?? [],
         inventory,
         exitCode: job.conclusion === 'success' ? 0 : 1,
@@ -323,6 +330,7 @@ export function collectProviderEvidence(
           repository: run.repository,
           workflow: run.workflow,
           event: run.event,
+          workflowPath: run.workflowPath,
           jobId: job.id,
           jobName: job.name,
           artifactRequired: entry.artifact !== undefined,
@@ -467,6 +475,7 @@ export function collectLocalEvidence(
         integrationTree: after.integrationTree,
         environment: after.runtime,
         command: item.commandOrProviderJob,
+        evidenceKind: item.evidenceKind,
         relevantInputs: item.relevantInputs.map((path) => `${path}:${after.inputs[path] ?? ''}`),
         inventory,
         exitCode: result.exitCode,
@@ -695,6 +704,13 @@ function recordProblems(
     problems.push(`${record.obligation} is for a different environment`);
   if (record.command !== obligation.commandOrProviderJob)
     problems.push(`${record.obligation} has a different command or provider job`);
+  if (record.evidenceKind !== obligation.evidenceKind)
+    problems.push(`${record.obligation} has a different evidence kind`);
+  if (
+    obligation.evidenceKind === 'test-report' &&
+    (record.assertionPassed !== true || record.inventory.length === 0)
+  )
+    problems.push(`${record.obligation} lacks structured test proof`);
   if (
     !obligation.relevantInputs.every((input) =>
       record.relevantInputs.some(

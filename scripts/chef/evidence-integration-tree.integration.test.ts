@@ -52,6 +52,7 @@ function request(base: string, revision: string, integrationTree: string): Verif
           executionBoundary: 'coordinator',
           producer: 'fixture',
           selectionReason: 'integration-tree control',
+          evidenceKind: 'test-report',
         },
       ],
       risks: {

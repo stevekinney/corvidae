@@ -26,6 +26,7 @@ const plan: VerificationPlan = {
       executionBoundary: 'provider',
       producer: 'brief',
       selectionReason: 'test',
+      evidenceKind: 'process-exit',
     },
   ],
   risks: {
@@ -51,7 +52,14 @@ const request = {
   authority: { runId: 'run', ownerId: 'owner', resource: 'COR-1', generation: 1 },
   operationId: 'operation',
   providerRuns: [
-    { id: 1, obligation: 'AC1:test', job: 'test', workflow: 'workflow', event: 'push' },
+    {
+      id: 1,
+      obligation: 'AC1:test',
+      job: 'test',
+      workflow: 'workflow',
+      workflowPath: '.github/workflows/main.yml',
+      event: 'push',
+    },
   ],
 };
 const transport = (overrides = {}) => ({
@@ -61,6 +69,7 @@ const transport = (overrides = {}) => ({
     status: 'completed',
     conclusion: 'success',
     workflow: 'workflow',
+    workflowPath: '.github/workflows/main.yml',
     event: 'push',
     attempt: 1,
     ...overrides,
@@ -116,16 +125,23 @@ test('provider results remain derived from authenticated transport, not request 
 });
 
 test('test obligations require structured proof and terminal job states are classified first', () => {
+  const testRequest = {
+    ...request,
+    plan: {
+      ...plan,
+      obligations: [{ ...plan.obligations[0]!, evidenceKind: 'test-report' as const }],
+    },
+  };
   const unknownAssertion = {
     ...transport(),
     job: () => ({ ...transport().job(), assertionPassed: null }),
   };
-  expect(collectProviderEvidence(request, unknownAssertion).records[0]?.status).toBe('pending');
+  expect(collectProviderEvidence(testRequest, unknownAssertion).records[0]?.status).toBe('pending');
   const skippedJob = {
     ...transport(),
     job: () => ({ ...transport().job(), conclusion: 'skipped' }),
   };
-  expect(collectProviderEvidence(request, skippedJob).records[0]?.status).toBe('skipped');
+  expect(collectProviderEvidence(testRequest, skippedJob).records[0]?.status).toBe('skipped');
 });
 
 test('programmatic provider collectors reject unsafe inputs before any read', () => {
@@ -191,6 +207,7 @@ test('malformed provider requests fail before authenticated access', () => {
           status: '',
           conclusion: '',
           workflow: '',
+          workflowPath: '',
           event: '',
           attempt: 0,
         };
