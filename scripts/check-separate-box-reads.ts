@@ -304,7 +304,7 @@ export const ALLOWED_INSTANCES: Record<string, { count: number; reason: string }
       },
       NOT_YET_CONVERTED,
     ),
-    ...entries({ 'chat-list.spec.ts': 2, 'home.spec.ts': 28 }, WITH_BEFORE_AND_AFTER),
+    ...entries({ 'chat-list.spec.ts': 2, 'home.spec.ts': 27 }, WITH_BEFORE_AND_AFTER),
   ]);
 
 export function collectSpecFiles(directory: string, paths: string[]): void {

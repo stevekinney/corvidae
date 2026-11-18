@@ -26,10 +26,14 @@ import {
   humanInputAnsweredReply,
   toolRunnerRefundedReply,
 } from '../../src/host/showcase-sentences.ts';
-import { captureForDesignReview } from './design-review-capture.ts';
+import {
+  captureForDesignReview,
+  captureForDesignReviewWithPhone,
+} from './design-review-capture.ts';
 import { E2E_JOURNEY_URL, E2E_SHOWCASE_URL } from './e2e-constants.ts';
 import { expect, holdBureauFeed, test } from './fixtures.ts';
 import { touchHeight } from './hit-area.ts';
+import { readBoxes } from './read-boxes.ts';
 
 test.use({ baseURL: E2E_SHOWCASE_URL, timezoneId: SAMPLE_TIME_ZONE });
 
@@ -143,11 +147,13 @@ test.describe('Home on the sample world, with something waiting on you', () => {
       ),
     }));
     expect(sizes.spotlight).toBeGreaterThan(sizes.count);
-    const spotlightBox = await spotlight.boundingBox();
-    const listBox = await needsYou(page).boundingBox();
-    const countBox = await counts.boundingBox();
-    expect(listBox!.y).toBeGreaterThan(spotlightBox!.y + spotlightBox!.height - 1);
-    expect(countBox!.y).toBeGreaterThan(listBox!.y + listBox!.height - 1);
+    const boxes = await readBoxes(page, {
+      spotlight,
+      list: needsYou(page),
+      count: counts,
+    });
+    expect(boxes.list.y).toBeGreaterThan(boxes.spotlight.y + boxes.spotlight.height - 1);
+    expect(boxes.count.y).toBeGreaterThan(boxes.list.y + boxes.list.height - 1);
   });
 
   test('lists the two reviews waiting on you, oldest first, kind first on line two (01f, 01g)', async ({
