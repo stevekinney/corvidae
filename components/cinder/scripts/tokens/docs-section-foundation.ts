@@ -109,6 +109,7 @@ export const FOUNDATION_DOC_SECTIONS: readonly DocSection[] = ([] = [
       '--cinder-content-width-narrow',
       '--cinder-content-width-wide',
       '--cinder-content-width-reading',
+      '--cinder-toast-reserve-padding',
     ],
   },
   {

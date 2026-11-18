@@ -103,13 +103,13 @@
 
   /**
    * While a toast that stays until it is acted on (an Undo, an error: no timer) is shown at the
-   * bottom of the viewport, the document element carries `--cinder-toast-reserve`: how far up from
-   * the viewport's bottom edge the region reaches, in pixels. A page's scrolling area pads its end
-   * by it, so nothing it holds stays under such a toast (a memory's "Came from" on a 320px phone,
-   * COR-2429). A toast that leaves on its own reserves nothing; the property is removed once none
-   * stays.
+   * bottom of the viewport, the document element carries the token `--cinder-toast-reserve-padding`
+   * (`0px` by default): how far up from the viewport's bottom edge the region reaches, in pixels. A
+   * page's scrolling area keeps that much room at its end, so nothing it holds stays under such a
+   * toast (a memory's "Came from" on a 320px phone, COR-2429). A toast that leaves on its own
+   * reserves nothing; the override is removed once none stays.
    */
-  const TOAST_RESERVE_PROPERTY = '--cinder-toast-reserve';
+  const TOAST_RESERVE_PROPERTY = '--cinder-toast-reserve-padding';
   const staysUntilActedOn = $derived(
     [...politeStack, ...assertiveStack].some((toast) => toast.duration <= 0 && !toast.leaving),
   );

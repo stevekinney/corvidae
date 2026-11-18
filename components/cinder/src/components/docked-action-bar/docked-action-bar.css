@@ -18,15 +18,10 @@
  * (row 56e).
  * ======================================== */
 
-  /* `--cinder-docked-action-bar-end-offset` is the bottom padding of the scrolling area the bar is
-     in, which a page's shell sets: the bar then sticks flush to the bottom of what is visible, with
-     no strip of the page's content showing under it (COR-2426, row 25q). */
   .cinder-docked-action-bar {
     container-type: inline-size;
     position: sticky;
-    inset-block-end: calc(
-      var(--_cinder-keyboard-inset, 0px) - var(--cinder-docked-action-bar-end-offset, 0px)
-    );
+    inset-block-end: var(--_cinder-keyboard-inset, 0px);
     z-index: 1;
     box-sizing: border-box;
     display: flex;

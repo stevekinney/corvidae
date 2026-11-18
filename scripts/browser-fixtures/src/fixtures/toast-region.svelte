@@ -23,8 +23,8 @@
   // COR-2426: a phone shell's page as Interborough lays it out: a column the height of the
   // viewport, a scrolling page above the tab bar, and a docked action bar at the end of a page taller
   // than the screen, so its actions stay in view above the tabs before anything is scrolled. The
-  // scrolling page keeps bottom padding and says so through `--cinder-docked-action-bar-end-offset`,
-  // as Interborough's outlet does, so the bar sits flush on the tabs.
+  // scrolling page keeps its end room as a spacer after the content, not bottom padding, as
+  // Interborough's outlet does, so the bar sits flush on the tabs.
   const dockedPage = parameters.get('docked-page') === '1';
 </script>
 
@@ -81,7 +81,7 @@
       >
         <div
           data-testid="docked-page-scroll"
-          style="flex: 1; min-block-size: 0; overflow-y: auto; display: flex; flex-direction: column; padding: 0.75rem; --cinder-docked-action-bar-end-offset: 0.75rem;"
+          style="flex: 1; min-block-size: 0; overflow-y: auto; display: flex; flex-direction: column; padding: 0.75rem 0.75rem 0;"
         >
           <h2 style="margin: 0 0 0.5rem;">Release notes for 2.4</h2>
           {#each Array.from({ length: 24 }, (_, index) => index) as line (line)}
@@ -94,6 +94,7 @@
               <Button variant="primary" label="Approve" />
             {/snippet}
           </DockedActionBar>
+          <div aria-hidden="true" style="flex: none; block-size: 0.75rem;"></div>
         </div>
         {@render tabBar()}
       </div>

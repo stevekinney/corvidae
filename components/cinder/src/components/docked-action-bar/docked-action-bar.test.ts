@@ -245,10 +245,7 @@ describe('DockedActionBar and the page (rows 04u, 04w)', () => {
 describe('docked-action-bar.css', () => {
   test('sticks to the bottom above the keyboard and clears the safe area (row 04u)', () => {
     expect(cssText).toMatch(/position:\s*sticky;/);
-    // Above the keyboard, less the bottom padding a shell's scrolling area keeps (COR-2426).
-    expect(cssText).toMatch(
-      /inset-block-end:\s*calc\(\s*var\(--_cinder-keyboard-inset, 0px\) - var\(--cinder-docked-action-bar-end-offset, 0px\)\s*\);/,
-    );
+    expect(cssText).toMatch(/inset-block-end:\s*var\(--_cinder-keyboard-inset, 0px\);/);
     expect(cssText).toMatch(/env\(safe-area-inset-bottom\)/);
   });
 

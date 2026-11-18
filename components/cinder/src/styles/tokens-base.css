@@ -162,6 +162,8 @@
   --cinder-type-tab-size: 2;
   /* Minimum touch target size. */
   --cinder-touch-target-min: 44px;
+  /* Room a page's scrolling area keeps at its end for a toast that stays until it is acted on (an Undo, a failure): ToastRegion sets it on the document element, to how far up from the viewport's bottom edge a bottom-anchored region reaches, while such a toast is shown, and 0 otherwise. */
+  --cinder-toast-reserve-padding: 0;
   /* Maximum inline size for primary page content. Caps line length and keeps content readable on wide viewports. Used by page layout styles; consumers can override per scope. */
   --cinder-content-width: 72rem;
   /* Tighter centered column width. */

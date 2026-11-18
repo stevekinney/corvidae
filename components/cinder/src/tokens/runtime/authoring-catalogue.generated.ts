@@ -3710,6 +3710,56 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       ],
     },
     {
+      path: 'toast.reserve-padding',
+      cssProperty: '--cinder-toast-reserve-padding',
+      category: 'spacing',
+      component: null,
+      description:
+        "Room a page's scrolling area keeps at its end for a toast that stays until it is acted on (an Undo, a failure): ToastRegion sets it on the document element, to how far up from the viewport's bottom edge a bottom-anchored region reaches, while such a toast is shown, and 0 otherwise.",
+      themeAware: false,
+      deprecated: false,
+      profile: 'padding',
+      disposition: {
+        edit: 'supported',
+        cssExport: 'supported',
+        dtcgExport: 'complete',
+        cssSerialization: 'typed-value',
+      },
+      variants: [
+        {
+          contexts: [
+            'light/default',
+            'light/reduced',
+            'light/forced-reduced-motion',
+            'dark/default',
+            'dark/reduced',
+            'dark/forced-reduced-motion',
+          ],
+          provenance: {
+            winner: { document: 'sets/foundation.tokens.json', path: 'toast.reserve-padding' },
+            layers: [
+              {
+                document: 'sets/foundation.tokens.json',
+                kind: 'set',
+                layer: 'sets.foundation',
+                path: 'toast.reserve-padding',
+                via: 'declared',
+              },
+            ],
+            effectiveType: {
+              type: 'dimension',
+              origin: 'local',
+              declaredAt: {
+                document: 'sets/foundation.tokens.json',
+                path: 'toast.reserve-padding',
+              },
+            },
+            inputs: { aliases: [], refs: [], extends: [], recipes: [] },
+          },
+        },
+      ],
+    },
+    {
       path: 'content.width',
       cssProperty: '--cinder-content-width',
       category: 'size',
