@@ -290,7 +290,12 @@ import {
 } from './steering';
 import type { Bureau, BureauRecoveryReport, BureauShutdownReport } from './bureau-types/facade';
 import type { BureauOptions } from './bureau-types/options';
-import type { ApprovalDecisionSurface, PendingReview } from './bureau-types/reviews';
+import type {
+  ApprovalDecisionSurface,
+  PendingReview,
+  ResolvedReview,
+} from './bureau-types/reviews';
+import { admitsRunOnDisabledAgent } from './disabled-agent-admission';
 import type { ContextDeletionReport } from './bureau-types/contexts';
 import type { ServerFrame } from './bureau-types/frames';
 import {
@@ -3329,6 +3334,20 @@ async function constructBureau<const D extends AgentDefinitions>(
   // `const childTopology` would resume those runs while it is still in its temporal dead zone,
   // and the resulting `ReferenceError` durably fails them. The catalog reclaim test in
   // `bureau-construction-reclaim.test.ts` catches it.
+  // COR-2429 — what deciding a run on a disabled agent reads. The decided reviews are wired once
+  // their store exists, further down; until then no continuation is admitted on a disabled agent.
+  const disabledAgentAdmissionReads: {
+    durableRunExists: (runId: string) => Promise<boolean>;
+    decidedReviews: (() => Promise<readonly ResolvedReview[]>) | undefined;
+  } = {
+    durableRunExists: async (runId) => {
+      const engine = runtime.durable?.engine;
+      if (engine === undefined) return false;
+      const state = await engine.get(runId).catch(() => undefined);
+      return state !== undefined && state !== null;
+    },
+    decidedReviews: undefined,
+  };
   runtime.setCatalogAgentRunOptionsResolver(async (name, input, context, runId, recorded) => {
     // COR-1524: a run being resumed builds a file agent from the snapshot it recorded, never
     // from the file, which may have changed or be gone. A run that is starting takes the agent
@@ -3366,12 +3385,15 @@ async function constructBureau<const D extends AgentDefinitions>(
           // COR-2429: the same holds for the gate, so an agent another Bureau disabled starts nothing.
           await agentDisabled.reload(name);
         }
-        // COR-2429: a run with evidence it already started finishes on a disabled agent, as a
-        // file agent's resumes from its snapshot; a run that is starting is refused, whatever
-        // `recorded` it carries (a scheduled fire passes one on its first attempt too).
+        // COR-2429: on an agent a person disabled, only a run a durable record says was admitted
+        // while it was enabled proceeds, and `admitsRunOnDisabledAgent` alone says which.
+        const includeDisabled =
+          !isTryAgentName(name) &&
+          agentDisabled.isDisabled(name) &&
+          (await admitsRunOnDisabledAgent(recorded?.startedEvidence, disabledAgentAdmissionReads));
         agent = isTryAgentName(name)
           ? tryAgents.find(name, ownerOrLocal(context.principal))
-          : agentCatalog.find(name, { includeDisabled: recorded?.alreadyStarted === true });
+          : agentCatalog.find(name, { includeDisabled });
         agentBinding = agent === undefined ? undefined : readFileAgentBinding(agent);
       }
     } catch (error) {
@@ -4401,6 +4423,8 @@ async function constructBureau<const D extends AgentDefinitions>(
   const reviewDecisions = createReviewDecisionRecords(runtime.kv);
   // COR-1828 — the record of each decided review, written beside the decision's audit entry.
   const resolvedReviewStore = createResolvedReviewStore(runtime.kv);
+  // COR-2429 — a continuation on a disabled agent is admitted only for a decided approval on record.
+  disabledAgentAdmissionReads.decidedReviews = () => resolvedReviewStore.list();
 
   // COR-1577 — the human-wait reviews of `bureau.run()` runs, which have no session. Held apart
   // from `listPendingReviews()` above so the session path (and what COR-1302 excluded) is as it

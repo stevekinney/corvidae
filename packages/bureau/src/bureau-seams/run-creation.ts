@@ -224,42 +224,35 @@ function unresolvedStart(
 }
 
 /**
- * COR-2429 — whether a start only continues an existing chat whose conversation ends in a tool
- * result: it brings no message, no input parts and no rows of its own, so it answers the decided
- * outcome of an approval an earlier run of the chat parked on, and finishes what that run started.
+ * COR-2429 — what a start on an existing chat tells the agent resolver: the command id it carries
+ * and whether it brings input of its own, as `review-continuation` evidence, which
+ * `admitsRunOnDisabledAgent` alone judges (only the continuation of a decided tool approval of a
+ * run of this chat proceeds on a disabled agent). A start with no command id, or on no chat, gives
+ * none, and is a new run.
  */
-function continuesStartedRun(
+function continuationRecord(
+  sessionId: string,
   session: unknown,
-  conversation: {
-    readonly current: { readonly ids: readonly string[]; readonly messages: object };
-  },
   request: {
+    readonly runCreationRequestId?: string | undefined;
     readonly message?: unknown;
     readonly inputParts?: unknown;
     readonly appendMessages?: readonly unknown[] | undefined;
   },
-): boolean {
-  if (session === undefined) return false;
-  if (request.message !== undefined || request.inputParts !== undefined) return false;
-  if ((request.appendMessages?.length ?? 0) > 0) return false;
-  const { ids, messages } = conversation.current;
-  const last = ids.at(-1);
-  if (last === undefined || !Object.hasOwn(messages, last)) return false;
-  const row: unknown = Reflect.get(messages, last);
-  return typeof row === 'object' && row !== null && Reflect.get(row, 'toolResult') !== undefined;
-}
-
-/**
- * What a start tells the agent resolver it continues: a run that already started, for a start that
- * only continues a chat ending in a decided tool result ({@link continuesStartedRun}); nothing for
- * any other start, which is a new run.
- */
-function continuationRecord(
-  ...parameters: Parameters<typeof continuesStartedRun>
 ): CatalogRunRecordedDefinition | undefined {
-  return continuesStartedRun(...parameters)
-    ? { agentDefinitionHash: undefined, alreadyStarted: true }
-    : undefined;
+  if (session === undefined || request.runCreationRequestId === undefined) return undefined;
+  return {
+    agentDefinitionHash: undefined,
+    startedEvidence: {
+      kind: 'review-continuation',
+      sessionId,
+      commandId: request.runCreationRequestId.trim(),
+      bringsInput:
+        request.message !== undefined ||
+        request.inputParts !== undefined ||
+        (request.appendMessages?.length ?? 0) > 0,
+    },
+  };
 }
 
 /** Builds the run creation functions of one Bureau. Synchronous, and registers nothing. */
@@ -346,15 +339,13 @@ export function createRunCreation<D extends AgentDefinitions>(
     // COR-323 — every run belongs to a catalog agent. The implicit `bureau` agent, which ran on
     // Bureau-wide `generate`/`toolbox` options, no longer exists, so a session stored under it
     // answers as any unknown agent does.
-    // COR-2429 — a run that only continues the chat as it stands, which ends in a tool result (the
-    // decided outcome of an approval a run parked on), finishes what that run started: it runs on
-    // an agent a person disabled since, as a resumed run does. Any run that brings a message of its
-    // own is a new turn, and a disabled agent starts none.
+    // COR-2429 — the command id a start carries is the only evidence it gives; whether it may run
+    // on a disabled agent is `admitsRunOnDisabledAgent`'s to decide (`continuationRecord`).
     const resolution = await runtime.resolveSessionAgentRun(
       agentName,
       runId,
       owner,
-      continuationRecord(session, conversation, request),
+      continuationRecord(sessionId, session, request),
       { sessionId, metadata: session?.metadata },
     );
     if (resolution.status === 'missing-agent') throw peers.missingAgentError(agentName);

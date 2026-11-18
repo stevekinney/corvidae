@@ -216,8 +216,8 @@ export function createSessionRestore<D extends AgentDefinitions>(
           ownReference?.definitionRevision ?? sessionRecordedRevision(metadata, recordedHash),
         // COR-2230 — the pin this run wrote, when it is the session's latest pinning run.
         ...sessionRecordedPin(metadata, runId),
-        // COR-2429 — a run restored here is one that already started.
-        alreadyStarted: true,
+        // COR-2429 — the run's durable workflow, which run creation makes only after asking the gate.
+        startedEvidence: { kind: 'gated-durable-run', runId },
       },
       { sessionId, metadata },
     );
