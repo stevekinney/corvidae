@@ -18,6 +18,19 @@ const entrypointReplay = replayRevision(process.cwd(), {
   base: '5888509145ffe2884eced68e8ca11f71c1d16e06',
   provider: { jobs: [] },
 });
+const mutableReferenceError = (() => {
+  try {
+    replayRevision(process.cwd(), {
+      name: 'mutable reference control',
+      revision: 'HEAD',
+      base: 'HEAD',
+      provider: { jobs: [] },
+    });
+  } catch (error) {
+    return error as Error;
+  }
+  throw new Error('mutable reference unexpectedly replayed');
+})();
 
 describe('shadow failure accounting', () => {
   test('normalizes the retained provider job log for the shared failure extractor', () => {
@@ -70,5 +83,9 @@ describe('shadow failure accounting', () => {
     expect(entrypointReplay.changed).toEqual([]);
     expect(entrypointReplay.selected).toEqual([]);
     expect(entrypointReplay.omittedFailures).toEqual([]);
+  });
+
+  test('rejects mutable revision references before replaying evidence', () => {
+    expect(mutableReferenceError.message).toContain('exact 40-hex commit SHA');
   });
 });

@@ -79,6 +79,18 @@ function git(root: string, args: string[]) {
   return result.stdout.toString();
 }
 
+/** Resolve only an exact immutable commit object; a ref or abbreviated object cannot name evidence. */
+export function immutableCommit(root: string, value: string): string {
+  if (!/^[0-9a-f]{40}$/i.test(value))
+    throw new Error(
+      `shadow replay requires an exact 40-hex commit SHA, received ${JSON.stringify(value)}`,
+    );
+  const resolved = git(root, ['rev-parse', '--verify', '--quiet', `${value}^{commit}`]).trim();
+  if (resolved.toLowerCase() !== value.toLowerCase())
+    throw new Error(`shadow replay commit resolution changed ${value} to ${resolved}`);
+  return resolved;
+}
+
 function treeAt(root: string, revision: string): SourceTree {
   const paths = new Set(
     git(root, ['ls-tree', '-r', '--name-only', revision]).split('\n').filter(Boolean),
@@ -166,8 +178,10 @@ export function replayRevision(
   root: string,
   input: { name: string; revision: string; base: string; provider: unknown; failureLog?: string },
 ) {
-  const changed = changedBetween(root, input.base, input.revision);
-  const tree = treeAt(root, input.revision);
+  const base = immutableCommit(root, input.base);
+  const revision = immutableCommit(root, input.revision);
+  const changed = changedBetween(root, base, revision);
+  const tree = treeAt(root, revision);
   const selection = selectTests({ changed, tree, workspaces: workspacesAt(tree) });
   const selected = selection.workspaces.flatMap((workspace) => [...workspace.tests.keys()]);
   const jobs = (input.provider as { jobs?: { name?: string; conclusion?: string }[] }).jobs ?? [];
@@ -189,8 +203,8 @@ export function replayRevision(
   return {
     name: input.name,
     disposition: classified.unclassifiedFailures.length === 0 ? 'complete' : 'inconclusive',
-    revision: input.revision,
-    base: input.base,
+    revision,
+    base,
     changed,
     selected,
     fullRunFailures,
