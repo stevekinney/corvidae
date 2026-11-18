@@ -163,7 +163,7 @@ test.describe('Settings › A2A', () => {
     page,
   }) => {
     // The host booted with Accept A2A calls off and nothing waiting: the stored value is the running one.
-    await page.route('**/bureau/jsonrpc', async (route) => {
+    await page.route('**/jsonrpc', async (route) => {
       const body = route.request().postDataJSON() as { method?: string } | null;
       if (body?.method !== 'bureau.settings.get') {
         await route.continue();
@@ -213,7 +213,7 @@ test.describe('Settings › A2A', () => {
       call(now - 5 * 24 * 60 * 60 * 1000, 'task-older', 'assistant'),
       call(now - 60_000, 'task-newer', 'tool-runner'),
     ];
-    await page.route('**/bureau/jsonrpc', async (route) => {
+    await page.route('**/jsonrpc', async (route) => {
       const body = route.request().postDataJSON() as {
         id?: unknown;
         method?: unknown;

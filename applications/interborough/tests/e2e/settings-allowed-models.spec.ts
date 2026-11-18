@@ -287,7 +287,7 @@ test.describe('Settings › Allowed models, provider connected', () => {
     const original = await policyOf(request);
     try {
       await open(page, E2E_BASE_URL);
-      await page.route('**/bureau/jsonrpc', async (route) => {
+      await page.route('**/jsonrpc', async (route) => {
         const body = route.request().postDataJSON() as { method?: string } | null;
         if (body?.method === 'bureau.settings.update') {
           await route.abort('connectionfailed');

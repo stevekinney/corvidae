@@ -1,12 +1,12 @@
 /**
  * What the goal form makes of the answer a real Bureau gives a refused configuration: the whole
  * recorded answer (`recorded-goal-refusal.test-support.ts`) goes through the client that reads it
- * (`callBureau`, HTTP 400 as the server sends it), and the fault that comes out names the field.
+ * (the Bureau client, HTTP 400 as the server sends it), and the fault that comes out names the field.
  */
 import { HttpClientError } from '@lostgradient/weft';
 import { describe, expect, test } from 'bun:test';
 
-import { callBureau } from '../../lib/bureau-client.ts';
+import { bureauClient } from '../../lib/bureau-api.ts';
 import {
   RECORDED_GOAL_REFUSAL,
   RECORDED_GOAL_REFUSAL_FIELD_MESSAGE,
@@ -22,7 +22,10 @@ async function recordedFault(): Promise<unknown> {
         headers: { 'content-type': 'application/json' },
       }),
     );
-  return callBureau('bureau.goals.create', {}, { fetch: answered }).then(
+  return bureauClient['bureau.goals.create'](
+    {} as Parameters<(typeof bureauClient)['bureau.goals.create']>[0],
+    { fetch: answered },
+  ).then(
     () => undefined,
     (error: unknown) => error,
   );

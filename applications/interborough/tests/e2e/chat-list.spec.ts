@@ -47,7 +47,7 @@ async function answerOperation(
   method: string,
   answer: (route: Route, id: unknown) => Promise<void> | void,
 ): Promise<void> {
-  await page.route('**/bureau/jsonrpc', async (route) => {
+  await page.route('**/jsonrpc', async (route) => {
     const body = JSON.parse(route.request().postData() ?? '{}') as {
       method?: string;
       id?: unknown;
@@ -490,7 +490,7 @@ test.describe('the states of the chat list', () => {
   }) => {
     // The test answers the list's read with a 500, and Chromium logs each such response.
     pageErrors.expectEvery({
-      pattern: loggedFailedResponse(500, /\/bureau\/jsonrpc/),
+      pattern: loggedFailedResponse(500, /\/jsonrpc/),
       reason: 'the test answers the chat list with a 500',
     });
     await answerOperation(page, 'bureau.contexts.list', (route) =>

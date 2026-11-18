@@ -1122,7 +1122,8 @@ export function installWorkflowWorld(world: World = emptyWorld()): WorkflowStub 
       const method = body['method'];
       const params = isRecord(body['params']) ? body['params'] : {};
       calls.push({ method, params });
-      const bureau = url.pathname.startsWith('/bureau');
+      // A Bureau method is answered on `/bureau/jsonrpc` and on the composed `/jsonrpc` alike.
+      const bureau = url.pathname.startsWith('/bureau') || method.startsWith('bureau.');
       const handler =
         overrides.get(method) ?? (bureau ? bureauHandlers[method] : weftHandlers[method]);
       if (handler === undefined) {
