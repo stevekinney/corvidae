@@ -1,0 +1,64 @@
+<!-- @dsCard group="Page archetypes" height=640 subtitle="Conversation: turns with a person or an agent, the latest message focal, and the MarkdownEditor composer mounted from the bundle." -->
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Conversation archetype</title>
+    <!-- archetype-styles -->
+  </head>
+  <body>
+    <main class="arch">
+      <div class="arch__body">
+        <div class="cinder-page-header">
+          <div class="cinder-page-header__row">
+            <div class="cinder-page-header__heading-group">
+              <div class="cinder-page-header__title-line">
+                <h1 class="cinder-page-header__title">Nightly backup</h1>
+              </div>
+            </div>
+          </div>
+        </div>
+        <section class="arch__column arch__narrow" aria-label="Messages">
+          <article class="cinder-message" data-cinder-role="user">
+            <header class="cinder-message__header">
+              <span class="cinder-message__name">You</span>
+              <time class="cinder-message__time" datetime="2026-11-17T09:41">9:41 AM</time>
+            </header>
+            <div class="cinder-message__body">
+              <p>Why did the nightly backup stop at 2 am?</p>
+            </div>
+          </article>
+          <article class="cinder-message" data-cinder-role="assistant">
+            <header class="cinder-message__header">
+              <span class="cinder-message__name">Assistant</span>
+              <time class="cinder-message__time" datetime="2026-11-17T09:42">9:42 AM</time>
+            </header>
+            <div class="cinder-message__body">
+              <p>
+                The retention change needs a person to approve it before the run can continue. I
+                paused it and left the run as it was.
+              </p>
+            </div>
+          </article>
+        </section>
+        <div class="arch__narrow" id="conversation-composer-host" data-cinder-composer></div>
+      </div>
+    </main>
+    <!-- The composer is MarkdownEditor, which only the mounted bundle can draw: the card loads the
+         bundle that sits beside the cards and mounts it, so the page keeps its composer. -->
+    <script src="../bundle.js"></script>
+    <script>
+      (function () {
+        var host = document.querySelector('[data-cinder-composer]');
+        if (!host || !window.Cinder) return;
+        window.Cinder.mount('MarkdownEditor', host, {
+          id: 'conversation-composer',
+          label: 'Reply',
+          placeholder: 'Reply to the assistant',
+          value: '',
+        });
+      })();
+    </script>
+  </body>
+</html>

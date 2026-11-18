@@ -255,7 +255,7 @@ export const CONTRACT: Record<string, ComponentContract> = {
     html_attrs: 'HTMLAttributes',
     props: {
       class: { optional: true, type_kind: 'TSStringKeyword', default: L(undefined) },
-      sheetBelow: { optional: true, type_kind: 'TSUnionType', default: L('640px') },
+      sheetBelow: { optional: true, type_kind: 'TSUnionType', default: L('760px') },
     },
     snippets: {},
   },
@@ -396,8 +396,8 @@ export const CONTRACT: Record<string, ComponentContract> = {
     html_attrs: 'HTMLLiAttributes',
     props: {
       leadingKind: { optional: true, type_kind: 'TSTypeReference', default: L('icon') },
-      leadValue: { optional: true, type_kind: 'TSUnionType', default: NO_DEFAULT },
-      leadUnit: { optional: true, type_kind: 'TSTypeReference', default: NO_DEFAULT },
+      timeWindow: { optional: true, type_kind: 'TSStringKeyword', default: NO_DEFAULT },
+      timeCaption: { optional: true, type_kind: 'TSStringKeyword', default: NO_DEFAULT },
       urgency: { optional: true, type_kind: 'TSTypeReference', default: NO_DEFAULT },
       staleAge: { optional: true, type_kind: 'TSStringKeyword', default: NO_DEFAULT },
       // Text actions (COR-2329): buttons at the end of the row, full width under it on a phone.
