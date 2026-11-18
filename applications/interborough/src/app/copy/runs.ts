@@ -153,7 +153,6 @@ export const RUN_PAGE_COPY = {
   /** Under Tags when the run has none, and the field's placeholder (rows 54j, 54p, 55d, 55h). */
   noTags: 'None',
   addTag: 'Add a tag',
-  attributesAndWorkerLabel: 'Attributes and worker',
   changeHeading: 'Change or ask this run',
   changeIntro: 'Send a message to the run, or read something from it, without leaving the page.',
   signal: { label: 'Send a signal', hint: 'Fire-and-forget message' },
