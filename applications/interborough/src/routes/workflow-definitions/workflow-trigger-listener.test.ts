@@ -12,6 +12,7 @@ import { cleanup, fireEvent, render, waitFor, within } from '@testing-library/sv
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { Window } from 'happy-dom';
 
+import { RETRY_LABEL } from '../../app/copy/views.ts';
 import { WORKFLOW_COPY } from '../../app/copy/workflows.ts';
 import { STUB_TRIGGERS_URL, StubFault } from '../../lib/bureau-stub.test-support.ts';
 import { router } from '../../lib/router.svelte.ts';
@@ -236,8 +237,10 @@ describe('the trigger status on a workflow’s page', () => {
     const found = await section(container);
     const status = line(found);
     expect(words(status)).toMatch(
-      /^Failed, the trigger could not start\. Next try in \d+ minutes\. Retry now \(code start-failed\)$/,
+      /^Failed, the trigger could not start\. Next try in \d+ minutes\. Try again \(code start-failed\)$/,
     );
+    // COR-2489 design round: one label for a retry on every page.
+    expect(copy.retry).toBe(RETRY_LABEL);
     expect(found.querySelector('[data-testid="workflow-trigger-code"]')?.textContent).toBe(
       'start-failed',
     );

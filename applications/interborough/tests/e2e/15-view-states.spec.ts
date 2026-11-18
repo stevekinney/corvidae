@@ -1630,7 +1630,7 @@ test.describe('trigger state', () => {
           await expect(status(page).getByTestId('workflow-trigger-code')).toHaveText(
             'start-failed',
           );
-          await expect(status(page).getByRole('button', { name: 'Retry now' })).toBeVisible();
+          await expect(status(page).getByRole('button', { name: 'Try again' })).toBeVisible();
         }
         await captureForDesignReview(page, {
           route: '/workflows/:workflow',
