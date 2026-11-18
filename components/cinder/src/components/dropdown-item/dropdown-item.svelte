@@ -70,36 +70,6 @@
     return ids.filter((value) => value !== undefined && value !== '').join(' ') || undefined;
   });
 
-  /**
-   * Starts the reason line where the label's text starts, past a leading icon of any size, by
-   * measuring the label's first text against the label (the start edge in either direction).
-   */
-  function alignReason(reason: HTMLElement): (() => void) | undefined {
-    const label = reason.previousElementSibling;
-    if (!(label instanceof HTMLElement)) return undefined;
-    const measure = () => {
-      const walker = document.createTreeWalker(label, NodeFilter.SHOW_TEXT, {
-        acceptNode: (node) =>
-          node.textContent?.trim() ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP,
-      });
-      const text = walker.nextNode();
-      const labelBox = label.getBoundingClientRect();
-      if (text === null || labelBox.width === 0) return;
-      const range = document.createRange();
-      range.selectNodeContents(text);
-      if (typeof range.getBoundingClientRect !== 'function') return;
-      const textBox = range.getBoundingClientRect();
-      const rightToLeft = getComputedStyle(label).direction === 'rtl';
-      const indent = rightToLeft ? labelBox.right - textBox.right : textBox.left - labelBox.left;
-      reason.style.setProperty('--_cinder-dropdown-item-reason-indent', `${Math.max(0, indent)}px`);
-    };
-    measure();
-    // A closed menu lays nothing out, so the label is measured again when it is drawn.
-    const observer = typeof ResizeObserver === 'function' ? new ResizeObserver(measure) : undefined;
-    observer?.observe(label);
-    return () => observer?.disconnect();
-  }
-
   const sharedClass = $derived(
     classNames(
       'cinder-_option-row',
@@ -188,7 +158,9 @@
         {@render children()}
       {/if}
     </span>
-    <span id={reasonId} class="cinder-dropdown-item__reason" {@attach alignReason}>
+    <!-- The line starts where the label's text does: the item's grid puts both in its text
+         column, past a leading icon (dropdown.css), with nothing measured. -->
+    <span id={reasonId} class="cinder-dropdown-item__reason">
       {reasonText}
     </span>
   {:else if children}

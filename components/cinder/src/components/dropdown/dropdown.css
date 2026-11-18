@@ -219,26 +219,38 @@
     color: var(--cinder-text-disabled);
   }
 
-  /* A disabled item with a `disabledReason` (COR-2327): the label row, and the reason under it as a
-     second line in the muted text colour, starting where the label's text starts (the indent past
-     a leading icon is measured). It is drawn at every width, so touch reads it without a hover. */
+  /* An item with a second line, a `description` or a disabled item's `disabledReason` (COR-2327),
+     is a grid of an icon column and a text column: a leading icon sits in the first, the label's
+     words and the line under them both in the second, so the second line starts where the label's
+     text does in any menu at any width. An item with no leading icon has the text column alone.
+     The line is muted, and drawn at every width, so touch reads it without a hover. */
   .cinder-dropdown-item[data-cinder-reason] {
-    flex-direction: column;
-    align-items: stretch;
-    justify-content: center;
-    gap: var(--cinder-space-0-5);
+    display: grid;
+    grid-template-columns: [text] minmax(0, 1fr);
+    align-items: center;
+    justify-content: stretch;
+    column-gap: var(--cinder-space-2);
+    row-gap: var(--cinder-space-0-5);
   }
 
+  .cinder-dropdown-item[data-cinder-reason]:has(
+      > .cinder-dropdown-item__label > :is(svg, .cinder-icon):first-child
+    ) {
+    grid-template-columns: [icon] auto [text] minmax(0, 1fr);
+  }
+
+  /* The label's parts take the grid's cells: its icon the icon column, its words the text column. */
   .cinder-dropdown-item__label {
-    display: flex;
-    align-items: center;
-    gap: var(--cinder-space-2);
-    min-inline-size: 0;
+    display: contents;
+  }
+
+  .cinder-dropdown-item__label > :is(svg, .cinder-icon):first-child {
+    grid-column: icon;
   }
 
   .cinder-dropdown-item__reason {
+    grid-column: text;
     max-inline-size: 16rem;
-    padding-inline-start: var(--_cinder-dropdown-item-reason-indent, 0px);
     color: var(--cinder-text-muted);
     font-size: var(--cinder-text-xs);
     line-height: var(--cinder-leading-snug);

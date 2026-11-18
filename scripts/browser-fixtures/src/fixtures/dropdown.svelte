@@ -30,6 +30,11 @@
           Archive
         </Dropdown.Item>
         <Dropdown.Item disabled disabledReason="Nothing to export yet.">Export</Dropdown.Item>
+        <!-- An enabled item whose second line says what it does (COR-2431, row 63m). -->
+        <Dropdown.Item description="Runs in flight finish. No new runs start until you resume it.">
+          <Pencil aria-hidden="true" size={14} />
+          Pause
+        </Dropdown.Item>
       </Dropdown.Menu>
     </Dropdown>
   </div>

@@ -5,6 +5,7 @@
  * the item's name, an enabled item draws no reason, and an item with no reason keeps its markup.
  */
 import { afterEach, describe, expect, test } from 'bun:test';
+import { readFileSync } from 'node:fs';
 
 import { requiredInstance, setupHappyDom } from '@lostgradient/testing';
 
@@ -104,6 +105,29 @@ describe('DropdownItem disabledReason', () => {
     const stop = items[5]!;
     expect(stop.querySelectorAll('.cinder-dropdown-item__reason')).toHaveLength(1);
     expect(textOf(stop.getAttribute('aria-describedby'))).toBe('Nothing is running.');
+  });
+
+  test('COR-2431 (row 63m): the second line is placed by a grid, never by a measured indent', async () => {
+    const { items } = await openMenu();
+    for (const item of [items[0]!, items[4]!]) {
+      const line = requiredInstance(
+        item.querySelector('.cinder-dropdown-item__reason'),
+        HTMLElement,
+      );
+      expect(line.getAttribute('style')).toBeNull();
+    }
+    const css = readFileSync(new URL('../dropdown/dropdown.css', import.meta.url), 'utf8');
+    const rule = (selector: string) =>
+      new RegExp(`${selector.replaceAll(/[.[\]()>:'-]/g, '\\$&')}\\s*\\{([^}]*)\\}`).exec(
+        css,
+      )?.[1] ?? '';
+    // An icon column and a text column; the label's parts take their cells, and the line the text
+    // column, so it starts where the label's words do.
+    expect(rule('.cinder-dropdown-item[data-cinder-reason]')).toContain('display: grid');
+    expect(css).toContain('grid-template-columns: [icon] auto [text] minmax(0, 1fr)');
+    expect(rule('.cinder-dropdown-item__label')).toContain('display: contents');
+    expect(rule('.cinder-dropdown-item__reason')).toContain('grid-column: text');
+    expect(css).not.toContain('reason-indent');
   });
 
   test("a link item keeps the consumer's own description before the reason", async () => {
