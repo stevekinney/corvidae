@@ -21,11 +21,11 @@
  * `const` that the same source passes as `src={name}`. CSS `url(...)` values and
  * every other usage stay checked.
  */
+import { environmentConfiguration } from '@lostgradient/component-tooling/scripts/environment-configuration.ts';
 import { Glob } from 'bun';
 import { describe, expect, test } from 'bun:test';
 import { readFileSync, statSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { environmentConfiguration } from '../../scripts/environment-configuration.ts';
 
 const ALLOWED_COLOR_VALUES = new Set(['none', 'currentcolor', 'inherit']);
 const SCANNED_EXTENSIONS = new Set([

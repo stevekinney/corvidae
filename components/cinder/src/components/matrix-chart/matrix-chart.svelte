@@ -1,19 +1,4 @@
 <script lang="ts" module>
-  /**
-   * @cinder
-   * @category data-display
-   * @status alpha
-   * @purpose Categorical × categorical heatmap for dense analytics, confusion matrices, and correlation grids.
-   * @tag chart
-   * @tag heatmap
-   * @tag matrix
-   * @tag analytics
-   * @useWhen Showing density or magnitude across two categorical dimensions simultaneously.
-   * @useWhen Rendering a confusion matrix where rows are actual classes and columns are predicted classes.
-   * @avoidWhen Showing a continuous trend over time — use line-chart instead.
-   * @avoidWhen Comparing discrete category totals — use bar-chart instead.
-   * @related bar-chart, line-chart, area-chart
-   */
   export type { MatrixChartProps, MatrixChartSchemaProps } from './matrix-chart.types.ts';
 </script>
 

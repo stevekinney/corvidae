@@ -1,0 +1,16 @@
+{
+  "$schema": "../../../../../internal/component-tooling/src/schemas/component-meta.schema.json",
+  "category": "layout",
+  "status": "alpha",
+  "purpose": "Bounded preview layout shell with title, status, optional chrome regions, and nested overflow discipline.",
+  "tags": ["layout", "preview", "panel"],
+  "useWhen": [
+    "Framing a generated preview, artifact inspection area, or side-by-side review surface.",
+    "A preview needs consistent header, tabs, body, and footer slots without owning product-specific behavior."
+  ],
+  "avoidWhen": [
+    { "reason": "Communicating an urgent standalone message — use alert." },
+    { "reason": "You only need generic spacing — use stack." }
+  ],
+  "related": ["stack", "card", "tabs", "alert"]
+}

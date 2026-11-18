@@ -1,20 +1,4 @@
 <script lang="ts" module>
-  /**
-   * @cinder
-   * @category data-display
-   * @status stable
-   * @purpose Timestamp-first event rail with grouping, tone markers, and connector continuity.
-   * @tag timeline
-   * @tag history
-   * @tag events
-   * @useWhen Showing dated workflow, audit, or run-history events on a temporal rail.
-   * @useWhen Listing upcoming and past runs as compact rows split by a Now marker, with a labelled break where the clock changed.
-   * @avoidWhen Surfacing a real-time social or activity stream — feed is the higher-affordance composition.
-   * @avoidWhen Guiding users through a numbered procedural flow. | steps
-   * @avoidWhen Showing async execution state with retries, branches, or progress. | run-step-timeline
-   * @avoidWhen Showing a live activity or dense operational stream — use feed (its log arm covers operational streams).
-   * @related feed, run-step-timeline
-   */
   export type {
     TimelineEntry,
     TimelineEntryKind,

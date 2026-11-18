@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'bun:test';
 
-import { evaluateConstraints } from '../../_internal/constraints.ts';
+import { evaluateConstraints, type ConstraintsDocument } from '../../_internal/constraints.ts';
 import { invalid, valid } from './modal.constraints.fixtures.ts';
-import modalConstraints from './modal.constraints.ts';
+import modalConstraintsJson from './modal.constraints.json' with { type: 'json' };
+
+// The authored JSON, typed: its string literals widen to `string` on import.
+const modalConstraints = modalConstraintsJson as ConstraintsDocument;
 
 describe('modal constraints — valid fixtures', () => {
   for (const attributes of valid) {

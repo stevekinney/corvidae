@@ -1,0 +1,21 @@
+{
+  "$schema": "../../../../../internal/component-tooling/src/schemas/component-meta.schema.json",
+  "category": "data-display",
+  "status": "stable",
+  "purpose": "Compact non-interactive label that annotates an adjacent element with a short status, count, or category.",
+  "tags": ["billing", "label", "indicator", "subscription"],
+  "useWhen": [
+    "Annotating a value with a short status word like \"new\" or \"beta\".",
+    "Displaying a numeric count next to an icon or title.",
+    "Displaying the billing state of a subscription in a dashboard, invoice list, or account settings page.",
+    "Annotating a plan name, customer row, or invoice line with its current payment lifecycle state."
+  ],
+  "avoidWhen": [
+    { "reason": "The label must be interactive or removable — use chip instead." },
+    { "reason": "Showing only a colored dot for presence — use status-dot instead." },
+    {
+      "reason": "Showing label and value metadata for a record, such as an owner, a date or a price — use description-list instead."
+    }
+  ],
+  "related": ["chip", "status-dot"]
+}

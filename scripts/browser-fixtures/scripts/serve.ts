@@ -1,10 +1,10 @@
+import { FIXTURE_PORT } from '@lostgradient/testing/browser/fixture-port';
+import { createFixtureServer } from '@lostgradient/testing/browser/server';
 import { exitWhenOrphaned } from '@lostgradient/testing/exit-when-orphaned';
 import { watch } from 'node:fs';
 import { resolve } from 'node:path';
 import { parseArgs } from 'node:util';
-import { createFixtureServer } from '../src/server.ts';
 import { buildFixtures } from './build.ts';
-import { FIXTURE_PORT } from './fixture-port.ts';
 
 // A Playwright run or a capture killed outright stops nothing; the host must not outlive it.
 exitWhenOrphaned();
@@ -35,6 +35,10 @@ if (!preview) {
     resolve(root, 'src'),
     resolve(root, 'fixtures'),
     ...['cinder', 'chat', 'editor'].map((name) => resolve(repository, 'components', name, 'src')),
+    // The application fixtures the chat, editor and terminal packages own (COR-2080).
+    ...['chat', 'editor', 'terminal'].map((name) =>
+      resolve(repository, 'components', name, 'browser', 'fixtures'),
+    ),
     ...['markdown', 'conversationalist'].map((name) =>
       resolve(repository, 'packages', name, 'src'),
     ),

@@ -1,17 +1,4 @@
 <script lang="ts" module>
-  /**
-   * @cinder
-   * @category action
-   * @status alpha
-   * @purpose Compact share card with copy-link, copy-text, and native navigator.share actions, with accessible success announcements and graceful fallback when navigator.share is unavailable.
-   * @tag action
-   * @tag clipboard
-   * @useWhen Offering a quick way to share a link or text with copy and native share options.
-   * @useWhen Presenting a result, invite link, or exported report link with sharing affordances.
-   * @avoidWhen Generating the share text or images — compose ShareCard with your own copy generation logic.
-   * @avoidWhen Posting directly to social media or analytics — wire those externally.
-   * @related copy-button, card, button
-   */
   export type { ShareCardAction, ShareCardProps } from './share-card.types.ts';
 </script>
 

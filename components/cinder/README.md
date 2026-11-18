@@ -24,32 +24,29 @@ Import components, utilities, types, and metadata from this one entry point. Com
 
 ## Maintainer tool
 
-Cinder owns `scripts/export-names.ts`, a manual export-inventory CLI for reviewing a TypeScript barrel's runtime and type names. From this workspace, run `bun scripts/export-names.ts src/index.ts`; it prints sorted `runtime` and `types` lists for a review diff.
+The component tooling owns `internal/component-tooling/scripts/export-names.ts`, a manual export-inventory CLI for reviewing a TypeScript barrel's runtime and type names. From this workspace, run `bun ../../internal/component-tooling/scripts/export-names.ts src/index.ts`; it prints sorted `runtime` and `types` lists for a review diff.
 
 ## Component metadata
 
-The root exports the component manifest and named metadata values:
+Component metadata is JSON the package exports by subpath, apart from the root barrel:
 
-```ts
-import {
-  manifest,
-  buttonSchema,
-  buttonVariables,
-  buttonConstraints,
-  buttonExamples,
-} from '@lostgradient/cinder';
+```js
+import manifest from '@lostgradient/cinder/manifest' with { type: 'json' };
+import buttonSchema from '@lostgradient/cinder/button/schema' with { type: 'json' };
+import buttonVariables from '@lostgradient/cinder/button/variables' with { type: 'json' };
+import buttonExamples from '@lostgradient/cinder/button/examples' with { type: 'json' };
 ```
 
-You can inspect a component's props, CSS variables, cross-prop constraints, and examples from the package root. `manifest.components` ties those artifacts to each public component and records its identifier, category, tags, purpose, usage guidance, and related components. Its artifact paths point to files in this workspace—not package import subpaths.
+`manifest.components` ties those files to each public component and records its identifier, category, tags, purpose, usage guidance, and related components. Its artifact paths are package-relative files.
 
-- **Schema**: A JSON Schema document for component props, exported as `<componentName>Schema`.
-- **Variables**: Public CSS custom property names, exported as `<componentName>Variables`.
-- **Constraints**: Cross-prop rules, exported as `<componentName>Constraints` when present.
-- **Examples**: Canonical usage snippets, exported as `<componentName>Examples` when present.
+- **Schema** (`./<component-id>/schema`): a JSON Schema document for the component's props.
+- **Variables** (`./<component-id>/variables`): the public CSS custom property names it declares.
+- **Examples** (`./<component-id>/examples`): canonical usage snippets, when it has them.
+- **Constraints**: cross-prop rules, authored as `src/components/<component-id>/<component-id>.constraints.json` when present.
 
-Use lower-camel component names, such as `button` or `dataTable`. Check the manifest's `hasConstraints` and `hasExamples` flags for optional artifacts.
+Use kebab-case component ids, such as `button` or `data-table`. Check the manifest's `hasConstraints` and `hasExamples` flags for optional artifacts.
 
-Applications import `manifest` and named metadata from `@lostgradient/cinder`; the library root supports browser and server rendering.
+The package's `metadata` task (`bunx turbo run metadata --filter=@lostgradient/cinder`) generates these files into the ignored `.metadata/` directory from each component's `<name>.meta.json`, types, and stylesheets; every task that reads them depends on it.
 
 ## Token data
 
@@ -131,12 +128,12 @@ A surface of your own docked to the bottom of the page, such as a composer, take
 
 > [!WARNING] Experimental, pinned to A2UI v0.9.1 The catalog follows A2UI v0.9.1 and may change until a stable A2UI 1.0 compatibility review. It is opt-in: no surface uses it unless a client asks for it.
 
-`a2ui-catalog.json` at the package root is Cinder's A2UI catalog (COR-1310): the Cinder components an agent may place on an A2UI surface, projected from their generated `*.schema.json` files and `components.json`. It is a file in the package, not an export of `@lostgradient/cinder`; a server that offers it copies it (Bureau keeps a byte-identical copy, which the root `scripts/a2ui-catalog-copies.test.ts` enforces).
+Cinder's A2UI catalog (COR-1310) lists the Cinder components an agent may place on an A2UI surface, projected from their generated schemas and manifest. The `metadata` task writes it to `.metadata/a2ui-catalog.json`; it is not an export of `@lostgradient/cinder`. A server that offers it copies it: Bureau keeps a formatted copy, `packages/bureau/src/a2ui/cinder-catalog.schema.json`, which Cinder's lint holds byte for byte to the generated catalog, with its digest in Bureau's `PROVENANCE.json`.
 
 - **Identity.** Its `catalogId` and `$id` are the same URI, `https://cinder.website/a2ui/v0_9_1/catalogs/cinder/v1/catalog.json`: `v0_9_1` is the pinned A2UI version and `v1` is Cinder's catalog revision. A client lists that URI in `supportedCatalogIds`; Bureau offers the catalog only to a client that does (see [Bureau's adapter](../../packages/bureau/documentation/interactive-surface.md#the-adapter-experimental)), and offers the A2UI basic catalog otherwise.
 - **Contents.** An explicit allowlist (`scripts/a2ui-catalog-allowlist.json`) of eight components: `Checkbox`, `CopyButton`, `Meter`, `NumberInput`, `Progress`, `Rating`, `Spinner`, and `Toggle`. It defines no functions, and its `anyComponent` is those eight alone, so it does not include the basic catalog's layout or text components.
 - **What a property keeps.** Model-generated UI gets no ambient authority. Styling hooks (`class`, `style`), DOM identity and form association (`id`, `form`, `name`), anything that fetches or navigates (`href`, `src`), raw markup (`html`), event handlers, ARIA references to other elements, and `data-*` attributes never reach the catalog. Each entry carries an accessible name as its `label`, taken from the component's `label`, `ariaLabel`, `alt`, or `title`; the generator fails when a listed component has none.
-- **Regenerating.** `bun run a2ui-catalog:generate` rewrites the file; `bun run a2ui-catalog:check` fails on drift. The generator validates the result against the vendored A2UI v0.9.1 schemas (`scripts/a2ui/PROVENANCE.json` names the upstream commit) and writes nothing if a listed component has no schema or no accessible name.
+- **Regenerating.** The `metadata` task rewrites the catalog; `bun ../../internal/component-tooling/scripts/generate-a2ui-catalog.ts --write-bureau` rewrites Bureau's copy and its digest after a change. The generator validates the result against the vendored A2UI v0.9.1 schemas (`internal/component-tooling/scripts/a2ui/PROVENANCE.json` names the upstream commit) and writes nothing if a listed component has no schema or no accessible name.
 - **Rendering.** `A2uiSurface` in `@lostgradient/chat` renders the basic catalog only, so it does not render this catalog's components; they report as `unsupported-component`. A renderer that lists this catalog has to implement those components itself.
 
 ## Design system
@@ -202,17 +199,16 @@ Wire those pieces with your application stack and pass the resulting state, call
 
 ## Development
 
-From `components/cinder`, run the source checks:
+From `components/cinder`, run the source checks (from the root, `bunx turbo run lint test --filter=@lostgradient/cinder` runs the `metadata` task they read first):
 
 ```bash
 bun run lint
 bun run typecheck
 bun run test
-bun run components:check
 bun run tokens:check
 ```
 
-After editing component source under `src/components/<component-id>/`, run `bun run components:generate` to refresh schemas, variables, examples, the manifest, and metadata exports. Token corpus changes use `bun run tokens:generate`.
+After editing component source under `src/components/<component-id>/`, run `bun ../../internal/component-tooling/scripts/generate-component-artifacts.ts --fix` to refresh the README's generated regions and the root registries; the `metadata` task regenerates schemas, variables, examples and the manifest in `.metadata/`. Token corpus changes use `bun run tokens:generate`.
 
 From the Corvidae root, `bunx turbo run lint typecheck test --filter=@lostgradient/cinder` checks this workspace and `bun run validate` checks the complete repository. Browser fixtures and interaction tests live in `scripts/browser-fixtures`. Cinder has no library build or publishing step.
 

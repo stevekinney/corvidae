@@ -1,19 +1,4 @@
 <script lang="ts" module>
-  /**
-   * @cinder
-   * @category form
-   * @status alpha
-   * @purpose Responsive grid of large selectable choices with roving keyboard focus, selection state, and optional correct/incorrect/pending feedback for quiz and assessment surfaces.
-   * @tag form
-   * @tag selection
-   * @tag quiz
-   * @tag assessment
-   * @useWhen Presenting a small fixed set of large selectable answers where all options should stay visible (quiz or assessment surfaces).
-   * @useWhen Building a touch-friendly selector grid with stable cell dimensions that must not shift when feedback states are applied.
-   * @avoidWhen Selecting from a long dynamic list — use combobox or select instead.
-   * @avoidWhen Choosing one of two to five short values in a compact inline context — use segmented-control instead.
-   * @related choice-grid-item, segmented-control, radio-group, checkbox-group
-   */
   export type {
     ChoiceGridColumns,
     ChoiceGridContext,

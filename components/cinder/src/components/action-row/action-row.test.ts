@@ -2,13 +2,14 @@
 import { describe, expect, mock, test } from 'bun:test';
 import { createRawSnippet } from 'svelte';
 
+import { readComponentVariables } from '@lostgradient/component-tooling/scripts/lib/metadata-files.ts';
 import { requiredInstance, setupHappyDom } from '@lostgradient/testing';
 
 setupHappyDom();
 
 const { fireEvent, render } = await import('@testing-library/svelte');
 const { default: ActionRow } = await import('./action-row.svelte');
-const { default: actionRowVariables } = await import('./action-row.variables.ts');
+const actionRowVariables = readComponentVariables('action-row');
 
 function textSnippet(text: string) {
   return createRawSnippet(() => ({

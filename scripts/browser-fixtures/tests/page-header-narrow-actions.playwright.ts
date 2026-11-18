@@ -7,8 +7,8 @@
  * headers without touching the default fixture's baselines. Every box is read in one pass.
  */
 
+import { fixtureRoute } from '@lostgradient/testing/playwright/overlay-fixture';
 import { expect, test } from '@playwright/test';
-import { fixtureRoute } from './overlay-fixture.ts';
 
 test('a narrow header puts its actions beside the status only when asked, and is shorter for it', async ({
   page,

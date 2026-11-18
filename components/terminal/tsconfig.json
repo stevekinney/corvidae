@@ -3,6 +3,6 @@
   "compilerOptions": {
     "types": ["bun"]
   },
-  "include": ["src", "scripts"],
-  "exclude": ["node_modules", "coverage"]
+  "include": ["src", "scripts", "browser"],
+  "exclude": ["node_modules", "coverage", "browser/.playwright"]
 }

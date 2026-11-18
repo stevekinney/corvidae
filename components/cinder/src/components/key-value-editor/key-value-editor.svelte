@@ -1,14 +1,4 @@
 <script lang="ts" module>
-  /** @cinder
-   * @category data-display
-   * @status beta
-   * @purpose Edits string key/value pairs and masks values selected as secrets.
-   * @tag key-value-editor
-   * @useWhen Editing headers, environment variables, or configuration fields.
-   * @avoidWhen Values need rich structured content; use Table.
-   * @related secret-value-field, table
-   * @rationale Nearest alternative: SecretValueField displays one secret; this owns pair editing.
-   */
   export type { KeyValueEditorProps, KeyValueEntry } from './key-value-editor.types.ts';
 </script>
 

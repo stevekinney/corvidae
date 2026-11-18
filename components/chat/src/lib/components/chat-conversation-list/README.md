@@ -64,7 +64,6 @@ Passing `onLoadMore` while `hasMore` is `true` renders Cinder's `LoadMore` after
 <!-- generated:variables:start -->
 
 This component does not declare any local CSS variables.
-
 <!-- generated:variables:end -->
 
 ## Subcomponents

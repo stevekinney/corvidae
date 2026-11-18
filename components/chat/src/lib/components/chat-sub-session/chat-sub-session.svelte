@@ -1,15 +1,4 @@
 <script lang="ts" module>
-  /**
-   * @cinder
-   * @category data-display
-   * @status stable
-   * @purpose Renders a reduced nested conversation transcript inside a parent chat turn.
-   * @tag chat
-   * @tag transcript
-   * @useWhen A tool or delegated session needs to expose its child transcript inline.
-   * @avoidWhen The child conversation should be a separate full-size Chat surface.
-   * @related chat
-   */
   import type { ChatSubSessionProps } from './chat-sub-session.types.ts';
   export type { ChatSubSessionProps };
 </script>

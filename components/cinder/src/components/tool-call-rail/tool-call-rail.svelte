@@ -1,19 +1,4 @@
 <script lang="ts" module>
-  /**
-   * @cinder
-   * @category data-display
-   * @status beta
-   * @purpose One turn's tool calls on a rail: a one-line row per call, the first and last few with the middle folded, failures and calls that need a person always in view, and the run's end state.
-   * @tag timeline
-   * @tag tool-call
-   * @tag agent
-   * @useWhen Showing an agent's tool calls for one chat turn, where a failure or an approval must never fold away.
-   * @useWhen Opening a call's details in a side panel from a selectable row, with a failed call's next steps on the rail.
-   * @avoidWhen Showing the steps of a run with their own timing, retries and branches — use run-step-timeline.
-   * @avoidWhen Listing dated events — use timeline.
-   * @rationale Nearest alternative: Timeline — the rail is built on its `rows` variant, which keeps the marker column and connector and leaves each row's content (name, key input, result and duration, with no timestamp to lead with) to the rail.
-   * @related timeline, run-step-timeline, approval-card, status-dot
-   */
   export type {
     ToolCallRailCall,
     ToolCallRailLabels,

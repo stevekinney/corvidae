@@ -6,8 +6,8 @@
  * computes `text-overflow: ellipsis`. Read in one pass.
  */
 
+import { fixtureRoute } from '@lostgradient/testing/playwright/overlay-fixture';
 import { expect, test } from '@playwright/test';
-import { fixtureRoute } from './overlay-fixture.ts';
 
 test('no label on the labelled rail is cut, and the items span the rail less one step each side', async ({
   page,

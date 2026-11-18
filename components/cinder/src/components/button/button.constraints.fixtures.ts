@@ -3,7 +3,7 @@ import type { ComponentAttributes } from '../../_internal/constraints.ts';
 /**
  * Valid attribute sets for the Button component.
  *
- * Each set must produce zero violations from `button.constraints.ts`.
+ * Each set must produce zero violations from `button.constraints.json`.
  * Note: `iconOnly` is normalized to `false` for the default case since the
  * evaluator uses strict equality and the constraint rule requires `equals: false`.
  */

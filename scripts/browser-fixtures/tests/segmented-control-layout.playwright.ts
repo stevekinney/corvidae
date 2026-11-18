@@ -21,9 +21,9 @@
  */
 
 import { loadManifest, THEMES, VIEWPORTS } from '@lostgradient/testing';
+import { expect, test } from '@lostgradient/testing/playwright/component-page-fixture';
+import { fixtureEntry } from '@lostgradient/testing/playwright/editor-fixture';
 import { type Locator, type Page } from '@playwright/test';
-import { expect, test } from './component-page-fixture.ts';
-import { fixtureEntry } from './editor-fixture.ts';
 
 const manifest = loadManifest();
 function fixtureRoute(slug: string): string {

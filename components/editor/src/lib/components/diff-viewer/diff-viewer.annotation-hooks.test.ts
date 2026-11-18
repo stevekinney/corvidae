@@ -15,7 +15,7 @@ import { requiredInstance, setupHappyDom } from '@lostgradient/testing';
  * sub-components alone cannot exercise (stale-gates-creation, focusAnchor
  * mode-switching, ref/instance isolation). Full end-to-end interaction
  * (pointer, keyboard, real focus) is covered by the real-browser Playwright
- * spec in `scripts/browser-fixtures/tests/diff-viewer-annotation.playwright.ts`.
+ * spec in `components/editor/browser/tests/diff-viewer-annotation.playwright.ts`.
  */
 
 setupHappyDom();

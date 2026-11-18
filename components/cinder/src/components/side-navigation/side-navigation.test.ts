@@ -2,13 +2,14 @@
 import { describe, expect, test } from 'bun:test';
 import { createRawSnippet } from 'svelte';
 
+import { readComponentVariables } from '@lostgradient/component-tooling/scripts/lib/metadata-files.ts';
 import { setupHappyDom } from '@lostgradient/testing';
 
 setupHappyDom();
 
 const { render } = await import('@testing-library/svelte');
 const { default: SideNavigation } = await import('./side-navigation.svelte');
-const { default: sideNavigationVariables } = await import('./side-navigation.variables.ts');
+const sideNavigationVariables = readComponentVariables('side-navigation');
 
 function emptySnippet() {
   return createRawSnippet(() => ({

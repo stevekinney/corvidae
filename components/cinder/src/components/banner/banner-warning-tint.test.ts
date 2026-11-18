@@ -13,7 +13,7 @@ import { join } from 'node:path';
 
 import { describe, expect, test } from 'bun:test';
 
-import { declarationsFor } from '../../test/css.ts';
+import { declarationsFor } from '@lostgradient/component-tooling/test/css.ts';
 
 const COMPONENTS = join(import.meta.dir, '..');
 const read = (path: string): string => readFileSync(join(COMPONENTS, path), 'utf8');

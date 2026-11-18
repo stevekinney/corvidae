@@ -1,19 +1,4 @@
 <script lang="ts" module>
-  /**
-   * @cinder
-   * @category data-display
-   * @status stable
-   * @purpose Controlled multi-column board for reordering cards within and across workflow columns with keyboard, pointer, and live-region feedback.
-   * @tag board
-   * @tag kanban
-   * @tag drag
-   * @tag reorder
-   * @useWhen Presenting a workflow board where users move cards between ordered columns.
-   * @useWhen Cards need a title over one quiet row (an assignee, a priority badge), or consumers own card rendering.
-   * @avoidWhen Showing a single ordered list — use sortable-list instead.
-   * @avoidWhen Sorting by computed fields rather than direct manual placement.
-   * @related sortable-list, grid-list, data-list
-   */
   export type {
     KanbanBoardCardContext,
     KanbanBoardChange,

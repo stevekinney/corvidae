@@ -10,7 +10,7 @@ import { join } from 'node:path';
 
 import { describe, expect, test } from 'bun:test';
 
-import { extractRootBlock } from '../test/token-introspection.ts';
+import { extractRootBlock } from '@lostgradient/component-tooling/test/token-introspection.ts';
 
 const TOKENS_DIR = join(import.meta.dir, 'tokens');
 const TOKENS_BASE_PATH = join(import.meta.dir, 'tokens-base.css');

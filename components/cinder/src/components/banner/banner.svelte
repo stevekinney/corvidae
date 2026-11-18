@@ -1,19 +1,4 @@
 <script lang="ts" module>
-  /**
-   * @cinder
-   * @category feedback
-   * @status stable
-   * @purpose Page-level dismissible region landmark that surfaces a persistent informational, success, warning, or danger message.
-   * @tag feedback
-   * @tag notice
-   * @useWhen Communicating a persistent page-level status the user can dismiss, such as a maintenance window or trial expiry.
-   * @useWhen Reporting that the browser is offline, the server is unreachable, a refresh failed or a restart is running, using a connection preset.
-   * @useWhen Pinning a non-urgent message above page content that should remain readable until acknowledged.
-   * @useWhen Announcing something new or inviting the person to try a feature, with the feature variant and its glyph art.
-   * @avoidWhen Announcing an urgent, time-sensitive message — use alert so assistive tech reads it immediately.
-   * @avoidWhen Highlighting an inline aside next to related prose — use callout instead.
-   * @related alert, callout, toast-region
-   */
   const VARIANT_LABEL = {
     neutral: 'Notice',
     info: 'Information',

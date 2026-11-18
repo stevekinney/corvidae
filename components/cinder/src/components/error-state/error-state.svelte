@@ -1,18 +1,4 @@
 <script lang="ts" module>
-  /**
-   * @cinder
-   * @category feedback
-   * @status stable
-   * @purpose Centred error placeholder with a disc, title, description, progress line, retry, secondary action and details disclosure for a failed load, or a neutral not-found state.
-   * @tag feedback
-   * @tag error
-   * @useWhen Replacing a primary content region after its query or request failed, so the failure never looks like an empty result.
-   * @useWhen Offering the user a retry for a region that can be reloaded, with the retry as the only primary action on the page.
-   * @useWhen Telling a person that the thing they asked for doesn't exist, using the neutral tone.
-   * @avoidWhen Communicating that a region has no data — use empty-state instead.
-   * @avoidWhen Reporting the result of a just-completed action — use alert or toast-region.
-   * @related alert, empty-state, banner
-   */
   export type {
     ErrorStateProps,
     ErrorStateRetryVariant,

@@ -1,19 +1,4 @@
 <script lang="ts" module>
-  /**
-   * @cinder
-   * @category navigation
-   * @status beta
-   * @purpose Sticky translucent top bar for a page: Back and leading content, the page's title, and trailing icon actions that each carry a name and a tooltip.
-   * @tag app-bar
-   * @tag header
-   * @tag chrome
-   * @useWhen Pinning a page's identity while it scrolls: Back, the title, then icon actions, as a phone detail page does.
-   * @useWhen Showing a large page title in the bar once it scrolls away, paired with the large variant of page-header.
-   * @avoidWhen Grouping controls with arrow-key navigation between them — use toolbar.
-   * @avoidWhen Switching between an app's top-level sections — use navigation-bar.
-   * @related page-header, toolbar, navigation-bar
-   * @rationale Nearest alternatives: Toolbar is the WAI-ARIA roving-tabindex control group and NavigationBar is a bar of navigation items; neither is a material bar that carries the page's title.
-   */
   import type { Snippet } from 'svelte';
 
   export type {

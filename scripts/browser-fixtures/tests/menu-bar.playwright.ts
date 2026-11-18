@@ -1,5 +1,5 @@
 import { loadManifest, VIEWPORTS, type Theme } from '@lostgradient/testing';
-import { expect, test } from './component-page-fixture.ts';
+import { expect, test } from '@lostgradient/testing/playwright/component-page-fixture';
 
 const themes: Theme[] = ['light', 'dark'];
 const desktop = VIEWPORTS.find((viewport) => viewport.name === 'desktop');

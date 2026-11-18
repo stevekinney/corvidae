@@ -1,15 +1,4 @@
 <script lang="ts" module>
-  /**
-   * @cinder
-   * @category navigation
-   * @status stable
-   * @purpose Sentinel-based infinite-scroll trigger with an always-visible button fallback and accessible status states.
-   * @tag navigation
-   * @tag paging
-   * @useWhen Streaming results into a long list and you want the next page to load as the user approaches the end.
-   * @avoidWhen The dataset is bounded and benefits from discrete jumps — use `Pagination` instead.
-   * @related pagination, virtual-list
-   */
   export type { LoadMoreProps, LoadMoreVariant } from './load-more.types.ts';
 </script>
 

@@ -10,8 +10,8 @@
  * them. The boxes are read in one pass.
  */
 
+import { fixtureRoute } from '@lostgradient/testing/playwright/overlay-fixture';
 import { expect, test } from '@playwright/test';
-import { fixtureRoute } from './overlay-fixture.ts';
 
 test('at 320px a docked action bar sits above the bottom tab bar, in view before any scroll', async ({
   page,

@@ -10,7 +10,7 @@
 import { describe, expect, test } from 'bun:test';
 import { parse } from 'postcss';
 
-import { declarationsFor } from '../../test/css.ts';
+import { declarationsFor } from '@lostgradient/component-tooling/test/css.ts';
 
 const css = await Bun.file(new URL('./banner.css', import.meta.url)).text();
 

@@ -27,7 +27,7 @@ import type {
 } from './component-page-playground.ts';
 import type { PreviewRecipe } from './component-page-preview-recipes.ts';
 import { toMountErrorDetail, type MountErrorDetail } from './example-error.ts';
-import { CONTEXT_REQUIRED_PARTS, LIST_ITEM_PARTS } from './shell-app/compound-families.ts';
+import { CONTEXT_REQUIRED_PARTS, LIST_ITEM_PARTS } from './shell-app/compound-parts.ts';
 
 /**
  * Translate the flat playground control values into the props object handed to

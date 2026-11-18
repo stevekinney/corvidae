@@ -1,15 +1,4 @@
 <script lang="ts" module>
-  /**
-   * @cinder
-   * @category overlay
-   * @status beta
-   * @purpose Headless utility that calls a function when the user clicks or taps outside a subtree.
-   * @tag overlay
-   * @tag utility
-   * @useWhen Building a custom inline-edit field, custom dropdown, or any overlay that should close on outside interaction.
-   * @avoidWhen Using Popover, Dropdown, or Modal — those handle click-away internally.
-   * @related focus-trap, popover, portal
-   */
   export type { ClickAwayListenerProps } from './click-away-listener.types.ts';
 </script>
 

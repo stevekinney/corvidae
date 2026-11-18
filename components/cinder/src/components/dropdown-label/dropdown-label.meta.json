@@ -1,0 +1,17 @@
+{
+  "$schema": "../../../../../internal/component-tooling/src/schemas/component-meta.schema.json",
+  "category": "overlay",
+  "status": "stable",
+  "purpose": "Non-interactive heading row that groups related dropdown-item rows inside a dropdown-menu.",
+  "tags": ["overlay", "menu"],
+  "useWhen": [
+    "Labeling a group of related menu items with a short heading.",
+    "Providing a visual section title above a cluster of dropdown-item rows."
+  ],
+  "avoidWhen": [
+    { "reason": "Rendering a selectable row — use dropdown-item." },
+    { "reason": "Visually dividing groups without a heading — use dropdown-separator." }
+  ],
+  "related": ["dropdown", "dropdown-menu", "dropdown-item", "dropdown-separator"],
+  "composeOnly": true
+}

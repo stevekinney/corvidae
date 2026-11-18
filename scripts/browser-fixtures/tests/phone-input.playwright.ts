@@ -1,5 +1,5 @@
 import { loadManifest, VIEWPORTS } from '@lostgradient/testing';
-import { expect, test } from './component-page-fixture.ts';
+import { expect, test } from '@lostgradient/testing/playwright/component-page-fixture';
 
 const desktop = VIEWPORTS.find((viewport) => viewport.name === 'desktop');
 const phoneInputEntry = loadManifest().find((entry) => entry.slug === 'phone-input');

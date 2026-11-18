@@ -23,14 +23,17 @@ describe('Chat tokens in the Cinder token reference', () => {
     expect(tokenDocumentation).toContain('`--cinder-chat-font-size`');
   });
 
-  // Publishing a token through `chat.variables.*` and the generated README
+  // Publishing a token through `@lostgradient/chat/chat/variables` and the generated README
   // makes it supported customization API, which carries a documentation
   // obligation. This pins that obligation so the two cannot drift: a default
   // changed in CSS without the docs following, or the token removed from one
   // side only, fails here.
   it('documents the Chat transcript measure and keeps it out of the color contract', () => {
     const chatCss = readFileSync(join(chatComponentDirectory, 'chat.css'), 'utf8');
-    const chatVariables = readFileSync(join(chatComponentDirectory, 'chat.variables.json'), 'utf8');
+    const chatVariables = readFileSync(
+      Bun.resolveSync('@lostgradient/chat/chat/variables', import.meta.dir),
+      'utf8',
+    );
     const tokenDocumentation = readFileSync(tokenDocumentationPath, 'utf8');
     const tokenBaseCss = readFileSync(tokenBaseCssPath, 'utf8');
 

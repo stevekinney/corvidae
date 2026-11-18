@@ -1,17 +1,4 @@
 <script lang="ts" module>
-  /**
-   * @cinder
-   * @category typography
-   * @status stable
-   * @purpose Run of text in one of the typography variants display, h1 to h5, caption, or body that inherits its color from its container.
-   * @tag typography
-   * @tag text
-   * @useWhen Rendering a heading, paragraph, or caption in the design system's type scale.
-   * @useWhen Overriding the rendered element while keeping a variant's visual style.
-   * @avoidWhen Introducing a page section with an eyebrow, description, or actions — use section-heading instead.
-   * @avoidWhen Rendering Markdown content — compose the Markdown renderer instead.
-   * @related section-heading, label
-   */
   export type { TextElement, TextProps, TextVariant } from './text.types.ts';
 </script>
 

@@ -1,0 +1,18 @@
+{
+  "$schema": "../../../../../internal/component-tooling/src/schemas/component-meta.schema.json",
+  "category": "layout",
+  "status": "beta",
+  "purpose": "Pure CSS waterfall layout that packs variable-height children into balanced columns.",
+  "tags": ["layout", "masonry"],
+  "useWhen": [
+    "Displaying cards, images, or panels with uneven heights where CSS column order is acceptable."
+  ],
+  "avoidWhen": [
+    { "reason": "Items have equal heights - use grid-list instead.", "alternative": "grid-list" },
+    {
+      "reason": "Left-to-right row reading order matters - use grid instead.",
+      "alternative": "grid"
+    }
+  ],
+  "related": ["grid", "grid-list"]
+}

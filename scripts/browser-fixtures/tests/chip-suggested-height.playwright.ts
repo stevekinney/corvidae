@@ -11,8 +11,8 @@
  */
 
 import { loadManifest } from '@lostgradient/testing';
+import { test } from '@lostgradient/testing/playwright/component-page-fixture';
 import { expect } from '@playwright/test';
-import { test } from './component-page-fixture.ts';
 
 const entry = loadManifest().find((candidate) => candidate.slug === 'chip');
 const fixture = entry?.fixtures?.find((candidate) => candidate.name === 'suggested');

@@ -6,8 +6,8 @@
  * Read in a browser; the spec takes no screenshots.
  */
 
+import { fixtureRoute } from '@lostgradient/testing/playwright/overlay-fixture';
 import { expect, test } from '@playwright/test';
-import { fixtureRoute } from './overlay-fixture.ts';
 
 for (const viewport of [
   { name: 'desktop', width: 1280, height: 900 },

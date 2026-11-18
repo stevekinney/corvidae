@@ -7,7 +7,9 @@
 - `@lostgradient/typescript/library.json` configures TypeScript source libraries and includes the [Bun](https://bun.sh/) types used by their tests and tooling.
 - `@lostgradient/typescript/browser.json` configures browser and [Svelte](https://svelte.dev/) source with DOM libraries and browser-specific resolution conditions. Component workspaces decide which production files it checks; their browser configurations exclude tests, fixtures, and scripts so production source cannot rely on Bun or Node globals.
 
-Both public presets compose the package's private `base.json`. The base configuration is intentionally not exported.
+- `@lostgradient/typescript/component.json` extends `browser.json` with the Bun types and includes a component package's `src` and `scripts`, tests among them, so a family package's whole `tsconfig.json` is one `extends` line (`create-package` writes it).
+
+The public presets compose the package's private `base.json`. The base configuration is intentionally not exported.
 
 ## Workspace usage
 

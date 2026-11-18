@@ -1,6 +1,6 @@
 import { loadManifest, VIEWPORTS } from '@lostgradient/testing';
 
-import { expect, test } from './component-page-fixture.ts';
+import { expect, test } from '@lostgradient/testing/playwright/component-page-fixture';
 
 // A nested field sits inside its parent's value column. The label column's 8rem minimum used to
 // compound with each level, so at the review editor's front-matter width a nested row ran past the

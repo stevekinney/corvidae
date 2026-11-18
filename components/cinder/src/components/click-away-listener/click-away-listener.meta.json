@@ -1,0 +1,14 @@
+{
+  "$schema": "../../../../../internal/component-tooling/src/schemas/component-meta.schema.json",
+  "category": "overlay",
+  "status": "beta",
+  "purpose": "Headless utility that calls a function when the user clicks or taps outside a subtree.",
+  "tags": ["overlay", "utility"],
+  "useWhen": [
+    "Building a custom inline-edit field, custom dropdown, or any overlay that should close on outside interaction."
+  ],
+  "avoidWhen": [
+    { "reason": "Using Popover, Dropdown, or Modal — those handle click-away internally." }
+  ],
+  "related": ["focus-trap", "popover", "portal"]
+}

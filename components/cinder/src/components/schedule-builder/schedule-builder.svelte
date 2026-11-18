@@ -1,21 +1,4 @@
 <script lang="ts" module>
-  /**
-   * @cinder
-   * @category form
-   * @status beta
-   * @purpose Recurrence control: Repeats, At and Time zone emit a cron or counted interval with its IANA zone, read back with its next runs, with optional overlap and catch-up selects.
-   * @tag schedule
-   * @tag recurrence
-   * @tag cron
-   * @tag form
-   * @useWhen Letting a user define when a job or notification recurs, supplying your own date/cron library to compute upcoming fire times.
-   * @useWhen You want plain repeat choices that still round-trip to a portable cron or interval value, with custom cron one choice away.
-   * @avoidWhen You need jitter or backfill-window controls — those belong to the consumer's surrounding form. | invocation-rule-builder
-   * @avoidWhen You only need to pick a single point in time, not a recurrence — use date-picker instead. | date-picker
-   * @related date-picker, combobox, input, time-field
-   * @a11yPattern Form group
-   * @a11yNote Repeats is a native select; At is hidden for interval repeats; the time zone is a searchable picker; each custom cron field reports validity via aria-invalid and one associated error.
-   */
   export type {
     ScheduleBuilderProps,
     ScheduleBuilderVariant,

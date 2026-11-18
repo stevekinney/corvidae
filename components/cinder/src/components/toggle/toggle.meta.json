@@ -1,0 +1,17 @@
+{
+  "$schema": "../../../../../internal/component-tooling/src/schemas/component-meta.schema.json",
+  "category": "form",
+  "status": "stable",
+  "purpose": "Sliding switch implementing the WAI-ARIA switch pattern for a single on or off setting that applies immediately.",
+  "tags": ["form", "switch"],
+  "useWhen": [
+    "Flipping a single setting on or off with immediate effect such as notifications or dark mode."
+  ],
+  "avoidWhen": [
+    { "reason": "Picking one option from a small fixed set — use segmented-control instead." },
+    {
+      "reason": "Collecting a deferred boolean (agreement, opt-in) in a Submit-style form — a switch implies immediate effect; use checkbox instead."
+    }
+  ],
+  "related": ["checkbox", "segmented-control"]
+}

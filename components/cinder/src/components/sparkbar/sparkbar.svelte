@@ -1,20 +1,4 @@
 <script lang="ts" module>
-  /**
-   * @cinder
-   * @category data-display
-   * @status stable
-   * @purpose Compact labeled meter with a thin fill bar for inline cost, token, or quota breakdowns, or, given points, a thin trend line with an end dot.
-   * @tag sparkbar
-   * @tag meter
-   * @tag cost
-   * @tag sparkline
-   * @tag trend
-   * @useWhen Comparing several bounded values in dense rows, such as per-step spend, token usage, or budget consumption.
-   * @useWhen Showing the shape of one metric over a recent window inside a metric card, with its latest value marked and the window named at each end.
-   * @avoidWhen Showing task completion or loading progress. | progress
-   * @avoidWhen Rendering a full cartesian chart with axes, scales, or multiple series. | line-chart
-   * @related meter, progress, bar-chart
-   */
   export type {
     SparkbarBarProps,
     SparkbarLineProps,

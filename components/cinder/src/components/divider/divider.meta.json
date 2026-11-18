@@ -1,0 +1,18 @@
+{
+  "$schema": "../../../../../internal/component-tooling/src/schemas/component-meta.schema.json",
+  "category": "layout",
+  "status": "stable",
+  "purpose": "Thin decorative or semantic separator between content regions, with optional vertical orientation and tonal variants.",
+  "tags": ["layout", "separator"],
+  "useWhen": [
+    "Visually separating sections of a card, list, or toolbar without adding heading-level structure.",
+    "Splitting a row of inline controls (e.g. a button-group toolbar) with a vertical rule."
+  ],
+  "avoidWhen": [
+    { "reason": "The split between sections deserves a heading — use section-heading instead." },
+    {
+      "reason": "Wrapping the entire viewport edge — use surface or a hand-rolled page scaffold instead."
+    }
+  ],
+  "related": ["surface", "section-heading"]
+}

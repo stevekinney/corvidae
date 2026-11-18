@@ -1,16 +1,4 @@
 <script lang="ts" module>
-  /**
-   * @cinder
-   * @category typography
-   * @status alpha
-   * @purpose Grouped keyboard-shortcut reference that renders key combos via Kbd with accessible labels not reliant only on visual keycaps.
-   * @tag shortcut
-   * @tag keyboard
-   * @useWhen Displaying a reference panel of keyboard shortcuts grouped by feature area.
-   * @useWhen Embedding a shortcut table inside a modal, drawer, popover, or help page.
-   * @avoidWhen Showing a single inline shortcut hint — use shortcut-hint instead.
-   * @related kbd, shortcut-hint, modal, drawer, popover
-   */
   export type {
     KeyboardShortcutEntry,
     KeyboardShortcutGroup,

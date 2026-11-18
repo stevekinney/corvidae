@@ -1,5 +1,5 @@
 {
-  "$schema": "../../schemas/constraints.schema.json",
+  "$schema": "../../../../../internal/component-tooling/src/schemas/constraints.schema.json",
   "component": "button",
   "summary": "Button requires exactly one visual content source and, when rendered icon-only, an accessible name from aria-label, aria-labelledby, or a non-empty label prop.",
   "rules": [

@@ -17,7 +17,7 @@ import {
   type StaticCase,
 } from '../scripts/static-playground-cases.ts';
 import { readEnvironmentConfiguration } from '../src/environment-configuration.ts';
-import { COMPOUND_COMPONENT_PARENTS } from '../src/shell-app/compound-families.ts';
+import { COMPOUND_COMPONENT_PARENTS } from '../src/shell-app/compound-families.generated.ts';
 
 const environment = readEnvironmentConfiguration();
 const casesPath = environment.playgroundStaticCases;
