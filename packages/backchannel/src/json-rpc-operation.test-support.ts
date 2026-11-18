@@ -80,9 +80,11 @@ type SubscriptionOverrides<
 export function makeOperation<IS extends z.ZodObject, OS extends z.ZodType>(
   overrides: CommonOverrides<IS, OS>,
 ): SchemaOperationDefinition<IS, OS>;
+/** Builds a stream operation with test defaults. */
 export function makeOperation<IS extends z.ZodObject, OS extends z.ZodType, ES extends z.ZodType>(
   overrides: StreamOverrides<IS, OS, ES>,
 ): SchemaOperationDefinition<IS, OS, ES>;
+/** Builds a subscription operation with test defaults. */
 export function makeOperation<IS extends z.ZodObject, OS extends z.ZodType, ES extends z.ZodType>(
   overrides: SubscriptionOverrides<IS, OS, ES>,
 ): SchemaOperationDefinition<IS, OS, ES>;

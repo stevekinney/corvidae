@@ -59,7 +59,8 @@ export const FAULT_CODES = [
  *
  * @example
  * ```ts
- * import { HttpClientError, type FaultCode } from '@lostgradient/weft';
+ * import { type FaultCode } from '@lostgradient/backchannel';
+ * import { HttpClientError } from '@lostgradient/weft';
  *
  * function describe(error: HttpClientError): string {
  *   const code: FaultCode | undefined = error.faultCode;
@@ -77,7 +78,7 @@ const faultCodes = new Set<unknown>(FAULT_CODES);
  *
  * @example
  * ```ts
- * import { isFaultCode } from '@lostgradient/weft';
+ * import { isFaultCode } from '@lostgradient/backchannel';
  *
  * isFaultCode('NotFound'); // true
  * isFaultCode('teapot'); // false

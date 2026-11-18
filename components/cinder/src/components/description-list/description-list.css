@@ -156,9 +156,11 @@
     border-block-end-color: transparent;
   }
 
+  /* The label is set in the body size, as an InspectorRow's is; on a phone it drops to the small
+   * size above its value (below). */
   .cinder-description-list[data-cinder-variant='fields'] dt {
     color: var(--cinder-text-muted);
-    font-size: var(--cinder-text-sm);
+    font-size: var(--cinder-text-base);
     font-weight: var(--cinder-font-normal);
   }
 
@@ -174,10 +176,15 @@
     padding-inline-end: var(--cinder-space-2);
   }
 
-  /* On a phone a framed group takes the raised fill of a grouped list, as an Inspector's does. */
+  /* On a phone, as an Inspector's does, a framed group takes the raised fill of a grouped list, and
+   * the label takes the small size an InspectorRow's label takes. */
   @media (width < 700px) {
     .cinder-description-list[data-cinder-variant='fields'][data-cinder-framed] {
       background: var(--cinder-surface-raised);
+    }
+
+    .cinder-description-list[data-cinder-variant='fields'] dt {
+      font-size: var(--cinder-text-sm);
     }
   }
 

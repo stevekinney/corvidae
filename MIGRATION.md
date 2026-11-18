@@ -26,6 +26,7 @@ This inventory records the consolidation boundaries and validation evidence. The
 | `/Users/stevekinney/Developer/agent-bureau/packages/interoperability` | `packages/cryptography` | `interoperability` | `@lostgradient/cryptography` | Library |
 | `/Users/stevekinney/Developer/agent-bureau/packages/lifecycle` | `packages/lifecycle` | `lifecycle` | `@lostgradient/lifecycle` | Library |
 | `/Users/stevekinney/Developer/weft/packages/weft` | `packages/weft` | `@lostgradient/weft` | `@lostgradient/weft` | Library |
+| `/Users/stevekinney/Developer/weft/packages/weft` (operation layer, extracted) | `packages/backchannel` | `@lostgradient/weft` | `@lostgradient/backchannel` | Library |
 | `/Users/stevekinney/Developer/weft/packages/weft-ui` | `components/weft-ui` | `@lostgradient/weft-ui` | `@lostgradient/weft-ui` | Browser component library |
 | `/Users/stevekinney/Developer/cinder/packages/components` | `components/cinder` | `@lostgradient/cinder` | `@lostgradient/cinder` | Browser component library |
 | `/Users/stevekinney/Developer/cinder/packages/chat` | `components/chat` | `@lostgradient/chat` | `@lostgradient/chat` | Browser component library |
@@ -80,7 +81,8 @@ Arrows run from consumer to provider. Every manifest edge appears below, includi
 | `@lostgradient/testing` | None | `@lostgradient/typescript` |
 | `@lostgradient/tool-protocol` | `@lostgradient/lifecycle` | `@lostgradient/typescript` |
 | `@lostgradient/typescript` | None | None |
-| `@lostgradient/weft` | None | `@lostgradient/typescript` |
+| `@lostgradient/backchannel` | None | `@lostgradient/storage`, `@lostgradient/testing`, `@lostgradient/typescript` |
+| `@lostgradient/weft` | `@lostgradient/backchannel` | `@lostgradient/typescript` |
 | Repository root | None | `@lostgradient/chat`, `@lostgradient/cinder`, `conversationalist`, `@lostgradient/editor`, `@lostgradient/testing`, `@lostgradient/typescript` |
 
 ## Direct external dependencies
@@ -108,6 +110,7 @@ A root override consolidates SvelteKit and Express on `cookie@0.7.2`. This remov
 | `@lostgradient/operative-typesafe` | `@tanstack/ai`, `@tanstack/ai-typesafe` (optional peers) |
 | `@lostgradient/skills` | `gray-matter`, `zod` |
 | `@lostgradient/testing` | `@axe-core/playwright`, `@playwright/test`, `@testing-library/svelte`, `happy-dom`, `postcss-value-parser`, `svelte`, `typescript`, `zod` |
+| `@lostgradient/backchannel` | `zod` |
 | `@lostgradient/weft` | `@msgpack/msgpack`, `@valibot/to-json-schema`, `valibot`, `zod` |
 | `@lostgradient/weft-ui` | `@shikijs/langs`, `@shikijs/themes`, `@tanstack/svelte-query`, `cron-parser`, `lucide-svelte`, `svelte` |
 

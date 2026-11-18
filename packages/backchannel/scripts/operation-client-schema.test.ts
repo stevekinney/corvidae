@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 
-import { PACKAGE_AUTHORIZATION_SCOPE_PATTERN } from '@lostgradient/backchannel';
+import { PACKAGE_AUTHORIZATION_SCOPE_PATTERN } from '../src/index.ts';
 
 import { renderNode, schemaToNode, type TypeNode } from './operation-client-schema.ts';
 

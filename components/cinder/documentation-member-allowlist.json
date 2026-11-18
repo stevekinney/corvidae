@@ -194,7 +194,6 @@
     ". KanbanBoardColumnMoveChange.fromIndex",
     ". KanbanBoardColumnMoveChange.toIndex",
     ". KanbanBoardColumnMoveChange.type",
-    ". KanbanBoardProps.card",
     ". KanbanBoardProps.columnActions",
     ". KanbanBoardProps.columnHeader",
     ". KanbanBoardProps.columns",

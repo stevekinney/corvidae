@@ -14,6 +14,9 @@ export type GroupedListItemLeadingKind = 'icon' | 'avatar' | 'media' | 'control'
  */
 export type GroupedListItemUrgency = 'urgent' | 'soon';
 
+/** The most lines a row's title or subtitle takes before it ends in an ellipsis. */
+export type GroupedListItemLines = 1 | 2;
+
 /** A text action at the end of a row: a secondary small button, or a link drawn as one. */
 export type GroupedListItemAction = {
   /** The visible text of the button. */
@@ -75,6 +78,38 @@ export type GroupedListItemProps = Omit<HTMLLiAttributes, 'class' | 'children' |
   actions?: GroupedListItemAction[];
   /** Draws a trailing chevron. Left unset, a row with `href` draws one. */
   chevron?: boolean;
+  /**
+   * Keeps the chevron's column on a row that draws no chevron, as reserved space at the end of
+   * its content at every width, so the trailing values that share their title's first line end on
+   * one edge in a list that mixes linked and unlinked rows.
+   * @default false
+   */
+  chevronColumn?: boolean;
+  /**
+   * The most lines the title takes, at every width, before it ends in an ellipsis. Left unset,
+   * the title wraps unclamped. The whole title stays in the document and in the row's accessible
+   * text; pass `tooltip` so a pointer can read what the clamp cut.
+   */
+  titleLines?: GroupedListItemLines;
+  /**
+   * The most lines the subtitle takes, at every width, before it ends in an ellipsis. Left unset,
+   * the subtitle wraps unclamped.
+   */
+  subtitleLines?: GroupedListItemLines;
+  /**
+   * The full title as text. With `subtitleTooltip` it is the row's one native tooltip, on the row
+   * itself rather than on a line, so a pointer reads it anywhere on a linked row: the title, a line
+   * break, then the subtitle's text.
+   */
+  tooltip?: string;
+  /** The subtitle's full text, the second line of the row's one native tooltip (see `tooltip`). */
+  subtitleTooltip?: string;
+  /**
+   * Fades the row in over the fast duration when it is drawn, for a row that has just arrived in a
+   * live list. With reduced motion it appears at once.
+   * @default false
+   */
+  arriving?: boolean;
   /**
    * Marks the row as the current one with a tint.
    * @default false

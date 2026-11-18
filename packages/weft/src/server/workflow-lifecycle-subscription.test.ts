@@ -2,9 +2,9 @@ import { MemoryStorage } from '@lostgradient/storage';
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import { AUTHORIZATION_SCOPES } from '@lostgradient/backchannel';
+import { parseServerSentEventChunk } from '@lostgradient/backchannel/client';
 import { headerCarryingWebSocketFactory } from '../client/event-stream-transport.ts';
 import { HttpClient } from '../client/index.ts';
-import { parseServerSentEventChunk } from '../client/sse-event-stream.ts';
 import { Engine } from '../core/engine.ts';
 import { workflow } from '../core/types.ts';
 import { serve, type WeftServer } from './index.ts';

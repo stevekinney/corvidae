@@ -33,10 +33,38 @@ describe('StackedListItem long values', () => {
     });
     const title = container.querySelector('.cinder-stacked-list-item__title');
     expect(title?.getAttribute('data-cinder-title-lines')).toBe('2');
-    expect(title?.getAttribute('title')).toBe(longTitle);
+    // A linked row's tooltip is on the row (COR-2227): the link covers the title's own box.
+    expect(title?.hasAttribute('title')).toBe(false);
+    expect(container.querySelector('li')?.getAttribute('title')).toBe(longTitle);
     // The clamp is visual only: the whole text stays in the link, so it is the accessible name.
     expect(getByRole('link').textContent).toBe(longTitle);
     expect(stylesheet).toMatch(/__title\s*\{[^}]*-webkit-line-clamp:\s*2/);
+  });
+
+  // COR-2227: the title link's cover lies over line two, so a tooltip there was never reachable.
+  test('a linked row draws one tooltip on the row, the title then line two, and none on its lines', () => {
+    const lineTwo = 'Approval, Tool runner, waiting 2 h';
+    const { container, getByRole, queryByRole } = render(StackedListItem, {
+      props: {
+        href: '/reviews/4471',
+        status: textSnippet('Waiting on you'),
+        title: textSnippet(longTitle),
+        tooltip: longTitle,
+        time: textSnippet('4 min'),
+        meta: textSnippet(lineTwo),
+        metaTooltip: lineTwo,
+      },
+    });
+    expect(container.querySelector('li')?.getAttribute('title')).toBe(`${longTitle}\n${lineTwo}`);
+    expect(container.querySelectorAll('[title]')).toHaveLength(1);
+    expect(
+      container.querySelector('.cinder-stacked-list-item__line-two')?.hasAttribute('title'),
+    ).toBe(false);
+    // On the row, not the link: the link's description does not repeat its name.
+    expect(getByRole('link').hasAttribute('title')).toBe(false);
+    expect(queryByRole('link', { description: /./ })).toBeNull();
+    // Line two is never raised above the link's cover, so a click on it follows the link.
+    expect(stylesheet).not.toMatch(/__line-two\s*\{[^}]*z-index/);
   });
 
   test('line two carries its full text as a tooltip in the two-line row and in the plain row', () => {
