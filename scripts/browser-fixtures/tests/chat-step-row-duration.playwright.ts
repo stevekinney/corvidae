@@ -12,13 +12,25 @@ const desktop = { name: 'desktop', width: 1280, height: 900 } as const satisfies
 const chatEntry = loadManifest().find((candidate) => candidate.slug === 'chat');
 if (chatEntry === undefined) throw new Error('Cached testing manifest does not include "chat".');
 const entry = chatEntry;
+// Chat's route without a fixture name is not its assertion page: name it, as the screenshot sweep
+// does, so the step row under the approval chat is the one measured.
+const assertionFixture = entry.fixtures?.find((fixture) => fixture.name === 'assertion');
+if (assertionFixture === undefined) throw new Error('Chat must expose its assertion fixture.');
+const fixtureName = assertionFixture.name;
+const fixtureContentHash = assertionFixture.fixtureContentHash;
 
 test.describe('Chat step row', () => {
   for (const viewport of [phone, desktop]) {
     test(`the duration ends on the row's content edge at ${viewport.width}px`, async ({
       componentPage,
     }) => {
-      const page = await componentPage.open({ entry, theme: 'light', viewport });
+      const page = await componentPage.open({
+        entry,
+        theme: 'light',
+        viewport,
+        fixtureName,
+        fixtureContentHash,
+      });
       const toggle = page.locator('#fixture-tool-approval-chat .chat-tool-call-toggle').first();
       await expect(toggle.locator('.chat-tool-call-summary-duration')).toBeVisible();
       const read = await toggle.evaluate((element) => {
