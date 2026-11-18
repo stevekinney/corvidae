@@ -5,8 +5,10 @@ export const meta = {
   phases: ['triage', 'answer'],
 };
 
-// args: { pr, worktree, round }. AGENTS.md "Review guidelines" caps review at three rounds and
-// asks for one push per round. This workflow never merges; the coordinator delivers.
+// args: { pr, worktree, round, brief? }. AGENTS.md "Review guidelines" caps review at three rounds
+// and asks for one push per round. This workflow never merges; the coordinator delivers. `brief`
+// is the issue's brief file (`tmp/chef/briefs/<ID>.md`): the fixer starts fresh, so without the
+// acceptance criteria and any outcome matrix it cannot judge a fix and tends to push nothing.
 
 const ROUND_CAP = 3;
 
@@ -38,12 +40,14 @@ const ANSWER_SCHEMA = {
     answered: { type: 'array', items: { type: 'string' } },
     fixedHead: { type: 'string' },
     open: { type: 'array', items: { type: 'string' } },
+    reason: { type: 'string' },
   },
   required: ['round', 'answered', 'fixedHead', 'open'],
 };
 
 const pr = args && args.pr;
 const worktree = args && args.worktree;
+const brief = args && args.brief;
 const round = Number(args && args.round);
 
 if (!pr || !worktree || !Number.isInteger(round) || round < 1) {
@@ -89,13 +93,16 @@ phase('answer');
 const answered = await agent(
   [
     `cd into ${worktree}, the worktree of pull request ${pr}. This is review round ${round} of at most ${ROUND_CAP}. Invoke no skills. Never merge and never run deliver.ts.`,
+    brief
+      ? `Read the issue's brief at ${brief} first: its acceptance criteria and any outcome matrix are what a fix must keep true.`
+      : 'No brief was given: read the pull request body for the acceptance criteria before fixing.',
     'Threads and triage:',
     JSON.stringify(triaged.threads),
     'Fix every thread triaged fix, using your own judgment on each. Answer every thread under AGENTS.md "Review guidelines": fixed (name the commit), declined (one-line reason), or tracked (name the issue). Write the reply file `review-threads.ts resolve` takes and run `bun scripts/chef/review-threads.ts resolve --pr ' +
       pr +
       ' --file <tsv>` after the push.',
-    `Before pushing, run \`bun scripts/chef/review-threads.ts classes --pr ${pr}\`; on exit 1 push nothing and return the open thread ids in "open". Also run \`bun scripts/chef/focused-checks.ts\` and fix failures. Batch all fixes into one commit and push once.`,
-    'Return round, answered thread ids, fixedHead (the pushed head, or the unchanged head when nothing was fixed), and open thread ids.',
+    `Before pushing, run \`bun scripts/chef/review-threads.ts classes --pr ${pr}\`; on exit 1 push nothing and return the open thread ids in "open". Run only the test files you changed and the tests beside each changed source file, through the pooled wrapper with a bounded wait (\`CORVIDAE_TEST_POOL_WAIT_SECONDS=300 bun scripts/bun-test.ts <files>\`), plus \`bun run lint:root\`, because CI on the branch is the full evidence (owner decision, 2026-11-16). Never wait for a CI run. Fix every failure. Each fix gets a regression test that fails without it. Batch all fixes into one commit and push once.`,
+    'Return round, answered thread ids, fixedHead (the pushed head, or the unchanged head when nothing was fixed), open thread ids, and, whenever a thread triaged fix is still open, "reason": one sentence on what stopped you.',
   ].join('\n'),
   {
     label: `answer PR ${pr} round ${round}`,

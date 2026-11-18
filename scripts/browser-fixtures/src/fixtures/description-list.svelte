@@ -11,7 +11,7 @@
   ];
 
   const fields: DescriptionListItem[] = [
-    { term: 'Workflow', definition: 'Order refund' },
+    { term: 'Workflow', definition: 'Order refund', href: '#workflow' },
     { term: 'Schedule', definition: 'Every day at 3:00 AM' },
     { term: 'Agent', definition: 'Assistant' },
   ];

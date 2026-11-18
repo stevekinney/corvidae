@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, relative } from 'node:path';
 import { rejectionOf } from '../../testing/testing/src/helpers/promise-outcome.ts';
 import {
   deliver,
@@ -1250,5 +1250,40 @@ describe('deliver --branch', () => {
     expect(result.code).toBe(0);
     expect(JSON.parse(result.output)).toMatchObject({ pr: null, branch: BRANCH, merged: true });
     expect(seen[0]).toMatchObject({ branch: BRANCH, head: HEAD });
+  });
+
+  test('run resolves a relative --message-file against its own directory, not the worktree', async () => {
+    const seen: DirectMergeOptions[] = [];
+    const result = await run(
+      [
+        '--config',
+        options.configPath,
+        '--branch',
+        BRANCH,
+        '--head',
+        HEAD,
+        '--worktree',
+        sandbox,
+        '--message-file',
+        relative(process.cwd(), join(sandbox, 'comment.md')),
+        '--json',
+      ],
+      {
+        directMerge: async (directOptions) => {
+          seen.push(directOptions);
+          return {
+            branch: BRANCH,
+            head: HEAD,
+            base: BASE,
+            merged: true,
+            mergeCommit: SQUASH,
+            failedStep: null,
+            detail: null,
+          };
+        },
+      },
+    );
+    expect(result.code).toBe(0);
+    expect(seen[0]?.messageFile).toBe(join(sandbox, 'comment.md'));
   });
 });
