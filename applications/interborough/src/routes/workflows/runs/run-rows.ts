@@ -858,10 +858,16 @@ export function runLineTwo(row: RunRow, context: RunLineContext): string {
   // agent its steps ran as: "Schedule, Inbox triage, Assistant" (row 53l).
   const instance =
     workflow !== null && workflow.type !== SCHEDULE_TICK_TYPE && isInstanceWorkflow(workflow.type);
-  // A run with no agent names who started it: the trigger's plugin by its title (COR-2171), and by
-  // its identifier only when no title is loaded; never "An agent". Interborough's own bookkeeping
-  // says "Interborough started" only of a tick it recorded after a restart, which is when that is
-  // true (row 53l); any other is said by what it did.
+  // A trigger's run names the plugin that started it by its title (COR-2171), by its identifier
+  // only when no title is loaded, before any agent: "Trigger, GitHub, Assistant, 4 s". That holds
+  // for an instance of a workflow file too (design correction 2, B4), on its page and in the list.
+  const plugin =
+    row.origin.kind === 'trigger' && row.origin.plugin !== null
+      ? (context.pluginTitle?.(row.origin.plugin) ?? row.origin.plugin)
+      : null;
+  // A run with no agent and no plugin to name is never "An agent" when it is a workflow's.
+  // Interborough's own bookkeeping says "Interborough started" only of a tick it recorded after a
+  // restart, which is when that is true (row 53l); any other is said by what it did.
   const agent =
     row.origin.kind === 'system'
       ? tick?.whileStopped === true
@@ -875,8 +881,8 @@ export function runLineTwo(row: RunRow, context: RunLineContext): string {
           : context.agentLabel(row.agentName)
         : row.agentName !== null
           ? context.agentLabel(row.agentName)
-          : row.origin.kind === 'trigger' && row.origin.plugin !== null
-            ? (context.pluginTitle?.(row.origin.plugin) ?? row.origin.plugin)
+          : plugin !== null
+            ? null
             : TASK_COPY.unknownAgent;
   // On its own workflow's page an instance reads by who started it and when its schedule runs,
   // which that page does not already say (rows 63o, 63p); a failed one keeps its schedule's name.
@@ -893,6 +899,7 @@ export function runLineTwo(row: RunRow, context: RunLineContext): string {
   if (instance && namesSchedule && row.scheduleName !== null && row.scheduleName !== undefined) {
     parts.push(row.scheduleName);
   }
+  if (plugin !== null) parts.push(plugin);
   if (byYou) parts.push(copy.you);
   else if (agent !== null) parts.push(agent);
   // A schedule's chat run says when its schedule runs, after the agent: "Schedule, Assistant,

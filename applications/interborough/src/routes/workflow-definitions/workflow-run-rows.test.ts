@@ -189,6 +189,25 @@ describe('COR-2431: how far an instance got, what it waits for, and why it faile
   } as const;
   const LINE = { now: 1_760_000_010_000, zone: 'America/Chicago', agentLabel: (n: string) => n };
 
+  test('design correction 2, B4: a trigger-started run names the trigger’s plugin by its title before the agent, on its page and off it', () => {
+    const row = workflowRunRow(
+      summary({ origin: { kind: 'trigger', plugin: 'github', workflowId: 'release-notes' } }),
+      { ...FILE, agentName: 'Assistant' },
+    );
+    const titled = {
+      ...LINE,
+      pluginTitle: (plugin: string) => (plugin === 'github' ? 'GitHub' : undefined),
+    };
+    expect(runLineTwo(row, titled)).toBe(
+      ['Trigger', 'GitHub', 'Assistant', '3 s'].join(TASK_COPY.list.separator),
+    );
+    expect(runLineTwo(row, { ...titled, withinWorkflow: true })).toMatch(
+      /^Trigger, GitHub, Assistant, /,
+    );
+    // With no title loaded, the plugin's identifier stands in, never "An agent".
+    expect(runLineTwo(row, LINE)).toMatch(/^Trigger, github, Assistant, /);
+  });
+
   test('a failed scheduled run names its schedule, the step it failed at, and what it said (row 62n)', () => {
     const row = workflowRunRow(
       summary({
