@@ -289,7 +289,11 @@
       }
     },
     {
-      "files": ["scripts/**/*.ts", "**/scripts/**/*.ts", "testing/testing/visual-baselines/**/*.ts"],
+      "files": [
+        "scripts/**/*.ts",
+        "**/scripts/**/*.ts",
+        "testing/testing/visual-baselines/**/*.ts"
+      ],
       "rules": {
         "no-console": "off"
       }
