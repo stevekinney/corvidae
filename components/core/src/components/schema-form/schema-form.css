@@ -1,9 +1,9 @@
 @layer cinder.tokens, cinder.foundation, cinder.components, cinder.utilities;
 @import '../input/input.css';
-@import '../textarea/textarea.css';
+@import '@lostgradient/textarea/textarea.css';
 @import '../duration-field/duration-field.css';
 @import '../setting-row/setting-row.css';
-@import '../tag-input/tag-input.css';
+@import '@lostgradient/tag-input/tag-input.css';
 
 @layer cinder.components {
   .cinder-schema-form {

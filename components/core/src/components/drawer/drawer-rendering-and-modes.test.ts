@@ -15,7 +15,8 @@ installDrawerDialogStubs();
 const restoreDrawerStyles = installDrawerStyleProbe();
 const { cleanup, fireEvent, render } = await import('@testing-library/svelte');
 const { default: Drawer } = await import('./drawer.svelte');
-const { findNearestOpenTopLayer } = await import('../portal/portal.utilities.svelte.ts');
+const { findNearestOpenTopLayer } =
+  await import('@lostgradient/portal/components/portal/portal.utilities.svelte.ts');
 const drawerCss = await Bun.file(new URL('./drawer.css', import.meta.url)).text();
 
 afterAll(() => {

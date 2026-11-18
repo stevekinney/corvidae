@@ -32,7 +32,7 @@ The copy is always a full-document unified diff of the original vs. the current 
 
 ## Annotation hooks
 
-DiffViewer exposes optional, side-aware selection and file hooks so a caller can build comment UI, matching [SourceDiffViewer's](../../../../../core/src/components/source-diff-viewer/README.md) interaction vocabulary while preserving Markdown-specific context (front matter, normalization, direct line counting). These hooks are the Editor half of the [diff-review contract](../../../../documentation/diff-review-contract.md).
+DiffViewer exposes optional, side-aware selection and file hooks so a caller can build comment UI, matching [SourceDiffViewer's](../../../../../source-diff-viewer/src/components/source-diff-viewer/README.md) interaction vocabulary while preserving Markdown-specific context (front matter, normalization, direct line counting). These hooks are the Editor half of the [diff-review contract](../../../../documentation/diff-review-contract.md).
 
 ```svelte
 <script lang="ts">

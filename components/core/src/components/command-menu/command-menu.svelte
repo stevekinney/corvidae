@@ -26,7 +26,7 @@
   import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
   import { setCommandListContext } from '@lostgradient/foundation/components/_internal/command-list-context.ts';
   import { createCommandListState } from '@lostgradient/foundation/components/_internal/create-command-list-state.svelte.ts';
-  import { createPortalAttachment } from '../portal/index.ts';
+  import { createPortalAttachment } from '@lostgradient/portal/components/portal/index.ts';
 
   const fallbackListboxId = $props.id();
 

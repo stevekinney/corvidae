@@ -19,11 +19,11 @@
   import Segment from '../segment/segment.svelte';
   import SchemaFormNamedControl from './schema-form-named-control.svelte';
   import SettingRow from '../setting-row/setting-row.svelte';
-  import TagInput from '../tag-input/tag-input.svelte';
+  import TagInput from '@lostgradient/tag-input/components/tag-input/tag-input.svelte';
   import SegmentedControl from '../segmented-control/segmented-control.svelte';
   import Select from '../select/select.svelte';
-  import Textarea from '../textarea/textarea.svelte';
-  import Toggle from '../toggle/toggle.svelte';
+  import Textarea from '@lostgradient/textarea/components/textarea/textarea.svelte';
+  import Toggle from '@lostgradient/toggle/components/toggle/toggle.svelte';
 
   import {
     choiceBranchForValue,

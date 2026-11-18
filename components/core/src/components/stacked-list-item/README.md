@@ -24,7 +24,7 @@ Single row within a stacked list, typically pairing a label with metadata or an 
 
 ## Status-first two-line row
 
-Pass `status` (a [`StatusDot`](../status-dot/README.md) with its word), `time`, and `meta` to draw the row the list pages share:
+Pass `status` (a [`StatusDot`](../../../../status-dot/src/components/status-dot/README.md) with its word), `time`, and `meta` to draw the row the list pages share:
 
 - **line one**: the status dot and word in a fixed 128px leading column, a bold title, and the time right-aligned at the edge;
 - **line two**: muted `meta`, kind first, then agent, then detail. Its pieces are told apart by a space and a step, never by a comma or a dot, and never as a bare run of words in one weight and one colour: the status word is semibold beside the muted line, and inside the line each piece is its own element (an identifier in a `Text` of `variant="code"`, a reason in a tone) so a piece that stands apart takes a step in face, weight or colour. It starts under the title, not under the status, and ends in an ellipsis rather than wrapping.

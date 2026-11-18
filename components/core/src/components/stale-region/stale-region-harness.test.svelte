@@ -7,7 +7,7 @@
   import DropdownTrigger from '../dropdown-trigger/dropdown-trigger.svelte';
   import Link from '@lostgradient/link/components/link/link.svelte';
   import Select from '../select/select.svelte';
-  import Toggle from '../toggle/toggle.svelte';
+  import Toggle from '@lostgradient/toggle/components/toggle/toggle.svelte';
   import StaleRegion from './stale-region.svelte';
 
   let {

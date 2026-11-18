@@ -15,13 +15,13 @@ There are eight archetypes. Each names its components and its focal element; the
 | Archetype | Components | Focal element |
 | --- | --- | --- |
 | Focus list: the few things that need a person now | [`Section`](../src/components/section/README.md), [`GroupedList`](../src/components/grouped-list/README.md) or [`DataList`](../src/components/data-list/README.md) with [`StackedListItem`](../src/components/stacked-list-item/README.md), optionally one [`Spotlight`](../src/components/spotlight/README.md) | The first row, or the `Spotlight` value above the list |
-| Collection: many like records to scan, filter and open | [`FilterBar`](../src/components/filter-bar/README.md), `DataList` with `StackedListItem` (or [`DataTable`](../src/components/data-table/README.md)), [`LoadMore`](../src/components/load-more/README.md) or [`Pagination`](../src/components/pagination/README.md), [`EmptyState`](../src/components/empty-state/README.md) | The list, with one labelled primary action |
+| Collection: many like records to scan, filter and open | [`FilterBar`](../src/components/filter-bar/README.md), `DataList` with `StackedListItem` (or [`DataTable`](../src/components/data-table/README.md)), [`LoadMore`](../src/components/load-more/README.md) or [`Pagination`](../../pagination/src/components/pagination/README.md), [`EmptyState`](../src/components/empty-state/README.md) | The list, with one labelled primary action |
 | Detail with inspector: one record, read and edited in place | [`PageHeader`](../src/components/page-header/README.md), `Section`, [`Inspector`](../src/components/inspector/README.md), [`DescriptionList`](../src/components/description-list/README.md), [`Timeline`](../src/components/timeline/README.md) | The record's title and content, with the inspector kept quiet |
 | Conversation: a turn-by-turn exchange | [`Message`](../../message/src/components/message/README.md), [`ToolCallPanel`](../src/components/tool-call-panel/README.md), [`ApprovalCard`](../src/components/approval-card/README.md), [`MarkdownEditor`](../../editor/src/lib/components/markdown-editor/README.md) as the composer | The latest message, then the composer |
 | Flow: one task in steps | [`Steps`](../src/components/steps/README.md), [`FormSection`](../../form-section/src/components/form-section/README.md), [`FormField`](../../form-field/src/components/form-field/README.md), [`FormActions`](../src/components/form-actions/README.md) or [`DockedActionBar`](../src/components/docked-action-bar/README.md) | The current step's one question |
 | Queue: items that each need a decision | [`SegmentedControl`](../src/components/segmented-control/README.md) for the filter, `DataList` with status-first `StackedListItem` rows, `ApprovalCard` | The item at the head of the queue and its decision buttons |
 | Overview: a whole system at a glance | `Spotlight`, [`StatisticGroup`](../src/components/statistic-group/README.md) of [`Statistic`](../src/components/statistic/README.md) tiles, [`Card`](../../card/src/components/card/README.md), [`Sparkbar`](../src/components/sparkbar/README.md), [`Meter`](../src/components/meter/README.md) | The `Spotlight`; it is the only archetype with stat tiles or cards |
-| Browse: finding and reading records | [`SearchField`](../src/components/search-field/README.md), `SegmentedControl`, `GroupedList` rows with an optional photo at the end, [`KeyFacts`](../src/components/key-facts/README.md), [`WeekSchedule`](../src/components/week-schedule/README.md), [`Image`](../../image/src/components/image/README.md) | The record being read, or the results while searching; rows, not a grid of cards |
+| Browse: finding and reading records | [`SearchField`](../src/components/search-field/README.md), `SegmentedControl`, `GroupedList` rows with an optional photo at the end, [`KeyFacts`](../src/components/key-facts/README.md), [`WeekSchedule`](../../week-schedule/src/components/week-schedule/README.md), [`Image`](../../image/src/components/image/README.md) | The record being read, or the results while searching; rows, not a grid of cards |
 
 Two choices recur across them. History and audit lists are a `Timeline`, not a hand-drawn list; a recent-activity summary on an overview page is a `GroupedList` of `GroupedListItem` rows with `StatusDot` words, and its full history stays a `Timeline`. Prototype text entry is a `MarkdownEditor`, not a textarea.
 
@@ -58,7 +58,7 @@ For structured tool arguments, compose [`PayloadInspector`](../src/components/pa
 
 ## Bounded output and previews
 
-[`TerminalOutput`](../src/components/terminal-output/README.md) is for read-only [ANSI escape-code](https://en.wikipedia.org/wiki/ANSI_escape_code) output. It follows the newest line by default and pauses following when the reader scrolls away. [`TerminalFrame`](../src/components/terminal-frame/README.md) is the surrounding chrome for an interactive terminal whose renderer and transport belong to the application.
+[`TerminalOutput`](../../terminal-output/src/components/terminal-output/README.md) is for read-only [ANSI escape-code](https://en.wikipedia.org/wiki/ANSI_escape_code) output. It follows the newest line by default and pauses following when the reader scrolls away. [`TerminalFrame`](../src/components/terminal-frame/README.md) is the surrounding chrome for an interactive terminal whose renderer and transport belong to the application.
 
 ```svelte
 <script lang="ts">
@@ -74,7 +74,7 @@ For structured tool arguments, compose [`PayloadInspector`](../src/components/pa
 
 Do not treat a terminal frame as a process manager. If the connection drops, update `status` and provide the reconnect action in the frame's slots; the frame owns the visual state while the application owns retry, cancellation, and transport cleanup.
 
-[`PreviewPanel`](../src/components/preview-panel/README.md) is the matching layout shell for artifacts and generated content. Its `error` status uses `role="alert"`; ordinary `ready` and `loading` states stay layout-only. Pair it with [`ZoomPanViewer`](../src/components/zoom-pan-viewer/README.md) when the preview is larger than its viewport, and keep the child renderer responsible for the actual image, SVG, or diagram.
+[`PreviewPanel`](../../preview-panel/src/components/preview-panel/README.md) is the matching layout shell for artifacts and generated content. Its `error` status uses `role="alert"`; ordinary `ready` and `loading` states stay layout-only. Pair it with [`ZoomPanViewer`](../src/components/zoom-pan-viewer/README.md) when the preview is larger than its viewport, and keep the child renderer responsible for the actual image, SVG, or diagram.
 
 ## Forms, policy, and confirmation
 

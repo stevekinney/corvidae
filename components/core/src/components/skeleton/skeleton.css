@@ -1,7 +1,7 @@
 @layer cinder.tokens, cinder.foundation, cinder.components, cinder.utilities;
 /* A list placeholder's rows are a StackedListItem's own layout and status dot, in their classes. */
 @import '../stacked-list-item/stacked-list-item.css';
-@import '../status-dot/status-dot.css';
+@import '@lostgradient/status-dot/status-dot.css';
 @layer cinder.components {
   /* ========================================
  * SKELETON

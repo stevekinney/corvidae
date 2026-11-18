@@ -4,7 +4,7 @@
  * component-specific style sidecar. Likewise the Feed.Boundary leaf — its
  * rules live in its own sidecar for standalone use, and the family sidecar
  * pulls them in. */
-@import '../status-dot/status-dot.css';
+@import '@lostgradient/status-dot/status-dot.css';
 @import '../feed-boundary/feed-boundary.css';
 @import '../feed-event/feed-event.css';
 

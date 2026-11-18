@@ -19,5 +19,5 @@
    appearance (text-decoration:none, padding, colors, active indicator) lives in
    navigation-item.css. Without this import the sidebar links fall back to bare
    underlined anchors. */
-@import '../components/navigation-item/navigation-item.css';
+@import '@lostgradient/navigation-item/navigation-item.css';
 @import '../components/toolbar/toolbar.css';

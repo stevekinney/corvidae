@@ -481,7 +481,7 @@ describe('Skeleton list variant', () => {
 
   test('the phone form is the row own, from its StackedListItem classes, not a copy of it here', () => {
     expect(skeletonCss).toContain("@import '../stacked-list-item/stacked-list-item.css';");
-    expect(skeletonCss).toContain("@import '../status-dot/status-dot.css';");
+    expect(skeletonCss).toContain("@import '@lostgradient/status-dot/status-dot.css';");
     // No container query, grid or column of the placeholder's own is left to drift from the row's.
     expect(skeletonCss).not.toMatch(/@container cinder-skeleton \(/);
     expect(skeletonCss).not.toMatch(/\.cinder-skeleton-row\s*\{[^}]*grid-template/);

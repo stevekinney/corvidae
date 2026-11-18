@@ -17,7 +17,7 @@
 
 <script lang="ts">
   import StackedListItem from '../../components/stacked-list-item/stacked-list-item.svelte';
-  import StatusDot from '../../components/status-dot/status-dot.svelte';
+  import StatusDot from '@lostgradient/status-dot/components/status-dot/status-dot.svelte';
 
   let {
     mode,

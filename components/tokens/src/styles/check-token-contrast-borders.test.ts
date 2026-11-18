@@ -409,7 +409,7 @@ describe('field edges (COR-1814)', () => {
     select: '../../../core/src/components/select/select.css',
     combobox: '../../../core/src/components/combobox/combobox.css',
     multiSelect: '../../../core/src/components/multi-select/multi-select.css',
-    textarea: '../../../core/src/components/textarea/textarea.css',
+    textarea: '../../../textarea/src/components/textarea/textarea.css',
     inputFrame: '../../../foundation/src/styles/components/_input-frame.css',
   } as const;
 

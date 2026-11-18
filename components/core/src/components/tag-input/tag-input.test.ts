@@ -7,13 +7,14 @@ setupHappyDom();
 
 const { cleanup, fireEvent, render, waitFor } = await import('@testing-library/svelte');
 const { tick } = await import('svelte');
-const { default: TagInput } = await import('./tag-input.svelte');
+const { default: TagInput } =
+  await import('@lostgradient/tag-input/components/tag-input/tag-input.svelte');
 const { default: FormFieldTagInputFixture } =
   await import('../../test/fixtures/form-field-tag-input-fixture.svelte');
 const { default: TagInputFormFixture } =
-  await import('../../test/fixtures/tag-input-form-fixture.svelte');
+  await import('@lostgradient/tag-input/test/fixtures/tag-input-form-fixture.svelte');
 const { default: TagInputControlledFormFixture } =
-  await import('../../test/fixtures/tag-input-controlled-form-fixture.svelte');
+  await import('@lostgradient/tag-input/test/fixtures/tag-input-controlled-form-fixture.svelte');
 
 afterEach(() => cleanup());
 
@@ -1103,7 +1104,9 @@ describe('TagInput controlled value reconciliation (chip focus identity)', () =>
 
 describe('TagInput CSS contract', () => {
   test('focus-within ring, invalid override, and forced-colors fallback stay encoded in the CSS', async () => {
-    const css = await Bun.file(new URL('./tag-input.css', import.meta.url)).text();
+    const css = await Bun.file(
+      new URL('../../../../tag-input/src/components/tag-input/tag-input.css', import.meta.url),
+    ).text();
 
     expect(css).toContain('.cinder-tag-input__control:focus-within');
     expect(css).toContain('outline: var(--cinder-ring-width) solid transparent;');

@@ -6,7 +6,7 @@
 @import '../inline-loading/inline-loading.css';
 @import '../json-viewer/json-viewer.css';
 @import '../segmented-control/segmented-control.css';
-@import '../source-diff-viewer/source-diff-viewer.css';
+@import '@lostgradient/source-diff-viewer/source-diff-viewer.css';
 @import '../table/table.css';
 @import '../tooltip/tooltip.css';
 

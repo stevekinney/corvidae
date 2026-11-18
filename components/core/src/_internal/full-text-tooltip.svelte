@@ -6,7 +6,7 @@
    * The panel lives in `document.body`, so the whole value is not read again as part of the text
    * around it (a cell's `textContent`, a row's text).
    */
-  import { createPortalAttachment } from '../components/portal/index.ts';
+  import { createPortalAttachment } from '@lostgradient/portal/components/portal/index.ts';
   import Tooltip from '../components/tooltip/tooltip.svelte';
 
   let { text, triggerRef }: { text: string; triggerRef: HTMLElement | null } = $props();

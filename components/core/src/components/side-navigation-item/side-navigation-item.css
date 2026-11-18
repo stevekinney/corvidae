@@ -3,8 +3,8 @@
  * styles it needs travel with it. Sibling-leaf paths resolve identically in `src/` and the
  * verbatim-copied `dist/` because the layout mirrors. */
 @import '../badge/badge.css';
-@import '../navigation-item/navigation-item.css';
-@import '../status-dot/status-dot.css';
+@import '@lostgradient/navigation-item/navigation-item.css';
+@import '@lostgradient/status-dot/status-dot.css';
 @import '../tooltip/tooltip.css';
 
 @layer cinder.components {

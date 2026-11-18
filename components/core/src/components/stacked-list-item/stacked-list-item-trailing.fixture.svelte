@@ -3,7 +3,7 @@
 
   import { Button } from '../button/index.ts';
   import { DataList } from '../data-list/index.ts';
-  import { StatusDot } from '../status-dot/index.ts';
+  import { StatusDot } from '@lostgradient/status-dot/components/status-dot/index.ts';
   import { StackedListItem } from './index.ts';
 
   const rows = [{ id: 'row' }];

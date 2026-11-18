@@ -227,7 +227,7 @@ export const CLASSIFIED: Record<string, readonly Classification[]> = {
     // The 1px outline of a matrix cell with no value, drawn over the page canvas.
     { declaration: 'stroke: var(--cinder-border);', category: 'hairline' },
   ],
-  'components/core/src/components/spinner/spinner.css': [
+  'components/spinner/src/components/spinner/spinner.css': [
     {
       declaration: 'stroke: var(--cinder-spinner-track, var(--cinder-border-contrast));',
       category: 'area',
@@ -319,14 +319,14 @@ export const CLASSIFIED: Record<string, readonly Classification[]> = {
       audit: 'parameter-field',
     },
   ],
-  'components/core/src/components/rating/rating.css': [
+  'components/rating/src/components/rating/rating.css': [
     {
       declaration: '--_cinder-rating-empty: var(--cinder-border-contrast);',
       category: 'area',
       audit: 'rating',
     },
   ],
-  'components/core/src/components/resizable-panels/resizable-panels.css': [
+  'components/resizable-panels/src/components/resizable-panels/resizable-panels.css': [
     {
       declaration: 'color: var(--cinder-border-contrast);',
       category: 'area',
@@ -369,7 +369,7 @@ export const CLASSIFIED: Record<string, readonly Classification[]> = {
       occurrences: 2,
     },
   ],
-  'components/core/src/components/slider/slider.css': [
+  'components/slider/src/components/slider/slider.css': [
     {
       declaration: 'background: var(--cinder-border-contrast, currentColor);',
       category: 'area',
@@ -379,7 +379,7 @@ export const CLASSIFIED: Record<string, readonly Classification[]> = {
   'components/core/src/components/statistic-group/statistic-group.css': [
     { declaration: 'background: var(--cinder-border-muted);', category: 'occlusion' },
   ],
-  'components/core/src/components/status-dot/status-dot.css': [
+  'components/status-dot/src/components/status-dot/status-dot.css': [
     {
       declaration: '--cinder-status-dot-color: var(--cinder-border-contrast);',
       category: 'area',

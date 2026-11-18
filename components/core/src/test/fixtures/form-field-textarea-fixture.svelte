@@ -14,7 +14,7 @@
 
 <script lang="ts">
   import FormField from '@lostgradient/form-field/components/form-field/form-field.svelte';
-  import Textarea from '../../components/textarea/textarea.svelte';
+  import Textarea from '@lostgradient/textarea/components/textarea/textarea.svelte';
 
   let {
     fieldId,

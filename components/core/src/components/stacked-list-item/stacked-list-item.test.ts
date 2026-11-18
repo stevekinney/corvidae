@@ -39,7 +39,7 @@ describe('StackedListItem status on a phone (COR-2018)', () => {
     expect(spacing).toHaveLength(1);
     expect(spacing[0]?.[1]).toContain('margin-inline-end: var(--cinder-space-1-5)');
     const statusDot = readFileSync(
-      new URL('../status-dot/status-dot.css', import.meta.url),
+      new URL('../../../../status-dot/src/components/status-dot/status-dot.css', import.meta.url),
       'utf8',
     );
     expect(statusDot).toMatch(/font-weight:\s*var\(--cinder-font-medium\)/);
