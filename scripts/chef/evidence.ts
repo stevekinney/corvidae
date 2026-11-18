@@ -316,7 +316,7 @@ export function collectLocalEvidence(
         const bytes = new Uint8Array(readFileSync(path));
         const parsed = parseJUnit(bytes);
         inventory = [...inventory, ...parsed.inventory];
-        assertionPassed = assertionPassed === false || !parsed.assertionPassed ? false : true;
+        assertionPassed = assertionPassed !== false && parsed.assertionPassed;
         return { path: relative(safeCwd, path), digest: sha256(bytes) };
       });
       const artifacts = (run.artifactPaths ?? []).map((artifactPath) => {
