@@ -951,7 +951,7 @@ test('Daily summary shown stale: the summary drops "in 16 hours", the runs are a
   const skip = main.getByRole('button', { name: /^Skip Tue Nov 3, 3:00 AM/ });
   await expect(skip).toBeEnabled();
 
-  await page.route(/\/(v1|bureau|api)\//, (route) => route.abort('connectionrefused'));
+  await page.route(/\/(v1|bureau|api)\/|\/jsonrpc$/, (route) => route.abort('connectionrefused'));
   await page.evaluate(() => window.dispatchEvent(new Event('visibilitychange')));
   const banner = page.getByRole('region', { name: 'Connection problem' });
   await expect(banner).toBeVisible();

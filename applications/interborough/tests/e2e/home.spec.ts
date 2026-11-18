@@ -876,7 +876,7 @@ test.describe('Home when one card cannot be read (01n, 01o)', () => {
   });
 });
 
-const HOST_REQUESTS = /\/(v1|bureau|api|host)\//;
+const HOST_REQUESTS = /\/(v1|bureau|api|host)\/|\/jsonrpc$/;
 const REFUSED = /net::ERR_CONNECTION_REFUSED/;
 /** What Home reads, and the server's health probe: the shell itself (who the caller is) is not cut off. */
 const HOME_READS = /\/(jsonrpc|host\/providers|v1\/health)$/;

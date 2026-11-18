@@ -408,7 +408,7 @@ test.describe('an open chat that cannot be loaded (17c, 17e)', () => {
   });
 });
 
-const HOST_REQUESTS = /\/(v1|bureau|api|host)\//;
+const HOST_REQUESTS = /\/(v1|bureau|api|host)\/|\/jsonrpc$/;
 const REFUSED = /net::ERR_CONNECTION_REFUSED/;
 
 test.describe('an open chat while the server does not answer (16y, 18e)', () => {

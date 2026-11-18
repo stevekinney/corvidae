@@ -24,7 +24,7 @@ test.use({ baseURL: E2E_SHOWCASE_URL, timezoneId: SAMPLE_TIME_ZONE });
 
 const SOURCE = 'chat-new-states.spec.ts';
 const REFUND_ASK = 'Please refund order 4471, it arrived damaged.';
-const HOST_REQUESTS = /\/(v1|bureau|api|host)\//;
+const HOST_REQUESTS = /\/(v1|bureau|api|host)\/|\/jsonrpc$/;
 const REFUSED = /net::ERR_CONNECTION_(REFUSED|FAILED)|net::ERR_FAILED|Failed to load resource/;
 
 const trail = (page: Page) => page.getByRole('navigation', { name: 'Breadcrumb' });
