@@ -510,9 +510,23 @@ test.describe('at the limits', () => {
       expect(box.y).toBeGreaterThanOrEqual(barBox.y);
       expect(box.y + box.height).toBeLessThanOrEqual(barBox.y + barBox.height);
     }
-    // The trail still has room to name the page.
+    // The icons do not grow with the text: larger text grows the words, and faces that doubled
+    // left the title room for one letter.
+    for (const box of boxes) {
+      expect(box.width).toBeLessThanOrEqual(36);
+      expect(box.height).toBeLessThanOrEqual(36);
+    }
+    // The trail still has room to name the page, whole.
     const trail = await boxOf(bar.getByRole('navigation', { name: 'Breadcrumb' }));
     expect(trail.width).toBeGreaterThan(40);
+    const current = bar
+      .getByRole('navigation', { name: 'Breadcrumb' })
+      .locator('[aria-current="page"]');
+    await expect(current).toHaveText('Runs');
+    expect(
+      await current.evaluate((element) => element.scrollWidth <= element.clientWidth + 1),
+      'the page title is not cut at 200% text',
+    ).toBe(true);
     await expectNoSidewaysScroll(page, '200% text on a phone');
     await captureForDesignReview(page, { route: '/runs', state: '200% text', source: SOURCE });
 
@@ -727,6 +741,39 @@ test.describe('on a touch phone the top bar controls reach 44px through hit area
     for (const control of controls) {
       expect(control.hitWidth, `${control.name} hit width`).toBeGreaterThanOrEqual(44);
       expect(control.hitHeight, `${control.name} hit height`).toBeGreaterThanOrEqual(44);
+    }
+  });
+
+  // A hit area read from styles can be clipped by the control's own `overflow`: the search
+  // trigger's was, so a tap just above or below its glyph landed on the bar. This asks the
+  // browser what a tap reaches, 18px above and below each face's centre (inside the 44px area,
+  // outside the 32px face), in one pass.
+  test('a tap just above or below each face still reaches its control', async ({ page }) => {
+    await open(page, '/', 375, 812, false);
+    const reached = await page.evaluate(() =>
+      [...document.querySelectorAll('header.weft-shell-topbar button')]
+        .filter((button) => button.getBoundingClientRect().width > 0)
+        .map((button) => {
+          const box = button.getBoundingClientRect();
+          const x = box.left + box.width / 2;
+          const y = box.top + box.height / 2;
+          const at = (offset: number) => {
+            const target = document.elementFromPoint(x, y + offset);
+            return target !== null && (target === button || button.contains(target));
+          };
+          return {
+            name: button.getAttribute('aria-label') ?? button.textContent?.trim(),
+            faceHeight: box.height,
+            above: at(-18),
+            below: at(18),
+          };
+        }),
+    );
+    expect(reached.length).toBeGreaterThanOrEqual(4);
+    for (const control of reached) {
+      expect(control.faceHeight, `${control.name} face`).toBeLessThanOrEqual(36);
+      expect(control.above, `${control.name} tap above the face`).toBe(true);
+      expect(control.below, `${control.name} tap below the face`).toBe(true);
     }
   });
 });

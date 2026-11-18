@@ -110,12 +110,17 @@ describe('the top bar', () => {
     const phone = css.match(/@media \(max-width: 639\.98px\) \{[\s\S]*?\n\}\n/)?.[0] ?? '';
     expect(phone).toMatch(/\.weft-shell-topbar \{\s*gap: var\(--cinder-space-1\);/);
     expect(phone).not.toMatch(/(block-size|min-inline-size|inline-size|min-width): (40|44)px/);
-    // The search trigger is as wide as the Button's face is tall. Never an aspect ratio: the wide
-    // rule gives the trigger 300px of width, which a 1:1 ratio turned into a 300px-tall control.
+    // One 32px face for the four icon controls, in pixels: a face in `rem` doubled at 200% text and
+    // squeezed the title to one letter, and the control-height tokens rise to 44px on a coarse
+    // pointer. Never an aspect ratio either: the wide rule gives the search trigger 300px of width.
     expect(phone).toMatch(
-      /\.weft-shell-search-trigger \{\s*flex: none;\s*inline-size: var\(--cinder-control-height-md\);/,
+      /\.weft-shell-topbar \.weft-shell-topbar-control \{\s*flex: none;\s*inline-size: 32px;\s*min-inline-size: 32px;\s*block-size: 32px;\s*min-block-size: 32px;/,
     );
+    expect(phone).not.toMatch(/var\(--cinder-(control|button)-height/);
     expect(phone).not.toContain('aspect-ratio');
+    // The search trigger's own clip (for the wide field's ellipsis) is lifted, or it cuts Button's
+    // hit area down to the face.
+    expect(phone).toMatch(/\.weft-shell-search-trigger \{\s*overflow: visible;/);
   });
 
   test('names the page in words in the breadcrumb, and Home at the root', () => {

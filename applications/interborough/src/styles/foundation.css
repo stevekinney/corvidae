@@ -332,14 +332,27 @@
     padding: 0 var(--cinder-space-2);
   }
 
-  /* The search trigger is icon-only at this width: square, as wide as the Button's face is tall,
-   * like the icon buttons beside it. The width is the control height a medium Button's face
-   * draws at, not an aspect ratio: the wide rule above gives the trigger a 300px width, which a
-   * 1:1 ratio turned into a 300px height. It is the plain control height, never a touch-target
-   * or button-height token: this sets a width, and the face stays compact on a touch screen. */
-  .weft-shell-topbar .weft-shell-search-trigger {
+  /* One face for the bar's four icon controls, 32px in pixels: the face a medium Button draws at
+   * 100% text. In pixels, not `rem` and not a control-height token, for two reasons. At 200% text
+   * a face in `rem` doubles to 64px, and four of them leave the title room for one letter; larger
+   * text should grow the words, not the icons. And under a coarse pointer the control-height
+   * tokens rise to 44px, which made the search face wider than its neighbours. Each still takes a
+   * 44px tap through Button's own hit area, which is a pseudo-element and takes no layout. */
+  .weft-shell-topbar .weft-shell-topbar-control {
     flex: none;
-    inline-size: var(--cinder-control-height-md);
+    inline-size: 32px;
+    min-inline-size: 32px;
+    block-size: 32px;
+    min-block-size: 32px;
+    padding: 0;
+  }
+
+  /* The search trigger is icon-only at this width, like the icon buttons beside it. The wide
+   * rule above clips it (`overflow: hidden`, for the field's ellipsis); here nothing needs
+   * clipping (the label is visually hidden, the key hint is gone), and the clip cut Button's hit
+   * area down to the face. */
+  .weft-shell-topbar .weft-shell-search-trigger {
+    overflow: visible;
     margin-inline-start: 0;
     padding-inline: 0;
     justify-content: center;
