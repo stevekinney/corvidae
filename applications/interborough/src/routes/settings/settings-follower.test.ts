@@ -40,7 +40,9 @@ describe('SettingsFollower', () => {
       },
       fetch: (_input, init) => {
         lastEventIds.push(new Headers(init?.headers).get('last-event-id'));
-        return Promise.resolve(new Response(bodies.shift() ?? ''));
+        return Promise.resolve(
+          new Response(bodies.shift() ?? '', { headers: { 'content-type': 'text/event-stream' } }),
+        );
       },
       // The first backoff passes; the next one waits until the follower is disposed.
       sleep: (milliseconds, signal) => {

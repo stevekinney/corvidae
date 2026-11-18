@@ -200,20 +200,28 @@ describe('BureauEventSource', () => {
     expect(source.status).toBe('closed');
   });
 
-  test('ignores an error frame and data that is not an envelope, and carries on', async () => {
+  test('reconnects from the last id when the stream reports an error, and ignores data that is not an envelope', async () => {
     install();
     const frames = connect();
     await waitUntil(() => hub.opened('bureau') === 1);
-    hub.write('bureau', REPLAY_COMPLETE_CHUNK);
-    await waitUntil(() => source?.caughtUp === true);
     hub.write(
       'bureau',
-      'event: error\ndata: {"message":"boom"}\n\n',
-      'event: x\ndata: not json\n\n',
+      REPLAY_COMPLETE_CHUNK,
       envelopeChunk({ kind: 'run.settled', cursor: 'a:1' }),
     );
     await waitUntil(() => frames.length === 1);
-    expect(kinds(frames)).toEqual(['run.settled']);
+    // The Bureau reports the error and closes: the end drives the same reconnect as any drop.
+    hub.write('bureau', 'event: error\ndata: {"message":"boom"}\n\n');
+    await waitUntil(() => hub.opened('bureau') === 2);
+    expect(hub.requests.bureau[1]?.lastEventId).toBe('a:1');
+    hub.write(
+      'bureau',
+      REPLAY_COMPLETE_CHUNK,
+      'id: a:2\nevent: x\ndata: {"unrelated":true}\n\n',
+      envelopeChunk({ kind: 'run.completed', cursor: 'a:3' }),
+    );
+    await waitUntil(() => frames.length === 2);
+    expect(kinds(frames)).toEqual(['run.settled', 'run.completed']);
   });
 
   test('retries when the answer is not an event stream', async () => {

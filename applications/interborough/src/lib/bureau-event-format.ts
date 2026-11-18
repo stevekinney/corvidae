@@ -44,7 +44,7 @@ async function formatBatch(
       options,
     );
     if (answer.events.length !== batch.length) return batch.map(() => null);
-    return answer.events;
+    return [...answer.events];
   } catch {
     return batch.map(() => null);
   }

@@ -10,9 +10,9 @@ import type { TaskOriginKind } from '@lostgradient/bureau';
 import { HttpClientError } from '@lostgradient/weft';
 import { z } from 'zod';
 
-import { bureauClient, type BureauOutput } from './bureau-api.ts';
+import { bureauClient, type BureauEvent, type BureauOutput } from './bureau-api.ts';
 import { BUREAU_PATH, type Fetcher, wireCodeOf } from './bureau-client.ts';
-import { readServerSentEventStream } from './live-source/sse-reader.ts';
+import { acceptedFetch, eventsOf } from './bureau-subscriptions.ts';
 
 /** A task's state. */
 export const taskStateSchema = z.enum([
@@ -417,51 +417,37 @@ export const taskArtifactSchema = z.object({
  */
 export type TaskArtifact = z.infer<typeof taskArtifactSchema>;
 
-const elementCommon = { taskId: z.string(), cursor: z.string(), emittedAtMs: z.number() };
-
-const statusFields = {
-  status: taskStateSchema,
-  finishReason: z.string().nullable(),
-  message: z.string().nullable(),
-};
-
-/** One element of a task's stream (`bureau.tasks.events`). */
-export const taskEventSchema = z.discriminatedUnion('kind', [
-  z.object({
-    ...elementCommon,
-    kind: z.literal('task.snapshot'),
-    ...statusFields,
-    artifact: taskArtifactSchema.nullable().optional(),
-  }),
-  z.object({
-    ...elementCommon,
-    kind: z.literal('task.status'),
-    ...statusFields,
-    artifact: taskArtifactSchema.nullable(),
-  }),
-  // The Bureau's history failed to record a change and restates where the task stands
-  // (COR-1669): apply it as a `task.status`.
-  z.object({
-    ...elementCommon,
-    kind: z.literal('task.resynced'),
-    ...statusFields,
-    artifact: taskArtifactSchema.nullable(),
-    revision: z.number(),
-  }),
-  z.object({
-    ...elementCommon,
-    kind: z.literal('task.gap'),
-    requestedCursor: z.string(),
-    firstRetainedCursor: z.string(),
-  }),
-  z.object({ ...elementCommon, kind: z.literal('task.removed') }),
+/** The kinds of element a task's stream sends. */
+const TASK_EVENT_KINDS: ReadonlySet<string> = new Set([
+  'task.snapshot',
+  'task.status',
+  'task.resynced',
+  'task.gap',
+  'task.removed',
 ]);
 
 /**
- * One element of a task's event stream: a snapshot, a status change, a resync, a gap in the
- * retained history, or the task's removal.
+ * One element of a task's event stream (`bureau.tasks.events`): a snapshot, a status change, a
+ * resync (the Bureau's history failed to record a change and restates where the task stands,
+ * COR-1669: apply it as a `task.status`), a gap in the retained history, or the task's removal.
  */
-export type TaskEvent = z.infer<typeof taskEventSchema>;
+export type TaskEvent = BureauEvent<'bureau.tasks.events'>;
+
+/**
+ * Reads what the stream sent as an element, or `undefined` for data that is not one (a frame of a
+ * kind this build does not know, or one with no cursor), which the follower skips.
+ */
+export function readTaskEvent(data: unknown): TaskEvent | undefined {
+  if (typeof data !== 'object' || data === null) return undefined;
+  const kind: unknown = Reflect.get(data, 'kind');
+  const cursor: unknown = Reflect.get(data, 'cursor');
+  if (typeof kind !== 'string' || !TASK_EVENT_KINDS.has(kind) || typeof cursor !== 'string') {
+    return undefined;
+  }
+  // The kind and the cursor are read; the rest is what the subscription's event type says.
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+  return data as TaskEvent;
+}
 
 /** The cursor a snapshot carries. It names no durable position, so a stream cannot resume from it. */
 export const SNAPSHOT_CURSOR = '-1';
@@ -478,10 +464,9 @@ export function taskEventsPath(taskId: string): string {
 
 /**
  * Opens one task's stream from `cursor` (or from its snapshot when there is none) and yields each
- * element as the Bureau sends it. The cursor goes in `Last-Event-ID`, which is how the Bureau
- * resumes a stream. A refusal throws the `HttpClientError` the response's status makes, a stream
- * that ends ends this generator, and a frame that does not parse is skipped: heartbeats are
- * frames too.
+ * element as the Bureau sends it. The cursor resumes the stream (`Last-Event-ID`). A refusal throws
+ * the `HttpClientError` the response's status makes, a stream that ends ends this generator, and
+ * data that is not an element is skipped: heartbeats are frames too.
  */
 export async function* followTaskEvents(
   taskId: string,
@@ -493,35 +478,16 @@ export async function* followTaskEvents(
     readonly onOpen?: () => void;
   },
 ): AsyncGenerator<TaskEvent, void, void> {
-  const send = options.fetch ?? fetch;
-  const response = await send(taskEventsPath(taskId), {
-    headers: {
-      accept: 'text/event-stream',
-      ...(options.cursor === undefined ? {} : { 'last-event-id': options.cursor }),
+  const messages = bureauClient['bureau.tasks.events'](
+    { taskId },
+    {
+      fetch: acceptedFetch(options),
+      ...(options.signal === undefined ? {} : { signal: options.signal }),
+      ...(options.cursor === undefined ? {} : { lastEventId: options.cursor }),
     },
-    ...(options.signal === undefined ? {} : { signal: options.signal }),
-  });
-  if (!response.ok) {
-    // A refusal on the REST surface is a flat `{ error: <message> }`, and its status is what
-    // says what kind of fault it is.
-    const body: unknown = await response.json().catch(() => undefined);
-    const message =
-      typeof body === 'object' && body !== null ? Reflect.get(body, 'error') : undefined;
-    throw new HttpClientError(
-      response.status,
-      typeof message === 'string' ? message : `The task stream answered ${response.status}.`,
-    );
-  }
-  options.onOpen?.();
-  for await (const frame of readServerSentEventStream(response, options.signal)) {
-    if (frame.event === undefined || !frame.event.startsWith('task.')) continue;
-    let payload: unknown;
-    try {
-      payload = JSON.parse(frame.data);
-    } catch {
-      continue;
-    }
-    const parsed = taskEventSchema.safeParse(payload);
-    if (parsed.success) yield parsed.data;
+  );
+  for await (const { data } of eventsOf(messages, 'task stream')) {
+    const element = readTaskEvent(data);
+    if (element !== undefined) yield element;
   }
 }

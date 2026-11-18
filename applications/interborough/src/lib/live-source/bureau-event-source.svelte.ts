@@ -26,21 +26,25 @@
  * the cursor and the cached `bureauId`, so the next attempt starts over instead of replaying the
  * same refusal, and asks for a resync once it has caught up.
  *
- * **Transport.** The same fetch-stream reader `FleetEventSource` uses (`./sse-reader.ts`); `status`
- * means what it means there, and is `'live'` only while the connection is open and has delivered a
- * frame or the `replayComplete` ping.
+ * **Transport.** The generated client's `bureau.events` subscription (`../bureau-api.ts`), which
+ * yields each envelope with its id and one replay-complete marker; `status` means what it means for
+ * `FleetEventSource`, and is `'live'` only while the connection is open and has delivered an
+ * envelope or the replay-complete marker. A stream that reports an error ends, and is reconnected
+ * from the last id like any other end.
  */
-import { BUREAU_PATH, getBureauId } from '../bureau-client.ts';
+import { CatalogClientError, type SubscriptionMessage } from '@lostgradient/backchannel/client';
+
+import { bureauClient } from '../bureau-api.ts';
+import { getBureauId } from '../bureau-client.ts';
+import { acceptedFetch } from '../bureau-subscriptions.ts';
 import { computeReconnectDelayMs } from './backoff.ts';
 import {
   BUREAU_GAP_KIND,
   BUREAU_RESYNC_KIND,
   isRecoveryKind,
-  isReplayCompletePing,
-  parseBureauEventFrame,
+  readBureauEventFrame,
   type BureauEventFrame,
 } from './bureau-event-frame.ts';
-import { readServerSentEventStream, type ServerSentEventFrame } from './sse-reader.ts';
 import type { LiveSource, LiveSourceStatus } from './types.ts';
 
 /** How many of the latest envelopes a source keeps for {@link BureauEventSource.recent}: one format batch. */
@@ -50,12 +54,6 @@ export const BUREAU_RECENT_CAP = 200;
 export interface BureauEventSourceConfig {
   /** Overrides the reconnect backoff curve; tests inject a near-zero function. */
   readonly computeReconnectDelayMs?: (attempt: number) => number;
-}
-
-function isEventStreamResponse(response: Response): boolean {
-  const contentType = response.headers.get('Content-Type');
-  if (contentType === null) return false;
-  return contentType.split(';', 1)[0]?.trim().toLowerCase() === 'text/event-stream';
 }
 
 /**
@@ -202,22 +200,27 @@ export class BureauEventSource implements LiveSource<BureauEventFrame> {
   async #fetchAndDrain(controller: AbortController): Promise<boolean> {
     try {
       this.#bureauId ??= await getBureauId({ signal: controller.signal });
-      const response = await fetch(this.#eventsUrl(this.#bureauId), {
-        headers: this.#requestHeaders(),
-        signal: controller.signal,
-      });
-      if (!response.ok) {
-        this.#startOver();
-        return true;
-      }
-      if (!isEventStreamResponse(response)) return true;
-
-      for await (const frame of readServerSentEventStream(response, controller.signal)) {
-        this.#handleFrame(frame);
+      const messages = bureauClient['bureau.events'](
+        { bureauId: this.#bureauId },
+        {
+          signal: controller.signal,
+          ...(this.#lastEventId === undefined ? {} : { lastEventId: this.#lastEventId }),
+          // The Bureau sending anything, a heartbeat included, proves the connection works: the
+          // backoff starts again.
+          fetch: acceptedFetch({ onData: () => this.#setReconnectAttempt(0) }),
+        },
+      );
+      for await (const message of messages) {
+        this.#handleMessage(message);
         if (this.#closed) return false;
       }
       return !controller.signal.aborted;
-    } catch {
+    } catch (error) {
+      // A refused request says the cursor or the id it named may be wrong.
+      if (error instanceof CatalogClientError && error.code >= 400 && error.code <= 599) {
+        this.#startOver();
+        return true;
+      }
       return !controller.signal.aborted;
     }
   }
@@ -233,33 +236,17 @@ export class BureauEventSource implements LiveSource<BureauEventFrame> {
     }
   }
 
-  #eventsUrl(bureauId: string): string {
-    return `${BUREAU_PATH}/v1/subscriptions/bureau.events?${new URLSearchParams({ bureauId }).toString()}`;
-  }
-
-  #requestHeaders(): Record<string, string> {
-    const headers: Record<string, string> = { Accept: 'text/event-stream' };
-    if (this.#lastEventId !== undefined) headers['Last-Event-ID'] = this.#lastEventId;
-    return headers;
-  }
-
-  #handleFrame(frame: ServerSentEventFrame): void {
-    if (frame.event === 'ping') {
+  #handleMessage(message: SubscriptionMessage<unknown>): void {
+    if (message.type === 'replay-complete') {
       this.#setReconnectAttempt(0);
-      if (isReplayCompletePing(frame.data)) {
-        this.#markLive();
-        this.#caughtUp = true;
-        this.#flushResync();
-      }
+      this.#markLive();
+      this.#caughtUp = true;
+      this.#flushResync();
       return;
     }
-    // `event: error` precedes the server closing the stream; the end of the stream that follows
-    // drives the same reconnect path as any other drop.
-    if (frame.event === 'error') return;
-
-    const envelope = parseBureauEventFrame(frame.data);
+    const envelope = readBureauEventFrame(message.data);
     if (envelope === null) return;
-    this.#lastEventId = frame.id ?? envelope.cursor;
+    this.#lastEventId = message.id;
     this.#setReconnectAttempt(0);
     this.#markLive();
     if (envelope.kind === BUREAU_GAP_KIND) this.#forgetRecent();

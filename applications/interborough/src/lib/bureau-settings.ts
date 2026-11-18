@@ -13,9 +13,9 @@ import type { SettingLockReason } from '@lostgradient/bureau';
 import { HttpClientError } from '@lostgradient/weft';
 import { z } from 'zod';
 
-import { bureauClient, type BureauOutput } from './bureau-api.ts';
-import { BUREAU_PATH, type Fetcher } from './bureau-client.ts';
-import { readServerSentEventStream } from './live-source/sse-reader.ts';
+import { bureauClient, type BureauEvent, type BureauOutput } from './bureau-api.ts';
+import { type Fetcher } from './bureau-client.ts';
+import { acceptedFetch, eventsOf } from './bureau-subscriptions.ts';
 
 type Options = { readonly signal?: AbortSignal; readonly fetch?: Fetcher };
 
@@ -209,29 +209,34 @@ export function settingsFaultOf(error: unknown): SettingsFault {
   }
 }
 
-/** One change to the settings, as `bureau.settings.events` sends it: the new revision and the keys, never a value. */
-export const settingsChangeSchema = z.object({
-  kind: z.literal('settings.changed'),
-  /** The change's revision as a cursor; a stream opened with it in `Last-Event-ID` carries on from it. */
-  cursor: z.string(),
-  emittedAtMs: z.number(),
-  revision: z.number().int().nonnegative(),
-  /** The keys the change set. A resumed stream's first event names none. */
-  keys: z.array(z.string()),
-});
+/**
+ * One change to the settings, as `bureau.settings.events` sends it: the new revision and the keys,
+ * never a value. `cursor` is the change's revision as a cursor, which a stream opened with it in
+ * `Last-Event-ID` carries on from; `keys` are the keys the change set (a resumed stream's first
+ * event names none).
+ */
+export type SettingsChange = BureauEvent<'bureau.settings.events'>;
 
-/** One event of the settings stream. */
-export type SettingsChange = z.infer<typeof settingsChangeSchema>;
-
-/** The path of the one generic subscription route, for the settings stream. */
-export const SETTINGS_EVENTS_PATH = `${BUREAU_PATH}/v1/subscriptions/bureau.settings.events`;
+/**
+ * Reads what the stream sent as a change, or `undefined` for data that is not one, which the
+ * follower skips.
+ */
+function readSettingsChange(data: unknown): SettingsChange | undefined {
+  if (typeof data !== 'object' || data === null) return undefined;
+  if (Reflect.get(data, 'kind') !== 'settings.changed') return undefined;
+  if (typeof Reflect.get(data, 'cursor') !== 'string') return undefined;
+  if (typeof Reflect.get(data, 'revision') !== 'number') return undefined;
+  // The kind, the cursor and the revision are read; the rest is what the subscription's event type says.
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+  return data as SettingsChange;
+}
 
 /**
  * Opens the settings stream from `cursor` (or from now, when there is none) and yields each change
  * as the Bureau sends it. The cursor goes in `Last-Event-ID`, which is how the Bureau resumes a
  * stream: a stream resumed behind the current revision opens with one event for the current one. A
  * refusal throws the `HttpClientError` the response's status makes, a stream that ends ends this
- * generator, and a frame that does not parse is skipped: heartbeats are frames too.
+ * generator, and data that is not a change is skipped: heartbeats are frames too.
  */
 export async function* followSettingsEvents(options: {
   readonly cursor?: string;
@@ -240,34 +245,16 @@ export async function* followSettingsEvents(options: {
   /** Called once the Bureau has accepted the subscription, before any event arrives. */
   readonly onOpen?: () => void;
 }): AsyncGenerator<SettingsChange, void, void> {
-  const send = options.fetch ?? fetch;
-  const response = await send(SETTINGS_EVENTS_PATH, {
-    headers: {
-      accept: 'text/event-stream',
-      ...(options.cursor === undefined ? {} : { 'last-event-id': options.cursor }),
+  const messages = bureauClient['bureau.settings.events'](
+    {},
+    {
+      fetch: acceptedFetch(options),
+      ...(options.signal === undefined ? {} : { signal: options.signal }),
+      ...(options.cursor === undefined ? {} : { lastEventId: options.cursor }),
     },
-    ...(options.signal === undefined ? {} : { signal: options.signal }),
-  });
-  if (!response.ok) {
-    // A refusal on the REST surface is a flat `{ error: <message> }`; its status says what kind.
-    const body: unknown = await response.json().catch(() => undefined);
-    const message =
-      typeof body === 'object' && body !== null ? Reflect.get(body, 'error') : undefined;
-    throw new HttpClientError(
-      response.status,
-      typeof message === 'string' ? message : `The settings stream answered ${response.status}.`,
-    );
-  }
-  options.onOpen?.();
-  for await (const frame of readServerSentEventStream(response, options.signal)) {
-    if (frame.event !== 'settings.changed') continue;
-    let payload: unknown;
-    try {
-      payload = JSON.parse(frame.data);
-    } catch {
-      continue;
-    }
-    const parsed = settingsChangeSchema.safeParse(payload);
-    if (parsed.success) yield parsed.data;
+  );
+  for await (const { data } of eventsOf(messages, 'settings stream')) {
+    const change = readSettingsChange(data);
+    if (change !== undefined) yield change;
   }
 }

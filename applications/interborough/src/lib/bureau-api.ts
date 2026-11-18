@@ -10,7 +10,9 @@ import {
   type CatalogOperationName,
   type CatalogOperationTypes,
   createBureauClient,
+  type SubscriptionOperationName,
 } from './generated/bureau-operation-client.generated.ts';
+import type { SubscriptionOperationTypes } from './generated/subscription-operations.generated.ts';
 
 /** The client every Bureau call in the browser goes through: one method per operation name. */
 export const bureauClient = createBureauClient({ baseUrl: '' });
@@ -32,6 +34,10 @@ export type WithUndefined<Value> = Value extends unknown
       [Key in keyof Value as Key extends OptionalKeys<Value> ? never : Key]: Value[Key];
     } & { [Key in OptionalKeys<Value>]?: Value[Key] | undefined }
   : never;
+
+/** What the Bureau feed `Name` sends, one event at a time. */
+export type BureauEvent<Name extends SubscriptionOperationName> =
+  SubscriptionOperationTypes[Name]['event'];
 
 /** What the Bureau operation `Name` answers. */
 export type BureauOutput<Name extends CatalogOperationName> = CatalogOperationTypes[Name]['output'];
