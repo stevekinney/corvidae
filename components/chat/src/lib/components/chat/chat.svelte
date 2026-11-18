@@ -84,6 +84,10 @@
     newMessageIndicatorVisible = value;
   }
 
+  function handleHostQuestionDockedBindingChange(value: boolean): void {
+    hostQuestionDocked = value;
+  }
+
   // The inner implementation owns the imperative streaming + scroll API. The
   // public wrapper forwards it so consumers using `@lostgradient/chat` can drive
   // streaming through a `bind:this` to <Chat> (the inner component is not
@@ -179,9 +183,10 @@
   {atBottom}
   {unreadCount}
   {newMessageIndicatorVisible}
-  bind:hostQuestionDocked
+  {hostQuestionDocked}
   class={mergedClassName}
   onatbottombindingchange={handleAtBottomBindingChange}
   onunreadcountbindingchange={handleUnreadCountBindingChange}
   onNewMessageIndicatorVisibleBindingChange={handleNewMessageIndicatorVisibleBindingChange}
+  onHostQuestionDockedBindingChange={handleHostQuestionDockedBindingChange}
 />
