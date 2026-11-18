@@ -216,6 +216,21 @@ export function capturedRoutes(source: string): string[] {
  * text from its `test(` to the next, and its describe is the last `test.describe(` before it.
  */
 export function routesMissingFromTitles(source: string): { title: string; route: string }[] {
+  const missing: { title: string; route: string }[] = [];
+  for (const test of testsOf(source)) {
+    for (const route of capturedRoutes(test.body)) {
+      if (!test.path.includes(route)) missing.push({ title: test.title, route });
+    }
+  }
+  return missing;
+}
+
+/**
+ * Each test of a specification's source: its title, its title path (the `test.describe` around it,
+ * then its own title, as Playwright's `--grep` matches them) and its text, from its `test(` to the
+ * next. A title written as a template keeps its `${…}` placeholders.
+ */
+function testsOf(source: string): { title: string; path: string; body: string }[] {
   const markers = [
     ...source.matchAll(/\btest(\.describe)?\(\s*(`[^`]*`|'(?:[^'\\]|\\.)*'|"(?:[^"\\]|\\.)*")/g),
   ].map((match) => ({
@@ -223,7 +238,7 @@ export function routesMissingFromTitles(source: string): { title: string; route:
     describe: match[1] !== undefined,
     title: match[2]!.slice(1, -1),
   }));
-  const missing: { title: string; route: string }[] = [];
+  const tests: { title: string; path: string; body: string }[] = [];
   let describe = '';
   markers.forEach((marker, position) => {
     if (marker.describe) {
@@ -231,13 +246,13 @@ export function routesMissingFromTitles(source: string): { title: string; route:
       return;
     }
     const end = markers[position + 1]?.index ?? source.length;
-    const body = source.slice(marker.index, end);
-    const path = `${describe} ${marker.title}`;
-    for (const route of capturedRoutes(body)) {
-      if (!path.includes(route)) missing.push({ title: marker.title, route });
-    }
+    tests.push({
+      title: marker.title,
+      path: `${describe} ${marker.title}`,
+      body: source.slice(marker.index, end),
+    });
   });
-  return missing;
+  return tests;
 }
 
 /** One file's suite in Playwright's JSON report, as far as counting its tests needs it. */
@@ -256,9 +271,9 @@ function testsIn(suite: ReportSuite): number {
 
 /**
  * The listed specifications that ran no test, from Playwright's JSON report. With `--grep`, a
- * specification is expected to run only when one of the routes its source captures matches the
- * filter; without it, every listed specification is. A capture with such a specification exits 1,
- * so a title filter can never again silently run nothing for it.
+ * specification is expected to run only when the title path of one of its tests matches the filter;
+ * without it, every listed specification is. A capture with such a specification exits 1, so a run
+ * never silently drops a specification the filter reaches.
  */
 export function specificationsThatRanNothing(
   report: { readonly suites?: readonly ReportSuite[] },
@@ -266,18 +281,25 @@ export function specificationsThatRanNothing(
   grep: string | undefined,
   sourceOf: (specification: string) => string,
 ): string[] {
-  const ran = new Map<string, number>();
-  for (const suite of report.suites ?? []) {
-    if (suite.file !== undefined) ran.set(suite.file, (ran.get(suite.file) ?? 0) + testsIn(suite));
-  }
+  // Playwright names a file by its path from the configuration's `testDir` (`./tests`, so
+  // `e2e/00-showcase.spec.ts`), and the list names it from the application
+  // (`tests/e2e/00-showcase.spec.ts`): a report file is the listed one when the list's path ends in it.
+  const files = (report.suites ?? []).flatMap((suite) =>
+    suite.file === undefined ? [] : [{ file: suite.file, tests: testsIn(suite) }],
+  );
+  const ranIn = (specification: string): number =>
+    files
+      .filter(({ file }) => specification === file || specification.endsWith(`/${file}`))
+      .reduce((sum, { tests }) => sum + tests, 0);
   const filter = grep === undefined ? undefined : new RegExp(grep);
   return specifications.filter((specification) => {
+    // A specification the filter should reach is one with a test whose title path it matches, as
+    // Playwright's `--grep` matches: a capture of a matching route under a title that does not
+    // name it is the titles test's to catch (`routesMissingFromTitles`), not this one's.
     const expected =
       filter === undefined ||
-      capturedRoutes(sourceOf(specification)).some((route) => filter.test(route));
-    if (!expected) return false;
-    const file = specification.replace(/^tests\/e2e\//, '');
-    return (ran.get(file) ?? ran.get(specification) ?? 0) === 0;
+      testsOf(sourceOf(specification)).some((test) => filter.test(test.path));
+    return expected && ranIn(specification) === 0;
   });
 }
 
