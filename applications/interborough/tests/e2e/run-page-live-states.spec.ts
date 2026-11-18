@@ -227,6 +227,11 @@ for (const width of WIDTHS) {
       // The current version, and the branch the person gave it (54p).
       await expect(page.getByText('1.3.0, current version')).toBeVisible();
       await expect(page.locator('[data-section="input-output"]')).toContainText(/Branch\s*main/);
+      // Counted as row 28e counts a card: every top-level key of what the run was started with, the
+      // manual envelope's own keys (`kind`, `origin`) in JSON only, as the failed run's card does.
+      await expect(page.locator('[data-section="input-output"]')).toContainText(
+        /3 fields,\s*2 in JSON only/,
+      );
       await captureForDesignReview(page, {
         route: '/runs/:run',
         state: 'live instance',
@@ -293,6 +298,53 @@ for (const width of WIDTHS) {
       await captureForDesignReview(page, {
         route: '/runs/:run',
         state: 'live chat run',
+        source: SOURCE,
+      });
+    });
+
+    test('a Release notes run whose step was tried three times says so on the step (14t, 55b)', async ({
+      page,
+    }) => {
+      // Bureau runs an agent step once, so the sample world's failed run tried step 2 once: the
+      // engine's timeline is rewritten to hold three tries of it, 3.4 s from the first to the last.
+      const world = await readSampleWorldRecords(E2E_SHOWCASE_URL);
+      await page.route(
+        new RegExp(`/workflows/${world.runs.failed}/timeline(\\?.*)?$`),
+        async (route: Route) => {
+          const response = await route.fetch();
+          const entries = (await response.json()) as JsonRecord[];
+          const tries = entries.filter(
+            (entry) => entry['documentStep'] === 1 && entry['operationType'] === 'activity',
+          );
+          const first = tries[0];
+          if (first === undefined)
+            throw new Error('The failed run’s timeline holds no try of step 2.');
+          const start = Number(first['timestamp']);
+          const retried = [0, 1400, 2800].map((offset, index) => ({
+            ...first,
+            step: Number(first['step']) + index,
+            timestamp: start + offset,
+            duration: 600,
+            status: 'failed',
+          }));
+          await route.fulfill({
+            response,
+            json: [...entries.filter((entry) => !tries.includes(entry)), ...retried].toSorted(
+              (left, right) => Number(left['timestamp']) - Number(right['timestamp']),
+            ),
+          });
+        },
+      );
+      await openRun(page, `/runs/${encodeURIComponent(world.runs.failed)}`, width);
+
+      const block = page.getByTestId('run-step-failure');
+      await expect(block).toContainText('Step 2, Collect merged changes, failed after 3 tries');
+      await expect(block).toContainText('Interborough tried 3 times in 3.4 s.');
+      // The engine records no activity text for the step, so no "while …" clause is said.
+      await expect(block).not.toContainText(' while ');
+      await captureForDesignReview(page, {
+        route: '/runs/:run',
+        state: 'failed after three tries',
         source: SOURCE,
       });
     });
