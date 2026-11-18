@@ -60,10 +60,11 @@ export interface PluginHook {
   readonly name: string;
   /**
    * The event kinds the hook fires on: kinds of Bureau's event catalog (`PUBLISHED_BUREAU_EVENT_KINDS`,
-   * such as `run.settled`), and `<plugin>:<name>` kinds a running plugin declares, this plugin's
-   * own included. The hook is pinned to a declared kind's version each time it is reconciled, so it
-   * follows the declaring plugin's upgrades. A kind no running plugin declares skips the hook with
-   * a `hook-invalid` problem at `events`.
+   * such as `run.settled`), and `<plugin>:<name>` kinds another running plugin declares. The hook
+   * is pinned to a declared kind's version each time it is reconciled, so it follows the declaring
+   * plugin's upgrades. A kind no running plugin declares, or one this plugin declares itself (its
+   * reaction never runs on its own plugin's events, so the hook could never fire), skips the hook
+   * with a `hook-invalid` problem at `events`.
    */
   readonly events: readonly string[];
   /** The name of one of this plugin's `reactions`: what the hook does. */

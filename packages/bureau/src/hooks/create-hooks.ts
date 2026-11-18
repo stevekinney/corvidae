@@ -905,6 +905,24 @@ function assertNoNotificationLoop(action: HookAction, events: readonly string[])
   }
 }
 
+/**
+ * Refuses a plugin action listing a kind its own plugin declares (`<plugin>:<name>`, pinned or
+ * not). Every such event comes from that plugin (`host.publish` marks it `source: <plugin>`), and a
+ * reaction never fires on its own plugin's events (the source guard in `dispatch`, COR-2173), so
+ * the hook could never fire. A webhook or notify hook on any declared kind, and a plugin action on
+ * another plugin's kind, are not refused here.
+ */
+function assertNoOwnPluginEvents(action: HookAction, events: readonly string[]): void {
+  if (action.type !== 'plugin') return;
+  const own = events.filter((entry) => hookEventKindOf(entry).startsWith(`${action.plugin}:`));
+  if (own.length > 0) {
+    invalid(
+      'events',
+      `A plugin's reaction cannot run on that plugin's own events: ${own.join(', ')} come from plugin ${action.plugin}, and its reaction ${action.kind} never fires on them`,
+    );
+  }
+}
+
 /** Whether a stored `notify` hook lists a kind it may not (see {@link assertNoNotificationLoop}) and is skipped for it. */
 function notifyMayNotFireOn(hook: HookRecord, kind: string): boolean {
   return (
@@ -1583,6 +1601,7 @@ export function createHooks(dependencies: HooksDependencies): CreatedHooks {
       const owner = ownerFromPrincipal(input.principal, (message) => invalid('principal', message));
       const enabled = input.enabled ?? true;
       assertNoNotificationLoop(action, events);
+      assertNoOwnPluginEvents(action, events);
       assertNoUnplacedStart(action, events);
       assertScopeFits(scope, events);
       await assertActionAllowed(action, owner);
@@ -1731,6 +1750,9 @@ export function createHooks(dependencies: HooksDependencies): CreatedHooks {
         const nextEvents = events ?? before.events;
         assertNoNotificationLoop(action, nextEvents);
         assertNoUnplacedStart(action, nextEvents);
+        // Asked when the events change, so a rename or a disable of a hook written before the
+        // refusal still saves; dispatch's source guard keeps such a hook from firing.
+        if (events !== undefined) assertNoOwnPluginEvents(action, nextEvents);
         // Asked when either side changes, so a rename or a disable is never held up by a record
         // whose scope this release cannot read.
         if (scope !== undefined || events !== undefined) assertScopeFits(nextScope, nextEvents);
@@ -2024,6 +2046,8 @@ export function createHooks(dependencies: HooksDependencies): CreatedHooks {
           urlPolicy,
           actionKinds,
         );
+        // A default hook runs its own plugin's reaction, so it cannot list its own plugin's kinds.
+        assertNoOwnPluginEvents(action, events);
         assertScopeFits(scope, events);
         return { name, events, action, scope };
       } catch (error) {
@@ -2290,7 +2314,9 @@ export function createHooks(dependencies: HooksDependencies): CreatedHooks {
         let subjects: Promise<HookEventSubjects | undefined> | undefined;
         for (const hook of await matching(event.kind)) {
           // A reaction does not fire on its own plugin's events, or one that raises the kind it lists
-          // would run itself for ever. Nothing is written: this is a hook that does not match.
+          // would run itself for ever. Nothing is written: this is a hook that does not match. A
+          // hook listing its own plugin's kind is refused when written (`assertNoOwnPluginEvents`);
+          // one written before that refusal is skipped here.
           if (hook.action.type === 'plugin' && event.source === hook.action.plugin) {
             dependencies.notice?.(
               `[bureau] Hook ${hook.id} did not run its plugin action: Skipped: ${event.kind} came from plugin ${hook.action.plugin}, and a plugin's reaction does not fire on its own plugin's events`,

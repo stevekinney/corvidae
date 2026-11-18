@@ -84,7 +84,7 @@ const eventKinds = z
   .min(1)
   .max(64)
   .describe(
-    'The event kinds the hook fires on, the kinds `bureau.events.catalog` lists: a published Bureau kind, or a kind a running plugin declares (`<plugin>:<name>`), which the hook stores pinned to the declaration’s version (`<plugin>:<name>@<version>`) and which then fires only while that version is loaded. A pinned kind is accepted only at the version loaded now, or, on `bureau.hooks.update`, when the hook already lists it. Any other kind is `InvalidParams` on `events`. A hook cannot list `hook.test`: only `bureau.hooks.test` sends it.',
+    'The event kinds the hook fires on, the kinds `bureau.events.catalog` lists: a published Bureau kind, or a kind a running plugin declares (`<plugin>:<name>`), which the hook stores pinned to the declaration’s version (`<plugin>:<name>@<version>`) and which then fires only while that version is loaded. A pinned kind is accepted only at the version loaded now, or, on `bureau.hooks.update`, when the hook already lists it. A plugin action cannot list a kind its own plugin declares: a plugin’s reaction never runs on that plugin’s own events, so that is `InvalidParams` on `events` too. Any other kind is `InvalidParams` on `events`. A hook cannot list `hook.test`: only `bureau.hooks.test` sends it.',
   );
 
 const urlField = z

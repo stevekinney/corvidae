@@ -6,16 +6,19 @@
  * - a declared kind of a running plugin (`reports:digest-ready`, at 1.0.0);
  * - a declared kind whose plugin is gone, or is loaded at another version (a pin that is `missing`);
  * - an undeclared `<plugin>:<name>` (`nobody:thing`);
- * - another plugin's kind of the same name (`other:digest-ready`, at 2.0.0).
+ * - another plugin's kind of the same name (`other:digest-ready`, at 2.0.0);
+ * - the reaction's own plugin's kind (`slack:posted`, at 1.0.0), which a plugin action can never
+ *   fire on (the source guard in dispatch, COR-2173), so it is refused where it is written.
  *
- * The hooks run the `slack` plugin's reaction, so the reaction's own-plugin guard never decides a
- * cell; what the running plugins declare is a list the test changes, read each time the hooks ask.
+ * The hooks run the `slack` plugin's reaction; what the running plugins declare is a list the test
+ * changes, read each time the hooks ask.
  */
 import { describe, expect, it } from 'bun:test';
 
 import type { DeclaredHookEventKind } from './hook-event-kinds.ts';
 import { createHookStore } from './hook-store.ts';
 import { HookError, type HookRecord } from './hook-types.ts';
+import { reconcilePluginHooks } from './reconcile-plugin-hooks.ts';
 import {
   ACTION,
   START,
@@ -27,6 +30,8 @@ import {
 const REPORTS = 'reports:digest-ready';
 const OTHER = 'other:digest-ready';
 const PINNED = `${REPORTS}@1.0.0`;
+/** A kind the `slack` plugin declares, whose reaction every plugin hook here runs. */
+const OWN = 'slack:posted';
 
 /** The harness, with `declared` as what the running plugins declare now; change it to load or unload one. */
 function plugins(initial: readonly DeclaredHookEventKind[] = defaultDeclared()) {
@@ -39,7 +44,17 @@ function defaultDeclared(): DeclaredHookEventKind[] {
   return [
     { kind: REPORTS, version: '1.0.0' },
     { kind: OTHER, version: '2.0.0' },
+    { kind: OWN, version: '1.0.0' },
   ];
+}
+
+/** The refusal of a plugin action on its own plugin's kind, which says why. */
+function expectOwnKindRefusal(refused: HookError, path: readonly string[]): void {
+  expect(refused.code).toBe('invalid');
+  expect(refused.issues[0]?.path).toEqual([...path]);
+  expect(refused.issues[0]?.message).toContain(
+    "A plugin's reaction cannot run on that plugin's own events",
+  );
 }
 
 async function refusal(work: Promise<unknown>): Promise<HookError> {
@@ -126,6 +141,21 @@ describe('create', () => {
     expect(scoped.issues[0]?.path).toEqual(['scope']);
   });
 
+  it('refuses a plugin action on its own plugin’s kind at events, bare or pinned, and writes nothing', async () => {
+    const { h } = plugins();
+    expectOwnKindRefusal(await refusal(h.hook([OWN])), ['events']);
+    expectOwnKindRefusal(await refusal(h.hook(['run.settled', `${OWN}@1.0.0`])), ['events']);
+    expect(await h.hooks.list()).toEqual([]);
+  });
+
+  it('accepts a notify hook on a plugin’s kind, and a plugin action on another plugin’s kind', async () => {
+    const { h } = plugins();
+    const notify = await h.hooks.create({ events: [OWN], action: { type: 'notify' } });
+    expect(notify.events).toEqual([`${OWN}@1.0.0`]);
+    const foreign = await h.hook([REPORTS]);
+    expect(foreign.events).toEqual([PINNED]);
+  });
+
   it('copies a hook with its pins on duplicate, and refuses the copy of a hook whose kind is missing, as create does', async () => {
     const { h, declared } = plugins();
     const hook = await h.hook([REPORTS, 'run.settled']);
@@ -191,7 +221,41 @@ describe('update', () => {
     await h.hooks.update(hook.id, { events: [OTHER] });
     expect(await storedEvents(h, hook.id)).toEqual([`${OTHER}@2.0.0`]);
   });
+
+  it('refuses events that list the plugin action’s own plugin’s kind, and writes nothing', async () => {
+    const { h } = plugins();
+    const hook = await h.hook(['run.settled']);
+    expectOwnKindRefusal(
+      await refusal(h.hooks.update(hook.id, { events: ['run.settled', OWN] })),
+      ['events'],
+    );
+    expect(await storedEvents(h, hook.id)).toEqual(['run.settled']);
+  });
+
+  it('still renames or turns off a hook written on its own plugin’s kind before the refusal', async () => {
+    const { h } = plugins();
+    const record = ownKindRecord('hook-predating');
+    expect(await createHookStore(h.kv).createHook(record)).toBe(true);
+    const renamed = await h.hooks.update(record.id, { name: 'Posted', enabled: false });
+    expect(renamed?.name).toBe('Posted');
+    expect(renamed?.enabled).toBe(false);
+  });
 });
+
+/** A plugin hook on its own plugin's kind, as a record written before such a hook was refused. */
+function ownKindRecord(id: string): HookRecord {
+  return {
+    version: 1,
+    id,
+    owner: 'anonymous:local',
+    action: ACTION,
+    events: [`${OWN}@1.0.0`, 'run.settled'],
+    enabled: true,
+    createdAt: START,
+    updatedAt: START,
+    revision: 1,
+  };
+}
 
 describe('dispatch', () => {
   it('fires a hook on a core kind it lists', async () => {
@@ -291,6 +355,24 @@ describe('dispatch', () => {
     expect(delivered.map((delivery) => delivery.kind)).toEqual([REPORTS]);
   });
 
+  it('never runs a record written on its own plugin’s kind before the refusal: the source guard skips it with a notice', async () => {
+    const { h } = plugins();
+    await h.open();
+    const record = ownKindRecord('hook-predating');
+    expect(await createHookStore(h.kv).createHook(record)).toBe(true);
+    // The event as `host.publish` gives it: from the plugin that declares the kind.
+    await fire(h, OWN, 'slack');
+    expect(await h.deliveries(record.id)).toEqual([]);
+    expect(h.calls).toEqual([]);
+    expect(h.notices).toContainEqual(
+      expect.stringContaining(`Skipped: ${OWN} came from plugin slack`),
+    );
+    // Its other kinds still fire.
+    await fire(h, 'run.settled');
+    await runStarted(h);
+    expect(await h.statuses(record.id)).toEqual(['delivered']);
+  });
+
   it('never fires a pin whose plugin is gone on an event of the same name another plugin publishes', async () => {
     const { h, declared } = plugins();
     await h.open();
@@ -348,5 +430,38 @@ describe('default-hook reconcile', () => {
     const { h } = plugins();
     const [hook] = await h.hooks.reconcileDeclared('slack', [declaration([OTHER])]);
     expect(hook?.events).toEqual([`${OTHER}@2.0.0`]);
+  });
+
+  it('refuses a default hook on its own plugin’s kind at [index, events]', async () => {
+    const { h } = plugins();
+    expectOwnKindRefusal(await refusal(h.hooks.reconcileDeclared('slack', [declaration([OWN])])), [
+      '0',
+      'events',
+    ]);
+    expect(await h.hooks.list()).toEqual([]);
+  });
+
+  it('leaves a default hook on its own plugin’s kind out alone, as hook-invalid at events, and reconciles the rest', async () => {
+    const { h } = plugins();
+    const reported = new Map<string, readonly unknown[]>();
+    await reconcilePluginHooks({
+      hooks: h,
+      plugins: {
+        declaredHooks: () => [
+          {
+            plugin: 'slack',
+            hooks: [{ ...declaration([OWN]), name: 'Own posts' }, declaration([OTHER])],
+          },
+        ],
+        knownPlugins: () => new Set(['slack']),
+        reportHookProblems: (plugin, problems) => void reported.set(plugin, [...problems]),
+      },
+      diagnose: () => undefined,
+    });
+    expect(reported.get('slack')).toEqual([{ hook: 'Own posts', path: 'events' }]);
+    const listed = await h.hooks.list();
+    expect(listed.map(({ name, events }) => [name, events])).toEqual([
+      ['Digest', [`${OTHER}@2.0.0`]],
+    ]);
   });
 });
