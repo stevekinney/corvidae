@@ -3,19 +3,17 @@
  * module scope, with no manifest on disk. The guard must run the suite's prepare step before it
  * lists the configuration, as `lint:root` does on a checkout that has never served the fixtures.
  *
- * The layout is built under the repository's ignored `tmp/`, so its spec and configuration resolve
- * `@playwright/test` from the workspace's `node_modules`.
+ * The layouts are built under the repository's ignored `tmp/`, so their specs and configurations
+ * resolve `@playwright/test` from the workspace's `node_modules`.
  */
-import { afterEach, expect, test } from 'bun:test';
+import { afterAll, describe, expect, test } from 'bun:test';
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 
+import { spawnWithHangGuard } from '../testing/testing/src/hang-guard.ts';
+
 const repositoryRoot = join(import.meta.dir, '..');
 const roots: string[] = [];
-
-afterEach(() => {
-  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
-});
 
 function layout(files: Record<string, string>): string {
   const parent = join(repositoryRoot, 'tmp');
@@ -54,40 +52,50 @@ for (const entry of entries) test(entry, () => {});
 `,
 };
 
-function guard(root: string): { exitCode: number; output: string } {
-  const result = Bun.spawnSync(
-    ['bun', join(import.meta.dir, 'check-playwright-collection.ts'), '--root', root],
-    { cwd: repositoryRoot, stdout: 'pipe', stderr: 'pipe' },
+async function guard(root: string): Promise<{ exitCode: number; output: string }> {
+  const child = spawnWithHangGuard(
+    [process.execPath, join(import.meta.dir, 'check-playwright-collection.ts'), '--root', root],
+    { cwd: repositoryRoot, stdout: 'pipe', stderr: 'pipe', env: process.env },
   );
-  return {
-    exitCode: result.exitCode ?? 1,
-    output: `${result.stdout.toString()}${result.stderr.toString()}`,
-  };
+  const [stdout, stderr, exitCode] = await Promise.all([
+    new Response(child.stdout).text(),
+    new Response(child.stderr).text(),
+    child.exited,
+  ]);
+  return { exitCode, output: `${stdout}${stderr}` };
 }
 
-test('prepares a package suite whose manifest is missing, then lists it', () => {
-  const root = layout(files);
-  expect(existsSync(join(root, manifest))).toBe(false);
+// The guard's runs are the behavior under test, so they run once at module scope, off Bun's
+// per-test clock; the tests below assert on the settled results.
+const fresh = layout(files);
+const manifestBefore = existsSync(join(fresh, manifest));
+const freshRun = await guard(fresh);
+const manifestAfter = existsSync(join(fresh, manifest));
 
-  const { exitCode, output } = guard(root);
-
-  expect(output).toContain(`${browser}/playwright.config.ts: Total: 1 test in 1 file`);
-  expect(exitCode).toBe(0);
-  expect(existsSync(join(root, manifest))).toBe(true);
-});
-
-test('fails a spec that imports a module that is not there', () => {
-  const root = layout({
-    ...files,
-    [`${browser}/tests/stale.playwright.ts`]: `import { test } from '@playwright/test';
+const stale = layout({
+  ...files,
+  [`${browser}/tests/stale.playwright.ts`]: `import { test } from '@playwright/test';
 import { fixtureRoute } from './overlay-fixture.ts';
 test('stale', () => { void fixtureRoute; });
 `,
+});
+const staleRun = await guard(stale);
+
+afterAll(() => {
+  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
+});
+
+describe('check-playwright-collection', () => {
+  test('prepares a package suite whose manifest is missing, then lists it', () => {
+    expect(manifestBefore).toBe(false);
+    expect(freshRun.output).toContain(`${browser}/playwright.config.ts: Total: 1 test in 1 file`);
+    expect(freshRun.exitCode).toBe(0);
+    expect(manifestAfter).toBe(true);
   });
 
-  const { exitCode, output } = guard(root);
-
-  expect(output).toContain('does not load every spec');
-  expect(output).toContain('./overlay-fixture.ts');
-  expect(exitCode).toBe(1);
+  test('fails a spec that imports a module that is not there', () => {
+    expect(staleRun.output).toContain('does not load every spec');
+    expect(staleRun.output).toContain('./overlay-fixture.ts');
+    expect(staleRun.exitCode).toBe(1);
+  });
 });

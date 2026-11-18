@@ -46,14 +46,22 @@ export const auditExceptions: readonly AuditException[] = [
     allowedChains: [
       ['@lostgradient/environmentalist', 'ts-morph', '@ts-morph/common', 'tinyglobby', 'picomatch'],
       ['@lostgradient/playground', 'ts-morph', '@ts-morph/common', 'tinyglobby', 'picomatch'],
-      ['@lostgradient/cinder', 'ts-morph', '@ts-morph/common', 'tinyglobby', 'picomatch'],
+      // Cinder's schema generator, moved with the rest of its build tooling into
+      // `@lostgradient/component-tooling`, a development dependency of every package that runs it.
+      [
+        '@lostgradient/component-tooling',
+        'ts-morph',
+        '@ts-morph/common',
+        'tinyglobby',
+        'picomatch',
+      ],
     ],
     reviewedReachability: {
-      sha256: '7b6b31f61063bb59be476cbd6affd28a37d670973016e1a265e0c2559f536dc9',
+      sha256: '2a601e4c8ac957d5e15770145a5b92b9ef50b90c40a53a857cede49f6b7174eb',
       exposure: 'build-or-development-only',
     },
     reason:
-      'picomatch 4.0.4 is only in reviewed static-export, type-generation and developer-check tooling; no inspected caller passes request-controlled globs. The frozen workspace inventory binds all current paths, including runtime-classified manifest edges, to this decision.',
+      'picomatch 4.0.4 is only in reviewed static-export, type-generation and developer-check tooling; no inspected caller passes request-controlled globs. The frozen workspace inventory binds all current paths, including runtime-classified manifest edges, to this decision. The type-generation route moved from Cinder to @lostgradient/component-tooling (COR-2077), which every component package and the playground declare as a development dependency.',
     trackingIssue: 'COR-2515',
     reviewBy: '2026-12-17',
   },

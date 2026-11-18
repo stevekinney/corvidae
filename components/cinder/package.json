@@ -52,7 +52,6 @@
     "@codemirror/view": "catalog:",
     "@floating-ui/dom": "catalog:",
     "@lezer/highlight": "catalog:",
-    "@lostgradient/component-tooling": "workspace:*",
     "@lostgradient/markdown": "workspace:*",
     "@lucide/svelte": "catalog:",
     "@shikijs/engine-oniguruma": "catalog:",
@@ -73,6 +72,7 @@
     "zod": "catalog:"
   },
   "devDependencies": {
+    "@lostgradient/component-tooling": "workspace:*",
     "@lostgradient/typescript": "workspace:*",
     "@lostgradient/testing": "workspace:*",
     "@playwright/test": "catalog:",
@@ -95,7 +95,6 @@
     "prettier-plugin-svelte": "catalog:",
     "svelte-check": "catalog:",
     "svelte2tsx": "catalog:",
-    "ts-morph": "catalog:",
     "typescript": "catalog:",
     "@testing-library/dom": "catalog:",
     "@lostgradient/environmentalist": "catalog:"
