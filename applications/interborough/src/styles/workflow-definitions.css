@@ -325,8 +325,11 @@
   display: inline;
 }
 
+/* An identifier in the line (a signal, a file) is kept whole: notes-approved never breaks at its hyphen. */
 .ib-workflow__line code {
   font-family: var(--cinder-font-mono);
+  overflow-wrap: normal;
+  white-space: nowrap;
 }
 
 /* The steps are one bordered list of numbered rows, each a title, a kind line and a message. */

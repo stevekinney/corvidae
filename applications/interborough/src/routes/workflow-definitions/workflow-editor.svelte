@@ -567,7 +567,7 @@
           backHref={workflowTypePath(type)}
           {...footerStatus === undefined ? {} : { status: footerStatus }}
           {...changedOnDisk ? { notice: changedNotice } : {}}
-          {...saveImpact === undefined ? {} : { aboveFooter: impactSnippet }}
+          {...saveImpact === undefined || failure !== null ? {} : { aboveFooter: impactSnippet }}
           {documentProblem}
           onTextChange={(next) => {
             text = next;

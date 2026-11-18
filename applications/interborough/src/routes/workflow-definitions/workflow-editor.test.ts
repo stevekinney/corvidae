@@ -386,6 +386,9 @@ describe('the version a save makes', () => {
       'release-notes.json couldn’t be written: permission denied. Nothing was saved.',
     );
     expect(footer(container)).toBe('Save as version 1.4.0.');
+    // Design correction: the version is said once, in the footer, while the failure shows.
+    expect(container.textContent?.match(/version 1\.4\.0/g)).toHaveLength(1);
+    expect(container.querySelector('[data-testid="workflow-editor-impact"]')).toBeNull();
     expect(textarea(container).value).toBe(typed);
     expect(queryByRole('button', { name: 'Try again' })).toBeNull();
 

@@ -1,5 +1,6 @@
 /** The lines under a workflow's title and the numbered rows of its steps, said without a page. */
 import { describe, expect, test } from 'bun:test';
+import { readFileSync } from 'node:fs';
 
 import { WORKFLOW_COPY } from '../../app/copy/workflows.ts';
 import {
@@ -192,6 +193,18 @@ describe('the last run of a workflow', () => {
         zone: ZONE,
       }),
     ).toBeNull();
+  });
+});
+
+describe('design correction: an identifier in a header line', () => {
+  test('is kept whole, so notes-approved never breaks at its hyphen', () => {
+    const stylesheet = readFileSync(
+      new URL('../../styles/workflow-definitions.css', import.meta.url),
+      'utf8',
+    );
+    const rule = /\.ib-workflow__line code \{([^}]*)\}/.exec(stylesheet)?.[1] ?? '';
+    expect(rule).toContain('white-space: nowrap');
+    expect(rule).toContain('overflow-wrap: normal');
   });
 });
 
