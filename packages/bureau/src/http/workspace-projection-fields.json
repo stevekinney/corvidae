@@ -1086,6 +1086,7 @@
     "$.attempts[].completedAt",
     "$.attempts[].feedback",
     "$.attempts[].finishReason",
+    "$.attempts[].reason",
     "$.attempts[].runId",
     "$.attempts[].sessionId",
     "$.attempts[].startedAt",

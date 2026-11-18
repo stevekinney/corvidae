@@ -3,8 +3,9 @@
  * A goal runs a catalog agent on a prompt until a validator the Bureau was configured with passes,
  * within bounds. A goal belongs to the principal that created it, and its view leaves out the
  * instructions, and a list leaves out its prompt too: it is the goal's control-plane state, where
- * it stands and what it has used. `get` adds the prompt and each attempt's validator feedback for
- * the goal's owner (COR-2425), which the edit form and the goal's page show. It does name the goal
+ * it stands and what it has used. `get` adds the prompt, each attempt's validator feedback and a
+ * passing attempt's reason for the goal's owner (COR-2425), which the edit form and the goal's page
+ * show. It does name the goal
  * (`identity`) and its check (`validator`), which a list titles a row with and shows on line two.
  *
  * `cancel` names the revision of the goal the caller read. A goal's revision advances on every write
@@ -95,6 +96,11 @@ const goalSchema = z.object({
        * leave it out.
        */
       feedback: z.string().nullable().optional(),
+      /**
+       * Why an attempt that met its check met it, when its validator said ("Reply said hello",
+       * row 67v); `null` otherwise. Owner-only exactly as `feedback` is, so its absence is unknown.
+       */
+      reason: z.string().nullable().optional(),
     }),
   ),
   /**

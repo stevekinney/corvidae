@@ -38,6 +38,7 @@ import {
   goalWorkflowId,
   InvalidGoalStateError,
   isGoalState,
+  PASS_REASON_MAXIMUM_CHARACTERS,
 } from './goal-state';
 import {
   createGoalStore,
@@ -519,6 +520,19 @@ describe('fail-closed decoding', () => {
         ),
     ],
     [
+      'a pass whose reason is not text',
+      () =>
+        mutated(
+          (r) =>
+            (r['attempts'] = [
+              {
+                ...attempt(0),
+                validation: { ...passed, outcome: { ...passed.outcome, reason: 7 } },
+              },
+            ]),
+        ),
+    ],
+    [
       'a validation outcome with an extra field',
       () =>
         mutated(
@@ -673,6 +687,43 @@ describe('createGoalStore applyTransition', () => {
     });
     expect(done.active).toBeUndefined();
     expect(done.attempts[0]?.validation?.outcome).toEqual(passed.outcome);
+  });
+
+  it('keeps a pass’s reason, and reads a pass recorded before it could have one (COR-2425)', async () => {
+    const { store } = setup();
+    await created(store);
+    await toEvaluating(store);
+    const withReason = { ...passed, outcome: { ...passed.outcome, reason: 'Reply said hello' } };
+
+    const done = applied(
+      await store.applyTransition(
+        transition(3, 'succeeded', {
+          terminalReason: 'validator-passed',
+          attempt: attempt(0, {
+            status: 'passed',
+            validation: withReason,
+            finishReason: 'stop-condition',
+            usage: { steps: 4, tokens: 90, costUsd: 0.01 },
+          }),
+          usage: { attempts: 1, steps: 4, tokens: 90, costUsd: 0.01, durationMs: 1000 },
+          active: null,
+        }),
+      ),
+    );
+
+    expect(done.attempts[0]?.validation?.outcome).toEqual({
+      kind: 'pass',
+      evidence: passed.outcome.evidence,
+      reason: 'Reply said hello',
+    });
+    expect((await store.get(GOAL))?.attempts[0]?.validation?.outcome).toEqual(withReason.outcome);
+    // A record stored before a pass could say why carries no `reason`, and still decodes.
+    const stored = JSON.parse(JSON.stringify(done)) as GoalState;
+    const before = {
+      ...stored,
+      attempts: stored.attempts.map((one) => ({ ...one, validation: passed })),
+    };
+    expect(isGoalState(JSON.parse(JSON.stringify(before)))).toBe(true);
   });
 
   it('records a retry and the next attempt in one transition', async () => {
@@ -1357,6 +1408,27 @@ describe('boundValidationOutcome', () => {
 
     expect(bounded.kind === 'indeterminate' && bounded.reason.length).toBeLessThan(5000);
     expect(boundValidationOutcome({ kind: 'canceled' }, 1)).toEqual({ kind: 'canceled' });
+  });
+
+  it('holds a pass’s reason to a sentence whatever the cap, and keeps a short one as it is (COR-2425)', () => {
+    const short = { kind: 'pass', evidence: [], reason: 'Reply said hello' } as const;
+    expect(boundValidationOutcome(short)).toBe(short);
+
+    const long = boundValidationOutcome({ kind: 'pass', evidence: [], reason: 'r'.repeat(5000) });
+
+    expect(long.kind === 'pass' && long.reason?.length).toBe(PASS_REASON_MAXIMUM_CHARACTERS);
+    expect(long.kind === 'pass' && long.reason?.endsWith('…')).toBe(true);
+    // Under a cap that also cuts the evidence, the reason is cut with the other text.
+    const tight = boundValidationOutcome(
+      {
+        kind: 'pass',
+        evidence: [{ source: 'log', detail: { text: 'x'.repeat(2000) } }],
+        reason: 'r'.repeat(900),
+      },
+      600,
+    );
+    expect(tight.kind).toBe('pass');
+    expect(tight.kind === 'pass' && (tight.reason?.length ?? 0)).toBeLessThanOrEqual(257);
   });
 });
 
