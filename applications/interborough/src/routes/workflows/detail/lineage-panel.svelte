@@ -122,7 +122,7 @@
    * "best-effort" and names the exact gap, so an operator reading it is
    * not told a stronger guarantee than the data can support.
    */
-  import { Badge, CopyButton, Skeleton, Tooltip } from '@lostgradient/cinder';
+  import { Badge, CopyButton, Section, Skeleton, Tooltip } from '@lostgradient/cinder';
   import { createQuery } from '@tanstack/svelte-query';
   import type { HttpClient, WorkflowState } from '@lostgradient/weft';
   import { ArrowRight, CalendarClock, GitFork } from '@lucide/svelte';
@@ -183,8 +183,7 @@
 </script>
 
 {#if scheduleProvenanceQuery.isPending || scheduleProvenanceQuery.data || restartedFrom || forkedFrom}
-  <section class="ib-run__section" aria-labelledby="ib-run-lineage-heading" data-section="lineage">
-    <h2 id="ib-run-lineage-heading" class="ib-run__heading-2">{RUN_PAGE_COPY.lineageHeading}</h2>
+  <Section title={RUN_PAGE_COPY.lineageHeading} data-section="lineage">
     <div class="weft-lineage-panel__body">
       {#if scheduleProvenanceQuery.isPending}
         <Skeleton height="2rem" />
@@ -311,7 +310,7 @@
         </div>
       {/if}
     </div>
-  </section>
+  </Section>
 {/if}
 
 <style>

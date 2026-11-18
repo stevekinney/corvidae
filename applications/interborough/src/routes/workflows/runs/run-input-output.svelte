@@ -144,6 +144,8 @@
   let replyOpen = $state(false);
 </script>
 
+{@render failure()}
+
 <Section title={RUN_PAGE_COPY.inputOutputHeading} {description} data-section="input-output">
   <Stack gap="var(--cinder-space-3)">
     {#if task !== undefined}
@@ -219,45 +221,50 @@
     {#if task === undefined || showRaw}
       <RunPayloadCards {workflow} {record} {failedAt} />
     {/if}
-
-    {#if workflow !== undefined && workflow.status === 'failed' && !failureOnStep}
-      <div class="weft-overview-tab__failure">
-        <div class="weft-overview-tab__failure-title">
-          <CircleX aria-hidden="true" size={18} />
-          <span>Failed</span>
-          {#if workflow.failureCategory !== undefined}
-            <Badge variant="danger">{failureCategoryLabel(workflow.failureCategory)}</Badge>
-          {/if}
-        </div>
-        {#if workflow.failureCategory !== undefined}
-          <p class="weft-overview-tab__failure-explanation">
-            {failureCategoryExplanation(workflow.failureCategory)}
-          </p>
-        {/if}
-        {#if workflow.error}
-          <!-- In its own words, never the error's JSON; the stack below says the rest. -->
-          <p class="weft-overview-tab__failure-explanation">
-            {oneLine(workflow.error, { keepParenthetical: true }) || workflow.error}
-          </p>
-        {/if}
-        {#if errorStack.length > 0}
-          <Collapsible variant="flat" trigger="Show full stack trace">
-            <pre class="weft-send-tab__result">{errorStack}</pre>
-          </Collapsible>
-        {/if}
-      </div>
-    {:else if record !== undefined && workflow === undefined && !failureOnStep}
-      {#if record.error !== undefined && record.error !== null}
-        <Section
-          level={3}
-          title={TASK_COPY.runRecord.error}
-          description={oneLine(record.error, { keepParenthetical: true }) || record.error}
-        />
-      {/if}
-    {/if}
   </Stack>
 
   <VisuallyHidden aria-live="polite" data-testid="payload-view-status">
     {payloadViewPreference.announcement}
   </VisuallyHidden>
 </Section>
+
+<!-- Why a failed run failed leads, above Input and output, so on a phone it is the first thing
+     under the header rather than under the fold below the payloads (COR-2489). A failure told on
+     the step that failed (`failureOnStep`) is told there instead. -->
+{#snippet failure()}
+  {#if workflow !== undefined && workflow.status === 'failed' && !failureOnStep}
+    <div class="weft-overview-tab__failure" data-run-failure>
+      <div class="weft-overview-tab__failure-title">
+        <CircleX aria-hidden="true" size={18} />
+        <span>Failed</span>
+        {#if workflow.failureCategory !== undefined}
+          <Badge variant="danger">{failureCategoryLabel(workflow.failureCategory)}</Badge>
+        {/if}
+      </div>
+      {#if workflow.failureCategory !== undefined}
+        <p class="weft-overview-tab__failure-explanation">
+          {failureCategoryExplanation(workflow.failureCategory)}
+        </p>
+      {/if}
+      {#if workflow.error}
+        <!-- In its own words, never the error's JSON; the stack below says the rest. -->
+        <p class="weft-overview-tab__failure-explanation">
+          {oneLine(workflow.error, { keepParenthetical: true }) || workflow.error}
+        </p>
+      {/if}
+      {#if errorStack.length > 0}
+        <Collapsible variant="flat" trigger="Show full stack trace">
+          <pre class="weft-send-tab__result">{errorStack}</pre>
+        </Collapsible>
+      {/if}
+    </div>
+  {:else if record !== undefined && workflow === undefined && !failureOnStep}
+    {#if record.error !== undefined && record.error !== null}
+      <Section
+        title={TASK_COPY.runRecord.error}
+        description={oneLine(record.error, { keepParenthetical: true }) || record.error}
+        data-run-failure
+      />
+    {/if}
+  {/if}
+{/snippet}

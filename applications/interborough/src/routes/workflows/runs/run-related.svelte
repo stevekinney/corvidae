@@ -4,7 +4,7 @@
    * runs started alongside it. Each group shows a few and counts the rest, and Topology opens all
    * of it as a small tree in a drawer. A run with no relatives says so once, in one empty state.
    */
-  import { Button, ErrorState, Skeleton } from '@lostgradient/cinder';
+  import { Button, ErrorState, Section, Skeleton } from '@lostgradient/cinder';
   import type { WorkflowState } from '@lostgradient/weft';
   import { createQuery } from '@tanstack/svelte-query';
   import type { Snippet } from 'svelte';
@@ -90,20 +90,28 @@
   {/if}
 {/snippet}
 
-<section class="ib-run-related" aria-labelledby="ib-run-related" data-section="related">
-  <div class="ib-run-related__title">
-    <h2 id="ib-run-related" class="ib-run__heading-2">{RUN_RELATED_COPY.heading}</h2>
-    {#if related.data !== undefined && hasRelatedRuns(related.data)}
-      <Button
-        variant="ghost"
-        size="sm"
-        label={RUN_RELATED_COPY.topology}
-        aria-haspopup="dialog"
-        onclick={() => (topologyOpen = true)}
-      />
-    {/if}
+<!-- Cinder's Section: the heading, with Topology as its action when there are related runs to draw. -->
+<Section
+  title={RUN_RELATED_COPY.heading}
+  data-section="related"
+  {...related.data !== undefined && hasRelatedRuns(related.data) ? { actions: topologyAction } : {}}
+>
+  <div class="ib-run-related">
+    {@render relatedContent()}
   </div>
+</Section>
 
+{#snippet topologyAction()}
+  <Button
+    variant="ghost"
+    size="sm"
+    label={RUN_RELATED_COPY.topology}
+    aria-haspopup="dialog"
+    onclick={() => (topologyOpen = true)}
+  />
+{/snippet}
+
+{#snippet relatedContent()}
   {#if related.isPending}
     <Skeleton height="3rem" />
   {:else if related.isError}
@@ -136,7 +144,7 @@
     {@render group(RUN_RELATED_COPY.children, related.data.children)}
     {@render group(RUN_RELATED_COPY.siblings, related.data.siblings)}
   {/if}
-</section>
+{/snippet}
 
 {#if related.data !== undefined}
   <RunTopology bind:open={topologyOpen} {workflow} related={related.data} />
@@ -148,13 +156,6 @@
     flex-direction: column;
     gap: var(--cinder-space-3);
     min-width: 0;
-  }
-
-  .ib-run-related__title {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--cinder-space-2);
   }
 
   .ib-run-related__group {
