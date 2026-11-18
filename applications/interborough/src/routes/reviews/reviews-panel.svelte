@@ -576,14 +576,11 @@
               item.review,
               agent === undefined ? undefined : agentLabel(displayName(agent), undefined),
             )}
-            <!-- The agent's name takes the ellipsis; the risk is its own span and always shows. -->
+            <!-- The agent's name takes the ellipsis; the risk follows the time, never a cut name. -->
             <span class="ib-review-row__kind">
               <span class="ib-review-row__from"
                 >{line.kind}{line.from === undefined ? '' : ` ${line.from}`}</span
-              >{#if line.risk !== undefined}<span
-                  class="ib-review-row__risk"
-                  data-testid="review-row-risk">, {line.risk}</span
-                >{/if}
+              >
             </span>
           {/snippet}
           {#snippet meta()}
@@ -595,7 +592,15 @@
               />
               <time datetime={new Date(decidedAt).toISOString()}>{clockTime(decidedAt, zone)}</time>
             {:else}
-              <RelativeTime date={item.review.requestedAt} />
+              {@const risk = reviewLineTwo(item.review, undefined).risk}
+              <!-- "3 min ago, can't be undone" (rows 07c, 07f): on the line of the time, which is
+                   never cut short, so nothing sits between a cut name and the comma. -->
+              <span class="ib-review-row__when"
+                ><RelativeTime date={item.review.requestedAt} />{#if risk !== undefined}<span
+                    class="ib-review-row__risk"
+                    data-testid="review-row-risk">, {risk}</span
+                  >{/if}</span
+              >
             {/if}
           {/snippet}
         </SelectableRow>

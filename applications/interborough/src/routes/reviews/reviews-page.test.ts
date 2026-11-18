@@ -117,6 +117,18 @@ describe('the reviews page', () => {
     expect(rows(container)).toHaveLength(0);
   });
 
+  test('says a high-risk approval cannot be undone after its time, never after a name cut short (rows 07c, 07f)', async () => {
+    const { container } = open({ reviews: [APPROVAL] });
+    await waitFor(() => expect(rows(container).length).toBe(1));
+    const risk = container.querySelector('[data-testid="review-row-risk"]');
+
+    expect(risk?.textContent).toBe(`, ${REVIEWS_COPY.cantBeUndone}`);
+    // It follows the time, not the line that names the agent.
+    expect(risk?.closest('.ib-review-row__when')).not.toBeNull();
+    expect(risk?.closest('.ib-review-row__kind')).toBeNull();
+    expect(risk?.parentElement?.textContent).toMatch(/ago, can’t be undone$/);
+  });
+
   test('lists the Bureau’s reviews and the engine’s in one list, the longest waiting first', async () => {
     const { container, getByRole } = open({
       reviews: [QUESTION, APPROVAL],
@@ -859,10 +871,13 @@ describe('an engine review', () => {
     await waitFor(() => expect(rows(container).length).toBe(1));
     await openRow(container, 0);
 
-    // The heading is the draft's own title, not its review type (row 25o).
+    // The heading is the draft's own title, not its review type (row 25o), and the list row says
+    // the same.
     await waitFor(() =>
       expect(getByRole('heading', { level: 2, name: 'Release notes for 2.4' })).not.toBeNull(),
     );
+    expect(rows(container)[0]?.textContent).toContain('Release notes for 2.4');
+    expect(rows(container)[0]?.textContent?.includes(pending.reviewType)).toBe(false);
     // The draft is said once, as flat rows in one Draft block with one copy button (row 25p).
     const fields = await findByTestId('review-draft-fields');
     expect(fields.textContent).toContain('Refunds now ask for approval before money moves.');

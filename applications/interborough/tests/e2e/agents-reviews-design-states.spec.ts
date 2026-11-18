@@ -449,6 +449,25 @@ for (const width of WIDTHS) {
 
       await page.goto(`/reviews?review=${encodeURIComponent(`engine:${workflowReview.id}`)}`);
       await expect(page.getByTestId('review-intro')).toHaveText(workflowReview.message);
+      // The list row says the draft's title, as the pane's heading does (row 25o).
+      await expect(page.getByRole('heading', { level: 2, name: 'Release 4.2' })).toBeVisible();
+      // On a phone, Send back and Approve are in view above the tab bar before anything is
+      // scrolled (row 25q).
+      const approve = page.locator('.cinder-docked-action-bar').getByRole('button', {
+        name: 'Approve',
+      });
+      await expect(approve).toBeInViewport();
+      // Both edges read in one pass: the Approve button ends above where the tab bar starts.
+      const overlap = await page.evaluate(() => {
+        const tabs = document.querySelector('.weft-shell-tab-bar');
+        const buttons = [...document.querySelectorAll('.cinder-docked-action-bar button')];
+        const button = buttons.find((candidate) => candidate.textContent?.trim() === 'Approve');
+        if (tabs === null || button === undefined || tabs.getBoundingClientRect().height === 0) {
+          return 0;
+        }
+        return button.getBoundingClientRect().bottom - tabs.getBoundingClientRect().top;
+      });
+      expect(overlap).toBeLessThanOrEqual(0);
       await captureForDesignReview(page, {
         route: '/reviews',
         state: 'a workflow review',

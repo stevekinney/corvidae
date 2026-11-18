@@ -20,6 +20,10 @@
   const dockedStack = parameters.get('docked-stack') === '1';
   const dockedSurface = parameters.get('docked-surface') === '1';
   const bottomTabBar = dockedStack || parameters.get('bottom-tab-bar') === '1';
+  // COR-2426: a phone shell's page as Interborough lays it out: a column the height of the
+  // viewport, a scrolling page above the tab bar, and a docked action bar at the end of a page taller
+  // than the screen, so its actions stay in view above the tabs before anything is scrolled.
+  const dockedPage = parameters.get('docked-page') === '1';
 </script>
 
 {#snippet tabBar()}
@@ -68,6 +72,30 @@
       {undoCount} <strong>Pause fired:</strong>
       {pauseCount}
     </p>
+    {#if dockedPage}
+      <div
+        data-testid="docked-page"
+        style="position: fixed; inset: 0; display: flex; flex-direction: column; background: var(--cinder-surface);"
+      >
+        <div
+          data-testid="docked-page-scroll"
+          style="flex: 1; min-block-size: 0; overflow-y: auto; display: flex; flex-direction: column; padding: 0.75rem;"
+        >
+          <h2 style="margin: 0 0 0.5rem;">Release notes for 2.4</h2>
+          {#each Array.from({ length: 24 }, (_, index) => index) as line (line)}
+            <p style="margin: 0 0 0.5rem;">Line {line + 1} of the draft the workflow asks about.</p>
+          {/each}
+          <DockedActionBar label="Decision">
+            <p style="margin: 0;">The workflow continues as soon as you answer.</p>
+            {#snippet actions()}
+              <Button variant="secondary" label="Send back" />
+              <Button variant="primary" label="Approve" />
+            {/snippet}
+          </DockedActionBar>
+        </div>
+        {@render tabBar()}
+      </div>
+    {/if}
     {#if bottomTabBar || dockedSurface}
       <!-- One column fixed to the bottom, as a phone shell's page sits on its tabs: whatever is
            docked above the tab bar ends where the tab bar starts. -->

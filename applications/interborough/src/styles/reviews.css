@@ -19,6 +19,15 @@
   overflow: hidden;
 }
 
+/* One pane at a time (a phone): the pane follows the page, as Cinder's ListDetail lays it out, so
+   the frame neither fixes its height nor clips. A docked bar in the pane (a workflow review's Send
+   back and Approve) then sticks to the bottom of the page's own scrolling area, which ends where
+   the tab bar starts, instead of to the bottom of a clipped frame below the fold (row 25q). */
+.ib-reviews__frame:has(.cinder-list-detail[data-cinder-layout='stacked']) {
+  block-size: auto;
+  overflow: visible;
+}
+
 /* The keys that move through the list, said once at its head. */
 .ib-reviews__hint {
   margin: 0;
@@ -236,8 +245,9 @@
   white-space: nowrap;
 }
 
+/* "3 min ago, can't be undone": the time and the risk as one phrase that wraps as a whole. */
+.ib-review-row__when,
 .ib-review-row__risk {
-  flex: none;
   white-space: nowrap;
 }
 

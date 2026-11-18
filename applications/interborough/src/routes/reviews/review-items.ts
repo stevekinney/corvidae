@@ -61,7 +61,11 @@ export function neighbourKey(items: readonly InboxItem[], key: string): string |
   return items[index + 1]?.key ?? items[index - 1]?.key ?? null;
 }
 
-/** What a review asks, as one sentence: the approval's question, the question's prompt, the engine's type of review. */
+/**
+ * What a review asks, as one sentence: the approval's question, the question's prompt, and for a
+ * workflow's review its draft's own title when it has one (row 25o), else its type of review. The
+ * list row and the pane's heading both read it, so they say the same.
+ */
 export function reviewTitle(review: ListedReview): string {
   if (review.kind === 'tool-approval') {
     return approvalQuestion({
@@ -71,7 +75,16 @@ export function reviewTitle(review: ListedReview): string {
     });
   }
   if (review.kind === 'human-wait') return review.prompt ?? REVIEWS_COPY.questionFallback;
-  return review.reviewType;
+  return draftTitle(review.artifact) ?? review.reviewType;
+}
+
+/** The `title` a workflow's draft gives itself, trimmed, or `undefined` when it gives none. */
+export function draftTitle(artifact: unknown): string | undefined {
+  if (typeof artifact !== 'object' || artifact === null || Array.isArray(artifact)) {
+    return undefined;
+  }
+  const title: unknown = Reflect.get(artifact, 'title');
+  return typeof title === 'string' && title.trim() !== '' ? title.trim() : undefined;
 }
 
 /**

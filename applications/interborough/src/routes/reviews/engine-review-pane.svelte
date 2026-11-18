@@ -19,7 +19,7 @@
     extractReviewSections,
     humanizeKey,
   } from './review-domain.ts';
-  import { decidedByName, resolutionLabel } from './review-items.ts';
+  import { decidedByName, resolutionLabel, reviewTitle } from './review-items.ts';
   import ReviewSource from './review-source.svelte';
 
   interface EngineReviewPaneProps {
@@ -65,15 +65,8 @@
       ? entries.map(([key, value]) => ({ term: humanizeKey(key), definition: String(value) }))
       : undefined;
   });
-  /** The heading: the draft's own title when it has one (row 25o), else what kind of review it is. */
-  const heading = $derived.by(() => {
-    const artifact = review.artifact;
-    if (typeof artifact === 'object' && artifact !== null && !Array.isArray(artifact)) {
-      const title: unknown = Reflect.get(artifact, 'title');
-      if (typeof title === 'string' && title.trim() !== '') return title.trim();
-    }
-    return review.reviewType;
-  });
+  /** The heading, as the list row says it: the draft's own title when it has one (row 25o). */
+  const heading = $derived(reviewTitle(review));
 </script>
 
 <div class="ib-review-pane" data-kind="engine-review" data-review={review.id}>
