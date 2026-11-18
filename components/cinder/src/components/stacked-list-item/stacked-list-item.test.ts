@@ -22,20 +22,30 @@ function textSnippet(text: string) {
 }
 
 describe('StackedListItem status on a phone (COR-2018)', () => {
-  test('puts a comma after the status only when line two follows it', () => {
+  test('puts a space, not a comma or a dot, after the status, only when line two follows it (COR-2449)', () => {
     const stylesheet = readFileSync(new URL('./stacked-list-item.css', import.meta.url), 'utf8');
+    // No glyph is drawn between the status and the metadata: nothing generates a comma or a dot.
+    expect(stylesheet).not.toMatch(/content:\s*['"][,.]['"]/);
+    expect(stylesheet).not.toContain(String.fromCodePoint(0xb7));
+    expect(stylesheet).not.toMatch(/__status[^{]*::after/);
+    // The space is a margin on the status, and only on one that drew something (`:has(*)`), on a
+    // row that has a line two. The weight and colour step is the status word's (medium, muted)
+    // against the line's text (regular, subtle).
+    const spacing = [
+      ...stylesheet.matchAll(
+        /status-leading:not\(\s*\.cinder-stacked-list-item--no-line-two\s*\)\s*\.cinder-stacked-list-item__status:has\(\*\)\s*\{([^}]*)\}/g,
+      ),
+    ];
+    expect(spacing).toHaveLength(1);
+    expect(spacing[0]?.[1]).toContain('margin-inline-end: var(--cinder-space-1-5)');
+    const statusDot = readFileSync(
+      new URL('../status-dot/status-dot.css', import.meta.url),
+      'utf8',
+    );
+    expect(statusDot).toMatch(/font-weight:\s*var\(--cinder-font-medium\)/);
     expect(stylesheet).toMatch(
-      /status-leading:not\(\s*\.cinder-stacked-list-item--no-line-two\s*\)\s*\.cinder-stacked-list-item__status:has\(\*\)::after/,
+      /__description,\s*\.cinder-stacked-list-item--lines\s+\.cinder-stacked-list-item__meta\s*\{[^}]*color:\s*var\(--cinder-text-subtle\)/,
     );
-    // s3#3: a status snippet that draws nothing (a workflow row with no status word) leaves no
-    // comma at the start of line two. Every selector that draws the comma requires an element.
-    const commaSelectors = [...stylesheet.matchAll(/([^{}]+)\{\s*content:\s*','/g)].flatMap(
-      (rule) => (rule[1] ?? '').replace(/\/\*[\s\S]*?\*\//g, '').split(','),
-    );
-    expect(commaSelectors.length).toBeGreaterThan(0);
-    for (const selector of commaSelectors) {
-      expect(selector.trim()).toMatch(/__status:has\(\*\)::after$/);
-    }
     const status = textSnippet('Done');
     const title = textSnippet('Thu Oct 29');
     const bare = render(StackedListItem, { props: { status, title } });

@@ -130,8 +130,9 @@ describe('scoped theme tokens', () => {
     expect(drawerCss).toContain('background: var(--cinder-surface-raised);');
     expect(drawerCss).toContain('border-inline-start: 1px solid var(--cinder-border);');
     expect(drawerCss).toContain('border-inline-end: 1px solid var(--cinder-border);');
-    expect(drawerCss).toContain('border-block-end: 1px solid var(--cinder-border-muted);');
-    expect(drawerCss).toContain('border-block-start: 1px solid var(--cinder-border-muted);');
+    // The header and footer rules take the muted border only while the body scrolls (COR-2448 AC4).
+    expect(drawerCss).toContain('border-block-end-color: var(--cinder-border-muted);');
+    expect(drawerCss).toContain('border-block-start-color: var(--cinder-border-muted);');
     expect(drawerCss).toContain('color: var(--cinder-text-default);');
     expect(drawerCss).toContain('color: var(--cinder-text-muted);');
     expect(buttonCss).toContain('background: var(--cinder-accent-solid);');

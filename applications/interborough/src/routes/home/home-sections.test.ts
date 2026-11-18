@@ -115,3 +115,11 @@ describe('Home’s sections', () => {
     );
   });
 });
+
+describe('Home holds no middle dot (COR-2388)', () => {
+  test('no rendered text on Home contains U+00B7', async () => {
+    const { container } = await open();
+    expect(container.textContent?.length).toBeGreaterThan(0);
+    expect(container.textContent).not.toContain(String.fromCodePoint(0xb7));
+  });
+});

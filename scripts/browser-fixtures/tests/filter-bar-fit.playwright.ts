@@ -75,8 +75,12 @@ test.describe('FilterBar folds by its measured width', () => {
     await expect(bar).toHaveAttribute('data-cinder-layout', 'wide');
     expect(await rowOverflow(bar)).toBeLessThanOrEqual(0);
 
+    // Search folds away before the segments do: the search field is the first control to go, so a
+    // bar just under its wide need keeps the segments and shows the search as an icon button.
     await setBarWidth(bar, need - 4);
-    await expect(bar).toHaveAttribute('data-cinder-layout', 'medium');
+    await expect(bar).toHaveAttribute('data-cinder-layout', 'search-folded');
+    await expect(bar.getByRole('radiogroup')).toBeVisible();
+    await expect(bar.getByRole('searchbox')).toHaveCount(0);
     expect(await rowOverflow(bar)).toBeLessThanOrEqual(0);
 
     await setBarWidth(bar, 320);
@@ -85,6 +89,28 @@ test.describe('FilterBar folds by its measured width', () => {
 
     await setBarWidth(bar, need + 2);
     await expect(bar).toHaveAttribute('data-cinder-layout', 'wide');
+    expect(await rowOverflow(bar)).toBeLessThanOrEqual(0);
+  });
+
+  // The fixture's second bar sits in an 880px column: under the wide form's need (about 945px for
+  // this content), over the least the segments need beside an icon button (about 800px). Search
+  // folds into the icon button first, and the segments are still segments (COR-2449, AC4).
+  test('the 880px column folds the search into an icon button and keeps the segments as segments', async ({
+    page,
+  }) => {
+    const wideBar = page.getByRole('search', { name: 'Workflow filters' });
+    await setBarWidth(wideBar, 2000);
+    await expect(wideBar).toHaveAttribute('data-cinder-layout', 'wide');
+    expect(Math.ceil(await wideNeed(wideBar))).toBeGreaterThan(880);
+
+    const bar = page.getByRole('search', { name: 'Run filters in a narrower column' });
+    await expect(bar).toHaveAttribute('data-cinder-layout', 'search-folded');
+    await expect(bar.getByRole('searchbox')).toHaveCount(0);
+    await expect(bar.locator('.cinder-filter-bar__search-button')).toBeVisible();
+    // The segments are still the radio group, not the folded Status select.
+    await expect(bar.getByRole('radiogroup')).toBeVisible();
+    await expect(bar.getByRole('radio')).toHaveCount(6);
+    await expect(bar.locator('.cinder-filter-bar__segments-select')).toHaveCount(0);
     expect(await rowOverflow(bar)).toBeLessThanOrEqual(0);
   });
 
@@ -97,10 +123,10 @@ test.describe('FilterBar folds by its measured width', () => {
     const need = Math.ceil(await wideNeed(bar));
 
     await setBarWidth(bar, need - 4);
-    await expect(bar).toHaveAttribute('data-cinder-layout', 'medium');
+    await expect(bar).toHaveAttribute('data-cinder-layout', 'search-folded');
 
     // The applied chip is wider than the add chip it becomes, so the wide form fits again. The
-    // chips are kept between the wide and medium forms, so unfolding leaves focus where it lands.
+    // chips are kept between the wide and search-folded forms, so unfolding leaves focus where it lands.
     await bar.getByRole('button', { name: 'Remove filter: Agent: Tool runner' }).click();
     await expect(bar).toHaveAttribute('data-cinder-layout', 'wide');
     await expect(bar.getByRole('button', { name: 'Agent', exact: true })).toBeFocused();

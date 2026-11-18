@@ -29,6 +29,8 @@
   import { SCHEDULE_COPY } from '../../app/copy/schedules.ts';
 
   interface Props {
+    /** The viewport is a phone: the real rows carry a third line, so the placeholder draws one. */
+    phone: boolean;
     /** The segments, without counts: each is drawn with a placeholder where its count will be. */
     segments: readonly FilterSegment[];
     /** The chosen segment, as the address says. */
@@ -46,6 +48,7 @@
   }
 
   let {
+    phone,
     segments,
     segmentValue,
     facets,
@@ -94,6 +97,7 @@
   variant="list"
   rows={4}
   statusMarker="dot"
+  detailLine={phone}
   delay={LIST_LOADING_DELAY_MILLISECONDS}
   stillLoadingAfter={LIST_STILL_LOADING_MILLISECONDS}
   stillLoadingLabel={SCHEDULE_COPY.stillLoading}
