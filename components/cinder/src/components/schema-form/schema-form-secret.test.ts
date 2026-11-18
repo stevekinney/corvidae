@@ -216,6 +216,8 @@ describe('a secret field', () => {
     // A long key gives way in its middle, with the whole key in a tooltip, never a wrap.
     expect(key.getAttribute('data-cinder-truncate')).toBe('middle');
     expect(warning.querySelector('[role="tooltip"]')?.textContent).toBe('slack-signing-key');
+    // The sentence's one action reads as a link does: Button's link variant, not grey ghost text.
+    expect(warning.querySelector('button')?.getAttribute('data-cinder-variant')).toBe('link');
     await fireEvent.click(requiredValue(warning.querySelector('button')));
     expect(onAdd).toHaveBeenCalledWith('slack-signing-key');
   });

@@ -493,7 +493,12 @@ describe('a default hook’s page (rows R10-04 to R10-09 and R10-17)', () => {
     const sentence = await view.findByTestId('hook-standing-sentence');
     expect(sentence.textContent).toBe('Calendar needs setup before this hook can run.');
     const header = view.getByTestId('hook-header');
-    expect(within(header).getByRole('button', { name: 'Add the key' })).toBeTruthy();
+    // It reads as the "Open <Plugin> in Settings" link of the next state does: Button's link variant.
+    expect(
+      within(header)
+        .getByRole('button', { name: 'Add the key' })
+        .getAttribute('data-cinder-variant'),
+    ).toBe('link');
     await waitFor(() => {
       expect(view.getByTestId('hook-test-reason').textContent).toBe(
         copy.check.testPluginNeedsSetup('Calendar'),

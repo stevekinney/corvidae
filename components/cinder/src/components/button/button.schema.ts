@@ -14,6 +14,7 @@ const schema = {
         'ghost',
         'ghost-danger',
         'ghost-accent',
+        'link',
       ],
       description: 'Visual style.',
       default: 'soft',

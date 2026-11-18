@@ -134,7 +134,8 @@
           />{parts.after}
         {/if}
         {#if secrets?.onAdd !== undefined}
-          <Button variant="ghost" size="sm" {disabled} onclick={() => secrets?.onAdd?.(chosen.key)}
+          <!-- The sentence's one action: an underlined accent word, like the link in the empty state. -->
+          <Button variant="link" {disabled} onclick={() => secrets?.onAdd?.(chosen.key)}
             >{copy.addKey}</Button
           >
         {/if}

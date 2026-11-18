@@ -192,9 +192,9 @@
         >
       {/if}
       {#if standing.action?.kind === 'secret'}
+        <!-- The sentence's one action reads as the link beside it does, though it opens a dialog. -->
         <Button
-          variant="ghost"
-          size="sm"
+          variant="link"
           onclick={() => {
             if (standing.action?.kind === 'secret') {
               onAddKey?.(standing.action.plugin, standing.action.key);
