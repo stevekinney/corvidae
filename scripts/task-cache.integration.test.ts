@@ -364,6 +364,8 @@ test('the package browser task keys on the fixture page every package serves, an
     '$TURBO_DEFAULT$',
     '$TURBO_ROOT$/components/*/src/**',
     '$TURBO_ROOT$/components/*/browser/host.ts',
+    // Core's host imports it, so it decides every package's page.
+    '$TURBO_ROOT$/components/*/browser/stylesheet-order.ts',
     '$TURBO_ROOT$/components/*/browser/fixture-declarations.ts',
     '$TURBO_ROOT$/components/*/browser/fixtures/**',
     '$TURBO_ROOT$/testing/testing/src/**',

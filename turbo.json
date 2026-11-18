@@ -150,6 +150,7 @@
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/components/*/src/**",
         "$TURBO_ROOT$/components/*/browser/host.ts",
+        "$TURBO_ROOT$/components/*/browser/stylesheet-order.ts",
         "$TURBO_ROOT$/components/*/browser/fixture-declarations.ts",
         "$TURBO_ROOT$/components/*/browser/fixtures/**",
         "$TURBO_ROOT$/testing/testing/src/**",

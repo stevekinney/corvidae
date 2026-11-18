@@ -407,19 +407,24 @@ async function rootPageStylesheet(
   const directory = mkdtempSync(join(tmpdir(), 'corvidae-stylesheet-order-'));
   try {
     await suite.bundleInto(directory, true);
-    const html = readFileSync(join(directory, 'index.html'), 'utf8');
-    const stylesheet = /href="\/([^"]+\.css)"/.exec(html)?.[1];
-    if (stylesheet === undefined) throw new Error('The root page has no stylesheet.');
-    const css = readFileSync(join(directory, stylesheet), 'utf8');
-    const marker = /^\/\* (.+?\.css) \*\/$/gm;
-    return {
-      // The bundler names each stylesheet by its path from the working directory.
-      paths: [...css.matchAll(marker)].map((match) => resolve(process.cwd(), match[1]!)),
-      text: css.replace(marker, ''),
-    };
+    return pageStylesheet(directory, process.cwd());
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }
+}
+
+/** The stylesheet of the page built into `directory` by a bundler that ran in `workingDirectory`. */
+function pageStylesheet(directory: string, workingDirectory: string): PageStylesheet {
+  const html = readFileSync(join(directory, 'index.html'), 'utf8');
+  const stylesheet = /href="\/([^"]+\.css)"/.exec(html)?.[1];
+  if (stylesheet === undefined) throw new Error(`The page in ${directory} has no stylesheet.`);
+  const css = readFileSync(join(directory, stylesheet), 'utf8');
+  const marker = /^\/\* (.+?\.css) \*\/$/gm;
+  return {
+    // The bundler names each stylesheet by its path from the working directory.
+    paths: [...css.matchAll(marker)].map((match) => resolve(workingDirectory, match[1]!)),
+    text: css.replace(marker, ''),
+  };
 }
 
 /** The root page's stylesheets, in its order, as a module of side-effect imports for core's host. */
@@ -748,6 +753,26 @@ async function moveLinked(options: Options): Promise<number> {
     });
     if (install.exitCode !== 0) return install.exitCode ?? 1;
     git(root, ['add', 'bun.lock']);
+
+    // Core's own suite, as every package's, must now build the root page's stylesheets in order.
+    const coreRoot = dirname(browserRoot);
+    const built = Bun.spawnSync(['bun', 'browser/harness.ts', 'build'], {
+      cwd: coreRoot,
+      stdout: 'ignore',
+      stderr: 'inherit',
+    });
+    if (built.exitCode !== 0) return built.exitCode ?? 1;
+    const movedDifference = stylesheetDifference(
+      page,
+      pageStylesheet(join(browserRoot, '.playwright', 'build'), coreRoot),
+    );
+    if (movedDifference !== undefined) {
+      process.stderr.write(`The moved page differs from the root page: ${movedDifference}.\n`);
+      return 1;
+    }
+    process.stdout.write(
+      `The moved page loads the root page's ${page.paths.length} stylesheets in its order.\n`,
+    );
   }
   return 0;
 }
