@@ -125,8 +125,7 @@ describe('rewriteBarrelImports', () => {
       "import { Button, type ButtonProps, useToast as toast } from '@lostgradient/cinder';";
     expect(rewriteBarrelImports(source, sources)).toBe(
       [
-        "import Button from '@lostgradient/button/components/button/index.ts';",
-        "  import { type ButtonProps } from '@lostgradient/button/components/button/index.ts';",
+        "import { default as Button, type ButtonProps } from '@lostgradient/button/components/button/index.ts';",
         "  import { useToast as toast } from '@lostgradient/foundation/utilities/use-toast.ts';",
       ].join('\n'),
     );

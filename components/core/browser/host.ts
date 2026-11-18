@@ -9,6 +9,7 @@
  * that package's modules rather than core's barrel, which reaches them in another order; the file
  * records the root page's order, taken before the move, so every package's page keeps it.
  */
+// oxlint-disable-next-line import/no-unassigned-import -- the module is its stylesheet imports.
 import './stylesheet-order.ts';
 
 import type { Component } from 'svelte';

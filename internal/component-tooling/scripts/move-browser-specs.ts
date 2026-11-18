@@ -232,7 +232,7 @@ export function rewriteBarrelImports(
   sources: ReadonlyMap<string, ExportSource>,
 ): string {
   return source.replace(CINDER_IMPORT, (whole, typeOnly: string | undefined, list: string) => {
-    const bySpecifier = new Map<string, { defaults: string[]; named: string[] }>();
+    const bySpecifier = new Map<string, string[]>();
     for (const part of list.split(',')) {
       const trimmed = part.trim();
       if (trimmed.length === 0) continue;
@@ -246,20 +246,19 @@ export function rewriteBarrelImports(
         throw new Error(`Core's barrel does not take '${name}' from a package: ${whole}`);
       }
       const local = alias ?? name!;
-      const entry = bySpecifier.get(origin.specifier) ?? { defaults: [], named: [] };
-      if (origin.imported === 'default') entry.defaults.push(local);
-      else {
-        const imported = origin.imported === local ? local : `${origin.imported} as ${local}`;
-        entry.named.push(isType ? `type ${imported}` : imported);
-      }
-      bySpecifier.set(origin.specifier, entry);
+      // A default comes in by name too: a component's module also exports it under its own name,
+      // which a default import of that name would shadow (`import/no-named-as-default`).
+      const imported = origin.imported === local ? local : `${origin.imported} as ${local}`;
+      const names = bySpecifier.get(origin.specifier) ?? [];
+      names.push(isType ? `type ${imported}` : imported);
+      bySpecifier.set(origin.specifier, names);
     }
     const statements: string[] = [];
-    for (const [specifier, { defaults, named }] of [...bySpecifier].toSorted(([left], [right]) =>
+    // One statement for each module (`import/no-duplicates`).
+    for (const [specifier, names] of [...bySpecifier].toSorted(([left], [right]) =>
       left.localeCompare(right),
     )) {
-      for (const local of defaults) statements.push(`import ${local} from '${specifier}';`);
-      if (named.length > 0) statements.push(`import { ${named.join(', ')} } from '${specifier}';`);
+      statements.push(`import { ${names.join(', ')} } from '${specifier}';`);
     }
     return statements.join('\n  ');
   });
