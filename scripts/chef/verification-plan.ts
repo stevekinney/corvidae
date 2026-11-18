@@ -50,6 +50,7 @@ export interface Assignment {
   designRows: DesignRowMapping[];
   deliveryBoundary: string;
   allowedConsequentialActions: string[];
+  classification: 'behavior' | 'no-behavior';
 }
 
 export interface VerificationObligation {
@@ -102,7 +103,12 @@ export function criterionRecords(description: string): { id: string; text: strin
     .split('\n')
     .map((line) => /^\s*[-*]\s+(?:\[[ xX]\]\s+)?(.+)$/.exec(line)?.[1]?.trim())
     .filter((text): text is string => text !== undefined && text !== '');
-  return criteria.map((text, index) => ({ id: `AC${index + 1}`, text }));
+  return criteria.map((text) => {
+    const explicit = /^(AC[\w.-]+)\s*:\s*(.*)$/i.exec(text);
+    return explicit === null
+      ? { id: `AC-${digest(text).slice(0, 12)}`, text }
+      : { id: explicit[1] ?? '', text: explicit[2] ?? '' };
+  });
 }
 
 export function classifyRisks(
@@ -142,7 +148,8 @@ export function gateAssignment(
     assignment.identity.repository !== 'unresolved' &&
     assignment.identity.base !== '' &&
     assignment.identity.base !== 'unresolved' &&
-    assignment.criteria.every((criterion) => criterion.id !== '' && criterion.text !== '');
+    assignment.criteria.every((criterion) => criterion.id !== '' && criterion.text !== '') &&
+    (assignment.criteria.length > 0 || assignment.classification === 'no-behavior');
   const blocked =
     blockers.length > 0 ||
     unreadableDependencies.length > 0 ||
@@ -171,10 +178,14 @@ export function createVerificationPlan(input: {
     .filter(([, active]) => active)
     .map(([risk]) => risk);
   const criterionIds = input.assignment.criteria.map((criterion) => criterion.id);
+  const obligationCriteria =
+    criterionIds.length === 0 && input.assignment.classification === 'no-behavior'
+      ? ['STATIC']
+      : criterionIds;
   const checks =
     input.commands.length === 0 ? ['bun scripts/chef/focused-checks.ts'] : input.commands;
   const obligations: VerificationObligation[] = checks.flatMap((command) =>
-    criterionIds.map((criterionId) => ({
+    obligationCriteria.map((criterionId) => ({
       criterionId,
       risk: 'static-documentation' as const,
       commandOrProviderJob: command,
@@ -192,7 +203,7 @@ export function createVerificationPlan(input: {
   );
   for (const risk of activeRisks)
     obligations.push({
-      criterionId: criterionIds[0] ?? 'AC1',
+      criterionId: obligationCriteria[0] ?? 'STATIC',
       risk,
       commandOrProviderJob: 'bun scripts/chef/focused-checks.ts',
       expectedInventory: input.assignment.ownedPaths,

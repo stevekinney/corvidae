@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import {
   assignmentVersion,
   createVerificationPlan,
+  criterionRecords,
   digest,
   gateAssignment,
   type Assignment,
@@ -31,6 +32,7 @@ const assignment = (overrides: Partial<Assignment> = {}): Assignment => ({
   designRows: [],
   deliveryBoundary: 'push branch',
   allowedConsequentialActions: ['commit', 'push'],
+  classification: 'behavior',
   ...overrides,
 });
 
@@ -71,5 +73,20 @@ describe('assignment gate and verification plan', () => {
     );
     expect(changed.invalidatedBy.assignment).not.toBe(first.invalidatedBy.assignment);
     expect(changed.invalidatedBy.policy).not.toBe(first.invalidatedBy.policy);
+  });
+
+  test('keeps unnumbered criterion identities stable and rejects an empty behavior plan', () => {
+    const first = criterionRecords('## Acceptance criteria\n- Keep identity.\n- Insertable.');
+    const inserted = criterionRecords(
+      '## Acceptance criteria\n- New first.\n- Keep identity.\n- Insertable.',
+    );
+    expect(inserted.map((criterion) => criterion.id)).toEqual(
+      expect.arrayContaining(first.map((criterion) => criterion.id)),
+    );
+    expect(gateAssignment(assignment({ criteria: [] }), 'none').status).toBe('invalid');
+    const noBehavior = assignment({ criteria: [], classification: 'no-behavior' });
+    expect(
+      createVerificationPlan({ assignment: noBehavior, commands: [], policy: 'p' }).obligations,
+    ).toEqual(expect.arrayContaining([expect.objectContaining({ criterionId: 'STATIC' })]));
   });
 });
