@@ -56,13 +56,16 @@ async function enableAgain(request: APIRequestContext, id: string): Promise<void
   await bureau(request, 'bureau.agents.enable', { id });
 }
 
-/** Answers every Bureau call named `method` with `answer(route)`, and sends the rest on. */
+/**
+ * Answers every Bureau call named `method` with `answer(route)`, and sends the rest on. The browser's
+ * generated client posts to the host's composed `/jsonrpc`, so that is the route stood in for.
+ */
 async function standIn(
   page: Page,
   method: string,
   answer: (route: Route, call: { id?: unknown; params?: Record<string, unknown> }) => Promise<void>,
 ): Promise<void> {
-  await page.route('**/bureau/jsonrpc', async (route) => {
+  await page.route('**/jsonrpc', async (route) => {
     const call = route.request().postDataJSON() as {
       method?: string;
       id?: unknown;
