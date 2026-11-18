@@ -776,4 +776,27 @@ test.describe('on a touch phone the top bar controls reach 44px through hit area
       expect(control.below, `${control.name} tap below the face`).toBe(true);
     }
   });
+
+  // On a touch tablet the search control is the wide field, which clips its label sideways. It
+  // must not clip its own hit area: a tap just above or below the field still reaches it.
+  test('on a touch tablet a tap just above or below the search field still reaches it', async ({
+    page,
+  }) => {
+    await open(page, '/', 768, 1024);
+    const field = page.getByRole('banner').getByRole('button', { name: /^Search everything/ });
+    await expect(field).toBeVisible();
+    const reached = await field.evaluate((button) => {
+      const box = button.getBoundingClientRect();
+      const x = box.left + box.width / 2;
+      const y = box.top + box.height / 2;
+      const reach = (box.height < 44 ? (44 - box.height) / 2 - 1 : 0) + box.height / 2;
+      const at = (offset: number) => {
+        const target = document.elementFromPoint(x, y + offset);
+        return target !== null && (target === button || button.contains(target));
+      };
+      return { height: box.height, above: at(-reach), below: at(reach) };
+    });
+    expect(reached.above, 'tap above the field').toBe(true);
+    expect(reached.below, 'tap below the field').toBe(true);
+  });
 });

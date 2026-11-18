@@ -285,10 +285,14 @@
   min-width: 0;
   inline-size: 300px;
   flex: 0 1 auto;
-  /* One line always (design row 06l): the label ellipsizes, and the shortcut keeps its room. */
+  /* One line always (design row 06l): the label ellipsizes, and the shortcut keeps its room. The
+   * field clips sideways only: `hidden` clipped both axes and cut Button's hit area, which reaches
+   * above and below the face on a touch screen, down to the face. `clip`, unlike `hidden`, leaves
+   * the other axis visible. */
   flex-wrap: nowrap;
   white-space: nowrap;
-  overflow: hidden;
+  overflow-x: clip;
+  overflow-y: visible;
   justify-content: flex-start;
   color: var(--cinder-text-muted);
   /* The wide trigger is a field, so it keeps a resting fill and rule (the icon buttons beside it
