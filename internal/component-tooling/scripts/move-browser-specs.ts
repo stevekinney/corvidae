@@ -160,6 +160,60 @@ export function rewriteRelativeImports(
 }
 
 /**
+ * Where a repository path a moved file named from its old place is now: the file a move took
+ * there, the moved file's own suite's equivalent of a root-suite directory (`snapshots/`,
+ * `tests/`, `src/fixtures/` as `fixtures/`), or the path itself.
+ */
+function movedTarget(target: string, after: string, moves: ReadonlyMap<string, string>): string {
+  const moved = moves.get(target);
+  if (moved !== undefined) return moved;
+  const suite = /^(components\/[^/]+\/browser)\//.exec(after)?.[1];
+  if (suite !== undefined && (target === ROOT_SUITE || target.startsWith(`${ROOT_SUITE}/`))) {
+    const rest = target.slice(ROOT_SUITE.length + 1).replace(/^src\/fixtures(?=\/|$)/, 'fixtures');
+    return rest.length === 0 ? suite : `${suite}/${rest}`;
+  }
+  return target;
+}
+
+const LOCATION_URL = /new URL\(\s*(['"`])(\.{1,2}\/[^'"`\n]*)\1(\s*,\s*import\.meta\.url\s*\))/g;
+const LOCATION_CALL =
+  /\b(resolve|join)\(\s*import\.meta\.dir(?:name)?((?:\s*,\s*'[^'\n]*')+)(?=\s*[,)])/g;
+
+/**
+ * Re-points the paths a moved file builds from its own location (`new URL('../x', import.meta.url)`,
+ * `resolve(import.meta.dirname, '../x')`, `join(import.meta.dirname, '..', 'x')`), from its old
+ * place `before` to `after`, through the moves.
+ */
+export function rewriteLocationPaths(
+  source: string,
+  before: string,
+  after: string,
+  moves: ReadonlyMap<string, string>,
+): string {
+  const repoint = (relativePath: string): string | undefined => {
+    const target = posix.normalize(posix.join(posix.dirname(before), relativePath));
+    if (target.startsWith('..')) return undefined;
+    const next = posix.relative(posix.dirname(after), movedTarget(target, after, moves));
+    return next.length === 0 ? '.' : next;
+  };
+  let next = source.replace(LOCATION_URL, (whole, quote: string, path: string, tail: string) => {
+    const repointed = repoint(path);
+    if (repointed === undefined) return whole;
+    const prefixed = repointed.startsWith('.') ? repointed : `./${repointed}`;
+    const trailing = path.endsWith('/') && !prefixed.endsWith('/') ? '/' : '';
+    return `new URL(${quote}${prefixed}${trailing}${quote}${tail}`;
+  });
+  next = next.replace(LOCATION_CALL, (whole, call: string, list: string) => {
+    const segments = [...list.matchAll(/'([^'\n]*)'/g)].map((match) => match[1]!);
+    const repointed = repoint(segments.join('/'));
+    if (repointed === undefined) return whole;
+    const parts = repointed.split('/').map((part) => `'${part}'`);
+    return `${call}(import.meta.dirname, ${parts.join(', ')}`;
+  });
+  return next;
+}
+
+/**
  * Splits imports of core's barrel into imports from the modules core re-exports each name from,
  * for a file in a Cinder package core depends on.
  */
@@ -308,6 +362,7 @@ export async function moveBrowserSpecs(options: Options): Promise<number> {
     if (!existsSync(path)) continue;
     const source = readFileSync(path, 'utf8');
     let next = rewriteRelativeImports(source, before, file, moves);
+    if (reverse.has(file)) next = rewriteLocationPaths(next, before, file, moves);
     const directory = file.split('/')[1];
     const owner = [...repository.workspaces.values()].find(
       (workspace) => workspace.directory === directory,
@@ -404,7 +459,18 @@ export async function moveBrowserSpecs(options: Options): Promise<number> {
       writeFileSync(path, text);
     };
     write('browser/harness.ts', HARNESS_SOURCE);
-    write('browser/playwright.config.ts', playwrightConfigSource(engines.get(directory) ?? []));
+    const configPath = join(base, 'browser', 'playwright.config.ts');
+    const projects = engines.get(directory) ?? [];
+    // A package that already had a suite with no other engine (core's, from the cut) takes the
+    // engines of the specs it receives.
+    if (
+      projects.length > 0 &&
+      existsSync(configPath) &&
+      readFileSync(configPath, 'utf8') === playwrightConfigSource()
+    ) {
+      writeFileSync(configPath, playwrightConfigSource(projects));
+    }
+    write('browser/playwright.config.ts', playwrightConfigSource(projects));
     const sweeps = [...(owned.get(name) ?? [])].some((slug) => !UNSWEPT.has(slug));
     if (sweeps) write('browser/tests/components.playwright.ts', SWEEP_SOURCE);
     const manifestPath = join(base, 'package.json');

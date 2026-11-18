@@ -3,6 +3,7 @@ import { describe, expect, test } from 'bun:test';
 import {
   declarationsSource,
   rewriteBarrelImports,
+  rewriteLocationPaths,
   rewriteRelativeImports,
 } from './move-browser-specs.ts';
 import type { ExportSource } from './place-browser-specs.ts';
@@ -44,6 +45,42 @@ describe('rewriteRelativeImports', () => {
   test('leaves an unmoved file whose imports moved nothing alone', () => {
     const source = "import { a } from './a.ts';\n";
     expect(rewriteRelativeImports(source, 'scripts/x.ts', 'scripts/x.ts', moves)).toBe(source);
+  });
+});
+
+describe('rewriteLocationPaths', () => {
+  const before = 'scripts/browser-fixtures/tests/a.playwright.ts';
+  const after = 'components/core/browser/tests/a.playwright.ts';
+  const moves = new Map([[before, after]]);
+
+  test("re-points a path built from the file's location, to a file outside the suite", () => {
+    expect(
+      rewriteLocationPaths(
+        "join(import.meta.dirname, '..', '..', '..', 'components', 'tokens', 'registry.json')",
+        before,
+        after,
+        moves,
+      ),
+    ).toBe("join(import.meta.dirname, '..', '..', '..', 'tokens', 'registry.json')");
+    expect(
+      rewriteLocationPaths(
+        "new URL('../../../components/table/table.css', import.meta.url)",
+        before,
+        after,
+        moves,
+      ),
+    ).toBe("new URL('../../../table/table.css', import.meta.url)");
+  });
+
+  test("keeps a path into the suite's own directories pointing at the new suite's", () => {
+    expect(
+      rewriteLocationPaths(
+        "resolve(import.meta.dirname, '..', 'snapshots', name)",
+        before,
+        after,
+        moves,
+      ),
+    ).toBe("resolve(import.meta.dirname, '..', 'snapshots', name)");
   });
 });
 
