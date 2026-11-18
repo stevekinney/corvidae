@@ -69,7 +69,7 @@ export function classifyFailureRecords(
 export function normalizeJobLog(job: string, log: string): string {
   return log
     .split('\n')
-    .map((line) => `${job}\t${line.replace(/^\d{4}-\d\d-\d\dT[^ ]+\s+/, '')}`)
+    .map((line) => `${job}\tUNKNOWN STEP\t${line}`)
     .join('\n');
 }
 
@@ -230,7 +230,8 @@ export function shadowRun(root: string, frozen: FrozenRun) {
       omittedFailures: [],
       reason: 'provider evidence is canceled or incomplete',
     };
-  const tree = treeAt(root, revision);
+  const pinnedRevision = immutableCommit(root, revision);
+  const tree = treeAt(root, pinnedRevision);
   const selection = selectTests({ changed, tree, workspaces: workspacesAt(tree) });
   const selected = selection.workspaces.flatMap((workspace) => [...workspace.tests.keys()]);
   const fullRunFailures =
@@ -247,7 +248,7 @@ export function shadowRun(root: string, frozen: FrozenRun) {
   }));
   return {
     disposition: unclassifiedFailures.length === 0 ? 'complete' : 'inconclusive',
-    revision,
+    revision: pinnedRevision,
     changed,
     selected,
     fullRunFailures,

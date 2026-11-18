@@ -1,12 +1,11 @@
 import { describe, expect, test } from 'bun:test';
 
-import { readFileSync } from 'node:fs';
-
 import {
   classifyFailureRecords,
   normalizeJobLog,
   omittedFailures,
   replayRevision,
+  shadowRun,
 } from './affected-tests-shadow.ts';
 import { failureRecords } from './chef/ci-compare.ts';
 
@@ -31,13 +30,29 @@ const mutableReferenceError = (() => {
   }
   throw new Error('mutable reference unexpectedly replayed');
 })();
+const mutableBaselineError = (() => {
+  try {
+    shadowRun(process.cwd(), {
+      frozenSample: { headSha: 'HEAD', status: 'completed' },
+      jobs: [{}],
+      gitInputs: { changedPaths: [] },
+    });
+  } catch (error) {
+    return error as Error;
+  }
+  throw new Error('mutable baseline unexpectedly replayed');
+})();
 
 describe('shadow failure accounting', () => {
   test('normalizes the retained provider job log for the shared failure extractor', () => {
-    const log = readFileSync(
-      '/Users/stevekinney/Developer/corvidae/tmp/chef/2026-11-17-sdlc-14ef/p10/full-slow-failure.log',
-      'utf8',
-    );
+    // Representative timestamp-prefixed lines retained from the authenticated P10 job log.
+    const log = [
+      '2026-11-18T03:58:11Z ##[group]Run bun run test:slow',
+      '2026-11-18T03:58:11Z ##[group]@lostgradient/evaluation:test:slow',
+      '2026-11-18T03:58:11Z ##[group]src/host/remote-persistence-conformance.slow.test.ts:',
+      '2026-11-18T03:58:11Z error: expect(received).toBeGreaterThanOrEqual(expected)',
+      '2026-11-18T03:58:11Z Expected: >= 2',
+    ].join('\n');
     const identities = [
       ...failureRecords(normalizeJobLog('Slow and integration tests', log)).values(),
     ]
@@ -87,5 +102,6 @@ describe('shadow failure accounting', () => {
 
   test('rejects mutable revision references before replaying evidence', () => {
     expect(mutableReferenceError.message).toContain('exact 40-hex commit SHA');
+    expect(mutableBaselineError.message).toContain('exact 40-hex commit SHA');
   });
 });
