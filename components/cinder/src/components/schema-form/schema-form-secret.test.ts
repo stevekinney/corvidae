@@ -158,8 +158,8 @@ describe('a secret field', () => {
 
   test('the field’s column never takes a chosen key’s whole width, so a long key is cut, not overflowing (R10-13)', async () => {
     // An implicit `auto` grid track takes the Select's min-content, the whole key, and widened the
-    // trigger and its help past a 320-pixel screen. The layout is measured in the schema-form
-    // browser fixture; this pins the rule that holds the column to its container.
+    // trigger and its help past a 320-pixel screen. The browser measures it on the hook editor at
+    // 320 (hooks.spec.ts, [plugin-hook-secret-long-key]); this pins the rule that holds the column.
     const { readFileSync } = await import('node:fs');
     const css = readFileSync(new URL('./schema-form.css', import.meta.url), 'utf8');
     expect(css).toMatch(
