@@ -3,15 +3,15 @@
  * `.respond` and `.inspect` over JSON-RPC, and `bureau.tasks.events`, the one that is a subscription and so
  * reaches the browser over Server-Sent Events at `/bureau/v1/subscriptions/bureau.tasks.events`.
  *
- * The schemas restate the wire shapes (`packages/bureau/src/http/management/`) the way
- * `bureau-client.ts` restates a context's: the browser does not import the Bureau, and a response
- * that does not parse is a fault in the Bureau, not data to show.
+ * The calls go through the generated client (`./bureau-api.ts`); the event schemas below still read
+ * the stream.
  */
 import type { TaskOriginKind } from '@lostgradient/bureau';
 import { HttpClientError } from '@lostgradient/weft';
 import { z } from 'zod';
 
-import { BUREAU_PATH, callBureau, type Fetcher, wireCodeOf } from './bureau-client.ts';
+import { bureauClient, type BureauOutput } from './bureau-api.ts';
+import { BUREAU_PATH, type Fetcher, wireCodeOf } from './bureau-client.ts';
 import { readServerSentEventStream } from './live-source/sse-reader.ts';
 
 /** A task's state. */
@@ -50,53 +50,27 @@ export const taskCancelReceiptSchema = z.enum([...taskCleanupSchema.options, 're
  */
 export type TaskCancelReceipt = z.infer<typeof taskCancelReceiptSchema>;
 
-const openWaitSchema = z.discriminatedUnion('kind', [
-  z.object({ kind: z.literal('human-wait'), reviewId: z.string(), signalName: z.string() }),
-  z.object({ kind: z.literal('tool-approval'), reviewId: z.string(), callId: z.string() }),
-]);
-
 /**
  * What an input-required task waits on: a human wait with its signal, or a tool approval with its
  * call.
  */
-export type TaskOpenWait = z.infer<typeof openWaitSchema>;
+export type TaskOpenWait = TaskView['openWaits'][number];
 
-/** One task, as `bureau.tasks.list` and `.get` show it. Message text is never part of it. */
-export const taskViewSchema = z.object({
-  id: z.string(),
-  contextId: z.string(),
-  agentName: z.string().nullable(),
-  owner: z.string(),
-  actor: z.string().nullable(),
-  /**
-   * How the Bureau's record of the task reads: `chat` when it recorded the session incarnation the
-   * run ran in (so `contextId` is a session), `schedule-fire` for a schedule's fire, and `catalog`
-   * otherwise: a dispatch's handle, or a run in a Bureau without a session store.
-   */
-  kind: z.enum(['chat', 'schedule-fire', 'catalog']),
+/** One task as the task list and `bureau.tasks.get` show it. Message text is never part of it. */
+export type TaskView = Omit<BureauOutput<'bureau.tasks.get'>, 'origin' | 'wakeAt'> & {
   /**
    * Where the task came from (COR-1867), when the Bureau recorded it. Only its `kind` is read, to
    * tell a run a person or a schedule started from one a parent run, a goal or an agent tool call
    * started.
    */
-  origin: z.looseObject({ kind: z.string() }).nullable().optional(),
-  status: taskStateSchema,
-  finishReason: z.string().nullable(),
-  statusMessage: z.string().nullable(),
-  createdAt: z.string(),
-  updatedAt: z.string(),
-  cleanup: taskCleanupSchema.nullable(),
-  openWaits: z.array(openWaitSchema),
+  readonly origin?:
+    (Readonly<Record<string, unknown>> & { readonly kind: string }) | null | undefined;
   /**
    * The time (ISO 8601) a working task's run said it would wake at (COR-1987), or `null` for one
-   * with no wakeup pending: none was scheduled, it has passed, the run waits on a person, or the
-   * task ended. Absent from a Bureau that does not report it, which reads as `null`.
+   * with no wakeup pending. Absent from a Bureau that does not report it, which reads as `null`.
    */
-  wakeAt: z.string().nullable().optional(),
-});
-
-/** One task as the task list and `bureau.tasks.get` show it. Message text is never part of it. */
-export type TaskView = z.infer<typeof taskViewSchema>;
+  readonly wakeAt?: string | null | undefined;
+};
 
 /** The service principal the Bureau records as the `actor` of a run a schedule's fire started. */
 export const SCHEDULER_ACTOR = 'system:scheduler';
@@ -120,14 +94,8 @@ export function isOwnedElsewhere(task: Pick<TaskView, 'origin'>): boolean {
   return kind === 'goal' || kind === 'parent';
 }
 
-const taskPageSchema = z.object({
-  tasks: z.array(taskViewSchema),
-  /** Opaque; `null` when the listing has no more tasks. */
-  nextPageToken: z.string().nullable(),
-});
-
 /** One page of tasks and the opaque token for the next page, or `null` on the last. */
-export type TaskPage = z.infer<typeof taskPageSchema>;
+export type TaskPage = BureauOutput<'bureau.tasks.list'>;
 
 /** What a task list can be narrowed by. */
 export type TaskFilter = {
@@ -155,7 +123,7 @@ export async function listTasks(
   input: TaskFilter & { readonly limit?: number; readonly pageToken?: string } = {},
   options?: Options,
 ): Promise<TaskPage> {
-  return taskPageSchema.parse(await callBureau('bureau.tasks.list', input, options));
+  return bureauClient['bureau.tasks.list'](input, options);
 }
 
 /** How many tasks one request of {@link listAllTasks} asks for: the most the Bureau answers. */
@@ -288,72 +256,40 @@ export function isRefusedPageToken(error: unknown): boolean {
 
 /** One task. A task the caller may not see is answered as a missing one: a not-found fault. */
 export async function getTask(taskId: string, options?: Options): Promise<TaskView> {
-  return taskViewSchema.parse(await callBureau('bureau.tasks.get', { taskId }, options));
+  return bureauClient['bureau.tasks.get']({ taskId }, options);
 }
 
+type TaskInspection = BureauOutput<'bureau.tasks.inspect'>;
+
+/** One step's reply details: why it ran on its model and what that model saw, each `null` when unrecorded. */
+export type TaskStep = Pick<
+  TaskInspection['steps'][number],
+  'step' | 'messageId' | 'planReason' | 'hasEffectiveContext'
+> & {
+  readonly effectiveContext: EffectiveContext | null;
+};
+
+/** Why a step's generation ran on its model, and the models the plan passed over. */
+export type PlanReason = NonNullable<TaskInspection['steps'][number]['planReason']>;
+
 /** Why a step ran on its model: the codes `bureau.tasks.inspect` names. */
-export const planReasonCodeSchema = z.enum([
-  'cost',
-  'latency',
-  'capability',
-  'policy',
-  'pinned',
-  'fallback',
-]);
-
-/** Why a step ran on its model. */
-export type PlanReasonCode = z.infer<typeof planReasonCodeSchema>;
-
-/** Why a step's generation ran on its model, and the models the plan passed over. */
-export const planReasonSchema = z.object({
-  code: planReasonCodeSchema,
-  detail: z.string(),
-  rejected: z.array(
-    z.object({
-      provider: z.string(),
-      model: z.string(),
-      code: z.enum(['capability', 'policy', 'fallback']),
-    }),
-  ),
-});
-
-/** Why a step's generation ran on its model, and the models the plan passed over. */
-export type PlanReason = z.infer<typeof planReasonSchema>;
+export type PlanReasonCode = PlanReason['code'];
 
 /**
  * What a step's model saw, as the Bureau records it: the sources the prompt was composed from and
  * the ids and roles of its messages. Never the content of a message.
  */
-export const effectiveContextSchema = z.object({
-  epochId: z.string().optional(),
-  sources: z.array(
-    z.object({
-      sourceId: z.string(),
-      disposition: z.enum(['included', 'excluded', 'absent-by-composition']),
-      reason: z.string().optional(),
-    }),
-  ),
-  messages: z.array(z.object({ id: z.string(), role: z.string() })),
-  messageCount: z.number().int(),
-  truncated: z.boolean(),
-});
-
-/** What a step's model saw: its sources, and the ids and roles of its messages. */
-export type EffectiveContext = z.infer<typeof effectiveContextSchema>;
-
-/** One step's reply details, as `bureau.tasks.inspect` names a single `step`. */
-export const taskStepSchema = z.object({
-  step: z.number().int(),
-  messageId: z.string().nullable(),
-  planReason: planReasonSchema.nullable(),
-  hasEffectiveContext: z.boolean(),
-  effectiveContext: effectiveContextSchema.nullable(),
-});
-
-/** One step's reply details: why it ran on its model and what that model saw, each `null` when unrecorded. */
-export type TaskStep = z.infer<typeof taskStepSchema>;
-
-const inspectStepAnswerSchema = z.object({ steps: z.array(taskStepSchema) });
+export type EffectiveContext = Pick<
+  NonNullable<TaskInspection['steps'][number]['effectiveContext']>,
+  'epochId' | 'messageCount' | 'truncated'
+> & {
+  readonly sources: readonly {
+    readonly sourceId: string;
+    readonly disposition: 'included' | 'excluded' | 'absent-by-composition';
+    readonly reason?: string | undefined;
+  }[];
+  readonly messages: readonly { readonly id: string; readonly role: string }[];
+};
 
 /**
  * The reply details of one step of a task (`bureau.tasks.inspect` with `step`): why the step ran on
@@ -366,93 +302,48 @@ export async function inspectTaskStep(
   step: number,
   options?: Options,
 ): Promise<TaskStep | null> {
-  const answer = inspectStepAnswerSchema.parse(
-    await callBureau('bureau.tasks.inspect', { taskId, step }, options),
-  );
+  const answer = await bureauClient['bureau.tasks.inspect']({ taskId, step }, options);
   return answer.steps.find((entry) => entry.step === step) ?? null;
 }
 
 /** One registration of a live run's hook plan: its identity, hook point, who registered it, priority and replay. */
-export const taskHookSchema = z.object({
-  id: z.string(),
-  hookPoint: z.string(),
-  source: z.string().nullable(),
-  priority: z.number(),
-  replay: z.enum(['safe', 'effectful']),
-});
-
-/** One registration of a live run's hook plan. */
-export type TaskHook = z.infer<typeof taskHookSchema>;
+export type TaskHook = NonNullable<TaskInspection['hooks']['plan']>[number];
 
 /** One registration of a run's plan that threw: how often, and when it last did. Never the error's text. */
-export const taskFailedHookSchema = z.object({
-  hookId: z.string(),
-  hookPoint: z.string(),
-  source: z.string().nullable(),
-  count: z.number().int().min(1),
-  lastFailedAt: z.string(),
-});
-
-/** One registration of a run's plan that threw. */
-export type TaskFailedHook = z.infer<typeof taskFailedHookSchema>;
-
-const inspectHooksAnswerSchema = z.object({
-  hooks: z.object({
-    plan: z.array(taskHookSchema).nullable(),
-    failed: z.array(taskFailedHookSchema),
-  }),
-});
+export type TaskFailedHook = TaskInspection['hooks']['failed'][number];
 
 /**
  * A run's hooks (`bureau.tasks.inspect`, COR-2115): the plan of a run that is still going (`null`
  * once it has ended, and when the plan cannot be read) and the registrations of its plan that
  * threw. A task the caller may not see is answered as a missing one: a not-found fault.
  */
-export type TaskHooks = z.infer<typeof inspectHooksAnswerSchema>['hooks'];
+export type TaskHooks = TaskInspection['hooks'];
 
 /** The hook plan and the failed hooks of one task. */
 export async function inspectTaskHooks(taskId: string, options?: Options): Promise<TaskHooks> {
-  return inspectHooksAnswerSchema.parse(
-    await callBureau('bureau.tasks.inspect', { taskId }, options),
-  ).hooks;
+  const answer = await bureauClient['bureau.tasks.inspect']({ taskId }, options);
+  return answer.hooks;
 }
-
-const cancelAnswerSchema = z.object({
-  taskId: z.string(),
-  receipt: taskCancelReceiptSchema,
-  reason: z.enum(['already-terminal', 'owned-by-goal', 'owned-by-workflow']).optional(),
-  task: taskViewSchema.optional(),
-});
 
 /**
  * The Bureau's answer to a cancellation: the task, the receipt, and the task's view when the
  * Bureau sends it.
  */
-export type TaskCancelAnswer = z.infer<typeof cancelAnswerSchema>;
+export type TaskCancelAnswer = BureauOutput<'bureau.tasks.cancel'>;
 
 /**
  * Asks a task to stop. The receipt says where the cancellation stands, which is often "requested"
  * and not yet done: `bureau.tasks.get` carries the same state afterwards.
  */
 export async function cancelTask(taskId: string, options?: Options): Promise<TaskCancelAnswer> {
-  return cancelAnswerSchema.parse(await callBureau('bureau.tasks.cancel', { taskId }, options));
+  return bureauClient['bureau.tasks.cancel']({ taskId }, options);
 }
-
-const respondAnswerSchema = z.object({
-  taskId: z.string(),
-  messageId: z.string(),
-  reviewId: z.string(),
-  kind: z.enum(['tool-approval', 'human-wait']),
-  decision: z.enum(['approve', 'deny', 'reject']),
-  receipt: z.enum(['applied', 'rejected', 'superseded']),
-  feedback: z.string().optional(),
-});
 
 /**
  * The Bureau's answer to a response to a task's wait: the review it resolved, the decision, and
  * whether it was applied, rejected, or superseded.
  */
-export type TaskRespondAnswer = z.infer<typeof respondAnswerSchema>;
+export type TaskRespondAnswer = BureauOutput<'bureau.tasks.respond'>;
 
 /**
  * Answers a task's human-input wait with text (`bureau.tasks.respond`). `messageId` makes the
@@ -467,7 +358,7 @@ export async function respondToTask(
   },
   options?: Options,
 ): Promise<TaskRespondAnswer> {
-  return respondAnswerSchema.parse(await callBureau('bureau.tasks.respond', input, options));
+  return bureauClient['bureau.tasks.respond'](input, options);
 }
 
 /**

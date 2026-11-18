@@ -159,7 +159,7 @@ for (const width of WIDTHS) {
     const held = new Promise<void>((resolve) => {
       release = resolve;
     });
-    await page.route('**/bureau/jsonrpc', async (route) => {
+    await page.route('**/jsonrpc', async (route) => {
       const call = route.request().postDataJSON() as { method?: string };
       if (call.method === 'bureau.agents.definitions.duplicate') await held;
       await route.fallback();
@@ -176,7 +176,7 @@ for (const width of WIDTHS) {
     });
     release();
     await expect(page).toHaveURL(new RegExp(`/agents/${COPY}$`));
-    await page.unroute('**/bureau/jsonrpc');
+    await page.unroute('**/jsonrpc');
 
     // (b) The name is taken now, so the next confirmation fails in the dialog and stays armed.
     await page.goto(`/agents/${encodeURIComponent(SOURCE)}`);
@@ -206,7 +206,7 @@ for (const width of WIDTHS) {
     await page.setViewportSize({ width, height: 900 });
     await page.goto(`/agents/${encodeURIComponent(SOURCE)}`);
     await expect(page.getByTestId('agent-header')).toBeVisible();
-    await page.route('**/bureau/jsonrpc', async (route) => {
+    await page.route('**/jsonrpc', async (route) => {
       const call = route.request().postDataJSON() as { method?: string; id?: unknown };
       if (call.method !== 'bureau.agents.definitions.get') {
         await route.fallback();
@@ -236,7 +236,7 @@ for (const width of WIDTHS) {
     expect(copied.fault, 'duplicating the source').toBeUndefined();
     // The demo plugin ships no file agent, so the copy's detail is answered as a copy of one would
     // be: its source recorded by the fingerprint of its file, which is not the fingerprint now.
-    await page.route('**/bureau/jsonrpc', async (route) => {
+    await page.route('**/jsonrpc', async (route) => {
       const call = route.request().postDataJSON() as { method?: string; params?: { id?: string } };
       if (call.method !== 'bureau.agents.definitions.get' || call.params?.id !== COPY) {
         await route.fallback();

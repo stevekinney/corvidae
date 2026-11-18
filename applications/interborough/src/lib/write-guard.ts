@@ -4,7 +4,7 @@
  * be queued by the browser and sent later. The refusal is a `ServerUnreachableError`, which the
  * default mutation handler already tells the person in the words of an unreachable fault.
  *
- * The Bureau's operations go through `callBureau` (`./bureau-client.ts`), which asks `refuseWrite`
+ * The Bureau's operations go through the generated client (`./bureau-api.ts`), whose transport asks `refuseWrite`
  * by operation name. Every other request, the Weft client's REST and JSON-RPC calls included,
  * passes `fetch`, which `armWriteGuard` wraps for as long as the shell is mounted, so a write cannot
  * miss the refusal by being made outside the mutation cache (a run's Cancel, a chat's send).
@@ -114,7 +114,7 @@ function requestParts(
 
 /**
  * Wraps `fetch` so a write to this application's own server is refused while `isUnreachable` says
- * the server does not answer, and arms `refuseWrite` the same way. `fetch` and `callBureau` run
+ * the server does not answer, and arms `refuseWrite` the same way. `fetch` and the Bureau client run
  * inside effects and derivations, so `isUnreachable` is read untracked here: a tracked read would
  * make whatever called `fetch` depend on it and run again, restarting a stream it opened, each time
  * the server stops or starts answering. `ownOrigins` are the origins of the server (the page's and

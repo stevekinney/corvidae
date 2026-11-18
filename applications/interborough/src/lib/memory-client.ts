@@ -1,8 +1,8 @@
 /**
  * The browser's view of an agent's memory: the operations `bureau.memory.list`, `search`, `get`,
  * `forget` and `correct` (COR-1546), and the governance ones (`share`, `share.revoke`, `hold`,
- * `hold.release`, `quarantine` and `export`, COR-1809), parsed at the boundary, and the faults they answer with,
- * sorted into the few the Memory page tells apart.
+ * `hold.release`, `quarantine` and `export`, COR-1809), through the generated client, and the
+ * faults they answer with, sorted into the few the Memory page tells apart.
  *
  * The operations serve the caller's own memory under one agent. The caller is the host's one local
  * principal and is never a parameter. Reading needs `bureau.memory:read` and changing needs
@@ -10,65 +10,35 @@
  * answered `Forbidden` whatever it owns.
  */
 import { HttpClientError } from '@lostgradient/weft';
-import { z } from 'zod';
 
-import { callBureau, type Fetcher } from './bureau-client.ts';
+import { bureauClient, type BureauOutput } from './bureau-api.ts';
+import type { Fetcher } from './bureau-client.ts';
 
 /** Where a call is sent from: an abort signal, and a `fetch` for a caller that is not a page. */
 type Options = { readonly signal?: AbortSignal; readonly fetch?: Fetcher };
 
-/** The two kinds a person tells memories apart by: a fact, or a how-to (`bureau.memory.remember`'s `kind`). */
-export const memoryKindSchema = z.enum(['fact', 'how-to']);
-
-/** A memory's kind: a fact is something true, a how-to is a way of doing something. */
-export type MemoryKind = z.infer<typeof memoryKindSchema>;
-
-/**
- * One memory, as the Bureau shows it. The class, source and trust stay strings here, as the
- * Bureau's engine names them. The page words a memory by its `kind` (Fact or How-to) and its
- * `writer` (you, the agent, or the system), which the Bureau derives, and never by those.
- */
-export const memorySchema = z.object({
-  id: z.string(),
-  content: z.string(),
-  memoryClass: z.string(),
-  /** Fact or How-to: what the memory is. */
-  kind: memoryKindSchema,
-  source: z.string(),
-  /** Who wrote it: a `person` (you), the `agent` whose memory it is, or the `system`. */
-  writer: z.enum(['person', 'agent', 'system']),
-  trust: z.string(),
-  createdAt: z.string(),
-  /** The chat that produced it, or `null` for a memory no chat wrote. */
-  sessionId: z.string().nullable(),
-  /** Why it is quarantined: present only on a memory the quarantined list returned. */
-  quarantine: z
-    .object({
-      /** When it was quarantined. */
-      at: z.string(),
-      /** What quarantined it: the checks it was written through, its owner, or a recall guardrail. */
-      by: z.enum(['admission', 'owner', 'recall']),
-      /** The guardrail that held it, or `null` when its owner quarantined it. */
-      detector: z.string().nullable(),
-      /** The category that guardrail reported, or `null` when its owner quarantined it. */
-      category: z.string().nullable(),
-    })
-    .optional(),
-});
+/** A memory's kind: a fact is something true, a how-to is a way of doing something (`bureau.memory.remember`'s `kind`). */
+export type MemoryKind = 'fact' | 'how-to';
 
 /**
  * One memory as the Bureau shows it: its content, kind, class, source, writer, trust, creation
- * time, and the chat that produced it.
+ * time, and the chat that produced it. The page words a memory by its `kind` (Fact or How-to) and
+ * its `writer` (you, the agent, or the system), which the Bureau derives, and never by the class,
+ * source or trust. `quarantine` says why a memory is quarantined, and is present only on a memory
+ * the quarantined list returned.
  */
-export type Memory = z.infer<typeof memorySchema>;
-
-const memoryPageSchema = z.object({
-  memories: z.array(memorySchema),
-  nextOffset: z.number().nullable(),
-});
+export type Memory = BureauOutput<'bureau.memory.get'>['memory'] & {
+  /** Why it is quarantined: `at` when, `by` what held it (the checks it was written through, its owner, or a recall guardrail), and the guardrail's `detector` and `category`, `null` when its owner quarantined it. */
+  readonly quarantine?: {
+    readonly at: string;
+    readonly by: 'admission' | 'owner' | 'recall';
+    readonly detector: string | null;
+    readonly category: string | null;
+  };
+};
 
 /** One page of memories and the offset of the next page, or `null` on the last. */
-export type MemoryPage = z.infer<typeof memoryPageSchema>;
+export type MemoryPage = BureauOutput<'bureau.memory.list'>;
 
 /**
  * How many memories a page of the list asks for. The memory page and an agent's page read the same
@@ -87,17 +57,11 @@ export async function listMemories(
   } = {},
   options?: Options,
 ): Promise<MemoryPage> {
-  return memoryPageSchema.parse(
-    await callBureau('bureau.memory.list', { agentId, ...page }, options),
-  );
+  return bureauClient['bureau.memory.list']({ agentId, ...page }, options);
 }
 
-const searchSchema = z.object({
-  hits: z.array(z.object({ memory: memorySchema, score: z.number() })),
-});
-
 /** One search result: a memory and its score against the query. */
-export type MemoryHit = z.infer<typeof searchSchema>['hits'][number];
+export type MemoryHit = BureauOutput<'bureau.memory.search'>['hits'][number];
 
 /** The agent's memories ranked against `query`, best first. A blank `query` is refused by the Bureau. */
 export async function searchMemories(
@@ -106,50 +70,26 @@ export async function searchMemories(
   page: { readonly limit?: number } = {},
   options?: Options,
 ): Promise<readonly MemoryHit[]> {
-  return searchSchema.parse(
-    await callBureau('bureau.memory.search', { agentId, query, ...page }, options),
-  ).hits;
+  const answer = await bureauClient['bureau.memory.search']({ agentId, query, ...page }, options);
+  return answer.hits;
 }
 
-const lineageSchema = z.object({
-  /** The run that wrote it, from the governance ledger, or `null` for a memory a person wrote. */
-  runId: z.string().nullable(),
-  /** The memory this one replaced. */
-  corrects: z.string().nullable(),
-  /** The memory that replaced this one. */
-  correctedBy: z.string().nullable(),
-});
+/**
+ * One memory together with its lineage and the versions a correction replaced. The lineage is where
+ * a memory came from: the run that wrote it, the memory it replaced, and the memory that replaced
+ * it. The history is each version a correction replaced, the most recent first; empty for a memory
+ * never corrected.
+ */
+export type MemoryDetail = BureauOutput<'bureau.memory.get'>;
 
 /**
  * Where a memory came from: the run that wrote it, the memory it replaced, and the memory that
  * replaced it.
  */
-export type MemoryLineage = z.infer<typeof lineageSchema>;
-
-/** One earlier version of a memory: what it said before a correction replaced it, and when. */
-const historyEntrySchema = z.object({
-  /** The identifier of the earlier version, which `bureau.memory.get` still reads. */
-  id: z.string(),
-  content: z.string(),
-  kind: memoryKindSchema,
-  writer: z.enum(['person', 'agent', 'system']),
-  trust: z.string(),
-  writtenAt: z.string(),
-  correctedAt: z.string(),
-});
+export type MemoryLineage = MemoryDetail['lineage'];
 
 /** One earlier version of a memory, the most recent first in a memory's history. */
-export type MemoryHistoryEntry = z.infer<typeof historyEntrySchema>;
-
-const memoryDetailSchema = z.object({
-  memory: memorySchema,
-  lineage: lineageSchema,
-  /** Each version a correction replaced, the most recent first; empty for a memory never corrected. */
-  history: z.array(historyEntrySchema),
-});
-
-/** One memory together with its lineage and the versions a correction replaced. */
-export type MemoryDetail = z.infer<typeof memoryDetailSchema>;
+export type MemoryHistoryEntry = MemoryDetail['history'][number];
 
 /** One memory with its lineage. A corrected memory is read here though it is no longer listed. */
 export async function getMemory(
@@ -157,37 +97,14 @@ export async function getMemory(
   id: string,
   options?: Options,
 ): Promise<MemoryDetail> {
-  return memoryDetailSchema.parse(await callBureau('bureau.memory.get', { agentId, id }, options));
+  return bureauClient['bureau.memory.get']({ agentId, id }, options);
 }
-
-/** The status of the deletion receipt row that removes the record, in the receipt's own vocabulary. */
-export const deletionStateSchema = z.enum(['completed', 'pending', 'exempt', 'failed', 'unknown']);
-
-const receiptSchema = z.object({
-  deletionId: z.string(),
-  awaitingHoldRelease: z.boolean(),
-  open: z.boolean(),
-  targets: z.array(
-    z.object({
-      target: z.string(),
-      lane: z.string(),
-      status: deletionStateSchema,
-      detail: z.string().optional(),
-    }),
-  ),
-});
-
-const forgetSchema = z.object({
-  id: z.string(),
-  deletion: deletionStateSchema,
-  receipt: receiptSchema,
-});
 
 /**
  * What forgetting a memory answers: the memory's identifier, the state of its deletion, and the
  * deletion's receipt.
  */
-export type ForgetResult = z.infer<typeof forgetSchema>;
+export type ForgetResult = BureauOutput<'bureau.memory.forget'>;
 
 /** Forgets one memory as a source deletion; the answer says whether it is gone, held, or not yet settled. */
 export async function forgetMemory(
@@ -195,15 +112,13 @@ export async function forgetMemory(
   id: string,
   options?: Options,
 ): Promise<ForgetResult> {
-  return forgetSchema.parse(await callBureau('bureau.memory.forget', { agentId, id }, options));
+  return bureauClient['bureau.memory.forget']({ agentId, id }, options);
 }
-
-const correctSchema = z.object({ id: z.string(), memory: memorySchema });
 
 /**
  * What correcting a memory answers: the identifier of the memory it replaced and the correction.
  */
-export type CorrectResult = z.infer<typeof correctSchema>;
+export type CorrectResult = BureauOutput<'bureau.memory.correct'>;
 
 /** Replaces one memory with `content`; the answer is the correction, as the list shows it now. */
 export async function correctMemory(
@@ -212,22 +127,15 @@ export async function correctMemory(
   content: string,
   options?: Options,
 ): Promise<CorrectResult> {
-  return correctSchema.parse(
-    await callBureau('bureau.memory.correct', { agentId, id, content }, options),
-  );
+  return bureauClient['bureau.memory.correct']({ agentId, id, content }, options);
 }
-
-const rememberSchema = z.discriminatedUnion('outcome', [
-  z.object({ outcome: z.literal('added'), memory: memorySchema }),
-  z.object({ outcome: z.literal('held'), id: z.string() }),
-]);
 
 /**
  * What adding a memory answers: the memory as the list shows it now (`added`), or, for text the
  * content rules flagged, the identifier of the record stored for inspection (`held`). A held record
  * is in no list, so that identifier is the only way to forget it.
  */
-export type RememberResult = z.infer<typeof rememberSchema>;
+export type RememberResult = BureauOutput<'bureau.memory.remember'>;
 
 /**
  * Adds a memory in the caller's own words, as a fact or a how-to. Asking twice adds it twice: the
@@ -239,17 +147,11 @@ export async function rememberMemory(
   kind: MemoryKind,
   options?: Options,
 ): Promise<RememberResult> {
-  return rememberSchema.parse(
-    await callBureau('bureau.memory.remember', { agentId, content, kind }, options),
-  );
+  return bureauClient['bureau.memory.remember']({ agentId, content, kind }, options);
 }
 
-const transitionSchema = z.object({ id: z.string(), changed: z.boolean() });
-
-const shareSchema = transitionSchema.extend({ granteeOwnerId: z.string(), grantedBy: z.string() });
-
 /** What sharing or withdrawing a share answers: whether anything changed, and for whom. */
-export type ShareResult = z.infer<typeof shareSchema>;
+export type ShareResult = BureauOutput<'bureau.memory.share'>;
 
 /**
  * Lets another owner read one memory (`granted`), or withdraws that access (`revoked`). Doing
@@ -262,19 +164,14 @@ export async function changeMemoryShare(
   change: 'granted' | 'revoked',
   options?: Options,
 ): Promise<ShareResult> {
-  return shareSchema.parse(
-    await callBureau(
-      change === 'granted' ? 'bureau.memory.share' : 'bureau.memory.share.revoke',
-      { agentId, id, granteeOwnerId },
-      options,
-    ),
-  );
+  const params = { agentId, id, granteeOwnerId };
+  return change === 'granted'
+    ? bureauClient['bureau.memory.share'](params, options)
+    : bureauClient['bureau.memory.share.revoke'](params, options);
 }
 
-const holdSchema = transitionSchema.extend({ legalHold: z.enum(['held', 'released']) });
-
 /** What placing or lifting a legal hold answers: whether anything changed, and the hold's state now. */
-export type HoldResult = z.infer<typeof holdSchema>;
+export type HoldResult = BureauOutput<'bureau.memory.hold'>;
 
 /** Places a legal hold on one memory (`place`), or lifts it (`release`). */
 export async function changeLegalHold(
@@ -283,19 +180,14 @@ export async function changeLegalHold(
   change: 'place' | 'release',
   options?: Options,
 ): Promise<HoldResult> {
-  return holdSchema.parse(
-    await callBureau(
-      change === 'place' ? 'bureau.memory.hold' : 'bureau.memory.hold.release',
-      { agentId, id },
-      options,
-    ),
-  );
+  const params = { agentId, id };
+  return change === 'place'
+    ? bureauClient['bureau.memory.hold'](params, options)
+    : bureauClient['bureau.memory.hold.release'](params, options);
 }
 
-const quarantineSchema = transitionSchema.extend({ affected: z.number().int() });
-
 /** What quarantining a memory answers: whether it changed, and how many records it reached. */
-export type QuarantineResult = z.infer<typeof quarantineSchema>;
+export type QuarantineResult = BureauOutput<'bureau.memory.quarantine'>;
 
 /**
  * Takes one memory, and what was derived from it, out of use. {@link releaseQuarantine} is the way
@@ -307,13 +199,11 @@ export async function quarantineMemory(
   reason: string,
   options?: Options,
 ): Promise<QuarantineResult> {
-  return quarantineSchema.parse(
-    await callBureau('bureau.memory.quarantine', { agentId, id, reason }, options),
-  );
+  return bureauClient['bureau.memory.quarantine']({ agentId, id, reason }, options);
 }
 
 /** What releasing a quarantined memory answers: whether it changed, which is `false` for one already in use. */
-export type ReleaseResult = z.infer<typeof transitionSchema>;
+export type ReleaseResult = BureauOutput<'bureau.memory.quarantine.release'>;
 
 /**
  * Returns one quarantined memory to use, when the checks a new memory passes pass it again. A
@@ -324,27 +214,18 @@ export async function releaseQuarantine(
   id: string,
   options?: Options,
 ): Promise<ReleaseResult> {
-  return transitionSchema.parse(
-    await callBureau('bureau.memory.quarantine.release', { agentId, id }, options),
-  );
+  return bureauClient['bureau.memory.quarantine.release']({ agentId, id }, options);
 }
-
-const exportSchema = z.object({
-  exportId: z.string().nullable(),
-  /** The name to save the export under, such as `tool-runner-memories.json`. */
-  fileName: z.string(),
-  memories: z.array(memorySchema.extend({ history: z.array(historyEntrySchema) })),
-});
 
 /**
  * What exporting an agent's memories answers: the manifest's identifier, the name to save the
- * file under, and every memory with its history.
+ * file under (such as `tool-runner-memories.json`), and every memory with its history.
  */
-export type MemoryExport = z.infer<typeof exportSchema>;
+export type MemoryExport = BureauOutput<'bureau.memory.export'>;
 
 /** Exports every memory the caller has of the agent, which records the export in the ledger. */
 export async function exportMemories(agentId: string, options?: Options): Promise<MemoryExport> {
-  return exportSchema.parse(await callBureau('bureau.memory.export', { agentId }, options));
+  return bureauClient['bureau.memory.export']({ agentId }, options);
 }
 
 /** Why a quarantined memory was not released: the reasons the server names, as `memory-<reason>`. */

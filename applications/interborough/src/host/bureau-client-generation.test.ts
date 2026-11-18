@@ -18,7 +18,8 @@ import {
 describe('the generated Bureau client', () => {
   it('is what the generator writes now, file for file', async () => {
     const sources = await createBureauClientSources();
-    const committed = (await readdir(BUREAU_CLIENT_DIRECTORY)).toSorted();
+    const files = await readdir(BUREAU_CLIENT_DIRECTORY);
+    const committed = files.toSorted();
 
     expect(committed).toEqual([...sources.keys()].toSorted());
     for (const [fileName, source] of sources) {
@@ -29,7 +30,8 @@ describe('the generated Bureau client', () => {
   });
 
   it('names a method for each unary operation and a subscription method for the three feeds', async () => {
-    const main = (await createBureauClientSources()).get(BUREAU_CLIENT_FILE) ?? '';
+    const sources = await createBureauClientSources();
+    const main = sources.get(BUREAU_CLIENT_FILE) ?? '';
 
     expect(main).toContain("'bureau.skills.list'");
     expect(main).toContain("'bureau.tasks.events'");
@@ -47,8 +49,11 @@ describe('the generated Bureau client', () => {
       const first = await Bun.file(join(directory, BUREAU_CLIENT_FILE)).text();
       await runGenerateBureauClientCommand(['--output-directory', directory], () => undefined);
 
-      expect(lines).toHaveLength((await createBureauClientSources()).size);
-      expect(await Bun.file(join(directory, BUREAU_CLIENT_FILE)).text()).toBe(first);
+      const sources = await createBureauClientSources();
+      const second = await Bun.file(join(directory, BUREAU_CLIENT_FILE)).text();
+
+      expect(lines).toHaveLength(sources.size);
+      expect(second).toBe(first);
     } finally {
       await rm(directory, { recursive: true, force: true });
     }

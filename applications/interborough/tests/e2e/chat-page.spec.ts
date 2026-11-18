@@ -157,7 +157,7 @@ async function answerOperation(
   method: string,
   answer: (route: Route) => Promise<void> | void,
 ): Promise<void> {
-  await page.route('**/bureau/jsonrpc', async (route) => {
+  await page.route('**/jsonrpc', async (route) => {
     const body = JSON.parse(route.request().postData() ?? '{}') as { method?: string };
     if (body.method === method) {
       await answer(route);
@@ -430,7 +430,7 @@ test.describe('an open chat while the server does not answer (16y, 18e)', () => 
     await expect(page.locator('[data-approval-decision]')).toBeVisible();
     // The connection drops as the message goes out, so it is the transport that fails and the row
     // says "Not sent" (the page names a transport failure there, not in an alert of its own).
-    await page.route('**/bureau/jsonrpc', async (route) => {
+    await page.route('**/jsonrpc', async (route) => {
       const body = JSON.parse(route.request().postData() ?? '{}') as { method?: string };
       if (body.method === 'bureau.contexts.input') await route.abort('connectionrefused');
       else await route.fallback();
@@ -581,7 +581,7 @@ test.describe('an open chat whose approval is answered in Reviews (18i, 18j)', (
     // The chat's runs: none going until the Bureau starts the run that continues the chat. Once it
     // has, the chat is running wherever the Bureau says what it is doing (`activity`).
     let continuing = false;
-    await page.route('**/bureau/jsonrpc', async (route) => {
+    await page.route('**/jsonrpc', async (route) => {
       const body = JSON.parse(route.request().postData() ?? '{}') as {
         method?: string;
         params?: { contextId?: string; activity?: string };
@@ -823,7 +823,7 @@ test.describe('an open chat whose approval was denied with a note (18h)', () => 
       },
     });
     const real = ((await read.json()) as { result: Record<string, unknown> }).result;
-    await page.route('**/bureau/jsonrpc', async (route) => {
+    await page.route('**/jsonrpc', async (route) => {
       const body = JSON.parse(route.request().postData() ?? '{}') as {
         method?: string;
         id?: unknown;

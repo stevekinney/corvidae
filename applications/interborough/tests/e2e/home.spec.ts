@@ -52,7 +52,7 @@ async function answerBureau(
   page: Page,
   changes: Readonly<Record<string, (result: unknown, params: Record<string, unknown>) => unknown>>,
 ): Promise<void> {
-  await page.route('**/bureau/jsonrpc', async (route) => {
+  await page.route('**/jsonrpc', async (route) => {
     const body = JSON.parse(route.request().postData() ?? '{}') as {
       id?: unknown;
       method?: string;
@@ -605,7 +605,7 @@ async function holdHomeReads(page: Page): Promise<() => void> {
     await gate;
     await route.fallback().catch(() => undefined);
   };
-  await page.route('**/bureau/jsonrpc', held);
+  await page.route('**/jsonrpc', held);
   await page.route('**/host/providers', held);
   return release;
 }
@@ -794,7 +794,7 @@ test.describe('Home when one card cannot be read (01n, 01o)', () => {
     // then Home's Needs attention section. The third fails.
     let reads = 0;
     let healed = false;
-    await page.route('**/bureau/jsonrpc', async (route) => {
+    await page.route('**/jsonrpc', async (route) => {
       const body = route.request().postDataJSON() as { id?: unknown; method?: string };
       if (body.method !== 'bureau.health.attention') {
         await route.fallback();

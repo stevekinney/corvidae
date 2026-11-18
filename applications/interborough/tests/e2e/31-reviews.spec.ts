@@ -55,7 +55,7 @@ function recordStarts(page: Page): Array<{ messages: unknown[]; resume?: unknown
 function recordResolves(page: Page): Array<Record<string, unknown>> {
   const resolves: Array<Record<string, unknown>> = [];
   page.on('request', (outgoing) => {
-    if (outgoing.method() !== 'POST' || !outgoing.url().includes('/bureau/jsonrpc')) return;
+    if (outgoing.method() !== 'POST' || !outgoing.url().includes('/jsonrpc')) return;
     const body = outgoing.postDataJSON() as { method?: string; params?: Record<string, unknown> };
     if (body.method === 'bureau.reviews.resolve') resolves.push(body.params ?? {});
   });
@@ -486,7 +486,7 @@ test.describe('a Bureau that fails', () => {
     });
     // The feed's catch-up would ask the lists again while the page is open, so it is held.
     await holdBureauFeed(page);
-    await page.route('**/bureau/jsonrpc', async (route) => {
+    await page.route('**/jsonrpc', async (route) => {
       if ((route.request().postData() ?? '').includes('"bureau.reviews.list"')) {
         await route.fulfill({ status: 500, json: { error: 'The Bureau broke.' } });
         return;

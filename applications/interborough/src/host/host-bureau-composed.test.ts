@@ -12,8 +12,6 @@ import { join } from 'node:path';
 import { startHost, type Host } from './host.ts';
 import { BUREAU_METHOD_SCOPES } from './scope-gate.ts';
 
-const METHOD_NOT_FOUND = -32601;
-
 let home: string;
 let unscoped: Host;
 
@@ -64,9 +62,8 @@ async function operationsCalledByTheBrowser(): Promise<string[]> {
   for await (const path of new Glob('**/*.ts').scan({ cwd: directory, absolute: true })) {
     if (/\.test(-support)?\.ts$|\/generated\//u.test(path)) continue;
     const source = await Bun.file(path).text();
-    const calls = source.matchAll(/callBureau\(\s*('bureau\.[\w.]+')|bureauClient\[([^\]]*)\]/gu);
-    for (const call of calls) {
-      for (const literal of (call[1] ?? call[2] ?? '').matchAll(/'(bureau\.[\w.]+)'/gu)) {
+    for (const call of source.matchAll(/bureauClient\[([^\]]*)\]/gu)) {
+      for (const literal of (call[1] ?? '').matchAll(/'(bureau\.[\w.]+)'/gu)) {
         if (literal[1] !== undefined) names.add(literal[1]);
       }
     }
@@ -75,14 +72,17 @@ async function operationsCalledByTheBrowser(): Promise<string[]> {
 }
 
 describe('the operations the browser calls', () => {
-  test('every one answers on /jsonrpc with something other than method-not-found', async () => {
+  test('every one is a method /jsonrpc answers, and a name it does not serve is not', async () => {
     const names = await operationsCalledByTheBrowser();
     expect(names.length).toBeGreaterThan(20);
+    const { body } = await post('/jsonrpc', 'rpc.discover', undefined);
+    const served = new Set(
+      ((body as { result?: { methods?: { name: string }[] } }).result?.methods ?? []).map(
+        (method) => method.name,
+      ),
+    );
 
-    for (const name of names) {
-      // A params value that is not an object is refused before any operation runs.
-      const { body } = await post('/jsonrpc', name, 'not-params');
-      expect(body, name).not.toMatchObject({ error: { code: METHOD_NOT_FOUND } });
-    }
+    expect(served.has('bureau.invented.operation')).toBe(false);
+    expect(names.filter((name) => !served.has(name))).toEqual([]);
   });
 });

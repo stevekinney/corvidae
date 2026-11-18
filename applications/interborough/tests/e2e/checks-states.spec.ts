@@ -51,7 +51,7 @@ async function answerOperation(
   method: string,
   answer: (route: Route, id: unknown, params: Record<string, unknown>) => Promise<void> | void,
 ): Promise<void> {
-  await page.route('**/bureau/jsonrpc', async (route) => {
+  await page.route('**/jsonrpc', async (route) => {
     const body = JSON.parse(route.request().postData() ?? '{}') as {
       method?: string;
       id?: unknown;
@@ -410,7 +410,7 @@ for (const width of WIDTHS) {
       await checkA11y(`checks failing at ${width}px`);
 
       // The server comes back, and Try again reads the results.
-      await page.unroute('**/bureau/jsonrpc');
+      await page.unroute('**/jsonrpc');
       await primaries(page).click();
       await expect(rows(page).nth(0)).toBeVisible();
     });

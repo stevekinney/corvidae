@@ -95,7 +95,7 @@ async function answerAgents(
   page: Page,
   answer: { readonly agents: unknown[] } | { readonly status: number },
 ): Promise<void> {
-  await page.route('**/bureau/jsonrpc', async (route) => {
+  await page.route('**/jsonrpc', async (route) => {
     const body = JSON.parse(route.request().postData() ?? '{}') as {
       method?: string;
       id?: unknown;
@@ -213,7 +213,7 @@ test.describe('New chat when the agents cannot be loaded (24p)', () => {
     await captureForDesignReview(page, { route: '/chats/new', state: 'error', source: SOURCE });
     await checkA11y('New chat when the agents cannot be loaded');
 
-    await page.unroute('**/bureau/jsonrpc');
+    await page.unroute('**/jsonrpc');
     await retry.click();
     await expect(welcome(page)).toBeVisible();
     await expect(field(page)).toBeEnabled();

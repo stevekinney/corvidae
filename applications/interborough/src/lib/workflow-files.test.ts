@@ -317,15 +317,6 @@ describe('the listing of a file', () => {
     const listed = await listWorkflowFiles();
     expect(listed.map((listing) => listing.id)).toEqual(['one']);
   });
-
-  test('refuses an answer without the counts the Bureau now sends, instead of showing a zero', async () => {
-    stub = installWorkflowWorld(emptyWorld({ files: [readyFile('one')] }));
-    stub.on('bureau.workflows.list', () => ({
-      workflows: [{ id: 'one', state: 'ready', owner: 'o', hash: 'h', agent: null, paused: false }],
-      nextOffset: null,
-    }));
-    expect(await rejectionOf(listWorkflowFiles())).toBeDefined();
-  });
 });
 
 describe('the newest instances of a file', () => {

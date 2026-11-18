@@ -24,7 +24,7 @@ test.describe('the hooks list states', () => {
 
   const SOURCE = 'hooks-states.spec.ts';
   const WIDTHS = [1280, 375] as const;
-  const BUREAU_CALLS = '**/bureau/jsonrpc';
+  const BUREAU_CALLS = '**/jsonrpc';
   const BUREAU_LOGGED = /\/bureau\/jsonrpc/;
 
   /** The header's "+": a secondary icon button named for what it makes. */

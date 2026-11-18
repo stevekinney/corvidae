@@ -120,7 +120,7 @@ async function answerHooks(
   page: Page,
   answer: Hooks | number | (() => Promise<Hooks | number> | Hooks | number),
 ): Promise<void> {
-  await page.route('**/bureau/jsonrpc', async (route: Route) => {
+  await page.route('**/jsonrpc', async (route: Route) => {
     const body = JSON.parse(route.request().postData() ?? '{}') as { method?: string };
     if (body.method !== 'bureau.tasks.inspect') {
       await route.fallback();

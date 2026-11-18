@@ -72,7 +72,7 @@ for (const width of WIDTHS) {
       pattern: loggedFailedResponse(403, /\/bureau\/jsonrpc/),
       reason: 'the test answers the hooks probe with a 403',
     });
-    await page.route('**/bureau/jsonrpc', async (route) => {
+    await page.route('**/jsonrpc', async (route) => {
       if ((route.request().postData() ?? '').includes('"bureau.hooks.list"')) {
         await route.fulfill({ status: 403, json: { error: 'Forbidden' } });
         return;

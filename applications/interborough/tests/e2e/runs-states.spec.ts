@@ -77,7 +77,7 @@ async function answerOperation(
   method: string,
   answer: (route: Route, id: unknown) => Promise<void> | void,
 ): Promise<void> {
-  await page.route('**/bureau/jsonrpc', async (route) => {
+  await page.route('**/jsonrpc', async (route) => {
     const body = JSON.parse(route.request().postData() ?? '{}') as {
       method?: string;
       id?: unknown;
@@ -306,7 +306,7 @@ for (const width of WIDTHS) {
       await checkA11y(`runs failing at ${width}px`);
 
       // The server comes back, and Try again reads the runs.
-      await page.unroute('**/bureau/jsonrpc');
+      await page.unroute('**/jsonrpc');
       await primaries(page).first().click();
       await expect(main.locator('li[data-run]').first()).toBeVisible();
       await expect(headerCreate(page)).not.toHaveAttribute('aria-disabled', 'true');

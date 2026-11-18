@@ -15,7 +15,7 @@ import {
 } from '../../lib/bureau-fixtures.test-support.ts';
 import type { BureauReview } from '../../lib/bureau-reviews.ts';
 import type { BureauSchedule } from '../../lib/bureau-schedules.ts';
-import { StubFault, urlOf } from '../../lib/bureau-stub.test-support.ts';
+import { isBureauCall, StubFault, urlOf } from '../../lib/bureau-stub.test-support.ts';
 import {
   emptyBureauWorld,
   installBureauWorld,
@@ -218,7 +218,11 @@ export function installHome(home: HomeWorld): InstalledHome {
         models: [],
       });
     }
-    if (url.pathname.endsWith('/jsonrpc') && !url.pathname.startsWith('/bureau/')) {
+    if (
+      url.pathname.endsWith('/jsonrpc') &&
+      !url.pathname.startsWith('/bureau/') &&
+      !isBureauCall(url.pathname, init?.body)
+    ) {
       return Response.json({
         jsonrpc: '2.0',
         id: 1,

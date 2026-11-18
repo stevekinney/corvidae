@@ -55,7 +55,7 @@ function listedEngineReview(entry: EngineEntry): Record<string, unknown> {
 
 /** Adds the fixture engine's reviews to every `bureau.reviews.list` answer the page gets. */
 export async function listEngineReviews(page: Page, request: APIRequestContext): Promise<void> {
-  await page.route('**/bureau/jsonrpc', async (route) => {
+  await page.route('**/jsonrpc', async (route) => {
     const body = (route.request().postDataJSON() ?? {}) as {
       method?: string;
       params?: { status?: string };

@@ -123,11 +123,11 @@ function jsonRpcProbe(method: string): ProbeRoute {
   };
 }
 
-/** A Bureau operation's request is a JSON-RPC call to `/bureau/jsonrpc`, answered with `empty` when the view is empty. */
+/** A Bureau operation's request is a JSON-RPC call to `/jsonrpc`, answered with `empty` when the view is empty. */
 function bureauProbe(method: string, empty: unknown): ProbeRoute {
   return {
     url: /\/bureau\/jsonrpc/,
-    matches: (url, body) => url.pathname === '/bureau/jsonrpc' && body.includes(`"${method}"`),
+    matches: (url, body) => url.pathname.endsWith('/jsonrpc') && body.includes(`"${method}"`),
     empty,
   };
 }
@@ -166,7 +166,7 @@ const PROBES: Readonly<Record<ProbedView, ProbeRoute>> = {
     url: /\/(bureau\/)?jsonrpc/,
     matches: (url, body) =>
       (url.pathname.endsWith('/jsonrpc') && body.includes('"weft.workflows.definitions.list"')) ||
-      (url.pathname === '/bureau/jsonrpc' && body.includes('"bureau.workflows.list"')),
+      (url.pathname.endsWith('/jsonrpc') && body.includes('"bureau.workflows.list"')),
     empty: { definitions: [] },
     emptyFor: (body) =>
       body.includes('"bureau.workflows.list"')
@@ -181,7 +181,7 @@ const PROBES: Readonly<Record<ProbedView, ProbeRoute>> = {
   runs: {
     url: /\/bureau\/jsonrpc/,
     matches: (url, body) =>
-      url.pathname === '/bureau/jsonrpc' && /"bureau\.(tasks|goals)\.list"/.test(body),
+      url.pathname.endsWith('/jsonrpc') && /"bureau\.(tasks|goals)\.list"/.test(body),
     empty: { tasks: [], nextPageToken: null },
     emptyFor: (body) =>
       body.includes('"bureau.tasks.list"')
@@ -577,7 +577,7 @@ for (const width of WIDTHS) {
   }) => {
     await page.setViewportSize({ width, height: 900 });
     // Never answered: the list stays a skeleton for as long as the page is open.
-    await page.route('**/bureau/jsonrpc', async (route) => {
+    await page.route('**/jsonrpc', async (route) => {
       if ((route.request().postData() ?? '').includes('"bureau.health.attention"')) return;
       await route.fallback();
     });
@@ -648,7 +648,7 @@ async function answerMemory(
   page: Page,
   handlers: Readonly<Record<string, (params: Record<string, unknown>) => unknown>>,
 ): Promise<void> {
-  await page.route('**/bureau/jsonrpc', async (route) => {
+  await page.route('**/jsonrpc', async (route) => {
     const body = JSON.parse(route.request().postData() ?? '{}') as {
       id?: unknown;
       method?: string;
@@ -750,7 +750,7 @@ for (const width of WIDTHS) {
           ? { memories: QUARANTINED_THREE, nextOffset: null }
           : { memories: [], nextOffset: null },
     });
-    await page.route('**/bureau/jsonrpc', async (route) => {
+    await page.route('**/jsonrpc', async (route) => {
       const body = JSON.parse(route.request().postData() ?? '{}') as {
         id?: unknown;
         method?: string;
@@ -878,7 +878,7 @@ for (const width of WIDTHS) {
       pattern: loggedFailedResponse(403, /\/bureau\/jsonrpc/),
       reason: 'the test refuses the quarantined list, as a caller without bureau.memory:govern is',
     });
-    await page.route('**/bureau/jsonrpc', async (route) => {
+    await page.route('**/jsonrpc', async (route) => {
       const body = JSON.parse(route.request().postData() ?? '{}') as {
         id?: unknown;
         method?: string;
@@ -1451,7 +1451,7 @@ async function answerRetry(
   const gate = new Promise<void>((resolve) => {
     release = resolve;
   });
-  await page.route('**/bureau/jsonrpc', async (route) => {
+  await page.route('**/jsonrpc', async (route) => {
     const body = JSON.parse(route.request().postData() ?? '{}') as {
       method?: string;
       id?: unknown;
@@ -1496,7 +1496,7 @@ async function changeBureau(
   page: Page,
   changes: Readonly<Record<string, (result: unknown, params: Record<string, unknown>) => unknown>>,
 ): Promise<void> {
-  await page.route('**/bureau/jsonrpc', async (route) => {
+  await page.route('**/jsonrpc', async (route) => {
     const body = JSON.parse(route.request().postData() ?? '{}') as {
       method?: string;
       params?: Record<string, unknown>;

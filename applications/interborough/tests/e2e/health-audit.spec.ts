@@ -49,7 +49,7 @@ async function answerBureau(
   page: Page,
   answers: Record<string, (params: Record<string, unknown>) => unknown>,
 ): Promise<void> {
-  await page.route('**/bureau/jsonrpc', async (route) => {
+  await page.route('**/jsonrpc', async (route) => {
     const body = JSON.parse(route.request().postData() ?? '{}') as {
       id: unknown;
       method?: string;

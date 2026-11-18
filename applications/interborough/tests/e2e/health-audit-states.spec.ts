@@ -51,7 +51,7 @@ async function answerAudit(
   answer: (read: Read) => unknown,
   gate?: Promise<void>,
 ): Promise<void> {
-  await page.route('**/bureau/jsonrpc', async (route: Route) => {
+  await page.route('**/jsonrpc', async (route: Route) => {
     const body = JSON.parse(route.request().postData() ?? '{}') as {
       id: unknown;
       method?: string;

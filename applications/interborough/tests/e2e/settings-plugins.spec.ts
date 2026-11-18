@@ -725,7 +725,7 @@ test.describe('Settings › Plugins', () => {
       'session-run-6': 'Sort the receipts',
       'session-run-7': 'Plan the offsite',
     };
-    await page.route('**/bureau/jsonrpc', async (route) => {
+    await page.route('**/jsonrpc', async (route) => {
       const body = route.request().postDataJSON() as {
         id: unknown;
         method: string;

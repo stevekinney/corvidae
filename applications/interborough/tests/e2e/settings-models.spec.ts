@@ -285,7 +285,7 @@ test.describe('Settings › Models, provider connected', () => {
     await withSampleCatalog(page);
     await withDecisionRows(page);
     let failing = true;
-    await page.route('**/bureau/jsonrpc', async (route) => {
+    await page.route('**/jsonrpc', async (route) => {
       const body = route.request().postDataJSON() as { id?: unknown; method?: string } | null;
       if (body?.method !== 'bureau.decisions.models' || !failing) return route.fallback();
       return route.fulfill({
@@ -320,13 +320,13 @@ test.describe('Settings › Models, provider connected', () => {
     const held = new Promise<void>((resolve) => {
       release = resolve;
     });
-    await page.route('**/bureau/jsonrpc', async (route) => {
+    await page.route('**/jsonrpc', async (route) => {
       const body = route.request().postDataJSON() as { method?: string } | null;
       if (body?.method !== 'bureau.decisions.models') return route.fallback();
       await held;
       return route.fallback();
     });
-    await page.route('**/bureau/jsonrpc', async (route) => {
+    await page.route('**/jsonrpc', async (route) => {
       const body = route.request().postDataJSON() as { method?: string } | null;
       if (body?.method !== 'bureau.settings.get') return route.fallback();
       const response = await route.fetch();
@@ -358,7 +358,7 @@ test.describe('Settings › Models, provider connected', () => {
   }) => {
     await withSampleCatalog(page);
     await withDecisionRows(page);
-    await page.route('**/bureau/jsonrpc', async (route) => {
+    await page.route('**/jsonrpc', async (route) => {
       const body = route.request().postDataJSON() as { method?: string } | null;
       if (body?.method !== 'bureau.settings.get') return route.fallback();
       const response = await route.fetch();
@@ -383,7 +383,7 @@ test.describe('Settings › Models, provider connected', () => {
   }) => {
     await withSampleCatalog(page);
     await withDecisionRows(page);
-    await page.route('**/bureau/jsonrpc', async (route) => {
+    await page.route('**/jsonrpc', async (route) => {
       const body = route.request().postDataJSON() as { method?: string } | null;
       if (body?.method !== 'bureau.settings.get') return route.fallback();
       const response = await route.fetch();
@@ -415,7 +415,7 @@ test.describe('Settings › Models, provider connected', () => {
   }) => {
     await withSampleCatalog(page);
     await withDecisionRows(page);
-    await page.route('**/bureau/jsonrpc', async (route) => {
+    await page.route('**/jsonrpc', async (route) => {
       const body = route.request().postDataJSON() as { method?: string } | null;
       if (body?.method !== 'bureau.settings.get') return route.fallback();
       const response = await route.fetch();
@@ -463,7 +463,7 @@ async function withDecisionRows(page: Page) {
     canBeFallback: true,
     ...extra,
   });
-  await page.route('**/bureau/jsonrpc', async (route) => {
+  await page.route('**/jsonrpc', async (route) => {
     const body = route.request().postDataJSON() as { id?: unknown; method?: string } | null;
     if (body?.method !== 'bureau.decisions.models') return route.fallback();
     return route.fulfill({
@@ -531,7 +531,7 @@ async function withAnthropicConnected(page: Page) {
  * the field only when the schema lists it as `required` (COR-2493), so `required` says so.
  */
 async function withBaseUrlSetting(page: Page, provider: string, required = false) {
-  await page.route('**/bureau/jsonrpc', async (route) => {
+  await page.route('**/jsonrpc', async (route) => {
     const body = route.request().postDataJSON() as { method?: string } | null;
     if (body?.method !== 'bureau.plugins.contributions') return route.fallback();
     const response = await route.fetch();
@@ -741,7 +741,7 @@ async function withModelAgents(page: Page) {
     'model-switcher',
     'workflow-author',
   ]);
-  await page.route('**/bureau/jsonrpc', async (route) => {
+  await page.route('**/jsonrpc', async (route) => {
     const body = route.request().postDataJSON() as {
       method?: string;
       params?: { id?: string };
@@ -904,7 +904,7 @@ test.describe('Settings › Models, manage, replace and remove', () => {
  */
 async function withMemoryOnProviderEmbedder(page: Page, provider: string) {
   const embedder = `${provider}:embedder`;
-  await page.route('**/bureau/jsonrpc', async (route) => {
+  await page.route('**/jsonrpc', async (route) => {
     const body = route.request().postDataJSON() as { id?: unknown; method?: string } | null;
     if (body?.method !== 'bureau.memory.embedding') return route.fallback();
     return route.fulfill({
@@ -974,7 +974,7 @@ async function withMemoryOnProviderEmbedder(page: Page, provider: string) {
     });
   });
   // The provider names its plugin in the Bureau's contributions; added when the host leaves it out.
-  await page.route('**/bureau/jsonrpc', async (route) => {
+  await page.route('**/jsonrpc', async (route) => {
     const body = route.request().postDataJSON() as { method?: string } | null;
     if (body?.method !== 'bureau.plugins.contributions') return route.fallback();
     const response = await route.fetch();
@@ -1088,7 +1088,7 @@ async function withKeylessOllama(page: Page, schema: Record<string, unknown> = O
       },
     });
   });
-  await page.route('**/bureau/jsonrpc', async (route) => {
+  await page.route('**/jsonrpc', async (route) => {
     const body = route.request().postDataJSON() as { method?: string } | null;
     if (body?.method !== 'bureau.plugins.contributions') return route.fallback();
     const response = await route.fetch();

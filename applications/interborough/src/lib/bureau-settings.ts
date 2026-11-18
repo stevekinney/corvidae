@@ -13,7 +13,8 @@ import type { SettingLockReason } from '@lostgradient/bureau';
 import { HttpClientError } from '@lostgradient/weft';
 import { z } from 'zod';
 
-import { BUREAU_PATH, callBureau, type Fetcher } from './bureau-client.ts';
+import { bureauClient, type BureauOutput } from './bureau-api.ts';
+import { BUREAU_PATH, type Fetcher } from './bureau-client.ts';
 import { readServerSentEventStream } from './live-source/sse-reader.ts';
 
 type Options = { readonly signal?: AbortSignal; readonly fetch?: Fetcher };
@@ -121,22 +122,19 @@ export type SettingsSchema = Readonly<Record<string, SchemaNode>>;
 
 /** Every setting's value and state (`bureau.settings.get`). */
 export async function getSettings(options?: Options): Promise<SettingsSnapshot> {
-  return snapshotSchema.parse(await callBureau('bureau.settings.get', {}, options));
+  // The server's schema leaves each key's state untyped, so the page's own shape reads it here.
+  return snapshotSchema.parse(await bureauClient['bureau.settings.get']({}, options));
 }
 
 /** The settings' keys and the shape of each (`bureau.settings.schema`). */
 export async function getSettingsSchema(options?: Options): Promise<SettingsSchema> {
-  return schemaAnswerSchema.parse(await callBureau('bureau.settings.schema', {}, options)).schema
+  // The server's schema calls the settings' schema a bare record; the nodes are read by shape here.
+  return schemaAnswerSchema.parse(await bureauClient['bureau.settings.schema']({}, options)).schema
     .properties;
 }
 
-const updateAnswerSchema = z.object({
-  revision: z.number().int().nonnegative(),
-  pendingRestart: z.array(z.string()),
-});
-
 /** What an applied update answers: the record's revision after it, and the `restart` keys it set. */
-export type SettingsUpdateReceipt = z.infer<typeof updateAnswerSchema>;
+export type SettingsUpdateReceipt = BureauOutput<'bureau.settings.update'>;
 
 /**
  * Changes the keys in `patch`, all or none, against the revision the caller read. A refusal is
@@ -147,9 +145,7 @@ export async function updateSettings(
   expectedRevision: number,
   options?: Options,
 ): Promise<SettingsUpdateReceipt> {
-  return updateAnswerSchema.parse(
-    await callBureau('bureau.settings.update', { patch, expectedRevision }, options),
-  );
+  return bureauClient['bureau.settings.update']({ patch, expectedRevision }, options);
 }
 
 /**

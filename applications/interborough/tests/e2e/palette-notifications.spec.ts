@@ -352,7 +352,7 @@ test.describe('the bell keeps what is read in the Bureau', () => {
       pattern: loggedFailedResponse(500, /\/bureau\/jsonrpc/),
       reason: 'the test refuses the Bureau’s mark-as-read on purpose',
     });
-    await page.route('**/bureau/jsonrpc', async (route) => {
+    await page.route('**/jsonrpc', async (route) => {
       if ((route.request().postData() ?? '').includes('"bureau.notifications.markread"')) {
         await route.fulfill({ status: 500, body: 'unavailable' });
       } else {
@@ -423,7 +423,7 @@ test.describe('the bell keeps what is read in the Bureau', () => {
       pattern: loggedFailedResponse(500, /\/bureau\/jsonrpc/),
       reason: 'the test refuses the Bureau’s list of notifications on purpose',
     });
-    await page.route('**/bureau/jsonrpc', async (route) => {
+    await page.route('**/jsonrpc', async (route) => {
       if ((route.request().postData() ?? '').includes('"bureau.notifications.list"')) {
         await route.fulfill({ status: 500, body: 'unavailable' });
       } else {

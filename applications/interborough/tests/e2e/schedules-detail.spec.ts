@@ -294,7 +294,7 @@ test('the menu holds Delete schedule only, below its button, and deleting asks f
 
 /** Answers the Bureau's start of a workflow with a run, so Run now makes none in the world. */
 async function answerStart(page: Page): Promise<void> {
-  await page.route('**/bureau/jsonrpc', async (route: Route) => {
+  await page.route('**/jsonrpc', async (route: Route) => {
     const body = route.request().postDataJSON() as { id?: unknown; method?: string };
     if (body.method !== 'bureau.workflows.start') {
       await route.fallback();
@@ -577,7 +577,7 @@ test('Run once now starts one run, not one per miss', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 1000 });
   // The Bureau's run now is answered by the specification, so no run is made in the world.
   const starts: string[] = [];
-  await page.route('**/bureau/jsonrpc', async (route: Route) => {
+  await page.route('**/jsonrpc', async (route: Route) => {
     const body = route.request().postDataJSON() as { id?: unknown; method?: string };
     if (body.method !== 'bureau.schedules.runnow') {
       await route.fallback();

@@ -1,6 +1,6 @@
 /**
- * The generated Bureau client as the browser holds it: its calls are the JSON-RPC body `callBureau`
- * posts, to the composed `/jsonrpc`; a write the guard refuses never reaches `fetch`; a fault is the
+ * The generated Bureau client as the browser holds it: its calls are JSON-RPC bodies posted to the
+ * composed `/jsonrpc`; a write the guard refuses never reaches `fetch`; a fault is the
  * `HttpClientError` the console treats; and a call's signal and `fetch` reach the request.
  */
 import { rejectionOf } from '@lostgradient/testing';
@@ -8,7 +8,6 @@ import { HttpClientError } from '@lostgradient/weft';
 import { afterEach, describe, expect, test } from 'bun:test';
 
 import { bureauClient } from './bureau-api.ts';
-import { callBureau } from './bureau-client.ts';
 import { ServerUnreachableError } from './faults.ts';
 import { armWriteGuard } from './write-guard.ts';
 
@@ -27,23 +26,20 @@ function answering(answer: () => Response) {
 const result = (value: unknown) => () => Response.json({ jsonrpc: '2.0', id: 'x', result: value });
 
 describe('the generated Bureau client', () => {
-  test('posts the JSON-RPC body callBureau posts, to the composed /jsonrpc', async () => {
+  test('posts the JSON-RPC body the hand-written call posted, to the composed /jsonrpc', async () => {
     const generated = answering(result({ id: 'bureau-1' }));
-    const hand = answering(result({ id: 'bureau-1' }));
 
     const answer: unknown = await bureauClient['bureau.deployment.get'](
       {},
       { fetch: generated.fetcher },
     );
     expect(answer).toEqual({ id: 'bureau-1' });
-    await callBureau('bureau.deployment.get', {}, { fetch: hand.fetcher });
 
     expect(generated.sent[0]?.url).toBe('/jsonrpc');
-    expect(hand.sent[0]?.url).toBe('/bureau/jsonrpc');
     expect(generated.sent[0]?.init?.method).toBe('POST');
     expect(generated.sent[0]?.init?.headers).toEqual({ 'content-type': 'application/json' });
-    expect(generated.sent[0]?.init?.body).toBe(hand.sent[0]?.init?.body);
-    expect(JSON.parse(String(generated.sent[0]?.init?.body))).toEqual({
+    const body = generated.sent[0]?.init?.body;
+    expect(typeof body === 'string' ? JSON.parse(body) : undefined).toEqual({
       jsonrpc: '2.0',
       id: 'bureau.deployment.get',
       method: 'bureau.deployment.get',
@@ -63,13 +59,9 @@ describe('the generated Bureau client', () => {
         },
       });
     const generated = answering(fault);
-    const hand = answering(fault);
 
     const error = await rejectionOf(
       bureauClient['bureau.deployment.get']({}, { fetch: generated.fetcher }),
-    );
-    const expected = await rejectionOf(
-      callBureau('bureau.deployment.get', {}, { fetch: hand.fetcher }),
     );
 
     expect(error).toBeInstanceOf(HttpClientError);
@@ -78,7 +70,6 @@ describe('the generated Bureau client', () => {
       message: 'Used',
       data: { weftCode: 'Conflict', httpStatus: 409, reason: 'session-terminal' },
     });
-    expect(error).toEqual(expected as Error);
   });
 
   test('a body that is not JSON-RPC is an error with the status of the response', async () => {
@@ -102,7 +93,7 @@ describe('the generated Bureau client', () => {
     expect(generated.sent[0]?.init?.signal).toBe(controller.signal);
   });
 
-  test('an aborted signal rejects the call, as it does for callBureau', async () => {
+  test('an aborted signal rejects the call with its reason', async () => {
     const controller = new AbortController();
     const abortable = async (_input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
       await new Promise((_resolve, reject) => {

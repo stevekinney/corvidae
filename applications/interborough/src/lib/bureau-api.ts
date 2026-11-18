@@ -18,5 +18,20 @@ export const bureauClient = createBureauClient({ baseUrl: '' });
 /** What the Bureau operation `Name` takes. */
 export type BureauInput<Name extends CatalogOperationName> = CatalogOperationTypes[Name]['input'];
 
+type OptionalKeys<Value> = {
+  [Key in keyof Value]-?: object extends Pick<Value, Key> ? Key : never;
+}[keyof Value];
+
+/**
+ * A wire object whose optional members also read `undefined`, as a value the browser builds or
+ * reads back does when a field was left out on purpose. The server's schema leaves a member
+ * absent; the browser's own records spell absence either way.
+ */
+export type WithUndefined<Value> = Value extends unknown
+  ? {
+      [Key in keyof Value as Key extends OptionalKeys<Value> ? never : Key]: Value[Key];
+    } & { [Key in OptionalKeys<Value>]?: Value[Key] | undefined }
+  : never;
+
 /** What the Bureau operation `Name` answers. */
 export type BureauOutput<Name extends CatalogOperationName> = CatalogOperationTypes[Name]['output'];

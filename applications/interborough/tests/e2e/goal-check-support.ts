@@ -141,7 +141,7 @@ type RpcBody = { id?: unknown; method?: string; params?: Record<string, unknown>
 
 /** Answers `method` with `result`, as the server would; every other request goes through. */
 export async function answerWith(page: Page, method: string, result: unknown): Promise<void> {
-  await page.route('**/bureau/jsonrpc', async (route) => {
+  await page.route('**/jsonrpc', async (route) => {
     const body = JSON.parse(route.request().postData() ?? '{}') as RpcBody;
     if (body.method !== method) {
       await route.fallback();
@@ -153,7 +153,7 @@ export async function answerWith(page: Page, method: string, result: unknown): P
 
 /** Never answers `method`: the request stays pending for as long as the page is open (a loading state). */
 export async function holdMethod(page: Page, method: string): Promise<void> {
-  await page.route('**/bureau/jsonrpc', async (route) => {
+  await page.route('**/jsonrpc', async (route) => {
     const body = JSON.parse(route.request().postData() ?? '{}') as RpcBody;
     if (body.method !== method) await route.fallback();
     // Held: neither fulfilled nor continued.
@@ -171,7 +171,7 @@ export async function refuseMethod(
   status: number,
   fault: { readonly weftCode: string; readonly message: string; readonly data?: object },
 ): Promise<void> {
-  await page.route('**/bureau/jsonrpc', async (route) => {
+  await page.route('**/jsonrpc', async (route) => {
     const body = JSON.parse(route.request().postData() ?? '{}') as RpcBody;
     if (body.method !== method) {
       await route.fallback();
@@ -201,7 +201,7 @@ export async function answerAsRecorded(
   method: string,
   recorded: { readonly error: { readonly data: { readonly httpStatus: number } } },
 ): Promise<void> {
-  await page.route('**/bureau/jsonrpc', async (route) => {
+  await page.route('**/jsonrpc', async (route) => {
     const body = JSON.parse(route.request().postData() ?? '{}') as RpcBody;
     if (body.method !== method) {
       await route.fallback();
@@ -223,7 +223,7 @@ export async function patchResult(
   method: string,
   change: (result: Record<string, unknown>) => Record<string, unknown>,
 ): Promise<void> {
-  await page.route('**/bureau/jsonrpc', async (route) => {
+  await page.route('**/jsonrpc', async (route) => {
     const body = JSON.parse(route.request().postData() ?? '{}') as RpcBody;
     if (body.method !== method) {
       await route.fallback();
