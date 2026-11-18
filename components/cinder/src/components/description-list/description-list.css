@@ -159,7 +159,11 @@
     grid-template-columns: subgrid;
     grid-column: 1 / -1;
     align-items: center;
-    gap: var(--cinder-space-3);
+    /* No column gap: the list's grid has none, and a subgrid's larger gap is split half to each side
+     * of the gutter, which set the value 6px past an InspectorRow's. The label's own end padding
+     * keeps the 12px, as `.cinder-inspector-row__label` does, so the value starts at 140px. */
+    column-gap: 0;
+    row-gap: var(--cinder-space-3);
     min-block-size: 2.75rem;
     padding-block: var(--cinder-space-2-5);
     padding-inline: 0 var(--cinder-space-3);
@@ -173,6 +177,7 @@
   /* The label is set in the body size, as an InspectorRow's is; when the row stacks it drops to
    * the small size above its value (below). */
   .cinder-description-list[data-cinder-variant='fields'] dt {
+    padding-inline-end: var(--cinder-space-3);
     color: var(--cinder-text-muted);
     font-size: var(--cinder-text-base);
     font-weight: var(--cinder-font-normal);

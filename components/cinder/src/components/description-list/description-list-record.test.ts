@@ -28,6 +28,22 @@ describe('DescriptionList record-details anatomy (fields variant)', () => {
     );
   });
 
+  test("the value starts where an InspectorRow's does: no column gap, the label's own end padding", () => {
+    // A subgrid's larger column gap is split half to each side of the gutter, so a 12px gap on the
+    // row over the list's gapless grid set the value 6px past an InspectorRow's (COR-2394).
+    const row =
+      /\[data-cinder-variant='fields'\] \.cinder-description-list__row\s*\{([^}]*)\}/s.exec(
+        css,
+      )?.[1];
+    expect(row).toContain('grid-template-columns: subgrid;');
+    expect(row).toContain('column-gap: 0;');
+    expect(row).not.toMatch(/^\s*gap:/m);
+    expect(css).not.toMatch(/\[data-cinder-variant='fields'\]\s*\{[^}]*(column-)?gap:/s);
+    expect(css).toMatch(
+      /\.cinder-description-list\[data-cinder-variant='fields'\] dt\s*\{[^}]*padding-inline-end: var\(--cinder-space-3\)/s,
+    );
+  });
+
   test('each row is at least 44px tall with a rule inset to the text, and the last has none', () => {
     expect(css).toMatch(
       /\[data-cinder-variant='fields'\] \.cinder-description-list__row\s*\{[^}]*min-block-size: 2\.75rem/s,

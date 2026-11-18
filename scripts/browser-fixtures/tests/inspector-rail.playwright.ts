@@ -48,6 +48,7 @@ async function measure(page: Page, width: number, fixtureName: 'detail-page' | '
       row: box(row),
       label: box(row?.querySelector('.cinder-inspector-row__label')),
       value: box(row?.querySelector('.cinder-inspector-row__value')),
+      valueText: box(row?.querySelector('.cinder-inspector-row__text')),
       chevron: box(row?.querySelector('.cinder-inspector-row__chevron svg')),
       groupBackground: group ? getComputedStyle(group).backgroundColor : null,
       inset: background('--cinder-surface-inset'),
@@ -137,6 +138,9 @@ test('at 1280 a full-width Inspector is the tinted group with each label beside 
   expect(factValue!.left).toBeGreaterThanOrEqual(factTerm!.left + 139);
   expect(factValue!.top).toBeLessThan(factTerm!.bottom);
   expect(factChevron!.left).toBeGreaterThanOrEqual(factValue!.left);
+  // In one column the record's values start where the Inspector's do: no subgrid gap pushes them
+  // past the 140px label column (COR-2394; the gap set them 6px right).
+  expect(Math.abs(factValue!.left - read.valueText!.left)).toBeLessThanOrEqual(1);
   expect(
     Math.abs(factRow!.right - factChevron!.right - (row!.right - chevron!.right)),
   ).toBeLessThan(1);
