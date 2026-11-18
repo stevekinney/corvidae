@@ -113,6 +113,17 @@ describe('ScheduleBuilder', () => {
         'Custom cron',
       ]);
     });
+
+    test('COR-2432 (row 65q): a weekly schedule on one weekday reads "Every Friday"; several days read "Custom days"', async () => {
+      const { getByLabelText } = render(ScheduleBuilder, {
+        props: { value: { cron: '0 11 * * 5', timeZone: 'UTC' } },
+      });
+      const select = requiredInstance(getByLabelText('Repeats'), HTMLSelectElement);
+      expect(select.value).toBe('custom-days');
+      expect(select.selectedOptions[0]?.textContent?.trim()).toBe('Every Friday');
+      await fireEvent.click(getByLabelText('Tuesday'));
+      expect(select.selectedOptions[0]?.textContent?.trim()).toBe('Custom days');
+    });
   });
 
   describe('repeats', () => {

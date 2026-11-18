@@ -13,7 +13,7 @@
   } from './schedule-builder.types.ts';
   import {
     INTERVAL_UNITS,
-    REPEATS_OPTIONS,
+    repeatsOptionsFor,
     TIME_ZONE_VISIBLE_COUNT,
     WEEKDAYS,
     timeZoneOffsetLabel,
@@ -116,7 +116,7 @@
     <Select
       id={`${baseId}-repeats`}
       label="Repeats"
-      options={REPEATS_OPTIONS}
+      options={repeatsOptionsFor(draft)}
       value={repeats}
       onchange={onRepeatsChange}
     />
