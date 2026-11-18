@@ -22,7 +22,7 @@ Use `tone="danger"` when a settings section or action group has destructive, irr
 
 ## Suggested content
 
-Use `tone="suggested"` for content the product drafted that is not saved until the person confirms it, such as a suggested next action. The card says so in words: a quiet "Suggested" label in the accent text colour on its title row, or at the top of the body when the card has no `title`. `suggestedLabel` changes the words, for example to "Suggested wording". The card keeps its own surface: no tint, no dashed or accent border and no pill, so a suggestion never reads as a drop zone or a wireframe.
+Use `tone="suggested"` for content the product drafted that is not saved until the person confirms it, such as a suggested next action. The card says so in words: a quiet "Suggested" label in the accent text colour on a line above its title, or at the top of the body when the card has no `title`. `suggestedLabel` changes the words, for example to "Suggested wording". The card keeps its own surface: no tint, no dashed or accent border and no pill, so a suggestion never reads as a drop zone or a wireframe.
 
 ```svelte
 <script lang="ts">
@@ -96,7 +96,7 @@ A card becomes interactive when it receives `href` (the whole card renders as an
 | `padding` | `"none"` \| `"default"` | no | — | Body padding. `none` leaves header and footer padding intact while making body content flush with the card edges. |
 | `suggestedLabel` | `string` | no | `"Suggested"` | The words of the `suggested` label, such as "Suggested wording". Used with `tone="suggested"`. |
 | `title` | `string` | no | — | Primary heading text rendered inside the card's header region. |
-| `tone` | `"default"` \| `"danger"` \| `"suggested"` | no | — | Container treatment. `danger` renders a danger-zone surface for high-risk settings or destructive actions. `suggested` marks drafted content that is not saved until confirmed: a quiet accent text label on the title row (or at the top of the body when the card has no `title`), with no tint, border or pill. |
+| `tone` | `"default"` \| `"danger"` \| `"suggested"` | no | — | Container treatment. `danger` renders a danger-zone surface for high-risk settings or destructive actions. `suggested` marks drafted content that is not saved until confirmed: a quiet accent text label on a line above the title (or at the top of the body when the card has no `title`), with no tint, border or pill. |
 | `variant` | `"card"` \| `"well"` \| `"plain"` | no | — | Visual container style. `card` is raised; `well` is flatter and inset; `plain` is a heading on the page with no box. |
 | `actions` | `(opaque)` | no | — | Actions rendered at the end of the title row, aligned to the title's baseline. Buttons inside draw at the `xs` control height, so they never make the header taller. Ignored when the card is interactive (`href` or `onclick`), because a control cannot nest inside the whole-card link or button. Not expressible in JSON Schema; see the component types for the signature. |
 | `children` | `(opaque)` | yes | — | Basic card with no generated header. Not expressible in JSON Schema; see the component types for the signature. |

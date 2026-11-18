@@ -26,6 +26,7 @@ const {
   polarityInk,
   readAllTokenValues,
   readOklchToken,
+  readTranslucentToken,
   surface,
   surfaceInset,
   surfaceRaised,
@@ -264,10 +265,41 @@ describe('border-on-surface contrast', () => {
     }
   });
 
-  it('the dark structural tiers are 8% and 12% of a white ink (COR-2308)', () => {
+  // COR-2440 AC14, owner decision of 2026-11-17 ("which dark borders reach 3:1": controls only): in
+  // the dark arm the control edges (inputs, the composer, secondary buttons) clear WCAG 1.4.11's
+  // 3:1 on the surface they are drawn over, resting and on hover. The composer field and the
+  // secondary button paint `surface.raised` (hover `surface.raised.hover`, pressed
+  // `surface.raised.pressed`). The structural border is deliberately NOT held to 3:1: it stays
+  // quiet (pinned in retuned-theme-values.test.ts).
+  describe('COR-2440 AC14: dark control edges clear 3:1', () => {
+    const grounds = {
+      raised: surfaceRaised.dark,
+      'raised hover': readOklchToken('--cinder-surface-raised-hover').dark,
+      'raised pressed': readOklchToken('--cinder-surface-raised-pressed').dark,
+    };
+
+    for (const [name, ground] of Object.entries(grounds)) {
+      for (const [tierName, tier] of Object.entries({
+        'border.control': borderControl,
+        'border.control.hover': borderControlHover,
+      })) {
+        it(`dark: ${tierName} is at least 3:1 on ${name}`, () => {
+          expect(translucentContrastOn(tier.dark, ground)).toBeGreaterThanOrEqual(NON_TEXT);
+        });
+      }
+    }
+
+    it('the secondary button edge resolves to the control tier in the dark arm', () => {
+      const buttonBorder = readTranslucentToken('--cinder-button-border');
+      expect(buttonBorder.dark.alpha).toBe(borderControl.dark.alpha);
+    });
+  });
+
+  it('the dark structural tiers are 8% (muted), 12% (border) and 15% (strong) of a white ink', () => {
     expect(borderInk.dark).toEqual({ l: 1, c: 0, h: 0 });
     expect(borderMuted.dark.alpha).toBe(0.08);
     expect(border.dark.alpha).toBe(0.12);
+    expect(borderStrong.dark.alpha).toBe(0.15);
     expect(borderMuted.light.alpha).toBe(0.05);
     expect(border.light.alpha).toBe(0.09);
   });
@@ -277,7 +309,9 @@ describe('border-on-surface contrast', () => {
     // ladder that read 2.65:1 on `surface.raised`, so the token shipped 56%. COR-2308 darkened
     // raised to 23.5%, where 52% would clear by only 3.04:1, so the edge keeps 56% as margin:
     // 4.28:1 on the canvas, 4.03:1 on the surface, 3.83:1 on the inset and 3.60:1 on raised.
-    expect(borderContrast.dark.l).toBeCloseTo(0.56, 5);
+    // COR-2440: the dark control edge rose to 38%, so the contrast tier rose to 64% to stay the
+    // heavier edge under `prefers-contrast: more`.
+    expect(borderContrast.dark.l).toBeCloseTo(0.64, 5);
     for (const [groundName, ground] of Object.entries({
       canvas: bg.dark,
       surface: surface.dark,
@@ -299,7 +333,7 @@ describe('border-on-surface contrast', () => {
       '--cinder-border-contrast',
     );
     const lightRecipe = `color-mix(in oklch, var(--cinder-border-ink), transparent ${Math.round((1 - borderContrast.light.alpha) * 100)}%)`;
-    const darkLiteral = 'oklch(56% 0.05 248)';
+    const darkLiteral = 'oklch(64% 0.03 265)';
     expect(rootDeclaration?.replace(/\s+/g, ' ')).toBe(
       `light-dark( ${lightRecipe}, ${darkLiteral} )`,
     );
@@ -307,11 +341,11 @@ describe('border-on-surface contrast', () => {
     expect(borderContrast.dark.alpha).toBe(1);
   });
 
-  it('the control edge is 32% of the ink at rest and 42% on hover, in both arms', () => {
-    for (const arm of ['light', 'dark'] as const) {
-      expect(borderControl[arm].alpha).toBe(0.32);
-      expect(borderControlHover[arm].alpha).toBe(0.42);
-    }
+  it('the control edge is 32% of the ink at rest and 42% on hover in light, 38% and 44% in dark', () => {
+    expect(borderControl.light.alpha).toBe(0.32);
+    expect(borderControlHover.light.alpha).toBe(0.42);
+    expect(borderControl.dark.alpha).toBe(0.38);
+    expect(borderControlHover.dark.alpha).toBe(0.44);
   });
 
   it('more contrast turns the control edge into the contrast tier, after every theme block', () => {

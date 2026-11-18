@@ -66,6 +66,12 @@ describe('GroupedListItem suggested', () => {
     for (const property of ['background', 'border', 'border-radius', 'padding', 'outline']) {
       expect(label.has(property)).toBe(false);
     }
-    expect(css).not.toContain('[data-cinder-suggested]');
+    // A suggested row only re-flows its text and trailing value (COR-2441); no rule keyed on
+    // `[data-cinder-suggested]` paints a tint, border or outline.
+    const keyed = [...css.matchAll(/\[data-cinder-suggested\][^{]*\{([^}]*)\}/g)];
+    expect(keyed.length).toBeGreaterThan(0);
+    for (const [, body] of keyed) {
+      expect(body).not.toMatch(/\b(?:background|border|outline|box-shadow|color)\s*:/);
+    }
   });
 });
