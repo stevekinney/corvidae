@@ -13,13 +13,31 @@
     onSelect?: (callId: string) => void;
     selectedId?: string;
     onRetryStep?: (callId: string) => void;
+    groupApprovals?: boolean;
   }
 
-  let { entries, endLabel, duration, onSelect, selectedId, onRetryStep }: HarnessProps = $props();
+  let {
+    entries,
+    endLabel,
+    duration,
+    onSelect,
+    selectedId,
+    onRetryStep,
+    groupApprovals = false,
+  }: HarnessProps = $props();
 </script>
 
-<ToolCalls id="turn-1" {entries} {endLabel} {duration} {onSelect} {selectedId} {onRetryStep}>
-  {#snippet decision(entry)}
-    <p>Decide on {entry.name}</p>
+<ToolCalls
+  id="turn-1"
+  {entries}
+  {endLabel}
+  {duration}
+  {onSelect}
+  {selectedId}
+  {onRetryStep}
+  {groupApprovals}
+>
+  {#snippet decision(entry, layout)}
+    <p data-layout={layout}>Decide on {entry.name}</p>
   {/snippet}
 </ToolCalls>

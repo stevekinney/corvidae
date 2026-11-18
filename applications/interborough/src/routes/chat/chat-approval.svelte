@@ -31,6 +31,11 @@
     'data-changes'?: boolean;
     /** A name that is unique on the page. */
     id: string;
+    /**
+     * `decision` (default) for an approval on its own under its call; `row` for a compact row of
+     * the turn's ApprovalGroup, when two or more wait together (board row A3).
+     */
+    layout?: 'decision' | 'row';
     /** The call the approval is for. Its `decision` says it was decided, and how. */
     entry: ToolCallEntry;
     /** What a waiting approval asks, ending in a question mark. A decided one reads its own. */
@@ -89,6 +94,7 @@
   let {
     'data-changes': dataChanges = false,
     id,
+    layout = 'decision',
     entry,
     question,
     source,
@@ -151,7 +157,7 @@
 <ApprovalCard
   {...dataChanges ? { 'data-changes': true } : {}}
   {id}
-  layout="decision"
+  {layout}
   headingLevel={4}
   question={decision === undefined ? question : decidedQuestion}
   tool={{

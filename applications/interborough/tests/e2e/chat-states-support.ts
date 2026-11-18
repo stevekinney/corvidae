@@ -16,6 +16,7 @@ import {
 } from '../../fixtures/chat-states.ts';
 import { SAMPLE_NOW } from '../../fixtures/sample-now.ts';
 import { SAMPLE_WORLD_THREADS } from '../../fixtures/sample-world-records.ts';
+import { contextDetailSchema } from '../../src/lib/bureau-client.ts';
 import { E2E_SHOWCASE_URL } from './e2e-constants.ts';
 import { expect } from './fixtures.ts';
 
@@ -110,7 +111,9 @@ export async function openStatesChat(
   });
   const kind = ((await read.json()) as { result: Record<string, unknown> }).result;
   const thread = threadOf(chat);
+  // Checked against the page's own schema for the operation, so the stub is one the page could be sent.
   const context = contextOf(chat, kind);
+  contextDetailSchema.parse(context);
   await page.route('**/bureau/jsonrpc', async (route) => {
     const body = operationOf(route);
     // The chat list and the bell read the Bureau's recent runs of every chat; this chat's run is

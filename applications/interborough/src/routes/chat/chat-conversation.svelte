@@ -81,7 +81,7 @@
   import { REVIEWS_COPY } from '../../app/copy/reviews.ts';
   import { usePageDetails, usePageLabel } from '../../app/breadcrumbs.svelte.ts';
   import { showToast } from '../../app/toast-host.svelte';
-  import { getConnection } from '../../app/connection.svelte.ts';
+  import { getConnection, shellDrawsConnectionBanner } from '../../app/connection.svelte.ts';
   import { restartActivity } from '../../app/restart/host-restart-flow.svelte.ts';
   import { useBureauEventsLive } from '../../app/live-polling.svelte.ts';
   import { browserWorkspaceStorage } from '../../app/workspace-lifetime.ts';
@@ -597,12 +597,8 @@
     composerStatusOf({
       unreachable: connection.unreachable,
       browserOffline: connection.browserOffline,
-      // As the shell decides to draw its connection banner (`app/shell/shell.svelte`).
-      outageBannerShown:
-        connection.unreachable &&
-        !connection.shownInPlace &&
-        !connection.bannerDrawnByPage &&
-        !restartActivity.active,
+      // The shell's own rule for drawing its connection banner.
+      outageBannerShown: shellDrawsConnectionBanner(connection, restartActivity.active),
       restarting: restart.running,
       archived:
         archivedAt === null
@@ -2369,6 +2365,7 @@
               focus on the row a person is using and the panel's return target. -->
             <ToolCalls
               id={`tools-${message.id}`}
+              groupApprovals
               entries={group.entries.map(displayEntry)}
               decided={decisionContext}
               selectedId={selectedCallId}
@@ -2381,7 +2378,7 @@
                 ? undefined
                 : formatCallDuration(group.durationMilliseconds)}
             >
-              {#snippet decision(entry)}
+              {#snippet decision(entry, layout)}
                 {@const asked = approvalsByCall.get(entry.callId)}
                 {@const expired =
                   entry.state === 'expired' ||
@@ -2391,6 +2388,7 @@
                   {#key `${entry.state}:${entry.approvalExpiresAt ?? ''}`}
                     <ChatApproval
                       id={`tools-${message.id}-${entry.callId}`}
+                      {layout}
                       {entry}
                       question={asked?.question ?? ''}
                       source={agentShown}

@@ -308,13 +308,120 @@ export function workflowCreatedMessages(): Record<string, unknown>[] {
   ];
 }
 
+/** The thread of the refund chat whose turn waits on two approvals at once (board row A3). */
+export const APPROVALS_WAITING_THREAD = 'sample-chat-refund-approvals-waiting';
+
+/** The thread of the same turn with three approvals, one of them already approved. */
+export const APPROVALS_ONE_DECIDED_THREAD = 'sample-chat-refund-approvals-one-decided';
+
+/** When Tool runner asked for the approvals of the batch: a moment after the lookup answered. */
+const BATCH_ASKED = LOOKED_UP + 2000;
+
+/** One approval of the batch: the call, what it asks, and, when it was approved, when. */
+type BatchApproval = {
+  readonly id: string;
+  readonly tool: string;
+  readonly arguments: Record<string, unknown>;
+  readonly question: string;
+  readonly approvedAt?: number;
+};
+
+/** The approvals the batch asks for, in the order Tool runner called them. */
+const BATCH: readonly BatchApproval[] = [
+  {
+    id: 'states-batch-refund-4471',
+    tool: 'issue-refund',
+    arguments: { orderId: '4471', amountCents: 4200 },
+    question: 'Refund order 4471 for $42.00?',
+  },
+  {
+    id: 'states-batch-email-4471',
+    tool: 'send-email',
+    arguments: { to: 'customer@example.com', subject: 'Your refund for order 4471' },
+    question: 'Email the customer about the refund?',
+  },
+  {
+    id: 'states-batch-close-4471',
+    tool: 'close-ticket',
+    arguments: { ticketId: 'T-4471' },
+    question: 'Close ticket T-4471?',
+    approvedAt: BATCH_ASKED + 30_000,
+  },
+];
+
+/**
+ * The thread of a turn that asks for its approvals in one step: the lookup answered, then two calls
+ * (or three, `withDecided`) each parked on an approval, the third approved by the person already.
+ */
+export function approvalBatchMessages(withDecided: boolean): Record<string, unknown>[] {
+  const runId = withDecided ? 'run-states-batch-decided' : 'run-states-batch';
+  const approvals = withDecided ? BATCH : BATCH.slice(0, 2);
+  return [
+    userMessage('user-states-batch', REFUND_TITLE, ASKED),
+    ...stepOf(0, runId, LOOKUP_4471),
+    {
+      id: `${runId}:step:1`,
+      role: 'assistant',
+      metadata: { ...stamp(BATCH_ASKED - 20), 'bureau:replyModel': REPLY_MODEL },
+      toolCalls: approvals.map((approval) => ({
+        id: approval.id,
+        type: 'function',
+        function: { name: approval.tool, arguments: JSON.stringify(approval.arguments) },
+        metadata: stamp(BATCH_ASKED - 20),
+      })),
+    },
+    ...approvals.map((approval, index) => {
+      const requirement = `Tool "${approval.tool}" (changes tier) requires approval (mode: on-changes).`;
+      return {
+        id: `${runId}:step:1:result:${approval.id}`,
+        role: 'tool',
+        toolCallId: approval.id,
+        content: approval.approvedAt === undefined ? requirement : 'Done',
+        metadata: {
+          ...stamp(approval.approvedAt ?? BATCH_ASKED),
+          ...(approval.approvedAt === undefined
+            ? {
+                'conversationalist:toolResult': {
+                  outcome: 'action_required',
+                  action: {
+                    type: 'approval',
+                    message: approval.question,
+                    risk: 'medium',
+                    operation: { argsPreview: approval.arguments, kind: 'other' },
+                    policyVersion: 'policy:1',
+                    idempotencyKey: `approval:${approval.id}:${String(index)}`,
+                  },
+                  content: requirement,
+                },
+              }
+            : {
+                toolTiming: {
+                  startedAt: iso(approval.approvedAt),
+                  endedAt: iso(approval.approvedAt + 300),
+                },
+                approvalDecision: {
+                  decision: 'approve',
+                  decidedBy: 'anonymous:local',
+                  decidedAt: iso(approval.approvedAt),
+                  asked: approval.question,
+                },
+                'conversationalist:toolResult': { outcome: 'success', content: 'Done' },
+              }),
+        },
+      };
+    }),
+  ];
+}
+
 /** Which of the board's chats a record is for. */
 export type StatesChat =
   | 'failed-partway'
   | 'stopped-partway'
   | 'ended-on-tool-call'
   | 'held-by-plugin'
-  | 'workflow-created';
+  | 'workflow-created'
+  | 'approvals-waiting'
+  | 'approvals-one-decided';
 
 /** The thread identifier of `chat`. */
 export function threadOf(chat: StatesChat): string {
@@ -329,6 +436,10 @@ export function threadOf(chat: StatesChat): string {
       return HELD_BY_PLUGIN_THREAD;
     case 'workflow-created':
       return WORKFLOW_CREATED_THREAD;
+    case 'approvals-waiting':
+      return APPROVALS_WAITING_THREAD;
+    case 'approvals-one-decided':
+      return APPROVALS_ONE_DECIDED_THREAD;
   }
 }
 
@@ -345,6 +456,10 @@ export function messagesOf(chat: StatesChat): Record<string, unknown>[] {
       return heldByPluginMessages();
     case 'workflow-created':
       return workflowCreatedMessages();
+    case 'approvals-waiting':
+      return approvalBatchMessages(false);
+    case 'approvals-one-decided':
+      return approvalBatchMessages(true);
   }
 }
 
@@ -360,6 +475,9 @@ function previewOf(chat: StatesChat): string {
       return REFUND_TITLE;
     case 'workflow-created':
       return WORKFLOW_CREATED_REPLY;
+    case 'approvals-waiting':
+    case 'approvals-one-decided':
+      return BATCH[0]!.question;
   }
 }
 
@@ -403,7 +521,10 @@ export function contextOf(
     messageCount: messages.length,
     createdAt: iso(startedAt),
     updatedAt: iso(startedAt + 5000),
-    activity: held ? 'awaiting-input' : 'idle',
+    activity:
+      held || chat === 'approvals-waiting' || chat === 'approvals-one-decided'
+        ? 'awaiting-input'
+        : 'idle',
     endReason: null,
     archivedAt: null,
   };
@@ -490,6 +611,8 @@ export function tasksOf(chat: StatesChat): Record<string, unknown>[] {
         },
       ];
     case 'held-by-plugin':
+    case 'approvals-waiting':
+    case 'approvals-one-decided':
       return [];
   }
 }

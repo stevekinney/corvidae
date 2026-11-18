@@ -169,6 +169,9 @@ export const CHAT_COPY = {
      */
     continuesOnProvider: (agent: string): string =>
       `${agent} continues once a provider is connected.`,
+    /** The heading of the group two or more approvals of one turn wait in: how many still wait. */
+    waitingCount: (count: number): string =>
+      `${String(count)} ${count === 1 ? 'approval' : 'approvals'} waiting`,
   },
   /** The tool calls of a turn. */
   tools: {

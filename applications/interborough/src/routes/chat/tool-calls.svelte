@@ -11,18 +11,30 @@
    */
   import type { Snippet } from 'svelte';
 
-  import { ToolCallRail } from '@lostgradient/cinder';
+  import { ApprovalGroup, ToolCallRail } from '@lostgradient/cinder';
 
   import { CHAT_COPY } from '../../app/copy/chat.ts';
   import type { DecisionContext } from './approval-decision-words.ts';
   import { argumentEntries, displayValue } from '../../lib/tool-text.ts';
   import { railCall, type ToolCallEntry } from './tool-activity.ts';
 
+  /** How a decision is drawn: on its own under its call, or as a compact row of the turn's group. */
+  type ApprovalLayout = 'decision' | 'row';
+
   interface ToolCallsProps {
     id: string;
     entries: readonly ToolCallEntry[];
-    /** The decision a call that needs one, or whose decision is kept, is shown with, directly under its row. */
-    decision?: Snippet<[ToolCallEntry]>;
+    /**
+     * The decision a call that needs one, or whose decision is kept, is shown with: directly under
+     * its row in the `decision` layout, or as a compact `row` in the turn's approval group.
+     */
+    decision?: Snippet<[ToolCallEntry, ApprovalLayout]>;
+    /**
+     * Whether two or more approvals that wait together in this turn are drawn as Cinder's one
+     * bordered ApprovalGroup of compact rows after the rail (board row A3), as Chat draws its own
+     * (`chat.svelte`'s `tool-call-group` row). Default `false`: each decision under its row.
+     */
+    groupApprovals?: boolean;
     /** Who the person is to this chat and which decisions were made on another page, for the words of a decided call. */
     decided?: DecisionContext;
     /** The run's end state, on its own line after the last row, for a turn that ends on a tool call. */
@@ -51,6 +63,7 @@
     id,
     entries,
     decision,
+    groupApprovals = false,
     decided = {},
     endLabel,
     duration,
@@ -99,17 +112,39 @@
           // A call whose row carries a link keeps its approval under it, since the row's
           // words are the answer.
           (entry.resultHref !== undefined && entry.decision.outcome === 'approved'))));
+  // The approvals that wait together, drawn as one group (board row A3, COR-2438 AC1). A batch is
+  // what Chat counts as one: two or more approvals of this turn waiting at once. While one still
+  // waits, the group holds every approval of the turn, decided ones as receipts, so a decision folds
+  // its own row in place and the rows around it do not move, and a reload draws the same group; it
+  // ends, and each receipt goes back under its call, when the last is decided.
+  const asksApproval = (entry: ToolCallEntry): boolean =>
+    entry.state === 'needs-you' || entry.state === 'expired' || entry.decision !== undefined;
+  let batchOpen = false;
+  const grouped = $derived.by<readonly ToolCallEntry[]>(() => {
+    const waiting = entries.filter((entry) => entry.state === 'needs-you').length;
+    batchOpen =
+      groupApprovals && decision !== undefined && (waiting >= 2 || (batchOpen && waiting >= 1));
+    const members = batchOpen ? entries.filter(asksApproval) : [];
+    return members.length >= 2 ? members : [];
+  });
+  const inGroup = (entry: ToolCallEntry): boolean =>
+    grouped.some((member) => member.callId === entry.callId);
+  const waitingInGroup = $derived(grouped.filter((entry) => entry.state === 'needs-you').length);
+
   const calls = $derived(
-    entries.map((entry) => ({
-      ...railCall(
-        entry,
-        showsDecision(entry) || (inline && openDetails.has(entry.callId)) || showsPanel(entry),
-        decided,
-        // A decided call whose receipt card is drawn under its row: the card says the decision.
-        showsDecision(entry) && entry.decision !== undefined,
-      ),
-      ...(showsPanel(entry) ? { pinned: true } : {}),
-    })),
+    entries.map((entry) => {
+      const underRow = showsDecision(entry) && !inGroup(entry);
+      return {
+        ...railCall(
+          entry,
+          underRow || (inline && openDetails.has(entry.callId)) || showsPanel(entry),
+          decided,
+          // A decided call whose receipt card is drawn under its row: the card says the decision.
+          underRow && entry.decision !== undefined,
+        ),
+        ...(showsPanel(entry) ? { pinned: true } : {}),
+      };
+    }),
   );
   const running = $derived(entries.some((entry) => entry.state === 'running'));
 
@@ -158,8 +193,8 @@
             {/each}
           </dl>
         {/if}
-        {#if decision !== undefined && showsDecision(entry)}
-          {@render decision(entry)}
+        {#if decision !== undefined && showsDecision(entry) && !inGroup(entry)}
+          {@render decision(entry, 'decision')}
         {/if}
         {#if mcpApp !== undefined}
           {@render mcpApp(entry)}
@@ -167,4 +202,18 @@
       {/if}
     {/snippet}
   </ToolCallRail>
+  {#if decision !== undefined && grouped.length > 0}
+    <!-- One bordered group of compact rows, each deciding its own approval; the heading counts the
+         ones still waiting. -->
+    <ApprovalGroup
+      class="ib-tools__approval-group"
+      heading={CHAT_COPY.approval.waitingCount(waitingInGroup)}
+    >
+      {#each grouped as entry (entry.callId)}
+        <div class="ib-tools__approval-row" data-approval-row={entry.callId}>
+          {@render decision(entry, 'row')}
+        </div>
+      {/each}
+    </ApprovalGroup>
+  {/if}
 </div>

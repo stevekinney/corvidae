@@ -408,3 +408,120 @@ describe('a turn’s tool calls', () => {
     expect(rowOf(container, 'c1')?.getAttribute('aria-pressed')).not.toBe('true');
   });
 });
+
+// COR-2438 AC1, COR-2440 AC2 (board row A3): two or more approvals that wait together in one turn
+// are one bordered group of compact rows under "N approvals waiting", as Chat draws its own.
+describe('approvals that wait together', () => {
+  const waiting = (callId: string, name: string) =>
+    entry({ callId, name, title: name, state: 'needs-you', summary: '', result: undefined });
+  const approved = (callId: string, name: string) =>
+    entry({
+      callId,
+      name,
+      title: name,
+      decision: {
+        outcome: 'approved',
+        decidedBy: 'you',
+        decidedAt: Date.parse('2026-11-02T16:46:00.000Z'),
+        decisionSurface: 'chat',
+      },
+    });
+  const group = (container: HTMLElement) => container.querySelector('.cinder-approval-group');
+  const rows = (container: HTMLElement) =>
+    [...container.querySelectorAll<HTMLElement>('[data-approval-row]')].map((row) => ({
+      call: row.getAttribute('data-approval-row'),
+      layout: row.querySelector('[data-layout]')?.getAttribute('data-layout'),
+    }));
+
+  test('are one group of compact rows under how many wait, and nothing under their rail rows', () => {
+    const { container } = render(Harness, {
+      props: {
+        groupApprovals: true,
+        entries: [
+          entry({ callId: 'c0' }),
+          waiting('c1', 'issue-refund'),
+          waiting('c2', 'send-email'),
+        ],
+      },
+    } as never);
+    expect(group(container)?.textContent).toContain('2 approvals waiting');
+    expect(rows(container)).toEqual([
+      { call: 'c1', layout: 'row' },
+      { call: 'c2', layout: 'row' },
+    ]);
+    // The group is the only place they are decided: no decision is drawn under their rows.
+    expect(container.querySelectorAll('[data-layout="decision"]')).toHaveLength(0);
+  });
+
+  test('keep their rows when one is decided: it folds to its receipt in place, and the heading counts the rest', async () => {
+    const view = render(Harness, {
+      props: {
+        groupApprovals: true,
+        entries: [
+          waiting('c1', 'issue-refund'),
+          waiting('c2', 'send-email'),
+          waiting('c3', 'close-ticket'),
+        ],
+      },
+    } as never);
+    expect(view.container.querySelector('.cinder-approval-group')?.textContent).toContain(
+      '3 approvals waiting',
+    );
+
+    await view.rerender({
+      groupApprovals: true,
+      entries: [
+        waiting('c1', 'issue-refund'),
+        approved('c2', 'send-email'),
+        waiting('c3', 'close-ticket'),
+      ],
+    } as never);
+
+    expect(group(view.container)?.textContent).toContain('2 approvals waiting');
+    expect(rows(view.container).map((row) => row.call)).toEqual(['c1', 'c2', 'c3']);
+    expect(rows(view.container).every((row) => row.layout === 'row')).toBe(true);
+  });
+
+  test('draw the same group after a reload: the decided one is a receipt among the rows still waiting', () => {
+    const { container } = render(Harness, {
+      props: {
+        groupApprovals: true,
+        entries: [
+          waiting('c1', 'issue-refund'),
+          approved('c2', 'send-email'),
+          waiting('c3', 'close-ticket'),
+        ],
+      },
+    } as never);
+    expect(group(container)?.textContent).toContain('2 approvals waiting');
+    expect(rows(container).map((row) => row.call)).toEqual(['c1', 'c2', 'c3']);
+  });
+
+  test('end when the last is decided, and one alone is decided under its row', async () => {
+    const view = render(Harness, {
+      props: {
+        groupApprovals: true,
+        entries: [waiting('c1', 'issue-refund'), waiting('c2', 'send-email')],
+      },
+    } as never);
+    await view.rerender({
+      groupApprovals: true,
+      entries: [approved('c1', 'issue-refund'), approved('c2', 'send-email')],
+    } as never);
+    expect(group(view.container)).toBeNull();
+
+    const single = render(Harness, {
+      props: { groupApprovals: true, entries: [waiting('c9', 'issue-refund')] },
+    } as never);
+    expect(group(single.container)).toBeNull();
+    expect(single.container.querySelector('[data-layout="decision"]')).not.toBeNull();
+  });
+
+  test('are not grouped where the page does not ask for it', () => {
+    const { container } = render(Harness, {
+      props: { entries: [waiting('c1', 'issue-refund'), waiting('c2', 'send-email')] },
+    } as never);
+    expect(group(container)).toBeNull();
+    expect(container.querySelectorAll('[data-layout="decision"]')).toHaveLength(2);
+  });
+});

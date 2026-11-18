@@ -485,6 +485,51 @@ test.describe('/chats/:chat (question waiting): docked with a provider connected
   });
 });
 
+// COR-2438 AC1, COR-2440 AC2 (board row A3): approvals that wait together in one turn are one
+// bordered group of compact rows under how many wait. The stubs are the records of
+// `fixtures/chat-states.ts`, whose context `openStatesChat` checks against the page's own schema and
+// whose thread the page's unit tests read through the page (`chat-conversation-states.test.ts`).
+test.describe('/chats/:chat: approvals that wait together (COR-2438 AC1, COR-2440 AC2)', () => {
+  for (const width of [1280, 375] as const) {
+    test(`two waiting are one group of compact rows, at ${width}`, async ({ page, request }) => {
+      await connectProvider(page);
+      await openStatesChat(page, request, 'approvals-waiting');
+      await page.setViewportSize({ width, height: width === 375 ? 812 : 900 });
+      const group = transcript(page).locator('.cinder-approval-group');
+      await expect(group).toBeVisible();
+      await expect(group).toContainText('2 approvals waiting');
+      await expect(group.locator('[data-cinder-layout="row"]')).toHaveCount(2);
+      await expect(group.getByRole('button', { name: 'Approve' })).toHaveCount(2);
+      await expect(transcript(page).locator('[data-cinder-layout="decision"]')).toHaveCount(0);
+      await captureForDesignReview(page, {
+        route: '/chats/:chat',
+        state: `two approvals waiting at ${width}`,
+        source: SOURCE,
+      });
+    });
+
+    test(`three with one decided keep their rows, the decided one a receipt, at ${width}`, async ({
+      page,
+      request,
+    }) => {
+      await connectProvider(page);
+      await openStatesChat(page, request, 'approvals-one-decided');
+      await page.setViewportSize({ width, height: width === 375 ? 812 : 900 });
+      const group = transcript(page).locator('.cinder-approval-group');
+      await expect(group).toBeVisible();
+      await expect(group).toContainText('2 approvals waiting');
+      await expect(group.locator('[data-cinder-layout="row"]')).toHaveCount(3);
+      await expect(group.getByRole('button', { name: 'Approve' })).toHaveCount(2);
+      await expect(group.locator('[data-cinder-state="approved"]')).toHaveCount(1);
+      await captureForDesignReview(page, {
+        route: '/chats/:chat',
+        state: `three approvals, one decided, at ${width}`,
+        source: SOURCE,
+      });
+    });
+  }
+});
+
 /** The two widths a stopped or failed turn is captured at (COR-2437). */
 const TURN_WIDTHS = [
   { width: 1280, height: 800 },

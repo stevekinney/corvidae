@@ -12,6 +12,7 @@ import { afterEach, describe, expect, test } from 'bun:test';
 
 import type { QueryClient } from '@tanstack/svelte-query';
 import {
+  approvalBatchMessages,
   billingThreadWithPartialReply,
   ENDED_PARTIAL_REPLY,
   endedOnToolCallMessages,
@@ -174,6 +175,39 @@ describe('a chat the server ended when it restarted (19b, 19c)', () => {
       ),
     );
     expect(container.querySelector('.weft-chat-strip')).toBeNull();
+  });
+});
+
+// COR-2438 AC1, COR-2440 AC2 (board row A3): approvals that wait together in one turn are one
+// bordered group of compact rows under how many wait, each deciding its own approval.
+describe('a turn that waits on several approvals at once (A3)', () => {
+  const groupOf = (container: HTMLElement) =>
+    container.querySelector<HTMLElement>('.cinder-approval-group');
+  const rowsOf = (container: HTMLElement) =>
+    [...(groupOf(container)?.querySelectorAll<HTMLElement>('[data-approval-row]') ?? [])].map(
+      (row) => row.querySelector('.cinder-approval-card')?.getAttribute('data-cinder-layout'),
+    );
+
+  test('draws two waiting approvals as one group of compact rows, each with its own Approve', async () => {
+    serve(approvalBatchMessages(false), { context: { activity: 'awaiting-input' } });
+    const { container } = mount();
+
+    await waitFor(() => expect(groupOf(container) === null).toBe(false));
+    expect(groupOf(container)?.textContent).toContain('2 approvals waiting');
+    expect(rowsOf(container)).toEqual(['row', 'row']);
+    expect(within(groupOf(container)!).getAllByRole('button', { name: 'Approve' })).toHaveLength(2);
+    // No approval of the batch is drawn on its own under its call as well.
+    expect(container.querySelector('[data-cinder-layout="decision"]')).toBeNull();
+  });
+
+  test('keeps a decided approval as a receipt row among the two still waiting', async () => {
+    serve(approvalBatchMessages(true), { context: { activity: 'awaiting-input' } });
+    const { container } = mount();
+
+    await waitFor(() => expect(groupOf(container) === null).toBe(false));
+    expect(groupOf(container)?.textContent).toContain('2 approvals waiting');
+    expect(rowsOf(container)).toEqual(['row', 'row', 'row']);
+    expect(within(groupOf(container)!).getAllByRole('button', { name: 'Approve' })).toHaveLength(2);
   });
 });
 
