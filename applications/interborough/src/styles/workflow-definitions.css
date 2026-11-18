@@ -325,10 +325,16 @@
   display: inline;
 }
 
-/* An identifier in the line (a signal, a file) is kept whole: notes-approved never breaks at its hyphen. */
+/* An identifier in the line (a signal, a file) is kept whole: notes-approved never breaks at its
+   hyphen. One longer than the line ends in an ellipsis instead of pushing the page sideways. */
 .ib-workflow__line code {
+  display: inline-block;
+  max-inline-size: 100%;
+  overflow: hidden;
   font-family: var(--cinder-font-mono);
   overflow-wrap: normal;
+  text-overflow: ellipsis;
+  vertical-align: bottom;
   white-space: nowrap;
 }
 

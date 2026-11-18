@@ -279,11 +279,10 @@ for (const width of WIDTHS) {
       page,
     }) => {
       const world = await readSampleWorldRecords(E2E_SHOWCASE_URL);
-      await openWorkflow(
-        page,
-        `/workflows/${encodeURIComponent(world.workflows.orderRefund)}?tab=code`,
-        width,
-      );
+      // The Code tab mounts neither the Overview nor the Runs list that `openWorkflow` waits for.
+      await page.clock.setFixedTime(SAMPLE_NOW);
+      await page.setViewportSize({ width, height: 900 });
+      await page.goto(`/workflows/${encodeURIComponent(world.workflows.orderRefund)}?tab=code`);
       await expect(detail(page).getByTestId('workflow-code')).toBeVisible();
       await expect(
         detail(page).getByRole('button', { name: WORKFLOW_COPY.page.problem.editAsJson }),

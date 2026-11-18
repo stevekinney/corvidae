@@ -572,6 +572,9 @@
           onTextChange={(next) => {
             text = next;
             documentProblem = null;
+            // A failed save is about the text it sent; an edit makes it stale, and the change's
+            // own notice returns above the footer (65t), the version still said once.
+            failure = null;
           }}
         >
           {#snippet actions()}

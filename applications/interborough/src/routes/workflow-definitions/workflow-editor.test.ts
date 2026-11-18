@@ -153,6 +153,14 @@ describe('the editor', () => {
     expect(getByRole('button', { name: EDITOR.saveAction })).not.toBeNull();
   });
 
+  test('design correction: the read-back of a saved workflow its schedule starts says a person can start it too (row 65j)', async () => {
+    const { container } = open('/workflows/digest/edit');
+    await ready(container);
+    await waitFor(() =>
+      expect(footer(container)).toContain(WORKFLOW_COPY.builder.readBack.startItYourself),
+    );
+  });
+
   test('is headed by the file’s title, with Save as its one primary action (row 65p)', async () => {
     const { container, getByRole } = open('/workflows/digest/edit', {
       files: [readyFile('digest', { title: 'Release notes' })],
@@ -391,6 +399,13 @@ describe('the version a save makes', () => {
     expect(container.querySelector('[data-testid="workflow-editor-impact"]')).toBeNull();
     expect(textarea(container).value).toBe(typed);
     expect(queryByRole('button', { name: 'Try again' })).toBeNull();
+
+    // An edit makes the failure stale, and the breaking change's notice returns (65t).
+    await typeInto(container, `${typed} `);
+    await waitFor(() =>
+      expect(container.querySelector('[data-testid="workflow-editor-impact"]')).not.toBeNull(),
+    );
+    expect(container.textContent).not.toContain('Couldn’t save Release notes.');
 
     // Save is the retry.
     stub?.on('bureau.workflows.update', () => ({ id: 'digest', hash: 'hash-saved' }));

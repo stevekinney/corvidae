@@ -1323,7 +1323,7 @@ describe('JsonSchemaEditor — controlled and uncontrolled schema inputs', () =>
 });
 
 describe('JsonSchemaEditor — the fields form (COR-2432, row 65s)', () => {
-  const schema = {
+  const schema: JsonSchemaValue = {
     type: 'object',
     required: ['branch'],
     properties: {

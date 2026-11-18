@@ -388,10 +388,11 @@
   }
 
   /* The identifier beside the title: small, monospaced and muted, centred on the title's first
-     line, and kept whole; a long one ends in an ellipsis rather than breaking. */
+     line, and kept whole. The title gives way first; an identifier longer than its share of the
+     line ends in an ellipsis rather than breaking. */
   .cinder-page-header__identifier {
-    flex: 0 1 auto;
-    min-width: 0;
+    flex: 0 0 auto;
+    max-inline-size: 40%;
     overflow: hidden;
     color: var(--cinder-text-muted);
     font-family: var(--cinder-font-mono);

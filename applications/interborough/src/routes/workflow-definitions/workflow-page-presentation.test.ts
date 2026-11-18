@@ -205,6 +205,9 @@ describe('design correction: an identifier in a header line', () => {
     const rule = /\.ib-workflow__line code \{([^}]*)\}/.exec(stylesheet)?.[1] ?? '';
     expect(rule).toContain('white-space: nowrap');
     expect(rule).toContain('overflow-wrap: normal');
+    // A longer one than the line fits ends in an ellipsis, never scrolling the page sideways.
+    expect(rule).toContain('max-inline-size: 100%');
+    expect(rule).toContain('text-overflow: ellipsis');
   });
 });
 

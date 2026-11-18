@@ -545,6 +545,8 @@ describe('the builder', () => {
       target: { value: '15' },
     });
     await waitFor(() => expect(summary(container)).toContain('wait 15 minutes'));
+    // A new workflow has nothing to start yet, so the read-back never says a person can (row 64r).
+    expect(summary(container)).not.toContain(BUILDER.readBack.startItYourself);
     expect(container.textContent).toContain(BUILDER.stepsDescription);
 
     await openJson(container);
