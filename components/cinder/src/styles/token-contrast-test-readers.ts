@@ -165,7 +165,7 @@ export function readOklchToken(tokenName: string): TokenArms {
  * As {@link readOklchToken}, for the tokens that carry an alpha channel by design.
  *
  * `opaqueArms` names the arms that are deliberately opaque instead (the dark arm of
- * `--cinder-border-control` is the opaque oklch(56% .05 248)); those read as alpha 1, so the
+ * `--cinder-border-contrast` is the opaque oklch(64% .03 265)); those read as alpha 1, so the
  * contrast math composites them as the solid colors they are. An arm not named still demands
  * its alpha channel, so a translucent tier that loses it still fails loudly.
  */

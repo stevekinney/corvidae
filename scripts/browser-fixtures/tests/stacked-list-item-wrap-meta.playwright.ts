@@ -32,12 +32,17 @@ test('a wrapped line two starts at the row’s text edge, not beside the status 
       titleLeft: title?.getBoundingClientRect().left ?? Number.NaN,
       inlineShown: inline !== null && getComputedStyle(inline).display !== 'none',
       columnShown: column !== null && getComputedStyle(column).display !== 'none',
+      columnDrawn: column !== null,
+      statusImages: element.querySelectorAll('[role="img"][aria-label^="Check not met"]').length,
       lines: rects.map((rect) => ({ left: rect.left, top: rect.top })),
     };
   });
-  // The word is on line two, in the run, and the column copy is hidden.
+  // The word is on line two, in the run, and is the row's only status: no column copy is drawn,
+  // so a screen reader names the status once.
   expect(read.inlineShown).toBe(true);
   expect(read.columnShown).toBe(false);
+  expect(read.columnDrawn).toBe(false);
+  expect(read.statusImages).toBe(1);
   // The meta wraps, and its second line starts at line two's own start edge, the row's text edge.
   expect(read.lines.length).toBeGreaterThan(1);
   const second = read.lines[1]!;
@@ -65,9 +70,11 @@ for (const width of [320, 375] as const) {
       return {
         lineTwo: box('.cinder-stacked-list-item__line-two'),
         trailing: box('.cinder-stacked-list-item__trailing'),
+        statusImages: element.querySelectorAll('[role="img"][aria-label^="Check not met"]').length,
       };
     });
     const { lineTwo, trailing } = read;
+    expect(read.statusImages).toBe(1);
     expect(lineTwo).not.toBeNull();
     expect(trailing).not.toBeNull();
     // The two boxes do not intersect: line two ends before the actions' column starts, or the

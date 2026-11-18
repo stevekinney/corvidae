@@ -80,7 +80,8 @@ function undescribedParameters(operation: AuditedOperation): string[] {
  *
  * @example
  * ```ts
- * import { createLiveOperationRegistry, findUndescribedOperations } from '@lostgradient/weft';
+ * import { findUndescribedOperations } from '@lostgradient/backchannel';
+ * import { createLiveOperationRegistry } from '@lostgradient/weft';
  *
  * const undescribed = findUndescribedOperations(createLiveOperationRegistry());
  * console.log(undescribed.length === 0 ? 'every operation is described' : undescribed.join('\n'));

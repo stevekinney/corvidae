@@ -204,6 +204,7 @@ export function formatInvalidParamsMessage(
     .join('; ');
 }
 
+/** Options for turning a fault into a REST response. */
 export type RestFaultResponseOptions = {
   /** REST-only status override for a binding with an established non-canonical status. */
   readonly status?: number;

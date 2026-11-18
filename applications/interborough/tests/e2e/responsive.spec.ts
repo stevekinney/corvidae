@@ -364,14 +364,11 @@ const reveal: Readonly<Record<string, (page: Page) => Promise<void>>> = {
     await expect(page.getByText('No answer').first()).toBeVisible();
   },
   '/hooks': async (page) => {
-    // A row says a webhook's host on line two and keeps the whole address in that line's tooltip.
+    // A row says a webhook's host on line two and keeps the whole name and address in the row's
+    // one tooltip, the title then line two, since the row is a link (COR-2227).
     await expect(page.locator('.ib-hooks__line').first()).toBeVisible();
-    await expect(page.locator(`li[data-hook] [title*="${LONG_HOOK_URL}"]`).first()).toBeAttached();
-    await expect(
-      page
-        .locator(`li[data-hook] .cinder-stacked-list-item__title[title="${LONG_HOOK_NAME}"]`)
-        .first(),
-    ).toBeVisible();
+    await expect(page.locator(`li[data-hook][title*="${LONG_HOOK_URL}"]`).first()).toBeVisible();
+    await expect(page.locator(`li[data-hook][title^="${LONG_HOOK_NAME}"]`).first()).toBeVisible();
   },
   // The whole log is closed until asked for; open it so its lines are measured too.
   '/runs/:run (steps and logs)': async (page) => {

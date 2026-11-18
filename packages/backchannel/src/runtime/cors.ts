@@ -33,7 +33,8 @@
  *
  * @example
  * ```ts
- * import { serve, type CorsOptions } from '@lostgradient/weft';
+ * import { type CorsOptions } from '@lostgradient/backchannel';
+ * import { serve } from '@lostgradient/weft';
  * import { Engine } from '@lostgradient/weft';
  * import { MemoryStorage } from '@lostgradient/storage';
  *
@@ -99,7 +100,9 @@ const WILDCARD_ORIGIN = '*';
  * so the per-request hot path does no defaulting or array joining.
  */
 export type ResolvedCorsPolicy = {
+  /** Whether an origin is allowed. */
   readonly matchOrigin: (origin: string) => boolean;
+  /** Whether every origin is allowed. */
   readonly allowsAnyOrigin: boolean;
   /** Pre-joined `Access-Control-Allow-Methods` value emitted in preflight responses. */
   readonly allowedMethodsHeader: string;
@@ -109,8 +112,11 @@ export type ResolvedCorsPolicy = {
   readonly allowedHeadersHeader: string;
   /** Lowercased header names, for O(1) validation of the preflight's requested headers. */
   readonly allowedHeaderSet: ReadonlySet<string>;
+  /** The `Access-Control-Expose-Headers` value, or null. */
   readonly exposedHeadersHeader: string | null;
+  /** Whether credentialed requests are allowed. */
   readonly credentials: boolean;
+  /** How long a browser may cache the preflight, in seconds. */
   readonly maxAgeSeconds: number;
 };
 

@@ -40,6 +40,7 @@ export type JsonRpcError = {
   data: Record<string, unknown>;
 };
 
+/** Maps an {@link OperationFault} to a JSON-RPC error object. */
 export function faultToJsonRpcError(unsafeFault: OperationFault): JsonRpcError {
   const fault = wireSafeFault(unsafeFault);
   const code = FAULT_CODE_TO_JSON_RPC_CODE[fault.code];

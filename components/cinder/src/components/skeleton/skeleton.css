@@ -248,6 +248,51 @@
     font-size: var(--cinder-text-sm);
   }
 
+  /* A row whose real rows lead with a glyph: the icon slot of a grouped-list row (a 28px column
+   * with its 12px gap, the glyph centred on the title's first line), so the bars start where the
+   * row's text does and nothing moves sideways when the rows arrive. */
+  .cinder-skeleton-grouped-row--leading {
+    display: flex;
+  }
+
+  .cinder-skeleton-grouped-row--leading > .cinder-skeleton-grouped-content {
+    flex: 1 1 0;
+    min-inline-size: 0;
+  }
+
+  .cinder-skeleton-grouped-leading {
+    display: flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    min-inline-size: 1.75rem;
+    block-size: calc(
+      var(--cinder-text-base) * var(--cinder-leading-snug, 1.35) + 2 * var(--cinder-space-2-5)
+    );
+    padding-block: var(--cinder-space-2-5);
+    padding-inline-end: var(--cinder-space-3);
+  }
+
+  .cinder-skeleton-icon-block {
+    flex: none;
+    inline-size: 1rem;
+    block-size: 1rem;
+  }
+
+  /* A trailing value's bar, such as a time: small text's height, at the end of the title's line. */
+  .cinder-skeleton-trailing-bar {
+    flex: none;
+    inline-size: 3.5rem;
+    block-size: 0.5rem;
+    margin-inline-start: auto;
+  }
+
+  /* chevronColumn: the bar ends before a grouped-list row's chevron column (the 16px chevron and
+   * its gap, GroupedListItem's own measure), where the real trailing value ends. */
+  .cinder-skeleton-trailing-bar--chevron-column {
+    margin-inline-end: calc(1rem + var(--cinder-space-3));
+  }
+
   .cinder-skeleton-action-bar {
     flex: none;
     inline-size: 5.25rem;
