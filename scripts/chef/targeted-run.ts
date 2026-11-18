@@ -249,11 +249,12 @@ export function run(
   const problems = validateInputs(inputs, dependencies);
   if (problems.length > 0) throw new UsageError(problems.join('\n'));
   const command = buildCommand(ref, inputs);
-  if (command.length === 6)
-    throw new UsageError(
-      'Nothing to run: the branch changes no fixture, spec or unit test file, and no input was given.',
-    );
-  const text = command.map(shellQuote).join(' ');
+  // With no input the run is the `checks` job alone: lint and type-check of the changed workspaces.
+  const note =
+    command.length === 6
+      ? '\n# No fixture, spec or unit test file to run: only lint and type-check of the changed workspaces will.'
+      : '';
+  const text = command.map(shellQuote).join(' ') + note;
   if (!parsed.flags.has('dry-run')) {
     const result = runner(command);
     if (result.code !== 0)

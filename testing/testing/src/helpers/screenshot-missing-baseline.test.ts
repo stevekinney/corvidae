@@ -40,6 +40,27 @@ describe('writeMissingBaselineActual', () => {
     );
   });
 
+  it('captures as toHaveScreenshot does: CSS pixels, animations off, caret hidden', async () => {
+    const info = await testInfo();
+    let received: object | undefined;
+    await writeMissingBaselineActual(
+      {
+        screenshot: async (options?: object) => {
+          received = options;
+          return Buffer.from('');
+        },
+      },
+      key,
+      info,
+    );
+    expect(received).toMatchObject({
+      scale: 'css',
+      animations: 'disabled',
+      caret: 'hide',
+      fullPage: false,
+    });
+  });
+
   it("writes the page's screenshot there", async () => {
     const info = await testInfo();
     const page = {

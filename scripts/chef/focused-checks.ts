@@ -12,6 +12,8 @@
 //   lint:root       bun run lint:root, always
 //   typecheck:root  bun run typecheck:root, when a changed file is at the root or under scripts/
 //   turbo           bunx turbo run lint typecheck, filtered to each changed workspace
+//                   (typecheck:root and turbo run under `scripts/host-slots.ts`, one and two pool
+//                   slots, waiting at most five minutes for them, then `not run locally: pool busy`)
 //   tests           the direct tests only (owner decision, 2026-11-16): each changed
 //                   `*.test.ts` file, and the test files beside each changed source file (same
 //                   directory, same stem). Never `affected-tests.ts`'s dependency graph, which

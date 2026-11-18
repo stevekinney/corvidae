@@ -397,6 +397,9 @@ export async function writeMissingBaselineActual(
       fullPage: false,
       animations: 'disabled',
       caret: 'hide',
+      // `toHaveScreenshot` captures at CSS pixels; `page.screenshot` defaults to device pixels. With
+      // a baseline missing it returns before it captures anything, so this stands in for it.
+      scale: 'css',
       ...(options?.masks !== undefined && options.masks.length > 0
         ? { mask: masksToLocators(page as Page, options.masks) }
         : {}),

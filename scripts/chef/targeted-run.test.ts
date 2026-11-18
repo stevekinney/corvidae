@@ -142,9 +142,15 @@ describe('run', () => {
     expect(result.output).toContain('unit_workspace=components/cinder');
   });
 
-  test('refuses when the diff reaches nothing and no input is given', () => {
-    const { dependencies } = fake(['README.md']);
-    expect(() => run([], dependencies)).toThrow(/Nothing to run/);
+  test('dispatches with no input when the diff reaches no browser or unit file, for the lint and type-check job', () => {
+    const { dependencies, calls } = fake([
+      'components/cinder/src/components/table/table-cell.svelte',
+    ]);
+    const result = run(['--ref', 'b'], dependencies);
+    expect(result.output).toContain('only lint and type-check');
+    expect(calls.filter((call) => call[0] === 'gh')).toEqual([
+      ['gh', 'workflow', 'run', 'targeted-checks.yml', '--ref', 'b'],
+    ]);
   });
 });
 
