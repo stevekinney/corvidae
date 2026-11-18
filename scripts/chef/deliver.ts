@@ -99,6 +99,7 @@ import type {
   DeliveryVerification,
   DeliveryVerificationDependencies,
 } from './delivery-verification.ts';
+import { loadDeliveryVerification } from './delivery-verification.ts';
 import { directMerge, type DirectMergeOptions, type DirectMergeReport } from './direct-merge.ts';
 import { createClient, LinearError, postComment, setState, type LinearClient } from './linear.ts';
 import { mergeGate, type MergeGateOptions, type MergeGateReport } from './merge-gate.ts';
@@ -185,7 +186,7 @@ export interface DeliverDependencies {
   /** The Linear client; the command line supplies `createClient()`, which reads the credentials. */
   client: LinearClient;
   remove: (options: RemoveOptions) => RemoveResult;
-  /** Appends a delivered head to the delivery ledger (`delivery-ledger.ts`). */
+  /** Appends a delivered head under closeout's existing provider-transition lock. */
   record: (entry: LedgerEntry) => void;
   verification: DeliveryVerificationDependencies;
 }
@@ -313,6 +314,7 @@ export async function deliver(
     swept: null,
     ledgerWarning: null,
   };
+  let operationId: string | undefined;
   const fail = (step: string, detail: string): DeliverReport => {
     report.failedStep = step;
     report.detail = detail;
@@ -327,13 +329,20 @@ export async function deliver(
   // remote branch could not be deleted is merged), so a worktree holding the head is known to be
   // delivered after a squash leaves its tip outside the default branch's history.
   const writeLedger = () => {
-    if (!report.merged || deliveredTip === undefined || partial.record === undefined) return;
+    if (
+      !report.merged ||
+      deliveredTip === undefined ||
+      operationId === undefined ||
+      partial.record === undefined
+    )
+      return;
     try {
       partial.record({
         pr: options.pr,
         branch: options.branch,
         head: deliveredTip,
         mergeCommit: report.mergeCommit,
+        operationId,
       });
     } catch (error) {
       report.ledgerWarning = error instanceof Error ? error.message : String(error);
@@ -348,6 +357,9 @@ export async function deliver(
   if (options.branch !== undefined) {
     const mergeBranch = partial.directMerge;
     if (mergeBranch === undefined) return fail('merge', 'no direct merge runner was provided.');
+    // Capture the coordinator-pinned operation before the first await; retries retain this identity.
+    operationId = loadDeliveryVerification(options.verification, partial.verification).request
+      .operationId;
     const direct = await mergeBranch(
       {
         configPath: options.configPath,
@@ -374,6 +386,9 @@ export async function deliver(
   } else {
     const merge = partial.merge;
     if (merge === undefined) return fail('merge', 'no merge runner was provided.');
+    // Capture the coordinator-pinned operation before the first await; retries retain this identity.
+    operationId = loadDeliveryVerification(options.verification, partial.verification).request
+      .operationId;
     const merged = await merge(
       {
         configPath: options.configPath,

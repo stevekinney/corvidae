@@ -1,6 +1,6 @@
 import { expect } from 'bun:test';
 import { createHash } from 'node:crypto';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, relative } from 'node:path';
 import { rejectionOf } from '../../testing/testing/src/helpers/promise-outcome.ts';
@@ -179,9 +179,9 @@ async function deliveryVerification(directory: string): Promise<DeliveryVerifica
   return binding;
 }
 
-const verificationDirectory = mkdtempSync(
-  join(process.cwd(), 'tmp/chef/p05-delivery-14ef/deliver-'),
-);
+const verificationScratch = join(process.cwd(), 'tmp/chef/p05-delivery-14ef');
+mkdirSync(verificationScratch, { recursive: true });
+const verificationDirectory = mkdtempSync(join(verificationScratch, 'deliver-'));
 const sharedVerification = await deliveryVerification(verificationDirectory);
 
 function setUp(): void {
@@ -323,6 +323,7 @@ function seams(
         record.ledger.push(entry);
       },
       client,
+      verification,
     },
   };
 }
@@ -356,7 +357,13 @@ scenarios.describe('deliver', () => {
       expect(record.merges).toHaveLength(1);
       expect(record.merges[0]).toMatchObject({ pr: 12, dryRun: false, checkMainHealth: true });
       expect(record.merges[0]).not.toHaveProperty('gateLog');
-      expect(Object.keys(partial).toSorted()).toEqual(['client', 'merge', 'record', 'remove']);
+      expect(Object.keys(partial).toSorted()).toEqual([
+        'client',
+        'merge',
+        'record',
+        'remove',
+        'verification',
+      ]);
     },
   );
 
@@ -717,7 +724,13 @@ scenarios.describe('the delivery ledger and owned cleanup', () => {
       const { partial, record } = seams();
       await deliver(options, partial);
       expect(record.ledger).toEqual([
-        { pr: 12, branch: undefined, head: HEAD, mergeCommit: MERGE_COMMIT },
+        {
+          pr: 12,
+          branch: undefined,
+          head: HEAD,
+          mergeCommit: MERGE_COMMIT,
+          operationId: 'operation',
+        },
       ]);
     },
   );
@@ -727,21 +740,41 @@ scenarios.describe('the delivery ledger and owned cleanup', () => {
     const { report, record } = await deliverBranch(world);
     expect(report.failedStep).toBeNull();
     expect(record.ledger).toEqual([
-      { pr: undefined, branch: BRANCH, head: HEAD, mergeCommit: SQUASH },
+      {
+        pr: undefined,
+        branch: BRANCH,
+        head: HEAD,
+        mergeCommit: SQUASH,
+        operationId: 'operation',
+      },
     ]);
   });
 
   scenarios.scenario(
-    'a ledger line is the time, the subject, the head and the merge commit',
+    'a ledger line is the time, subject, head, merge commit and operation identity',
     () => {
       const time = new Date('2026-11-13T21:00:00.000Z');
-      expect(ledgerLine({ pr: 12, head: HEAD, mergeCommit: MERGE_COMMIT, time })).toBe(
-        `2026-11-13T21:00:00.000Z\tpr:12\t${HEAD}\t${MERGE_COMMIT}`,
-      );
-      expect(ledgerLine({ branch: BRANCH, head: HEAD, mergeCommit: null, time })).toBe(
-        `2026-11-13T21:00:00.000Z\tbranch:${BRANCH}\t${HEAD}\t-`,
-      );
-      expect(() => ledgerLine({ branch: BRANCH, head: 'abc', mergeCommit: null })).toThrow('SHA');
+      expect(
+        ledgerLine({
+          pr: 12,
+          head: HEAD,
+          mergeCommit: MERGE_COMMIT,
+          operationId: 'operation',
+          time,
+        }),
+      ).toBe(`2026-11-13T21:00:00.000Z\tpr:12\t${HEAD}\t${MERGE_COMMIT}\toperation`);
+      expect(
+        ledgerLine({
+          branch: BRANCH,
+          head: HEAD,
+          mergeCommit: null,
+          operationId: 'operation',
+          time,
+        }),
+      ).toBe(`2026-11-13T21:00:00.000Z\tbranch:${BRANCH}\t${HEAD}\t-\toperation`);
+      expect(() =>
+        ledgerLine({ branch: BRANCH, head: 'abc', mergeCommit: null, operationId: 'operation' }),
+      ).toThrow('SHA');
     },
   );
 
@@ -1371,7 +1404,13 @@ scenarios.describe('deliver --branch', () => {
       expect(record.requests).toEqual([]);
       // The merge happened, so its head is in the ledger although a later step failed.
       expect(record.ledger).toEqual([
-        { pr: undefined, branch: BRANCH, head: HEAD, mergeCommit: SQUASH },
+        {
+          pr: undefined,
+          branch: BRANCH,
+          head: HEAD,
+          mergeCommit: SQUASH,
+          operationId: 'operation',
+        },
       ]);
     },
   );
@@ -1543,6 +1582,7 @@ scenarios.describe('deliver --branch', () => {
           '--json',
         ],
         {
+          verification,
           directMerge: async (directOptions) => {
             seen.push(directOptions);
             return {
@@ -1586,6 +1626,7 @@ scenarios.describe('deliver --branch', () => {
           '--json',
         ],
         {
+          verification,
           directMerge: async (directOptions) => {
             seen.push(directOptions);
             return {
