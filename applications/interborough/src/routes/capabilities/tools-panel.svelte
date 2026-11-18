@@ -16,7 +16,6 @@
     SelectableRow,
   } from '@lostgradient/cinder';
   import { createQuery } from '@tanstack/svelte-query';
-  import type { Snippet } from 'svelte';
 
   import { CAPABILITIES_COPY } from '../../app/copy/capabilities.ts';
   import { RETRY_LABEL } from '../../app/copy/views.ts';
@@ -34,6 +33,7 @@
     tierOf,
     toolGroup,
     toolHeading,
+    sourceNamesOf,
     toolRowSource,
     toolSummary,
     type ShownTool,
@@ -75,6 +75,8 @@
     undefined,
   );
 
+  /** The names people call the saved sources: a row says "GitHub", as the chip does, not "Github". */
+  const sourceNames = $derived(sourceNamesOf(sources.data?.sources));
   let filter = $state('');
   const tools = $derived<readonly ShownTool[]>([
     ...(catalog.data?.tools ?? []),
@@ -151,7 +153,7 @@
         selectionParameter="tool"
         {selectionLocation}
         storageKey="interborough-capabilities-tools"
-        {...grouped ? { groupBy: toolGroup } : {}}
+        {...grouped ? { groupBy: (tool: ShownTool) => toolGroup(tool, sourceNames) } : {}}
       >
         {#snippet header()}
           <!-- The list itself shows no count; one reads at the right of the field once something is typed (row 32b). -->
@@ -172,14 +174,7 @@
           </div>
         {/snippet}
         {#snippet list(tool, row)}
-          <!-- A tool that cannot run now says so in the row, in the same muted word as its risk. -->
-          {#snippet pausedWord()}
-            <span class="ib-capabilities__row-risk" data-testid="tool-row-paused"
-              >{copy.tool.lost.paused}</span
-            >
-          {/snippet}
           <SelectableRow
-            {...tool.lost === undefined ? {} : { meta: pausedWord as Snippet }}
             selected={row.selected}
             selectedState="current"
             onclick={row.open}
@@ -195,12 +190,18 @@
                 <span class="ib-capabilities__row-risk" data-testid="tool-row-risk"
                   >{riskLabel(tierOf(tool))}</span
                 >
+                <!-- A tool that cannot run now says so on the first line, in the same muted word. -->
+                {#if tool.lost !== undefined}
+                  <span class="ib-capabilities__row-risk" data-testid="tool-row-paused"
+                    >{copy.tool.lost.paused}</span
+                  >
+                {/if}
               </span>
             {/snippet}
             {#snippet description()}
               <span class="ib-capabilities__row-line">
                 <span class="ib-capabilities__row-source" data-testid="tool-row-source"
-                  >{toolRowSource(tool)}</span
+                  >{toolRowSource(tool, sourceNames)}</span
                 >
                 <span class="ib-capabilities__row-summary" data-testid="tool-row-summary"
                   >{toolSummary(tool)}</span

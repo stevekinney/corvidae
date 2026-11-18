@@ -194,6 +194,16 @@ describe('a tool’s row', () => {
   test('names its source: Built in, or the server, plugin or skill read as words', () => {
     expect(toolRowSource({ ...TOOL, source: 'bureau' })).toBe('Built in');
     expect(toolRowSource({ ...TOOL, name: 'github__list_branches' })).toBe('Github');
+    // A saved name wins over the identifier read as words: the row says "GitHub", as the chip does.
+    const names = sourceNamesOf([{ id: 'github', name: 'GitHub' }]);
+    expect(toolRowSource({ ...TOOL, name: 'github__list_branches' }, names)).toBe('GitHub');
+    expect(
+      toolRowSource({
+        ...TOOL,
+        name: 'github__create_issue',
+        lost: { kind: 'source', id: 'github', name: 'GitHub', state: 'failed' },
+      }),
+    ).toBe('GitHub');
     expect(toolRowSource(TOOL)).toBe('MCP server');
     expect(toolRowSource({ ...TOOL, source: 'plugin', plugin: 'gemini' })).toBe('Gemini');
     expect(toolRowSource({ ...TOOL, source: 'skill', skill: 'customer-lookup' })).toBe(

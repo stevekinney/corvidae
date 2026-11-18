@@ -9,6 +9,16 @@
  * SEGMENTED CONTROL
  * ======================================== */
 
+  /* The frame drawn around a control that has a description, a note or an error. A grid cell (a
+     form section) gives its item an automatic minimum width, which is the options' unwrapped
+     width: the frame would grow past the room it has, the control would measure that grown frame
+     as its room, never overflow and never stack, and the message under it would be cut off. With
+     no minimum, the frame is as wide as its cell, so the control stacks and the message wraps. */
+  .cinder-segmented-control-field {
+    min-inline-size: 0;
+    max-inline-size: 100%;
+  }
+
   .cinder-segmented-control-container {
     display: inline-flex;
     flex-direction: column;

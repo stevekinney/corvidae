@@ -1352,6 +1352,29 @@ describe('SegmentedControl — description, note and error', () => {
   });
 });
 
+describe('SegmentedControl — a framed control keeps to the room it has', () => {
+  test('the frame around a control with a message has no minimum width, so a grid cell cannot grow it past the room', () => {
+    const { container } = render(Fixture, {
+      props: {
+        id: 'framed',
+        value: 'oauth',
+        label: 'How it signs in',
+        options: [{ value: 'oauth', label: 'OAuth' }],
+        rest: { description: 'Approve in the window.' },
+      },
+    });
+    const frame = container.querySelector('.cinder-form-field');
+    expect(frame?.classList.contains('cinder-segmented-control-field')).toBe(true);
+    // The control measures its room from the frame, which is its direct parent.
+    expect(container.querySelector('.cinder-segmented-control-container')?.parentElement).toBe(
+      frame,
+    );
+    const css = readFileSync(new URL('./segmented-control.css', import.meta.url), 'utf8');
+    const rule = css.slice(css.indexOf('.cinder-segmented-control-field {'));
+    expect(rule.slice(0, rule.indexOf('}'))).toContain('min-inline-size: 0;');
+  });
+});
+
 describe('SegmentedControl — the stacked rows keep RadioGroup’s rhythm', () => {
   const css = readFileSync(new URL('./segmented-control.css', import.meta.url), 'utf8');
 

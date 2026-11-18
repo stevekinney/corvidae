@@ -290,19 +290,28 @@ export const GROUP_TOOLS_FROM = 40;
  * server, plugin or skill that brings it, read as words ("github" is "Github"), because the
  * catalog carries no display name of a source.
  */
-export function toolRowSource(tool: CatalogTool): string {
+export function toolRowSource(
+  tool: ShownTool,
+  sourceNames: ReadonlyMap<string, string> = new Map(),
+): string {
   if (tool.source === 'bureau') return TOOL.chips.source.bureau;
   if (tool.source === 'plugin') return humanizeName(tool.plugin ?? '');
   if (tool.source === 'skill') return humanizeName(tool.skill ?? '');
+  // A source that has a saved name is called by it ("GitHub"), as the chip says it.
+  if (tool.lost?.kind === 'source') return tool.lost.name;
   const server = serverOf(tool);
-  return server === undefined ? TOOL.sources.host : humanizeName(server);
+  if (server === undefined) return TOOL.sources.host;
+  return sourceNames.get(server) ?? humanizeName(server);
 }
 
 /** The key of the group of tools Bureau adds, which a grouped list shows first. */
 const BUILT_IN_GROUP = 'bureau:';
 
 /** The group a tool's row belongs to when the list is grouped by source: one key per source, labelled as its rows say it. */
-export function toolGroup(tool: CatalogTool): { readonly key: string; readonly label: string } {
+export function toolGroup(
+  tool: ShownTool,
+  sourceNames: ReadonlyMap<string, string> = new Map(),
+): { readonly key: string; readonly label: string } {
   const origin =
     tool.source === 'plugin'
       ? tool.plugin
@@ -311,7 +320,7 @@ export function toolGroup(tool: CatalogTool): { readonly key: string; readonly l
         : tool.source === 'host'
           ? serverOf(tool)
           : null;
-  return { key: `${tool.source}:${origin ?? ''}`, label: toolRowSource(tool) };
+  return { key: `${tool.source}:${origin ?? ''}`, label: toolRowSource(tool, sourceNames) };
 }
 
 /**

@@ -308,6 +308,7 @@
 {#if hasMessage}
   <FormFieldFrame
     id={frameId}
+    class="cinder-segmented-control-field"
     {description}
     {note}
     {error}
