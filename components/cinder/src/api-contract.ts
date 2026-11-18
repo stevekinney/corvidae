@@ -708,6 +708,8 @@ export const CONTRACT: Record<string, ComponentContract> = {
       statusPlacement: { optional: true, type_kind: 'TSTypeReference', default: L('below') },
       narrowActions: { optional: true, type_kind: 'TSTypeReference', default: L('own-row') },
       titleText: { optional: true, type_kind: 'TSStringKeyword', default: NO_DEFAULT },
+      actionsNote: { optional: true, type_kind: 'TSUnionType', default: NO_DEFAULT },
+      actionsNoteId: { optional: true, type_kind: 'TSStringKeyword', default: NO_DEFAULT },
       class: { optional: true, type_kind: 'TSStringKeyword', default: NO_DEFAULT },
     },
     snippets: {
@@ -792,6 +794,8 @@ export const CONTRACT: Record<string, ComponentContract> = {
       trailing: { optional: true, type_kind: 'TSBooleanKeyword', default: L(false) },
       chevronColumn: { optional: true, type_kind: 'TSBooleanKeyword', default: L(false) },
       dayBand: { optional: true, type_kind: 'TSBooleanKeyword', default: L(false) },
+      dayBandLabel: { optional: true, type_kind: 'TSUnionType', default: NO_DEFAULT },
+      dayBandDetail: { optional: true, type_kind: 'TSUnionType', default: NO_DEFAULT },
       statusColumn: { optional: true, type_kind: 'TSBooleanKeyword', default: L(true) },
       framed: { optional: true, type_kind: 'TSBooleanKeyword', default: L(false) },
       detailLine: { optional: true, type_kind: 'TSBooleanKeyword', default: L(false) },
