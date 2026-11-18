@@ -156,6 +156,17 @@ describe('a secret field', () => {
     expect(value.querySelector('[role="tooltip"]')?.textContent).toBe(long);
   });
 
+  test('the field’s column never takes a chosen key’s whole width, so a long key is cut, not overflowing (R10-13)', async () => {
+    // An implicit `auto` grid track takes the Select's min-content, the whole key, and widened the
+    // trigger and its help past a 320-pixel screen. The layout is measured in the schema-form
+    // browser fixture; this pins the rule that holds the column to its container.
+    const { readFileSync } = await import('node:fs');
+    const css = readFileSync(new URL('./schema-form.css', import.meta.url), 'utf8');
+    expect(css).toMatch(
+      /\.cinder-schema-form__secret \{[^}]*grid-template-columns: minmax\(0, 1fr\);/,
+    );
+  });
+
   test('sets only keys in monospace: the field root, so its label, help and placeholder, keeps the form’s face (R10-13)', async () => {
     const { readFileSync } = await import('node:fs');
     const css = readFileSync(new URL('./schema-form.css', import.meta.url), 'utf8');

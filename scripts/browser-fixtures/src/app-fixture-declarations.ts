@@ -63,7 +63,7 @@ export const appFixtureDeclarations = {
   'review-editor': ['assertion'],
   'selectable-row': ['assertion'],
   'segmented-control': ['assertion'],
-  'schema-form': ['assertion'],
+  'schema-form': ['assertion', 'long-secret'],
   'side-navigation': ['assertion'],
   table: ['assertion'],
   'speed-dial': ['assertion'],

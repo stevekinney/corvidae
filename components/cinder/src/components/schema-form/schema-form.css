@@ -257,9 +257,13 @@
   /* A secret field is a Select of saved keys. A key is an identifier, so it is monospace wherever
    * the field shows one, and only there: the trigger and the options draw it through Select's
    * `code` option, and the warning and a read-only value through Text. The field's label, help and
-   * placeholder are words, set in the form's face. */
+   * placeholder are words, set in the form's face.
+   * The one column is `minmax(0, 1fr)`, never the implicit `auto`: an auto track takes the Select's
+   * min-content, which is a chosen key's whole width, so a long key would widen the column past the
+   * screen instead of being cut in its middle (R10-13). */
   .cinder-schema-form__secret {
     display: grid;
+    grid-template-columns: minmax(0, 1fr);
     gap: var(--cinder-space-2);
     min-width: 0;
   }
