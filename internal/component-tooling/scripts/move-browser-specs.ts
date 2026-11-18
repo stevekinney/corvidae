@@ -519,6 +519,18 @@ export async function moveBrowserSpecs(options: Options): Promise<number> {
   // The new files, and every change and deletion besides.
   git(root, ['add', '-A', '--', 'components', 'internal/component-tooling']);
   git(root, ['add', '-u']);
+  // Rewritten imports and written files take the repository's formatting.
+  const formatted = git(root, ['diff', '--cached', '--name-only', '--diff-filter=ACMR', '-z'])
+    .split('\0')
+    .filter((file) => /\.(?:ts|svelte|json)$/.test(file));
+  for (let start = 0; start < formatted.length; start += 200) {
+    const prettier = Bun.spawnSync(
+      ['bunx', 'prettier', '--write', '--log-level=warn', ...formatted.slice(start, start + 200)],
+      { cwd: root, stdout: 'ignore', stderr: 'inherit' },
+    );
+    if (prettier.exitCode !== 0) throw new Error('prettier could not format the moved files.');
+  }
+  git(root, ['add', '-u']);
 
   const seconds = ((performance.now() - started) / 1000).toFixed(1);
   process.stdout.write(`Moved ${moves.size} files into ${suites.size} packages in ${seconds}s.\n`);
