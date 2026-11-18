@@ -1382,7 +1382,7 @@ export async function releaseClaim(
   if (
     current === undefined ||
     current.marker.run !== runId ||
-    !sameProviderAuthority(current.marker.identity, identity)
+    !sameProviderIdentity(current.marker.identity, expectedCurrent ?? identity)
   )
     return {
       ok: false,
@@ -1536,10 +1536,13 @@ export async function leaseProject(
     status: 'held',
     identity,
   };
+  const health = await inheritedHealth(client, resolved.id);
+  const beforeWrite = await latestLease(client, resolved.id);
+  if (beforeWrite?.updateId !== current?.updateId) return refuse(beforeWrite);
   const written = await createProjectUpdate(
     client,
     resolved,
-    await inheritedHealth(client, resolved.id),
+    health,
     `${markerBody(marker)}\n\nWritten by scripts/chef/linear.ts lease. Run it again to renew, with --release to end it.`,
   );
   if (!written.ok) return written;
