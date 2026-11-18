@@ -5,6 +5,7 @@ import {
   createGitHubEvidenceTransport,
   EvidenceRequestError,
   validateEvidence,
+  validateEvidenceObligations,
   validateVerificationRequest,
   type EvidenceRecord,
   type ProviderEvidenceTransport,
@@ -143,7 +144,12 @@ export function readDeliveryRequest(file: string, expectedDigest: string): Deliv
       member.plan.obligations.some(
         (obligation) =>
           !['pre-integration', 'completion'].includes(obligation.phase) ||
-          !criteria.some((criterion) => criterion.id === obligation.criterionId),
+          !(
+            criteria.some((criterion) => criterion.id === obligation.criterionId) ||
+            (member.assignment.classification === 'no-behavior' &&
+              criteria.length === 0 &&
+              obligation.criterionId === 'STATIC')
+          ),
       )
     )
       throw new EvidenceRequestError('delivery member has an unbound criterion or phase');
@@ -156,6 +162,7 @@ export function readDeliveryRequest(file: string, expectedDigest: string): Deliv
         ))
     )
       throw new EvidenceRequestError('delivery member has unverified acceptance criteria');
+    validateEvidenceObligations(member.plan);
     const mapped = new Set(member.providerRuns.map((run) => run.obligation));
     validateVerificationRequest({
       ...request,

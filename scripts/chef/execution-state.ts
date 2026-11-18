@@ -40,10 +40,17 @@ export interface RemoteOperation {
 }
 
 export interface DeliveryCloseout {
+  routeComplete: boolean;
   ledger: boolean;
   members: Record<
     string,
-    { commentIntent: boolean; commentId?: string; bodyDigest?: string; closed: boolean }
+    {
+      verified: boolean;
+      commentIntent: boolean;
+      commentId?: string;
+      bodyDigest?: string;
+      closed: boolean;
+    }
   >;
   worktree?: { removed: boolean; detail: string };
   complete: boolean;
@@ -175,6 +182,7 @@ function assertDeliveryCloseout(value: unknown, statePath: string): void {
   const invalid = () => new ExecutionStateError(`${statePath} has malformed delivery closeout.`);
   if (
     !plainRecord(value) ||
+    typeof value['routeComplete'] !== 'boolean' ||
     typeof value['ledger'] !== 'boolean' ||
     typeof value['complete'] !== 'boolean' ||
     !plainRecord(value['members'])
@@ -183,6 +191,7 @@ function assertDeliveryCloseout(value: unknown, statePath: string): void {
   for (const member of Object.values(value['members'])) {
     if (
       !plainRecord(member) ||
+      typeof member['verified'] !== 'boolean' ||
       typeof member['commentIntent'] !== 'boolean' ||
       typeof member['closed'] !== 'boolean'
     )
@@ -199,7 +208,9 @@ function assertDeliveryCloseout(value: unknown, statePath: string): void {
       throw invalid();
     if (
       member['closed'] &&
-      (!Object.hasOwn(member, 'commentId') || !Object.hasOwn(member, 'bodyDigest'))
+      (!member['verified'] ||
+        !Object.hasOwn(member, 'commentId') ||
+        !Object.hasOwn(member, 'bodyDigest'))
     )
       throw invalid();
   }

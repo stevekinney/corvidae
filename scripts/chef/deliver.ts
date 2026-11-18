@@ -12,7 +12,7 @@
 // Exit 1: named delivery or closeout failure. Exit 2: invalid CLI usage.
 
 import { existsSync, readFileSync } from 'node:fs';
-import { isAbsolute, relative, resolve } from 'node:path';
+import { isAbsolute, relative, resolve, sep } from 'node:path';
 import { closeDelivery } from './delivery-closeout.ts';
 import { recordDelivery, type LedgerEntry } from './delivery-ledger.ts';
 import type {
@@ -155,11 +155,17 @@ export async function deliver(
   );
   if (approval !== undefined) throw new UsageError(approval);
   if (options.keepWorktree !== true) {
-    const requestPath = relative(resolve(options.worktree), resolve(options.verification.file));
-    if (!requestPath.startsWith('..') && !isAbsolute(requestPath))
-      throw new UsageError(
-        'verification file must survive owned worktree cleanup; store it outside that worktree',
-      );
+    for (const [label, path] of [
+      ['verification file', options.verification.file],
+      ['execution state', verification.state.stateDirectory],
+      ['repository configuration', options.configPath],
+    ] as const) {
+      const inside = relative(resolve(options.worktree), resolve(path));
+      if (inside !== '..' && !inside.startsWith(`..${sep}`) && !isAbsolute(inside))
+        throw new UsageError(
+          `${label} must survive owned worktree cleanup; store it outside that worktree`,
+        );
+    }
   }
   const report: DeliverReport = {
     pr: options.pr ?? null,
@@ -187,7 +193,7 @@ export async function deliver(
   const operation = readExecutionSnapshot(verification.state).operations[
     verification.request.operationId
   ];
-  if (operation?.closeout !== undefined) {
+  if (operation?.closeout?.routeComplete === true) {
     const observation = operation.observed;
     if (
       !isDeliveryMergeObservation(observation) ||
@@ -237,7 +243,12 @@ export async function deliver(
     report.guardsAlreadyFailing = direct.guardsAlreadyFailing ?? [];
     report.acceptedReverts = direct.acceptedReverts ?? [];
     if (direct.failedStep !== null) {
-      return fail(direct.failedStep, direct.detail ?? '');
+      fail(direct.failedStep, direct.detail ?? '');
+      return report.merged &&
+        readExecutionSnapshot(verification.state).operations[verification.request.operationId]
+          ?.outcome === 'observed'
+        ? closeDelivery(verification, options, report, partial)
+        : report;
     }
   } else {
     const merge = partial.merge;
@@ -262,7 +273,12 @@ export async function deliver(
     report.mergeable = merged.mergeable;
     report.mainHealthWarning = merged.mainHealthWarning ?? null;
     if (merged.failedStep !== null) {
-      return fail(merged.failedStep, merged.detail ?? '');
+      fail(merged.failedStep, merged.detail ?? '');
+      return report.merged &&
+        readExecutionSnapshot(verification.state).operations[verification.request.operationId]
+          ?.outcome === 'observed'
+        ? closeDelivery(verification, options, report, partial)
+        : report;
     }
   }
   return closeDelivery(verification, options, report, partial);

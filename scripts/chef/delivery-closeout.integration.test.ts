@@ -1,8 +1,8 @@
 import { test as bunTest, expect } from 'bun:test';
-import { readFileSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import { throwingRejectionOf } from '../../testing/testing/src/helpers/promise-outcome.ts';
-import type { DeliverOptions, DeliverReport } from './deliver.ts';
+import { deliver, type DeliverOptions, type DeliverReport } from './deliver.ts';
 import { closeDelivery } from './delivery-closeout.ts';
 import { ledgerPath, recordDelivery } from './delivery-ledger.ts';
 import { createDeliveryVerificationFixture } from './delivery-verification.test-support.ts';
@@ -122,7 +122,7 @@ function tracker(
   return { client, writes, comments, states };
 }
 
-async function setup(pendingMember = false) {
+async function setup(pendingMember = false, trackedPending = true) {
   const fixture = await createDeliveryVerificationFixture(undefined, {
     route: 'pull-request',
     approved: false,
@@ -136,6 +136,8 @@ async function setup(pendingMember = false) {
     member.plan.invalidatedBy.assignment = member.assignment.identity.digest;
     member.plan.obligations[0]!.phase = 'completion';
     member.providerRuns = [];
+    member.track = trackedPending;
+    member.requestedClose = trackedPending;
     fixture.request.members.push(member);
   }
   const text = JSON.stringify(fixture.request);
@@ -162,8 +164,23 @@ async function setup(pendingMember = false) {
     'observed',
     fixture.dependencies,
   );
+  const ledgerDirectory = dirname(fixture.verification.file);
+  const configuration = join(ledgerDirectory, 'repository.json');
+  writeFileSync(
+    configuration,
+    JSON.stringify({
+      repository: fixture.request.repository,
+      defaultBranch: 'main',
+      worktreeRoots: { codex: ledgerDirectory, claude: ledgerDirectory },
+      manifestName: 'fixture',
+      installCommand: 'true',
+      gateCommand: 'true',
+      affectedCheckCommand: 'true',
+      mergeMethod: 'squash',
+    }),
+  );
   const options: DeliverOptions = {
-    configPath: 'unused-in-closeout',
+    configPath: configuration,
     pr: 12,
     worktree: fixture.directory,
     commentFile: join(fixture.directory, 'comment.md'),
@@ -171,8 +188,8 @@ async function setup(pendingMember = false) {
     verification: fixture.verification,
   };
   const record = (entry: Parameters<typeof recordDelivery>[1]) =>
-    recordDelivery(fixture.directory, entry);
-  return { fixture, loaded, options, record };
+    recordDelivery(ledgerDirectory, entry);
+  return { fixture, loaded, options, record, ledgerDirectory };
 }
 
 const scenarios = createScenarios({}, { test: bunTest, describe: (_name, body) => body() });
@@ -193,7 +210,7 @@ scenarios.scenario(
     expect(second.issues).toEqual([{ identifier: 'COR-1', state: 'Done' }]);
     expect(remote.writes).toEqual(['comment:COR-1', 'state:COR-1']);
     expect(
-      readFileSync(ledgerPath(context.fixture.directory), 'utf8').trim().split('\n'),
+      readFileSync(ledgerPath(context.ledgerDirectory), 'utf8').trim().split('\n'),
     ).toHaveLength(1);
   },
 );
@@ -274,7 +291,7 @@ scenarios.scenario(
     const recovered = await closeDelivery(context.loaded, context.options, report(), dependencies);
     expect(recovered.failedStep).toBeNull();
     expect(
-      readFileSync(ledgerPath(context.fixture.directory), 'utf8').trim().split('\n'),
+      readFileSync(ledgerPath(context.ledgerDirectory), 'utf8').trim().split('\n'),
     ).toHaveLength(1);
   },
 );
@@ -299,6 +316,76 @@ scenarios.scenario(
     ).toThrow('revoked');
     expect(ledgerWrites).toBe(0);
     expect(remote.writes).toEqual([]);
+  },
+);
+scenarios.scenario(
+  'cleanup success with a lost state write resumes after the worktree is gone',
+  async () => {
+    const context = await setup();
+    const remote = tracker();
+    let beforeCleanup = '';
+    let removals = 0;
+    let mergeCalls = 0;
+    const dependencies = {
+      client: remote.client,
+      record: context.record,
+      verification: context.fixture.dependencies,
+      remove: () => {
+        removals++;
+        beforeCleanup = readFileSync(context.fixture.state.statePath, 'utf8');
+        rmSync(context.fixture.directory, { recursive: true, force: true });
+        writeFileSync(context.fixture.state.statePath, 'interrupted state write');
+        return {
+          path: context.fixture.directory,
+          branch: 'fixture',
+          remoteDeleted: true,
+          ended: [],
+        };
+      },
+      merge: async () => {
+        mergeCalls++;
+        throw new Error('must not merge again');
+      },
+    };
+    const options = { ...context.options, keepWorktree: false };
+    const first = await closeDelivery(context.loaded, options, report(), dependencies);
+    expect(first.failedStep).toBe('worktree');
+    writeFileSync(context.fixture.state.statePath, beforeCleanup);
+    const recovered = await deliver(options, dependencies);
+    expect(recovered.failedStep).toBeNull();
+    expect(recovered.worktree?.removed).toBe(true);
+    expect(removals).toBe(1);
+    expect(mergeCalls).toBe(0);
+    expect(remote.writes).toEqual(['comment:COR-1', 'state:COR-1']);
+  },
+);
+scenarios.scenario(
+  'untracked release obligations still keep the batch and owned worktree open',
+  async () => {
+    const context = await setup(true, false);
+    const remote = tracker();
+    let removals = 0;
+    const result = await closeDelivery(
+      context.loaded,
+      { ...context.options, keepWorktree: false },
+      report(),
+      {
+        client: remote.client,
+        record: context.record,
+        verification: context.fixture.dependencies,
+        remove: () => {
+          removals++;
+          throw new Error('must preserve pending worktree');
+        },
+      },
+    );
+    expect(result.failedStep).toBeNull();
+    expect(result.issues).toEqual([{ identifier: 'COR-1', state: 'Done' }]);
+    expect(result.worktree?.removed).toBe(false);
+    expect(removals).toBe(0);
+    const snapshot = readExecutionSnapshot(context.fixture.state);
+    expect(snapshot.operations['operation']?.closeout?.complete).toBe(false);
+    expect(snapshot.pendingCloseout).toContain('operation');
   },
 );
 await scenarios.settled();

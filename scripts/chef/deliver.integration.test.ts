@@ -1,25 +1,20 @@
 import { expect } from 'bun:test';
 import { createHash } from 'node:crypto';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, relative } from 'node:path';
 import { rejectionOf } from '../../testing/testing/src/helpers/promise-outcome.ts';
-import {
-  deliver,
-  executionReportHeadings,
-  executionReportProblems,
-  renderDeliver,
-  run,
-  type DeliverOptions,
-} from './deliver.ts';
+import { deliver, renderDeliver, run, type DeliverOptions } from './deliver.ts';
+import { readDeliveryRequest, type DeliveryRequest } from './delivery-completion.ts';
 import { ledgerLine, type LedgerEntry } from './delivery-ledger.ts';
 import {
+  loadDeliveryVerification,
   prepareDeliveryVerification,
+  recordDeliveryMergeObservation,
   type DeliveryVerification,
   type DeliveryVerificationDependencies,
 } from './delivery-verification.ts';
 import { directMerge, type DirectMergeOptions } from './direct-merge.ts';
-import type { VerificationRequest } from './evidence.ts';
 import {
   acquireDispatch,
   createExecutionStateStore,
@@ -39,17 +34,16 @@ const BASE = 'c'.repeat(40);
 const TREE = '1'.repeat(40);
 const MERGE_COMMIT = 'd'.repeat(40);
 
-const sampleReport = [
-  'Execution report: cor-9-widgets attempt 1',
-  '',
-  ...executionReportHeadings.flatMap((heading) => [`## ${heading}`, '', 'Filled in.', '']),
-].join('\n');
-
 let sandbox: string;
+let control: string;
 let options: DeliverOptions;
 let verification: DeliveryVerificationDependencies;
 
-async function deliveryVerification(directory: string): Promise<DeliveryVerification> {
+async function deliveryVerification(
+  directory: string,
+  worktree: string,
+  route = 'pull-request',
+): Promise<DeliveryVerification> {
   const state = createExecutionStateStore({
     stateDirectory: join(directory, 'state'),
     hostId: 'fixture',
@@ -60,60 +54,12 @@ async function deliveryVerification(directory: string): Promise<DeliveryVerifica
     ownerId: 'owner',
   });
   if (!acquired.granted) throw new Error(acquired.reason);
-  const request: VerificationRequest = {
-    repository: 'acme/widgets',
-    revision: HEAD,
-    base: BASE,
-    integrationTree: TREE,
-    environment: 'linux',
-    authority: acquired.authority,
-    operationId: 'operation',
-    plan: {
-      version: 1,
-      obligations: [
-        {
-          criterionId: 'AC1',
-          risk: 'root-scripts',
-          commandOrProviderJob: 'verify',
-          expectedInventory: [],
-          relevantInputs: [],
-          environmentToolchain: 'linux',
-          executionBoundary: 'provider',
-          producer: 'fixture',
-          selectionReason: 'fixture',
-          evidenceKind: 'process-exit',
-        },
-      ],
-      risks: {
-        'root-scripts': 'covered',
-        'shared-configuration': 'not-applicable',
-        'transitive-consumers': 'not-applicable',
-        'dynamic-entrypoints': 'not-applicable',
-        authorization: 'not-applicable',
-        'persistence-protocols': 'not-applicable',
-        'installed-artifacts': 'not-applicable',
-        'shared-ui-design': 'not-applicable',
-        'automatic-deployment': 'not-applicable',
-      },
-      invalidatedBy: { assignment: 'a', context: 'b', policy: 'c' },
-    },
-    providerRuns: [
-      {
-        id: 7,
-        obligation: 'AC1:verify',
-        job: 'verify',
-        workflow: 'Verify',
-        workflowPath: '.github/workflows/main.yml',
-        event: 'push',
-      },
-    ],
-  };
   const assignment: Assignment = {
     version: assignmentVersion,
     identity: {
       identifier: 'COR-1',
       revision: 'fixture',
-      repository: request.repository,
+      repository: 'acme/widgets',
       base: BASE,
       digest: '',
     },
@@ -130,7 +76,66 @@ async function deliveryVerification(directory: string): Promise<DeliveryVerifica
   assignment.identity.digest = digest(
     JSON.stringify({ ...assignment, identity: { ...assignment.identity, digest: undefined } }),
   );
-  request.plan.invalidatedBy.assignment = assignment.identity.digest;
+  const request: DeliveryRequest = {
+    repository: 'acme/widgets',
+    revision: HEAD,
+    base: BASE,
+    integrationTree: TREE,
+    environment: 'linux',
+    authority: acquired.authority,
+    operationId: 'operation',
+    worktree,
+    members: [
+      {
+        assignment,
+        plan: {
+          version: 1,
+          obligations: [
+            {
+              criterionId: 'AC1',
+              risk: 'root-scripts',
+              commandOrProviderJob: 'verify',
+              expectedInventory: [],
+              relevantInputs: [],
+              environmentToolchain: 'linux',
+              executionBoundary: 'provider',
+              producer: 'fixture',
+              selectionReason: 'fixture',
+              evidenceKind: 'process-exit',
+              phase: 'pre-integration',
+            },
+          ],
+          risks: {
+            'root-scripts': 'covered',
+            'shared-configuration': 'not-applicable',
+            'transitive-consumers': 'not-applicable',
+            'dynamic-entrypoints': 'not-applicable',
+            authorization: 'not-applicable',
+            'persistence-protocols': 'not-applicable',
+            'installed-artifacts': 'not-applicable',
+            'shared-ui-design': 'not-applicable',
+            'automatic-deployment': 'not-applicable',
+          },
+          invalidatedBy: { assignment: 'a', context: 'b', policy: 'c' },
+        },
+        providerRuns: [
+          {
+            id: 7,
+            obligation: 'AC1:verify',
+            job: 'verify',
+            workflow: 'Verify',
+            workflowPath: '.github/workflows/main.yml',
+            event: 'push',
+          },
+        ],
+        track: false,
+        requestedClose: false,
+        changes: ['fixture'],
+        blockers: [],
+      },
+    ],
+  };
+  request.members[0]!.plan.invalidatedBy.assignment = assignment.identity.digest;
   const text = JSON.stringify(request);
   const file = join(directory, 'verification.json');
   writeFileSync(file, text);
@@ -170,23 +175,65 @@ async function deliveryVerification(directory: string): Promise<DeliveryVerifica
     action: 'merge',
     intentFingerprint: 'fixture',
   });
-  await prepareDeliveryVerification(
-    binding,
-    assignment,
-    { route: 'branch', action: 'merge' },
-    { state },
-  );
+  await prepareDeliveryVerification(binding, [assignment], { route, action: 'merge' }, { state });
   return binding;
 }
 
-const verificationScratch = join(process.cwd(), 'tmp/chef/p05-delivery-14ef');
-mkdirSync(verificationScratch, { recursive: true });
-const verificationDirectory = mkdtempSync(join(verificationScratch, 'deliver-'));
-const sharedVerification = await deliveryVerification(verificationDirectory);
+let operationSequence = 0;
+async function approvedMembers<T extends Partial<DeliverOptions>>(
+  base: T,
+  identifiers: string[],
+  closes: string[] = [],
+  route = 'pull-request',
+): Promise<T & { verification: DeliveryVerification }> {
+  if (closes.some((identifier) => !identifiers.includes(identifier)))
+    throw new UsageError('requested close has no tracked member');
+  const original = readDeliveryRequest(options.verification.file, options.verification.digest);
+  const request = structuredClone(original);
+  request.operationId = `scenario-${++operationSequence}`;
+  const template = original.members[0]!;
+  request.members =
+    identifiers.length === 0
+      ? [{ ...structuredClone(template), track: false, requestedClose: false }]
+      : identifiers.map((identifier) => {
+          const member = structuredClone(template);
+          member.assignment.identity.identifier = identifier;
+          member.assignment.identity.digest = digest(
+            JSON.stringify({
+              ...member.assignment,
+              identity: { ...member.assignment.identity, digest: undefined },
+            }),
+          );
+          member.plan.invalidatedBy.assignment = member.assignment.identity.digest;
+          member.track = true;
+          member.requestedClose = closes.includes(identifier);
+          return member;
+        });
+  const text = JSON.stringify(request);
+  const binding = {
+    ...options.verification,
+    file: join(control, `${request.operationId}.json`),
+    digest: digest(text),
+  };
+  writeFileSync(binding.file, text);
+  await recordMutationIntent(verification.state, request.authority, {
+    operationId: request.operationId,
+    action: 'merge',
+    intentFingerprint: digest(text),
+  });
+  await prepareDeliveryVerification(
+    binding,
+    request.members.map((member) => member.assignment),
+    { route, action: 'merge' },
+    verification,
+  );
+  return { ...base, verification: binding };
+}
 
-function setUp(): void {
+async function setUp(): Promise<void> {
   sandbox = mkdtempSync(join(tmpdir(), 'deliver-'));
-  const configPath = join(sandbox, 'config.json');
+  control = mkdtempSync(join(tmpdir(), 'deliver-control-'));
+  const configPath = join(control, 'config.json');
   writeFileSync(
     configPath,
     JSON.stringify({
@@ -201,18 +248,18 @@ function setUp(): void {
     }),
   );
   writeFileSync(join(sandbox, 'comment.md'), 'Accepted.\n');
-  writeFileSync(join(sandbox, 'done.md'), sampleReport);
   options = {
     configPath,
     pr: 12,
     worktree: sandbox,
     commentFile: join(sandbox, 'comment.md'),
-    verification: sharedVerification,
+    verification: await deliveryVerification(control, sandbox),
   };
 }
 
 function tearDown(): void {
   rmSync(sandbox, { recursive: true, force: true });
+  rmSync(control, { recursive: true, force: true });
 }
 
 const scenarios = createScenarios({ setUp, tearDown });
@@ -274,6 +321,21 @@ function seams(
         team: { id: 'team', key: 'COR', parent: null },
       });
       if (document.includes('IssueRead')) return { issue: issue(identifier) } as T;
+      if (document.includes('IssueComments'))
+        return {
+          issue: {
+            comments: {
+              nodes: [...comments.entries()]
+                .filter(([, comment]) => comment.identifier === identifier)
+                .map(([id, comment], index) => ({
+                  id,
+                  body: comment.body,
+                  createdAt: `2026-11-18T00:00:0${index}.000Z`,
+                })),
+              pageInfo: { hasNextPage: false, endCursor: null },
+            },
+          },
+        } as T;
       if (document.includes('CommentPost')) {
         const id = `c${comments.size + 1}`;
         comments.set(id, { body: String(variables['body']), identifier });
@@ -309,7 +371,25 @@ function seams(
     partial: {
       merge: async (mergeOptions: MergeGateOptions) => {
         record.merges.push(mergeOptions);
-        return overrides.merge ?? mergedReport();
+        const report = overrides.merge ?? mergedReport();
+        if (report.merged && report.mergeCommit !== null) {
+          const loaded = loadDeliveryVerification(mergeOptions.verification, verification);
+          await recordDeliveryMergeObservation(
+            loaded,
+            {
+              route: 'pull-request',
+              pullRequest: mergeOptions.pr,
+              reviewedHead: HEAD,
+              base: BASE,
+              integrationTree: TREE,
+              mergeCommit: report.mergeCommit,
+              state: 'confirmed-merge',
+            },
+            'observed',
+            verification,
+          );
+        }
+        return report;
       },
       remove: (removeOptions: RemoveOptions) => {
         record.removals.push(removeOptions.name);
@@ -347,12 +427,12 @@ scenarios.describe('deliver', () => {
         guardsAlreadyFailing: [],
         failedStep: null,
         detail: null,
-        issues: [],
         leftOpen: [],
         acceptedReverts: [],
         worktree: { removed: true, detail: '/c/alpha' },
         swept: null,
         ledgerWarning: null,
+        issues: [],
       });
       expect(record.merges).toHaveLength(1);
       expect(record.merges[0]).toMatchObject({ pr: 12, dryRun: false, checkMainHealth: true });
@@ -386,7 +466,7 @@ scenarios.describe('deliver', () => {
       async () => {
         const { partial, record } = seams({ merge: refusal(step, detail) });
         const report = await deliver(
-          { ...options, issues: ['COR-9'], completionFiles: [join(sandbox, 'done.md')] },
+          await approvedMembers({ ...options }, ['COR-9'], [], 'pull-request'),
           partial,
         );
         expect(report).toMatchObject({ merged: false, failedStep: step, detail });
@@ -419,7 +499,7 @@ scenarios.describe('deliver', () => {
   );
 
   scenarios.scenario('no merge runner is a named failure, never a silent skip', async () => {
-    const report = await deliver(options, {});
+    const report = await deliver(options, { verification });
     expect(report).toMatchObject({ merged: false, failedStep: 'merge' });
   });
 
@@ -434,7 +514,9 @@ scenarios.describe('deliver', () => {
       expect(withRecord.record.merges[0]?.usageLog).toBe('/tmp/usage.tsv');
       expect(withRecord.record.merges[0]?.transcripts).toEqual(['/a.jsonl', '/b']);
       const without = seams();
+      options = await approvedMembers(options, []);
       await deliver(options, without.partial);
+      expect(without.record.merges).toHaveLength(1);
       expect(without.record.merges[0]).not.toHaveProperty('usageLog');
     },
   );
@@ -444,12 +526,7 @@ scenarios.describe('deliver', () => {
     async () => {
       const { partial, record } = seams();
       const report = await deliver(
-        {
-          ...options,
-          issues: ['COR-9'],
-          completionFiles: [join(sandbox, 'done.md')],
-          closes: ['COR-9'],
-        },
+        await approvedMembers({ ...options }, ['COR-9'], ['COR-9'], 'pull-request'),
         partial,
       );
       expect(report).toMatchObject({
@@ -468,14 +545,14 @@ scenarios.describe('deliver', () => {
     async () => {
       const { partial, record } = seams();
       const report = await deliver(
-        { ...options, issues: ['COR-9'], completionFiles: [join(sandbox, 'done.md')] },
+        await approvedMembers({ ...options }, ['COR-9'], [], 'pull-request'),
         partial,
       );
       expect(report).toMatchObject({
         merged: true,
         failedStep: null,
-        issues: [],
         leftOpen: ['COR-9'],
+        issues: [],
       });
       expect(record.writes).toEqual(['comment COR-9']);
       expect(record.requests).not.toContain('IssueSetState');
@@ -490,7 +567,7 @@ scenarios.describe('deliver', () => {
       const { partial, record } = seams();
       const report = await deliver(options, partial);
       expect(record.requests).toEqual([]);
-      expect(renderDeliver(report).split('\n').at(-1)).toContain('no issue closed');
+      expect(renderDeliver(report).split('\n').at(-1)).toContain('no tracked member');
     },
   );
 
@@ -498,30 +575,34 @@ scenarios.describe('deliver', () => {
     '--closes closes only the issue it names and leaves the others open',
     async () => {
       const { partial, record } = seams();
-      const second = join(sandbox, 'second.md');
-      writeFileSync(second, sampleReport);
       const report = await deliver(
-        {
-          ...options,
-          issues: ['COR-9', 'COR-10'],
-          completionFiles: [join(sandbox, 'done.md'), second],
-          closes: ['COR-10'],
-        },
+        await approvedMembers({ ...options }, ['COR-9', 'COR-10'], ['COR-10'], 'pull-request'),
         partial,
       );
       expect(report).toMatchObject({
-        issues: [{ identifier: 'COR-10', state: 'Done' }],
         leftOpen: ['COR-9'],
+        issues: [{ identifier: 'COR-10', state: 'Done' }],
       });
       expect(record.writes).toEqual(['comment COR-9', 'comment COR-10', 'state COR-10']);
     },
   );
 
-  scenarios.scenario('--closes must name an --issue, refused before any merge', async () => {
+  scenarios.scenario('refuses unapproved requested close before any merge', async () => {
     const { partial, record } = seams();
-    const error = await rejectionOf(deliver({ ...options, closes: ['COR-9'] }, partial));
+    const request = readDeliveryRequest(options.verification.file, options.verification.digest);
+    request.members[0]!.track = true;
+    request.members[0]!.requestedClose = true;
+    const text = JSON.stringify(request);
+    const file = join(control, 'changed-close.json');
+    writeFileSync(file, text);
+    const error = await rejectionOf(
+      deliver(
+        { ...options, verification: { ...options.verification, file, digest: digest(text) } },
+        partial,
+      ),
+    );
     expect(error).toBeInstanceOf(UsageError);
-    expect((error as Error).message).toContain('--closes COR-9 names no --issue');
+    expect(String(error)).toContain('approval binding');
     expect(record.merges).toEqual([]);
   });
 
@@ -529,15 +610,13 @@ scenarios.describe('deliver', () => {
     'closes several issues in order, each with its own comment and then Done',
     async () => {
       const { partial, record } = seams();
-      const second = join(sandbox, 'second.md');
-      writeFileSync(second, sampleReport.replace('cor-9-widgets', 'cor-10-gadgets'));
       const report = await deliver(
-        {
-          ...options,
-          issues: ['COR-9', 'COR-10'],
-          completionFiles: [join(sandbox, 'done.md'), second],
-          closes: ['COR-9', 'COR-10'],
-        },
+        await approvedMembers(
+          { ...options },
+          ['COR-9', 'COR-10'],
+          ['COR-9', 'COR-10'],
+          'pull-request',
+        ),
         partial,
       );
       expect(report).toMatchObject({
@@ -568,7 +647,7 @@ scenarios.describe('deliver', () => {
       },
     };
     const report = await deliver(
-      { ...options, issues: ['COR-9'], completionFiles: [join(sandbox, 'done.md')] },
+      await approvedMembers({ ...options }, ['COR-9'], [], 'pull-request'),
       { ...partial, client: unread },
     );
     expect(report).toMatchObject({ merged: true, failedStep: 'issue', issues: [] });
@@ -579,15 +658,13 @@ scenarios.describe('deliver', () => {
     'a failure on the second issue keeps the first closed and names the second',
     async () => {
       const { partial, record } = seams({ failState: 'COR-10' });
-      const second = join(sandbox, 'second.md');
-      writeFileSync(second, sampleReport);
       const report = await deliver(
-        {
-          ...options,
-          issues: ['COR-9', 'COR-10', 'COR-11'],
-          completionFiles: [join(sandbox, 'done.md'), second, second],
-          closes: ['COR-9', 'COR-10', 'COR-11'],
-        },
+        await approvedMembers(
+          { ...options },
+          ['COR-9', 'COR-10', 'COR-11'],
+          ['COR-9', 'COR-10', 'COR-11'],
+          'pull-request',
+        ),
         partial,
       );
       expect(report).toMatchObject({
@@ -615,11 +692,7 @@ scenarios.describe('deliver', () => {
         },
       };
       const report = await deliver(
-        {
-          ...options,
-          issues: ['COR-9'],
-          completionFiles: [join(sandbox, 'done.md')],
-        },
+        await approvedMembers({ ...options }, ['COR-9'], [], 'pull-request'),
         { ...partial, client: broken },
       );
       expect(report).toMatchObject({
@@ -683,30 +756,29 @@ scenarios.describe('deliver', () => {
   });
 
   scenarios.scenario(
-    'a worktree the removal refuses is kept with its reason and the delivery still succeeds',
+    'a cleanup refusal keeps the worktree and records a recoverable failure',
     async () => {
       const { partial, record } = seams({
         refusal: 'Refusing to remove /c/alpha: Git reports it locked',
       });
       const report = await deliver(options, partial);
-      expect(report).toMatchObject({ merged: true, failedStep: null });
+      expect(report).toMatchObject({ merged: true, failedStep: 'worktree' });
+      expect(report.failedStep).toBe('worktree');
       expect(report.worktree?.removed).toBe(false);
       expect(report.worktree?.detail).toContain('locked');
       expect(record.removals).toEqual([sandbox]);
       expect(renderDeliver(report)).toContain('worktree kept: Refusing to remove /c/alpha');
-      expect(renderDeliver(report)).not.toContain('FAILED');
+      expect(renderDeliver(report)).toContain('FAILED at worktree');
     },
   );
 
-  scenarios.scenario(
-    'a usage error from the removal is kept too, never a failed step',
-    async () => {
-      const { partial } = seams({ usageError: 'not a safe name.' });
-      const report = await deliver(options, partial);
-      expect(report).toMatchObject({ merged: true, failedStep: null });
-      expect(report.worktree).toEqual({ removed: false, detail: 'not a safe name.' });
-    },
-  );
+  scenarios.scenario('invalid cleanup input remains a recoverable worktree failure', async () => {
+    const { partial } = seams({ usageError: 'not a safe name.' });
+    const report = await deliver(options, partial);
+    expect(report).toMatchObject({ merged: true, failedStep: 'worktree' });
+    expect(report.failedStep).toBe('worktree');
+    expect(report.worktree).toEqual({ removed: false, detail: 'not a safe name.' });
+  });
 
   scenarios.scenario('a delivery that did not merge touches no worktree', async () => {
     const { partial, record } = seams({ merge: refusal('conflict', 'x') });
@@ -737,15 +809,16 @@ scenarios.describe('the delivery ledger and owned cleanup', () => {
 
   scenarios.scenario('a branch delivery records its branch, head and merge commit', async () => {
     const world = branchWorld();
-    const { report, record } = await deliverBranch(world);
+    const { report, record, operationId } = await deliverBranch(world);
     expect(report.failedStep).toBeNull();
+    expect(record.ledger[0]?.operationId).toStartWith('scenario-');
     expect(record.ledger).toEqual([
       {
         pr: undefined,
         branch: BRANCH,
         head: HEAD,
         mergeCommit: SQUASH,
-        operationId: 'operation',
+        operationId,
       },
     ]);
   });
@@ -778,15 +851,12 @@ scenarios.describe('the delivery ledger and owned cleanup', () => {
     },
   );
 
-  scenarios.scenario(
-    'a ledger that cannot be written is a warning line, never a failed delivery',
-    async () => {
-      const { partial } = seams({ ledgerFailure: 'disk full' });
-      const report = await deliver(options, partial);
-      expect(report).toMatchObject({ merged: true, failedStep: null });
-      expect(renderDeliver(report)).toContain('WARNING delivery ledger: not written (disk full)');
-    },
-  );
+  scenarios.scenario('a ledger write failure remains a recoverable closeout failure', async () => {
+    const { partial } = seams({ ledgerFailure: 'disk full' });
+    const report = await deliver(options, partial);
+    expect(report).toMatchObject({ merged: true, failedStep: 'ledger' });
+    expect(renderDeliver(report)).toContain('FAILED at ledger: disk full');
+  });
 
   scenarios.scenario('does not sweep other workers after a successful delivery', async () => {
     const { partial, record } = seams();
@@ -807,12 +877,7 @@ scenarios.describe('the delivery ledger and owned cleanup', () => {
   scenarios.scenario('a failed step runs no cleanup', async () => {
     const { partial, record } = seams({ failState: 'COR-9' });
     const report = await deliver(
-      {
-        ...options,
-        issues: ['COR-9'],
-        completionFiles: [join(sandbox, 'done.md')],
-        closes: ['COR-9'],
-      },
+      await approvedMembers({ ...options }, ['COR-9'], ['COR-9'], 'pull-request'),
       partial,
     );
     expect(report.failedStep).toBe('issue');
@@ -820,91 +885,37 @@ scenarios.describe('the delivery ledger and owned cleanup', () => {
   });
 });
 
-scenarios.describe('the completion file', () => {
-  scenarios.scenario('lists the same headings, in order, as references/execution-report.md', () => {
-    const reference = readFileSync(
-      join(import.meta.dir, '../../.agents/skills/chef/references/execution-report.md'),
-      'utf8',
-    );
-    const listed = /Level-2 headings, in this order: (.+?)\.\n/.exec(reference)?.[1];
-    expect(listed?.split('; ')).toEqual(executionReportHeadings);
-  });
-
-  scenarios.scenario('accepts an execution report', () => {
-    expect(executionReportProblems(sampleReport)).toEqual([]);
-  });
-
-  scenarios.scenario('names a missing marker and a missing or out-of-order heading', () => {
-    expect(executionReportProblems('Delivered.\n')).toHaveLength(
-      1 + executionReportHeadings.length,
-    );
-    const swapped = sampleReport
-      .replace('## Verification', '## Placeholder')
-      .replace('## Changes', '## Verification');
-    expect(executionReportProblems(swapped)).toEqual(['"## Changes" is missing or out of order']);
-    expect(executionReportProblems(sampleReport.replace('attempt 1', 'attempt one'))[0]).toContain(
-      'first line',
-    );
-  });
-
-  scenarios.scenario(
-    'refuses a completion file that is not an execution report, before any merge',
-    async () => {
+scenarios.describe('structured completion contract', () => {
+  for (const kind of [
+    'missing member',
+    'duplicate member',
+    'unbound criterion',
+    'missing phase',
+    'untracked close',
+  ] as const)
+    scenarios.scenario(`refuses ${kind} before any merge or tracker write`, async () => {
       const { partial, record } = seams();
-      writeFileSync(join(sandbox, 'plain.md'), 'Delivered.\n');
+      const request = readDeliveryRequest(options.verification.file, options.verification.digest);
+      if (kind === 'missing member') request.members = [];
+      if (kind === 'duplicate member') request.members.push(structuredClone(request.members[0]!));
+      if (kind === 'unbound criterion')
+        request.members[0]!.plan.obligations[0]!.criterionId = 'UNKNOWN';
+      if (kind === 'missing phase')
+        Reflect.deleteProperty(request.members[0]!.plan.obligations[0]!, 'phase');
+      if (kind === 'untracked close') request.members[0]!.requestedClose = true;
+      const text = JSON.stringify(request);
+      const file = join(control, 'malformed.json');
+      writeFileSync(file, text);
       const error = await rejectionOf(
         deliver(
-          { ...options, issues: ['COR-9'], completionFiles: [join(sandbox, 'plain.md')] },
+          { ...options, verification: { ...options.verification, file, digest: digest(text) } },
           partial,
         ),
       );
-      expect(error).toBeInstanceOf(UsageError);
-      expect(String(error)).toContain('not an execution report');
-      expect(record.merges).toEqual([]);
-    },
-  );
-
-  scenarios.scenario(
-    'refuses an invalid second report before any merge or Linear write',
-    async () => {
-      const { partial, record } = seams();
-      writeFileSync(join(sandbox, 'plain.md'), 'Delivered.\n');
-      const error = await rejectionOf(
-        deliver(
-          {
-            ...options,
-            issues: ['COR-9', 'COR-10'],
-            completionFiles: [join(sandbox, 'done.md'), join(sandbox, 'plain.md')],
-          },
-          partial,
-        ),
-      );
-      expect(error).toBeInstanceOf(UsageError);
-      expect(String(error)).toContain('plain.md');
+      expect(error).toBeInstanceOf(Error);
       expect(record.merges).toEqual([]);
       expect(record.requests).toEqual([]);
-    },
-  );
-
-  scenarios.scenario(
-    'refuses unequal counts, a missing file and a repeated issue before any merge',
-    async () => {
-      const { partial, record } = seams();
-      const done = join(sandbox, 'done.md');
-      const refused = async (issues: string[], completionFiles: string[]) => {
-        const error = await rejectionOf(deliver({ ...options, issues, completionFiles }, partial));
-        expect(error).toBeInstanceOf(UsageError);
-        return String(error);
-      };
-      expect(await refused(['COR-9', 'COR-10'], [done])).toContain('pair in order');
-      expect(await refused([], [done])).toContain('pair in order');
-      expect(await refused(['COR-9'], [join(sandbox, 'absent.md')])).toContain(
-        'No such completion file',
-      );
-      expect(await refused(['COR-9', 'COR-9'], [done, done])).toContain('given twice');
-      expect(record.merges).toEqual([]);
-    },
-  );
+    });
 });
 
 scenarios.describe('run', () => {
@@ -915,7 +926,7 @@ scenarios.describe('run', () => {
       const result = await run(['--help'], partial);
       expect(result.code).toBe(0);
       expect(result.output).toStartWith('Usage:');
-      for (const option of ['--pr', '--branch', '--closes', '--intended', '--help'])
+      for (const option of ['--pr', '--branch', '--verification-file', '--intended'])
         expect(result.output).toContain(option);
       expect(record.merges).toEqual([]);
     },
@@ -997,43 +1008,22 @@ scenarios.describe('run', () => {
     });
   });
 
-  scenarios.scenario(
-    '--issue and --completion-file repeat, pair in order and close each issue',
-    async () => {
-      const { partial, record } = seams();
-      const second = join(sandbox, 'second.md');
-      writeFileSync(second, sampleReport);
-      const result = await run(
-        argv([
-          '--issue',
-          'COR-9',
-          '--completion-file',
-          join(sandbox, 'done.md'),
-          '--issue',
-          'COR-10',
-          '--completion-file',
-          second,
-          '--closes',
-          'COR-9',
-          '--closes',
-          'COR-10',
-          '--json',
-        ]),
-        partial,
-      );
-      expect(result.code).toBe(0);
-      expect(JSON.parse(result.output).issues).toEqual([
-        { identifier: 'COR-9', state: 'Done' },
-        { identifier: 'COR-10', state: 'Done' },
-      ]);
-      expect(record.writes).toEqual([
-        'comment COR-9',
-        'state COR-9',
-        'comment COR-10',
-        'state COR-10',
-      ]);
-    },
-  );
+  scenarios.scenario('CLI closes only the tracked members in its approved request', async () => {
+    const { partial, record } = seams();
+    options = await approvedMembers(options, ['COR-9', 'COR-10'], ['COR-9', 'COR-10']);
+    const result = await run(argv(['--json']), partial);
+    expect(result.code).toBe(0);
+    expect(JSON.parse(result.output).issues).toEqual([
+      { identifier: 'COR-9', state: 'Done' },
+      { identifier: 'COR-10', state: 'Done' },
+    ]);
+    expect(record.writes).toEqual([
+      'comment COR-9',
+      'state COR-9',
+      'comment COR-10',
+      'state COR-10',
+    ]);
+  });
 
   scenarios.scenario(
     'exits 0 with one JSON object for a merge and 1 naming the failed step otherwise',
@@ -1041,6 +1031,7 @@ scenarios.describe('run', () => {
       const ok = await run(argv(['--json']), seams().partial);
       expect(ok.code).toBe(0);
       expect(JSON.parse(ok.output)).toMatchObject({ pr: 12, merged: true, failedStep: null });
+      options = await approvedMembers(options, []);
       const bad = await run(
         argv(['--json']),
         seams({ merge: refusal('conflict', 'conflicts') }).partial,
@@ -1081,6 +1072,10 @@ function branchWorld(answers: Record<string, RunnerResult> = {}) {
     [`commit-tree ${TREE} -p ${BASE} -F ${messageFile}`]: reply(`${SQUASH}\n`),
     [`push origin ${SQUASH}:refs/heads/main`]: reply(),
     [`push origin --delete ${BRANCH}`]: reply(),
+    'fetch origin main': reply(),
+    'rev-parse origin/main': reply(`${SQUASH}\n`),
+    [`rev-parse ${SQUASH}^`]: reply(`${BASE}\n`),
+    [`rev-parse ${SQUASH}^{tree}`]: reply(`${TREE}\n`),
   };
   const runner: Runner = (command) => {
     const key = command.slice(1).join(' ');
@@ -1108,6 +1103,10 @@ async function deliverBranch(
 ) {
   writeFileSync(world.messageFile, 'COR-9: Add widgets\n');
   const { partial, record } = seams();
+  const branchApproval =
+    extra.verification === undefined
+      ? await approvedMembers({}, [], [], 'branch')
+      : { verification: extra.verification };
   const report = await deliver(
     {
       configPath: options.configPath,
@@ -1115,7 +1114,7 @@ async function deliverBranch(
       expectedHead: HEAD,
       messageFile: world.messageFile,
       worktree: sandbox,
-      verification: options.verification,
+      verification: branchApproval.verification,
       ...extra,
     },
     {
@@ -1124,7 +1123,14 @@ async function deliverBranch(
         directMerge(directOptions, { runner: world.runner, guards, verification, ...usage }),
     },
   );
-  return { report, record };
+  return {
+    report,
+    record,
+    operationId: readDeliveryRequest(
+      branchApproval.verification.file,
+      branchApproval.verification.digest,
+    ).operationId,
+  };
 }
 
 scenarios.describe('deliver --branch', () => {
@@ -1143,9 +1149,9 @@ scenarios.describe('deliver --branch', () => {
         merged: true,
         mergeCommit: SQUASH,
         failedStep: null,
-        issues: [],
         leftOpen: [],
         acceptedReverts: [],
+        issues: [],
       });
       expect(record.merges).toEqual([]);
       // The guards ran on the commit that was pushed, and nothing touched a working tree.
@@ -1268,7 +1274,7 @@ scenarios.describe('deliver --branch', () => {
         world,
         (revision) =>
           revision === BASE ? guardsPass() : guardsFail('check-middle-dot-separators'),
-        { issues: ['COR-9'], completionFiles: [join(sandbox, 'done.md')] },
+        await approvedMembers({}, ['COR-9'], [], 'branch'),
       );
       expect(report).toMatchObject({
         merged: false,
@@ -1381,10 +1387,11 @@ scenarios.describe('deliver --branch', () => {
       const world = branchWorld({
         [`push origin ${SQUASH}:refs/heads/main`]: reply('', 1, '! [rejected] (fetch first)'),
       });
-      const { report, record } = await deliverBranch(world, guardsPass, {
-        issues: ['COR-9'],
-        completionFiles: [join(sandbox, 'done.md')],
-      });
+      const { report, record } = await deliverBranch(
+        world,
+        guardsPass,
+        await approvedMembers({}, ['COR-9'], [], 'branch'),
+      );
       expect(report).toMatchObject({ merged: false, mergeCommit: null, failedStep: 'merge' });
       expect(report.detail).toContain('rejected');
       expect(world.calls).not.toContain(`push origin --delete ${BRANCH}`);
@@ -1396,10 +1403,8 @@ scenarios.describe('deliver --branch', () => {
     'a branch that cannot be deleted is step delete with merged true, and no issue is closed',
     async () => {
       const world = branchWorld({ [`push origin --delete ${BRANCH}`]: reply('', 1, 'denied') });
-      const { report, record } = await deliverBranch(world, guardsPass, {
-        issues: ['COR-9'],
-        completionFiles: [join(sandbox, 'done.md')],
-      });
+      const approved = await approvedMembers({}, ['COR-9'], [], 'branch');
+      const { report, record } = await deliverBranch(world, guardsPass, approved);
       expect(report).toMatchObject({ merged: true, mergeCommit: SQUASH, failedStep: 'delete' });
       expect(record.requests).toEqual([]);
       // The merge happened, so its head is in the ledger although a later step failed.
@@ -1409,7 +1414,8 @@ scenarios.describe('deliver --branch', () => {
           branch: BRANCH,
           head: HEAD,
           mergeCommit: SQUASH,
-          operationId: 'operation',
+          operationId: readDeliveryRequest(approved.verification.file, approved.verification.digest)
+            .operationId,
         },
       ]);
     },
@@ -1418,15 +1424,16 @@ scenarios.describe('deliver --branch', () => {
   scenarios.scenario(
     'a branch merge without --closes comments on the issue and leaves its state alone',
     async () => {
-      const { report, record } = await deliverBranch(branchWorld(), guardsPass, {
-        issues: ['COR-9'],
-        completionFiles: [join(sandbox, 'done.md')],
-      });
+      const { report, record } = await deliverBranch(
+        branchWorld(),
+        guardsPass,
+        await approvedMembers({}, ['COR-9'], [], 'branch'),
+      );
       expect(report).toMatchObject({
         merged: true,
         failedStep: null,
-        issues: [],
         leftOpen: ['COR-9'],
+        issues: [],
       });
       expect(record.writes).toEqual(['comment COR-9']);
       expect(renderDeliver(report).split('\n').at(-1)).toContain(
@@ -1438,13 +1445,11 @@ scenarios.describe('deliver --branch', () => {
   scenarios.scenario(
     'closes the issues after the merge, pairing each with its completion file in order',
     async () => {
-      const second = join(sandbox, 'second.md');
-      writeFileSync(second, sampleReport);
-      const { report, record } = await deliverBranch(branchWorld(), guardsPass, {
-        issues: ['COR-9', 'COR-10'],
-        completionFiles: [join(sandbox, 'done.md'), second],
-        closes: ['COR-9', 'COR-10'],
-      });
+      const { report, record } = await deliverBranch(
+        branchWorld(),
+        guardsPass,
+        await approvedMembers({}, ['COR-9', 'COR-10'], ['COR-9', 'COR-10'], 'branch'),
+      );
       expect(report).toMatchObject({
         merged: true,
         failedStep: null,
@@ -1463,23 +1468,19 @@ scenarios.describe('deliver --branch', () => {
     },
   );
 
-  scenarios.scenario(
-    'unpaired issues, an unsafe branch or a bad head are refused before anything runs',
-    async () => {
-      const world = branchWorld();
-      const refused = async (extra: Partial<DeliverOptions>) => {
-        const error = await rejectionOf(deliverBranch(world, guardsPass, extra));
-        expect(error).toBeInstanceOf(UsageError);
-        return String(error);
-      };
-      expect(await refused({ issues: ['COR-9'], completionFiles: [] })).toContain('pair in order');
-      expect(await refused({ branch: 'main' })).toContain('default branch');
-      expect(await refused({ branch: '--delete' })).toContain('not a safe branch name');
-      expect(await refused({ branch: 'a..b' })).toContain('not a safe branch name');
-      expect(await refused({ expectedHead: 'abc' })).toContain('not a full commit SHA');
-      expect(world.calls).toEqual([]);
-    },
-  );
+  scenarios.scenario('an unsafe branch or a bad head is refused before anything runs', async () => {
+    const world = branchWorld();
+    const refused = async (extra: Partial<DeliverOptions>) => {
+      const error = await rejectionOf(deliverBranch(world, guardsPass, extra));
+      expect(error).toBeInstanceOf(UsageError);
+      return String(error);
+    };
+    expect(await refused({ branch: 'main' })).toContain('default branch');
+    expect(await refused({ branch: '--delete' })).toContain('not a safe branch name');
+    expect(await refused({ branch: 'a..b' })).toContain('not a safe branch name');
+    expect(await refused({ expectedHead: 'abc' })).toContain('not a full commit SHA');
+    expect(world.calls).toEqual([]);
+  });
 
   scenarios.scenario(
     'exactly one of a pull request and a branch, each with its own file, is required',
@@ -1525,6 +1526,7 @@ scenarios.describe('deliver --branch', () => {
   );
 
   scenarios.scenario('no direct merge runner is a named failure, never a silent skip', async () => {
+    const approved = await approvedMembers({}, [], [], 'branch');
     const report = await deliver(
       {
         configPath: options.configPath,
@@ -1532,9 +1534,9 @@ scenarios.describe('deliver --branch', () => {
         expectedHead: HEAD,
         messageFile: join(sandbox, 'comment.md'),
         worktree: sandbox,
-        verification: options.verification,
+        verification: approved.verification,
       },
-      {},
+      { verification },
     );
     expect(report).toMatchObject({ merged: false, failedStep: 'merge' });
   });
@@ -1563,6 +1565,8 @@ scenarios.describe('deliver --branch', () => {
     'run reads --branch, --head and --message-file and reports the branch as JSON',
     async () => {
       const seen: DirectMergeOptions[] = [];
+      options = await approvedMembers(options, [], [], 'branch');
+      const collaborators = seams().partial;
       const result = await run(
         [
           '--config',
@@ -1582,9 +1586,23 @@ scenarios.describe('deliver --branch', () => {
           '--json',
         ],
         {
-          verification,
+          ...collaborators,
           directMerge: async (directOptions) => {
             seen.push(directOptions);
+            await recordDeliveryMergeObservation(
+              loadDeliveryVerification(directOptions.verification, verification),
+              {
+                route: 'branch',
+                branch: BRANCH,
+                reviewedHead: HEAD,
+                base: BASE,
+                integrationTree: TREE,
+                mergeCommit: SQUASH,
+                state: 'confirmed-merge',
+              },
+              'observed',
+              verification,
+            );
             return {
               branch: BRANCH,
               head: HEAD,
@@ -1607,6 +1625,8 @@ scenarios.describe('deliver --branch', () => {
     'run resolves a relative --message-file against its own directory, not the worktree',
     async () => {
       const seen: DirectMergeOptions[] = [];
+      options = await approvedMembers(options, [], [], 'branch');
+      const collaborators = seams().partial;
       const result = await run(
         [
           '--config',
@@ -1626,9 +1646,23 @@ scenarios.describe('deliver --branch', () => {
           '--json',
         ],
         {
-          verification,
+          ...collaborators,
           directMerge: async (directOptions) => {
             seen.push(directOptions);
+            await recordDeliveryMergeObservation(
+              loadDeliveryVerification(directOptions.verification, verification),
+              {
+                route: 'branch',
+                branch: BRANCH,
+                reviewedHead: HEAD,
+                base: BASE,
+                integrationTree: TREE,
+                mergeCommit: SQUASH,
+                state: 'confirmed-merge',
+              },
+              'observed',
+              verification,
+            );
             return {
               branch: BRANCH,
               head: HEAD,

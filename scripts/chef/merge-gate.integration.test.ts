@@ -11,7 +11,12 @@ import {
   loadDeliveryVerification,
   type DeliveryVerificationDependencies,
 } from './delivery-verification.ts';
-import { acquireDispatch, cancelDispatch, requireAuthority } from './execution-state.ts';
+import {
+  acquireDispatch,
+  cancelDispatch,
+  readExecutionSnapshot,
+  requireAuthority,
+} from './execution-state.ts';
 import {
   mergeGate as mergeGateImplementation,
   renderMergeGate,
@@ -33,14 +38,64 @@ let sandbox: string;
 let options: MergeGateOptions;
 let verification: DeliveryVerificationDependencies;
 
-function mergeGate(input: MergeGateOptions, partial: Partial<MergeGateDependencies> = {}) {
+async function mergeGate(input: MergeGateOptions, partial: Partial<MergeGateDependencies> = {}) {
+  const activeVerification = partial.verification ?? verification;
+  const loaded = loadDeliveryVerification(input.verification, activeVerification);
+  const operation = readExecutionSnapshot(loaded.state).operations[loaded.request.operationId];
+  // Most historical scenarios make an independent delivery after asserting a prior failure. Give
+  // those calls a new durable operation; dedicated recovery scenarios invoke the implementation.
+  if (operation?.outcome !== 'intent') {
+    const fresh = await createDeliveryVerificationFixture(
+      {
+        directory: input.worktree,
+        revision: loaded.request.revision,
+        base: loaded.request.base,
+        integrationTree: loaded.request.integrationTree,
+        relevantInputs: loaded.request.members.flatMap((member) =>
+          member.plan.obligations.flatMap((item) => item.relevantInputs),
+        ),
+        outputDirectory: mkdtempSync(join(tmpdir(), 'independent-merge-control-')),
+      },
+      { route: 'pull-request' },
+    );
+    return mergeGateImplementation(
+      { ...input, worktree: fresh.directory, verification: fresh.verification },
+      { ...partial, verification: fresh.dependencies },
+    );
+  }
   return mergeGateImplementation(input, {
     ...partial,
     verification: partial.verification ?? verification,
   });
 }
 
-function run(argv: string[], partial: Partial<MergeGateDependencies> = {}) {
+async function run(argv: string[], partial: Partial<MergeGateDependencies> = {}) {
+  const loaded = loadDeliveryVerification(
+    options.verification,
+    partial.verification ?? verification,
+  );
+  if (
+    readExecutionSnapshot(loaded.state).operations[loaded.request.operationId]?.outcome !== 'intent'
+  ) {
+    const fresh = await createDeliveryVerificationFixture(
+      {
+        directory: options.worktree,
+        revision: loaded.request.revision,
+        base: loaded.request.base,
+        integrationTree: loaded.request.integrationTree,
+        relevantInputs: loaded.request.members.flatMap((member) =>
+          member.plan.obligations.flatMap((item) => item.relevantInputs),
+        ),
+        outputDirectory: mkdtempSync(join(tmpdir(), 'independent-merge-control-')),
+      },
+      { route: 'pull-request' },
+    );
+    const replaced = [...argv];
+    replaced[replaced.indexOf('--worktree') + 1] = fresh.directory;
+    replaced[replaced.indexOf('--verification-file') + 1] = fresh.verification.file;
+    replaced[replaced.indexOf('--verification-digest') + 1] = fresh.verification.digest;
+    return runImplementation(replaced, { ...partial, verification: fresh.dependencies });
+  }
   return runImplementation(argv, {
     ...partial,
     verification: partial.verification ?? verification,
@@ -939,21 +994,41 @@ async function lockScenarios() {
   await child.exited;
   plantHolder(child.pid);
   const reclaimWorld = fake();
+  const reclaimedFixture = await createDeliveryVerificationFixture(undefined, {
+    route: 'pull-request',
+  });
   const reclaimed = {
-    report: await mergeGateImplementation(lockOptions, {
-      runner: reclaimWorld.runner,
-      verification: fixture.dependencies,
-    }),
+    report: await mergeGateImplementation(
+      {
+        ...lockOptions,
+        worktree: reclaimedFixture.directory,
+        verification: reclaimedFixture.verification,
+      },
+      {
+        runner: reclaimWorld.runner,
+        verification: reclaimedFixture.dependencies,
+      },
+    ),
     merged: reclaimWorld.merged(),
     lockGone: !existsSync(lockDirectory),
   };
 
   // A failing step still releases the lock.
+  const failedFixture = await createDeliveryVerificationFixture(undefined, {
+    route: 'pull-request',
+  });
   const failed = {
-    report: await mergeGateImplementation(lockOptions, {
-      runner: fake({ mergeCode: 1 }).runner,
-      verification: fixture.dependencies,
-    }),
+    report: await mergeGateImplementation(
+      {
+        ...lockOptions,
+        worktree: failedFixture.directory,
+        verification: failedFixture.verification,
+      },
+      {
+        runner: fake({ mergeCode: 1 }).runner,
+        verification: failedFixture.dependencies,
+      },
+    ),
     lockGone: !existsSync(lockDirectory),
   };
 

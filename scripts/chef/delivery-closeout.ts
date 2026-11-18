@@ -39,7 +39,10 @@ async function completeMember(
   save: () => Promise<void>,
 ): Promise<void> {
   const key = record.identifier;
-  const progress = (Object.hasOwn(closeout.members, key) ? closeout.members[key] : undefined) ?? {
+  const progress: DeliveryCloseout['members'][string] = (Object.hasOwn(closeout.members, key)
+    ? closeout.members[key]
+    : undefined) ?? {
+    verified: record.eligible,
     commentIntent: false,
     closed: false,
   };
@@ -126,6 +129,7 @@ export async function closeDelivery(
     if (resolve(options.worktree) !== resolve(request.worktree))
       throw new Error('delivery worktree differs from the coordinator-approved ownership');
     const closeout: DeliveryCloseout = operation.closeout ?? {
+      routeComplete: false,
       ledger: false,
       members: Object.create(null),
       complete: false,
@@ -154,25 +158,76 @@ export async function closeDelivery(
         return fail('ledger', error);
       }
     }
-    const records = collectCompletionRecords(
-      request,
-      'completion',
-      dependencies.verification?.transport,
+    // A confirmed merge reaches the ledger even when the route still owes deletion or usage.
+    if (report.failedStep !== null) return report;
+    if (!closeout.routeComplete) {
+      closeout.routeComplete = true;
+      await save();
+    }
+    // A stored verification result may finish cleanup; it never authorizes a new Done mutation.
+    // Members still needing a tracker write always collect fresh provider evidence.
+    const pending = request.members.filter((member) => {
+      const identifier = member.assignment.identity.identifier;
+      const progress = Object.hasOwn(closeout.members, identifier)
+        ? closeout.members[identifier]
+        : undefined;
+      return (
+        !progress?.verified ||
+        (member.track &&
+          !progress.closed &&
+          (member.requestedClose || progress.commentId === undefined || progress.commentIntent))
+      );
+    });
+    const records = new Map(
+      collectCompletionRecords(
+        { ...request, members: pending },
+        'completion',
+        dependencies.verification?.transport,
+      ).map((record) => [record.identifier, record]),
     );
-    for (const record of records) {
-      if (!record.track) continue;
-      try {
-        if (dependencies.client === undefined) throw new Error('no Linear client was provided');
-        await completeMember(record, report.mergeCommit, dependencies.client, closeout, save);
-        if (
-          Object.hasOwn(closeout.members, record.identifier) &&
-          closeout.members[record.identifier]?.closed
-        )
-          report.issues.push({ identifier: record.identifier, state: 'Done' });
-        else report.leftOpen.push(record.identifier);
-      } catch (error) {
-        return fail('issue', error);
+    for (const member of request.members) {
+      const identifier = member.assignment.identity.identifier;
+      const record = records.get(identifier);
+      let progress = Object.hasOwn(closeout.members, identifier)
+        ? closeout.members[identifier]
+        : undefined;
+      if (record !== undefined) {
+        progress ??= { verified: false, commentIntent: false, closed: false };
+        progress.verified = record.eligible;
+        closeout.members[identifier] = progress;
+        await save();
       }
+      if (!member.track) continue;
+      try {
+        if (progress?.closed !== true && record !== undefined) {
+          if (dependencies.client === undefined) throw new Error('no Linear client was provided');
+          await completeMember(record, report.mergeCommit, dependencies.client, closeout, save);
+        }
+        if (Object.hasOwn(closeout.members, identifier) && closeout.members[identifier]?.closed)
+          report.issues.push({ identifier, state: 'Done' });
+        else report.leftOpen.push(identifier);
+      } catch (error) {
+        const detail = error instanceof Error ? error.message : String(error);
+        return fail(
+          'issue',
+          detail.startsWith(`${identifier}:`) ? detail : `${identifier}: ${detail}`,
+        );
+      }
+    }
+    const satisfied = request.members.every((member) => {
+      const identifier = member.assignment.identity.identifier;
+      const progress = Object.hasOwn(closeout.members, identifier)
+        ? closeout.members[identifier]
+        : undefined;
+      return (
+        progress?.verified === true && (!member.track || !member.requestedClose || progress.closed)
+      );
+    });
+    if (!satisfied) {
+      report.worktree = { removed: false, detail: 'kept while member completion gates remain' };
+      closeout.worktree = report.worktree;
+      await save();
+      return report;
     }
     if (closeout.worktree?.removed === true) report.worktree = closeout.worktree;
     else if (options.keepWorktree === true) {
@@ -190,18 +245,25 @@ export async function closeDelivery(
             deliveredTip: request.revision,
             endProcesses: true,
           });
-          report.worktree = { removed: true, detail: removed.path };
+          report.worktree = {
+            removed: true,
+            detail:
+              removed.ended.length === 0
+                ? removed.path
+                : `${removed.path} (ended ${removed.ended.length} process(es) left running inside it)`,
+          };
         } else report.worktree = { removed: true, detail: `${request.worktree} already absent` };
         closeout.worktree = report.worktree;
         await save();
       } catch (error) {
+        report.worktree = {
+          removed: false,
+          detail: error instanceof Error ? error.message : String(error),
+        };
         return fail('worktree', error);
       }
     }
-    closeout.complete = records.every(
-      (record) =>
-        !record.track || !record.requestedClose || closeout.members[record.identifier]?.closed,
-    );
+    closeout.complete = true;
     await save();
     return report;
   });

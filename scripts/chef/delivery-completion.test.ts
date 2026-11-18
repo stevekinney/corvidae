@@ -182,3 +182,12 @@ test('duplicate members, unbound criteria, missing phases and tracking mismatch 
     expect(() => parse(request)).toThrow();
   }
 });
+
+test('malformed unmapped completion input refuses before any provider work', () => {
+  const { request } = fixture();
+  const member = request.members[0]!;
+  member.plan.obligations[0]!.phase = 'completion';
+  member.plan.obligations[0]!.relevantInputs = ['../outside'];
+  member.providerRuns = [];
+  expect(() => parse(request)).toThrow('malformed plan obligation');
+});

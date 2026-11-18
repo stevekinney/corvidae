@@ -181,18 +181,12 @@ export function readVerificationRequest(path: string, digest: string): Verificat
   return validateVerificationRequest(request);
 }
 
-export function validateVerificationRequest(request: VerificationRequest): VerificationRequest {
-  if (
-    !/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(request.repository) ||
-    !/^[0-9a-f]{40}$/.test(request.revision) ||
-    !/^[0-9a-f]{40}$/.test(request.base) ||
-    !/^[0-9a-f]{40,64}$/.test(request.integrationTree) ||
-    request.environment === '' ||
-    request.operationId === ''
-  )
-    throw new EvidenceRequestError('verification request has invalid identity');
+/** Validate the complete declared plan before any member can trigger provider work. */
+export function validateEvidenceObligations(
+  plan: VerificationPlan,
+): Map<string, VerificationObligation> {
   const obligations = new Map<string, VerificationObligation>();
-  for (const obligation of request.plan.obligations) {
+  for (const obligation of plan.obligations) {
     const key = obligationKey(obligation);
     if (
       obligations.has(key) ||
@@ -209,6 +203,20 @@ export function validateVerificationRequest(request: VerificationRequest): Verif
     if (obligation.executionBoundary !== 'provider') commandArgv(obligation.commandOrProviderJob);
     obligations.set(key, obligation);
   }
+  return obligations;
+}
+
+export function validateVerificationRequest(request: VerificationRequest): VerificationRequest {
+  if (
+    !/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(request.repository) ||
+    !/^[0-9a-f]{40}$/.test(request.revision) ||
+    !/^[0-9a-f]{40}$/.test(request.base) ||
+    !/^[0-9a-f]{40,64}$/.test(request.integrationTree) ||
+    request.environment === '' ||
+    request.operationId === ''
+  )
+    throw new EvidenceRequestError('verification request has invalid identity');
+  const obligations = validateEvidenceObligations(request.plan);
   const providerKeys = new Set<string>();
   for (const run of request.providerRuns) {
     const obligation = obligations.get(run.obligation);

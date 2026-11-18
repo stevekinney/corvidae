@@ -10,7 +10,12 @@ import {
   type DeliveryVerificationDependencies,
 } from './delivery-verification.ts';
 import { directMerge, type DirectMergeOptions } from './direct-merge.ts';
-import { acquireDispatch, cancelDispatch, requireAuthority } from './execution-state.ts';
+import {
+  acquireDispatch,
+  cancelDispatch,
+  readExecutionSnapshot,
+  requireAuthority,
+} from './execution-state.ts';
 import { withMergeLock } from './merge-gate.ts';
 import { defaultRunner, type Runner } from './process-runner.ts';
 import type { GuardsResult } from './text-guards.ts';
@@ -267,8 +272,13 @@ const race = await outcomeOf(async () => {
     },
   });
   expect(report).toMatchObject({ merged: false, mergeCommit: null, failedStep: 'merge' });
-  expect(report.detail).toContain('was rejected');
-  expect(report.detail).toContain('Nothing changed');
+  const verification = loadDeliveryVerification(w.options.verification, w.verification);
+  expect(
+    readExecutionSnapshot(verification.state).operations[verification.request.operationId],
+  ).toMatchObject({
+    outcome: 'unknown',
+    observed: { state: 'pending-provider-outcome', reviewedHead: w.head },
+  });
   expect(refs(w.origin, 'refs/heads/main')).toBe(racing);
   expect(refs(w.origin, 'refs/heads/branch')).toBe(w.head);
 });
@@ -328,8 +338,13 @@ const inheritedFailure = await outcomeOf(async () => {
 const newFinding = await outcomeOf(async () => {
   const w = await world();
   const mainBefore = refs(w.origin, 'refs/heads/main');
+  const pushes: string[][] = [];
+  const recordingRunner: Runner = (command, options) => {
+    if (command[0] === 'git' && command[1] === 'push') pushes.push(command);
+    return isolated(command, options);
+  };
   const report = await directMerge(w.options, {
-    runner: isolated,
+    runner: recordingRunner,
     verification: w.verification,
     guards: (revision) =>
       revision === mainBefore ? guardsFail(['x:1']) : guardsFail(['x:1', 'z:3']),
@@ -338,6 +353,19 @@ const newFinding = await outcomeOf(async () => {
   expect(report.guardsAlreadyFailing).toBeUndefined();
   expect(refs(w.origin, 'refs/heads/main')).toBe(mainBefore);
   expect(refs(w.origin, 'refs/heads/branch')).toBe(w.head);
+  expect(pushes).toEqual([]);
+  const verification = loadDeliveryVerification(w.options.verification, w.verification);
+  expect(
+    readExecutionSnapshot(verification.state).operations[verification.request.operationId]?.outcome,
+  ).toBe('intent');
+  const retried = await directMerge(w.options, {
+    runner: recordingRunner,
+    verification: w.verification,
+    guards: guardsPass,
+  });
+  expect(retried).toMatchObject({ merged: true, failedStep: null });
+  expect(pushes.filter((command) => command[3] !== '--delete')).toHaveLength(1);
+  expect(refs(w.origin, 'refs/heads/main')).toBe(retried.mergeCommit);
 });
 
 // A pinned head that is not the branch's head is refused before anything else happens.
@@ -478,7 +506,7 @@ describe('directMerge against real Git', () => {
     rethrow(inheritedFailure);
   });
 
-  test('a guard failure with a finding origin/main lacks is refused at guards with nothing pushed', () => {
+  test('a guard refusal records no merge attempt and the original operation remains retryable', () => {
     rethrow(newFinding);
   });
 
