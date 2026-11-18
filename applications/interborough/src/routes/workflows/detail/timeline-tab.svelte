@@ -574,6 +574,17 @@
     overflow: hidden;
   }
 
+  /* With no step chosen the detail pane says "Choose a step" at its top and is as tall as that,
+   * never a pane of the frame's whole height with the words centred in it (COR-2489: about 1,300px
+   * at 1280). A chosen step's pane keeps the frame's height and scrolls. */
+  .ib-steps-frame
+    :global(
+      .cinder-list-detail__detail:has(> .cinder-list-detail__detail-body > .cinder-empty-state)
+    ) {
+    block-size: auto;
+    align-self: flex-start;
+  }
+
   .ib-steps-summary {
     display: flex;
     flex-wrap: wrap;
