@@ -37,7 +37,7 @@
 //   7. usage      optional spend record, as `merge-gate.ts` appends it, with the column that holds a
 //                 pull request number there holding `branch:<name>` here.
 //
-// Merge lock: `directMergeExclusively` holds the same lock `merge-gate.ts` holds for a pull request
+// Merge lock: `directMerge` holds the same lock `merge-gate.ts` holds for a pull request
 // merge (`withMergeLock`), from before step 1 to after step 7, so a direct merge and a pull request
 // merge never interleave their pushes.
 //
@@ -48,7 +48,13 @@
 
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname } from 'node:path';
-import type { AcquireHostLockOptions } from '../run-exclusively.ts';
+import {
+  loadDeliveryVerification,
+  validateDeliveryVerification,
+  type DeliveryVerification,
+  type DeliveryVerificationDependencies,
+} from './delivery-verification.ts';
+import { withProviderTransitionLock } from './execution-state.ts';
 import { fetchWithRetry } from './fetch-retry.ts';
 import { mainCiComparisonWarning, mainCiHealth, mainCiWarning } from './main-ci.ts';
 import { withMergeLock } from './merge-gate.ts';
@@ -82,6 +88,7 @@ export interface DirectMergeOptions {
   /** Where to append the spend record after a successful merge; needs `transcripts`. */
   usageLog?: string | undefined;
   transcripts?: string[] | undefined;
+  verification: DeliveryVerification;
 }
 
 export interface DirectMergeReport {
@@ -115,6 +122,7 @@ export interface DirectMergeDependencies {
   usage: (paths: string[]) => UsageTotals;
   now: () => Date;
   sleep: (milliseconds: number) => void;
+  verification: DeliveryVerificationDependencies;
 }
 
 /** The refusal's detail: the first failing guard by name, and the others that failed after it. */
@@ -132,15 +140,14 @@ function firstLine(text: string): string {
   return (text.split('\n').find((line) => line.trim() !== '') ?? '').trim().slice(0, 200);
 }
 
-/** Run the steps. Never throws for a failed step; the report names it. */
-export function directMerge(
+function validateDirectInputs(
   options: DirectMergeOptions,
-  partial: Partial<DirectMergeDependencies> = {},
-): DirectMergeReport {
-  const runner = partial.runner ?? defaultRunner;
+  partial: Partial<DirectMergeDependencies>,
+) {
   const config = loadRepositoryConfig(options.configPath);
   const { defaultBranch } = config;
   if (!existsSync(options.worktree)) throw new UsageError(`No such worktree: ${options.worktree}`);
+  const verification = loadDeliveryVerification(options.verification, partial.verification);
   if (!SAFE_BRANCH.test(options.branch) || options.branch.includes('..'))
     throw new UsageError(`"${options.branch}" is not a safe branch name.`);
   if (options.branch === defaultBranch)
@@ -158,6 +165,17 @@ export function directMerge(
     if (!existsSync(transcript)) throw new UsageError(`No such transcript: ${transcript}`);
   }
 
+  return { config, verification, transcripts };
+}
+
+/** Run the steps while the public entrypoint holds both fences. */
+function directMergeCore(
+  options: DirectMergeOptions,
+  partial: Partial<DirectMergeDependencies> = {},
+): DirectMergeReport {
+  const runner = partial.runner ?? defaultRunner;
+  const { config, verification, transcripts } = validateDirectInputs(options, partial);
+  const { defaultBranch } = config;
   const report: DirectMergeReport = {
     branch: options.branch,
     head: options.head,
@@ -236,6 +254,19 @@ export function directMerge(
   const baseTree = git('rev-parse', `${base}^{tree}`).stdout.trim();
   if (tree === baseTree)
     return fail('merge', `${options.branch} changes nothing relative to origin/${defaultBranch}.`);
+  const verificationProblem = validateDeliveryVerification(
+    verification,
+    {
+      repository: config.repository,
+      revision: options.head,
+      base,
+      integrationTree: tree,
+      route: 'branch',
+      action: 'merge',
+    },
+    partial.verification,
+  );
+  if (verificationProblem !== undefined) return fail('verification', verificationProblem);
   const created = git('commit-tree', tree, '-p', base, '-F', options.messageFile);
   const commit = created.stdout.trim();
   if (created.code !== 0 || !/^[0-9a-f]{40,64}$/.test(commit))
@@ -314,21 +345,26 @@ export function directMerge(
   return report;
 }
 
-/** `directMerge` under the cross-session merge lock that `merge-gate.ts` holds for a pull request. */
-export async function directMergeExclusively(
+/** Public consequential route: merge then provider authority fences surround the core transition. */
+export async function directMerge(
   options: DirectMergeOptions,
   partial: Partial<DirectMergeDependencies> = {},
-  onWait?: AcquireHostLockOptions['onWait'],
 ): Promise<DirectMergeReport> {
+  const snapshot = structuredClone(options);
+  const { verification: loaded } = validateDirectInputs(snapshot, partial);
   return withMergeLock(
     {
-      worktree: options.worktree,
-      command: `direct-merge ${options.branch}`,
-      lockDirectory: options.lockDirectory,
-      lockPollIntervalMs: options.lockPollIntervalMs,
+      worktree: snapshot.worktree,
+      command: `direct-merge ${snapshot.branch}`,
+      lockDirectory: snapshot.lockDirectory,
+      lockPollIntervalMs: snapshot.lockPollIntervalMs,
     },
-    () => directMerge(options, partial),
+    () =>
+      withProviderTransitionLock(
+        partial.verification?.state ?? loaded.state,
+        loaded.request.authority.resource,
+        () => directMergeCore(snapshot, partial),
+      ),
     partial.runner ?? defaultRunner,
-    onWait,
   );
 }

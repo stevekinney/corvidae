@@ -35,6 +35,20 @@ export interface RemoteOperation {
   outcome: 'intent' | 'observed' | 'unknown' | 'unresolved';
   observed?: unknown;
   nextAction: 'perform' | 'inspect-provider' | 'closeout';
+  approval?: ApprovedDeliveryBinding;
+}
+
+/** Coordinator approval attached once to the original durable operation intent. */
+export interface ApprovedDeliveryBinding {
+  assignment: { identifier: string; digest: string };
+  planDigest: string;
+  requestDigest: string;
+  repository: string;
+  revision: string;
+  base: string;
+  integrationTree: string;
+  route: string;
+  action: string;
 }
 
 export interface ExecutionSnapshot {
@@ -143,6 +157,46 @@ function assertOperation(value: unknown, operationId: string, statePath: string)
   )
     throw new ExecutionStateError(`${statePath} has malformed operation state for ${operationId}.`);
   assertAuthority(value['authority'], statePath);
+  if (Object.hasOwn(value, 'approval')) assertDeliveryApproval(value['approval'], statePath);
+}
+
+function assertDeliveryApproval(value: unknown, statePath: string): void {
+  const invalid = () => new ExecutionStateError(`${statePath} has malformed delivery approval.`);
+  if (!plainRecord(value)) throw invalid();
+  const assignment = value['assignment'];
+  if (
+    !plainRecord(assignment) ||
+    !Object.hasOwn(assignment, 'identifier') ||
+    !Object.hasOwn(assignment, 'digest') ||
+    typeof assignment['identifier'] !== 'string' ||
+    assignment['identifier'].trim() === '' ||
+    typeof assignment['digest'] !== 'string' ||
+    !/^[0-9a-f]{64}$/.test(assignment['digest'])
+  )
+    throw invalid();
+  for (const field of ['planDigest', 'requestDigest']) {
+    const digest = value[field];
+    if (
+      !Object.hasOwn(value, field) ||
+      typeof digest !== 'string' ||
+      !/^[0-9a-f]{64}$/.test(digest)
+    )
+      throw invalid();
+  }
+  for (const field of ['revision', 'base', 'integrationTree']) {
+    const revision = value[field];
+    if (
+      !Object.hasOwn(value, field) ||
+      typeof revision !== 'string' ||
+      !/^[0-9a-f]{40}(?:[0-9a-f]{24})?$/.test(revision)
+    )
+      throw invalid();
+  }
+  for (const field of ['repository', 'route', 'action']) {
+    const text = value[field];
+    if (!Object.hasOwn(value, field) || typeof text !== 'string' || text.trim() === '')
+      throw invalid();
+  }
 }
 
 function assertSnapshot(value: unknown, statePath: string): asserts value is ExecutionSnapshot {
@@ -460,6 +514,31 @@ export async function recordMutationIntent(
       nextAction: 'perform',
     };
     snapshot.nextAction = `perform:${input.operationId}`;
+  });
+}
+
+/** Attaches coordinator approval once; delivery routes can only read this original binding. */
+export async function registerDeliveryApproval(
+  store: ExecutionStateStore,
+  authority: Authority,
+  operationId: string,
+  approval: ApprovedDeliveryBinding,
+): Promise<void> {
+  const approved = structuredClone(approval);
+  const originalAuthority = { ...authority };
+  assertDeliveryApproval(approved, store.statePath);
+  await mutateOwnedSnapshot(store, originalAuthority, (snapshot) => {
+    const operation = snapshot.operations[operationId];
+    if (operation === undefined)
+      throw new ExecutionStateError(`Operation ${operationId} has no recorded intent.`);
+    if (
+      !sameAuthority(operation.authority, originalAuthority) ||
+      operation.action !== approved.action
+    )
+      throw new ExecutionStateError(`Operation ${operationId} does not match its approved action.`);
+    if (operation.approval !== undefined)
+      throw new ExecutionStateError(`Operation ${operationId} already has delivery approval.`);
+    operation.approval = approved;
   });
 }
 

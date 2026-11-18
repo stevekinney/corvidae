@@ -11,9 +11,11 @@
 // to repeat either.
 //
 // Usage:
-//   bun scripts/chef/deliver.ts --pr <n> --worktree <dir> --comment-file <md> [--head <sha>]
+//   bun scripts/chef/deliver.ts --pr <n> --worktree <dir> --comment-file <md>
+//                               --verification-file <json> --verification-digest <sha256> [--head <sha>]
 //   bun scripts/chef/deliver.ts --branch <remote branch> --head <sha> --worktree <dir>
 //                               --message-file <md>
+//                               --verification-file <json> --verification-digest <sha256>
 //                               [--intended <path>]...
 //                               [--issue <ID> --completion-file <md>]... [--closes <ID>]...
 //                               [--keep-worktree]
@@ -27,6 +29,9 @@
 // `--intended <path>` (repeatable) names a deletion or revert the change means to make: the `revert`
 // step reports that path's finding as accepted instead of failing. Any other finding still fails the
 // step, and a named path with no finding is an error, so a stale flag cannot hide a later revert.
+// `--verification-file` and `--verification-digest` name the coordinator-pinned request and its
+// SHA-256 digest. Both delivery routes authenticate its current evidence and original authority
+// before posting, merging or pushing.
 //
 // The steps run in order and stop at the first failure, which is named:
 //   merge      with `--branch`, `direct-merge.ts`'s sequence under the merge lock a pull request
@@ -90,13 +95,13 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { recordDelivery, type LedgerEntry } from './delivery-ledger.ts';
-import {
-  directMergeExclusively,
-  type DirectMergeOptions,
-  type DirectMergeReport,
-} from './direct-merge.ts';
+import type {
+  DeliveryVerification,
+  DeliveryVerificationDependencies,
+} from './delivery-verification.ts';
+import { directMerge, type DirectMergeOptions, type DirectMergeReport } from './direct-merge.ts';
 import { createClient, LinearError, postComment, setState, type LinearClient } from './linear.ts';
-import { mergeGateExclusively, type MergeGateOptions, type MergeGateReport } from './merge-gate.ts';
+import { mergeGate, type MergeGateOptions, type MergeGateReport } from './merge-gate.ts';
 import { emitResult, parseOptions, requireOption, UsageError } from './process-runner.ts';
 import { DEFAULT_CONFIGURATION_PATH, loadRepositoryConfig } from './repository-config.ts';
 import { resolveMainCheckout } from './repository-locations.ts';
@@ -131,6 +136,7 @@ export interface DeliverOptions {
   transcripts?: string[] | undefined;
   /** Declares this pull request a repair of a red `main`; forwarded to the merge gate. Refused with `branch`. */
   fixesMain?: boolean | undefined;
+  verification: DeliveryVerification;
 }
 
 export interface DeliverReport {
@@ -167,14 +173,21 @@ export interface DeliverReport {
 
 export interface DeliverDependencies {
   /** Merges through the merge gate, under the cross-session merge lock. */
-  merge: (options: MergeGateOptions) => Promise<MergeGateReport>;
+  merge: (
+    options: MergeGateOptions,
+    verification?: DeliveryVerificationDependencies,
+  ) => Promise<MergeGateReport>;
   /** Merges a branch straight into the default branch, under the same merge lock. */
-  directMerge: (options: DirectMergeOptions) => Promise<DirectMergeReport>;
+  directMerge: (
+    options: DirectMergeOptions,
+    verification?: DeliveryVerificationDependencies,
+  ) => Promise<DirectMergeReport>;
   /** The Linear client; the command line supplies `createClient()`, which reads the credentials. */
   client: LinearClient;
   remove: (options: RemoveOptions) => RemoveResult;
   /** Appends a delivered head to the delivery ledger (`delivery-ledger.ts`). */
   record: (entry: LedgerEntry) => void;
+  verification: DeliveryVerificationDependencies;
 }
 
 /**
@@ -333,18 +346,22 @@ export async function deliver(
       ? {}
       : { usageLog: options.usageLog, transcripts: options.transcripts ?? [] };
   if (options.branch !== undefined) {
-    const directMerge = partial.directMerge;
-    if (directMerge === undefined) return fail('merge', 'no direct merge runner was provided.');
-    const direct = await directMerge({
-      configPath: options.configPath,
-      branch: options.branch,
-      head: options.expectedHead ?? '',
-      messageFile: options.messageFile ?? '',
-      intended: options.intended ?? [],
-      worktree: options.worktree,
-      checkMainHealth: true,
-      ...usageFields,
-    });
+    const mergeBranch = partial.directMerge;
+    if (mergeBranch === undefined) return fail('merge', 'no direct merge runner was provided.');
+    const direct = await mergeBranch(
+      {
+        configPath: options.configPath,
+        branch: options.branch,
+        head: options.expectedHead ?? '',
+        messageFile: options.messageFile ?? '',
+        intended: options.intended ?? [],
+        worktree: options.worktree,
+        checkMainHealth: true,
+        ...usageFields,
+        verification: options.verification,
+      },
+      partial.verification,
+    );
     report.merged = direct.merged;
     report.mergeCommit = direct.mergeCommit;
     report.mainHealthWarning = direct.mainHealthWarning ?? null;
@@ -357,17 +374,21 @@ export async function deliver(
   } else {
     const merge = partial.merge;
     if (merge === undefined) return fail('merge', 'no merge runner was provided.');
-    const merged = await merge({
-      configPath: options.configPath,
-      pr: options.pr ?? 0,
-      worktree: options.worktree,
-      commentFile: options.commentFile ?? '',
-      dryRun: false,
-      checkMainHealth: true,
-      expectedHead: options.expectedHead,
-      fixesMain: options.fixesMain === true,
-      ...usageFields,
-    });
+    const merged = await merge(
+      {
+        configPath: options.configPath,
+        pr: options.pr ?? 0,
+        worktree: options.worktree,
+        commentFile: options.commentFile ?? '',
+        dryRun: false,
+        checkMainHealth: true,
+        expectedHead: options.expectedHead,
+        fixesMain: options.fixesMain === true,
+        ...usageFields,
+        verification: options.verification,
+      },
+      partial.verification,
+    );
     report.merged = merged.merged;
     report.mergeCommit = merged.mergeCommit;
     report.mergeable = merged.mergeable;
@@ -500,6 +521,8 @@ export async function run(
       'message-file',
       'head',
       'usage-log',
+      'verification-file',
+      'verification-digest',
     ],
     repeated: ['transcript', 'issue', 'completion-file', 'closes', 'intended'],
     flags: ['keep-worktree', 'fixes-main', 'json', 'help'],
@@ -544,6 +567,10 @@ export async function run(
       transcripts: transcripts.map((path) => resolve(path)),
       fixesMain: parsed.flags.has('fixes-main'),
       keepWorktree: parsed.flags.has('keep-worktree'),
+      verification: {
+        file: resolve(requireOption(parsed, 'verification-file')),
+        digest: requireOption(parsed, 'verification-digest'),
+      },
     },
     dependencies,
   );
@@ -556,13 +583,10 @@ export async function run(
 /** The real collaborators, built only by the command line so that tests never reach a process. */
 function productionDependencies(): Partial<DeliverDependencies> {
   return {
-    merge: (options) => mergeGateExclusively(options),
-    directMerge: (options) =>
-      directMergeExclusively(options, {}, (holder) =>
-        process.stderr.write(
-          `deliver: waiting for the merge lock${holder === undefined ? '' : ` held by ${holder.command} (pid ${holder.pid})`}\n`,
-        ),
-      ),
+    merge: (options, verification) =>
+      mergeGate(options, verification === undefined ? {} : { verification }),
+    directMerge: (options, verification) =>
+      directMerge(options, verification === undefined ? {} : { verification }),
     remove: (options) => removeWorktree(options),
     record: (entry) => recordDelivery(resolveMainCheckout(), entry),
     client: createClient(),

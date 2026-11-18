@@ -69,6 +69,13 @@ import {
   type AcquireHostLockOptions,
   type HostLockHolder,
 } from '../run-exclusively.ts';
+import {
+  loadDeliveryVerification,
+  validateDeliveryVerification,
+  type DeliveryVerification,
+  type DeliveryVerificationDependencies,
+} from './delivery-verification.ts';
+import { withProviderTransitionLock } from './execution-state.ts';
 import { fetchWithRetry } from './fetch-retry.ts';
 import { mainCiComparisonWarning, mainCiHealth, mainCiWarning } from './main-ci.ts';
 import {
@@ -110,6 +117,7 @@ export interface MergeGateOptions {
   usageLog?: string | undefined;
   /** Transcript files or directories whose token usage the spend record totals. */
   transcripts?: string[] | undefined;
+  verification: DeliveryVerification;
 }
 
 export interface MergeGateReport {
@@ -144,6 +152,7 @@ export interface MergeGateDependencies {
   now: () => Date;
   /** Blocks between fetch retries and mergeability reads; defaults to `Bun.sleepSync`. */
   sleep: (milliseconds: number) => void;
+  verification: DeliveryVerificationDependencies;
 }
 
 interface PullRequestView {
@@ -174,14 +183,9 @@ function viewPullRequest(
   }
 }
 
-/** Run the steps. Never throws for a failed step; the report names it. */
-export function mergeGate(
-  options: MergeGateOptions,
-  partial: Partial<MergeGateDependencies> = {},
-): MergeGateReport {
-  const runner = partial.runner ?? defaultRunner;
-  const sleep = partial.sleep ?? ((milliseconds: number) => Bun.sleepSync(milliseconds));
+function validateMergeInputs(options: MergeGateOptions, partial: Partial<MergeGateDependencies>) {
   const config = loadRepositoryConfig(options.configPath);
+  const verification = loadDeliveryVerification(options.verification, partial.verification);
   if (!existsSync(options.worktree)) throw new UsageError(`No such worktree: ${options.worktree}`);
   if (!existsSync(options.commentFile))
     throw new UsageError(`No such comment file: ${options.commentFile}`);
@@ -194,6 +198,17 @@ export function mergeGate(
     if (!existsSync(transcript)) throw new UsageError(`No such transcript: ${transcript}`);
   }
 
+  return { config, verification, transcripts };
+}
+
+/** Run the steps while the public entrypoint holds both fences. */
+function mergeGateCore(
+  options: MergeGateOptions,
+  partial: Partial<MergeGateDependencies> = {},
+): MergeGateReport {
+  const runner = partial.runner ?? defaultRunner;
+  const sleep = partial.sleep ?? ((milliseconds: number) => Bun.sleepSync(milliseconds));
+  const { config, verification, transcripts } = validateMergeInputs(options, partial);
   const { repository, defaultBranch } = config;
   const report: MergeGateReport = {
     pr: options.pr,
@@ -294,6 +309,23 @@ export function mergeGate(
     return fail('threads', `read ${listing.seen} of ${listing.total} review threads.`);
   if (listing.unresolved > 0)
     return fail('threads', `${listing.unresolved} review thread(s) are unresolved.`);
+  const verificationTree = git('merge-tree', '--write-tree', report.base ?? '', head);
+  const integrationTree = verificationTree.stdout.split('\n')[0]?.trim() ?? '';
+  if (verificationTree.code !== 0 || !/^[0-9a-f]{40,64}$/.test(integrationTree))
+    return fail('conflict', 'could not derive the current integration tree for verification.');
+  const verificationProblem = validateDeliveryVerification(
+    verification,
+    {
+      repository,
+      revision: head,
+      base: report.base ?? '',
+      integrationTree,
+      route: 'pull-request',
+      action: 'merge',
+    },
+    partial.verification,
+  );
+  if (verificationProblem !== undefined) return fail('verification', verificationProblem);
   if (options.dryRun) return report;
 
   // 5. comment
@@ -452,21 +484,28 @@ export async function withMergeLock<T>(
   }
 }
 
-/** `mergeGate` under the merge lock (`withMergeLock`). A dry run takes no lock. */
-export async function mergeGateExclusively(
+/** Public consequential route: merge then provider authority fences surround the core transition. */
+export async function mergeGate(
   options: MergeGateOptions,
   partial: Partial<MergeGateDependencies> = {},
   onWait?: AcquireHostLockOptions['onWait'],
 ): Promise<MergeGateReport> {
-  if (options.dryRun) return mergeGate(options, partial);
+  const snapshot = structuredClone(options);
+  const { verification: loaded } = validateMergeInputs(snapshot, partial);
+  if (snapshot.dryRun) return mergeGateCore(snapshot, partial);
   return withMergeLock(
     {
-      worktree: options.worktree,
-      command: `merge-gate pr #${options.pr}`,
-      lockDirectory: options.lockDirectory,
-      lockPollIntervalMs: options.lockPollIntervalMs,
+      worktree: snapshot.worktree,
+      command: `merge-gate pr #${snapshot.pr}`,
+      lockDirectory: snapshot.lockDirectory,
+      lockPollIntervalMs: snapshot.lockPollIntervalMs,
     },
-    () => mergeGate(options, partial),
+    () =>
+      withProviderTransitionLock(
+        partial.verification?.state ?? loaded.state,
+        loaded.request.authority.resource,
+        () => mergeGateCore(snapshot, partial),
+      ),
     partial.runner ?? defaultRunner,
     onWait,
   );
@@ -503,7 +542,16 @@ export function renderMergeGate(report: MergeGateReport, dryRun: boolean): strin
 
 function parseArguments(argv: string[]): { options: MergeGateOptions; json: boolean } {
   const parsed = parseOptions(argv, {
-    values: ['config', 'pr', 'worktree', 'comment-file', 'usage-log', 'head'],
+    values: [
+      'config',
+      'pr',
+      'worktree',
+      'comment-file',
+      'usage-log',
+      'head',
+      'verification-file',
+      'verification-digest',
+    ],
     repeated: ['transcript'],
     flags: ['dry-run', 'json', 'fixes-main'],
   });
@@ -527,6 +575,10 @@ function parseArguments(argv: string[]): { options: MergeGateOptions; json: bool
       expectedHead,
       usageLog: parsed.values['usage-log'],
       transcripts: parsed.repeated['transcript'] ?? [],
+      verification: {
+        file: requireOption(parsed, 'verification-file'),
+        digest: requireOption(parsed, 'verification-digest'),
+      },
     },
   };
 }
@@ -542,32 +594,19 @@ function finish(
   };
 }
 
-/** Runs the gate without the merge lock; the command line uses `runExclusively`. */
-export function run(
-  argv: string[],
-  dependencies: Partial<MergeGateDependencies> = {},
-): { code: number; output: string } {
-  const { options, json } = parseArguments(argv);
-  return finish(mergeGate(options, dependencies), options, json);
-}
-
-/** Runs the gate under the cross-session merge lock (a dry run takes none). */
-export async function runExclusively(
+/** Parses arguments and invokes the same protected route used by the command line. */
+export async function run(
   argv: string[],
   dependencies: Partial<MergeGateDependencies> = {},
 ): Promise<{ code: number; output: string }> {
   const { options, json } = parseArguments(argv);
-  const report = await mergeGateExclusively(options, dependencies, (holder) =>
-    process.stderr.write(
-      `merge-gate: waiting for the merge lock${holder === undefined ? '' : ` held by ${holder.command} (pid ${holder.pid})`}\n`,
-    ),
-  );
+  const report = await mergeGate(options, dependencies);
   return finish(report, options, json);
 }
 
 if (import.meta.main) {
   try {
-    const { code, output } = await runExclusively(Bun.argv.slice(2));
+    const { code, output } = await run(Bun.argv.slice(2));
     emitResult(Bun.argv.slice(2), { code, output });
     process.exitCode = code;
   } catch (error) {
