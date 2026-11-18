@@ -187,6 +187,34 @@ describe('failingTests', () => {
       ).hasNew,
     ).toBe(true);
   });
+
+  test('does not merge repeated identical launcher commands across Run-step occurrences', () => {
+    const command = 'bun run test:self';
+    const log = [
+      `Tests\tUNKNOWN STEP\t2026-11-17T19:18:57Z ##[group]Run ${command}`,
+      'Tests\tUNKNOWN STEP\t2026-11-17T19:18:58Z ##[group]src/known.test.ts:',
+      'Tests\tUNKNOWN STEP\t2026-11-17T19:18:59Z (fail) known failure > remains known [1ms]',
+      'Tests\tUNKNOWN STEP\t2026-11-17T19:19:00Z ##[error]Process completed with exit code 1.',
+      `Tests\tUNKNOWN STEP\t2026-11-17T19:19:01Z ##[group]Run ${command}`,
+      'Tests\tUNKNOWN STEP\t2026-11-17T19:19:02Z ##[error]Process completed with exit code 1.',
+    ].join('\n');
+    expect(failureRecords(log).get('Tests')).toContainEqual({
+      kind: 'unknown',
+      job: 'Tests',
+      step: `${command}#2`,
+      command,
+    });
+  });
+
+  test('keeps an identityless test error unknown when the log has no Run-step boundary', () => {
+    const log = [
+      'Tests\tUNKNOWN STEP\t2026-11-17T19:18:58Z ##[group]src/unknown.test.ts:',
+      'Tests\tUNKNOWN STEP\t2026-11-17T19:18:59Z error: worker crashed',
+    ].join('\n');
+    expect(failureRecords(log).get('Tests')).toEqual([
+      { kind: 'unknown', job: 'Tests', diagnostic: 'unparseable test error' },
+    ]);
+  });
 });
 
 describe('compare', () => {
