@@ -23,6 +23,20 @@ const schema = {
         'Whether the label is visibly rendered. Set `false` to visually hide it\nwhile keeping it available to assistive technology.',
       default: true,
     },
+    description: {
+      type: 'string',
+      description: "Helper text under the control, wired into the group's `aria-describedby`.",
+    },
+    note: {
+      type: 'string',
+      description:
+        'Neutral explanation under the helper text, wired into `aria-describedby`. Not an error and not a warning.',
+    },
+    error: {
+      type: 'string',
+      description:
+        'Validation error under the control, with a warning glyph; sets `aria-invalid="true"` on the group.',
+    },
     disabled: {
       type: 'boolean',
       description: 'Disable the whole control.',
@@ -78,6 +92,12 @@ const schema = {
         reason: 'function-or-snippet',
         required: true,
         description: 'Child `<Segment>` elements.',
+      },
+      {
+        name: 'errorAction',
+        reason: 'function-or-snippet',
+        description:
+          'Rendered after the error message inside the same live region, such as a quiet "Try again".',
       },
       {
         name: 'onValueChange',

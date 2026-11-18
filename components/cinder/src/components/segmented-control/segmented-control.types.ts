@@ -27,6 +27,14 @@ type CommonProps<T extends string> = Omit<HTMLAttributes<HTMLElement>, Component
    * @default true
    */
   labelVisible?: boolean | undefined;
+  /** Helper text under the control, wired into the group's `aria-describedby`. */
+  description?: string | undefined;
+  /** Neutral explanation under the helper text, wired into `aria-describedby`. Not an error and not a warning. */
+  note?: string | undefined;
+  /** Validation error under the control, with a warning glyph; sets `aria-invalid="true"` on the group. */
+  error?: string | undefined;
+  /** Rendered after the error message inside the same live region, such as a quiet "Try again". */
+  errorAction?: Snippet | undefined;
   /** Disable the whole control. */
   disabled?: boolean | undefined;
   /**
