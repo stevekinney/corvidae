@@ -1,6 +1,8 @@
 import { describe, expect, test } from 'bun:test';
-import { join } from 'node:path';
+import { mkdir, mkdtemp, writeFile } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
 
+import { runWithHangGuard } from '../testing/testing/src/hang-guard.ts';
 import { selectTests } from './affected-tests-selection.ts';
 import {
   classifyFailureRecords,
@@ -14,14 +16,69 @@ import {
 import { discoverWorkspaces, listTree } from './affected-tests.ts';
 import { failureRecords } from './chef/ci-compare.ts';
 
-const frozenRevision = '10a69bec305327797c0035e31fbcd36f1bfe674e';
-const liveWorkspaces = discoverWorkspaces(process.cwd());
-const immutableWorkspaces = workspacesAtRevision(process.cwd(), frozenRevision);
+async function fixtureGit(repository: string, args: string[]) {
+  const result = await runWithHangGuard(['git', '-C', repository, ...args]);
+  if (result.exitCode !== 0)
+    throw new Error(`fixture git ${args.join(' ')} failed: ${result.stderr.toString()}`);
+  return result.stdout.toString().trim();
+}
+
+/** Create commits the shadow entrypoints can resolve without relying on repository history. */
+async function createShadowFixture() {
+  const scratch = join(process.cwd(), 'tmp/chef/p06-14ef');
+  await mkdir(scratch, { recursive: true });
+  const repository = await mkdtemp(join(scratch, 'affected-tests-shadow-'));
+  const write = async (path: string, contents: string) => {
+    await mkdir(dirname(join(repository, path)), { recursive: true });
+    await writeFile(join(repository, path), contents);
+  };
+  await write(
+    'package.json',
+    `${JSON.stringify({ name: 'shadow-fixture', workspaces: ['components/*'] })}\n`,
+  );
+  await write(
+    'components/cinder/package.json',
+    `${JSON.stringify({
+      name: '@lostgradient/cinder',
+      exports: { '.': './src/index.ts' },
+      scripts: { test: 'bun test --preload scripts/preload.ts src/index.test.ts' },
+    })}\n`,
+  );
+  await write('components/cinder/src/index.ts', 'export const fixture = true;\n');
+  await write('components/cinder/src/index.test.ts', "import { fixture } from './index.ts';\n");
+  await write('components/cinder/scripts/preload.ts', 'export {};\n');
+  await fixtureGit(repository, ['init', '--quiet']);
+  await fixtureGit(repository, ['config', 'user.email', 'shadow-fixture@example.invalid']);
+  await fixtureGit(repository, ['config', 'user.name', 'Shadow fixture']);
+  await fixtureGit(repository, ['add', '.']);
+  await fixtureGit(repository, ['commit', '--quiet', '-m', 'fixture source']);
+  const frozenRevision = await fixtureGit(repository, ['rev-parse', 'HEAD']);
+  await write('fixture-revision.txt', 'second immutable fixture revision\n');
+  await fixtureGit(repository, ['add', 'fixture-revision.txt']);
+  await fixtureGit(repository, ['commit', '--quiet', '-m', 'fixture marker']);
+  return {
+    repository,
+    frozenRevision,
+    fixtureRevision: await fixtureGit(repository, ['rev-parse', 'HEAD']),
+  };
+}
+
+const shadowFixture = await createShadowFixture();
+const { frozenRevision } = shadowFixture;
+const liveWorkspaces = discoverWorkspaces(shadowFixture.repository);
+const immutableWorkspaces = workspacesAtRevision(
+  shadowFixture.repository,
+  shadowFixture.fixtureRevision,
+);
 const preloadChange = ['components/cinder/scripts/preload.ts'];
-const immutablePreloadSelection = selectionAtRevision(process.cwd(), frozenRevision, preloadChange);
+const immutablePreloadSelection = selectionAtRevision(
+  shadowFixture.repository,
+  shadowFixture.fixtureRevision,
+  preloadChange,
+);
 const livePreloadSelection = selectTests({
   changed: preloadChange,
-  tree: listTree(process.cwd()),
+  tree: listTree(shadowFixture.repository),
   workspaces: liveWorkspaces,
 });
 type ProviderControl = {
@@ -50,13 +107,13 @@ const incompleteProviderCases: ProviderControl[] = [
   },
 ];
 const incompleteRouteDispositions = incompleteProviderCases.map((provider) => ({
-  replay: replayRevision(process.cwd(), {
+  replay: replayRevision(shadowFixture.repository, {
     name: 'provider control',
     revision: frozenRevision,
     base: frozenRevision,
     provider,
   }).disposition,
-  baseline: shadowRun(process.cwd(), {
+  baseline: shadowRun(shadowFixture.repository, {
     frozenSample: {
       headSha: frozenRevision,
       status: provider.status,
@@ -71,21 +128,21 @@ const failedProvider = {
   conclusion: 'failure',
   jobs: [{ name: 'Root typecheck', status: 'completed', conclusion: 'failure' }],
 };
-const stepOnlyReplay = replayRevision(process.cwd(), {
+const stepOnlyReplay = replayRevision(shadowFixture.repository, {
   name: 'step-only public replay control',
   revision: frozenRevision,
   base: frozenRevision,
   provider: failedProvider,
   failureLog: join(import.meta.dir, 'chef/fixtures/shadow-step-only-failure.log'),
 });
-const mixedReplay = replayRevision(process.cwd(), {
+const mixedReplay = replayRevision(shadowFixture.repository, {
   name: 'mixed public replay control',
   revision: frozenRevision,
   base: frozenRevision,
   provider: failedProvider,
   failureLog: join(import.meta.dir, 'chef/fixtures/shadow-step-and-test-failure.log'),
 });
-const failedBaseline = shadowRun(process.cwd(), {
+const failedBaseline = shadowRun(shadowFixture.repository, {
   frozenSample: { headSha: frozenRevision, status: 'completed', conclusion: 'failure' },
   jobs: failedProvider.jobs,
   gitInputs: { changedPaths: [] },
@@ -93,10 +150,10 @@ const failedBaseline = shadowRun(process.cwd(), {
 
 // The replay opens Git objects. Run that real process work at module scope so the test callback
 // only asserts its recorded result, independent of the per-test clock.
-const entrypointReplay = replayRevision(process.cwd(), {
+const entrypointReplay = replayRevision(shadowFixture.repository, {
   name: 'entrypoint control',
-  revision: '5888509145ffe2884eced68e8ca11f71c1d16e06',
-  base: '5888509145ffe2884eced68e8ca11f71c1d16e06',
+  revision: shadowFixture.fixtureRevision,
+  base: shadowFixture.fixtureRevision,
   provider: {
     status: 'completed',
     conclusion: 'success',
@@ -105,7 +162,7 @@ const entrypointReplay = replayRevision(process.cwd(), {
 });
 const mutableReferenceError = (() => {
   try {
-    replayRevision(process.cwd(), {
+    replayRevision(shadowFixture.repository, {
       name: 'mutable reference control',
       revision: 'HEAD',
       base: 'HEAD',
@@ -118,7 +175,7 @@ const mutableReferenceError = (() => {
 })();
 const mutableBaselineError = (() => {
   try {
-    shadowRun(process.cwd(), {
+    shadowRun(shadowFixture.repository, {
       frozenSample: { headSha: 'HEAD', status: 'completed' },
       jobs: [{}],
       gitInputs: { changedPaths: [] },
