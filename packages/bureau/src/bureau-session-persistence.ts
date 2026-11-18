@@ -306,6 +306,9 @@ export function createSessionPersistence(dependencies: SessionPersistenceDepende
     // archive is fenced on the revision this save moves. Every other save (a terminal save, a
     // recovery) lands on an archived session as on any other.
     startsRun?: boolean,
+    // COR-2437: the start's own judgment of the session it starts on, decided inside the atomic
+    // update; it throws to refuse the start. Only a save that starts a run takes one.
+    startGuard?: (existing: AgentSession | undefined) => void,
   ): Promise<AgentSession | undefined> {
     if (!sessionStore) return undefined;
     const candidateRunId = metadata['lastRunId'];
@@ -340,6 +343,7 @@ export function createSessionPersistence(dependencies: SessionPersistenceDepende
       ) {
         throw new ContextArchivedError(sessionId);
       }
+      if (startsRun === true) startGuard?.(existingSession);
       const nextSession =
         existingSession ??
         createAgentSession({

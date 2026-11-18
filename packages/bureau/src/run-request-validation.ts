@@ -1,6 +1,7 @@
 import { type RuntimeServices } from '@lostgradient/lifecycle';
 import {
   type ActiveRun,
+  type AgentSession,
   AgentContractError,
   type AgentInput,
   type SessionInputPayload,
@@ -137,6 +138,12 @@ export type SessionTaskFields = {
   /** The caller's tracer binding, which runs the run's generate and tool calls under the parent. */
   readonly withTraceContext?:
     (<T>(parent: unknown, fn: () => Promise<T>) => Promise<T>) | undefined;
+  /**
+   * COR-2437 — judges the session inside the atomic update that starts the run, and throws to
+   * refuse the start, so a run that continues a stopped turn starts only on the history it was
+   * judged on: a message, a discard or another continuation that lands first wins.
+   */
+  readonly startGuard?: ((session: AgentSession | undefined) => void) | undefined;
 };
 
 /** The run-creation fields a task input becomes: a message, its parts, or rows to append. */

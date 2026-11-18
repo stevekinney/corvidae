@@ -38,7 +38,7 @@ const cases = [
   { operation: 'bureau.contexts.regenerate', input: { commandId: 'private-regenerate' } },
   // COR-2437: each actor names its context's one run, which wrote a step and then failed.
   { operation: 'bureau.contexts.discardturn', input: { commandId: 'private-discard' } },
-  // COR-2437: as for a discard; the owner is refused `run-not-resumable`, which no stop escapes yet.
+  // COR-2437: as for a discard; the run failed on `error`, so the owner's turn goes on.
   { operation: 'bureau.contexts.resumeturn', input: { commandId: 'private-resume' } },
 ] as const;
 
@@ -148,10 +148,10 @@ for (const row of cases) {
         });
         witnesses.observeWire(row.operation, actor, result);
         if (actor === 'foreign' || actor === 'removed') expect(result.status).toBe(403);
-        else if (actor === 'owner' && row.operation === 'bureau.contexts.resumeturn') {
-          expect(result.body?.error?.data).toMatchObject({ reason: 'run-not-resumable' });
-        } else if (actor === 'owner') {
+        else if (actor === 'owner') {
           expect(result.body?.error).toBeUndefined();
+          if (row.operation === 'bureau.contexts.resumeturn')
+            expect(result.body?.result?.['resumedRunId']).toBe(task.id);
           if (row.operation === 'bureau.contexts.retract')
             expect(result.body?.result?.['outcome']).toBe('retracted');
           if (row.operation === 'bureau.contexts.forgetgrants')

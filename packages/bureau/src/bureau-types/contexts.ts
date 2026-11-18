@@ -446,18 +446,23 @@ export interface BureauContexts {
   discardTurn(contextId: string, request: DiscardTurnRequest): Promise<DiscardTurnResult>;
 
   /**
-   * Resumes the context's last stopped turn (COR-2437): the run itself would go on from where it
-   * stopped, its reply so far kept, with no new message from the person. No kind of stop can be
-   * resumed today, so this throws a {@link SessionResumeRefusedError} naming why, and starts or
-   * writes nothing: a run the person stopped, or that failed, has ended its workflow, which the
-   * engine cannot go on with (`run-not-resumable`); a run whose process stopped is taken up by the
-   * Bureau that next boots, which goes on from its checkpoint or ends it when it cannot
-   * (`turn-recovering`); a reply cut at the token limit ends its step as any reply with no tool
-   * call does, so the run finishes normally (`turn-finished`); a run still going is `turn-running`, and one waiting on an approval or a
-   * question `turn-awaiting-person`; a later run is `not-latest-turn`, and a run the context does
-   * not have `run-not-found`. It does not authorize the caller. Throws a `BureauError`
-   * `NOT_FOUND` for a context this Bureau does not hold, a `ContextArchivedError` for an archived
-   * one, and a `BureauShuttingDownError` when Bureau is shutting down.
+   * Lets the context's last stopped turn go on (COR-2437): a continuation run starts on the stored
+   * conversation, the partial reply included, with no message from the person, and writes a new
+   * assistant turn after the partial reply. The turn must be the context's last, and its run must
+   * have been stopped by the person or have failed on finish reason `error`. The start is one
+   * atomic session write that appends a hidden continuation row naming the stopped run and the
+   * command, names the new run as the chat's last, and judges the history again inside its update,
+   * so a message, a discard or another resume that lands first wins. A repeated `commandId`
+   * answers the run it started, after a restart too, and never starts a second; the same
+   * `commandId` for another run is `command-conflict`. Anything else throws a
+   * {@link SessionResumeRefusedError} and starts nothing: `run-not-found`, `not-latest-turn`,
+   * `turn-running`, `turn-awaiting-person`, `turn-recovering` (a run whose process stopped, which
+   * the Bureau that next boots takes up), `turn-finished` (a reply cut at the token limit
+   * included), `run-not-resumable` (a failure going on would meet again), `turn-interrupted-call`,
+   * `follow-up-delivered`, `follow-ups-queued` and `nothing-to-resume`. It does not authorize the
+   * caller. Throws a `BureauError` `NOT_FOUND` for a context this Bureau does not hold, a
+   * `ContextArchivedError` for an archived one, and a `BureauShuttingDownError` when Bureau is
+   * shutting down.
    */
   resumeTurn(contextId: string, request: ResumeTurnRequest): Promise<ResumeTurnResult>;
 
