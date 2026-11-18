@@ -301,10 +301,10 @@
     },
     {
       "files": [
-        "**/components/cinder/src/components/json-viewer/_json-viewer-node.svelte",
-        "**/components/cinder/src/components/payload-inspector/_payload-fields.svelte",
-        "**/components/cinder/src/components/json-schema-editor/property-editor.svelte",
-        "**/components/cinder/src/components/json-schema-editor/property-list.svelte"
+        "**/components/core/src/components/json-viewer/_json-viewer-node.svelte",
+        "**/components/core/src/components/payload-inspector/_payload-fields.svelte",
+        "**/components/core/src/components/json-schema-editor/property-editor.svelte",
+        "**/components/core/src/components/json-schema-editor/property-list.svelte"
       ],
       "rules": {
         "import/no-cycle": "off",

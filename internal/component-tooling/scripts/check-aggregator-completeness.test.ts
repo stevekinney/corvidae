@@ -12,7 +12,7 @@ import {
 import { cinderComponentFile, cinderComponentRoots } from './discover-component-directories.ts';
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
-const componentsRoot = resolve(scriptDirectory, '../../../components/cinder');
+const componentsRoot = resolve(scriptDirectory, '../../../components/core');
 const componentsSource = join(componentsRoot, 'src');
 // Every components directory of the real Cinder: core's, and each family package's once the
 // split extracts it (core then has none of its own).

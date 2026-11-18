@@ -32,7 +32,7 @@ import { join, relative } from 'node:path';
 const root = join(import.meta.dir, '..');
 
 /** Cinder's core package directory, relative to the repository root. */
-const CORE_DIRECTORY = 'components/cinder';
+const CORE_DIRECTORY = 'components/core';
 
 /**
  * Directories scanned, relative to the repository root: Cinder (core and every package core

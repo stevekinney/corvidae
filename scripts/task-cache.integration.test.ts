@@ -451,7 +451,7 @@ test('a test task whose files read generated .metadata waits for a metadata task
     (directory) => directory.split('/').length === 2 && !directory.startsWith('scripts/'),
   );
   const libraries = new Set(
-    ['components/cinder', 'components/chat', 'components/editor', 'components/terminal']
+    ['components/core', 'components/chat', 'components/editor', 'components/terminal']
       .map(manifestOf)
       .filter((manifest) => manifest.scripts?.['metadata'] !== undefined)
       .map((manifest) => manifest.name),
@@ -476,7 +476,7 @@ test('a test task whose files read generated .metadata waits for a metadata task
       if (!waits) missing.push(`${manifest.name}#${name}`);
     }
   }
-  expect(directories).toContain('components/cinder');
+  expect(directories).toContain('components/core');
   expect(missing.toSorted()).toEqual([]);
 });
 

@@ -29,7 +29,7 @@ const root = join(import.meta.dir, '..');
 const WORKSPACE_PARENTS = ['applications', 'components', 'plugins'];
 
 /** Cinder's core workspace: `components/core` once COR-2082 renames it. */
-const CINDER_CORE = ['components/core', 'components/cinder'].find((directory) =>
+const CINDER_CORE = ['components/core', 'components/core'].find((directory) =>
   existsSync(join(root, directory, 'package.json')),
 );
 

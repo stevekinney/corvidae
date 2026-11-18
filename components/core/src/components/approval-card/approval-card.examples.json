@@ -1,0 +1,97 @@
+{
+  "$schema": "../../../../../internal/component-tooling/src/schemas/examples.schema.json",
+  "component": "approval-card",
+  "import": "@lostgradient/cinder",
+  "examples": [
+    {
+      "id": "basic",
+      "title": "Command approval",
+      "description": "A pending command approval with sandbox context, arguments, environment names, and editable arguments.",
+      "code": "<script lang=\"ts\">\n  import { ApprovalCard } from '@lostgradient/cinder';\n</script>\n\n<ApprovalCard\n  tool={{ name: 'deploy-cloud', risk: 'medium' }}\n  sandbox={{\n    provider: 'codex',\n    name: 'workspace-write',\n    workingDir: '/workspace/project',\n  }}\n  operation={{\n    kind: 'command',\n    command: 'bun run --filter=@lostgradient/cinder validate',\n    filesTouched: ['components/core/src/components/approval-card/approval-card.svelte'],\n    argsPreview: {\n      package: '@lostgradient/cinder',\n      dryRun: false,\n    },\n  }}\n  env={['DATABASE_URL', 'OPENAI_API_KEY']}\n  snapshotId=\"snapshot-01JZ8\"\n  policyVersion=\"policy-2026-06\"\n  idempotencyKey=\"approval-command-01\"\n  state=\"pending\"\n  editableArgs={true}\n  onResolve={() => undefined}\n/>\n"
+    },
+    {
+      "id": "expired",
+      "title": "Expired approval",
+      "description": "A read-only approval request whose pending decision window has expired.",
+      "code": "<script lang=\"ts\">\n  import { ApprovalCard } from '@lostgradient/cinder';\n</script>\n\n<ApprovalCard\n  tool={{ name: 'write-file', risk: 'low' }}\n  operation={{\n    kind: 'file-write',\n    filesTouched: ['components/core/src/components/approval-card/README.md'],\n    argsPreview: {\n      mode: 'append',\n      bytes: 384,\n    },\n  }}\n  policyVersion=\"policy-2026-06\"\n  idempotencyKey=\"approval-expired-01\"\n  expiresAt=\"2026-06-24T11:00:00.000Z\"\n  state=\"pending\"\n/>\n"
+    },
+    {
+      "id": "patch",
+      "title": "Patch approval",
+      "description": "A high-risk patch approval that previews the proposed diff, touched files, and arguments.",
+      "code": "<script lang=\"ts\">\n  import { ApprovalCard } from '@lostgradient/cinder';\n</script>\n\n<ApprovalCard\n  tool={{ name: 'apply_patch', risk: 'high' }}\n  sandbox={{\n    provider: 'codex',\n    name: 'workspace-write',\n    workingDir: '/workspace/project',\n  }}\n  operation={{\n    kind: 'patch',\n    filesTouched: [\n      'components/core/src/components/run-step-timeline/run-step-timeline.svelte',\n      'components/core/src/components/run-step-timeline/run-step-timeline.types.ts',\n    ],\n    argsPreview: {\n      strip: 0,\n      files: 2,\n    },\n    diff: `--- a/run-step-timeline.types.ts\n+++ b/run-step-timeline.types.ts\n+@@\n+ export type RunStepStatus =\n+   | 'running'\n++  | 'waiting_approval'\n+   | 'succeeded';`,\n  }}\n  env={['CINDER_RELEASE_TOKEN']}\n  snapshotId=\"snapshot-patch-01\"\n  policyVersion=\"policy-2026-06\"\n  idempotencyKey=\"approval-patch-01\"\n  state=\"pending\"\n  onResolve={() => undefined}\n/>\n"
+    },
+    {
+      "id": "row",
+      "title": "Approval row",
+      "description": "The shared approval row: risk glyph and question, the tool and where it came from, the consequence, Input, Add note, Deny and Approve.",
+      "code": "<script lang=\"ts\">\n  import { ApprovalCard } from '@lostgradient/cinder';\n</script>\n\n<ApprovalCard\n  layout=\"row\"\n  question=\"Refund order 4471 for $42.00?\"\n  tool={{ name: 'issue-refund', label: 'Issue refund', risk: 'high', irreversible: true }}\n  source=\"Tool runner\"\n  requestedAt=\"2026-11-02T10:38:00.000Z\"\n  consequence=\"Sends $42.00 back to the original card\"\n  operation={{\n    kind: 'other',\n    argsPreview: { orderId: 4471, amount: '$42.00', reason: 'Arrived damaged' },\n  }}\n  policyVersion=\"policy-2026-06\"\n  idempotencyKey=\"approval-row-01\"\n  state=\"pending\"\n  onResolve={() => undefined}\n/>\n"
+    },
+    {
+      "id": "row-remember",
+      "title": "Approval row with Allow for this chat",
+      "description": "A tool set to On changes offers a checkbox on its own line before Deny and Approve; a tool set to Always never does.",
+      "code": "<script lang=\"ts\">\n  import { ApprovalCard } from '@lostgradient/cinder';\n</script>\n\n<ApprovalCard\n  layout=\"row\"\n  question=\"Triage the refund request for order 4398?\"\n  tool={{ name: 'triage-refunds', label: 'Triage refunds', risk: 'medium' }}\n  source=\"Tool runner\"\n  requestedAt=\"2026-11-02T10:44:00.000Z\"\n  rememberScope=\"the rest of this chat\"\n  operation={{\n    kind: 'other',\n    argsPreview: { orderId: 4398, amount: '$27.25', reason: 'Arrived damaged' },\n  }}\n  policyVersion=\"policy-2026-06\"\n  idempotencyKey=\"approval-row-02\"\n  state=\"pending\"\n  onResolve={() => undefined}\n/>\n"
+    },
+    {
+      "id": "row-unavailable",
+      "title": "Unavailable approval",
+      "description": "A held approval nobody can answer now shows a neutral word and the reason, with no decision buttons.",
+      "code": "<script lang=\"ts\">\n  import { ApprovalCard } from '@lostgradient/cinder';\n</script>\n\n<ApprovalCard\n  layout=\"row\"\n  question=\"Publish notes for 2.4?\"\n  tool={{ name: 'publish-notes', label: 'Publish notes', risk: 'medium' }}\n  source=\"Release helper\"\n  requestedAt=\"2026-11-02T10:30:00.000Z\"\n  operation={{ kind: 'other', argsPreview: { version: '2.4', changes: 12 } }}\n  policyVersion=\"policy-2026-06\"\n  idempotencyKey=\"approval-row-03\"\n  state=\"unavailable\"\n  unavailableReason=\"Release helper is unavailable, so this can't be answered now. It returns when the Demo plugin is enabled.\"\n/>\n"
+    },
+    {
+      "id": "row-denied",
+      "title": "Denied approval",
+      "description": "A denied approval stays in the transcript as a neutral decision with who decided and when, the input it was asked about, and the note that went to the agent as the reason.",
+      "code": "<script lang=\"ts\">\n  import { ApprovalCard } from '@lostgradient/cinder';\n</script>\n\n<ApprovalCard\n  layout=\"row\"\n  question=\"Refund order 4398 for $27.25?\"\n  tool={{ name: 'issue-refund', label: 'Issue refund', risk: 'high', irreversible: true }}\n  source=\"Tool runner\"\n  operation={{ kind: 'other', argsPreview: { orderId: 4398, amount: '$27.25' } }}\n  policyVersion=\"policy-2026-06\"\n  idempotencyKey=\"approval-row-04\"\n  state=\"denied\"\n  decidedBy=\"you\"\n  decidedAt=\"2026-11-02T10:40:00.000Z\"\n  decisionNote=\"Check the carrier’s claim first.\"\n/>\n"
+    },
+    {
+      "id": "row-elsewhere",
+      "title": "Approval answered on another page",
+      "description": "An approval decided on another page while this one was open collapses to who decided, where and when, with no Deny or Approve left, under the question it asked.",
+      "code": "<script lang=\"ts\">\n  import { ApprovalCard } from '@lostgradient/cinder';\n</script>\n\n<ApprovalCard\n  layout=\"row\"\n  question=\"Refund order 4471 for $42.00?\"\n  tool={{ name: 'issue-refund', label: 'Issue refund', risk: 'high', irreversible: true }}\n  source=\"Tool runner\"\n  operation={{\n    kind: 'other',\n    argsPreview: { orderId: 4471, amount: '$42.00', reason: 'Arrived damaged' },\n  }}\n  policyVersion=\"policy-2026-06\"\n  idempotencyKey=\"row-elsewhere\"\n  state=\"approved\"\n  decidedBy=\"you\"\n  decidedIn=\"Reviews\"\n  decidedAt=\"2026-11-02T10:46:00.000Z\"\n/>\n"
+    },
+    {
+      "id": "row-approving",
+      "title": "Approve in flight",
+      "description": "Approve reads \"Approving…\" with a spinner and both buttons turn off; the approval stays pending until the answer lands.",
+      "code": "<script lang=\"ts\">\n  import { ApprovalCard } from '@lostgradient/cinder';\n</script>\n\n<ApprovalCard\n  layout=\"row\"\n  question=\"Refund order 4471 for $42.00?\"\n  tool={{ name: 'issue-refund', label: 'Issue refund', risk: 'high', irreversible: true }}\n  source=\"Tool runner\"\n  requestedAt=\"2026-11-02T10:38:00.000Z\"\n  consequence=\"Sends $42.00 back to the original card\"\n  operation={{\n    kind: 'other',\n    argsPreview: { orderId: 4471, amount: '$42.00', reason: 'Arrived damaged' },\n  }}\n  policyVersion=\"policy-2026-06\"\n  idempotencyKey=\"row-approving\"\n  state=\"pending\"\n  resolving=\"approve\"\n  onResolve={() => undefined}\n/>\n"
+    },
+    {
+      "id": "row-failed",
+      "title": "Approve failed",
+      "description": "A red-toned inline message says what failed and what is still true. Nothing was decided, so Approve is the retry.",
+      "code": "<script lang=\"ts\">\n  import { ApprovalCard } from '@lostgradient/cinder';\n</script>\n\n<ApprovalCard\n  layout=\"row\"\n  question=\"Refund order 4471 for $42.00?\"\n  tool={{ name: 'issue-refund', label: 'Issue refund', risk: 'high', irreversible: true }}\n  source=\"Tool runner\"\n  requestedAt=\"2026-11-02T10:38:00.000Z\"\n  consequence=\"Sends $42.00 back to the original card\"\n  operation={{\n    kind: 'other',\n    argsPreview: { orderId: 4471, amount: '$42.00', reason: 'Arrived damaged' },\n  }}\n  policyVersion=\"policy-2026-06\"\n  idempotencyKey=\"row-failed\"\n  state=\"pending\"\n  failure={{\n    summary: \"Couldn't approve.\",\n    detail: \"Interborough couldn't reach the agent. Nothing was refunded.\",\n  }}\n  onResolve={() => undefined}\n/>\n"
+    },
+    {
+      "id": "row-expired",
+      "title": "Expired approval",
+      "description": "An approval that passed its `expiresAt` is read-only and says when it expired.",
+      "code": "<script lang=\"ts\">\n  import { ApprovalCard } from '@lostgradient/cinder';\n</script>\n\n<ApprovalCard\n  layout=\"row\"\n  question=\"Refund order 4471 for $42.00?\"\n  tool={{ name: 'issue-refund', label: 'Issue refund', risk: 'high', irreversible: true }}\n  source=\"Tool runner\"\n  requestedAt=\"2026-11-02T10:38:00.000Z\"\n  consequence=\"Sends $42.00 back to the original card\"\n  operation={{\n    kind: 'other',\n    argsPreview: { orderId: 4471, amount: '$42.00', reason: 'Arrived damaged' },\n  }}\n  policyVersion=\"policy-2026-06\"\n  idempotencyKey=\"row-expired\"\n  state=\"pending\"\n  expiresAt=\"2026-11-02T10:15:00.000Z\"\n/>\n"
+    },
+    {
+      "id": "row-done",
+      "title": "Decided approval with its result",
+      "description": "A decided approval shows who decided and when, then what it led to.",
+      "code": "<script lang=\"ts\">\n  import { ApprovalCard } from '@lostgradient/cinder';\n</script>\n\n<ApprovalCard\n  layout=\"row\"\n  question=\"Refund order 4471 for $42.00?\"\n  tool={{ name: 'issue-refund', label: 'Issue refund', risk: 'high', irreversible: true }}\n  source=\"Tool runner\"\n  requestedAt=\"2026-11-02T10:38:00.000Z\"\n  consequence=\"Sends $42.00 back to the original card\"\n  operation={{\n    kind: 'other',\n    argsPreview: { orderId: 4471, amount: '$42.00', reason: 'Arrived damaged' },\n  }}\n  policyVersion=\"policy-2026-06\"\n  idempotencyKey=\"row-done\"\n  state=\"approved\"\n  decidedBy=\"you\"\n  decidedAt=\"2026-11-02T10:33:00.000Z\"\n  result=\"Refunded $42.00 to the original card.\"\n/>\n"
+    },
+    {
+      "id": "detail",
+      "title": "Approval detail",
+      "description": "The approval's own page: an eyebrow with the risk glyph, the question, who asked and how long it has waited, the tool, the Input block, and one line with the risk glyph saying what cannot be undone and what approving does. It has no Details disclosure.",
+      "code": "<script lang=\"ts\">\n  import { ApprovalCard } from '@lostgradient/cinder';\n</script>\n\n<ApprovalCard\n  layout=\"detail\"\n  question=\"Refund order 4471 for $42.00?\"\n  source=\"Tool runner in Please refund order 4471, it arrived damaged.\"\n  requestedAt=\"2026-11-02T10:38:00.000Z\"\n  tool={{ name: 'issue-refund', label: 'Issue refund', risk: 'high', irreversible: true }}\n  consequence=\"Sends $42.00 back to the original card.\"\n  footnote=\"The agent continues as soon as you answer.\"\n  operation={{\n    kind: 'other',\n    argsPreview: { orderId: 4471, amount: '$42.00', reason: 'Arrived damaged' },\n  }}\n  policyVersion=\"policy-2026-06\"\n  idempotencyKey=\"approval-detail-01\"\n  state=\"pending\"\n  onResolve={() => undefined}\n/>\n"
+    },
+    {
+      "id": "decision",
+      "title": "Explicit decision",
+      "description": "The decision surface: the action as the title with one facts line (when it expires, and Can't be undone), meaningful host facts and readable open Command, Add note, then Deny and a named primary that arms on its first press.",
+      "code": "<script lang=\"ts\">\n  import { ApprovalCard } from '@lostgradient/cinder';\n</script>\n\n<ApprovalCard\n  layout=\"decision\"\n  question=\"Refund order 4471 for $42.00?\"\n  tool={{ name: 'issue-refund', label: 'Issue refund', risk: 'high', irreversible: true }}\n  pauseSentence=\"The agent is paused until you decide.\"\n  facts={[\n    { label: 'Target', value: 'order 4471' },\n    { label: 'Amount', value: '$42.00' },\n  ]}\n  approveLabel=\"Refund\"\n  why=\"The customer reported the parcel arrived damaged.\"\n  operation={{ kind: 'command', command: 'refund --order 4471 --amount 42.00' }}\n  expiresAt=\"2999-01-01T00:00:00.000Z\"\n  policyVersion=\"policy-2026-06\"\n  idempotencyKey=\"approval-decision-01\"\n  state=\"pending\"\n  onResolve={() => undefined}\n/>\n"
+    },
+    {
+      "id": "decision-receipt",
+      "title": "Decision receipt",
+      "description": "A decided approval stays in the transcript as the action with one status line saying what was decided and by whom, and the note, result and command behind Details.",
+      "code": "<script lang=\"ts\">\n  import { ApprovalCard } from '@lostgradient/cinder';\n</script>\n\n<ApprovalCard\n  layout=\"decision\"\n  question=\"Refund order 4471 for $42.00?\"\n  tool={{ name: 'issue-refund', label: 'Issue refund', risk: 'high', irreversible: true }}\n  operation={{ kind: 'command', command: 'refund --order 4471 --amount 42.00' }}\n  policyVersion=\"policy-2026-06\"\n  idempotencyKey=\"approval-decision-02\"\n  state=\"approved\"\n  decidedBy=\"Priya Raman\"\n  decidedIn=\"Reviews\"\n  decidedInHref=\"/reviews\"\n  decidedAt=\"2026-11-02T10:46:00.000Z\"\n  decisionNote=\"Checked the order first.\"\n  result=\"Refunded $42.00 to the original card.\"\n/>\n"
+    }
+  ]
+}

@@ -6,7 +6,7 @@
    *
    * ## ApprovalCard evaluation (required by the task brief)
    *
-   * Read `cinder/components/cinder/src/components/approval-card/{approval-card.svelte,README.md,approval-card.types.ts}`
+   * Read `cinder/components/core/src/components/approval-card/{approval-card.svelte,README.md,approval-card.types.ts}`
    * in full before building this. `ApprovalCard` is a real, shipped
    * component (v0.16.1) but its domain model is a DIFFERENT one: "reviewing
    * a tool operation before the host application executes it" — required

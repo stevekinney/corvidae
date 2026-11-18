@@ -39,7 +39,7 @@ import {
 import { environmentConfiguration } from './environment-configuration.ts';
 import { incompleteRunReasons, summarizePlaywrightResults } from './suite-results.ts';
 
-export const PLAYWRIGHT_CONFIG = 'components/cinder/browser/playwright.config.ts';
+export const PLAYWRIGHT_CONFIG = 'components/core/browser/playwright.config.ts';
 
 export function playwrightUpdateArguments(extraArguments: readonly string[]): string[] {
   return [
@@ -117,7 +117,7 @@ async function main(): Promise<number> {
   );
   // Core's suite reads its fixture manifest at load, before Playwright starts the host (COR-2092).
   const prepare = Bun.spawn(
-    ['bun', '--no-install', 'components/cinder/browser/harness.ts', 'prepare'],
+    ['bun', '--no-install', 'components/core/browser/harness.ts', 'prepare'],
     {
       cwd: REPOSITORY_ROOT,
       stdout: 'inherit',

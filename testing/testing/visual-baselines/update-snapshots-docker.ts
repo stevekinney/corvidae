@@ -234,14 +234,14 @@ export async function applyUpdateRun(
   output.stdout(`${decision.reason}\n`);
 
   const outputDirectory = join(runDirectory, 'out');
-  // Outside the repository: Playwright clears components/cinder/browser/test-results on every run.
+  // Outside the repository: Playwright clears components/core/browser/test-results on every run.
   const reportDirectory = join(runDirectory, 'report');
   const oldRoot = join(runDirectory, 'committed');
   await mkdir(oldRoot, { recursive: true });
   target.extractCommitted(sha, oldRoot);
 
   const manifestPath = join(outputDirectory, 'manifest.json');
-  const specSources = await readSpecSources(join(oldRoot, 'components/cinder/browser/tests'));
+  const specSources = await readSpecSources(join(oldRoot, 'components/core/browser/tests'));
   const namingSources: NamingSources = {
     manifestFixtures: existsSync(manifestPath)
       ? manifestFixtureNames(readFileSync(manifestPath, 'utf8'))
@@ -362,7 +362,7 @@ async function main(): Promise<number> {
         extractCommitArchive(
           sha,
           join(run.runDirectory, 'committed.tar'),
-          [LINUX_BASELINE_DIRECTORY, 'components/cinder/browser/tests'],
+          [LINUX_BASELINE_DIRECTORY, 'components/core/browser/tests'],
           destination,
         );
       },

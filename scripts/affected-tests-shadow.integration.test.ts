@@ -37,16 +37,16 @@ async function createShadowFixture() {
     `${JSON.stringify({ name: 'shadow-fixture', workspaces: ['components/*'] })}\n`,
   );
   await write(
-    'components/cinder/package.json',
+    'components/core/package.json',
     `${JSON.stringify({
       name: '@lostgradient/cinder',
       exports: { '.': './src/index.ts' },
       scripts: { test: 'bun test --preload scripts/preload.ts src/index.test.ts' },
     })}\n`,
   );
-  await write('components/cinder/src/index.ts', 'export const fixture = true;\n');
-  await write('components/cinder/src/index.test.ts', "import { fixture } from './index.ts';\n");
-  await write('components/cinder/scripts/preload.ts', 'export {};\n');
+  await write('components/core/src/index.ts', 'export const fixture = true;\n');
+  await write('components/core/src/index.test.ts', "import { fixture } from './index.ts';\n");
+  await write('components/core/scripts/preload.ts', 'export {};\n');
   await fixtureGit(repository, ['init', '--quiet']);
   await fixtureGit(repository, ['config', 'user.email', 'shadow-fixture@example.invalid']);
   await fixtureGit(repository, ['config', 'user.name', 'Shadow fixture']);
@@ -70,7 +70,7 @@ const immutableWorkspaces = workspacesAtRevision(
   shadowFixture.repository,
   shadowFixture.fixtureRevision,
 );
-const preloadChange = ['components/cinder/scripts/preload.ts'];
+const preloadChange = ['components/core/scripts/preload.ts'];
 const immutablePreloadSelection = selectionAtRevision(
   shadowFixture.repository,
   shadowFixture.fixtureRevision,

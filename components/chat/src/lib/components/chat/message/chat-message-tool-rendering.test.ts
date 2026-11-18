@@ -25,7 +25,7 @@ const { default: ChatMessage } = await import('./chat-message.svelte');
 const { default: ToolCallTimeline } = await import('./tool-call-timeline.svelte');
 
 const cinderSrOnlyCss = await Bun.file(
-  new URL('../../../../../../cinder/src/styles/utilities.css', import.meta.url),
+  new URL('../../../../../../core/src/styles/utilities.css', import.meta.url),
 ).text();
 
 function toolCallMessage(): Message {

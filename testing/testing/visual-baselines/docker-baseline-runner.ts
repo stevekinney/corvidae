@@ -143,7 +143,7 @@ export function containerCommand(mode: ContainerMode, extraArguments: readonly s
   const script =
     mode === 'update'
       ? 'bun testing/testing/visual-baselines/update-snapshots.ts'
-      : 'CINDER_VISUAL_DIFF=block bun run --cwd components/cinder test:browser';
+      : 'CINDER_VISUAL_DIFF=block bun run --cwd components/core test:browser';
   // The JSON reporter writes to PLAYWRIGHT_JSON_OUTPUT_FILE (/out/results.json) so the
   // host can name each failure and tell screenshot failures from behavioural ones.
   const separator = mode === 'update' ? ' ' : ' -- ';
@@ -158,8 +158,8 @@ export function containerCommand(mode: ContainerMode, extraArguments: readonly s
     'status=$?',
     `find ${LINUX_BASELINE_DIRECTORY} -name '*.png' -newer /tmp/baseline-marker > /out/regenerated.txt 2>/dev/null`,
     `mkdir -p /out/linux && cp -R ${LINUX_BASELINE_DIRECTORY}/. /out/linux/ 2>/dev/null`,
-    'if [ -d components/cinder/browser/test-results ]; then cp -R components/cinder/browser/test-results /out/test-results; fi',
-    'cp components/cinder/browser/.playwright/manifest.json /out/manifest.json 2>/dev/null',
+    'if [ -d components/core/browser/test-results ]; then cp -R components/core/browser/test-results /out/test-results; fi',
+    'cp components/core/browser/.playwright/manifest.json /out/manifest.json 2>/dev/null',
     'chown -R "$BASELINE_HOST_UID:$BASELINE_HOST_GID" /out 2>/dev/null',
     'exit $status',
   ].join('; ');

@@ -10,7 +10,7 @@ import { dirname, join, relative, resolve, sep } from 'node:path';
  */
 export const FINGERPRINT_SOURCE_DIRECTORIES = [
   'applications/playground/src',
-  'components/cinder/src',
+  'components/core/src',
   'components/chat/src',
   // The playground server itself and its build helpers live under these
   // `scripts` trees. An edit to the SERVER/bundler code must invalidate the
@@ -18,7 +18,7 @@ export const FINGERPRINT_SOURCE_DIRECTORIES = [
   // looks fresh. Whole-dir coverage over-refreshes on unrelated script edits,
   // which is the safe direction: a spurious rebuild costs seconds, while a
   // stale reuse silently tests the wrong bytes.
-  'components/cinder/scripts',
+  'components/core/scripts',
   // Cinder's generators and the stylesheet fingerprint the server imports (COR-2079).
   'internal/component-tooling/scripts',
   'applications/playground/scripts',
@@ -33,8 +33,8 @@ export const FINGERPRINT_SOURCE_DIRECTORIES = [
 /** Package metadata read by playground discovery, documentation, and bundling. */
 export const FINGERPRINT_SOURCE_FILES = [
   'applications/playground/package.json',
-  'components/cinder/package.json',
-  'components/cinder/.metadata/components.json',
+  'components/core/package.json',
+  'components/core/.metadata/components.json',
   'components/chat/package.json',
   'components/chat/.metadata/components.json',
   'components/editor/package.json',
@@ -43,7 +43,7 @@ export const FINGERPRINT_SOURCE_FILES = [
 ] as const;
 
 /** Core's manifest, relative to the repository root: it names the family packages core lists. */
-export const CORE_MANIFEST_FILE = 'components/cinder/.metadata/components.json';
+export const CORE_MANIFEST_FILE = 'components/core/.metadata/components.json';
 
 /**
  * The `src` directory and `package.json` of every family package core's manifest names

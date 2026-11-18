@@ -50,7 +50,7 @@ import { collectPropConventionViolations } from './check-prop-conventions.ts';
 import { cinderComponentRoots } from './discover-component-directories.ts';
 import { metaSchemaReference } from './lib/component-meta.ts';
 
-const PACKAGE_ROOT = join(import.meta.dir, '../../../components/cinder');
+const PACKAGE_ROOT = join(import.meta.dir, '../../../components/core');
 const COMPONENTS_DIR = join(PACKAGE_ROOT, 'src', 'components');
 
 /** A kebab-case component id: lowercase letters/digits separated by single hyphens. */

@@ -16,7 +16,7 @@ import { isComponentExample } from './component-source-filter.ts';
 import { cinderSourceRoots } from './discover-component-directories.ts';
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
-const sourceRoot = resolve(scriptDirectory, '../../../components/cinder/src');
+const sourceRoot = resolve(scriptDirectory, '../../../components/core/src');
 
 type SvelteNode = {
   type?: string;

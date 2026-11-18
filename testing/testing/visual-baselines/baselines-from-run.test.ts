@@ -24,12 +24,12 @@ function fixture() {
   // Shard artifacts nest the results under the artifact name and a test directory.
   put(
     download,
-    'playwright-fixtures-1/components/cinder/browser/test-results/case-a/button/light-desktop-default-actual.png',
+    'playwright-fixtures-1/components/core/browser/test-results/case-a/button/light-desktop-default-actual.png',
     'changed',
   );
   put(
     download,
-    'playwright-fixtures-2/components/cinder/browser/test-results/case-b/button/dark-mobile-loading-actual.png',
+    'playwright-fixtures-2/components/core/browser/test-results/case-b/button/dark-mobile-loading-actual.png',
     'brand new',
   );
   put(download, 'playwright-fixtures-2/playwright-output/stray-actual.png', 'stray');

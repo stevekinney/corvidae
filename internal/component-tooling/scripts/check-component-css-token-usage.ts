@@ -82,7 +82,7 @@ import { isComponentExample } from './component-source-filter.ts';
 import { cinderPackages, cinderSourceRoots, corePath } from './discover-component-directories.ts';
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
-const componentsRoot = resolve(scriptDirectory, '../../../components/cinder');
+const componentsRoot = resolve(scriptDirectory, '../../../components/core');
 const componentsSource = join(componentsRoot, 'src');
 /**
  * Exported so the workspace-wide gate test can read the same registry the CLI does: core's until
@@ -95,7 +95,7 @@ export const tokenRegistryPath =
   join(componentsSource, 'tokens', 'registry.generated.json');
 const defaultBaselinePath = join(
   scriptDirectory,
-  '../../../components/cinder/scripts/token-usage-baseline.json',
+  '../../../components/core/scripts/token-usage-baseline.json',
 );
 
 /**
@@ -543,7 +543,7 @@ export function workspaceScanRoots(repositoryRoot: string): ScanRoot[] {
     const components = COMPONENT_DIRECTORIES.find((directory) =>
       existsSync(join(repositoryRoot, workspace, directory)),
     );
-    if (name !== 'cinder' && components !== undefined) {
+    if (name !== 'core' && components !== undefined) {
       roots.push({
         dir: join(repositoryRoot, workspace, components),
         reportPrefix: `${name}/${components}`,

@@ -53,10 +53,10 @@ import { fileURLToPath } from 'node:url';
 import { cinderSourceRoots, corePath } from './discover-component-directories.ts';
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
-const componentsRoot = resolve(scriptDirectory, '../../../components/cinder');
+const componentsRoot = resolve(scriptDirectory, '../../../components/core');
 const defaultBaselinePath = join(
   scriptDirectory,
-  '../../../components/cinder/scripts/raw-color-baseline.json',
+  '../../../components/core/scripts/raw-color-baseline.json',
 );
 
 /**

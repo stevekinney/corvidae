@@ -19,7 +19,7 @@ import {
   writeRootRegistries,
 } from './generate-root-registries.ts';
 
-const packageRoot = join(import.meta.dir, '../../../components/cinder');
+const packageRoot = join(import.meta.dir, '../../../components/core');
 const INDEX = join('src', 'index.ts');
 const COMPONENTS_CSS = join('src', 'styles', 'components.css');
 

@@ -4,14 +4,14 @@ import { readCorpusVariables, resolveRegistryPath } from './generate-component-v
 
 describe('component variable corpus lookup', () => {
   test('resolves the component registry', () => {
-    expect(resolveRegistryPath('/workspace/components/cinder/src/components/button')).toBe(
-      '/workspace/components/cinder/src/tokens/registry.generated.json',
+    expect(resolveRegistryPath('/workspace/components/core/src/components/button')).toBe(
+      '/workspace/components/core/src/tokens/registry.generated.json',
     );
   });
 
   test('caches the parsed registry and supports packages without one', async () => {
     const componentDirectory = new URL(
-      '../../../components/cinder/src/components/accordion-item/',
+      '../../../components/core/src/components/accordion-item/',
       import.meta.url,
     ).pathname;
     const first = await readCorpusVariables(componentDirectory, 'accordion-item');

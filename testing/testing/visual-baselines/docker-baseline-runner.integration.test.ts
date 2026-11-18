@@ -163,7 +163,7 @@ describe('container command and run arguments', () => {
   it('unpacks the archive, installs from the lockfile, and returns the suite status', () => {
     const command = containerCommand('update', ['--grep', "it's"]);
     expect(command).toStartWith(
-      "mkdir -p /work && cd /work && tar -x && bun install --frozen-lockfile && find components/cinder/browser/snapshots/chromium/linux -name '*.png' -delete && touch /tmp/baseline-marker && bun testing/testing/visual-baselines/update-snapshots.ts ",
+      "mkdir -p /work && cd /work && tar -x && bun install --frozen-lockfile && find components/core/browser/snapshots/chromium/linux -name '*.png' -delete && touch /tmp/baseline-marker && bun testing/testing/visual-baselines/update-snapshots.ts ",
     );
     expect(command).toContain(`update-snapshots.ts '--reporter=line,json' '--grep' 'it'\\''s'`);
     expect(command.indexOf('status=$?')).toBeLessThan(command.indexOf('cp -R'));
@@ -175,7 +175,7 @@ describe('container command and run arguments', () => {
     // update must start from no baselines or unchanged ones look like orphans.
     expect(containerCommand('visual', [])).not.toContain('-delete');
     expect(containerCommand('visual', [])).toContain(
-      "CINDER_VISUAL_DIFF=block bun run --cwd components/cinder test:browser -- '--reporter=line,json'; status=$?",
+      "CINDER_VISUAL_DIFF=block bun run --cwd components/core test:browser -- '--reporter=line,json'; status=$?",
     );
   });
 

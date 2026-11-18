@@ -24,7 +24,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
-const componentsRoot = resolve(scriptDirectory, '../../../components/cinder');
+const componentsRoot = resolve(scriptDirectory, '../../../components/core');
 const registryPath = join(componentsRoot, 'src', 'tokens', 'registry.generated.json');
 
 export const PUBLIC_TOKEN_PREFIX = '--cinder-';

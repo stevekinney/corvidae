@@ -15,7 +15,7 @@ import { processTreeOf } from './test-watchdog.ts';
  * server and the shell to exit. It runs at module scope, where no per-test clock applies.
  */
 // Core's browser suite host (COR-2092): every package's suite serves the page it builds.
-const root = join(import.meta.dir, '..', 'components', 'cinder', 'browser');
+const root = join(import.meta.dir, '..', 'components', 'core', 'browser');
 const started: number[] = [];
 
 function isAlive(pid: number): boolean {

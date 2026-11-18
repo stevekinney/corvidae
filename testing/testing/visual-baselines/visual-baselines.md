@@ -4,7 +4,7 @@ This is the operator's guide for the committed Linux visual baselines that `CIND
 
 ## Where baselines live
 
-The browser suite writes and reads baselines at `components/cinder/browser/snapshots/{projectName}/{platform}/`. The committed set is the Chromium Linux tree, `snapshots/chromium/linux/`, plus its `provenance.json`. Each component's images are named `<theme>-<viewport>-<fixture>.png`, two themes by three viewports for every fixture in the manifest.
+The browser suite writes and reads baselines at `components/core/browser/snapshots/{projectName}/{platform}/`. The committed set is the Chromium Linux tree, `snapshots/chromium/linux/`, plus its `provenance.json`. Each component's images are named `<theme>-<viewport>-<fixture>.png`, two themes by three viewports for every fixture in the manifest.
 
 `provenance.json` records how the set was rendered: the source commit (`renderedSourceSha`), the Playwright version, the operating system codename, the architecture, the renderer image tag, and the suite's exit code (`suiteExitCode`: 0 when every case passed, 1 when the run completed with failures). Only the update tooling writes it; never edit it by hand.
 

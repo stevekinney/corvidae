@@ -37,7 +37,7 @@ export const environmentBoundaries = [
       'applications/terminal-example/tests/environment-configuration.ts',
       'internal/component-tooling/scripts/environment-configuration.ts',
       'components/chat/browser/scripts/environment-configuration.ts',
-      'components/cinder/browser/scripts/environment-configuration.ts',
+      'components/core/browser/scripts/environment-configuration.ts',
       'testing/testing/visual-baselines/environment-configuration.ts',
       'scripts/environment-configuration.ts',
       'packages/armorer/test/fixtures/environment-configuration.ts',

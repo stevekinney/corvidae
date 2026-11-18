@@ -39,7 +39,7 @@ import { fileURLToPath } from 'node:url';
 import { cinderComponentRoots } from './discover-component-directories.ts';
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
-const componentsRoot = resolve(scriptDirectory, '../../../components/cinder');
+const componentsRoot = resolve(scriptDirectory, '../../../components/core');
 
 // ── Matchers ─────────────────────────────────────────────────────────────────
 

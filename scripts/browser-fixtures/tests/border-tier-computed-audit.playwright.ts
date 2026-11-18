@@ -123,7 +123,7 @@ test.describe('CIN-602/CIN-245: structural border tier uses, from the real casca
 });
 
 // ---------------------------------------------------------------------------
-// Part C: components/cinder/documentation/css-audit/translucent-border-seams.md
+// Part C: components/core/documentation/css-audit/translucent-border-seams.md
 // carries a delimited section generated from AUDITED_SITES below rather than
 // hand-listed. A later lane (Popover, retuned-indicator content) extends
 // coverage by adding its own entry to AUDITED_SITES and re-running this file
@@ -137,7 +137,7 @@ const DOC_PATH = join(
   '..',
   '..',
   'components',
-  'cinder',
+  'core',
   'documentation',
   'css-audit',
   'translucent-border-seams.md',

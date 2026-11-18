@@ -199,12 +199,12 @@ When adding or changing core components, update files under `packages/components
 
 ```bash
 bunx turbo run metadata --filter=@lostgradient/cinder
-(cd components/cinder && bun scripts/generate-component-artifacts.ts --fix)
+(cd components/core && bun scripts/generate-component-artifacts.ts --fix)
 ```
 
 The `metadata` task regenerates schemas, variables, examples and the manifest into the ignored `.metadata/` directory; `--fix` rewrites the generated README sections and the root registries.
 
-For the Chat family, update `components/chat/src/lib/components/<component-id>/` and run the same two commands for `@lostgradient/chat` (`bun ../cinder/scripts/generate-component-artifacts.ts --package-root . --fix` in `components/chat`).
+For the Chat family, update `components/chat/src/lib/components/<component-id>/` and run the same two commands for `@lostgradient/chat` (`bun ../core/scripts/generate-component-artifacts.ts --package-root . --fix` in `components/chat`).
 
 ## Release
 

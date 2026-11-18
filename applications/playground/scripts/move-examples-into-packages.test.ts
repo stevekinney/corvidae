@@ -126,7 +126,7 @@ describe('repointExamplePaths', () => {
   const moved = new Map([
     [
       `${OLD}/drawer/detents.example.svelte`,
-      'components/cinder/src/components/drawer/examples/detents.example.svelte',
+      'components/core/src/components/drawer/examples/detents.example.svelte',
     ],
   ]);
 
@@ -137,11 +137,11 @@ describe('repointExamplePaths', () => {
       `const other = '${OLD}/drawer/other.example.svelte';`,
     ].join('\n');
     expect(
-      repointExamplePaths(source, 'components/cinder/src/components/drawer/drawer.test.ts', moved),
+      repointExamplePaths(source, 'components/core/src/components/drawer/drawer.test.ts', moved),
     ).toBe(
       [
         "new URL('./examples/detents.example.svelte', import.meta.url);",
-        "const path = 'components/cinder/src/components/drawer/examples/detents.example.svelte';",
+        "const path = 'components/core/src/components/drawer/examples/detents.example.svelte';",
         `const other = '${OLD}/drawer/other.example.svelte';`,
       ].join('\n'),
     );

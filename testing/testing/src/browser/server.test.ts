@@ -198,7 +198,7 @@ const loadMissingHostDeclaration = async () => ({
 test('lazy fixture loading reports a missing selected host', async () => {
   const error = await loadFixture('example', 'assertion', {
     fixtureModules: {
-      '../../../components/cinder/src/components/example/example-fixtures.ts':
+      '../../../components/core/src/components/example/example-fixtures.ts':
         loadMissingHostDeclaration,
     },
     hostModules: {},
@@ -264,7 +264,7 @@ test('ambiguous source component owners fail rather than selecting a package', a
     await throwingRejectionOf(
       loadFixture('example', 'assertion', {
         fixtureModules: {
-          '../../../components/cinder/src/components/example/example-fixtures.ts':
+          '../../../components/core/src/components/example/example-fixtures.ts':
             loadMissingHostDeclaration,
           '../../../components/chat/src/lib/components/example/example-fixtures.ts':
             loadMissingHostDeclaration,

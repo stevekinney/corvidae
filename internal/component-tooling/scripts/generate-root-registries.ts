@@ -34,11 +34,11 @@ import { cinderPackages } from './discover-component-directories.ts';
 import { exportNames } from './export-names.ts';
 import { PACKAGE_SCOPE, specifierFor } from './split-layout.ts';
 
-const DEFAULT_PACKAGE_ROOT = join(import.meta.dir, '../../../components/cinder');
+const DEFAULT_PACKAGE_ROOT = join(import.meta.dir, '../../../components/core');
 
 /** The command a contributor runs to bring both regions up to date. */
 export const ROOT_REGISTRIES_COMMAND =
-  'cd components/cinder && bun ../../internal/component-tooling/scripts/generate-component-artifacts.ts';
+  'cd components/core && bun ../../internal/component-tooling/scripts/generate-component-artifacts.ts';
 
 const INDEX_START = '// <generated:component-exports>';
 const INDEX_END = '// </generated:component-exports>';

@@ -112,7 +112,7 @@ describe('scan roots', () => {
   test('cover both component libraries and the applications that write copy', () => {
     expect(scannedDirectories()).toEqual(
       expect.arrayContaining([
-        'components/cinder',
+        'components/core',
         'components/chat',
         'applications/playground',
         'applications/interborough',
@@ -127,7 +127,7 @@ describe('scan roots', () => {
     const root = mkdtempSync(join(tmpdir(), 'middle-dot-roots-'));
     try {
       const files: Record<string, string> = {
-        'components/cinder/package.json': JSON.stringify({
+        'components/core/package.json': JSON.stringify({
           dependencies: { '@lostgradient/button': 'workspace:*', svelte: 'catalog:' },
         }),
         'components/button/src/index.ts': '',
@@ -138,7 +138,7 @@ describe('scan roots', () => {
         writeFileSync(join(root, path), text);
       }
       expect(scannedDirectories(root)).toEqual([
-        'components/cinder',
+        'components/core',
         'components/button',
         'components/chat',
         'applications/playground',

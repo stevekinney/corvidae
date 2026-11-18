@@ -286,7 +286,7 @@ describe('publishedModuleMap', () => {
       join(repositoryRoot, 'scripts/published-exports.json'),
     ).json();
     const roots: Record<string, string> = {
-      '@lostgradient/cinder': 'components/cinder',
+      '@lostgradient/cinder': 'components/core',
       '@lostgradient/editor': 'components/editor',
       '@lostgradient/markdown': 'packages/markdown',
       '@lostgradient/weft': 'packages/weft',
