@@ -1363,7 +1363,7 @@ describe('SegmentedControl — a framed control keeps to the room it has', () =>
         rest: { description: 'Approve in the window.' },
       },
     });
-    const frame = container.querySelector('.cinder-form-field');
+    const frame = container.querySelector<HTMLElement>('.cinder-form-field');
     expect(frame?.classList.contains('cinder-segmented-control-field')).toBe(true);
     // The control measures its room from the frame, which is its direct parent.
     expect(container.querySelector('.cinder-segmented-control-container')?.parentElement).toBe(
