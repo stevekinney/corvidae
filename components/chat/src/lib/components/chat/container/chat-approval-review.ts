@@ -128,13 +128,46 @@ export function approvalArrivalRestShift(
   viewport: Pick<DOMRectReadOnly, 'top' | 'bottom'>,
   toEnd: number,
   clearance = APPROVAL_BOTTOM_CLEARANCE,
+  keepTopClear = false,
 ): number {
   const shift = approvalArrivalShift(card, viewport, clearance);
-  if (shift < 0 || toEnd <= 0.5 || toEnd < shift) return shift;
-  if (approvalTallerThanTranscript(card, viewport, clearance)) return shift;
-  // Scrolled to the end the card moves up by `toEnd`, past where its bottom and the clearance
-  // show, so it is whole there while its top is still in view.
-  return card.top - toEnd >= viewport.top - 0.5 ? toEnd : shift;
+  let result = shift;
+  if (
+    shift >= 0 &&
+    toEnd > 0.5 &&
+    toEnd >= shift &&
+    !approvalTallerThanTranscript(card, viewport, clearance)
+  ) {
+    // Scrolled to the end the card moves up by `toEnd`, past where its bottom and the clearance
+    // show, so it is whole there while its top is still in view.
+    result = card.top - toEnd >= viewport.top - 0.5 ? toEnd : shift;
+  }
+  // Under a header laid over the transcript (`viewport.top` is already below it) the unit's top is
+  // never scrolled above that line, whether it fits or not: a unit too tall for the room rests with
+  // its top on the line and its end under the composer or below the fold, because the row that
+  // labels the card is what names what is waiting.
+  return keepTopClear ? Math.min(result, card.top - viewport.top) : result;
+}
+
+/**
+ * How far the transcript scrolls to place the waiting approval `card` (positive scrolls down), by
+ * the one rule Chat and a host that brings the approval into view itself both use: the card and the
+ * row that labels it as one unit, in the transcript's arrival box, resting at the transcript's end
+ * where that clears any header laid over the top, and never with the unit's top under that header.
+ * `null` while the layout is not measured.
+ */
+export function approvalPlacementShift(transcript: HTMLElement, card: HTMLElement): number | null {
+  const unit = approvalUnitBox(card);
+  const box = approvalArrivalBox(transcript);
+  if (unit.bottom - unit.top <= 0 || box.bottom - box.top <= 0) return null;
+  const toEnd = transcript.scrollHeight - transcript.clientHeight - transcript.scrollTop;
+  return approvalArrivalRestShift(
+    unit,
+    box,
+    toEnd,
+    APPROVAL_BOTTOM_CLEARANCE,
+    approvalOverlayCovered(transcript) > 0,
+  );
 }
 
 /**
@@ -150,6 +183,17 @@ export function approvalReminderRoom(root: ParentNode | null | undefined): numbe
     (Number.parseFloat(style.marginTop) || 0) +
     (Number.parseFloat(style.marginBottom) || 0)
   );
+}
+
+/**
+ * The height of a header the host lays over the top of the transcript
+ * (`--cinder-chat-overlay-inset-start`), or 0 when none is.
+ */
+export function approvalOverlayCovered(transcript: HTMLElement): number {
+  const covered = Number.parseFloat(
+    getComputedStyle(transcript).getPropertyValue('--cinder-chat-overlay-inset-start'),
+  );
+  return Number.isFinite(covered) && covered > 0 ? covered : 0;
 }
 
 /**
@@ -170,9 +214,8 @@ export function approvalArrivalBox(
   // is the overlay's height plus the timeline's padding: the gap the first row of a short chat
   // gets, so a card is never placed flush against, or under, the header.
   const style = getComputedStyle(transcript);
-  const covered = Number.parseFloat(style.getPropertyValue('--cinder-chat-overlay-inset-start'));
   const padding = Number.parseFloat(style.paddingTop);
-  const clear = Number.isFinite(covered) && covered > 0 ? covered : 0;
+  const clear = approvalOverlayCovered(transcript);
   return {
     top: box.top + (clear > 0 && Number.isFinite(padding) ? Math.max(padding, clear) : 0),
     bottom: box.bottom + room,

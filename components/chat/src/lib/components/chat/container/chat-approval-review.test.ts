@@ -20,6 +20,7 @@ import {
   approvalArrivalRestShift,
   approvalArrivalShift,
   approvalCardFitsViewport,
+  approvalPlacementShift,
   approvalReviewBox,
   approvalRowVisible,
   approvalTallerThanTranscript,
@@ -340,6 +341,39 @@ describe('the box an arriving approval is placed against (COR-2327)', () => {
 
     // The box starts where the first row of a short chat starts, 12px under the header.
     expect(approvalArrivalBox(transcript)).toMatchObject({ top: 268, bottom: 380 });
+    container.remove();
+  });
+
+  test('a unit too tall for the room under the header is placed with its top on the header line, never above it (320 by 640)', () => {
+    // The 320 by 640 phone: the transcript starts at 52, the header overlay reaches 167, and the
+    // timeline's 12px padding puts the box's top at 179; the composer dock starts at 487. The unit
+    // is the rail row (52px) and the card 5px under it (245px): 302px, and with the 12px
+    // clearance 314px, 6px more than the 308px of room.
+    const container = document.createElement('div');
+    container.className = 'chat-container';
+    const transcript = document.createElement('div');
+    const message = document.createElement('article');
+    message.setAttribute('data-message-id', 'm1');
+    const label = document.createElement('button');
+    label.className = 'cinder-tool-call-rail__row';
+    const card = document.createElement('div');
+    message.append(label, card);
+    transcript.append(message);
+    container.append(transcript);
+    document.body.append(container);
+    stubBox(transcript, 52, 487);
+    transcript.style.setProperty('--cinder-chat-overlay-inset-start', '115px');
+    transcript.style.paddingTop = '127px';
+    Object.defineProperty(transcript, 'scrollHeight', { value: 1000, configurable: true });
+    Object.defineProperty(transcript, 'clientHeight', { value: 800, configurable: true });
+    stubBox(label, 300, 352);
+    stubBox(card, 357, 602);
+
+    const shift = approvalPlacementShift(transcript, card);
+    // The unit's top lands on the header's bottom plus the padding (179), not 6px above it, and the
+    // plain rule (no header) would have scrolled 127px and left the row under the header.
+    expect(shift).toBe(121);
+    expect(300 - shift!).toBeGreaterThanOrEqual(179);
     container.remove();
   });
 

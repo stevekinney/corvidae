@@ -67,9 +67,8 @@
   import {
     approvalActionRow,
     approvalArrivalBox,
-    approvalArrivalRestShift,
+    approvalPlacementShift,
     approvalRowVisible,
-    approvalUnitBox,
     focusPendingApproval,
     PENDING_APPROVAL_CARD_SELECTOR,
     pendingApprovalCard,
@@ -1795,11 +1794,7 @@
       // placement agree on one position whichever runs last. The card and the row that labels it
       // are one unit, and the box starts below the header overlay, so the end is chosen only while
       // the unit's top still clears the overlay there.
-      const shift = approvalArrivalRestShift(
-        approvalUnitBox(card),
-        viewportBox,
-        scroller.scrollHeight - scroller.clientHeight - scroller.scrollTop,
-      );
+      const shift = approvalPlacementShift(scroller, card) ?? 0;
       if (shift === 0) {
         movedFrom = undefined;
         return settled();
