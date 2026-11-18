@@ -104,6 +104,22 @@ describe('unit lanes', () => {
 });
 
 describe('run', () => {
+  test('a unit config without a unit workspace is refused, never checked as an absolute path', () => {
+    const checked: string[] = [];
+    const { dependencies } = fake([]);
+    const tracking = {
+      ...dependencies,
+      exists: (path: string) => (checked.push(path), false),
+    };
+    expect(() =>
+      run(
+        ['--dry-run', '--fixture-components', 'terminal', '--unit-config', './bunfig.ui.toml'],
+        tracking,
+      ),
+    ).toThrow('needs --unit-workspace');
+    expect(checked.some((path) => path.startsWith('/'))).toBe(false);
+  });
+
   test('a deleted test is left out of the derived selection instead of refusing the run', () => {
     const { dependencies } = fake(
       ['packages/bureau/src/kept.test.ts'],

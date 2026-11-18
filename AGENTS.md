@@ -8,7 +8,8 @@ This file holds the rules every session needs. Mechanics and history live in `do
 
 ## Workflow
 
-- Inspect the workspace and nearby conventions before changing code. Plan non-trivial work and add a regression test for every defect.- Run the focused command while working and the focused checks once the change is complete (see **Gate on local checks**). Treat warnings, console errors, and failed checks as defects.
+- Inspect the workspace and nearby conventions before changing code. Plan non-trivial work; add a regression test for every defect.
+- Run the focused command while working and the focused checks once the change is complete (see **Gate on local checks**). Treat warnings, console errors, and failed checks as defects.
 - Treat file length as review guidance. Enforce cyclomatic complexity of at most 100, or 300 under `scripts/`. Keep repository tooling in its owning workspace's `scripts/` directory. Restructure only for a concrete ownership, duplication, or correctness benefit, and prefer platform and Bun primitives over new abstractions or dependencies. Keep correctness, types, tests, and builds enforced.
 - Add no compatibility, migration, shim, adapter, or re-export layer while pre-release unless the requirement demands one.
 - Never separate pieces of copy with a middle dot (U+00B7) in Cinder, the playground, or Interborough (`lint:root` enforces it).

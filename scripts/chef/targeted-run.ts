@@ -183,7 +183,9 @@ export function validateInputs(
       if (!SAFE_PATH.test(path) || !dependencies.exists(`${inputs.unitWorkspace}/${path}`))
         problems.push(`Unit path '${path}' does not exist in ${inputs.unitWorkspace}.`);
   }
-  if (
+  if (inputs.unitConfig !== '' && inputs.unitWorkspace === '')
+    problems.push(`Unit config '${inputs.unitConfig}' needs --unit-workspace to say whose it is.`);
+  else if (
     inputs.unitConfig !== '' &&
     (!SAFE_PATH.test(inputs.unitConfig) ||
       !dependencies.exists(`${inputs.unitWorkspace}/${inputs.unitConfig}`))
