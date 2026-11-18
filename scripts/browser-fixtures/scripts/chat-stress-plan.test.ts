@@ -4,6 +4,7 @@ import casesData from '../src/fixtures/chat-stress.json';
 import { parseStressCases, type StressCase } from '../src/fixtures/chat-stress/stress-cases.ts';
 import {
   COMPOSER_EDGE_TOLERANCE,
+  REVIEW_PROFILES,
   STRESS_PROFILES,
   SUPPLEMENTAL_PROFILE,
   composerEdgeProblems,
@@ -19,6 +20,7 @@ import {
   reconciliationProblems,
   renderGallery,
   selectCases,
+  selectableProfiles,
   sourceIdentity,
   variantImageName,
   type CaptureRecord,
@@ -75,6 +77,25 @@ describe('profiles', () => {
     expect(profilesFor(false)).toHaveLength(5);
     expect(profilesFor(true).at(-1)).toBe(SUPPLEMENTAL_PROFILE);
     expect(SUPPLEMENTAL_PROFILE.coarse).toBe(true);
+  });
+
+  // The design review of land/chat (2026-11-18) judges the stress cases at the widths it judges the
+  // chat pages at, 375 and 1280, in light and dark.
+  it('offer 1280 light and dark and the 375 dark phone to name, never drawn by default', () => {
+    expect(REVIEW_PROFILES.map((profile) => profile.name)).toEqual([
+      '1280-light',
+      '1280-dark',
+      '375-dark',
+    ]);
+    for (const profile of REVIEW_PROFILES) {
+      expect(profile.coarse).toBe(profile.width < 500);
+      expect(profilesFor(true)).not.toContain(profile);
+    }
+    const names = selectableProfiles(false).map((profile) => profile.name);
+    expect(new Set(names).size).toBe(names.length);
+    for (const name of ['1280-light', '1280-dark', '375-light', '375-dark', '768-dark']) {
+      expect(names).toContain(name);
+    }
   });
 });
 

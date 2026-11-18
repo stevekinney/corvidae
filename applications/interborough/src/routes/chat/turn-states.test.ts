@@ -93,6 +93,7 @@ describe('the stopped and failed turn (COR-2437)', () => {
       state: { kind: 'stopped' },
       rowId: 'run:step:0',
       noteId: 'stopped:run',
+      ended: false,
     });
     const failed = historyOf([noted('u1', 'user'), noted('run:step:0', 'assistant', [failedLine])]);
     expect(lastTurnStop(failed)?.state).toEqual({ kind: 'failed', cause: 'It failed.' });
@@ -114,11 +115,29 @@ describe('the stopped and failed turn (COR-2437)', () => {
     ).toBeUndefined();
   });
 
-  test('reads nothing for a server’s notice, an earlier turn, or a turn with no reply to draw on', () => {
-    const notice = { ...stoppedLine, notice: true };
+  // The design review of 38cbd2dec, note 2: a chat the server ended kept its old status line while
+  // every other stop is Chat's alert. It is a stop, with the notice's sentence as why, and ended.
+  test('reads a server’s notice as a stop that says why, and that cannot go on', () => {
+    const notice = {
+      kind: 'stopped',
+      id: 'ended',
+      reason: 'This chat has ended. The server stopped it when it restarted.',
+      notice: true,
+    };
     expect(
-      lastTurnStop(historyOf([noted('u1', 'user'), noted('a1', 'assistant', [notice])])),
-    ).toBeUndefined();
+      lastTurnStop(historyOf([noted('u1', 'user'), noted('run:step:0', 'assistant', [notice])])),
+    ).toEqual({
+      state: {
+        kind: 'stopped',
+        reason: 'This chat has ended. The server stopped it when it restarted.',
+      },
+      rowId: 'run:step:0',
+      noteId: 'ended',
+      ended: true,
+    });
+  });
+
+  test('reads nothing for an earlier turn, or a turn with no reply to draw on', () => {
     expect(
       lastTurnStop(
         historyOf([

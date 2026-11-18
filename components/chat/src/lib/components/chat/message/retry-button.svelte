@@ -12,7 +12,7 @@
 </script>
 
 <script lang="ts">
-  import { Button, RotateCcw } from '@lostgradient/cinder';
+  import { Button, RefreshCw } from '@lostgradient/cinder';
 
   let {
     label = 'Retry',
@@ -26,7 +26,7 @@
 <!--
   The one recovery control inside the transcript: a small secondary button with the retry glyph
   leading its label. "Ask again" belongs to approvals alone, and a dense row may draw the glyph
-  alone.
+  alone. The glyph is RefreshCw, Cinder ErrorState's, so every retry on the page is one form.
 -->
 {#if iconOnly}
   <Button
@@ -41,7 +41,7 @@
     {onclick}
   >
     <!-- The same control as the composer's attachment Retry: a ghost icon button, one glyph. -->
-    <RotateCcw class="cinder-icon-xs" aria-hidden="true" />
+    <RefreshCw class="cinder-icon-xs" aria-hidden="true" />
   </Button>
 {:else}
   <Button
@@ -53,6 +53,6 @@
     {...ariaLabel === undefined ? {} : { 'aria-label': ariaLabel }}
     {onclick}
   >
-    {#snippet leadingIcon()}<RotateCcw aria-hidden="true" />{/snippet}
+    {#snippet leadingIcon()}<RefreshCw aria-hidden="true" />{/snippet}
   </Button>
 {/if}

@@ -452,6 +452,39 @@ test.describe('Reply failed partway (frame f: 19p)', () => {
   });
 });
 
+// The design review of 38cbd2dec: with no provider the page took the choice question out of its
+// row and Chat would not dock it, so it was drawn nowhere. With a provider connected it docks in the
+// composer's place; either way it is drawn exactly once (COR-2437 AC6).
+test.describe('/chats/:chat (question waiting): docked with a provider connected (COR-2437 AC6)', () => {
+  for (const width of [375, 768, 1280] as const) {
+    test(`the choice question docks in the composer’s place, drawn once, at ${width}`, async ({
+      page,
+    }) => {
+      await connectProvider(page);
+      await open(page, `/chats/${SAMPLE_WORLD_THREADS.release}`);
+      await page.setViewportSize({ width, height: 900 });
+      const dock = page.locator('[data-chat-question-dock="host"]');
+      await expect(dock).toBeVisible();
+      await expect(dock.getByRole('radio', { name: /^Staging\b/ })).toBeVisible();
+      await expect(dock.getByRole('radio', { name: /^Production\b/ })).toBeVisible();
+      await expect(page.locator('.weft-chat-question')).toHaveCount(1);
+      await captureForDesignReview(page, {
+        route: '/chats/:chat (question waiting)',
+        state: 'docked with a provider connected',
+        source: SOURCE,
+      });
+    });
+  }
+
+  test('stays in its row, drawn once, with no provider connected', async ({ page }) => {
+    await open(page, `/chats/${SAMPLE_WORLD_THREADS.release}`);
+    await expect(page.getByRole('button', { name: 'Connect provider' })).toBeVisible();
+    await expect(page.locator('.weft-chat-question')).toHaveCount(1);
+    await expect(page.locator('[data-chat-question-dock="host"]')).toHaveCount(0);
+    await expect(transcript(page).getByRole('radio', { name: /^Staging\b/ })).toBeVisible();
+  });
+});
+
 /** The two widths a stopped or failed turn is captured at (COR-2437). */
 const TURN_WIDTHS = [
   { width: 1280, height: 800 },
@@ -464,9 +497,11 @@ test.describe('/chats/:chat: a turn that stopped or failed (COR-2437)', () => {
       page,
       request,
     }) => {
-      await page.setViewportSize(viewport);
       await connectProvider(page);
       await openStatesChat(page, request, 'stopped-partway');
+      // After the chat is open: opening it sets the 1280 viewport, so the width set before was lost
+      // and the 375 capture was taken at 1280 (design review of 38cbd2dec).
+      await page.setViewportSize(viewport);
       await expect(transcript(page).getByText(FAILED_PARTWAY_REPLY)).toBeVisible();
 
       const outcome = transcript(page).locator('.chat-turn-outcome[data-kind="stopped"]');
@@ -486,9 +521,9 @@ test.describe('/chats/:chat: a turn that stopped or failed (COR-2437)', () => {
       page,
       request,
     }) => {
-      await page.setViewportSize(viewport);
       await connectProvider(page);
       await openStatesChat(page, request, 'failed-partway');
+      await page.setViewportSize(viewport);
       await expect(transcript(page).getByText(FAILED_PARTWAY_REPLY)).toBeVisible();
 
       const outcome = transcript(page).locator('.chat-turn-outcome[data-kind="failed"]');

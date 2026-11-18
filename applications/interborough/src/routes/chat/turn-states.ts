@@ -72,14 +72,20 @@ export type TurnStop = {
   readonly rowId: string;
   /** The status line's note. */
   readonly noteId: string;
+  /**
+   * Whether the server ended the chat (its restart notice): the turn is drawn as stopped, with
+   * why, and offers neither Discard nor Continue, since the chat cannot go on.
+   */
+  readonly ended: boolean;
 };
 
 /**
  * How the last turn of `conversation` ended, read from its status line: `stopped` for a run the
  * person stopped, `failed` (its line's sentence as the cause) for one that failed, or `undefined`
- * when it did neither, when the turn has no reply for Chat to draw the state on, or when the line
- * is the notice of a chat the server ended. A turn that went on (COR-2437) holds its stopped run's
- * line too, so only the line of the run that wrote the last reply (`stopped:<run>`) is its stop.
+ * when it did neither, or when the turn has no reply for Chat to draw the state on. The notice of a
+ * chat the server ended is a stop too, with its sentence as the reason (`ended`), so it is Chat's
+ * alert as every other stop is. A turn that went on (COR-2437) holds its stopped run's line too, so
+ * only the line of the run that wrote the last reply (`stopped:<run>`) is its stop.
  */
 export function lastTurnStop(conversation: ConversationHistory): TurnStop | undefined {
   const last = lastAssistantId(conversation);
@@ -91,14 +97,19 @@ export function lastTurnStop(conversation: ConversationHistory): TurnStop | unde
     const note = (resolveMessageNotes(row) ?? []).find(
       (entry): entry is Extract<MessageNoteInfo, { kind: 'stopped' }> =>
         entry.kind === 'stopped' &&
-        entry.notice !== true &&
-        (lastRun === undefined || entry.id === `stopped:${lastRun}`),
+        (entry.notice === true || lastRun === undefined || entry.id === `stopped:${lastRun}`),
     );
     if (note === undefined) continue;
+    const ended = note.notice === true;
     return {
-      state: note.failed === true ? { kind: 'failed', cause: note.reason } : { kind: 'stopped' },
+      state: ended
+        ? { kind: 'stopped', reason: note.reason }
+        : note.failed === true
+          ? { kind: 'failed', cause: note.reason }
+          : { kind: 'stopped' },
       rowId: id,
       noteId: note.id,
+      ended,
     };
   }
   return undefined;

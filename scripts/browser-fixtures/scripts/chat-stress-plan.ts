@@ -48,6 +48,26 @@ export function profilesFor(supplemental: boolean): readonly StressProfile[] {
   return supplemental ? [...STRESS_PROFILES, SUPPLEMENTAL_PROFILE] : STRESS_PROFILES;
 }
 
+/**
+ * The widths Interborough's chat pages are reviewed at, in both themes, that the board's profiles
+ * leave out: 1280 light and dark, and the 375 phone in dark. A run draws them only when `--profiles`
+ * names them, so a design review can judge a case at the widths it judges the pages at (the design
+ * review of land/chat, 2026-11-18).
+ */
+export const REVIEW_PROFILES: readonly StressProfile[] = [
+  { name: '1280-light', width: 1280, height: 800, theme: 'light', coarse: false },
+  { name: '1280-dark', width: 1280, height: 800, theme: 'dark', coarse: false },
+  { name: '375-dark', width: 375, height: 667, theme: 'dark', coarse: true },
+];
+
+/**
+ * The profiles `--profiles` may name: every profile a run draws by default, then the review profiles.
+ * Each name is one profile.
+ */
+export function selectableProfiles(supplemental: boolean): readonly StressProfile[] {
+  return [...profilesFor(supplemental), ...REVIEW_PROFILES];
+}
+
 /** The smallest a touch target may be, in CSS pixels, in both dimensions. */
 export const MINIMUM_TOUCH_TARGET = 44;
 

@@ -58,9 +58,12 @@ function serve(
   wait: unknown,
   more: Record<string, () => unknown> = {},
   beforeWait: readonly unknown[] = [],
+  /** What the host says of its model providers, when it says anything. */
+  providers?: Promise<Response>,
 ) {
   const bodies: Body[] = [];
   const served = bureau({ 'bureau.contexts.get': () => CONTEXT, ...more }, (url, init) => {
+    if (providers !== undefined && url.endsWith('/host/providers')) return providers;
     if (url.endsWith('/messages')) return Response.json({ threadId: 'session-1', messages: [] });
     if (url.includes('/threads/')) {
       return sse([{ type: 'RUN_ERROR', message: 'none', code: 'RUN_NOT_FOUND' }]);
@@ -392,6 +395,42 @@ describe('a question in the transcript, answered with an Undo window', () => {
     );
     // Back in its row, the composer is where the person types an answer of their own.
     expect(container.querySelector('.chat-question-own')).toBeNull();
+  });
+
+  // The design review of 38cbd2dec (COR-2437 AC6): with no provider connected the page took the
+  // question out of its row to dock it, Chat would not dock it over its Connect a model provider
+  // row, and the question was drawn nowhere. It is drawn exactly once in every state.
+  test('stays in its row, drawn once, while Chat will not dock it (no model provider)', async () => {
+    const answered = Promise.withResolvers<Response>();
+    serve(ask(RELEASE_CHOICES), {}, [], answered.promise);
+    const { container, findByText } = await open();
+    expect(await findByText('Deploys to the staging site')).not.toBeNull();
+    const questions = () => [...container.querySelectorAll('.weft-chat-question')];
+    const docked = () => container.querySelector('[data-chat-question-dock="host"]');
+    // A provider connected: the question docks, and is in the dock alone.
+    await waitFor(() => expect(docked() === null).toBe(false));
+    expect(questions()).toHaveLength(1);
+
+    // The host then says no provider is connected: Chat replaces the composer and keeps the dock
+    // away, and the question is back in its row.
+    answered.resolve(
+      Response.json({
+        configurationRevision: null,
+        providers: [{ name: 'anthropic', configured: true, hasKey: false, connected: false }],
+        catalog: [],
+        models: [],
+      }),
+    );
+    // Waits assert a boolean, never an element (a failed element assertion serializes the page).
+    const connect = () =>
+      [...container.querySelectorAll('button, a')].some(
+        (control) => control.textContent?.trim() === 'Connect provider',
+      );
+    await waitFor(() => expect(connect()).toBe(true));
+    await waitFor(() => expect(docked() === null).toBe(true));
+    expect(questions()).toHaveLength(1);
+    expect(questions()[0]?.closest('.chat-timeline')).not.toBeNull();
+    expect(container.textContent).toContain('Deploys to the live site');
   });
 
   test('shows the choice selected with one inline Undo, and keeps the composer from taking a second answer', async () => {

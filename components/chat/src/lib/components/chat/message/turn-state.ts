@@ -22,7 +22,7 @@ import type { Message } from '../conversation-model.ts';
  * - `stopped`: the person stopped the run. A neutral pill says the answer is partial, with Discard
  *   and Continue.
  * - `failed`: the run failed after writing part of the answer. A danger alert says the answer is
- *   incomplete, why, and what Retry keeps, with Retry.
+ *   incomplete, why, and what Retry (and Continue, when offered) does, with those buttons.
  * - `empty`: the run finished without writing an answer. A dashed row says so, with the turn's time
  *   and Try again, in place of the line of time and actions.
  * - `complete`: the answer is finished.
@@ -43,12 +43,20 @@ export type ChatTurnState =
        */
       wait?: number | undefined;
     }
-  | { kind: 'stopped' }
+  | {
+      kind: 'stopped';
+      /**
+       * Why the run stopped, when the person did not stop it, such as "The server stopped it when it
+       * restarted.": drawn after the heading. A host that cannot go on from such a stop sets neither
+       * `onDiscardTurn` nor `onContinueTurn`, and the alert has no actions.
+       */
+      reason?: string | undefined;
+    }
   | {
       kind: 'failed';
       /** Why the answer stopped partway, in plain words, such as "The model provider dropped the connection." */
       cause: string;
-      /** What Retry keeps, such as "Retry keeps the text above and the 2 steps that finished." Defaults to the `retryKeeps` label. */
+      /** What Retry does, in the host's words, such as "Retry runs the turn again from the 2 steps that finished." Drawn while Retry is offered. Defaults to the `retryRestarts` label. */
       keeps?: string | undefined;
     }
   | { kind: 'empty' }
@@ -90,7 +98,7 @@ export type ChatTurnEvent =
       type: 'fail';
       /** Why the answer stopped partway, in plain words. */
       cause: string;
-      /** What Retry keeps. */
+      /** What Retry does, in the host's words. */
       keeps?: string | undefined;
     }
   | {
@@ -197,8 +205,9 @@ export function isChatTurnState(value: unknown): value is ChatTurnState {
   if (typeof value !== 'object' || value === null || !('kind' in value)) return false;
   const candidate = value as Record<string, unknown>;
   switch (candidate['kind']) {
-    case 'streaming':
     case 'stopped':
+      return isOptionalText(candidate['reason']);
+    case 'streaming':
     case 'empty':
     case 'complete':
       return true;

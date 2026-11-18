@@ -29,7 +29,7 @@ gh run watch <run id> --exit-status
 gh run download <run id> --dir tmp/design-review/<run id>
 ```
 
-The inputs are `grep` (empty by default: no `--grep`), `scheme` and `data` (both `both` by default). The artifact is named `design-review-capture-<run id>-<scheme>-<data>` and holds the screenshots, `manifest.jsonl`, `summary.json` and the geometry report. The job's conclusion follows the exit codes above, and the artifact is uploaded either way. Dispatching by name needs the workflow file on `main`.
+The inputs are `grep` (empty by default: no `--grep`), `scheme` and `data` (both `both` by default; `data=none` skips the Interborough capture). `chat_stress_cases` (empty by default) also captures those cases of Chat's stress gallery (`scripts/browser-fixtures/scripts/capture-chat-stress.ts`) at `chat_stress_profiles` (by default 1280 and 375 in light and dark, and 768 dark) into the same artifact's `chat-stress/` directory, one PNG per case and profile with `gallery.html`, for example `-f data=none -f chat_stress_cases=11,17-20`. The artifact is named `design-review-capture-<run id>-<scheme>-<data>` and holds the screenshots, `manifest.jsonl`, `summary.json` and the geometry report. The job's conclusion follows the exit codes above, and the artifact is uploaded either way. Dispatching by name needs the workflow file on `main`.
 
 ## The two data sets
 

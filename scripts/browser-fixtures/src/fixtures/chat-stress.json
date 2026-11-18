@@ -531,7 +531,7 @@
   {
     "id": 20,
     "slug": "turn-failed",
-    "title": "A failed partial turn shows the danger alert, its cause, what Retry keeps and Retry.",
+    "title": "A failed partial turn shows the danger alert, its cause, what Retry does and Retry.",
     "provenance": "derived",
     "source": "Derived from design row R5; the original definition of this number was lost.",
     "rows": ["R5"],
@@ -544,7 +544,7 @@
         "argument": {
           "type": "fail",
           "cause": "The model provider dropped the connection.",
-          "keeps": "Retry keeps the text above and the step that finished."
+          "keeps": "Retry runs the turn again from the step that finished."
         }
       },
       {

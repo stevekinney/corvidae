@@ -45,8 +45,16 @@ export type ChatTurnLabels = {
    * Default `Failed before an answer.`.
    */
   failedBeforeAnswer: string;
-  /** What Retry keeps, when the failed state names nothing itself. Default `Retry keeps what was written so far.`. */
-  retryKeeps: string;
+  /**
+   * What Retry does, in a failed turn's alert that offers it, when the failed state names nothing
+   * itself. Default `Retry starts the answer again.`.
+   */
+  retryRestarts: string;
+  /**
+   * What Continue does, after the Retry sentence in a failed turn's alert that offers Continue.
+   * Default `Continue picks it up where it stopped.`.
+   */
+  continuePicksUp: string;
   /** The button that runs a failed turn again. Default `Retry`. */
   retry: string;
   /** The row on a turn that finished without an answer. Default `The agent finished without writing an answer.`. */
@@ -105,7 +113,8 @@ export const DEFAULT_TURN_LABELS: ChatTurnLabels = {
   discard: 'Discard',
   incomplete: 'This answer is incomplete.',
   failedBeforeAnswer: 'Failed before an answer.',
-  retryKeeps: 'Retry keeps what was written so far.',
+  retryRestarts: 'Retry starts the answer again.',
+  continuePicksUp: 'Continue picks it up where it stopped.',
   retry: 'Retry',
   empty: 'The agent finished without writing an answer.',
   tryAgain: 'Retry',

@@ -138,7 +138,9 @@ describe('a chat the server ended when it restarted (19b, 19c)', () => {
     nextPageToken: null,
   });
 
-  test('keeps the partial reply and says under it that the server restarted and the chat cannot continue, with an info glyph', async () => {
+  // The design review of 38cbd2dec, note 2: the ended chat kept the old status line while every
+  // other stop is Chat's alert on the turn. It is that alert, saying why, with no actions.
+  test('keeps the partial reply and says under it, in the turn’s alert, that the server restarted and the chat cannot continue', async () => {
     serve(billingThreadWithPartialReply(BILLING), {
       context: ended,
       answers: { 'bureau.tasks.list': canceled },
@@ -146,20 +148,19 @@ describe('a chat the server ended when it restarted (19b, 19c)', () => {
     const { container, findByText } = mount();
 
     expect(await findByText(ENDED_PARTIAL_REPLY)).not.toBeNull();
-    await waitFor(() =>
-      expect(container.querySelector('.chat-note[data-notice]')?.textContent?.trim()).toBe(
-        CHAT_COPY.stopLine.ended,
-      ),
+    const alert = () => container.querySelector('.chat-turn-outcome[data-kind="stopped"]');
+    await waitFor(() => expect(alert() === null).toBe(false));
+    expect(alert()?.querySelector('.chat-turn-stop-reason')?.textContent?.trim()).toBe(
+      CHAT_COPY.stopLine.ended,
     );
-    const line = container.querySelector('.chat-note[data-notice]')!;
-    expect(line.querySelector('svg.lucide-info')).not.toBeNull();
-    // It replaces the plain "Stopped" line the canceled run left, and offers no Retry.
-    expect(notes(container)).toHaveLength(1);
+    expect(alert()?.querySelector('svg.lucide-info')).not.toBeNull();
+    // It replaces the plain "Stopped" line the canceled run left, and offers no way to go on.
+    expect(notes(container)).toHaveLength(0);
     expect(container.textContent).not.toContain('The run was stopped.');
-    expect(line.querySelector('button')).toBeNull();
+    expect(alert()?.querySelector('button')).toBeNull();
   });
 
-  test('draws no strip of runs: the status line already says why', async () => {
+  test('draws no strip of runs: the alert already says why', async () => {
     serve(billingThreadWithPartialReply(BILLING), {
       context: ended,
       answers: { 'bureau.tasks.list': canceled },
@@ -167,7 +168,11 @@ describe('a chat the server ended when it restarted (19b, 19c)', () => {
     const { container, findByText } = mount();
 
     await findByText(ENDED_PARTIAL_REPLY);
-    await waitFor(() => expect(container.querySelector('.chat-note[data-notice]')).not.toBeNull());
+    await waitFor(() =>
+      expect(container.querySelector('.chat-turn-outcome[data-kind="stopped"]') === null).toBe(
+        false,
+      ),
+    );
     expect(container.querySelector('.weft-chat-strip')).toBeNull();
   });
 });

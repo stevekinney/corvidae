@@ -200,7 +200,7 @@
      * Where this assistant turn stands (COR-2283), as the host knows it. A `reconnecting` turn reads
      * muted with no caret (its connection notice, with Retry and a bar that drains until the next
      * try, stands by the composer and not here); a `stopped` one carries one neutral Callout with Continue and Discard; a `failed` one a danger
-     * Callout that says the answer is incomplete, why, and what Retry keeps; an `empty` one a neutral
+     * Callout that says the answer is incomplete, why, and what Retry and Continue do; an `empty` one a neutral
      * Callout in place of its line, with its time and Retry. Left out, the turn streams while text arrives
      * and is complete after. Ignored on a message that is not the assistant's.
      */
@@ -1060,6 +1060,9 @@
         <p class="chat-turn-text" dir="auto">
           {withoutAnswer ? turnWords.stoppedBeforeAnswer : turnWords.stopped}
         </p>
+        {#if turn.reason !== undefined && turn.reason !== ''}
+          <p class="chat-turn-text chat-turn-stop-reason" dir="auto">{turn.reason}</p>
+        {/if}
       </Callout>
     </div>
   {:else if turn.kind === 'failed'}
@@ -1078,7 +1081,8 @@
         {#snippet icon()}<CircleAlert aria-hidden="true" />{/snippet}
         <p class="chat-turn-text chat-turn-failure-body" dir="auto">
           {turn.cause}
-          {turn.keeps ?? turnWords.retryKeeps}
+          {#if onRetryTurn}{turn.keeps ?? turnWords.retryRestarts}{/if}
+          {#if onContinueTurn}{turnWords.continuePicksUp}{/if}
         </p>
       </Callout>
     </div>
@@ -1306,7 +1310,7 @@
             label="Retry"
             onclick={() => onRetry(message.id)}
           >
-            <RotateCcw class="cinder-icon-xs" />
+            <RefreshCw class="cinder-icon-xs" />
           </Button>
         </div>
       {/if}

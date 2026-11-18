@@ -40,6 +40,23 @@ describe('an unreachable server (COR-2284 C5)', () => {
       kind: 'offline',
     });
   });
+
+  // The design review of 38cbd2dec: the shell's banner and the drawer both said "You're offline",
+  // and at 320 the two pushed the message box below the fold.
+  test('says only what is true of the draft while the shell’s banner says what is down', () => {
+    expect(
+      composerStatusOf(facts({ unreachable: true, browserOffline: true, outageBannerShown: true })),
+    ).toEqual({
+      kind: 'drawer-notice',
+      tone: 'warning',
+      text: 'Your draft is saved here. Send comes back when you reconnect.',
+      sendDisabledReason: 'Sending is off until Interborough is reachable',
+    });
+    expect(composerStatusOf(facts({ unreachable: true, outageBannerShown: true }))).toEqual({
+      ...HOST_DOWN,
+      text: 'Your draft is saved here. Send comes back when Interborough answers.',
+    });
+  });
 });
 
 describe('a blocked composer', () => {

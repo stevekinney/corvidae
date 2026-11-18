@@ -141,6 +141,24 @@ describe('R4: stopped', () => {
     expect(container.textContent).not.toContain('You stopped the run.');
   });
 
+  // The design review of 38cbd2dec: a chat the server ended kept its old status line while every
+  // other stop is the alert. A stop the person did not make says why, and with no way to go on it
+  // has no actions.
+  test('a stop with a reason says why after its heading, with no actions when none is offered', () => {
+    const { container } = mount({
+      turnState: {
+        kind: 'stopped',
+        reason: 'This chat has ended. The server stopped it when it restarted.',
+      },
+    });
+    const block = outcome(container);
+    expect(block?.getAttribute('data-kind')).toBe('stopped');
+    expect(block?.querySelector('.chat-turn-stop-reason')?.textContent).toBe(
+      'This chat has ended. The server stopped it when it restarted.',
+    );
+    expect(block?.querySelectorAll('button')).toHaveLength(0);
+  });
+
   test('a stopped turn shows Regenerate disabled, so every settled turn has the same actions', () => {
     const { getByRole } = mount({
       turnState: { kind: 'stopped' },
@@ -173,13 +191,13 @@ describe('R4: stopped', () => {
 });
 
 describe('R5: failed partway', () => {
-  test('a danger alert says the answer is incomplete, why, what Retry keeps, with Retry', async () => {
+  test('a danger alert says the answer is incomplete, why, what Retry does, with Retry', async () => {
     const retryTurn = mock((_messageId: string) => undefined);
     const { container, getByRole } = mount({
       turnState: {
         kind: 'failed',
         cause: 'The model provider dropped the connection.',
-        keeps: 'Retry keeps the text above and the 2 steps that finished.',
+        keeps: 'Retry runs the turn again from the 2 steps that finished.',
       },
       onRetryTurn: retryTurn,
     });
@@ -190,11 +208,15 @@ describe('R5: failed partway', () => {
     expect(getByRole('button', { name: 'Retry' }).getAttribute('data-cinder-variant')).toBe(
       'secondary',
     );
+    // One retry glyph on the page: ErrorState's RefreshCw, not RotateCcw.
+    expect(
+      getByRole('button', { name: 'Retry' }).querySelector('svg')?.getAttribute('class'),
+    ).toContain('lucide-refresh-cw');
     expect(alert?.textContent).toContain('This answer is incomplete.');
     expect(
       block?.querySelector('.chat-turn-failure-body')?.textContent?.replace(/\s+/gu, ' ').trim(),
     ).toBe(
-      'The model provider dropped the connection. Retry keeps the text above and the 2 steps that finished.',
+      'The model provider dropped the connection. Retry runs the turn again from the 2 steps that finished.',
     );
     await fireEvent.click(getByRole('button', { name: 'Retry' }));
     expect(retryTurn).toHaveBeenCalledWith('a1');
@@ -218,11 +240,35 @@ describe('R5: failed partway', () => {
     expect(continueTurn).toHaveBeenCalledWith('a1');
   });
 
-  test('without a host sentence, the alert says what Retry keeps in Chat’s words', () => {
-    const { container } = mount({ turnState: { kind: 'failed', cause: 'Timed out.' } });
-    expect(
-      container.querySelector('.chat-turn-failure-body')?.textContent?.replace(/\s+/gu, ' ').trim(),
-    ).toBe('Timed out. Retry keeps what was written so far.');
+  // The design review of 38cbd2dec: the alert said "Retry keeps what was written so far." beside
+  // Continue, the button that keeps it. Each button's sentence says what that button does.
+  describe('without a host sentence, says in Chat’s words what each button offered does', () => {
+    const body = (container: HTMLElement) =>
+      container.querySelector('.chat-turn-failure-body')?.textContent?.replace(/\s+/gu, ' ').trim();
+
+    test('Retry alone', () => {
+      const { container } = mount({
+        turnState: { kind: 'failed', cause: 'Timed out.' },
+        onRetryTurn: () => undefined,
+      });
+      expect(body(container)).toBe('Timed out. Retry starts the answer again.');
+    });
+
+    test('Retry and Continue', () => {
+      const { container } = mount({
+        turnState: { kind: 'failed', cause: 'Timed out.' },
+        onRetryTurn: () => undefined,
+        onContinueTurn: () => undefined,
+      });
+      expect(body(container)).toBe(
+        'Timed out. Retry starts the answer again. Continue picks it up where it stopped.',
+      );
+    });
+
+    test('neither, only the cause', () => {
+      const { container } = mount({ turnState: { kind: 'failed', cause: 'Timed out.' } });
+      expect(body(container)).toBe('Timed out.');
+    });
   });
 
   test('a failed stop note is not drawn beside the alert', () => {

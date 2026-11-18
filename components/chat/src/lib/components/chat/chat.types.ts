@@ -233,6 +233,15 @@ export type ChatProps = Omit<HTMLAttributes<HTMLElement>, 'class' | 'onsubmit'> 
    * it. A question Chat docks itself (`questionPlacement`) comes first. Left out, the composer shows.
    */
   questionDock?: Snippet | undefined;
+  /**
+   * Whether Chat draws the host's `questionDock` in the composer's place right now. Bindable, and
+   * set by Chat alone: it is `false` while no `questionDock` is passed, while a question Chat docks
+   * itself comes first, and while the composer is replaced (a blocked row, an archived or read-only
+   * notice, or an availability state), which keeps the dock away. A host that takes its question out
+   * of its row to dock it keeps it in the row while this is `false`, so the question is drawn
+   * exactly once. Default `false`.
+   */
+  hostQuestionDocked?: boolean;
   /** Whether Send empties the composer's text and files. Default `true`. Set it to `false` while a host must keep what was typed until the message has gone through, such as the first message of a new conversation that is still being started, and empty the box itself with `clearInput()` once it has. */
   clearComposerOnSubmit?: boolean | undefined;
   /** Set while the host is starting what the message belongs to, such as the conversation its first message opens: Send reads this word with a spinner and is off, there is no Stop because nothing is running yet, and the typed text and files stay in the box. Left out, Send is Send. */
@@ -452,7 +461,7 @@ export type ChatProps = Omit<HTMLAttributes<HTMLElement>, 'class' | 'onsubmit'> 
    * Reconnecting, attempt 2 of 5. Next try in 8 s." with Retry and a bar that drains until the
    * next try by the composer, where the connection is felt, not under the partial text;
    * `stopped` draws a neutral card with Discard and Continue; `failed` a danger alert that says the
-   * answer is incomplete, why, and what Retry keeps, with Retry; `empty` a neutral row with the
+   * answer is incomplete, why, and what Retry and Continue do, with those buttons; `empty` a neutral row with the
    * turn's time and Retry in place of its line. `advanceTurnState` moves a state on as the run
    * reports what happened. A callback that throws or returns something else draws the turn as
    * Chat sees it.

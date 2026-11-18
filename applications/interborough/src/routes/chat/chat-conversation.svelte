@@ -82,6 +82,7 @@
   import { usePageDetails, usePageLabel } from '../../app/breadcrumbs.svelte.ts';
   import { showToast } from '../../app/toast-host.svelte';
   import { getConnection } from '../../app/connection.svelte.ts';
+  import { restartActivity } from '../../app/restart/host-restart-flow.svelte.ts';
   import { useBureauEventsLive } from '../../app/live-polling.svelte.ts';
   import { browserWorkspaceStorage } from '../../app/workspace-lifetime.ts';
   import {
@@ -596,6 +597,12 @@
     composerStatusOf({
       unreachable: connection.unreachable,
       browserOffline: connection.browserOffline,
+      // As the shell decides to draw its connection banner (`app/shell/shell.svelte`).
+      outageBannerShown:
+        connection.unreachable &&
+        !connection.shownInPlace &&
+        !connection.bannerDrawnByPage &&
+        !restartActivity.active,
       restarting: restart.running,
       archived:
         archivedAt === null
@@ -1060,7 +1067,7 @@
   // turn whose reply has no row of its run, as one restored from before runs named their rows,
   // offers no Discard.
   const discardableRun = $derived(
-    lastStop?.state.kind === 'stopped' && lastAssistant !== undefined
+    lastStop?.state.kind === 'stopped' && !lastStop.ended && lastAssistant !== undefined
       ? replyStepOf(lastAssistant)?.runId
       : undefined,
   );
@@ -1075,7 +1082,8 @@
   // stopped inside a tool call is not offered: going on would run the call again unasked, and the
   // Bureau refuses it; Retry runs the turn again through its approval instead.
   const continuableRun = $derived.by(() => {
-    if (lastStop === undefined || lastAssistant === undefined) return undefined;
+    // A chat the server ended cannot go on.
+    if (lastStop === undefined || lastStop.ended || lastAssistant === undefined) return undefined;
     const runId = replyStepOf(lastAssistant)?.runId;
     if (runId === undefined || interruptedTool(lined, toolInfo) !== undefined) return undefined;
     if (lastStop.state.kind === 'stopped') return runId;
@@ -1328,6 +1336,10 @@
     'multiple',
   ]);
   let repliedInChat = $state<string | undefined>();
+  // Whether Chat draws the docked question in the composer's place: it does not while the composer
+  // is replaced (no provider, a blocked row, an archived chat), and then the question stays in its
+  // row, so it is drawn exactly once (COR-2437 AC6).
+  let hostQuestionDocked = $state(false);
   const dockedRequest = $derived(
     session.streaming || sentRequest !== undefined
       ? undefined
@@ -1581,6 +1593,8 @@
     if (approvalWaits || shownRequests.length > 0) return CHAT_COPY.status.waiting;
     if (runGoing) return CHAT_COPY.status.running;
     if (retryNoteId !== undefined) return CHAT_COPY.status.failed;
+    // A turn the person stopped is not done: the header says so in the neutral word.
+    if (lastStop?.state.kind === 'stopped') return CHAT_COPY.status.stopped;
     return CHAT_COPY.status.done;
   });
   // What holds Archive back in the More menu, in the order and the words of the status: the
@@ -1966,8 +1980,11 @@
           rereadFor = '';
         }
       })();
-      // The strip of runs under the header reads the same decision.
+      // The strip of runs under the header reads the same decision, and so does the chat's row in
+      // the list, so the list does not go on saying Waiting on you once the header says Running.
       void queryClient.invalidateQueries({ queryKey: ['bureau-tasks'] });
+      void queryClient.invalidateQueries({ queryKey: ['contexts', 'list'] });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.contexts.row(sessionId) });
     });
   });
 
@@ -2137,6 +2154,8 @@
           {sessionId}
           streaming={session.streaming}
           headerSaysWaiting={chatStatus === CHAT_COPY.status.waiting}
+          headerSaysRunning={chatStatus === CHAT_COPY.status.running}
+          turnAlertShown={lastStop !== undefined}
         />
       {/if}
 
@@ -2205,6 +2224,7 @@
     <div class="weft-chat-surface" onclick={openNoteLink}>
       <Chat
         bind:this={chat}
+        bind:hostQuestionDocked
         id={`chat-${sessionId}`}
         conversation={choosing ? unstartedConversation : shown}
         adapter={chatAdapter}
@@ -2278,7 +2298,7 @@
       >
         {#snippet trailing()}
           {#each shownRequests as request (request.interruptId)}
-            {#if request.interruptId !== dockedRequest?.interruptId}
+            {#if request.interruptId !== dockedRequest?.interruptId || !hostQuestionDocked}
               {@render questionBlock(request, false)}
             {/if}
           {/each}
