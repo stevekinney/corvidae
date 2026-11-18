@@ -11,5 +11,6 @@
 preload = ["./tests/setup.ts"]
 coverageReporter = ["text", "lcov"]
 coverageSkipTestFiles = true
-# The Playwright lane runs these through `test:browser`; `bun test` must not discover them.
-pathIgnorePatterns = ["tests/e2e/**"]
+# The Playwright lane runs these through `test:browser` (`playwright.config.ts` matches `e2e/` and
+# `panels/`); `bun test` must not discover them, even when it is handed the whole `tests` directory.
+pathIgnorePatterns = ["tests/e2e/**", "tests/panels/**"]
