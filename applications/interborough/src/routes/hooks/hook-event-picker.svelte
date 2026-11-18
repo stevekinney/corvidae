@@ -72,14 +72,18 @@
         options={[{ value: lockedValue, label: lockedLabel }]}
         value={lockedValue}
       />
-      <span class="ib-hook-events__lock">
-        {#each events as kind (kind)}
-          {#if alike.has(kind)}
-            <code class="ib-hook-events__kind" data-event={kind}>{kind}</code>
-          {/if}
-        {/each}
-        <Lock aria-hidden="true" size={14} />
-      </span>
+      <!-- The kind shows only where two events read alike; otherwise the read-only Select and its
+           description already say the event is fixed, and a lone lock would belong to nothing. -->
+      {#if alike.size > 0}
+        <span class="ib-hook-events__lock">
+          {#each events as kind (kind)}
+            {#if alike.has(kind)}
+              <code class="ib-hook-events__kind" data-event={kind}>{kind}</code>
+            {/if}
+          {/each}
+          <Lock aria-hidden="true" size={14} />
+        </span>
+      {/if}
     </div>
   {:else}
     <Combobox

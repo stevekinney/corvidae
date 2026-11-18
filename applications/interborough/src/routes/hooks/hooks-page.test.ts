@@ -1468,6 +1468,8 @@ describe('the steps of a saved hook', () => {
     expect(locked.textContent).toContain('A review is waiting');
     for (const kind of hook('alpha').events) expect(locked.textContent).not.toContain(kind);
     expect(locked.querySelector('code')).toBeNull();
+    // No kind is shown, so no lock glyph stands alone under the help: the help says it is fixed.
+    expect(locked.querySelector('.ib-hook-events__lock')).toBeNull();
     expect(locked.textContent).toContain(HOOKS_COPY.editor.event.fixed);
     expect(locked.querySelector('[aria-readonly="true"]')).not.toBeNull();
     expect(view.container.querySelector('input[role="combobox"]')).toBeNull();
