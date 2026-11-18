@@ -879,7 +879,7 @@ test.describe('Home when one card cannot be read (01n, 01o)', () => {
 const HOST_REQUESTS = /\/(v1|bureau|api|host)\//;
 const REFUSED = /net::ERR_CONNECTION_REFUSED/;
 /** What Home reads, and the server's health probe: the shell itself (who the caller is) is not cut off. */
-const HOME_READS = /\/(bureau\/jsonrpc|host\/providers|v1\/health)$/;
+const HOME_READS = /\/(jsonrpc|host\/providers|v1\/health)$/;
 
 test.describe('Home when the server does not answer (02g, 02h, 02i, 02j)', () => {
   test('with data on screen, a banner over the old data names its age and counts down; only the controls that change something are held (02g, 02h, 02i)', async ({

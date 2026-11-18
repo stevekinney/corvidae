@@ -507,7 +507,7 @@ for (const width of [375, 1280] as const) {
       }) => {
         if (outcome !== 'loading') {
           pageErrors.expectEvery({
-            pattern: loggedFailedResponse(outcome === 'error' ? 500 : 403, /bureau\/jsonrpc/),
+            pattern: loggedFailedResponse(outcome === 'error' ? 500 : 403, /\/jsonrpc/),
             reason: `the test answers the session read with a ${outcome === 'error' ? 500 : 403}`,
           });
         }

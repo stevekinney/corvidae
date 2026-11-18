@@ -259,7 +259,7 @@ for (const width of WIDTHS) {
       checkA11y,
     }) => {
       pageErrors.expectEvery({
-        pattern: loggedFailedResponse(500, /\/bureau\/jsonrpc/),
+        pattern: loggedFailedResponse(500, /\/jsonrpc/),
         reason: 'the test answers the run’s inspection with a 500',
       });
       await answerHooks(page, 500);
@@ -281,7 +281,7 @@ for (const width of WIDTHS) {
       checkA11y,
     }) => {
       pageErrors.expectEvery({
-        pattern: loggedFailedResponse(403, /\/bureau\/jsonrpc/),
+        pattern: loggedFailedResponse(403, /\/jsonrpc/),
         reason: 'the test refuses the run’s inspection with a 403',
       });
       await answerHooks(page, 403);

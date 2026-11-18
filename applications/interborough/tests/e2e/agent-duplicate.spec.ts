@@ -200,7 +200,7 @@ for (const width of WIDTHS) {
   }) => {
     // The one cause this test declares: the host answers a read of the source's definition with a 500.
     pageErrors.expectEvery({
-      pattern: /status of 500.*\/bureau\/jsonrpc/,
+      pattern: /status of 500.*\/\/jsonrpc/,
       reason: 'the test makes the Bureau fail the read of the source before Duplicate asks',
     });
     await page.setViewportSize({ width, height: 900 });

@@ -163,7 +163,7 @@ export async function holdMethod(page: Page, method: string): Promise<void> {
 /**
  * Answers `method` with a fault of `status`, as the server does for one it refuses: a `weftCode`
  * and a message, and `data` beside them. Chromium logs each such response, so the test says so
- * with `pageErrors.expectEvery(loggedFailedResponse(status, /\/bureau\/jsonrpc/))`.
+ * with `pageErrors.expectEvery(loggedFailedResponse(status, /\/jsonrpc/))`.
  */
 export async function refuseMethod(
   page: Page,

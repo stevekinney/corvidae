@@ -269,7 +269,7 @@ for (const width of WIDTHS) {
     }) => {
       // The test answers the runs' read with a 500, and Chromium logs each such response.
       pageErrors.expectEvery({
-        pattern: loggedFailedResponse(500, /\/bureau\/jsonrpc/),
+        pattern: loggedFailedResponse(500, /\/jsonrpc/),
         reason: 'the test answers the runs list with a 500',
       });
       await answerOperation(page, 'bureau.tasks.list', (route) =>

@@ -349,7 +349,7 @@ test.describe('the bell keeps what is read in the Bureau', () => {
     pageErrors,
   }) => {
     pageErrors.expect({
-      pattern: loggedFailedResponse(500, /\/bureau\/jsonrpc/),
+      pattern: loggedFailedResponse(500, /\/jsonrpc/),
       reason: 'the test refuses the Bureau’s mark-as-read on purpose',
     });
     await page.route('**/jsonrpc', async (route) => {
@@ -420,7 +420,7 @@ test.describe('the bell keeps what is read in the Bureau', () => {
     pageErrors,
   }) => {
     pageErrors.expectEvery({
-      pattern: loggedFailedResponse(500, /\/bureau\/jsonrpc/),
+      pattern: loggedFailedResponse(500, /\/jsonrpc/),
       reason: 'the test refuses the Bureau’s list of notifications on purpose',
     });
     await page.route('**/jsonrpc', async (route) => {

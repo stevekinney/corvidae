@@ -69,7 +69,7 @@ for (const width of WIDTHS) {
     await page.setViewportSize({ width, height: 900 });
     await holdBureauFeed(page);
     pageErrors.expectEvery({
-      pattern: loggedFailedResponse(403, /\/bureau\/jsonrpc/),
+      pattern: loggedFailedResponse(403, /\/jsonrpc/),
       reason: 'the test answers the hooks probe with a 403',
     });
     await page.route('**/jsonrpc', async (route) => {

@@ -817,7 +817,7 @@ test.describe('Settings › Plugins', () => {
   }) => {
     // The read is one request for each state a run in flight is in: submitted, working and waiting.
     pageErrors.expect({
-      pattern: loggedFailedResponse(500, /\/bureau\/jsonrpc/),
+      pattern: loggedFailedResponse(500, /\/jsonrpc/),
       reason:
         'the test answers the read of the runs in flight with an error to draw the failed read',
       count: 3,

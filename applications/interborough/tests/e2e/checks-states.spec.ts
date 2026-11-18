@@ -271,7 +271,7 @@ test.describe('Load more', () => {
     checkA11y,
   }) => {
     pageErrors.expectEvery({
-      pattern: loggedFailedResponse(500, /\/bureau\/jsonrpc/),
+      pattern: loggedFailedResponse(500, /\/jsonrpc/),
       reason: 'the test answers the second page of the checks with a 500',
     });
     let failing = true;
@@ -378,7 +378,7 @@ for (const width of WIDTHS) {
       checkA11y,
     }) => {
       pageErrors.expectEvery({
-        pattern: loggedFailedResponse(500, /\/bureau\/jsonrpc/),
+        pattern: loggedFailedResponse(500, /\/jsonrpc/),
         reason: 'the test answers the checks list with a 500',
       });
       await answerOperation(page, 'bureau.checks.list', (route) =>

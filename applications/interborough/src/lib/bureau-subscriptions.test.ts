@@ -19,10 +19,7 @@ const frame = (id: string, event: string, data: unknown): string =>
 const PING = `event: ping\ndata: ${JSON.stringify({ emittedAtMs: 0, replayComplete: true })}\n\n`;
 
 /** The task feed opened over `answer`, as a follower opens it. */
-function open(
-  answer: () => Response,
-  hooks: { onOpen?: () => void; onData?: () => void; lastEventId?: string } = {},
-) {
+function open(answer: () => Response, hooks: { onOpen?: () => void; lastEventId?: string } = {}) {
   const seen: { url: string; headers: Headers }[] = [];
   const fetcher = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
     const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
@@ -62,21 +59,20 @@ describe('the generated subscription of a Bureau feed', () => {
     expect(seen[0]?.headers.get('accept')).toBe('text/event-stream');
   });
 
-  test('says when the Bureau has accepted the stream, and when the first bytes of it arrive', async () => {
+  test('says when the Bureau has accepted the stream', async () => {
     const order: string[] = [];
     const { events } = open(() => new Response(PING, { headers: STREAM }), {
       onOpen: () => order.push('open'),
-      onData: () => order.push('data'),
     });
 
     await collect(events);
 
-    expect(order).toEqual(['open', 'data']);
+    expect(order).toEqual(['open']);
   });
 
-  test('says neither for a refusal or for an answer that is not an event stream', async () => {
+  test('says nothing for a refusal or for an answer that is not an event stream', async () => {
     const order: string[] = [];
-    const hooks = { onOpen: () => order.push('open'), onData: () => order.push('data') };
+    const hooks = { onOpen: () => order.push('open') };
 
     await rejectionOf(collect(open(() => new Response('no', { status: 503 }), hooks).events));
     await rejectionOf(collect(open(() => new Response('hi'), hooks).events));

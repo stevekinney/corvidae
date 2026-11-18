@@ -80,7 +80,7 @@ const NOTHING = { records: [], nextCursor: null };
 const NO_EVENTS_COUNTED = { records: [], nextCursor: null, total: 0 };
 
 /** The Bureau's reads fail with a 500, which Chromium logs once for each. */
-const LOGGED = /\/bureau\/jsonrpc/;
+const LOGGED = /\/jsonrpc/;
 
 /** Opens the log on a clock that can be moved, which the loading state needs. */
 async function openOnAClock(page: Page, width: number, address = '/health/audit'): Promise<void> {

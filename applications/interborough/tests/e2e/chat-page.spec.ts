@@ -361,7 +361,7 @@ test.describe('an open chat that cannot be loaded (17c, 17e)', () => {
     pageErrors,
   }) => {
     pageErrors.expectEvery({
-      pattern: loggedFailedResponse(500, /\/bureau\/jsonrpc/),
+      pattern: loggedFailedResponse(500, /\/jsonrpc/),
       reason: 'the test answers the read of the chat with a 500',
     });
     await answerOperation(page, 'bureau.contexts.get', (route) =>

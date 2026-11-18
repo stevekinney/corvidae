@@ -36,7 +36,6 @@ import { CatalogClientError, type SubscriptionMessage } from '@lostgradient/back
 
 import { bureauClient } from '../bureau-api.ts';
 import { getBureauId } from '../bureau-client.ts';
-import { acceptedFetch } from '../bureau-subscriptions.ts';
 import { computeReconnectDelayMs } from './backoff.ts';
 import {
   BUREAU_GAP_KIND,
@@ -205,9 +204,6 @@ export class BureauEventSource implements LiveSource<BureauEventFrame> {
         {
           signal: controller.signal,
           ...(this.#lastEventId === undefined ? {} : { lastEventId: this.#lastEventId }),
-          // The Bureau sending anything, a heartbeat included, proves the connection works: the
-          // backoff starts again.
-          fetch: acceptedFetch({ onData: () => this.#setReconnectAttempt(0) }),
         },
       );
       for await (const message of messages) {

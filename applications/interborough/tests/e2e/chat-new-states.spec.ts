@@ -70,7 +70,7 @@ async function pausedClock(page: Page): Promise<void> {
 }
 
 /** The agents' reads: the Bureau's list of agents, and the host's list of plugins that says which can run. */
-const AGENT_READS = /\/(bureau\/jsonrpc|host\/plugins)$/;
+const AGENT_READS = /\/(jsonrpc|host\/plugins)$/;
 
 /** Holds the agents' reads until the returned function is called. */
 async function holdAgentReads(page: Page): Promise<() => void> {

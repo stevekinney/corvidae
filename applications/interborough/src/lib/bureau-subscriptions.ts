@@ -18,13 +18,11 @@ const STREAM_ERROR_CODE = -32000;
 
 /**
  * The `fetch` a feed is opened with: the call's own, or the global one, which calls `onOpen` once
- * the Bureau has accepted the subscription, before any event arrives, and `onData` once the first
- * bytes of the stream arrive, a heartbeat included, which the subscription's messages leave out.
+ * the Bureau has accepted the subscription, before any event arrives.
  */
 export function acceptedFetch(options: {
   readonly fetch?: Fetcher | undefined;
   readonly onOpen?: (() => void) | undefined;
-  readonly onData?: (() => void) | undefined;
 }): CatalogFetch {
   return async (input, init) => {
     // The global is read at the call, so a replacement installed after the follower exists is used.
@@ -37,25 +35,7 @@ export function acceptedFetch(options: {
       return response;
     }
     options.onOpen?.();
-    if (options.onData === undefined || response.body === null) return response;
-    const onData = options.onData;
-    let seen = false;
-    const body = response.body.pipeThrough(
-      new TransformStream<Uint8Array, Uint8Array>({
-        transform(chunk, controller) {
-          if (!seen) {
-            seen = true;
-            onData();
-          }
-          controller.enqueue(chunk);
-        },
-      }),
-    );
-    return new Response(body, {
-      status: response.status,
-      statusText: response.statusText,
-      headers: response.headers,
-    });
+    return response;
   };
 }
 

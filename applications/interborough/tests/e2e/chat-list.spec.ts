@@ -490,7 +490,7 @@ test.describe('the states of the chat list', () => {
   }) => {
     // The test answers the list's read with a 500, and Chromium logs each such response.
     pageErrors.expectEvery({
-      pattern: loggedFailedResponse(500, /\/bureau\/jsonrpc/),
+      pattern: loggedFailedResponse(500, /\/jsonrpc/),
       reason: 'the test answers the chat list with a 500',
     });
     await answerOperation(page, 'bureau.contexts.list', (route) =>

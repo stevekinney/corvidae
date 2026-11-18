@@ -185,7 +185,7 @@ test.describe('Settings › Data and retention', () => {
     pageErrors,
   }) => {
     pageErrors.expectEvery({
-      pattern: loggedFailedResponse(500, /\/bureau\/jsonrpc/),
+      pattern: loggedFailedResponse(500, /\/jsonrpc/),
       reason: 'the test answers the refresh of the settings with a 500 to draw the banner',
     });
     await page.setViewportSize({ width: 1280, height: 900 });

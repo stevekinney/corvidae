@@ -248,7 +248,7 @@ test.describe('Settings › General', () => {
     // The test answers every read of the settings with an error, and Chromium logs each one. How
     // many there are is not the test's to say: the view's probe and the page's own reads both ask.
     pageErrors.expectEvery({
-      pattern: loggedFailedResponse(500, /\/bureau\/jsonrpc/),
+      pattern: loggedFailedResponse(500, /\/jsonrpc/),
       reason: 'the test answers the reads of the settings with a 500',
     });
     await page.route('**/jsonrpc', async (route) => {

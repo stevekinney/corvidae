@@ -278,7 +278,7 @@ test.describe('Settings › Models, provider connected', () => {
     checkA11y,
   }) => {
     pageErrors.expect({
-      pattern: loggedFailedResponse(503, /\/bureau\/jsonrpc/),
+      pattern: loggedFailedResponse(503, /\/jsonrpc/),
       reason:
         'the test answers the read of the rows that can answer decisions with a 503, to see what the row shows',
     });

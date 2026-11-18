@@ -479,7 +479,7 @@ test.describe('a Bureau that fails', () => {
     const WAITING_LIST_READS = 3;
     const DONE_LIST_READS = 1;
     pageErrors.expect({
-      pattern: loggedFailedResponse(500, /bureau\/jsonrpc/),
+      pattern: loggedFailedResponse(500, /\/jsonrpc/),
       reason:
         'the test answers each read of the Bureau’s review list the page makes on arrival with a 500',
       count: PROBE_AND_FEED_READS + WAITING_LIST_READS + DONE_LIST_READS,
