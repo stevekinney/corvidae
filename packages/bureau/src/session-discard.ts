@@ -359,9 +359,26 @@ function withoutRows(
 }
 
 /**
+ * The session metadata key that names the rows discards removed (COR-2437): a save that loaded a
+ * row before its discard committed (a run start, a terminal or step save, a recovery) leaves it
+ * out rather than writing it back. Only the ids, never a row's text; absent on every session no
+ * discard touched, which so reads as before.
+ */
+export const DISCARDED_ROWS_METADATA_KEY = 'discardedRowIds';
+
+/** The ids of the rows discards removed from the session whose metadata is `metadata`. */
+export function discardedRowIdsOf(
+  metadata: Readonly<Record<string, unknown>> | undefined,
+): readonly string[] {
+  const value = metadata?.[DISCARDED_ROWS_METADATA_KEY];
+  return Array.isArray(value) ? value.filter((id): id is string => typeof id === 'string') : [];
+}
+
+/**
  * `session` without the rows `removed` of the turn of `runId`, in the live history and in that
- * run's own conversation boundary, so a fork through the run reads the turn as discarded too. The
- * run is the context's last, so no later boundary is encoded against the one rewritten here.
+ * run's own conversation boundary, so a fork through the run reads the turn as discarded too, and
+ * with those rows named as discarded in its metadata. The run is the context's last, so no later
+ * boundary is encoded against the one rewritten here.
  */
 export function removeSessionTurn(
   session: AgentSession,
@@ -373,6 +390,12 @@ export function removeSessionTurn(
   const history = session.conversationHistory;
   return {
     ...session,
+    // The rows are named as discarded, so a save that loaded them before this commit does not
+    // write them back (`discardedRowIdsOf`).
+    metadata: {
+      ...session.metadata,
+      [DISCARDED_ROWS_METADATA_KEY]: [...discardedRowIdsOf(session.metadata), ...removed],
+    },
     conversationHistory: {
       ...history,
       ids: history.ids.filter((id) => !gone.has(id)),

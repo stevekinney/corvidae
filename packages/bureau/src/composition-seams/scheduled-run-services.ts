@@ -82,6 +82,7 @@ import { agentSkillsRun } from '../agent-skills';
 import { type AgentDefinitionPin, describeDefinitionDrift } from '../agent-definition-pin';
 import { sessionPinMetadata, sessionRecordedPin } from '../session-agent-revision';
 import { appendConversationMessages, sessionRunMediaOptions } from '../provider-resolution';
+import { discardedRowIdsOf } from '../session-discard';
 import { committedFireApprovalIds } from '../scheduled-fire-review-state';
 import {
   createSchedulerServiceRequestContext,
@@ -330,6 +331,8 @@ export function createScheduledRunServices(
                 existingConversationHistory,
                 context.conversation.current,
                 baseConversationHistory,
+                // COR-2437: a row a discard removed is not written back by a fire's save.
+                new Set(discardedRowIdsOf(existing?.metadata)),
               )
             : context.conversation.current,
         };

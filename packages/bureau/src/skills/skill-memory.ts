@@ -4,6 +4,14 @@
 // ---------------------------------------------------------------------------
 
 /**
+ * Conversationalist's `MODEL_ONLY_METADATA_KEY` (COR-2437): a row the model is sent and people are
+ * never shown, which is not what the person asked. Named here, not imported: the skills subsystem
+ * imports only its own files and the layers beneath Bureau (`test/skills/boundaries.test.ts`), and it
+ * names conversationalist's shapes structurally, as `ConversationLike` does.
+ */
+const MODEL_ONLY_METADATA_KEY = 'conversationalist:modelOnly';
+
+/**
  * Structural interface compatible with Memory from the memory package.
  * Defined here to avoid skills depending on memory's concrete implementation.
  */
@@ -19,12 +27,6 @@ export interface MemoryLike {
  * Structural interface for a conversation, compatible with Conversation from
  * conversationalist without importing it.
  */
-/**
- * Conversationalist's `MODEL_ONLY_METADATA_KEY`, named here as this file names its shapes
- * without importing it: a row the model is sent and people are never shown (COR-2437).
- */
-const MODEL_ONLY_KEY = 'conversationalist:modelOnly';
-
 export interface ConversationLike {
   getMessages(options?: { includeHidden?: boolean }): ReadonlyArray<{
     role: string;
@@ -95,7 +97,7 @@ function extractLastUserMessage(conversation: ConversationLike): string | undefi
   for (let i = messages.length - 1; i >= 0; i--) {
     const message = messages[i]!;
     // A model-only row is the product's instruction (COR-2437), never what the person asked.
-    if (message.metadata?.[MODEL_ONLY_KEY] === true) continue;
+    if (message.metadata?.[MODEL_ONLY_METADATA_KEY] === true) continue;
     if (message.role === 'user' && typeof message.content === 'string') {
       return message.content;
     }

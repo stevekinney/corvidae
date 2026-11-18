@@ -9,6 +9,7 @@ import { Conversation, createConversationHistory } from 'conversationalist';
 
 import { createSessionPersistence } from './bureau-session-persistence';
 import { ContextHistoryChangedError } from './bureau-errors';
+import { removeSessionTurn } from './session-discard';
 
 describe('createSessionPersistence', () => {
   it('matches native object-spread semantics for malformed incoming strings and arrays', async () => {
@@ -145,20 +146,34 @@ describe('createSessionPersistence', () => {
       return {
         persistence,
         stored: () => storedSession!,
+        // Removes the row as a discard does: from the history, naming it as discarded.
         remove: (id: string) => {
-          const history = storedSession!.conversationHistory;
-          const { [id]: _removed, ...messages } = history.messages;
-          storedSession = {
-            ...storedSession!,
-            conversationHistory: {
-              ...history,
-              ids: history.ids.filter((row) => row !== id),
-              messages,
-            },
-          };
+          storedSession = removeSessionTurn(
+            storedSession!,
+            'run',
+            [id],
+            '2026-11-18T00:00:00.000Z',
+          );
         },
       };
     }
+
+    // The 18 createBureau failures of 1cf0d4b77: a save that names no base of its own (recovery,
+    // steering and shutdown saves take the candidate as their base) must still write the rows the
+    // run added. Only a discard's named rows stay out.
+    it('writes the rows a save added when its base is its own candidate', async () => {
+      const over = persistenceOver(['u1']);
+      const conversation = rows(['u1']);
+      conversation.appendMessages({
+        role: 'assistant',
+        content: 'recovered step 1',
+        id: 'run:step:1',
+      } as never);
+
+      await over.persistence.saveSession('session-raced', conversation, {});
+
+      expect(over.stored().conversationHistory.ids).toEqual(['u1', 'run:step:1']);
+    });
 
     it('keeps a row another writer removed out of a terminal save', async () => {
       const over = persistenceOver(['u1', 'run:step:0']);

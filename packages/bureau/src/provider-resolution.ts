@@ -146,14 +146,16 @@ export function appendConversationMessages(
   current: ConversationHistory,
   candidate: ConversationHistory,
   base: ConversationHistory,
+  // COR-2437: rows a discard removed (`discardedRowIdsOf`), which a candidate that loaded them
+  // before the discard committed must not write back.
+  discarded: ReadonlySet<string> = new Set(),
 ): ConversationHistory {
   const baseIds = new Set(base.ids);
   const candidateIds = new Set(candidate.ids);
   const currentIds = new Set(current.ids);
   const currentPreservedIds = current.ids.filter((id) => candidateIds.has(id) || !baseIds.has(id));
-  // COR-2437: a row the candidate did not add (it was in the base it was built from) is not new.
-  // Missing from the stored chat, it was removed by another writer (a discard), and stays removed.
-  const candidateOnlyIds = candidate.ids.filter((id) => !currentIds.has(id) && !baseIds.has(id));
+  // COR-2437: a row a discard removed stays removed, whatever copy the candidate was built from.
+  const candidateOnlyIds = candidate.ids.filter((id) => !currentIds.has(id) && !discarded.has(id));
   const ids = [...currentPreservedIds, ...candidateOnlyIds];
   const messages: Record<string, ConversationHistory['messages'][string]> = {};
 

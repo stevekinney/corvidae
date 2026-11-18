@@ -25,6 +25,7 @@ import {
 } from './session-authority';
 import type { DiagnosticSink } from './bureau-types/options';
 import { ContextArchivedError, ContextHistoryChangedError } from './bureau-errors';
+import { discardedRowIdsOf } from './session-discard';
 
 const BUREAU_AGENT_NAME = 'bureau';
 const SESSION_PERSISTENCE_MAXIMUM_ATTEMPTS = 3;
@@ -55,14 +56,16 @@ function appendConversationMessages(
   current: ConversationHistory,
   candidate: ConversationHistory,
   base: ConversationHistory,
+  // COR-2437: rows a discard removed (`discardedRowIdsOf`), which a candidate that loaded them
+  // before the discard committed must not write back.
+  discarded: ReadonlySet<string> = new Set(),
 ): ConversationHistory {
   const baseIds = new Set(base.ids);
   const candidateIds = new Set(candidate.ids);
   const currentIds = new Set(current.ids);
   const currentPreservedIds = current.ids.filter((id) => candidateIds.has(id) || !baseIds.has(id));
-  // COR-2437: a row the candidate did not add (it was in the base it was built from) is not new.
-  // Missing from the stored chat, it was removed by another writer (a discard), and stays removed.
-  const candidateOnlyIds = candidate.ids.filter((id) => !currentIds.has(id) && !baseIds.has(id));
+  // COR-2437: a row a discard removed stays removed, whatever copy the candidate was built from.
+  const candidateOnlyIds = candidate.ids.filter((id) => !currentIds.has(id) && !discarded.has(id));
   const ids = [...currentPreservedIds, ...candidateOnlyIds];
   const messages: Record<string, ConversationHistory['messages'][string]> = {};
 
@@ -345,15 +348,17 @@ export function createSessionPersistence(dependencies: SessionPersistenceDepende
       ) {
         throw new ContextArchivedError(sessionId);
       }
-      // COR-2437: a start whose loaded chat lost a row before this save (a discard committed
-      // meanwhile) is refused: the run would be asked over the row the person threw away. Nothing
-      // is stored, and sending again starts it on the chat as it is.
+      // COR-2437: the rows discards removed, by id. Only a discard names a row here: a row the
+      // run wrote itself, one recovery re-reads from a checkpoint, and one another writer compacted
+      // away are none of them, so every other save merges exactly as before.
+      const discarded = new Set(discardedRowIdsOf(existingSession?.metadata));
+      // A start whose loaded chat held a row a discard removed before this save is refused: the run
+      // would be asked over the row the person threw away. Nothing is stored, and sending again
+      // starts it on the chat as it is.
       if (
         startsRun === true &&
-        existingSession !== undefined &&
-        baseConversationHistory.ids.some(
-          (id) => getOwn(existingSession.conversationHistory.messages, id) === undefined,
-        )
+        discarded.size > 0 &&
+        baseConversationHistory.ids.some((id) => discarded.has(id))
       ) {
         throw new ContextHistoryChangedError(sessionId);
       }
@@ -401,6 +406,7 @@ export function createSessionPersistence(dependencies: SessionPersistenceDepende
               existingSession.conversationHistory,
               conversation.current,
               baseConversationHistory,
+              discarded,
             )
           : conversation.current,
         metadata: mergedMetadata,

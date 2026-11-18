@@ -39,6 +39,10 @@ const NOT_STORAGE_KEYS = new Set([
   'REGENERATE_RECEIPT_OUTBOX_NAMESPACE',
   // COR-2437: the session outbox namespace a discard's receipt rides, as a regeneration's does.
   'DISCARD_RECEIPT_OUTBOX_NAMESPACE',
+  // COR-2437: conversationalist's message-metadata key of a model-only row, which the skills
+  // subsystem names itself because it may not import conversationalist; a key in a message's
+  // metadata, never a key of Bureau's storage.
+  'MODEL_ONLY_METADATA_KEY',
   // COR-2009: the text a generated hook signing secret starts with (`whsec_`), not a storage key.
   'HOOK_SIGNING_SECRET_PREFIX',
   // COR-2009: the start of a schedule tick's run id, a workflow id, not a storage key.
