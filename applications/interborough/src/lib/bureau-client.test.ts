@@ -8,6 +8,7 @@ import {
   chatContextSchema,
   type ContextWindow,
   deleteContext,
+  discardContextTurn,
   type Fetcher,
   forgetContextGrants,
   forkContext,
@@ -210,6 +211,22 @@ describe('the Bureau’s context operations', () => {
       id: 'bureau.contexts.regenerate',
       method: 'bureau.contexts.regenerate',
       params: { contextId: 'c1', commandId: 'regenerate:1', messageId: 'answer-1' },
+    });
+  });
+
+  test('discardContextTurn uses the durable context operation and validates its receipt', async () => {
+    const stub = answering(result({ contextId: 'c1', runId: 'run-1', removed: 3, revision: 9 }));
+
+    const receipt = await withStub(stub.fetch, () =>
+      discardContextTurn({ contextId: 'c1', commandId: 'discard:1', runId: 'run-1' }),
+    );
+
+    expect(receipt).toEqual({ contextId: 'c1', runId: 'run-1', removed: 3, revision: 9 });
+    expect(stub.calls[0]?.body).toEqual({
+      jsonrpc: '2.0',
+      id: 'bureau.contexts.discardturn',
+      method: 'bureau.contexts.discardturn',
+      params: { contextId: 'c1', commandId: 'discard:1', runId: 'run-1' },
     });
   });
 });

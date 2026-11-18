@@ -265,6 +265,10 @@ export const CHAT_COPY = {
     stopFailed: 'The run could not be stopped, and it may still be going. Reconnect to check.',
   },
   /** The host-owned answer replacement action. */
+  /** Discard beside a stopped reply (COR-2437). */
+  discardTurn: {
+    failed: 'The stopped reply wasn’t discarded. Try again.',
+  },
   regeneration: {
     action: 'Regenerate',
     running: 'Regenerating…',

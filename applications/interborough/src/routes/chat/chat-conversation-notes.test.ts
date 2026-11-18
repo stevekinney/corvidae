@@ -88,11 +88,12 @@ describe('a chat opened again', () => {
   test('says why its last run stopped', async () => {
     const { findByText } = open();
 
-    // A run that failed is a status line in danger text, worded as the product's own.
+    // A run that failed is the last turn's failed state, worded as the product's own (COR-2437):
+    // Chat draws it on the turn, in place of the status line.
     const reason = await findByText(/budget exceeded: max calls 1/i);
-    const line = reason.closest('[data-kind="stopped"]');
-    expect(line?.hasAttribute('data-failed')).toBe(true);
-    expect(line?.textContent).toContain('The reply stopped partway');
+    const outcome = reason.closest('.chat-turn-outcome');
+    expect(outcome?.getAttribute('data-kind')).toBe('failed');
+    expect(outcome?.textContent).toContain('The reply stopped partway');
   });
 
   test('says what the agent remembered, and the link opens its memory without leaving the app', async () => {

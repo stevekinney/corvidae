@@ -379,6 +379,34 @@ export async function sendContextInput(
   );
 }
 
+const contextDiscardTurnReceiptSchema = z.object({
+  contextId: z.string().min(1),
+  runId: z.string().min(1),
+  removed: z.number().int().nonnegative(),
+  revision: z.number().int().nonnegative(),
+});
+
+/** The committed removal returned by `bureau.contexts.discardturn`. */
+export type ContextDiscardTurnReceipt = z.infer<typeof contextDiscardTurnReceiptSchema>;
+
+/**
+ * Removes what the chat's last run wrote after the person's message, once the person stopped it or
+ * it failed (`bureau.contexts.discardturn`, COR-2437). The person's message stays. An exact retry
+ * under the same `commandId` answers the same and removes nothing more.
+ */
+export async function discardContextTurn(
+  input: {
+    readonly contextId: string;
+    readonly commandId: string;
+    readonly runId: string;
+  },
+  options?: { readonly signal?: AbortSignal; readonly fetch?: Fetcher },
+): Promise<ContextDiscardTurnReceipt> {
+  return contextDiscardTurnReceiptSchema.parse(
+    await callBureau('bureau.contexts.discardturn', input, options),
+  );
+}
+
 /** Replaces the final ended assistant answer without starting a new turn or running tools. */
 export async function regenerateContext(
   input: {

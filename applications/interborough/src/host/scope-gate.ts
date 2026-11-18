@@ -48,6 +48,10 @@ export const BUREAU_METHOD_SCOPES: ReadonlyMap<string, ApiScope> = new Map<strin
   ['bureau.contexts.steer', 'chats:write'],
   // COR-2296: replacing a chat's latest answer rewrites the chat.
   ['bureau.contexts.regenerate', 'chats:write'],
+  // COR-2437: discarding a chat's last unfinished turn rewrites the chat, and resuming one would
+  // run it on.
+  ['bureau.contexts.discardturn', 'chats:write'],
+  ['bureau.contexts.resumeturn', 'chats:write'],
   ['bureau.reviews.resolve', 'reviews:write'],
   ['bureau.agents.list', 'agents:read'],
   ['bureau.agents.definitions.list', 'agents:read'],

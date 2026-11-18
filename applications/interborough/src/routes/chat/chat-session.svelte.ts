@@ -36,6 +36,7 @@ import {
 import { parseStepRowIdentifier } from '@lostgradient/operative';
 import { CHAT_COPY } from '../../app/copy/chat.ts';
 import {
+  discardContextTurn,
   forgetContextGrants,
   forkRefusalReason,
   regenerateContext,
@@ -216,6 +217,13 @@ export class ChatSessionState {
   failureWasTransport = $state(false);
   /** The host-owned answer replacement currently in flight, or its retryable failure receipt. */
   regeneration = $state<ChatRegenerationState | undefined>(undefined);
+  /**
+   * The discard of the last stopped turn in flight (COR-2437), by the run whose turn it removes,
+   * with the command it is sent under. A second Discard while it is in flight does nothing.
+   */
+  discarding = $state<{ readonly runId: string; readonly commandId: string } | undefined>(
+    undefined,
+  );
   /** The questions the run is waiting on the person to answer; the next message answers one. */
   humanRequests = $state.raw<readonly HumanRequest[]>([]);
   /** Whether the session opened on a run that was going, and is still reading it. */
@@ -322,6 +330,8 @@ export class ChatSessionState {
    */
   #approvalDeadlines: readonly ApprovalDeadline[] = [];
   #regenerationPromise: Promise<void> | undefined;
+  /** The discard command a failed Discard is tried again under, by the run it removes the turn of. */
+  #discardCommand: { readonly runId: string; readonly commandId: string } | undefined;
   #readerAbort: AbortController | undefined;
   #activeTurn: Promise<unknown> = Promise.resolve();
   /**
@@ -689,6 +699,39 @@ export class ChatSessionState {
     await this.attach({ rereading: true });
     // A read that failed has not said what the run waits on, so the caller reads again.
     return !this.#attachFailed;
+  }
+
+  /**
+   * Removes the last turn the person stopped, by its run, through the Bureau
+   * (`bureau.contexts.discardturn`, COR-2437), then reads the thread again so the rows go. The
+   * person's message stays. Resolves `false` when nothing was removed: the Bureau refused it, or it
+   * could not be reached. A second call while one is in flight is the same command.
+   */
+  async discardTurn(runId: string): Promise<boolean> {
+    if (this.#closed?.() === true || this.streaming || this.attaching || this.transportActive) {
+      return false;
+    }
+    if (this.discarding !== undefined) return false;
+    // A discard that failed is tried again under the same command, so one that did commit before
+    // its answer was lost is answered from the Bureau's record instead of being refused.
+    const earlier = this.#discardCommand;
+    const commandId =
+      earlier?.runId === runId ? earlier.commandId : `discard:${crypto.randomUUID()}`;
+    this.#discardCommand = { runId, commandId };
+    this.discarding = { runId, commandId };
+    try {
+      await discardContextTurn(
+        { contextId: this.sessionId, commandId, runId },
+        { signal: this.#abort.signal },
+      );
+      this.#discardCommand = undefined;
+      await this.refresh();
+      return true;
+    } catch {
+      return false;
+    } finally {
+      this.discarding = undefined;
+    }
   }
 
   /** Replaces the latest ended answer through Bureau without starting an AG-UI/tool turn. */

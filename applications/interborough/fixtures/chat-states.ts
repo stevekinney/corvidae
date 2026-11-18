@@ -192,6 +192,21 @@ export function failedPartwayMessages(): Record<string, unknown>[] {
   ];
 }
 
+/** The thread identifier of the refund chat the person stopped partway (COR-2437). */
+export const STOPPED_PARTWAY_THREAD = 'sample-chat-refund-stopped-partway';
+
+/** The run of the refund chat the person stopped partway, which Discard removes the turn of. */
+export const STOPPED_PARTWAY_RUN = 'run-states-stopped';
+
+/** The thread of the refund chat the person stopped: the call answered, then text cut off mid-sentence. */
+export function stoppedPartwayMessages(): Record<string, unknown>[] {
+  return [
+    userMessage('user-states-stopped', REFUND_TITLE, ASKED),
+    ...stepOf(0, STOPPED_PARTWAY_RUN, LOOKUP_4471),
+    { id: `${STOPPED_PARTWAY_RUN}:step:1`, role: 'assistant', content: FAILED_PARTWAY_REPLY },
+  ];
+}
+
 /** The thread of frame j: the call is answered and the run ends with no reply. */
 export function endedOnToolCallMessages(): Record<string, unknown>[] {
   return [
@@ -295,13 +310,19 @@ export function workflowCreatedMessages(): Record<string, unknown>[] {
 
 /** Which of the board's chats a record is for. */
 export type StatesChat =
-  'failed-partway' | 'ended-on-tool-call' | 'held-by-plugin' | 'workflow-created';
+  | 'failed-partway'
+  | 'stopped-partway'
+  | 'ended-on-tool-call'
+  | 'held-by-plugin'
+  | 'workflow-created';
 
 /** The thread identifier of `chat`. */
 export function threadOf(chat: StatesChat): string {
   switch (chat) {
     case 'failed-partway':
       return FAILED_PARTWAY_THREAD;
+    case 'stopped-partway':
+      return STOPPED_PARTWAY_THREAD;
     case 'ended-on-tool-call':
       return ENDED_ON_TOOL_CALL_THREAD;
     case 'held-by-plugin':
@@ -316,6 +337,8 @@ export function messagesOf(chat: StatesChat): Record<string, unknown>[] {
   switch (chat) {
     case 'failed-partway':
       return failedPartwayMessages();
+    case 'stopped-partway':
+      return stoppedPartwayMessages();
     case 'ended-on-tool-call':
       return endedOnToolCallMessages();
     case 'held-by-plugin':
@@ -331,6 +354,7 @@ function previewOf(chat: StatesChat): string {
     case 'held-by-plugin':
       return HELD_BY_PLUGIN_QUESTION;
     case 'failed-partway':
+    case 'stopped-partway':
       return FAILED_PARTWAY_REPLY;
     case 'ended-on-tool-call':
       return REFUND_TITLE;
@@ -411,6 +435,20 @@ export function tasksOf(chat: StatesChat): Record<string, unknown>[] {
           status: 'failed',
           finishReason: 'error',
           statusMessage: FAILED_PARTWAY_CAUSE,
+          createdAt: iso(ASKED),
+          updatedAt: iso(LOOKED_UP + 2000),
+        },
+      ];
+    case 'stopped-partway':
+      return [
+        {
+          ...common,
+          id: STOPPED_PARTWAY_RUN,
+          agentName: 'tool-runner',
+          origin: { kind: 'chat', contextId: STOPPED_PARTWAY_THREAD, principal: 'anonymous:local' },
+          status: 'canceled',
+          finishReason: 'aborted',
+          statusMessage: null,
           createdAt: iso(ASKED),
           updatedAt: iso(LOOKED_UP + 2000),
         },

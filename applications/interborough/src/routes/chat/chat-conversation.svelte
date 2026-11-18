@@ -167,7 +167,7 @@
   import { editForkPoint, lastBranchPoint } from './edit-fork.ts';
   import { composerStatusOf } from './composer-state.ts';
   import { draftTime, forgetChatDraft, readChatDraft, writeChatDraft } from './chat-drafts.ts';
-  import { lastAssistantId, turnStateOf } from './turn-states.ts';
+  import { lastAssistantId, lastTurnStop, turnStateOf, withoutStopLine } from './turn-states.ts';
   import { changeSetting, type SteerNotices } from './steer-change.ts';
   import ModelPicker from './model-picker.svelte';
   import NewChatChoices from './new-chat-choices.svelte';
@@ -1005,7 +1005,7 @@
   // of, so it is drawn on the row it belongs to (`withStopLine`). A chat the server stopped when it
   // restarted says so under what arrived, in place of the plain line the canceled run left
   // (`withEndedLine`).
-  const shown = $derived(
+  const lined = $derived(
     withoutAssetParts(
       withTypedAnswers(
         withEndedLine(withStopLine(session.conversation, { tools: toolInfo }), endedByRestart),
@@ -1013,11 +1013,18 @@
       ),
     ),
   );
+  // How the last turn ended when the person stopped it or its run failed: Chat draws it on the turn
+  // (`turn-states.ts`, COR-2437), so its status line is taken off the row. While a run goes, the
+  // last turn is the new one, which has not ended.
+  const lastStop = $derived(session.streaming ? undefined : lastTurnStop(lined));
+  const shown = $derived(withoutStopLine(lined, lastStop));
 
   // The status line Retry is offered beside: the last turn's, when its run failed. A failed attempt
   // of an earlier turn keeps its line (row 20b) with nothing beside it, since Retry runs the last
   // turn again.
-  const retryNoteId = $derived(failedStopNoteId(shown));
+  // Read before the last turn's line is taken off its row (`lastStop`), so the header still says
+  // the chat failed when Chat draws the failure on the turn.
+  const retryNoteId = $derived(failedStopNoteId(lined));
   // A failed step offers Retry this step in the last turn, after the person's last message, while
   // that turn can run again (COR-2283 R7): it runs the turn again, as the status line's Retry does.
   const lastTurnStart = $derived(
@@ -1046,7 +1053,22 @@
       reconnect: session.reconnectSchedule,
       lastAssistantId: lastAssistant,
       now: () => reconnectNow,
+      stop: lastStop?.state,
     });
+  }
+  // The run of the last turn the person stopped, which Discard removes the turn of (COR-2437). A
+  // turn whose reply has no row of its run, as one restored from before runs named their rows,
+  // offers no Discard.
+  const discardableRun = $derived(
+    lastStop?.state.kind === 'stopped' && lastAssistant !== undefined
+      ? replyStepOf(lastAssistant)?.runId
+      : undefined,
+  );
+  async function discardTurn(): Promise<void> {
+    if (discardableRun === undefined) return;
+    if (!(await session.discardTurn(discardableRun))) {
+      showToast(CHAT_COPY.discardTurn.failed, { variant: 'danger', duration: 0 });
+    }
   }
 
   // The messages that offer a branch. A run that is going, or that the page is still reading, has
@@ -2195,6 +2217,9 @@
         messageTurnState={turnState}
         onRetryConnection={() => void session.reconnect()}
         {...session.canRetryTurn ? { onRetryTurn: () => void retryTurn() } : {}}
+        {...discardableRun !== undefined && session.discarding === undefined
+          ? { onDiscardTurn: () => void discardTurn() }
+          : {}}
         onComposerInput={rememberDraft}
         questionDock={dockedRequest === undefined ? undefined : hostQuestionDock}
         composerHeader={choosing && agent !== '' ? newChatHeader : undefined}

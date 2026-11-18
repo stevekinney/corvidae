@@ -1,11 +1,21 @@
 /**
  * Which turn Chat draws as reconnecting, and what it says (COR-2283 R3).
  */
-import { createConversationHistory, type Message } from '@lostgradient/chat';
+import {
+  CINDER_NOTES_METADATA_KEY,
+  createConversationHistory,
+  type Message,
+} from '@lostgradient/chat';
 import { describe, expect, test } from 'bun:test';
 
 import type { ChatReconnect } from './chat-session.svelte.ts';
-import { lastAssistantId, reconnectingTurnState, turnStateOf } from './turn-states.ts';
+import {
+  lastAssistantId,
+  lastTurnStop,
+  reconnectingTurnState,
+  turnStateOf,
+  withoutStopLine,
+} from './turn-states.ts';
 
 const NOW = 1_000_000;
 const schedule = (overrides: Partial<ChatReconnect> = {}): ChatReconnect => ({
@@ -53,6 +63,88 @@ describe('the reconnecting turn', () => {
       wait: 8,
     });
     expect(reconnectingTurnState(schedule({ nextTryAt: NOW - 50 }), NOW).nextTryIn).toBe(0);
+  });
+});
+
+describe('the stopped and failed turn (COR-2437)', () => {
+  const noted = (id: string, role: Message['role'], notes?: readonly object[]) =>
+    ({
+      id,
+      role,
+      metadata: notes === undefined ? {} : { [CINDER_NOTES_METADATA_KEY]: notes },
+    }) as unknown as Message;
+  const historyOf = (rows: readonly Message[]) => {
+    const base = createConversationHistory({ id: 'c' });
+    return {
+      ...base,
+      ids: rows.map((row) => row.id),
+      messages: Object.fromEntries(rows.map((row) => [row.id, row])),
+    } as unknown as typeof base;
+  };
+  const stoppedLine = { kind: 'stopped', id: 'stop', reason: 'The run was stopped.' };
+  const failedLine = { kind: 'stopped', id: 'fail', reason: 'It failed.', failed: true };
+
+  test('reads the last turn the person stopped as stopped, and one whose run failed as failed with its line', () => {
+    const stopped = historyOf([
+      noted('u1', 'user'),
+      noted('run:step:0', 'assistant', [stoppedLine]),
+    ]);
+    expect(lastTurnStop(stopped)).toEqual({
+      state: { kind: 'stopped' },
+      rowId: 'run:step:0',
+      noteId: 'stop',
+    });
+    const failed = historyOf([noted('u1', 'user'), noted('run:step:0', 'assistant', [failedLine])]);
+    expect(lastTurnStop(failed)?.state).toEqual({ kind: 'failed', cause: 'It failed.' });
+  });
+
+  test('reads nothing for a server’s notice, an earlier turn, or a turn with no reply to draw on', () => {
+    const notice = { ...stoppedLine, notice: true };
+    expect(
+      lastTurnStop(historyOf([noted('u1', 'user'), noted('a1', 'assistant', [notice])])),
+    ).toBeUndefined();
+    expect(
+      lastTurnStop(
+        historyOf([
+          noted('u1', 'user'),
+          noted('a1', 'assistant', [stoppedLine]),
+          noted('u2', 'user'),
+          noted('a2', 'assistant'),
+        ]),
+      ),
+    ).toBeUndefined();
+    expect(lastTurnStop(historyOf([noted('u1', 'user', [stoppedLine])]))).toBeUndefined();
+  });
+
+  test('takes the line it read off its row, and keeps the row’s other notes', () => {
+    const memory = { kind: 'memory', id: 'm', recordId: 'r', collection: 'c', memoryClass: 'x' };
+    const history = historyOf([
+      noted('u1', 'user'),
+      noted('a1', 'assistant', [memory, stoppedLine]),
+    ]);
+    const stop = lastTurnStop(history);
+
+    const shown = withoutStopLine(history, stop);
+
+    expect(shown.messages['a1']?.metadata?.[CINDER_NOTES_METADATA_KEY]).toEqual([memory]);
+    expect(withoutStopLine(history, undefined)).toBe(history);
+  });
+
+  test('draws the stop on the last assistant turn, and the reconnect over it while one is under way', () => {
+    const facts = { reconnect: undefined, lastAssistantId: 'a2', now: () => NOW };
+    expect(
+      turnStateOf(message('a2', 'assistant'), { ...facts, stop: { kind: 'stopped' } }),
+    ).toEqual({ kind: 'stopped' });
+    expect(
+      turnStateOf(message('a1', 'assistant'), { ...facts, stop: { kind: 'stopped' } }),
+    ).toBeUndefined();
+    expect(
+      turnStateOf(message('a2', 'assistant'), {
+        ...facts,
+        reconnect: schedule(),
+        stop: { kind: 'stopped' },
+      })?.kind,
+    ).toBe('reconnecting');
   });
 });
 
