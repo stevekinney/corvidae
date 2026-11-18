@@ -511,19 +511,20 @@ export function renderBrief(issue: IssueSummary, options: BriefOptions): string 
 }
 
 function scratchLines(options: BriefOptions): string[] {
+  const scratch = options.scratch;
   const contexts =
-    options.scratch === undefined || options.sourceContext === undefined
+    scratch === undefined || options.sourceContext === undefined
       ? []
       : [...options.sourceContext].map(
           ([locator, content]) =>
-            `- ${locator} → ${digest(content)} → \`${join(options.scratch, `context-${digest(content)}.txt`)}\``,
+            `- ${locator} → ${digest(content)} → \`${join(scratch, `context-${digest(content)}.txt`)}\``,
         );
-  return options.scratch === undefined
+  return scratch === undefined
     ? []
     : [
         '## Scratch directory',
         '',
-        `\`${options.scratch}\` is yours alone, created for this brief. Keep your logs and temporary files there and nowhere shared.`,
+        `\`${scratch}\` is yours alone, created for this brief. Keep your logs and temporary files there and nowhere shared.`,
         '',
         ...(contexts.length === 0
           ? []
