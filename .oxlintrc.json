@@ -72,6 +72,7 @@
     "**/.bun/**",
     "**/node_modules/**",
     "**/*.generated.d.ts",
+    "**/src/lib/generated/*.generated.ts",
     "**/src/tokens/runtime/*-validator.generated.js",
     "**/scripts/design-system/vendor/**",
     "*.lock",

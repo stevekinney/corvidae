@@ -8,7 +8,7 @@
  *
  * A handler reaches a write when it, or a function of the same file it names, calls `.mutate` or
  * `.mutateAsync` on a mutation, or calls an exported function of `src` that sends one (a
- * `callBureau` of an operation that is not a read, or a Weft client write). What is marked:
+ * `bureauClient` call of an operation that is not a read, or a Weft client write). What is marked:
  *
  * - `Button` and native elements: `data-changes`, unless the button is `type="submit"`, which the
  *   shell already holds.
@@ -89,7 +89,7 @@ function exportedWriteFunctions(): Set<string> {
     for (const [index, declaration] of declarations.entries()) {
       const end = declarations[index + 1]?.index ?? text.length;
       const body = text.slice(declaration.index, end);
-      const operations = [...body.matchAll(/callBureau\(\s*(?:'([\w.]+)'|(\w+))/g)];
+      const operations = [...body.matchAll(/bureauClient\[\s*(?:'([\w.]+)'|([^'\]\s][^\]]*))/g)];
       const writesBureau = operations.some(
         (call) => call[2] !== undefined || !isReadOperation(call[1] ?? ''),
       );

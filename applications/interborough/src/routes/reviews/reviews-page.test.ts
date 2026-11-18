@@ -452,7 +452,7 @@ describe('the approval’s details', () => {
           type: 'approval',
           message: 'Run it?',
           risk: 'high',
-          operation: { kind: 'command', ...extra },
+          operation: { kind: 'command', command: '', ...extra } as never,
         },
       },
     });

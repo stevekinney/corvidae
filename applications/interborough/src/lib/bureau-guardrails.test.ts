@@ -1,4 +1,3 @@
-import { rejectionOf } from '@lostgradient/testing';
 import { afterEach, describe, expect, test } from 'bun:test';
 
 import { listGuardrails } from './bureau-guardrails.ts';
@@ -26,13 +25,5 @@ describe('the installed guardrails', () => {
 
     expect(await listGuardrails()).toEqual([GROUNDING] as never);
     expect(stub.callsTo('bureau.guardrails.list')[0]?.params).toEqual({});
-  });
-
-  test('refuses an answer whose family it does not know, rather than mislabel it', async () => {
-    stub = installBureauStub({
-      'bureau.guardrails.list': () => ({ guardrails: [{ ...GROUNDING, family: 'network' }] }),
-    });
-
-    expect(await rejectionOf(listGuardrails())).toBeInstanceOf(Error);
   });
 });

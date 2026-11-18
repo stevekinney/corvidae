@@ -40,7 +40,7 @@ test.use({ baseURL: E2E_SHOWCASE_URL, timezoneId: SAMPLE_TIME_ZONE });
 const SOURCE = 'run-hooks-states.spec.ts';
 const WIDTHS = [1280, 375] as const;
 /** Every request the page makes of the host, which a test takes away to make the server stop answering. */
-const HOST_REQUESTS = /\/(v1|bureau|api)\//;
+const HOST_REQUESTS = /\/(v1|bureau|api)\/|\/jsonrpc$/;
 
 type Plan = Array<{
   id: string;
@@ -120,7 +120,7 @@ async function answerHooks(
   page: Page,
   answer: Hooks | number | (() => Promise<Hooks | number> | Hooks | number),
 ): Promise<void> {
-  await page.route('**/bureau/jsonrpc', async (route: Route) => {
+  await page.route('**/jsonrpc', async (route: Route) => {
     const body = JSON.parse(route.request().postData() ?? '{}') as { method?: string };
     if (body.method !== 'bureau.tasks.inspect') {
       await route.fallback();
@@ -259,7 +259,7 @@ for (const width of WIDTHS) {
       checkA11y,
     }) => {
       pageErrors.expectEvery({
-        pattern: loggedFailedResponse(500, /\/bureau\/jsonrpc/),
+        pattern: loggedFailedResponse(500, /\/jsonrpc/),
         reason: 'the test answers the run’s inspection with a 500',
       });
       await answerHooks(page, 500);
@@ -281,7 +281,7 @@ for (const width of WIDTHS) {
       checkA11y,
     }) => {
       pageErrors.expectEvery({
-        pattern: loggedFailedResponse(403, /\/bureau\/jsonrpc/),
+        pattern: loggedFailedResponse(403, /\/jsonrpc/),
         reason: 'the test refuses the run’s inspection with a 403',
       });
       await answerHooks(page, 403);

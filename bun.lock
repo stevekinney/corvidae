@@ -97,6 +97,7 @@
         "happy-dom": "catalog:",
         "oxlint": "catalog:",
         "oxlint-tsgolint": "catalog:",
+        "prettier": "catalog:",
         "svelte-check": "catalog:",
         "typescript": "catalog:",
       },

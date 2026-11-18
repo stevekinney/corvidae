@@ -148,7 +148,20 @@ describe('BureauEventSource.retryNow', () => {
     expect(source?.reconnectAttempt).toBe(0);
   });
 
-  test('failedConnections counts every failure and drop, and a ping that resets the attempt never lowers it', async () => {
+  test('a stream whose first frame is an error never resets the backoff, so it keeps backing off', async () => {
+    install();
+    connect(1_000_000);
+    await waitUntil(() => hub.opened('bureau') === 1);
+    for (let drop = 1; drop <= 3; drop += 1) {
+      hub.write('bureau', 'event: error\ndata: {"message":"boom"}\n\n');
+      await waitUntil(() => source?.failedConnections === drop);
+      expect(source?.reconnectAttempt).toBe(drop);
+      source?.retryNow();
+      await waitUntil(() => hub.requests.bureau.length === drop + 1);
+    }
+  });
+
+  test('failedConnections counts every failure and drop, and an event that resets the attempt never lowers it', async () => {
     install();
     hub.refusals.bureau = 503;
     connect(1_000_000);
@@ -156,8 +169,8 @@ describe('BureauEventSource.retryNow', () => {
     expect(source?.reconnectAttempt).toBe(1);
     source?.retryNow();
     await waitUntil(() => hub.opened('bureau') === 1);
-    // The connection answers (a ping, not the end of the replay), so the attempt starts again at 0.
-    hub.write('bureau', 'event: ping\ndata: {"emittedAtMs":0}\n\n');
+    // The connection delivers an event, so the attempt starts again at 0.
+    hub.write('bureau', envelopeChunk({ kind: 'run.settled', cursor: 'a:1' }));
     await waitUntil(() => source?.reconnectAttempt === 0);
     expect(source?.failedConnections).toBe(1);
     // Then it drops: the attempt is 1 again, as it was before, and the failures are 2.

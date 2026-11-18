@@ -90,7 +90,8 @@ describe('the compatibility notice', () => {
     expect(describeBreakingChange({ kind: 'input-schema', breaking: true })).toBe(
       copy.changes.inputSchema,
     );
-    expect(describeBreakingChange({ kind: 'something-new', breaking: true })).toBe(
+    // A kind a newer Bureau reports, which this build has no words for.
+    expect(describeBreakingChange({ kind: 'something-new', breaking: true } as never)).toBe(
       copy.changes.other,
     );
   });

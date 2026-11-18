@@ -13,16 +13,6 @@ export type ListDetailRowContext = {
   open: () => void;
 };
 
-/** What the `header` snippet receives. */
-export type ListDetailHeaderContext = {
-  /**
-   * The toggle that hides the list pane, with `listCollapsible` while an item is open and both
-   * panes show; `undefined` otherwise. Render it in the header, usually at the end of the title
-   * row, so the header keeps its full width for the search and the filter.
-   */
-  listToggle: Snippet | undefined;
-};
-
 /** State the `listBody` snippet receives, for a list pane that draws its own rows. */
 export type ListDetailListBodyContext<T> = {
   /** The records to list, in order. */
@@ -108,10 +98,11 @@ export type ListDetailProps<T> = Omit<HTMLAttributes<HTMLDivElement>, 'children'
   /**
    * List header, above the rows: the title, the count, the create action, the search and the
    * filter. Put the title and the create action on their own row and the filter below at full
-   * width, so the action never reads as the filter's submit button. With `listCollapsible`, it is
-   * given the toggle that hides the list to place, usually at the end of the title row.
+   * width, so the action never reads as the filter's submit button. The toggle that hides the list
+   * (`listCollapsible`) is not part of it: ListDetail draws it in the header's start corner, and the
+   * header's first row, whatever it holds, starts after it.
    */
-  header?: Snippet<[context: ListDetailHeaderContext]>;
+  header?: Snippet;
   /**
    * Opens the first item when none is open and the panes sit side by side, so the detail beside the
    * list is never empty. An item named by the URL, or by `selectedKey`, wins. Nothing opens while
@@ -175,13 +166,13 @@ export type ListDetailProps<T> = Omit<HTMLAttributes<HTMLDivElement>, 'children'
    */
   maximumListWidth?: number;
   /**
-   * Offers a toggle that hides the list pane while an item is open and the panes sit side by side
-   * or one above the other, so the detail takes the whole width. While the list shows, `header`
-   * is given the toggle to place (a list with no `header` gets a header holding it alone); while
-   * the list is hidden, the toggle is the only control of a narrow rail at the start edge, so it is
-   * always on screen, and focus moves to it each time it flips. With no item open the list shows
-   * and there is no toggle, and below `pushBelow`, where one pane shows at a time, there is
-   * nothing to hide.
+   * Offers a toggle that hides the list pane while the panes sit side by side or one above the
+   * other, so the detail takes the whole width. The toggle is one control in one place, the start
+   * corner of the list's header, which is also where a narrow rail holds it once the list is hidden
+   * (no rail is drawn while the list shows), so it is always on screen, never beside the header's
+   * own actions, and does not move or lose focus as it flips. It is drawn with or without an open
+   * item, so its corner is never empty; hidden with nothing open, the detail shows its empty state.
+   * Below `pushBelow`, where one pane shows at a time, there is nothing to hide.
    * @default false
    */
   listCollapsible?: boolean;

@@ -113,7 +113,7 @@ test('stays on the session and says why when the Bureau refuses the branch', asy
 }) => {
   const parentId = newThreadId('refused');
   await runToEnd(request, 'demo:model-switcher', parentId, 'A question');
-  await page.route('**/bureau/jsonrpc', async (route) => {
+  await page.route('**/jsonrpc', async (route) => {
     const body = route.request().postDataJSON() as { id: unknown; method: string };
     if (body.method !== 'bureau.contexts.fork') return route.continue();
     return route.fulfill({
@@ -165,7 +165,7 @@ test('offers a branch only on the last reply of a run, not on the earlier reply 
   await expect(upNext).toContainText('Also this');
   const delivered = page.waitForResponse(
     (response) =>
-      response.url().endsWith('/bureau/jsonrpc') &&
+      response.url().endsWith('/jsonrpc') &&
       (response.request().postData() ?? '').includes('"bureau.contexts.input"'),
   );
   await upNext.getByRole('button', { name: 'Send now instead' }).click();

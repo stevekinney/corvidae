@@ -654,7 +654,6 @@ export type { LocaleProviderProps, TextDirection } from './components/locale-pro
 
 export { LIST_DETAIL_SHORTCUTS, default as ListDetail } from './components/list-detail/index.ts';
 export type {
-  ListDetailHeaderContext,
   ListDetailListBodyContext,
   ListDetailProps,
   ListDetailRowContext,
@@ -1474,6 +1473,7 @@ export type {
   TimeZoneLabelOptions,
 } from './utilities/format-date.ts';
 export { formatDuration } from './utilities/format-duration.ts';
+export { INPUT_MODALITY_ATTRIBUTE, trackInputModality } from './utilities/input-modality.ts';
 export type {
   SortableAnnouncements,
   SortableItemContext,

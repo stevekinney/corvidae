@@ -3,11 +3,20 @@
   import { SectionHeading } from '../section-heading/index.ts';
   import ListDetail from './list-detail.svelte';
 
-  let { withActions = false }: { withActions?: boolean } = $props();
+  let {
+    withActions = false,
+    collapsible = false,
+  }: { withActions?: boolean; collapsible?: boolean } = $props();
   const items = [{ id: 'alpha', title: 'Alpha' }];
 </script>
 
-<ListDetail {items} key={(item) => item.id} label="Chats" selectionParameter={null}>
+<ListDetail
+  {items}
+  key={(item) => item.id}
+  label="Chats"
+  selectionParameter={null}
+  listCollapsible={collapsible}
+>
   {#snippet header()}
     <SectionHeading title="Chats" level={2}>
       {#snippet actions()}
