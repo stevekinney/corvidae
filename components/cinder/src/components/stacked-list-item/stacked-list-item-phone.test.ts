@@ -181,8 +181,61 @@ describe('StackedListItem on a phone', () => {
     );
     expect(phoneBlock).toContain("'leading title title time trailing'");
     expect(phoneBlock).toContain("'leading status line line trailing'");
-    expect(phoneBlock).toMatch(/--_cinder-status-track:\s*auto;/);
+    expect(phoneBlock).toMatch(/--_cinder-status-track:\s*max-content;/);
     expect(stylesheet).not.toMatch(/\[data-cinder-phone\]/);
+  });
+
+  test('on a phone the status word is never cut: its track is its own width, and a long time wraps and gives way (R10-02)', () => {
+    setPhone(true);
+    const { container } = render(StatusListFixture, {
+      props: {
+        rows: [
+          {
+            id: 'needs-setup',
+            title: 'Add to the calendar',
+            day: 'Yesterday',
+            status: 'Needs setup',
+            time: 'Yesterday, 6:00 PM',
+            meta: 'When a review is waiting, run Add from Calendar',
+          },
+        ],
+      },
+    });
+    const row = container.querySelector('.cinder-stacked-list-item');
+    expect(row?.hasAttribute('data-cinder-phone')).toBe(true);
+    expect(row?.querySelector('.cinder-stacked-list-item__status')?.textContent).toContain(
+      'Needs setup',
+    );
+    const leadingPhone = (cell: string) =>
+      new RegExp(
+        String.raw`\.cinder-stacked-list-item--status-leading\s*${cell}\s*\{([^}]*)\}`,
+        'g',
+      );
+    const phoneBlocks = stylesheet.slice(
+      stylesheet.indexOf('/* A narrow row puts a leading status on line two'),
+    );
+    // The status track is the word's own width, so the word is never squeezed below it.
+    const [, layout] = leadingPhone(String.raw`>\s*\.cinder-stacked-list-item__layout`).exec(
+      phoneBlocks,
+    ) ?? [undefined, ''];
+    expect(layout).toMatch(/--_cinder-status-track:\s*max-content;/);
+    // The time gives way instead: at most 5rem, wrapping at its spaces.
+    expect(layout).toMatch(/--_cinder-time-track:\s*fit-content\(5rem\);/);
+    const [, status] = leadingPhone(String.raw`\.cinder-stacked-list-item__status`).exec(
+      phoneBlocks,
+    ) ?? [undefined, ''];
+    expect(status).toMatch(/flex:\s*none;/);
+    expect(status).toMatch(/min-inline-size:\s*max-content;/);
+    const [, time] = leadingPhone(String.raw`\.cinder-stacked-list-item__time`).exec(
+      phoneBlocks,
+    ) ?? [undefined, ''];
+    expect(time).toMatch(/white-space:\s*normal;/);
+    // The phone grid reads the time track from that property.
+    expect(stylesheet).toMatch(
+      /\[title\] minmax\(0, 1fr\)\s*\[time\] var\(--_cinder-time-track, auto\) \[trailing\] auto;/,
+    );
+    cleanup();
+    setPhone(false);
   });
 
   test('phoneActions="buttons" keeps each action a button, stacked full width under the text', () => {

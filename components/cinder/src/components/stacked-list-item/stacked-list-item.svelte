@@ -54,6 +54,7 @@
     statusColumn,
     statusPlacement = 'leading',
     title,
+    badge,
     titleLines = 2,
     tooltip,
     time,
@@ -186,6 +187,18 @@
 </script>
 
 {#snippet titleRegion()}
+  {#if badge}
+    <!-- The mark sits after the title, outside its clamp: the title gives way, the mark is never cut. -->
+    <div class="cinder-stacked-list-item__title-row">
+      {@render titleText()}
+      <span class="cinder-stacked-list-item__badge">{@render badge()}</span>
+    </div>
+  {:else}
+    {@render titleText()}
+  {/if}
+{/snippet}
+
+{#snippet titleText()}
   <div class="cinder-stacked-list-item__title" data-cinder-title-lines={titleLines} title={tooltip}>
     {#if linkHref !== undefined}
       <a

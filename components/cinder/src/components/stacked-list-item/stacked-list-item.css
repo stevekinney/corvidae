@@ -128,6 +128,27 @@
     line-clamp: 1;
   }
 
+  /* A mark after the title ("Plugin"): it sits 6px after the title on the first line's baseline,
+   * outside the title's clamp. The title shrinks and clamps first; the mark is never cut and never
+   * wraps onto a line of its own, because the two share one line that does not wrap. */
+  .cinder-stacked-list-item__title-row {
+    display: flex;
+    flex-wrap: nowrap;
+    align-items: baseline;
+    gap: var(--cinder-space-1-5);
+    min-inline-size: 0;
+  }
+
+  .cinder-stacked-list-item__title-row > .cinder-stacked-list-item__title {
+    flex: 0 1 auto;
+  }
+
+  .cinder-stacked-list-item__badge {
+    display: inline-flex;
+    flex: none;
+    white-space: nowrap;
+  }
+
   .cinder-stacked-list-item__title-link {
     color: inherit;
     text-decoration: none;
@@ -346,6 +367,11 @@
     font-weight: var(--cinder-font-semibold);
   }
 
+  /* With a mark, the title and the mark share the title's cell. */
+  .cinder-stacked-list-item--lines .cinder-stacked-list-item__title-row {
+    grid-area: title;
+  }
+
   .cinder-stacked-list-item--lines .cinder-stacked-list-item__time {
     grid-area: time;
     display: flex;
@@ -458,8 +484,8 @@
       ).cinder-stacked-list-item--status-leading
       > .cinder-stacked-list-item__layout {
       grid-template-columns:
-        [leading] auto [status] var(--_cinder-status-track) [title] minmax(0, 1fr) [time] auto
-        [trailing] auto;
+        [leading] auto [status] var(--_cinder-status-track) [title] minmax(0, 1fr)
+        [time] var(--_cinder-time-track, auto) [trailing] auto;
       grid-template-areas:
         'leading title title time trailing'
         'leading status line line trailing'
@@ -480,22 +506,36 @@
     padding-inline-end: var(--cinder-space-2);
   }
 
-  /* A narrow row puts a leading status on line two with no fixed column. */
+  /* A narrow row puts a leading status on line two with no fixed column. The word is never cut: its
+     track is the word's own width and the cell does not shrink below it, so the line's text and the
+     time give way instead. The time wraps at its spaces ("Yesterday," over "6:00 PM") and takes at
+     most 5rem, so a long stamp never squeezes the word or the title (R10-02). */
   @container cinder-stacked-list-item (max-width: 639.98px) {
     .cinder-stacked-list-item--lines:not(
         .cinder-stacked-list-item--band
       ).cinder-stacked-list-item--status-leading
       > .cinder-stacked-list-item__layout {
-      --_cinder-status-track: auto;
+      --_cinder-status-track: max-content;
+      --_cinder-time-track: fit-content(5rem);
     }
 
     .cinder-stacked-list-item--lines:not(
         .cinder-stacked-list-item--band
       ).cinder-stacked-list-item--status-leading
       .cinder-stacked-list-item__status {
+      flex: none;
       align-items: center;
+      min-inline-size: max-content;
       min-block-size: calc(var(--cinder-text-xs) * var(--cinder-leading-normal));
       padding-inline-end: 0;
+    }
+
+    .cinder-stacked-list-item--lines:not(
+        .cinder-stacked-list-item--band
+      ).cinder-stacked-list-item--status-leading
+      .cinder-stacked-list-item__time {
+      text-align: end;
+      white-space: normal;
     }
 
     /* On a phone the status moves to line two beside the kind and agent: "Waiting on you Chat".
@@ -802,7 +842,7 @@
     > .cinder-stacked-list-item__layout {
     grid-template-columns:
       [leading] auto [status] var(--_cinder-status-track) [title] minmax(0, 1fr)
-      [time] auto;
+      [time] var(--_cinder-time-track, auto);
     grid-template-areas:
       'leading title title time'
       'leading status line line'

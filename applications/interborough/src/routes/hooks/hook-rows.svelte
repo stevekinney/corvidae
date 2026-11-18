@@ -109,6 +109,12 @@
   }));
 </script>
 
+<!-- The mark on a hook a plugin declared, drawn by the row after the name and never cut (R10-01). -->
+{#snippet pluginBadge()}
+  <Badge variant="neutral" size="xs" data-testid="hook-plugin-badge">{HOOKS_COPY.pluginBadge}</Badge
+  >
+{/snippet}
+
 {#if staleHook !== null}
   <Alert variant="warning" dismissible onDismiss={() => (staleHook = null)}>
     <p class="ib-hooks__alert-title">{STALE_COPY.title(staleHook)}</p>
@@ -133,6 +139,7 @@
       <StackedListItem
         href={router.href(hookPath(hook.id))}
         tooltip={whole.title}
+        badge={hook.declaredBy === null ? undefined : pluginBadge}
         metaTooltip={whole.line}
         wrapMeta
         data-hook={hook.id}
@@ -145,10 +152,7 @@
             <StatusDot status="pending" label={HOOKS_COPY.row.noDelivery} size="sm" />
           {/if}
         {/snippet}
-        {#snippet title()}{text.title}{#if hook.declaredBy !== null}
-            <Badge variant="neutral" size="xs" data-testid="hook-plugin-badge"
-              >{HOOKS_COPY.pluginBadge}</Badge
-            >{/if}{/snippet}
+        {#snippet title()}{text.title}{/snippet}
         {#snippet time()}
           {#if delivered !== undefined}<span data-last-delivery>{delivered}</span>{/if}
         {/snippet}

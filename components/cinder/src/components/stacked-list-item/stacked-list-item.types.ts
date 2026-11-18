@@ -104,6 +104,12 @@ type StackedListItemBase = ForwardedLiAttributes & {
   /** Primary label. Required. */
   title: Snippet;
   /**
+   * A short mark after the title, such as a neutral extra-small `Badge` reading "Plugin". It sits
+   * 6px after the title, outside the title's line clamp: the title gives up its room and ends in
+   * an ellipsis first, and the mark is never cut and never takes a line of its own.
+   */
+  badge?: Snippet;
+  /**
    * How many lines the title may take before an ellipsis. Default `2`; the status and the time
    * stay beside the first line, and the full title is the row's `tooltip`. A title never grows a
    * row without bound, and an unbroken value (an identifier) wraps anywhere.
