@@ -245,7 +245,18 @@ test.describe('the Runs tab', () => {
         TASK_COPY.list.stepOf(1, 1),
       ].join(TASK_COPY.list.separator),
     );
-    await expect(runs.getByRole('radio', { name: /^All\s*,\s*1$/ })).toBeVisible();
+    // All counts the one run. A run parked on a signal adds the Waiting for a signal segment, and a
+    // bar whose segments no longer fit its row folds them into one select that names the chosen
+    // segment and its count ("Status: All 1"), so either form says All with its count.
+    await expect(
+      runs
+        .getByRole('radio', { name: /^All\s*,\s*1$/ })
+        .or(
+          runs
+            .getByRole('combobox', { name: TASK_COPY.statusLabel })
+            .filter({ hasText: /All\s*1/ }),
+        ),
+    ).toBeVisible();
     await expect(row.getByRole('link').first()).toHaveAttribute(
       'href',
       `/workflows/${id}/runs/${runId}`,
