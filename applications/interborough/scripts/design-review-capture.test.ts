@@ -9,10 +9,15 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { captureForDesignReview, withPointerCleanup } from '../tests/e2e/design-review-capture.ts';
+import {
+  captureForDesignReview,
+  DESIGN_REVIEW_PHONE,
+  withPointerCleanup,
+} from '../tests/e2e/design-review-capture.ts';
 import {
   captureCount,
   captureDesignReview,
+  HOME_STATES_CAPTURED_ON_A_PHONE,
   hostEnvironment,
   parseArguments,
   portIsFree,
@@ -22,6 +27,39 @@ import {
 import { endToEndPort } from './environment-configuration.ts';
 
 const NOW = new Date('2026-11-02T08:30:00.000Z');
+
+// COR-2489: Home's states were recorded only at 1280.
+describe('Home’s states on a phone', () => {
+  test('lists the five states captured at 320 and 375 as well as 1280', () => {
+    expect([...HOME_STATES_CAPTURED_ON_A_PHONE]).toEqual([
+      'loading',
+      'still loading',
+      'one card fails',
+      'nothing waiting',
+      'something needs you',
+    ]);
+    const options = parseArguments([], NOW);
+    if (typeof options === 'string') throw new Error(options);
+    expect(options.specifications.some((path) => path.endsWith('tests/e2e/home.spec.ts'))).toBe(
+      true,
+    );
+  });
+
+  test('home.spec.ts captures each of them with the phone as well, and the phone is 375 wide', async () => {
+    const source = (
+      await readFile(new URL('../tests/e2e/home.spec.ts', import.meta.url), 'utf8')
+    ).replaceAll(/\s+/g, ' ');
+    for (const state of HOME_STATES_CAPTURED_ON_A_PHONE) {
+      expect(source, state).toContain(
+        `captureForDesignReviewWithPhone(page, { route: '/', state: '${state}',`,
+      );
+      expect(source, state).not.toContain(
+        `captureForDesignReview(page, { route: '/', state: '${state}',`,
+      );
+    }
+    expect(DESIGN_REVIEW_PHONE.width).toBe(375);
+  });
+});
 
 describe('parseArguments', () => {
   test('captures every specification in both schemes into a time-stamped directory by default', () => {

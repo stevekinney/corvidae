@@ -247,7 +247,7 @@ test.describe('Home on the sample world, with something waiting on you', () => {
     const start = await card.boundingBox();
     const waiting = await needsYou(page).boundingBox();
     expect(start!.x).toBeGreaterThan(waiting!.x + waiting!.width - 1);
-    await captureForDesignReview(page, {
+    await captureForDesignReviewWithPhone(page, {
       route: '/',
       state: 'something needs you',
       source: SOURCE,
@@ -371,7 +371,11 @@ test.describe('Home with nothing waiting and a provider connected', () => {
     await expect(
       page.getByTestId('home-start-chat').getByRole('button', { name: 'Send' }),
     ).toBeEnabled();
-    await captureForDesignReview(page, { route: '/', state: 'nothing waiting', source: SOURCE });
+    await captureForDesignReviewWithPhone(page, {
+      route: '/',
+      state: 'nothing waiting',
+      source: SOURCE,
+    });
     await checkA11y('Home with nothing waiting');
   });
 });
@@ -690,7 +694,7 @@ test.describe('Home while it loads (02c, 02d, 02e, 02f)', () => {
     await page.emulateMedia({ reducedMotion: 'no-preference' });
     expect(await animation()).not.toBe('none');
     await page.emulateMedia({ reducedMotion: 'reduce' });
-    await captureForDesignReview(page, { route: '/', state: 'loading', source: SOURCE });
+    await captureForDesignReviewWithPhone(page, { route: '/', state: 'loading', source: SOURCE });
     // COR-2329: the Spotlight's and the count's placeholders were taller than the text they stand
     // for, so every section moved up about 7px when the data arrived. Measured while the clock is
     // still stopped, before the slow-load line can appear above the placeholders.
@@ -772,7 +776,11 @@ test.describe('Home while it loads (02c, 02d, 02e, 02f)', () => {
     await expect(
       page.getByTestId('home-loading-focus').locator('.cinder-skeleton-status-place'),
     ).toContainText('Still loading Home.');
-    await captureForDesignReview(page, { route: '/', state: 'still loading', source: SOURCE });
+    await captureForDesignReviewWithPhone(page, {
+      route: '/',
+      state: 'still loading',
+      source: SOURCE,
+    });
 
     await status.getByRole('button', { name: 'Cancel' }).click();
     // The page keeps its date line, and says the load was canceled in place of the cards.
@@ -855,7 +863,11 @@ test.describe('Home when one card cannot be read (01n, 01o)', () => {
     await expect(
       page.getByRole('list', { name: 'Recent chats' }).getByRole('listitem'),
     ).toHaveCount(3);
-    await captureForDesignReview(page, { route: '/', state: 'one card fails', source: SOURCE });
+    await captureForDesignReviewWithPhone(page, {
+      route: '/',
+      state: 'one card fails',
+      source: SOURCE,
+    });
     await checkA11y('Home with one card failing');
 
     // Try again asks that card's read again.

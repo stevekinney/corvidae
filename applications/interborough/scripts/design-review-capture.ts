@@ -78,6 +78,18 @@ const SPECIFICATIONS = {
  * and the workflow builder's step cards: a step of every kind, empty lists, the catalog loading and
  * failing, the add menu, and the read-only phone (`workflow-builder-cards.spec.ts`).
  */
+/**
+ * Home's states that `home.spec.ts` holds only at 1280, which it captures at 1280 and at a phone,
+ * 375 and so 320 (`captureForDesignReviewWithPhone`, COR-2489).
+ */
+export const HOME_STATES_CAPTURED_ON_A_PHONE = [
+  'loading',
+  'still loading',
+  'one card fails',
+  'nothing waiting',
+  'something needs you',
+] as const;
+
 const SHOWCASE_SPECIFICATIONS = [
   'tests/e2e/00-showcase.spec.ts',
   'tests/e2e/shell-chrome.spec.ts',
