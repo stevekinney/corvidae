@@ -6,6 +6,8 @@
  *   bun scripts/browser-fixtures/scripts/capture-chat-stress.ts [--out <directory>] [--cases 9,10,14-15]
  *     [--profiles 1440-light,320-dark]
  *
+ * `--profiles` may also name the review profiles, `1280-light`, `1280-dark` and `375-dark`
+ * (`REVIEW_PROFILES`), which a run draws only when named: the widths the chat pages are reviewed at.
  * `CHAT_STRESS_SUPPLEMENTAL=1` adds the 390 dark phone profile. Before the first case it builds the
  * fixture host into the run's own directory, records the source identity (commit, uncommitted
  * changes, built page, Bun version) in `source-identity.json`, serves that build on a port the
@@ -65,6 +67,7 @@ import {
   reconciliationProblems,
   renderGallery,
   selectCases,
+  selectableProfiles,
   sourceIdentity,
   variantImageName,
   type CaptureRecord,
@@ -4320,9 +4323,10 @@ async function main(): Promise<number> {
   let profiles = profilesFor(supplemental);
   if (values.profiles !== undefined) {
     const names = values.profiles.split(',').map((name) => name.trim());
-    const unknown = names.filter((name) => !profiles.some((profile) => profile.name === name));
+    const selectable = selectableProfiles(supplemental);
+    const unknown = names.filter((name) => !selectable.some((profile) => profile.name === name));
     if (unknown.length > 0) return usage(`Unknown profiles: ${unknown.join(', ')}.`);
-    profiles = profiles.filter((profile) => names.includes(profile.name));
+    profiles = selectable.filter((profile) => names.includes(profile.name));
   }
 
   const outputRoot = resolve(values.out ?? join(repositoryRoot, 'tmp', 'chat-stress'));

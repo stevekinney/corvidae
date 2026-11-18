@@ -3,6 +3,7 @@
 # when the shared development host is too loaded to start it (COR-2461):
 #
 #   gh workflow run design-review-capture.yml --ref <branch> -f grep='/agents' -f scheme=dark -f data=showcase
+#   gh workflow run design-review-capture.yml --ref <branch> -f data=none -f chat_stress_cases=11,17-20
 #   gh run download <run id> --name <artifact name> --dir tmp/design-review/<run id>
 #
 # It runs in the image and with the setup of the Interborough end-to-end job in `browser-suites.yml`, so
@@ -32,10 +33,20 @@ on:
         options: [both, light, dark]
         default: both
       data:
-        description: The content to capture.
+        description: The content to capture; none skips the Interborough capture (for a stress gallery alone).
         type: choice
-        options: [both, showcase, stress]
+        options: [both, showcase, stress, none]
         default: both
+      chat_stress_cases:
+        description: Chat stress gallery cases to capture as well, for example 11,17-20. Empty captures none.
+        type: string
+        required: false
+        default: ''
+      chat_stress_profiles:
+        description: The stress gallery's profiles (scripts/browser-fixtures/scripts/chat-stress-plan.ts).
+        type: string
+        required: false
+        default: 1280-light,1280-dark,375-light,375-dark,768-dark
   workflow_call:
     inputs:
       grep:
@@ -48,9 +59,19 @@ on:
         type: string
         default: both
       data:
-        description: The content to capture (showcase, stress or both).
+        description: The content to capture (showcase, stress, both or none).
         type: string
         default: both
+      chat_stress_cases:
+        description: Chat stress gallery cases to capture as well. Empty captures none.
+        type: string
+        required: false
+        default: ''
+      chat_stress_profiles:
+        description: The stress gallery's profiles.
+        type: string
+        required: false
+        default: 1280-light,1280-dark,375-light,375-dark,768-dark
 
 permissions:
   contents: read
@@ -86,6 +107,7 @@ jobs:
       # container `github.workspace` names the host's path, so the output takes the container's
       # `GITHUB_WORKSPACE`; the upload step names it relative to the workspace.
       - name: Capture
+        if: ${{ inputs.data != 'none' }}
         working-directory: applications/interborough
         shell: bash
         timeout-minutes: 105
@@ -97,6 +119,21 @@ jobs:
           arguments=(--out "$GITHUB_WORKSPACE/design-review-capture" --scheme "$CAPTURE_SCHEME" --data "$CAPTURE_DATA")
           if [ -n "$CAPTURE_GREP" ]; then arguments+=(--grep "$CAPTURE_GREP"); fi
           bun scripts/design-review-capture.ts "${arguments[@]}"
+      # The Chat stress gallery's cases a design review names (`scripts/browser-fixtures/scripts/capture-chat-stress.ts`),
+      # into the same artifact under `chat-stress/`: one PNG per case and profile, with `gallery.html`
+      # and `manifest.jsonl`. It runs after a failed Interborough capture too, and its own failure
+      # still uploads what it took.
+      - name: Chat stress gallery
+        if: ${{ !cancelled() && inputs.chat_stress_cases != '' }}
+        shell: bash
+        timeout-minutes: 60
+        env:
+          STRESS_CASES: ${{ inputs.chat_stress_cases }}
+          STRESS_PROFILES: ${{ inputs.chat_stress_profiles }}
+        run: |
+          bun scripts/browser-fixtures/scripts/capture-chat-stress.ts \
+            --out "$GITHUB_WORKSPACE/design-review-capture/chat-stress" \
+            --cases "$STRESS_CASES" --profiles "$STRESS_PROFILES"
       # A failed upload must not hide the capture's own conclusion, so it does not fail the job.
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: ${{ always() }}

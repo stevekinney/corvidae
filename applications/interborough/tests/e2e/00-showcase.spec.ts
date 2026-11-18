@@ -94,6 +94,9 @@ for (const name of NAMES) {
       if (name === '/chats/:chat (question waiting)' && (width === 375 || width === 1280)) {
         const staging = page.getByRole('radio', { name: /^Staging\b/, exact: false });
         await expect(staging).toBeVisible();
+        // Drawn exactly once: in its row while the composer is replaced (no provider is connected
+        // here), never taken out of the row with nowhere to dock (design review of 38cbd2dec).
+        await expect(page.locator('.weft-chat-question')).toHaveCount(1);
         // The text before the question is the agent talking to the person (owner decision of
         // 14 November): it keeps its time, and is drawn in message ink, not as bare narration.
         const preface = page
