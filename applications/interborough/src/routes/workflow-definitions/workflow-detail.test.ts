@@ -334,8 +334,6 @@ describe('a code-defined type', () => {
       testId(root, 'workflow-recent-runs')?.querySelector('.cinder-empty-state'),
     ).not.toBeNull();
     expect(testId(root, 'workflow-runs-hint')?.textContent).toBe(WORKFLOW_COPY.page.runs.emptyHint);
-    // Design correction: with nothing to filter, there is no "Status: All 0" and no Filter.
-    expect(testId(root, 'workflow-recent-runs')?.querySelector('.cinder-filter-bar')).toBeNull();
   });
 });
 

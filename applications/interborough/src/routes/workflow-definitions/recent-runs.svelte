@@ -226,25 +226,22 @@
       >
     </Alert>
   {:else}
-    <!-- A workflow that has never run has nothing to filter, so the bar waits for its first run. -->
-    {#if runs.isPending || everyRun.length > 0}
-      <FilterBar
-        aria-label={copy.filtersLabel}
-        {segments}
-        segmentValue={filter.status ?? 'all'}
-        segmentsLabel={TASK_COPY.statusLabel}
-        {facets}
-        {appliedFilters}
-        searchVisible={false}
-        onSegmentChange={chooseSegment}
-        onFacetChange={(key, value) => {
-          if (key === 'startedBy') chooseStartedBy(value);
-        }}
-        onFilterRemove={(key) => {
-          if (key === 'startedBy') chooseStartedBy('');
-        }}
-      />
-    {/if}
+    <FilterBar
+      aria-label={copy.filtersLabel}
+      {segments}
+      segmentValue={filter.status ?? 'all'}
+      segmentsLabel={TASK_COPY.statusLabel}
+      {facets}
+      {appliedFilters}
+      searchVisible={false}
+      onSegmentChange={chooseSegment}
+      onFacetChange={(key, value) => {
+        if (key === 'startedBy') chooseStartedBy(value);
+      }}
+      onFilterRemove={(key) => {
+        if (key === 'startedBy') chooseStartedBy('');
+      }}
+    />
     {#if runs.isPending}
       <div role="status" aria-busy="true" aria-label={WORKFLOW_COPY.page.recentRuns}>
         <Skeleton height="1.5rem" />
