@@ -849,13 +849,20 @@ describe('a failed run', () => {
     ).toBeTruthy();
   });
 
-  test('the run page draws Input and output before anything else the run says of itself', () => {
-    // The waits and a blocked message come first; Input and output, which now opens with the
-    // failure, follows them, ahead of What happened.
+  test('a failed instance draws its step failure, in What happened, before Input and output', () => {
+    // A failed instance says why on the step that failed, so What happened leads; any other
+    // instance keeps Input and output first. (run-detail-engine-runs.test.ts renders the page.)
     const source = readFileSync(new URL('./run-detail.svelte', import.meta.url), 'utf8');
     const main = source.slice(source.indexOf('<div class="ib-run__main">'));
-    expect(main.indexOf('<RunInputOutput')).toBeGreaterThan(-1);
-    expect(main.indexOf('<RunInputOutput')).toBeLessThan(main.indexOf('<RunInstanceHappened'));
-    expect(main.indexOf('<RunInputOutput')).toBeLessThan(main.indexOf('<RunHappened'));
+    const failedFirst = main.indexOf(
+      '{#if task.data === undefined && instanceEntryList !== undefined && instanceFailed}',
+    );
+    const inputOutput = main.indexOf('<RunInputOutput');
+    const otherAfter = main.indexOf(
+      '{#if task.data === undefined && instanceEntryList !== undefined && !instanceFailed}',
+    );
+    expect(failedFirst).toBeGreaterThan(-1);
+    expect(failedFirst).toBeLessThan(inputOutput);
+    expect(otherAfter).toBeGreaterThan(inputOutput);
   });
 });
