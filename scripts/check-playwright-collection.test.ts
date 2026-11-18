@@ -1,6 +1,8 @@
 import { describe, expect, test } from 'bun:test';
+import { existsSync } from 'node:fs';
+import { join } from 'node:path';
 
-import { collectionResult, playwrightConfigurations } from './check-playwright-collection.ts';
+import { collectionResult, collectionSteps } from './check-playwright-collection.ts';
 
 describe('collectionResult', () => {
   test('passes a listing that collected tests and exited cleanly', () => {
@@ -32,12 +34,27 @@ describe('collectionResult', () => {
   });
 });
 
-describe('playwrightConfigurations', () => {
+describe('collectionSteps', () => {
   test('lists the root fixture configuration and each component package configuration', () => {
-    const configurations = playwrightConfigurations();
+    const configurations = collectionSteps().map((step) => step.configuration);
     expect(configurations[0]).toBe('scripts/browser-fixtures/playwright.config.ts');
     expect(configurations).toContain('components/chat/browser/playwright.config.ts');
     expect(configurations).toContain('components/editor/browser/playwright.config.ts');
     expect(configurations).toContain('components/terminal/browser/playwright.config.ts');
+  });
+
+  // A fresh checkout has none of the ignored manifests the specs read at module scope, and
+  // `--list` starts no web server to write them, so every configuration prepares its own first.
+  test('prepares each suite with the step that writes its manifest', () => {
+    const prepareBy = new Map(collectionSteps().map((step) => [step.configuration, step.prepare]));
+    expect(prepareBy.get('scripts/browser-fixtures/playwright.config.ts')).toEqual([
+      'bun',
+      'scripts/browser-fixtures/scripts/prepare-manifest.ts',
+    ]);
+    for (const name of ['chat', 'editor', 'terminal']) {
+      const prepare = prepareBy.get(`components/${name}/browser/playwright.config.ts`);
+      expect(prepare).toEqual(['bun', `components/${name}/browser/harness.ts`, 'prepare']);
+      expect(existsSync(join(import.meta.dir, '..', prepare?.[1] ?? ''))).toBe(true);
+    }
   });
 });

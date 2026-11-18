@@ -1,6 +1,6 @@
 import { spawnWithHangGuard } from '@lostgradient/testing/hang-guard';
 import { afterAll, describe, expect, test } from 'bun:test';
-import { copyFileSync, mkdirSync, mkdtempSync, rmSync, symlinkSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
@@ -20,6 +20,10 @@ function temporaryRepository(): string {
     symlinkSync(join(repositoryRoot, name), join(root, name), 'dir');
   }
   copyFileSync(join(repositoryRoot, 'package.json'), join(root, 'package.json'));
+  // The package's `test` script runs through the host test pool, which keeps its slots in the
+  // checkout's Git directory and refuses to run outside one.
+  const init = Bun.spawnSync(['git', 'init', '--quiet'], { cwd: root });
+  if (init.exitCode !== 0) throw new Error(`git init failed: ${init.stderr.toString()}`);
   return root;
 }
 
@@ -44,7 +48,9 @@ const root = temporaryRepository();
 const written = createPackage(root, 'demo');
 const directory = join(root, 'components', 'demo');
 const results: Awaited<ReturnType<typeof run>>[] = [];
-for (const script of ['lint', 'typecheck', 'test']) results.push(await run(script, directory));
+for (const script of ['types', 'lint', 'typecheck', 'test']) {
+  results.push(await run(script, directory));
+}
 
 afterAll(() => rmSync(root, { recursive: true, force: true }));
 
@@ -57,12 +63,18 @@ describe('create-package demo', () => {
     );
   });
 
-  test("the new package's lint, type-check and test exit 0", () => {
+  test("the new package's declarations, lint, type-check and test exit 0", () => {
     expect(results).toEqual([
+      { script: 'types', exitCode: 0, output: '' },
       { script: 'lint', exitCode: 0, output: '' },
       { script: 'typecheck', exitCode: 0, output: '' },
       { script: 'test', exitCode: 0, output: '' },
     ]);
+  });
+
+  // The `types` export condition names this file, so a consumer type-checks against it.
+  test('emits the declaration its `types` export condition names', () => {
+    expect(existsSync(join(directory, '.types/src/index.d.ts'))).toBe(true);
   });
 
   test('refuses to overwrite a package that exists', () => {

@@ -23,7 +23,7 @@
  * registries). It generates in memory, so it needs no `metadata` run first.
  */
 
-import { copyFileSync, existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 
 import { componentPackage, type ComponentPackage } from './lib/component-package.ts';
@@ -53,7 +53,8 @@ async function runMetadataMode(pkg: ComponentPackage): Promise<void> {
   const { discoverComponentDirectories } = await import('./discover-component-directories.ts');
   const { generateSchemaForComponent } = await import('./generate-component-schema.ts');
   const { generateVariablesForComponent } = await import('./generate-component-variables.ts');
-  const { componentMetadataPath, metadataRoot } = await import('./lib/metadata-files.ts');
+  const { componentMetadataPath, metadataRoot, relocatedJsonDocument } =
+    await import('./lib/metadata-files.ts');
   rmSync(metadataRoot(pkg.root), { recursive: true, force: true });
   const components = await discoverComponentDirectories(pkg.root);
   if (components.length === 0) throw new Error(`${pkg.name} has no component directories`);
@@ -74,7 +75,11 @@ async function runMetadataMode(pkg: ComponentPackage): Promise<void> {
     if (existsSync(examples)) {
       const target = componentMetadataPath(pkg.root, name, 'examples');
       mkdirSync(dirname(target), { recursive: true });
-      copyFileSync(examples, target);
+      // The authored `$schema` is relative to the component directory; the copy re-points it.
+      writeFileSync(
+        target,
+        relocatedJsonDocument(readFileSync(examples, 'utf8'), examples, target),
+      );
     }
   }
   const { writeManifest } = await import('./generate-manifest.ts');

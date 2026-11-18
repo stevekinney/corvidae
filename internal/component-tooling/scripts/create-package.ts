@@ -9,10 +9,11 @@
  * It writes `components/<name>/package.json` (`@lostgradient/<name>`, with the declaration
  * `types` script, the `types`/`svelte`/`default` export conditions, and the `./styles` and
  * `./*.css` stylesheet exports), a two-line `tsconfig.json` extending
- * `@lostgradient/typescript/component.json`, a `bunfig.toml` that preloads the shared test
- * preload, and a `src/index.ts`, `src/styles/index.css`, `src/index.test.ts` and a first
- * `src/components/<name>/<name>.svelte` so the package's lint, type-check and test pass the moment
- * it exists. It never overwrites a file.
+ * `@lostgradient/typescript/component.json`, the `tsconfig.browser.json` the `types` script's
+ * declaration emitter reads, a `bunfig.toml` that preloads the shared test preload, and a
+ * `src/index.ts`, `src/styles/index.css`, `src/index.test.ts` and a first
+ * `src/components/<name>/<name>.svelte` so the package's declarations, lint, type-check and test
+ * pass the moment it exists. It never overwrites a file.
  */
 
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
@@ -66,6 +67,9 @@ export function packageFiles(name: string): Record<string, string> {
   return {
     'package.json': `${JSON.stringify(packageManifest(name), null, 2)}\n`,
     'tsconfig.json': '{\n  "extends": "@lostgradient/typescript/component.json"\n}\n',
+    // `emit-declarations.ts` type-checks production source with this file, which leaves tests out.
+    'tsconfig.browser.json':
+      '{\n  "extends": "@lostgradient/typescript/browser.json",\n  "include": ["src"]\n}\n',
     'bunfig.toml': `[run]\nbun = true\n\n[test]\npreload = ["${TOOLING_SCRIPTS}/preload.ts"]\n`,
     'src/index.ts': `/** The public surface of \`@lostgradient/${name}\`. */\nexport const packageName = '@lostgradient/${name}';\n`,
     'src/styles/index.css': `/* The stylesheet of \`@lostgradient/${name}\`. */\n`,
