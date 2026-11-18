@@ -903,14 +903,16 @@ export function runLineTwo(row: RunRow, context: RunLineContext): string {
       break;
     case 'submitted':
     case 'working':
-      if (steps !== null && steps !== undefined && reached !== null) {
-        parts.push(copy.stepOf(reached, steps.total));
-      }
+      // Only a run that is running says its step (10h: "step 2 of 4, running 1 min 12 s"); one
+      // waiting for a signal or for its time says what it waits for and nothing of its step.
       if (awaiting !== null) {
         parts.push(copy.waitingForSignal(awaiting));
       } else if (runStatusWord(row, context.now) === 'Scheduled' && row.dueAt != null) {
         parts.push(copy.dueAt(dueWords(row.dueAt, context.now, context.zone)));
       } else {
+        if (steps !== null && steps !== undefined && reached !== null) {
+          parts.push(copy.stepOf(reached, steps.total));
+        }
         parts.push(copy.runningFor(durationWords(context.now - row.startedAt)));
       }
       break;

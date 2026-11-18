@@ -65,9 +65,9 @@ export type PayloadInspectorProps = Omit<HTMLAttributes<HTMLElement>, 'class' | 
    */
   label?: string;
   /**
-   * A name drawn after the label, set in code, such as an output's name: with `label` "Output" and
-   * `labelCode` "notes" the header reads "Output, `notes`" and the card is named "Output, notes".
-   * Ignored without a `label`.
+   * A name drawn a space after the label, set in code a weight lighter, such as an output's name:
+   * with `label` "Output" and `labelCode` "notes" the header reads "Output `notes`", with no comma,
+   * and the card is named "Output, notes". Ignored without a `label`.
    */
   labelCode?: string;
   /**
@@ -208,9 +208,9 @@ export type PayloadInspectorSchemaProps = {
    */
   label?: string;
   /**
-   * A name drawn after the label, set in code, such as an output's name: with `label` "Output" and
-   * `labelCode` "notes" the header reads "Output, `notes`" and the card is named "Output, notes".
-   * Ignored without a `label`.
+   * A name drawn a space after the label, set in code a weight lighter, such as an output's name:
+   * with `label` "Output" and `labelCode` "notes" the header reads "Output `notes`", with no comma,
+   * and the card is named "Output, notes". Ignored without a `label`.
    */
   labelCode?: string;
   /**

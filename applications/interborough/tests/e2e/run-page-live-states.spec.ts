@@ -115,7 +115,7 @@ for (const width of WIDTHS) {
       await openRun(page, `/runs/${encodeURIComponent(world.runs.failed)}`, width);
 
       const header = page.locator('[data-run-header]');
-      await expect(header).toContainText(/Running\s*, Started 40 s ago, step 2 of 4/);
+      await expect(header).toContainText(/Running\s*, started 40 s ago, step 2 of 4/);
       await expect(header.getByRole('link', { name: 'Run again' })).toHaveCount(0);
       await expect(header.getByRole('button', { name: 'Run again' })).toHaveCount(0);
       await captureForDesignReview(page, {
@@ -135,6 +135,8 @@ for (const width of WIDTHS) {
       const header = page.locator('[data-run-header]');
       await expect(header).toContainText('Waiting');
       await expect(header).toContainText('waiting for signal');
+      // What it waits for, and nothing of its step (56g).
+      await expect(header).not.toContainText('step 2 of 4');
       await expect(header).toContainText('notes-approved');
       await expect(header.getByRole('button', { name: 'Cancel run' })).toBeVisible();
       await expect(page.locator('[data-section="waiting"]')).toHaveCount(0);

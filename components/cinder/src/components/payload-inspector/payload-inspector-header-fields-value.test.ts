@@ -43,6 +43,11 @@ describe('the header', () => {
     const actions = view.container.querySelector('.cinder-payload-inspector__header-actions');
     expect(actions?.querySelector('.cinder-payload-inspector__size')).toBeNull();
     expect(actions?.querySelector('.cinder-copy-button')).not.toBeNull();
+    // The switch shares Copy's group, so a narrow card keeps both on the title's row.
+    expect(actions?.querySelector('[role="radiogroup"]')).not.toBeNull();
+    expect(stylesheet).toMatch(
+      /\.cinder-payload-inspector__title \{[^}]*flex: 1 1 0;[^}]*min-inline-size: 0;/,
+    );
     expect(stylesheet).toMatch(
       /\.cinder-payload-inspector__title \{[^}]*flex-direction: column;[^}]*align-items: flex-start;/,
     );

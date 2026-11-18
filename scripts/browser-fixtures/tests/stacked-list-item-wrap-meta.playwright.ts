@@ -44,3 +44,39 @@ test('a wrapped line two starts at the row’s text edge, not beside the status 
   expect(Math.abs(second.left - read.lineTwoLeft)).toBeLessThanOrEqual(1);
   expect(Math.abs(read.lineTwoLeft - read.titleLeft)).toBeLessThanOrEqual(1);
 });
+
+for (const width of [320, 375] as const) {
+  test(`with a trailing action at ${String(width)}px, line two wraps beside the action and never runs under it`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width, height: 800 });
+    await page.goto(fixtureRoute('stacked-list-item', { fixtureName: 'wrap-meta' }), {
+      waitUntil: 'load',
+    });
+    const row = page.locator('[data-testid="wrap-meta-action"] .cinder-stacked-list-item');
+    await row.waitFor({ state: 'visible' });
+    const read = await row.evaluate((element) => {
+      const box = (selector: string) => {
+        const found = element.querySelector(selector);
+        if (!found) return null;
+        const { top, bottom, left, right } = found.getBoundingClientRect();
+        return { top, bottom, left, right };
+      };
+      return {
+        lineTwo: box('.cinder-stacked-list-item__line-two'),
+        trailing: box('.cinder-stacked-list-item__trailing'),
+      };
+    });
+    const { lineTwo, trailing } = read;
+    expect(lineTwo).not.toBeNull();
+    expect(trailing).not.toBeNull();
+    // The two boxes do not intersect: line two ends before the actions' column starts, or the
+    // actions sit on a line of their own.
+    const intersects =
+      lineTwo!.left < trailing!.right &&
+      trailing!.left < lineTwo!.right &&
+      lineTwo!.top < trailing!.bottom &&
+      trailing!.top < lineTwo!.bottom;
+    expect(intersects).toBe(false);
+  });
+}

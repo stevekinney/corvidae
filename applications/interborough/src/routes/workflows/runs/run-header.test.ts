@@ -78,7 +78,8 @@ describe('the run page header', () => {
     });
 
     expect(view.container.querySelector('time')).toBeNull();
-    expect(view.container.textContent).toMatch(/Running\s*, Started 40 s ago, step 2 of 4/);
+    // The clause after the comma starts in lower case (`reasonClause`).
+    expect(view.container.textContent).toMatch(/Running\s*, started 40 s ago, step 2 of 4/);
   });
 
   test('a status word with a qualifier is one status, drawn once', () => {
