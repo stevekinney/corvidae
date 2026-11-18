@@ -210,6 +210,35 @@ describe('an approval decided on another page', () => {
     );
   });
 
+  test('is still one receipt, with Reviews a link, when the page mounts again on a phone (CI run 44323536625)', async () => {
+    // A phone width stacks the chat list and the open chat, so the chat page mounts again and its
+    // memory of what it watched is gone: the receipt is read from the decision the Bureau recorded,
+    // with where it was made, as a Reviews decision always records it (COR-2292).
+    const thread = decidedThread({ ...APPROVED, decisionSurface: 'reviews' }, { refunded: 4200 });
+    const first = await decidedAway(thread);
+    await until(() =>
+      expect(first.container.querySelectorAll('.cinder-approval-card--decision')).toHaveLength(1),
+    );
+    first.unmount();
+
+    const narrow = mount();
+    await settle(20);
+    await until(() =>
+      expect(narrow.container.querySelectorAll('.cinder-approval-card--decision')).toHaveLength(1),
+    );
+    const card = narrow.container.querySelector('.cinder-approval-card--decision');
+    expect(
+      card
+        ?.querySelector('.cinder-approval-card__settled-note')
+        ?.textContent?.replace(/\s+/g, ' ')
+        .trim(),
+    ).toBe('Approved by you in Reviews');
+    expect(card?.querySelector('a[href]')?.getAttribute('href')).toContain(
+      `/reviews?tab=done&review=${encodeURIComponent('bureau:approval:native-1:call-refund')}`,
+    );
+    expect(narrow.container.querySelector('[data-approval-decision]')).toBeNull();
+  });
+
   test('announces nothing when the thread carries no record that a person decided it', async () => {
     const { container, getByTestId } = await decidedAway(
       decidedThread({}, { refunded: 4200 }).map((row) =>
