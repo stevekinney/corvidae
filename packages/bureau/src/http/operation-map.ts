@@ -345,4 +345,5 @@ export const OPERATION_MAP = {
     workspaceClass: 'deployment-operator',
     member: 'hooks.retryDelivery',
   },
+  'bureau.hooks.duplicate': { workspaceClass: 'administrator-shared', member: 'hooks.duplicate' },
 } as const satisfies Readonly<Record<string, OperationBinding>>;

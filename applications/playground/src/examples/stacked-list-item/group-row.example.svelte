@@ -19,7 +19,7 @@
 <DataList items={['daily-summary']} key={(id) => id}>
   {#snippet children()}
     <StackedListItem bind:expanded>
-      {#snippet status()}<StatusDot word="Missed runs, 4" />{/snippet}
+      {#snippet status()}<StatusDot word="Missed runs" qualifier={4} />{/snippet}
       {#snippet title()}Daily summary missed 4 times since Oct 30{/snippet}
       {#snippet meta()}Schedule, Assistant, every day at 3:00 AM (9:00 AM UTC), Interborough wasn’t
         running{/snippet}

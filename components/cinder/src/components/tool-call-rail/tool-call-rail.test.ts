@@ -86,7 +86,7 @@ describe('ToolCallRail row count and summary', () => {
       { id: 'refund', name: 'Issue refund', status: 'waiting' },
     ];
     const { container } = render(ToolCallRail, { props: { calls, duration: '18s' } });
-    expect(text(summary(container))).toBe('Used 30 tools, 1 failed, 1 waiting on you, 18s');
+    expect(text(summary(container))).toBe('Used 30 tools 1 failed 1 waiting on you 18s');
     expect(
       container.querySelector('[data-cinder-count="failed"] .cinder-tool-call-rail__count-dot'),
     ).not.toBeNull();
@@ -97,7 +97,7 @@ describe('ToolCallRail row count and summary', () => {
     const { container } = render(ToolCallRail, {
       props: { calls: [...turn(2), { id: 'expired', name: 'Issue refund', status: 'expired' }] },
     });
-    expect(text(summary(container))).toBe('Used 3 tools, 1 expired');
+    expect(text(summary(container))).toBe('Used 3 tools 1 expired');
     expect(container.querySelector('[data-cinder-count="expired"]')).not.toBeNull();
     const row = rows(container).find(
       (candidate) => candidate.dataset['cinderToolCallRow'] === 'expired',
@@ -178,7 +178,7 @@ describe('ToolCallRail folding', () => {
     expect(rows(container)).toHaveLength(30);
     expect(container.querySelector('.cinder-tool-call-rail__more')).toBeNull();
     expect(rows(container).map((row) => row.dataset['cinderToolCallRow'])[3]).toBe('call-3');
-    expect(text(summary(container))).toContain('1 failed, 1 waiting on you');
+    expect(text(summary(container))).toContain('1 failed 1 waiting on you');
     const fewer = requiredInstance(
       container.querySelector('.cinder-tool-call-rail__fewer button'),
       HTMLElement,
@@ -201,7 +201,7 @@ describe('ToolCallRail folding', () => {
     ]);
     expect(container.querySelector('.cinder-tool-call-rail__group')).toBeNull();
     expect(container.querySelector('.cinder-tool-call-rail__failure')).not.toBeNull();
-    expect(text(toggle)).toContain('Used 30 tools, 1 failed, 1 waiting on you');
+    expect(text(toggle)).toContain('Used 30 tools 1 failed 1 waiting on you');
   });
 
   test('denied calls never fold', () => {

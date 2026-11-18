@@ -4,6 +4,18 @@ const schema = {
   $schema: 'https://json-schema.org/draft/2020-12/schema',
   type: 'object',
   properties: {
+    qualifier: {
+      anyOf: [
+        {
+          type: 'string',
+        },
+        {
+          type: 'number',
+        },
+      ],
+      description:
+        'A count or short phrase drawn as its own piece after the `word`, a space apart and muted, with no separator in the visible text: `word="Missed runs"` with `qualifier={4}` shows "Missed runs" then "4", and is named "Missed runs, 4". It does not change the word\'s tone, except that a qualified "Done" is neutral. A blank qualifier is ignored and `0` is shown. It has no effect without a `word`, or beside an explicit `label`.',
+    },
     status: {
       enum: [
         'online',

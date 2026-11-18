@@ -186,6 +186,17 @@ describe('SideNavigation brand and primaryAction slots (COR-2315)', () => {
     expect(shortcut).toContain('border: none;');
   });
 
+  test('on a touch screen the primary action stays 2rem and reaches 44px through a hit area (COR-2445)', async () => {
+    const css = await Bun.file(new URL('./side-navigation.css', import.meta.url)).text();
+    const coarse = css.match(/@media \(pointer: coarse\)\s*\{[\s\S]*?\n {2}\}\n/)?.[0] ?? '';
+    expect(coarse).toContain('min-block-size: 2rem;');
+    expect(coarse).toMatch(/::after\s*\{[^}]*position:\s*absolute;/);
+    expect(coarse).toContain('var(--cinder-touch-target-min)');
+    const hint = css.match(/@media \(hover: none\)\s*\{[\s\S]*?\n {2}\}\n/)?.[0] ?? '';
+    expect(hint).toContain('[data-cinder-shortcut]');
+    expect(hint).toContain('display: none;');
+  });
+
   test('the slots never reach the nav as attributes', () => {
     const { container } = render(SideNavigation, {
       props: {

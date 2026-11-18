@@ -32,7 +32,7 @@ const MATRIX = 'reactions-2 matrix';
 /** The shape of one row: the matrix line, the issue that owns it, and what it asserts. */
 interface Row {
   readonly line: number;
-  readonly owner: 'main' | 'COR-2179';
+  readonly owner: 'main' | 'COR-2179' | 'COR-2182';
   readonly name: string;
   readonly check: () => Promise<void>;
 }
@@ -142,7 +142,7 @@ function barrier(parties: number) {
   };
 }
 
-const slackAndCalendar = (run: (context: never) => Promise<void>) =>
+const slackAndCalendar = (run: (context: never) => Promise<unknown>) =>
   [
     {
       plugin: 'slack',
@@ -905,8 +905,8 @@ const DISPATCH_ROWS: readonly Row[] = [
   },
   {
     line: 48,
-    owner: 'main',
-    name: 'an event for an owner hook of an unregistered plugin still writes a delivery that fails',
+    owner: 'COR-2182',
+    name: 'an event for an owner hook of an unregistered plugin writes no delivery (main wrote one that failed)',
     check: async () => {
       const kv = memory();
       const first = harness({ kv });
@@ -915,9 +915,7 @@ const DISPATCH_ROWS: readonly Row[] = [
       await off.open();
       off.dispatch();
       await off.drain();
-      const delivery = await off.only(hook.id);
-      expect(delivery.status).toBe('failed');
-      expect(outcomes(delivery)).toEqual(['rejected']);
+      expect(await off.deliveries(hook.id)).toEqual([]);
     },
   },
   {
