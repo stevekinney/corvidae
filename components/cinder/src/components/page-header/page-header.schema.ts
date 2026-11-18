@@ -14,6 +14,11 @@ const schema = {
       description:
         'A lighter phrase drawn straight after the title, in the same heading at the same size, such as\n", made easier" after a brand name. Include any leading space or punctuation.',
     },
+    identifier: {
+      type: 'string',
+      description:
+        "The thing's identifier, such as a workflow's `release-notes`, drawn small, monospaced and muted\nbeside the title and never broken inside. Leave it out when the title is the identifier.",
+    },
     headingLevel: {
       enum: [1, 2, 3, 4, 5, 6],
       description: 'Heading level for the title element. Defaults to `1`.',

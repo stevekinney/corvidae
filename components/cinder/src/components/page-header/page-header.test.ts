@@ -44,6 +44,7 @@ describe('PageHeader', () => {
       variant: { enum: ['default', 'large', 'hero'], default: 'default' },
       tone: { enum: ['plain', 'tint', 'accent', 'night'], default: 'plain' },
       titleSoft: { type: 'string' },
+      identifier: { type: 'string' },
       eyebrow: { type: 'string' },
     });
     expect(pageHeaderSchema.metadata?.unsupportedProps?.map((prop) => prop.name)).toEqual([
@@ -580,6 +581,39 @@ describe('PageHeader narrowActions (COR-2327 B2)', () => {
     expect(narrow).toContain(
       `${noStatus}\n      .cinder-page-header__description {\n      grid-row: 2;`,
     );
+  });
+});
+
+describe('PageHeader identifier (COR-2431, row 62b)', () => {
+  test('draws the identifier beside the title, outside the heading, so the heading is named by the title', () => {
+    const { container } = render(PageHeader, {
+      props: { title: 'Release notes', identifier: 'release-notes' },
+    });
+    const heading = requiredInstance(container.querySelector('h1'), HTMLElement);
+    const identifier = requiredInstance(
+      container.querySelector('.cinder-page-header__identifier'),
+      HTMLElement,
+    );
+    expect(heading.textContent?.trim()).toBe('Release notes');
+    expect(identifier.tagName).toBe('CODE');
+    expect(identifier.textContent).toBe('release-notes');
+    expect(identifier.parentElement?.classList.contains('cinder-page-header__title-line')).toBe(
+      true,
+    );
+    expect(heading.contains(identifier)).toBe(false);
+  });
+
+  test('is small, monospaced and muted, and never breaks inside', () => {
+    const rule = /\.cinder-page-header__identifier \{([^}]*)\}/.exec(stylesheet)?.[1] ?? '';
+    expect(rule).toContain('font-family: var(--cinder-font-mono)');
+    expect(rule).toContain('font-size: var(--cinder-text-sm)');
+    expect(rule).toContain('color: var(--cinder-text-muted)');
+    expect(rule).toContain('white-space: nowrap');
+  });
+
+  test('draws nothing without one', () => {
+    const { container } = render(PageHeader, { props: { title: 'Release notes' } });
+    expect(container.querySelector('.cinder-page-header__identifier')).toBeNull();
   });
 });
 

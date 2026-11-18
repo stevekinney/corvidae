@@ -853,9 +853,6 @@
 {#snippet headingText()}
   {#if titled}
     {heading}
-    {#if internal === null}
-      <code class="ib-identifier" data-testid="workflow-identifier">{type}</code>
-    {/if}
   {:else if file !== undefined}
     <code class="ib-workflow-row__id">{type}</code>
   {:else}
@@ -876,6 +873,7 @@
     headingLevel={1}
     title={headingText}
     titleText={heading}
+    identifier={titled && internal === null ? type : undefined}
     actions={headerActions}
     statusPlacement="inline"
     {...invalidFile || file?.paused === true ? { status: headingStatus } : {}}

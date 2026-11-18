@@ -32,6 +32,8 @@ While a full-page `ErrorState` shows under the header, pass `error` so the heade
 
 `status` takes the page's status as a snippet and `statusPlacement` puts it beside the title (`inline`, on its first line) or under it (`below`, the default). The title wraps to two lines and then ends in an ellipsis; its tooltip carries the full text, from `title` or, when `title` is a snippet, from `titleText`.
 
+`identifier` draws a thing's identifier, such as a workflow's `release-notes`, beside the title: small, monospaced and muted, centred on the title's first line, outside the heading so the heading's name stays the title. It never breaks inside; one too long for the line ends in an ellipsis. Leave it out when the title is the identifier.
+
 In a narrow header (a phone) the actions drop to a row of their own under the title and the status. Pass `narrowActions="beside-status"` to put them at the inline end of the status's row instead, which gives that row's height back to the page; it suits a few compact actions above content that needs the room, such as a chat's context ring and More menu. With no status they sit beside the title instead, so they never take a row alone. A wide header is the same either way.
 
 ## Flush by default, inset on request
@@ -199,6 +201,7 @@ Below 720px of the hero's own width the focal value comes first and the copy fol
 | `error` | `boolean` | no | `false` | A full-page error state shows under this header, so its primary buttons draw as secondary. |
 | `eyebrow` | `string` | no | — | A short neutral line above a `hero` title, such as the section or the place. |
 | `headingLevel` | `1` \| `2` \| `3` \| `4` \| `5` \| `6` | no | `1` | Heading level for the title element. Defaults to `1`. |
+| `identifier` | `string` | no | — | The thing's identifier, such as a workflow's `release-notes`, drawn small, monospaced and muted beside the title and never broken inside. Leave it out when the title is the identifier. |
 | `inset` | `boolean` | no | `false` | Insets the header with padding around it. Off by default: the header is flush with the content beneath it, so its title lines up with that content. Pass it where the header should sit in from the edge of its container. |
 | `narrowActions` | `"own-row"` \| `"beside-status"` | no | `"own-row"` | Where the actions go in a narrow header (a phone): `own-row` on a row of their own under the title and the status, or `beside-status` at the inline end of the status's row. |
 | `overflowLabel` | `string` | no | `"More actions"` | The accessible name of the overflow menu button. |

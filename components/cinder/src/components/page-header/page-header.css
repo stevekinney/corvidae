@@ -387,6 +387,21 @@
     font-weight: 380;
   }
 
+  /* The identifier beside the title: small, monospaced and muted, centred on the title's first
+     line, and kept whole; a long one ends in an ellipsis rather than breaking. */
+  .cinder-page-header__identifier {
+    flex: 0 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    color: var(--cinder-text-muted);
+    font-family: var(--cinder-font-mono);
+    font-size: var(--cinder-text-sm);
+    font-weight: var(--cinder-font-normal);
+    line-height: calc(var(--cinder-text-page-title) * var(--cinder-leading-tight));
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
   /* ── Large title ────────────────────────────────────────────────────────────
      The title at the large page-title step. Once it scrolls away, the sticky bar before the header
      shows it at the default page-title size. The actions keep centring on the title's first line

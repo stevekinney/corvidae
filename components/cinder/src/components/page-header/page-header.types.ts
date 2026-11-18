@@ -91,6 +91,11 @@ export type PageHeaderProps = Omit<
    * ", made easier" after a brand name. Include any leading space or punctuation.
    */
   titleSoft?: string;
+  /**
+   * The thing's identifier, such as a workflow's `release-notes`, drawn small, monospaced and muted
+   * beside the title and never broken inside. Leave it out when the title is the identifier.
+   */
+  identifier?: string;
   /** Heading level for the title element. Defaults to `1`. */
   headingLevel?: PageHeaderHeadingLevel;
   /**
@@ -232,6 +237,11 @@ export interface PageHeaderSchemaProps {
    * ", made easier" after a brand name. Include any leading space or punctuation.
    */
   titleSoft?: string;
+  /**
+   * The thing's identifier, such as a workflow's `release-notes`, drawn small, monospaced and muted
+   * beside the title and never broken inside. Leave it out when the title is the identifier.
+   */
+  identifier?: string;
   /**
    * Heading level for the title element. Defaults to `1`.
    * @default 1

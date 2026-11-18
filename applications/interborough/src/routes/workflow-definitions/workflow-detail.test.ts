@@ -443,8 +443,12 @@ describe('an agent-authored type', () => {
     const root = await ready(container);
 
     // The heading is the title with its identifier beside it once; no badge or word says it is active.
-    expect(root.querySelector('h1')?.textContent).toContain('Daily digest');
-    expect(testId(root, 'workflow-identifier')?.textContent).toBe('digest');
+    expect(root.querySelector('h1')?.textContent?.trim()).toBe('Daily digest');
+    // Design correction (row 62b): the identifier is the header's own small monospaced one, beside
+    // the heading rather than in it at the heading's size.
+    const identifier = root.querySelector('.cinder-page-header__identifier');
+    expect(identifier?.textContent).toBe('digest');
+    expect(identifier?.closest('h1')).toBeNull();
     expect(root.textContent).not.toContain(WORKFLOW_COPY.agentAuthoredBadge);
     expect(testId(root, 'workflow-state')).toBeNull();
     expect(testId(root, 'workflow-description')?.textContent).toBe('Writes the daily digest.');

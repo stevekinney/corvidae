@@ -45,6 +45,7 @@
   let {
     title,
     titleSoft,
+    identifier,
     headingLevel = 1,
     variant = 'default',
     tone = 'plain',
@@ -180,6 +181,9 @@
     </svelte:element>
     {#if titleCutOff && fullTitle}
       <Tooltip text={fullTitle} describe={false} triggerRef={titleElement} />
+    {/if}
+    {#if identifier}
+      <code class="cinder-page-header__identifier">{identifier}</code>
     {/if}
     {#if statusPlacement === 'inline'}
       {@render statusLine('inline')}
