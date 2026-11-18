@@ -15,9 +15,9 @@
   import { tick } from 'svelte';
   import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
   import Alert from '@lostgradient/alert/components/alert/alert.svelte';
-  import Badge from '../badge/badge.svelte';
-  import Button from '../button/button.svelte';
-  import { default as CodeBlock } from '../code-block/index.ts';
+  import Badge from '@lostgradient/badge/components/badge/badge.svelte';
+  import Button from '@lostgradient/button/components/button/button.svelte';
+  import { default as CodeBlock } from '@lostgradient/code-block/components/code-block/index.ts';
   import Textarea from '@lostgradient/textarea/components/textarea/textarea.svelte';
 
   import type { JsonSchemaValidationError } from './json-schema-editor-types.ts';

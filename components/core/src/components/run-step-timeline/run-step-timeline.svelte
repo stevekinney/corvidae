@@ -70,9 +70,9 @@
 
 <script lang="ts">
   import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
-  import Badge from '../badge/badge.svelte';
-  import CodeBlock from '../code-block/code-block.svelte';
-  import Collapsible from '../collapsible/collapsible.svelte';
+  import Badge from '@lostgradient/badge/components/badge/badge.svelte';
+  import CodeBlock from '@lostgradient/code-block/components/code-block/code-block.svelte';
+  import Collapsible from '@lostgradient/collapsible/components/collapsible/collapsible.svelte';
   import RunStepBranchDisclosure from './run-step-branch-disclosure.svelte';
   import RunStepMarker from './_run-step-marker.svelte';
   import Link from '@lostgradient/link/components/link/link.svelte';

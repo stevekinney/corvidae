@@ -11,9 +11,9 @@
   import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
   import { devWarn } from '@lostgradient/foundation/utilities/dev-warn.ts';
   import { formatDate } from '@lostgradient/foundation/utilities/format-date.ts';
-  import Button from '../button/button.svelte';
-  import Chip from '../chip/chip.svelte';
-  import CopyButton from '../copy-button/copy-button.svelte';
+  import Button from '@lostgradient/button/components/button/button.svelte';
+  import Chip from '@lostgradient/chip/components/chip/chip.svelte';
+  import CopyButton from '@lostgradient/copy-button/components/copy-button/copy-button.svelte';
   import ChevronRight from '@lucide/svelte/icons/chevron-right';
 
   let {

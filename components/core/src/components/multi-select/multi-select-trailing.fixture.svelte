@@ -1,6 +1,6 @@
 <script lang="ts">
   import Combobox from '../combobox/combobox.svelte';
-  import Select from '../select/select.svelte';
+  import Select from '@lostgradient/select/components/select/select.svelte';
   import MultiSelect from './multi-select.svelte';
 
   const items = [

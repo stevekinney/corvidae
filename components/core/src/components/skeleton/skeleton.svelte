@@ -6,7 +6,7 @@
   import { getContext, setContext, untrack, type Snippet } from 'svelte';
 
   import type { SkeletonProps } from './skeleton.types.ts';
-  import Button from '../button/button.svelte';
+  import Button from '@lostgradient/button/components/button/button.svelte';
   import VisuallyHidden from '@lostgradient/visually-hidden/components/visually-hidden/visually-hidden.svelte';
   import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
 

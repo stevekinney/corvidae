@@ -1,12 +1,12 @@
 <script lang="ts">
-  import Dropdown from '../../components/dropdown/dropdown.svelte';
-  import DropdownGroup from '../../components/dropdown-group/dropdown-group.svelte';
-  import DropdownItem from '../../components/dropdown-item/dropdown-item.svelte';
-  import DropdownLabel from '../../components/dropdown-label/dropdown-label.svelte';
-  import DropdownMenu from '../../components/dropdown-menu/dropdown-menu.svelte';
-  import DropdownSeparator from '../../components/dropdown-separator/dropdown-separator.svelte';
-  import DropdownTrigger from '../../components/dropdown-trigger/dropdown-trigger.svelte';
-  import type { DropdownPlacement } from '../../components/dropdown/dropdown.types.ts';
+  import Dropdown from '@lostgradient/dropdown/components/dropdown/dropdown.svelte';
+  import DropdownGroup from '@lostgradient/dropdown/components/dropdown-group/dropdown-group.svelte';
+  import DropdownItem from '@lostgradient/dropdown/components/dropdown-item/dropdown-item.svelte';
+  import DropdownLabel from '@lostgradient/dropdown/components/dropdown-label/dropdown-label.svelte';
+  import DropdownMenu from '@lostgradient/dropdown/components/dropdown-menu/dropdown-menu.svelte';
+  import DropdownSeparator from '@lostgradient/dropdown/components/dropdown-separator/dropdown-separator.svelte';
+  import DropdownTrigger from '@lostgradient/dropdown/components/dropdown-trigger/dropdown-trigger.svelte';
+  import type { DropdownPlacement } from '@lostgradient/dropdown/components/dropdown/dropdown.types.ts';
 
   let {
     placement = 'bottom-start',

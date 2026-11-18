@@ -25,8 +25,8 @@
   import type { StackedListItemProps } from './stacked-list-item.types.ts';
   import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
   import { useResizeObserver } from '@lostgradient/foundation/utilities/use-resize-observer.svelte.ts';
-  import Button from '../button/button.svelte';
-  import { Dropdown } from '../dropdown/index.ts';
+  import Button from '@lostgradient/button/components/button/button.svelte';
+  import { Dropdown } from '@lostgradient/dropdown/components/dropdown/index.ts';
 
   let {
     density,

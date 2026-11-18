@@ -97,7 +97,7 @@ type ControlRow = {
 };
 
 const button: ControlRow = {
-  path: '../components/button/button.css',
+  path: '../../../button/src/components/button/button.css',
   base: '.cinder-button',
   property: 'min-height',
   frame: 0,
@@ -117,7 +117,7 @@ const searchField: ControlRow = {
   frame: 2 * BORDER,
 };
 const select: ControlRow = {
-  path: '../components/select/select.css',
+  path: '../../../select/src/components/select/select.css',
   base: '.cinder-select',
   property: 'min-height',
   frame: 0,
@@ -136,7 +136,7 @@ const multiSelect: ControlRow = {
 };
 /** An attached SegmentedControl wraps its options in 1px of padding and no border (COR-2311). */
 const segmentedControl: ControlRow = {
-  path: '../components/segmented-control/segmented-control.css',
+  path: '../../../segmented-control/src/components/segmented-control/segmented-control.css',
   base: '.cinder-segmented-control',
   part: '.cinder-segmented-control-option',
   property: 'min-block-size',
@@ -250,7 +250,7 @@ describe('field content fits inside the step', () => {
 describe('toolbar row heights', () => {
   test('Button sm, SegmentedControl toolbar, and Chip toolbar are the same height', async () => {
     const chip = await declarations(
-      '../components/chip/chip.css',
+      '../../../chip/src/components/chip/chip.css',
       ".cinder-chip[data-cinder-density='toolbar']",
     );
     expect({

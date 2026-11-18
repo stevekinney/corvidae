@@ -1,6 +1,6 @@
 <script lang="ts">
   import { untrack } from 'svelte';
-  import { Button } from '../button/index.ts';
+  import { Button } from '@lostgradient/button/components/button/index.ts';
   import { Drawer } from '@lostgradient/drawer/components/drawer/index.ts';
 
   type FixtureProps = {

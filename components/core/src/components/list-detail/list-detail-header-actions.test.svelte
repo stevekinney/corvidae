@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { Button } from '../button/index.ts';
-  import { SectionHeading } from '../section-heading/index.ts';
+  import { Button } from '@lostgradient/button/components/button/index.ts';
+  import { SectionHeading } from '@lostgradient/section-heading/components/section-heading/index.ts';
   import ListDetail from './list-detail.svelte';
 
   let { withActions = false }: { withActions?: boolean } = $props();

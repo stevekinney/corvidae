@@ -301,7 +301,7 @@
     },
     {
       "files": [
-        "**/components/core/src/components/json-viewer/_json-viewer-node.svelte",
+        "**/components/json-viewer/src/components/json-viewer/_json-viewer-node.svelte",
         "**/components/core/src/components/payload-inspector/_payload-fields.svelte",
         "**/components/core/src/components/json-schema-editor/property-editor.svelte",
         "**/components/core/src/components/json-schema-editor/property-list.svelte"

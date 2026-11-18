@@ -1,12 +1,12 @@
 <script lang="ts">
-  import { Button } from '../button/index.ts';
-  import { Dropdown } from '../dropdown/index.ts';
-  import { DropdownItem } from '../dropdown-item/index.ts';
-  import { DropdownMenu } from '../dropdown-menu/index.ts';
-  import { DropdownTrigger } from '../dropdown-trigger/index.ts';
+  import { Button } from '@lostgradient/button/components/button/index.ts';
+  import { Dropdown } from '@lostgradient/dropdown/components/dropdown/index.ts';
+  import { DropdownItem } from '@lostgradient/dropdown/components/dropdown-item/index.ts';
+  import { DropdownMenu } from '@lostgradient/dropdown/components/dropdown-menu/index.ts';
+  import { DropdownTrigger } from '@lostgradient/dropdown/components/dropdown-trigger/index.ts';
   import { Tooltip } from '@lostgradient/tooltip/components/tooltip/index.ts';
-  import { ButtonGroup } from './index.ts';
-  import type { ButtonVariant } from '../button/button.types.ts';
+  import { ButtonGroup } from '@lostgradient/button/components/button-group/index.ts';
+  import type { ButtonVariant } from '@lostgradient/button/components/button/button.types.ts';
 
   // Every join a group draws: horizontal and vertical, two to four members, three variants, a
   // member wrapped in a Tooltip or a Dropdown, a split button, and right to left.

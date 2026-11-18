@@ -406,7 +406,7 @@ describe('field edges (COR-1814)', () => {
   const read = (path: string) => Bun.file(new URL(path, import.meta.url)).text();
   const fieldStylesheets = {
     input: '../../../input/src/components/input/input.css',
-    select: '../../../core/src/components/select/select.css',
+    select: '../../../select/src/components/select/select.css',
     combobox: '../../../core/src/components/combobox/combobox.css',
     multiSelect: '../../../core/src/components/multi-select/multi-select.css',
     textarea: '../../../textarea/src/components/textarea/textarea.css',

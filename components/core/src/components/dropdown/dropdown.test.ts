@@ -16,13 +16,14 @@ setupHappyDom();
 // through integration tests in a real browser environment.
 
 const { render, fireEvent, waitFor, cleanup } = await import('@testing-library/svelte');
-const { default: Dropdown } = await import('./dropdown.svelte');
+const { default: Dropdown } =
+  await import('@lostgradient/dropdown/components/dropdown/dropdown.svelte');
 const { default: DropdownCompoundFixture } =
   await import('../../test/fixtures/dropdown-compound-fixture.svelte');
 const { default: DropdownRovingFixture } =
-  await import('../../test/fixtures/dropdown-roving-fixture.svelte');
+  await import('@lostgradient/dropdown/test/fixtures/dropdown-roving-fixture.svelte');
 const { default: DropdownTriggerNoCaretFixture } =
-  await import('../../test/fixtures/dropdown-trigger-no-caret-fixture.svelte');
+  await import('@lostgradient/dropdown/test/fixtures/dropdown-trigger-no-caret-fixture.svelte');
 const { pushEscapeHandler, resetEscapeStack } =
   await import('@lostgradient/foundation/_internal/overlay.ts');
 
@@ -119,7 +120,9 @@ async function readDropdownCss(): Promise<string> {
   // getComputedStyle. The inner declaration blocks are unchanged, so the
   // string-extraction assertions that also use this read are unaffected.
   return stripCinderComponentsLayer(
-    await Bun.file(new URL('./dropdown.css', import.meta.url)).text(),
+    await Bun.file(
+      new URL('../../../../dropdown/src/components/dropdown/dropdown.css', import.meta.url),
+    ).text(),
   );
 }
 
@@ -392,7 +395,9 @@ describe('Dropdown', () => {
   });
 
   test('dropdown CSS defines explicit top placement rules for both compound and legacy popover surfaces', async () => {
-    const dropdownCss = await Bun.file(new URL('./dropdown.css', import.meta.url)).text();
+    const dropdownCss = await Bun.file(
+      new URL('../../../../dropdown/src/components/dropdown/dropdown.css', import.meta.url),
+    ).text();
 
     expect(dropdownCss).toContain(
       ".cinder-dropdown-menu[popover][data-cinder-placement='top-start']",
@@ -450,7 +455,9 @@ describe('Dropdown', () => {
   });
 
   test('compound trigger caret CSS uses SVG sizing and system spacing', async () => {
-    const dropdownCss = await Bun.file(new URL('./dropdown.css', import.meta.url)).text();
+    const dropdownCss = await Bun.file(
+      new URL('../../../../dropdown/src/components/dropdown/dropdown.css', import.meta.url),
+    ).text();
     const navigationItemCss = await Bun.file(
       new URL(
         '../../../../navigation-item/src/components/navigation-item/navigation-item.css',

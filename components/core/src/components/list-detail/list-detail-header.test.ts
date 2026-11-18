@@ -11,7 +11,10 @@ import { declarationsFor } from '@lostgradient/component-tooling/test/css.ts';
 import { setupHappyDom } from '@lostgradient/testing';
 
 const sectionHeadingCss = await Bun.file(
-  new URL('../section-heading/section-heading.css', import.meta.url),
+  new URL(
+    '../../../../section-heading/src/components/section-heading/section-heading.css',
+    import.meta.url,
+  ),
 ).text();
 
 setupHappyDom();

@@ -21,7 +21,10 @@ const tokensBaseCss = await Bun.file(
   new URL('../../../../tokens/src/styles/tokens-base.css', import.meta.url),
 ).text();
 const sortableListCss = await Bun.file(
-  new URL('../sortable-list/sortable-list.css', import.meta.url),
+  new URL(
+    '../../../../sortable-list/src/components/sortable-list/sortable-list.css',
+    import.meta.url,
+  ),
 ).text();
 
 afterEach(() => {

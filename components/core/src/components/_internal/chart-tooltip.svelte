@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { default as Popover } from '../popover/index.ts';
+  import { default as Popover } from '@lostgradient/popover/components/popover/index.ts';
   import type { Snippet } from 'svelte';
 
   import type { ChartGeometry, ChartTarget } from '../chart.types.ts';

@@ -621,7 +621,7 @@ Themed native scrollbars for components that opt in via `scrollbar-width` and `:
 
 ## Button
 
-Component-specific tokens for [`Button`](../../core/src/components/button/button.svelte). The base trio (`bg`, `fg`, `border`) defines the secondary-variant defaults; size tokens scale padding, height, font, and radius across `xs`/`sm`/`md`/`lg`/`xl`. `md` is the AAA touch-target size (44px); `xs` and `sm` are intentionally below AAA — see [`button.a11y.md`](../../core/src/components/button/button.a11y.md) for the rationale.
+Component-specific tokens for [`Button`](../../button/src/components/button/button.svelte). The base trio (`bg`, `fg`, `border`) defines the secondary-variant defaults; size tokens scale padding, height, font, and radius across `xs`/`sm`/`md`/`lg`/`xl`. `md` is the AAA touch-target size (44px); `xs` and `sm` are intentionally below AAA — see [`button.a11y.md`](../../button/src/components/button/button.a11y.md) for the rationale.
 
 ### Base
 

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Button } from '../button/index.ts';
+  import { Button } from '@lostgradient/button/components/button/index.ts';
   import { Card } from '@lostgradient/card/components/card/index.ts';
 </script>
 

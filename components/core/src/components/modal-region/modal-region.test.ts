@@ -17,7 +17,7 @@ afterEach(cleanup);
 describe('ModalRegion', () => {
   test('standalone entrypoint imports Button styles for confirmations', () => {
     const source = readFileSync(new URL('./index.ts', import.meta.url), 'utf8');
-    expect(source).toContain("import '../button/button.css';");
+    expect(source).toContain("import '@lostgradient/button/button.css';");
   });
 
   test('renders its context-scoped application children without adding wrapper markup', () => {

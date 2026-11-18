@@ -14,7 +14,10 @@ setupHappyDom();
 const { cleanup, render } = await import('@testing-library/svelte');
 const { default: Skeleton } = await import('./skeleton.svelte');
 const groupedListItemCss = await Bun.file(
-  new URL('../grouped-list-item/grouped-list-item.css', import.meta.url),
+  new URL(
+    '../../../../grouped-list/src/components/grouped-list-item/grouped-list-item.css',
+    import.meta.url,
+  ),
 ).text();
 const skeletonSource = await Bun.file(new URL('./skeleton.css', import.meta.url)).text();
 const skeletonCss = skeletonSource.replace(/\/\*.*?\*\//gs, '').replace(/\s+/g, ' ');

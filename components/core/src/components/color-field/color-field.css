@@ -1,6 +1,6 @@
 @layer cinder.tokens, cinder.foundation, cinder.components, cinder.utilities;
-@import '../color-picker/color-picker.css';
-@import '../popover/popover.css';
+@import '@lostgradient/color-picker/color-picker.css';
+@import '@lostgradient/popover/popover.css';
 
 @layer cinder.components {
   /* ========================================

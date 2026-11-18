@@ -3,7 +3,7 @@
   Not part of the public API; SchemaFormBody renders it in a large form.
 -->
 <script lang="ts">
-  import JsonEditor from '../json-editor/json-editor.svelte';
+  import JsonEditor from '@lostgradient/json-editor/components/json-editor/json-editor.svelte';
 
   let {
     id,

@@ -49,7 +49,7 @@ function githubDarkForegrounds(): ReadonlyMap<string, string> {
  */
 function liftedDarkColors(): ReadonlyMap<string, string> {
   const css = readFileSync(
-    new URL('../../../core/src/components/code-block/code-block.css', import.meta.url),
+    new URL('../../../code-block/src/components/code-block/code-block.css', import.meta.url),
     'utf8',
   );
   const lifted = new Map<string, string>();
@@ -68,7 +68,7 @@ function liftedDarkColors(): ReadonlyMap<string, string> {
  */
 function liftedLightColors(): ReadonlyMap<string, string> {
   const css = readFileSync(
-    new URL('../../../core/src/components/code-block/code-block.css', import.meta.url),
+    new URL('../../../code-block/src/components/code-block/code-block.css', import.meta.url),
     'utf8',
   );
   const lifted = new Map<string, string>();

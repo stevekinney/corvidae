@@ -1,0 +1,136 @@
+@layer cinder.tokens, cinder.foundation, cinder.components, cinder.utilities;
+/* SideNavigationItem renders a StatusDot and a Tooltip around NavigationItem, so the
+ * styles it needs travel with it. Sibling-leaf paths resolve identically in `src/` and the
+ * verbatim-copied `dist/` because the layout mirrors. */
+@import '@lostgradient/badge/badge.css';
+@import '@lostgradient/navigation-item/navigation-item.css';
+@import '@lostgradient/status-dot/status-dot.css';
+@import '@lostgradient/tooltip/tooltip.css';
+
+@layer cinder.components {
+  /* ========================================
+ * SIDE NAVIGATION ITEM
+ * One row, one control (COR-2010, rows 02m to 02q and 03b). The row geometry, hover, focus and
+ * active states live on `.cinder-navigation-item[data-variant='vertical']`; this file adds the
+ * parts a sidebar row has that a tab does not: an icon, a label that can step aside, and a
+ * count or dot.
+ * ======================================== */
+
+  .cinder-side-navigation-item {
+    position: relative;
+  }
+
+  .cinder-side-navigation-item__icon {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+  }
+
+  /* The label never wraps, so a long name cannot make the row taller than 30px, and it gives up
+   * room before the indicator does. It exists only on a row that passes `icon`; a legacy item that
+   * puts its own icon inside `children` renders them as direct children of the link, as before. */
+  .cinder-side-navigation-item__label {
+    display: inline-flex;
+    flex: 0 1 auto;
+    align-items: center;
+    gap: var(--cinder-space-2);
+    min-inline-size: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* A count sits at the row's trailing edge as plain, muted, right-aligned text, 13px, never a
+   * badge (COR-2315): a figure the person can read at a glance without it competing with the
+   * label. It keeps the regular weight when the row is active and semibold. */
+  .cinder-side-navigation-item__count {
+    margin-inline-start: auto;
+    flex: none;
+    color: var(--cinder-text-subtle);
+    font-size: var(--cinder-text-sm);
+    font-weight: var(--cinder-font-normal);
+    font-variant-numeric: tabular-nums;
+    line-height: 1.25rem;
+    text-align: end;
+  }
+
+  /* A badge takes the trailing edge where a count sits. It is never cut: the label gives up room
+   * first, ending in an ellipsis, so a long title cannot push the mark out of the row. */
+  .cinder-side-navigation-item__badge {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    margin-inline-start: auto;
+  }
+
+  /* The dot sits right after the label, nudged in so it reads as part of the word. */
+  .cinder-side-navigation-item__dot {
+    display: inline-flex;
+    flex: none;
+    margin-inline-start: calc(var(--cinder-space-0-5, 0.125rem) * -1);
+  }
+
+  /* ----------------------------------------
+ * Collapsed: an icon rail
+ *
+ * A row with an icon becomes a 40px square-ended target centred in the rail. The label stays in
+ * the accessible name (clipped, not removed), and the count or dot rides the icon's top-right
+ * corner. A row without an icon has nothing to collapse to and stays as it was.
+ * ---------------------------------------- */
+
+  .cinder-side-navigation-item[data-cinder-collapsed][data-cinder-has-icon] {
+    inline-size: 2.5rem;
+    margin-inline: auto;
+    justify-content: center;
+    padding-inline: 0;
+  }
+
+  .cinder-side-navigation-item[data-cinder-collapsed][data-cinder-has-icon]
+    .cinder-side-navigation-item__label {
+    position: absolute;
+    inline-size: 1px;
+    block-size: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  /* On the rail the count is a small dot on the icon's corner: the figure is hidden (`font-size: 0`,
+   * and it stays in the row's name), and the dot is the accent colour, a count and not a
+   * warning, so a row that wants attention reads at a glance. */
+  .cinder-side-navigation-item[data-cinder-collapsed][data-cinder-has-icon]
+    .cinder-side-navigation-item__count {
+    position: absolute;
+    inset-block-start: 0.3125rem;
+    inset-inline-end: 0.4375rem;
+    margin: 0;
+    inline-size: 0.5rem;
+    block-size: 0.5rem;
+    overflow: hidden;
+    border-radius: 9999px;
+    background: var(--cinder-accent-solid);
+    font-size: 0;
+    line-height: 0;
+    /* A ring in the sidebar's own surface separates the dot from the icon beneath it. */
+    box-shadow: 0 0 0 2px var(--cinder-surface);
+  }
+
+  /* The rail has no room for a word: the badge steps aside and the tooltip says it. */
+  .cinder-side-navigation-item[data-cinder-collapsed][data-cinder-has-icon]
+    .cinder-side-navigation-item__badge {
+    display: none;
+  }
+
+  .cinder-side-navigation-item[data-cinder-collapsed][data-cinder-has-icon]
+    .cinder-side-navigation-item__dot {
+    position: absolute;
+    inset-block-start: 0.3125rem;
+    inset-inline-end: 0.4375rem;
+    margin: 0;
+    border-radius: 9999px;
+    box-shadow: 0 0 0 2px var(--cinder-surface);
+  }
+}

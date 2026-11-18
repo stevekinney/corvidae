@@ -136,7 +136,7 @@ test('HoverCard unmounts immediately under reduced motion', async ({ page }) => 
   );
 
   // Uses the "controlled" example
-  // (components/core/src/components/hover-card/examples/controlled.example.svelte,
+  // (components/hover-card/src/components/hover-card/examples/controlled.example.svelte,
   // `bind:open` driven by external Show/Hide buttons), NOT hover/pointer
   // events on any timed example: EVERY hover-driven path — even
   // `closeDelay={0}` (tried in an earlier round) — still routes through

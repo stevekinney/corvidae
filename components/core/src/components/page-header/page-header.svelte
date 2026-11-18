@@ -19,8 +19,8 @@
   import { useIntersection } from '@lostgradient/foundation/utilities/use-intersection.svelte.ts';
   import { useResizeObserver } from '@lostgradient/foundation/utilities/use-resize-observer.svelte.ts';
   import CompactActions from '@lostgradient/foundation/_internal/compact-actions.svelte';
-  import Button from '../button/button.svelte';
-  import { Dropdown } from '../dropdown/index.ts';
+  import Button from '@lostgradient/button/components/button/button.svelte';
+  import { Dropdown } from '@lostgradient/dropdown/components/dropdown/index.ts';
   import Tooltip from '@lostgradient/tooltip/components/tooltip/tooltip.svelte';
   import type { PageHeaderOverflowAction, PageHeaderProps } from './page-header.types.ts';
 

@@ -70,7 +70,7 @@ describe('coarse pointers get a real touch box without enlarging the painted con
   const read = (path: string) => readFileSync(new URL(path, import.meta.url), 'utf8');
   const tokens = read('../../../tokens/src/styles/tokens-base.css');
   const foundation = read('../../../foundation/src/styles/foundation.css');
-  const buttonCss = read('../components/button/button.css');
+  const buttonCss = read('../../../button/src/components/button/button.css');
 
   // happy-dom cannot evaluate `(pointer: coarse)`, so the coarse run applies those blocks
   // unconditionally (`@media all`); the fine run is the stylesheet as authored.

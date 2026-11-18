@@ -1,5 +1,5 @@
 <script lang="ts">
-  import Button from '../../components/button/button.svelte';
+  import Button from '@lostgradient/button/components/button/button.svelte';
   import ErrorState from '../../components/error-state/error-state.svelte';
 </script>
 

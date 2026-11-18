@@ -377,7 +377,7 @@ const scenario18 = await outcomeOf(async () => {
     '<script>import Recursive from "./_json-viewer-node.svelte";</script><Recursive />\n';
   const recursive = await lintImport(
     source,
-    'components/core/src/components/json-viewer/_json-viewer-node.svelte',
+    'components/json-viewer/src/components/json-viewer/_json-viewer-node.svelte',
   );
   expect(recursive.exitCode).toBe(0);
 

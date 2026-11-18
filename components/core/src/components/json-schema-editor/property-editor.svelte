@@ -1,7 +1,7 @@
 <script lang="ts" module>
   import type { JsonSchemaTypeName, JsonSchemaValue } from './json-schema-editor-types.ts';
   import type { EnumDraft } from './enum-editor.svelte';
-  import type { SelectOption } from '../select/index.ts';
+  import type { SelectOption } from '@lostgradient/select/components/select/index.ts';
 
   export type PropertyEditorProps = {
     idPrefix: string;
@@ -32,11 +32,11 @@
   import { onDestroy } from 'svelte';
   import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
   import Alert from '@lostgradient/alert/components/alert/alert.svelte';
-  import Badge from '../badge/badge.svelte';
-  import Button from '../button/button.svelte';
+  import Badge from '@lostgradient/badge/components/badge/badge.svelte';
+  import Button from '@lostgradient/button/components/button/button.svelte';
   import Checkbox from '@lostgradient/checkbox/components/checkbox/checkbox.svelte';
-  import { default as Collapsible } from '../collapsible/index.ts';
-  import { default as Select } from '../select/index.ts';
+  import { default as Collapsible } from '@lostgradient/collapsible/components/collapsible/index.ts';
+  import { default as Select } from '@lostgradient/select/components/select/index.ts';
   import Input from '@lostgradient/input/components/input/input.svelte';
 
   import { reconcileCompositionBranchKeys } from './composition-branch-keys.ts';

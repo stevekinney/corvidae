@@ -19,9 +19,9 @@
   import { untrack } from 'svelte';
   import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
   import { handleRovingKeydown } from '@lostgradient/foundation/utilities/roving-tabindex.ts';
-  import Badge from '../badge/badge.svelte';
-  import Button from '../button/button.svelte';
-  import CopyButton from '../copy-button/copy-button.svelte';
+  import Badge from '@lostgradient/badge/components/badge/badge.svelte';
+  import Button from '@lostgradient/button/components/button/button.svelte';
+  import CopyButton from '@lostgradient/copy-button/components/copy-button/copy-button.svelte';
 
   let {
     state: editorState,

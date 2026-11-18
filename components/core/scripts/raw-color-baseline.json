@@ -1,26 +1,26 @@
 [
   {
-    "filePath": "src/components/code-block/code-block.css",
+    "filePath": "../code-block/src/components/code-block/code-block.css",
     "colorClass": "hex",
     "allowedCount": 3
   },
   {
-    "filePath": "src/components/code-block/code-block.css",
+    "filePath": "../code-block/src/components/code-block/code-block.css",
     "colorClass": "light-dark",
     "allowedCount": 1
   },
   {
-    "filePath": "src/components/code-block/code-block.css",
+    "filePath": "../code-block/src/components/code-block/code-block.css",
     "colorClass": "oklch",
     "allowedCount": 1
   },
   {
-    "filePath": "src/components/docked-action-bar/docked-action-bar.css",
+    "filePath": "../docked-action-bar/src/components/docked-action-bar/docked-action-bar.css",
     "colorClass": "light-dark",
     "allowedCount": 1
   },
   {
-    "filePath": "src/components/docked-action-bar/docked-action-bar.css",
+    "filePath": "../docked-action-bar/src/components/docked-action-bar/docked-action-bar.css",
     "colorClass": "oklch",
     "allowedCount": 2
   },
@@ -30,7 +30,7 @@
     "allowedCount": 1
   },
   {
-    "filePath": "src/components/popover/popover-surface.css",
+    "filePath": "../popover/src/components/popover/popover-surface.css",
     "colorClass": "oklch",
     "allowedCount": 2
   },
@@ -40,7 +40,7 @@
     "allowedCount": 1
   },
   {
-    "filePath": "src/components/select/select.css",
+    "filePath": "../select/src/components/select/select.css",
     "colorClass": "oklch",
     "allowedCount": 1
   },
@@ -55,7 +55,7 @@
     "allowedCount": 13
   },
   {
-    "filePath": "src/components/toast-region/toast-region.css",
+    "filePath": "../toast-region/src/components/toast-region/toast-region.css",
     "colorClass": "oklch",
     "allowedCount": 1
   },

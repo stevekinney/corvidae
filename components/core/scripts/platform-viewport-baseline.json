@@ -1,6 +1,6 @@
 [
   {
-    "filePath": "src/components/banner/banner.css",
+    "filePath": "../banner/src/components/banner/banner.css",
     "query": "@media (max-width: 39.99rem)",
     "allowedCount": 1
   },
@@ -15,7 +15,7 @@
     "allowedCount": 1
   },
   {
-    "filePath": "src/components/empty-state/empty-state.css",
+    "filePath": "../empty-state/src/components/empty-state/empty-state.css",
     "query": "@media (max-width: 40rem)",
     "allowedCount": 1
   },
@@ -40,12 +40,12 @@
     "allowedCount": 1
   },
   {
-    "filePath": "src/components/sidebar/sidebar.css",
+    "filePath": "../side-navigation/src/components/sidebar/sidebar.css",
     "query": "@media (max-width: 639.98px)",
     "allowedCount": 1
   },
   {
-    "filePath": "src/components/sidebar/sidebar.svelte",
+    "filePath": "../side-navigation/src/components/sidebar/sidebar.svelte",
     "query": "@media (max-width: $",
     "allowedCount": 1
   }

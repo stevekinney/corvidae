@@ -23,15 +23,21 @@ function loadCss(relativePath: string): string {
   return readFileSync(fullPath, 'utf8');
 }
 
-const dropdownCss = loadCss('../components/dropdown/dropdown.css');
+const dropdownCss = loadCss('../../../dropdown/src/components/dropdown/dropdown.css');
 const navigationItemCss = loadCss(
   '../../../navigation-item/src/components/navigation-item/navigation-item.css',
 );
-const numberInputCss = loadCss('../components/number-input/number-input.css');
-const selectionPopoverCss = loadCss('../components/selection-popover/selection-popover.css');
-const sideNavigationCss = loadCss('../components/side-navigation/side-navigation.css');
+const numberInputCss = loadCss(
+  '../../../number-input/src/components/number-input/number-input.css',
+);
+const selectionPopoverCss = loadCss(
+  '../../../selection-popover/src/components/selection-popover/selection-popover.css',
+);
+const sideNavigationCss = loadCss(
+  '../../../side-navigation/src/components/side-navigation/side-navigation.css',
+);
 const sideNavigationGroupCss = loadCss(
-  '../components/side-navigation-group/side-navigation-group.css',
+  '../../../side-navigation/src/components/side-navigation-group/side-navigation-group.css',
 );
 const sliderCss = loadCss('../../../slider/src/components/slider/slider.css');
 const tabsCss = loadCss('../components/tabs/tabs.css');
@@ -55,7 +61,7 @@ const mediaControlsCss = loadCss(
 const permissionMatrixCss = loadCss(
   '../../../permission-matrix/src/components/permission-matrix/permission-matrix.css',
 );
-const shareCardCss = loadCss('../components/share-card/share-card.css');
+const shareCardCss = loadCss('../../../share-card/src/components/share-card/share-card.css');
 const transferListCss = loadCss(
   '../../../transfer-list/src/components/transfer-list/transfer-list.css',
 );
@@ -67,15 +73,19 @@ const menuBarCss = loadCss('../components/menu-bar/menu-bar.css');
 const accordionItemCss = loadCss(
   '../../../accordion/src/components/accordion-item/accordion-item.css',
 );
-const collapsibleCss = loadCss('../components/collapsible/collapsible.css');
+const collapsibleCss = loadCss('../../../collapsible/src/components/collapsible/collapsible.css');
 const drawerCss = loadCss('../../../drawer/src/components/drawer/drawer.css');
 const jsonSchemaEditorCss = loadCss('../components/json-schema-editor/json-schema-editor.css');
-const jsonViewerCss = loadCss('../components/json-viewer/json-viewer.css');
-const modalCss = loadCss('../components/modal/modal.css');
-const popoverCss = loadCss('../components/popover/popover.css');
+const jsonViewerCss = loadCss('../../../json-viewer/src/components/json-viewer/json-viewer.css');
+const modalCss = loadCss('../../../modal/src/components/modal/modal.css');
+const popoverCss = loadCss('../../../popover/src/components/popover/popover.css');
 const ratingCss = loadCss('../../../rating/src/components/rating/rating.css');
-const searchFieldCss = loadCss('../components/search-field/search-field.css');
-const toastRegionCss = loadCss('../components/toast-region/toast-region.css');
+const searchFieldCss = loadCss(
+  '../../../search-field/src/components/search-field/search-field.css',
+);
+const toastRegionCss = loadCss(
+  '../../../toast-region/src/components/toast-region/toast-region.css',
+);
 const treeCss = loadCss('../../../tree/src/components/tree/tree.css');
 
 // Svelte component <style> blocks converted in the same sweep. markdown-editor,
@@ -925,14 +935,14 @@ describe('filled controls paint a gap before the ring (COR-1498)', () => {
   const cases: Array<{ name: string; source: string; selector: string; expected: string }> = [
     {
       name: 'Button primary',
-      source: css('../components/button/button.css'),
+      source: css('../../../button/src/components/button/button.css'),
       selector:
         ".cinder-button[data-cinder-variant='primary']:focus-visible:not(:disabled):not( [aria-disabled='true']:not([data-cinder-loading]) )",
       expected: FILLED_BOX_SHADOW,
     },
     {
       name: 'Button danger',
-      source: css('../components/button/button.css'),
+      source: css('../../../button/src/components/button/button.css'),
       selector:
         ".cinder-button[data-cinder-variant='danger']:focus-visible:not(:disabled):not( [aria-disabled='true']:not([data-cinder-loading]) )",
       expected: FILLED_BOX_SHADOW,
@@ -951,7 +961,7 @@ describe('filled controls paint a gap before the ring (COR-1498)', () => {
     },
     {
       name: 'Radio checked',
-      source: css('../components/radio-group/radio-group.css'),
+      source: css('../../../radio-group/src/components/radio-group/radio-group.css'),
       selector: '.cinder-radio:checked:focus-visible',
       expected: gapRecipe('var(--_cinder-radio-ring, var(--cinder-ring-color))'),
     },
@@ -963,7 +973,7 @@ describe('filled controls paint a gap before the ring (COR-1498)', () => {
     },
     {
       name: 'Chip pressed (non-neutral)',
-      source: css('../components/chip/chip.css'),
+      source: css('../../../chip/src/components/chip/chip.css'),
       selector:
         "button.cinder-chip[aria-pressed='true']:not([data-cinder-variant='neutral']):focus-visible",
       expected: FILLED_BOX_SHADOW,
@@ -988,7 +998,7 @@ describe('filled controls paint a gap before the ring (COR-1498)', () => {
     },
     {
       name: 'FileUpload browse button',
-      source: css('../components/file-upload/file-upload.css'),
+      source: css('../../../file-upload/src/components/file-upload/file-upload.css'),
       selector: '.cinder-file-upload__button:focus-visible',
       expected: FILLED_BOX_SHADOW,
     },

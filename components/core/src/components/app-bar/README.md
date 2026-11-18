@@ -2,7 +2,7 @@
 
 <!-- generated:a11y-record:required -->
 
-`AppBar` is a sticky top bar of translucent material for a page: Back and any leading content, the page's title, and trailing icon actions. It is 56px tall and draws no rule. Its surface is the canvas mixed at 82% with a 16px backdrop blur, so what scrolls under it shows through softly, and it is opaque where the platform cannot blur or when the person asks for less transparency. It is not a [`Toolbar`](../toolbar/README.md), which is the WAI-ARIA control group with arrow-key navigation, and not a [`NavigationBar`](../navigation-bar/README.md), which is a bar of navigation items.
+`AppBar` is a sticky top bar of translucent material for a page: Back and any leading content, the page's title, and trailing icon actions. It is 56px tall and draws no rule. Its surface is the canvas mixed at 82% with a 16px backdrop blur, so what scrolls under it shows through softly, and it is opaque where the platform cannot blur or when the person asks for less transparency. It is not a [`Toolbar`](../../../../toolbar/src/components/toolbar/README.md), which is the WAI-ARIA control group with arrow-key navigation, and not a [`NavigationBar`](../../../../navigation-bar/src/components/navigation-bar/README.md), which is a bar of navigation items.
 
 ## Usage
 

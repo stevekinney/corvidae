@@ -41,7 +41,7 @@ const REQUIRED_ARCHETYPES = [
 const UNSTYLED_HOOKS: Record<string, string> = {
   'cinder-map-legend__label': '../map-legend/src/components/map-legend/map-legend.svelte',
   'cinder-map-marker__label': '../map-marker/src/components/map-marker/map-marker.svelte',
-  'cinder-search-field__input': 'src/components/search-field/search-field.svelte',
+  'cinder-search-field__input': '../search-field/src/components/search-field/search-field.svelte',
 };
 
 const CARD_MARKER = `<!-- @dsCard group="${ARCHETYPES_GROUP}" height=100 subtitle="A page." -->`;
@@ -278,7 +278,7 @@ describe('the shared layout', () => {
 
 describe('Select', () => {
   test('never shows the browser caret: it is appearance none with Cinder’s own chevron after it', () => {
-    const css = read(join(cinderRoot, 'src/components/select/select.css'));
+    const css = read(join(cinderRoot, '../select/src/components/select/select.css'));
     expect(css).toMatch(/\.cinder-select\s*\{[^}]*appearance:\s*none/);
     for (const { name, text } of markupFragments()) {
       const selects = text.match(/<select\b/g)?.length ?? 0;

@@ -60,7 +60,8 @@ afterEach(() => {
 });
 
 const { default: CommandPalette } = await import('./command-palette.svelte');
-const { default: CommandItem } = await import('../command-item/command-item.svelte');
+const { default: CommandItem } =
+  await import('@lostgradient/command-menu/components/command-item/command-item.svelte');
 const { default: CommandPaletteFixture } =
   await import('../../test/fixtures/command-palette-fixture.svelte');
 const { default: CommandPaletteRichItemFixture } =
@@ -1006,7 +1007,10 @@ describe('CommandPalette — visual contract', () => {
   test('rows are 36px targets and the search input keeps its own padding (row 03c)', async () => {
     const paletteCss = await Bun.file(new URL('./command-palette.css', import.meta.url)).text();
     const commandItemCss = await Bun.file(
-      new URL('../command-item/command-item.css', import.meta.url),
+      new URL(
+        '../../../../command-menu/src/components/command-item/command-item.css',
+        import.meta.url,
+      ),
     ).text();
 
     // A row is a 36px target (row 03c); the sheet below raises it to 44px.
@@ -1023,7 +1027,10 @@ describe('CommandPalette — visual contract', () => {
     // CommandItem rules were extracted to command-item/command-item.css so both
     // CommandPalette and CommandMenu can import them without duplication.
     const commandItemCss = await Bun.file(
-      new URL('../command-item/command-item.css', import.meta.url),
+      new URL(
+        '../../../../command-menu/src/components/command-item/command-item.css',
+        import.meta.url,
+      ),
     ).text();
 
     expect(paletteCss).toMatch(

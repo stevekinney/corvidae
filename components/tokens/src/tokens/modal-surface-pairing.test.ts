@@ -13,13 +13,13 @@ import { parse } from 'postcss';
 import { readJsonRecord } from '../styles/token-contrast-test-readers.ts';
 
 const modalCss = await Bun.file(
-  new URL('../../../core/src/components/modal/modal.css', import.meta.url),
+  new URL('../../../modal/src/components/modal/modal.css', import.meta.url),
 ).text();
 const drawerCss = await Bun.file(
   new URL('../../../drawer/src/components/drawer/drawer.css', import.meta.url),
 ).text();
 const popoverCss = await Bun.file(
-  new URL('../../../core/src/components/popover/popover.css', import.meta.url),
+  new URL('../../../popover/src/components/popover/popover.css', import.meta.url),
 ).text();
 
 /** Every `background` value a rule of `css` declares, keyed by its selector. */

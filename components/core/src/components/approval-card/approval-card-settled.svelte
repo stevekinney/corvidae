@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { Snippet } from 'svelte';
 
-  import Button from '../button/button.svelte';
+  import Button from '@lostgradient/button/components/button/button.svelte';
 
   /** Props of the internal settled card. Not part of the public API. */
   type ApprovalCardSettledProps = {

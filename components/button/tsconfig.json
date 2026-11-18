@@ -1,0 +1,14 @@
+{
+  "extends": "@lostgradient/typescript/browser.json",
+  "compilerOptions": {
+    "types": ["bun"]
+  },
+  "include": [
+    "src",
+    "scripts",
+    "browser",
+    "../../internal/component-tooling/src/test/jest-dom-matchers.d.ts",
+    "../../internal/component-tooling/types/component-ambient.d.ts"
+  ],
+  "exclude": ["node_modules", "coverage", "fixtures", "**/build/**", "browser/.playwright"]
+}

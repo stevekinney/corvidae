@@ -13,7 +13,7 @@
 <script lang="ts">
   import type { Attachment } from 'svelte/attachments';
 
-  import Select from '../select/select.svelte';
+  import Select from '@lostgradient/select/components/select/select.svelte';
   import {
     applySortOption,
     holdSortButtonsOutOfTabOrder,

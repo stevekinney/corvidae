@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { Modal } from './index.ts';
-  import { Popover } from '../popover/index.ts';
+  import { Modal } from '@lostgradient/modal/components/modal/index.ts';
+  import { Popover } from '@lostgradient/popover/components/popover/index.ts';
   import { untrack } from 'svelte';
 
   type FixtureProps = {

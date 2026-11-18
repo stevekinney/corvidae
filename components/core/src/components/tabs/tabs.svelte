@@ -12,7 +12,7 @@
     readViewportBreakpoint,
     useViewportBelow,
   } from '@lostgradient/foundation/_internal/viewport-below.svelte.ts';
-  import Select from '../select/select.svelte';
+  import Select from '@lostgradient/select/components/select/select.svelte';
   import {
     handleRovingKeydown,
     isRovingKey,

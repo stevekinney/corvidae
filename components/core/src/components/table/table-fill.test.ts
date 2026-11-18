@@ -35,7 +35,7 @@ function valueOf(found: Declaration[], selector: string, property: string) {
 const files = {
   table: '../table/table.css',
   dataTable: '../data-table/data-table.css',
-  dataGrid: '../data-grid/data-grid.css',
+  dataGrid: '../../../../data-grid/src/components/data-grid/data-grid.css',
 } as const;
 
 describe('table fill', () => {

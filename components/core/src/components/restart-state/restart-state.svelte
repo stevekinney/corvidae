@@ -8,11 +8,11 @@
   import WifiOff from '@lucide/svelte/icons/wifi-off';
 
   import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
-  import { BANNER_MAX_ATTEMPTS } from '../banner/banner-presets.ts';
-  import Button from '../button/button.svelte';
-  import CopyButton from '../copy-button/copy-button.svelte';
-  import Modal from '../modal/modal.svelte';
-  import Steps from '../steps/steps.svelte';
+  import { BANNER_MAX_ATTEMPTS } from '@lostgradient/banner/components/banner/banner-presets.ts';
+  import Button from '@lostgradient/button/components/button/button.svelte';
+  import CopyButton from '@lostgradient/copy-button/components/copy-button/copy-button.svelte';
+  import Modal from '@lostgradient/modal/components/modal/modal.svelte';
+  import Steps from '@lostgradient/steps/components/steps/steps.svelte';
   import type { RestartStateProps } from './restart-state.types.ts';
 
   const DEFAULT_STEPS = [

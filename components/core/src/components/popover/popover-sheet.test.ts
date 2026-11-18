@@ -11,10 +11,12 @@ import { setupHappyDom } from '@lostgradient/testing';
 setupHappyDom();
 
 const { render, fireEvent, waitFor, cleanup } = await import('@testing-library/svelte');
-const { default: Popover } = await import('./popover.svelte');
+const { default: Popover } =
+  await import('@lostgradient/popover/components/popover/popover.svelte');
 const { default: Combobox } = await import('../combobox/combobox.svelte');
 const { default: MultiSelect } = await import('../multi-select/multi-select.svelte');
-const { default: Dropdown } = await import('../dropdown/dropdown.svelte');
+const { default: Dropdown } =
+  await import('@lostgradient/dropdown/components/dropdown/dropdown.svelte');
 const { default: DropdownCompoundFixture } =
   await import('../../test/fixtures/dropdown-compound-fixture.svelte');
 const { resetEscapeStack } = await import('@lostgradient/foundation/_internal/overlay.ts');

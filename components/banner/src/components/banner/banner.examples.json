@@ -1,0 +1,49 @@
+{
+  "$schema": "../../../../../internal/component-tooling/src/schemas/examples.schema.json",
+  "component": "banner",
+  "import": "@lostgradient/cinder",
+  "examples": [
+    {
+      "id": "basic",
+      "title": "Basic banner",
+      "description": "Informational page-level banner with a dismiss button.",
+      "code": "<script lang=\"ts\">\n  import { Banner } from '@lostgradient/banner';\n\n  let visible = $state(true);\n</script>\n\n{#if visible}\n  <Banner variant=\"info\" onDismiss={() => (visible = false)}>\n    Scheduled maintenance is planned for Sunday at 2:00 AM UTC.\n  </Banner>\n{:else}\n  <p style=\"color: var(--cinder-text-muted);\">Banner dismissed.</p>\n{/if}\n"
+    },
+    {
+      "id": "variants",
+      "title": "Banner variants",
+      "description": "All four semantic variant styles — info, success, warning, and danger.",
+      "code": "<script lang=\"ts\">\n  import { Banner } from '@lostgradient/banner';\n</script>\n\n<div style=\"display: flex; flex-direction: column; gap: 0.75rem;\">\n  <Banner variant=\"info\" dismissible={false}>Your trial expires in 7 days.</Banner>\n  <Banner variant=\"success\" dismissible={false}>Your changes have been saved successfully.</Banner>\n  <Banner variant=\"warning\" dismissible={false}>Storage is 90% full. Free up space soon.</Banner>\n  <Banner variant=\"danger\" dismissible={false}>Your payment method has expired.</Banner>\n</div>\n"
+    },
+    {
+      "id": "unreachable",
+      "title": "Unreachable preset",
+      "description": "The server is down: the preset writes the sentence, the absolute as-of time, the countdown and Retry now.",
+      "code": "<script lang=\"ts\">\n  import { Banner } from '@lostgradient/banner';\n\n  let loadedAt = new Date(Date.now() - 120_000);\n  let seconds = $state(4);\n</script>\n\n<Banner\n  preset=\"unreachable\"\n  dataUpdatedAt={loadedAt}\n  retryInSeconds={seconds}\n  attempt={3}\n  onRetry={() => (seconds = 4)}\n/>\n"
+    },
+    {
+      "id": "restart-needed",
+      "title": "Title and actions",
+      "description": "A warning banner with a bold title, a line of detail and two secondary actions.",
+      "code": "<script lang=\"ts\">\n  import { Banner } from '@lostgradient/banner';\n  import { Button } from '@lostgradient/button';\n</script>\n\n<Banner variant=\"warning\" dismissible={false} title=\"1 change waits for a restart\">\n  Workflow claim renew interval. Running work picks up where it stopped; reviews stay waiting.\n  {#snippet actions()}\n    <Button variant=\"secondary\" size=\"sm\" label=\"Revert 1 change\" />\n    <Button variant=\"secondary\" size=\"sm\" label=\"Restart now\" />\n  {/snippet}\n</Banner>\n"
+    },
+    {
+      "id": "presets",
+      "title": "Every connection preset",
+      "description": "The presets in the order the design lists them: offline, unreachable (with and without the changes sentence), stopped, out of date, refresh failed, restarting, reconnecting, restart failed and back online. Each fixes its tone, glyph, copy and actions, and none is dismissible.",
+      "code": "<script lang=\"ts\">\n  import { Banner } from '@lostgradient/banner';\n\n  // The time the data on screen was loaded, written as an absolute time with its zone.\n  const loadedAt = new Date(Date.now() - 120_000);\n  const common = {\n    dataUpdatedAt: loadedAt,\n    timeZone: 'America/Chicago',\n    onRetry: () => {},\n  };\n</script>\n\n<div class=\"example-preview-column\" style=\"gap: var(--cinder-space-3)\">\n  <Banner preset=\"offline\" {...common} retryInSeconds={8} />\n  <Banner preset=\"unreachable\" {...common} retryInSeconds={4} attempt={3} />\n  <Banner preset=\"unreachable\" {...common} retryInSeconds={8} attempt={3} consequence={false} />\n  <Banner preset=\"stopped\" {...common} />\n  <Banner preset=\"out-of-date\" {...common} />\n  <Banner preset=\"refresh-failed\" {...common} />\n  <Banner preset=\"restarting\" />\n  <Banner preset=\"reconnecting\" attempt={2} onRetry={() => {}} />\n  <Banner preset=\"restart-failed\" onRestart={() => {}} onOpenHealth={() => {}} />\n  <Banner preset=\"back-online\" />\n</div>\n"
+    },
+    {
+      "id": "neutral",
+      "title": "Neutral banner",
+      "description": "The neutral variant for a page-wide note that is not a warning or a success: a stacked bold title over the sentence, with no status colour.",
+      "code": "<script lang=\"ts\">\n  import { Banner } from '@lostgradient/banner';\n</script>\n\n<Banner variant=\"neutral\" dismissible={false} title=\"This agent has no memory yet\">\n  Memory is written when the agent learns a fact about you. Nothing has been written.\n</Banner>\n"
+    },
+    {
+      "id": "feature",
+      "title": "Feature banner",
+      "description": "An announcement with glyph art, an indigo wash, a bold title, one muted line and trailing actions. It is a labelled region, not a status, and below 560px of its own width the actions drop under the words.",
+      "code": "<script lang=\"ts\">\n  import { Banner } from '@lostgradient/banner';\n  import { Button } from '@lostgradient/button';\n  import Sparkles from '@lucide/svelte/icons/sparkles';\n</script>\n\n<Banner variant=\"feature\" title=\"Plan a night out with friends\">\n  Pick three bars and share one link; everyone votes before you go.\n  {#snippet art()}\n    <Sparkles aria-hidden=\"true\" />\n  {/snippet}\n  {#snippet actions()}\n    <Button variant=\"primary\" size=\"sm\" label=\"Start a plan\" />\n    <Button variant=\"ghost\" size=\"sm\" label=\"Not now\" />\n  {/snippet}\n</Banner>\n"
+    }
+  ]
+}

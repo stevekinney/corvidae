@@ -1,5 +1,5 @@
 <script lang="ts">
-  import Button from '../button/button.svelte';
+  import Button from '@lostgradient/button/components/button/button.svelte';
   import PageHeader from './page-header.svelte';
   import type {
     PageHeaderOverflowAction,

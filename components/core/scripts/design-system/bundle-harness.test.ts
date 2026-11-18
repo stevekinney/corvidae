@@ -2,7 +2,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, test } from 'bun:test
 import { readFileSync } from 'node:fs';
 import { runInThisContext } from 'node:vm';
 
-import { Button } from '../../src/components/button/index.ts';
+import { Button } from '@lostgradient/button/components/button/index.ts';
 import {
   BUNDLE_PROBE,
   bundleHarnessHtml,

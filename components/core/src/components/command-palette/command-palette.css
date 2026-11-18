@@ -1,9 +1,9 @@
 @layer cinder.tokens, cinder.foundation, cinder.components, cinder.utilities;
 /* CommandItem styles live in their own sidecar. Pull them in here so that
  * importing `cinder/command-palette` brings in CommandItem styles. */
-@import '../command-item/command-item.css';
+@import '@lostgradient/command-menu/command-item.css';
 /* The sheet form's Close button. */
-@import '../button/button.css';
+@import '@lostgradient/button/button.css';
 
 @layer cinder.components {
   /* ========================================

@@ -15,7 +15,7 @@
 <script lang="ts">
   import type { FieldsOptions } from './payload-inspector-model.ts';
 
-  import Button from '../button/button.svelte';
+  import Button from '@lostgradient/button/components/button/button.svelte';
   import { Table } from '../table/index.ts';
   import { formatNumber } from '@lostgradient/foundation/utilities/format-number.ts';
   import { humanizeIdentifier } from '@lostgradient/foundation/utilities/humanize-identifier.ts';

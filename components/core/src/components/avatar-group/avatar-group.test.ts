@@ -6,7 +6,8 @@ import { setupHappyDom } from '@lostgradient/testing';
 setupHappyDom();
 
 const { cleanup, render, fireEvent, waitFor } = await import('@testing-library/svelte');
-const { default: AvatarGroup } = await import('./avatar-group.svelte');
+const { default: AvatarGroup } =
+  await import('@lostgradient/avatar-group/components/avatar-group/avatar-group.svelte');
 const { AvatarGroup: RootAvatarGroup } = await import('../../index.ts');
 
 const collaborators = [
@@ -308,7 +309,12 @@ describe('AvatarGroup', () => {
   });
 
   test('raises the focused item above overlapped siblings', async () => {
-    const css = await Bun.file(new URL('./avatar-group.css', import.meta.url)).text();
+    const css = await Bun.file(
+      new URL(
+        '../../../../avatar-group/src/components/avatar-group/avatar-group.css',
+        import.meta.url,
+      ),
+    ).text();
 
     expect(css).toContain('.cinder-avatar-group__item:focus-within');
     expect(css).toContain('z-index: calc(var(--cinder-avatar-group-index, 0) + 100);');

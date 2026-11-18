@@ -1,0 +1,13 @@
+{
+  "$schema": "../../../../../internal/component-tooling/src/schemas/examples.schema.json",
+  "component": "quota-meter",
+  "import": "@lostgradient/cinder",
+  "examples": [
+    {
+      "id": "basic",
+      "title": "QuotaMeter",
+      "description": "Show finite quota consumption with an accessible value summary.",
+      "code": "<script lang=\"ts\">\n  import { QuotaMeter } from '@lostgradient/quota-meter';\n</script>\n\n<QuotaMeter used={72} />\n"
+    }
+  ]
+}
