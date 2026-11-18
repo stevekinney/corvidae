@@ -7,8 +7,8 @@
  * does. happy-dom resolves no cascade, so it is measured in a browser.
  */
 
+import { fixtureRoute } from '@lostgradient/testing/playwright/overlay-fixture';
 import { expect, test } from '@playwright/test';
-import { fixtureRoute } from './overlay-fixture.ts';
 
 const FRAME = ['border-top-width', 'border-top-style'] as const;
 
