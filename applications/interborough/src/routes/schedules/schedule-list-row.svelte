@@ -58,7 +58,7 @@
 >
   {#snippet status()}<StatusDot
       word={row.statusWord}
-      qualifier={row.statusKey === 'missed' ? row.missedCount : undefined}
+      {...row.statusKey === 'missed' ? { qualifier: row.missedCount } : {}}
       size="sm"
     />{/snippet}
   {#snippet title()}{row.title}{/snippet}

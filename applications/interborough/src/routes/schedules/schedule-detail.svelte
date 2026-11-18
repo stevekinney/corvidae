@@ -347,9 +347,9 @@
         <!-- The switch, labeled Active, already says Active; Paused and the exceptions are words it cannot say. -->
         <StatusDot
           word={statusWord}
-          qualifier={going === undefined && row.statusKey === 'missed'
-            ? row.missedCount
-            : undefined}
+          {...going === undefined && row.statusKey === 'missed'
+            ? { qualifier: row.missedCount }
+            : {}}
           data-status-word={statusWord}
         />
       {/if}

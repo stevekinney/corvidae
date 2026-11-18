@@ -19,4 +19,4 @@
   let { word, qualifier }: Props = $props();
 </script>
 
-<StatusDot {word} {qualifier} data-status-word={word} />
+<StatusDot {word} {...qualifier === undefined ? {} : { qualifier }} data-status-word={word} />
