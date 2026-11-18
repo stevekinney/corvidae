@@ -1265,9 +1265,10 @@ describe('the Reviews view', () => {
       return Response.json({ jsonrpc: '2.0', id: 1, result: { reviews: [] } });
     });
     const { container, findByTestId } = mount('reviews', { pattern: '/reviews' });
-    // The page shows its own empty state, so the frame is ready even when nothing is waiting.
+    // The page draws its own loading (row 26a), so it shows while the probe is pending; and it
+    // shows its own empty state, so the frame is ready even when nothing is waiting.
     expect(await findByTestId('content')).not.toBeNull();
-    expect(frame(container).dataset['state']).toBe('ready');
+    await waitFor(() => expect(frame(container).dataset['state']).toBe('ready'));
     expect(methods).toEqual(['bureau.reviews.list']);
     expect(paths).toEqual(['/jsonrpc']);
   });
@@ -1286,7 +1287,7 @@ describe('the Reviews view', () => {
     );
     const { container, findByTestId } = mount('reviews', { pattern: '/reviews' });
     expect(await findByTestId('content')).not.toBeNull();
-    expect(frame(container).dataset['state']).toBe('ready');
+    await waitFor(() => expect(frame(container).dataset['state']).toBe('ready'));
   });
 
   test('is ready when the Bureau cannot be reached at all', async () => {
@@ -1295,7 +1296,15 @@ describe('the Reviews view', () => {
     });
     const { container, findByTestId } = mount('reviews', { pattern: '/reviews' });
     expect(await findByTestId('content')).not.toBeNull();
-    expect(frame(container).dataset['state']).toBe('ready');
+    await waitFor(() => expect(frame(container).dataset['state']).toBe('ready'));
+  });
+
+  test('shows the page, not the frame’s loading heading, while its list is read (row 26a)', async () => {
+    restore = installFetchImplementation(() => new Promise<Response>(() => {}));
+    const { container, findByTestId } = mount('reviews', { pattern: '/reviews' });
+    expect(await findByTestId('content')).not.toBeNull();
+    expect(frame(container).dataset['state']).toBe('loading');
+    expect(container.textContent?.includes(VIEW_COPY.reviews.loading.title)).toBe(false);
   });
 
   test('has no empty state of its own, so a page with nothing waiting says so itself', () => {

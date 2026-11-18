@@ -187,6 +187,8 @@ type Wait = {
   readonly prompt: string | undefined;
   /** The schema the author configured for the signal, when the park carries one. */
   readonly inputSchema?: HumanInputSchema | undefined;
+  /** COR-2426 — what the agent wrote beside the call that parked, as the park kept it. */
+  readonly said?: string | undefined;
   readonly ordinal: number;
   readonly requestedAt: number;
   readonly agentName: string | undefined;
@@ -248,11 +250,13 @@ export function createRunHumanWaits(dependencies: RunHumanWaitsDependencies) {
       if (typeof signalName !== 'string' || signalName.length === 0) continue;
       const prompt = detail?.['prompt'];
       const inputSchema = humanInputSchemaOf(detail?.['inputSchema']);
+      const said = detail?.['said'];
       waits.push({
         runId,
         signalName,
         prompt: typeof prompt === 'string' ? prompt : undefined,
         ...(inputSchema === undefined ? {} : { inputSchema }),
+        ...(typeof said === 'string' && said !== '' ? { said } : {}),
         ordinal: humanWaitParkOrdinal(run.actions, baselines.get(runId) ?? 0),
         requestedAt: parked.timestamp,
         agentName: runAttribution.get(runId)?.agentName,
@@ -272,6 +276,7 @@ export function createRunHumanWaits(dependencies: RunHumanWaitsDependencies) {
       signalName: wait.signalName,
       prompt: wait.prompt,
       ...(wait.inputSchema === undefined ? {} : { inputSchema: wait.inputSchema }),
+      ...(wait.said === undefined ? {} : { said: wait.said }),
       requestedAt: wait.requestedAt,
       ageMilliseconds: dependencies.now() - wait.requestedAt,
       status: 'pending',
@@ -338,6 +343,7 @@ export function createRunHumanWaits(dependencies: RunHumanWaitsDependencies) {
       signalName: outstanding.signalName,
       prompt: outstanding.prompt,
       ...(outstanding.inputSchema === undefined ? {} : { inputSchema: outstanding.inputSchema }),
+      ...(outstanding.said === undefined ? {} : { said: outstanding.said }),
       ordinal: outstanding.ordinal,
       requestedAt: dependencies.now(),
       agentName: target.agentName,
@@ -364,6 +370,7 @@ export function createRunHumanWaits(dependencies: RunHumanWaitsDependencies) {
                 parkOrdinal: seeded.ordinal,
                 ...(seeded.prompt === undefined ? {} : { prompt: seeded.prompt }),
                 ...(seeded.inputSchema === undefined ? {} : { inputSchema: seeded.inputSchema }),
+                ...(seeded.said === undefined ? {} : { said: seeded.said }),
               },
             },
           ];
@@ -378,6 +385,7 @@ export function createRunHumanWaits(dependencies: RunHumanWaitsDependencies) {
           signalName: event.signalName,
           ...(event.prompt === undefined ? {} : { prompt: event.prompt }),
           ...(event.inputSchema === undefined ? {} : { inputSchema: event.inputSchema }),
+          ...(event.said === undefined ? {} : { said: event.said }),
         },
       });
       restored.set(runId, {
@@ -385,6 +393,7 @@ export function createRunHumanWaits(dependencies: RunHumanWaitsDependencies) {
         signalName: event.signalName,
         prompt: event.prompt,
         ...(event.inputSchema === undefined ? {} : { inputSchema: event.inputSchema }),
+        ...(event.said === undefined ? {} : { said: event.said }),
         ordinal: humanWaitParkOrdinal(actions, baselines.get(runId) ?? 0),
         requestedAt: dependencies.now(),
         agentName: target.agentName,
@@ -500,6 +509,7 @@ export function createRunHumanWaits(dependencies: RunHumanWaitsDependencies) {
           ...(outstanding.inputSchema === undefined
             ? {}
             : { inputSchema: outstanding.inputSchema }),
+          ...(outstanding.said === undefined ? {} : { said: outstanding.said }),
           ordinal: outstanding.ordinal,
           requestedAt: state.updatedAt,
           agentName: input.agentName,
@@ -518,6 +528,7 @@ export function createRunHumanWaits(dependencies: RunHumanWaitsDependencies) {
       signalName: outstanding.signalName,
       prompt: outstanding.prompt,
       ...(outstanding.inputSchema === undefined ? {} : { inputSchema: outstanding.inputSchema }),
+      ...(outstanding.said === undefined ? {} : { said: outstanding.said }),
       ordinal: outstanding.ordinal,
       requestedAt: state.updatedAt,
       agentName:

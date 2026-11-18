@@ -1470,6 +1470,9 @@
                     "createdAt": {
                       "type": "number"
                     },
+                    "message": {
+                      "type": "string"
+                    },
                     "reviewId": {
                       "type": "string"
                     },
@@ -1484,6 +1487,9 @@
                     },
                     "status": {
                       "const": "pending",
+                      "type": "string"
+                    },
+                    "step": {
                       "type": "string"
                     },
                     "timeout": {
@@ -1529,6 +1535,9 @@
                     "feedback": {
                       "type": "string"
                     },
+                    "message": {
+                      "type": "string"
+                    },
                     "reviewId": {
                       "type": "string"
                     },
@@ -1559,6 +1568,9 @@
                     },
                     "status": {
                       "const": "completed",
+                      "type": "string"
+                    },
+                    "step": {
                       "type": "string"
                     },
                     "timeout": {

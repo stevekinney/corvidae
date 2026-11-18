@@ -618,6 +618,9 @@ async function runStepBody(
     elicit,
     stepToolbox,
     toolCallInputs: response.toolCalls,
+    // COR-2426: what the model said in this step, after the guardrails, so a tool that parks
+    // (`requestHumanInput`) can keep it with the park.
+    stepText: content,
     emittedSettledCallIds: new Set<string>(),
     stepAbortController,
     admitter,

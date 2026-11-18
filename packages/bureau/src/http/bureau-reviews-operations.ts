@@ -51,6 +51,7 @@ import { reviewReceiptOf } from '../tasks/respond-to-task.ts';
 import {
   ApprovalOutcomeNotWrittenError,
   BureauError,
+  ReviewAlreadyResolvedError,
   ReviewAnswerInvalidError,
   ReviewRoundChangedError,
 } from '../bureau-errors.ts';
@@ -244,6 +245,11 @@ const humanWaitReviewSchema = z.object({
   signalName: z.string(),
   prompt: z.string().optional(),
   /**
+   * COR-2426: what the agent wrote beside its question in the step that asked it, kept with the
+   * park; absent when it kept none.
+   */
+  said: z.string().optional(),
+  /**
    * The JSON Schema (2020-12) the answer must satisfy, when the question has one: the model's
    * per-call `answerSchema`, else the author's per-signal one. It carries the `x-` keywords that
    * choose the control (`x-labels`, `x-allowOther`, `x-kind`, `x-secret`, `x-asset`). Absent, any
@@ -293,6 +299,16 @@ const engineReviewSchema = z.object({
   allowPartial: z.boolean(),
   /** What the reviewer is asked to judge; whatever the workflow put there. */
   artifact: z.unknown().optional(),
+  /**
+   * COR-2426: the workflow the review belongs to, by its name (the engine's workflow type, such as
+   * `release-notes`), read from the engine as the list is read; absent when the engine no longer
+   * holds the workflow.
+   */
+  workflowName: z.string().optional(),
+  /** COR-2426: the step of the workflow that asked, as its author named it; absent when none was given. */
+  step: z.string().optional(),
+  /** COR-2426: what the workflow's author says to the reviewer above the artifact; absent when none was given. */
+  message: z.string().optional(),
   resolution: z
     .object({
       decision: z.enum(['approved', 'rejected', 'needs-changes']),
@@ -462,6 +478,7 @@ export function projectReview(
     kind: 'human-wait',
     signalName: review.signalName,
     ...(review.prompt === undefined ? {} : { prompt: review.prompt }),
+    ...(review.said === undefined ? {} : { said: review.said }),
     ...(review.inputSchema === undefined ? {} : { inputSchema: review.inputSchema }),
     ...(review.workflow === undefined ? {} : { workflow: projectWorkflowOrigin(review.workflow) }),
   };
@@ -510,6 +527,12 @@ export const APPROVAL_OUTCOME_NOT_WRITTEN = 'APPROVAL_OUTCOME_NOT_WRITTEN';
 
 /** The token a client branches on to tell a review that moved to another round from a lost race. */
 export const REVIEW_ROUND_CHANGED = 'REVIEW_ROUND_CHANGED';
+
+/**
+ * COR-2426: the token a client branches on to tell a review that was already resolved, by another
+ * resolver or because the agent moved on, from any other lost race: it is no longer waiting.
+ */
+export const REVIEW_ALREADY_RESOLVED = 'REVIEW_ALREADY_RESOLVED';
 
 /** A payload key that is not declared is `InvalidParams`, so a client cannot name a `principal`. */
 const unknownKeyPolicy = { http: 'reject', jsonRpc: 'reject' } as const;
@@ -566,6 +589,15 @@ export function reviewFault(error: unknown, identifier: string): unknown {
           code: 'Conflict',
           message: error.message,
           data: { reason: `${REVIEW_ROUND_CHANGED}: ${error.message}` },
+        };
+      }
+      // COR-2426: the review was already resolved with another decision, so nothing took effect
+      // and it is no longer waiting: a client says so in its place.
+      if (error instanceof ReviewAlreadyResolvedError) {
+        return {
+          code: 'Conflict',
+          message: error.message,
+          data: { reason: `${REVIEW_ALREADY_RESOLVED}: ${error.message}` },
         };
       }
       return { code: 'Conflict', message: error.message, data: { reason: error.message } };
@@ -638,6 +670,11 @@ const reviewsListOutput = z.object({
   reviews: z.array(listedReviewSchema),
   /** `null` when no review remains after this page. */
   nextPageToken: z.string().nullable(),
+  /**
+   * COR-2426: how many reviews the whole listing holds for this caller and these filters, on every
+   * page alike, so a count can be said beyond the reviews read so far (`Done 13` with 25 loaded).
+   */
+  total: z.number().int().min(0),
 });
 
 /** Where an item sits in the merged order: the time it is ordered by, its source, then its id. */
@@ -704,9 +741,10 @@ function decodePageToken(token: string, filters: string): ListPosition {
 }
 
 /** An engine review as the list shows it. */
-function projectEngineReview(
+export function projectEngineReview(
   entry: Awaited<ReturnType<RegistryAgnosticEngine['listReviews']>>[number],
   now: number,
+  workflowName?: string,
 ): z.input<typeof engineReviewSchema> {
   return {
     source: 'engine',
@@ -721,6 +759,10 @@ function projectEngineReview(
     reviewers: [...entry.reviewers],
     allowPartial: entry.allowPartial,
     artifact: entry.artifact,
+    // COR-2426: who asks and what the author says, as the stored request keeps them.
+    ...(workflowName === undefined ? {} : { workflowName }),
+    ...(entry.step === undefined ? {} : { step: entry.step }),
+    ...(entry.message === undefined ? {} : { message: entry.message }),
     ...(entry.status === 'completed'
       ? {
           resolution: {
@@ -761,7 +803,7 @@ export const reviewsListOperation = defineOperation<
   mcpExposable: true,
   summary: 'List the reviews that are waiting for a decision, or that have been decided',
   description:
-    'Returns the reviews of the caller’s own runs, which is what an inbox shows; a caller holding `bureau.reviews:read` sees every owner’s. `status` is `pending` (the default: oldest request first, by `requestedAt`) or `resolved` (the reviews a person decided, latest decision first, by `resolution.decidedAt`, optionally only those decided at or after `resolvedAfter`); each item carries `source`, `bureau` for a tool approval or a question the Bureau holds, and `engine` for a workflow review of the durable engine (`kind: "engine-review"`), which only a caller holding the Weft scope `reviews:read` is shown. Ties break on source, then id. Pages with `limit` (1 to 100, default 50) and `pageToken`; `nextPageToken` is `null` when no review remains. A token is an opaque position in that order, valid only with the `status` and `resolvedAfter` it was issued for; any other token is `InvalidParams`. A resolved review is kept until `retention.audit` retires it, and carries `resolution` (who decided, what, and when); a secret answer appears only as its reference, never its value. A review that expired, was revoked or was canceled has no decision and is not listed as resolved; `bureau.reviews.get` still reads it.',
+    'Returns the reviews of the caller’s own runs, which is what an inbox shows; a caller holding `bureau.reviews:read` sees every owner’s. `status` is `pending` (the default: oldest request first, by `requestedAt`) or `resolved` (the reviews a person decided, latest decision first, by `resolution.decidedAt`, optionally only those decided at or after `resolvedAfter`); each item carries `source`, `bureau` for a tool approval or a question the Bureau holds, and `engine` for a workflow review of the durable engine (`kind: "engine-review"`), which only a caller holding the Weft scope `reviews:read` is shown. Ties break on source, then id. Pages with `limit` (1 to 100, default 50) and `pageToken`; `nextPageToken` is `null` when no review remains, and `total` is how many reviews the whole listing holds for the caller and these filters, the same on every page (COR-2426). A token is an opaque position in that order, valid only with the `status` and `resolvedAfter` it was issued for; any other token is `InvalidParams`. A resolved review is kept until `retention.audit` retires it, and carries `resolution` (who decided, what, and when); a secret answer appears only as its reference, never its value. A review that expired, was revoked or was canceled has no decision and is not listed as resolved; `bureau.reviews.get` still reads it.',
   destructive: false,
   tags: ['Reviews'],
   inputSchema: reviewsListInput,
@@ -777,7 +819,11 @@ export const reviewsListOperation = defineOperation<
     const after =
       input.pageToken === undefined ? undefined : decodePageToken(input.pageToken, filters);
     const entries: ListEntry[] = [];
+    // COR-2426: every review the caller is shown for these filters, before the page token and the
+    // limit narrow it, so the total is the same on every page.
+    let total = 0;
     const include = (entry: ListEntry): void => {
+      total += 1;
       if (after === undefined || comesBefore(status, after, entry)) entries.push(entry);
     };
 
@@ -834,6 +880,21 @@ export const reviewsListOperation = defineOperation<
       const listed = await engine.listReviews({
         status: status === 'pending' ? 'pending' : 'completed',
       });
+      // COR-2426: each workflow's name, read once per workflow; a workflow the engine no longer
+      // holds, or that cannot be read, is listed without one.
+      const workflowNames = new Map<string, string | undefined>();
+      for (const entry of listed) {
+        if (workflowNames.has(entry.workflowId)) continue;
+        let name: string | undefined;
+        try {
+          const workflow =
+            typeof engine.get === 'function' ? await engine.get(entry.workflowId) : undefined;
+          name = workflow?.type;
+        } catch {
+          name = undefined;
+        }
+        workflowNames.set(entry.workflowId, name);
+      }
       for (const entry of listed) {
         const decidedAt = entry.status === 'completed' ? entry.timestamp : undefined;
         if (
@@ -847,7 +908,7 @@ export const reviewsListOperation = defineOperation<
           at: decidedAt ?? entry.createdAt,
           source: 'engine',
           id: entry.reviewId,
-          item: projectEngineReview(entry, now),
+          item: projectEngineReview(entry, now, workflowNames.get(entry.workflowId)),
         });
       }
     }
@@ -862,6 +923,7 @@ export const reviewsListOperation = defineOperation<
         entries.length > limit && last !== undefined
           ? encodePageToken(filters, { at: last.at, source: last.source, id: last.id })
           : null,
+      total,
     };
   },
 });
@@ -979,7 +1041,7 @@ export const reviewsResolveOperation = defineOperation<
   mcpExposable: true,
   summary: 'Approve, deny, or reject a pending review',
   description:
-    'Resolves a pending review of one of the caller’s own runs as the authenticated caller; the reviewer is never a payload field. A caller holding `bureau.reviews:resolve` resolves any owner’s. `reject` requires a `reason`. The `receipt` is `applied` (including a landed reject, which `decision` reports) or `superseded`. Resolving a review that is already resolved answers `Conflict` when the call asks for a different decision than the one recorded (a resolver that lost), and 404 when it repeats that decision, until command receipts exist; one the caller may not resolve answers 404. `remember: true` on approving a tool approval also allows its tool for the rest of the chat: the next ask for it in that chat that the agent file would make by `on-changes` runs without asking, and no other chat, fork, tool, `always` or `blocked` value, agent-wide always mode or read-only restriction is affected; the response says `remembered`. Resolving a tool approval also writes its outcome into the session’s conversation: the executed result on approve, an error result carrying the reason on deny and reject, each replacing the pending `action_required` result in place, so a run started next on the session answers an up-to-date conversation. The outcome row’s metadata records who decided and when, with the note, the sentence the tool asked with, and the `decisionSurface` the call gave, under `approvalDecision`. A `superseded` receipt writes nothing. A tool approval does not park its run, so once this call decides the last pending review of a chat’s run (approve, deny or reject), it starts the run that answers the decisions, as the chat’s own resume does: one run, owned by the chat’s owner whoever decided, under a command id of the decided run alone, so the chat’s resume of the same reviews, a decision racing it, and a retry all continue with that one run. `continuation` says which run (`started`), or why none could start (`not-started`, the decision having taken effect); it is absent while another review of the run is pending, for a run that is not a chat’s, and for a human wait, whose answer continues its parked run. Approving a human wait takes an `answer`; when the review has an `inputSchema` the answer is checked against it before anything is decided, and one that does not fit answers `InvalidParams` with `data.issues` (`path` rooted at `answer`, `message`, and `code`, the schema keyword that failed) and leaves the review pending. `round` is the round of the review the caller read (`bureau.reviews.get` and `list` return it): a re-gated approval keeps its id and advances its round, so a decision made on round N is refused with a `Conflict` once the review is at another round, before anything is decided, written, or audited. A `Conflict` whose `reason` begins `REVIEW_ROUND_CHANGED: ` is that refusal (nothing took effect; read the review again); one that begins `APPROVAL_OUTCOME_NOT_WRITTEN: ` means the decision took effect (the tool ran or was refused) and only that write failed; any other `Conflict` is a resolver that lost. Omit `round` and the call is not fenced.',
+    'Resolves a pending review of one of the caller’s own runs as the authenticated caller; the reviewer is never a payload field. A caller holding `bureau.reviews:resolve` resolves any owner’s. `reject` requires a `reason`. The `receipt` is `applied` (including a landed reject, which `decision` reports) or `superseded`. Resolving a review that is already resolved answers `Conflict` when the call asks for a different decision than the one recorded (a resolver that lost), and 404 when it repeats that decision, until command receipts exist; one the caller may not resolve answers 404. `remember: true` on approving a tool approval also allows its tool for the rest of the chat: the next ask for it in that chat that the agent file would make by `on-changes` runs without asking, and no other chat, fork, tool, `always` or `blocked` value, agent-wide always mode or read-only restriction is affected; the response says `remembered`. Resolving a tool approval also writes its outcome into the session’s conversation: the executed result on approve, an error result carrying the reason on deny and reject, each replacing the pending `action_required` result in place, so a run started next on the session answers an up-to-date conversation. The outcome row’s metadata records who decided and when, with the note, the sentence the tool asked with, and the `decisionSurface` the call gave, under `approvalDecision`. A `superseded` receipt writes nothing. A tool approval does not park its run, so once this call decides the last pending review of a chat’s run (approve, deny or reject), it starts the run that answers the decisions, as the chat’s own resume does: one run, owned by the chat’s owner whoever decided, under a command id of the decided run alone, so the chat’s resume of the same reviews, a decision racing it, and a retry all continue with that one run. `continuation` says which run (`started`), or why none could start (`not-started`, the decision having taken effect); it is absent while another review of the run is pending, for a run that is not a chat’s, and for a human wait, whose answer continues its parked run. Approving a human wait takes an `answer`; when the review has an `inputSchema` the answer is checked against it before anything is decided, and one that does not fit answers `InvalidParams` with `data.issues` (`path` rooted at `answer`, `message`, and `code`, the schema keyword that failed) and leaves the review pending. `round` is the round of the review the caller read (`bureau.reviews.get` and `list` return it): a re-gated approval keeps its id and advances its round, so a decision made on round N is refused with a `Conflict` once the review is at another round, before anything is decided, written, or audited. A `Conflict` whose `reason` begins `REVIEW_ROUND_CHANGED: ` is that refusal (nothing took effect; read the review again); one that begins `APPROVAL_OUTCOME_NOT_WRITTEN: ` means the decision took effect (the tool ran or was refused) and only that write failed; one that begins `REVIEW_ALREADY_RESOLVED: ` (COR-2426) means the review was already resolved with another decision, so nothing took effect and it is no longer waiting; any other `Conflict` is a resolver that lost. Omit `round` and the call is not fenced.',
   destructive: true,
   tags: ['Reviews'],
   inputSchema: reviewsResolveInput,

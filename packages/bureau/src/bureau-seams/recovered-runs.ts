@@ -265,6 +265,8 @@ export function createRecoveredRuns<D extends AgentDefinitions>(
       ...(parks.outstanding.inputSchema !== undefined
         ? { inputSchema: parks.outstanding.inputSchema }
         : {}),
+      // COR-2426: what the agent said, which the park's step record kept with it.
+      ...(parks.outstanding.said !== undefined ? { said: parks.outstanding.said } : {}),
     });
   }
 

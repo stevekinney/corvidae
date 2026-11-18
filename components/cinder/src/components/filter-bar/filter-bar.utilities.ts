@@ -59,9 +59,13 @@ export function appliedSummary(
     .join(', ');
 }
 
-/** The label a segment shows in the collapsed select, which draws a count as part of the label. */
+/**
+ * The label a segment shows in the collapsed select, which draws a count as part of the label: a
+ * count still loading is the same dash the wide segment draws ("Waiting –", row 26a).
+ */
 export function segmentSelectLabel(segment: FilterSegment): string {
   if (typeof segment.count === 'number') return `${segment.label} ${segment.count}`;
+  if (segment.count === 'pending') return `${segment.label} –`;
   return segment.label;
 }
 

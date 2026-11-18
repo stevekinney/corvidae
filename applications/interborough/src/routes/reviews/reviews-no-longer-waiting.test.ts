@@ -11,6 +11,7 @@ import { Window } from 'happy-dom';
 
 import { REVIEWS_COPY } from '../../app/copy/reviews.ts';
 import { humanWaitFixture, toolApprovalFixture } from '../../lib/bureau-fixtures.test-support.ts';
+import { StubFault } from '../../lib/bureau-stub.test-support.ts';
 import {
   emptyBureauWorld,
   installBureauWorld,
@@ -20,6 +21,7 @@ import {
 import { until } from '../../lib/fake-timers.test-support.ts';
 import { router } from '../../lib/router.svelte.ts';
 import { AUTHORIZATION_SCOPES } from '../../lib/scopes.svelte.ts';
+import { NO_LONGER_WAITING_LINGER_MILLISECONDS } from './review-items.ts';
 import Harness from './reviews-shell.test-harness.svelte';
 
 let stub: BureauWorldStub | undefined;
@@ -72,6 +74,7 @@ function open(initial: Partial<BureauWorld>) {
 const APPROVAL = toolApprovalFixture({ requestedAt: Date.now() - 120_000 });
 const QUESTION = humanWaitFixture({ sessionId: 'session-2', requestedAt: Date.now() - 90_000 });
 const QUESTION_KEY = `bureau:${QUESTION.id}`;
+const APPROVAL_KEY = `bureau:${APPROVAL.id}`;
 
 describe('a review that left while it was open', () => {
   test('says it is no longer waiting, announces it, and offers the next review', async () => {
@@ -86,12 +89,24 @@ describe('a review that left while it was open', () => {
     await until(() => expect(getByTestId('review-gone')).not.toBeNull());
 
     expect(getByTestId('review-gone').textContent).toContain(REVIEWS_COPY.noLongerWaiting.message);
-    expect(getByTestId('reviews-announcement').textContent?.trim()).toBe(
-      REVIEWS_COPY.announce(REVIEWS_COPY.announced.gone, 'Refund order-1001?'),
-    );
     // Nothing was decided, and its decision bar is not there to be pressed.
     expect(stub?.callsTo('bureau.reviews.resolve')).toEqual([]);
     expect(container.querySelector(`[data-review="${APPROVAL.id}"]`)).toBeNull();
+    // Its row stays a moment, and nothing is announced yet (row 26h).
+    expect(container.querySelector(`[data-review-row="${APPROVAL_KEY}"]`)).not.toBeNull();
+    expect(getByTestId('reviews-announcement').textContent?.trim()).toBe('');
+
+    // After a moment the row leaves, and that is announced as a decision is.
+    jest.advanceTimersByTime(NO_LONGER_WAITING_LINGER_MILLISECONDS);
+    await until(() =>
+      expect(
+        container.querySelector(`[data-review-row="${APPROVAL_KEY}"]`)?.outerHTML ?? null,
+      ).toBeNull(),
+    );
+    expect(getByTestId('reviews-announcement').textContent?.trim()).toBe(
+      REVIEWS_COPY.announce(REVIEWS_COPY.announced.gone, 'Refund order-1001?'),
+    );
+    expect(getByTestId('review-gone').textContent).toContain(REVIEWS_COPY.noLongerWaiting.message);
 
     // One button takes the person to the next review.
     await fireEvent.click(getByRole('button', { name: REVIEWS_COPY.noLongerWaiting.next }));
@@ -99,5 +114,63 @@ describe('a review that left while it was open', () => {
     await until(() =>
       expect(container.querySelector('[data-testid="review-gone"]')?.outerHTML ?? null).toBeNull(),
     );
+  });
+
+  test('says so in its place when an approve finds it already resolved, and then it leaves (rows 26g, 26h, COR-2426)', async () => {
+    measuredAt(1200);
+    const { container, getByRole, getByTestId, queryByRole } = open({
+      reviews: [APPROVAL, QUESTION],
+    });
+    await until(() => expect(getByRole('button', { name: 'Approve' })).not.toBeNull());
+    // The agent already moved on: the Bureau refuses the decision as already resolved.
+    stub?.on('bureau.reviews.resolve', () => {
+      world.reviews = world.reviews.filter((review) => review.id !== APPROVAL.id);
+      throw new StubFault('Conflict', 409, 'Review is already resolved', {
+        reason: `REVIEW_ALREADY_RESOLVED: Review with id "${APPROVAL.id}" is already resolved`,
+      });
+    });
+
+    await fireEvent.click(getByRole('button', { name: 'Approve' }));
+
+    await until(() => expect(getByTestId('review-gone')).not.toBeNull());
+    expect(getByTestId('review-gone').textContent).toContain(REVIEWS_COPY.noLongerWaiting.message);
+    // Not a failure: no fault toast, no danger alert, and no decision bar to press again.
+    expect(container.ownerDocument.querySelector('.cinder-toast')).toBeNull();
+    expect(container.textContent?.includes(REVIEWS_COPY.decisionFailed)).toBe(false);
+    expect(queryByRole('button', { name: 'Approve' })).toBeNull();
+    expect(getByRole('button', { name: REVIEWS_COPY.noLongerWaiting.next })).not.toBeNull();
+    // Its row stays a moment, then leaves, and that is announced.
+    expect(container.querySelector(`[data-review-row="${APPROVAL_KEY}"]`)).not.toBeNull();
+    jest.advanceTimersByTime(NO_LONGER_WAITING_LINGER_MILLISECONDS);
+    await until(() =>
+      expect(
+        container.querySelector(`[data-review-row="${APPROVAL_KEY}"]`)?.outerHTML ?? null,
+      ).toBeNull(),
+    );
+    expect(getByTestId('reviews-announcement').textContent?.trim()).toBe(
+      REVIEWS_COPY.announce(REVIEWS_COPY.announced.gone, 'Refund order-1001?'),
+    );
+  });
+
+  test('says a NotFound for a review the Bureau still lists is a failure, and hides nothing (COR-2426)', async () => {
+    measuredAt(1200);
+    const { container, getByRole, queryByTestId } = open({
+      reviews: [APPROVAL, QUESTION],
+    });
+    await until(() => expect(getByRole('button', { name: 'Approve' })).not.toBeNull());
+    // A caller who may not decide it is answered NotFound, though it is still waiting.
+    stub?.on('bureau.reviews.resolve', () => {
+      throw new StubFault('NotFound', 404, 'No review', { resource: 'review' });
+    });
+
+    await fireEvent.click(getByRole('button', { name: 'Approve' }));
+
+    await until(() => expect(container.textContent).toContain(REVIEWS_COPY.decisionFailed));
+    jest.advanceTimersByTime(NO_LONGER_WAITING_LINGER_MILLISECONDS + 5_000);
+    await until(() =>
+      expect(container.querySelector(`[data-review-row="${APPROVAL_KEY}"]`)).not.toBeNull(),
+    );
+    expect(queryByTestId('review-gone')?.outerHTML ?? null).toBeNull();
+    expect(getByRole('button', { name: 'Approve' })).not.toBeNull();
   });
 });

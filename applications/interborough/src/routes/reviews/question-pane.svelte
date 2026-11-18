@@ -10,11 +10,14 @@
    * the question (`undoMilliseconds`). A structured answer (a form) is committed by "Send answer" in
    * the footer, beside what the agent does next: picking a value in the form sends nothing.
    */
-  import { Button } from '@lostgradient/cinder';
+  import { Button, Collapsible } from '@lostgradient/cinder';
   import { ChatQuestion, classifyQuestion } from '@lostgradient/chat';
 
   import { REVIEWS_COPY } from '../../app/copy/reviews.ts';
+  import { agentLabel } from '../../lib/agent-label.ts';
+  import { useAgentDisplayName } from '../../lib/agent-display-name.svelte.ts';
   import { answerUndoMilliseconds } from '../../lib/answer-undo.ts';
+  import { shorten } from '../../lib/tool-text.ts';
   import { uploadAsset } from '../../lib/bureau-assets.ts';
   import type { BureauHumanWait } from '../../lib/bureau-reviews.ts';
   import IdentifierText from '../../lib/identifier-text.svelte';
@@ -35,6 +38,13 @@
   let { review, answering, outcome, onAnswer }: QuestionPaneProps = $props();
 
   const waiting = $derived(review.status === 'pending');
+  const displayName = useAgentDisplayName();
+  /** Who asked, as the disclosure names them: the agent's display name. */
+  const saidBy = $derived(
+    review.agentName === undefined
+      ? REVIEWS_COPY.unknownAgent
+      : agentLabel(displayName(review.agentName), undefined),
+  );
   /** What a question that declares no schema takes: free text. */
   const FREE_TEXT_SCHEMA = { type: 'string', title: REVIEWS_COPY.answerLabel } as const;
   const schema = $derived<Readonly<Record<string, unknown>>>(
@@ -66,6 +76,18 @@
       />
     </h2>
     <ReviewSource {review} {waiting} />
+    {#if review.said !== undefined && review.said !== review.prompt}
+      <!-- COR-2426, row 25f: what the agent said when it asked, collapsed under its first words. -->
+      <div class="ib-review-pane__said" data-testid="review-said">
+        <Collapsible
+          trigger={REVIEWS_COPY.said(saidBy, shorten(review.said))}
+          variant="flat"
+          framed={false}
+        >
+          <p class="ib-review-pane__said-text">{review.said}</p>
+        </Collapsible>
+      </div>
+    {/if}
     {#if waiting}
       <div class="ib-review-pane__answer" bind:this={answerElement} data-question-answer-region>
         <ChatQuestion

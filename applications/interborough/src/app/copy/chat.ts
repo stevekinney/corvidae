@@ -508,6 +508,10 @@ export const CHAT_COPY = {
     pluginDisabled: (agent: string, plugin: string): string =>
       `${agent} isn’t available. Enable the ${plugin} plugin to continue.`,
     enableAndRestart: 'Enable and restart',
+    /** A chat whose agent a person disabled (COR-2429): it stays, read-only, until the agent is enabled. */
+    agentDisabled: (agent: string): string =>
+      `${agent} is disabled, so this chat is read-only. Enable it to continue.`,
+    enableAgent: 'Enable agent',
     /** The confirmation that enables the plugin: what it does to work that is running. */
     enableDialog: {
       title: (plugin: string): string => `Enable the ${plugin} plugin and restart?`,

@@ -250,6 +250,7 @@ import { createSettingsTools } from './settings/settings-tools';
 import { createWorkflowRevisionLedger } from './workflow-revision-ledger';
 import { createWorkflowScheduleHolds } from './workflow-schedule-holds';
 import { createAgentOverrideStore } from './agent-override-store';
+import { type AgentDisabledStore, createAgentDisabledStore } from './agent-disabled-store';
 import { createWorkflowSnapshotStore } from './workflow-snapshot-store';
 import { createWorkflowDocumentHost } from './workflow-host';
 import { createFireReviewSeeds, trackFireReviewSeeds } from './fire-review-seeds';
@@ -289,7 +290,12 @@ import {
 } from './steering';
 import type { Bureau, BureauRecoveryReport, BureauShutdownReport } from './bureau-types/facade';
 import type { BureauOptions } from './bureau-types/options';
-import type { ApprovalDecisionSurface, PendingReview } from './bureau-types/reviews';
+import type {
+  ApprovalDecisionSurface,
+  PendingReview,
+  ResolvedReview,
+} from './bureau-types/reviews';
+import { admitsRunOnDisabledAgent } from './disabled-agent-admission';
 import type { ContextDeletionReport } from './bureau-types/contexts';
 import type { ServerFrame } from './bureau-types/frames';
 import {
@@ -543,7 +549,8 @@ async function constructBureau<const D extends AgentDefinitions>(
   const bureauTools = [
     createAgentDiscoveryTool(
       {
-        entries: () => agentCatalog.entries(),
+        // COR-2429: a disabled agent is offered to no agent.
+        entries: () => agentCatalog.entries().filter(({ name }) => !agentCatalog.isDisabled(name)),
         list: () => agentCatalog.list(),
         find: (name) => agentCatalog.find(name),
       },
@@ -2625,6 +2632,8 @@ async function constructBureau<const D extends AgentDefinitions>(
   /** COR-1911 — the agents being tried, held in memory for the contexts that started them. */
   const tryAgents = createTryAgents();
   let agentCatalog: ReturnType<typeof createAgentCatalog<D>>;
+  /** COR-2429 — which agents a person disabled: the gate `agentCatalog.find` consults. */
+  let agentDisabled: AgentDisabledStore;
   let workflowRuntime: WorkflowRuntime | undefined;
   // COR-1952: a schedule a hook-started run creates records the hook, and the chain guard reads the
   // record for each run the schedule fires. These closures read `tasks`, declared far below, only
@@ -3119,6 +3128,12 @@ async function constructBureau<const D extends AgentDefinitions>(
       for (const [name, tool] of added) agentToolCatalog[name] = tool;
       await files.revalidate();
     }
+    agentDisabled = createAgentDisabledStore({
+      store: runtime.kv,
+      nowISO: runtimeServices.clock.nowISO,
+    });
+    // COR-2429: read before the catalog answers any lookup, so no run starts on a disabled agent.
+    await agentDisabled.load();
     agentCatalog = createAgentCatalog(agentsSnapshot, {
       selectorAvailable: true,
       addTools: addHostTools,
@@ -3133,6 +3148,7 @@ async function constructBureau<const D extends AgentDefinitions>(
         store: runtime.kv,
         nowISO: runtimeServices.clock.nowISO,
       }),
+      disabled: agentDisabled,
       codeAgentRuns: codeAgentRunsDeployment(),
     });
     // COR-2009: the overrides in force of the built-in agents, read before any run can start.
@@ -3319,6 +3335,20 @@ async function constructBureau<const D extends AgentDefinitions>(
   // `const childTopology` would resume those runs while it is still in its temporal dead zone,
   // and the resulting `ReferenceError` durably fails them. The catalog reclaim test in
   // `bureau-construction-reclaim.test.ts` catches it.
+  // COR-2429 — what deciding a run on a disabled agent reads. The decided reviews are wired once
+  // their store exists, further down; until then no continuation is admitted on a disabled agent.
+  const disabledAgentAdmissionReads: {
+    durableRunExists: (runId: string) => Promise<boolean>;
+    decidedReviews: (() => Promise<readonly ResolvedReview[]>) | undefined;
+  } = {
+    durableRunExists: async (runId) => {
+      const engine = runtime.durable?.engine;
+      if (engine === undefined) return false;
+      const state = await engine.get(runId).catch(() => undefined);
+      return state !== undefined && state !== null;
+    },
+    decidedReviews: undefined,
+  };
   runtime.setCatalogAgentRunOptionsResolver(async (name, input, context, runId, recorded) => {
     // COR-1524: a run being resumed builds a file agent from the snapshot it recorded, never
     // from the file, which may have changed or be gone. A run that is starting takes the agent
@@ -3353,10 +3383,18 @@ async function constructBureau<const D extends AgentDefinitions>(
         // the same overrides, and only a change in the store is drift.
         if (!isTryAgentName(name)) {
           await agentCatalog.overrides.reload(name);
+          // COR-2429: the same holds for the gate, so an agent another Bureau disabled starts nothing.
+          await agentDisabled.reload(name);
         }
+        // COR-2429: on an agent a person disabled, only a run a durable record says was admitted
+        // while it was enabled proceeds, and `admitsRunOnDisabledAgent` alone says which.
+        const includeDisabled =
+          !isTryAgentName(name) &&
+          agentDisabled.isDisabled(name) &&
+          (await admitsRunOnDisabledAgent(recorded?.startedEvidence, disabledAgentAdmissionReads));
         agent = isTryAgentName(name)
           ? tryAgents.find(name, ownerOrLocal(context.principal))
-          : agentCatalog.find(name);
+          : agentCatalog.find(name, { includeDisabled });
         agentBinding = agent === undefined ? undefined : readFileAgentBinding(agent);
       }
     } catch (error) {
@@ -4386,6 +4424,8 @@ async function constructBureau<const D extends AgentDefinitions>(
   const reviewDecisions = createReviewDecisionRecords(runtime.kv);
   // COR-1828 — the record of each decided review, written beside the decision's audit entry.
   const resolvedReviewStore = createResolvedReviewStore(runtime.kv);
+  // COR-2429 — a continuation on a disabled agent is admitted only for a decided approval on record.
+  disabledAgentAdmissionReads.decidedReviews = () => resolvedReviewStore.list();
 
   // COR-1577 — the human-wait reviews of `bureau.run()` runs, which have no session. Held apart
   // from `listPendingReviews()` above so the session path (and what COR-1302 excluded) is as it
