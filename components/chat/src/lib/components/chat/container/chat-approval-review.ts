@@ -159,12 +159,20 @@ export function approvalArrivalRestShift(
   //      limited so the top never passes it).
   //   3. When it does not fit, it shifts by only the deficit: the label row passes under the header
   //      and the top fade, and the card, below it, stays clear.
-  const decisionShift = Math.min(
-    Math.max(card.bottom - (viewport.bottom - APPROVAL_END_FADE_CLEARANCE), 0),
-    Math.max(toEnd, 0),
-  );
-  const placed = Math.min(result, card.top - viewport.top);
-  return decisionShift > 0 ? Math.max(placed, decisionShift) : placed;
+  //
+  // Each case names one resting position, so a second pass from there is no shift: a rule that
+  // pulled the decision row down in one pass and the label row back up in the next never settled.
+  const toTop = card.top - viewport.top;
+  const toFadeLine = card.bottom - (viewport.bottom - APPROVAL_END_FADE_CLEARANCE);
+  const limited = (shift: number): number => {
+    const reachable = Math.min(shift, Math.max(toEnd, 0));
+    return Math.abs(reachable) <= 0.5 ? 0 : reachable;
+  };
+  // Does not fit between the header's line and the fade line: the decision row's bottom rests on
+  // the fade line, from above or below, and the label row is what passes under the header.
+  if (toFadeLine > toTop + 0.5) return limited(toFadeLine);
+  // Fits: the usual resting place, held between the two lines.
+  return limited(Math.min(Math.max(result, toFadeLine), toTop));
 }
 
 /**

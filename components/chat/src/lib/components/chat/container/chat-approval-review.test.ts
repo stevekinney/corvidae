@@ -541,6 +541,32 @@ describe('where a waiting approval lands when it opens (COR-2327)', () => {
     expect(approvalArrivalRestShift(unit, viewport, 80)).toBe(0);
   });
 
+  test('under a header, the place a unit is put is a place it rests: a second pass moves nothing', () => {
+    // 320 by 640: the box runs from 179, under the header, to 476. A unit of 300px does not fit
+    // above the end fade, and one of 200px does; each starts below, above and astride its rest.
+    const box = { top: 179, bottom: 476 };
+    for (const blockSize of [300, 200]) {
+      for (const top of [-200, 60, 144, 179, 240, 520]) {
+        const unit = { top, bottom: top + blockSize };
+        const shift = approvalArrivalRestShift(unit, box, 1000, APPROVAL_BOTTOM_CLEARANCE, true);
+        const placed = { top: unit.top - shift, bottom: unit.bottom - shift };
+        const again = approvalArrivalRestShift(
+          placed,
+          box,
+          1000 - shift,
+          APPROVAL_BOTTOM_CLEARANCE,
+          true,
+        );
+        expect(again, `${blockSize}px unit from ${top}`).toBe(0);
+        // The decision row, the unit's bottom, is whole above the end fade either way.
+        expect(placed.bottom, `${blockSize}px unit from ${top}`).toBeLessThanOrEqual(476 - 24);
+        if (blockSize === 200) expect(placed.top).toBeGreaterThanOrEqual(179);
+        // The unit that does not fit gives up only the deficit: its bottom is on the fade line.
+        else expect(placed.bottom).toBe(476 - 32);
+      }
+    }
+  });
+
   test('a card above the transcript, or taller than it, keeps the shift that places it', () => {
     expect(approvalArrivalRestShift({ top: 40, bottom: 200 }, viewport, 100)).toBe(-60);
     const taller = { top: 200, bottom: 585 };
