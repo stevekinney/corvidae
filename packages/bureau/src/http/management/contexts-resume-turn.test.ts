@@ -96,6 +96,25 @@ describe('bureau.contexts.resumeturn', () => {
     });
   });
 
+  // COR-2437 review: resume is owner only. The continuation runs as the owner's chat, so an
+  // operator, whatever scopes it holds, is answered as for a missing context and starts nothing.
+  it('answers an operator holding read and write exactly as for a missing context', async () => {
+    await withBureau(async (opened) => {
+      const run = await finishedTurn(opened);
+
+      const operator = await resumeCall(opened, run.contextId, 'operator-key', { runId: run.id });
+      const missing = await resumeCall(opened, 'no-such-context', 'operator-key', {
+        runId: run.id,
+      });
+
+      expect(operator.error?.data).toMatchObject({ weftCode: 'NotFound', resource: 'context' });
+      expect(operator.error?.data).toMatchObject({
+        weftCode: missing.error?.data?.['weftCode'],
+        resource: missing.error?.data?.['resource'],
+      });
+    });
+  });
+
   it('refuses a request without a command or a run, or with a key it does not declare', async () => {
     await withBureau(async (opened) => {
       const run = await finishedTurn(opened);

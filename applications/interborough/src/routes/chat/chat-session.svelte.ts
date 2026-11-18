@@ -185,6 +185,17 @@ export type ChatRegenerationState = {
   readonly error?: string;
 };
 
+/**
+ * Whether a Discard or a Continue that failed with `error` is tried again under the same command
+ * (COR-2437): only after the Bureau refused that command outright, which released it. After an
+ * answer of `command-in-doubt`, which the same command would get for as long as it is sent, and
+ * after a failure that brought no answer, the next try is a new command.
+ */
+export function keepsCommandAfter(error: unknown): boolean {
+  const code = wireCodeOf(error);
+  return code !== undefined && forkRefusalReason(error) !== 'command-in-doubt';
+}
+
 export class ChatSessionState {
   conversation = $state.raw<ConversationHistory>(createConversationHistory({ id: '' }));
   /** Parsed approval rail identities retained across hidden attach/resume reconciliation. */
@@ -732,6 +743,74 @@ export class ChatSessionState {
     return !this.#attachFailed;
   }
 
+  /**
+   * Removes the last turn the person stopped, by its run, through the Bureau
+   * (`bureau.contexts.discardturn`, COR-2437), then reads the thread again so the rows go. The
+   * person's message stays. Resolves `false` when nothing was removed: the Bureau refused it, or it
+   * could not be reached. A second call while one is in flight does nothing.
+   */
+  async discardTurn(runId: string): Promise<boolean> {
+    if (this.#closed?.() === true || this.streaming || this.attaching || this.transportActive) {
+      return false;
+    }
+    if (this.discarding !== undefined) return false;
+    // The command is kept for the next Discard only after the Bureau refused it outright
+    // (`keepsCommandAfter`); after any other answer the next Discard is a new command.
+    const earlier = this.#discardCommand;
+    const commandId =
+      earlier?.runId === runId ? earlier.commandId : `discard:${crypto.randomUUID()}`;
+    this.#discardCommand = { runId, commandId };
+    this.discarding = { runId, commandId };
+    try {
+      await discardContextTurn(
+        { contextId: this.sessionId, commandId, runId },
+        { signal: this.#abort.signal },
+      );
+      this.#discardCommand = undefined;
+      await this.refresh();
+      return true;
+    } catch (error) {
+      if (!keepsCommandAfter(error)) this.#discardCommand = undefined;
+      return false;
+    } finally {
+      this.discarding = undefined;
+    }
+  }
+
+  /**
+   * Lets the last stopped turn go on, by its run, through the Bureau
+   * (`bureau.contexts.resumeturn`, COR-2437): a continuation run starts on the thread with no
+   * message from the person, and the page reads the thread again, which joins that run as it goes.
+   * Resolves `false` when nothing was started: the Bureau refused it, or it could not be reached.
+   * The command is kept for the next Continue only after the Bureau refused it outright
+   * (`keepsCommandAfter`); after any other answer the next Continue is a new command.
+   */
+  async resumeTurn(runId: string): Promise<boolean> {
+    if (this.#closed?.() === true || this.streaming || this.attaching || this.transportActive) {
+      return false;
+    }
+    if (this.resuming !== undefined || this.discarding !== undefined) return false;
+    const earlier = this.#resumeCommand;
+    const commandId =
+      earlier?.runId === runId ? earlier.commandId : `resume:${crypto.randomUUID()}`;
+    this.#resumeCommand = { runId, commandId };
+    this.resuming = { runId, commandId };
+    try {
+      await resumeContextTurn(
+        { contextId: this.sessionId, commandId, runId },
+        { signal: this.#abort.signal },
+      );
+      this.#resumeCommand = undefined;
+      this.lastRunEnd = undefined;
+      await this.refresh();
+      return true;
+    } catch (error) {
+      if (!keepsCommandAfter(error)) this.#resumeCommand = undefined;
+      return false;
+    } finally {
+      this.resuming = undefined;
+    }
+  }
   /** Replaces the latest ended answer through Bureau without starting an AG-UI/tool turn. */
   async regenerateAnswer(messageId: string): Promise<void> {
     if (this.#closed?.() === true || this.streaming || this.attaching || this.transportActive)
