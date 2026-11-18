@@ -95,13 +95,20 @@ test.describe('the sample world', () => {
       await expect(rows).toHaveCount(3);
       await expect(rows.nth(0)).toContainText('No model provider connected');
       await expect(rows.nth(0)).toContainText('The Anthropic key was removed at');
-      // A phone folds a row's two or more buttons into one menu, and a row's single button stays
-      // its own button (StackedListItem's `actions`); the larger widths draw each button.
-      const action = (row: number, name: string, actions: number) =>
-        width >= 640 || actions === 1
-          ? rows.nth(row).getByRole('link', { name })
-          : rows.nth(row).getByRole('button', { name: 'More actions' });
-      await expect(action(0, 'Connect a provider', 1)).toBeVisible();
+      // A single action stays a link. Multiple actions collapse whenever the row's measured space
+      // requires it, which can happen at a tablet viewport as well as on a phone.
+      const expectActions = async (row: number, names: string[]) => {
+        const item = rows.nth(row);
+        const more = item.getByRole('button', { name: 'More actions' });
+        if (await more.isVisible()) {
+          await more.click();
+          await expect(page.getByRole('menu').getByRole('menuitem')).toHaveText(names);
+          await page.keyboard.press('Escape');
+          return;
+        }
+        for (const name of names) await expect(item.getByRole('link', { name })).toBeVisible();
+      };
+      await expect(rows.nth(0).getByRole('link', { name: 'Connect a provider' })).toBeVisible();
       // Line two sits directly under the title, not a row below the buttons (76h, 76i).
       for (let index = 0; index < 3; index += 1) {
         const title = await rows
@@ -119,10 +126,9 @@ test.describe('the sample world', () => {
       await expect(rows.nth(1)).toContainText('Storage is over its warning level, 1.6 GB');
       await expect(rows.nth(1)).toContainText('Alert firing since');
       await expect(rows.nth(1)).not.toContainText(/capacity|threshold|limit/i);
-      await expect(action(1, 'View storage', 2)).toBeVisible();
-      if (width >= 640) await expect(action(1, 'Change retention', 2)).toBeVisible();
+      await expectActions(1, ['View storage', 'Change retention']);
       await expect(rows.nth(2)).toContainText('Daily summary missed 4 runs since Oct 30');
-      await expect(action(2, 'View schedule', 1)).toBeVisible();
+      await expect(rows.nth(2).getByRole('link', { name: 'View schedule' })).toBeVisible();
       await expect(main.getByRole('region', { name: /reach the Interborough server/ })).toHaveCount(
         0,
       );
