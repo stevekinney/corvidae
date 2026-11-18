@@ -1,8 +1,17 @@
 import { expect } from 'bun:test';
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
+import { hostname, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { runWithHangGuard } from '../../testing/testing/src/hang-guard.ts';
+import { createDeliveryVerificationFixture } from './delivery-verification.test-support.ts';
 import { createScenarios } from './scenario.test-support.ts';
 
 /**
@@ -186,9 +195,36 @@ scenarios.describe('a non-zero result with --json goes to standard output', () =
   });
 
   scenarios.scenario('merge-gate.ts', async () => {
+    const initialized = await runWithHangGuard(['git', 'init'], { cwd: sandbox });
+    expect(initialized.exitCode).toBe(0);
+    const stateParent = join(sandbox, 'tmp', 'chef');
+    mkdirSync(stateParent, { recursive: true });
+    const fixture = await createDeliveryVerificationFixture(
+      {
+        directory: sandbox,
+        base: 'a'.repeat(40),
+        revision: 'b'.repeat(40),
+        integrationTree: 'c'.repeat(40),
+        outputDirectory: stateParent,
+      },
+      { hostId: hostname(), route: 'pull-request', noBehavior: true },
+    );
+    renameSync(fixture.state.stateDirectory, join(stateParent, 'execution-state'));
+    const configuration = join(sandbox, 'repository.json');
+    const defaults = JSON.parse(readFileSync(join(import.meta.dir, 'repository.json'), 'utf8'));
+    writeFileSync(
+      configuration,
+      JSON.stringify({ ...defaults, repository: fixture.request.repository }),
+    );
     writeFileSync(join(sandbox, 'comment.md'), 'comment\n');
     const result = await expectJsonFailure(
       invoke('merge-gate.ts', [
+        '--config',
+        configuration,
+        '--verification-file',
+        fixture.verification.file,
+        '--verification-digest',
+        fixture.verification.digest,
         '--pr',
         '1',
         '--worktree',
@@ -200,7 +236,7 @@ scenarios.describe('a non-zero result with --json goes to standard output', () =
       ]),
       1,
     );
-    // The sandbox is not a Git repository, so the first step fails before any network call.
+    // The isolated repository has no origin, so fetch fails without reaching a provider.
     expect(result['failedStep']).toBe('fetch');
   });
 

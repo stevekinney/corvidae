@@ -1,6 +1,6 @@
 # Execution report
 
-Read this when reporting completion, a blocker, or a handoff for an issue. Delivery generates completion reports from collected evidence; the form below is for manual blocker and handoff comments. [The Linear policy](linear-policy.md) "Work-session comments" says which comment each situation needs.
+Read this when reporting completion, a blocker, or a handoff for an issue. Delivery generates completion reports from collected evidence. Use this form for manual comments required by the [Linear policy](linear-policy.md).
 
 ## Form
 
