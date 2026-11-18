@@ -151,7 +151,12 @@ for (const width of WIDTHS) {
         });
 
         await page.goto(`/chats/${encodeURIComponent(threadId)}`);
-        await expect(page.getByText(/is disabled, so this chat is read-only/)).toBeVisible();
+        // The composer says so in place (its live region repeats it for a screen reader).
+        await expect(
+          page
+            .getByRole('group', { name: 'Composer unavailable' })
+            .getByText(/is disabled, so this chat is read-only/),
+        ).toBeVisible();
         await captureForDesignReview(page, {
           route: '/chats/:chat',
           state: 'its agent disabled, read-only composer',
@@ -223,6 +228,8 @@ for (const width of WIDTHS) {
       const undo = toast.getByRole('button', { name: 'Undo' });
       if (await undo.isVisible()) {
         await undo.click();
+        // At a phone width the open memory fills the page, so the list is read on its own.
+        await page.goto(`/agents/${TEXT_ECHO_AGENT_NAME}/memory`);
         await expect(rowOf(forgotten)).toHaveCount(1);
       }
     });
@@ -327,7 +334,10 @@ for (const width of WIDTHS) {
         await route.fallback();
       });
       await page.goto('/reviews');
-      await expect(page.locator('.cinder-list-detail__loading')).toBeVisible();
+      // The page says it is reading what waits before it draws the list.
+      await expect(
+        page.getByRole('main').getByRole('heading', { name: REVIEWS_COPY.loading, level: 1 }),
+      ).toBeVisible();
       await captureForDesignReview(page, {
         route: '/reviews',
         state: 'loading',
