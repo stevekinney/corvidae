@@ -106,9 +106,17 @@ Object.defineProperty(Element.prototype, 'getBoundingClientRect', {
     const row = this.parentElement?.closest('.cinder-filter-bar__row');
     // A test that names no `search-folded` need draws that form as wide as `wide`, so the bar steps
     // through it to `medium` as it did before the form existed.
+    // A medium form with chips folded into its Filter menu needs what the test names for
+    // `medium:<folded>`, or what the medium form needs when the test names none.
     if (row) {
       const form = drawnForm(row);
-      return rect(0, needs[form] ?? (form === 'search-folded' ? (needs['wide'] ?? 0) : 0));
+      const folded = row.closest('.cinder-filter-bar')?.getAttribute('data-cinder-folded');
+      const foldedNeed =
+        folded === null || folded === undefined ? undefined : needs[`${form}:${folded}`];
+      return rect(
+        0,
+        foldedNeed ?? needs[form] ?? (form === 'search-folded' ? (needs['wide'] ?? 0) : 0),
+      );
     }
     return rect(0, 0);
   },
@@ -326,6 +334,77 @@ describe('FilterBar layout by its measured width', () => {
     const { container } = render(FilterBar, { segments: SEGMENTS, facets: FACETS });
     setBarWidth(0);
     expect(layoutOf(container)).toBe('wide');
+  });
+
+  test('a tablet bar that cannot hold its chips folds the unapplied ones into a Filter menu first, least used first, and keeps the applied ones in the row (52x)', () => {
+    // The Runs page at 768 pixels filtered by an agent and an origin: the medium form needs 657px
+    // of a 644px row; with + Workflow in the Filter menu it needs 596px.
+    setViewport(768);
+    needs = { wide: 1100, medium: 657, 'medium:1': 596, narrow: 300 };
+    const facets = [
+      FACETS[0],
+      {
+        type: 'choice' as const,
+        key: 'workflow',
+        label: 'Workflow',
+        multiple: false,
+        options: [{ value: 'release-notes', label: 'Release notes' }],
+      },
+      FACETS[1],
+    ];
+    const { container } = render(FilterBar, {
+      segments: SEGMENTS,
+      facets,
+      foldOrder: ['workflow', 'agent', 'startedBy'],
+      appliedFilters: [{ key: 'startedBy', value: 'chats', label: 'Started by' }, ...AGENT_APPLIED],
+    });
+    setBarWidth(644);
+    const bar = container.querySelector('.cinder-filter-bar');
+    expect(layoutOf(container)).toBe('medium');
+    expect(bar?.getAttribute('data-cinder-folded')).toBe('1');
+    const chipText = [
+      ...container.querySelectorAll('.cinder-filter-bar__row .cinder-filter-bar__chip'),
+    ].map((chip) => chip.textContent?.replaceAll(/\s+/g, ' ').trim());
+    expect(chipText.some((text) => text?.includes('Workflow'))).toBe(false);
+    expect(
+      [...container.querySelectorAll('.cinder-filter-bar__chip-remove')].map((button) =>
+        button.getAttribute('aria-label'),
+      ),
+    ).toEqual(['Remove filter: Started by: Chats', 'Remove filter: Agent: Tool runner']);
+    const menuButton = container.querySelector<HTMLButtonElement>(
+      '.cinder-filter-bar__menu-button',
+    );
+    expect(menuButton?.getAttribute('aria-label')).toBe('Filter');
+    menuButton?.click();
+    flushSync();
+    expect(
+      [...document.querySelectorAll('.cinder-filter-bar__menu .cinder-filter-bar__menu-label')].map(
+        (label) => label.textContent,
+      ),
+    ).toEqual(['Workflow']);
+  });
+
+  test('a tablet bar folds to narrow only once every unapplied chip is in the menu', () => {
+    setViewport(768);
+    needs = { wide: 1100, medium: 700, 'medium:1': 680, 'medium:2': 660, narrow: 300 };
+    const { container } = render(FilterBar, {
+      segments: SEGMENTS,
+      facets: FACETS,
+      foldOrder: ['agent', 'startedBy'],
+    });
+    setBarWidth(670);
+    expect(layoutOf(container)).toBe('medium');
+    expect(container.querySelector('.cinder-filter-bar')?.getAttribute('data-cinder-folded')).toBe(
+      '2',
+    );
+    expect(container.querySelector('.cinder-filter-bar__row .cinder-filter-bar__chip')).toBeNull();
+    setBarWidth(650);
+    expect(layoutOf(container)).toBe('narrow');
+    setBarWidth(690);
+    expect(layoutOf(container)).toBe('medium');
+    expect(container.querySelector('.cinder-filter-bar')?.getAttribute('data-cinder-folded')).toBe(
+      '1',
+    );
   });
 
   test('the viewport still narrows a bar that fits', () => {

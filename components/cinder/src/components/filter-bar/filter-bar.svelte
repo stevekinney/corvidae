@@ -52,23 +52,26 @@
     FILTER_BAR_TABLET_BREAKPOINT,
     appliedSummary,
     appliedValues,
+    foldableFacetKeys,
+    formKey,
     fromControlValue,
     isCollapsible,
+    layoutForm,
     measureFilterBarRow,
     nextFilterBarFit,
     optionLabel,
-    resolveFilterBarLayout,
+    resolveFilterBarForm,
     segmentSelectLabel,
     toControlValue,
     viewportLayout,
-    widerLayout,
+    widerForm,
   } from './filter-bar.utilities.ts';
+  import type { FilterBarForm } from './filter-bar.utilities.ts';
 
   import type {
     AppliedFilter,
     ChoiceFacet,
     FacetDefinition,
-    FilterBarLayout,
     FilterBarProps,
     SelectFacet,
     ToggleFacet,
@@ -88,6 +91,7 @@
     searchPosition,
     facets = [],
     appliedFilters = [],
+    foldOrder = [],
     layout: forcedLayout = 'auto',
     disabled = false,
     class: className,
@@ -117,12 +121,26 @@
 
   const collapsible = $derived(isCollapsible({ segments, facets }));
   const viewport = $derived(viewportLayout(phone.current, tablet.current));
+  // The chips that may move into the Filter menu when the medium form runs out of room, in the
+  // order they move: an applied chip never does, so a filter that is on stays in the bar.
+  const foldable = $derived(
+    foldableFacetKeys(facets, new Set(appliedFilters.map((filter) => filter.key)), foldOrder),
+  );
   // The widest form the bar's row was measured to fit. Until it is measured (on the server, and
   // before the first measurement in the browser) the viewport alone decides.
-  let fitted: FilterBarLayout = $state('wide');
-  const layout = $derived(
-    resolveFilterBarLayout({ collapsible, forced: forcedLayout, viewport, fitted }),
+  let fitted: FilterBarForm = $state(layoutForm('wide'));
+  const form = $derived(
+    resolveFilterBarForm({
+      collapsible,
+      forced: forcedLayout,
+      viewport,
+      fitted,
+      foldable: foldable.length,
+    }),
   );
+  const layout = $derived(form.layout);
+  // The chips the medium form has moved into its Filter menu.
+  const foldedKeys = $derived(new Set(layout === 'medium' ? foldable.slice(0, form.folded) : []));
 
   // A bar with segments or chips puts its search at the end of the row; a bar of selects alone
   // starts with it, as a list pane's filters do.
@@ -145,6 +163,7 @@
         facet.type === 'toggle' ? (facet.count ?? null) : null,
       ]),
       appliedFilters.map((filter) => [filter.key, filter.label, appliedValues(filter)]),
+      foldOrder,
       searchVisible,
       searchAtStart,
     ]),
@@ -155,7 +174,7 @@
   // wider form waits to be measured: each asks the bar to measure its row again.
   let measureRequest = $state(0);
   // What each form was measured to need, for the contents (and fonts) in `measuredKey`.
-  const needs = new Map<FilterBarLayout, number>();
+  const needs = new Map<string, number>();
   let measuredKey = '';
   let fontsLoaded = 0;
   let waitingToProbe = false;
@@ -175,9 +194,10 @@
   // stop that at the form that fits.
   $effect(() => {
     void measureRequest;
-    const drawn = layout;
+    const drawn = form;
     const key = contentsKey;
     const cap = viewport;
+    const foldableCount = foldable.length;
     const row = rowElement;
     if (forcedLayout !== 'auto' || !collapsible || row === undefined) return;
     untrack(() => {
@@ -190,13 +210,14 @@
       // Nothing measured (a hidden bar, or a DOM with no layout) keeps the viewport's layout.
       if (available <= 0) return;
       const need = measureFilterBarRow(row);
-      if (need > available) needs.set(drawn, need);
+      if (need > available) needs.set(formKey(drawn), need);
       const next = nextFilterBarFit({
         drawn,
         viewport: cap,
+        foldable: foldableCount,
         need,
         available,
-        widerNeed: needs.get(widerLayout(drawn)),
+        widerNeed: needs.get(formKey(widerForm(drawn, foldableCount))),
         mayProbe: !busy(),
       });
       waitingToProbe = next.waiting;
@@ -488,29 +509,48 @@
   })}
 {/snippet}
 
-{#snippet filterMenu()}
+<!-- The Filter menu. The narrow form's holds every facet, the filters no facet draws and the
+     search (`whole`); the medium form's holds only the chips it folded, behind an icon button, so
+     the row keeps the room the chips gave up. -->
+{#snippet filterMenu(menuFacets: readonly FacetDefinition[], whole: boolean)}
   <Popover bind:open={menuOpen} label="Filter" placement="bottom-start">
     {#snippet trigger()}
-      <Button
-        type="button"
-        variant="secondary"
-        class="cinder-filter-bar__menu-button"
-        {disabled}
-        aria-label={appliedCount === 0 ? 'Filter' : `Filter, ${appliedCount} applied`}
-        aria-haspopup="dialog"
-        aria-expanded={menuOpen}
-        onclick={() => (menuOpen = !menuOpen)}
-      >
-        {#snippet leadingIcon()}<Funnel class="cinder-icon-xs" />{/snippet}
-        Filter
-        {#if appliedCount > 0}
-          <span class="cinder-filter-bar__menu-count" aria-hidden="true">{appliedCount}</span>
-        {/if}
-      </Button>
+      {#if whole}
+        <Button
+          type="button"
+          variant="secondary"
+          class="cinder-filter-bar__menu-button"
+          {disabled}
+          aria-label={appliedCount === 0 ? 'Filter' : `Filter, ${appliedCount} applied`}
+          aria-haspopup="dialog"
+          aria-expanded={menuOpen}
+          onclick={() => (menuOpen = !menuOpen)}
+        >
+          {#snippet leadingIcon()}<Funnel class="cinder-icon-xs" />{/snippet}
+          Filter
+          {#if appliedCount > 0}
+            <span class="cinder-filter-bar__menu-count" aria-hidden="true">{appliedCount}</span>
+          {/if}
+        </Button>
+      {:else}
+        <Button
+          type="button"
+          variant="secondary"
+          iconOnly
+          class="cinder-filter-bar__menu-button"
+          {disabled}
+          aria-label="Filter"
+          aria-haspopup="dialog"
+          aria-expanded={menuOpen}
+          onclick={() => (menuOpen = !menuOpen)}
+        >
+          <Funnel class="cinder-icon-xs" />
+        </Button>
+      {/if}
     {/snippet}
 
     <div id={`${generatedId}-menu`} class="cinder-filter-bar__menu">
-      {#each facets as facet (facet.key)}
+      {#each menuFacets as facet (facet.key)}
         {@const summary = facetSummary(facet)}
         {@const open = menuSection === facet.key}
         {@const applied = appliedFilterFor(facet.key)}
@@ -564,7 +604,7 @@
           {/if}
         </div>
       {/each}
-      {#each orphanFilters as filter (filter.key)}
+      {#each whole ? orphanFilters : [] as filter (filter.key)}
         {@const summary = appliedValues(filter).join(', ')}
         <div class="cinder-filter-bar__menu-section">
           <div class="cinder-filter-bar__menu-row" data-cinder-static="">
@@ -582,7 +622,7 @@
           </div>
         </div>
       {/each}
-      {#if searchVisible}
+      {#if whole && searchVisible}
         <div class="cinder-filter-bar__menu-section">
           <button
             type="button"
@@ -633,7 +673,13 @@
 {/snippet}
 
 {#snippet facetControls()}
-  {#each orderedFacets as facet (facet.key)}
+  {#if foldedKeys.size > 0}
+    {@render filterMenu(
+      facets.filter((facet) => foldedKeys.has(facet.key)),
+      false,
+    )}
+  {/if}
+  {#each orderedFacets.filter((facet) => !foldedKeys.has(facet.key)) as facet (facet.key)}
     {#if facet.type === 'select'}
       <div class="cinder-filter-bar__facet">{@render selectControl(facet)}</div>
     {:else if facet.type === 'choice'}
@@ -683,6 +729,7 @@
   role="search"
   aria-label={ariaLabel}
   data-cinder-layout={layout}
+  data-cinder-folded={foldedKeys.size > 0 ? foldedKeys.size : undefined}
   data-cinder-collapsible={collapsible ? '' : undefined}
   data-cinder-search-position={searchAtStart ? 'start' : 'end'}
   data-disabled={disabled ? '' : undefined}
@@ -700,7 +747,7 @@
     {/if}
 
     {#if layout === 'narrow'}
-      {@render filterMenu()}
+      {@render filterMenu(facets, true)}
     {:else}
       {@render facetControls()}
       {#if searchVisible && !searchAtStart}
