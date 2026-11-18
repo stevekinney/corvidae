@@ -14,6 +14,9 @@
     --_cinder-grouped-list-item-title-line: calc(
       var(--cinder-text-base) * var(--cinder-leading-snug, 1.35)
     );
+    /* The chevron's column: the 16px chevron and the gap before it. */
+    /* @runtime-state */
+    --_cinder-grouped-list-item-chevron-column: calc(1rem + var(--cinder-space-3));
 
     position: relative;
     display: flex;
@@ -41,8 +44,14 @@
     color: var(--cinder-text-muted);
   }
 
+  /* A glyph sits on the title's first line at every width, never in the middle of a row its text
+     makes taller: a box one title line tall, at the content's block-start padding, centres it on
+     that line, so the glyph, the trailing value and the chevron share one line on every row. */
   .cinder-grouped-list-item__leading[data-cinder-leading='icon'] {
+    align-self: flex-start;
     min-inline-size: 1.75rem;
+    block-size: calc(var(--_cinder-grouped-list-item-title-line) + 2 * var(--cinder-space-2-5));
+    padding-block: var(--cinder-space-2-5);
   }
 
   .cinder-grouped-list-item__leading[data-cinder-leading='avatar'] {
@@ -136,6 +145,49 @@
     overflow-wrap: anywhere;
     font-size: var(--cinder-text-sm);
     color: var(--cinder-text-muted);
+  }
+
+  /* titleLines and subtitleLines: at most that many lines at every width, then an ellipsis. The
+     clamp is visual only, so the whole text stays in the document and the row's accessible text.
+     The link's cover is positioned against the row, so the clamp's overflow does not cut it. */
+  .cinder-grouped-list-item__title[data-cinder-lines],
+  .cinder-grouped-list-item__subtitle[data-cinder-lines] {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  .cinder-grouped-list-item__title[data-cinder-lines='1'],
+  .cinder-grouped-list-item__subtitle[data-cinder-lines='1'] {
+    -webkit-line-clamp: 1;
+    line-clamp: 1;
+  }
+
+  .cinder-grouped-list-item__title[data-cinder-lines='2'],
+  .cinder-grouped-list-item__subtitle[data-cinder-lines='2'] {
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+  }
+
+  /* chevronColumn: a row with no chevron keeps its column as space at the end of its content, at
+     every width, so its trailing value ends where a linked row's does. Never an empty flex item,
+     which would wrap in a narrow row the way the chevron once did. */
+  .cinder-grouped-list-item--chevron-column > .cinder-grouped-list-item__content {
+    padding-inline-end: calc(
+      var(--cinder-space-2) + var(--_cinder-grouped-list-item-chevron-column)
+    );
+  }
+
+  /* A row that has just arrived in a live list fades in; reduced motion shows it at once. */
+  .cinder-grouped-list-item--arriving {
+    animation: cinder-grouped-list-item-arrive var(--cinder-duration-fast)
+      var(--cinder-ease-standard);
+  }
+
+  @keyframes cinder-grouped-list-item-arrive {
+    from {
+      opacity: 0;
+    }
   }
 
   /* A trailing photo is a 56px column that takes no space when the row has none, since the slot is
@@ -344,6 +396,45 @@
     .cinder-grouped-list-item--trailing .cinder-grouped-list-item__subtitle {
       flex: 1 0 100%;
       order: 1;
+    }
+
+    /* The chevron leaves the wrapping: it is pinned to the title's first line at the content's
+       inline end, and its column is reserved as padding, so the title and the value measure
+       against what is left and the value, never the chevron, drops to a line of its own. It
+       takes no pointer, so a press on it reaches the row's link beneath. A row whose title does not
+       start at the top of its content (a suggested row's label above it, or an avatar or a
+       thumbnail that centres the text in a taller row) keeps its chevron in the flow, and a
+       time-led row keeps it in its own grid (below). */
+    .cinder-grouped-list-item--trailing.cinder-grouped-list-item--chevron:not(
+        .cinder-grouped-list-item--flow-chevron,
+        .cinder-grouped-list-item--timed
+      )
+      > .cinder-grouped-list-item__content {
+      padding-inline-end: calc(
+        var(--cinder-space-2) + var(--_cinder-grouped-list-item-chevron-column)
+      );
+    }
+
+    .cinder-grouped-list-item--trailing:not(
+        .cinder-grouped-list-item--flow-chevron,
+        .cinder-grouped-list-item--timed
+      )
+      .cinder-grouped-list-item__chevron {
+      position: absolute;
+      inset-block-start: var(--cinder-space-2-5);
+      inset-inline-end: var(--cinder-space-2);
+      block-size: var(--_cinder-grouped-list-item-title-line);
+      pointer-events: none;
+    }
+
+    /* Only the first line gives the chevron's column up: the subtitle runs under it, to the
+       content's inline end, on a linked row and on one that keeps the column alike. */
+    .cinder-grouped-list-item--trailing:is(
+        .cinder-grouped-list-item--chevron,
+        .cinder-grouped-list-item--chevron-column
+      ):not(.cinder-grouped-list-item--timed, .cinder-grouped-list-item--flow-chevron)
+      .cinder-grouped-list-item__subtitle {
+      margin-inline-end: calc(var(--_cinder-grouped-list-item-chevron-column) * -1);
     }
 
     /* A time-led row with a trailing value is a grid here: the window leads, the name and the

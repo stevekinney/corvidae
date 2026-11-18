@@ -4,8 +4,9 @@
    * two are the same layout and nothing moves when data arrives: the date line, the Spotlight with
    * the one count under it, then two columns (what needs you, what is running and what needs
    * attention at the left, the box that starts a chat at the right) and the chats you were last in
-   * across the full width below. On a phone every section is a row of one column, in the order the
-   * Spotlight, Needs you, Running now, the box that starts a chat, Needs attention, Recent chats.
+   * across the full width below, then the two activity bands, the last region. On a phone every
+   * section is a row of one column, in the order the Spotlight, Needs you, Running now, the box that
+   * starts a chat, Needs attention, Recent chats, Workflow activity, Agent activity.
    * While the first-run
    * checklist shows the box that starts a chat sits under it, in the left column.
    *
@@ -13,6 +14,8 @@
    * two sections is Cinder's own space between sections (`--cinder-space-8`).
    */
   import type { Snippet } from 'svelte';
+
+  import { ActivityRegion, provideActivityRegion } from './home-activity-feed.svelte.ts';
 
   interface HomeLayoutProps {
     /** `data-mode` on the page: `overview`, `checklist` or `loading`. */
@@ -35,6 +38,13 @@
     startChatAside?: Snippet | undefined;
     /** The chats last in. */
     recent: Snippet;
+    /**
+     * Workflow activity, the first of the two activity bands in the page's last region; the
+     * checklist has neither band.
+     */
+    workflowActivity?: Snippet | undefined;
+    /** Agent activity, the second activity band, beside or under Workflow activity. */
+    agentActivity?: Snippet | undefined;
   }
 
   let {
@@ -48,7 +58,13 @@
     attention,
     startChatAside,
     recent,
+    workflowActivity,
+    agentActivity,
   }: HomeLayoutProps = $props();
+
+  // The bands read from the region whether they are stacked, where the hold of either holds both.
+  const activityRegion = new ActivityRegion();
+  provideActivityRegion(activityRegion);
 </script>
 
 <div class="ib-home" data-page="home" data-mode={mode} aria-busy={busy ? 'true' : undefined}>
@@ -65,6 +81,22 @@
     {#if startChatAside}<div class="ib-home__start-chat">{@render startChatAside()}</div>{/if}
   </div>
   {@render recent()}
+  {#if workflowActivity || agentActivity}
+    <!-- Each band sits in its own wrapper, as every other region does: two adjacent Cinder
+         Sections take Cinder's space between sections as a margin, which this region's gap
+         already gives them, so side by side the second band started 32px lower and stacked the
+         bands were 64px apart. -->
+    <div class="ib-home__activity" data-testid="home-activity">
+      <div class="ib-home__activity-bands" {@attach activityRegion.attach}>
+        {#if workflowActivity}
+          <div class="ib-home__activity-band">{@render workflowActivity()}</div>
+        {/if}
+        {#if agentActivity}
+          <div class="ib-home__activity-band">{@render agentActivity()}</div>
+        {/if}
+      </div>
+    </div>
+  {/if}
 </div>
 
 <style>
@@ -116,6 +148,36 @@
 
   .ib-home__needs-attention {
     order: 4;
+  }
+
+  /* The activity bands (COR-2227), the page's last region: stacked, Workflow activity over Agent
+   * activity, until the region itself is wide enough for two rows in their wide shape (two 26rem
+   * rows and the gap), then side by side in two equal columns, each band at its own height. The
+   * switch follows the region's width, never the viewport's, so the sidebar opening or closing
+   * never leaves two bands side by side in their narrow row shape. */
+  .ib-home__activity {
+    container: ib-home-activity / inline-size;
+    min-inline-size: 0;
+  }
+
+  .ib-home__activity-bands {
+    display: flex;
+    flex-direction: column;
+    gap: var(--cinder-space-8);
+    min-inline-size: 0;
+  }
+
+  .ib-home__activity-band {
+    min-inline-size: 0;
+  }
+
+  @container ib-home-activity (width >= 54rem) {
+    .ib-home__activity-bands {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      column-gap: var(--cinder-space-8);
+      align-items: start;
+    }
   }
 
   /* Two columns on a tablet or desktop: what needs you, what is running and what needs attention in
