@@ -82,9 +82,16 @@
     pointer(window, 'pointermove', startX + distance, startY);
   }
 
+  // The `last-card` decision runs with reduced motion on, so the exit copy is never drawn. The
+  // preference is set while the component initialises, before the deck mounts and before any
+  // decision, and the deck reads it through an observer that settles in a microtask: the state is
+  // reached by order, not by waiting. Everything below runs in microtasks of the mount, ahead of
+  // the capture's own round trips, so the frame it takes is always the final one.
+  const root = document.documentElement;
+  const previous = root.dataset['reducedMotion'];
+  if (scenario === 'last-card') root.dataset['reducedMotion'] = 'on';
+
   onMount(() => {
-    const root = document.documentElement;
-    const previous = root.dataset['reducedMotion'];
     let cancelled = false;
 
     void (async () => {
@@ -97,11 +104,12 @@
           ?.querySelector<HTMLElement>('[data-cinder-decision-card][data-depth="0"]')
           ?.focus({ focusVisible: true } as FocusOptions);
       } else if (scenario === 'last-card') {
-        root.dataset['reducedMotion'] = 'on';
-        // The motion preference is read through an observer; let it settle before deciding.
-        await new Promise((resolve) => setTimeout(resolve, 50));
         if (cancelled) return;
         host?.querySelector<HTMLElement>('[data-decision-action="accept"]')?.click();
+        // The deck moves focus to the empty state after the last decision, and a ring on it is a
+        // function of the last input the page saw, which varies. The capture shows the resting
+        // state, so focus is released here, in the same task as the decision.
+        (document.activeElement as HTMLElement | null)?.blur();
       }
     })();
 
