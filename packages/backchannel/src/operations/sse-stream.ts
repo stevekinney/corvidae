@@ -52,6 +52,7 @@ export function acceptsServerSentEvents(acceptHeader: string | null): boolean {
   return false;
 }
 
+/** Throws unless the request accepts `text/event-stream`. */
 export function requireServerSentEventsAccept(request: Request): void {
   if (!acceptsServerSentEvents(request.headers.get('Accept'))) {
     throw invalidParamsFault(SSE_ACCEPT_REQUIRED_MESSAGE);
@@ -70,6 +71,7 @@ export function readServerSentEventsCursor(value: string | null): Cursor | undef
   return value;
 }
 
+/** Shapes a fault into the response a Server-Sent Events route answers with. */
 export function shapeServerSentEventsFault(fault: OperationFault): Response {
   if (fault.code === 'InvalidParams' && fault.message === SSE_ACCEPT_REQUIRED_MESSAGE) {
     return shapeRestFaultAsJson(fault, { status: 406 });

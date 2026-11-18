@@ -244,7 +244,7 @@ A Card is for a real panel that needs its own surface. A card never draws a bord
 
 ## GroupedList rows
 
-One rounded surface with separators that start at the text. A row with an `href` is one link, and its title is never underlined. A time-led row leads with its time value and unit.
+One rounded surface with separators that start at the text. A row with an `href` is one link, and its title is never underlined. A time-led row leads with its time window (`3–6 pm`, `All day`), bold, with a small free-text caption under it (`12 min left`, `starts in 1 h`) that turns amber only at 15 minutes or less.
 
 ```html
 <div class="cinder-grouped-list">
@@ -258,8 +258,8 @@ One rounded surface with separators that start at the text. A row with an `href`
           class="cinder-grouped-list-item__lead cinder-grouped-list-item__lead--timed"
           data-cinder-urgency="urgent"
         >
-          <span class="cinder-grouped-list-item__lead-value">25</span
-          ><span class="cinder-grouped-list-item__lead-unit">min left</span>
+          <span class="cinder-grouped-list-item__lead-window">3–6 pm</span
+          ><span class="cinder-grouped-list-item__lead-caption">12 min left</span>
         </div>
         <div class="cinder-grouped-list-item__text">
           <div class="cinder-grouped-list-item__title">

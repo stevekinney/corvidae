@@ -19,7 +19,7 @@ type ECDSAAlgorithm = 'ES256' | 'ES384' | 'ES512';
  *
  * @example
  * ```ts
- * import { type JWTAlgorithm, type JWTConfig } from '@lostgradient/weft';
+ * import { type JWTAlgorithm, type JWTConfig } from '@lostgradient/backchannel';
  *
  * const algorithm: JWTAlgorithm = 'RS256';
  * const config: JWTConfig = {
@@ -45,7 +45,7 @@ export type JWTAlgorithm = HMACAlgorithm | RSAAlgorithm | ECDSAAlgorithm;
  *
  * @example
  * ```ts
- * import { type JWTConfig } from '@lostgradient/weft';
+ * import { type JWTConfig } from '@lostgradient/backchannel';
  *
  * const jwtConfig: JWTConfig = {
  *   secret: process.env['JWT_SECRET'] ?? '',
@@ -87,7 +87,7 @@ export type JWTConfig = {
  *
  * @example
  * ```ts
- * import { type MTLSConfig } from '@lostgradient/weft';
+ * import { type MTLSConfig } from '@lostgradient/backchannel';
  * import { readFileSync } from 'node:fs';
  *
  * const mtlsConfig: MTLSConfig = {
@@ -132,7 +132,7 @@ export type MTLSConfig = {
  *
  * @example
  * ```ts
- * import { type AuthConfig } from '@lostgradient/weft';
+ * import { type AuthConfig } from '@lostgradient/backchannel';
  *
  * const auth: AuthConfig = {
  *   apiKeys: [process.env['API_KEY'] ?? ''],
@@ -215,7 +215,7 @@ export type AuthConfig = {
  *
  * @example
  * ```ts
- * import { createAuthenticator, type AuthMethod } from '@lostgradient/weft';
+ * import { createAuthenticator, type AuthMethod } from '@lostgradient/backchannel';
  *
  * const authenticate = await createAuthenticator({
  *   apiKeys: ['key-1'],
@@ -251,8 +251,11 @@ export type AuthMethod = 'api-key' | 'jwt' | 'mtls' | 'public' | 'unauthenticate
  *     scopes must forward the authenticator's `principal`.
  */
 export type AuthContext = {
+  /** How the caller authenticated. */
   method: AuthMethod;
+  /** The verified JWT claims, when the method is `jwt`. */
   claims?: JWTPayload;
+  /** The principal the credential resolved to. */
   principal?: AuthenticatedPrincipal;
 };
 
@@ -265,7 +268,7 @@ export type AuthContext = {
  *
  * @example
  * ```ts
- * import { createAuthenticator, type AuthResult } from '@lostgradient/weft';
+ * import { createAuthenticator, type AuthResult } from '@lostgradient/backchannel';
  *
  * const authenticate = await createAuthenticator({
  *   apiKeys: ['s3cr3t'],
@@ -293,7 +296,7 @@ export type AuthResult =
  *
  * @example
  * ```ts
- * import { createAuthenticator, type JWTPayload } from '@lostgradient/weft';
+ * import { createAuthenticator, type JWTPayload } from '@lostgradient/backchannel';
  *
  * const authenticate = await createAuthenticator({
  *   jwt: { secret: 'test-secret' },
@@ -323,7 +326,7 @@ export type JWTPayload = Record<string, unknown>;
  *
  * @example
  * ```ts
- * import { createAuthenticator, type Authenticator } from '@lostgradient/weft';
+ * import { createAuthenticator, type Authenticator } from '@lostgradient/backchannel';
  *
  * const authenticate: Authenticator = await createAuthenticator({
  *   apiKeys: ['my-key'],
@@ -343,6 +346,7 @@ export type Authenticator = (request: Request) => Promise<AuthResult>;
 // Constants
 // ---------------------------------------------------------------------------
 
+/** Paths the authentication layer answers without a credential by default. */
 export const DEFAULT_PUBLIC_PATHS = [
   '/v1/health',
   '/v1/metrics',

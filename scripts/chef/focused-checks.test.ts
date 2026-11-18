@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { rejectionOf } from '../../testing/testing/src/helpers/promise-outcome.ts';
 import type { Manifest } from '../affected-tests-manifest.ts';
 import {
+  broaderObligations,
   diffSize,
   directManifest,
   directTests,
@@ -62,6 +63,15 @@ describe('touchesRootTypecheck', () => {
     expect(touchesRootTypecheck('turbo.json')).toBe(true);
     expect(touchesRootTypecheck('scripts/chef/a.ts')).toBe(true);
     expect(touchesRootTypecheck('packages/weft/a.ts')).toBe(false);
+  });
+});
+
+describe('broader obligations', () => {
+  test('keeps the provider audit pending and names excluded browser tests', () => {
+    expect(broaderObligations(['scripts/a.integration.test.ts'])).toEqual([
+      expect.stringContaining('Full CI remains required'),
+      expect.stringContaining('scripts/a.integration.test.ts require provider browser execution'),
+    ]);
   });
 });
 
@@ -426,7 +436,10 @@ describe('runChecks', () => {
     const result = await runChecks('/repo', options, deps);
     expect(deps.executed).toHaveLength(4);
     expect(result.code).toBe(1);
-    expect(result.output).toBe('focused-checks: 2 passed, 2 failed (lint:root, typecheck:root)');
+    expect(result.output).toContain(
+      'focused-checks: 2 passed, 2 failed (lint:root, typecheck:root)',
+    );
+    expect(result.output).toContain('pending broader obligation');
   });
 
   test('keeps a pool-admission result pending and never calls it passed', async () => {
@@ -549,7 +562,9 @@ describe('runChecks', () => {
   test('exits 0 with a passed summary when every step passes', async () => {
     const { runner } = fakeRunner({ changed: ['packages/weft/a.ts'] });
     const result = await runChecks('/repo', options, dependencies(runner));
-    expect(result).toEqual({ code: 0, output: 'focused-checks: 4 passed, 0 failed' });
+    expect(result.code).toBe(0);
+    expect(result.output).toContain('focused-checks: 4 passed, 0 failed');
+    expect(result.output).toContain('pending broader obligation');
   });
 
   test('plans against the merge base, runs the direct tests and never the dependency graph', async () => {

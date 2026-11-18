@@ -35,6 +35,7 @@ import { isPlainObject } from './json-schema-utilities.ts';
 import type { OperationRegistry } from './operation-catalog.ts';
 import { principalFromStdioLocal, type Principal } from './principal.ts';
 
+/** How a stdio session decides whether to admit its peer. */
 export type StdioAdmission =
   | { readonly kind: 'require-one' }
   | { readonly kind: 'startup-token'; readonly token: string }
@@ -57,8 +58,11 @@ export type StdioSessionOptions = {
   readonly maxSubscriptions?: number;
 };
 
+/** How a stdio session ended: the process exit code and, when it failed, why. */
 export type StdioSessionResult = {
+  /** The process exit code. */
   readonly exitCode: number;
+  /** Why the session failed, when it did. */
   readonly reason?: string;
 };
 
@@ -75,6 +79,7 @@ type SessionIO = {
 type AdmissionOutcome =
   { kind: 'ok'; remainder: string } | { kind: 'fail'; result: StdioSessionResult };
 
+/** Serves one JSON-RPC session over a pair of streams, after admitting the peer. */
 export async function runStdioSession(options: StdioSessionOptions): Promise<StdioSessionResult> {
   if (options.admission.kind === 'require-one') {
     return {

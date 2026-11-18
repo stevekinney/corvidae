@@ -310,12 +310,19 @@ export type AgentOverrides = z.infer<typeof overridesSchema>;
  * limit left out of `limits` is not overridden.
  */
 export type AgentOverridesInput = {
+  /** The agent's instructions. */
   readonly instructions?: string | null | undefined;
+  /** The names of the tools the agent may call. */
   readonly tools?: readonly string[] | null | undefined;
+  /** The approval each tool needs, by tool name. */
   readonly approvals?: Readonly<Record<string, ToolApproval>> | null | undefined;
+  /** The guardrails the agent runs. */
   readonly guardrails?: readonly AgentGuardrailEntry[] | null | undefined;
+  /** The names of the interceptors the agent runs. */
   readonly interceptors?: readonly string[] | null | undefined;
+  /** The names of the escalations the agent may raise. */
   readonly escalations?: readonly string[] | null | undefined;
+  /** The agent's limits on steps, cost and tool use. */
   readonly limits?:
     | {
         readonly steps?: number | null | undefined;
@@ -334,8 +341,11 @@ export type AgentOverridesInput = {
       }
     | null
     | undefined;
+  /** The model the agent runs on. */
   readonly model?: string | null | undefined;
+  /** The models the agent may fall back to, in order. */
   readonly models?: readonly string[] | null | undefined;
+  /** How much reasoning effort the agent spends. */
   readonly effort?: Effort | null | undefined;
 };
 

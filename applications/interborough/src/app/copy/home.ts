@@ -107,6 +107,76 @@ export const HOME_COPY = {
     },
   },
   /**
+   * The two activity bands, Home's last region (COR-2227): what the workflow engine and the agents
+   * did lately, newest first, three rows each. The tier words (Warning, Critical) are Cinder's
+   * StatusDot words, not page copy.
+   */
+  activity: {
+    /** The band of workflow runs, steps and workers. */
+    fleet: {
+      title: 'Workflow activity',
+      listLabel: 'Recent workflow activity',
+      empty: {
+        title: 'No workflow activity yet',
+        description: 'Workflow runs, steps and workers appear here as they happen.',
+      },
+      stillLoading: 'Still loading workflow activity. This is taking longer than usual.',
+    },
+    /** The band of chats, reviews, goals, schedules and hooks. */
+    bureau: {
+      title: 'Agent activity',
+      listLabel: 'Recent agent activity',
+      empty: {
+        title: 'No agent activity yet',
+        description: 'Chats, reviews, goals, schedules and hooks appear here as they happen.',
+      },
+      stillLoading: 'Still loading agent activity. This is taking longer than usual.',
+    },
+    /** The titles of the workflow events the band words itself, by what happened. */
+    workflowEvents: {
+      runStarted: 'Run started',
+      runFinished: 'Run finished',
+      runFailed: 'Run failed',
+      runCanceled: 'Run canceled',
+      runTimedOut: 'Run timed out',
+      runPaused: 'Run paused',
+      runResumed: 'Run resumed',
+      runNotRecovered: 'Run not recovered after a restart',
+      workflowRegistered: 'Workflow registered',
+      stepFailed: 'Step failed',
+      stepGaveUp: 'Step gave up',
+      workerConnected: 'Worker connected',
+      workerDisconnected: 'Worker disconnected',
+      workerRefused: 'Worker refused',
+      workerDeploymentChanged: 'Worker deployment changed',
+      scheduleStarted: 'Schedule started a run',
+      scheduleMissed: 'Schedule missed runs',
+      scheduleSkipped: 'Schedule skipped a run',
+      reviewRequested: 'Review requested',
+      reviewAnswered: 'Review answered',
+      alertFired: 'Alert fired',
+      alertResolved: 'Alert resolved',
+      constraintViolated: 'Constraint violated',
+      checkpointLarge: 'Checkpoint is over its size warning',
+      developmentWarning: 'Workflow code warning',
+      cleanupWarning: 'Cleanup failed',
+      revisionInstalled: 'Workflow revision installed',
+      revisionActivated: 'Workflow revision activated',
+      revisionRejected: 'Workflow revision not activated',
+      revisionDraining: 'Workflow revision draining',
+      revisionRemoved: 'Workflow revision removed',
+      filesLoaded: 'Workflow files loaded',
+      filesFailed: 'Workflow files failed to load',
+      /** Line two of a step's row: the step's name, and its attempt when it is not the first. */
+      step: (name: string, attempt: number | undefined): string =>
+        attempt === undefined || attempt <= 1 ? name : `${name}, attempt ${String(attempt)}`,
+      /** Line two of a missed-runs row. */
+      missed: (count: number): string => `${String(count)} missed`,
+      /** Line two of a worker's row: the queue it serves. */
+      queue: (queue: string): string => `Queue ${queue}`,
+    },
+  },
+  /**
    * What Home says while it loads and when a read fails: one card that cannot be read says so in
    * its own place and the rest stay live, a load that takes long can be canceled, and a server
    * that does not answer with nothing loaded yet is the full error state.
@@ -128,6 +198,8 @@ export const HOME_COPY = {
       needsYou: 'Couldn’t load what needs you.',
       attention: 'Couldn’t load system problems.',
       recent: 'Couldn’t load recent chats.',
+      fleetActivity: 'Couldn’t load workflow activity.',
+      bureauActivity: 'Couldn’t load agent activity.',
     },
   },
   /** The Running now card, which sits under Needs you while any run is going. */

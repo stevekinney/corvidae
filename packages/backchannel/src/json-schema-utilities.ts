@@ -1,5 +1,6 @@
 import { canonicalJson } from './openapi-canonical-json.ts';
 
+/** Orders two strings by code unit, so sorted output is the same in every locale. */
 export function compareStrings(left: string, right: string): number {
   return left < right ? -1 : left > right ? 1 : 0;
 }

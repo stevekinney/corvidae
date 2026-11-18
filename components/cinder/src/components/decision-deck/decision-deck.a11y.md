@@ -27,11 +27,11 @@ The top card is a focus stop (`tabindex="0"`, `role="group"`, named by the item'
 | Key or gesture | Context | Expected behavior |
 | --- | --- | --- |
 | Tab / Shift+Tab | Deck | Moves from the top card to the reject, later and accept buttons, then Undo. |
-| ArrowRight | Top card focused | Accepts the card. |
-| ArrowLeft | Top card focused | Rejects the card. |
+| ArrowRight | Top card focused | Accepts the card left to right; rejects it right to left. |
+| ArrowLeft | Top card focused | Rejects the card left to right; accepts it right to left. |
 | ArrowDown | Top card focused | Sets the card aside for later. |
 | Enter / Space | A round button or Undo | Activates the native button: the same decision as the swipe or key. |
-| Drag sideways, release past the threshold | Top card, pointer or touch | Accepts (right) or rejects (left). A shorter release springs back and decides nothing. |
+| Drag sideways, release past the threshold | Top card, pointer or touch | Accepts (toward the inline-end side: right, or left right to left) or rejects (the other way). A shorter release springs back and decides nothing. |
 | Drag vertically | Top card, touch | Scrolls the page; the gesture is dropped without a decision. |
 
 The arrow keys only act when the card itself has focus, so a link or field inside a custom card body keeps its own keys.
@@ -42,4 +42,4 @@ The card names itself by its title and is described by a hidden sentence naming 
 
 ## Motion and forced colors
 
-Under reduced motion the spring is skipped: a short release snaps the card back at once, and the progress bar does not ease. The drag itself still follows the pointer, because it is direct manipulation and not an animation. In forced colors the card, the stamps and the progress track take a `CanvasText` border and the progress fill takes `Highlight`.
+A decided card leaves as a decorative copy (`data-cinder-decision-exit`) that slides toward the side of its decision, turning a little, and fades; the copy is inert, hidden from assistive technology and removed when its animation ends. The deck reads its direction from the nearest `dir` attribute (or the computed direction), so the arrow keys, the swipe, the stamps and the exit all put accept on the inline-end side. Under reduced motion the exit copy is never drawn and the spring is skipped: a short release snaps the card back at once, and the progress bar does not ease. The drag itself still follows the pointer, because it is direct manipulation and not an animation. In forced colors the card, the stamps and the progress track take a `CanvasText` border and the progress fill takes `Highlight`.

@@ -37,7 +37,8 @@ const DEFAULT_DATABASE_NAME = 'weft';
  *
  * @example
  * ```ts
- * import { unauthenticatedLocalAuthContext, type ServiceWorkerHandlerOptions } from '@lostgradient/weft';
+ * import { unauthenticatedLocalAuthContext } from '@lostgradient/backchannel';
+ * import { type ServiceWorkerHandlerOptions } from '@lostgradient/weft';
  *
  * const handlerOptions: ServiceWorkerHandlerOptions = {
  *   authContext: unauthenticatedLocalAuthContext(),

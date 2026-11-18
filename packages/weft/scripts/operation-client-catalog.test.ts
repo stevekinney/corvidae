@@ -155,3 +155,12 @@ describe('type equivalence — aliases are transparent at call sites', () => {
     expect(range.lte).toBe(4);
   });
 });
+
+describe('alias selection on the real catalog', () => {
+  it('does not alias the 1-field key object in real output', async () => {
+    const source = await generatedSourcesText(createCatalogSnapshot());
+    // The attribute element { gt, gte, key, lt, lte, value } is aliased, but a
+    // bare { readonly "key": string } object must never become its own alias.
+    expect(source).not.toMatch(/type Shared\w+ = \{ readonly "key": string; \};/);
+  });
+});
