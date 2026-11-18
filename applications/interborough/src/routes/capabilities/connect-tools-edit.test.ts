@@ -5,9 +5,9 @@
  * settings), fenced on the revision it read, and opens the source again once saved. A source the
  * host will not let the page edit says why, with the way back.
  */
+import { quietFor } from '@lostgradient/testing/wait-until';
 import { cleanup, fireEvent, render, waitFor } from '@testing-library/svelte';
 import { afterEach, describe, expect, test } from 'bun:test';
-import { tick } from 'svelte';
 
 import { breadcrumbTrail } from '../../app/breadcrumbs.svelte.ts';
 import { CAPABILITIES_COPY } from '../../app/copy/capabilities.ts';
@@ -63,7 +63,7 @@ function serve(editing: Response) {
 
 /** Lets what a failed save would have queued, a toast among it, happen before the page is read. */
 async function awakeTicks(): Promise<void> {
-  for (let turn = 0; turn < 5; turn += 1) await tick();
+  await quietFor(50);
 }
 
 const mount = () => render(QueryPage, { props: { page: ConnectTools } } as never);
