@@ -181,7 +181,7 @@ export function readVerificationRequest(path: string, digest: string): Verificat
   return validateVerificationRequest(request);
 }
 
-function validateVerificationRequest(request: VerificationRequest): VerificationRequest {
+export function validateVerificationRequest(request: VerificationRequest): VerificationRequest {
   if (
     !/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(request.repository) ||
     !/^[0-9a-f]{40}$/.test(request.revision) ||

@@ -1,112 +1,38 @@
-#!/usr/bin/env bun
-// Chef deliver: a change's whole post-acceptance lifecycle in one command, so a coordinator
-// launches it once in the background instead of hand-running the merge, the Linear closeout and the
-// worktree removal in turn. The change is a pull request (`--pr`) or, since the owner's 2026-11-11
-// decision that a pull request is optional, a pushed branch merged straight into the default
-// branch (`--branch`). Exactly one of the two is given.
-//
-// It runs no test gate and never merges the default branch into the change. The worker ran its
-// focused checks before pushing, and GitHub Actions' full suite on every push to `main` is the
-// backstop (AGENTS.md "Gate on local checks"), so the default branch moving is not a reason
-// to repeat either.
+// Chef delivery: merge once, then resume durable ledger, member reports, and owned cleanup.
 //
 // Usage:
-//   bun scripts/chef/deliver.ts --pr <n> --worktree <dir> --comment-file <md>
-//                               --verification-file <json> --verification-digest <sha256> [--head <sha>]
-//   bun scripts/chef/deliver.ts --branch <remote branch> --head <sha> --worktree <dir>
-//                               --message-file <md>
-//                               --verification-file <json> --verification-digest <sha256>
-//                               [--intended <path>]...
-//                               [--issue <ID> --completion-file <md>]... [--closes <ID>]...
-//                               [--keep-worktree]
-//                               [--usage-log <file> --transcript <path>...]
-//                               [--fixes-main] [--config <json>] [--json]
-//   bun scripts/chef/deliver.ts --help
-// The options after the --branch form go with either form, except that `--fixes-main` goes with
-// `--pr` only: it records a pull request as a repair of a red `main`, and `--intended` goes with
-// `--branch` only. `--help` prints this usage and exits 0.
+//   bun scripts/chef/deliver.ts --branch <branch> --head <sha> --worktree <path> --message-file <file> --verification-file <file> --verification-digest <sha256>
+//   bun scripts/chef/deliver.ts --pr <number> --head <sha> --worktree <path> --comment-file <file> --verification-file <file> --verification-digest <sha256>
+//   Either form: [--config <file>] [--keep-worktree] [--usage-log <file> --transcript <file> ...] [--json]
+//   Branch form: [--intended <path> ...]. Pull-request form: [--fixes-main].
 //
-// `--intended <path>` (repeatable) names a deletion or revert the change means to make: the `revert`
-// step reports that path's finding as accepted instead of failing. Any other finding still fails the
-// step, and a named path with no finding is an error, so a stale flag cannot hide a later revert.
-// `--verification-file` and `--verification-digest` name the coordinator-pinned request and its
-// SHA-256 digest. Both delivery routes authenticate its current evidence and original authority
-// before posting, merging or pushing.
-//
-// The steps run in order and stop at the first failure, which is named:
-//   merge      with `--branch`, `direct-merge.ts`'s sequence under the merge lock a pull request
-//              merge takes, which names its own failures: `head` (the remote branch is exactly
-//              `--head`), `revert` (the revert check finds nothing), `conflict` (`git merge-tree`
-//              builds the merged tree), `guards` (each guard of `lint:guards` passes on that tree, in a temporary
-//              worktree, or fails only with findings `main` already has, which the report lists), `merge`
-//              (one squash commit made with `git commit-tree` from `--message-file` and pushed to
-//              the default branch; a rejected push changes nothing, so run it again) and `delete`
-//              (the remote branch). No checkout is changed. With `--pr`,
-//              `merge-gate.ts`'s own sequence with nothing reimplemented: the pull request is open
-//              and its head is the worktree's HEAD and, with `--head`, the head pinned at
-//              acceptance (step `head`); GitHub reports no conflict with the base (step `conflict`,
-//              after waiting briefly while GitHub's mergeability is `UNKNOWN`); every review thread
-//              is resolved, read with the paginated read (step `threads`); then the comment, the
-//              merge pinned to the head, and the confirmation of the merged tree. A conflict is
-//              reported and nothing is merged in: the worker resolves it and returns a new head. A
-//              red `main` is a warning in the report, not a refusal;
-//   issue      with `--issue` and `--completion-file`, each of which may repeat and which pair in
-//              order (a combined pull request that carries several issues): for each issue in turn,
-//              `linear.ts`'s comment, read back. The state moves to Done only for an issue the caller
-//              also names with `--closes <ID>` (repeatable, and each must be one of the `--issue`
-//              identifiers): a delivery that lands one part of an issue must not close it, and no
-//              identifier is ever read from a pull request title, branch name or body. Without
-//              `--closes` every issue's state is left alone, in `--pr` and `--branch` mode alike.
-//              The first failure stops the step, leaves `merged` true, and names step `issue` and
-//              the failing identifier; the report lists the issues closed before it. Every completion
-//              file must be an execution report (`references/execution-report.md`), and the counts
-//              must match: anything else is refused as invalid usage before the merge. Nothing here
-//              stops Linear's own GitHub integration from moving an issue whose identifier a pull
-//              request title or branch carries; that is outside the script;
-//   worktree   unless `--keep-worktree`: `worktree.ts remove` of `--worktree` (its path, under any
-//              root `remove` accepts), told that the worktree's tip is the commit just delivered
-//              (the pinned `--head`, else the pull request's head), because a squash
-//              or direct merge leaves that tip outside the default branch's history. Once nothing
-//              else refuses the removal, it ends the processes whose working directory is inside
-//              the worktree (SIGTERM, then SIGKILL), since the delivered worker is done. A worktree
-//              it refuses (locked by a live session, uncommitted changes, a file held open inside
-//              it by a process elsewhere, outside the roots) is kept and the line says why; that
-//              never fails the delivery. A lock in the Agent tool's form
-//              (`claude agent agent-<id> (pid ...)`) names the parent session, which outlives the
-//              worker, so it does not keep a delivered, clean worktree with nothing running inside;
-//   ledger     right after the merge, whatever the later steps do: the delivered head is appended to
-//              `<main checkout>/tmp/chef/delivered-heads.log` (`delivery-ledger.ts`: time, `branch:<name>`
-//              or `pr:<n>`, head, merge commit), which `worktree.ts stale` reads to know a squashed
-//              worktree is delivered. Not behind a flag; a write failure is a warning line;
-//   cleanup    ends with the one explicitly delivered worktree above. Broad stale-worktree cleanup
-//              is an explicit maintenance command (`worktree.ts stale --remove`), never an
-//              automatic side effect of delivering another worker's branch.
-//
-// Output: at most six lines, or with `--json` one object: pr, branch, merged, mergeCommit,
-// mergeable, mainHealthWarning, guardsAlreadyFailing, failedStep, detail, worktree (`removed` and
-// a `detail`), issues (each closed issue's identifier and state) and leftOpen (the commented issues whose state was not touched).
-// The text output's last line before any failure says which issues were closed and which were left
-// open, or that none was named. `pr` is null for a branch merge and `branch` null for a pull request merge. The
-// usage-log line of a branch merge holds `branch:<name>` where a pull request's holds its number.
-//
-// Exit codes: 0 merged and every later step succeeded, 1 refused or a step failed (named), 2
-// invalid CLI usage.
+// The coordinator-approved verification request owns each member's assignment, plan, tracking
+// intent and requested close. Markdown is rendered from collected evidence, never accepted as proof.
+// Exit 0: requested side effects finished; unmet member release gates remain explicitly open.
+// Exit 1: named delivery or closeout failure. Exit 2: invalid CLI usage.
 
 import { existsSync, readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { isAbsolute, relative, resolve } from 'node:path';
+import { closeDelivery } from './delivery-closeout.ts';
 import { recordDelivery, type LedgerEntry } from './delivery-ledger.ts';
 import type {
   DeliveryVerification,
   DeliveryVerificationDependencies,
 } from './delivery-verification.ts';
-import { loadDeliveryVerification } from './delivery-verification.ts';
+import {
+  isDeliveryMergeObservation,
+  loadDeliveryVerification,
+  validateDeliveryApproval,
+  validateDeliveryMergeObservation,
+} from './delivery-verification.ts';
 import { directMerge, type DirectMergeOptions, type DirectMergeReport } from './direct-merge.ts';
-import { createClient, LinearError, postComment, setState, type LinearClient } from './linear.ts';
+import { readExecutionSnapshot } from './execution-state.ts';
+import { createClient, type LinearClient } from './linear.ts';
 import { mergeGate, type MergeGateOptions, type MergeGateReport } from './merge-gate.ts';
 import { emitResult, parseOptions, requireOption, UsageError } from './process-runner.ts';
 import { DEFAULT_CONFIGURATION_PATH, loadRepositoryConfig } from './repository-config.ts';
 import { resolveMainCheckout } from './repository-locations.ts';
-import { Refusal, removeWorktree, type RemoveOptions, type RemoveResult } from './worktree.ts';
+import { removeWorktree, type RemoveOptions, type RemoveResult } from './worktree.ts';
 
 export { UsageError };
 
@@ -123,12 +49,6 @@ export interface DeliverOptions {
   messageFile?: string | undefined;
   /** The head pinned at acceptance; required with `branch`, which merges exactly this head. */
   expectedHead?: string | undefined;
-  /** The issues to close after the merge, in order; each pairs with the completion file at its index. */
-  issues?: string[] | undefined;
-  /** One execution report per issue, in the same order as `issues`. */
-  completionFiles?: string[] | undefined;
-  /** The subset of `issues` to move to Done; every other issue gets its comment and keeps its state. */
-  closes?: string[] | undefined;
   /** Paths whose `revert` finding is intended; `branch` only. */
   intended?: string[] | undefined;
   /** Keep the delivered worktree instead of removing it. */
@@ -192,43 +112,6 @@ export interface DeliverDependencies {
 }
 
 /**
- * The level-2 headings of an execution report, in order. `references/execution-report.md` lists
- * the same headings, and `deliver.test.ts` keeps the two equal.
- */
-export const executionReportHeadings = [
-  'Execution status',
-  'Agent and session',
-  'Attempt',
-  'Branch and pull request',
-  'Requirements implemented',
-  'Acceptance criteria',
-  'Verification',
-  'Changes',
-  'Blockers and open questions',
-  'Remaining work',
-];
-
-/**
- * What keeps `text` from being an execution report: a first line that is not the
- * `Execution report: <branch> attempt <n>` marker, or a required heading that is missing or out
- * of order. Empty when it is one.
- */
-export function executionReportProblems(text: string): string[] {
-  const problems: string[] = [];
-  const first = text.split('\n').find((line) => line.trim() !== '') ?? '';
-  if (!/^Execution report: \S+ attempt [1-9]\d*$/.test(first.trim()))
-    problems.push('the first line is not "Execution report: <branch> attempt <n>"');
-  const headings = [...text.matchAll(/^## (.+?)\s*$/gm)].map((match) => match[1] ?? '');
-  let cursor = 0;
-  for (const heading of executionReportHeadings) {
-    const found = headings.indexOf(heading, cursor);
-    if (found === -1) problems.push(`"## ${heading}" is missing or out of order`);
-    else cursor = found + 1;
-  }
-  return problems;
-}
-
-/**
  * `path` resolved against this process's working directory. The merge runs `git commit-tree` from
  * the worktree, so a relative `--message-file` would otherwise be read from the wrong directory.
  */
@@ -236,26 +119,20 @@ function absolute(path: string | undefined): string | undefined {
   return path === undefined ? undefined : resolve(path);
 }
 
-/** `text` led by `identifier` unless it already is, so a failure names its issue exactly once. */
-function named(identifier: string, text: string): string {
-  return text.startsWith(`${identifier}:`) ? text : `${identifier}: ${text}`;
-}
-
 /** Run the lifecycle. Never throws for a failed step; the report names it. */
 export async function deliver(
   options: DeliverOptions,
   partial: Partial<DeliverDependencies> = {},
 ): Promise<DeliverReport> {
+  options = structuredClone(options);
   loadRepositoryConfig(options.configPath);
   if ((options.pr === undefined) === (options.branch === undefined))
     throw new UsageError('Give exactly one of --pr and --branch.');
-  if (!existsSync(options.worktree)) throw new UsageError(`No such worktree: ${options.worktree}`);
+
   if (options.branch === undefined) {
     if (options.commentFile === undefined) throw new UsageError('--pr needs --comment-file.');
     if (options.messageFile !== undefined)
       throw new UsageError('--message-file applies only with --branch.');
-    if (!existsSync(options.commentFile))
-      throw new UsageError(`No such comment file: ${options.commentFile}`);
   } else {
     if (options.messageFile === undefined) throw new UsageError('--branch needs --message-file.');
     if (options.expectedHead === undefined) throw new UsageError('--branch needs --head.');
@@ -265,37 +142,24 @@ export async function deliver(
       throw new UsageError(
         '--fixes-main applies only with --pr: a branch merge compares every guard failure with origin/main on its own.',
       );
-    if (!existsSync(options.messageFile))
-      throw new UsageError(`No such message file: ${options.messageFile}`);
   }
   if (options.branch === undefined && (options.intended ?? []).length > 0)
     throw new UsageError('--intended applies only with --branch.');
-  const issues = options.issues ?? [];
-  const completionFiles = options.completionFiles ?? [];
-  if (issues.length !== completionFiles.length)
-    throw new UsageError(
-      `--issue and --completion-file pair in order: got ${issues.length} issue(s) and ${completionFiles.length} completion file(s).`,
-    );
-  const duplicate = issues.find((identifier, index) => issues.indexOf(identifier) !== index);
-  if (duplicate !== undefined) throw new UsageError(`--issue ${duplicate} is given twice.`);
-  const closes = options.closes ?? [];
-  const unlisted = closes.find((identifier) => !issues.includes(identifier));
-  if (unlisted !== undefined)
-    throw new UsageError(
-      `--closes ${unlisted} names no --issue: a close needs its --issue and --completion-file.`,
-    );
-  const completions: string[] = [];
-  for (const completionFile of completionFiles) {
-    if (!existsSync(completionFile))
-      throw new UsageError(`No such completion file: ${completionFile}`);
-    const completion = readFileSync(completionFile, 'utf8');
-    if (completion.trim() === '') throw new UsageError(`${completionFile} is empty.`);
-    const problems = executionReportProblems(completion);
-    if (problems.length > 0)
+  const verification = loadDeliveryVerification(options.verification, partial.verification);
+  if (resolve(options.worktree) !== resolve(verification.request.worktree))
+    throw new UsageError('worktree differs from the coordinator-approved ownership');
+  const approval = validateDeliveryApproval(
+    verification,
+    { route: options.branch === undefined ? 'pull-request' : 'branch', action: 'merge' },
+    partial.verification,
+  );
+  if (approval !== undefined) throw new UsageError(approval);
+  if (options.keepWorktree !== true) {
+    const requestPath = relative(resolve(options.worktree), resolve(options.verification.file));
+    if (!requestPath.startsWith('..') && !isAbsolute(requestPath))
       throw new UsageError(
-        `${completionFile} is not an execution report (references/execution-report.md): ${problems.join('; ')}.`,
+        'verification file must survive owned worktree cleanup; store it outside that worktree',
       );
-    completions.push(completion);
   }
   const report: DeliverReport = {
     pr: options.pr ?? null,
@@ -314,41 +178,37 @@ export async function deliver(
     swept: null,
     ledgerWarning: null,
   };
-  let operationId: string | undefined;
   const fail = (step: string, detail: string): DeliverReport => {
     report.failedStep = step;
     report.detail = detail;
     return report;
   };
 
-  // The commit this delivery lands: the pinned head, else the pull request's head, which the merge
-  // gate requires to equal the worktree's HEAD. With neither, the ordinary delivered check applies.
-  let deliveredTip: string | undefined = options.expectedHead;
-
-  // ledger: whenever the merge happened, even if a later step of it failed (a branch merge whose
-  // remote branch could not be deleted is merged), so a worktree holding the head is known to be
-  // delivered after a squash leaves its tip outside the default branch's history.
-  const writeLedger = () => {
+  const operation = readExecutionSnapshot(verification.state).operations[
+    verification.request.operationId
+  ];
+  if (operation?.closeout !== undefined) {
+    const observation = operation.observed;
     if (
-      !report.merged ||
-      deliveredTip === undefined ||
-      operationId === undefined ||
-      partial.record === undefined
+      !isDeliveryMergeObservation(observation) ||
+      observation.state !== 'confirmed-merge' ||
+      observation.mergeCommit === undefined ||
+      observation.route !== (options.branch === undefined ? 'pull-request' : 'branch') ||
+      observation.branch !== options.branch ||
+      observation.pullRequest !== options.pr
     )
-      return;
-    try {
-      partial.record({
-        pr: options.pr,
-        branch: options.branch,
-        head: deliveredTip,
-        mergeCommit: report.mergeCommit,
-        operationId,
-      });
-    } catch (error) {
-      report.ledgerWarning = error instanceof Error ? error.message : String(error);
-    }
-  };
-
+      return fail('recovery', 'closeout has no matching original merge identity');
+    validateDeliveryMergeObservation(observation, verification.request);
+    report.merged = true;
+    report.mergeCommit = observation.mergeCommit;
+    return closeDelivery(verification, options, report, partial);
+  }
+  if (options.commentFile !== undefined && !existsSync(options.commentFile))
+    throw new UsageError(`No such comment file: ${options.commentFile}`);
+  if (options.messageFile !== undefined && !existsSync(options.messageFile))
+    throw new UsageError(`No such message file: ${options.messageFile}`);
+  if (!existsSync(options.worktree))
+    return fail('worktree', 'delivery worktree is absent before closeout completed');
   // merge
   const usageFields =
     options.usageLog === undefined
@@ -357,9 +217,6 @@ export async function deliver(
   if (options.branch !== undefined) {
     const mergeBranch = partial.directMerge;
     if (mergeBranch === undefined) return fail('merge', 'no direct merge runner was provided.');
-    // Capture the coordinator-pinned operation before the first await; retries retain this identity.
-    operationId = loadDeliveryVerification(options.verification, partial.verification).request
-      .operationId;
     const direct = await mergeBranch(
       {
         configPath: options.configPath,
@@ -380,15 +237,11 @@ export async function deliver(
     report.guardsAlreadyFailing = direct.guardsAlreadyFailing ?? [];
     report.acceptedReverts = direct.acceptedReverts ?? [];
     if (direct.failedStep !== null) {
-      writeLedger();
       return fail(direct.failedStep, direct.detail ?? '');
     }
   } else {
     const merge = partial.merge;
     if (merge === undefined) return fail('merge', 'no merge runner was provided.');
-    // Capture the coordinator-pinned operation before the first await; retries retain this identity.
-    operationId = loadDeliveryVerification(options.verification, partial.verification).request
-      .operationId;
     const merged = await merge(
       {
         configPath: options.configPath,
@@ -407,69 +260,12 @@ export async function deliver(
     report.merged = merged.merged;
     report.mergeCommit = merged.mergeCommit;
     report.mergeable = merged.mergeable;
-    deliveredTip ??= merged.head ?? undefined;
     report.mainHealthWarning = merged.mainHealthWarning ?? null;
     if (merged.failedStep !== null) {
-      writeLedger();
       return fail(merged.failedStep, merged.detail ?? '');
     }
   }
-  writeLedger();
-
-  // issue
-  for (const [index, identifier] of issues.entries()) {
-    try {
-      const client = partial.client;
-      if (client === undefined) return fail('issue', 'no Linear client was provided.');
-      const comment = await postComment(client, identifier, completions[index] ?? '');
-      if (!comment.ok) return fail('issue', named(identifier, comment.summary));
-      if (!closes.includes(identifier)) {
-        report.leftOpen.push(identifier);
-        continue;
-      }
-      const state = await setState(client, identifier, 'Done');
-      if (!state.ok) return fail('issue', named(identifier, state.summary));
-      report.issues.push({ identifier, state: 'Done' });
-    } catch (error) {
-      if (!(error instanceof LinearError) && !(error instanceof UsageError)) throw error;
-      return fail('issue', named(identifier, error.message));
-    }
-  }
-
-  // worktree: removed by default; a worktree the removal refuses is kept, never a failed delivery.
-  if (options.keepWorktree === true) {
-    report.worktree = { removed: false, detail: 'kept by --keep-worktree' };
-  } else {
-    const remove = partial.remove;
-    const path = resolve(options.worktree);
-    if (remove === undefined) {
-      report.worktree = { removed: false, detail: 'no worktree remover was provided.' };
-    } else {
-      try {
-        const removed = remove({
-          configPath: options.configPath,
-          name: path,
-          keepRemote: false,
-          deliveredTip,
-          // The delivered worker is done: what it left running inside its worktree is ended.
-          endProcesses: true,
-        });
-        const ended = removed.ended.length;
-        report.worktree = {
-          removed: true,
-          detail:
-            ended === 0
-              ? removed.path
-              : `${removed.path} (ended ${ended} process(es) left running inside it)`,
-        };
-      } catch (error) {
-        if (!(error instanceof Refusal) && !(error instanceof UsageError)) throw error;
-        report.worktree = { removed: false, detail: error.message };
-      }
-    }
-  }
-
-  return report;
+  return closeDelivery(verification, options, report, partial);
 }
 
 export function renderDeliver(report: DeliverReport): string {
@@ -502,10 +298,10 @@ export function renderDeliver(report: DeliverReport): string {
   if (report.issues.length > 0) lines.push(`issues: ${closed}`);
   if (report.leftOpen.length > 0)
     lines.push(
-      `left open, state untouched: ${report.leftOpen.join(', ')} (close one with --closes <ID>)`,
+      `left open, state untouched: ${report.leftOpen.join(', ')} (required completion evidence or close intent is absent)`,
     );
   if (report.issues.length === 0 && report.leftOpen.length === 0)
-    lines.push('no issue closed or commented on (name one with --issue, close it with --closes)');
+    lines.push('no tracked member named in the approved delivery request');
   if (report.failedStep !== null)
     lines.push(`FAILED at ${report.failedStep}: ${report.detail ?? ''}`);
   return lines.join('\n');
@@ -539,7 +335,7 @@ export async function run(
       'verification-file',
       'verification-digest',
     ],
-    repeated: ['transcript', 'issue', 'completion-file', 'closes', 'intended'],
+    repeated: ['transcript', 'intended'],
     flags: ['keep-worktree', 'fixes-main', 'json', 'help'],
   });
   if (parsed.flags.has('help')) return { code: 0, output: usageText() };
@@ -554,13 +350,6 @@ export async function run(
   const expectedHead = parsed.values['head'];
   if (expectedHead !== undefined && !/^[0-9a-f]{40}$/.test(expectedHead))
     throw new UsageError(`--head "${expectedHead}" is not a full commit SHA.`);
-  const issues = parsed.repeated['issue'] ?? [];
-  const completionFiles = parsed.repeated['completion-file'] ?? [];
-  if (issues.length !== completionFiles.length)
-    throw new UsageError(
-      `--issue and --completion-file go together and pair in order: got ${issues.length} and ${completionFiles.length}.`,
-    );
-  const closes = parsed.repeated['closes'] ?? [];
   const usageLog = parsed.values['usage-log'];
   const transcripts = parsed.repeated['transcript'] ?? [];
   if ((usageLog === undefined) !== (transcripts.length === 0))
@@ -574,9 +363,6 @@ export async function run(
       commentFile: absolute(parsed.values['comment-file']),
       messageFile: absolute(parsed.values['message-file']),
       expectedHead,
-      issues,
-      completionFiles: completionFiles.map((path) => resolve(path)),
-      closes,
       intended: parsed.repeated['intended'] ?? [],
       usageLog: absolute(usageLog),
       transcripts: transcripts.map((path) => resolve(path)),

@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { runWithHangGuard } from '../../testing/testing/src/hang-guard.ts';
+import type { DeliveryRequest } from './delivery-completion.ts';
 import type {
   DeliveryVerification,
   DeliveryVerificationDependencies,
@@ -35,7 +36,7 @@ export async function createDeliveryVerificationFixture(
 ): Promise<{
   verification: DeliveryVerification;
   dependencies: DeliveryVerificationDependencies;
-  request: VerificationRequest;
+  request: DeliveryRequest;
   assignment: Assignment;
   state: ReturnType<typeof createExecutionStateStore>;
   directory: string;
@@ -80,7 +81,7 @@ export async function createDeliveryVerificationFixture(
     ownerId: 'owner',
   });
   if (!acquired.granted) throw new Error(acquired.reason);
-  const request: VerificationRequest = {
+  const source: VerificationRequest = {
     repository: 'acme/widgets',
     revision,
     base,
@@ -137,7 +138,7 @@ export async function createDeliveryVerificationFixture(
     identity: {
       identifier: 'COR-1',
       revision: 'fixture',
-      repository: request.repository,
+      repository: source.repository,
       base,
       digest: '',
     },
@@ -154,7 +155,26 @@ export async function createDeliveryVerificationFixture(
   assignment.identity.digest = digest(
     JSON.stringify({ ...assignment, identity: { ...assignment.identity, digest: undefined } }),
   );
-  request.plan.invalidatedBy.assignment = assignment.identity.digest;
+  source.plan.invalidatedBy.assignment = assignment.identity.digest;
+  const { plan, providerRuns, ...common } = source;
+  const request: DeliveryRequest = {
+    ...common,
+    worktree: directory,
+    members: [
+      {
+        assignment,
+        plan: {
+          ...plan,
+          obligations: plan.obligations.map((item) => ({ ...item, phase: 'pre-integration' })),
+        },
+        providerRuns,
+        track: false,
+        requestedClose: false,
+        changes: [],
+        blockers: [],
+      },
+    ],
+  };
   const text = JSON.stringify(request);
   const file = join(outputDirectory, 'verification.json');
   writeFileSync(file, text);
@@ -206,7 +226,7 @@ export async function createDeliveryVerificationFixture(
   if (options.approved !== false)
     await prepareDeliveryVerification(
       verification,
-      assignment,
+      [assignment],
       { route: options.route ?? 'fixture', action: 'merge' },
       { state },
     );

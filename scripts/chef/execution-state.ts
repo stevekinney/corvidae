@@ -36,12 +36,22 @@ export interface RemoteOperation {
   observed?: unknown;
   nextAction: 'perform' | 'inspect-provider' | 'closeout';
   approval?: ApprovedDeliveryBinding;
+  closeout?: DeliveryCloseout;
+}
+
+export interface DeliveryCloseout {
+  ledger: boolean;
+  members: Record<
+    string,
+    { commentIntent: boolean; commentId?: string; bodyDigest?: string; closed: boolean }
+  >;
+  worktree?: { removed: boolean; detail: string };
+  complete: boolean;
 }
 
 /** Coordinator approval attached once to the original durable operation intent. */
 export interface ApprovedDeliveryBinding {
-  assignment: { identifier: string; digest: string };
-  planDigest: string;
+  members: { identifier: string; assignmentDigest: string; planDigest: string }[];
   requestDigest: string;
   repository: string;
   revision: string;
@@ -158,23 +168,70 @@ function assertOperation(value: unknown, operationId: string, statePath: string)
     throw new ExecutionStateError(`${statePath} has malformed operation state for ${operationId}.`);
   assertAuthority(value['authority'], statePath);
   if (Object.hasOwn(value, 'approval')) assertDeliveryApproval(value['approval'], statePath);
+  if (Object.hasOwn(value, 'closeout')) assertDeliveryCloseout(value['closeout'], statePath);
+}
+
+function assertDeliveryCloseout(value: unknown, statePath: string): void {
+  const invalid = () => new ExecutionStateError(`${statePath} has malformed delivery closeout.`);
+  if (
+    !plainRecord(value) ||
+    typeof value['ledger'] !== 'boolean' ||
+    typeof value['complete'] !== 'boolean' ||
+    !plainRecord(value['members'])
+  )
+    throw invalid();
+  for (const member of Object.values(value['members'])) {
+    if (
+      !plainRecord(member) ||
+      typeof member['commentIntent'] !== 'boolean' ||
+      typeof member['closed'] !== 'boolean'
+    )
+      throw invalid();
+    if (
+      Object.hasOwn(member, 'commentId') &&
+      (typeof member['commentId'] !== 'string' || member['commentId'] === '')
+    )
+      throw invalid();
+    if (
+      Object.hasOwn(member, 'bodyDigest') &&
+      (typeof member['bodyDigest'] !== 'string' || !/^[0-9a-f]{64}$/.test(member['bodyDigest']))
+    )
+      throw invalid();
+    if (
+      member['closed'] &&
+      (!Object.hasOwn(member, 'commentId') || !Object.hasOwn(member, 'bodyDigest'))
+    )
+      throw invalid();
+  }
+  if (
+    Object.hasOwn(value, 'worktree') &&
+    (!plainRecord(value['worktree']) ||
+      typeof value['worktree']['removed'] !== 'boolean' ||
+      typeof value['worktree']['detail'] !== 'string')
+  )
+    throw invalid();
 }
 
 function assertDeliveryApproval(value: unknown, statePath: string): void {
   const invalid = () => new ExecutionStateError(`${statePath} has malformed delivery approval.`);
   if (!plainRecord(value)) throw invalid();
-  const assignment = value['assignment'];
-  if (
-    !plainRecord(assignment) ||
-    !Object.hasOwn(assignment, 'identifier') ||
-    !Object.hasOwn(assignment, 'digest') ||
-    typeof assignment['identifier'] !== 'string' ||
-    assignment['identifier'].trim() === '' ||
-    typeof assignment['digest'] !== 'string' ||
-    !/^[0-9a-f]{64}$/.test(assignment['digest'])
-  )
-    throw invalid();
-  for (const field of ['planDigest', 'requestDigest']) {
+  const members = value['members'];
+  if (!Array.isArray(members) || members.length === 0) throw invalid();
+  const identifiers = new Set<string>();
+  for (const member of members) {
+    if (
+      !plainRecord(member) ||
+      typeof member['identifier'] !== 'string' ||
+      member['identifier'].trim() === '' ||
+      identifiers.has(member['identifier'])
+    )
+      throw invalid();
+    identifiers.add(member['identifier']);
+    for (const field of ['assignmentDigest', 'planDigest'])
+      if (typeof member[field] !== 'string' || !/^[0-9a-f]{64}$/.test(member[field]))
+        throw invalid();
+  }
+  for (const field of ['requestDigest']) {
     const digest = value[field];
     if (
       !Object.hasOwn(value, field) ||
@@ -197,6 +254,28 @@ function assertDeliveryApproval(value: unknown, statePath: string): void {
     if (!Object.hasOwn(value, field) || typeof text !== 'string' || text.trim() === '')
       throw invalid();
   }
+}
+
+/** Persist only unfinished closeout work under the original operation and authority. */
+export async function updateDeliveryCloseout(
+  store: ExecutionStateStore,
+  authority: Authority,
+  operationId: string,
+  closeout: DeliveryCloseout,
+): Promise<void> {
+  const value = structuredClone(closeout);
+  assertDeliveryCloseout(value, store.statePath);
+  const originalAuthority = { ...authority };
+  await mutateOwnedSnapshot(store, originalAuthority, (snapshot) => {
+    const operation = snapshot.operations[operationId];
+    if (operation?.outcome !== 'observed' || !sameAuthority(operation.authority, originalAuthority))
+      throw new ExecutionStateError(
+        `Operation ${operationId} has no confirmed delivery to close out.`,
+      );
+    operation.closeout = value;
+    if (value.complete)
+      snapshot.pendingCloseout = snapshot.pendingCloseout.filter((id) => id !== operationId);
+  });
 }
 
 function assertSnapshot(value: unknown, statePath: string): asserts value is ExecutionSnapshot {

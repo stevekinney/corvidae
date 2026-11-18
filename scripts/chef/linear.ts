@@ -380,7 +380,7 @@ export async function postComment(
     return {
       ok: false,
       summary: `${identifier}: the comment was not created.`,
-      data: { identifier, verified: false },
+      data: { identifier, verified: false, mutationSucceeded: created.commentCreate.success },
     };
   const back = await client.request<{
     comment: {

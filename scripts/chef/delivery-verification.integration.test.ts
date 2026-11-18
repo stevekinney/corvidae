@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { hostname } from 'node:os';
 import { throwingRejectionOf } from '../../testing/testing/src/helpers/promise-outcome.ts';
+import type { DeliveryRequest } from './delivery-completion.ts';
 import { createDeliveryVerificationFixture } from './delivery-verification.test-support.ts';
 import {
   loadDeliveryVerification,
@@ -10,7 +11,6 @@ import {
   validateDeliveryVerification,
   type DeliveryVerification,
 } from './delivery-verification.ts';
-import type { VerificationRequest } from './evidence.ts';
 import { readExecutionSnapshot } from './execution-state.ts';
 import { createScenarios } from './scenario.test-support.ts';
 import { digest } from './verification-plan.ts';
@@ -18,7 +18,7 @@ import { digest } from './verification-plan.ts';
 const scenarios = createScenarios({}, { test: bunTest, describe: (_name, body) => body() });
 function replaceRequest(
   verification: DeliveryVerification,
-  request: VerificationRequest,
+  request: DeliveryRequest,
 ): DeliveryVerification {
   const text = JSON.stringify(request);
   writeFileSync(verification.file, text);
@@ -40,28 +40,14 @@ scenarios.scenario('refuses recomputed empty plan before provider effects', asyn
   const fixture = await createDeliveryVerificationFixture();
   const forged = replaceRequest(fixture.verification, {
     ...fixture.request,
-    plan: { ...fixture.request.plan, obligations: [] },
-    providerRuns: [],
+    members: fixture.request.members.map((member) => ({
+      ...member,
+      plan: { ...member.plan, obligations: [] },
+    })),
   });
-  const loaded = loadDeliveryVerification(forged, fixture.dependencies);
-  let effects = 0;
-  expect(
-    validateDeliveryVerification(
-      loaded,
-      { ...fixture.request, route: 'fixture', action: 'merge' },
-      {
-        ...fixture.dependencies,
-        transport: {
-          ...fixture.dependencies.transport!,
-          run: (id) => {
-            effects++;
-            return fixture.dependencies.transport!.run(id);
-          },
-        },
-      },
-    ),
-  ).toContain('approval binding');
-  expect(effects).toBe(0);
+  expect(() => loadDeliveryVerification(forged, fixture.dependencies)).toThrow(
+    'unverified acceptance criteria',
+  );
 });
 scenarios.scenario('refuses missing, wrong-operation, and wrong-action bindings', async () => {
   const missing = await createDeliveryVerificationFixture(undefined, { approved: false });
@@ -99,7 +85,7 @@ scenarios.scenario('refuses approval replacement and accepts approved no-behavio
     await throwingRejectionOf(
       prepareDeliveryVerification(
         fixture.verification,
-        fixture.assignment,
+        [fixture.assignment],
         { route: 'fixture', action: 'merge' },
         { state: fixture.state },
       ),
@@ -121,11 +107,13 @@ scenarios.scenario(
     const snapshot = readExecutionSnapshot(fixture.state);
     const operation = snapshot.operations[fixture.request.operationId];
     const approval = {
-      assignment: {
-        identifier: fixture.assignment.identity.identifier,
-        digest: fixture.assignment.identity.digest,
-      },
-      planDigest: digest(JSON.stringify(fixture.request.plan)),
+      members: [
+        {
+          identifier: fixture.assignment.identity.identifier,
+          assignmentDigest: fixture.assignment.identity.digest,
+          planDigest: digest(JSON.stringify(fixture.request.members[0]!.plan)),
+        },
+      ],
       requestDigest: fixture.verification.digest,
       repository: fixture.request.repository,
       revision: fixture.request.revision,
@@ -160,7 +148,7 @@ scenarios.scenario(
     const snapshot = readExecutionSnapshot(fixture.state);
     const operation = snapshot.operations[fixture.request.operationId];
     if (operation?.approval === undefined) throw new Error('fixture has no approval');
-    operation.approval.assignment.digest = 'f'.repeat(64);
+    operation.approval.members[0]!.assignmentDigest = 'f'.repeat(64);
     writeFileSync(fixture.state.statePath, JSON.stringify(snapshot));
     const transport = fixture.dependencies.transport;
     if (transport === undefined) throw new Error('fixture has no provider transport');
