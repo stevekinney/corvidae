@@ -321,6 +321,7 @@ export const CONTRACT: Record<string, ComponentContract> = {
       class: { optional: true, type_kind: 'TSStringKeyword', default: NO_DEFAULT },
       disabled: { optional: true, type_kind: 'TSUnionType', default: NO_DEFAULT },
       disabledReason: { optional: true, type_kind: 'TSUnionType', default: NO_DEFAULT },
+      description: { optional: true, type_kind: 'TSUnionType', default: NO_DEFAULT },
     },
     snippets: { children: s0(true) },
   },
@@ -691,6 +692,7 @@ export const CONTRACT: Record<string, ComponentContract> = {
     props: {
       title: { optional: false, type_kind: 'TSUnionType', default: REQUIRED },
       titleSoft: { optional: true, type_kind: 'TSStringKeyword', default: NO_DEFAULT },
+      identifier: { optional: true, type_kind: 'TSStringKeyword', default: NO_DEFAULT },
       headingLevel: { optional: true, type_kind: 'TSTypeReference', default: L(1) },
       variant: { optional: true, type_kind: 'TSTypeReference', default: L('default') },
       tone: { optional: true, type_kind: 'TSTypeReference', default: L('plain') },
