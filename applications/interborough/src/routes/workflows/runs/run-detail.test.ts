@@ -143,7 +143,7 @@ describe('where a run came from', () => {
     expect(router.pathname).toContain('session-1');
   });
 
-  test('a run a schedule’s fire started is said so, and opens the session rather than a chat', async () => {
+  test('a run a schedule’s fire started is said so, its header offers no session or chat (55j), and Started by opens the session', async () => {
     const view = open('/runs/run-1', {
       tasks: [
         taskFixture({
@@ -159,9 +159,18 @@ describe('where a run came from', () => {
       origin: 'schedule',
     }));
 
-    const sessionLink = await view.findByRole('link', { name: TASK_COPY.openSession });
     await waitFor(() => expect(origin(view.container)?.textContent).toContain(TASK_COPY.schedule));
+    await waitFor(() => expect(stub?.callsTo('bureau.contexts.get').length).toBeGreaterThan(0));
+    expect(view.queryByRole('link', { name: TASK_COPY.openSession })).toBeNull();
     expect(view.queryByRole('link', { name: TASK_COPY.openChat })).toBeNull();
+    // The session is reached from Started by, which names it.
+    const sessionLink = await waitFor(() => {
+      const found = [...(origin(view.container)?.querySelectorAll('a') ?? [])].find(
+        (link) => link.textContent?.trim() === 'Daily summary',
+      );
+      if (found === undefined) throw new Error('No session link in Started by yet.');
+      return found;
+    });
     expect(await fireEvent.click(sessionLink, { button: 0 })).toBe(false);
     expect(router.pathname).toContain('fire-1');
   });

@@ -806,7 +806,8 @@ describe('the Bureau’s own runs (COR-2423)', () => {
       chats: [],
     });
     expect(runStatusWord(row, NOW)).toBe('Waiting');
-    expect(runLineTwo(row, context)).toBe('API, step 2 of 4, waiting for signal notes-approved');
+    // What it waits for, and nothing of its step (10h).
+    expect(runLineTwo(row, context)).toBe('API, waiting for signal notes-approved');
     expect(isRunRowRunning(row, NOW)).toBe(false);
     expect(isRunning({ status: 'working', workflow: row.workflow ?? undefined })).toBe(false);
     expect(isRunning({ status: 'working', workflow: workflowOf('agentRun') })).toBe(true);

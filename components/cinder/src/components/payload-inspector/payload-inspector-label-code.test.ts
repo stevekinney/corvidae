@@ -13,15 +13,18 @@ beforeEach(() => document.body.replaceChildren());
 afterEach(() => cleanup());
 
 describe('a name after the label (labelCode)', () => {
-  test('reads "Output, notes" with the name in code, and names the card the same', () => {
+  test('sets the name in code a space after the label, with no comma, and names the card with a pause', () => {
     const view = render(PayloadInspector, {
       value: { content: 'Release notes for 1.3.0' },
       label: 'Output',
       labelCode: 'notes',
     });
     const label = view.container.querySelector('.cinder-payload-inspector__label');
-    expect(label?.textContent).toBe('Output, notes');
+    // The visible pieces are a space apart, the name a weight lighter (stylesheet): no comma.
+    expect(label?.textContent).toBe('Output notes');
+    expect(label?.textContent).not.toContain(',');
     expect(label?.querySelector('code')?.textContent).toBe('notes');
+    // The accessible name keeps the pause.
     expect(view.getByRole('group').getAttribute('aria-label')).toBe('Output, notes');
   });
 

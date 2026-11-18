@@ -61,6 +61,7 @@
      button keep the title's row. */
   .cinder-payload-inspector__title {
     display: flex;
+    flex: 1 1 0;
     flex-direction: column;
     align-items: flex-start;
     gap: var(--cinder-space-0-5);
@@ -73,7 +74,8 @@
     color: var(--cinder-text-default);
   }
 
-  /* The name after the label ("Output, notes"), in the code face at the label's size. */
+  /* The name after the label ("Output notes"), a space apart, in the code face at the label's
+     size and a weight lighter than the label: no comma between the pieces. */
   .cinder-payload-inspector__label-code {
     font-family: var(--cinder-font-mono);
     font-weight: var(--cinder-font-normal);

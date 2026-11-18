@@ -411,7 +411,9 @@
         .cinder-stacked-list-item--band
       ).cinder-stacked-list-item--status-leading.cinder-stacked-list-item--wrap-meta.cinder-stacked-list-item--has-status
       .cinder-stacked-list-item__line-two {
-      grid-column: status / trailing;
+      /* `trailing-start`, not `trailing`: an end line named `trailing` resolves to the trailing
+         area's implicit `trailing-end` line, which would run line two under the actions. */
+      grid-column: status / trailing-start;
     }
 
     .cinder-stacked-list-item--lines:not(
