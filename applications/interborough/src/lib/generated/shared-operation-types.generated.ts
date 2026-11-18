@@ -65,13 +65,14 @@ export type SharedAccessAssetIdByteLength_6a7711e3 = {
   readonly state: 'pending' | 'available' | 'rejected' | 'quarantined' | 'expired' | 'deleted';
   readonly updatedAt: string;
 };
-export type SharedActionCreatedAtEnabled_4d0192e1 = {
+export type SharedActionCreatedAtDeclaredB_05496490 = {
   readonly action:
     | SharedTypeUrl_4cb7ae9a
     | SharedInputTypeWorkflowId_2b929ea1
     | SharedTitleType_d5f800b6
     | SharedConfigurationKindPlugin_6e16570b;
   readonly createdAt: number;
+  readonly declaredBy: SharedOwnerDisabledPluginWithd_740a70eb | null;
   readonly enabled: boolean;
   readonly events: ReadonlyArray<string>;
   readonly id: string;
@@ -81,7 +82,25 @@ export type SharedActionCreatedAtEnabled_4d0192e1 = {
   readonly scope: SharedIdKind_b653c012 | null;
   readonly updatedAt: number;
 };
-export type SharedActionTypeAttemptsCreate_bb9aaa7a = {
+export type SharedActionCreatedAtDeclaredB_7f1f9c4c = {
+  readonly action:
+    | SharedTypeUrl_4cb7ae9a
+    | SharedInputTypeWorkflowId_2b929ea1
+    | SharedTitleType_d5f800b6
+    | SharedConfigurationKindPlugin_6e16570b;
+  readonly createdAt: number;
+  readonly declaredBy: SharedOwnerDisabledPluginWithd_740a70eb | null;
+  readonly enabled: boolean;
+  readonly events: ReadonlyArray<string>;
+  readonly id: string;
+  readonly name: string | null;
+  readonly owner: string;
+  readonly revision: number;
+  readonly scope: SharedIdKind_b653c012 | null;
+  readonly signingSecret: string | null;
+  readonly updatedAt: number;
+};
+export type SharedActionTypeAttemptsCreate_605da491 = {
   readonly actionType: 'webhook' | 'start-workflow' | 'notify' | 'plugin';
   readonly attempts: ReadonlyArray<{
     readonly error: string | null;
@@ -97,8 +116,11 @@ export type SharedActionTypeAttemptsCreate_bb9aaa7a = {
       | 'rejected'
       | 'error';
     readonly receipt: {
+      readonly id: string | null;
       readonly notificationId: string | null;
       readonly runId: string | null;
+      readonly summary: string | null;
+      readonly url: string | null;
     } | null;
     readonly responseExcerpt: string | null;
     readonly responseTruncated: boolean | null;
@@ -249,7 +271,7 @@ export type SharedAgeMillisecondsAgentName_987c1d9b = {
     | 'canceled'
     | 'superseded';
 };
-export type SharedAgeMillisecondsAgentName_f4ab4251 = {
+export type SharedAgeMillisecondsAgentName_f1ceaa2d = {
   readonly ageMilliseconds: number;
   readonly agentName?: string;
   readonly id: string;
@@ -259,6 +281,7 @@ export type SharedAgeMillisecondsAgentName_f4ab4251 = {
   readonly requestedAt: number;
   readonly resolution?: SharedAnswerDigestDecidedAtDec_655ece59;
   readonly runId: string;
+  readonly said?: string;
   readonly sessionId?: string;
   readonly signalName: string;
   readonly source: 'bureau';
@@ -742,6 +765,11 @@ export type SharedOutcomeReason_1cc511c4 = {
 export type SharedOutcomeSessionId_442a0186 = {
   readonly outcome: 'session-terminal';
   readonly sessionId: string;
+};
+export type SharedOwnerDisabledPluginWithd_740a70eb = {
+  readonly ownerDisabled: boolean;
+  readonly plugin: string;
+  readonly withdrawn: boolean;
 };
 export type SharedReasonRequestedAt_eb87c207 = {
   readonly reason: string | null;

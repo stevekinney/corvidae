@@ -76,5 +76,6 @@ A button that is a toggle carries `aria-pressed="true"` or `"false"` and keeps t
 - `ghost`: low-emphasis, transparent background.
 - `ghost-danger`: low-emphasis destructive action.
 - `ghost-accent`: low-emphasis action drawn as accent-coloured text, for an action inside a line of text (Undo, Remove) that is the one thing the line offers. Its label takes the accent text colour, which clears 4.5:1 on the surfaces it sits on.
+- `link`: the one action that ends a sentence of state ("Add the key"), drawn as an underlined accent word in the sentence's own type, like `Link underline="always"` beside it. The underline, not the colour alone, says it can be pressed (WCAG 1.4.1). It is still a `<button>`, so it is announced and activated as one; it has no padding, and under a coarse pointer its 44px hit area is a positioned pseudo-element that takes no layout, so the sentence's line is never taller for it.
 
 Icon-only `ghost` and `ghost-danger` buttons keep a subtle resting border/background because there is no visible text label to provide the clickable affordance.

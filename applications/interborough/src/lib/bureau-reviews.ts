@@ -63,10 +63,23 @@ export type ReviewsQuery = {
 export async function pageReviews(
   query: ReviewsQuery = {},
   options?: Options,
-): Promise<{ readonly reviews: readonly ListedReview[]; readonly nextPageToken: string | null }> {
+): Promise<{
+  readonly reviews: readonly ListedReview[];
+  readonly nextPageToken: string | null;
+  /**
+   * How many reviews the whole listing holds for these filters, on every page (COR-2426); `null`
+   * from a Bureau that predates it, where a count is of the reviews read so far.
+   */
+  readonly total: number | null;
+}> {
   const page = await bureauClient['bureau.reviews.list'](query, options);
   const nextPageToken: string | null | undefined = page.nextPageToken;
-  return { reviews: page.reviews.map(reviewWithSource), nextPageToken: nextPageToken ?? null };
+  const total: number | null | undefined = page.total;
+  return {
+    reviews: page.reviews.map(reviewWithSource),
+    nextPageToken: nextPageToken ?? null,
+    total: total ?? null,
+  };
 }
 
 /**
@@ -143,6 +156,24 @@ export function isReviewRoundChanged(error: unknown): boolean {
   if (!(error instanceof HttpClientError)) return false;
   const reason: unknown = error.data?.['reason'];
   return typeof reason === 'string' && reason.startsWith(`${REVIEW_ROUND_CHANGED}:`);
+}
+
+/**
+ * The token a `Conflict`'s reason begins with when the review was already resolved with another
+ * decision, by another resolver or because the agent moved on: nothing was decided, and it is no
+ * longer waiting (COR-2426, `bureau.reviews.resolve`'s description).
+ */
+export const REVIEW_ALREADY_RESOLVED = 'REVIEW_ALREADY_RESOLVED';
+
+/**
+ * Whether a decision found the review no longer waiting: the Bureau says it was already resolved.
+ * A `NotFound` is not this: it also answers a caller who may not decide the review, so the list is
+ * read again, and a review that left it is said to be no longer waiting from there.
+ */
+export function isReviewNoLongerWaiting(error: unknown): boolean {
+  if (!(error instanceof HttpClientError)) return false;
+  const reason: unknown = error.data?.['reason'];
+  return typeof reason === 'string' && reason.startsWith(`${REVIEW_ALREADY_RESOLVED}:`);
 }
 
 /**

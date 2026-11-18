@@ -98,6 +98,10 @@ export const BUREAU_RESERVED_KEY_FAMILIES: readonly ReservedKeyFamily[] = [
     'a task’s A2A record (ids, incarnation) is kept beside the task record, with its history emptied by the purge (clearContext), so GetTask still answers the task’s state',
   ),
   kept(
+    'bureau-agent-disabled:v1:',
+    'which agents a person disabled (COR-2429): the one gate every lookup of an agent by name consults, not a chat’s',
+  ),
+  kept(
     'bureau-agent-override-version:v1:',
     'a built-in agent’s saved overrides and their versions in the first format, which is read and no longer written, not a chat’s',
   ),

@@ -28,6 +28,7 @@ export const PLUGIN_PROBLEM_CODES = {
   'panel-failed': 'panel',
   'panel-changed': 'panel',
   'trigger-failed': 'trigger',
+  'hook-invalid': 'hook',
   'start-failed': 'plugin',
 } as const;
 

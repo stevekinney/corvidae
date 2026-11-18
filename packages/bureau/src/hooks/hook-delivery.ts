@@ -46,6 +46,10 @@ import { recoverRunWorkspaceAuthority } from '../run-authority.ts';
 
 import type { PluginEvent } from '@lostgradient/interborough-plugin';
 
+import {
+  createBureauEventFormatter,
+  type BureauEventFormatter,
+} from '../bureau-event-formatting.ts';
 import { HookDeliveryFailedEvent, HookDeliveryGaveUpEvent } from '../events.ts';
 import { NOTIFICATION_FIELD_LIMITS } from '../notifications/notification-types.ts';
 import type { WebhookDeliveryEngine } from '../webhook-notifier.ts';
@@ -180,6 +184,12 @@ export interface HookDeliveryDependencies {
    * kind is a failed delivery, not a waiting one.
    */
   readonly actionKindAvailable?: ((plugin: string, kind: string) => boolean) | undefined;
+  /**
+   * COR-2178 — writes an event as a person reads it, which a `notify` delivery stores as its title
+   * and body when a plugin's formatter claims the event's kind. Absent, no formatter is registered
+   * and a notification keeps the words of its action.
+   */
+  readonly formatEvent?: BureauEventFormatter | undefined;
   /**
    * An abort signal that fires after `milliseconds`. Defaults to `AbortSignal.timeout`; a test passes
    * one a controller ends, because the engine's `wait` is not a clock the tests share.
@@ -374,6 +384,8 @@ function workOf(
   hook: HookRecord,
   event: HookEventToDeliver,
   actionKindVersion: HookDeliveryDependencies['actionKindVersion'],
+  formatEvent: BureauEventFormatter,
+  diagnose: HookDeliveryDependencies['diagnose'],
 ): HookDeliveryWork {
   if (action.type === 'plugin') {
     const version = actionKindVersion?.(action.plugin, action.kind);
@@ -399,13 +411,24 @@ function workOf(
     };
   }
   const label = hook.name === undefined ? hook.id : `“${hook.name}”`;
+  // COR-2178 — the registered formatter's sentence, on the event as the owner sees it. A formatter's
+  // failure goes to `diagnose` and nothing else: the notification keeps its own words.
+  let formatted: ReturnType<BureauEventFormatter> | undefined;
+  try {
+    formatted = formatEvent(pluginEventOf(event));
+  } catch (cause) {
+    diagnose('An event formatter failed on a notification', cause);
+  }
+  const formatter = formatted?.formattedBy === undefined ? undefined : formatted;
   return {
     type: 'notify',
-    title: (action.title ?? `Event ${event.kind}`).slice(0, NOTIFICATION_TITLE_LIMIT),
-    body: `Hook ${label} fired on ${event.kind} from Bureau ${event.bureauId}.`.slice(
+    title: (action.title ?? formatter?.title ?? `Event ${event.kind}`).slice(
       0,
-      NOTIFICATION_BODY_LIMIT,
+      NOTIFICATION_TITLE_LIMIT,
     ),
+    body: (
+      formatter?.body ?? `Hook ${label} fired on ${event.kind} from Bureau ${event.bureauId}.`
+    ).slice(0, NOTIFICATION_BODY_LIMIT),
   };
 }
 
@@ -451,6 +474,7 @@ async function endedBy<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> 
 /** Builds the hook deliveries over the notifier's engine. */
 export function createHookDeliveries(dependencies: HookDeliveryDependencies): HookDeliveries {
   const { engine, store } = dependencies;
+  const formatEvent = dependencies.formatEvent ?? createBureauEventFormatter(undefined);
   const timeoutSignal =
     dependencies.timeoutSignal ?? ((milliseconds) => AbortSignal.timeout(milliseconds));
 
@@ -1064,7 +1088,17 @@ export function createHookDeliveries(dependencies: HookDeliveryDependencies): Ho
             }
           : {
               ...base,
-              work: withSkip(workOf(action, hook, event, dependencies.actionKindVersion), skip),
+              work: withSkip(
+                workOf(
+                  action,
+                  hook,
+                  event,
+                  dependencies.actionKindVersion,
+                  formatEvent,
+                  dependencies.diagnose,
+                ),
+                skip,
+              ),
               // A test is one attempt; a reaction's own limit, else the engine's, for the rest.
               maxAttempts:
                 action.type === 'plugin'

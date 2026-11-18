@@ -11,6 +11,11 @@
       "description": "Shows a placeholder in place of the rows and the open item while the records load: five list\nrows in the list pane and a block in the detail pane. Nothing shows for the first 300\nmilliseconds, so a fast load never flickers, and a slow one adds a \"still loading\" line after\nten seconds.",
       "default": false
     },
+    "loadingRows": {
+      "type": "number",
+      "description": "How many placeholder rows the list pane shows while `loading`, for a list whose design draws\nfewer or more than five: a short inbox draws three.",
+      "default": 5
+    },
     "loadingLabel": {
       "type": "string",
       "description": "What the loading region announces, politely, once the placeholder appears: \"Loading memories\".",

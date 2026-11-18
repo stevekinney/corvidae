@@ -10,7 +10,7 @@
   } from '@lostgradient/cinder';
 </script>
 
-<div style="max-inline-size: 28rem;">
+<div style="position: relative; max-inline-size: 28rem;">
   <GroupedList header="Runs" footer="Runs older than a week are archived.">
     <GroupedListItem href="/runs/1">
       {#snippet lead()}45 min left{/snippet}
@@ -117,10 +117,14 @@
     </GroupedList>
   </div>
 
-  <!-- The desktop list (about 570px wide): the window two steps over the name in a 104px lead, the
+  <!-- The desktop list (570px wide): the window two steps over the name in a 104px lead, the
        distance in a trailing column, two deals at once, a stale row past midnight with its
-       distance, and a photo at the end. -->
-  <div style="inline-size: 570px; max-inline-size: 100%;" data-testid="grouped-list-timed-wide">
+       distance, and a photo at the end. It stands beside the column, at the top, so the desktop
+       screenshot shows all three rows; the 28rem column would cap it and push it below the fold. -->
+  <div
+    style="position: absolute; inset-block-start: 0; inset-inline-start: calc(100% + 1.5rem); inline-size: 570px;"
+    data-testid="grouped-list-timed-wide"
+  >
     <GroupedList header="Open now">
       <GroupedListItem
         href="/places/two"

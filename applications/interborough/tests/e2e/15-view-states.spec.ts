@@ -1961,7 +1961,13 @@ test.describe('trigger state', () => {
       // Searching for the area narrows the list to the trigger events, under their group.
       await picker.fill('Triggers');
       await expect(page.getByRole('listbox')).toContainText('Triggers');
-      await expect(page.getByRole('option').filter({ hasText: 'trigger.' }).first()).toBeVisible();
+      // Each event reads in words (R10-23), "Trigger fired", not its raw kind.
+      await expect(
+        page
+          .getByRole('option')
+          .filter({ hasText: /\bTrigger\b/ })
+          .first(),
+      ).toBeVisible();
       await captureForDesignReview(page, {
         route: '/hooks/new',
         state: 'trigger-events-picker',

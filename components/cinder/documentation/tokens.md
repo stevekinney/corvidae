@@ -186,6 +186,7 @@ Use `--cinder-text-muted` for readable secondary text that remains part of the c
 | `--cinder-content-width-narrow` | `40rem` | Tighter centered column width. |
 | `--cinder-content-width-wide` | `90rem` | Roomier centered column width. |
 | `--cinder-content-width-reading` | `47.5rem` | Reading column width (760px). The width of a page of text, forms, and lists: wide enough for a row of controls, narrow enough to read. |
+| `--cinder-toast-reserve-padding` | `0` | Room a page's scrolling area keeps at its end for a toast that stays until it is acted on (an Undo, a failure): ToastRegion sets it on the document element, to how far up from the viewport's bottom edge a bottom-anchored region reaches, while such a toast is shown, and 0 otherwise. |
 
 <!-- END GENERATED TOKEN TABLE -->
 

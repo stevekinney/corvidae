@@ -25,7 +25,7 @@
    * while there are more.
    */
   import { tick, untrack } from 'svelte';
-  import { SvelteMap } from 'svelte/reactivity';
+  import { SvelteMap, SvelteSet } from 'svelte/reactivity';
 
   import {
     Alert,
@@ -112,6 +112,8 @@
   let outcome = $state<ForgetOutcome | undefined>(undefined);
   /** What is known of each memory's legal hold, which stays known when a receipt goes. */
   const holds = new SvelteMap<string, 'held' | 'free'>();
+  /** The memories forgotten on the page whose Undo still shows, or whose forget is being saved (row 45r). */
+  const hidden = new SvelteSet<string>();
   let forgetPending = $state(false);
   let governancePending = $state(false);
   let changes = $state<ReturnType<typeof MemoryChanges> | undefined>(undefined);
@@ -196,8 +198,9 @@
   const MORE_KEY = '__load-more__';
 
   const active = $derived(quarantinedView ? quarantinedListing : applied === '' ? listing : search);
-  /** Every memory the list or the search holds, before the kind filter. */
-  const base = $derived.by<MemoryRowData[]>(() => {
+  /** Every memory the list or the search holds, before the kind filter, less those just forgotten. */
+  const base = $derived.by<MemoryRowData[]>(() => held.filter((row) => !hidden.has(row.id)));
+  const held = $derived.by<MemoryRowData[]>(() => {
     if (quarantinedView) {
       // Every quarantined memory read so far: the server does not search them, so what is typed
       // narrows these pages the way the filters do (`shown`).
@@ -281,7 +284,7 @@
       listing.data?.pages,
       (page) => page.memories,
       (memory) => memory.id,
-    ).length,
+    ).filter((memory) => !hidden.has(memory.id)).length,
   );
 
   /** The agent's memory count once every page of it has been read, and unknown before. */
@@ -508,6 +511,7 @@
       {agentId}
       bind:outcome
       {holds}
+      {hidden}
       bind:forgetPending
       onForgotten={forgotten}
     />

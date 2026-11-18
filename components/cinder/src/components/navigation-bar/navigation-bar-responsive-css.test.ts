@@ -26,6 +26,22 @@ describe('NavigationBar responsive CSS', () => {
     );
   });
 
+  test('a bottom bar under 360px drops its edge and tab padding so five labels fit (COR-2445)', () => {
+    // The bar cannot query its own size, so its inline padding sits on the tab row.
+    expect(navigationBarCss).toMatch(
+      /\.cinder-navigation-bar\[data-cinder-placement='bottom'\]\s*\{[^}]*padding-inline:\s*0;/,
+    );
+    expect(navigationBarCss).toMatch(
+      /\.cinder-navigation-bar__items \{[^}]*padding-inline:\s*var\(--cinder-space-1\);[^}]*margin-block:/,
+    );
+    expect(navigationBarCss).toMatch(
+      /data-variant='mobile'\]\s*\{[^}]*padding-inline:\s*var\(--cinder-space-0-5\);/,
+    );
+    expect(navigationBarCss).toMatch(
+      /@container cinder-navigation-bar \(min-width: 22\.5rem\)[\s\S]*?padding-inline:\s*var\(--cinder-space-2\);/,
+    );
+  });
+
   test('closed collapsible items are hidden by the container query before hydration', () => {
     expect(navigationBarCss).toMatch(
       /@container cinder-navigation-bar \(max-width: 47\.99rem\)[\s\S]*?\.cinder-navigation-bar\[data-collapsible='true'\][\s\S]*?\.cinder-navigation-bar__items:not\(\[data-cinder-mobile-panel\]\)\s*\{[\s\S]*?display:\s*none;/,

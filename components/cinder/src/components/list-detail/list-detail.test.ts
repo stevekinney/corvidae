@@ -1071,6 +1071,22 @@ describe('ListDetail', () => {
       }
     });
 
+    test('draws as many placeholder rows as loadingRows asks for (COR-2426)', () => {
+      jest.useFakeTimers();
+      try {
+        const { container } = render(ListDetailFixture, {
+          props: { selectionLocation: memoryLocation(), loading: true, loadingRows: 3 },
+        });
+        jest.advanceTimersByTime(300);
+        flushSync();
+        expect(
+          container.querySelectorAll('.cinder-list-detail__list .cinder-skeleton-row'),
+        ).toHaveLength(3);
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
     test('puts a Cancel on the still-loading line only when onLoadingCancel is given, and calls it', () => {
       jest.useFakeTimers();
       try {

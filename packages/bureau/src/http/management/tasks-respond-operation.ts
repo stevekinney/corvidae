@@ -27,7 +27,11 @@ import { BureauError, TaskRespondError } from '../../bureau-errors.ts';
 import { type TasksRespondInput, tasksRespondInput } from '../../tasks/respond-to-task.ts';
 import type { TaskRegistry } from '../../task-registry.ts';
 import type { BureauTasks, TaskRespondResult } from '../../bureau-types/tasks.ts';
-import { reviewFault, reviewReceiptSchema } from '../bureau-reviews-operations.ts';
+import {
+  REVIEW_ALREADY_RESOLVED,
+  reviewFault,
+  reviewReceiptSchema,
+} from '../bureau-reviews-operations.ts';
 import {
   type BureauOwnershipHost,
   mayUseCrossOwnerScope,
@@ -85,6 +89,14 @@ function respondFault(error: unknown, taskId: string): unknown {
                 code: issue.code,
               })),
       },
+    } satisfies OperationFault;
+  }
+  // COR-2426: a wait already resolved carries the token `bureau.reviews.resolve` gives it.
+  if (error instanceof TaskRespondError && error.alreadyResolved) {
+    return {
+      code: 'Conflict',
+      message: error.message,
+      data: { reason: `${REVIEW_ALREADY_RESOLVED}: ${error.message}` },
     } satisfies OperationFault;
   }
   if (error instanceof TaskRespondError && error.reason !== undefined) {
@@ -145,7 +157,7 @@ export const tasksRespondOperation = defineOperation<
   mcpExposable: true,
   summary: 'Answer a task’s open human-input or approval wait',
   description:
-    'Answers one open wait of a task as the authenticated caller. `answer` (text, or a list of parts joined with a newline) answers a human-input wait; `decision` (`approve`, `deny`, or `reject`, which requires a `reason`) decides an approval or a human wait. `signalName` or `callId` says which wait when several are open; with neither, exactly one must be. `messageId` is the idempotency key: an exact retry returns the original receipt, and the same `messageId` with a different command is a `Conflict`. The task’s owner answers anything; a caller holding `bureau.tasks:write` answers human-input waits only, and another owner’s approval answers as a missing task. The `receipt` is `applied` or `superseded` (the approval was gated again and the tool did not run).',
+    'Answers one open wait of a task as the authenticated caller. `answer` (text, or a list of parts joined with a newline) answers a human-input wait; `decision` (`approve`, `deny`, or `reject`, which requires a `reason`) decides an approval or a human wait. `signalName` or `callId` says which wait when several are open; with neither, exactly one must be. `messageId` is the idempotency key: an exact retry returns the original receipt, and the same `messageId` with a different command is a `Conflict`. The task’s owner answers anything; a caller holding `bureau.tasks:write` answers human-input waits only, and another owner’s approval answers as a missing task. The `receipt` is `applied` or `superseded` (the approval was gated again and the tool did not run). An answer that names, by `signalName`, a question the task asked and that was already decided is a `Conflict` whose `reason` starts `REVIEW_ALREADY_RESOLVED:`, as `bureau.reviews.resolve` answers a review already resolved; a `signalName` the task never asked is a plain `Conflict`.',
   destructive: true,
   tags: ['Tasks'],
   inputSchema: tasksRespondInput,

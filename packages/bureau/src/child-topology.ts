@@ -371,10 +371,16 @@ export interface ChildTopologyDependencies {
    * through a child record — a child may not take that identifier.
    */
   readonly isKnownRun: (runId: string) => Promise<boolean>;
-  /** `undefined` when the catalog has no agent by this name. */
+  /**
+   * `undefined` when the catalog has no agent by this name, or a person disabled it (COR-2429: the
+   * gate is read from the store, so a disable another Bureau wrote counts).
+   */
   readonly planChild: (
     agentName: string,
-  ) => { readonly durable: boolean; readonly agentVersion: string } | undefined;
+  ) =>
+    | { readonly durable: boolean; readonly agentVersion: string }
+    | undefined
+    | Promise<{ readonly durable: boolean; readonly agentVersion: string } | undefined>;
   readonly startChild: (start: ChildTopologyStart) => AgentRun<unknown, boolean>;
   readonly getEngine: () => ChildTopologyEngine | undefined;
   readonly cancelDurable: (workflowId: string) => Promise<CancelDurableRunOutcome>;
@@ -1393,7 +1399,7 @@ export function createChildTopology(dependencies: ChildTopologyDependencies): Ch
     if (reserved !== undefined) {
       return { outcome: 'rejected', code: 'reserved-child-run-id', reason: reserved };
     }
-    const plan = dependencies.planChild(request.agentName);
+    const plan = await dependencies.planChild(request.agentName);
     if (!plan) {
       return {
         outcome: 'rejected',

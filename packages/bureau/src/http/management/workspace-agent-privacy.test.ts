@@ -35,6 +35,8 @@ const cases = [
   ['bureau.agents.versions.restore', true],
   ['bureau.agents.overrides.get', false],
   ['bureau.agents.overrides.update', true],
+  ['bureau.agents.disable', true],
+  ['bureau.agents.enable', true],
 ] as const;
 
 for (const [operation, administrative] of cases) {

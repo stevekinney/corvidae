@@ -11,7 +11,8 @@
         "soft-danger",
         "ghost",
         "ghost-danger",
-        "ghost-accent"
+        "ghost-accent",
+        "link"
       ],
       "description": "Visual style.",
       "default": "soft"

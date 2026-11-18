@@ -209,11 +209,12 @@ describe('the rows', () => {
       'Inbox triage',
     ]);
     expect(listedRows.map((row) => row.dataset['statusWord'])).toEqual([
-      'Missed runs, 4',
+      'Missed runs',
       'Active',
       'Active',
       'Paused',
     ]);
+    expect(listedRows[0]?.querySelector('.cinder-status-dot__qualifier')?.textContent).toBe('4');
   });
 
   test('say the next run at the right: the day and time, due and won’t start, or no next run', async () => {

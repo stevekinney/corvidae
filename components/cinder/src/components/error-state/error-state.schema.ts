@@ -11,7 +11,8 @@ const schema = {
     },
     description: {
       type: 'string',
-      description: 'Secondary descriptive text rendered as a paragraph below the title.',
+      description:
+        "Secondary descriptive text rendered as a paragraph below the title. A `'row'` whose title is\nits whole sentence passes `''` and draws no second paragraph.",
     },
     detail: {
       type: 'string',

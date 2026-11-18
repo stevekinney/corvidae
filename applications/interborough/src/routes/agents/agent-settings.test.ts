@@ -11,6 +11,7 @@ import { afterEach, describe, expect, test } from 'bun:test';
 import { AGENT_PAGE_COPY } from '../../app/copy/agents.ts';
 import type { AgentVersion } from '../../lib/agent-definitions.ts';
 import {
+  catalogFixture,
   installBureauStub,
   readyAgent,
   type BureauHandler,
@@ -71,6 +72,8 @@ const version = (
   definition: { ...DEFINITION, ...definition },
   overrides: null,
   changedKeys,
+  // A Bureau that predates the summary, so the page words each change itself.
+  summary: null,
 });
 
 /** Four saved versions, newest first: Version 3 moved the model from Haiku to Sonnet. */
@@ -144,6 +147,37 @@ describe('the Settings form (rows 38u to 38w)', () => {
     expect(reason.textContent).toContain(copy.noProvider.title('Anthropic'));
     expect(reason.textContent).toContain(copy.noProvider.description('Researcher'));
     expect(within(reason).getByRole('link', { name: copy.noProvider.action })).not.toBeNull();
+  });
+
+  test('says what the model can do from its catalog row while its provider is not connected (row 38u, design review 2)', async () => {
+    landAt('/agents/researcher/settings');
+    serve(
+      {
+        // No key saved: the catalog keeps the provider's rows, `unavailable` (COR-2143), and the
+        // Model field offers none of them. The file names the model by its alias.
+        'bureau.agents.catalog': () =>
+          catalogFixture({
+            models: [
+              {
+                provider: 'anthropic',
+                model: 'claude-sonnet-5',
+                aliases: [{ alias: 'sonnet', resolvesTo: 'claude-sonnet-5' }],
+                availability: 'unavailable',
+                contextWindowTokens: 1_000_000,
+                modalities: { text: { input: true }, image: { input: true } },
+              },
+            ],
+          }),
+      },
+      [{ name: 'anthropic', hasKey: false, connected: false }],
+    );
+    const { findByTestId } = mount();
+
+    const abilities = await findByTestId('agent-settings-abilities');
+    await waitFor(() =>
+      // As a sentence reads, lower case after the first word (design review 3).
+      expect(abilities.textContent).toBe('Tools, images, streaming, 1M context window'),
+    );
   });
 
   test('does not say the provider is not connected when it is keyless, which needs no key (COR-2414)', async () => {
@@ -297,7 +331,7 @@ describe('the Versions list and a version opened read-only (rows 38x, 39t, 39u, 
     await fireEvent.click(await findByRole('button', { name: 'Restore Version 3' }));
     const dialog = await findByRole('dialog', { name: 'Restore Version 3?' });
     expect(dialog.textContent).toContain(
-      'Restoring Version 3 removes Version 4’s changes: Instructions and Tools. This makes Version 5, and Version 4 stays in the list.',
+      'Restoring Version 3 removes Version 4’s changes (Instructions and Tools). This makes Version 5, and Version 4 stays in the list.',
     );
     expect(within(dialog).getByRole('button', { name: 'Cancel' })).not.toBeNull();
   });
@@ -324,6 +358,159 @@ describe('the delete question (row 39a)', () => {
       ),
     );
     expect(within(dialog).getByLabelText('Type researcher to confirm')).not.toBeNull();
+  });
+});
+
+describe('disabling an agent defined in code (rows 38y and 40d, COR-2429)', () => {
+  test('ends the tab with Disable this agent, asks first, and shows Enable agent afterwards', async () => {
+    landAt('/agents/assistant/settings');
+    let state: 'ready' | 'disabled' = 'ready';
+    const BUILT_IN = {
+      ...readyAgent({ id: 'assistant' }),
+      source: 'code' as const,
+      hash: null,
+      definition: null,
+      codeDefinition: {
+        name: 'assistant',
+        description: null,
+        model: 'anthropic/sonnet',
+        models: [],
+        tools: [],
+        skills: [],
+        card: [],
+        instructions: null,
+      },
+    };
+    const installed = serve({
+      // The Bureau's list of agents leaves a disabled agent out.
+      'bureau.agents.list': () => ({ agents: state === 'ready' ? [AGENT] : [] }),
+      'bureau.agents.definitions.get': () => ({ ...BUILT_IN, state }),
+      'bureau.agents.overrides.get': () => ({
+        id: 'assistant',
+        hash: 'hash-0',
+        version: null,
+        overrides: {},
+        ownTools: [],
+      }),
+      'bureau.agents.versions.list': () => ({ versions: [] }),
+      'bureau.agents.catalog': () => ({ models: [], tools: [] }),
+      'bureau.contexts.list': () => ({
+        contexts: [
+          { ...CONTEXT, id: 'a', agentName: 'assistant' },
+          { ...CONTEXT, id: 'b', agentName: 'assistant' },
+          { ...CONTEXT, id: 'c', agentName: 'assistant' },
+        ],
+        nextOffset: null,
+      }),
+      'bureau.agents.references': () => ({
+        agentName: 'assistant',
+        schedules: [{ id: 'audit', name: 'Weekly refund audit' }],
+        workflows: [{ id: 'order-refund', title: 'Order refund' }],
+        hooks: [{ id: 'refund-audit', name: 'Refund audit' }],
+      }),
+      'bureau.agents.disable': (params) => {
+        state = 'disabled';
+        return { id: params['id'], disabled: true };
+      },
+      'bureau.agents.enable': (params) => {
+        state = 'ready';
+        return { id: params['id'], disabled: false };
+      },
+    });
+    const { findByRole, findByTestId } = mount();
+
+    const settings = await findByTestId('agent-settings');
+    const block = await findByTestId('agent-disable');
+    // Last on the tab, after the versions.
+    expect(settings.lastElementChild).toBe(block);
+    expect(block.textContent).toContain('Disable this agent');
+    expect(block.textContent).toContain(
+      'Assistant is built in, so it can be disabled but not deleted. Its chats stay, read-only, until you enable it again.',
+    );
+    expect(within(settings).queryByRole('button', { name: 'Delete agent' })).toBeNull();
+
+    // The action sits at the inline end, in the heading's actions (design review 1).
+    expect(
+      block
+        .querySelector('.cinder-section-heading__actions')
+        ?.contains(within(block).getByRole('button', { name: 'Disable agent' })),
+    ).toBe(true);
+    await fireEvent.click(within(block).getByRole('button', { name: 'Disable agent' }));
+    const dialog = await findByRole('dialog', { name: 'Disable Assistant?' });
+    await waitFor(() =>
+      expect(dialog.textContent).toContain(
+        'Its 3 chats stay, read-only. 1 schedule (Weekly refund audit), 1 workflow (Order refund) and 1 hook (Refund audit) will stop finding it until you enable it again.',
+      ),
+    );
+    // Reversible, so no typed confirmation.
+    expect(within(dialog).queryByRole('textbox')).toBeNull();
+    expect(installed.callsTo('bureau.agents.disable')).toEqual([]);
+    await fireEvent.click(within(dialog).getByRole('button', { name: 'Disable agent' }));
+
+    await waitFor(() =>
+      expect(installed.callsTo('bureau.agents.disable').map((call) => call.params)).toEqual([
+        { id: 'assistant' },
+      ]),
+    );
+    const enable = await findByRole('button', { name: 'Enable agent' });
+    const disableBlock = await findByTestId('agent-disable');
+    expect(disableBlock.contains(enable)).toBe(true);
+    await fireEvent.click(enable);
+    await waitFor(() =>
+      expect(installed.callsTo('bureau.agents.enable').map((call) => call.params)).toEqual([
+        { id: 'assistant' },
+      ]),
+    );
+    await findByRole('button', { name: 'Disable agent' });
+  });
+
+  test('names the agent as the agents list does, not by its identifier (design review 1)', async () => {
+    landAt('/agents/tool-runner/settings');
+    serve({
+      // A built-in agent with no name of its own, which the Bureau names by its identifier.
+      'bureau.agents.list': () => ({
+        agents: [{ ...AGENT, name: 'tool-runner', displayName: 'tool-runner' }],
+      }),
+      'bureau.agents.definitions.get': () => ({
+        ...readyAgent({ id: 'tool-runner' }),
+        source: 'code' as const,
+        hash: null,
+        definition: null,
+        codeDefinition: {
+          name: 'tool-runner',
+          description: null,
+          model: 'anthropic/sonnet',
+          models: [],
+          tools: [],
+          skills: [],
+          card: [],
+          instructions: null,
+        },
+        state: 'ready',
+      }),
+      'bureau.agents.overrides.get': () => ({
+        id: 'tool-runner',
+        hash: 'hash-0',
+        version: null,
+        overrides: {},
+        ownTools: [],
+      }),
+      'bureau.agents.versions.list': () => ({ versions: [] }),
+      'bureau.agents.catalog': () => ({ models: [], tools: [] }),
+      'bureau.contexts.list': () => ({ contexts: [], nextOffset: null }),
+      'bureau.agents.references': () => ({
+        agentName: 'tool-runner',
+        schedules: [],
+        workflows: [],
+        hooks: [],
+      }),
+    });
+    const { findByRole, findByTestId } = mount();
+
+    const block = await findByTestId('agent-disable');
+    expect(block.textContent).toContain('Tool runner is built in');
+    await fireEvent.click(within(block).getByRole('button', { name: 'Disable agent' }));
+    await findByRole('dialog', { name: 'Disable Tool runner?' });
   });
 });
 

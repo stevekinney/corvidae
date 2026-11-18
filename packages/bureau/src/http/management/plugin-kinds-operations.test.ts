@@ -5,6 +5,7 @@
  */
 import { definePlugin } from '@lostgradient/interborough-plugin';
 import type { ProviderDefinition } from '@lostgradient/operative/provider-kit';
+import { waitUntil } from '@lostgradient/testing/wait-until';
 import { afterEach, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 
@@ -216,6 +217,78 @@ describe('plugin registry kinds', () => {
       ['page', true],
       ['ring', false],
     ]);
+  });
+
+  it('lists each hook action kind’s availability: needs-setup while a secret its plugin declared is missing, available once it is saved (COR-2181)', async () => {
+    const pager = definePlugin({
+      name: 'pager',
+      version: '1.0.0',
+      description: 'Pages someone.',
+      secrets: ['pager-api-key'],
+      setup: () => ({
+        reactions: [
+          {
+            name: 'page',
+            description: 'Pages the on-call person.',
+            configuration: z.object({}),
+            run: async () => undefined,
+          },
+        ],
+      }),
+    });
+    const plain = definePlugin({
+      name: 'plain',
+      version: '1.0.0',
+      description: 'Needs nothing.',
+      setup: () => ({
+        reactions: [
+          {
+            name: 'ring',
+            description: 'Rings.',
+            configuration: z.object({}),
+            run: async () => undefined,
+          },
+        ],
+      }),
+    });
+    const values = new Map<string, string>();
+    const watchers = new Set<() => void>();
+    const composed = await composePlugins({
+      plugins: [
+        { descriptor: pager, source: 'package', location: '@example/pager' },
+        { descriptor: plain, source: 'package', location: '@example/plain' },
+      ],
+      hooks: {},
+      pluginSecrets: {
+        get: async (key) => values.get(key),
+        watch: (_key, listener) => {
+          watchers.add(listener);
+          return () => watchers.delete(listener);
+        },
+      },
+    });
+    const stop = composed.watchSecrets();
+    try {
+      const registry = createPluginRegistry(composed.records);
+      const availability = () =>
+        registry.plugins.reactions().map((kind) => [kind.kind, kind.availability]);
+      expect(availability()).toEqual([
+        ['page', 'needs-setup'],
+        ['ring', 'available'],
+      ]);
+
+      values.set('pager-api-key', 'sk-saved');
+      for (const listener of watchers) listener();
+      await waitUntil(() => availability()[0]?.[1] === 'available', {
+        message: 'the saved secret to be seen',
+      });
+      expect(availability()).toEqual([
+        ['page', 'available'],
+        ['ring', 'available'],
+      ]);
+    } finally {
+      stop();
+    }
   });
 
   it('marks a configuration field declared with .meta({ secret: true }) as a secret in the JSON Schema (COR-2177)', async () => {

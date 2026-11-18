@@ -36,6 +36,7 @@ import {
   hookSentence,
   hookStatusWord,
   hookTime,
+  kindsReadingAlike,
   onlyForWords,
   scopeKindsFor,
   scopePath,
@@ -76,6 +77,7 @@ function hook(overrides: Partial<Hook> = {}): Hook {
     action: { type: 'webhook', url: 'https://example.com/a' },
     events: ['review.requested'],
     scope: null,
+    declaredBy: null,
     enabled: true,
     createdAt: 1,
     updatedAt: 1,
@@ -111,6 +113,7 @@ const attempt = (overrides: Partial<HookDelivery['attempts'][number]>) => ({
   responseExcerpt: null,
   responseTruncated: null,
   error: null,
+  receipt: null,
   ...overrides,
 });
 
@@ -134,7 +137,7 @@ describe('an event in plain words', () => {
     expect(eventArea('__proto__.happened')).toBe('Other');
   });
 
-  test('is offered as a clause with its raw kind beside it, sorted into its area', () => {
+  test('is offered as a clause with no raw kind beside it, sorted into its area (R10-23)', () => {
     const choices = eventChoices(KINDS, 'webhook');
     expect(choices.map((choice) => choice.group)).toEqual([
       'Chats',
@@ -145,10 +148,29 @@ describe('an event in plain words', () => {
     expect(choices.find((choice) => choice.value === 'review.requested')).toEqual({
       value: 'review.requested',
       label: 'A review is waiting',
-      code: 'review.requested',
       description: '',
       group: 'Reviews',
       disabled: false,
+    });
+    expect(choices.filter((choice) => choice.code !== undefined)).toEqual([]);
+  });
+
+  test('shows the raw kind only beside two events that would otherwise read the same (R10-23)', () => {
+    const alike: HookEventKind[] = [
+      { kind: 'trigger.started', origin: 'unattributed', description: '', scopes: [] },
+      { kind: 'trigger-started', origin: 'unattributed', description: '', scopes: [] },
+      { kind: 'trigger.stopped', origin: 'unattributed', description: '', scopes: [] },
+    ];
+    expect(kindsReadingAlike(alike.map((event) => event.kind))).toEqual(
+      new Set(['trigger.started', 'trigger-started']),
+    );
+    const codes = Object.fromEntries(
+      eventChoices(alike, 'webhook').map((choice) => [choice.value, choice.code]),
+    );
+    expect(codes).toEqual({
+      'trigger.started': 'trigger.started',
+      'trigger-started': 'trigger-started',
+      'trigger.stopped': undefined,
     });
   });
 });
@@ -175,13 +197,12 @@ describe('the run outcome events (COR-2095, canvas row 84p)', () => {
     },
   ];
 
-  test('names run.error "A run fails" in the editor, with its raw kind beside it', () => {
+  test('names run.error "A run fails" in the editor, with no raw kind beside it', () => {
     const choice = eventChoices(OUTCOMES, 'webhook').find((entry) => entry.value === 'run.error');
 
     expect(choice).toEqual({
       value: 'run.error',
       label: 'A run fails',
-      code: 'run.error',
       description: '',
       group: 'Runs',
       disabled: false,
@@ -265,7 +286,7 @@ describe('a hook as a sentence', () => {
       'When Review requested, notify me',
     );
     expect(hookSentence(hook({ action: { type: 'plugin', plugin: 'acme', kind: 'page' } }))).toBe(
-      'When Review requested, run page from acme',
+      'When Review requested, run Page from Acme',
     );
   });
 
@@ -436,7 +457,7 @@ function summary(overrides: Partial<HookDeliverySummary> = {}): HookDeliverySumm
 }
 
 function listed(overrides: Partial<ListedHook> = {}): ListedHook {
-  return { ...hook(), lastDelivery: null, ...overrides };
+  return { ...hook(), lastDelivery: null, problems: [], ...overrides };
 }
 
 describe('an event as a clause of a row’s sentence', () => {

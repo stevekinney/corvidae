@@ -95,6 +95,7 @@ function webhook(
     createdAt: Date.UTC(2026, 9, 1),
     updatedAt: Date.UTC(2026, 9, 1),
     revision: 1,
+    problems: [],
     ...overrides,
   };
 }

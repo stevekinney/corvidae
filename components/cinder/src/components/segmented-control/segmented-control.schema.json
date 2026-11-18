@@ -47,6 +47,11 @@
       "enum": ["radiogroup", "tablist", "navigation"],
       "description": "ARIA interaction pattern. Use `navigation` for route-backed links."
     },
+    "overflow": {
+      "enum": ["scroll", "select"],
+      "description": "What the control does when its segments are wider than the room it has (COR-2181). `scroll`\n(the default) keeps the strip and lets it scroll sideways, as it always has. `select` draws the\nsame options as a Select with the same accessible name, so every option stays on screen on a\nphone; the segments stay in the document, hidden, so the control knows how much room they need\nand returns to the strip when the room is there. It applies to a single-choice `radiogroup`\nonly.",
+      "default": "scroll"
+    },
     "class": {
       "type": "string",
       "description": "Additional class names merged with `.cinder-segmented-control`."
