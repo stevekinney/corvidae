@@ -133,6 +133,42 @@ test('JsonEditor gutter sits on its lines for an editor in view', async ({ brows
   }
 });
 
+// Design correction 2, B3 (row 66f): an editor with a marked line and its note, the shape of
+// "a file that can't load", drew its numbers 14px apart beside 19.5px lines, so the red 11 sat
+// beside line 8. Each number's top must equal its line's top, in view and below the fold, and
+// after the editor is hidden and shown again (a tab panel) and the mark is scrolled into view.
+for (const height of [900, 16]) {
+  test(`JsonEditor gutter sits on its lines beside a marked line and its note, window ${String(height)}px tall`, async ({
+    browser,
+  }) => {
+    const page = await openFixture(browser, { fixtureName: 'problem-line', width: 1280, height });
+    try {
+      await page.locator('.cinder-json-editor__problem').waitFor({ state: 'attached' });
+      const settled = async (): Promise<void> => {
+        await expect
+          .poll(async () => {
+            if (height < 100) await page.screenshot({ fullPage: true });
+            const geometry = await gutterGeometry(page);
+            return aligned(geometry) ? 'aligned' : JSON.stringify(geometry);
+          })
+          .toBe('aligned');
+      };
+      await settled();
+      // Hidden, then shown again, as a tab panel is.
+      await page.locator('.cinder-json-editor').evaluate((editor) => {
+        (editor as HTMLElement).style.display = 'none';
+      });
+      await page.locator('.cinder-json-editor').evaluate((editor) => {
+        (editor as HTMLElement).style.display = '';
+      });
+      await page.locator('.cinder-json-editor__line--problem').scrollIntoViewIfNeeded();
+      await settled();
+    } finally {
+      await page.context().close();
+    }
+  });
+}
+
 test('JsonEditor Format is a tab stop ahead of the text when the source parses', async ({
   browser,
 }) => {

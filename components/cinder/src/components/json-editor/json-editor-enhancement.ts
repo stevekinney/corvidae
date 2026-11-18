@@ -446,18 +446,34 @@ export function createJsonEditor(options: JsonEditorOptions): JsonEditorHandle {
   metricsProbe.setAttribute('aria-hidden', 'true');
   metricsProbe.textContent = '0';
   view.dom.append(metricsProbe);
+  /** Reads every line's height again and redraws the gutter from it, wherever the editor is. */
+  const measureAgain = (): void => {
+    view.dispatch({
+      effects: [
+        measureRequest(view.state.selection.main.head),
+        remeasure.reconfigure(EditorView.theme({})),
+      ],
+    });
+    view.requestMeasure();
+  };
   const metricsResize =
-    typeof ResizeObserver === 'function'
-      ? new ResizeObserver(() => {
-          view.dispatch({
-            effects: [
-              measureRequest(view.state.selection.main.head),
-              remeasure.reconfigure(EditorView.theme({})),
-            ],
-          });
+    typeof ResizeObserver === 'function' ? new ResizeObserver(measureAgain) : undefined;
+  metricsResize?.observe(metricsProbe);
+  // The gutter is drawn from the heights CodeMirror last measured. Three more moments change them
+  // without the probe noticing (design correction 2, B3: line numbers 14px apart beside 19.5px
+  // lines): the page's fonts finish loading, the editor becomes visible (a tab or a panel that was
+  // hidden, or a page scrolled to it), and a line is scrolled into view.
+  let destroyed = false;
+  void globalThis.document.fonts?.ready.then(() => {
+    if (!destroyed) measureAgain();
+  });
+  const visibility =
+    typeof IntersectionObserver === 'function'
+      ? new IntersectionObserver((entries) => {
+          if (entries.some((entry) => entry.isIntersecting)) measureAgain();
         })
       : undefined;
-  metricsResize?.observe(metricsProbe);
+  visibility?.observe(view.dom);
 
   return {
     view,
@@ -482,10 +498,14 @@ export function createJsonEditor(options: JsonEditorOptions): JsonEditorHandle {
       );
       view.dispatch({ selection: { anchor: target.from }, scrollIntoView: true });
       view.focus();
+      // The lines scrolled into view were drawn from estimates until now.
+      measureAgain();
     },
     focus: () => view.focus(),
     destroy: () => {
+      destroyed = true;
       metricsResize?.disconnect();
+      visibility?.disconnect();
       view.destroy();
     },
   };

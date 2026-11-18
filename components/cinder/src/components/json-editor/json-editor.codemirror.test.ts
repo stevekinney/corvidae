@@ -561,6 +561,18 @@ describe('JsonEditor — marked lines', () => {
     expect(editor.state.doc.lineAt(editor.state.selection.main.head).number).toBe(4);
   });
 
+  test('design correction 2, B3: scrolling a line into view measures the lines again, so the gutter is drawn from real heights', async () => {
+    const view = render(JsonEditor, { id: 'payload', label: 'Payload', value: missingComma });
+    const editor = await mountedView(view);
+    const measure = spyOn(editor, 'requestMeasure');
+    try {
+      (view.component as unknown as { focusLine: (line: number) => void }).focusLine(4);
+      expect(measure).toHaveBeenCalled();
+    } finally {
+      measure.mockRestore();
+    }
+  });
+
   test('focusProblem finds the parse problem even while an external error keeps the editor from marking it (row 80n)', async () => {
     const source = '{\n  "dismissed": true,\n  "dismissedOn": "2026-11-01",\n}';
     const view = render(JsonEditor, {
