@@ -111,6 +111,12 @@ export type OAuthMcpServer = TestServer & {
   readonly refreshRequests: readonly string[];
   /** Expire access tokens while leaving their refresh grants valid. */
   expireAccessTokens(): void;
+  /** Hold expired-token MCP operations until this many independent boot loads have reached the server. */
+  gateExpiredAccessTokenOperations(expected: number): {
+    readonly entered: Promise<void>;
+    release(): void;
+    requests(): number;
+  };
   /** Makes the server stop honouring every access and refresh token it issued, as a revoked grant does. */
   revokeTokens(): void;
 };
@@ -137,11 +143,20 @@ export async function startOAuthMcpServer(): Promise<OAuthMcpServer> {
   const clients = new Set<string>();
   const codes = new Map<string, { clientId: string; challenge: string }>();
   const accessTokens = new Set<string>();
+  const expiredAccessTokens = new Set<string>();
   const refreshTokens = new Set<string>();
   const issuedAccessTokens: string[] = [];
   const receivedVerifiers: string[] = [];
   const refreshRequests: string[] = [];
   const authorizations: (string | null)[] = [];
+  let expiredOperationGate:
+    | {
+        expected: number;
+        requests: number;
+        entered: PromiseWithResolvers<void>;
+        released: PromiseWithResolvers<void>;
+      }
+    | undefined;
 
   const server: ReturnType<typeof Bun.serve> = Bun.serve({
     hostname: '127.0.0.1',
@@ -237,6 +252,19 @@ export async function startOAuthMcpServer(): Promise<OAuthMcpServer> {
         const header = request.headers.get('authorization');
         authorizations.push(header);
         const token = header?.startsWith('Bearer ') ? header.slice('Bearer '.length) : undefined;
+        const gate = expiredOperationGate;
+        // Startup's authenticated MCP operation is one POST. Holding only it excludes transport
+        // GETs and prevents a 401/retry from counting before either held request is answered.
+        if (
+          gate !== undefined &&
+          request.method === 'POST' &&
+          token !== undefined &&
+          expiredAccessTokens.has(token)
+        ) {
+          gate.requests += 1;
+          if (gate.requests === gate.expected) gate.entered.resolve();
+          await gate.released.promise;
+        }
         if (token === undefined || !accessTokens.has(token)) {
           return new Response(null, {
             status: 401,
@@ -257,13 +285,39 @@ export async function startOAuthMcpServer(): Promise<OAuthMcpServer> {
     receivedVerifiers,
     refreshRequests,
     expireAccessTokens() {
+      for (const token of accessTokens) expiredAccessTokens.add(token);
       accessTokens.clear();
     },
+    gateExpiredAccessTokenOperations(expected) {
+      if (!Number.isSafeInteger(expected) || expected < 1)
+        throw new Error('Expected at least one expired access-token operation.');
+      if (expiredOperationGate !== undefined)
+        throw new Error('An expired access-token gate is already active.');
+      const gate = {
+        expected,
+        requests: 0,
+        entered: Promise.withResolvers<void>(),
+        released: Promise.withResolvers<void>(),
+      };
+      expiredOperationGate = gate;
+      return {
+        entered: gate.entered.promise,
+        release() {
+          if (expiredOperationGate === gate) expiredOperationGate = undefined;
+          gate.released.resolve();
+        },
+        requests: () => gate.requests,
+      };
+    },
     revokeTokens() {
+      for (const token of accessTokens) expiredAccessTokens.add(token);
       accessTokens.clear();
       refreshTokens.clear();
     },
-    stop: () => server.stop(true),
+    async stop() {
+      expiredOperationGate?.released.resolve();
+      server.stop(true);
+    },
   };
 }
 
