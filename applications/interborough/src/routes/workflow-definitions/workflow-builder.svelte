@@ -109,8 +109,12 @@
     jsonDescription: string;
     /** Where the read-only notice below 640 pixels links back to: the workflow's page, or Workflows. */
     backHref: string;
-    /** The footer's actions, at the right of the read-back: Cancel and the one primary action. */
-    actions?: Snippet;
+    /**
+     * The footer's actions, at the right of the read-back: Cancel and the one primary action. Told
+     * whether the builder is read-only (below 640 pixels), so the primary action is drawn off there
+     * rather than inviting a save it cannot make (note N3).
+     */
+    actions?: Snippet<[boolean]>;
     /**
      * Whether the page has asked to save: the problems of the workflow are then said at their
      * fields and, from two, in one line above the footer. Before that nothing is called wrong.
@@ -684,7 +688,11 @@
           <Alert variant="danger">{error}</Alert>
         {/if}
 
-        <div class="weft-workflow-builder__body" inert={locked}>
+        <div
+          class="weft-workflow-builder__body"
+          inert={locked}
+          data-read-only={readOnly ? '' : undefined}
+        >
           <FormSection>
             <Input
               id="workflow-builder-title"
@@ -961,7 +969,7 @@
       {/if}
     </p>
     {#if actions !== undefined}
-      <div class="weft-workflow-builder__actions" inert={readOnly}>{@render actions()}</div>
+      <div class="weft-workflow-builder__actions" inert={readOnly}>{@render actions(readOnly)}</div>
     {/if}
   </footer>
 </div>
@@ -981,12 +989,18 @@
     padding-top: var(--cinder-space-3);
   }
 
+  /* One layout on New and on Edit (note N3): what to do, then the way back under it, each page's
+     link naming where it goes. */
   .weft-workflow-builder__phone {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--cinder-space-2);
-    align-items: center;
+    display: grid;
+    justify-items: start;
+    gap: var(--cinder-space-1);
     margin: var(--cinder-space-3) 0 0;
+  }
+
+  /* A read-only builder offers nothing to type: its fields show their values, never a prompt. */
+  .weft-workflow-builder__body[data-read-only] :global(::placeholder) {
+    color: transparent;
   }
 
   .weft-workflow-builder__notice {

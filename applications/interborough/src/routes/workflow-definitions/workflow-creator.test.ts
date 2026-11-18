@@ -953,6 +953,11 @@ describe('the builder', () => {
     expect(container.querySelector('.weft-workflow-builder__actions')?.hasAttribute('inert')).toBe(
       true,
     );
+    // Design correction 2, N3: the fields are visibly inert (no prompts), and so is the primary.
+    expect(
+      container.querySelector('.weft-workflow-builder__body')?.hasAttribute('data-read-only'),
+    ).toBe(true);
+    expect(button(container, WORKFLOW_COPY.creator.saveAction).disabled).toBe(true);
     // What cannot be used is not drawn: no add, move or remove, only the steps themselves.
     expect(container.querySelector('#workflow-builder-add')).toBeNull();
     // Nor the empty band its wrapper would leave.

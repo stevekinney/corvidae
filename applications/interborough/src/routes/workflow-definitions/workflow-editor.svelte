@@ -577,7 +577,7 @@
             failure = null;
           }}
         >
-          {#snippet actions()}
+          {#snippet actions(readOnly: boolean)}
             <Button
               variant="secondary"
               size="sm"
@@ -590,7 +590,7 @@
               onclick={() => void submit()}
               variant="primary"
               size="sm"
-              disabled={save.isPending || checking}
+              disabled={save.isPending || checking || readOnly}
               >{save.isPending || checking ? editor.savingAction : editor.saveAction}</Button
             >
           {/snippet}
