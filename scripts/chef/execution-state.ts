@@ -274,12 +274,25 @@ async function underResourceLock<T>(
   }
 }
 
-function sameAuthority(record: OwnershipRecord | undefined, authority: Authority): boolean {
+function sameAuthority(record: Authority | undefined, authority: Authority): boolean {
   return (
     record?.resource === authority.resource &&
     record.runId === authority.runId &&
     record.ownerId === authority.ownerId &&
     record.generation === authority.generation
+  );
+}
+
+export function ambiguousOperation(
+  store: ExecutionStateStore,
+  authority: Authority,
+  action: string,
+): RemoteOperation | undefined {
+  return Object.values(readExecutionSnapshot(store).operations).find(
+    (operation) =>
+      operation.action === action &&
+      (operation.outcome === 'unknown' || operation.outcome === 'unresolved') &&
+      sameAuthority(operation.authority, authority),
   );
 }
 
@@ -315,7 +328,7 @@ export function currentAuthority(
   };
 }
 
-export async function acquireDispatch(
+export async function acquireDispatchWithinTransition(
   store: ExecutionStateStore,
   request: Omit<Authority, 'generation'>,
   provider?: ProviderClaimReader,
@@ -356,7 +369,17 @@ export async function acquireDispatch(
   });
 }
 
-async function changeAuthority(
+export async function acquireDispatch(
+  store: ExecutionStateStore,
+  request: Omit<Authority, 'generation'>,
+  provider?: ProviderClaimReader,
+): Promise<{ granted: true; authority: Authority } | { granted: false; reason: string }> {
+  return withProviderTransitionLock(store, request.resource, () =>
+    acquireDispatchWithinTransition(store, request, provider),
+  );
+}
+
+async function changeAuthorityWithinTransition(
   store: ExecutionStateStore,
   authority: Authority,
   status: Exclude<OwnershipStatus, 'held'>,
@@ -378,14 +401,25 @@ export async function cancelDispatch(
   store: ExecutionStateStore,
   authority: Authority,
 ): Promise<boolean> {
-  return changeAuthority(store, authority, 'cancelled');
+  return withProviderTransitionLock(store, authority.resource, () =>
+    changeAuthorityWithinTransition(store, authority, 'cancelled'),
+  );
+}
+
+export async function releaseDispatchWithinTransition(
+  store: ExecutionStateStore,
+  authority: Authority,
+): Promise<boolean> {
+  return changeAuthorityWithinTransition(store, authority, 'released');
 }
 
 export async function releaseDispatch(
   store: ExecutionStateStore,
   authority: Authority,
 ): Promise<boolean> {
-  return changeAuthority(store, authority, 'released');
+  return withProviderTransitionLock(store, authority.resource, () =>
+    releaseDispatchWithinTransition(store, authority),
+  );
 }
 
 async function mutateOwnedSnapshot(
@@ -412,7 +446,7 @@ export async function recordMutationIntent(
       existing !== undefined &&
       (existing.action !== input.action ||
         existing.intentFingerprint !== input.intentFingerprint ||
-        !sameAuthority(existing.authority as OwnershipRecord, authority))
+        !sameAuthority(existing.authority, authority))
     )
       throw new ExecutionStateError(
         `Operation ${input.operationId} already names ${existing.action}.`,

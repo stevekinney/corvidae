@@ -1656,25 +1656,33 @@ async function withLocalAuthority(
       join(resolveMainCheckout(), 'tmp', 'chef', 'execution-state'),
     hostId: hostname(),
   });
-  const acquired = await stateModule.acquireDispatch(store, request, { inspectClaim });
-  if (!acquired.granted)
-    return {
-      ok: false,
-      summary: `Refused: ${request.resource} ${acquired.reason}.`,
-      data: { claimed: false, leased: false, holder: null },
+  return stateModule.withProviderTransitionLock(store, request.resource, async () => {
+    const acquired = await stateModule.acquireDispatchWithinTransition(store, request, {
+      inspectClaim,
+    });
+    if (!acquired.granted)
+      return {
+        ok: false,
+        summary: `Refused: ${request.resource} ${acquired.reason}.`,
+        data: { claimed: false, leased: false, holder: null },
+      };
+    const operationFingerprint = fingerprint();
+    const operationId = `${request.resource}:${acquired.authority.generation}:${action}:${operationFingerprint.slice(0, 16)}`;
+    const identity: ProviderOperationIdentity = {
+      ownerId: acquired.authority.ownerId,
+      generation: acquired.authority.generation,
+      operationId,
+      intentFingerprint: '',
     };
-  const operationFingerprint = fingerprint();
-  const operationId = `${request.resource}:${acquired.authority.generation}:${action}:${operationFingerprint.slice(0, 16)}`;
-  const identity: ProviderOperationIdentity = {
-    ownerId: acquired.authority.ownerId,
-    generation: acquired.authority.generation,
-    operationId,
-    intentFingerprint: '',
-  };
-  identity.intentFingerprint = operationFingerprint;
-  const existing = stateModule.readExecutionSnapshot(store).operations[operationId];
-  if (existing?.outcome === 'unknown' || existing?.outcome === 'unresolved') {
-    return stateModule.withProviderTransitionLock(store, request.resource, async () => {
+    identity.intentFingerprint = operationFingerprint;
+    const existing = stateModule.ambiguousOperation(store, acquired.authority, action);
+    if (existing !== undefined && existing.intentFingerprint !== identity.intentFingerprint)
+      return {
+        ok: false,
+        summary: `Refused: ${request.resource} retains unresolved operation ${existing.operationId}; its intent differs from ${operationId}.`,
+        data: { operationId: existing.operationId, unresolved: true },
+      };
+    if (existing !== undefined) {
       stateModule.requireAuthority(store, acquired.authority);
       // A response loss is not permission to replay an external mutation. Only the exact immutable
       // marker can close this operation; all other provider states remain unresolved.
@@ -1690,15 +1698,13 @@ async function withLocalAuthority(
           data: { operationId, unresolved: true },
         }
       );
+    }
+    await stateModule.recordMutationIntent(store, acquired.authority, {
+      operationId,
+      action,
+      intentFingerprint: identity.intentFingerprint,
     });
-  }
-  await stateModule.recordMutationIntent(store, acquired.authority, {
-    operationId,
-    action,
-    intentFingerprint: identity.intentFingerprint,
-  });
-  try {
-    return await stateModule.withProviderTransitionLock(store, request.resource, async () => {
+    try {
       stateModule.requireAuthority(store, acquired.authority);
       const outcome = await perform(identity);
       await stateModule.recordMutationResult(store, acquired.authority, operationId, {
@@ -1712,13 +1718,13 @@ async function withLocalAuthority(
           : outcome.summary,
         data: { ...outcome.data, authority: acquired.authority },
       };
-    });
-  } catch (error) {
-    await stateModule.recordMutationResult(store, acquired.authority, operationId, {
-      outcome: 'unknown',
-    });
-    throw error;
-  }
+    } catch (error) {
+      await stateModule.recordMutationResult(store, acquired.authority, operationId, {
+        outcome: 'unknown',
+      });
+      throw error;
+    }
+  });
 }
 
 async function withReleaseAuthority(
@@ -1734,25 +1740,25 @@ async function withReleaseAuthority(
       join(resolveMainCheckout(), 'tmp', 'chef', 'execution-state'),
     hostId: hostname(),
   });
-  try {
-    stateModule.requireAuthority(store, request);
-  } catch (error) {
-    return {
-      ok: false,
-      summary: `Refused: ${request.resource} release lacks current authority (${describeError(error)}).`,
-      data: { released: false },
+  return stateModule.withProviderTransitionLock(store, request.resource, async () => {
+    try {
+      stateModule.requireAuthority(store, request);
+    } catch (error) {
+      return {
+        ok: false,
+        summary: `Refused: ${request.resource} release lacks current authority (${describeError(error)}).`,
+        data: { released: false },
+      };
+    }
+    const operationId = `${request.resource}:${request.generation}:release`;
+    const identity: ProviderOperationIdentity = {
+      ownerId: request.ownerId,
+      generation: request.generation,
+      operationId,
+      intentFingerprint: intentFingerprint({ resource: request.resource, action: 'release' }),
     };
-  }
-  const operationId = `${request.resource}:${request.generation}:release`;
-  const identity: ProviderOperationIdentity = {
-    ownerId: request.ownerId,
-    generation: request.generation,
-    operationId,
-    intentFingerprint: intentFingerprint({ resource: request.resource, action: 'release' }),
-  };
-  const existing = stateModule.readExecutionSnapshot(store).operations[operationId];
-  if (existing?.outcome === 'unknown' || existing?.outcome === 'unresolved') {
-    return stateModule.withProviderTransitionLock(store, request.resource, async () => {
+    const existing = stateModule.ambiguousOperation(store, request, 'release');
+    if (existing !== undefined) {
       stateModule.requireAuthority(store, request);
       const observed = await inspect(identity);
       await stateModule.recordMutationResult(store, request, operationId, {
@@ -1766,28 +1772,26 @@ async function withReleaseAuthority(
           data: { operationId, unresolved: true },
         }
       );
+    }
+    await stateModule.recordMutationIntent(store, request, {
+      operationId,
+      action: 'release',
+      intentFingerprint: identity.intentFingerprint,
     });
-  }
-  await stateModule.recordMutationIntent(store, request, {
-    operationId,
-    action: 'release',
-    intentFingerprint: identity.intentFingerprint,
-  });
-  try {
-    return await stateModule.withProviderTransitionLock(store, request.resource, async () => {
+    try {
       stateModule.requireAuthority(store, request);
       const outcome = await perform(identity);
       await stateModule.recordMutationResult(store, request, operationId, {
         outcome: outcome.ok ? 'observed' : 'unknown',
         observed: outcome.data,
       });
-      if (outcome.ok) await stateModule.releaseDispatch(store, request);
+      if (outcome.ok) await stateModule.releaseDispatchWithinTransition(store, request);
       return outcome;
-    });
-  } catch (error) {
-    await stateModule.recordMutationResult(store, request, operationId, { outcome: 'unknown' });
-    throw error;
-  }
+    } catch (error) {
+      await stateModule.recordMutationResult(store, request, operationId, { outcome: 'unknown' });
+      throw error;
+    }
+  });
 }
 
 export async function run(

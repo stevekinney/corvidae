@@ -1718,6 +1718,7 @@ describe('claim', () => {
       operations: Record<string, unknown>;
     };
     const operationId = Object.keys(snapshot.operations)[0]!;
+    // spawn-free: this records a response loss in the disposable state boundary.
     await recordMutationResult(store, authority, operationId, { outcome: 'unknown' });
     const result = await run(['claim', 'COR-1', '--run', 'run-a', '--branch', 'branch-a'], {
       ...withClock(fake),
@@ -1726,6 +1727,44 @@ describe('claim', () => {
     });
     expect(result.code).toBe(0);
     expect(result.output).toContain('reconciled');
+    expect(claimLines(fake)).toHaveLength(1);
+  });
+
+  // spawn-free: the provider and state boundary are both injected in-process collaborators.
+  test('a changed claim intent cannot replay while the original response is unresolved', async () => {
+    const fake = fakeLinear();
+    const executionStateDirectory = join(sandbox, 'claim-intent-conflict');
+    const input = { ...withClock(fake), executionStateDirectory, ownerId: 'owner-a' };
+    await run(['claim', 'COR-1', '--run', 'run-a', '--branch', 'branch-a'], input);
+    const store = createExecutionStateStore({
+      stateDirectory: executionStateDirectory,
+      hostId: hostname(),
+    });
+    const authority = currentAuthority(store, {
+      resource: 'issue:COR-1',
+      runId: 'run-a',
+      ownerId: 'owner-a',
+    });
+    const snapshot = JSON.parse(
+      readFileSync(join(executionStateDirectory, 'execution-state.json'), 'utf8'),
+    ) as {
+      operations: Record<string, unknown>;
+    };
+    const operationId = Object.keys(snapshot.operations)[0]!;
+    // spawn-free: this records a response loss in the disposable state boundary.
+    await recordMutationResult(store, authority, operationId, { outcome: 'unknown' });
+
+    const changed = await run(
+      ['claim', 'COR-1', '--run', 'run-a', '--branch', 'branch-a', '--head', 'def5678'],
+      input,
+    );
+    expect(changed.code).toBe(1);
+    expect(changed.output).toContain('retains unresolved operation');
+    expect(claimLines(fake)).toHaveLength(1);
+
+    const exact = await run(['claim', 'COR-1', '--run', 'run-a', '--branch', 'branch-a'], input);
+    expect(exact.code).toBe(0);
+    expect(exact.output).toContain('reconciled');
     expect(claimLines(fake)).toHaveLength(1);
   });
 
