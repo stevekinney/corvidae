@@ -16,6 +16,7 @@ export interface EvidenceRecord {
   status: EvidenceStatus;
   revision: string;
   integrationTree: string;
+  checkedTree?: string | undefined;
   environment: string;
   command: string;
   relevantInputs: string[];
@@ -67,6 +68,12 @@ export interface VerificationRequest {
   authority: { runId: string; ownerId: string; resource: string; generation: number };
   operationId: string;
   providerRuns: { id: number; obligation: string; job: string; artifact?: string }[];
+  localRuns?: {
+    obligation: string;
+    argv: string[];
+    reportPaths: string[];
+    artifactPaths?: string[];
+  }[];
 }
 
 export interface LocalEvidenceProcess {
@@ -75,10 +82,6 @@ export interface LocalEvidenceProcess {
     cwd: string,
   ): {
     exitCode: number;
-    inventory: string[];
-    assertionPassed: boolean | null;
-    reportPaths?: string[];
-    artifactPaths?: string[];
   };
 }
 
@@ -274,28 +277,38 @@ export function collectLocalEvidence(
   const obligations = request.plan.obligations.filter(
     (item) => item.executionBoundary !== 'provider',
   );
-  const commands = obligations.map((item) => ({
-    item,
-    argv: commandArgv(item.commandOrProviderJob),
-  }));
+  const localRuns = new Map((request.localRuns ?? []).map((run) => [run.obligation, run]));
+  const commands = obligations.map((item) => {
+    const run = localRuns.get(obligationKey(item));
+    if (
+      run === undefined ||
+      !Array.isArray(run.argv) ||
+      !run.argv.length ||
+      !Array.isArray(run.reportPaths)
+    )
+      throw new EvidenceRequestError('verification request lacks a local run mapping');
+    if (run.argv.some((part) => typeof part !== 'string' || part === '' || part.includes('\0')))
+      throw new EvidenceRequestError('verification request has invalid local argv');
+    return { item, run };
+  });
   const inputPaths = [...new Set(obligations.flatMap((item) => item.relevantInputs))];
   for (const path of inputPaths) validateLocalPath(safeCwd, path);
   const before = localProvenance(safeCwd, request.base, inputPaths);
   return collected(
     'coordinator',
-    commands.map(({ item, argv }) => {
-      const result = process.run(argv, safeCwd);
-      let inventory = result.inventory;
-      let assertionPassed = result.assertionPassed;
-      const reports = (result.reportPaths ?? []).map((reportPath) => {
+    commands.map(({ item, run }) => {
+      const result = process.run(run.argv, safeCwd);
+      let inventory: string[] = [];
+      let assertionPassed: boolean | null = null;
+      const reports = run.reportPaths.map((reportPath) => {
         const path = validateLocalPath(safeCwd, reportPath);
         const bytes = new Uint8Array(readFileSync(path));
         const parsed = parseJUnit(bytes);
         inventory = [...inventory, ...parsed.inventory];
-        if (!parsed.assertionPassed) assertionPassed = false;
+        assertionPassed = assertionPassed === false || !parsed.assertionPassed ? false : true;
         return { path, digest: sha256(bytes) };
       });
-      const artifacts = (result.artifactPaths ?? []).map((artifactPath) => {
+      const artifacts = (run.artifactPaths ?? []).map((artifactPath) => {
         const path = validateLocalPath(safeCwd, artifactPath);
         return { path, digest: sha256(readFileSync(path)) };
       });
@@ -306,12 +319,20 @@ export function collectLocalEvidence(
       return {
         obligation: obligationKey(item),
         status:
-          !identityMatches || !stableInputs || assertionPassed === null || inventory.length === 0
+          !identityMatches ||
+          before.revision === '' ||
+          before.checkedTree === '' ||
+          before.integrationTree === '' ||
+          before.checkedTree !== before.integrationTree ||
+          !stableInputs ||
+          assertionPassed === null ||
+          inventory.length === 0
             ? 'pending'
             : result.exitCode === 0 && assertionPassed
               ? 'pass'
               : 'fail',
         revision: after.revision,
+        checkedTree: after.checkedTree,
         integrationTree: after.integrationTree,
         environment: after.runtime,
         command: item.commandOrProviderJob,
@@ -338,7 +359,7 @@ export function collectLocalEvidenceFromRequest(
   executor: LocalEvidenceProcess = {
     run(argv, cwd) {
       const result = Bun.spawnSync(argv, { cwd, stdout: 'pipe', stderr: 'pipe' });
-      return { exitCode: result.exitCode, inventory: [], assertionPassed: null };
+      return { exitCode: result.exitCode };
     },
   },
   cwd = process.cwd(),
@@ -348,6 +369,7 @@ export function collectLocalEvidenceFromRequest(
 
 interface LocalProvenance {
   revision: string;
+  checkedTree: string;
   integrationTree: string;
   runtime: string;
   inputs: Record<string, string>;
@@ -376,7 +398,11 @@ function validateLocalPath(cwd: string, candidate: string): string {
 
 function localProvenance(cwd: string, requestedBase: string, inputs: string[]): LocalProvenance {
   const revision = output(['git', 'rev-parse', 'HEAD'], cwd);
-  const base = output(['git', 'merge-base', 'HEAD', requestedBase], cwd);
+  const checkedTree = output(['git', 'rev-parse', 'HEAD^{tree}'], cwd);
+  const integrationTree = output(
+    ['git', 'merge-tree', '--write-tree', requestedBase, revision],
+    cwd,
+  );
   const runtime = output(['bun', '--version'], cwd);
   const entries = Object.fromEntries(
     inputs.map((path) => [path, sha256(readFileSync(validateLocalPath(cwd, path)))]),
@@ -388,7 +414,8 @@ function localProvenance(cwd: string, requestedBase: string, inputs: string[]): 
   );
   return {
     revision,
-    integrationTree: sha256(`${base}\0${revision}`),
+    checkedTree,
+    integrationTree,
     runtime,
     inputs: entries,
     inputIdentity,
@@ -432,11 +459,13 @@ export function reuseLocalEvidence(
       reportsIntact &&
       artifactIsIntact(prior) &&
       current.revision === request.revision &&
-      current.integrationTree === request.integrationTree;
+      current.integrationTree === request.integrationTree &&
+      current.checkedTree === current.integrationTree;
     records.push({
       ...prior,
       status: reusable ? 'reused-pass' : 'pending',
       revision: current.revision,
+      checkedTree: current.checkedTree,
       integrationTree: current.integrationTree,
       environment: current.runtime,
       relevantInputs: inputs.map((path) => `${path}:${current.inputs[path] ?? ''}`),

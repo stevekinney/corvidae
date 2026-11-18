@@ -29,13 +29,16 @@ const values = await (async () => {
   await git('add', '.');
   await git('commit', '-m', 'fixture');
   const base = await git('rev-parse', 'HEAD');
+  writeFileSync(join(fixture, 'source'), 'head\n');
+  await git('add', 'source');
+  await git('commit', '-m', 'head');
   const request = async (): Promise<VerificationRequest> => {
     const revision = await git('rev-parse', 'HEAD');
     return {
       repository: 'acme/widgets',
       revision,
       base,
-      integrationTree: createHash('sha256').update(`${base}\0${revision}`).digest('hex'),
+      integrationTree: await git('merge-tree', '--write-tree', base, revision),
       environment: 'requested-only',
       plan: {
         version: 1,
@@ -68,11 +71,18 @@ const values = await (async () => {
       authority: { runId: 'run', ownerId: 'owner', resource: 'COR-1', generation: 1 },
       operationId: 'operation',
       providerRuns: [],
+      localRuns: [
+        {
+          obligation: 'AC1:collector-test',
+          argv: ['true'],
+          reportPaths: ['report.xml'],
+        },
+      ],
     };
   };
-  const passing: LocalEvidenceProcess = {
-    run: () => ({ exitCode: 0, inventory: ['input.test.ts'], assertionPassed: true }),
-  };
+  const report = join(fixture, 'report.xml');
+  writeFileSync(report, '<testsuite><testcase name="input.test.ts" /></testsuite>');
+  const passing: LocalEvidenceProcess = { run: () => ({ exitCode: 0 }) };
   const cleanRequest = await request();
   const clean = collectLocalEvidence(cleanRequest, passing, fixture);
   writeFileSync(join(fixture, 'input'), 'dirty\n');
@@ -89,22 +99,15 @@ const values = await (async () => {
     fixture,
   );
   await git('checkout', '--', 'input');
-  const missing = collectLocalEvidence(
-    await request(),
-    { run: () => ({ exitCode: 0, inventory: [], assertionPassed: null }) },
-    fixture,
-  );
-  const report = join(fixture, 'report.xml');
-  writeFileSync(report, '<testsuite><testcase name="input.test.ts" /></testsuite>');
+  const missingRequest = await request();
+  missingRequest.localRuns![0] = { ...missingRequest.localRuns![0]!, reportPaths: [] };
+  const missing = collectLocalEvidence(missingRequest, { run: () => ({ exitCode: 0 }) }, fixture);
   const reportedRequest = await request();
   const reported = collectLocalEvidence(
     reportedRequest,
     {
       run: () => ({
         exitCode: 0,
-        inventory: [],
-        assertionPassed: true,
-        reportPaths: ['report.xml'],
       }),
     },
     fixture,
@@ -118,9 +121,6 @@ const values = await (async () => {
     {
       run: () => ({
         exitCode: 0,
-        inventory: [],
-        assertionPassed: true,
-        reportPaths: ['report.xml'],
       }),
     },
     fixture,
@@ -136,6 +136,13 @@ const values = await (async () => {
         },
       ],
     },
+    localRuns: [
+      {
+        obligation: 'AC1:touch actual-command-ran',
+        argv: ['touch', 'actual-command-ran'],
+        reportPaths: ['report.xml'],
+      },
+    ],
   };
   const requestPath = join(fixture, 'default-request.json');
   const requestText = JSON.stringify(defaultRequest);
@@ -146,6 +153,7 @@ const values = await (async () => {
     undefined,
     fixture,
   );
+  writeFileSync(report, '<testsuite><testcase name="input.test.ts" /></testsuite>');
   const initial = collectLocalEvidence(await request(), passing, fixture);
   writeFileSync(join(fixture, 'unrelated'), 'changed\n');
   await git('add', 'unrelated');
@@ -174,6 +182,8 @@ const values = await (async () => {
 })();
 
 test('collects an actual clean checkout receipt', () =>
+  expect(values.clean.records[0]?.status).toBe('pass'));
+test('validates an actual clean checkout receipt', () =>
   expect(
     validateEvidence(values.cleanRequest.plan, values.clean, {
       revision: values.cleanRequest.revision,
@@ -192,7 +202,7 @@ test('requires structured results and retains report identity', () => {
 });
 test('default local composition executes explicit argv without a shell', () => {
   expect(values.defaultCommandRan).toBe(true);
-  expect(values.defaultReceipt.records[0]?.status).toBe('pending');
+  expect(values.defaultReceipt.records[0]?.status).toBe('fail');
 });
 test('reuses only unchanged relevant content', () => {
   expect(values.reused.records[0]?.status).toBe('reused-pass');
