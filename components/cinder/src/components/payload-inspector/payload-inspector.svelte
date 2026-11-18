@@ -296,6 +296,21 @@
   }
 </script>
 
+{#snippet viewSwitch()}
+  <SegmentedControl
+    id={switchId}
+    label={`${label ?? 'Payload'} view`}
+    labelVisible={false}
+    size="sm"
+    value={mode === 'invalid' ? 'fields' : view}
+    disabled={mode === 'invalid'}
+    onValueChange={handleViewChange}
+  >
+    <Segment value="fields">Fields</Segment>
+    <Segment value="json">JSON</Segment>
+  </SegmentedControl>
+{/snippet}
+
 <div
   {...rest}
   role="group"
@@ -313,8 +328,10 @@
            the copy button (27c). -->
       {#if label !== undefined}
         <div class="cinder-payload-inspector__title">
+          <!-- The name after the label is set a space apart in the code face and a lighter weight,
+               never after a comma (no comma between pieces inside a Cinder component). -->
           <span class="cinder-payload-inspector__label"
-            >{label}{#if labelCode !== undefined && labelCode !== ''}, <code
+            >{label}{#if labelCode !== undefined && labelCode !== ''}{' '}<code
                 class="cinder-payload-inspector__label-code">{labelCode}</code
               >{/if}</span
           >
@@ -323,22 +340,17 @@
           {/if}
         </div>
       {/if}
-      {#if showSwitch}
-        <SegmentedControl
-          id={switchId}
-          label={`${label ?? 'Payload'} view`}
-          labelVisible={false}
-          size="sm"
-          value={mode === 'invalid' ? 'fields' : view}
-          disabled={mode === 'invalid'}
-          onValueChange={handleViewChange}
-        >
-          <Segment value="fields">Fields</Segment>
-          <Segment value="json">JSON</Segment>
-        </SegmentedControl>
+      <!-- A labelled card keeps the switch with Copy at the inline end, one group on the title's
+           row, so a narrow card never drops Copy to a line of its own; an unlabelled or bare card
+           leads with the switch (27c). -->
+      {#if showSwitch && (bare || label === undefined)}
+        {@render viewSwitch()}
       {/if}
       {#if !bare}
         <div class="cinder-payload-inspector__header-actions">
+          {#if showSwitch && label !== undefined}
+            {@render viewSwitch()}
+          {/if}
           {#if label === undefined && countText !== undefined}
             <span class="cinder-payload-inspector__size">{countText}</span>
           {/if}

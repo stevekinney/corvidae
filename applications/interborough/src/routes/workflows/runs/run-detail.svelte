@@ -101,7 +101,12 @@
   import RunPanels from './run-panels.svelte';
   import RunPayloadCards from './run-payload-cards.svelte';
   import { buildRunRows } from './run-rows.ts';
-  import { howItRanOpensFirst, runStatusLine, startedAgoPhrases } from './run-status-line.ts';
+  import {
+    howItRanOpensFirst,
+    phrasesWithStep,
+    runStatusLine,
+    startedAgoPhrases,
+  } from './run-status-line.ts';
   import RunMessageBlocked from './run-message-blocked.svelte';
   import RunWaiting from './run-waiting.svelte';
   import { TaskFollower } from './task-follower.svelte.ts';
@@ -416,9 +421,11 @@
   const startedAgoLine = $derived(startedAgo !== undefined);
   const statusPhrases = $derived(
     startedAgo ??
-      (stepPhrase === undefined || instanceFailed || summary?.over === true
-        ? statusLine?.phrases
-        : [...(statusLine?.phrases ?? []), stepPhrase]),
+      phrasesWithStep(statusLine?.phrases, stepPhrase, {
+        failed: instanceFailed,
+        over: summary?.over === true,
+        waitingForSignal: (statusLine?.signals.length ?? 0) > 0,
+      }),
   );
   const instanceEntryList = $derived(
     progress === undefined || progress.at === null || summary === undefined
@@ -438,6 +445,9 @@
   // open, so the header has no link to it.
   const chatLink = $derived.by(() => {
     if (goalTask || attempt !== undefined || task.data === undefined) return undefined;
+    // A schedule's run offers Open schedule, Run again and the menu (row 55j): the session its
+    // fire ran in is the schedule's, not a chat a person opens from here.
+    if (runRow?.origin.kind === 'schedule') return undefined;
     return chat.isSuccess
       ? {
           href: chatSessionPath(task.data.contextId),

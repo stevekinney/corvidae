@@ -60,6 +60,20 @@ export function howItRanOpensFirst(over: boolean): boolean {
 }
 
 /**
+ * The status line's parts after the time, with the step a run is at when it says one: a run going
+ * on adds "step 2 of 4"; a failed run says its step after the word instead, a run that is over says
+ * none, and a run waiting for a signal says what it waits for and nothing of its step (56g).
+ */
+export function phrasesWithStep(
+  phrases: readonly string[] | undefined,
+  stepPhrase: string | undefined,
+  run: { readonly failed: boolean; readonly over: boolean; readonly waitingForSignal: boolean },
+): readonly string[] | undefined {
+  if (stepPhrase === undefined || run.failed || run.over || run.waitingForSignal) return phrases;
+  return [...(phrases ?? []), stepPhrase];
+}
+
+/**
  * The status line of an instance of a workflow file that is still going (row 54l): "Started 40 s
  * ago, step 2 of 4" in place of the day, the time and "so far". `undefined` for any other run,
  * which keeps its day, its time and its parts (a chat's run, row 06b).
