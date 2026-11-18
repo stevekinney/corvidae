@@ -129,7 +129,12 @@ describe('Claude Code transcripts', () => {
   });
 
   test('reports a full-context rewrite and the gap before it', () => {
-    const usage = readTranscript(write(join(sandbox, 'parent.jsonl'), claudeTranscript()))!;
+    const usage = readTranscript(
+      write(
+        join(sandbox, 'parent.jsonl'),
+        claudeTranscript().filter((entry) => typeof entry !== 'string'),
+      ),
+    )!;
     const result = report(usage, undefined);
     expect(result.provider).toBe('claude-code');
     expect(result.calls).toBe(3);
@@ -139,7 +144,7 @@ describe('Claude Code transcripts', () => {
     expect(result.maxContext).toBe(90_005);
     expect(result.lastContext).toBe(90_005);
     expect(result.toolCalls).toBe(1);
-    expect(result.cost).toBeUndefined();
+    expect(result.cost).toBe('unknown');
   });
 
   test('does not count a call that read more from cache than it wrote as a rewrite', () => {
@@ -207,8 +212,13 @@ describe('Codex session logs', () => {
 
 describe('prices', () => {
   test('costs every call from the supplied table', () => {
-    const usage = readTranscript(write(join(sandbox, 'parent.jsonl'), claudeTranscript()))!;
-    const price = { input: 4, output: 20, cacheRead: 0.4, cacheWrite: 5 };
+    const usage = readTranscript(
+      write(
+        join(sandbox, 'parent.jsonl'),
+        claudeTranscript().filter((entry) => typeof entry !== 'string'),
+      ),
+    )!;
+    const price = { asOf: '2026-11-17', input: 4, output: 20, cacheRead: 0.4, cacheWrite: 5 };
     const result = report(usage, { 'claude-opus-5-5': price });
     const expected =
       ((10 + 5 + 5) * 4 + (1_000 + 200 + 90_000) * 5 + 1_000 * 0.4 + (50 + 20 + 10) * 20) /
@@ -220,15 +230,18 @@ describe('prices', () => {
     const usage = readTranscript(write(join(sandbox, 'parent.jsonl'), claudeTranscript()))!;
     expect(
       report(usage, {
-        'another-model': { input: 1, output: 1, cacheRead: 1, cacheWrite: 1 },
+        'another-model': { asOf: '2026-11-17', input: 1, output: 1, cacheRead: 1, cacheWrite: 1 },
       }).cost,
-    ).toBeUndefined();
+    ).toBe('unknown');
   });
 });
 
 describe('totalUsage', () => {
   test('sums input (uncached plus cache writes), cached input and output over a directory', () => {
-    write(join(sandbox, 'coordinator.jsonl'), claudeTranscript());
+    write(
+      join(sandbox, 'coordinator.jsonl'),
+      claudeTranscript().filter((entry) => typeof entry !== 'string'),
+    );
     mkdirSync(join(sandbox, 'codex'));
     write(join(sandbox, 'codex', 'rollout-1.jsonl'), codexTranscript());
     write(join(sandbox, 'notes.jsonl'), ['{"not":"a transcript"}']);
@@ -253,6 +266,122 @@ describe('totalUsage', () => {
     expect(totalUsage([])).toEqual({ input: 0, cachedInput: 0, output: 0 });
     expect(() => totalUsage([join(sandbox, 'missing')])).toThrow(UsageError);
   });
+
+  test('deduplicates a transcript named directly and through its parent directory', () => {
+    const path = write(join(sandbox, 'coordinator.jsonl'), claudeTranscript());
+    expect(totalUsage([sandbox, path])).toEqual(totalUsage([sandbox]));
+  });
+
+  test('records malformed and missing usage as incomplete rather than zero usage', () => {
+    const path = write(join(sandbox, 'broken.jsonl'), [
+      { type: 'session_meta', payload: {} },
+      { type: 'event_msg', payload: { type: 'token_count', info: {} } },
+      'not json',
+    ]);
+    expect(readTranscript(path)!.problems).toEqual([
+      expect.objectContaining({ kind: 'missing-usage' }),
+      expect.objectContaining({ kind: 'malformed-line' }),
+    ]);
+  });
+
+  test('rejects malformed required token components instead of accounting them as zero', () => {
+    const path = write(join(sandbox, 'bad-component.jsonl'), [
+      { type: 'session_meta', payload: {} },
+      { type: 'turn_context', payload: { model: 'gpt-test' } },
+      {
+        type: 'event_msg',
+        payload: {
+          type: 'token_count',
+          info: {
+            total_token_usage: { total_tokens: 1 },
+            last_token_usage: { input_tokens: 'bad', output_tokens: 1 },
+          },
+        },
+      },
+    ]);
+    const transcript = readTranscript(path)!;
+    expect(transcript.calls).toEqual([]);
+    expect(transcript.problems).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: 'malformed-usage',
+          message: expect.stringContaining('input_tokens'),
+        }),
+      ]),
+    );
+  });
+
+  test('marks omitted required Codex and Claude fields incomplete while cache fields remain optional', () => {
+    const codexPath = write(join(sandbox, 'missing-input.jsonl'), [
+      { type: 'session_meta', payload: {} },
+      { type: 'turn_context', payload: { model: 'gpt-test' } },
+      {
+        type: 'event_msg',
+        payload: {
+          type: 'token_count',
+          info: {
+            total_token_usage: { total_tokens: 1 },
+            last_token_usage: { input_tokens: 1, output_tokens: 1 },
+          },
+        },
+      },
+      {
+        type: 'event_msg',
+        payload: {
+          type: 'token_count',
+          info: { total_token_usage: { total_tokens: 2 }, last_token_usage: { output_tokens: 1 } },
+        },
+      },
+    ]);
+    const claudePath = write(join(sandbox, 'missing-output.jsonl'), [
+      {
+        type: 'assistant',
+        message: { id: 'bad', model: 'claude-test', usage: { input_tokens: 1 } },
+      },
+    ]);
+    expect(readTranscript(codexPath)!.problems).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: 'missing-usage',
+          message: expect.stringContaining('input_tokens'),
+        }),
+      ]),
+    );
+    expect(readTranscript(claudePath)!.problems).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: 'missing-usage',
+          message: expect.stringContaining('output_tokens'),
+        }),
+      ]),
+    );
+  });
+
+  test('rejects a supplied malformed cache component while allowing an absent optional cache component', () => {
+    const path = write(join(sandbox, 'bad-cache.jsonl'), [
+      { type: 'session_meta', payload: {} },
+      { type: 'turn_context', payload: { model: 'gpt-test' } },
+      {
+        type: 'event_msg',
+        payload: {
+          type: 'token_count',
+          info: {
+            total_token_usage: { total_tokens: 1 },
+            last_token_usage: { input_tokens: 1, output_tokens: 1, cached_input_tokens: 'bad' },
+          },
+        },
+      },
+    ]);
+    expect(readTranscript(path)!.calls).toEqual([]);
+    expect(readTranscript(path)!.problems).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: 'malformed-usage',
+          message: expect.stringContaining('cached_input_tokens'),
+        }),
+      ]),
+    );
+  });
 });
 
 describe('the command line', () => {
@@ -269,12 +398,16 @@ describe('the command line', () => {
   });
 
   test('emits parseable JSON and a priced total', () => {
-    write(join(sandbox, 'coordinator.jsonl'), claudeTranscript());
+    write(
+      join(sandbox, 'coordinator.jsonl'),
+      claudeTranscript().filter((entry) => typeof entry !== 'string'),
+    );
     const pricesPath = join(sandbox, 'prices.json');
     writeFileSync(
       pricesPath,
       JSON.stringify({
         'claude-opus-5-5': {
+          asOf: '2026-11-17',
           input: 4,
           output: 20,
           cacheRead: 0.4,
