@@ -452,7 +452,7 @@ describe('Chat — scrollFadeVisible', () => {
     // Each edge's band is 0 until the overflow attributes say content lies past it.
     expect(source).toContain('--_chat-timeline-fade-start: 0px; --_chat-timeline-fade-end: 0px;');
     expect(source).toContain(
-      '.chat-timeline-mask-fade[data-cinder-overflows-start] { --_chat-timeline-fade-start: var(--_chat-timeline-fade-size); }',
+      '.chat-timeline-mask-fade[data-cinder-overflows-start] { --_chat-timeline-fade-start: var(--_chat-timeline-fade-start-size); }',
     );
     expect(source).toContain(
       '.chat-timeline-mask-fade[data-cinder-overflows] { --_chat-timeline-fade-end: var(--_chat-timeline-fade-size); }',

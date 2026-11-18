@@ -3404,20 +3404,31 @@
    * dims its last message (COR-2327). */
   .chat-timeline-mask-fade {
     --_chat-timeline-fade-size: var(--cinder-space-6);
+    /* The start edge is the transcript's top edge as the person sees it: with a header laid over the
+     * transcript (`--cinder-chat-overlay-inset-start`) that is the header's bottom edge, where a
+     * scrolled message would otherwise meet the header in a flat line, and the fade begins there.
+     * It is as long as the timeline's own top padding, so the first row at rest, which stands that
+     * far under the header, is never dimmed (the end edge keeps the full size). */
+    --_chat-timeline-fade-start-size: var(--cinder-chat-timeline-padding);
+    --_chat-timeline-fade-top: var(--_cinder-chat-overlay-inset-start, 0px);
     --_chat-timeline-fade-start: 0px;
     --_chat-timeline-fade-end: 0px;
 
+    /* Under the header the content stays (it shows through the header's ground); at the header's
+     * bottom edge the mask drops to nothing and rises over the start size. With no header the top is
+     * 0 and this is the plain transparent-to-black fade. */
     mask-image: linear-gradient(
       to bottom,
-      transparent,
-      black var(--_chat-timeline-fade-start),
+      black var(--_chat-timeline-fade-top),
+      transparent var(--_chat-timeline-fade-top),
+      black calc(var(--_chat-timeline-fade-top) + var(--_chat-timeline-fade-start)),
       black calc(100% - var(--_chat-timeline-fade-end)),
       transparent
     );
   }
 
   .chat-timeline-mask-fade[data-cinder-overflows-start] {
-    --_chat-timeline-fade-start: var(--_chat-timeline-fade-size);
+    --_chat-timeline-fade-start: var(--_chat-timeline-fade-start-size);
   }
 
   .chat-timeline-mask-fade[data-cinder-overflows] {
@@ -3843,6 +3854,11 @@
      Uses --cinder-chat-narrow-* tokens so each density gets an appropriate
      reduced value (comfortable → space-3/space-2; compact → space-1-5/space-1). */
   @container (max-width: 480px) {
+    /* The start fade is as long as the timeline's top padding here too. */
+    .chat-timeline-mask-fade {
+      --_chat-timeline-fade-start-size: var(--cinder-chat-narrow-padding);
+    }
+
     .chat-timeline {
       padding: var(--cinder-chat-narrow-padding);
       padding-block-start: calc(
