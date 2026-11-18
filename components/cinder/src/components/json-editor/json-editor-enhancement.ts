@@ -464,9 +464,11 @@ export function createJsonEditor(options: JsonEditorOptions): JsonEditorHandle {
   // lines): the page's fonts finish loading, the editor becomes visible (a tab or a panel that was
   // hidden, or a page scrolled to it), and a line is scrolled into view.
   let destroyed = false;
-  void globalThis.document.fonts?.ready.then(() => {
+  const measureOnceFontsLoad = async (): Promise<void> => {
+    await globalThis.document.fonts?.ready;
     if (!destroyed) measureAgain();
-  });
+  };
+  void measureOnceFontsLoad();
   const visibility =
     typeof IntersectionObserver === 'function'
       ? new IntersectionObserver((entries) => {

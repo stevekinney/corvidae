@@ -113,6 +113,8 @@
   }: Props = $props();
 
   const copy = WORKFLOW_COPY.runSetup;
+  // hidden-label-allowed: the When section heading directly above the choice is its visible label (note N4)
+  const whenLegendHidden = { labelVisible: false } as const;
   const client = getClient();
   const queryClient = useQueryClient();
   const principal = getPrincipalStore();
@@ -498,7 +500,7 @@
       <RadioGroup
         name="run-setup-when"
         label={copy.whenLabel}
-        labelVisible={false}
+        {...whenLegendHidden}
         variant="card"
         bind:value={whenChoice}
       >
