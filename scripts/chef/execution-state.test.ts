@@ -139,6 +139,7 @@ describe('execution state', () => {
     await recordMutationIntent(state, granted.authority, {
       operationId: 'op-1',
       action: 'linear-comment',
+      intentFingerprint: 'test-intent',
     });
     await recordMutationResult(state, granted.authority, 'op-1', { outcome: 'unknown' });
     const result = await reconcileOperation(state, granted.authority, 'op-1', {

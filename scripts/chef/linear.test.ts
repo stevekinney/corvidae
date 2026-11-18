@@ -11,7 +11,6 @@ import {
   cancelDispatch,
   createExecutionStateStore,
   currentAuthority,
-  recordMutationIntent,
   recordMutationResult,
 } from './execution-state.ts';
 import {
@@ -566,7 +565,11 @@ function file(name: string, content: string): string {
 }
 
 function dependencies(fake: ReturnType<typeof fakeLinear>) {
-  return { fetch: fake.fetch, environment: { LINEAR_API_KEY: SECRET } };
+  return {
+    fetch: fake.fetch,
+    environment: { LINEAR_API_KEY: SECRET },
+    executionStateDirectory: join(sandbox, 'execution-state'),
+  };
 }
 
 async function runCode(...args: Parameters<typeof run>): Promise<number> {
@@ -1635,13 +1638,17 @@ describe('claim', () => {
     ) as {
       operations: Record<string, Record<string, unknown>>;
     };
-    expect(Object.values(state.operations)).toContainEqual({
-      operationId: 'issue:COR-1:1:claim',
-      action: 'claim',
-      outcome: 'observed',
-      observed: expect.any(Object),
-      nextAction: 'closeout',
-    });
+    expect(Object.values(state.operations)).toContainEqual(
+      expect.objectContaining({
+        operationId: expect.stringMatching(/^issue:COR-1:1:claim:/),
+        action: 'claim',
+        outcome: 'observed',
+        observed: expect.any(Object),
+        nextAction: 'closeout',
+        authority: expect.objectContaining({ generation: 1 }),
+        intentFingerprint: expect.any(String),
+      }),
+    );
   });
 
   // spawn-free: the stale authority is constructed in a disposable local state directory.
@@ -1688,7 +1695,7 @@ describe('claim', () => {
   });
 
   // spawn-free: a recorded response loss is reconciled against the injected provider, never replayed.
-  test('a durable claim with a lost response remains unresolved instead of repeating its mutation', async () => {
+  test('a durable claim with a lost response reconciles its exact marker without repeating the mutation', async () => {
     const fake = fakeLinear();
     const executionStateDirectory = join(sandbox, 'claim-unknown');
     await run(['claim', 'COR-1', '--run', 'run-a', '--branch', 'branch-a'], {
@@ -1705,16 +1712,20 @@ describe('claim', () => {
       runId: 'run-a',
       ownerId: 'owner-a',
     });
-    const operationId = `issue:COR-1:${authority.generation}:claim`;
-    await recordMutationIntent(store, authority, { operationId, action: 'claim' });
+    const snapshot = JSON.parse(
+      readFileSync(join(executionStateDirectory, 'execution-state.json'), 'utf8'),
+    ) as {
+      operations: Record<string, unknown>;
+    };
+    const operationId = Object.keys(snapshot.operations)[0]!;
     await recordMutationResult(store, authority, operationId, { outcome: 'unknown' });
     const result = await run(['claim', 'COR-1', '--run', 'run-a', '--branch', 'branch-a'], {
       ...withClock(fake),
       executionStateDirectory,
       ownerId: 'owner-a',
     });
-    expect(result.code).toBe(1);
-    expect(result.output).toContain('remains unresolved after provider inspection');
+    expect(result.code).toBe(0);
+    expect(result.output).toContain('reconciled');
     expect(claimLines(fake)).toHaveLength(1);
   });
 
@@ -1724,7 +1735,7 @@ describe('claim', () => {
     fake.issues[0]!.stateId = 's-todo';
     const result = await take(fake, 'run-b');
     expect(result.code).toBe(1);
-    expect(result.output).toContain('held by run run-a on branch branch-run-a');
+    expect(result.output).toContain('held remotely by run-a');
     expect(claimLines(fake)).toHaveLength(1);
     expect(fake.issues[0]?.stateId).toBe('s-todo');
   });
@@ -1772,7 +1783,10 @@ describe('claim', () => {
   test('a released claim does not block another run', async () => {
     const fake = fakeLinear();
     await take(fake, 'run-a');
-    const released = await run(['claim', 'COR-1', '--release', '--run', 'run-a'], withClock(fake));
+    const released = await run(
+      ['claim', 'COR-1', '--release', '--run', 'run-a', '--generation', '1'],
+      withClock(fake),
+    );
     expect(released.code).toBe(0);
     expect(claimLines(fake)[0]?.body.split('\n')[0]).toContain('status released');
     expect(await codeOf(take(fake, 'run-b'))).toBe(0);
@@ -1780,13 +1794,19 @@ describe('claim', () => {
 
   test('--release refuses a run that does not hold the claim, and when there is none', async () => {
     const fake = fakeLinear();
-    const none = await run(['claim', 'COR-1', '--release', '--run', 'run-a'], withClock(fake));
+    const none = await run(
+      ['claim', 'COR-1', '--release', '--run', 'run-a', '--generation', '1'],
+      withClock(fake),
+    );
     expect(none.code).toBe(1);
-    expect(none.output).toContain('has no claim by run run-a');
+    expect(none.output).toContain('release lacks current authority');
     await take(fake, 'run-a');
-    const other = await run(['claim', 'COR-1', '--release', '--run', 'run-b'], withClock(fake));
+    const other = await run(
+      ['claim', 'COR-1', '--release', '--run', 'run-b', '--generation', '1'],
+      withClock(fake),
+    );
     expect(other.code).toBe(1);
-    expect(other.output).toContain('held by run run-a');
+    expect(other.output).toContain('release lacks current authority');
     expect(claimLines(fake)[0]?.body).toContain('status held');
   });
 
@@ -1809,7 +1829,7 @@ describe('claim', () => {
     });
     const result = await take(fake, 'run-b');
     expect(result.code).toBe(1);
-    expect(result.output).toContain('held by run run-a on branch cor_1-x');
+    expect(result.output).toContain('held remotely by run-a');
   });
 
   test('exits 1 when the claim comment comes back changed', async () => {
@@ -1891,7 +1911,7 @@ describe('lease', () => {
     await run(['lease', 'Alpha', '--run', 'run-a'], withClock(fake));
     const refused = await run(['lease', 'Alpha', '--run', 'run-b'], withClock(fake));
     expect(refused.code).toBe(1);
-    expect(refused.output).toContain('held by run run-a');
+    expect(refused.output).toContain('held remotely by run-a');
     expect(leases(fake)).toHaveLength(1);
     expect(await codeOf(run(['lease', 'proj-2', '--run', 'run-b'], withClock(fake)))).toBe(0);
   });
@@ -1922,13 +1942,22 @@ describe('lease', () => {
 
   test('--release ends the lease; it refuses a run that does not hold it', async () => {
     const fake = fakeLinear();
-    const none = await run(['lease', 'Alpha', '--release', '--run', 'run-a'], withClock(fake));
+    const none = await run(
+      ['lease', 'Alpha', '--release', '--run', 'run-a', '--generation', '1'],
+      withClock(fake),
+    );
     expect(none.code).toBe(1);
     await run(['lease', 'Alpha', '--run', 'run-a'], withClock(fake));
-    const other = await run(['lease', 'Alpha', '--release', '--run', 'run-b'], withClock(fake));
+    const other = await run(
+      ['lease', 'Alpha', '--release', '--run', 'run-b', '--generation', '1'],
+      withClock(fake),
+    );
     expect(other.code).toBe(1);
-    expect(other.output).toContain('held by run run-a');
-    const released = await run(['lease', 'Alpha', '--release', '--run', 'run-a'], withClock(fake));
+    expect(other.output).toContain('release lacks current authority');
+    const released = await run(
+      ['lease', 'Alpha', '--release', '--run', 'run-a', '--generation', '1'],
+      withClock(fake),
+    );
     expect(released.code).toBe(0);
     expect(leases(fake).at(-1)?.body.split('\n')[0]).toContain('status released');
     expect(await runOutput(['project-read', 'Alpha'], withClock(fake))).toContain(

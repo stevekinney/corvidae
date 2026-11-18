@@ -9,7 +9,8 @@ import { join } from 'node:path';
 
 import { acquireHostLock, processStartTime } from '../run-exclusively.ts';
 
-export const executionStateVersion = 1 as const;
+// P04 binds persisted operations to provider identities; prior snapshots cannot prove that tuple.
+export const executionStateVersion = 2 as const;
 
 export class ExecutionStateError extends Error {}
 
@@ -29,6 +30,8 @@ interface OwnershipRecord extends Authority {
 export interface RemoteOperation {
   operationId: string;
   action: string;
+  authority: Authority;
+  intentFingerprint: string;
   outcome: 'intent' | 'observed' | 'unknown' | 'unresolved';
   observed?: unknown;
   nextAction: 'perform' | 'inspect-provider' | 'closeout';
@@ -110,12 +113,28 @@ function assertAuthorityRecord(value: unknown, resource: string, statePath: stri
     throw new ExecutionStateError(`${statePath} has malformed ownership status for ${resource}.`);
 }
 
+function assertAuthority(value: unknown, statePath: string): void {
+  if (!plainRecord(value) || typeof value['resource'] !== 'string' || value['resource'] === '')
+    throw new ExecutionStateError(`${statePath} has malformed operation authority.`);
+  if (
+    typeof value['runId'] !== 'string' ||
+    value['runId'] === '' ||
+    typeof value['ownerId'] !== 'string' ||
+    value['ownerId'] === '' ||
+    !Number.isSafeInteger(value['generation']) ||
+    (value['generation'] as number) < 1
+  )
+    throw new ExecutionStateError(`${statePath} has malformed operation authority.`);
+}
+
 function assertOperation(value: unknown, operationId: string, statePath: string): void {
   if (
     !plainRecord(value) ||
     value['operationId'] !== operationId ||
     typeof value['action'] !== 'string' ||
-    value['action'] === ''
+    value['action'] === '' ||
+    typeof value['intentFingerprint'] !== 'string' ||
+    value['intentFingerprint'] === ''
   )
     throw new ExecutionStateError(`${statePath} has malformed operation ${operationId}.`);
   if (
@@ -123,6 +142,7 @@ function assertOperation(value: unknown, operationId: string, statePath: string)
     !['perform', 'inspect-provider', 'closeout'].includes(String(value['nextAction']))
   )
     throw new ExecutionStateError(`${statePath} has malformed operation state for ${operationId}.`);
+  assertAuthority(value['authority'], statePath);
 }
 
 function assertSnapshot(value: unknown, statePath: string): asserts value is ExecutionSnapshot {
@@ -194,6 +214,39 @@ function writeSnapshot(store: ExecutionStateStore, snapshot: ExecutionSnapshot):
 
 function lockPath(store: ExecutionStateStore): string {
   return join(store.lockDirectory, 'execution-state.lock');
+}
+
+function providerTransitionLockPath(store: ExecutionStateStore, resource: string): string {
+  return join(store.lockDirectory, `${encodeURIComponent(resource)}.provider-transition.lock`);
+}
+
+/**
+ * Serializes one resource's provider read/mutate/read-back transition. This is separate from the
+ * short snapshot lock: provider I/O must never block unrelated state replacements.
+ */
+export async function withProviderTransitionLock<T>(
+  store: ExecutionStateStore,
+  resource: string,
+  operation: () => T | Promise<T>,
+): Promise<T> {
+  mkdirSync(store.lockDirectory, { recursive: true });
+  const pidStartedAt = processStartTime(process.pid);
+  const lock = await acquireHostLock({
+    lockDirectory: providerTransitionLockPath(store, resource),
+    holder: {
+      pid: process.pid,
+      ...(pidStartedAt === undefined ? {} : { pidStartedAt }),
+      command: 'chef provider transition',
+      cwd: process.cwd(),
+      acquiredAt: new Date().toISOString(),
+    },
+    pollIntervalMs: 5,
+  });
+  try {
+    return await operation();
+  } finally {
+    await lock.release();
+  }
 }
 
 async function underResourceLock<T>(
@@ -273,22 +326,28 @@ export async function acquireDispatch(
   return underResourceLock(store, request.resource, () => {
     const snapshot = readExecutionSnapshot(store);
     const current = snapshot.ownership[request.resource];
-    if (current?.status === 'held') {
-      if (current.runId === request.runId && current.ownerId === request.ownerId)
+    if (remote !== undefined && !remote.live && current?.status === 'held') {
+      current.status = 'cancelled';
+      snapshot.nextAction = `resume:${request.resource}`;
+      writeSnapshot(store, snapshot);
+    }
+    const effectiveCurrent = snapshot.ownership[request.resource];
+    if (effectiveCurrent?.status === 'held') {
+      if (effectiveCurrent.runId === request.runId && effectiveCurrent.ownerId === request.ownerId)
         return {
           granted: true as const,
           authority: {
-            resource: current.resource,
-            runId: current.runId,
-            ownerId: current.ownerId,
-            generation: current.generation,
+            resource: effectiveCurrent.resource,
+            runId: effectiveCurrent.runId,
+            ownerId: effectiveCurrent.ownerId,
+            generation: effectiveCurrent.generation,
           },
         };
-      return { granted: false as const, reason: `held locally by ${current.ownerId}` };
+      return { granted: false as const, reason: `held locally by ${effectiveCurrent.ownerId}` };
     }
     const authority: Authority = {
       ...request,
-      generation: (current?.generation ?? 0) + 1,
+      generation: (effectiveCurrent?.generation ?? 0) + 1,
     };
     snapshot.ownership[request.resource] = { ...authority, status: 'held' };
     snapshot.nextAction = `dispatch:${request.resource}`;
@@ -345,17 +404,24 @@ async function mutateOwnedSnapshot(
 export async function recordMutationIntent(
   store: ExecutionStateStore,
   authority: Authority,
-  input: { operationId: string; action: string },
+  input: { operationId: string; action: string; intentFingerprint: string },
 ): Promise<void> {
   await mutateOwnedSnapshot(store, authority, (snapshot) => {
     const existing = snapshot.operations[input.operationId];
-    if (existing !== undefined && existing.action !== input.action)
+    if (
+      existing !== undefined &&
+      (existing.action !== input.action ||
+        existing.intentFingerprint !== input.intentFingerprint ||
+        !sameAuthority(existing.authority as OwnershipRecord, authority))
+    )
       throw new ExecutionStateError(
         `Operation ${input.operationId} already names ${existing.action}.`,
       );
     snapshot.operations[input.operationId] = existing ?? {
       operationId: input.operationId,
       action: input.action,
+      authority,
+      intentFingerprint: input.intentFingerprint,
       outcome: 'intent',
       nextAction: 'perform',
     };
