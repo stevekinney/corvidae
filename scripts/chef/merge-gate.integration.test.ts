@@ -200,6 +200,12 @@ describe('mergeGate', () => {
       const inner = world.runner;
       const asked: string[][] = [];
       const runner: Runner = (command, runnerOptions) => {
+        if (command[1]?.endsWith('ci-compare.ts'))
+          return {
+            code: 1,
+            stdout: JSON.stringify({ run: '1', hasNew: true, recurrence: 'COR-2504' }),
+            stderr: '',
+          };
         if (command[0] === 'gh' && command[1] === 'run') {
           asked.push(command);
           return {
@@ -214,7 +220,13 @@ describe('mergeGate', () => {
     }
     const latest = (conclusion: string) =>
       JSON.stringify([
-        { conclusion, headSha: redHead, url: 'https://github.example/run/1', createdAt: 't' },
+        {
+          databaseId: 1,
+          conclusion,
+          headSha: redHead,
+          url: 'https://github.example/run/1',
+          createdAt: 't',
+        },
       ]);
 
     test('reads the latest completed main.yml run on the default branch', () => {
@@ -236,7 +248,7 @@ describe('mergeGate', () => {
           '--limit',
           '10',
           '--json',
-          'conclusion,headSha,url,createdAt',
+          'databaseId,conclusion,headSha,url,createdAt',
         ],
       ]);
     });

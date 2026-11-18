@@ -24,6 +24,7 @@
  * reaches, is reported. Each instance is checked on its own, so one reachable instance never
  * vouches for another.
  */
+import { createHash } from 'node:crypto';
 import { join, resolve as resolvePath } from 'node:path';
 import { auditExceptions, type AuditException } from './audit-exceptions';
 
@@ -31,11 +32,13 @@ const ADVISORY_PATTERN = /^GHSA(-[23456789cfghjmpqrvwx]{4}){3}$/;
 const TRACKING_ISSUE_PATTERN = /^[A-Z][A-Z0-9]*-\d+$/;
 const REVIEW_BY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const MAXIMUM_PATHS = 100_000;
+const SHA256_PATTERN = /^[a-f0-9]{64}$/;
 
 type EdgeKind = 'runtime' | 'development';
 type Edge = { readonly to: string; readonly kind: EdgeKind };
+type GraphNode = { readonly name: string; readonly workspace: boolean; readonly identity: string };
 type Graph = {
-  readonly nodes: ReadonlyMap<string, { readonly name: string; readonly workspace: boolean }>;
+  readonly nodes: ReadonlyMap<string, GraphNode>;
   readonly edges: ReadonlyMap<string, readonly Edge[]>;
   readonly workspaces: readonly string[];
   /** Structural faults in the lockfile that make the graph untrustworthy. */
@@ -109,6 +112,15 @@ export function validateRegistry(registry: readonly AuditException[]): string[] 
     }
     if (isNonEmptyString(entry?.reviewBy) && !isValidCalendarDate(entry.reviewBy)) {
       problems.push(`${label}: "${entry.reviewBy}" is not a valid YYYY-MM-DD review-by date.`);
+    }
+    const reviewed = entry?.reviewedReachability;
+    if (reviewed !== undefined) {
+      if (!isNonEmptyString(reviewed.sha256) || !SHA256_PATTERN.test(reviewed.sha256)) {
+        problems.push(`${label}: reviewed reachability needs a lowercase SHA-256 digest.`);
+      }
+      if (reviewed.exposure !== 'build-or-development-only') {
+        problems.push(`${label}: reviewed reachability needs the tooling-only exposure marker.`);
+      }
     }
   });
   return problems;
@@ -184,7 +196,7 @@ export function buildGraph(lockfileText: string): Graph {
     packages?: Record<string, LockEntry>;
   };
   const packages = lockfile.packages ?? {};
-  const nodes = new Map<string, { name: string; workspace: boolean }>();
+  const nodes = new Map<string, GraphNode>();
   const edges = new Map<string, Edge[]>();
   const workspaceNames = new Set<string>();
   const workspaceSections = new Map<string, LockWorkspace>();
@@ -211,7 +223,7 @@ export function buildGraph(lockfileText: string): Graph {
   }
 
   for (const name of workspaceNames) {
-    nodes.set(workspaceId(name), { name, workspace: true });
+    nodes.set(workspaceId(name), { name, workspace: true, identity: `workspace:${name}` });
   }
   const resolve = (parentKey: string | null, name: string): string | null => {
     if (parentKey !== null) {
@@ -234,7 +246,7 @@ export function buildGraph(lockfileText: string): Graph {
     if (workspaceNames.has(name) && (locked === undefined || locked.includes('@workspace:'))) {
       return workspaceId(name);
     }
-    nodes.set(key, { name, workspace: false });
+    nodes.set(key, { name, workspace: false, identity: locked ?? key });
     return key;
   };
   const addEdge = (from: string, to: string, kind: EdgeKind): void => {
@@ -287,6 +299,41 @@ function chainStart(path: readonly string[], chain: readonly string[]): number {
 }
 
 /**
+ * The complete, sorted workspace-rooted routes to one installed package. Every route records the
+ * locked package identity and each dependency edge kind, so a new workspace prefix, nested hop,
+ * version, or runtime/development reclassification changes its digest.
+ */
+export function workspaceReachabilityDigest(graph: Graph, packageName: string): string | null {
+  const targets = new Set(
+    [...graph.nodes].filter(([, node]) => node.name === packageName).map(([id]) => id),
+  );
+  if (targets.size === 0) return null;
+  const routes: string[] = [];
+  let walked = 0;
+  const walk = (trail: string[], kinds: EdgeKind[]): void => {
+    if (walked > MAXIMUM_PATHS) return;
+    const current = trail[trail.length - 1]!;
+    if (targets.has(current)) {
+      walked += 1;
+      const route = trail
+        .map((id, index) => {
+          const node = graph.nodes.get(id)!;
+          return index === 0 ? node.identity : `${kinds[index - 1]}>${node.identity}`;
+        })
+        .join('>');
+      routes.push(route);
+      return;
+    }
+    for (const edge of graph.edges.get(current) ?? []) {
+      if (!trail.includes(edge.to)) walk([...trail, edge.to], [...kinds, edge.kind]);
+    }
+  };
+  for (const workspace of graph.workspaces) walk([workspace], []);
+  if (walked > MAXIMUM_PATHS) return null;
+  return createHash('sha256').update(routes.toSorted().join('\n')).digest('hex');
+}
+
+/**
  * Describes every dependency path from a workspace to `packageName` that no allowed chain covers,
  * and every installed instance of it that no workspace reaches. An allowed chain covers a path
  * only when it is the path's complete tail, from the chain's importer through the package. An
@@ -297,6 +344,7 @@ export function findUnauthorizedPaths(
   graph: Graph,
   packageName: string,
   allowedChains: readonly (readonly string[])[],
+  allowReviewedRuntimeWorkspaceHop = false,
 ): string[] | null {
   const targets = [...graph.nodes]
     .filter(([, node]) => node.name === packageName)
@@ -331,7 +379,11 @@ export function findUnauthorizedPaths(
         if (start < 0) return false;
         const head = trail[start]!;
         const hop = kinds[start];
-        return !(graph.nodes.get(head)!.workspace && hop !== 'development');
+        return !(
+          graph.nodes.get(head)!.workspace &&
+          hop !== 'development' &&
+          !allowReviewedRuntimeWorkspaceHop
+        );
       });
       if (!covered) offending.push(names.join(' > '));
       return;
@@ -388,6 +440,15 @@ export async function checkExceptions(
   const graph = buildGraph(lockfileText);
   problems.push(...graph.problems);
   for (const entry of registry) {
+    const workspaceNames = new Set(graph.workspaces.map((id) => graph.nodes.get(id)!.name));
+    if (
+      entry.reviewedReachability === undefined &&
+      entry.allowedChains.some((chain) => !workspaceNames.has(chain[0]!))
+    ) {
+      problems.push(
+        `${entry.advisory} (${entry.package}) has a non-workspace chain importer without a reviewed reachability inventory.`,
+      );
+    }
     const stillReports = advisories.some(
       (advisory) => advisory.package === entry.package && advisory.id === entry.advisory,
     );
@@ -396,7 +457,12 @@ export async function checkExceptions(
         `${entry.advisory} (${entry.package}) no longer reports: stale exception, remove it from scripts/audit-exceptions.ts and close ${entry.trackingIssue}.`,
       );
     }
-    const unauthorized = findUnauthorizedPaths(graph, entry.package, entry.allowedChains);
+    const unauthorized = findUnauthorizedPaths(
+      graph,
+      entry.package,
+      entry.allowedChains,
+      entry.reviewedReachability !== undefined,
+    );
     if (unauthorized === null) {
       problems.push(
         `${entry.package} is not in bun.lock: stale exception for ${entry.advisory}, remove it.`,
@@ -405,6 +471,18 @@ export async function checkExceptions(
       for (const path of unauthorized) {
         problems.push(
           `${entry.package} (${entry.advisory}) is reachable outside its allowed chains: ${path}.`,
+        );
+      }
+    }
+    if (entry.reviewedReachability !== undefined) {
+      const actual = workspaceReachabilityDigest(graph, entry.package);
+      if (actual === null) {
+        problems.push(
+          `${entry.package} (${entry.advisory}) has no complete workspace reachability inventory; refusing the reviewed tooling exception.`,
+        );
+      } else if (actual !== entry.reviewedReachability.sha256) {
+        problems.push(
+          `${entry.package} (${entry.advisory}) reachability inventory changed; review ${entry.trackingIssue} before renewing the tooling exception.`,
         );
       }
     }

@@ -70,7 +70,7 @@ import {
   type HostLockHolder,
 } from '../run-exclusively.ts';
 import { fetchWithRetry } from './fetch-retry.ts';
-import { mainCiHealth, mainCiWarning } from './main-ci.ts';
+import { mainCiComparisonWarning, mainCiHealth, mainCiWarning } from './main-ci.ts';
 import {
   defaultRunner,
   emitResult,
@@ -273,7 +273,10 @@ export function mergeGate(
     const health = mainCiHealth(runner, repository, defaultBranch);
     const warning = mainCiWarning(health, defaultBranch);
     if (warning !== undefined) {
-      report.mainHealthWarning = warning;
+      report.mainHealthWarning =
+        health.red && health.run !== undefined
+          ? `${warning}\n${mainCiComparisonWarning(runner, health.run, options.configPath)}`
+          : warning;
       if (health.red && options.fixesMain === true) report.fixesMain = true;
     }
   }

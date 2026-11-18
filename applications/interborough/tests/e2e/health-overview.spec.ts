@@ -19,6 +19,7 @@ import { answerRecentActivityAsDesigned } from './board-activity-world.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
 import { E2E_FIRST_RUN_URL, E2E_SHOWCASE_URL } from './e2e-constants.ts';
 import { expect, test } from './fixtures.ts';
+import { expectTabOpen } from './workflow-support.ts';
 
 const SOURCE = 'health-overview.spec.ts';
 const WIDTHS = [1280, 768, 375] as const;
@@ -59,20 +60,7 @@ test.describe('the sample world', () => {
       await expect(main.getByRole('heading', { level: 1, name: 'Health' })).toBeVisible();
       await expect(main.getByTestId('storage-backend')).toContainText('Running on SQLite in');
       await expect(main.getByRole('button', { name: 'Storage details' })).toBeVisible();
-      if (width >= 640) {
-        await expect(main.getByRole('tab')).toHaveText([
-          'Overview',
-          'Workers',
-          'Storage',
-          'Audit log',
-        ]);
-        await expect(main.getByRole('tab', { name: 'Overview' })).toHaveAttribute(
-          'aria-selected',
-          'true',
-        );
-      } else {
-        await expect(main.locator('.cinder-tabs__collapse')).toContainText('Section: Overview');
-      }
+      await expectTabOpen(main, 'Overview');
       await expect(
         main.getByRole('tab', { name: /Diagnostics|Metrics|Alerts|Checks/ }),
       ).toHaveCount(0);
@@ -107,12 +95,20 @@ test.describe('the sample world', () => {
       await expect(rows).toHaveCount(3);
       await expect(rows.nth(0)).toContainText('No model provider connected');
       await expect(rows.nth(0)).toContainText('The Anthropic key was removed at');
-      // A phone folds a row's buttons into one menu; the larger widths draw each button.
-      const action = (row: number, name: string) =>
-        width >= 640
-          ? rows.nth(row).getByRole('link', { name })
-          : rows.nth(row).getByRole('button', { name: 'More actions' });
-      await expect(action(0, 'Connect a provider')).toBeVisible();
+      // A single action stays a link. Multiple actions collapse whenever the row's measured space
+      // requires it, which can happen at a tablet viewport as well as on a phone.
+      const expectActions = async (row: number, names: string[]) => {
+        const item = rows.nth(row);
+        const more = item.getByRole('button', { name: 'More actions' });
+        if (await more.isVisible()) {
+          await more.click();
+          await expect(page.getByRole('menu').getByRole('menuitem')).toHaveText(names);
+          await page.keyboard.press('Escape');
+          return;
+        }
+        for (const name of names) await expect(item.getByRole('link', { name })).toBeVisible();
+      };
+      await expect(rows.nth(0).getByRole('link', { name: 'Connect a provider' })).toBeVisible();
       // Line two sits directly under the title, not a row below the buttons (76h, 76i).
       for (let index = 0; index < 3; index += 1) {
         const title = await rows
@@ -130,10 +126,9 @@ test.describe('the sample world', () => {
       await expect(rows.nth(1)).toContainText('Storage is over its warning level, 1.6 GB');
       await expect(rows.nth(1)).toContainText('Alert firing since');
       await expect(rows.nth(1)).not.toContainText(/capacity|threshold|limit/i);
-      await expect(action(1, 'View storage')).toBeVisible();
-      if (width >= 640) await expect(action(1, 'Change retention')).toBeVisible();
+      await expectActions(1, ['View storage', 'Change retention']);
       await expect(rows.nth(2)).toContainText('Daily summary missed 4 runs since Oct 30');
-      await expect(action(2, 'View schedule')).toBeVisible();
+      await expect(rows.nth(2).getByRole('link', { name: 'View schedule' })).toBeVisible();
       await expect(main.getByRole('region', { name: /reach the Interborough server/ })).toHaveCount(
         0,
       );
@@ -255,7 +250,7 @@ test.describe('the sample world', () => {
   test.describe('on a touch phone', () => {
     test.use({ viewport: { width: 375, height: 900 }, hasTouch: true, isMobile: true });
 
-    test('the Storage tab collapses its tabs to a select, warns without inventing a capacity, and scrolls its table inside its own box', async ({
+    test('the Storage tab stays selected after responsive tab measurement, warns without inventing a capacity, and scrolls its table inside its own box', async ({
       page,
       checkA11y,
     }) => {
@@ -264,9 +259,9 @@ test.describe('the sample world', () => {
       await expect(main.getByTestId('storage-warning')).toBeVisible();
 
       await expect(main.getByRole('heading', { level: 1, name: 'Health' })).toBeVisible();
-      // 06o: the sections are one select, the warning names no capacity, and the controls are 44px.
-      await expect(main.locator('.cinder-tabs__collapse')).toContainText('Section: Storage');
-      await expect(main.getByRole('tab')).toHaveCount(0);
+      // 06o: the responsive section control keeps Storage selected, whether the tab bar fits or
+      // Cinder collapses it after measuring its container.
+      await expectTabOpen(main, 'Storage');
       await expect(main.getByTestId('storage-warning')).toContainText(
         'Storage is over its warning level, 1.6 GB.',
       );

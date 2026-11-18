@@ -11,9 +11,27 @@ import {
   fillBrandBook,
   INDEX_PATH,
   planPublishBatches,
+  previewReport,
   replacementCharacterPositions,
   sentenceNumber,
+  WATCHED_PREVIEWS,
 } from './publish.ts';
+
+// COR-2443 AC3: the published system says whether each editor card is live or static.
+describe('previewReport', () => {
+  test('names the mode of MarkdownEditor, ReviewEditor and DiffViewer', () => {
+    expect(WATCHED_PREVIEWS).toEqual(['MarkdownEditor', 'ReviewEditor', 'DiffViewer']);
+    const report = previewReport(['Button', 'DiffViewer'], ['MarkdownEditor'], ['TabPanel']);
+    expect(report.watched).toEqual({
+      MarkdownEditor: 'static',
+      ReviewEditor: 'missing',
+      DiffViewer: 'live',
+    });
+    expect(report.modes['Button']).toBe('live');
+    expect(report.modes['TabPanel']).toBe('none');
+    expect([report.live, report.static, report.none]).toEqual([2, 1, 1]);
+  });
+});
 
 describe('replacementCharacterPositions', () => {
   test('names the line and column of every U+FFFD, and nothing for clean text', () => {

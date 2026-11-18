@@ -55,6 +55,20 @@ The `grid` variant lays the pairs out in as many equal columns as the list's own
 
 Give an item a `note` for a muted second line under its definition: what the value is called elsewhere, such as a check read in words with its name and version beneath (`Contains phrase`, then `contains-phrase, version 1`). The note is plain text, read with the definition, and is left out when empty. Use it instead of a second row that states the same fact twice.
 
+### A row that leads somewhere
+
+Give an item an `href` when its value names something with a page of its own, such as the person who owns a record. The row ends in a quiet trailing chevron, the record-details affordance `InspectorRow` draws, and the whole row is the link's target; a control in the row, such as an identifier's copy button, stays clickable on its own. A row without an `href` draws no chevron, so read-only facts never look like links. The link is named for the term and, when the value is plain text, the value.
+
+```svelte
+<DescriptionList
+  variant="fields"
+  items={[
+    { term: 'Owner', definition: 'Ada Lovelace', href: '/people/ada' },
+    { term: 'Created', definition: 'Nov 10, 2026' },
+  ]}
+/>
+```
+
 ### Formatted values
 
 A definition can be a value the list formats, so every list shows timestamps, IDs and tags the same way:
@@ -98,9 +112,9 @@ A definition can be a value the list formats, so every list shows timestamps, ID
 | Prop | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
 | `class` | `string` | no | — | Additional class merged onto the `.cinder-description-list` root element. |
-| `framed` | `boolean` | no | `false` | Keeps the tinted, rounded frame around the `fields` variant. The variant is flat by default, so a record inside a pane or a card never draws a box inside a box; set this where the list stands alone on the page canvas. Has no effect on any other variant. |
+| `framed` | `boolean` | no | `false` | Keeps the tinted, rounded frame around the `fields` variant. The variant is flat by default, so a record inside a pane or a card never draws a box inside a box; set this where the list stands alone on the page canvas. Below a 700px viewport the frame takes the raised fill of a grouped list, as an Inspector's group does on a phone. Has no effect on any other variant. |
 | `stack` | `boolean` | no | `false` | Puts every term above its value at any width. The `two-column` variant already stacks once its own container is narrower than 28rem; `stack` stacks it regardless, for a list whose page has already chosen its phone layout. Has no effect on `narrow`, whose terms stay visually hidden. |
-| `variant` | `"default"` \| `"striped"` \| `"two-column"` \| `"narrow"` \| `"facts"` \| `"fields"` \| `"grid"` | no | — | Controls the visual layout: - `default`: stacked rows with visible terms. - `striped`: alternating row backgrounds. - `two-column`: a muted term on the left and the value on the right, with no row dividers; collapses to stacked at narrow widths. - `narrow`: `<dt>` is visually hidden via `.cinder-sr-only`. Only appropriate when surrounding context already labels the value. NOT a general compact mode. - `fields`: a record read as a list: a regular-weight muted term in a fixed 140px column, its value beside it, each row at least 44px tall flat, with a quiet rule under each (`framed` adds a tinted group); stacks below 28rem. - `facts`: one row of equal columns, each a muted term above its value, between two quiet rules (the queues, tasks, workflow and version of a worker); wraps to more rows as the container narrows. - `grid`: the pairs flow in as many equal columns as the list's own width fits (about 6.5rem each), each a muted term above its value at the column's start edge, with no rules and no fill: a wide card reads three short pairs on one row, a phone two, a narrow column one. A `wide` item takes the whole row. |
+| `variant` | `"default"` \| `"striped"` \| `"two-column"` \| `"narrow"` \| `"facts"` \| `"fields"` \| `"grid"` | no | — | Controls the visual layout: - `default`: stacked rows with visible terms. - `striped`: alternating row backgrounds. - `two-column`: a muted term on the left and the value on the right, with no row dividers; collapses to stacked at narrow widths. - `narrow`: `<dt>` is visually hidden via `.cinder-sr-only`. Only appropriate when surrounding context already labels the value. NOT a general compact mode. - `fields`: a record read as a list: a regular-weight muted term in a fixed 140px column, its value beside it, each row at least 44px tall flat, with a quiet rule under each (`framed` adds a tinted group, raised on a phone); a row with an `href` ends in a trailing chevron; the term stacks above its value while the list is narrower than 23rem (368px). - `facts`: one row of equal columns, each a muted term above its value, between two quiet rules (the queues, tasks, workflow and version of a worker); wraps to more rows as the container narrows. - `grid`: the pairs flow in as many equal columns as the list's own width fits (about 6.5rem each), each a muted term above its value at the column's start edge, with no rules and no fill: a wide card reads three short pairs on one row, a phone two, a narrow column one. A `wide` item takes the whole row. |
 | `actions` | `(opaque)` | no | — | Optional snippet rendered once per row. Receives the full `DescriptionListItem` so consumers can build disambiguated `aria-label` strings (e.g. `aria-label="Edit ${item.term}"`). Any interactive element in `actions` MUST set an unambiguous `aria-label`. Not expressible in JSON Schema; see the component types for the signature. |
 | `items` | `(opaque)` | yes | — | A prop whose shape is not captured by the JSON schema; see the component types for the exact signature. |
 
