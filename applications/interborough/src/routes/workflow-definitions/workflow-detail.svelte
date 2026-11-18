@@ -873,7 +873,7 @@
     headingLevel={1}
     title={headingText}
     titleText={heading}
-    identifier={titled && internal === null ? type : undefined}
+    {...titled && internal === null ? { identifier: type } : {}}
     actions={headerActions}
     statusPlacement="inline"
     {...invalidFile || file?.paused === true ? { status: headingStatus } : {}}

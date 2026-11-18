@@ -58,10 +58,10 @@ for (const { width, mounts } of CASES) {
         // The checkbox and at least one action control are drawn.
         expect(row.controls.length, `${mount} controls`).toBeGreaterThanOrEqual(2);
         for (const control of row.controls) {
-          expect(control.left, `${mount} ${String(control.name)} left`).toBeGreaterThanOrEqual(
+          expect(control.left, `${mount} ${control.name} left`).toBeGreaterThanOrEqual(
             row.left - 1,
           );
-          expect(control.right, `${mount} ${String(control.name)} right`).toBeLessThanOrEqual(
+          expect(control.right, `${mount} ${control.name} right`).toBeLessThanOrEqual(
             row.right + 1,
           );
         }
