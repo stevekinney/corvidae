@@ -17,7 +17,7 @@
   interface Props {
     /** Every reason, in the order they are said. */
     blockers: readonly RowBlocker[];
-    /** Where a workflow's problem is, by the workflow's type: "order-refund.json line 12". */
+    /** Where a workflow's problem is, by the workflow's type: "order-refund.json line 11". */
     problems: ReadonlyMap<string, string>;
     /** The element id Run now names as its description. */
     id: string;

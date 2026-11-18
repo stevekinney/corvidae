@@ -211,6 +211,26 @@ describe('a row of the list', () => {
     expect(model.line[1]?.testId).toBe('workflow-problem');
   });
 
+  test('design correction: a file that is not JSON names the line its page marks (row 60g)', () => {
+    const [row] = joinCatalog(
+      [],
+      [
+        listingOf(
+          invalidFile('order-refund', {
+            problem: { code: 'invalid-json', message: 'The file is not valid JSON.', issues: null },
+          }),
+        ),
+      ],
+    );
+    if (row === undefined) throw new Error('No row for order-refund.');
+    const model = workflowListRow(row, undefined, NOW, ZONE, {
+      line: 11,
+      stoppedAt: 12,
+      kind: 'comma',
+    });
+    expect(textsOf(model.line)).toEqual(['order-refund.json', 'line 11: expected a comma']);
+  });
+
   test('says when a file the Bureau cannot use last ran only from the engine’s count of its type, and leaves the edge blank until it has one or when it would not give one', () => {
     const [row] = joinCatalog([], [listingOf(invalidFile('order-refund'))]);
     if (row === undefined) throw new Error('No row for order-refund.');

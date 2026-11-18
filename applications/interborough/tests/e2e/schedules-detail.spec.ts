@@ -885,7 +885,8 @@ for (const width of WIDTHS) {
     const reasons = card.getByRole('listitem');
     await expect(reasons).toHaveCount(2);
     await expect(reasons.nth(0)).toContainText('Order refund can’t load');
-    await expect(reasons.nth(0)).toContainText('order-refund, order-refund.json line 12');
+    // The line its page marks, where the comma belongs (row 60g): one number on every page.
+    await expect(reasons.nth(0)).toContainText('order-refund, order-refund.json line 11');
     await expect(reasons.nth(0).getByRole('link', { name: 'Open workflow' })).toBeVisible();
     await expect(reasons.nth(1)).toContainText('No model provider is connected.');
     await expect(reasons.nth(1).getByRole('link', { name: 'Connect a provider' })).toHaveAttribute(

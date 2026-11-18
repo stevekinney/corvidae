@@ -59,6 +59,8 @@ export const WORKFLOW_COPY = {
     runningNow: 'Running',
     /** A file the Bureau cannot use, named by its file. */
     fileName: (id: string): string => `${id}.json`,
+    /** After the file's name, where a file that is not JSON stops: "line 11: expected a comma" (row 60g). */
+    problemAt: (line: number, reason: string): string => `line ${String(line)}: ${reason}`,
     schedules: (count: number): string => `${String(count)} schedules`,
     onSignal: 'On the signal',
     /** The card under the rows that leads to the types Interborough runs itself. */

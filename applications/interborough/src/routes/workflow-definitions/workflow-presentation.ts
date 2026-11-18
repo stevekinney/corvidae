@@ -17,6 +17,7 @@ import type {
 import type { WorkflowRunCounts } from '../../lib/workflow-files.ts';
 import { describeCadence } from '../schedules/cadence.ts';
 import { cadenceText } from '../schedules/schedule-cadence-text.ts';
+import { locatedReason, type JsonProblem } from './workflow-source.ts';
 
 /** The segments above the list: every workflow, the paused ones, and the ones that cannot load. */
 export type ListSegment = 'all' | 'paused' | 'problems';
@@ -127,11 +128,24 @@ export function rowDate(
  * what failed to load for a source the engine could not load, then the run in progress, the steps
  * of the file, and how many runs began in the last 24 hours. The date is never repeated here.
  */
-export function rowLine(row: CatalogRow, runs: WorkflowRunCounts | null | undefined): LinePart[] {
+export function rowLine(
+  row: CatalogRow,
+  runs: WorkflowRunCounts | null | undefined,
+  located: JsonProblem | null = null,
+): LinePart[] {
   if (row.file?.state === 'invalid') {
+    // A file that is not JSON names the line its page marks, from the same `locateJsonProblem`
+    // answer, so the list and the page say one number (row 60g); until its text is read, the
+    // Bureau's own words.
+    const problem =
+      row.problem === null
+        ? null
+        : located === null
+          ? row.problem.message
+          : WORKFLOW_COPY.list.problemAt(located.line, locatedReason(row.problem, located));
     return [
       { text: WORKFLOW_COPY.list.fileName(row.name) },
-      ...(row.problem === null ? [] : [{ text: row.problem.message, testId: 'workflow-problem' }]),
+      ...(problem === null ? [] : [{ text: problem, testId: 'workflow-problem' }]),
     ];
   }
   const parts: LinePart[] = [];
@@ -161,6 +175,7 @@ export function workflowListRow(
   activity: CodeActivity | undefined,
   now: number = Date.now(),
   zone: string = viewerTimeZone(),
+  located: JsonProblem | null = null,
 ): WorkflowListRow {
   // The Bureau counts a file that loaded. A code-defined type, and a file the Bureau cannot use,
   // are counted by the engine apart from the list, by the name of the type.
@@ -177,7 +192,7 @@ export function workflowListRow(
           ? WORKFLOW_COPY.list.statusPaused
           : null,
     date: rowDate(runs, now, zone),
-    line: rowLine(row, runs),
+    line: rowLine(row, runs, located),
   };
 }
 

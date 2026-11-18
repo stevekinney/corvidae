@@ -21,6 +21,7 @@ import type { ScheduleSummary } from '@lostgradient/weft';
 import { SCHEDULE_COPY } from '../../app/copy/schedules.ts';
 import { AGENT_RUN_TYPE } from '../../lib/schedule-kinds.ts';
 import type { WorkflowFileListing } from '../../lib/workflow-files.ts';
+import { locateJsonProblem } from '../workflow-definitions/workflow-source.ts';
 import { cadenceToScheduleValue, describeCadence } from './cadence.ts';
 import { cadenceText } from './schedule-cadence-text.ts';
 import { cadenceClause } from './schedule-presentation.ts';
@@ -106,31 +107,17 @@ export function nextSummary(
 }
 
 /**
- * The line a JSON parser stopped at, from what it said: Chrome and Firefox name it ("line 12
- * column 3") or the position it stopped at ("at position 289"), which counts the lines before it.
- * A parser that names neither (Safari's) leaves it unsaid.
+ * The line a workflow file's text goes wrong on, or `undefined` when it parses: the line the
+ * workflow's page marks (`locateJsonProblem`), which for a comma left out is the line the comma
+ * belongs at the end of, so the blocker, the list and the page say one number (row 60g).
  */
-export function lineOfParseError(message: string, text: string): number | undefined {
-  const named = /\bline (\d+)\b/i.exec(message)?.[1];
-  if (named !== undefined) return Number(named);
-  const position = /\bposition (\d+)\b/i.exec(message)?.[1];
-  if (position === undefined) return undefined;
-  return text.slice(0, Number(position)).split('\n').length;
-}
-
-/** The line a workflow file's text stops parsing at, or `undefined` when it parses or the parser does not say. */
 export function jsonProblemLine(text: string): number | undefined {
-  try {
-    JSON.parse(text);
-    return undefined;
-  } catch (error) {
-    return error instanceof Error ? lineOfParseError(error.message, text) : undefined;
-  }
+  return locateJsonProblem(text)?.line;
 }
 
 /**
  * Where a workflow's file went wrong, as the blocker card says it: "order-refund,
- * order-refund.json line 12", or the type alone when no line is known.
+ * order-refund.json line 11", or the type alone when no line is known.
  */
 export function problemLocation(workflowType: string, line: number | undefined): string {
   return line === undefined

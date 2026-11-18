@@ -289,6 +289,23 @@ describe('the list of workflows', () => {
     expect(testId(row(container, 'digest'), 'workflow-problem')).toBeNull();
   });
 
+  test('design correction: a file that is not JSON names the line its page marks, read from its text (row 60g)', async () => {
+    const text = ['{', '  "name": "broken"', '  "steps": []', '}'].join('\n');
+    const { container } = open({
+      files: [
+        invalidFile('broken', {
+          text,
+          problem: { code: 'invalid-json', message: 'The file is not valid JSON.', issues: null },
+        }),
+      ],
+    });
+    await waitFor(() =>
+      expect(testId(row(container, 'broken'), 'workflow-problem')?.textContent).toBe(
+        'line 2: expected a comma',
+      ),
+    );
+  });
+
   test('has Can’t load for a source that failed to load, with the category of the failure under it', async () => {
     const { container } = open();
     await waitFor(() => expect(rowCount(container)).toBe(4));

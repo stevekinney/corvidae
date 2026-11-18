@@ -6,11 +6,11 @@ import { describe, expect, test } from 'bun:test';
 
 import type { ScheduleSummary } from '@lostgradient/weft';
 
+import { SHOWCASE_ORDER_REFUND_FILE } from '../../../fixtures/showcase-content.ts';
 import type { WorkflowFileListing } from '../../lib/workflow-files.ts';
 import {
   isFileDefined,
   jsonProblemLine,
-  lineOfParseError,
   nextSummary,
   problemLocation,
   runNowOffReason,
@@ -223,16 +223,15 @@ describe('nextSummary while the page shows old data', () => {
 });
 
 describe('where a workflow file stopped parsing', () => {
-  test('reads the line a parser names, or counts the lines before the position it names', () => {
-    expect(lineOfParseError('Expected ‘,’ in JSON at line 12 column 3', '')).toBe(12);
-    expect(lineOfParseError('Unexpected token in JSON at position 6', 'a\nb\nc\nd')).toBe(4);
-    expect(lineOfParseError("JSON Parse error: Expected '}'", '{}')).toBeUndefined();
+  test('is none for text that parses, and the line the workflow’s page marks for text that does not (row 60g)', () => {
+    expect(jsonProblemLine('{"a": 1}')).toBeUndefined();
+    // The comma belongs at the end of line 2, where the page draws its mark; the parser stops at 3.
+    expect(jsonProblemLine('{\n  "a": 1\n  "b": 2\n}')).toBe(2);
   });
 
-  test('is none for text that parses, and a number or nothing for text that does not', () => {
-    expect(jsonProblemLine('{"a": 1}')).toBeUndefined();
-    const line = jsonProblemLine('{\n  "a": 1\n  "b": 2\n}');
-    expect(line === undefined || line >= 1).toBe(true);
+  test('the sample Order refund reads line 11, the line its editor’s gutter shows beside the mark', () => {
+    expect(jsonProblemLine(SHOWCASE_ORDER_REFUND_FILE.text)).toBe(11);
+    expect(SHOWCASE_ORDER_REFUND_FILE.text.split('\n')[10]?.trimEnd()).toMatch(/"tool-runner"$/);
   });
 
   test('says the file and the line, or the type alone when no line is known', () => {

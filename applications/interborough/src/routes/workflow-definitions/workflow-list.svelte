@@ -47,6 +47,7 @@
     loadCatalog,
     loadCodeActivity,
   } from '../../lib/workflow-catalog.ts';
+  import { getWorkflowFile } from '../../lib/workflow-files.ts';
   import { internalWorkflowsPath, workflowNewPath } from '../../lib/workflow-type-paths.ts';
   import {
     inSegment,
@@ -56,6 +57,7 @@
     type ListSegment,
   } from './workflow-presentation.ts';
   import WorkflowRow from './workflow-row.svelte';
+  import { locateJsonProblem, type JsonProblem } from './workflow-source.ts';
 
   const client = getClient();
   const connection = getConnection();
@@ -100,6 +102,30 @@
     undefined,
   );
 
+  // The files that are not JSON, whose rows name the line their page marks (row 60g). The list does
+  // not carry a file's text, so each is read once; a read that fails leaves the Bureau's words.
+  const brokenNames = $derived(
+    workflows.filter((row) => row.problem?.code === 'invalid-json').map((row) => row.name),
+  );
+  const brokenLines = createQuery(
+    () => ({
+      queryKey: queryKeys.workflowCatalog.brokenLines(brokenNames),
+      queryFn: async ({ signal }) => {
+        const located = await Promise.all(
+          brokenNames.map(async (name) => {
+            const file = await getWorkflowFile(name, { signal }).catch(() => undefined);
+            const text = file?.text ?? null;
+            return [name, text === null ? null : locateJsonProblem(text)] as const;
+          }),
+        );
+        return new Map<string, JsonProblem | null>(located);
+      },
+      enabled: catalog.isSuccess && brokenNames.length > 0,
+      retry: false,
+    }),
+    undefined,
+  );
+
   // Where the files are, for the hint of the empty state. A host that does not say is not asked
   // again, and the hint names the usual place.
   const hostPaths = createQuery(
@@ -131,7 +157,13 @@
       .filter((row) => inSegment(row, segment))
       .map((row) => ({
         row,
-        model: workflowListRow(row, activity.data?.get(row.name), now),
+        model: workflowListRow(
+          row,
+          activity.data?.get(row.name),
+          now,
+          undefined,
+          brokenLines.data?.get(row.name) ?? null,
+        ),
       })),
   );
 

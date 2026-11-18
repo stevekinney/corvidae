@@ -182,8 +182,18 @@ export function problemSentence(
 ): string {
   const copy = WORKFLOW_COPY.page.problem;
   if (located === null) return copy.unlocated(fileName, problem.message);
-  const reason = located.kind === 'comma' ? copy.expectedComma : problem.message.replace(/\.$/, '');
-  return copy.located(fileName, located.line, reason);
+  return copy.located(fileName, located.line, locatedReason(problem, located));
+}
+
+/**
+ * Why a placed problem stops the file, after its line: "expected a comma" for a comma left out,
+ * else the Bureau's own words without their closing stop. Every page that names the line says it
+ * this way, from the same `locateJsonProblem` answer (rows 60g, 62w, 66f).
+ */
+export function locatedReason(problem: { readonly message: string }, located: JsonProblem): string {
+  return located.kind === 'comma'
+    ? WORKFLOW_COPY.page.problem.expectedComma
+    : problem.message.replace(/\.$/, '');
 }
 
 /** The note drawn under the line a broken file is marked on. */
