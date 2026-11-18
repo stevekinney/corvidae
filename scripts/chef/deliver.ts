@@ -2,9 +2,9 @@
 //
 // Usage:
 //   bun scripts/chef/deliver.ts --branch <branch> --head <sha> --worktree <path> --message-file <file> --verification-file <file> --verification-digest <sha256>
+//       [--config <file>] [--keep-worktree] [--usage-log <file> --transcript <file> ...] [--json] [--intended <path> ...]
 //   bun scripts/chef/deliver.ts --pr <number> --head <sha> --worktree <path> --comment-file <file> --verification-file <file> --verification-digest <sha256>
-//   Either form: [--config <file>] [--keep-worktree] [--usage-log <file> --transcript <file> ...] [--json]
-//   Branch form: [--intended <path> ...]. Pull-request form: [--fixes-main].
+//       [--config <file>] [--keep-worktree] [--usage-log <file> --transcript <file> ...] [--json] [--fixes-main]
 //
 // The coordinator-approved verification request owns each member's assignment, plan, tracking
 // intent and requested close. Markdown is rendered from collected evidence, never accepted as proof.

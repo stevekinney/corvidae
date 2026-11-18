@@ -1506,13 +1506,12 @@ function describeLease(record: LeaseRecord | undefined, now: Date): string {
 /** Take or renew this run's lease on the project; refuse while another run's is live. */
 export async function leaseProject(
   client: LinearClient,
-  reference: string,
+  resolved: ProjectReference,
   runId: string,
   identity: ProviderOperationIdentity,
   expectedCurrent: ProviderOperationIdentity | undefined,
   now: Date,
 ): Promise<Outcome> {
-  const resolved = await resolveProject(client, reference);
   const current = await latestLease(client, resolved.id);
   const refuse = (holder: LeaseRecord | undefined, wrote = false): Outcome => ({
     ok: false,
@@ -1563,12 +1562,11 @@ export async function leaseProject(
 /** End this run's lease on the project; refuse when another run holds it or none is recorded. */
 export async function releaseLease(
   client: LinearClient,
-  reference: string,
+  resolved: ProjectReference,
   runId: string,
   identity: ProviderOperationIdentity,
   now: Date,
 ): Promise<Outcome> {
-  const resolved = await resolveProject(client, reference);
   const current = await latestLease(client, resolved.id);
   if (
     current === undefined ||
@@ -1809,6 +1807,7 @@ async function withReleaseAuthority(
         outcome: observed?.ok === true ? 'observed' : 'unresolved',
         observed: observed?.data,
       });
+      if (observed?.ok === true) await stateModule.releaseDispatchWithinTransition(store, request);
       return (
         observed ?? {
           ok: false,
@@ -1982,15 +1981,15 @@ export async function run(
       throw new UsageError(`--generation needs a positive integer, not "${generationText}".`);
     const releaseGeneration = generationText === undefined ? undefined : Number(generationText);
     if (command === 'lease') {
-      plan = (client) => {
+      plan = async (client) => {
+        const project = await resolveProject(client, target as string);
         if (release) {
           if (releaseGeneration === undefined)
             throw new UsageError('--generation is required to release local authority.');
           return withReleaseAuthority(
             dependencies,
-            { resource: `project:${target}`, runId, ownerId, generation: releaseGeneration },
+            { resource: `project:${project.id}`, runId, ownerId, generation: releaseGeneration },
             async (identity) => {
-              const project = await resolveProject(client, target as string);
               const current = await latestLease(client, project.id);
               return current?.marker.status === 'released' &&
                 sameProviderIdentity(current.marker.identity, identity)
@@ -2001,18 +2000,17 @@ export async function run(
                   }
                 : undefined;
             },
-            (identity) => releaseLease(client, target as string, runId, identity, now),
+            (identity) => releaseLease(client, project, runId, identity, now),
           );
         }
         return withLocalAuthority(
           dependencies,
           {
-            resource: `project:${target}`,
+            resource: `project:${project.id}`,
             runId,
             ownerId,
           },
           async () => {
-            const project = await resolveProject(client, target as string);
             const current = await latestLease(client, project.id);
             if (current === undefined) return undefined;
             if (!leaseIsLive(current.marker, now))
@@ -2020,9 +2018,9 @@ export async function run(
             return { holder: current.marker.run, live: true, identity: current.marker.identity };
           },
           'lease',
-          () => intentFingerprint({ resource: `project:${target}`, run: runId, action: 'lease' }),
+          () =>
+            intentFingerprint({ resource: `project:${project.id}`, run: runId, action: 'lease' }),
           async (identity) => {
-            const project = await resolveProject(client, target as string);
             const current = await latestLease(client, project.id);
             return current?.marker.status === 'held' &&
               sameProviderIdentity(current.marker.identity, identity)
@@ -2034,7 +2032,7 @@ export async function run(
               : undefined;
           },
           (identity, expectedCurrent) =>
-            leaseProject(client, target as string, runId, identity, expectedCurrent, now),
+            leaseProject(client, project, runId, identity, expectedCurrent, now),
         );
       };
     } else if (release) {

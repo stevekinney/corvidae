@@ -359,7 +359,13 @@ async function directMergeCore(
   );
 
   // 6. delete
-  const deleted = git('push', 'origin', '--delete', options.branch);
+  const deleted = git(
+    'push',
+    'origin',
+    '--delete',
+    options.branch,
+    `--force-with-lease=refs/heads/${options.branch}:${options.head}`,
+  );
   if (deleted.code !== 0)
     return fail(
       'delete',
@@ -420,7 +426,9 @@ async function recoverDirectMerge(
   if (
     !isDeliveryMergeObservation(operation.observed) ||
     operation.observed.route !== 'branch' ||
-    operation.observed.branch !== options.branch
+    operation.observed.branch !== options.branch ||
+    options.head !== verification.request.revision ||
+    operation.observed.reviewedHead !== verification.request.revision
   )
     return {
       branch: options.branch,
@@ -429,7 +437,7 @@ async function recoverDirectMerge(
       merged: false,
       mergeCommit: null,
       failedStep: 'recovery',
-      detail: 'delivery merge receipt is absent or does not name this branch.',
+      detail: 'delivery merge receipt is absent or does not name this branch and approved head.',
     };
   const receipt = operation.observed;
   const runner = partial.runner ?? defaultRunner;
@@ -465,7 +473,13 @@ async function recoverDirectMerge(
     'observed',
     partial.verification,
   );
-  const deleted = git('push', 'origin', '--delete', options.branch);
+  const deleted = git(
+    'push',
+    'origin',
+    '--delete',
+    options.branch,
+    `--force-with-lease=refs/heads/${options.branch}:${receipt.reviewedHead}`,
+  );
   // Git reports a missing remote ref as an error; the readback establishes that deletion is complete.
   if (deleted.code !== 0) {
     const absent = git('ls-remote', '--heads', 'origin', options.branch);

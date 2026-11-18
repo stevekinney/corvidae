@@ -170,6 +170,7 @@ interface World {
   mergeTreeCode?: number;
   /** The tree that command computes. */
   expectedTree?: string;
+  confirmedExpectedTree?: string;
   /** The tree of the squash commit; the expected tree unless a test overrides it. */
   mergedTree?: string;
 }
@@ -206,7 +207,7 @@ function fake(world: World = {}) {
         const confirm = mergeTreeCall++ > 0;
         return {
           code: confirm ? (world.mergeTreeCode ?? 0) : 0,
-          stdout: `${identity.tree}\n`,
+          stdout: `${confirm ? (world.confirmedExpectedTree ?? identity.tree) : identity.tree}\n`,
           stderr: !confirm || world.mergeTreeCode === undefined ? '' : 'CONFLICT',
         };
       }
@@ -1090,6 +1091,20 @@ scenarios.describe('the cross-session merge lock', () => {
     expect(locks.dryRun.holderIntact).toBe(true);
   });
 });
+
+scenarios.scenario(
+  'refuses closeout when the landed tree differs from the approved integration tree',
+  async () => {
+    const landed = '7'.repeat(40);
+    const world = fake({ confirmedExpectedTree: landed, mergedTree: landed });
+    const report = await mergeGateImplementation(options, { runner: world.runner, verification });
+    expect(report).toMatchObject({ merged: true, failedStep: 'confirm' });
+    const loaded = loadDeliveryVerification(options.verification, verification);
+    expect(
+      readExecutionSnapshot(loaded.state).operations[loaded.request.operationId]?.outcome,
+    ).toBe('unknown');
+  },
+);
 
 scenarios.scenario('refuses a queued pull-request merge after owner replacement', async () => {
   const authority = loadDeliveryVerification(options.verification, verification).request.authority;

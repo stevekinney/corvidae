@@ -10,6 +10,7 @@
 //
 // Usage:
 //   bun scripts/chef/merge-gate.ts [--config <json>] --pr <n> --worktree <dir> --comment-file <md>
+//                                  --verification-file <json> --verification-digest <sha256>
 //                                  [--head <sha>] [--dry-run] [--json] [--fixes-main]
 //                                  [--usage-log <file> --transcript <path>...]
 //
@@ -31,7 +32,8 @@
 //   7. confirm        the pull request is MERGED, and the merge commit's tree equals the tree
 //                     `git merge-tree --write-tree <mergeCommit>^1 <head>` computes: the head itself
 //                     when the merge commit's parent is contained in it, else the clean merge of the
-//                     two, which is `treesMatch` (skipped with --dry-run).
+//                     two, and the coordinator-approved integration tree (`treesMatch`). Skipped
+//                     with --dry-run.
 //
 // Cross-session merge lock: unless --dry-run, the command line holds one exclusive lock in the Git
 // common directory (`corvidae-merge-lock`, the lock of `scripts/run-exclusively.ts`) from before
@@ -417,11 +419,11 @@ async function mergeGateCore(
   const tree = git('rev-parse', `${mergeCommit}^{tree}`);
   if (tree.code !== 0)
     return fail('confirm', `could not read the merge commit's tree: ${firstLine(tree.stderr)}`);
-  report.treesMatch = tree.stdout.trim() === expectedTree;
+  report.treesMatch = tree.stdout.trim() === expectedTree && tree.stdout.trim() === integrationTree;
   if (!report.treesMatch)
     return fail(
       'confirm',
-      `merged but the merge commit's tree differs from ${head.slice(0, 12)} merged into the commit it landed on.`,
+      `merged but the merge commit's tree differs from the approved integration tree or from ${head.slice(0, 12)} merged into the commit it landed on.`,
     );
   await recordDeliveryMergeObservation(
     verification,

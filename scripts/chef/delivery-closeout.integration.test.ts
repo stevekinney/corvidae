@@ -11,6 +11,7 @@ import {
   prepareDeliveryVerification,
   recordDeliveryMergeObservation,
 } from './delivery-verification.ts';
+import { createGitHubEvidenceTransport } from './evidence-provider.ts';
 import { cancelDispatch, readExecutionSnapshot } from './execution-state.ts';
 import { type LinearClient } from './linear.ts';
 import { createScenarios } from './scenario.test-support.ts';
@@ -122,7 +123,7 @@ function tracker(
   return { client, writes, comments, states };
 }
 
-async function setup(pendingMember = false, trackedPending = true) {
+async function setup(pendingMember = false, trackedPending = true, missingArtifact = false) {
   const fixture = await createDeliveryVerificationFixture(undefined, {
     route: 'pull-request',
     approved: false,
@@ -135,10 +136,36 @@ async function setup(pendingMember = false, trackedPending = true) {
     member.assignment.identity.digest = 'e'.repeat(64);
     member.plan.invalidatedBy.assignment = member.assignment.identity.digest;
     member.plan.obligations[0]!.phase = 'completion';
-    member.providerRuns = [];
+    member.providerRuns = missingArtifact
+      ? member.providerRuns.map((entry) => ({ ...entry, artifact: 'release-proof' }))
+      : [];
     member.track = trackedPending;
     member.requestedClose = trackedPending;
     fixture.request.members.push(member);
+  }
+  if (missingArtifact) {
+    const absent = createGitHubEvidenceTransport(
+      fixture.request.repository,
+      {
+        run(argv) {
+          const path = argv.at(-1) ?? '';
+          if (!path.endsWith('/artifacts?per_page=100&page=1'))
+            throw new Error(`unexpected artifact request: ${path}`);
+          return {
+            exitCode: 0,
+            stdout: new TextEncoder().encode(JSON.stringify({ total_count: 0, artifacts: [] })),
+            stderr: new Uint8Array(),
+          };
+        },
+      },
+      fixture.directory,
+    );
+    const transport = fixture.dependencies.transport!;
+    // Keep authenticated run/job fixture facts; exercise raw artifact pagination at closeout.
+    fixture.dependencies.transport = {
+      ...transport,
+      artifact: (id, name) => absent.artifact.call(transport, id, name),
+    };
   }
   const text = JSON.stringify(fixture.request);
   writeFileSync(fixture.verification.file, text);
@@ -234,6 +261,20 @@ scenarios.scenario(
     expect(readExecutionSnapshot(context.fixture.state).pendingCloseout).toContain('operation');
   },
 );
+
+scenarios.scenario('an absent provider artifact leaves only its member open', async () => {
+  const context = await setup(true, true, true);
+  const remote = tracker();
+  const result = await closeDelivery(context.loaded, context.options, report(), {
+    client: remote.client,
+    record: context.record,
+    verification: context.fixture.dependencies,
+  });
+  expect(result.issues).toEqual([{ identifier: 'COR-1', state: 'Done' }]);
+  expect(result.leftOpen).toEqual(['COR-2']);
+  expect(remote.writes).toEqual(['comment:COR-1', 'state:COR-1', 'comment:COR-2']);
+  expect(readExecutionSnapshot(context.fixture.state).pendingCloseout).toContain('operation');
+});
 
 scenarios.scenario(
   'known failed comment can retry while cleanup failure resumes only owned cleanup',

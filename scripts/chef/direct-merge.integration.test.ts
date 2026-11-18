@@ -86,7 +86,7 @@ interface World {
  * `origin`. The clone has fetched neither since, so its remote-tracking refs are stale. With
  * `conflicting`, `branch` also edits `shared.txt` and `main` then edits the same line.
  */
-async function world(conflicting = false): Promise<World> {
+async function world(conflicting = false, integrateMain = true): Promise<World> {
   const directory = mkdtempSync(join(tmpdir(), 'direct-merge-world-'));
   scratchDirectories.push(directory);
   const origin = join(directory, 'origin.git');
@@ -103,7 +103,7 @@ async function world(conflicting = false): Promise<World> {
   git(other, 'checkout', '-q', '-b', 'branch');
   commit(other, 'feature.txt', 'feature\n', 'Add the feature');
   if (conflicting) commit(other, 'shared.txt', 'one\nbranch\nthree\n', 'Edit shared on the branch');
-  const head = git(other, 'rev-parse', 'HEAD');
+  let head = git(other, 'rev-parse', 'HEAD');
   git(other, 'push', '-q', 'origin', 'branch');
   git(other, 'checkout', '-q', 'main');
   // `main` moves after the clone last fetched, so the clone's `origin/main` is stale.
@@ -114,6 +114,14 @@ async function world(conflicting = false): Promise<World> {
     'Move main',
   );
   git(other, 'push', '-q', 'origin', 'main');
+  if (!conflicting && integrateMain) {
+    // Positive delivery controls must attest to the actual candidate tree, including moved main.
+    git(other, 'checkout', '-q', 'branch');
+    git(other, 'merge', '-q', '--no-edit', 'main');
+    head = git(other, 'rev-parse', 'HEAD');
+    git(other, 'push', '-q', 'origin', 'branch');
+    git(other, 'checkout', '-q', 'main');
+  }
   const staleBase = git(clone, 'rev-parse', 'origin/main');
   git(clone, 'fetch', '-q', 'origin', 'main', 'branch');
   const base = refs(origin, 'refs/heads/main');
@@ -298,6 +306,29 @@ const deleteDenied = await outcomeOf(async () => {
   expect(merged).toMatch(/^[0-9a-f]{40}$/);
   expect(refs(w.origin, 'refs/heads/main')).toBe(merged);
   expect(refs(w.origin, 'refs/heads/branch')).toBe(w.head);
+  git(w.other, 'checkout', '-q', 'branch');
+  const newer = commit(w.other, 'newer.txt', 'unmerged work\n', 'New work after delivery');
+  git(w.other, 'push', '-q', 'origin', 'branch');
+  git(w.origin, 'config', 'receive.denyDeletes', 'false');
+  const retried = await directMerge(w.options, {
+    runner: isolated,
+    guards: guardsPass,
+    verification: w.verification,
+  });
+  expect(retried).toMatchObject({ merged: true, failedStep: 'delete', mergeCommit: merged });
+  expect(refs(w.origin, 'refs/heads/branch')).toBe(newer);
+  expect(refs(w.origin, 'refs/heads/main')).toBe(merged);
+  const substituted = await directMerge(
+    { ...w.options, head: newer },
+    {
+      runner: isolated,
+      guards: guardsPass,
+      verification: w.verification,
+    },
+  );
+  expect(substituted).toMatchObject({ merged: false, failedStep: 'recovery' });
+  expect(refs(w.origin, 'refs/heads/branch')).toBe(newer);
+  expect(refs(w.origin, 'refs/heads/main')).toBe(merged);
 });
 
 const guardsFail = (findings: string[]): GuardsResult => ({
@@ -518,3 +549,18 @@ describe('directMerge against real Git', () => {
     rethrow(lock);
   });
 });
+
+const untestedIntegration = await outcomeOf(async () => {
+  const candidate = await world(false, false);
+  const before = refs(candidate.origin, 'refs/heads/main');
+  const result = await directMerge(candidate.options, {
+    runner: isolated,
+    guards: guardsPass,
+    verification: candidate.verification,
+  });
+  expect(result).toMatchObject({ merged: false, failedStep: 'verification' });
+  expect(refs(candidate.origin, 'refs/heads/main')).toBe(before);
+  expect(refs(candidate.origin, 'refs/heads/branch')).toBe(candidate.head);
+});
+test('refuses a divergent main tree that the branch provider run never checked', () =>
+  rethrow(untestedIntegration));

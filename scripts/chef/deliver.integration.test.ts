@@ -1071,7 +1071,7 @@ function branchWorld(answers: Record<string, RunnerResult> = {}) {
     [`rev-parse ${BASE}^{tree}`]: reply(`${BASE_TREE}\n`),
     [`commit-tree ${TREE} -p ${BASE} -F ${messageFile}`]: reply(`${SQUASH}\n`),
     [`push origin ${SQUASH}:refs/heads/main`]: reply(),
-    [`push origin --delete ${BRANCH}`]: reply(),
+    [`push origin --delete ${BRANCH} --force-with-lease=refs/heads/${BRANCH}:${HEAD}`]: reply(),
     'fetch origin main': reply(),
     'rev-parse origin/main': reply(`${SQUASH}\n`),
     [`rev-parse ${SQUASH}^`]: reply(`${BASE}\n`),
@@ -1160,7 +1160,7 @@ scenarios.describe('deliver --branch', () => {
       expect(writes).toEqual([
         `commit-tree ${TREE} -p ${BASE} -F ${world.messageFile}`,
         `push origin ${SQUASH}:refs/heads/main`,
-        `push origin --delete ${BRANCH}`,
+        `push origin --delete ${BRANCH} --force-with-lease=refs/heads/${BRANCH}:${HEAD}`,
       ]);
       expect(world.calls.some((call) => /^(checkout|merge |reset|worktree|stash)/.test(call))).toBe(
         false,
@@ -1394,7 +1394,9 @@ scenarios.describe('deliver --branch', () => {
       );
       expect(report).toMatchObject({ merged: false, mergeCommit: null, failedStep: 'merge' });
       expect(report.detail).toContain('rejected');
-      expect(world.calls).not.toContain(`push origin --delete ${BRANCH}`);
+      expect(world.calls).not.toContain(
+        `push origin --delete ${BRANCH} --force-with-lease=refs/heads/${BRANCH}:${HEAD}`,
+      );
       expect(record.requests).toEqual([]);
     },
   );
@@ -1402,7 +1404,13 @@ scenarios.describe('deliver --branch', () => {
   scenarios.scenario(
     'a branch that cannot be deleted is step delete with merged true, and no issue is closed',
     async () => {
-      const world = branchWorld({ [`push origin --delete ${BRANCH}`]: reply('', 1, 'denied') });
+      const world = branchWorld({
+        [`push origin --delete ${BRANCH} --force-with-lease=refs/heads/${BRANCH}:${HEAD}`]: reply(
+          '',
+          1,
+          'denied',
+        ),
+      });
       const approved = await approvedMembers({}, ['COR-9'], [], 'branch');
       const { report, record } = await deliverBranch(world, guardsPass, approved);
       expect(report).toMatchObject({ merged: true, mergeCommit: SQUASH, failedStep: 'delete' });

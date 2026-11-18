@@ -223,7 +223,14 @@ scenarios.scenario('resumes only branch deletion after a confirmed direct merge'
   const report = await directMerge(options, { runner: raw, verification: fixture.dependencies });
   expect(report).toMatchObject({ merged: true, mergeCommit: commit, failedStep: null });
   expect(calls.filter((call) => call[0] === 'git' && call[1] === 'push')).toEqual([
-    ['git', 'push', 'origin', '--delete', 'topic'],
+    [
+      'git',
+      'push',
+      'origin',
+      '--delete',
+      'topic',
+      `--force-with-lease=refs/heads/topic:${fixture.request.revision}`,
+    ],
   ]);
 });
 

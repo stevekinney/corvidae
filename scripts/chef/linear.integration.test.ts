@@ -11,7 +11,9 @@ import {
   cancelDispatch,
   createExecutionStateStore,
   currentAuthority,
+  readExecutionSnapshot,
   recordMutationResult,
+  requireAuthority,
 } from './execution-state.ts';
 import {
   blockIssue,
@@ -26,6 +28,7 @@ import {
 } from './linear.ts';
 import { UsageError } from './process-runner.ts';
 
+import { outcomeOf, rethrow } from '../module-scope-scenario.test-support.ts';
 import { fakeLinear, SECRET } from './linear-test-fixture.ts';
 
 let sandbox: string;
@@ -1710,3 +1713,111 @@ describe('lease', () => {
     expect(leaseScenario9).toBe(true);
   });
 });
+
+const releaseRecoveryControls = [];
+for (const command of ['claim', 'lease']) {
+  const outcome = await outcomeOf(async () => {
+    const fake = fakeLinear();
+    const directory = mkdtempSync(join(tmpdir(), 'linear-release-recovery-'));
+    let lost = false;
+    const fetch: FetchLike = async (url, init) => {
+      const response = await fake.fetch(url, init);
+      if (typeof init.body !== 'string') throw new Error('expected a JSON request body');
+      const payload = JSON.parse(init.body);
+      const body = payload.variables.body ?? payload.variables.input?.body ?? '';
+      if (
+        !lost &&
+        /mutation (CommentUpdate|ProjectUpdateMake)/.test(payload.query) &&
+        String(body).includes('status released')
+      ) {
+        lost = true;
+        throw new Error('release response lost after provider commit');
+      }
+      return response;
+    };
+    const input = {
+      ...leaseWithClock(fake),
+      fetch,
+      executionStateDirectory: directory,
+      ownerId: 'owner-a',
+    };
+    const target = command === 'claim' ? 'COR-1' : 'Alpha';
+    const acquire = [
+      command,
+      target,
+      '--run',
+      'run-a',
+      ...(command === 'claim' ? ['--branch', 'branch-a'] : []),
+    ];
+    expect(await codeOf(run(acquire, input))).toBe(0);
+    const store = createExecutionStateStore({ stateDirectory: directory, hostId: hostname() });
+    const authority = Object.values(readExecutionSnapshot(store).ownership)[0]!;
+    const release = [
+      command,
+      target,
+      '--release',
+      '--run',
+      'run-a',
+      '--generation',
+      String(authority.generation),
+    ];
+    expect(await codeOf(run(release, input))).toBe(1);
+    expect(lost).toBe(true);
+    const mutations = fake.log.filter(
+      (entry) => entry.operation === (command === 'claim' ? 'CommentUpdate' : 'ProjectUpdateMake'),
+    ).length;
+    expect(await codeOf(run(release, input))).toBe(0);
+    expect(() => requireAuthority(store, authority)).toThrow();
+    expect(
+      fake.log.filter(
+        (entry) =>
+          entry.operation === (command === 'claim' ? 'CommentUpdate' : 'ProjectUpdateMake'),
+      ),
+    ).toHaveLength(mutations);
+    rmSync(directory, { recursive: true, force: true });
+  });
+  releaseRecoveryControls.push({ command, outcome });
+}
+for (const control of releaseRecoveryControls)
+  test(`reconciled ${control.command} release revokes its original local authority`, () =>
+    rethrow(control.outcome));
+
+const aliasLeaseControl = await outcomeOf(async () => {
+  const fake = fakeLinear();
+  const directory = mkdtempSync(join(tmpdir(), 'linear-alias-lease-'));
+  const input = { ...leaseWithClock(fake), executionStateDirectory: directory };
+  const results = await Promise.all([
+    run(['lease', 'Alpha', '--run', 'run-a'], { ...input, ownerId: 'owner-a' }),
+    run(['lease', 'slug-one', '--run', 'run-b'], { ...input, ownerId: 'owner-b' }),
+  ]);
+  expect(results.filter((result) => result.code === 0)).toHaveLength(1);
+  expect(leases(fake)).toHaveLength(1);
+  const store = createExecutionStateStore({ stateDirectory: directory, hostId: hostname() });
+  const authorities = Object.values(readExecutionSnapshot(store).ownership);
+  expect(authorities).toHaveLength(1);
+  const authority = authorities[0]!;
+  expect(authority.resource).toBe('project:proj-1');
+  const owner = { ...input, ownerId: authority.ownerId };
+  expect(await codeOf(run(['lease', 'proj-1', '--run', authority.runId], owner))).toBe(0);
+  expect(Object.values(readExecutionSnapshot(store).ownership)).toHaveLength(1);
+  expect(
+    await codeOf(
+      run(
+        [
+          'lease',
+          'slug-one',
+          '--run',
+          authority.runId,
+          '--release',
+          '--generation',
+          String(authority.generation),
+        ],
+        owner,
+      ),
+    ),
+  ).toBe(0);
+  expect(() => requireAuthority(store, authority)).toThrow();
+  rmSync(directory, { recursive: true, force: true });
+});
+test('project aliases share acquisition, renewal and release authority', () =>
+  rethrow(aliasLeaseControl));

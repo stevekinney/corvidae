@@ -1,12 +1,12 @@
 # Execution report
 
-Read this when writing a completion, blocker, or handoff comment for an issue. Each of those comments is an execution report in this form, so every attempt at an issue leaves one record a person can read in Linear without the transcript. [The Linear policy](linear-policy.md) "Work-session comments" says which comment each situation needs; this file says what goes in it.
+Read this when reporting completion, a blocker, or a handoff for an issue. Delivery generates completion reports from collected evidence; the form below is for manual blocker and handoff comments. [The Linear policy](linear-policy.md) "Work-session comments" says which comment each situation needs.
 
 ## Form
 
 The first line is the marker `Execution report: <branch> attempt <n>`. Level-2 headings, in this order: Execution status; Agent and session; Attempt; Branch and pull request; Requirements implemented; Acceptance criteria; Verification; Changes; Blockers and open questions; Remaining work.
 
-`deliver.ts` refuses a `--completion-file` whose first line is not the marker or that lacks one of these headings in order, and `deliver.test.ts` keeps its list equal to the line above.
+`deliver.ts` accepts a coordinator-approved structured request, not a worker-written completion report. `renderMemberCompletion` in `scripts/chef/delivery-completion.ts` generates these headings from each member's assignment, plan, collected records, and remaining gates. Its marker is `Execution report: <identifier> operation <operationId>`; recovery finds that operation's existing comment across every page before posting again.
 
 - **Execution status:** one of Complete (the pull request merged), Partial (stopped with work left, including an interrupted run), Blocked, or Failed.
 - **Agent and session:** the provider, the model, and the session or agent id when known; otherwise "not available". Never a transcript path, a worktree path, or any other local path.
@@ -27,7 +27,7 @@ The first line is the marker `Execution report: <branch> attempt <n>`. Level-2 h
 
 The coordinator posts every report, without asking the owner, because it is the only Linear writer for closeout:
 
-- **Complete:** the report is the completion file that `scripts/chef/deliver.ts` posts after the merge, before it moves the issue to Done (when `--closes` names it).
+- **Complete:** `scripts/chef/deliver.ts` posts the generated member report after the merge. It moves the issue to Done only when the approved member requests close and its evidence satisfies every completion obligation. The generated report records pending obligations when that boundary has not passed.
 - **Partial, Blocked, or Failed:** the report is the blocker or handoff comment, posted with `bun scripts/chef/linear.ts comment <ID> --file <md>`. A Blocked report also sets the native relation with `bun scripts/chef/linear.ts block <ID> --by <BLOCKER>`.
 
 Chef's final report to the owner includes each report's link.

@@ -151,12 +151,11 @@ export function createGitHubEvidenceTransport(
       return job;
     },
     artifact(id, artifactName) {
-      const artifact = unique(
-        pages(repository, `actions/runs/${id}/artifacts`, 'artifacts', raw).filter(
-          (candidate) => string(candidate.name) === artifactName,
-        ),
-        'artifact mapping',
+      const matches = pages(repository, `actions/runs/${id}/artifacts`, 'artifacts', raw).filter(
+        (candidate) => string(candidate.name) === artifactName,
       );
+      if (matches.length === 0) return { present: false, expired: false, runId: id };
+      const artifact = unique(matches, 'artifact mapping');
       const artifactId = integer(artifact.id);
       const digest = string(artifact.digest);
       const run = runs.get(id) ?? this.run(id);
@@ -179,12 +178,13 @@ export function createGitHubEvidenceTransport(
         throw new EvidenceRequestError('authenticated artifact download failed');
       return response.stdout;
     },
-    content(revision, base, inputs) {
+    content(revision, _base, inputs) {
       const output = (argv: string[]): Uint8Array | undefined => {
         const result = Bun.spawnSync(argv, { cwd, stdout: 'pipe', stderr: 'pipe' });
         return result.exitCode === 0 ? result.stdout : undefined;
       };
-      const tree = output(['git', 'merge-tree', '--write-tree', base, revision]);
+      // A run proves its own revision, never a prospective merge with an untested base.
+      const tree = output(['git', 'rev-parse', '--verify', `${revision}^{tree}`]);
       const relevantInputs = inputs.map((path) => {
         const content = output(['git', 'show', `${revision}:${path}`]);
         return content === undefined

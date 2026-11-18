@@ -424,3 +424,59 @@ test('raw provider attempt identity rejects manufactured proof', () => {
     { commands: 0, rejected: true },
   ]);
 });
+
+const absentArtifact = (() => {
+  try {
+    return {
+      collection: collectProviderEvidenceFromRequest(
+        proofFixture.requestPath,
+        proofFixture.digest,
+        proofTransport({ withoutArtifact: true }),
+      ),
+      error: undefined,
+    };
+  } catch (error) {
+    return { collection: undefined, error };
+  }
+})();
+
+test('an authenticated empty artifact listing leaves the obligation pending', () => {
+  expect(absentArtifact.error).toBeUndefined();
+  expect(absentArtifact.collection?.records[0]?.status).toBe('pending');
+});
+
+const divergentProvider = await (async () => {
+  const git = async (...argv: string[]) => {
+    const result = await runWithHangGuard(['git', ...argv], { cwd: proofFixture.directory });
+    if (result.exitCode !== 0) throw new Error(new TextDecoder().decode(result.stderr));
+    return new TextDecoder().decode(result.stdout).trim();
+  };
+  await git('switch', '--detach', proofFixture.base);
+  writeFileSync(join(proofFixture.directory, 'base-only'), 'unchecked base change\n');
+  await git('add', 'base-only');
+  await git('commit', '-m', 'divergent base');
+  const base = await git('rev-parse', 'HEAD');
+  const integrationTree = await git('merge-tree', '--write-tree', base, proofFixture.revision);
+  const checkedTree = await git('rev-parse', `${proofFixture.revision}^{tree}`);
+  const request = { ...proofFixture.request, base, integrationTree };
+  const text = JSON.stringify(request);
+  const path = join(proofFixture.directory, 'divergent-request.json');
+  writeFileSync(path, text);
+  return {
+    integrationTree,
+    checkedTree,
+    collection: collectProviderEvidenceFromRequest(
+      path,
+      createHash('sha256').update(text).digest('hex'),
+      proofTransport(),
+    ),
+  };
+})();
+
+test('a branch provider run cannot attest to an untested prospective merge tree', () => {
+  expect(divergentProvider.checkedTree).not.toBe(divergentProvider.integrationTree);
+  expect(divergentProvider.collection.records[0]?.status).toBe('pending');
+  expect(divergentProvider.collection.records[0]?.integrationTree).toBe(
+    divergentProvider.checkedTree,
+  );
+});
