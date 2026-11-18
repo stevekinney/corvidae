@@ -98,7 +98,7 @@
   const retryKeeps = $derived(
     retryVersion === undefined || progress?.at === null || progress?.at === undefined
       ? undefined
-      : copy.retryKeeps(progress.at, retryVersion),
+      : copy.retryKeeps(progress.at),
   );
 
   // What the step said, in its own words and never the error's JSON (row 55b): "GitHub didn’t
