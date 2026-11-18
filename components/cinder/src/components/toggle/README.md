@@ -22,7 +22,7 @@ The switch sits beside the first line of its label, never the middle of a label 
 
 ## Off track contrast
 
-The switch has no text, so its off track is the whole of its visible shape. The track reads `--cinder-toggle-track-off-resting`, which is the control tier (`--cinder-border-control`) in light and `oklch(58% 0.02 245)` in dark, and clears 3:1 against every surface in both themes; the `toggle:track-off:*` contrast pairings hold it there. A disabled switch is muted with a grayscale filter, never an opacity fade.
+The switch has no text, so its off track is the whole of its visible shape. The track reads `--cinder-toggle-track-off-resting`, which is the control tier (`--cinder-border-control`) in light and `oklch(58% 0.02 265)` in dark, and clears 3:1 against every surface in both themes; the `toggle:track-off:*` contrast pairings hold it there. A disabled switch is muted with a grayscale filter, never an opacity fade.
 
 ## Props
 

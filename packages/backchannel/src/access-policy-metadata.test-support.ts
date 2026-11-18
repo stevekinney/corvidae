@@ -11,6 +11,7 @@ export type AccessPolicyMetadataExample = {
   readonly expected: Record<string, unknown>;
 };
 
+/** Access-policy examples whose generated metadata the tests pin. */
 export const accessPolicyMetadataExamples: ReadonlyArray<AccessPolicyMetadataExample> = [
   { segment: 'public', access: { kind: 'public' }, expected: { kind: 'public' } },
   {
@@ -70,6 +71,7 @@ export const accessPolicyMetadataExamples: ReadonlyArray<AccessPolicyMetadataExa
   },
 ];
 
+/** An access hint whose scope depends on an input field. */
 export const parameterizedAccessMetadataExample: ParameterizedAccessHint = {
   discriminator: 'mode',
   defaultValue: 'events',
@@ -85,6 +87,7 @@ export const parameterizedAccessMetadataExample: ParameterizedAccessHint = {
   ],
 };
 
+/** The metadata {@link parameterizedAccessMetadataExample} is expected to generate. */
 export const expectedParameterizedAccessMetadata = {
   discriminator: 'mode',
   defaultValue: 'events',

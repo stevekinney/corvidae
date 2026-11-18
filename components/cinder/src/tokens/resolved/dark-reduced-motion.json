@@ -522,7 +522,7 @@
   },
   "control.background.disabled": {
     "$type": "color",
-    "$value": { "colorSpace": "oklch", "components": [0.3, 0.015, 245] },
+    "$value": { "colorSpace": "oklch", "components": [0.3, 0.015, 265] },
     "$description": "Disabled control fill: a flat neutral that reads as inert and recedes. Light arm: `surface.inset`, the fill a disabled Button already uses, so the app has one disabled look and a disabled field is quieter than the white enabled one beside it (it used to alias `fill.disabled`, a mid-gray 86% that made a column of disabled selects the loudest thing on the page). Dark arm: `fill.disabled`, which already recedes there. The disabled checked mark of a checkbox, radio or multi-select still paints `fill.disabled` directly.",
     "$extensions": {
       "com.lostgradient.cinder": {
@@ -534,7 +534,7 @@
   },
   "control.border": {
     "$type": "color",
-    "$value": { "colorSpace": "oklch", "components": [1, 0, 0], "alpha": 0.32 },
+    "$value": { "colorSpace": "oklch", "components": [1, 0, 0], "alpha": 0.38 },
     "$description": "Resting control edge: the quiet `border.control` tier, which becomes the 3:1 `border.contrast` tier under `prefers-contrast: more`.",
     "$extensions": {
       "com.lostgradient.cinder": {
@@ -547,7 +547,7 @@
   },
   "control.border.hover": {
     "$type": "color",
-    "$value": { "colorSpace": "oklch", "components": [1, 0, 0], "alpha": 0.42 },
+    "$value": { "colorSpace": "oklch", "components": [1, 0, 0], "alpha": 0.44 },
     "$description": "Hovered control edge.",
     "$extensions": {
       "com.lostgradient.cinder": {
@@ -1566,7 +1566,7 @@
   },
   "border.ink": {
     "$value": { "colorSpace": "oklch", "components": [1, 0, 0] },
-    "$description": "The single polarity-aware ink every neutral border tier is mixed from: a dark cool ink in light mode, neutral white in dark mode. The tiers do three different jobs. STRUCTURAL tiers (`border.muted` 5% light and 8% dark, `border` 9% light and 12% dark, `border.strong` 15%) separate regions and outline containers; they are deliberately quiet and exempt from WCAG 1.4.11 because the region they bound is identified by its content and surface. CONTROL tiers (`border.control` 32%, `border.control.hover` 42%) are the resting edge of an input or bordered button: heavier than every structural tier, and quiet by owner decision rather than 3:1. CONTRAST tiers (`border.contrast` 48%, `border.contrast.hover` 58%) clear 3:1 against every surface; they are what the control tiers become under `prefers-contrast: more`, and what draws an unchecked checkbox, an unselected radio, and a neutral indicator with no other boundary. All seven are alpha steps over this ink (the dark arm of `border.contrast` is the one opaque literal), so each tier tracks the surface underneath it and one override re-tints them together; the generator re-declares each tier inside every [data-theme] block, so overriding this token on a themed element re-derives them there. The four HUED status borders (info, success, warning, danger) are deliberately NOT derived from it and stay opaque, because a translucent status border would take its hue from whatever it happened to sit on.",
+    "$description": "The single polarity-aware ink every neutral border tier is mixed from: a dark cool ink in light mode, neutral white in dark mode. The tiers do three different jobs. STRUCTURAL tiers (`border.muted` 5% light and 8% dark, `border` 9% light and 12% dark, `border.strong` 15%) separate regions and outline containers; they are deliberately quiet and exempt from WCAG 1.4.11 because the region they bound is identified by its content and surface. CONTROL tiers (`border.control` 32% light and 38% dark, `border.control.hover` 42% light and 44% dark) are the resting edge of an input or bordered button: heavier than every structural tier, quiet in light by owner decision (2026-11-11) and at least 3:1 in dark by owner decision (2026-11-17, controls only: structural borders stay quiet in both themes). CONTRAST tiers (`border.contrast` 48%, `border.contrast.hover` 58%) clear 3:1 against every surface; they are what the control tiers become under `prefers-contrast: more`, and what draws an unchecked checkbox, an unselected radio, and a neutral indicator with no other boundary. All seven are alpha steps over this ink (the dark arm of `border.contrast` is the one opaque literal), so each tier tracks the surface underneath it and one override re-tints them together; the generator re-declares each tier inside every [data-theme] block, so overriding this token on a themed element re-derives them there. The four HUED status borders (info, success, warning, danger) are deliberately NOT derived from it and stay opaque, because a translucent status border would take its hue from whatever it happened to sit on.",
     "$extensions": {
       "com.lostgradient.cinder": {
         "cssProperty": "--cinder-border-ink",
@@ -1578,23 +1578,23 @@
     "$type": "color"
   },
   "border.control": {
-    "$value": { "colorSpace": "oklch", "components": [1, 0, 0], "alpha": 0.32 },
+    "$value": { "colorSpace": "oklch", "components": [1, 0, 0], "alpha": 0.38 },
     "$extensions": {
       "com.lostgradient.cinder": {
-        "cssRecipe": "color-mix(in oklch, var(--cinder-border-ink), transparent 68%)",
+        "cssRecipe": "color-mix(in oklch, var(--cinder-border-ink), transparent 62%)",
         "cssProperty": "--cinder-border-control",
         "public": true,
         "category": "color"
       }
     },
-    "$description": "Control boundary: the resting edge of every text-entry control and bordered button. A 32% alpha step over `border.ink` in both themes (owner decision, 2026-11-11): quiet by default, heavier than every structural tier so a control still reads as the interactive thing, and deliberately under WCAG 1.4.11's 3:1, because a control is also identified by its fill, its label, and its focus ring. Under `prefers-contrast: more` it becomes `border.contrast`, which clears 3:1. Never fill an indicator with it, and never draw a control that is only its edge with it: an unchecked checkbox, an unselected radio, and an indicator with no other boundary use `border.contrast`.",
+    "$description": "Control boundary: the resting edge of every text-entry control and bordered button. A 32% alpha step over `border.ink` in light (owner decision, 2026-11-11): quiet by default, heavier than every structural tier so a control still reads as the interactive thing, and deliberately under WCAG 1.4.11's 3:1, because a control is also identified by its fill, its label, and its focus ring. In dark it is a 38% step (owner decision, 2026-11-17: controls only), which reads 3.4:1 or better on the raised surface a control paints, resting and hovered, so a dark input, composer or secondary button has an edge that clears 3:1 while structural borders stay quiet. Under `prefers-contrast: more` it becomes `border.contrast`, which clears 3:1. Never fill an indicator with it, and never draw a control that is only its edge with it: an unchecked checkbox, an unselected radio, and an indicator with no other boundary use `border.contrast`.",
     "$type": "color"
   },
   "border.control.hover": {
-    "$value": { "colorSpace": "oklch", "components": [1, 0, 0], "alpha": 0.42 },
+    "$value": { "colorSpace": "oklch", "components": [1, 0, 0], "alpha": 0.44 },
     "$extensions": {
       "com.lostgradient.cinder": {
-        "cssRecipe": "color-mix(in oklch, var(--cinder-border-ink), transparent 58%)",
+        "cssRecipe": "color-mix(in oklch, var(--cinder-border-ink), transparent 56%)",
         "cssProperty": "--cinder-border-control-hover",
         "public": true,
         "category": "color"
@@ -1604,17 +1604,17 @@
     "$type": "color"
   },
   "border.contrast": {
-    "$value": { "colorSpace": "oklch", "components": [0.56, 0.05, 248] },
+    "$value": { "colorSpace": "oklch", "components": [0.64, 0.03, 265] },
     "$extensions": {
       "com.lostgradient.cinder": {
-        "cssRecipe": "oklch(56% 0.05 248)",
+        "cssRecipe": "oklch(64% 0.03 265)",
         "cssProperty": "--cinder-border-contrast",
         "public": true,
         "category": "color",
         "contrastPairs": ["surface.base", "surface.raised"]
       }
     },
-    "$description": "The neutral edge that clears WCAG 1.4.11's 3:1 against every surface a control sits on. It does two jobs: it is what `border.control` becomes under `prefers-contrast: more`, it is the edge of a control that is nothing but its edge (an unchecked checkbox, an unselected radio), and it fills neutral indicators that have no other boundary (a toggle's off track, a slider's rail, a drag handle, an empty rating star), which must stay visible on their own. Light arm: a 48% alpha step over `border.ink` (the ink at 52% transparency, about oklch(66% .006 255) over white). Dark arm: the opaque oklch(56% .05 248), which reads 4.03:1 on the surface and 3.60:1 on raised; the 56% step is margin over the 3:1 floor on `surface.raised`, which the contrast pairs hold it to.",
+    "$description": "The neutral edge that clears WCAG 1.4.11's 3:1 against every surface a control sits on. It does two jobs: it is what `border.control` becomes under `prefers-contrast: more`, it is the edge of a control that is nothing but its edge (an unchecked checkbox, an unselected radio), and it fills neutral indicators that have no other boundary (a toggle's off track, a slider's rail, a drag handle, an empty rating star), which must stay visible on their own. Light arm: a 48% alpha step over `border.ink` (the ink at 52% transparency, about oklch(66% .006 255) over white). Dark arm: the opaque oklch(64% .03 265), which reads about 5.5:1 on the surfaces; it sits above the 38% dark control edge so `prefers-contrast: more` still means a heavier edge, and the contrast pairs hold it above the 3:1 floor on `surface.raised`.",
     "$type": "color"
   },
   "border.contrast.hover": {
@@ -1632,7 +1632,7 @@
     "$type": "color"
   },
   "border.faint": {
-    "$value": { "colorSpace": "oklch", "components": [0.33, 0.03, 245] },
+    "$value": { "colorSpace": "oklch", "components": [0.33, 0.03, 265] },
     "$description": "Decorative-only hairline. Never use as a control boundary: it is intentionally below the WCAG 1.4.11 3:1 non-text threshold.",
     "$extensions": {
       "com.lostgradient.cinder": {
@@ -1710,7 +1710,7 @@
     "$type": "color"
   },
   "text.disabled": {
-    "$value": { "colorSpace": "oklch", "components": [0.64, 0.02, 245] },
+    "$value": { "colorSpace": "oklch", "components": [0.64, 0.02, 265] },
     "$description": "Disabled text color. Clears the 3:1 UI floor in both themes even though disabled controls are exempt from WCAG text contrast; a disabled control still has to be visible as a control.",
     "$extensions": {
       "com.lostgradient.cinder": {
@@ -1748,7 +1748,7 @@
     }
   },
   "fill.disabled": {
-    "$value": { "colorSpace": "oklch", "components": [0.3, 0.015, 245] },
+    "$value": { "colorSpace": "oklch", "components": [0.3, 0.015, 265] },
     "$description": "Neutral fill for disabled solid controls (disabled-checked checkbox/radio) so they stop misusing `text.disabled` (a text-lightness token) as an assertive fill. The glyph on top must use `text.disabled`, not `accent.contrast`: accent-contrast is dark ink in both arms and would be near-invisible on the dark-arm fill.",
     "$extensions": {
       "com.lostgradient.cinder": {
@@ -1761,7 +1761,7 @@
     "$type": "color"
   },
   "accent.contrast": {
-    "$value": { "colorSpace": "oklch", "components": [0.15, 0.035, 245] },
+    "$value": { "colorSpace": "oklch", "components": [0.15, 0.035, 270] },
     "$description": "Label color for solid accent fills. Light arm flips to white (the indigo fill is dark enough); dark arm keeps dark ink against the bright dark-mode fill.",
     "$extensions": {
       "com.lostgradient.cinder": {
@@ -1994,7 +1994,7 @@
   },
   "overlay.backdrop": {
     "$type": "color",
-    "$value": { "colorSpace": "oklch", "components": [0.08, 0.02, 245], "alpha": 0.65 },
+    "$value": { "colorSpace": "oklch", "components": [0.08, 0.02, 265], "alpha": 0.65 },
     "$description": "Overlay backdrop scrim color. The light arm dims the page by a quarter, so the page behind a modal stays readable and the scene stays bright.",
     "$extensions": {
       "com.lostgradient.cinder": {
@@ -3179,7 +3179,7 @@
   },
   "checker.base": {
     "$type": "color",
-    "$value": { "colorSpace": "oklch", "components": [0.28, 0.02, 245] },
+    "$value": { "colorSpace": "oklch", "components": [0.28, 0.02, 265] },
     "$description": "Transparency checkerboard base tile, shared by color-domain components. Light mode preserves the historical white/gray grid; dark mode keeps the pattern visible without flashing a white backing inside dark chrome.",
     "$extensions": {
       "com.lostgradient.cinder": {
@@ -3191,7 +3191,7 @@
   },
   "checker.tile": {
     "$type": "color",
-    "$value": { "colorSpace": "oklch", "components": [0.38, 0.02, 245] },
+    "$value": { "colorSpace": "oklch", "components": [0.38, 0.02, 265] },
     "$description": "Transparency checkerboard alternate tile.",
     "$extensions": {
       "com.lostgradient.cinder": {
@@ -3229,7 +3229,7 @@
   },
   "button.border": {
     "$type": "color",
-    "$value": { "colorSpace": "oklch", "components": [1, 0, 0], "alpha": 0.32 },
+    "$value": { "colorSpace": "oklch", "components": [1, 0, 0], "alpha": 0.38 },
     "$description": "Secondary (default) button border: `border.control` in both themes, so the edge reads heavier than a container's even though the structural tiers are faint, and becomes the 3:1 `border.contrast` tier under `prefers-contrast: more`.",
     "$extensions": {
       "com.lostgradient.cinder": {
@@ -3535,10 +3535,10 @@
     "$type": "dimension"
   },
   "toggle.track.off-resting": {
-    "$value": { "colorSpace": "oklch", "components": [0.58, 0.02, 245] },
+    "$value": { "colorSpace": "oklch", "components": [0.58, 0.02, 265] },
     "$extensions": {
       "com.lostgradient.cinder": {
-        "cssRecipe": "oklch(58% 0.02 245)",
+        "cssRecipe": "oklch(58% 0.02 265)",
         "cssProperty": "--cinder-toggle-track-off-resting",
         "public": true,
         "category": "color",
@@ -3549,10 +3549,10 @@
     "$type": "color"
   },
   "toggle.track.off-hover-resting": {
-    "$value": { "colorSpace": "oklch", "components": [0.64, 0.02, 245] },
+    "$value": { "colorSpace": "oklch", "components": [0.64, 0.02, 265] },
     "$extensions": {
       "com.lostgradient.cinder": {
-        "cssRecipe": "oklch(64% 0.02 245)",
+        "cssRecipe": "oklch(64% 0.02 265)",
         "cssProperty": "--cinder-toggle-track-off-hover-resting",
         "public": true,
         "category": "color",
@@ -4010,7 +4010,7 @@
   },
   "file-upload.border-color": {
     "$type": "color",
-    "$value": { "colorSpace": "oklch", "components": [1, 0, 0], "alpha": 0.32 },
+    "$value": { "colorSpace": "oklch", "components": [1, 0, 0], "alpha": 0.38 },
     "$description": "Dropzone border color.",
     "$extensions": {
       "com.lostgradient.cinder": {
@@ -4150,7 +4150,7 @@
   },
   "modal.backdrop": {
     "$type": "color",
-    "$value": { "colorSpace": "oklch", "components": [0.08, 0.02, 245], "alpha": 0.65 },
+    "$value": { "colorSpace": "oklch", "components": [0.08, 0.02, 265], "alpha": 0.65 },
     "$description": "`::backdrop` fill color override point. A consumer override should target `::backdrop` directly for cross-engine reliability.",
     "$extensions": {
       "com.lostgradient.cinder": {

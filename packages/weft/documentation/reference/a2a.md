@@ -19,7 +19,7 @@ bun add @a2a-js/sdk@1.3.0
 ```ts
 import type { AgentCard } from '@a2a-js/sdk';
 import { DefaultRequestHandler, InMemoryTaskStore, type AgentExecutor } from '@a2a-js/sdk/server';
-import { createAuthenticator, type AuthConfig } from '@lostgradient/weft';
+import { createAuthenticator, type AuthConfig } from '@lostgradient/backchannel';
 import { createA2AHandler, securitySchemesFromAuthConfig } from '@lostgradient/weft/a2a';
 
 declare const executor: AgentExecutor;

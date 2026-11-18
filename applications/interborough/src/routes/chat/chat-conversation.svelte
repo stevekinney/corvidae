@@ -40,7 +40,7 @@
    * the address becomes `/chats/:chat` by replacing the history entry, with this page kept
    * mounted (`router.navigate`'s `keep`), and the agent is fixed from then on.
    */
-  import { onMount, tick, untrack } from 'svelte';
+  import { onDestroy, onMount, tick, untrack } from 'svelte';
   import { MediaQuery } from 'svelte/reactivity';
   import type { McpUiHostContext } from '@modelcontextprotocol/ext-apps/app-bridge';
 
@@ -125,6 +125,7 @@
   import { downloadText } from '../audit/audit-export.ts';
   import { useMinuteClock } from '../home/home-clock.svelte.ts';
   import { modelInUse } from './agent-model.ts';
+  import { createApprovalPlacement } from './approval-placement.ts';
   import BranchOrigin from './branch-origin.svelte';
   import ChatApproval from './chat-approval.svelte';
   import { branchPointIds } from './branch-points.ts';
@@ -782,7 +783,7 @@
         '--cinder-chat-overlay-inset-start',
         `${element.getBoundingClientRect().height}px`,
       );
-      placeApprovalAgain();
+      approvalPlacement.headerChanged();
     };
     write();
     const observer = new ResizeObserver(write);
@@ -831,28 +832,23 @@
       // A layout not yet measured says nothing about fit: centre the card.
       if (shift !== null) {
         transcript.scrollTop += shift;
-        placedApproval = { row, transcript, scrollTop: transcript.scrollTop };
+        approvalPlacement.placed(transcript);
+        placedApprovalRow = row;
         return;
       }
     }
     row.scrollIntoView?.({ block: 'center' });
   }
 
-  /** The approval this page last placed, and where that left the transcript. */
-  let placedApproval: { row: HTMLElement; transcript: HTMLElement; scrollTop: number } | undefined;
-
-  /**
-   * The header grew or shrank (its title and status arrive after the chat opens), so the line the
-   * approval must stay under moved: place it again, while the person has not moved focus or scrolled
-   * the transcript since the page placed it.
-   */
-  function placeApprovalAgain(): void {
-    const placed = placedApproval;
-    if (placed === undefined || !placed.row.isConnected) return;
-    if (document.activeElement !== placed.row) return;
-    if (Math.abs(placed.transcript.scrollTop - placed.scrollTop) > 1) return;
-    bringApprovalIntoView(placed.row);
-  }
+  // The header's title and status arrive after the chat opens, so it is taller when it settles than
+  // when the approval was placed: while the arrival placement is in force (until the person's first
+  // scrolling input; never the placement's own scroll, nor where focus is), a change in the header's
+  // height places the approval again (`approval-placement.ts`).
+  let placedApprovalRow: HTMLElement | undefined;
+  const approvalPlacement = createApprovalPlacement(() => {
+    if (placedApprovalRow?.isConnected) bringApprovalIntoView(placedApprovalRow);
+  });
+  onDestroy(() => approvalPlacement.release());
 
   /** Scrolls the first approval's row into view and focuses it, once it is drawn. */
   async function focusApproval(): Promise<void> {

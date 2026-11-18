@@ -8,6 +8,7 @@
  * @module client/local
  */
 
+import { createCatalogClient } from '@lostgradient/backchannel/client';
 import type { Engine } from '../core/engine.ts';
 import {
   runtimeWorkflowEngine,
@@ -76,7 +77,6 @@ import type {
 } from './interface.ts';
 import { createLocalWorkflowEventTail } from './local-event-tail.ts';
 import { LocalHandle, LocalScheduleHandle } from './local-handles.ts';
-import { createCatalogWeftClient } from './operation-client-runtime.ts';
 import type { KnownWorkflowName, UnknownNameWhenRegistryEmpty } from './workflow-name-typing.ts';
 
 // ---------------------------------------------------------------------------
@@ -146,7 +146,7 @@ export class LocalClient<
       complete: (token, result) => this.#engine.completeAsyncActivity(token, result),
       completeExceptionally: (token, error) => this.#engine.failAsyncActivity(token, error),
     };
-    this.operations = createCatalogWeftClient<ClientOperationTypes>(
+    this.operations = createCatalogClient<ClientOperationTypes>(
       CLIENT_OPERATION_NAMES,
       inProcessCatalogTransport(
         this.#rawEngine,

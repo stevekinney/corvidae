@@ -21,12 +21,11 @@ import type { WorkflowCatalogOperationTypes } from './workflow-catalog-operation
 import type { WorkflowsOperationTypes } from './workflows-operations.generated.ts';
 
 import {
-  createCatalogWeftClient,
-  httpJsonRpcTransport,
-  type CatalogWeftClient,
+  createCatalogClient,
+  type CatalogClient,
   type ClientRestOperationBinding,
-  type WeftClientConnection,
-} from '../operation-client-runtime.ts';
+} from '@lostgradient/backchannel/client';
+import { httpJsonRpcTransport, type WeftClientConnection } from '../weft-connection-transport.ts';
 
 /**
  * Every unary operation this server exposes over JSON-RPC, sorted by name.
@@ -400,7 +399,7 @@ export type CatalogOperationTypes = Pick<ClientOperationTypes, CatalogOperationN
  * console.log(typeof listAlerts);
  * ```
  */
-export type CatalogOperations = CatalogWeftClient<CatalogOperationTypes>;
+export type CatalogOperations = CatalogClient<CatalogOperationTypes>;
 
 /**
  * A client shaped over every operation, REST included: each operation name is
@@ -419,7 +418,7 @@ export type CatalogOperations = CatalogWeftClient<CatalogOperationTypes>;
  * console.log(typeof diagnostics);
  * ```
  */
-export type ClientOperations = CatalogWeftClient<ClientOperationTypes>;
+export type ClientOperations = CatalogClient<ClientOperationTypes>;
 
 /**
  * Build a typed client for a remote Weft server, with one method per operation
@@ -446,7 +445,7 @@ export type ClientOperations = CatalogWeftClient<ClientOperationTypes>;
  * ```
  */
 export function createWeftClient(connection: WeftClientConnection = {}): CatalogOperations {
-  return createCatalogWeftClient<CatalogOperationTypes>(
+  return createCatalogClient<CatalogOperationTypes>(
     CATALOG_OPERATION_NAMES,
     httpJsonRpcTransport(connection),
   );

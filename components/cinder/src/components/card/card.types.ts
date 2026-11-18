@@ -130,8 +130,8 @@ export type CardProps = SharedHtmlAttributes &
     headerDivider?: boolean;
     /**
      * Container treatment. `danger` renders a danger-zone surface for high-risk settings or destructive actions.
-     * `suggested` marks drafted content that is not saved until confirmed: a quiet accent text label on the
-     * title row (or at the top of the body when the card has no `title`), with no tint, border or pill.
+     * `suggested` marks drafted content that is not saved until confirmed: a quiet accent text label on a
+     * line above the title (or at the top of the body when the card has no `title`), with no tint, border or pill.
      */
     tone?: CardSurfaceTone;
     /**
