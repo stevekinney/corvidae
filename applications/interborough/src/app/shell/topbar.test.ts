@@ -110,7 +110,12 @@ describe('the top bar', () => {
     const phone = css.match(/@media \(max-width: 639\.98px\) \{[\s\S]*?\n\}\n/)?.[0] ?? '';
     expect(phone).toMatch(/\.weft-shell-topbar \{\s*gap: var\(--cinder-space-1\);/);
     expect(phone).not.toMatch(/(block-size|min-inline-size|inline-size|min-width): (40|44)px/);
-    expect(phone).toContain('aspect-ratio: 1;');
+    // The search trigger is as wide as the Button's face is tall. Never an aspect ratio: the wide
+    // rule gives the trigger 300px of width, which a 1:1 ratio turned into a 300px-tall control.
+    expect(phone).toMatch(
+      /\.weft-shell-search-trigger \{\s*flex: none;\s*inline-size: var\(--cinder-button-height-md\);/,
+    );
+    expect(phone).not.toContain('aspect-ratio');
   });
 
   test('names the page in words in the breadcrumb, and Home at the root', () => {
