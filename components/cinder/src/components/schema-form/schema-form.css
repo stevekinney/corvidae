@@ -6,6 +6,8 @@
 @import '../tag-input/tag-input.css';
 /* A secret's key is drawn with Text (truncate="middle"). */
 @import '../text/text.css';
+/* A secret field whose keys failed to load is ErrorState's one row. */
+@import '../error-state/error-state.css';
 
 @layer cinder.components {
   .cinder-schema-form {
@@ -287,14 +289,19 @@
     flex: 0 1 auto;
   }
 
+  /* The label of a field whose keys failed to load: a field label (form-field.css) in a paragraph. */
   .cinder-schema-form__secret-label {
     margin: 0;
-    font-size: var(--cinder-text-sm);
-    font-weight: var(--cinder-font-medium);
+  }
+
+  /* The keys failed to load: ErrorState's one row, flush with the label above it, as the field's
+   * control would be. */
+  .cinder-schema-form__secret-failed.cinder-error-state[data-cinder-variant='row']
+    .cinder-error-state-body {
+    padding: 0;
   }
 
   .cinder-schema-form__secret-help,
-  .cinder-schema-form__secret-failed,
   .cinder-schema-form__secret-warning {
     margin: 0;
     font-size: var(--cinder-text-sm);

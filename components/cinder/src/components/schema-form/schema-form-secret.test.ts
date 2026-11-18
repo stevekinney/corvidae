@@ -271,6 +271,15 @@ describe('a secret field', () => {
 
     const failed = requiredValue(container.querySelector('.cinder-schema-form__secret-failed'));
     expect(failed.textContent).toContain('Couldn’t load the saved secrets.');
+    // R10-15: Cinder's one-row failure with its own retry, never a bare sentence and a ghost button.
+    expect(failed.classList.contains('cinder-error-state')).toBe(true);
+    expect(failed.getAttribute('data-cinder-variant')).toBe('row');
+    expect(failed.querySelector('[role="alert"]')).not.toBeNull();
+    expect(failed.querySelector('button')?.textContent?.trim()).toBe('Try again');
+    // The label keeps its required dot, as in every other state.
+    const label = requiredValue(container.querySelector('.cinder-schema-form__secret-label'));
+    expect(label.textContent?.trim()).toBe('Token');
+    expect(label.querySelector('.cinder-_required-marker')).not.toBeNull();
     await fireEvent.click(requiredValue(failed.querySelector('button')));
     expect(onRetry).toHaveBeenCalledTimes(1);
     expect(container.querySelector('[role="combobox"]')).toBeNull();

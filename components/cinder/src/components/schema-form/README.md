@@ -100,7 +100,8 @@ The Select holds one key at a time; an optional field also offers "None". A key 
 
 - A chosen key that is Missing shows "&lt;key&gt; isn’t saved yet." under the Select, the key in monospace, with an "Add the key" button when `secrets.onAdd` is given. The host saves the key and passes the keys again, and the option's note reads Set with no reload.
 - With no keys the Select is disabled and reads "No secrets to choose", and the line under it is `copy.emptyHelp`, then the `manage` link, then `copy.emptyHelpEnd`.
-- With `status: "failed"` the Select is replaced by "Couldn’t load the saved secrets." and, when `onRetry` is given, "Try again". The rest of the form stays usable.
+- With `status: "failed"` the Select is replaced by an `ErrorState variant="row"` under the field's label (its required dot kept): "Couldn’t load the saved secrets." and, when `onRetry` is given, its own "Try again". The rest of the form stays usable.
+- The one action that ends the missing-key warning, "Add the key", is Button's `link` variant, so it reads as the Settings › Plugins link of the empty state does.
 
 Every sentence is a member of `secrets.copy`, with a default, so a host words the field in its own terms.
 

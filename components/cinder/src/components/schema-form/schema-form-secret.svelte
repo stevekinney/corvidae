@@ -6,6 +6,7 @@
 -->
 <script lang="ts">
   import Button from '../button/button.svelte';
+  import ErrorState from '../error-state/error-state.svelte';
   import Link from '../link/link.svelte';
   import Select from '../select/select.svelte';
   import type { SelectOption } from '../select/select.types.ts';
@@ -84,13 +85,24 @@
   data-cinder-secret-state={failed ? 'failed' : empty ? 'empty' : 'ready'}
 >
   {#if failed}
-    <p class="cinder-schema-form__secret-label">{label}</p>
-    <p class="cinder-schema-form__secret-failed" role="alert">
-      {copy.failed}
-      {#if secrets?.onRetry !== undefined}
-        <Button variant="ghost" size="sm" onclick={() => secrets?.onRetry?.()}>{copy.retry}</Button>
+    <!-- The field's label as every other state draws it, required dot included. -->
+    <p class="cinder-form-field__label cinder-schema-form__secret-label">
+      {label}
+      {#if required}
+        <span class="cinder-_required-marker" aria-hidden="true"></span>
       {/if}
     </p>
+    <!-- The keys failed to load: Cinder's one-row failure, its glyph, the words and its own retry. -->
+    <ErrorState
+      variant="row"
+      class="cinder-schema-form__secret-failed"
+      title={copy.failed}
+      description=""
+      headingLevel={3}
+      retryLabel={copy.retry}
+      retryVariant="secondary"
+      {...secrets?.onRetry === undefined ? {} : { onRetry: () => secrets?.onRetry?.() }}
+    />
   {:else}
     <Select
       {id}
