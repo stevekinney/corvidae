@@ -22,6 +22,10 @@ Import components, utilities, types, and metadata from this one entry point. Com
 
 [Editor](../editor/README.md) and [Markdown](../../packages/markdown/README.md) own their respective product APIs in separate workspaces. Syntax highlighting dependencies used by Cinder's `CodeBlock` are declared directly by Cinder.
 
+## Maintainer tool
+
+Cinder owns `scripts/export-names.ts`, a manual export-inventory CLI for reviewing a TypeScript barrel's runtime and type names. From this workspace, run `bun scripts/export-names.ts src/index.ts`; it prints sorted `runtime` and `types` lists for a review diff.
+
 ## Component metadata
 
 The root exports the component manifest and named metadata values:
