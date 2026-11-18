@@ -68,9 +68,12 @@
 // 2 invalid CLI usage (including an unavailable LINEAR_API_KEY).
 
 import { existsSync, readFileSync } from 'node:fs';
+import { hostname } from 'node:os';
+import { join } from 'node:path';
 import { rootScriptEnvironment } from '../environment-configuration.ts';
 import { isUsableValue, resolveCredential } from './credentials.ts';
 import { describeError, emitResult, parseOptions, UsageError } from './process-runner.ts';
+import { resolveMainCheckout } from './repository-locations.ts';
 
 /** The API rejected a request or answered with something unusable. */
 export class LinearError extends Error {}
@@ -86,6 +89,10 @@ export interface LinearDependencies {
   resolveKey?: () => string | undefined;
   /** The clock `claim`, `lease` and `brief.ts` judge a marker's age by; defaults to the real one. */
   now?: () => Date;
+  /** Disposable state directory for local claim/lease authority tests. */
+  executionStateDirectory?: string;
+  /** Stable coordinator identity; production defaults to the Chef run. */
+  ownerId?: string;
 }
 
 export interface LinearClient {
@@ -1531,6 +1538,51 @@ function identifierArgument(parsed: Parsed, count: number): string[] {
   return parsed.positionals;
 }
 
+/**
+ * The provider marker remains evidence, not local exclusion. The short state transaction fences
+ * same-host coordinators; provider inspection and mutation deliberately happen outside it.
+ */
+async function withLocalAuthority(
+  dependencies: LinearDependencies,
+  request: { resource: string; runId: string; ownerId: string },
+  inspectClaim: () => Promise<{ holder: string; live: boolean } | undefined>,
+  action: string,
+  perform: () => Promise<Outcome>,
+): Promise<Outcome> {
+  // Unit clients remain in-memory unless they explicitly ask for the durable boundary.
+  if (dependencies.fetch !== undefined && dependencies.executionStateDirectory === undefined)
+    return perform();
+  const stateModule = await import('./execution-state.ts');
+  const store = stateModule.createExecutionStateStore({
+    stateDirectory:
+      dependencies.executionStateDirectory ??
+      join(resolveMainCheckout(), 'tmp', 'chef', 'execution-state'),
+    hostId: hostname(),
+  });
+  const acquired = await stateModule.acquireDispatch(store, request, { inspectClaim });
+  if (!acquired.granted)
+    return {
+      ok: false,
+      summary: `Refused: ${request.resource} ${acquired.reason}.`,
+      data: { claimed: false, leased: false, holder: null },
+    };
+  const operationId = `${request.resource}:${acquired.authority.generation}:${action}`;
+  await stateModule.recordMutationIntent(store, acquired.authority, { operationId, action });
+  try {
+    const outcome = await perform();
+    await stateModule.recordMutationResult(store, acquired.authority, operationId, {
+      outcome: outcome.ok ? 'observed' : 'unknown',
+      observed: outcome.data,
+    });
+    return outcome;
+  } catch (error) {
+    await stateModule.recordMutationResult(store, acquired.authority, operationId, {
+      outcome: 'unknown',
+    });
+    throw error;
+  }
+}
+
 export async function run(
   argv: string[],
   dependencies: LinearDependencies = {},
@@ -1666,10 +1718,30 @@ export async function run(
       throw new UsageError(`--run needs a run id such as 2026-11-10-134500-name, not "${runId}".`);
     const release = parsed.flags.has('release');
     if (command === 'lease') {
-      plan = (client) =>
-        release
-          ? releaseLease(client, target as string, runId, now)
-          : leaseProject(client, target as string, runId, now);
+      plan = (client) => {
+        if (release) return releaseLease(client, target as string, runId, now);
+        return withLocalAuthority(
+          dependencies,
+          {
+            resource: `project:${target}`,
+            runId,
+            ownerId: dependencies.ownerId ?? `linear:${runId}`,
+          },
+          async () => {
+            const project = await resolveProject(client, target as string);
+            const current = await latestLease(client, project.id);
+            if (
+              current === undefined ||
+              current.marker.run === runId ||
+              !leaseIsLive(current.marker, now)
+            )
+              return undefined;
+            return { holder: current.marker.run, live: true };
+          },
+          'lease',
+          () => leaseProject(client, target as string, runId, now),
+        );
+      };
     } else if (release) {
       if (parsed.options.has('branch') || parsed.options.has('head'))
         throw new UsageError('--release takes no --branch or --head.');
@@ -1682,11 +1754,31 @@ export async function run(
       if (head !== undefined && !/^[0-9a-f]{7,40}$/.test(head))
         throw new UsageError(`--head needs a commit sha, not "${head}".`);
       plan = (client) =>
-        claimIssue(
-          client,
-          target as string,
-          { run: runId, branch, ...(head === undefined ? {} : { head }) },
-          now,
+        withLocalAuthority(
+          dependencies,
+          {
+            resource: `issue:${target}`,
+            runId,
+            ownerId: dependencies.ownerId ?? `linear:${runId}`,
+          },
+          async () => {
+            const current = latestClaim(await fetchComments(client, target as string));
+            if (
+              current === undefined ||
+              current.marker.run === runId ||
+              !claimIsLive(current.marker, now)
+            )
+              return undefined;
+            return { holder: current.marker.run, live: true };
+          },
+          'claim',
+          () =>
+            claimIssue(
+              client,
+              target as string,
+              { run: runId, branch, ...(head === undefined ? {} : { head }) },
+              now,
+            ),
         );
     }
   } else {

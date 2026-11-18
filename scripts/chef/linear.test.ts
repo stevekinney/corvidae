@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -1606,6 +1606,36 @@ describe('claim', () => {
     expect(fake.issues[0]?.stateId).toBe('s-doing');
   });
 
+  // spawn-free: the injected Linear client and disposable authority directory run in process.
+  test('the supported claim route grants one local coordinator and records its mutation intent', async () => {
+    const fake = fakeLinear();
+    const executionStateDirectory = join(sandbox, 'claim-authority');
+    const first = run(['claim', 'COR-1', '--run', 'run-a', '--branch', 'branch-a'], {
+      ...withClock(fake),
+      executionStateDirectory,
+      ownerId: 'owner-a',
+    });
+    const second = run(['claim', 'COR-1', '--run', 'run-b', '--branch', 'branch-b'], {
+      ...withClock(fake),
+      executionStateDirectory,
+      ownerId: 'owner-b',
+    });
+    const results = await Promise.all([first, second]);
+    expect(results.filter((result) => result.code === 0)).toHaveLength(1);
+    const state = JSON.parse(
+      readFileSync(join(executionStateDirectory, 'execution-state.json'), 'utf8'),
+    ) as {
+      operations: Record<string, Record<string, unknown>>;
+    };
+    expect(Object.values(state.operations)).toContainEqual({
+      operationId: 'issue:COR-1:1:claim',
+      action: 'claim',
+      outcome: 'observed',
+      observed: expect.any(Object),
+      nextAction: 'closeout',
+    });
+  });
+
   test('refuses another run while the claim is live, naming the holder, and changes nothing', async () => {
     const fake = fakeLinear();
     await take(fake, 'run-a');
@@ -1752,6 +1782,26 @@ describe('lease', () => {
     );
     const json = JSON.parse(await runOutput(['project-read', 'Alpha', '--json'], withClock(fake)));
     expect(json.lease).toMatchObject({ run: 'run-a', live: true });
+  });
+
+  // spawn-free: the provider and durable ownership directory are injected test collaborators.
+  test('the supported lease route fences a competing local coordinator', async () => {
+    const fake = fakeLinear();
+    const executionStateDirectory = join(sandbox, 'lease-authority');
+    const [first, second] = await Promise.all([
+      run(['lease', 'Alpha', '--run', 'run-a'], {
+        ...withClock(fake),
+        executionStateDirectory,
+        ownerId: 'owner-a',
+      }),
+      run(['lease', 'Alpha', '--run', 'run-b'], {
+        ...withClock(fake),
+        executionStateDirectory,
+        ownerId: 'owner-b',
+      }),
+    ]);
+    expect([first, second].filter((result) => result.code === 0)).toHaveLength(1);
+    expect(leases(fake)).toHaveLength(1);
   });
 
   test('refuses another run while the lease is live, and leases another project freely', async () => {

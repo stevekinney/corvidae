@@ -92,6 +92,27 @@ describe('execution state', () => {
     expect(readFileSync(state.statePath, 'utf8')).toBe('{truncated');
   });
 
+  // spawn-free: malformed persisted records are rejected before any ownership mutation.
+  test.each([
+    [
+      'array ownership',
+      '{"version":1,"hostId":"host-a","ownership":[],"operations":{},"pendingCloseout":[],"nextAction":null}',
+    ],
+    [
+      'string generation',
+      '{"version":1,"hostId":"host-a","ownership":{"issue:COR-1":{"resource":"issue:COR-1","runId":"run-a","ownerId":"owner-a","generation":"corrupt","status":"released"}},"operations":{},"pendingCloseout":[],"nextAction":null}',
+    ],
+  ])('preserves %s corruption rather than granting a new generation', async (_name, content) => {
+    const state = store();
+    writeFileSync(state.statePath, content);
+    expect(
+      await throwingRejectionOf(
+        acquireDispatch(state, { resource: 'issue:COR-1', runId: 'run-b', ownerId: 'owner-b' }),
+      ),
+    ).toThrow(ExecutionStateError);
+    expect(readFileSync(state.statePath, 'utf8')).toBe(content);
+  });
+
   // spawn-free: restart recovery uses a deliberately orphaned temporary replacement.
   test('restart ignores a crash-left temporary replacement and reads a complete snapshot', async () => {
     const state = store();

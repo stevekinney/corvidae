@@ -83,6 +83,48 @@ function emptySnapshot(hostId: string): ExecutionSnapshot {
   };
 }
 
+function plainRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function assertAuthorityRecord(value: unknown, resource: string, statePath: string): void {
+  if (!plainRecord(value))
+    throw new ExecutionStateError(`${statePath} has malformed ownership for ${resource}.`);
+  if (
+    value['resource'] !== resource ||
+    typeof value['runId'] !== 'string' ||
+    value['runId'] === '' ||
+    typeof value['ownerId'] !== 'string' ||
+    value['ownerId'] === ''
+  )
+    throw new ExecutionStateError(`${statePath} has malformed ownership identity for ${resource}.`);
+  if (!Number.isSafeInteger(value['generation']) || (value['generation'] as number) < 1)
+    throw new ExecutionStateError(
+      `${statePath} has malformed ownership generation for ${resource}.`,
+    );
+  if (
+    value['status'] !== 'held' &&
+    value['status'] !== 'cancelled' &&
+    value['status'] !== 'released'
+  )
+    throw new ExecutionStateError(`${statePath} has malformed ownership status for ${resource}.`);
+}
+
+function assertOperation(value: unknown, operationId: string, statePath: string): void {
+  if (
+    !plainRecord(value) ||
+    value['operationId'] !== operationId ||
+    typeof value['action'] !== 'string' ||
+    value['action'] === ''
+  )
+    throw new ExecutionStateError(`${statePath} has malformed operation ${operationId}.`);
+  if (
+    !['intent', 'observed', 'unknown', 'unresolved'].includes(String(value['outcome'])) ||
+    !['perform', 'inspect-provider', 'closeout'].includes(String(value['nextAction']))
+  )
+    throw new ExecutionStateError(`${statePath} has malformed operation state for ${operationId}.`);
+}
+
 function assertSnapshot(value: unknown, statePath: string): asserts value is ExecutionSnapshot {
   if (typeof value !== 'object' || value === null)
     throw new ExecutionStateError(`${statePath} is not an execution-state object.`);
@@ -94,13 +136,24 @@ function assertSnapshot(value: unknown, statePath: string): asserts value is Exe
   if (typeof snapshot.hostId !== 'string' || snapshot.hostId === '')
     throw new ExecutionStateError(`${statePath} has no host identity.`);
   if (
-    typeof snapshot.ownership !== 'object' ||
-    snapshot.ownership === null ||
-    typeof snapshot.operations !== 'object' ||
-    snapshot.operations === null ||
+    !plainRecord(snapshot.ownership) ||
+    !plainRecord(snapshot.operations) ||
     !Array.isArray(snapshot.pendingCloseout)
   )
     throw new ExecutionStateError(`${statePath} has malformed execution-state fields.`);
+  for (const [resource, record] of Object.entries(snapshot.ownership))
+    assertAuthorityRecord(record, resource, statePath);
+  for (const [operationId, operation] of Object.entries(snapshot.operations))
+    assertOperation(operation, operationId, statePath);
+  const operations = snapshot.operations as Record<string, unknown>;
+  if (
+    !snapshot.pendingCloseout.every(
+      (operationId) => typeof operationId === 'string' && operations[operationId] !== undefined,
+    )
+  )
+    throw new ExecutionStateError(`${statePath} has malformed pending closeout.`);
+  if (snapshot.nextAction !== null && typeof snapshot.nextAction !== 'string')
+    throw new ExecutionStateError(`${statePath} has malformed next action.`);
 }
 
 export function readExecutionSnapshot(store: ExecutionStateStore): ExecutionSnapshot {
@@ -139,19 +192,19 @@ function writeSnapshot(store: ExecutionStateStore, snapshot: ExecutionSnapshot):
   }
 }
 
-function lockPath(store: ExecutionStateStore, resource: string): string {
-  return join(store.lockDirectory, `${encodeURIComponent(resource)}.lock`);
+function lockPath(store: ExecutionStateStore): string {
+  return join(store.lockDirectory, 'execution-state.lock');
 }
 
 async function underResourceLock<T>(
   store: ExecutionStateStore,
-  resource: string,
+  _resource: string,
   operation: () => T | Promise<T>,
 ): Promise<T> {
   mkdirSync(store.lockDirectory, { recursive: true });
   const pidStartedAt = processStartTime(process.pid);
   const lock = await acquireHostLock({
-    lockDirectory: lockPath(store, resource),
+    lockDirectory: lockPath(store),
     holder: {
       pid: process.pid,
       ...(pidStartedAt === undefined ? {} : { pidStartedAt }),
@@ -186,6 +239,27 @@ export function requireAuthority(store: ExecutionStateStore, authority: Authorit
       `Authority for ${authority.resource} is ${current.status}; transitions are revoked.`,
     );
   return authority;
+}
+
+/** Finds this coordinator's current authority without reviving an expired or cancelled generation. */
+export function currentAuthority(
+  store: ExecutionStateStore,
+  request: Omit<Authority, 'generation'>,
+): Authority {
+  const current = readExecutionSnapshot(store).ownership[request.resource];
+  if (
+    current === undefined ||
+    current.status !== 'held' ||
+    current.runId !== request.runId ||
+    current.ownerId !== request.ownerId
+  )
+    throw new ExecutionStateError(`No current authority for ${request.resource}.`);
+  return {
+    resource: current.resource,
+    runId: current.runId,
+    ownerId: current.ownerId,
+    generation: current.generation,
+  };
 }
 
 export async function acquireDispatch(
