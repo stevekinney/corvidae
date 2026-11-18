@@ -632,12 +632,30 @@ describe('Send a test event on a saved plugin hook (COR-2183, reactions-2 matrix
 });
 
 describe('an event in a hook’s deliveries', () => {
-  test('shows its plain words and its raw kind, and never asks a formatter for a sentence', async () => {
+  test('shows its plain words and no raw kind, and never asks a formatter for a sentence (R10-23)', async () => {
     const view = open('/hooks/alpha', {
       'bureau.events.format': () => ({
         events: [
           { kind: 'review.requested', title: 'Someone asked for a review', formattedBy: 'x' },
         ],
+      }),
+    });
+    const deliveries = await view.findByTestId('hook-deliveries');
+    await waitFor(() => {
+      expect(within(deliveries).getByText(eventOptionLabel('schedule.missed'))).toBeTruthy();
+    });
+    expect(within(deliveries).getByText(eventOptionLabel('review.requested'))).toBeTruthy();
+    expect(within(deliveries).queryAllByTestId('event-kind')).toHaveLength(0);
+    expect(deliveries.textContent).not.toContain('schedule.missed');
+    expect(within(deliveries).queryByText('Someone asked for a review')).toBeNull();
+    expect(stub?.callsTo('bureau.events.format')).toHaveLength(0);
+  });
+
+  test('shows the raw kind beside the words only of events of the hook that read alike', async () => {
+    const view = open('/hooks/alpha', {
+      'bureau.hooks.get': () => ({ ...ALPHA, events: ['trigger.started', 'trigger-started'] }),
+      'bureau.hooks.deliveries': () => ({
+        deliveries: [delivery('trigger.started', 'd1'), delivery('trigger-started', 'd2')],
       }),
     });
     const deliveries = await view.findByTestId('hook-deliveries');
@@ -647,11 +665,8 @@ describe('an event in a hook’s deliveries', () => {
       return found;
     });
     expect(kinds.map((element) => element.textContent)).toEqual([
-      'review.requested',
-      'schedule.missed',
+      'trigger.started',
+      'trigger-started',
     ]);
-    expect(within(deliveries).getByText(eventOptionLabel('schedule.missed'))).toBeTruthy();
-    expect(within(deliveries).queryByText('Someone asked for a review')).toBeNull();
-    expect(stub?.callsTo('bureau.events.format')).toHaveLength(0);
   });
 });

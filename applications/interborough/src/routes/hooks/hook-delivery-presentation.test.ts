@@ -162,10 +162,16 @@ describe('the cause of a failed delivery', () => {
 });
 
 describe('the facts of an open delivery', () => {
-  test('are the event with its kind, where it went, and the last answer with its time', () => {
+  test('are the event in words, where it went, and the last answer with its time', () => {
     const facts = deliveryFacts(gaveUp());
     expect(facts.map((fact) => fact.label)).toEqual(['Event', 'Sent to', 'Last response']);
-    expect(facts[0]).toEqual({ label: 'Event', value: 'A run fails', code: 'run.error' });
+    // R10-23: the raw kind is no visible word unless another of the hook's events reads the same.
+    expect(facts[0]).toEqual({ label: 'Event', value: 'A run fails' });
+    expect(deliveryFacts(gaveUp(), new Set(['run.error', 'run-error']))[0]).toEqual({
+      label: 'Event',
+      value: 'A run fails',
+      code: 'run.error',
+    });
     expect(facts[1]?.value).toBe('events.pagerduty.com');
     expect(facts[2]?.value).toBe(`410 Gone, ${deliveryStamp(START + 8 * 60_000 + 300)}`);
     expect(facts.map((fact) => fact.value).join('')).not.toContain(String.fromCodePoint(0xb7));

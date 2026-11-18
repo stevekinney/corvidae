@@ -1972,7 +1972,8 @@ describe('a hook’s delivery log', () => {
     const facts = within(item).getByTestId('hook-delivery-facts');
     expect(facts.textContent).toContain(copy.facts.event);
     expect(facts.textContent).toContain('A run fails');
-    expect(facts.textContent).toContain('run.error');
+    // R10-23: the event is its words; its raw kind shows only beside an event that reads alike.
+    expect(facts.textContent).not.toContain('run.error');
     expect(facts.textContent).toContain('events.pagerduty.com');
     expect(facts.textContent).toContain('410 Gone');
 

@@ -157,13 +157,24 @@ function receiptHost(address: string): string {
   }
 }
 
-/** What an open delivery's facts say: the event, where it was sent, and the last answer with its time. */
-export function deliveryFacts(delivery: HookDelivery): DeliveryFact[] {
+/**
+ * What an open delivery's facts say: the event, where it was sent, and the last answer with its time.
+ * The event is its words; its raw kind follows only when it is in `alike`, the kinds whose words
+ * another of the hook's events shares (R10-23).
+ */
+export function deliveryFacts(
+  delivery: HookDelivery,
+  alike: ReadonlySet<string> = new Set(),
+): DeliveryFact[] {
   const copy = COPY.facts;
   const facts: DeliveryFact[] = [
     delivery.test
       ? { label: copy.event, value: COPY.testEvent }
-      : { label: copy.event, value: eventOptionLabel(delivery.kind), code: delivery.kind },
+      : {
+          label: copy.event,
+          value: eventOptionLabel(delivery.kind),
+          ...(alike.has(delivery.kind) ? { code: delivery.kind } : {}),
+        },
   ];
   if (delivery.request !== null) {
     facts.push({ label: copy.sentTo, value: webhookHost(delivery.request.url) });

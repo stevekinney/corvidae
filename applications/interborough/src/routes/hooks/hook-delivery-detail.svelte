@@ -30,16 +30,18 @@
     retrying: boolean;
     /** Sends this delivery again from its record. */
     onRetry: () => void;
+    /** The event kinds that read alike among the hook's events, the only ones whose raw kind shows. */
+    alike?: ReadonlySet<string>;
   }
 
-  let { delivery, retrying, onRetry }: Props = $props();
+  let { delivery, retrying, onRetry, alike = new Set<string>() }: Props = $props();
 
   const copy = HOOKS_COPY.editor.deliveries;
 
   let showAllTries = $state(false);
 
   const cause = $derived(deliveryCause(delivery));
-  const facts = $derived(deliveryFacts(delivery));
+  const facts = $derived(deliveryFacts(delivery, alike));
   const tries = $derived(attemptList(delivery, showAllTries));
   const payload = $derived(deliveryPayload(delivery));
   const canRetry = $derived(retryKind(delivery) === 'retry');
