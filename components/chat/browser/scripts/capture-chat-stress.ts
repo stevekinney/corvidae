@@ -43,7 +43,7 @@ import { HANG_GUARD_MILLISECONDS } from '@lostgradient/testing/hang-guard';
 
 import { manifestOutputPaths } from '@lostgradient/testing/browser/prepare-manifest';
 import { createFixtureServer } from '@lostgradient/testing/browser/server';
-import casesData from '../../../../scripts/browser-fixtures/src/fixtures/chat-stress.json';
+import casesData from '../fixtures/chat-stress.json';
 import {
   STRESS_NOW,
   caseLabel,
@@ -51,7 +51,7 @@ import {
   type StressCase,
   type StressStep,
   type StressStepCondition,
-} from '../../../../scripts/browser-fixtures/src/fixtures/chat-stress/stress-cases.ts';
+} from '../fixtures/chat-stress/stress-cases.ts';
 import { suite } from '../harness.ts';
 import {
   RUN_DIRECTORY_PREFIX,

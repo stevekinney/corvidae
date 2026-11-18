@@ -1,0 +1,6 @@
+<script lang="ts">
+  import { default as ColorPicker } from '@lostgradient/color-picker/components/color-picker/index.ts';
+  const swatches = ['#ef4444', '#22c55e', '#3b82f6', '#f59e0b'];
+</script>
+
+<div id="example-mount-basic"><ColorPicker value="#22c55e" label="Accent color" {swatches} /></div>

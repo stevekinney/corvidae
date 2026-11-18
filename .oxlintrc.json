@@ -65,7 +65,6 @@
     "typescript/consistent-return": "off"
   },
   "ignorePatterns": [
-    "scripts/browser-fixtures/**",
     "**/build/**",
     "**/.svelte-kit/**",
     "**/coverage/**",

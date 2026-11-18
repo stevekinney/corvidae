@@ -48,7 +48,7 @@
  * reference lives in a different rule entirely (often the generated
  * `:root` block, which this scan deliberately excludes). Those two shapes are
  * covered instead by
- * `scripts/browser-fixtures/tests/border-tier-computed-audit.playwright.ts`, which
+ * `components/core/browser/tests/border-tier-computed-audit.playwright.ts`, which
  * reads the real, rendered cascade via CDP rather than grepping text -- see
  * that file, and `border-tier-audit.ts` next to it, for the mechanism.
  */
@@ -505,7 +505,7 @@ describe('CIN-245: structural border tiers used outside a border declaration', (
     // This is meant to catch the same-rule shape only. The disabled Button was its cross-file
     // example until COR-2303 removed the shared disabled opacity from `foundation.css`; a disabled
     // state is now repainted with colour tokens, so no compound is left for the computed audit
-    // (`scripts/browser-fixtures/tests/border-tier-computed-audit.playwright.ts`) to prove there.
+    // (`components/core/browser/tests/border-tier-computed-audit.playwright.ts`) to prove there.
     const offenders: string[] = [];
     for (const [root, canonicalRoot] of SCAN_ROOTS) {
       const absoluteRoot = join(REPOSITORY_ROOT, root);

@@ -4,7 +4,7 @@
  * fine pointer keeps the trigger's rule as it was. A trigger drawn as a Button (`.cinder-button`)
  * takes the Button's own height and hit area, so these rules leave it alone. The coarse media query
  * cannot be evaluated here, so these pin the CSS;
- * `scripts/browser-fixtures/tests/dropdown-trigger-hit-area.playwright.ts` measures it in a browser.
+ * `components/dropdown/browser/tests/dropdown-trigger-hit-area.playwright.ts` measures it in a browser.
  */
 import { describe, expect, test } from 'bun:test';
 

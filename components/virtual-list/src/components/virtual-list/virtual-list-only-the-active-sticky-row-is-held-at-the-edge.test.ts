@@ -112,7 +112,7 @@ describe('VirtualList — only the active sticky row is held at the edge', () =>
   // row's rule anchors only `inset-block-start`, not both block edges, so the row
   // keeps its own height once it leaves flow — is now exercised behaviourally in a
   // real browser, where `position` and `overflow` actually compute. See
-  // `scripts/browser-fixtures/tests/virtual-list.playwright.ts`'s pinned-header suite
+  // `components/core/browser/tests/virtual-list.playwright.ts`'s pinned-header suite
   // (COR-376), which scrolls the `horizontal-sticky-header-clip` fixture until its
   // taller header pins and asserts its full box stays visible inside the list's own
   // box.
@@ -133,7 +133,7 @@ describe('VirtualList — only the active sticky row is held at the edge', () =>
     // `windowScroll` the page owns the scroll and keeps its anchoring, except under
     // `dynamicSize`, whose rule must come later to win at equal specificity. The
     // container case is also asserted on the computed value in a real browser, in
-    // `scripts/browser-fixtures/tests/virtual-list-sticky.playwright.ts`.
+    // `components/virtual-list/browser/tests/virtual-list-sticky.playwright.ts`.
     const source = await Bun.file(new URL('./virtual-list.css', import.meta.url).pathname).text();
     const ruleBody = (selector: string): string => {
       const start = source.indexOf(`${selector} {`);
@@ -161,7 +161,7 @@ describe('VirtualList — only the active sticky row is held at the edge', () =>
     // Reduced motion forces a 0.01ms duration onto every element with the property
     // list left at `all`, so a written inset otherwise lands a frame late (COR-1535).
     // Asserted on computed values in a real browser in
-    // `scripts/browser-fixtures/tests/virtual-list.playwright.ts`.
+    // `components/core/browser/tests/virtual-list.playwright.ts`.
     const source = await Bun.file(new URL('./virtual-list.css', import.meta.url).pathname).text();
     const selector = [
       '.cinder-virtual-list__spacer',

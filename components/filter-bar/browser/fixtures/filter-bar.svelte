@@ -1,0 +1,95 @@
+<script lang="ts">
+  import {
+    type AppliedFilter,
+    type FacetDefinition,
+    default as FilterBar,
+  } from '@lostgradient/filter-bar/components/filter-bar/index.ts';
+
+  const segments = [
+    { value: 'all', label: 'All', count: 19 },
+    { value: 'waiting', label: 'Waiting on you', count: 2 },
+    { value: 'running', label: 'Running', count: 0 },
+    { value: 'done', label: 'Done', count: 15 },
+    { value: 'failed', label: 'Failed', count: 1 },
+    { value: 'canceled', label: 'Canceled', count: 1 },
+  ];
+
+  const facets: FacetDefinition[] = [
+    {
+      type: 'choice',
+      key: 'startedBy',
+      label: 'Started by',
+      options: [
+        { value: 'you', label: 'You', count: 0 },
+        { value: 'chats', label: 'Chats', count: 5 },
+        { value: 'schedules', label: 'Schedules', count: 4 },
+        { value: 'goals', label: 'Goals', count: 8 },
+        { value: 'interborough', label: 'Interborough', count: 2 },
+        { value: 'workflows', label: 'Workflows', count: 0 },
+        { value: 'agents', label: 'Agents', count: 0 },
+      ],
+    },
+    {
+      type: 'choice',
+      key: 'agent',
+      label: 'Agent',
+      multiple: false,
+      options: [
+        { value: 'assistant', label: 'Assistant' },
+        { value: 'tool-runner', label: 'Tool runner' },
+      ],
+    },
+  ];
+
+  let segmentValue = $state('all');
+  let appliedFilters = $state<AppliedFilter[]>([
+    { key: 'agent', value: 'tool-runner', label: 'Agent' },
+  ]);
+  let searchQuery = $state('');
+
+  function setFilter(key: string, values: readonly string[]) {
+    const facet = facets.find((candidate) => candidate.key === key);
+    const rest = appliedFilters.filter((filter) => filter.key !== key);
+    appliedFilters =
+      values.length === 0
+        ? rest
+        : [...rest, { key, value: values.join(','), label: facet?.label ?? key, values }];
+  }
+</script>
+
+<FilterBar
+  aria-label="Workflow filters"
+  {segments}
+  {segmentValue}
+  {facets}
+  {appliedFilters}
+  {searchQuery}
+  searchPlaceholder="Search runs"
+  onSegmentChange={(value) => (segmentValue = value)}
+  onSearchChange={(query) => (searchQuery = query)}
+  onFacetChange={(key, value) => setFilter(key, value === '' ? [] : [value])}
+  onFacetValuesChange={setFilter}
+  onFilterRemove={(key) => setFilter(key, [])}
+/>
+
+<!-- The same bar in a column too narrow for the wide form and wide enough to keep its segments
+     (COR-2449): the search folds into an icon button first. The wide form of this content needs
+     about 945px (the controls run about 760px, a gap, then the search field at its 11rem basis);
+     with the search as a 32px icon button it needs about 800px. 880px sits in the middle of the
+     two, so a font that measures a little wider or narrower leaves the bar in the same form. -->
+<div data-testid="filter-bar-search-folded" style="inline-size: 880px; margin-block-start: 2rem;">
+  <FilterBar
+    aria-label="Run filters in a narrower column"
+    {segments}
+    {segmentValue}
+    {facets}
+    {appliedFilters}
+    {searchQuery}
+    searchPlaceholder="Search runs"
+    onSegmentChange={(value) => (segmentValue = value)}
+    onSearchChange={(query) => (searchQuery = query)}
+    onFacetChange={(key, value) => setFilter(key, value === '' ? [] : [value])}
+    onFacetValuesChange={setFilter}
+    onFilterRemove={(key) => setFilter(key, [])}
+  />
+</div>

@@ -18,7 +18,7 @@ describe('VirtualList — edge callbacks under adaptive overscan', () => {
   // edge-proximity trigger distance stays the CONFIGURED overscan rather than the
   // effective one — is now exercised behaviourally in a real browser, where events
   // carry real timestamps and adaptive overscan actually engages. See
-  // `scripts/browser-fixtures/tests/virtual-list.playwright.ts`'s adaptive-overscan
+  // `components/core/browser/tests/virtual-list.playwright.ts`'s adaptive-overscan
   // suite (COR-376), which scrolls fast enough to raise the effective overscan and
   // asserts `onEndReached` still fires within the CONFIGURED overscan of the end.
 

@@ -1,7 +1,7 @@
 /**
  * COR-837 — the A2A `application/a2ui+json` data part Bureau sends for a surface is checked in as a
  * golden file that the browser fixture renders with `A2uiSurface`
- * (`scripts/browser-fixtures/src/fixtures/a2ui-a2a-part.golden.json`). This test builds the part
+ * (`components/chat/browser/fixtures/a2ui-a2a-part.golden.json`). This test builds the part
  * from a real surface and requires it to equal the file, so the renderer's end-to-end test and
  * Bureau's emitter cannot drift apart. Delete the file and run the test to regenerate it (then format it with Prettier).
  */
@@ -22,7 +22,7 @@ import { surfaceParts } from './a2a-task-projection.ts';
 
 const GOLDEN = resolve(
   import.meta.dirname,
-  '../../../../scripts/browser-fixtures/src/fixtures/a2ui-a2a-part.golden.json',
+  '../../../../components/chat/browser/fixtures/a2ui-a2a-part.golden.json',
 );
 
 describe('the A2UI data part of an A2A task', () => {

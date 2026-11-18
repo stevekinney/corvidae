@@ -138,7 +138,7 @@ describe('the file filter', () => {
     expect(filter.test('/work/scripts/browser-fixtures/tests/terminal-input.playwright.ts')).toBe(
       true,
     );
-    expect(filter.test('/home/terminal-work/scripts/browser-fixtures/tests/smoke.spec.ts')).toBe(
+    expect(filter.test('/home/terminal-work/components/dropdown/browser/tests/smoke.spec.ts')).toBe(
       false,
     );
     expect(filter.test('/work/tests/other-terminal-input.playwright.ts')).toBe(false);

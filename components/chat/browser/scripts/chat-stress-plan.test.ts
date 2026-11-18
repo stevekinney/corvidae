@@ -1,10 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 
-import casesData from '../../../../scripts/browser-fixtures/src/fixtures/chat-stress.json';
-import {
-  parseStressCases,
-  type StressCase,
-} from '../../../../scripts/browser-fixtures/src/fixtures/chat-stress/stress-cases.ts';
+import casesData from '../fixtures/chat-stress.json';
+import { parseStressCases, type StressCase } from '../fixtures/chat-stress/stress-cases.ts';
 import {
   COMPOSER_EDGE_TOLERANCE,
   STRESS_PROFILES,

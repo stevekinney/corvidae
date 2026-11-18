@@ -8,10 +8,7 @@
 import { createHash } from 'node:crypto';
 
 import type { GeometryFacts } from '@lostgradient/testing/design-review-geometry';
-import {
-  caseLabel,
-  type StressCase,
-} from '../../../../scripts/browser-fixtures/src/fixtures/chat-stress/stress-cases.ts';
+import { caseLabel, type StressCase } from '../fixtures/chat-stress/stress-cases.ts';
 
 /** One viewport, theme and input mode a case is drawn at. */
 export interface StressProfile {
