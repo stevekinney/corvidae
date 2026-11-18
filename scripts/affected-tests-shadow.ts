@@ -5,6 +5,7 @@ import { join } from 'node:path';
 
 import { type SourceTree, type WorkspaceDescription } from './affected-tests-graph.ts';
 import { selectTests } from './affected-tests-selection.ts';
+import { failureRecords } from './chef/ci-compare.ts';
 
 interface FrozenRun {
   frozenSample?: { databaseId?: number; headSha?: string; status?: string; conclusion?: string };
@@ -111,7 +112,7 @@ function changedBetween(root: string, base: string, revision: string): string[] 
 
 function replayRevision(
   root: string,
-  input: { name: string; revision: string; base: string; provider: unknown },
+  input: { name: string; revision: string; base: string; provider: unknown; failureLog?: string },
 ) {
   const changed = changedBetween(root, input.base, input.revision);
   const tree = treeAt(root, input.revision);
@@ -120,6 +121,18 @@ function replayRevision(
   const fullRunFailures = jobs
     .filter((job) => job.conclusion === 'failure')
     .map((job) => job.name ?? 'unnamed job');
+  const attributedFailures =
+    input.failureLog === undefined
+      ? []
+      : [...failureRecords(readFileSync(input.failureLog, 'utf8')).values()].flatMap((records) =>
+          records
+            .filter((record) => record.kind === 'test' && record.identity !== undefined)
+            .map((record) => record.identity!),
+        );
+  const omittedFailures = attributedFailures.filter(
+    (failure) =>
+      !selected.some((test) => failure.includes(test.split('/').at(-1)!.replace(/\.ts$/, ''))),
+  );
   return {
     name: input.name,
     disposition: 'complete',
@@ -128,7 +141,8 @@ function replayRevision(
     changed,
     selected: selection.workspaces.flatMap((workspace) => [...workspace.tests.keys()]),
     fullRunFailures,
-    omittedFailures: [],
+    attributedFailures,
+    omittedFailures,
     unclassifiedFailures: fullRunFailures.map((job) => ({
       job,
       classification: 'unattributable',
@@ -215,7 +229,7 @@ if (import.meta.main) {
     {
       name: 'P03 accepted full run 44263346832',
       revision: 'da7aaee4858196b0c186efaf50c76b931637d22f',
-      base: '7d249e3844835d78700a2bf01e2ef95aaa41fbcc',
+      base: '4f46c230831feee0459eec754762ed7b317f4b51',
       provider: JSON.parse(
         readFileSync(join(programRoot, 'p03/44263346832-provider-jobs.json'), 'utf8'),
       ),
@@ -223,7 +237,7 @@ if (import.meta.main) {
     {
       name: 'P10 accepted full run 44242619821',
       revision: '11ace640a1f670159bee00aa9fccb20432d2d652',
-      base: '084be958ad69dc95cdcfd8b3459ec408c7a92ca8',
+      base: '4e5a72dc4d1afff1a5adcd9ce0b9e2277cd92ec5',
       provider: JSON.parse(
         readFileSync(join(programRoot, 'p10/44242619821-final-provider.json'), 'utf8'),
       ),
@@ -235,6 +249,7 @@ if (import.meta.main) {
       provider: JSON.parse(
         readFileSync(join(programRoot, 'p10/44228035610-final-provider.json'), 'utf8'),
       ),
+      failureLog: join(programRoot, 'p10/full-slow-failure.log'),
     },
   ].map((candidate) => replayRevision(root, candidate));
   const summary = {
