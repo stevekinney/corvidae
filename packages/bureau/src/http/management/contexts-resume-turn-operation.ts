@@ -23,6 +23,7 @@ import { authorizeWorkspaceOperation } from '../workspace-authorization.ts';
  * | the run wrote nothing, or was discarded         | `Conflict`    | `nothing-to-resume`                 |
  * | a goal's attempt or a schedule's fire owns it   | `Conflict`    | `turn-owned-elsewhere`              |
  * | the `commandId` resumed another run             | `Conflict`    | `command-conflict`                  |
+ * | a discard committed while the start was saved   | `Conflict`    | `history-changed`                   |
  * | the context is archived                         | `Conflict`    | `context-archived`                  |
  * | Bureau is shutting down                         | `Unavailable` | `shutting-down`                     |
  *
@@ -37,7 +38,12 @@ import { sessionOwnerOf } from '@lostgradient/operative';
 import { defineOperation, type OperationFault } from '@lostgradient/backchannel';
 import { z } from 'zod';
 
-import { BureauError, BureauShuttingDownError, ContextArchivedError } from '../../bureau-errors.ts';
+import {
+  BureauError,
+  BureauShuttingDownError,
+  ContextArchivedError,
+  ContextHistoryChangedError,
+} from '../../bureau-errors.ts';
 import { contextArchivedFault } from './contexts-archive-operation.ts';
 import { SessionResumeRefusedError } from '../../session-resume.ts';
 import type { BureauContexts } from '../../bureau-types/contexts.ts';
@@ -92,7 +98,7 @@ export const contextsResumeTurnOperation = defineOperation<
   mcpExposable: false,
   summary: 'Resume a context’s last stopped turn',
   description:
-    'Lets the last stopped turn of one of the caller’s own contexts go on. A continuation run starts on the stored conversation, the partial reply included, with no message from the person, and writes a new assistant turn after the partial reply. It is prompted with one instruction turn after the partial reply, “Continue from where you stopped. Do not repeat what you already wrote.”, a user turn the model is sent and people are never shown (not in the chat, its title, its preview, its exports or its memory), so every provider is asked over a history that ends in a user turn and none is asked to continue a trailing assistant message; the answer names it as `runId`, and the stopped run as `resumedRunId`. `runId` must be the context’s last run, stopped by the person or failed on a cause worth trying again (finish reason `error`). The start is one atomic write to the context that adds a hidden continuation row naming the stopped run and the command and judges the history again, so a message, a discard or another resume that lands first wins and this one is refused. `commandId` is the caller’s own identifier: a retry answers the run the first call started, after a restart too, and never starts a second; the same `commandId` for another run is a `Conflict` with reason `command-conflict`. Each refusal is a `Conflict` and starts nothing: `not-latest-turn` (a later run, or the turn already went on), `turn-running`, `turn-awaiting-person` (it goes on once the approval or question is answered), `turn-recovering` (the run’s process stopped, and the Bureau that next boots goes on with it from its checkpoint or ends it when it cannot), `turn-finished` (a reply cut at the token limit included), `run-not-resumable` (a failure going on would meet again), `turn-interrupted-call` (the turn stopped inside a tool call, which going on would run again unasked), `follow-up-delivered`, `follow-ups-queued`, `nothing-to-resume` and `turn-owned-elsewhere` (a goal’s attempt or a schedule’s fire owns the run, and accounts for how it ended). A run the context does not have is `NotFound`. An archived context is a `Conflict` with reason `context-archived`. A Bureau that is shutting down is `Unavailable` with reason `shutting-down`. It is owner only: the continuation runs as the owner’s chat, so no operator scope lets anyone else resume it, and another owner’s context and a missing one answer `NotFound`, whatever run they name. No scope is needed for the caller’s own.',
+    'Lets the last stopped turn of one of the caller’s own contexts go on. A continuation run starts on the stored conversation, the partial reply included, with no message from the person, and writes a new assistant turn after the partial reply. It is prompted with one instruction turn after the partial reply, “Continue from where you stopped. Do not repeat what you already wrote.”, a user turn the model is sent and people are never shown (not in the chat, its title, its preview, its exports or its memory), so every provider is asked over a history that ends in a user turn and none is asked to continue a trailing assistant message; the answer names it as `runId`, and the stopped run as `resumedRunId`. `runId` must be the context’s last run, stopped by the person or failed on a cause worth trying again (finish reason `error`). The start is one atomic write to the context that adds a hidden continuation row naming the stopped run and the command and judges the history again, so a message, a discard or another resume that lands first wins and this one is refused (a discard that commits while the start is saved is a `Conflict` with reason `history-changed`). `commandId` is the caller’s own identifier: a retry answers the run the first call started, after a restart too, and never starts a second; the same `commandId` for another run is a `Conflict` with reason `command-conflict`. Each refusal is a `Conflict` and starts nothing: `not-latest-turn` (a later run, or the turn already went on), `turn-running`, `turn-awaiting-person` (it goes on once the approval or question is answered), `turn-recovering` (the run’s process stopped, and the Bureau that next boots goes on with it from its checkpoint or ends it when it cannot), `turn-finished` (a reply cut at the token limit included), `run-not-resumable` (a failure going on would meet again), `turn-interrupted-call` (the turn stopped inside a tool call, which going on would run again unasked), `follow-up-delivered`, `follow-ups-queued`, `nothing-to-resume` and `turn-owned-elsewhere` (a goal’s attempt or a schedule’s fire owns the run, and accounts for how it ended). A run the context does not have is `NotFound`. An archived context is a `Conflict` with reason `context-archived`. A Bureau that is shutting down is `Unavailable` with reason `shutting-down`. It is owner only: the continuation runs as the owner’s chat, so no operator scope lets anyone else resume it, and another owner’s context and a missing one answer `NotFound`, whatever run they name. No scope is needed for the caller’s own.',
   destructive: false,
   tags: ['Contexts'],
   inputSchema: contextsResumeTurnInput,
@@ -156,6 +162,14 @@ export const contextsResumeTurnOperation = defineOperation<
         } satisfies OperationFault;
       }
       if (error instanceof ContextArchivedError) throw contextArchivedFault(error.message);
+      // A discard that committed between the start's read and its write (COR-2437).
+      if (error instanceof ContextHistoryChangedError) {
+        throw {
+          code: 'Conflict',
+          message: error.message,
+          data: { reason: 'history-changed' },
+        } satisfies OperationFault;
+      }
       if (error instanceof BureauShuttingDownError) {
         throw {
           code: 'Unavailable',

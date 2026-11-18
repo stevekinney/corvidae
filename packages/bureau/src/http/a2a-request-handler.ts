@@ -86,7 +86,7 @@ import {
   canonicalJson,
   digestCommandPayload,
 } from '../command-ledger.ts';
-import { BureauError, ContextArchivedError } from '../bureau-errors.ts';
+import { BureauError, ContextArchivedError, ContextHistoryChangedError } from '../bureau-errors.ts';
 import { TaskListingTokenError } from '../task-list-snapshots.ts';
 import { isTopLevelTaskOrigin } from '../task-origin.ts';
 import type { TaskRegistry, TaskView } from '../task-registry.ts';
@@ -384,6 +384,17 @@ function taskNotFound(taskId: string): TaskNotFoundError {
 function contextArchived(error: ContextArchivedError): UnsupportedOperationError {
   return new UnsupportedOperationError(
     `Context '${error.contextId}' is archived (context-archived): unarchive it to continue.`,
+  );
+}
+
+/**
+ * COR-2437 — a message whose start lost to a discard that committed between its read and its
+ * write. A2A errors carry no reason field, so the message names the stable reason
+ * `history-changed`; nothing was stored, and sending again starts it on the context as it is.
+ */
+function historyChanged(error: ContextHistoryChangedError): UnsupportedOperationError {
+  return new UnsupportedOperationError(
+    `Context '${error.contextId}' changed while the message was sent (history-changed): send it again.`,
   );
 }
 
@@ -1243,6 +1254,7 @@ export function createBureauA2ARequestHandler(
         throw new TaskNotFoundError(error.message);
       }
       if (error instanceof ContextArchivedError) throw contextArchived(error);
+      if (error instanceof ContextHistoryChangedError) throw historyChanged(error);
       if (error instanceof BureauError && error.code === 'BAD_REQUEST')
         throw invalid(error.message);
       // A failure that is not a refusal may have come after the run took its row: the assets
@@ -1412,6 +1424,7 @@ export function createBureauA2ARequestHandler(
       });
     } catch (error) {
       if (error instanceof ContextArchivedError) throw contextArchived(error);
+      if (error instanceof ContextHistoryChangedError) throw historyChanged(error);
       throw error;
     }
     if (outcome.outcome === 'not-found') throw taskNotFound(view.id);

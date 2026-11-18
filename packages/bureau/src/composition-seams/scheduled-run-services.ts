@@ -331,7 +331,12 @@ export function createScheduledRunServices(
                 existingConversationHistory,
                 context.conversation.current,
                 baseConversationHistory,
-                // COR-2437: a row a discard removed is not written back by a fire's save.
+                // COR-2437: a row a discard removed is not written back by a fire's save. A fire
+                // can overlap a discard: a discard needs its run to be the chat's newest task, so it
+                // can only commit between a fire's read of the chat and its admission, and that
+                // fire's first step may then be asked over the discarded reply once. Its saves keep
+                // the discard (this set), so the chat never holds the reply again
+                // (`provider-resolution-merge.test.ts`); the read itself is not fenced.
                 new Set(discardedRowIdsOf(existing?.metadata)),
               )
             : context.conversation.current,

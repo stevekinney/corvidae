@@ -39,6 +39,11 @@ export const AG_UI_ERROR_CODES = [
    * `THREAD_NOT_FOUND`.
    */
   'THREAD_ARCHIVED',
+  /**
+   * COR-2437: rows of the thread the start loaded were discarded before it was stored, so it is
+   * refused and stores nothing; sending again starts the run on the thread as it is now.
+   */
+  'THREAD_HISTORY_CHANGED',
 ] as const;
 
 export type AgUiErrorCode = (typeof AG_UI_ERROR_CODES)[number];

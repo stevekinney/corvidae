@@ -185,7 +185,9 @@ describe('a resumed turn', () => {
     const instruction = after.conversationHistory.messages[instructionId];
     expect(instruction?.role).toBe('user');
     expect(instruction?.content).toBe(CONTINUATION_INSTRUCTION);
-    expect(instruction?.hidden).toBe(false);
+    // Sent to the continuation (`continuedOver` below), then spent by its terminal save: hidden,
+    // so no later answer is asked over it.
+    expect(instruction?.hidden).toBe(true);
     expect(instruction?.metadata?.[MODEL_ONLY_METADATA_KEY]).toBe(true);
     const added = after.conversationHistory.ids.slice(kept.length + 2);
     expect(added.length).toBeGreaterThan(0);
@@ -265,6 +267,60 @@ describe('a continuation that stopped in its turn', () => {
       continuationRowId(run.id),
     ]);
     expect(await resume(bureau, run.contextId, run.id)).toEqual(started);
+  });
+});
+
+// COR-2437 review: a Continue whose run fails before writing anything (the provider still down)
+// must not leave its instruction for every later answer to be asked over.
+describe('a continuation that wrote nothing', () => {
+  it('does not ask a later message over its instruction', async () => {
+    let providerDown = false;
+    const askedLater: string[][] = [];
+    const agent = createAgent({
+      name: 'agent',
+      tools: {
+        noop: createTool({
+          name: 'noop',
+          description: 'Does nothing',
+          input: z.object({}),
+          execute: async () => 'ok',
+        }),
+      },
+      generate: async (context: GenerateContext) => {
+        const history = context.conversation.current;
+        const lastId = history.ids.at(-1) ?? '';
+        if (providerDown) throw new Error('the provider is down');
+        if (lastId.endsWith(':continuation:instruction')) {
+          return { content: 'never', toolCalls: [] };
+        }
+        if (history.messages[lastId]?.content === 'and then?') {
+          askedLater.push(history.ids.filter((id) => history.messages[id]?.hidden !== true));
+          return { content: 'answered', toolCalls: [] };
+        }
+        if (history.messages[lastId]?.toolResult === undefined) {
+          return { content: 'thinking', toolCalls: [{ id: 'c-1', name: 'noop', arguments: {} }] };
+        }
+        throw new Error('the model failed');
+      },
+    });
+    const bureau = await openBureau(agent);
+    const run = await startTaskFrom(bureau, { input: 'go', agentName: 'agent', principal: ALICE });
+    await untilEnded(bureau, run.contextId, run.id);
+    providerDown = true;
+    const continued = await resume(bureau, run.contextId, run.id);
+    await untilEnded(bureau, run.contextId, continued.runId);
+    providerDown = false;
+
+    const next = await startTaskFrom(bureau, {
+      input: 'and then?',
+      agentName: 'agent',
+      principal: ALICE,
+      contextId: run.contextId,
+    });
+    await untilEnded(bureau, run.contextId, next.id);
+
+    expect(askedLater).toHaveLength(1);
+    expect(askedLater[0]).not.toContain(continuationInstructionId(run.id));
   });
 });
 

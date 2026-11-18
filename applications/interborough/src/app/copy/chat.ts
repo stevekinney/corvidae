@@ -265,6 +265,8 @@ export const CHAT_COPY = {
     stopFailed: 'The run could not be stopped, and it may still be going. Reconnect to check.',
   },
   /** The host-owned answer replacement action. */
+  /** A message refused because a reply was discarded while it was sent (COR-2437). */
+  historyChanged: 'The chat changed while this message was sent. Send it again.',
   /** Discard beside a stopped reply (COR-2437). */
   discardTurn: {
     failed: 'The stopped reply wasn’t discarded. Try again.',

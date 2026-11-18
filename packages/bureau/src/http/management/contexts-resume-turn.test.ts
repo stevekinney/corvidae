@@ -12,6 +12,7 @@ import {
   SessionResumeRefusedError,
   type SessionResumeRefusalReason,
 } from '../../session-resume.ts';
+import { ContextHistoryChangedError } from '../../bureau-errors.ts';
 import { waitForCondition, waitForTaskState } from '../../test';
 import { buildBureauHandlerHost, BUREAU_HANDLER_OPERATIONS } from '../create-bureau-handler.ts';
 import {
@@ -149,44 +150,51 @@ describe('bureau.contexts.resumeturn refusals', () => {
   ] satisfies SessionResumeRefusalReason[])(
     'answers %s as a Conflict with that reason',
     async (reason) => {
-      await withBureau(async (opened) => {
-        const run = await finishedTurn(opened, 'anonymous:local');
-        const host = buildBureauHandlerHost(opened.bureau, []);
-        const handler = createOperationHandler({
-          operations: BUREAU_HANDLER_OPERATIONS,
-          host: {
-            ...host,
-            contexts: {
-              get: opened.bureau.contexts.get,
-              internals: { sessionStore: opened.bureau.internals.sessionStore },
-              resumeTurn: async () => {
-                throw new SessionResumeRefusedError(reason, 'refused');
-              },
-            } as never,
-          },
-          authenticate: async () => ({
-            method: 'unauthenticated-local' as const,
-            principal: unauthenticatedLocalAuthContext().principal!,
-          }),
-          publicPaths: [],
-        });
-
-        const response = await handler(
-          new Request('http://localhost/jsonrpc', {
-            method: 'POST',
-            headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({
-              jsonrpc: '2.0',
-              id: 1,
-              method: 'bureau.contexts.resumeturn',
-              params: { contextId: run.contextId, commandId: 'c', runId: 'r' },
-            }),
-          }),
-        );
-        const body = (await response.json()) as RpcBody;
-
-        expect(body.error?.data).toMatchObject({ weftCode: 'Conflict', reason });
-      });
+      await assertConflict(reason, new SessionResumeRefusedError(reason, 'refused'));
     },
   );
+
+  // COR-2437 review: a start that loses to a discard committed between its read and its write.
+  it('answers a start that lost to a discard as a Conflict with reason history-changed', async () => {
+    await assertConflict('history-changed', new ContextHistoryChangedError('ignored'));
+  });
 });
+
+async function assertConflict(reason: string, thrown: Error): Promise<void> {
+  await withBureau(async (opened) => {
+    const run = await finishedTurn(opened, 'anonymous:local');
+    const host = buildBureauHandlerHost(opened.bureau, []);
+    const handler = createOperationHandler({
+      operations: BUREAU_HANDLER_OPERATIONS,
+      host: {
+        ...host,
+        contexts: {
+          get: opened.bureau.contexts.get,
+          internals: { sessionStore: opened.bureau.internals.sessionStore },
+          resumeTurn: async () => {
+            throw thrown;
+          },
+        } as never,
+      },
+      authenticate: async () => ({
+        method: 'unauthenticated-local' as const,
+        principal: unauthenticatedLocalAuthContext().principal!,
+      }),
+      publicPaths: [],
+    });
+    const response = await handler(
+      new Request('http://localhost/jsonrpc', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 1,
+          method: 'bureau.contexts.resumeturn',
+          params: { contextId: run.contextId, commandId: 'c', runId: 'r' },
+        }),
+      }),
+    );
+    const body = (await response.json()) as RpcBody;
+    expect(body.error?.data).toMatchObject({ weftCode: 'Conflict', reason });
+  });
+}

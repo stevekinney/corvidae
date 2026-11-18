@@ -198,6 +198,8 @@ export function runFailureMessage(
   if (MEDIA_REFUSAL_CODES.has(code) || (code === 'INVALID_INPUT' && turn.hadAttachments)) {
     return CHAT_COPY.attachments.modelRefusedMedia;
   }
+  // COR-2437: a reply was discarded while the message was being sent; nothing was stored.
+  if (code === 'THREAD_HISTORY_CHANGED') return CHAT_COPY.historyChanged;
   return undefined;
 }
 

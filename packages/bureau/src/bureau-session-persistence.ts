@@ -26,6 +26,7 @@ import {
 import type { DiagnosticSink } from './bureau-types/options';
 import { ContextArchivedError, ContextHistoryChangedError } from './bureau-errors';
 import { discardedRowIdsOf } from './session-discard';
+import { CONTINUATION_INSTRUCTION_OF_METADATA_KEY } from './session-resume';
 
 const BUREAU_AGENT_NAME = 'bureau';
 const SESSION_PERSISTENCE_MAXIMUM_ATTEMPTS = 3;
@@ -94,6 +95,24 @@ function appendConversationMessages(
     messages,
     updatedAt: candidate.updatedAt,
   };
+}
+
+/**
+ * `history` with every continuation instruction turn still sent to the model hidden (COR-2437).
+ * The instruction prompts the one continuation run; once a run's end is saved it has done that,
+ * and a later answer is asked over the chat without it, even when the continuation wrote nothing.
+ * The row stays (a discard of the continuation still takes it); only `hidden` changes.
+ */
+function withContinuationInstructionsSpent(history: ConversationHistory): ConversationHistory {
+  let messages: Record<string, ConversationHistory['messages'][string]> | undefined;
+  for (const id of history.ids) {
+    const row = getOwn(history.messages, id);
+    if (row === undefined || row.hidden) continue;
+    if (row.metadata[CONTINUATION_INSTRUCTION_OF_METADATA_KEY] === undefined) continue;
+    messages ??= { ...history.messages };
+    messages[id] = { ...row, hidden: true };
+  }
+  return messages === undefined ? history : { ...history, messages };
 }
 
 function omitKeysWithPrefix(
@@ -398,17 +417,23 @@ export function createSessionPersistence(dependencies: SessionPersistenceDepende
         newerRunHoldsMarker ? { runId: markerRunId, status: metadata['lastRunStatus'] } : undefined,
       );
 
+      const mergedHistory = existingSession
+        ? appendConversationMessages(
+            existingSession.conversationHistory,
+            conversation.current,
+            baseConversationHistory,
+            discarded,
+          )
+        : conversation.current;
       return {
         ...nextSession,
         agentName: resolvedAgentName,
-        conversationHistory: existingSession
-          ? appendConversationMessages(
-              existingSession.conversationHistory,
-              conversation.current,
-              baseConversationHistory,
-              discarded,
-            )
-          : conversation.current,
+        // COR-2437: a run's terminal save spends the continuation instruction it was asked over,
+        // so no later answer is asked over it, whether the continuation wrote anything or not.
+        conversationHistory:
+          markerRunId === undefined
+            ? mergedHistory
+            : withContinuationInstructionsSpent(mergedHistory),
         metadata: mergedMetadata,
       };
     });

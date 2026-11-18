@@ -76,7 +76,7 @@ import { createConversationHistory } from 'conversationalist';
 import { AssetNotFoundError } from '../assets/errors.ts';
 import { BureauLedgerConflictError } from '../command-ledger.ts';
 import { readContextTombstone } from '../context-tombstone.ts';
-import { BureauError, ContextArchivedError } from '../bureau-errors.ts';
+import { BureauError, ContextArchivedError, ContextHistoryChangedError } from '../bureau-errors.ts';
 import { isDurableRunUnsettled } from '../durable-run-waits.ts';
 import type { Bureau, BureauInternals } from '../bureau-types/facade.ts';
 import type { BureauReviews } from '../bureau-types/reviews.ts';
@@ -934,6 +934,13 @@ function refusalFor(error: unknown, threadId: string): [AgUiErrorCode, string] {
   // An archive that committed after the check under the lease, refused by the start's own write.
   if (error instanceof ContextArchivedError) {
     return ['THREAD_ARCHIVED', `Thread "${threadId}" is archived`];
+  }
+  // COR-2437: a discard that committed between the start's read and its write.
+  if (error instanceof ContextHistoryChangedError) {
+    return [
+      'THREAD_HISTORY_CHANGED',
+      `Thread "${threadId}" changed while the message was sent: send it again`,
+    ];
   }
   if (error instanceof BureauError) {
     if (error.code === 'NOT_FOUND')

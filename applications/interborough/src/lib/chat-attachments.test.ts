@@ -267,6 +267,14 @@ describe('the words for a run that was refused over an attachment', () => {
     expect(message).not.toContain('asset-9');
   });
 
+  // COR-2437 review: a start that lost to a discard says the chat changed and to send again.
+  test('says the chat changed, for the door’s THREAD_HISTORY_CHANGED', () => {
+    expect(runFailureMessage(runError('THREAD_HISTORY_CHANGED'), { hadAttachments: false })).toBe(
+      CHAT_COPY.historyChanged,
+    );
+    expect(CHAT_COPY.historyChanged).toMatch(/send it again/i);
+  });
+
   test('leaves an INVALID_INPUT on a turn with no attachment, and any other failure, as they were', () => {
     expect(runFailureMessage(runError('INVALID_INPUT'), { hadAttachments: false })).toBeUndefined();
     expect(runFailureMessage(runError('RUN_NOT_FOUND'), { hadAttachments: true })).toBeUndefined();

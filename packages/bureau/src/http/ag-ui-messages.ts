@@ -21,6 +21,7 @@
 
 import type { Message as AgUiMessage } from '@ag-ui/core';
 import { MEMORY_EVIDENCE_METADATA_KEY } from '@lostgradient/operative';
+import { withoutReservedMessageMetadata } from '../reserved-message-metadata.ts';
 import {
   agUiConversationAdapter,
   type ConversationHistory,
@@ -238,15 +239,16 @@ export function rowsAddedBy(
 }
 
 /**
- * The row without the metadata only the server may set. A client's message carries whatever
- * `metadata` it sends, and `memoryEvidence` marks the row a run's memory recall appended: left on
- * a client's row, it would hide that row from the thread's snapshot while the model still read it
- * (COR-1546). Every row that enters from a client comes through here, so only the recall hook sets it.
+ * The row without the metadata only the server may set (`reserved-message-metadata.ts`). A
+ * client's message carries whatever `metadata` it sends: `memoryEvidence` on a client's row would
+ * hide it from the thread's snapshot while the model still read it (COR-1546), the model-only key
+ * likewise, and a continuation key would make a discard take the person's own message (COR-2437).
+ * Every row that enters from a client comes through here, so only the Bureau sets them.
  */
 function withoutReservedMetadata(row: Message): Message {
-  if (row.metadata?.[MEMORY_EVIDENCE_METADATA_KEY] === undefined) return row;
-  const { [MEMORY_EVIDENCE_METADATA_KEY]: _reserved, ...metadata } = row.metadata;
-  return { ...row, metadata };
+  if (row.metadata === undefined) return row;
+  const metadata = withoutReservedMessageMetadata(row.metadata);
+  return metadata === row.metadata ? row : { ...row, metadata };
 }
 
 /**

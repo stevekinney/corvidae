@@ -10,6 +10,7 @@ import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { describe, expect, it } from 'bun:test';
 
 import { ContextArchivedError } from '../bureau-errors.ts';
+import { DISCARDED_ROWS_METADATA_KEY } from '../session-discard.ts';
 import { waitForTaskState } from '../test';
 import {
   as,
@@ -61,6 +62,39 @@ function expectRefusal(frames: Awaited<ReturnType<typeof starts>>, code: string)
   expect(frames).toHaveLength(1);
   expect(frames[0]!.event).toMatchObject({ type: EventType.RUN_ERROR, code });
 }
+
+// COR-2437 review: a start whose loaded thread held a row a discard named before the start was
+// stored is refused with its own code, so the page says the chat changed and to send again. The
+// discard's commit is stood in for by naming a row the start loads as discarded, which is what a
+// discard that lands between the start's read and its write leaves the start to find.
+describe('a start that loses to a discard', () => {
+  it('is refused with THREAD_HISTORY_CHANGED and stores nothing', async () => {
+    await withHarness(
+      { script: [say('First.'), say('Second.')], authentication },
+      async (harness) => {
+        const first = await starts(harness, 'run-1', [firstMessage]);
+        expect(first.at(-1)?.event.type).toBe(EventType.RUN_FINISHED);
+        const stored = (await harness.bureau.contexts.get(THREAD))!;
+        const reply = stored.conversationHistory.ids.at(-1)!;
+        await harness.bureau.internals.sessionStore!.update(THREAD, (session) =>
+          session === undefined
+            ? undefined
+            : {
+                ...session,
+                metadata: { ...session.metadata, [DISCARDED_ROWS_METADATA_KEY]: [reply] },
+              },
+        );
+        const before = await harness.bureau.contexts.get(THREAD);
+
+        const refused = await starts(harness, 'run-2', [firstMessage, secondMessage]);
+
+        expectRefusal(refused, 'THREAD_HISTORY_CHANGED');
+        const after = await harness.bureau.contexts.get(THREAD);
+        expect(after?.revision).toBe(before?.revision);
+      },
+    );
+  });
+});
 
 describe('a start on an archived chat', () => {
   it('is refused with THREAD_ARCHIVED and stores nothing, and goes through once unarchived', async () => {
