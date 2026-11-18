@@ -66,6 +66,7 @@ const schema = {
               'Waiting on you',
               'Running',
               'Waiting',
+              'Waiting for a signal',
               'Scheduled',
               'Done',
               'Done, refund not issued',

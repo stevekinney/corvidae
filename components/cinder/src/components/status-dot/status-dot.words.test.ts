@@ -21,6 +21,7 @@ const expectedTones: ReadonlyArray<readonly [string, string]> = [
   ['Running', 'info'],
   ['Running, checking the result', 'info'],
   ['Waiting', 'pending'],
+  ['Waiting for a signal', 'pending'],
   ['Scheduled', 'pending'],
   ['Done', 'success'],
   ['Done, refund not issued', 'neutral'],

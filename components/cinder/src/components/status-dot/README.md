@@ -46,7 +46,7 @@ The dot shows "Missed runs" and then a muted "4", in the amber of "Missed runs",
 | --- | --- |
 | `warning` (amber) | Waiting on you, Missed runs, Disconnected, Needs attention, Needs sign-in, Waiting for a secret, Warning |
 | `info` (solid neutral) | Running, Running, checking the result, Live, Live, last event 1 s ago |
-| `pending` (hollow ring) | Waiting, Scheduled, Standby, Reconnecting… |
+| `pending` (hollow ring) | Waiting, Waiting for a signal, Scheduled, Standby, Reconnecting… |
 | `success` (green dot) | Done, Approved, Active, Available, Delivered, Connected, Listening, Ready, Check met |
 | `danger` (red) | Failed, Failed for good, Gave up, Can't load, Can't find workflow, Not loaded, Couldn't check, Tripped, Critical |
 | `neutral` | Done, refund not issued, Check not met, Denied, Sent back, Expired, Canceled, Stopped, Paused, Off, Unavailable, Needs setup, Ended, Retrying, Draining, No verdict, Blocked, Warned, Sanitized, Redacted, Flagged |
