@@ -1,13 +1,60 @@
 import { describe, expect, test } from 'bun:test';
 
+import { selectTests } from './affected-tests-selection.ts';
 import {
   classifyFailureRecords,
   normalizeJobLog,
   omittedFailures,
   replayRevision,
+  selectionAtRevision,
   shadowRun,
+  workspacesAtRevision,
 } from './affected-tests-shadow.ts';
+import { discoverWorkspaces, listTree } from './affected-tests.ts';
 import { failureRecords } from './chef/ci-compare.ts';
+
+const frozenRevision = '10a69bec305327797c0035e31fbcd36f1bfe674e';
+const liveWorkspaces = discoverWorkspaces(process.cwd());
+const immutableWorkspaces = workspacesAtRevision(process.cwd(), frozenRevision);
+const preloadChange = ['components/cinder/scripts/preload.ts'];
+const immutablePreloadSelection = selectionAtRevision(process.cwd(), frozenRevision, preloadChange);
+const livePreloadSelection = selectTests({
+  changed: preloadChange,
+  tree: listTree(process.cwd()),
+  workspaces: liveWorkspaces,
+});
+type ProviderControl = {
+  status: string;
+  conclusion?: string;
+  jobs: { status: string; conclusion?: string }[];
+};
+const incompleteProviderCases: ProviderControl[] = [
+  { status: 'in_progress', jobs: [] },
+  {
+    status: 'completed',
+    conclusion: 'cancelled',
+    jobs: [{ status: 'completed', conclusion: 'cancelled' }],
+  },
+  { status: 'completed', conclusion: 'success', jobs: [] },
+  { status: 'completed', conclusion: 'success', jobs: [{ status: 'in_progress' }] },
+];
+const incompleteRouteDispositions = incompleteProviderCases.map((provider) => ({
+  replay: replayRevision(process.cwd(), {
+    name: 'provider control',
+    revision: frozenRevision,
+    base: frozenRevision,
+    provider,
+  }).disposition,
+  baseline: shadowRun(process.cwd(), {
+    frozenSample: {
+      headSha: frozenRevision,
+      status: provider.status,
+      ...(provider.conclusion === undefined ? {} : { conclusion: provider.conclusion }),
+    },
+    jobs: provider.jobs,
+    gitInputs: { changedPaths: [] },
+  }).disposition,
+}));
 
 // The replay opens Git objects. Run that real process work at module scope so the test callback
 // only asserts its recorded result, independent of the per-test clock.
@@ -15,7 +62,11 @@ const entrypointReplay = replayRevision(process.cwd(), {
   name: 'entrypoint control',
   revision: '5888509145ffe2884eced68e8ca11f71c1d16e06',
   base: '5888509145ffe2884eced68e8ca11f71c1d16e06',
-  provider: { jobs: [] },
+  provider: {
+    status: 'completed',
+    conclusion: 'success',
+    jobs: [{ status: 'completed', conclusion: 'success' }],
+  },
 });
 const mutableReferenceError = (() => {
   try {
@@ -65,33 +116,78 @@ describe('shadow failure accounting', () => {
     expect(
       omittedFailures(
         ['applications/interborough/src/host/remote-persistence-conformance.slow.test.ts'],
-        ['remote-persistence-conformance.slow.test.ts:567 OAuth attempts'],
+        [
+          '@lostgradient/interborough › src/host/remote-persistence-conformance.slow.test.ts › OAuth attempts',
+        ],
+        [
+          {
+            name: '@lostgradient/interborough',
+            directory: 'applications/interborough',
+            dependencies: [],
+            exports: null,
+            preloads: [],
+            testScripts: [],
+          },
+        ],
       ),
     ).toEqual([]);
   });
 
   test('reports a deliberately excluded attributable failure as an omission', () => {
     expect(
-      omittedFailures([], ['remote-persistence-conformance.slow.test.ts:567 OAuth attempts']),
-    ).toEqual(['remote-persistence-conformance.slow.test.ts:567 OAuth attempts']);
+      omittedFailures(
+        [],
+        [
+          '@lostgradient/interborough › src/host/remote-persistence-conformance.slow.test.ts › OAuth attempts',
+        ],
+        [],
+      ),
+    ).toEqual([
+      '@lostgradient/interborough › src/host/remote-persistence-conformance.slow.test.ts › OAuth attempts',
+    ]);
   });
 
   test('does not turn absent failure evidence into a miss', () => {
-    expect(omittedFailures(['scripts/a.test.ts'], [])).toEqual([]);
+    expect(
+      omittedFailures(
+        ['scripts/a.test.ts'],
+        [],
+        [
+          {
+            name: 'root',
+            directory: '',
+            dependencies: [],
+            exports: null,
+            preloads: [],
+            testScripts: [],
+          },
+        ],
+      ),
+    ).toEqual([]);
   });
 
   test('serializes known, residual unknown, and missing provider evidence distinctly', () => {
     const known = classifyFailureRecords(
       ['src/a.test.ts'],
-      [{ kind: 'test', job: 'tests', identity: 'src/a.test.ts › assertion' }],
+      [{ kind: 'test', job: 'tests', identity: 'root › src/a.test.ts › assertion' }],
       ['tests'],
+      [
+        {
+          name: 'root',
+          directory: '',
+          dependencies: [],
+          exports: null,
+          preloads: [],
+          testScripts: [],
+        },
+      ],
     );
     expect(known).toMatchObject({ omittedFailures: [], unclassifiedFailures: [] });
     expect(
-      classifyFailureRecords([], [{ kind: 'unknown', job: 'tests' }], ['tests'])
+      classifyFailureRecords([], [{ kind: 'unknown', job: 'tests' }], ['tests'], [])
         .unclassifiedFailures,
     ).toHaveLength(1);
-    expect(classifyFailureRecords([], [], ['tests']).unclassifiedFailures).toHaveLength(1);
+    expect(classifyFailureRecords([], [], ['tests'], []).unclassifiedFailures).toHaveLength(1);
   });
 
   test('replays a revision through the supported entrypoint without a stale selection reference', () => {
@@ -103,5 +199,77 @@ describe('shadow failure accounting', () => {
   test('rejects mutable revision references before replaying evidence', () => {
     expect(mutableReferenceError.message).toContain('exact 40-hex commit SHA');
     expect(mutableBaselineError.message).toContain('exact 40-hex commit SHA');
+  });
+
+  test('keeps immutable discovery equal to the live exports and preload snapshot', () => {
+    const liveCinder = liveWorkspaces.find(
+      (workspace) => workspace.name === '@lostgradient/cinder',
+    );
+    const immutableCinder = immutableWorkspaces.find(
+      (workspace) => workspace.name === '@lostgradient/cinder',
+    );
+    expect(immutableCinder).toEqual(liveCinder);
+    expect(
+      immutablePreloadSelection.workspaces.flatMap((workspace) => [...workspace.tests.keys()])
+        .length,
+    ).toBe(
+      livePreloadSelection.workspaces.flatMap((workspace) => [...workspace.tests.keys()]).length,
+    );
+  });
+
+  test('does not correlate same basenames or substring filenames across workspace identities', () => {
+    const workspaces = [
+      {
+        name: '@lostgradient/evaluation',
+        directory: 'testing/evaluation',
+        dependencies: [],
+        exports: null,
+        preloads: [],
+        testScripts: [],
+      },
+      {
+        name: '@lostgradient/bureau',
+        directory: 'packages/bureau',
+        dependencies: [],
+        exports: null,
+        preloads: [],
+        testScripts: [],
+      },
+    ];
+    const selected = [
+      'testing/evaluation/src/admission.test.ts',
+      'testing/evaluation/src/oauth.test.ts',
+    ];
+    expect(
+      omittedFailures(
+        selected,
+        ['@lostgradient/bureau › test/skills/client/admission.test.ts › failure'],
+        workspaces,
+      ),
+    ).toHaveLength(1);
+    expect(
+      omittedFailures(
+        selected,
+        ['@lostgradient/evaluation › src/auth.test.ts › failure'],
+        workspaces,
+      ),
+    ).toHaveLength(1);
+    expect(
+      classifyFailureRecords(
+        selected,
+        [{ kind: 'test', job: 'tests', identity: 'admission.test.ts › failure' }],
+        ['tests'],
+        workspaces,
+      ).unclassifiedFailures,
+    ).toHaveLength(1);
+  });
+
+  test('keeps incomplete provider evidence inconclusive through both public routes', () => {
+    expect(incompleteRouteDispositions).toEqual(
+      Array.from({ length: incompleteProviderCases.length }, () => ({
+        replay: 'inconclusive',
+        baseline: 'inconclusive',
+      })),
+    );
   });
 });

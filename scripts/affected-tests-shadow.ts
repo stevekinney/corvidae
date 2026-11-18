@@ -3,8 +3,13 @@
 import { readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { type SourceTree, type WorkspaceDescription } from './affected-tests-graph.ts';
+import {
+  owningWorkspace,
+  type SourceTree,
+  type WorkspaceDescription,
+} from './affected-tests-graph.ts';
 import { selectTests } from './affected-tests-selection.ts';
+import { discoverWorkspacesInTree } from './affected-tests.ts';
 import { failureRecords, type FailureRecord } from './chef/ci-compare.ts';
 
 interface FrozenRun {
@@ -21,15 +26,84 @@ interface ShadowFailure {
   reason: string;
 }
 
+interface ProviderJob {
+  name?: string;
+  status?: string;
+  conclusion?: string;
+}
+
+interface ProviderEvidence {
+  status?: string;
+  conclusion?: string;
+  jobs?: ProviderJob[];
+}
+
+function normalizedPath(path: string): string {
+  return path.replaceAll('\\', '/').replace(/^\.\//, '');
+}
+
+function failureLocation(identity: string): { workspace: string; file: string } | undefined {
+  const match = /^([^›]+) › ([^›]+?\.(?:[cm]?[jt]sx?|svelte))(?::\d+(?::\d+)?)? › /.exec(identity);
+  if (match?.[1] === undefined || match[2] === undefined) return undefined;
+  return { workspace: match[1].trim(), file: normalizedPath(match[2].trim()) };
+}
+
+function selectedLocations(
+  selected: readonly string[],
+  workspaces: readonly WorkspaceDescription[],
+): Map<string, Set<string>> {
+  const locations = new Map<string, Set<string>>();
+  for (const test of selected) {
+    const workspace = owningWorkspace(test, workspaces);
+    const relative = workspace.directory === '' ? test : test.slice(workspace.directory.length + 1);
+    const file = normalizedPath(relative);
+    const matches = locations.get(file) ?? new Set<string>();
+    matches.add(`${workspace.name}›${file}`);
+    locations.set(file, matches);
+  }
+  return locations;
+}
+
+function terminalEvidence(provider: ProviderEvidence): { failures: string[]; reason?: string } {
+  const jobs = provider.jobs;
+  if (provider.status !== 'completed')
+    return { failures: [], reason: 'provider run is not completed' };
+  if (provider.conclusion !== 'success' && provider.conclusion !== 'failure')
+    return { failures: [], reason: 'provider run has no terminal conclusion' };
+  if (jobs === undefined || jobs.length === 0)
+    return { failures: [], reason: 'provider run has no job inventory' };
+  if (
+    jobs.some(
+      (job) =>
+        job.status !== 'completed' ||
+        (job.conclusion !== 'success' && job.conclusion !== 'failure'),
+    )
+  )
+    return {
+      failures: [],
+      reason: 'provider job is canceled, pending, or lacks a terminal conclusion',
+    };
+  return {
+    failures: jobs
+      .filter((job) => job.conclusion === 'failure')
+      .map((job) => job.name ?? 'unnamed job'),
+  };
+}
+
 /** Correlate parser-provided failing test identities with the selector's exact test paths. */
 export function omittedFailures(
   selected: readonly string[],
   failures: readonly string[],
+  workspaces: readonly WorkspaceDescription[],
 ): string[] {
-  return failures.filter(
-    (failure) =>
-      !selected.some((test) => failure.includes(test.split('/').at(-1)!.replace(/\.ts$/, ''))),
-  );
+  const locations = selectedLocations(selected, workspaces);
+  return failures.filter((failure) => {
+    const location = failureLocation(failure);
+    if (location === undefined) return true;
+    const candidates = locations.get(location.file);
+    if (candidates === undefined) return true;
+    return !candidates.has(`${location.workspace}›${location.file}`) && candidates.size !== 1;
+  });
 }
 
 /** Serialize qualified and residual parser evidence without hiding an unknown behind a known test. */
@@ -37,18 +111,29 @@ export function classifyFailureRecords(
   selected: readonly string[],
   records: readonly FailureRecord[],
   failedJobs: readonly string[],
+  workspaces: readonly WorkspaceDescription[],
 ) {
   const attributedFailures = records.flatMap((record) =>
-    record.identity === undefined ? [] : [record.identity],
+    record.identity !== undefined && failureLocation(record.identity) !== undefined
+      ? [record.identity]
+      : [],
   );
   const represented = new Set(records.map((record) => record.job));
   const unclassifiedFailures = [
     ...records
-      .filter((record) => record.kind === 'unknown')
+      .filter(
+        (record) =>
+          record.kind === 'unknown' ||
+          (record.identity !== undefined && failureLocation(record.identity) === undefined),
+      )
       .map((record) => ({
         job: record.job,
         classification: 'unattributable' as const,
-        reason: record.diagnostic ?? 'unparseable provider failure evidence',
+        reason:
+          record.diagnostic ??
+          (record.identity === undefined
+            ? 'unparseable provider failure evidence'
+            : 'provider test identity is not workspace-qualified'),
       })),
     ...failedJobs
       .filter((job) => !represented.has(job))
@@ -60,7 +145,7 @@ export function classifyFailureRecords(
   ];
   return {
     attributedFailures,
-    omittedFailures: omittedFailures(selected, attributedFailures),
+    omittedFailures: omittedFailures(selected, attributedFailures, workspaces),
     unclassifiedFailures,
   };
 }
@@ -98,7 +183,12 @@ function treeAt(root: string, revision: string): SourceTree {
   // `git cat-file --batch` accepts every revision:path request on one stream. The selector reads
   // source and manifests repeatedly, so one object process per file made replay impractically slow.
   const requested = [...paths]
-    .filter((path) => /\.(?:[cm]?[jt]sx?|svelte|css)$/.test(path) || path.endsWith('package.json'))
+    .filter(
+      (path) =>
+        /\.(?:[cm]?[jt]sx?|svelte|css)$/.test(path) ||
+        path.endsWith('package.json') ||
+        /(?:^|\/)bunfig[^/]*\.toml$/.test(path),
+    )
     .map((path) => `${revision}:${path}`);
   const result = Bun.spawnSync({
     cmd: ['git', '-C', root, 'cat-file', '--batch'],
@@ -125,47 +215,17 @@ function treeAt(root: string, revision: string): SourceTree {
   };
 }
 
-function workspacesAt(tree: SourceTree): WorkspaceDescription[] {
-  const manifests = [...tree.paths]
-    .filter(
-      (path) =>
-        path === 'package.json' ||
-        /^(?:applications|components|packages|testing|internal|plugins)\/[^/]+\/package\.json$|^scripts\/(?:browser-fixtures|groom)\/package\.json$/.test(
-          path,
-        ),
-    )
-    .map((path) => {
-      const manifest = JSON.parse(tree.read(path) ?? '{}') as {
-        name?: string;
-        scripts?: Record<string, string>;
-        dependencies?: Record<string, string>;
-        devDependencies?: Record<string, string>;
-        peerDependencies?: Record<string, string>;
-        optionalDependencies?: Record<string, string>;
-      };
-      return {
-        directory: path === 'package.json' ? '' : path.slice(0, -'/package.json'.length),
-        manifest,
-      };
-    });
-  const names = new Set(manifests.map(({ manifest }) => manifest.name).filter(Boolean));
-  return manifests.map(({ directory, manifest }) => ({
-    name: manifest.name ?? directory,
-    directory,
-    dependencies: [
-      manifest.dependencies,
-      manifest.devDependencies,
-      manifest.peerDependencies,
-      manifest.optionalDependencies,
-    ]
-      .flatMap((group) => Object.keys(group ?? {}))
-      .filter((name) => names.has(name)),
-    exports: null,
-    preloads: [],
-    testScripts: Object.entries(manifest.scripts ?? {})
-      .filter(([name]) => name.startsWith('test'))
-      .map(([, value]) => value),
-  }));
+/** Read a pinned revision through the same workspace discovery used for a live tree. */
+export function workspacesAtRevision(root: string, revision: string): WorkspaceDescription[] {
+  return discoverWorkspacesInTree(treeAt(root, immutableCommit(root, revision)));
+}
+
+/** Select against immutable source using the exact same discovery contract as live selection. */
+export function selectionAtRevision(root: string, revision: string, changed: readonly string[]) {
+  const pinnedRevision = immutableCommit(root, revision);
+  const tree = treeAt(root, pinnedRevision);
+  const workspaces = discoverWorkspacesInTree(tree);
+  return selectTests({ changed, tree, workspaces });
 }
 
 function changedBetween(root: string, base: string, revision: string): string[] {
@@ -182,12 +242,11 @@ export function replayRevision(
   const revision = immutableCommit(root, input.revision);
   const changed = changedBetween(root, base, revision);
   const tree = treeAt(root, revision);
-  const selection = selectTests({ changed, tree, workspaces: workspacesAt(tree) });
+  const workspaces = discoverWorkspacesInTree(tree);
+  const selection = selectTests({ changed, tree, workspaces });
   const selected = selection.workspaces.flatMap((workspace) => [...workspace.tests.keys()]);
-  const jobs = (input.provider as { jobs?: { name?: string; conclusion?: string }[] }).jobs ?? [];
-  const fullRunFailures = jobs
-    .filter((job) => job.conclusion === 'failure')
-    .map((job) => job.name ?? 'unnamed job');
+  const evidence = terminalEvidence(input.provider as ProviderEvidence);
+  const fullRunFailures = evidence.failures;
   const records: FailureRecord[] =
     input.failureLog === undefined
       ? []
@@ -199,16 +258,20 @@ export function replayRevision(
             ),
           ).values(),
         ].flatMap((group) => group);
-  const classified = classifyFailureRecords(selected, records, fullRunFailures);
+  const classified = classifyFailureRecords(selected, records, fullRunFailures, workspaces);
   return {
     name: input.name,
-    disposition: classified.unclassifiedFailures.length === 0 ? 'complete' : 'inconclusive',
+    disposition:
+      evidence.reason === undefined && classified.unclassifiedFailures.length === 0
+        ? 'complete'
+        : 'inconclusive',
     revision,
     base,
     changed,
     selected,
     fullRunFailures,
     ...classified,
+    ...(evidence.reason === undefined ? {} : { reason: evidence.reason }),
     inputIdentity: input.provider,
   };
 }
@@ -216,11 +279,15 @@ export function replayRevision(
 export function shadowRun(root: string, frozen: FrozenRun) {
   const revision = frozen.frozenSample?.headSha;
   const changed = frozen.gitInputs?.changedPaths ?? [];
-  const completed =
-    frozen.frozenSample?.status === 'completed' &&
-    frozen.jobs !== undefined &&
-    frozen.jobs.length > 0;
-  if (revision === undefined || !completed)
+  const pinnedRevision = revision === undefined ? undefined : immutableCommit(root, revision);
+  const evidence = terminalEvidence({
+    ...(frozen.frozenSample?.status === undefined ? {} : { status: frozen.frozenSample.status }),
+    ...(frozen.frozenSample?.conclusion === undefined
+      ? {}
+      : { conclusion: frozen.frozenSample.conclusion }),
+    ...(frozen.jobs === undefined ? {} : { jobs: frozen.jobs }),
+  });
+  if (pinnedRevision === undefined || evidence.reason !== undefined)
     return {
       disposition: 'inconclusive',
       revision: revision ?? null,
@@ -228,16 +295,13 @@ export function shadowRun(root: string, frozen: FrozenRun) {
       selected: [],
       fullRunFailures: [],
       omittedFailures: [],
-      reason: 'provider evidence is canceled or incomplete',
+      reason: evidence.reason ?? 'provider revision is missing',
     };
-  const pinnedRevision = immutableCommit(root, revision);
   const tree = treeAt(root, pinnedRevision);
-  const selection = selectTests({ changed, tree, workspaces: workspacesAt(tree) });
+  const workspaces = discoverWorkspacesInTree(tree);
+  const selection = selectTests({ changed, tree, workspaces });
   const selected = selection.workspaces.flatMap((workspace) => [...workspace.tests.keys()]);
-  const fullRunFailures =
-    frozen.jobs
-      ?.filter((job) => job.conclusion === 'failure')
-      .map((job) => job.name ?? 'unnamed job') ?? [];
+  const fullRunFailures = evidence.failures;
   // Job-level conclusions and text logs do not contain the executed test inventory. A job failure
   // therefore cannot demonstrate that an omitted test caused it. Preserve it as inconclusive
   // instead of turning missing attribution into a false zero-miss result.
