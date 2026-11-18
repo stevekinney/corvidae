@@ -155,7 +155,7 @@ const DARK_VALUES: readonly ExpectedColor[] = [
   ['--cinder-status-success-solid-active', [0.62, 0.14, 145]],
   ['--cinder-status-success-solid-hover', [0.7, 0.14, 145]],
   // COR-2489: the dark status grounds mix 20% of their solid, where they mixed 14%.
-  ['--cinder-status-success-background', [0.304, 0.0248, 187.103]],
+  ['--cinder-status-success-background', [0.304, 0.028, 145]],
   ['--cinder-status-success-text', [0.88, 0.11, 145]],
   ['--cinder-status-success-border', [0.45, 0.09, 145]],
   ['--cinder-status-success-subtle', [0.8412, 0.05, 147.034]],
@@ -164,7 +164,7 @@ const DARK_VALUES: readonly ExpectedColor[] = [
   ['--cinder-status-warning-solid', [0.82, 0.156, 75]],
   ['--cinder-status-warning-solid-active', [0.66, 0.13, 75]],
   ['--cinder-status-warning-solid-hover', [0.74, 0.156, 75]],
-  ['--cinder-status-warning-background', [0.312, 0.01274, 59.824]],
+  ['--cinder-status-warning-background', [0.312, 0.0312, 75]],
   ['--cinder-status-warning-text', [0.9, 0.08, 75]],
   ['--cinder-status-warning-border', [0.5, 0.1, 75]],
   ['--cinder-status-warning-subtle', [0.8668, 0.05, 74.628]],
@@ -173,7 +173,7 @@ const DARK_VALUES: readonly ExpectedColor[] = [
   ['--cinder-status-danger-solid', [0.67, 0.19, 27]],
   ['--cinder-status-danger-solid-active', [0.59, 0.18, 27]],
   ['--cinder-status-danger-solid-hover', [0.61, 0.19, 27]],
-  ['--cinder-status-danger-background', [0.282, 0.03224, 356.665]],
+  ['--cinder-status-danger-background', [0.282, 0.038, 27]],
   // COR-2287: the dark danger ink is a red at 76% (chroma 0.14, the in-gamut step below the
   // board's 0.15) and its border a red at 62%, so a danger row reads red instead of pink-white.
   ['--cinder-status-danger-text', [0.76, 0.14, 25]],
@@ -184,7 +184,7 @@ const DARK_VALUES: readonly ExpectedColor[] = [
   ['--cinder-status-info-solid', [0.78, 0.13, 230]],
   ['--cinder-status-info-solid-active', [0.62, 0.12, 230]],
   ['--cinder-status-info-solid-hover', [0.7, 0.13, 230]],
-  ['--cinder-status-info-background', [0.304, 0.04316, 244.784]],
+  ['--cinder-status-info-background', [0.304, 0.026, 230]],
   ['--cinder-status-info-text', [0.88, 0.071, 230]],
   ['--cinder-status-info-border', [0.45, 0.08, 230]],
   ['--cinder-status-info-subtle', [0.8412, 0.05, 231.373]],
@@ -299,6 +299,22 @@ describe('COR-2308: the dark arm ships the neutral ladder', () => {
       expect(hue, property).toBe(265);
       expect(chroma, property).toBeGreaterThanOrEqual(0.02);
       expect(chroma, property).toBeLessThanOrEqual(0.03);
+    }
+  });
+
+  // COR-2489 design round: a dark status ground is its solid mixed 20% into a neutral of the
+  // surface's lightness, so the indigo page never turns red teal, amber grey or green teal.
+  test('every dark status ground keeps its status hue, never the surface hue', () => {
+    for (const [property, low, high] of [
+      ['--cinder-status-danger-background', 15, 40],
+      ['--cinder-status-warning-background', 60, 95],
+      ['--cinder-status-success-background', 130, 160],
+      ['--cinder-status-info-background', 215, 245],
+    ] as const) {
+      const [, chroma, hue] = contexts.dark.get(property)?.components ?? [];
+      expect(hue, property).toBeGreaterThanOrEqual(low);
+      expect(hue, property).toBeLessThanOrEqual(high);
+      expect(chroma, property).toBeGreaterThanOrEqual(0.025);
     }
   });
 

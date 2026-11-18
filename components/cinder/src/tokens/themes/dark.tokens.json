@@ -780,11 +780,11 @@
         "$type": "color",
         "$value": {
           "colorSpace": "oklch",
-          "components": [0.304, 0.0248, 187.103]
+          "components": [0.304, 0.028, 145]
         },
         "$extensions": {
           "com.lostgradient.cinder": {
-            "cssRecipe": "color-mix(in oklab, var(--cinder-status-success-solid) 20%, var(--cinder-surface))"
+            "cssRecipe": "color-mix(in oklab, var(--cinder-status-success-solid) 20%, oklch(from var(--cinder-surface) l 0 h))"
           }
         }
       },
@@ -862,11 +862,11 @@
         "$type": "color",
         "$value": {
           "colorSpace": "oklch",
-          "components": [0.312, 0.01274, 59.824]
+          "components": [0.312, 0.0312, 75]
         },
         "$extensions": {
           "com.lostgradient.cinder": {
-            "cssRecipe": "color-mix(in oklab, var(--cinder-status-warning-solid) 20%, var(--cinder-surface))"
+            "cssRecipe": "color-mix(in oklab, var(--cinder-status-warning-solid) 20%, oklch(from var(--cinder-surface) l 0 h))"
           }
         }
       },
@@ -965,11 +965,11 @@
         "$type": "color",
         "$value": {
           "colorSpace": "oklch",
-          "components": [0.282, 0.03224, 356.665]
+          "components": [0.282, 0.038, 27]
         },
         "$extensions": {
           "com.lostgradient.cinder": {
-            "cssRecipe": "color-mix(in oklab, var(--cinder-status-danger-solid) 20%, var(--cinder-surface))"
+            "cssRecipe": "color-mix(in oklab, var(--cinder-status-danger-solid) 20%, oklch(from var(--cinder-surface) l 0 h))"
           }
         }
       },
@@ -1047,11 +1047,11 @@
         "$type": "color",
         "$value": {
           "colorSpace": "oklch",
-          "components": [0.304, 0.04316, 244.784]
+          "components": [0.304, 0.026, 230]
         },
         "$extensions": {
           "com.lostgradient.cinder": {
-            "cssRecipe": "color-mix(in oklab, var(--cinder-status-info-solid) 20%, var(--cinder-surface))"
+            "cssRecipe": "color-mix(in oklab, var(--cinder-status-info-solid) 20%, oklch(from var(--cinder-surface) l 0 h))"
           }
         }
       },

@@ -30,28 +30,44 @@
     --color-background-success,
     light-dark(
       oklch(96.5% 0.055 148),
-      color-mix(in oklab, var(--cinder-status-success-solid) 20%, var(--cinder-surface))
+      color-mix(
+        in oklab,
+        var(--cinder-status-success-solid) 20%,
+        oklch(from var(--cinder-surface) l 0 h)
+      )
     )
   );
   --cinder-status-danger-background: var(
     --color-background-danger,
     light-dark(
       oklch(95% 0.025 25),
-      color-mix(in oklab, var(--cinder-status-danger-solid) 20%, var(--cinder-surface))
+      color-mix(
+        in oklab,
+        var(--cinder-status-danger-solid) 20%,
+        oklch(from var(--cinder-surface) l 0 h)
+      )
     )
   );
   --cinder-status-warning-background: var(
     --color-background-warning,
     light-dark(
       oklch(96.8% 0.035 88),
-      color-mix(in oklab, var(--cinder-status-warning-solid) 20%, var(--cinder-surface))
+      color-mix(
+        in oklab,
+        var(--cinder-status-warning-solid) 20%,
+        oklch(from var(--cinder-surface) l 0 h)
+      )
     )
   );
   --cinder-status-info-background: var(
     --color-background-info,
     light-dark(
       oklch(95% 0.028 235),
-      color-mix(in oklab, var(--cinder-status-info-solid) 20%, var(--cinder-surface))
+      color-mix(
+        in oklab,
+        var(--cinder-status-info-solid) 20%,
+        oklch(from var(--cinder-surface) l 0 h)
+      )
     )
   );
   --cinder-text-default: var(
