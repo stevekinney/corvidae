@@ -784,6 +784,9 @@ describe('the run page’s sections are Cinder Sections', () => {
     '../detail/lineage-panel.svelte',
     // Not named by the criterion, but its block sits in the same rail.
     './run-related-runs.svelte',
+    // The engine panels' own blocks (design round): Search attributes and Worker versioning.
+    '../detail/attributes/attributes-panel.svelte',
+    '../detail/worker-binding-panel.svelte',
   ];
 
   test.each(files)('%s draws no ib-run heading or section class', (file) => {
@@ -811,10 +814,20 @@ describe('the run page’s sections are Cinder Sections', () => {
     expect(css).not.toMatch(/\.ib-run__(section|panels|heading-2) \{/);
   });
 
-  test('the engine panels carry their own headings, and the lineage under them is a Section', () => {
+  test('the engine panels are Sections titled by their own headings, with no hand-built heading', () => {
     const source = readFileSync(new URL('./run-engine-panels.svelte', import.meta.url), 'utf8');
     expect(source).toContain('<LineagePanel');
-    expect(source).not.toMatch(/<section class=/);
+    expect(source).toContain('<AttributesPanel');
+    expect(source).toContain('<WorkerBindingPanel');
+    expect(source).not.toMatch(/<section\b/);
+    for (const panel of [
+      '../detail/attributes/attributes-panel.svelte',
+      '../detail/worker-binding-panel.svelte',
+    ]) {
+      const panelSource = readFileSync(new URL(panel, import.meta.url), 'utf8');
+      expect(panelSource, panel).not.toMatch(/<h[1-6]\b/);
+      expect(panelSource, panel).toMatch(/<Section level=\{3\}/);
+    }
   });
 
   test('the rail is named Run details and holds the details as a level-two Section', async () => {

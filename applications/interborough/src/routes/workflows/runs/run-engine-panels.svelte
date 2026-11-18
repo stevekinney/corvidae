@@ -9,7 +9,6 @@
   import { Stack } from '@lostgradient/cinder';
   import type { WorkflowState } from '@lostgradient/weft';
 
-  import { RUN_PAGE_COPY } from '../../../app/copy/runs.ts';
   import { getPrincipalStore } from '../../../lib/scopes.svelte.ts';
   import AttributesPanel from '../detail/attributes/attributes-panel.svelte';
   import LineagePanel from '../detail/lineage-panel.svelte';
@@ -32,21 +31,16 @@
   const attributesClient = $derived(attributesClientOf(engine.client));
 </script>
 
-<!-- Each panel carries its own heading, so the wrappers are Cinder Stacks, not headed Sections; the
-     lineage is a Cinder Section of its own (`lineage-panel.svelte`). -->
+<!-- Each panel is a Cinder Section titled by its own heading (Search attributes, Worker versioning),
+     as the lineage is (`lineage-panel.svelte`); the wrappers only space them. -->
 {#if part === 'attributes'}
   {#if attributesClient !== undefined}
-    <Stack
-      as="section"
-      gap="var(--cinder-space-4)"
-      aria-label={RUN_PAGE_COPY.attributesAndWorkerLabel}
-      data-section="engine-panels"
-    >
+    <Stack gap="var(--cinder-space-4)" data-section="engine-panels">
       <AttributesPanel client={attributesClient} workflowId={workflow.id} {canRead} {canWrite} />
     </Stack>
   {/if}
 {:else}
-  <Stack as="section" gap="var(--cinder-space-4)" data-section="versioning">
+  <Stack gap="var(--cinder-space-4)" data-section="versioning">
     <WorkerBindingPanel {workflow} />
   </Stack>
   <LineagePanel client={engine.client} {workflow} />
