@@ -24,11 +24,11 @@ test.use({ baseURL: E2E_SHOWCASE_URL, timezoneId: SAMPLE_TIME_ZONE });
 const SOURCE = 'chat-list.spec.ts';
 
 /**
- * The chats the sample world holds: the refund, the release question, Say hello, Look up order
- * 4468 (the chat behind Runs' Friday row) and Rename the billing tables. The boards' chat list
- * draws four of them.
+ * The chats the sample world holds: the 4471 refund, the 4472 refund (a chat of its own), the
+ * release question, Say hello, Look up order 4468 (the chat behind Runs' Friday row) and Rename
+ * the billing tables. The boards' chat list draws four of them.
  */
-const CHAT_COUNT = 5;
+const CHAT_COUNT = 6;
 
 /** Where ListDetail remembers the divider (`storageKey` of the chat list). */
 const DIVIDER_KEY = 'interborough-chats';
@@ -120,20 +120,20 @@ test.describe('the chat list on the sample world', () => {
     await captureForDesignReview(page, { route: '/chats', state: 'ready', source: SOURCE });
   });
 
-  test('has the status segments All 5, Waiting on you 2 and Done 2, and Ended is under All only (11g)', async ({
+  test('has the status segments All 6, Waiting on you 2 and Done 3, and Ended is under All only (11g)', async ({
     page,
   }) => {
     await openChats(page);
     const segments = list(page).getByRole('radiogroup', { name: 'Status' });
     await expect(segments.getByRole('radio')).toHaveText([
-      /^\s*All\s*,?\s*5\s*$/,
+      /^\s*All\s*,?\s*6\s*$/,
       /^\s*Waiting on you\s*,?\s*2\s*$/,
-      /^\s*Done\s*,?\s*2\s*$/,
+      /^\s*Done\s*,?\s*3\s*$/,
     ]);
     await segments.locator('[data-cinder-segment-value="waiting"]').click();
     await expect(page.locator('[data-chat]')).toHaveCount(2);
     await segments.locator('[data-cinder-segment-value="done"]').click();
-    await expect(page.locator('[data-chat]')).toHaveCount(2);
+    await expect(page.locator('[data-chat]')).toHaveCount(3);
     await expect(row(page, 'Rename the billing tables')).toHaveCount(0);
     await segments.locator('[data-cinder-segment-value="all"]').click();
     await expect(page.locator('[data-chat]')).toHaveCount(CHAT_COUNT);
@@ -167,7 +167,8 @@ test.describe('the chat list on the sample world', () => {
     await row(page, 'Say hello').getByRole('link').click();
     await expect(page.getByRole('region', { name: 'Open chat' })).toContainText('Say hello');
     await list(page).getByRole('searchbox', { name: 'Search chats' }).fill('refund');
-    await expect(page.locator('[data-chat]')).toHaveCount(1);
+    // The two refund requests, each its own chat.
+    await expect(page.locator('[data-chat]')).toHaveCount(2);
     await expect(page.getByRole('region', { name: 'Open chat' })).toContainText('Say hello');
   });
 });

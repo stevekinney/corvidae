@@ -265,11 +265,13 @@ test.describe('Home on the sample world, with something waiting on you', () => {
     await expect(rows.nth(0)).toContainText(
       'I found order 4471 ($42.00). I need your approval to refund it.',
     );
-    await expect(rows.nth(1)).toContainText('Which environment should the release go to?');
     await expect(rows.nth(0)).toContainText('10:42 AM');
-    await expect(rows.nth(2)).toContainText('Done');
-    await expect(rows.nth(2)).toContainText('Say hello');
-    await expect(rows.nth(2)).toContainText('Yesterday, 4:12 PM');
+    // The 4472 refund is a chat of its own, done once it was approved at 10:33 AM, so it is the
+    // second chat last in, ahead of the release question (9:46 AM) and Say hello (yesterday).
+    await expect(rows.nth(1)).toContainText('Done');
+    await expect(rows.nth(1)).toContainText('Please refund order 4472, $18.50.');
+    await expect(rows.nth(2)).toContainText('Which environment should the release go to?');
+    await expect(rows.nth(2)).toContainText('Waiting on you');
   });
 });
 

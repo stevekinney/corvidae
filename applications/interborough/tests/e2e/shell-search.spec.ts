@@ -194,9 +194,10 @@ test.describe('the search palette on the sample world', () => {
     });
     expect(await rowText(run)).toEqual(['Refund order 4471', 'Tool runner, waiting for approval']);
 
-    // One run (the 4471 refund waiting on you): the finished 4472 refund shares its chat and is not
-    // titled by it, and the goal attempts, whose identifiers hold "refund", do not match what shows.
-    await expect(group('Runs').getByRole('option')).toHaveCount(1);
+    // Two runs: the 4471 refund waiting on you, and the newest run of the 4472 refund's own chat,
+    // titled by it. The goal attempts, whose identifiers hold "refund", do not match what shows.
+    await expect(group('Runs').getByRole('option')).toHaveCount(2);
+    await expect(group('Runs').getByRole('option', { name: /^Refund order 4472,/ })).toHaveCount(1);
     // Issue refund and Triage refunds (the 30-call turn's tool): Tool runner's prompt mentions
     // refunds, but its row never says so.
     await expect(group('Agents and tools').getByRole('option')).toHaveCount(2);

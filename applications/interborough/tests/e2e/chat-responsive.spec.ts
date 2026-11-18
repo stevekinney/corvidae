@@ -151,7 +151,7 @@ const scrollsSideways = (page: Page) =>
 /** Opens the refund chat from the list on a phone and waits until its approval is drawn. */
 async function openRefundFromList(page: Page): Promise<void> {
   await open(page, 375, '/chats');
-  await expect(page.locator('[data-chat]')).toHaveCount(5);
+  await expect(page.locator('[data-chat]')).toHaveCount(6);
   await page.locator('[data-chat]').filter({ hasText: REFUND }).getByRole('link').first().click();
   await expect(page.locator('[data-approval-decision]')).toBeVisible();
 }
@@ -189,7 +189,7 @@ test.describe('Chat on a phone (04y, 06l, 06m)', () => {
     page,
   }) => {
     await open(page, 375, '/chats');
-    await expect(page.locator('[data-chat]')).toHaveCount(5);
+    await expect(page.locator('[data-chat]')).toHaveCount(6);
     // The list is the screen: no conversation beside it, no sideways scroll.
     await expect(openChat(page)).toHaveCount(0);
     expect(await scrollsSideways(page)).toBe(false);
@@ -251,7 +251,7 @@ test.describe('Chat on a phone (04y, 06l, 06m)', () => {
     await back.click();
     await expect(page).toHaveURL(/\/chats$/);
     await expect(chatList(page)).toBeVisible();
-    await expect(page.locator('[data-chat]')).toHaveCount(5);
+    await expect(page.locator('[data-chat]')).toHaveCount(6);
   });
 
   test('opens on the approval with its question in view, not only its buttons', async ({

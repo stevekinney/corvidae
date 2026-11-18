@@ -16,9 +16,10 @@
  *   the chat reads Ended with the reason `host-stopped`.
  * - Nov 1, 4:12 PM: "Say hello" with Assistant, Done.
  * - Nov 2: the server starts at 9:00 AM; the release question is asked at 9:46 AM and waits; you ask
- *   to refund order 4472 at 10:30 AM, Tool runner corrects its memory at 10:31 AM, you approve at
- *   10:33 AM and it is refunded; you ask to refund order 4471 at 10:42 AM and Issue refund asks at
- *   10:42:20 AM and waits; you remove the Anthropic key at 10:45 AM.
+ *   to refund order 4472 at 10:30 AM in a chat of its own, Tool runner corrects its memory at 10:31
+ *   AM, you approve at 10:33 AM and it is refunded; you ask to refund order 4471 at 10:42 AM in
+ *   another chat, and Issue refund asks at 10:42:20 AM and waits; you remove the Anthropic key at
+ *   10:45 AM. Each refund chat is titled by its own request.
  *
  * One record is written to a store directly rather than through a run: Tool runner's memory "by
  * phone" and its correction "by email, not by phone" (PageMemory). Bureau gives an agent no way to
@@ -115,12 +116,19 @@ export const SAMPLE_WORLD_CHATS = {
     agent: 'request-human-input',
     message: 'Ship the release notes fix.',
   },
+  /**
+   * The two refund requests, each its own chat titled by its request (rows 09p, 06d): 4471, asked at
+   * 10:42 AM and still waiting on you, and 4472, asked at 10:30 AM and approved at 10:33 AM.
+   */
   refund: {
     threadId: SAMPLE_WORLD_THREADS.refund,
     agent: 'tool-runner',
-    /** The refund chat's two messages, and its title, which is the second (the one still waiting). */
-    first: 'Please refund order 4472, $18.50.',
-    second: 'Please refund order 4471, it arrived damaged.',
+    message: 'Please refund order 4471, it arrived damaged.',
+  },
+  refund4472: {
+    threadId: SAMPLE_WORLD_THREADS.refund4472,
+    agent: 'tool-runner',
+    message: 'Please refund order 4472, $18.50.',
   },
 } as const;
 
@@ -267,8 +275,9 @@ async function correctToolRunnerMemory(
   const memory = host.bureau.memory;
   if (memory === undefined) throw new Error('The host has no governed memory.');
   const authority = runMemoryAuthority(host, runId);
-  const correlation = { runId, sessionId: SAMPLE_WORLD_CHATS.refund.threadId };
-  const metadata = { sessionId: SAMPLE_WORLD_CHATS.refund.threadId };
+  // The run and the chat it was in: the 4472 refund's.
+  const correlation = { runId, sessionId: SAMPLE_WORLD_CHATS.refund4472.threadId };
+  const metadata = { sessionId: SAMPLE_WORLD_CHATS.refund4472.threadId };
   runtime.setTime(SAMPLE_WORLD_TIMES.phoneRemembered);
   const written = await memory.write(authority, TOOL_RUNNER_CORRECTION.original, {
     collection: 'tool-runner',
@@ -487,14 +496,15 @@ async function monday(
   const { host, runtime } = context;
   await missedRunsLogged(context);
   storageAlertFires(context);
-  const { release, refund } = SAMPLE_WORLD_CHATS;
+  const { release, refund, refund4472: refundEarlier } = SAMPLE_WORLD_CHATS;
   runtime.setTime(SAMPLE_WORLD_TIMES.releaseAsked);
   await sendChatMessage(host, release.agent, release.threadId, release.message);
   const releaseReview = await pendingReviewOf(host, release.threadId);
 
+  // 10:30 AM: the 4472 refund, its own chat, approved at 10:33 AM.
   runtime.setTime(SAMPLE_WORLD_TIMES.refund4472Asked);
-  await sendChatMessage(host, refund.agent, refund.threadId, refund.first);
-  const refund4472 = await pendingReviewOf(host, refund.threadId);
+  await sendChatMessage(host, refundEarlier.agent, refundEarlier.threadId, refundEarlier.message);
+  const refund4472 = await pendingReviewOf(host, refundEarlier.threadId);
   const memories = await correctToolRunnerMemory(host, runtime, refund4472.runId);
 
   runtime.setTime(SAMPLE_WORLD_TIMES.refund4472Approved);
@@ -503,21 +513,26 @@ async function monday(
     decision: 'approve',
     round: refund4472.round ?? 0,
   });
-  await waitForIdle(host, refund.threadId);
-  // The refund chat runs at Medium effort, which its details popover and composer say (ChatPage).
+  await waitForIdle(host, refundEarlier.threadId);
+  await bureauCall(host, 'bureau.contexts.rename', {
+    contextId: refundEarlier.threadId,
+    title: refundEarlier.message,
+  });
+
+  // 10:42 AM: the 4471 refund, a chat of its own, which waits on you.
+  runtime.setTime(SAMPLE_WORLD_TIMES.refund4471Started);
+  await sendChatMessage(host, refund.agent, refund.threadId, refund.message);
+  const refund4471 = await pendingReviewOf(host, refund.threadId);
+  await bureauCall(host, 'bureau.contexts.rename', {
+    contextId: refund.threadId,
+    title: refund.message,
+  });
+  // The 4471 chat runs at Medium effort, which its details popover and composer say (ChatPage).
   await bureauCall(host, 'bureau.contexts.steer', {
     contextId: refund.threadId,
     commandId: `sample-world-effort-${refund.threadId}`,
     expectedRevision: 0,
     effort: 'medium',
-  });
-
-  runtime.setTime(SAMPLE_WORLD_TIMES.refund4471Started);
-  await sendChatMessage(host, refund.agent, refund.threadId, refund.second);
-  const refund4471 = await pendingReviewOf(host, refund.threadId);
-  await bureauCall(host, 'bureau.contexts.rename', {
-    contextId: refund.threadId,
-    title: refund.second,
   });
 
   runtime.setTime(SAMPLE_WORLD_TIMES.anthropicKeyRemoved);

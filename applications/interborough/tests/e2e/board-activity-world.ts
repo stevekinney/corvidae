@@ -96,13 +96,17 @@ export async function answerAuditAsDesigned(page: Page): Promise<void> {
 }
 
 /**
- * Recent activity as its design draws it: the refund chat's two runs, Say hello, the notice of the
+ * Recent activity as its design draws it: the two refund chats' runs, Say hello, the notice of the
  * missed runs, the server's start, the Anthropic key, Daily summary's run on Oct 29, and the chat
  * deleted yesterday. The sample world's other chats (Look up order 4468, Rename the billing tables,
  * the release notes question) are the sample world's, not this frame's.
  */
 export async function answerRecentActivityAsDesigned(page: Page): Promise<void> {
-  const chats = new Set<string>([SAMPLE_WORLD_THREADS.refund, SAMPLE_WORLD_THREADS.sayHello]);
+  const chats = new Set<string>([
+    SAMPLE_WORLD_THREADS.refund,
+    SAMPLE_WORLD_THREADS.refund4472,
+    SAMPLE_WORLD_THREADS.sayHello,
+  ]);
   await answerAuditRecords(page, (records) => {
     const runs = new Set(
       records

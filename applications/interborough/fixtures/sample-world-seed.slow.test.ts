@@ -116,7 +116,7 @@ describe('the sample world, part A', () => {
     expect(detail.definition?.model).toBe('anthropic/claude-sonnet-5-5');
   });
 
-  test('holds the five chats, each with its title, agent, time and state', async () => {
+  test('holds the six chats, each with its title, agent, time and state', async () => {
     // A person's chats only: the sessions goals and schedule fires ran in are not chats.
     const { contexts } = await call<{ contexts: ContextRow[] }>('bureau.contexts.list', {
       origin: 'chat',
@@ -124,6 +124,7 @@ describe('the sample world, part A', () => {
     const byId = new Map(contexts.map((context) => [context.id, context]));
     expect(contexts.map((context) => context.id)).toEqual([
       SAMPLE_WORLD_CHATS.refund.threadId,
+      SAMPLE_WORLD_CHATS.refund4472.threadId,
       SAMPLE_WORLD_CHATS.release.threadId,
       SAMPLE_WORLD_CHATS.sayHello.threadId,
       LOOK_UP_4468_CHAT.threadId,
@@ -148,11 +149,20 @@ describe('the sample world, part A', () => {
       activity: 'awaiting-input',
       endReason: null,
     });
-    expectAt(refund?.createdAt, SAMPLE_WORLD_TIMES.refund4472Asked);
+    // Each refund request is a chat of its own, titled by it (rows 09p, 06d).
+    expectAt(refund?.createdAt, SAMPLE_WORLD_TIMES.refund4471Started);
     expectAt(
       refund?.updatedAt,
       SAMPLE_WORLD_TIMES.refund4471Started + REFUND_4471_ASK_DELAY_MILLISECONDS,
     );
+    const refundEarlier = byId.get(SAMPLE_WORLD_CHATS.refund4472.threadId);
+    expect(refundEarlier).toMatchObject({
+      title: 'Please refund order 4472, $18.50.',
+      agentName: 'tool-runner',
+      activity: 'idle',
+      endReason: null,
+    });
+    expectAt(refundEarlier?.createdAt, SAMPLE_WORLD_TIMES.refund4472Asked);
 
     const release = byId.get(SAMPLE_WORLD_CHATS.release.threadId);
     expect(release).toMatchObject({
@@ -177,17 +187,24 @@ describe('the sample world, part A', () => {
     const sent = (history?.ids ?? [])
       .map((id) => history?.messages[id])
       .filter((message) => message?.role === 'user');
-    expect(sent.map((message) => message?.content)).toEqual([
-      SAMPLE_WORLD_CHATS.refund.first,
-      SAMPLE_WORLD_CHATS.refund.second,
+    expect(sent.map((message) => message?.content)).toEqual([SAMPLE_WORLD_CHATS.refund.message]);
+    expectAt(sent[0]?.createdAt, SAMPLE_WORLD_TIMES.refund4471Started);
+    const earlierSession = await world.host.bureau.contexts.get(
+      SAMPLE_WORLD_CHATS.refund4472.threadId,
+    );
+    const earlierHistory = earlierSession?.conversationHistory;
+    const earlierSent = (earlierHistory?.ids ?? [])
+      .map((id) => earlierHistory?.messages[id])
+      .filter((message) => message?.role === 'user');
+    expect(earlierSent.map((message) => message?.content)).toEqual([
+      SAMPLE_WORLD_CHATS.refund4472.message,
     ]);
-    expectAt(sent[0]?.createdAt, SAMPLE_WORLD_TIMES.refund4472Asked);
-    expectAt(sent[1]?.createdAt, SAMPLE_WORLD_TIMES.refund4471Started);
+    expectAt(earlierSent[0]?.createdAt, SAMPLE_WORLD_TIMES.refund4472Asked);
     // COR-2014: the 4471 reply names the model it ran on (Sonnet 5.5 since Oct 27), and its
     // lookup's answer says when the call ran.
     const rows = (history?.ids ?? []).map((id) => history?.messages[id]);
     const replies = rows.filter(
-      (message) => message?.role === 'assistant' && message.createdAt >= sent[1]!.createdAt,
+      (message) => message?.role === 'assistant' && message.createdAt >= sent[0]!.createdAt,
     );
     expect(replies.length).toBeGreaterThan(0);
     for (const reply of replies) {
@@ -200,7 +217,7 @@ describe('the sample world, part A', () => {
       (message) =>
         message?.role === 'tool-result' &&
         message.toolResult?.outcome === 'success' &&
-        message.createdAt >= sent[1]!.createdAt,
+        message.createdAt >= sent[0]!.createdAt,
     );
     expect(lookups.length).toBeGreaterThan(0);
     for (const lookup of lookups) {
@@ -340,7 +357,8 @@ describe('the sample world, part A', () => {
     );
     expect(asked4471?.sessionId).toBe(SAMPLE_WORLD_CHATS.refund.threadId);
     expectAt(corrected?.createdAt, SAMPLE_WORLD_TIMES.memoryCorrected);
-    expect(corrected?.sessionId).toBe(SAMPLE_WORLD_CHATS.refund.threadId);
+    // Corrected in the 4472 refund's own chat.
+    expect(corrected?.sessionId).toBe(SAMPLE_WORLD_CHATS.refund4472.threadId);
     expectAt(lookUp?.createdAt, SAMPLE_WORLD_TIMES.lookUpBeforeAnswering);
     expectAt(emails?.createdAt, SAMPLE_WORLD_TIMES.neverShareEmails);
 
@@ -439,8 +457,12 @@ describe('the sample world, part A', () => {
     expect(started?.principal).toBe('system:host');
     expectAt(started?.timestamp, SAMPLE_WORLD_TIMES.serverStarted);
 
-    // 10:30 AM: Tool runner asks to refund order 4472.
-    const [asked4472] = entry('tool.settled', toolCall('showcase-issue-refund-1', 'paused'));
+    // 10:30 AM: Tool runner asks to refund order 4472. Each refund is the first turn of its own
+    // chat, so both asks carry the first turn's call identifier: the earlier is 4472's.
+    const [asked4472, asked4471] = entry(
+      'tool.settled',
+      toolCall('showcase-issue-refund-1', 'paused'),
+    ).toSorted((left, right) => left.timestamp.localeCompare(right.timestamp));
     expect(asked4472?.detail).toMatchObject({ agentName: 'tool-runner', toolName: 'issue-refund' });
     expectAt(asked4472?.timestamp, SAMPLE_WORLD_TIMES.refund4472Asked);
 
@@ -451,7 +473,7 @@ describe('the sample world, part A', () => {
       memoryId: world.memories.corrected,
       correctsId: world.memories.original,
       writer: 'agent',
-      sessionId: SAMPLE_WORLD_CHATS.refund.threadId,
+      sessionId: SAMPLE_WORLD_CHATS.refund4472.threadId,
     });
     expectAt(correction?.timestamp, SAMPLE_WORLD_TIMES.memoryCorrected);
 
@@ -460,8 +482,10 @@ describe('the sample world, part A', () => {
     expect(approved?.principal).toBe('anonymous:local');
     expect(approved?.detail).toMatchObject({ toolName: 'issue-refund' });
     expectAt(approved?.timestamp, SAMPLE_WORLD_TIMES.refund4472Approved);
-    const [refunded] = entry('tool.settled', toolCall('showcase-issue-refund-1', 'success'));
-    expectAt(refunded?.timestamp, SAMPLE_WORLD_TIMES.refund4472Approved);
+    const refunds = entry('tool.settled', toolCall('showcase-issue-refund-1', 'success'));
+    // Only the 4472 refund went through; the 4471 one still waits.
+    expect(refunds).toHaveLength(1);
+    expectAt(refunds[0]?.timestamp, SAMPLE_WORLD_TIMES.refund4472Approved);
 
     // 10:42 AM: the order 4471 run starts; Issue refund asks at 10:42:20 AM and still waits.
     const runs = entry(
@@ -469,12 +493,10 @@ describe('the sample world, part A', () => {
       (detail) => detail['sessionId'] === SAMPLE_WORLD_CHATS.refund.threadId,
     );
     expectAt(runs.at(-1)?.timestamp, SAMPLE_WORLD_TIMES.refund4471Started);
-    const [asked4471] = entry('tool.settled', toolCall('showcase-issue-refund-2', 'paused'));
     expectAt(
       asked4471?.timestamp,
       SAMPLE_WORLD_TIMES.refund4471Started + REFUND_4471_ASK_DELAY_MILLISECONDS,
     );
-    expect(entry('tool.settled', toolCall('showcase-issue-refund-2', 'success'))).toEqual([]);
 
     // 10:45 AM: you remove the Anthropic key.
     const [removed] = entry('provider.disconnected');
@@ -1020,13 +1042,15 @@ describe('the sample world, part B', () => {
     const { sources } = (await response.json()) as {
       sources: Array<{
         id: string;
+        name?: string | null;
         state: string;
         tools: Array<{ tool: string; enabled: boolean; tier: string }>;
       }>;
     };
     expect(sources).toHaveLength(1);
     const [github] = sources;
-    expect(github).toMatchObject({ id: GITHUB_SOURCE_ID, state: 'loaded' });
+    // Named as a person calls it, which Capabilities shows in place of its identifier.
+    expect(github).toMatchObject({ id: GITHUB_SOURCE_ID, state: 'loaded', name: 'GitHub' });
     expect(github?.tools.map(({ tool, enabled }) => [tool, enabled])).toEqual([
       ['list_issues', true],
       ['create_issue', true],

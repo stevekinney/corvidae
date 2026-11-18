@@ -106,12 +106,12 @@ async function answerAllClearActivity(page: Page): Promise<void> {
       result: { records: AuditAnswerRecord[]; total?: number };
     };
     const { records } = body.result;
-    // The refund chat's first run is order 4472 (10:30 AM); its second is order 4471.
+    // The 4472 refund's own chat: its first run is order 4472's (10:30 AM).
     const starts = records
       .filter(
         (record) =>
           record.type === 'run.started' &&
-          record.detail?.['sessionId'] === SAMPLE_WORLD_THREADS.refund,
+          record.detail?.['sessionId'] === SAMPLE_WORLD_THREADS.refund4472,
       )
       .toSorted((left, right) => left.timestamp.localeCompare(right.timestamp));
     const refund = starts[0]?.resource;
@@ -122,8 +122,7 @@ async function answerAllClearActivity(page: Page): Promise<void> {
     if (body.result.total !== undefined) body.result.total = 1240;
     await route.fulfill({ response, json: body });
   });
-  // With 4471 left out the refund chat holds one message, which is order 4472's, so the chat is
-  // titled by it and the line names the run the way the board does.
+  // The 4472 refund's chat, titled the way the board names its run.
   await page.route('**/bureau/jsonrpc', async (route) => {
     if (!(route.request().postData() ?? '').includes('"bureau.contexts.get"')) {
       await route.fallback();
@@ -131,7 +130,7 @@ async function answerAllClearActivity(page: Page): Promise<void> {
     }
     const response = await route.fetch();
     const body = (await response.json()) as { result?: { title?: string | null } };
-    if ((route.request().postData() ?? '').includes(SAMPLE_WORLD_THREADS.refund)) {
+    if ((route.request().postData() ?? '').includes(SAMPLE_WORLD_THREADS.refund4472)) {
       if (body.result !== undefined) body.result.title = 'Refund order 4472';
     }
     await route.fulfill({ response, json: body });
