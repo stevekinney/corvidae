@@ -3,6 +3,7 @@ import { describe, expect, test } from 'bun:test';
 
 import { HttpClientError } from '@lostgradient/weft';
 
+import { RETRY_LABEL } from '../../../app/copy/views.ts';
 import QueryFaultBanner from './query-fault-banner.svelte';
 
 describe('QueryFaultBanner', () => {
@@ -34,7 +35,7 @@ describe('QueryFaultBanner', () => {
       },
     });
 
-    await fireEvent.click(getByRole('button', { name: 'Try again' }));
+    await fireEvent.click(getByRole('button', { name: RETRY_LABEL }));
     expect(retried).toBe(true);
   });
 });

@@ -11,6 +11,7 @@ import { describe, expect, test } from 'bun:test';
 
 import { HttpClientError } from '@lostgradient/weft';
 
+import { RETRY_LABEL } from '../../app/copy/views.ts';
 import QueryFaultBanner from './query-fault-banner.svelte';
 
 describe('QueryFaultBanner', () => {
@@ -38,14 +39,14 @@ describe('QueryFaultBanner', () => {
       props: { error, onRetry: () => (retried += 1) },
     });
 
-    await fireEvent.click(getByRole('button', { name: 'Try again' }));
+    await fireEvent.click(getByRole('button', { name: RETRY_LABEL }));
     expect(retried).toBe(1);
   });
 
   test('omits the Retry button when onRetry is not provided', async () => {
     const error = new HttpClientError(500, 'boom');
     const { queryByRole } = render(QueryFaultBanner, { props: { error } });
-    expect(queryByRole('button', { name: 'Try again' })).toBeNull();
+    expect(queryByRole('button', { name: RETRY_LABEL })).toBeNull();
   });
 
   test('an unclassifiable error falls back to the internal treatment', async () => {

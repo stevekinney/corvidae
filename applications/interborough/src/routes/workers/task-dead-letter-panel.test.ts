@@ -1,6 +1,7 @@
 import { fireEvent, render } from '@testing-library/svelte';
 import { afterEach, describe, expect, test } from 'bun:test';
 
+import { RETRY_LABEL } from '../../app/copy/views.ts';
 import { createQueryClient } from '../../lib/query.ts';
 import type { AuthorizationScope } from '../../lib/scopes.svelte.ts';
 import type { DeadLetterTarget } from './dead-letter-guard.ts';
@@ -270,7 +271,7 @@ describe('TaskDeadLetterPanel', () => {
       ...RETAINED,
       payload: { kind: 'absent' },
     });
-    await fireEvent.click(await view.findByRole('button', { name: 'Retry' }));
+    await fireEvent.click(await view.findByRole('button', { name: RETRY_LABEL }));
     expect(await view.findByText(/completed with no value/)).not.toBeNull();
   });
 
