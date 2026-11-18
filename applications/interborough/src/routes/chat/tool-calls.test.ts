@@ -59,6 +59,40 @@ describe('a turn’s tool calls', () => {
     expect(getByText('Decide on issue-refund')).not.toBeNull();
   });
 
+  test('an approval the Bureau records as decided in Reviews keeps its receipt under the row after a reload (COR-2292 A5)', () => {
+    const decidedAt = Date.parse('2026-11-02T16:46:00.000Z');
+    const { queryByText } = render(Harness, {
+      props: {
+        entries: [
+          entry({
+            callId: 'reviews',
+            name: 'issue-refund',
+            decision: {
+              outcome: 'approved',
+              decidedBy: 'priya',
+              decidedAt,
+              decisionSurface: 'reviews',
+            },
+          }),
+          entry({
+            callId: 'chat',
+            name: 'send-email',
+            decision: {
+              outcome: 'approved',
+              decidedBy: 'priya',
+              decidedAt,
+              decisionSurface: 'chat',
+            },
+          }),
+        ],
+      },
+    } as never);
+    // The Reviews decision keeps its receipt, with the place a link to it; one made in the chat
+    // reads on its rail row alone, as before.
+    expect(queryByText('Decide on issue-refund')).not.toBeNull();
+    expect(queryByText('Decide on send-email')).toBeNull();
+  });
+
   test('an expired approval keeps its decision under the canonical rail row', () => {
     const { container, getByText } = render(Harness, {
       props: {

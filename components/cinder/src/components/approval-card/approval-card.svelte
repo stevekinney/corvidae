@@ -47,6 +47,7 @@
   import { formatRelativeTime, formatTimeOfDay } from '../../utilities/format-date.ts';
   import Badge from '../badge/badge.svelte';
   import Card from '../card/card.svelte';
+  import DisclosureTrigger from '../disclosure-trigger/disclosure-trigger.svelte';
   import CodeBlock from '../code-block/code-block.svelte';
   import CopyButton from '../copy-button/copy-button.svelte';
   import Link from '../link/link.svelte';
@@ -991,22 +992,14 @@
             {/if}
             {#if hasDetails}
               <div class="cinder-approval-card__input">
-                <button
-                  type="button"
-                  class="cinder-approval-card__input-toggle"
-                  aria-expanded={detailsOpen}
-                  aria-controls={detailsId}
+                <!-- The one disclosure trigger every reveal shares (board row X3, COR-2440). -->
+                <DisclosureTrigger
+                  open={detailsOpen}
+                  controls={detailsId}
                   onclick={() => (detailsOpen = !detailsOpen)}
                 >
-                  <ChevronRight
-                    class="cinder-approval-card__input-chevron"
-                    size={12}
-                    strokeWidth={2}
-                    aria-hidden="true"
-                    data-cinder-open={detailsOpen || undefined}
-                  />
-                  <span class="cinder-approval-card__input-word">Details</span>
-                </button>
+                  Details
+                </DisclosureTrigger>
                 <div id={detailsId} class="cinder-approval-card__row-input" hidden={!detailsOpen}>
                   {#if detailsOpen}
                     {@render cardDetails()}

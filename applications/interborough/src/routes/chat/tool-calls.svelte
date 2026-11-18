@@ -93,6 +93,9 @@
       (entry.decision !== undefined &&
         (entry.decision.outcome === 'denied' ||
           decided.elsewhere?.has(entry.callId) === true ||
+          // A decision the Bureau records as made in Reviews keeps its receipt after a reload,
+          // with the place a link to it (COR-2292 A5), as it does while the page watches.
+          entry.decision.decisionSurface === 'reviews' ||
           // A call whose row carries a link keeps its approval under it, since the row's
           // words are the answer.
           (entry.resultHref !== undefined && entry.decision.outcome === 'approved'))));
