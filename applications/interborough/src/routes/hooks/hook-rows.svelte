@@ -139,7 +139,7 @@
       <StackedListItem
         href={router.href(hookPath(hook.id))}
         tooltip={whole.title}
-        badge={hook.declaredBy === null ? undefined : pluginBadge}
+        {...hook.declaredBy === null ? {} : { badge: pluginBadge }}
         metaTooltip={whole.line}
         wrapMeta
         data-hook={hook.id}
