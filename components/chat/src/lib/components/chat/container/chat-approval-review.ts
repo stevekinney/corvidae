@@ -276,19 +276,36 @@ export function pendingApprovalCard(
   );
 }
 
+/** Where the row that labels an approval card is looked for, nearest container first. */
+const LABEL_SCOPES = [
+  '.cinder-tool-call-rail__item',
+  '.cinder-tool-call-rail',
+  'article[data-message-id]',
+  '.chat-timeline > *',
+] as const;
+
 /**
  * The box of a pending approval to keep clear of the header and the composer: the card and the rail
- * row that labels it ("Issue refund 4471, Waiting on you"), the one above it in the same message,
- * as one unit. The labelling row sits above the card, so a card placed on its own top leaves the
- * row's top under the header, where it takes no tap.
+ * row that labels it ("Issue refund 4471, Waiting on you"), the one above it, as one unit. The
+ * labelling row sits above the card, so a card placed on its own top leaves the row's top under the
+ * header, where it takes no tap.
+ *
+ * The row is searched for in the closest container that holds both, in the order the markup really
+ * has them: the tool-call rail's item (an application that draws the card inside the rail, as
+ * Interborough does through its own `row` snippet, has no message article), the rail, the message
+ * article (Chat's own message), and the timeline's row wrapper.
  */
 export function approvalUnitBox(card: HTMLElement): Pick<DOMRectReadOnly, 'top' | 'bottom'> {
   const box = card.getBoundingClientRect();
-  const message = card.closest<HTMLElement>('article[data-message-id]');
-  // The nearest row before the card in document order is the one that labels it.
   let label: HTMLElement | undefined;
-  for (const row of message?.querySelectorAll<HTMLElement>('.cinder-tool-call-rail__row') ?? []) {
-    if (row.compareDocumentPosition(card) & Node.DOCUMENT_POSITION_FOLLOWING) label = row;
+  for (const selector of LABEL_SCOPES) {
+    const scope = card.closest<HTMLElement>(selector);
+    if (scope === null) continue;
+    // The nearest row before the card in document order is the one that labels it.
+    for (const row of scope.querySelectorAll<HTMLElement>('.cinder-tool-call-rail__row')) {
+      if (row.compareDocumentPosition(card) & Node.DOCUMENT_POSITION_FOLLOWING) label = row;
+    }
+    if (label !== undefined) break;
   }
   return {
     top: Math.min(box.top, label?.getBoundingClientRect().top ?? box.top),

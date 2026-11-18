@@ -377,6 +377,43 @@ describe('the box an arriving approval is placed against (COR-2327)', () => {
     container.remove();
   });
 
+  test('the labelling row is found in the real Interborough shape: a rail item holding the row and the card, with no message article', () => {
+    // Interborough draws its messages through its own `row` snippet: a ToolCallRail whose item holds
+    // the call's row and, in `.cinder-tool-call-rail__nested`, the approval card. There is no
+    // `article[data-message-id]` around them.
+    const timeline = document.createElement('div');
+    timeline.className = 'chat-timeline';
+    const wrapper = document.createElement('div');
+    const rail = document.createElement('div');
+    rail.className = 'cinder-tool-call-rail';
+    const earlierItem = document.createElement('div');
+    earlierItem.className = 'cinder-tool-call-rail__item';
+    const earlier = document.createElement('button');
+    earlier.className = 'cinder-tool-call-rail__row';
+    earlierItem.append(earlier);
+    const item = document.createElement('div');
+    item.className = 'cinder-tool-call-rail__item';
+    const label = document.createElement('button');
+    label.className = 'cinder-tool-call-rail__row';
+    const nested = document.createElement('div');
+    nested.className = 'cinder-tool-call-rail__nested';
+    const card = document.createElement('div');
+    nested.append(card);
+    item.append(label, nested);
+    rail.append(earlierItem, item);
+    wrapper.append(rail);
+    timeline.append(wrapper);
+    document.body.append(timeline);
+    stubBox(earlier, 60, 100);
+    stubBox(label, 123, 175);
+    stubBox(card, 180, 425);
+
+    expect(card.closest('article[data-message-id]')).toBeNull();
+    // The row of the card's own item leads the unit, not the earlier call's row.
+    expect(approvalUnitBox(card)).toEqual({ top: 123, bottom: 425 });
+    timeline.remove();
+  });
+
   test('the card and the row that labels it are one unit to keep clear', () => {
     const message = document.createElement('article');
     message.setAttribute('data-message-id', 'm1');
