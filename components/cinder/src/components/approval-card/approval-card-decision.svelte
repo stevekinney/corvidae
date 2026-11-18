@@ -455,8 +455,14 @@
         <p class="cinder-approval-card__footnote" dir="auto">{footnote}</p>
       {/if}
     {/if}
-  {:else if isUnavailable && unavailableReason !== undefined}
-    <p class="cinder-approval-card__reason" dir="auto">{unavailableReason}</p>
+  {:else if isUnavailable}
+    <!-- Still undecided, so what it asks stays readable: its input, then why it can't be answered. -->
+    {#if inputRows.length > 0}
+      <ApprovalCardInputRows id={inputId} label={inputLabel} rows={inputRows} />
+    {/if}
+    {#if unavailableReason !== undefined}
+      <p class="cinder-approval-card__reason" dir="auto">{unavailableReason}</p>
+    {/if}
   {/if}
   {#if !isPending && notice !== undefined}
     <p class="cinder-approval-card__readonly-summary" data-cinder-state={approvalState} dir="auto">

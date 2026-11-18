@@ -760,6 +760,30 @@ describe('ApprovalCard decision layout: the retained receipt', () => {
     );
   });
 
+  test('an unavailable approval keeps its input readable above the reason (chat-states 20f)', () => {
+    const { getByRole, container } = render(ApprovalCard, {
+      props: decisionCard({
+        state: 'unavailable',
+        unavailableReason: 'Held by a plugin.',
+        facts: [],
+        operation: { kind: 'other', argsPreview: { version: '2.4', changes: 12 } },
+      }),
+    });
+
+    const input = getByRole('group', { name: 'Input' });
+    expect(
+      [...input.querySelectorAll('.cinder-description-list__row')].map((row) =>
+        squash(row.textContent),
+      ),
+    ).toEqual(['Version 2.4', 'Changes 12']);
+    const reason = container.querySelector('.cinder-approval-card__reason');
+    expect(squash(reason?.textContent)).toBe('Held by a plugin.');
+    expect(input.compareDocumentPosition(reason!) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+    expect(container.querySelectorAll('button')).toHaveLength(0);
+  });
+
   test('keeps the answer from firing when the host has not wired a resolver', () => {
     const { queryByRole } = render(ApprovalCard, {
       props: decisionCard({ onResolve: undefined }),

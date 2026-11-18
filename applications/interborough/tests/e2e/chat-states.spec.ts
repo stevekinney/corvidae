@@ -376,9 +376,11 @@ test.describe('Restarting after Enable and restart (frame i: 20f)', () => {
     const card = conversation.locator('.cinder-approval-card');
     await expect(card).toContainText('Publish notes for 2.4?');
     await expect(card.locator('.cinder-approval-card__state-word')).toHaveText('Unavailable');
-    await expect(card).toContainText('Changes things');
-    await expect(card).toContainText('Approval from Release helper');
-    await expect(card).toContainText('12 min ago');
+    // The chat's approval is the decision surface (COR-2438): its risk is the card's own, and the
+    // agent and the time are the turn's, so the card carries the question, its state, what it asks
+    // and why it waits.
+    await expect(card).toHaveAttribute('data-cinder-layout', 'decision');
+    await expect(card).toHaveAttribute('data-cinder-risk', 'medium');
     await expect(card).toContainText('Version 2.4');
     await expect(card).toContainText('Changes 12');
     await expect(card).toContainText(HELD_BY_PLUGIN_REASON);
