@@ -45,7 +45,11 @@
     transform: scaleX(-1);
   }
 
+  /* The words take the rest of the row: a trigger sized to its words looks the same, and one a
+   * consumer widens (a step row's full line) lets its content reach the far edge, so a time can
+   * sit at the end of the line. */
   .cinder-disclosure-trigger__label {
+    flex: 1 1 auto;
     min-inline-size: 0;
   }
 

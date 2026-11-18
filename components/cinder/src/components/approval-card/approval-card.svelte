@@ -952,34 +952,27 @@
           <div class="cinder-approval-card__disclosures">
             {#if hasCardArguments}
               <div class="cinder-approval-card__input">
-                <button
-                  type="button"
-                  class="cinder-approval-card__input-toggle"
-                  aria-expanded={argumentsOpen}
-                  aria-controls={argumentsId}
+                <!-- The one disclosure trigger every reveal shares (board row X3, COR-2440). Its
+                     pairs are set apart by a gap and a colour step, never a comma. -->
+                <DisclosureTrigger
+                  class="cinder-approval-card__arguments-toggle"
+                  open={argumentsOpen}
+                  controls={argumentsId}
                   onclick={() => (argumentsOpen = !argumentsOpen)}
                 >
-                  <ChevronRight
-                    class="cinder-approval-card__input-chevron"
-                    size={12}
-                    strokeWidth={2}
-                    aria-hidden="true"
-                    data-cinder-open={argumentsOpen || undefined}
-                  />
                   <span class="cinder-approval-card__input-word">{cardArgumentsWord}</span>
                   <span class="cinder-approval-card__input-pairs">
                     {#each rowInputPairs as pair, index (pair.key)}
-                      {#if index > 0}<span
-                          class="cinder-approval-card__separator"
-                          aria-hidden="true">,</span
-                        >{' '}{/if}<span class="cinder-approval-card__pair-label">{pair.label}</span
-                      >{' '}<span
-                        class="cinder-approval-card__pair-value"
-                        data-cinder-muted={pair.muted || undefined}>{pair.text}</span
+                      {#if index > 0}{' '}{/if}<span class="cinder-approval-card__input-pair"
+                        ><span class="cinder-approval-card__pair-label">{pair.label}</span
+                        >{' '}<span
+                          class="cinder-approval-card__pair-value"
+                          data-cinder-muted={pair.muted || undefined}>{pair.text}</span
+                        ></span
                       >
                     {/each}
                   </span>
-                </button>
+                </DisclosureTrigger>
                 <!-- Kept mounted while closed, so a bound Fields and JSON choice holds. -->
                 <div
                   id={argumentsId}
