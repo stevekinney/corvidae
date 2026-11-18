@@ -538,6 +538,13 @@ async function moveLinked(options: Options): Promise<number> {
   const placeholder = readFileSync(orderPath, 'utf8');
   const page = await rootPageStylesheet(root, repository, declarations);
   writeFileSync(orderPath, stylesheetOrderSource(page, browserRoot));
+  // The module names a stylesheet a dependency installs by its package specifier (the terminal's
+  // `@xterm/xterm/css/xterm.css`), which core resolves only once it declares that package. Core
+  // gains its browser suite's development dependencies, installed, before the page is built again.
+  if (!declareBrowserDependencies(root, dirname(browserRoot))) {
+    writeFileSync(orderPath, placeholder);
+    return 1;
+  }
   const difference = stylesheetDifference(
     page,
     await rootPageStylesheet(root, repository, declarations),
@@ -775,6 +782,37 @@ async function moveLinked(options: Options): Promise<number> {
     );
   }
   return 0;
+}
+
+/**
+ * Declares, as development dependencies of the package at `packageRoot`, every package its browser
+ * files import and it does not declare, and installs them when it added one. False when the
+ * install failed.
+ */
+function declareBrowserDependencies(root: string, packageRoot: string): boolean {
+  const manifestPath = join(packageRoot, 'package.json');
+  const before = readFileSync(manifestPath, 'utf8');
+  const manifest = JSON.parse(before) as { name: string; devDependencies?: Record<string, string> };
+  const next = withBrowserSuite(manifest, {
+    packageName: manifest.name,
+    imports: browserImports(packageRoot),
+    catalog: rootCatalog(root),
+    engines: false,
+  });
+  const added = Object.keys(next.devDependencies ?? {}).filter(
+    (name) => manifest.devDependencies?.[name] === undefined,
+  );
+  if (added.length === 0) return true;
+  writeFileSync(
+    manifestPath,
+    `${JSON.stringify({ ...manifest, devDependencies: next.devDependencies }, null, 2)}\n`,
+  );
+  const install = Bun.spawnSync(['bun', 'install'], {
+    cwd: root,
+    stdout: 'inherit',
+    stderr: 'inherit',
+  });
+  return install.exitCode === 0;
 }
 
 /** Whether a package depends on core (chat, editor, terminal), directly or not. */
