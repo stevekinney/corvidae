@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 
+import { CORE_ROOT, cinderPackages } from '../discover-component-directories.ts';
 import { componentMetadataPath, relocatedJsonDocument } from './metadata-files.ts';
 
 const repositoryRoot = resolve(import.meta.dir, '../../../..');
@@ -10,13 +11,23 @@ describe('relocatedJsonDocument', () => {
   // The `metadata` task copies each authored `<id>.examples.json` into `.metadata/<id>/`. The
   // authored `$schema` is relative to the component directory, so an unchanged copy points outside
   // the repository; the copy must name the same schema file.
-  for (const pkg of ['cinder', 'chat', 'editor']) {
+  // Cinder is core and, once the split extracts them (P-COR-101), every package core depends on.
+  const libraries: Record<string, readonly string[]> = {
+    cinder: [CORE_ROOT, ...cinderPackages().map(([, root]) => root)],
+    chat: [join(repositoryRoot, 'components', 'chat')],
+    editor: [join(repositoryRoot, 'components', 'editor')],
+  };
+  for (const [pkg, packageRoots] of Object.entries(libraries)) {
     test(`a copied ${pkg} examples document names a schema file that exists`, () => {
-      const packageRoot = join(repositoryRoot, 'components', pkg);
-      const authored = [...new Bun.Glob('src/**/*.examples.json').scanSync({ cwd: packageRoot })];
+      const authored = packageRoots.flatMap((packageRoot) =>
+        [...new Bun.Glob('src/**/*.examples.json').scanSync({ cwd: packageRoot })].map((file) => ({
+          packageRoot,
+          file,
+        })),
+      );
       expect(authored.length).toBeGreaterThan(0);
       const unresolved: string[] = [];
-      for (const file of authored) {
+      for (const { packageRoot, file } of authored) {
         const from = join(packageRoot, file);
         const id = file
           .split('/')

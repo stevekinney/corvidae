@@ -6,7 +6,7 @@ import {
   collectScannedFiles,
   FAILURE_ADVICE,
   findMiddleDotSeparators,
-  SCANNED_DIRECTORIES,
+  scannedDirectories,
 } from './check-middle-dot-separators';
 
 // The planted cases spell the character `DOT` and `plant` writes it out, so this file holds no
@@ -71,7 +71,7 @@ describe('middle-dot separators', () => {
 });
 
 describe('scanned file discovery', () => {
-  test('collects text files, skips binaries, dependencies, vendored builds, dot directories and the browser suite', () => {
+  test('collects text files and a browser suite’s fixtures, skips binaries, dependencies, vendored builds, dot directories and the suite’s specs', () => {
     const directory = mkdtempSync(join(tmpdir(), 'middle-dot-scan-'));
     try {
       for (const path of [
@@ -84,6 +84,7 @@ describe('scanned file discovery', () => {
         '.svelte-kit/generated.ts',
         'package.json',
         'browser/fixtures/fixture.svelte',
+        'browser/tests/spec.playwright.ts',
         'src/browser/copy.ts',
       ]) {
         mkdirSync(dirname(join(directory, path)), { recursive: true });
@@ -93,6 +94,7 @@ describe('scanned file discovery', () => {
       collectScannedFiles(directory, paths);
       expect(paths.map((path) => relative(directory, path)).toSorted()).toEqual([
         'README.md',
+        'browser/fixtures/fixture.svelte',
         'package.json',
         'src/browser/copy.ts',
         'src/component.svelte',
@@ -108,16 +110,43 @@ describe('scan roots', () => {
   // Chat draws the composer hint, the queued label and the held answer line Interborough shows, so
   // a separator written there reaches the person exactly as one written in Cinder would.
   test('cover both component libraries and the applications that write copy', () => {
-    expect(SCANNED_DIRECTORIES).toEqual(
+    expect(scannedDirectories()).toEqual(
       expect.arrayContaining([
         'components/cinder',
         'components/chat',
         'applications/playground',
         'applications/interborough',
-        // The browser fixtures draw the copy the screenshot baselines and the design review show,
-        // so a separator there is seen as the owner sees it.
-        'scripts/browser-fixtures/src',
       ]),
     );
+  });
+
+  // Every Cinder package the split extracts beside core, and the root suite's fixtures while the
+  // suite exists: the browser fixtures draw the copy the screenshot baselines and the design review
+  // show, so a separator there is seen as the owner sees it.
+  test('cover every Cinder package and the root browser fixtures while they exist', () => {
+    const root = mkdtempSync(join(tmpdir(), 'middle-dot-roots-'));
+    try {
+      const files: Record<string, string> = {
+        'components/cinder/package.json': JSON.stringify({
+          dependencies: { '@lostgradient/button': 'workspace:*', svelte: 'catalog:' },
+        }),
+        'components/button/src/index.ts': '',
+        'scripts/browser-fixtures/src/app.svelte': '',
+      };
+      for (const [path, text] of Object.entries(files)) {
+        mkdirSync(dirname(join(root, path)), { recursive: true });
+        writeFileSync(join(root, path), text);
+      }
+      expect(scannedDirectories(root)).toEqual([
+        'components/cinder',
+        'components/button',
+        'components/chat',
+        'applications/playground',
+        'applications/interborough',
+        'scripts/browser-fixtures/src',
+      ]);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 });

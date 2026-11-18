@@ -23,6 +23,8 @@ import { afterEach, describe, expect, test } from 'bun:test';
 
 import { requiredInstance, setupHappyDom } from '@lostgradient/testing';
 
+import { cinderUtilitiesStylesheetPath } from './cinder-utilities.test-support.ts';
+
 // setupHappyDom() MUST run before any `@testing-library/svelte` import.
 // testing-library reads `globalThis.document` / `window` at module-init.
 setupHappyDom();
@@ -37,15 +39,7 @@ const skeletonSource = await Bun.file(new URL('./editor-skeleton.svelte', import
 // Cinder owns the `.cinder-sr-only` utility; the editor package composes it
 // rather than redeclaring it, so this reaches across the package boundary into
 // cinder's own utilities stylesheet.
-const editorPackageManifest: { private?: boolean } = await Bun.file(
-  new URL('../../../../package.json', import.meta.url),
-).json();
-const utilitiesCss = await Bun.file(
-  new URL(
-    `../../../../../${editorPackageManifest.private === true ? 'cinder' : 'components'}/src/styles/utilities.css`,
-    import.meta.url,
-  ),
-).text();
+const utilitiesCss = await Bun.file(await cinderUtilitiesStylesheetPath()).text();
 
 const scopedStyles = skeletonSource.match(/<style[^>]*>([\s\S]*?)<\/style>/)?.[1] ?? '';
 

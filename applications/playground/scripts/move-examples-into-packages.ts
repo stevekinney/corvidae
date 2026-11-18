@@ -37,7 +37,7 @@ import {
   rmdirSync,
   writeFileSync,
 } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { dirname, join, posix } from 'node:path';
 
 import { ensureExampleMountTests } from '@lostgradient/component-tooling/scripts/example-mount-tests.ts';
 
@@ -234,6 +234,51 @@ function addDevelopmentDependencies(root: string, additions: Plan['additions']):
   return log;
 }
 
+/** A quoted path string that names the old examples directory. */
+const EXAMPLE_PATH = new RegExp(
+  String.raw`(['"\`])((?:\.\.?/)*[^'"\`\n$]*${OLD_EXAMPLES.split('/').join('/')}/[^'"\`\n$]+)\1`,
+  'g',
+);
+
+/**
+ * `source` (the file at `path`) with each path string that names a moved example re-pointed to
+ * where the example went: a relative path stays relative from `path`, a repository path stays a
+ * repository path. A string that names no moved file is left alone.
+ */
+export function repointExamplePaths(
+  source: string,
+  path: string,
+  moved: ReadonlyMap<string, string>,
+): string {
+  return source.replace(EXAMPLE_PATH, (whole, quote: string, written: string) => {
+    const relative = written.startsWith('.');
+    const named = relative ? posix.normalize(posix.join(posix.dirname(path), written)) : written;
+    const to = moved.get(named);
+    if (to === undefined) return whole;
+    if (!relative) return `${quote}${to}${quote}`;
+    const next = posix.relative(posix.dirname(path), to);
+    return `${quote}${next.startsWith('.') ? next : `./${next}`}${quote}`;
+  });
+}
+
+/** Re-points every tracked file that names a moved example by path (a test that reads one). */
+function repointReaders(root: string, moves: readonly Move[]): string[] {
+  const moved = new Map(moves.map((move) => [move.from, move.to]));
+  const log: string[] = [];
+  const files = git(root, 'ls-files', '--', '*.ts', '*.svelte', '*.md').split('\n').filter(Boolean);
+  for (const file of files) {
+    const absolute = join(root, file);
+    if (!existsSync(absolute)) continue;
+    const source = readFileSync(absolute, 'utf8');
+    if (!source.includes(OLD_EXAMPLES)) continue;
+    const next = repointExamplePaths(source, file, moved);
+    if (next === source) continue;
+    writeFileSync(absolute, next);
+    log.push(`repoint ${file}`);
+  }
+  return log;
+}
+
 /** Remove every empty directory at or below `directory`, deepest first. */
 function removeEmptyDirectories(absolute: string): void {
   if (!existsSync(absolute)) return;
@@ -267,6 +312,9 @@ export function run(root: string, dryRun: boolean): string[] {
   }
   for (const file of plan.duplicates) git(root, 'rm', '--quiet', file);
   removeEmptyDirectories(join(root, OLD_EXAMPLES));
+  // A file that reads an example by its old path (a component test comparing the playground's
+  // copy with its examples document) reads it where it went.
+  log.push(...repointReaders(root, plan.moves));
   log.push(...addDevelopmentDependencies(root, plan.additions));
   // Every workspace that now holds examples runs the test that mounts each of them.
   log.push(...ensureExampleMountTests(root));

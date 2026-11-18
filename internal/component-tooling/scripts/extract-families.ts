@@ -1234,6 +1234,10 @@ async function syncExampleArtifacts(plan: Plan): Promise<void> {
   }
 }
 
+/** `` `../../${cond ? 'a' : 'b'}/rest` ``: the prefix, both branches' segments and the rest. */
+const CONDITIONAL_TEMPLATE =
+  /`(\.{1,2}\/[^`$]*)\$\{[^}?]*\?\s*(['"])([\w.-]+)\2\s*:\s*(['"])([\w.-]+)\4\s*\}([^`$]*)`/g;
+
 const SEGMENT_RUN = new RegExp(`${SEGMENT_LITERAL}(?:\\s*,\\s*${SEGMENT_LITERAL})+`, 'g');
 
 /**
@@ -1291,7 +1295,16 @@ function deadPaths(plan: Plan): string[] {
       if (now !== undefined) dead.push(`${path}: ${written} reaches ${reached}, now ${now}.`);
       return now !== undefined;
     };
-    for (const { text: written } of relativePaths(path, text)) {
+    // A relative template that picks a segment by a condition (`` `../../${published ? 'components'
+    // : 'cinder'}/src/x.css` ``) names a path for each branch; no rewrite follows one, so each is
+    // checked like a written path.
+    const conditional = [...text.matchAll(CONDITIONAL_TEMPLATE)].flatMap((match) =>
+      [match[3], match[5]].map((segment) => `${match[1]}${segment}${match[6]}`),
+    );
+    for (const written of [
+      ...relativePaths(path, text).map((entry) => entry.text),
+      ...conditional,
+    ]) {
       const clean = written.replace(/[?#].*$/, '');
       const reached = posix.normalize(posix.join(posix.dirname(path), clean));
       if (check(written, reached) || existsSync(join(root, reached))) continue;

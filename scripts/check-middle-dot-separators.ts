@@ -15,29 +15,55 @@
  * `&middot;`, `&#183;` or `&#xb7;`), because they draw the same glyph. Code that must name the
  * character, such as a test asserting its absence, builds it with `String.fromCodePoint(0xb7)`.
  *
- * The scan roots are the code that writes copy for people: Cinder, Chat, the playground and
- * Interborough. A package's browser suite (`browser/` beside its `package.json`) is left out: its
- * fixtures and specs are test data whose text the committed baselines hold, as the root suite's
- * were before COR-2092 moved them into the packages. A line with a genuine non-separator use
+ * The scan roots are the code that writes copy for people: Cinder (every package of it), Chat, the
+ * playground, Interborough, and the browser fixtures, whose copy the screenshot baselines and the
+ * design review show: the root suite's `src` while it exists, and each package's
+ * `browser/fixtures` once COR-2092 moves them there. The rest of a package's browser suite (its
+ * specs and harness) is test code and left out. A line with a genuine non-separator use
  * carries a trailing or preceding `middle-dot-allowed: <reason>` marker whose reason is at least
  * twenty characters; none does today, and an addition needs a reason a reviewer would accept.
  *
  * Runs from the root `lint:root` script.
  */
 
-import { existsSync, readdirSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
 
 const root = join(import.meta.dir, '..');
 
-/** Directories scanned, relative to the repository root. */
-export const SCANNED_DIRECTORIES = [
-  'components/cinder',
-  'components/chat',
-  'applications/playground',
-  'applications/interborough',
-  'scripts/browser-fixtures/src',
-];
+/** Cinder's core package directory, relative to the repository root. */
+const CORE_DIRECTORY = 'components/cinder';
+
+/**
+ * Directories scanned, relative to the repository root: Cinder (core and every package core
+ * depends on that the split extracted beside it, P-COR-101), Chat, the playground, Interborough,
+ * and the root browser suite's fixtures while that suite exists (COR-2092 moves them into the
+ * packages' `browser/fixtures`, which the walk below reads).
+ */
+export function scannedDirectories(repositoryRoot: string = root): string[] {
+  const manifest = JSON.parse(
+    readFileSync(join(repositoryRoot, CORE_DIRECTORY, 'package.json'), 'utf8'),
+  ) as { dependencies?: Record<string, string> };
+  const cinderPackages = Object.entries(manifest.dependencies ?? {})
+    .filter(
+      ([name, specification]) =>
+        name.startsWith('@lostgradient/') && specification === 'workspace:*',
+    )
+    .map(([name]) => `components/${name.slice('@lostgradient/'.length)}`)
+    .filter((directory) => existsSync(join(repositoryRoot, directory, 'src')))
+    .toSorted();
+  const directories = [
+    CORE_DIRECTORY,
+    ...cinderPackages,
+    'components/chat',
+    'applications/playground',
+    'applications/interborough',
+  ];
+  if (existsSync(join(repositoryRoot, 'scripts/browser-fixtures/src'))) {
+    directories.push('scripts/browser-fixtures/src');
+  }
+  return directories;
+}
 
 // Installed dependencies and generated output, mirroring `.gitignore`, and `vendor`, which holds a
 // third party's published build byte for byte (React's UMD builds, for the design-system render
@@ -122,7 +148,12 @@ export function collectScannedFiles(directory: string, paths: string[]): void {
     const path = join(directory, entry.name);
     if (entry.isDirectory()) {
       if (entry.name.startsWith('.') || SKIPPED_DIRECTORIES.has(entry.name)) continue;
-      if (entry.name === 'browser' && existsSync(join(directory, 'package.json'))) continue;
+      if (entry.name === 'browser' && existsSync(join(directory, 'package.json'))) {
+        // A package's browser suite: its fixtures draw the copy the baselines and the design
+        // review show; its specs and harness are test code.
+        if (existsSync(join(path, 'fixtures'))) collectScannedFiles(join(path, 'fixtures'), paths);
+        continue;
+      }
       collectScannedFiles(path, paths);
     } else if (
       entry.isFile() &&
@@ -136,7 +167,7 @@ export function collectScannedFiles(directory: string, paths: string[]): void {
 async function scan(): Promise<string[]> {
   const findings: string[] = [];
   const paths: string[] = [];
-  for (const directory of SCANNED_DIRECTORIES) collectScannedFiles(join(root, directory), paths);
+  for (const directory of scannedDirectories()) collectScannedFiles(join(root, directory), paths);
 
   for (const path of paths.toSorted()) {
     const source = await Bun.file(path).text();

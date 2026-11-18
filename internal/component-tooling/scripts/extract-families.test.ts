@@ -652,8 +652,14 @@ describe('extract-families', () => {
       join(root, CORE, 'scripts/paths.json'),
       '{ "runtime": "../src/tokens/runtime/index.ts", "kept": "../src/index.ts" }\n',
     );
+    // A test picks a directory by a condition: neither branch is a path any rewrite reads.
+    writeFileSync(
+      join(root, CORE, 'scripts/conditional.ts'),
+      'const path = new URL(`../src/${published ? "tokens" : "mirror"}/runtime/index.ts`, import.meta.url);\n',
+    );
     const result = await extract(root, { kind: 'packages', names: ['tokens'] });
     expect(result.dead).toEqual([
+      `${CORE}/scripts/conditional.ts: ../src/tokens/runtime/index.ts reaches ${CORE}/src/tokens/runtime/index.ts, now components/tokens/src/tokens/runtime/index.ts.`,
       `${CORE}/scripts/paths.json: ../src/tokens/runtime/index.ts reaches ${CORE}/src/tokens/runtime/index.ts, now components/tokens/src/tokens/runtime/index.ts.`,
     ]);
   });

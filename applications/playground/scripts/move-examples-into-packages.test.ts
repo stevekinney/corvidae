@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 
-import { planMoves } from './move-examples-into-packages.ts';
+import { planMoves, repointExamplePaths } from './move-examples-into-packages.ts';
 
 const OLD = ['applications', 'playground', 'src', 'examples'].join('/');
 const roots: string[] = [];
@@ -119,5 +119,31 @@ describe('planMoves', () => {
 
   test('plans nothing once the old directory is empty', () => {
     expect(planMoves(tree(BASE), Object.keys(BASE)).moves).toEqual([]);
+  });
+});
+
+describe('repointExamplePaths', () => {
+  const moved = new Map([
+    [
+      `${OLD}/drawer/detents.example.svelte`,
+      'components/cinder/src/components/drawer/examples/detents.example.svelte',
+    ],
+  ]);
+
+  test('re-points a relative path and a repository path that name a moved example', () => {
+    const source = [
+      `new URL('../../../../../${OLD}/drawer/detents.example.svelte', import.meta.url);`,
+      `const path = '${OLD}/drawer/detents.example.svelte';`,
+      `const other = '${OLD}/drawer/other.example.svelte';`,
+    ].join('\n');
+    expect(
+      repointExamplePaths(source, 'components/cinder/src/components/drawer/drawer.test.ts', moved),
+    ).toBe(
+      [
+        "new URL('./examples/detents.example.svelte', import.meta.url);",
+        "const path = 'components/cinder/src/components/drawer/examples/detents.example.svelte';",
+        `const other = '${OLD}/drawer/other.example.svelte';`,
+      ].join('\n'),
+    );
   });
 });
