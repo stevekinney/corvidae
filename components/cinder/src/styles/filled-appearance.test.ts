@@ -387,7 +387,7 @@ describe('Filled edge contrast (WCAG 1.4.11)', () => {
     );
     const foundation = readFileSync(new URL('./foundation.css', import.meta.url), 'utf8');
     expect(foundation).toContain(
-      '--cinder-surface-inset: light-dark(oklch(92.5% 0.005 265), oklch(21% 0.012 265));',
+      '--cinder-surface-inset: light-dark(oklch(92.5% 0.005 265), oklch(21% 0.026 265));',
     );
   });
 });

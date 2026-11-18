@@ -10,7 +10,7 @@
         "$type": "color",
         "$value": {
           "colorSpace": "oklch",
-          "components": [0.965, 0.035, 148]
+          "components": [0.965, 0.055, 148]
         },
         "$description": "Soft success-tinted surface background.",
         "$extensions": {
@@ -18,7 +18,7 @@
             "cssProperty": "--cinder-status-success-background",
             "public": true,
             "category": "color",
-            "cssRecipe": "light-dark(oklch(96.5% 0.035 148), color-mix(in oklab, var(--cinder-status-success-solid) 14%, var(--cinder-surface)))",
+            "cssRecipe": "light-dark(oklch(96.5% 0.055 148), color-mix(in oklab, var(--cinder-status-success-solid) 20%, var(--cinder-surface)))",
             "palette": {
               "family": "success",
               "role": "background"
@@ -112,7 +112,7 @@
             "cssProperty": "--cinder-status-warning-background",
             "public": true,
             "category": "color",
-            "cssRecipe": "light-dark(oklch(96.8% 0.035 88), color-mix(in oklab, var(--cinder-status-warning-solid) 14%, var(--cinder-surface)))",
+            "cssRecipe": "light-dark(oklch(96.8% 0.035 88), color-mix(in oklab, var(--cinder-status-warning-solid) 20%, var(--cinder-surface)))",
             "palette": {
               "family": "warning",
               "role": "background"
@@ -254,7 +254,7 @@
             "cssProperty": "--cinder-status-danger-background",
             "public": true,
             "category": "color",
-            "cssRecipe": "light-dark(oklch(95% 0.025 25), color-mix(in oklab, var(--cinder-status-danger-solid) 14%, var(--cinder-surface)))",
+            "cssRecipe": "light-dark(oklch(95% 0.025 25), color-mix(in oklab, var(--cinder-status-danger-solid) 20%, var(--cinder-surface)))",
             "palette": {
               "family": "danger",
               "role": "background"
@@ -348,7 +348,7 @@
             "cssProperty": "--cinder-status-info-background",
             "public": true,
             "category": "color",
-            "cssRecipe": "light-dark(oklch(95% 0.028 235), color-mix(in oklab, var(--cinder-status-info-solid) 14%, var(--cinder-surface)))",
+            "cssRecipe": "light-dark(oklch(95% 0.028 235), color-mix(in oklab, var(--cinder-status-info-solid) 20%, var(--cinder-surface)))",
             "palette": {
               "family": "info",
               "role": "background"

@@ -178,12 +178,12 @@ test.describe('COR-2310: comfortable switches the light canvas only', () => {
       expect(canvas).toBe(reference);
     });
 
-    test(`dark ${density}: the canvas is the shipped oklch(14.5% 0.012 265)`, async ({ page }) => {
+    test(`dark ${density}: the canvas is the shipped oklch(14.5% 0.022 265)`, async ({ page }) => {
       const { canvas, reference } = await canvasUnder(
         page,
         'dark',
         density,
-        'oklch(14.5% 0.012 265)',
+        'oklch(14.5% 0.022 265)',
       );
       expect(canvas).toBe(reference);
     });

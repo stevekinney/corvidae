@@ -229,10 +229,10 @@ Background and surface tokens for the three core elevations — page background,
 
 | Token | Default | Description |
 | --- | --- | --- |
-| `--cinder-surface-canvas` | `light-dark(oklch(97.6% 0.004 265), oklch(14.5% 0.012 265))` | Page canvas background, distinct from `surface.base` (a card body). Light mode is a grey page under white panels (owner decision, 2026-11-15): the canvas (0.976) sits below the white surface and raised (1.000) and above the inset well (0.955), dark enough that the focus ring still reads 3.5:1 on it. Dark mode builds up from the canvas (0.145) through the surface (0.185) and the inset (0.210) to raised (0.235). |
-| `--cinder-surface` | `light-dark(oklch(100% 0 255), oklch(18.5% 0.012 265))` | Default semantic surface. Theme modifiers provide its dark value. |
-| `--cinder-surface-raised` | `light-dark(oklch(100% 0 255), oklch(23.5% 0.014 265))` | Elevated semantic surface. Theme modifiers provide its dark value. |
-| `--cinder-surface-inset` | `light-dark(oklch(95.5% 0.002 265), oklch(21% 0.012 265))` | Sunken region inside a card body (code blocks, wells, recessed sub-regions, header bands, day bands, tracks). The light arm is a neutral grey (chroma 0.002), so a well never reads blue. The dark arm sits at 21% lightness, between the surface (18.5%) and raised (23.5%), so a band or a code header steps up from the surface it sits on instead of reading as a hole. |
+| `--cinder-surface-canvas` | `light-dark(oklch(97.6% 0.004 265), oklch(14.5% 0.022 265))` | Page canvas background, distinct from `surface.base` (a card body). Light mode is a grey page under white panels (owner decision, 2026-11-15): the canvas (0.976) sits below the white surface and raised (1.000) and above the inset well (0.955), dark enough that the focus ring still reads 3.5:1 on it. Dark mode builds up from the canvas (0.145) through the surface (0.185) and the inset (0.210) to raised (0.235). |
+| `--cinder-surface` | `light-dark(oklch(100% 0 255), oklch(18.5% 0.024 265))` | Default semantic surface. Theme modifiers provide its dark value. |
+| `--cinder-surface-raised` | `light-dark(oklch(100% 0 255), oklch(23.5% 0.028 265))` | Elevated semantic surface. Theme modifiers provide its dark value. |
+| `--cinder-surface-inset` | `light-dark(oklch(95.5% 0.002 265), oklch(21% 0.026 265))` | Sunken region inside a card body (code blocks, wells, recessed sub-regions, header bands, day bands, tracks). The light arm is a neutral grey (chroma 0.002), so a well never reads blue. The dark arm sits at 21% lightness, between the surface (18.5%) and raised (23.5%), so a band or a code header steps up from the surface it sits on instead of reading as a hole. |
 | `--cinder-surface-hover` | `light-dark( color-mix(in oklch, var(--cinder-surface), var(--cinder-accent-solid) 6%), color-mix(in oklch, var(--cinder-surface), oklch(100% 0 none) 8%) )` | Hover state of the default surface. Light mode washes toward the accent rather than darkening toward black: once the light ramp is anchored at white, its four resting tiers occupy only 0.040 lightness points, so a proportional lightness-only mix would be wider than the whole ramp it has to stay clear of. A light-mode hover that washes toward the brand accent separates by chroma and hue as well, staying legible at a lightness step small enough to fit the ramp. |
 | `--cinder-surface-pressed` | `light-dark( color-mix(in oklch, var(--cinder-surface), var(--cinder-accent-solid) 12%), color-mix(in oklch, var(--cinder-surface), oklch(100% 0 none) 12%) )` | Pressed state of the default surface. Same accent-wash rationale as `surface.hover`, at a stronger mix percentage. |
 | `--cinder-surface-raised-hover` | `light-dark( color-mix(in oklch, var(--cinder-surface-raised), var(--cinder-accent-solid) 7%), color-mix(in oklch, var(--cinder-surface-raised), oklch(100% 0 none) 2.5%) )` | Hover state of the raised surface. Light mode washes toward the accent; dark mode mixes toward white. |
@@ -433,16 +433,16 @@ Foreground / background / border triples for soft tinted surfaces. Use these in 
 
 | Token | Default | Description |
 | --- | --- | --- |
-| `--cinder-status-info-background` | `light-dark(oklch(95% 0.028 235), color-mix(in oklab, var(--cinder-status-info-solid) 14%, var(--cinder-surface)))` | Soft info-tinted surface background. |
+| `--cinder-status-info-background` | `light-dark(oklch(95% 0.028 235), color-mix(in oklab, var(--cinder-status-info-solid) 20%, var(--cinder-surface)))` | Soft info-tinted surface background. |
 | `--cinder-status-info-text` | `light-dark(oklch(46% 0.103 238), oklch(88% 0.071 230))` | Foreground color on the soft info surface. |
 | `--cinder-status-info-border` | `light-dark(oklch(80% 0.05 230), oklch(45% 0.08 230))` | Border color on the soft info surface. |
-| `--cinder-status-success-background` | `light-dark(oklch(96.5% 0.035 148), color-mix(in oklab, var(--cinder-status-success-solid) 14%, var(--cinder-surface)))` | Soft success-tinted surface background. |
+| `--cinder-status-success-background` | `light-dark(oklch(96.5% 0.055 148), color-mix(in oklab, var(--cinder-status-success-solid) 20%, var(--cinder-surface)))` | Soft success-tinted surface background. |
 | `--cinder-status-success-text` | `light-dark(oklch(44% 0.128 148), oklch(88% 0.11 145))` | Foreground color on the soft success surface. |
 | `--cinder-status-success-border` | `light-dark(oklch(80% 0.05 145), oklch(45% 0.09 145))` | Border color on the soft success surface. |
-| `--cinder-status-warning-background` | `light-dark(oklch(96.8% 0.035 88), color-mix(in oklab, var(--cinder-status-warning-solid) 14%, var(--cinder-surface)))` | Soft warning-tinted surface background. |
+| `--cinder-status-warning-background` | `light-dark(oklch(96.8% 0.035 88), color-mix(in oklab, var(--cinder-status-warning-solid) 20%, var(--cinder-surface)))` | Soft warning-tinted surface background. |
 | `--cinder-status-warning-text` | `light-dark(oklch(47% 0.109 62), oklch(90% 0.08 75))` | Foreground color on the soft warning surface. |
 | `--cinder-status-warning-border` | `light-dark(oklch(80% 0.06 75), oklch(50% 0.1 75))` | Border color on the soft warning surface. |
-| `--cinder-status-danger-background` | `light-dark(oklch(95% 0.025 25), color-mix(in oklab, var(--cinder-status-danger-solid) 14%, var(--cinder-surface)))` | Soft danger-tinted surface background. |
+| `--cinder-status-danger-background` | `light-dark(oklch(95% 0.025 25), color-mix(in oklab, var(--cinder-status-danger-solid) 20%, var(--cinder-surface)))` | Soft danger-tinted surface background. |
 | `--cinder-status-danger-text` | `light-dark(oklch(49% 0.201 27), oklch(76% 0.14 25))` | Foreground color on the soft danger surface. |
 | `--cinder-status-danger-border` | `light-dark(oklch(80% 0.06 25), oklch(62% 0.17 25))` | Border color on the soft danger surface. |
 | `--cinder-status-neutral-background` | `light-dark(oklch(94.5% 0.004 255), oklch(26.8% 0.012 265))` | Soft neutral-tinted surface background. Neutral retains the status-triple shape so components never need ad hoc surface mixing for the default variant. |
