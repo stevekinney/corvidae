@@ -40,6 +40,7 @@
     "svelte": "catalog:"
   },
   "devDependencies": {
+    "@lostgradient/component-tooling": "workspace:*",
     "@lostgradient/testing": "workspace:*",
     "@lostgradient/typescript": "workspace:*",
     "@playwright/test": "catalog:",

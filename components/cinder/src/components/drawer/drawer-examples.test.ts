@@ -19,7 +19,7 @@ describe('Drawer examples', () => {
   test('the playground shows it, with the same code as the example body', async () => {
     const file = await Bun.file(
       new URL(
-        '../../../../../applications/playground/src/examples/drawer/detents.example.svelte',
+        './examples/detents.example.svelte',
         import.meta.url,
       ),
     ).text();

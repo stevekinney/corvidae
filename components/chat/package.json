@@ -41,10 +41,12 @@
   },
   "devDependencies": {
     "@floating-ui/dom": "catalog:",
+    "@lostgradient/component-tooling": "workspace:*",
     "@lostgradient/environmentalist": "catalog:",
     "@lostgradient/operative": "workspace:*",
     "@lostgradient/testing": "workspace:*",
     "@lostgradient/typescript": "workspace:*",
+    "@lucide/svelte": "catalog:",
     "@playwright/test": "catalog:",
     "@testing-library/svelte": "catalog:",
     "@types/bun": "catalog:",
