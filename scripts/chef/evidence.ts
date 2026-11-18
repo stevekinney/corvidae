@@ -30,6 +30,16 @@ export interface EvidenceRecord {
   reports?: { path: string; digest: string }[] | undefined;
   artifacts?: { path: string; digest: string }[] | undefined;
   localRoot?: string | undefined;
+  provider?: {
+    runId: number;
+    attempt: number;
+    repository: string;
+    workflow: string;
+    event: string;
+    jobId: number;
+    jobName: string;
+    artifact?: { id: number; digest: string; archiveDigest: string; expired: boolean };
+  };
 }
 
 /** A collection returned by a coordinator-owned local collector or authenticated provider read. */
@@ -68,7 +78,14 @@ export interface VerificationRequest {
   plan: VerificationPlan;
   authority: { runId: string; ownerId: string; resource: string; generation: number };
   operationId: string;
-  providerRuns: { id: number; obligation: string; job: string; artifact?: string }[];
+  providerRuns: {
+    id: number;
+    obligation: string;
+    job: string;
+    workflow: string;
+    event: string;
+    artifact?: string;
+  }[];
   localRuns?: {
     obligation: string;
     argv: string[];
@@ -171,6 +188,8 @@ export function readVerificationRequest(path: string, digest: string): Verificat
       !Number.isSafeInteger(run.id) ||
       run.id < 1 ||
       run.job === '' ||
+      run.workflow === '' ||
+      run.event === '' ||
       obligation?.executionBoundary !== 'provider' ||
       providerKeys.has(run.obligation)
     )
@@ -200,37 +219,54 @@ export function collectProviderEvidence(
         (() => {
           throw new EvidenceRequestError('provider run has unknown obligation');
         })();
-      const artifact =
-        entry.artifact === undefined ? true : transport.artifact(entry.id, entry.artifact).present;
+      const content = transport.content?.(run.revision, request.base, obligation.relevantInputs);
+      const metadata =
+        entry.artifact === undefined ? undefined : transport.artifact(entry.id, entry.artifact);
+      const artifact = metadata === undefined ? true : metadata.present && !metadata.expired;
       let inventory = job.inventory;
       let assertionPassed = job.assertionPassed;
       let artifactUsable = artifact;
+      let archiveDigest: string | undefined;
       if (entry.artifact !== undefined) {
-        const metadata = transport.artifact(entry.id, entry.artifact);
         try {
           if (
+            metadata === undefined ||
             !metadata.present ||
+            metadata.expired ||
             metadata.id === undefined ||
+            metadata.digest === undefined ||
             transport.downloadArtifact === undefined
           )
             throw new EvidenceRequestError('required artifact unavailable');
           const parsed = inspectArtifact(transport.downloadArtifact(metadata.id), metadata.digest);
           inventory = parsed.inventory;
           assertionPassed = parsed.assertionPassed;
+          archiveDigest = parsed.digest;
         } catch {
           assertionPassed = false;
           artifactUsable = false;
         }
       }
       const status: EvidenceStatus =
-        run.status === 'cancelled'
+        run.status === 'cancelled' || job.status === 'cancelled'
           ? 'canceled'
           : run.status === 'completed' && run.conclusion === 'skipped'
             ? 'skipped'
-            : run.status !== 'completed' || !artifactUsable
+            : run.repository !== request.repository ||
+                run.revision !== request.revision ||
+                content === undefined ||
+                content.integrationTree !== request.integrationTree ||
+                content.relevantInputs.some((input) => input.endsWith(':')) ||
+                run.workflow !== entry.workflow ||
+                run.event !== entry.event ||
+                job.name !== entry.job ||
+                job.runtime !== request.environment ||
+                run.status !== 'completed' ||
+                !artifactUsable
               ? 'pending'
               : run.status === 'completed' &&
                   run.conclusion === 'success' &&
+                  job.status === 'completed' &&
                   job.conclusion === 'success' &&
                   assertionPassed !== false &&
                   artifact
@@ -240,14 +276,34 @@ export function collectProviderEvidence(
         obligation: entry.obligation,
         status,
         revision: run.revision,
-        integrationTree: request.integrationTree,
-        environment: run.environment,
+        integrationTree: content?.integrationTree ?? '',
+        environment: job.runtime,
         command: obligation.commandOrProviderJob,
-        relevantInputs: obligation.relevantInputs,
+        relevantInputs: content?.relevantInputs ?? [],
         inventory,
         exitCode: job.conclusion === 'success' ? 0 : 1,
         assertionPassed,
-        artifact: entry.artifact,
+        provider: {
+          runId: entry.id,
+          attempt: run.attempt,
+          repository: run.repository,
+          workflow: run.workflow,
+          event: run.event,
+          jobId: job.id,
+          jobName: job.name,
+          ...(metadata?.id === undefined ||
+          metadata.digest === undefined ||
+          archiveDigest === undefined
+            ? {}
+            : {
+                artifact: {
+                  id: metadata.id,
+                  digest: metadata.digest,
+                  archiveDigest,
+                  expired: metadata.expired,
+                },
+              }),
+        },
       };
     }),
   );

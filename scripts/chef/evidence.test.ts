@@ -45,22 +45,39 @@ const request = {
   revision: 'a'.repeat(40),
   base: 'c'.repeat(40),
   integrationTree: 'b'.repeat(40),
-  environment: 'workflow',
+  environment: 'runner-1',
   plan,
   authority: { runId: 'run', ownerId: 'owner', resource: 'COR-1', generation: 1 },
   operationId: 'operation',
-  providerRuns: [{ id: 1, obligation: 'AC1:test', job: 'test' }],
+  providerRuns: [
+    { id: 1, obligation: 'AC1:test', job: 'test', workflow: 'workflow', event: 'push' },
+  ],
 };
 const transport = (overrides = {}) => ({
   run: () => ({
+    repository: request.repository,
     revision: request.revision,
     status: 'completed',
     conclusion: 'success',
-    environment: 'workflow',
+    workflow: 'workflow',
+    event: 'push',
+    attempt: 1,
     ...overrides,
   }),
-  job: () => ({ conclusion: 'success', inventory: ['x.test.ts'], assertionPassed: true }),
-  artifact: () => ({ present: true }),
+  job: () => ({
+    id: 1,
+    name: 'test',
+    status: 'completed',
+    conclusion: 'success',
+    runtime: 'runner-1',
+    inventory: ['x.test.ts'],
+    assertionPassed: true,
+  }),
+  artifact: () => ({ present: true, expired: false }),
+  content: () => ({
+    integrationTree: request.integrationTree,
+    relevantInputs: plan.obligations[0]!.relevantInputs,
+  }),
 });
 
 test('only a collector-issued receipt can validate', () => {
@@ -68,7 +85,7 @@ test('only a collector-issued receipt can validate', () => {
   const expected = {
     revision: request.revision,
     integrationTree: request.integrationTree,
-    environment: 'workflow',
+    environment: 'runner-1',
   };
   expect(validateEvidence(plan, collected, expected).ok).toBe(true);
   expect(
@@ -111,10 +128,27 @@ test('malformed provider requests fail before authenticated access', () => {
     collectProviderEvidenceFromRequest(path, createHash('sha256').update(text).digest('hex'), {
       run: () => {
         reads += 1;
-        return { revision: '', status: '', conclusion: '', environment: '' };
+        return {
+          repository: '',
+          revision: '',
+          status: '',
+          conclusion: '',
+          workflow: '',
+          event: '',
+          attempt: 0,
+        };
       },
-      job: () => ({ conclusion: '', inventory: [], assertionPassed: null }),
-      artifact: () => ({ present: false }),
+      job: () => ({
+        id: 0,
+        name: '',
+        status: '',
+        conclusion: '',
+        runtime: '',
+        inventory: [],
+        assertionPassed: null,
+      }),
+      artifact: () => ({ present: false, expired: false }),
+      content: () => ({ integrationTree: '', relevantInputs: [] }),
     }),
   ).toThrow();
   expect(reads).toBe(0);
