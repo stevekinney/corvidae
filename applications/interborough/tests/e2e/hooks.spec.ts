@@ -688,14 +688,16 @@ for (const width of [320, 375] as const) {
       const id = await row.getAttribute('data-hook');
       const word = row.locator('[data-status-word]');
       if ((await word.count()) > 0) {
-        expect((await textLines(word)).lines, `${id}: the status word is one line`).toBe(1);
+        const { lines } = await textLines(word);
+        expect(lines, `${id}: the status word is one line`).toBe(1);
         const clipped = await row
           .locator('.cinder-stacked-list-item__status')
           .evaluate((cell) => cell.scrollWidth > cell.clientWidth + 0.5);
         expect(clipped, `${id}: the status word is not cut`).toBe(false);
       }
       for (const part of await row.locator('.ib-hooks__time-part').all()) {
-        expect((await textLines(part)).lines, `${id}: a day or a clock is never broken`).toBe(1);
+        const { lines } = await textLines(part);
+        expect(lines, `${id}: a day or a clock is never broken`).toBe(1);
       }
       const badge = row.getByTestId('hook-plugin-badge');
       if ((await badge.count()) === 0) continue;
@@ -1442,7 +1444,8 @@ for (const width of WIDTHS) {
     const reference = facts.locator('code.cinder-text[data-cinder-truncate="middle"]');
     await expect(reference.locator('.cinder-text__head')).toHaveText(/^C0SAMPLE/);
     await expect(reference.locator('.cinder-text__tail')).toHaveText(/100$/);
-    expect((await textLines(reference)).lines).toBe(1);
+    const { lines } = await textLines(reference);
+    expect(lines, 'the reference is one line').toBe(1);
     // The Event fact is not drawn: the row above already says the event in words.
     await expect(
       facts.locator('dt').filter({ hasText: new RegExp(`^${copy.deliveries.facts.event}$`) }),

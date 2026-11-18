@@ -90,7 +90,8 @@ for (const width of WIDTHS) {
       // A row with no control at its end has room for its next run on line one, so the time is
       // never broken ("Next Fri Nov / 6, 11:00 AM", COR-2181).
       for (const next of await main.getByTestId('schedule-next').all()) {
-        expect((await textLines(next)).lines, await next.innerText()).toBeLessThanOrEqual(1);
+        const { lines } = await textLines(next);
+        expect(lines, await next.innerText()).toBeLessThanOrEqual(1);
       }
     }
     await captureForDesignReview(page, { route: '/schedules', state: 'ready', source: SOURCE });
