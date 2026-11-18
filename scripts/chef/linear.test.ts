@@ -160,6 +160,8 @@ function fakeLinear() {
     endlessProjectPages: false,
     /** Another run's newer claim lands right after this run's claim comment is posted. */
     raceClaim: false,
+    /** The provider replaces a lease marker after admission but before its mutation reread. */
+    raceLeaseIdentity: false,
     /** `issueUpdate` answers success without changing the priority or the labels. */
     ignoreTriageUpdate: false,
   };
@@ -424,6 +426,15 @@ function fakeLinear() {
         const project = projects.find((candidate) => candidate.id === variables['id']);
         if (project === undefined) return { project: null };
         const latest = projectUpdates.filter((update) => update.projectId === project.id).at(-1);
+        if (switches.raceLeaseIdentity && latest !== undefined) {
+          switches.raceLeaseIdentity = false;
+          latest.body = latest.body
+            .replace(/operation \S+/, 'operation replaced-operation')
+            .replace(
+              /intent [a-f0-9]{64}/,
+              'intent aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+            );
+        }
         return {
           project: {
             id: project.id,
@@ -2017,6 +2028,19 @@ describe('lease', () => {
     });
     expect(refused.code).toBe(1);
     expect(leases(fake)).toHaveLength(before);
+  });
+
+  test('refuses a changed same-owner lease marker after admission without writing an update', async () => {
+    const fake = fakeLinear();
+    const executionStateDirectory = join(sandbox, 'lease-marker-race');
+    const input = { ...withClock(fake), executionStateDirectory, ownerId: 'owner-a' };
+    expect((await run(['lease', 'Alpha', '--run', 'run-a'], input)).code).toBe(0);
+    const before = leases(fake).length;
+    fake.switches.raceLeaseIdentity = true;
+    const result = await run(['lease', 'Alpha', '--run', 'run-a'], input);
+    expect(result.code).toBe(1);
+    expect(leases(fake)).toHaveLength(before);
+    expect(leases(fake)[0]?.body).toContain('operation replaced-operation');
   });
 
   test('--release ends the lease; it refuses a run that does not hold it', async () => {

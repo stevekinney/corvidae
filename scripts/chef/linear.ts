@@ -1382,7 +1382,7 @@ export async function releaseClaim(
   if (
     current === undefined ||
     current.marker.run !== runId ||
-    !sameProviderIdentity(current.marker.identity, expectedCurrent ?? identity)
+    !sameProviderAuthority(current.marker.identity, identity)
   )
     return {
       ok: false,
@@ -1538,7 +1538,12 @@ export async function leaseProject(
   };
   const health = await inheritedHealth(client, resolved.id);
   const beforeWrite = await latestLease(client, resolved.id);
-  if (beforeWrite?.updateId !== current?.updateId) return refuse(beforeWrite);
+  if (
+    beforeWrite?.updateId !== current?.updateId ||
+    (expectedCurrent !== undefined &&
+      !sameProviderIdentity(beforeWrite?.marker.identity, expectedCurrent))
+  )
+    return refuse(beforeWrite);
   const written = await createProjectUpdate(
     client,
     resolved,
