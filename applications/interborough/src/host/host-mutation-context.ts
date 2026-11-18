@@ -1,4 +1,4 @@
-import type { WorkspaceIdentity } from '@lostgradient/weft';
+import type { WorkspaceIdentity } from '@lostgradient/backchannel';
 import { createHash, randomUUID } from 'node:crypto';
 import { localWorkspaceMembership } from './workspace-principal.ts';
 import type { SecretHome } from './workspace-secrets.ts';

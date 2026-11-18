@@ -1,5 +1,8 @@
 /** Static HTTP bindings in route matching order. */
-import type { UnknownRestBinding } from '../rest-bindings.ts';
+import {
+  type UnknownRestBinding,
+  getPrincipalRestBinding,
+} from '@lostgradient/backchannel/internals';
 import { activateWorkflowRevisionRestBinding } from './activate-workflow-revision.ts';
 import { addWorkflowTagsRestBinding } from './add-workflow-tags.ts';
 import { aggregateWorkflowsRestBinding } from './aggregate-workflows.ts';
@@ -18,7 +21,6 @@ import { forkWorkflowRestBinding } from './fork-workflow.ts';
 import { getActiveWorkflowRevisionRestBinding } from './get-active-workflow-revision.ts';
 import { getCatalogDiagnosticsRestBinding } from './get-catalog-diagnostics.ts';
 import { getCheckpointAtRestBinding } from './get-checkpoint-at.ts';
-import { getPrincipalRestBinding } from './get-principal.ts';
 import { getRealmDiagnosticsRestBinding } from './get-realm-diagnostics.ts';
 import { getRefreshDiagnosticsRestBinding } from './get-refresh-diagnostics.ts';
 import { getRegistryRestBinding } from './get-registry.ts';

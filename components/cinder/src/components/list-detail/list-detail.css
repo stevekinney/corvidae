@@ -46,6 +46,14 @@
     border-block-end: 1px solid var(--cinder-border-muted);
   }
 
+  /* A ghost text button in the header draws at the compact height, but keeps the side padding of
+   * the `sm` step it is asked for, so its icon and label stay on the column's text inset rather
+   * than stepping left by the difference between the two paddings (COR-2388). */
+  .cinder-list-detail__header
+    .cinder-button[data-cinder-compact][data-cinder-variant='ghost']:not([data-cinder-icon-only]) {
+    padding-inline: var(--cinder-button-padding-x-sm);
+  }
+
   /* A list with no header of its own holds the toggle alone, at the header's end. */
   .cinder-list-detail__header[data-cinder-list-toggle] {
     align-items: flex-end;

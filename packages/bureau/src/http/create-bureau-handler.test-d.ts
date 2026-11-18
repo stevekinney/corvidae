@@ -3,7 +3,11 @@
 // stops compiling, the handler's option surface or `Bureau.hasExplicitId`
 // changed shape.
 
-import type { AuthConfig, OperationHandler, OperationHandlerMount } from '@lostgradient/weft';
+import type {
+  AuthConfig,
+  OperationHandler,
+  OperationHandlerMount,
+} from '@lostgradient/backchannel';
 
 import type { Bureau } from '../bureau-types/facade.ts';
 import { BUREAU_SCOPES, type BureauScope } from './bureau-scopes.ts';

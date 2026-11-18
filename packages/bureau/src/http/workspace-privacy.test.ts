@@ -16,7 +16,7 @@ import {
   type WorkspacePrivacyActor,
 } from './workspace-privacy-fixtures.test-support.ts';
 import { describe, expect, test } from 'bun:test';
-import { principalFromApiKey, type WorkspaceIdentity } from '@lostgradient/weft';
+import { principalFromApiKey, type WorkspaceIdentity } from '@lostgradient/backchannel';
 
 import { BUREAU_HANDLER_OPERATIONS, createBureauHandler } from './create-bureau-handler.ts';
 import { OPERATION_MAP } from './operation-map.ts';

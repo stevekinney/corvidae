@@ -8,6 +8,46 @@ const protocolPath = join(root, '.agents', 'skills', 'chef', 'references', 'code
 
 const workflowFiles = readdirSync(workflowsDirectory).filter((name) => name.endsWith('.js'));
 
+interface Preparation {
+  accepted: boolean;
+  briefPath: string;
+  blockers: string[];
+  gate: { status: string; dispatchable: boolean };
+  error?: string;
+}
+
+async function runDelivery(prepared: Preparation, arguments_ = {}) {
+  const source = readFileSync(join(workflowsDirectory, 'deliver-issue.js'), 'utf8').replace(
+    /^export const meta = \{[\s\S]*?^};\n/m,
+    '',
+  );
+  const calls: { prompt: string; options: { phase: string } }[] = [];
+  const AsyncFunction = Object.getPrototypeOf(async () => undefined).constructor as new (
+    ...arguments_: string[]
+  ) => (...arguments_: unknown[]) => Promise<unknown>;
+  const run = new AsyncFunction('args', 'agent', 'phase', 'log', 'parallel', source);
+  const result = (await run(
+    { issues: ['COR-7'], ...arguments_ },
+    async (prompt: string, options: { phase: string }) => {
+      calls.push({ prompt, options });
+      if (options.phase === 'prepare') return prepared;
+      if (options.phase === 'implement')
+        return {
+          status: 'ready-for-review',
+          pr: '17',
+          head: 'abc',
+          worktree: '/worktree',
+          report: '',
+        };
+      return { verdict: 'approve', findings: [] };
+    },
+    () => undefined,
+    () => undefined,
+    async (tasks: (() => Promise<unknown>)[]) => Promise.all(tasks.map((task) => task())),
+  )) as { status: string; reason?: string }[];
+  return { calls, result };
+}
+
 /** The text of the object literal after `export const meta = `, found by brace matching. */
 function metaText(source: string): string {
   const start = source.indexOf('{');
@@ -114,6 +154,80 @@ describe('workflow scripts', () => {
     const call = source.slice(source.indexOf('const built = await agent('));
     const prompt = call.slice(0, call.indexOf('label:'));
     expect(prompt).toContain('asks for a pull request');
+  });
+
+  test('deliver-issue.js passes only coordinator-supplied context and classification to brief preparation', () => {
+    const source = readFileSync(join(workflowsDirectory, 'deliver-issue.js'), 'utf8');
+    expect(source).toContain('args.verifiedContexts');
+    expect(source).toContain('args.classifications');
+    expect(source).toContain("arguments_.push('--context', shellArgument(context))");
+    expect(source).toContain("arguments_.push('--classification', shellArgument(classification))");
+  });
+
+  test('deliver-issue.js never dispatches a worker for canonical preparation refusals', async () => {
+    for (const prepared of [
+      {
+        accepted: false,
+        briefPath: '',
+        blockers: [],
+        gate: { status: 'invalid', dispatchable: false },
+        error: 'repository pin does not match origin',
+      },
+      {
+        accepted: false,
+        briefPath: '',
+        blockers: [],
+        gate: { status: 'blocked', dispatchable: false },
+        error: 'required context is unreadable',
+      },
+      {
+        accepted: true,
+        briefPath: '',
+        blockers: [],
+        gate: { status: 'accepted', dispatchable: true },
+      },
+    ]) {
+      const delivery = await runDelivery(prepared);
+      expect(delivery.calls.filter((call) => call.options.phase === 'implement')).toHaveLength(0);
+      expect(delivery.result[0]?.status).toBe('blocked');
+    }
+  });
+
+  test('deliver-issue.js keeps verified context and classification as one shell argument each', async () => {
+    const delivery = await runDelivery(
+      {
+        accepted: true,
+        briefPath: 'tmp/chef/briefs/COR-7.md',
+        blockers: [],
+        gate: { status: 'accepted', dispatchable: true },
+      },
+      {
+        verifiedContexts: { 'COR-7': "/coordinator/boards/with space/'quoted'; touch nope" },
+        classifications: { 'COR-7': 'no-behavior' },
+      },
+    );
+    const prompt = delivery.calls[0]?.prompt ?? '';
+    expect(prompt).toContain('--base "$(git rev-parse HEAD)"');
+    expect(prompt).not.toContain('<that-40-character-sha>');
+    expect(prompt).toContain(
+      "--context '/coordinator/boards/with space/'\"'\"'quoted'\"'\"'; touch nope'",
+    );
+    expect(prompt).toContain("--classification 'no-behavior'");
+    expect(delivery.calls.filter((call) => call.options.phase === 'implement')).toHaveLength(1);
+  });
+
+  test('deliver-issue.js refuses an invalid coordinator classification before preparation', async () => {
+    const delivery = await runDelivery(
+      {
+        accepted: true,
+        briefPath: 'tmp/chef/briefs/COR-7.md',
+        blockers: [],
+        gate: { status: 'accepted', dispatchable: true },
+      },
+      { classifications: { 'COR-7': 'no-behavior; touch nope' } },
+    );
+    expect(delivery.calls).toHaveLength(0);
+    expect(delivery.result[0]?.reason).toBe('invalid coordinator classification');
   });
 });
 

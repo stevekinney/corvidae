@@ -6,12 +6,14 @@
 import { afterEach, describe, expect, it, spyOn } from 'bun:test';
 import { z } from 'zod';
 
-import { createOperationHandler } from '../handler/operation-handler.ts';
-import type { OperationFault } from '../operation-fault.ts';
-import { defineOperation } from '../operation-registry.ts';
-import { principalFromStdioLocal } from '../principal.ts';
+import {
+  type OperationFault,
+  createOperationHandler,
+  defineOperation,
+  principalFromStdioLocal,
+} from '@lostgradient/backchannel';
+import { executeOperation } from '@lostgradient/backchannel/internals';
 import { createLiveOperationRegistry } from '../rest-bindings.ts';
-import { executeOperation } from './index.ts';
 
 const UNDECLARED: OperationFault = {
   code: 'Timeout',

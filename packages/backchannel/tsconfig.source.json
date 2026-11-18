@@ -1,0 +1,20 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "composite": true,
+    "emitDeclarationOnly": true,
+    "rootDir": ".",
+    "outDir": ".types",
+    "tsBuildInfoFile": ".types/tsconfig.source.tsbuildinfo"
+  },
+  "include": ["src", "scripts", "package.json"],
+  "exclude": [
+    "node_modules",
+    "coverage",
+    "**/*.test.ts",
+    "**/*.test-d.ts",
+    "**/*.bench.ts",
+    "src/__fixtures__/**"
+  ]
+}

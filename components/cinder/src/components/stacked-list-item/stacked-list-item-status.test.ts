@@ -147,7 +147,10 @@ describe('StackedListItem status-first row', () => {
     const { container } = render(StatusListFixture, { props: { rows: runs } });
     const title = container.querySelector('.cinder-stacked-list-item__title');
     expect(title?.getAttribute('data-cinder-title-lines')).toBe('2');
-    expect(title?.getAttribute('title')).toBe('Refund order 4471');
+    // The fixture's rows are links, so the tooltip is the row's own (COR-2227).
+    expect(container.querySelector('.cinder-stacked-list-item')?.getAttribute('title')).toBe(
+      'Refund order 4471',
+    );
 
     const single = render(StackedListItem, {
       props: { titleLines: 1, title: textSnippet('Short') },
@@ -312,7 +315,11 @@ describe('status and time sit on the title baseline (rows 09d, 09f, 15r)', () =>
 
   test('a status on line two has no strut', () => {
     expect(stylesheet).toMatch(
-      /status-line-two\s+\.cinder-stacked-list-item__status::before,[^{]*\{\s*display: none;/,
+      /status-line-two\s+\.cinder-stacked-list-item__status::before\s*\{\s*display: none;/,
+    );
+    // A leading status takes line two on a phone (the row's own width) and loses its strut there.
+    expect(stylesheet).toMatch(
+      /--status-leading\s+\.cinder-stacked-list-item__status::before\s*\{\s*display: none;/,
     );
   });
 });

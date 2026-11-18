@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 
+import { principalFromApiKey, type AuthorizationScope } from '@lostgradient/backchannel';
+import { createOperationRegistry, executeOperation } from '@lostgradient/backchannel/internals';
 import { MemoryStorage } from '@lostgradient/storage';
 import { encode } from '../../core/codec.ts';
 import type { Engine } from '../../core/engine.ts';
@@ -26,10 +28,7 @@ import {
 } from '../../core/task-ledger/task-result-delivery.ts';
 import { MetricsCollector } from '../../observability/metrics.ts';
 import { KEYS } from '../../storage/keys.ts';
-import type { AuthorizationScope } from '../authorization-scope.ts';
 import { handleRequest } from '../handler.ts';
-import { createOperationRegistry, executeOperation } from '../operation-catalog.ts';
-import { principalFromApiKey } from '../principal.ts';
 import { clearTaskDeadLetterOperation } from './clear-task-dead-letter.ts';
 import { getTaskDeadLetterOperation } from './get-task-deliveries.ts';
 import {

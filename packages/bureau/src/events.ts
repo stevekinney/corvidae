@@ -919,6 +919,7 @@ export type TriggerFireOutcome = 'started' | 'duplicate' | 'skipped' | 'refused'
  */
 export class TriggerLifecycleEvent extends Event {
   declare readonly type: TriggerEventKind;
+  /** The workflow file whose trigger this event describes. */
   readonly workflowId: string;
   /** The contributed kind, `plugin:name`. */
   readonly trigger: string;
@@ -1540,8 +1541,11 @@ export interface BureauEventMap extends EventMap {
   [DefinitionsChangedEvent.type]: DefinitionsChangedEvent;
   /** COR-2250 — what a workflow file's contributed trigger did, and each fire's outcome. */
   'trigger.started': TriggerLifecycleEvent;
+  /** A contributed trigger's listener stopped: its file was paused or removed, or another Bureau took it over. */
   'trigger.stopped': TriggerLifecycleEvent;
+  /** A contributed trigger's listener failed to start; `errorCode` says why. */
   'trigger.failed': TriggerLifecycleEvent;
+  /** A contributed trigger fired; `outcome` says what became of the fire. */
   'trigger.fired': TriggerLifecycleEvent;
   [ScheduleMissedEvent.type]: ScheduleMissedEvent;
   [TaskCleanupAcknowledgedEvent.type]: TaskCleanupAcknowledgedEvent;

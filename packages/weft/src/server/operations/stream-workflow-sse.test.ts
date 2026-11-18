@@ -1,12 +1,11 @@
 import { describe, expect, it } from 'bun:test';
 
+import { principalFromApiKey } from '@lostgradient/backchannel';
+import { createOperationRegistry, executeStream } from '@lostgradient/backchannel/internals';
 import { MemoryStorage } from '@lostgradient/storage';
 import { Engine } from '../../core/engine.ts';
-import type { WorkflowContext } from '../../core/types.ts';
-import { workflow } from '../../core/types.ts';
+import { type WorkflowContext, workflow } from '../../core/types.ts';
 import { handleRequestAsLocalUser as handleRequest } from '../local-user-request.test-support.ts';
-import { createOperationRegistry, executeStream } from '../operation-catalog.ts';
-import { principalFromApiKey } from '../principal.ts';
 import { streamWorkflowSseOperation, streamWorkflowSseRestBinding } from './stream-workflow-sse.ts';
 
 const holdWorkflow = workflow({ name: 'hold' }).execute(async function* (_ctx: WorkflowContext) {

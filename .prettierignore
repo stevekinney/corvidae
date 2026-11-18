@@ -25,8 +25,13 @@ applications/playground/.tmp/
 applications/playground/src/.tmp-*/
 # Generated declaration fixtures are checked against exact generator output and typechecked.
 **/*.generated.d.ts
+# The fixture client for the generic client generator is its exact, unformatted output: the package
+# carries no formatter, and a type test imports these files.
+packages/backchannel/src/__fixtures__/probe-client/
 # Standalone schema validators are machine-generated Ajv output, checked against exact generator output.
 components/cinder/src/tokens/runtime/*-validator.generated.js
+# React 18's published UMD builds, byte-exact, which the design-system render check loads into its harness.
+components/cinder/scripts/design-system/vendor/
 # DR-5 (COR-513) diff-review export golden fixtures are byte-exact generated agent-handoff
 # output, checked verbatim against `exportDiffReviewMarkdown`/`exportDiffReviewJson` in
 # diff-review-export-golden.test.ts. Their Markdown deliberately stacks single-newline-separated
@@ -36,7 +41,7 @@ components/cinder/src/tokens/runtime/*-validator.generated.js
 components/editor/src/lib/export/__fixtures__/diff-review/
 # COR-2470 wire goldens are byte-exact generated output (sorted keys, two-space indentation), compared verbatim by the wire-golden and fault-envelope-golden tests; regenerate with each package's scripts/update-wire-golden.ts.
 packages/weft/src/server/__fixtures__/wire-golden/
-packages/weft/src/server/__fixtures__/fault-envelope-golden/
+packages/backchannel/src/__fixtures__/fault-envelope-golden/
 packages/bureau/src/http/__fixtures__/wire-golden/
 .env
 .env.*

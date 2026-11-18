@@ -1,6 +1,13 @@
 import { afterEach, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 
+import { principalFromApiKey } from '@lostgradient/backchannel';
+import {
+  createOperationRegistry,
+  executeOperation,
+  generateOpenApiDocument,
+  generateOpenRpcDocument,
+} from '@lostgradient/backchannel/internals';
 import { waitForCondition } from '@lostgradient/testing/fake-timers';
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { removeWorkflowRevision } from '../../core/engine/catalog-removal.ts';
@@ -11,10 +18,6 @@ import { workflowSource } from '../../core/source/index.ts';
 import { query, signal, update, workflow, type WorkflowDefinition } from '../../core/types.ts';
 import { registerWorkflowDocuments } from '../../document-workflow/register.ts';
 import { handleRequest } from '../handler.ts';
-import { generateOpenApiDocument } from '../openapi.ts';
-import { generateOpenRpcDocument } from '../openrpc.ts';
-import { createOperationRegistry, executeOperation } from '../operation-catalog.ts';
-import { principalFromApiKey } from '../principal.ts';
 import { createLiveOperationRegistry, createLiveRestBindings } from '../rest-bindings.ts';
 import {
   listWorkflowDefinitionsOperation,

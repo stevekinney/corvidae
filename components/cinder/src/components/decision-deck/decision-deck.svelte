@@ -14,6 +14,7 @@
   import { flushSync } from 'svelte';
 
   import { classNames } from '../../utilities/class-names.ts';
+  import { useReducedMotion } from '../../utilities/use-reduced-motion.svelte.ts';
   import Button from '../button/button.svelte';
   import DecisionDeckCard from './decision-deck-card.svelte';
   import {
@@ -54,6 +55,12 @@
     return `${position} of ${total}`;
   }
 
+  // The arrows follow the reading direction: accept is the arrow toward the inline-end edge.
+  function defaultKeyboardHint(rtl: boolean): string {
+    const [accept, reject] = rtl ? ['left', 'right'] : ['right', 'left'];
+    return `Press the ${accept} arrow key to accept, the ${reject} arrow key to reject, or the down arrow key to decide later.`;
+  }
+
   function pastTense(outcome: DecisionDeckOutcome): string {
     if (outcome === 'accept') return 'Accepted';
     if (outcome === 'reject') return 'Rejected';
@@ -74,7 +81,7 @@
     undoLabel = 'Undo',
     emptyTitle = 'All caught up',
     emptyDescription,
-    keyboardHint = 'Press the right arrow key to accept, the left arrow key to reject, or the down arrow key to decide later.',
+    keyboardHint,
     progressText = defaultProgressText,
     describeDecision,
     onDecision,
@@ -95,6 +102,17 @@
   let dragging = $state(false);
   let announcement = $state('');
   let rootElement = $state<HTMLElement | null>(null);
+  // Whether the deck reads right to left. Read from the document when a gesture or a key starts, so
+  // the arrow keys, the swipe and the stamps all put "accept" on the inline-end side.
+  let rightToLeft = $state(false);
+  // The copy of the card that was just decided, which plays the exit animation and goes away.
+  let leaving = $state.raw<{
+    key: number;
+    item: TItem;
+    from: number;
+    exit: { outcome: DecisionDeckOutcome; direction: 1 | -1 };
+  } | null>(null);
+  let leavingKey = 0;
 
   // Held outside reactive state: the gesture is read by the window listeners, never by the markup.
   let drag: DragState | null = null;
@@ -115,8 +133,38 @@
     emptyDescription ??
       (laterCount > 0 ? `${laterCount} left for later.` : 'Nothing is waiting for a decision.'),
   );
-  const acceptOpacity = $derived(swipeStampOpacity(offset, resolvedThreshold, 'accept'));
-  const rejectOpacity = $derived(swipeStampOpacity(offset, resolvedThreshold, 'reject'));
+  // The drag measured toward the inline-end side: positive accepts, negative rejects.
+  const inlineOffset = $derived(rightToLeft ? -offset : offset);
+  const acceptOpacity = $derived(swipeStampOpacity(inlineOffset, resolvedThreshold, 'accept'));
+  const rejectOpacity = $derived(swipeStampOpacity(inlineOffset, resolvedThreshold, 'reject'));
+
+  // The exit animation is a decoration: a person who asks for less motion, and an environment with
+  // no animation events, never see it, and a stuck copy is dropped after a moment.
+  const EXIT_FALLBACK_MILLISECONDS = 1000;
+
+  // The direction is only known in the browser, so the first server render is left to right and a
+  // right-to-left deck corrects its default hint once it is on the page.
+  $effect(() => {
+    if (rootElement !== null) rightToLeft = readRightToLeft();
+  });
+
+  $effect(() => {
+    if (leaving === null) return;
+    const timer = setTimeout(() => {
+      leaving = null;
+    }, EXIT_FALLBACK_MILLISECONDS);
+    return () => clearTimeout(timer);
+  });
+
+  function readRightToLeft(): boolean {
+    if (rootElement === null) return false;
+    const direction = rootElement.closest('[dir]')?.getAttribute('dir')?.toLowerCase();
+    if (direction === 'rtl') return true;
+    if (direction === 'ltr') return false;
+    return getComputedStyle(rootElement).direction === 'rtl';
+  }
+
+  const reducedMotion = useReducedMotion();
 
   function focusTarget(target: Exclude<FocusOrigin, null>): void {
     const selector =
@@ -147,7 +195,13 @@
     const item = pending[0];
     if (item === undefined) return;
     const decision: DecisionDeckDecision<TItem> = { item, outcome };
+    rightToLeft = readRightToLeft();
     history = [...history, { decision, origin }];
+    // Accept lies toward the inline-end side, reject toward the inline-start side.
+    const direction = (outcome === 'accept') === !rightToLeft ? 1 : -1;
+    leaving = reducedMotion.current
+      ? null
+      : { key: (leavingKey += 1), item, from: offset, exit: { outcome, direction } };
     offset = 0;
     dragging = false;
     drag = null;
@@ -161,6 +215,7 @@
     const entry = history.at(-1);
     if (entry === undefined) return;
     history = history.slice(0, -1);
+    leaving = null;
     offset = 0;
     dragging = false;
     drag = null;
@@ -170,9 +225,11 @@
     onUndo?.(entry.decision);
   }
 
-  function outcomeForKey(key: string): DecisionDeckOutcome | null {
-    if (key === 'ArrowRight') return 'accept';
-    if (key === 'ArrowLeft') return 'reject';
+  // The arrow keys follow the side the decision lies on: accept is the arrow toward the inline-end
+  // edge, which is the right arrow left to right and the left arrow right to left.
+  function outcomeForKey(key: string, rtl: boolean): DecisionDeckOutcome | null {
+    if (key === 'ArrowRight') return rtl ? 'reject' : 'accept';
+    if (key === 'ArrowLeft') return rtl ? 'accept' : 'reject';
     if (key === 'ArrowDown') return 'later';
     return null;
   }
@@ -180,7 +237,8 @@
   function onCardKeydown(event: KeyboardEvent): void {
     if (event.target !== event.currentTarget) return;
     if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
-    const outcome = outcomeForKey(event.key);
+    rightToLeft = readRightToLeft();
+    const outcome = outcomeForKey(event.key, rightToLeft);
     if (outcome === null) return;
     event.preventDefault();
     decide(outcome, 'card');
@@ -192,6 +250,7 @@
     if (event.target instanceof Element && event.target.closest(NO_SWIPE_SELECTOR) !== null) {
       return;
     }
+    rightToLeft = readRightToLeft();
     drag = {
       pointerId: event.pointerId,
       startX: event.clientX,
@@ -230,7 +289,7 @@
     drag = null;
     if (!current.active) return;
     dragging = false;
-    const outcome = resolveSwipeOutcome(offset, resolvedThreshold);
+    const outcome = resolveSwipeOutcome(inlineOffset, resolvedThreshold);
     if (outcome === null) {
       // A short release: the card springs back and nothing is decided.
       offset = 0;
@@ -249,9 +308,29 @@
   }
 </script>
 
-{#snippet rejectIcon()}<X size={28} strokeWidth={2.25} />{/snippet}
-{#snippet laterIcon()}<Clock size={22} strokeWidth={2.25} />{/snippet}
-{#snippet acceptIcon()}<Check size={28} strokeWidth={2.25} />{/snippet}
+{#snippet rejectIcon()}<X size={20} strokeWidth={2.25} />{/snippet}
+{#snippet laterIcon()}<Clock size={16} strokeWidth={2.25} />{/snippet}
+{#snippet acceptIcon()}<Check size={20} strokeWidth={2.25} />{/snippet}
+
+{#snippet leavingCopy()}
+  {#if leaving !== null}
+    {#key leaving.key}
+      <DecisionDeckCard
+        item={leaving.item}
+        depth={0}
+        offset={leaving.from}
+        acceptStamp={acceptLabel}
+        rejectStamp={rejectLabel}
+        {hintId}
+        body={card}
+        exit={leaving.exit}
+        onexitend={() => {
+          leaving = null;
+        }}
+      />
+    {/key}
+  {/if}
+{/snippet}
 
 <svelte:window
   onpointermove={onWindowPointerMove}
@@ -267,7 +346,7 @@
 >
   {#if total > 0}
     <div class="cinder-decision-deck__progress">
-      <p id={progressId} class="cinder-decision-deck__progress-text">{progressLabel}</p>
+      <p id={progressId} class="cinder-decision-deck__progress-text"><bdi>{progressLabel}</bdi></p>
       <div
         class="cinder-decision-deck__progress-track"
         role="progressbar"
@@ -302,6 +381,7 @@
           onpointerdown={onCardPointerDown}
         />
       {/each}
+      {@render leavingCopy()}
     </div>
 
     <div class="cinder-decision-deck__actions">
@@ -346,9 +426,18 @@
       </div>
     </div>
   {:else}
-    <div class="cinder-decision-deck__empty" tabindex="-1">
-      <p class="cinder-decision-deck__empty-title">{emptyTitle}</p>
-      <p class="cinder-decision-deck__empty-description">{emptyDescriptionText}</p>
+    <!-- The leaving copy is laid over the empty state (out of flow), so the empty state is in its
+         final place from the first frame and nothing moves when the copy goes away. -->
+    <div class="cinder-decision-deck__finish">
+      {#if leaving !== null}
+        <div class="cinder-decision-deck__leaving">
+          {@render leavingCopy()}
+        </div>
+      {/if}
+      <div class="cinder-decision-deck__empty" tabindex="-1">
+        <p class="cinder-decision-deck__empty-title">{emptyTitle}</p>
+        <p class="cinder-decision-deck__empty-description">{emptyDescriptionText}</p>
+      </div>
     </div>
   {/if}
 
@@ -365,7 +454,9 @@
     </div>
   {/if}
 
-  <p id={hintId} class="cinder-decision-deck__sr-only">{keyboardHint}</p>
+  <p id={hintId} class="cinder-decision-deck__sr-only">
+    {keyboardHint ?? defaultKeyboardHint(rightToLeft)}
+  </p>
   <p class="cinder-decision-deck__sr-only" role="status" aria-live="polite" aria-atomic="true">
     {announcement}
   </p>

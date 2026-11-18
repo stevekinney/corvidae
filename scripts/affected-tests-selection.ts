@@ -44,6 +44,8 @@ export interface WorkspaceSelection {
   mode: SelectionMode;
   /** Every test file the workspace holds, including slow ones. */
   total: number;
+  /** Every test file the workspace holds, so reports can account for exclusions by path. */
+  allTests: string[];
   /** The selected test files, repository-relative, with the reason for each. */
   tests: Map<string, Reason>;
 }
@@ -442,6 +444,7 @@ export function selectTests(input: SelectionInput): Selection {
         workspace.directory === '' || workspace.testScripts.length === 0 ? 'root' : 'workspace',
       mode,
       total: all.length,
+      allTests: all,
       tests,
     });
   }

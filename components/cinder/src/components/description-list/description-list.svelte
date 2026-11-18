@@ -14,11 +14,13 @@
   import Button from '../button/button.svelte';
   import Chip from '../chip/chip.svelte';
   import CopyButton from '../copy-button/copy-button.svelte';
+  import ChevronRight from '@lucide/svelte/icons/chevron-right';
 
   let {
     items,
     variant = 'default',
     stack = false,
+    framed = false,
     class: className,
     actions,
     ...rest
@@ -63,6 +65,11 @@
     };
   }
 
+  /** The name of a row's link: its term, and its value when the value is plain text. */
+  function linkLabel(term: string, definition: unknown): string {
+    return typeof definition === 'string' && definition !== '' ? `${term}: ${definition}` : term;
+  }
+
   function systemTagLabel(count: number): string {
     return `${count} system ${count === 1 ? 'tag' : 'tags'}`;
   }
@@ -105,11 +112,18 @@
   class={classNames('cinder-description-list', className)}
   data-cinder-variant={variant}
   data-cinder-stacked={stack || undefined}
+  data-cinder-framed={framed || undefined}
 >
   {#each items as item (item.id ?? item.term)}
-    <div class="cinder-description-list__row" data-cinder-wide={item.wide || undefined}>
+    <div
+      class="cinder-description-list__row"
+      data-cinder-wide={item.wide || undefined}
+      data-cinder-linked={item.href !== undefined || undefined}
+    >
       <dt class={variant === 'narrow' ? 'cinder-sr-only' : 'cinder-_label-text'}>{item.term}</dt>
       <dd class="cinder-_value-text">
+        <!-- The note's block follows the value's with no whitespace between them, and its space is
+             its own, so a definition's text ends where its value or note does. -->
         <div class="cinder-description-list__definition">
           {#if typeof item.definition === 'string'}
             {item.definition}
@@ -169,13 +183,21 @@
                 <Button size="xs" variant="ghost" onclick={tags.onAddTag}>Add a tag</Button>
               {/if}
             </span>
-          {/if}
-          {#if item.note !== undefined && item.note !== ''}
-            <span class="cinder-description-list__note">{item.note}</span>
-          {/if}
+          {/if}{#if item.note !== undefined && item.note !== ''}{' '}<span
+              class="cinder-description-list__note">{item.note}</span
+            >{/if}
         </div>
         {#if actions}
           <div class="cinder-description-list__actions">{@render actions(item)}</div>
+        {/if}
+        {#if item.href !== undefined}
+          <a
+            class="cinder-description-list__link"
+            href={item.href}
+            aria-label={linkLabel(item.term, item.definition)}
+          >
+            <ChevronRight size={16} aria-hidden="true" />
+          </a>
         {/if}
       </dd>
     </div>

@@ -28,8 +28,13 @@ import { join, relative, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 
 import { withHostSlots, withMemoryAdmission } from '../../../../scripts/host-slots.ts';
-import { readArchetypePreviews } from './archetypes.ts';
-import { captureStaticSnapshots, checkArchetypeRenders, checkRenders } from './browser.ts';
+import { readArchetypePreviews, withCardHeight } from './archetypes.ts';
+import {
+  captureStaticSnapshots,
+  checkArchetypeRenders,
+  checkBundle,
+  checkRenders,
+} from './browser.ts';
 import { buildComponentBundle } from './bundle-build.ts';
 import {
   componentReadme,
@@ -59,6 +64,7 @@ import {
   designSystemIndex,
   fillBrandBook,
   planPublishBatches,
+  previewReport,
   replacementCharacterPositions,
 } from './publish.ts';
 import { bundleSources, componentsDirectoryOf, readManifestSources } from './sources.ts';
@@ -301,22 +307,38 @@ async function main(): Promise<number> {
   withoutCard.length = 0;
   writeComponents(check.results);
 
+  step('render check: bundle.js under React, as a canvas loads it');
+  const bundleCheckProblems = await withHostSlots(1, () =>
+    checkBundle(projectDirectory, join(workDirectory, 'check-bundle')),
+  );
+
   step(`render check: ${archetypes.length} archetypes in light and dark, at phone and desktop`);
-  const archetypeProblems = await withHostSlots(1, () =>
+  const archetypeCheck = await withHostSlots(1, () =>
     checkArchetypeRenders(
       projectDirectory,
       join(workDirectory, 'check-archetypes'),
       archetypes.map((archetype) => archetype.exportName),
     ),
   );
+  // The card heights are the measured ones, written over the numbers checked in, as a live
+  // preview's card is; only the `@dsCard` marker changes.
+  for (const archetype of archetypes) {
+    const height = archetypeCheck.heights.get(archetype.exportName);
+    if (height === undefined) continue;
+    writeFileSync(
+      join(componentsDirectory, archetype.exportName, 'preview.html'),
+      withCardHeight(archetype.html, height),
+    );
+  }
 
   const problems = [
-    ...archetypeProblems.map((problem) => `archetype ${problem}`),
+    ...archetypeCheck.problems.map((problem) => `archetype ${problem}`),
     ...built.failures.map((failure) => `build ${failure}`),
     ...[...snapshots].flatMap(([id, snapshot]) =>
       snapshot.errors.map((error) => `snapshot ${id} ${error}`),
     ),
     ...check.problems.map((problem) => `render ${problem}`),
+    ...bundleCheckProblems.map((problem) => `bundle ${problem}`),
   ];
   const previewCount = live.length + staticNames.length;
   const note =
@@ -335,6 +357,15 @@ async function main(): Promise<number> {
       1,
     ),
   );
+  // Which cards are live and which static, so a reader of the published system does not have to
+  // open each card; the editors are named because they are the ones that bundle the most.
+  const report = previewReport(live, staticNames, withoutCard);
+  writeFileSync(join(projectDirectory, 'previews.json'), JSON.stringify(report, null, 2));
+  const watched: string[] = [];
+  for (const name of Object.keys(report.watched)) {
+    watched.push(`${name} ${report.watched[name] ?? 'missing'}`);
+  }
+  console.log(`Editor previews: ${watched.join(', ')}.`);
   const files = listFiles(projectDirectory, outputRoot);
   // The artifact service refuses a text file holding U+FFFD; every published file is text.
   for (const file of files) {

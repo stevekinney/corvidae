@@ -1,11 +1,15 @@
+import { type Principal } from '@lostgradient/backchannel';
+import {
+  isAuthenticated,
+  readRestJsonBody,
+  type RestBodyReadOptions,
+} from '@lostgradient/backchannel/internals';
 import {
   decodeRemoteTaskRecord,
   taskLedgerKey,
   type RemoteTaskRecord,
 } from '../../core/task-ledger/task-ledger.ts';
 import type { ServeOptions } from '../index.ts';
-import { isAuthenticated, type Principal } from '../principal.ts';
-import { readRestJsonBody, type RestBodyReadOptions } from '../rest-body.ts';
 import type { TaskResult } from '../task-queue-types.ts';
 import type { ServerContext } from './context.ts';
 import type {
@@ -91,8 +95,7 @@ export async function awaitTaskLedgerRecovery(context: ServerContext): Promise<R
 }
 
 /**
- * Validate and extract typed fields from a parsed task-result body.
- * Returns the validated result or a 400 Response if validation fails.
+ * Validate a parsed task-result body: the result, or a 400 Response if it is invalid.
  */
 function validateTaskResultBody(body: Record<string, unknown>): ValidatedTaskResult | Response {
   const operationId = body['operationId'];
@@ -131,10 +134,9 @@ function validateTaskResultBody(body: Record<string, unknown>): ValidatedTaskRes
  * Every reason `handleTaskResultRequest` can permanently reject a `taskResult`
  * submission for, surfaced on the `403`/`413` response body's `reason` field
  * (COR-237) so a caller — including `LongPollWorker`'s own result-delivery
- * logic — does not have to pattern-match `error` text to tell the classes
- * apart. `TaskResultAuthorizationFailure` covers the shared identity gate
- * both transports go through; `'queue-mismatch'` and `'revision-mismatch'`
- * are long-poll-specific preconditions checked before/alongside it;
+ * logic — need not pattern-match `error` text. `TaskResultAuthorizationFailure`
+ * covers the shared identity gate both transports go through; `'queue-mismatch'` and
+ * `'revision-mismatch'` are long-poll-specific preconditions checked beside it;
  * `TaskLedgerCompletionFailureReason` (currently only `'conflicting-content'`)
  * is the one named ledger-commit outcome from below that gate.
  */

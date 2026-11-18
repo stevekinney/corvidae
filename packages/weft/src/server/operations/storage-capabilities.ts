@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
-import { defineOperation } from '../operation-registry.ts';
-import type { UnknownRestBinding } from '../rest-bindings.ts';
+import { defineOperation } from '@lostgradient/backchannel';
+import type { UnknownRestBinding } from '@lostgradient/backchannel/internals';
 import { requireOperationStorage } from './operation-helpers.ts';
 
 const storageCapabilitiesInput = z.object({});

@@ -22,11 +22,16 @@ export function provideBureauEventSource(source: BureauEventSource): void {
   setContext(BUREAU_EVENT_SOURCE_CONTEXT_KEY, source);
 }
 
-/** A getter for whether the Bureau's event feed is live now. */
-export function useBureauEventsLive(): () => boolean {
-  const source = hasContext(BUREAU_EVENT_SOURCE_CONTEXT_KEY)
+/** The shell's Bureau event source, or `undefined` for a view rendered outside the shell. */
+export function useBureauEventSource(): BureauEventSource | undefined {
+  return hasContext(BUREAU_EVENT_SOURCE_CONTEXT_KEY)
     ? getContext<BureauEventSource>(BUREAU_EVENT_SOURCE_CONTEXT_KEY)
     : undefined;
+}
+
+/** A getter for whether the Bureau's event feed is live now. */
+export function useBureauEventsLive(): () => boolean {
+  const source = useBureauEventSource();
   return () => source?.status === 'live';
 }
 

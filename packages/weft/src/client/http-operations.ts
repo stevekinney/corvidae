@@ -11,9 +11,14 @@
  * @module client/http-operations
  */
 
-import { isFaultCode } from '../core/fault-code.ts';
+import { isFaultCode } from '@lostgradient/backchannel';
+import type {
+  CatalogCallOptions,
+  CatalogFetch,
+  CatalogTransport,
+  ClientRestOperationBinding,
+} from '@lostgradient/backchannel/client';
 import { HttpClientError, request } from './http-request.ts';
-import type { CatalogTransport, ClientRestOperationBinding } from './operation-client-runtime.ts';
 
 type JsonRpcSuccess = { readonly result: unknown };
 type JsonRpcFailure = {
@@ -50,6 +55,16 @@ function isJsonRpcSuccess(value: unknown): value is JsonRpcSuccess {
  * controlled but crosses a network boundary, so it is shape-checked rather
  * than trusted as-is.
  */
+/** The `fetch` a call brings, else the global one at the moment of the call. */
+function fetchFor(callOptions: CatalogCallOptions | undefined): CatalogFetch {
+  return callOptions?.fetch ?? fetch;
+}
+
+/** The `signal` of a call as a `RequestInit` fragment, empty when the call has none. */
+function signalInit(callOptions: CatalogCallOptions | undefined): { signal?: AbortSignal } {
+  return callOptions?.signal === undefined ? {} : { signal: callOptions.signal };
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
@@ -74,8 +89,8 @@ export function httpClientCatalogTransport(
   headers: Record<string, string>,
 ): CatalogTransport {
   const endpoint = `${baseUrl}/jsonrpc`;
-  return async (operationName, input) => {
-    const response = await fetch(endpoint, {
+  return async (operationName, input, callOptions) => {
+    const response = await fetchFor(callOptions)(endpoint, {
       method: 'POST',
       headers: { ...headers, 'content-type': 'application/json' },
       body: JSON.stringify({
@@ -84,6 +99,7 @@ export function httpClientCatalogTransport(
         params: input,
         id: operationName,
       }),
+      ...signalInit(callOptions),
     });
 
     // Transport-level failures (405, 415, 413, auth short-circuits) return
@@ -229,6 +245,7 @@ async function callRestOperation(
   operationName: string,
   binding: ClientRestOperationBinding,
   input: unknown,
+  callOptions: CatalogCallOptions | undefined,
 ): Promise<unknown> {
   const fields = inputRecord(operationName, input);
   const projection: RestRequestProjection = {
@@ -266,11 +283,20 @@ async function callRestOperation(
     );
   }
 
-  return request<unknown>(baseUrl, projection.path, headers, {
-    method: binding.method,
-    ...([...projection.requestHeaders].length === 0 ? {} : { headers: projection.requestHeaders }),
-    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-  });
+  return request<unknown>(
+    baseUrl,
+    projection.path,
+    headers,
+    {
+      method: binding.method,
+      ...([...projection.requestHeaders].length === 0
+        ? {}
+        : { headers: projection.requestHeaders }),
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+      ...signalInit(callOptions),
+    },
+    fetchFor(callOptions),
+  );
 }
 
 /** Route generated client operations over JSON-RPC or ordinary REST metadata. */
@@ -280,12 +306,12 @@ export function httpClientOperationTransport(
   restBindings: Readonly<Record<string, ClientRestOperationBinding>>,
 ): CatalogTransport {
   const jsonRpc = httpClientCatalogTransport(baseUrl, headers);
-  return (operationName, input) => {
+  return (operationName, input, callOptions) => {
     const restBinding = Object.hasOwn(restBindings, operationName)
       ? restBindings[operationName]
       : undefined;
     return restBinding === undefined
-      ? jsonRpc(operationName, input)
-      : callRestOperation(baseUrl, headers, operationName, restBinding, input);
+      ? jsonRpc(operationName, input, callOptions)
+      : callRestOperation(baseUrl, headers, operationName, restBinding, input, callOptions);
   };
 }

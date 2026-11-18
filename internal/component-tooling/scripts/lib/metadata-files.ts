@@ -20,9 +20,27 @@
  */
 
 import { existsSync, readFileSync } from 'node:fs';
-import { basename, join } from 'node:path';
+import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path';
 
 import type { ComponentSchema } from '../../src/schema-types.ts';
+
+/**
+ * The text of a JSON document copied from `fromPath` to `toPath`, with a relative `$schema`
+ * re-pointed so it names the same file from the copy. An examples document's `$schema` is relative
+ * to the authored file beside the component; copied unchanged into `.metadata/<id>/`, it would
+ * climb out of the repository. A document with no `$schema`, or a URL or absolute one, is
+ * returned as it was.
+ */
+export function relocatedJsonDocument(text: string, fromPath: string, toPath: string): string {
+  const document = JSON.parse(text) as Record<string, unknown>;
+  const schema = document['$schema'];
+  if (typeof schema !== 'string' || isAbsolute(schema) || /^[a-z][a-z0-9+.-]*:/i.test(schema)) {
+    return text;
+  }
+  const target = resolve(dirname(fromPath), schema);
+  const moved = relative(dirname(toPath), target).split('\\').join('/');
+  return `${JSON.stringify({ ...document, $schema: moved }, null, 2)}\n`;
+}
 
 /** The directory, inside a component package, that the `metadata` task writes. */
 export const METADATA_DIRECTORY = '.metadata';

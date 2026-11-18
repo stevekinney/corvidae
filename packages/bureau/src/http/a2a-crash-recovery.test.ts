@@ -10,7 +10,7 @@ import { ServerCallContext } from '@a2a-js/sdk/server';
 import { createDefaultRuntimeServices, createManualRuntimeServices } from '@lostgradient/lifecycle';
 import { createAgent, type GenerateFunction } from '@lostgradient/operative';
 import { MemoryStorage, textValueStore } from '@lostgradient/storage';
-import { principalFromApiKey } from '@lostgradient/weft';
+import { principalFromApiKey } from '@lostgradient/backchannel';
 import { describe, expect, it } from 'bun:test';
 
 import { createCommandLedger } from '../command-ledger.ts';

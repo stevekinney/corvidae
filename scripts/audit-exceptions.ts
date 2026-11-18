@@ -23,6 +23,15 @@ export type AuditException = {
    * workspace.
    */
   readonly allowedChains: readonly (readonly string[])[];
+  /**
+   * A reviewed, complete workspace-rooted reachability inventory for a tooling-only exception.
+   * It binds readable allowed chains to the exact lockfile graph they reviewed, including every
+   * workspace prefix, edge kind and installed package identity.
+   */
+  readonly reviewedReachability?: {
+    readonly sha256: string;
+    readonly exposure: 'build-or-development-only';
+  };
   readonly reason: string;
   /** Linear issue that owns removing this exception. */
   readonly trackingIssue: string;

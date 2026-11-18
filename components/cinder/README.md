@@ -22,6 +22,10 @@ Import components, utilities, types, and metadata from this one entry point. Com
 
 [Editor](../editor/README.md) and [Markdown](../../packages/markdown/README.md) own their respective product APIs in separate workspaces. Syntax highlighting dependencies used by Cinder's `CodeBlock` are declared directly by Cinder.
 
+## Maintainer tool
+
+The component tooling owns `internal/component-tooling/scripts/export-names.ts`, a manual export-inventory CLI for reviewing a TypeScript barrel's runtime and type names. From this workspace, run `bun ../../internal/component-tooling/scripts/export-names.ts src/index.ts`; it prints sorted `runtime` and `types` lists for a review diff.
+
 ## Component metadata
 
 Component metadata is JSON the package exports by subpath, apart from the root barrel:
@@ -121,7 +125,7 @@ Cinder's A2UI catalog (COR-1310) lists the Cinder components an agent may place 
 - **Identity.** Its `catalogId` and `$id` are the same URI, `https://cinder.website/a2ui/v0_9_1/catalogs/cinder/v1/catalog.json`: `v0_9_1` is the pinned A2UI version and `v1` is Cinder's catalog revision. A client lists that URI in `supportedCatalogIds`; Bureau offers the catalog only to a client that does (see [Bureau's adapter](../../packages/bureau/documentation/interactive-surface.md#the-adapter-experimental)), and offers the A2UI basic catalog otherwise.
 - **Contents.** An explicit allowlist (`scripts/a2ui-catalog-allowlist.json`) of eight components: `Checkbox`, `CopyButton`, `Meter`, `NumberInput`, `Progress`, `Rating`, `Spinner`, and `Toggle`. It defines no functions, and its `anyComponent` is those eight alone, so it does not include the basic catalog's layout or text components.
 - **What a property keeps.** Model-generated UI gets no ambient authority. Styling hooks (`class`, `style`), DOM identity and form association (`id`, `form`, `name`), anything that fetches or navigates (`href`, `src`), raw markup (`html`), event handlers, ARIA references to other elements, and `data-*` attributes never reach the catalog. Each entry carries an accessible name as its `label`, taken from the component's `label`, `ariaLabel`, `alt`, or `title`; the generator fails when a listed component has none.
-- **Regenerating.** The `metadata` task rewrites the catalog; `bun scripts/generate-a2ui-catalog.ts --write-bureau` rewrites Bureau's copy and its digest after a change. The generator validates the result against the vendored A2UI v0.9.1 schemas (`scripts/a2ui/PROVENANCE.json` names the upstream commit) and writes nothing if a listed component has no schema or no accessible name.
+- **Regenerating.** The `metadata` task rewrites the catalog; `bun ../../internal/component-tooling/scripts/generate-a2ui-catalog.ts --write-bureau` rewrites Bureau's copy and its digest after a change. The generator validates the result against the vendored A2UI v0.9.1 schemas (`internal/component-tooling/scripts/a2ui/PROVENANCE.json` names the upstream commit) and writes nothing if a listed component has no schema or no accessible name.
 - **Rendering.** `A2uiSurface` in `@lostgradient/chat` renders the basic catalog only, so it does not render this catalog's components; they report as `unsupported-component`. A renderer that lists this catalog has to implement those components itself.
 
 ## Design system
@@ -196,7 +200,7 @@ bun run test
 bun run tokens:check
 ```
 
-After editing component source under `src/components/<component-id>/`, run `bun scripts/generate-component-artifacts.ts --fix` to refresh the README's generated regions and the root registries; the `metadata` task regenerates schemas, variables, examples and the manifest in `.metadata/`. Token corpus changes use `bun run tokens:generate`.
+After editing component source under `src/components/<component-id>/`, run `bun ../../internal/component-tooling/scripts/generate-component-artifacts.ts --fix` to refresh the README's generated regions and the root registries; the `metadata` task regenerates schemas, variables, examples and the manifest in `.metadata/`. Token corpus changes use `bun run tokens:generate`.
 
 From the Corvidae root, `bunx turbo run lint typecheck test --filter=@lostgradient/cinder` checks this workspace and `bun run validate` checks the complete repository. Browser fixtures and interaction tests live in `scripts/browser-fixtures`. Cinder has no library build or publishing step.
 

@@ -240,39 +240,57 @@ for (const theme of ['light', 'dark'] as const) {
       try {
         await page.locator('.cinder-json-editor__problem').waitFor();
         expect(await page.locator('.cinder-json-editor__toolbar').count()).toBe(0);
-        const corner = await page.evaluate(() => {
-          const rect = (selector: string) => {
-            const element = document.querySelector(selector);
-            if (!(element instanceof HTMLElement)) throw new Error(`Missing ${selector}.`);
-            return element.getBoundingClientRect();
-          };
-          const frame = rect('.cinder-json-editor__input');
-          const actions = rect('.cinder-json-editor__actions');
-          const editor = rect('.cm-editor');
-          const gutters = rect('.cm-gutters');
-          const firstLine = rect('.cm-content > .cm-line');
-          const actionsElement = document.querySelector('.cinder-json-editor__actions');
-          return {
-            frameTop: frame.top,
-            frameRight: frame.right,
-            editorTop: editor.top,
-            actionsTop: actions.top,
-            actionsBottom: actions.bottom,
-            actionsLeft: actions.left,
-            actionsRight: actions.right,
-            guttersRight: gutters.right,
-            firstLineBottom: firstLine.bottom,
-            actionsBorder: actionsElement ? getComputedStyle(actionsElement).borderTopWidth : '',
-          };
-        });
-        // The editor starts at the frame's top edge: nothing sits above it.
-        expect(Math.abs(corner.editorTop - corner.frameTop)).toBeLessThanOrEqual(1 + TOLERANCE);
-        // The actions float in the top inline-end corner, over the first line only.
-        expect(corner.actionsTop - corner.frameTop).toBeLessThanOrEqual(8);
-        expect(corner.frameRight - corner.actionsRight).toBeLessThanOrEqual(24);
-        expect(corner.actionsBottom).toBeLessThanOrEqual(corner.firstLineBottom + TOLERANCE);
-        expect(corner.actionsLeft).toBeGreaterThanOrEqual(corner.guttersRight);
-        expect(corner.actionsBorder).toBe('0px');
+        // CodeMirror measures its line height after the fixture mounts, and the stylesheet that sets
+        // the editor's font size can land after that, so the first line's height is settled only
+        // once the geometry stops changing. Poll it instead of reading it once.
+        await expect
+          .poll(async () => {
+            const corner = await page.evaluate(() => {
+              const rect = (selector: string) => {
+                const element = document.querySelector(selector);
+                if (!(element instanceof HTMLElement)) throw new Error(`Missing ${selector}.`);
+                return element.getBoundingClientRect();
+              };
+              const frame = rect('.cinder-json-editor__input');
+              const actions = rect('.cinder-json-editor__actions');
+              const editor = rect('.cm-editor');
+              const gutters = rect('.cm-gutters');
+              const firstLine = rect('.cm-content > .cm-line');
+              const actionsElement = document.querySelector('.cinder-json-editor__actions');
+              return {
+                frameTop: frame.top,
+                frameRight: frame.right,
+                editorTop: editor.top,
+                actionsTop: actions.top,
+                actionsBottom: actions.bottom,
+                actionsLeft: actions.left,
+                actionsRight: actions.right,
+                guttersRight: gutters.right,
+                firstLineBottom: firstLine.bottom,
+                actionsBorder: actionsElement
+                  ? getComputedStyle(actionsElement).borderTopWidth
+                  : '',
+              };
+            });
+            const problems: string[] = [];
+            // The editor starts at the frame's top edge: nothing sits above it.
+            if (Math.abs(corner.editorTop - corner.frameTop) > 1 + TOLERANCE) {
+              problems.push('the editor does not start at the frame top');
+            }
+            // The actions float in the top inline-end corner, over the first line only.
+            if (corner.actionsTop - corner.frameTop > 8) problems.push('actions sit too low');
+            if (corner.frameRight - corner.actionsRight > 24)
+              problems.push('actions sit too far in');
+            if (corner.actionsBottom > corner.firstLineBottom + TOLERANCE) {
+              problems.push('actions reach past the first line');
+            }
+            if (corner.actionsLeft < corner.guttersRight) problems.push('actions cover the gutter');
+            if (corner.actionsBorder !== '0px') problems.push('actions have a border');
+            return problems.length === 0
+              ? 'in the corner'
+              : `${problems.join('; ')} ${JSON.stringify(corner)}`;
+          })
+          .toBe('in the corner');
 
         // Reachable by keyboard and announced: the status action is a tab stop ahead of the text
         // (Format is off while the source does not parse), and the status is a live region.

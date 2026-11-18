@@ -42,6 +42,8 @@ Flat — a row on the surrounding surface, with no border, no raised trigger, an
 </Collapsible>
 ```
 
+A Collapsible inside another Collapsible's panel is flat by default, so a disclosure never draws a box inside a box. Pass `framed` to keep the bordered card on a nested one.
+
 ### State model
 
 `open` is bindable. Without `bind:open`, it seeds local state and can still be updated by parent prop changes, but trigger clicks update local state only. Use `bind:open` (or mirror `onToggle` in the parent) when parent and trigger interactions must stay fully synchronized. `onToggle` fires on every toggle with the next boolean, so one-way observers stay in sync.
@@ -67,6 +69,7 @@ For multiple coordinated sections where opening one may close others, use [`Acco
 | `chevron` | `"start"` \| `"end"` | no | `"end"` | Where the chevron sits. `'end'` is at the trailing edge and points down, turning over when the disclosure opens. `'start'` is before the label and points right, turning down when it opens. |
 | `class` | `string` | no | — | Additional classes merged onto the root element. |
 | `disabled` | `boolean` | no | `false` | When true, the trigger cannot be toggled. |
+| `framed` | `boolean` | no | `false` | Keeps the frame of a Collapsible that sits inside another Collapsible's panel. Nested, a disclosure is flat by default (a box inside a box reads as clutter); set this to keep the bordered card. It changes nothing for a Collapsible that is not nested. |
 | `idBase` | `string` | no | — | Base used to derive the trigger, label, and panel ARIA ids. Auto-generated when omitted. |
 | `labelClass` | `string` | no | — | Additional class names applied to the trigger label wrapper. |
 | `open` | `boolean` | no | `false` | Bindable open state. Without `bind:open`, this seeds local state and can be updated by parent prop changes. Use `bind:open` for full parent/trigger synchronization. |

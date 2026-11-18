@@ -1,18 +1,16 @@
 import { afterEach, describe, expect, it } from 'bun:test';
 
+import { principalFromApiKey } from '@lostgradient/backchannel';
+import { createOperationRegistry, dispatchJsonRpc } from '@lostgradient/backchannel/internals';
 import { MemoryStorage } from '@lostgradient/storage';
 import { Engine } from '../../core/engine.ts';
-import type { WorkflowContext } from '../../core/types.ts';
-import { workflow } from '../../core/types.ts';
+import { type WorkflowContext, workflow } from '../../core/types.ts';
 import {
   UpdateTimeoutError,
   UpdateValidationError,
   WorkflowTerminalError,
 } from '../../core/updates.ts';
-import { dispatchJsonRpc } from '../json-rpc-dispatch.ts';
 import { handleRequestAsLocalUser as handleRequest } from '../local-user-request.test-support.ts';
-import { createOperationRegistry } from '../operation-catalog.ts';
-import { principalFromApiKey } from '../principal.ts';
 import { invalidJsonRequest, jsonRequest } from './operation-test-helpers.test-support.ts';
 import { updateWorkflowOperation, updateWorkflowRestBinding } from './update-workflow.ts';
 

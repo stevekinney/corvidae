@@ -106,7 +106,19 @@ const LONG_FIELD = `longField${'f'.repeat(300)}`;
 const LONG_FIELD_DESCRIPTION = `What it holds ${'d'.repeat(300)}`;
 
 /** The state the frame is in once a route holds its seeded content; `ready` unless listed. */
-const EXPECTED_STATE: Readonly<Record<string, string>> = {};
+const EXPECTED_STATE: Readonly<Record<string, string>> = {
+  // The main host serves no plugin page (`responsive-routes.ts`), so its address is the not-found state.
+  '/plugins/:plugin/*': 'not-found',
+};
+
+/**
+ * The state a capture is named for when it is not the frame's own: this host's engine lists none of
+ * the Bureau's own types, so its Internal workflows page is empty here; this capture takes its own
+ * state name instead of overwriting the showcase capture's files of the same route.
+ */
+const CAPTURE_STATE: Readonly<Record<string, string>> = {
+  '/internal-workflows': 'no-internal-types',
+};
 
 /** Text a route prints only once its seeded content has loaded. */
 const MARKERS: Readonly<Record<string, RegExp>> = {
@@ -338,11 +350,11 @@ const reveal: Readonly<Record<string, (page: Page) => Promise<void>>> = {
   // A record table ends a long value with an ellipsis and keeps the whole of it in the title (row 16c).
   '/settings/models': async (page) => {
     await expect(
-      page.locator(`.ib-model-name__identifier .cinder-text[title="${LONG_MODEL}"]`),
+      page.locator('.ib-models__identifier .cinder-text', { hasText: LONG_MODEL }),
     ).toBeVisible();
   },
   '/health/runs': async (page) => {
-    await expect(page.locator(`.cinder-badge__label[title="${LONG_TAG}"]`).first()).toBeVisible();
+    await expect(page.locator('.cinder-badge__label', { hasText: LONG_TAG }).first()).toBeVisible();
   },
   // The test delivery's line opens to the tries, each of which got no answer from the address.
   '/hooks/:hook': async (page) => {
@@ -352,14 +364,11 @@ const reveal: Readonly<Record<string, (page: Page) => Promise<void>>> = {
     await expect(page.getByText('No answer').first()).toBeVisible();
   },
   '/hooks': async (page) => {
-    // A row says a webhook's host on line two and keeps the whole address in that line's tooltip.
+    // A row says a webhook's host on line two and keeps the whole name and address in the row's
+    // one tooltip, the title then line two, since the row is a link (COR-2227).
     await expect(page.locator('.ib-hooks__line').first()).toBeVisible();
-    await expect(page.locator(`li[data-hook] [title*="${LONG_HOOK_URL}"]`).first()).toBeAttached();
-    await expect(
-      page
-        .locator(`li[data-hook] .cinder-stacked-list-item__title[title="${LONG_HOOK_NAME}"]`)
-        .first(),
-    ).toBeVisible();
+    await expect(page.locator(`li[data-hook][title*="${LONG_HOOK_URL}"]`).first()).toBeVisible();
+    await expect(page.locator(`li[data-hook][title^="${LONG_HOOK_NAME}"]`).first()).toBeVisible();
   },
   // The whole log is closed until asked for; open it so its lines are measured too.
   '/runs/:run (steps and logs)': async (page) => {
@@ -418,7 +427,7 @@ const reveal: Readonly<Record<string, (page: Page) => Promise<void>>> = {
  */
 async function problemsAt(page: Page, pattern: string, width: number): Promise<string[]> {
   await settle(page, pattern, width);
-  const state = EXPECTED_STATE[pattern] ?? 'ready';
+  const state = CAPTURE_STATE[pattern] ?? EXPECTED_STATE[pattern] ?? 'ready';
   await captureForDesignReview(page, { route: pattern, state, source: 'responsive.spec.ts' });
   const findings = problemsOf(await overflowOf(page));
   const outlet = page.locator('main.weft-shell-outlet');
@@ -793,6 +802,156 @@ test.describe('the measurement', () => {
   });
 });
 
+for (const pattern of ['/health/runs', '/workflows/:workflow/runs']) {
+  test(`${pattern} at 768 pixels: one Updated column, a Type that tells runs apart, one line for the revision`, async ({
+    page,
+  }) => {
+    await settle(page, pattern, 768);
+    const table = page.locator('table.weft-workflows-table');
+    await expect(table).toBeVisible();
+
+    // One Updated column in place of Created and Updated, with the Created time in each cell's
+    // title and, visually hidden, in its text. The tags are Type's second line, not a column.
+    const headerTexts = await table.locator('thead tr > *').allInnerTexts();
+    const headers = headerTexts.map((text) => text.trim());
+    expect(headers).toContain('Updated');
+    expect(headers).not.toContain('Created');
+    expect(headers).not.toContain('Tags');
+    await expect(table.locator('thead th', { hasText: 'Updated' })).not.toHaveAttribute('title');
+    expect(await table.locator('tbody .weft-workflows-table__created').count()).toBeGreaterThan(0);
+
+    // No sideways scroll: the table's right edge is on its container's, and Updated is whole.
+    const fit = await table.evaluate((element) => {
+      const scroll = element.closest('.cinder-table-scroll') as HTMLElement;
+      const box = scroll.getBoundingClientRect();
+      const tableBox = element.getBoundingClientRect();
+      const updated = Array.from(element.querySelectorAll('thead th')).find(
+        (cell) => cell.textContent?.trim() === 'Updated',
+      ) as HTMLElement;
+      const column = Array.from(updated.parentElement?.children ?? []).indexOf(updated);
+      const cells = Array.from(element.querySelectorAll('tbody tr')).map(
+        (row) => row.children[column] as HTMLElement,
+      );
+      // The table sits inside the frame's border, so its edge is compared with the content edge.
+      const inner = box.right - Number.parseFloat(getComputedStyle(scroll).borderRightWidth);
+      const limit = inner + 0.5;
+      return {
+        scrolls: scroll.scrollWidth > scroll.clientWidth + 1,
+        edge: Math.abs(tableBox.right - inner),
+        headerWhole: updated.scrollWidth <= updated.clientWidth + 1,
+        headerInside: updated.getBoundingClientRect().right <= limit,
+        valuesWhole: cells.every(
+          (cell) =>
+            cell.scrollWidth <= cell.clientWidth + 1 && cell.getBoundingClientRect().right <= limit,
+        ),
+      };
+    });
+    expect(fit.scrolls).toBe(false);
+    expect(fit.edge).toBeLessThanOrEqual(1);
+    expect(fit.headerWhole && fit.headerInside).toBe(true);
+    expect(fit.valuesWhole).toBe(true);
+
+    // Every tag is whole, or keeps at least six characters before its ellipsis.
+    const tagReads = await table
+      .locator('tbody .weft-workflows-table__tags .cinder-badge__label')
+      .evaluateAll((labels) =>
+        labels.map((label) => {
+          const text = (label.textContent ?? '').trim();
+          if (label.scrollWidth <= label.clientWidth + 1) return { text, kept: text.length };
+          const walker = document.createTreeWalker(label, NodeFilter.SHOW_TEXT);
+          let node = walker.nextNode();
+          while (node !== null && (node.textContent ?? '').trim() === '') node = walker.nextNode();
+          const box = label.getBoundingClientRect();
+          const room = box.right - Number.parseFloat(getComputedStyle(label).fontSize);
+          let kept = 0;
+          if (node !== null) {
+            const raw = node.textContent ?? '';
+            const offset = raw.length - raw.trimStart().length;
+            for (let index = 0; index < text.length; index += 1) {
+              const range = document.createRange();
+              range.setStart(node, offset + index);
+              range.setEnd(node, offset + index + 1);
+              if (range.getBoundingClientRect().right > room) break;
+              kept += 1;
+            }
+          }
+          return { text, kept };
+        }),
+      );
+    for (const { text, kept } of tagReads) {
+      expect(kept, `tag "${text}" keeps ${kept} characters`).toBeGreaterThanOrEqual(
+        Math.min(6, text.length),
+      );
+    }
+
+    const times = table.locator('tbody .weft-workflows-table__time');
+    expect(await times.count()).toBeGreaterThan(0);
+    for (const title of await times.evaluateAll((all) =>
+      all.map((element) => element.getAttribute('title') ?? ''),
+    )) {
+      expect(title).toMatch(/Created \d{4}-\d{2}-\d{2}T/);
+    }
+
+    // Type shows enough of its text that two runs of different types never read the same.
+    const typeColumn = headers.indexOf('Type');
+    expect(typeColumn).toBeGreaterThanOrEqual(0);
+    const shown = await table.locator('tbody tr').evaluateAll((rows, column) => {
+      return rows.map((row) => {
+        const text = row.children[column]?.querySelector<HTMLElement>('.cinder-table__cell-text');
+        if (text === null || text === undefined) return { full: '', visible: '' };
+        const walker = document.createTreeWalker(text, NodeFilter.SHOW_TEXT);
+        let node = walker.nextNode();
+        while (node !== null && (node.textContent ?? '').trim() === '') node = walker.nextNode();
+        const full = (node?.textContent ?? '').trim();
+        if (node === null || text.scrollWidth <= text.clientWidth) return { full, visible: full };
+        // A character is shown when it ends inside the box, less room for the ellipsis.
+        const box = text.getBoundingClientRect();
+        const room = box.right - Number.parseFloat(getComputedStyle(text).fontSize);
+        const characters = (node.textContent ?? '').trimStart();
+        const offset = (node.textContent ?? '').length - characters.length;
+        let count = 0;
+        for (let index = 0; index < full.length; index += 1) {
+          const range = document.createRange();
+          range.setStart(node, offset + index);
+          range.setEnd(node, offset + index + 1);
+          if (range.getBoundingClientRect().right > room) break;
+          count += 1;
+        }
+        return { full, visible: `${full.slice(0, count)}…` };
+      });
+    }, typeColumn);
+    expect(shown.length).toBeGreaterThan(0);
+    for (const { full, visible } of shown) {
+      const kept = visible.endsWith('…') && visible !== full ? visible.length - 1 : visible.length;
+      expect(kept, `type "${full}" shows "${visible}"`).toBeGreaterThanOrEqual(
+        Math.min(6, full.length),
+      );
+    }
+    const visibleByType = new Map<string, string>();
+    for (const { full, visible } of shown) visibleByType.set(full, visible);
+    expect(
+      new Set(visibleByType.values()).size,
+      `Type shows ${JSON.stringify([...visibleByType])}`,
+    ).toBe(visibleByType.size);
+
+    // The shortened revision is one line in its column.
+    const revision = table.locator('.weft-workflows-table__revision').first();
+    await expect(revision).toBeVisible();
+    const measured = await revision.evaluate((element) => {
+      const style = getComputedStyle(element);
+      return {
+        whiteSpace: style.whiteSpace,
+        height: element.getBoundingClientRect().height,
+        fontSize: Number.parseFloat(style.fontSize),
+        clipped: element.scrollWidth > element.clientWidth,
+      };
+    });
+    expect(measured.whiteSpace).toBe('nowrap');
+    expect(measured.height).toBeLessThan(measured.fontSize * 2);
+    expect(measured.clipped).toBe(false);
+  });
+}
+
 for (const route of routes) {
   if (route.redirect !== undefined) continue;
   const owner = pending.find((entry) => entry.pattern === route.pattern);
@@ -827,6 +986,163 @@ for (const route of routes) {
     });
   }
 }
+
+/**
+ * A `fit` table below a phone's width is a list of flat rows (COR-2364, Cinder Table). Measures the
+ * rows of the table in `scope` against the layout the design review agreed: the table and the
+ * document do not scroll sideways, a row's title, status and field labels start at one x, the
+ * status word is whole, the end value shares the title's first-line baseline and ends at the row's
+ * inline end, every cell that is not empty is drawn with its header text as its label, and the rows
+ * are flat, divided by one 1px line, with none after the last.
+ */
+async function stackedRowProblems(page: Page, scope: string): Promise<string[]> {
+  return page.evaluate((scopeSelector) => {
+    const problems: string[] = [];
+    const table = document.querySelector<HTMLTableElement>(`${scopeSelector} table`);
+    if (table === null) return ['no table'];
+    if (table.scrollWidth > table.clientWidth) problems.push('the table scrolls sideways');
+    const box = table.parentElement;
+    if (box !== null && box.scrollWidth > box.clientWidth) problems.push('the scroll box scrolls');
+    if (document.documentElement.scrollWidth > document.documentElement.clientWidth) {
+      problems.push('the document scrolls sideways');
+    }
+    if (getComputedStyle(table).display === 'table') problems.push('the table did not stack');
+    const rows = Array.from(table.querySelectorAll<HTMLElement>(':scope > tbody > tr'));
+    if (rows.length === 0) problems.push('no rows');
+    const baselineOf = (element: Element): number | undefined => {
+      const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+      let node = walker.nextNode();
+      while (node !== null && (node.textContent ?? '').trim() === '') node = walker.nextNode();
+      if (node === null) return undefined;
+      const probe = document.createElement('span');
+      probe.style.cssText = 'display:inline-block;width:0;height:0';
+      node.parentNode?.insertBefore(probe, node);
+      const bottom = probe.getBoundingClientRect().bottom;
+      probe.remove();
+      return bottom;
+    };
+    rows.forEach((row, index) => {
+      const where = `row ${index + 1}`;
+      const style = getComputedStyle(row);
+      if (Number.parseFloat(style.borderTopLeftRadius) > 0) problems.push(`${where} has a radius`);
+      if (style.boxShadow !== 'none') problems.push(`${where} has a shadow`);
+      const last = index === rows.length - 1;
+      if (
+        last ? Number.parseFloat(style.borderBottomWidth) !== 0 : style.borderBottomWidth !== '1px'
+      ) {
+        problems.push(`${where} has a ${style.borderBottomWidth} bottom line`);
+      }
+      const title = row.querySelector<HTMLElement>('[data-cinder-stack-title]');
+      if (title === null) {
+        problems.push(`${where} has no title`);
+        return;
+      }
+      const left = title.getBoundingClientRect().left;
+      for (const cell of Array.from(row.children) as HTMLElement[]) {
+        const empty = cell.hasAttribute('data-cinder-stack-empty');
+        if (empty) {
+          if (getComputedStyle(cell).display !== 'none')
+            problems.push(`${where} draws an empty cell`);
+          continue;
+        }
+        const part = cell.getAttribute('data-cinder-stack');
+        const label = cell.getAttribute('data-cinder-stack-label') ?? '';
+        if (part !== 'end' && Math.abs(cell.getBoundingClientRect().left - left) > 1) {
+          problems.push(`${where}: ${label} starts at a different x from the title`);
+        }
+        if (part === 'status' && cell.scrollWidth > cell.clientWidth) {
+          problems.push(`${where}: the status is clipped`);
+        }
+        if (part === 'end') {
+          const end = baselineOf(cell);
+          const heading = baselineOf(title);
+          if (end === undefined || heading === undefined || Math.abs(end - heading) > 1) {
+            problems.push(`${where}: the end value is off the title's baseline`);
+          }
+          const rowBox = row.getBoundingClientRect();
+          const inset = Number.parseFloat(style.paddingRight);
+          if (Math.abs(cell.getBoundingClientRect().right - (rowBox.right - inset)) > 1) {
+            problems.push(`${where}: the end value is not at the row's inline end`);
+          }
+        }
+        if (cell !== title && part === null) {
+          const content = getComputedStyle(cell, '::before').content.replace(/^"|"$/g, '');
+          if (label === '' || content !== label) problems.push(`${where}: ${label} has no label`);
+        }
+      }
+    });
+    return problems;
+  }, scope);
+}
+
+for (const width of [768, 1280]) {
+  test(`Models is a four-column table at ${width} pixels`, async ({ page }) => {
+    await settle(page, '/settings/models', width);
+    const section = page.locator('[data-section="models"]');
+    expect(await section.locator('table').evaluate((el) => getComputedStyle(el).display)).toBe(
+      'table',
+    );
+    await expect(section.locator('thead th')).toHaveCount(4);
+    await expect(section.locator('.cinder-table__stack-sort')).toHaveCount(0);
+  });
+}
+
+for (const width of [320, 375]) {
+  test(`Models stacks as flat rows at ${width} pixels`, async ({ page }) => {
+    await settle(page, '/settings/models', width);
+    expect(await stackedRowProblems(page, '[data-section="models"]')).toEqual([]);
+    // Sorting stays reachable on a phone: one Select above the rows, the header buttons out of the tab order.
+    await expect(page.locator('[data-section="models"] .cinder-table__stack-sort')).toHaveCount(1);
+    // The sort control is compact at the rows' inline end, drawn at most 36px tall with a 44px hit area.
+    const sort = await page
+      .locator('[data-section="models"] .cinder-table__stack-sort')
+      .evaluate((box) => {
+        const select = box.querySelector('select') as HTMLSelectElement;
+        const hit = box.querySelector('.cinder-table__stack-sort-hit') as HTMLElement;
+        const table = box.parentElement?.querySelector('table') as HTMLElement;
+        const row = table.querySelector('tbody tr') as HTMLElement;
+        return {
+          selectHeight: select.getBoundingClientRect().height,
+          hitHeight: hit.getBoundingClientRect().height,
+          selectWidth: select.getBoundingClientRect().width,
+          boxWidth: box.getBoundingClientRect().width,
+          selectRight: select.getBoundingClientRect().right,
+          rowsRight: row.getBoundingClientRect().right,
+          options: Array.from(select.options).map((option) => option.textContent ?? ''),
+        };
+      });
+    expect(sort.selectHeight).toBeLessThanOrEqual(36);
+    expect(sort.hitHeight).toBeGreaterThanOrEqual(43.5);
+    expect(sort.selectWidth).toBeLessThan(sort.boxWidth);
+    expect(Math.abs(sort.selectRight - sort.rowsRight)).toBeLessThanOrEqual(1);
+    expect(sort.options.filter((option) => option.startsWith('Sort: ')).length).toBeGreaterThan(0);
+  });
+
+  test(`Internal workflows stacks as flat rows at ${width} pixels`, async ({ page }) => {
+    await settle(page, '/internal-workflows', width);
+    const rows = page.locator('[data-page="internal-workflows"] tbody tr');
+    // This host's engine registers none of the Bureau's own types (see MARKERS), so the table is
+    // measured where the Bureau's host lists them.
+    test.skip((await rows.count()) === 0, 'this host lists no internal workflows');
+    expect(await stackedRowProblems(page, '[data-page="internal-workflows"]')).toEqual([]);
+    // Tapping the card outside its link opens the workflow's runs; the link's ::after covers the row.
+    const row = rows.first();
+    const box = (await row.boundingBox())!;
+    await page.mouse.click(box.x + box.width - 4, box.y + box.height - 4);
+    await expect(page).toHaveURL(/\/workflows\/.+\/runs/);
+  });
+}
+
+test('the engine workflow table keeps its table layout and header at 320 pixels', async ({
+  page,
+}) => {
+  await settle(page, '/health/runs', 320);
+  const table = page.locator('table.weft-workflows-table');
+  await expect(table).toBeVisible();
+  expect(await table.evaluate((element) => getComputedStyle(element).display)).toBe('table');
+  await expect(table.locator('thead th', { hasText: 'Status' })).toBeVisible();
+  await expect(table.locator('thead th', { hasText: 'Workflow ID' })).toBeVisible();
+});
 
 // The names do not depend on the seed's values, only the addresses do.
 const VARIANTS = Object.keys(responsiveVariants({ workflowFile: WORKFLOW_FILE } as ResponsiveSeed));

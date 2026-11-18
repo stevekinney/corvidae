@@ -18,10 +18,10 @@
 
 import { z } from 'zod';
 
+import { defineOperation } from '@lostgradient/backchannel';
+import type { UnknownRestBinding } from '@lostgradient/backchannel/internals';
 import type { WorkerHealth, WorkerRegistry, WorkerTransport } from '../../worker/registry.ts';
-import { shapeOperationFaultAsJson } from '../operation-fault.ts';
-import { defineOperation } from '../operation-registry.ts';
-import type { UnknownRestBinding } from '../rest-bindings.ts';
+import { shapeWeftOperationFaultAsJson } from '../weft-operation-fault.ts';
 
 const workerHealthSchema = z.enum(['active', 'draining', 'drained']) as z.ZodType<WorkerHealth>;
 const workerTransportSchema = z.enum(['websocket', 'long-poll']) as z.ZodType<WorkerTransport>;
@@ -242,6 +242,6 @@ export function createGetWorkerDiagnosticsRestBinding(): UnknownRestBinding {
       workerId: pathParams['workerId'] ?? '',
     }),
     success: { kind: 'json', status: 200 },
-    shapeFault: shapeOperationFaultAsJson,
+    shapeFault: shapeWeftOperationFaultAsJson,
   };
 }

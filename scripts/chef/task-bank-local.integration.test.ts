@@ -1,0 +1,102 @@
+import { expect, test } from 'bun:test';
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { basename, join } from 'node:path';
+import { runWithHangGuard } from '../../testing/testing/src/hang-guard.ts';
+import { outcomeOf, rethrow } from '../module-scope-scenario.test-support.ts';
+import {
+  materializeTask,
+  verifyTaskBank,
+  type TaskBank,
+  type TaskControl,
+} from './outcome-accounting.ts';
+
+const scratch = mkdtempSync(join(tmpdir(), 'task-bank-local-'));
+const bank = JSON.parse(
+  await Bun.file('scripts/chef/fixtures/sdlc-task-bank.json').text(),
+) as TaskBank;
+
+async function execute(taskId: string, control: TaskControl): Promise<number | null> {
+  const task = bank.tasks.find((entry) => entry.id === taskId);
+  if (task === undefined) throw new Error(`Missing ${taskId}.`);
+  const root = materializeTask(task, scratch, control);
+  const result = await runWithHangGuard(['bun', '--no-install', ...task.oracleArgv], { cwd: root });
+  if (control === 'repaired' && result.exitCode !== 0)
+    throw new Error(`${taskId} repaired: ${result.stderr.toString()}`);
+  return result.exitCode;
+}
+
+const controlsOutcome = await outcomeOf(async () => {
+  for (const taskId of [
+    'local-01',
+    'local-02',
+    'contract-01',
+    'contract-02',
+    'concurrency-01',
+    'concurrency-02',
+    'ui-01',
+    'ui-02',
+    'delivery-01',
+    'delivery-02',
+  ]) {
+    expect(await execute(taskId, 'buggy')).toBe(1);
+    expect(await execute(taskId, 'empty')).toBe(1);
+    expect(await execute(taskId, 'repaired')).toBe(0);
+  }
+});
+
+test('materialized fixtures reject buggy and empty candidates while accepting repairs', () => {
+  rethrow(controlsOutcome);
+});
+
+test('the materializer never allows an oracle replacement or filesystem escape', () => {
+  const task = structuredClone(bank.tasks[0]!);
+  task.repairedFiles['oracle.ts'] = 'process.exit(0);';
+  expect(() => materializeTask(task, scratch, 'repaired')).toThrow('repairs unpermitted path');
+  task.repairedFiles = {};
+  task.files['../escape.ts'] = 'bad';
+  expect(() => materializeTask(task, scratch, 'buggy')).toThrow('unsafe file path');
+});
+
+test('rejects an escaped task identifier before verification or materialization writes', () => {
+  const escapedId = `../${basename(scratch)}-outside`;
+  const invalid = structuredClone(bank);
+  invalid.tasks[0]!.id = escapedId;
+  const escapedRoot = join(scratch, escapedId, 'buggy');
+  expect(verifyTaskBank(invalid)).toContain(`${escapedId} has an invalid task id.`);
+  expect(existsSync(escapedRoot)).toBe(false);
+  expect(() => materializeTask(invalid.tasks[0]!, scratch, 'buggy')).toThrow('invalid task id');
+  expect(existsSync(escapedRoot)).toBe(false);
+});
+
+const constantsOutcome = await outcomeOf(async () => {
+  for (const taskId of [
+    'local-01',
+    'local-02',
+    'contract-01',
+    'contract-02',
+    'concurrency-01',
+    'concurrency-02',
+    'ui-01',
+    'ui-02',
+    'delivery-01',
+    'delivery-02',
+  ]) {
+    const task = bank.tasks.find((entry) => entry.id === taskId)!;
+    const root = materializeTask(task, scratch, 'repaired');
+    writeFileSync(
+      join(root, task.permittedPaths[0]!),
+      "export const parseAttemptCount = () => 12; export const uniqueKeys = () => []; export const serializeResult = () => ({ id: 'one', state: 'failed', retryable: false }); export const serializeReceipt = () => ({ key: 'zero', sequence: 0, label: '' });\n",
+    );
+    const result = await runWithHangGuard(['bun', '--no-install', ...task.oracleArgv], {
+      cwd: root,
+    });
+    expect(result.exitCode).toBe(1);
+  }
+});
+
+test('distinct oracle cases reject constant candidate answers', () => {
+  rethrow(constantsOutcome);
+});
+
+rmSync(scratch, { recursive: true, force: true });

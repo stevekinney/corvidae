@@ -19,9 +19,13 @@
     variant = 'row',
     rows = 3,
     action = false,
+    leading = false,
+    trailing = false,
+    chevronColumn = false,
     statusMarker = 'bar',
     statusColumn = true,
-    framed = true,
+    framed = false,
+    detailLine = false,
     dayBand = false,
     label,
     delay = 0,
@@ -196,13 +200,28 @@
             class={classNames(
               'cinder-skeleton-grouped-row',
               action && 'cinder-skeleton-grouped-row--action',
+              leading && 'cinder-skeleton-grouped-row--leading',
             )}
           >
+            {#if leading}
+              <!-- The row's icon slot: the bars start where the row's text starts. -->
+              <div class="cinder-skeleton-grouped-leading">
+                <div class="cinder-skeleton cinder-skeleton-icon-block"></div>
+              </div>
+            {/if}
             <div class="cinder-skeleton-grouped-content">
               <!-- Each bar sits in a line box of the text it stands for, so the row is as tall. -->
               <div class="cinder-skeleton-grouped-text">
                 <div class="cinder-skeleton-grouped-line cinder-skeleton-grouped-line--title">
                   <div class="cinder-skeleton cinder-skeleton-title-bar"></div>
+                  {#if trailing}
+                    <div
+                      class={classNames(
+                        'cinder-skeleton cinder-skeleton-trailing-bar',
+                        chevronColumn && 'cinder-skeleton-trailing-bar--chevron-column',
+                      )}
+                    ></div>
+                  {/if}
                 </div>
                 <div class="cinder-skeleton-grouped-line cinder-skeleton-grouped-line--subtitle">
                   <div class="cinder-skeleton cinder-skeleton-meta-bar"></div>
@@ -218,7 +237,7 @@
     {:else if visible}
       <div
         class="cinder-skeleton-list"
-        data-cinder-framed={framed ? undefined : 'false'}
+        data-cinder-framed={framed ? '' : undefined}
         aria-hidden="true"
       >
         {#if dayBand}
@@ -227,22 +246,61 @@
           </div>
         {/if}
         {#each { length: rowCount } as _, index (index)}
+          <!-- The row is a two-line StackedListItem's own layout, in its own classes, with a bar
+               where each piece of text goes, so it is as tall as the row it stands for by
+               construction. A zero-width space gives a cell the line box its text would have. -->
           <div
-            class="cinder-skeleton-row"
+            class={classNames(
+              'cinder-skeleton-row cinder-stacked-list-item cinder-stacked-list-item--lines cinder-stacked-list-item--status-leading',
+              statusColumn &&
+                'cinder-stacked-list-item--status-column cinder-stacked-list-item--has-status',
+              !statusColumn && 'cinder-stacked-list-item--has-leading',
+            )}
             data-cinder-status-column={statusColumn ? undefined : 'none'}
           >
-            <div class="cinder-skeleton-row-status">
-              <div
-                class="cinder-skeleton cinder-skeleton-status-bar"
-                data-cinder-marker={statusMarker === 'dot' ? 'dot' : undefined}
-              ></div>
-            </div>
-            <div class="cinder-skeleton-row-text">
-              <div class="cinder-skeleton cinder-skeleton-title-bar"></div>
-              <div class="cinder-skeleton cinder-skeleton-meta-bar"></div>
-            </div>
-            <div class="cinder-skeleton-row-time">
-              <div class="cinder-skeleton cinder-skeleton-time-bar"></div>
+            <div class="cinder-stacked-list-item__layout">
+              {#snippet marker()}
+                <span class="cinder-status-dot" data-cinder-size="sm">
+                  {#if statusMarker === 'dot'}
+                    <span
+                      class="cinder-status-dot__indicator cinder-skeleton cinder-skeleton-status-bar"
+                      data-cinder-marker="dot"
+                    ></span>
+                    <span class="cinder-status-dot__label">&#8203;</span>
+                  {:else}
+                    <span class="cinder-status-dot__label"
+                      >&#8203;<span class="cinder-skeleton cinder-skeleton-status-bar"></span></span
+                    >
+                  {/if}
+                </span>
+              {/snippet}
+              {#if statusColumn}
+                <div class="cinder-stacked-list-item__status cinder-skeleton-row-status">
+                  {@render marker()}
+                </div>
+              {:else}
+                <div class="cinder-stacked-list-item__leading cinder-skeleton-row-status">
+                  {@render marker()}
+                </div>
+              {/if}
+              <div class="cinder-stacked-list-item__body cinder-skeleton-row-text">
+                <div class="cinder-stacked-list-item__title">
+                  <span class="cinder-skeleton cinder-skeleton-title-bar"></span>
+                </div>
+                <div class="cinder-stacked-list-item__time cinder-skeleton-row-time">
+                  <span>&#8203;<span class="cinder-skeleton cinder-skeleton-time-bar"></span></span>
+                </div>
+                <div class="cinder-stacked-list-item__line-two">
+                  <div class="cinder-stacked-list-item__meta">
+                    <span class="cinder-skeleton cinder-skeleton-meta-bar"></span>
+                  </div>
+                </div>
+                {#if detailLine}
+                  <div class="cinder-stacked-list-item__detail">
+                    <span class="cinder-skeleton cinder-skeleton-meta-bar"></span>
+                  </div>
+                {/if}
+              </div>
             </div>
           </div>
         {/each}

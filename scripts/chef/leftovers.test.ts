@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
+  callerAncestors,
   findLeftovers,
   findLockProcesses,
   findWorktreeProcesses,
@@ -28,7 +29,7 @@ afterEach(() => {
 function fakeRunner(stdout: string, record?: string[][]): Runner {
   return (command) => {
     record?.push(command);
-    return { code: stdout === '' ? 1 : 0, stdout, stderr: '' };
+    return { code: stdout === '' ? 1 : 0, stdout, stderr: '', pid: 50 };
   };
 }
 
@@ -42,10 +43,21 @@ describe('parsers', () => {
   });
 
   test('parseLsofFields pairs each pid with its command and merges repeats', () => {
-    expect(parseLsofFields('p10\ncsleep\np11\ncbun\np10\ncsleep\n')).toEqual([
-      { pid: 10, command: 'sleep' },
-      { pid: 11, command: 'bun' },
+    expect(parseLsofFields('p10\nR1\ncsleep\np11\nR10\ncbun\np10\ncsleep\n')).toEqual([
+      { pid: 10, parent: 1, command: 'sleep' },
+      { pid: 11, parent: 10, command: 'bun' },
     ]);
+  });
+
+  test('caller ancestors exclude only the caller chain', () => {
+    const parents = new Map([
+      [10, 9],
+      [9, 1],
+      [11, 10],
+      [12, 2],
+    ]);
+    expect(callerAncestors(10, (pid) => parents.get(pid))).toEqual(new Set([9]));
+    expect(callerAncestors(11, (pid) => parents.get(pid))).toEqual(new Set([10, 9]));
   });
 });
 
@@ -135,7 +147,7 @@ describe('run', () => {
 describe('findWorktreeProcesses fails closed', () => {
   const answer =
     (code: number, stdout: string, stderr: string): Runner =>
-    () => ({ code, stdout, stderr });
+    () => ({ code, stdout, stderr, pid: 50 });
 
   test('lsof exiting 1 with no output at all means nothing is there', () => {
     expect(findWorktreeProcesses(sandbox, answer(1, '', ''), 0)).toEqual([]);
@@ -147,6 +159,26 @@ describe('findWorktreeProcesses fails closed', () => {
     expect(findWorktreeProcesses(sandbox, answer(1, 'p10\ncsleep\n', 'lsof: WARNING'), 0)).toEqual(
       found,
     );
+  });
+
+  test('does not report a caller ancestor but keeps an owned background child', () => {
+    const calls: string[][] = [];
+    const runner: Runner = (command) => {
+      calls.push(command);
+      if (command[0] === 'lsof')
+        return { code: 0, stdout: 'p9\nczsh\np11\ncbun\n', stderr: '', pid: 50 };
+      if (command.at(-1) === '10') return { code: 0, stdout: '9\n', stderr: '' };
+      if (command.at(-1) === '9') return { code: 0, stdout: '1\n', stderr: '' };
+      return { code: 1, stdout: '', stderr: '', pid: 51 };
+    };
+    expect(findWorktreeProcesses(sandbox, runner, 10)).toEqual([{ pid: 11, command: 'bun' }]);
+    expect(calls.filter((call) => call[0] === 'ps')).toHaveLength(2);
+  });
+
+  test('fails closed when the runner cannot identify its lsof probe', () => {
+    expect(() =>
+      findWorktreeProcesses(sandbox, () => ({ code: 0, stdout: 'p10\ncbun\n', stderr: '' }), 1),
+    ).toThrow(ProbeError);
   });
 
   test('a missing lsof (exit 127) or an error on stderr is unknown, not empty', () => {

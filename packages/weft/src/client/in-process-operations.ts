@@ -15,11 +15,11 @@
  * @module client/in-process-operations
  */
 
+import { principalFromStdioLocal } from '@lostgradient/backchannel';
+import type { CatalogTransport } from '@lostgradient/backchannel/client';
+import { executeOperation } from '@lostgradient/backchannel/internals';
 import type { Engine } from '../core/engine.ts';
-import { executeOperation } from '../server/operation-catalog.ts';
-import { principalFromStdioLocal } from '../server/principal.ts';
 import { createLiveOperationRegistry } from '../server/rest-bindings.ts';
-import type { CatalogTransport } from './operation-client-runtime.ts';
 
 /**
  * Build a {@link CatalogTransport} that dispatches catalog operations against

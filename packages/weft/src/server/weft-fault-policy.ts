@@ -5,14 +5,14 @@
  * @module server/weft-fault-policy
  */
 
+import type { FaultPolicy, OperationFault } from '@lostgradient/backchannel';
 import {
   WorkflowAlreadyExistsError,
   WorkflowNotFoundError,
   WorkflowNotRegisteredError,
 } from '../core/engine/errors.ts';
+import { isWeftErrorCode } from '../core/weft-error.ts';
 import { resolveServerEnvironment } from '../runtime/environment-configuration.ts';
-import type { FaultPolicy } from './operation-catalog/types.ts';
-import type { OperationFault } from './operation-fault.ts';
 
 function classifyWeftError(error: unknown): OperationFault | undefined {
   if (error instanceof WorkflowAlreadyExistsError) {
@@ -45,11 +45,12 @@ function classifyWeftError(error: unknown): OperationFault | undefined {
  * Strict mode follows the environment on every undeclared fault: strict when `WEFT_STRICT_FAULTS`
  * is `1` or `NODE_ENV` is not `production`. In production an undeclared fault passes through
  * with a warning. The three workflow error classes answer `Conflict`, `InvalidParams` and
- * `NotFound`.
+ * `NotFound`. A REST body keeps a fault's `weftCode` only when it is one of Weft's error codes.
  *
  * @example
  * ```ts
- * import { createOperationHandler, weftFaultPolicy } from '@lostgradient/weft';
+ * import { createOperationHandler } from '@lostgradient/backchannel';
+ * import { weftFaultPolicy } from '@lostgradient/weft';
  *
  * const handler = createOperationHandler({ operations: [], host: {}, faultPolicy: weftFaultPolicy });
  * void handler;
@@ -61,4 +62,5 @@ export const weftFaultPolicy: FaultPolicy = Object.freeze({
     return environment.weftStrictFaults || environment.nodeEnv !== 'production';
   },
   classifyError: classifyWeftError,
+  isKnownErrorCode: (value: string): boolean => isWeftErrorCode(value),
 });

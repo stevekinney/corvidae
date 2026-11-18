@@ -53,6 +53,35 @@ export function archetypePreviewHtml(source: string, css: string): string {
   return `${before}<style>\n${css}</style>${after}`;
 }
 
+/** The width a card is drawn at when its `@dsCard` marker names none. */
+export const DEFAULT_CARD_WIDTH = 760;
+
+/** The width a page's `@dsCard` marker asks for, or {@link DEFAULT_CARD_WIDTH}. */
+export function cardWidthOf(html: string): number {
+  const marker = html.slice(0, html.indexOf('-->'));
+  const match = /\swidth=(\d+)/.exec(marker);
+  return match ? Number(match[1]) : DEFAULT_CARD_WIDTH;
+}
+
+/**
+ * The card height for a measured page: the page's height with 8px of room, within the 120 to 4000
+ * range the design system accepts, as a live preview's card is sized.
+ */
+export function measuredCardHeight(pageHeight: number): number {
+  return Math.max(120, Math.min(4000, Math.trunc(pageHeight) + 8));
+}
+
+/** Writes a measured height into the page's `@dsCard` marker, replacing the number checked in. */
+export function withCardHeight(html: string, height: number): string {
+  const end = html.indexOf('-->');
+  if (!html.startsWith('<!-- @dsCard ') || end === -1) {
+    throw new Error('an archetype page starts with its @dsCard marker');
+  }
+  const marker = html.slice(0, end);
+  if (!/\sheight=\d+/.test(marker)) throw new Error('the @dsCard marker names no height');
+  return marker.replace(/(\sheight=)\d+/, `$1${height}`) + html.slice(end);
+}
+
 /** Reads every archetype page in `directory`, in file-name order, with the shared layout inlined. */
 export function readArchetypePreviews(directory: string): ArchetypePreview[] {
   const css = readFileSync(join(directory, ARCHETYPE_STYLESHEET), 'utf8');

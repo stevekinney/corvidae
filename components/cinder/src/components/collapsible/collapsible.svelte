@@ -11,6 +11,10 @@
 
   import { classNames } from '../../utilities/class-names.ts';
   import { useReducedMotion } from '../../utilities/use-reduced-motion.svelte.ts';
+  import {
+    getCollapsibleNestingContext,
+    setCollapsibleNestingContext,
+  } from '../../_internal/collapsible-nesting-context.ts';
 
   import type { CollapsibleProps } from './collapsible.types.ts';
 
@@ -25,12 +29,19 @@
     triggerClass,
     labelClass,
     variant = 'default',
+    framed = false,
     animated = true,
     chevron = 'end',
     idBase,
     class: className,
     ...rest
   }: CollapsibleProps = $props();
+
+  // A Collapsible inside another's panel is flat unless it opts into its frame with `framed`, so a
+  // disclosure never draws a box inside the box of the one that holds it.
+  const nested = getCollapsibleNestingContext() === true;
+  setCollapsibleNestingContext();
+  const flat = $derived(variant === 'flat' || (nested && !framed));
 
   // Slide duration mirrors --cinder-duration-base (200ms); collapse to 0 when the
   // user prefers reduced motion.
@@ -83,7 +94,7 @@
   {...rest}
   class={classNames('cinder-collapsible', className)}
   data-cinder-chevron={chevron === 'start' ? 'start' : undefined}
-  data-cinder-variant={variant === 'flat' ? 'flat' : undefined}
+  data-cinder-variant={flat ? 'flat' : undefined}
   data-cinder-expanded={open ? '' : undefined}
   data-cinder-disabled={disabled ? '' : undefined}
 >

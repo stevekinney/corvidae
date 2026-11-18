@@ -19,7 +19,7 @@ import {
   type RunEventsOperationHost,
   runEventsSubscriptionOperation,
 } from '@lostgradient/operative';
-import { defineOperation } from '@lostgradient/weft';
+import { defineOperation } from '@lostgradient/backchannel';
 
 import { type BureauOwnershipHost } from './owner-predicate.ts';
 

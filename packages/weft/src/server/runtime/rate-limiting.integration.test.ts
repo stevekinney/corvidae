@@ -1,11 +1,10 @@
 import { afterEach, describe, expect, it } from 'bun:test';
 
+import type { AuthAuditEvent } from '@lostgradient/backchannel';
+import { signJWT } from '@lostgradient/backchannel/internals';
 import { MemoryStorage } from '@lostgradient/storage';
 import { Engine } from '../../core/engine.ts';
-import type { WorkflowContext } from '../../core/types.ts';
-import { workflow } from '../../core/types.ts';
-import type { AuthAuditEvent } from '../authentication.ts';
-import { signJWT } from '../authentication.ts';
+import { workflow, type WorkflowContext } from '../../core/types.ts';
 import { serve, type WeftServer } from '../index.ts';
 import { gateRequest } from './request-gate.ts';
 import { minimalServerContext } from './server-context.test-support.ts';

@@ -20,7 +20,7 @@ A chip is filled and never outlined: an unselected chip is a tone step on its su
 
 ## Suggested chips
 
-`suggested` marks a chip the product drafted that is not saved until the person confirms it, such as a suggested context on a drafted next action. On a neutral chip the label reads in the accent text colour, and assistive technology hears "Suggested" before the label. The chip gains no tint, border or second pill; a status variant keeps its tone and the spoken word.
+`suggested` marks a chip the product drafted that is not saved until the person confirms it, such as a suggested context on a drafted next action. On a neutral chip the label reads in the accent text colour, and assistive technology hears "Suggested" before the label. A small sparkle glyph before the label gives a sighted person a cue that is not colour alone (WCAG 1.4.1), on every variant. The chip gains no tint, border or second pill; a status variant keeps its tone and the spoken word.
 
 ```svelte
 <script lang="ts">
@@ -46,7 +46,7 @@ A chip is filled and never outlined: an unselected chip is a tone step on its su
 | `pressed` | `boolean` | no | — | Toggle mode only. Whether the chip is currently in the pressed (selected) state. Reflected as `aria-pressed`. |
 | `removeAriaLabel` | `string` | no | — | Removable mode only. Accessible label for the remove button. Defaults to `Remove` followed by the chip's `label`. |
 | `size` | `"sm"` \| `"md"` | no | — | Size of the chip. Default `"md"`. |
-| `suggested` | `boolean` | no | — | Marks the chip as a suggestion that is not saved until the person confirms it. On a neutral chip the label reads in the accent text colour, and assistive technology hears "Suggested" before it. The chip gains no tint or border. |
+| `suggested` | `boolean` | no | — | Marks the chip as a suggestion that is not saved until the person confirms it. On a neutral chip the label reads in the accent text colour, and assistive technology hears "Suggested" before it. A small sparkle glyph before the label tells a sighted person too, not colour alone. The chip gains no tint or border. |
 | `variant` | `"neutral"` \| `"success"` \| `"warning"` \| `"danger"` \| `"info"` \| `"accent"` | no | — | Color variant applied to the chip. Default `"neutral"`. |
 | `leadingIcon` | `(opaque)` | no | — | A function or snippet prop. Its shape is not captured by the JSON schema; see the component types for the exact signature. |
 | `onPressedChange` | `(opaque)` | no | — | A function or snippet prop. Its shape is not captured by the JSON schema; see the component types for the exact signature. |

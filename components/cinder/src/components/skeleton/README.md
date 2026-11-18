@@ -55,7 +55,7 @@ Animated placeholder shape that fills content areas while data is loading.
 
 ### Grouped variant
 
-`variant="grouped"` is the placeholder for a `GroupedList`: `rows` rows (default 3) of two text bars on the same rounded raised surface, with no border and separators that start at the text. Each bar sits in a line box of the text it stands for, so a placeholder row is as tall as a row with a title and a subtitle. `action` adds a block the height of a small button at the end of each row, for a list whose rows end in text actions; in a row narrower than 26rem, as on a phone, the block drops under the text at its own width, starting at the text's leading edge, where the buttons go. `label` and the loading rules work as they do for the list variant:
+`variant="grouped"` is the placeholder for a `GroupedList`: `rows` rows (default 3) of two text bars on the same rounded raised surface, with no border and separators that start at the text. Each bar sits in a line box of the text it stands for, so a placeholder row is as tall as a row with a title and a subtitle. `action` adds a block the height of a small button at the end of each row, for a list whose rows end in text actions; in a row narrower than 26rem, as on a phone, the block drops under the text at its own width, starting at the text's leading edge, where the buttons go. `leading` adds an icon block in each row's icon slot, with a grouped-list row's metrics (the 28px slot, its 12px gap, the glyph on the title's first line), so the bars start where the text of rows that lead with a glyph starts; `trailing` adds a short bar at the end of the title's line, standing for a trailing value such as a time, which stays on that line at every width. `chevronColumn` ends that bar before the row's chevron column, for a list whose rows draw a chevron or keep its column, so the bar ends where the times do. All three are off unless asked for. `label` and the loading rules work as they do for the list variant:
 
 ```svelte
 <script lang="ts">
@@ -63,6 +63,14 @@ Animated placeholder shape that fills content areas while data is loading.
 </script>
 
 <Skeleton variant="grouped" rows={2} action label="Loading reviews" />
+<Skeleton
+  variant="grouped"
+  rows={3}
+  leading
+  trailing
+  chevronColumn
+  label="Loading recent activity"
+/>
 ```
 
 ### Loading rules
@@ -116,13 +124,16 @@ Both timers start when the Skeleton mounts, so render it only while the request 
 | --- | --- | --- | --- | --- |
 | `action` | `boolean` | no | `false` | Draw a block the size of a small button at the end of each row when `variant` is `'grouped'`, for a grouped list whose rows end in text actions. In a row narrower than 26rem, as on a phone, the block drops under the text at its own width, starting at the text's leading edge, where the real buttons go. Ignored by other variants. |
 | `cancelLabel` | `string` | no | `"Cancel"` | Label of the Cancel button in the "Still loading" status. |
+| `chevronColumn` | `boolean` | no | `false` | With `trailing`, end the trailing bar before a grouped-list row's chevron column (the 16px chevron and its gap), so the bar ends where the trailing value of a row that draws a chevron, or keeps its column with `GroupedListItem`'s `chevronColumn`, ends. Ignored without `trailing` and by other variants. |
 | `class` | `string` | no | — | Additional class merged onto the root element: `.cinder-skeleton` for a single block, or `.cinder-skeleton-group` when `lines`, `variant`, or `stillLoadingAfter` render a group. |
 | `dayBand` | `boolean` | no | `false` | Draw a day band (a tinted header with one bar) above the rows when `variant` is `'list'`, the placeholder for a list that groups its rows by day. Ignored by other variants. |
 | `delay` | `number` | no | `0` | Milliseconds to wait after mounting before anything renders. A load that finishes inside the delay never flashes a placeholder. Use `300` for the Cinder loading rule. |
-| `framed` | `boolean` | no | `true` | Draw the list's own border and rounded corners when `variant` is `'list'`. Turn it off inside a card that already frames its rows, so the placeholder does not draw a box within the box. Ignored by other variants. |
+| `detailLine` | `boolean` | no | `false` | Draw a third bar under each row's two lines when `variant` is `'list'`, for a list whose rows carry a `detail` line (a phone's Schedules rows say why a schedule will not run and what happened last). Without it a row of three lines would load at half as much again as its placeholder. Ignored by other variants. |
+| `framed` | `boolean` | no | `false` | Draw the list's own border and rounded corners when `variant` is `'list'`. A placeholder draws a frame only when the list it stands for does, so the default is none: a status-first list sits flat on its page, and a frame that vanished when the rows arrived would be a jump. Turn it on for a list that draws its own frame. Ignored by other variants. |
 | `height` | `string` | no | — | CSS height value applied as an inline style on the skeleton block (e.g. `'1rem'`, `'48px'`). |
 | `holdsStatusLine` | `boolean` | no | `false` | For a single block inside a page's own placeholder (the `children` of a Skeleton with `stillLoadingAfter`): the group's "Still loading" line takes this block's place when it appears, in a box as tall as the block, instead of being drawn above the page. Mark the first placeholder of the page, so nothing moves when the line appears or when the data arrives. Without a group that shows the line, the block is drawn as usual. |
 | `label` | `string` | no | — | Accessible name of the loading region, announced politely once the placeholder appears (for example `'Loading agents'`). The placeholder bars stay hidden from assistive technology and no spinner is drawn. Applies to the grouped variants; omit it when the surrounding region already says what is loading. |
+| `leading` | `boolean` | no | `false` | Draw a leading icon block in each row when `variant` is `'grouped'`, with a grouped-list row's icon slot metrics (the 28px slot, its 12px gap, and the glyph on the title's first line), so the bars start where the row's text starts, for a list whose rows lead with a glyph. Ignored by other variants. |
 | `lines` | `number` | no | `1` | Number of text bars to stack. More than one renders a group, and the last bar is shorter unless `width` is set. Clamped to between 1 and 20. |
 | `radius` | `string` | no | — | CSS border-radius value applied as an inline style, overriding the default pill shape (e.g. `'4px'`, `'50%'`). |
 | `rows` | `number` | no | `3` | Number of fields to draw when `variant` is `'form'`, of list rows when it is `'list'`, and of grouped-list rows when it is `'grouped'`. A list row keeps the 8rem status column reserved, then shows two text bars and a time bar, with no leading circle, so nothing shifts when data arrives. Clamped to between 1 and 20. Ignored by other variants. |
@@ -130,6 +141,7 @@ Both timers start when the Skeleton mounts, so render it only while the request 
 | `statusMarker` | `"bar"` \| `"dot"` | no | `"bar"` | What fills the status column of each row when `variant` is `'list'`. `'bar'` is a short bar where the status word reads; `'dot'` is a small circle where the status dot sits. The column keeps its width either way, so nothing shifts when data arrives. Ignored by other variants. |
 | `stillLoadingAfter` | `number` | no | — | Milliseconds after mounting at which a "Still loading" status replaces silence, with a Cancel button when `onCancel` is set. Counted from mount, not from the end of `delay`. Use `10000` for the Cinder loading rule. Omit to never show the status. |
 | `stillLoadingLabel` | `string` | no | `"Still loading. This is taking longer than usual."` | Text of the "Still loading" status. Pages replace the default with their own noun, for example `'Still loading runs. This is taking longer than usual.'`. |
+| `trailing` | `boolean` | no | `false` | Draw a short bar at the inline end of each row's title line when `variant` is `'grouped'`, standing for a trailing value such as a time. It is the height of small text and stays on the title's line at every width, unlike `action`'s button block. Ignored by other variants. |
 | `variant` | `"row"` \| `"card"` \| `"list"` \| `"grouped"` \| `"form"` | no | `"row"` | Shape of the group. `'row'` stacks the bars directly; `'card'` wraps a heading bar and the `lines` bars in a bordered card; `'list'` draws `rows` status-first list rows; `'grouped'` draws `rows` grouped-list rows; `'form'` draws `rows` fields, a label bar over a control bar each. |
 | `width` | `string` | no | — | CSS width value applied as an inline style on the skeleton block (e.g. `'200px'`, `'100%'`). |
 | `children` | `(opaque)` | no | — | The page's own placeholder, drawn instead of the bars, for a loading state whose shape is a whole page (real labels and headings with placeholder values and rows). The group still owns the timing: nothing is drawn until `delay` has passed, and the "Still loading" status leads the content, above it, after `stillLoadingAfter`, or takes the place of the block marked `holdsStatusLine`. The group is marked busy while it shows. Draw each placeholder block with a `Skeleton` of its own; the content is not hidden from assistive technology, so text in it is read as written. Not expressible in JSON Schema; see the component types for the signature. |

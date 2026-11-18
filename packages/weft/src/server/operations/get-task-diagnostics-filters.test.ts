@@ -1,13 +1,13 @@
 import { describe, expect, it } from 'bun:test';
 
+import { principalFromJwtClaims } from '@lostgradient/backchannel';
+import { createOperationRegistry, executeOperation } from '@lostgradient/backchannel/internals';
 import { MemoryStorage } from '@lostgradient/storage';
 import { encode } from '../../core/codec.ts';
 import { encodeTaskAttemptRecord, taskAttemptKey } from '../../core/task-ledger/task-attempt.ts';
 import { taskLedgerKey } from '../../core/task-ledger/task-ledger.ts';
 import { sha256HexSync } from '../../worker/manifest/content-digest.ts';
 import { WorkerRegistry } from '../../worker/registry.ts';
-import { createOperationRegistry, executeOperation } from '../operation-catalog.ts';
-import { principalFromJwtClaims } from '../principal.ts';
 import { TaskQueue } from '../task-queue.ts';
 import {
   createEngine,

@@ -14,18 +14,18 @@
     border-bottom: 1px solid var(--cinder-border);
   }
 
-  /* Flush: the page lays out its own column, so the header draws no rule and no padding, and its
-     title lines up with what is under it. */
-  .cinder-page-header[data-cinder-flush='true'] .cinder-page-header__breadcrumbs {
-    padding-inline: 0;
+  /* Flush by default (COR-2448): the header draws no padding beside or around its row, so its title
+     lines up with what is under it. `inset` opts into the padding. */
+  .cinder-page-header[data-cinder-inset='true'] .cinder-page-header__breadcrumbs {
+    padding-inline: var(--cinder-space-4);
   }
 
-  .cinder-page-header[data-cinder-flush='true'] .cinder-page-header__row {
-    padding: 0;
+  .cinder-page-header[data-cinder-inset='true'] .cinder-page-header__row {
+    padding: var(--cinder-space-3) var(--cinder-space-4);
   }
 
   .cinder-page-header__breadcrumbs {
-    padding: var(--cinder-space-3) var(--cinder-space-4) 0;
+    padding: var(--cinder-space-3) 0 0;
     color: var(--cinder-text-muted);
     font-size: var(--cinder-text-sm);
     line-height: var(--cinder-leading-tight);
@@ -36,7 +36,7 @@
     align-items: flex-start;
     gap: var(--cinder-space-3);
     min-width: 0;
-    padding: var(--cinder-space-3) var(--cinder-space-4);
+    padding: 0;
   }
 
   .cinder-page-header__heading-group {
@@ -616,6 +616,13 @@
   :is(.cinder-page-header[data-cinder-tone='accent'], .cinder-page-header[data-cinder-tone='night'])
     .cinder-button {
     --_cinder-button-ring: var(--_cinder-hero-ring);
+  }
+
+  /* The segmented control's option ring reads its own private hook, so on a band it is the white
+     ring: the public ring token is indigo, about 2.3:1 on the accent band (COR-2445 AC6). */
+  :is(.cinder-page-header[data-cinder-tone='accent'], .cinder-page-header[data-cinder-tone='night'])
+    .cinder-segmented-control {
+    --_cinder-segmented-control-ring: var(--_cinder-hero-ring);
   }
 
   :is(.cinder-page-header[data-cinder-tone='accent'], .cinder-page-header[data-cinder-tone='night'])

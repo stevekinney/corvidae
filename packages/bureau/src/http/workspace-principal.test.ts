@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { principalFromApiKey, type OperationHandlerAuthenticate } from '@lostgradient/weft';
+import { principalFromApiKey, type OperationHandlerAuthenticate } from '@lostgradient/backchannel';
 import {
   withWorkspaceMembership,
   workspaceOwnerAuthority,

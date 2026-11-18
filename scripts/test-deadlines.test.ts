@@ -1,4 +1,6 @@
 import { describe, expect, test } from 'bun:test';
+import { join } from 'node:path';
+import ts from 'typescript';
 import { HANG_GUARD_MILLISECONDS } from '../testing/testing/src/hang-guard.ts';
 import { bunTestArguments } from './bun-test.ts';
 import { TEST_TIMEOUT_ARGUMENT, TEST_TIMEOUT_MILLISECONDS } from './test-deadlines.ts';
@@ -16,5 +18,17 @@ describe('the shared test deadline', () => {
       '--parallel=4',
       'src',
     ]);
+  });
+
+  test('resolves extensionless and explicit imports to the TypeScript source', () => {
+    const containingFile = join(import.meta.dir, 'test-deadlines.test.ts');
+    const expected = join(import.meta.dir, 'test-deadlines.ts');
+    const options: ts.CompilerOptions = { moduleResolution: ts.ModuleResolutionKind.Bundler };
+
+    for (const specifier of ['./test-deadlines', './test-deadlines.ts']) {
+      const resolved = ts.resolveModuleName(specifier, containingFile, options, ts.sys)
+        .resolvedModule?.resolvedFileName;
+      expect(resolved).toBe(expected);
+    }
   });
 });

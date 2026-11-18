@@ -16,7 +16,7 @@
  * @module audit-operations
  */
 
-import { defineOperation, type OperationFault } from '@lostgradient/weft';
+import { defineOperation, type OperationFault } from '@lostgradient/backchannel';
 import { z } from 'zod';
 
 import {

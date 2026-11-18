@@ -24,6 +24,7 @@ import {
   discoverWorkspaces,
   excludeTests,
   explain,
+  explainJson,
   planInvocations,
   touchesIsolatedTest,
 } from './affected-tests.ts';
@@ -586,6 +587,21 @@ describe('selection modes and reporting', () => {
       'packages/beta/src/uses-alpha.test.ts  [imports packages/alpha/src/index.ts <- packages/alpha/src/deep.ts]',
     );
     expect(text).toContain('package-level --affected would run');
+  });
+
+  test('the JSON explanation accounts for selected obligations and exclusions by path', () => {
+    const selection = select(baseFiles, ['packages/alpha/src/deep.ts']).selection;
+    const report = explainJson(selection, ['packages/alpha/src/deep.ts']);
+    expect(report.changed).toEqual(['packages/alpha/src/deep.ts']);
+    expect(report.obligations).toContainEqual(
+      expect.objectContaining({ path: 'packages/alpha/src/deep.test.ts' }),
+    );
+    expect(report.exclusions).toContainEqual(
+      expect.objectContaining({
+        path: 'packages/gamma/src/gamma.test.ts',
+        reason: expect.stringContaining('no static import'),
+      }),
+    );
   });
 
   test('the affected set is the changed workspaces and their dependents', () => {

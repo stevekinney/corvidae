@@ -2,7 +2,7 @@
   export type {
     GroupedListItemAction,
     GroupedListItemLeadingKind,
-    GroupedListItemLeadUnit,
+    GroupedListItemLines,
     GroupedListItemProps,
     GroupedListItemUrgency,
   } from './grouped-list-item.types.ts';
@@ -21,8 +21,8 @@
     leading,
     leadingKind = 'icon',
     lead,
-    leadValue,
-    leadUnit,
+    timeWindow,
+    timeCaption,
     urgency,
     staleAge,
     photo,
@@ -30,6 +30,12 @@
     action,
     actions,
     chevron,
+    chevronColumn = false,
+    titleLines,
+    subtitleLines,
+    tooltip,
+    subtitleTooltip,
+    arriving = false,
     selected = false,
     suggested = false,
     suggestedLabel = 'Suggested',
@@ -42,8 +48,16 @@
 
   const showChevron = $derived(chevron ?? href !== undefined);
 
-  // A `lead` snippet wins; otherwise a lead value makes the row time-led.
-  const timed = $derived(!lead && leadValue !== undefined);
+  // One native tooltip on the row, never one per line: on a linked row the link's cover lies over
+  // every line, so a tooltip on the subtitle could never be reached. The title, a line break, then
+  // the subtitle's text; whichever is set, alone, when only one is.
+  const rowTooltip = $derived(
+    [tooltip, subtitleTooltip].filter((part) => part !== undefined && part !== '').join('\n') ||
+      undefined,
+  );
+
+  // A `lead` snippet wins; otherwise a time window makes the row time-led.
+  const timed = $derived(!lead && timeWindow !== undefined);
 
   const generatedId = $props.id();
   const hasActions = $derived(actions !== undefined && actions.length > 0);
@@ -78,8 +92,16 @@
     timed && 'cinder-grouped-list-item--timed',
     hasActions && 'cinder-grouped-list-item--actions',
     trailing !== undefined && 'cinder-grouped-list-item--trailing',
+    showChevron && 'cinder-grouped-list-item--chevron',
+    // A row whose title's first line is not at the top of its content keeps its chevron in the flow.
+    (suggested ||
+      (leading !== undefined && (leadingKind === 'avatar' || leadingKind === 'media'))) &&
+      'cinder-grouped-list-item--flow-chevron',
+    !showChevron && chevronColumn && 'cinder-grouped-list-item--chevron-column',
+    arriving && 'cinder-grouped-list-item--arriving',
     className,
   )}
+  title={rowTooltip}
   data-cinder-selected={selected ? '' : undefined}
   data-cinder-suggested={suggested ? '' : undefined}
   aria-current={selected && href === undefined ? 'true' : undefined}
@@ -97,9 +119,9 @@
         class="cinder-grouped-list-item__lead cinder-grouped-list-item__lead--timed"
         data-cinder-urgency={urgency}
       >
-        <span class="cinder-grouped-list-item__lead-value">{leadValue}</span>
-        {#if leadUnit}
-          <span class="cinder-grouped-list-item__lead-unit">{leadUnit}</span>
+        <span class="cinder-grouped-list-item__lead-window">{timeWindow}</span>
+        {#if timeCaption}
+          <span class="cinder-grouped-list-item__lead-caption">{timeCaption}</span>
         {/if}
       </div>
     {/if}
@@ -107,7 +129,7 @@
       {#if suggested}
         <span class="cinder-grouped-list-item__suggested">{suggestedLabel}</span>
       {/if}
-      <div class="cinder-grouped-list-item__title">
+      <div class="cinder-grouped-list-item__title" data-cinder-lines={titleLines}>
         {#if href !== undefined}
           <a
             class="cinder-grouped-list-item__link"
@@ -121,7 +143,9 @@
         {/if}
       </div>
       {#if subtitle}
-        <div class="cinder-grouped-list-item__subtitle">{@render subtitle()}</div>
+        <div class="cinder-grouped-list-item__subtitle" data-cinder-lines={subtitleLines}>
+          {@render subtitle()}
+        </div>
       {/if}
     </div>
     {#if staleAge}
@@ -130,11 +154,13 @@
         <span class="cinder-sr-only">Stale, </span>{staleAge}
       </span>
     {/if}
-    {#if photo}
-      <div class="cinder-grouped-list-item__photo">{@render photo()}</div>
-    {/if}
     {#if trailing}
       <div class="cinder-grouped-list-item__trailing">{@render trailing()}</div>
+    {/if}
+    <!-- The photo sits at the end of the row, after the trailing value: a row with a photo and one
+         without keep everything else in the same place. -->
+    {#if photo}
+      <div class="cinder-grouped-list-item__photo">{@render photo()}</div>
     {/if}
     {#if showChevron}
       <span class="cinder-grouped-list-item__chevron" aria-hidden="true">

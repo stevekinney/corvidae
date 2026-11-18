@@ -13,6 +13,9 @@
   // Attributes stripped from forwarded `rest` to keep the <li> non-interactive.
   // Module-scoped so the Set is allocated once, not per component instance.
   const BLOCKED_ATTRS = new Set(['role', 'tabindex']);
+
+  /** The row width below which a row takes its phone form; the stylesheet's container query is 639.98px. */
+  const PHONE_ROW_WIDTH = 640;
 </script>
 
 <script lang="ts">
@@ -21,6 +24,7 @@
   import { phoneViewport } from '../../_internal/phone-viewport.svelte.ts';
   import type { StackedListItemProps } from './stacked-list-item.types.ts';
   import { classNames } from '../../utilities/class-names.ts';
+  import { useResizeObserver } from '../../utilities/use-resize-observer.svelte.ts';
   import Button from '../button/button.svelte';
   import { Dropdown } from '../dropdown/index.ts';
 
@@ -102,7 +106,32 @@
   // A group row is not a link: its only control is the disclosure button. A row that failed to
   // load is not a link either: its details are the thing that is missing.
   const linkHref = $derived(details === undefined && error === undefined ? href : undefined);
-  const phone = $derived(phoneViewport.current);
+  // A linked row's title link covers every line, so a tooltip on line two could never be reached
+  // (COR-2227): the linked row draws one tooltip on the row itself, the title, a line break, then
+  // line two, and none on its lines. An unlinked row keeps one tooltip per line.
+  const rowTooltip = $derived(
+    linkHref === undefined
+      ? undefined
+      : [tooltip, metaTooltip].filter((part) => part !== undefined && part !== '').join('\n') ||
+          undefined,
+  );
+  const lineTooltip = $derived(linkHref === undefined ? tooltip : undefined);
+  const lineMetaTooltip = $derived(linkHref === undefined ? metaTooltip : undefined);
+  // The phone form is the row's own width below 640px, not the viewport's (COR-2448), so a row in
+  // a 360px pane of a wide window takes it and a row in a wide column of a narrow window does not.
+  // The stylesheet asks the same question with a container query; the script needs the answer for
+  // the actions (one menu button, or buttons), which CSS cannot swap. Until the row has a
+  // measurable width (the server, a test with no layout), the viewport stands in.
+  let rowWidth = $state<number | undefined>(undefined);
+  const measureRow = useResizeObserver((entries) => {
+    // A callback with no entries (an empty list, or none passed, as a test double may) changes
+    // nothing: the last measured width stands.
+    const entry = (entries as ResizeObserverEntry[] | undefined)?.at(-1);
+    if (entry) rowWidth = entry.contentRect.width;
+  });
+  const phone = $derived(
+    rowWidth !== undefined && rowWidth > 0 ? rowWidth < PHONE_ROW_WIDTH : phoneViewport.current,
+  );
   const hasActions = $derived(actions !== undefined && actions.length > 0);
   // On a phone two or more actions are one menu button, unless the row asks to keep them as
   // buttons. One action stays its own compact secondary button: a menu holding one item is a
@@ -153,7 +182,11 @@
 </script>
 
 {#snippet titleRegion()}
-  <div class="cinder-stacked-list-item__title" data-cinder-title-lines={titleLines} title={tooltip}>
+  <div
+    class="cinder-stacked-list-item__title"
+    data-cinder-title-lines={titleLines}
+    title={lineTooltip}
+  >
     {#if linkHref !== undefined}
       <a
         class="cinder-stacked-list-item__title-link"
@@ -200,10 +233,15 @@
   )}
   data-cinder-density={resolvedDensity}
   data-cinder-phone={phone ? '' : undefined}
+  data-cinder-viewport-phone={statusPlacement === 'line-two' && phoneViewport.current
+    ? ''
+    : undefined}
   data-cinder-expanded={details !== undefined && expanded ? '' : undefined}
   data-cinder-selected={selected ? '' : undefined}
   aria-current={selected && linkHref === undefined ? 'true' : undefined}
+  title={rowTooltip}
   {...safeRest}
+  {@attach measureRow}
 >
   {#if isBand}
     <div class="cinder-stacked-list-item__band-line">
@@ -303,7 +341,7 @@
               {/if}
             </div>
           {:else if description || meta}
-            <div class="cinder-stacked-list-item__line-two" title={metaTooltip}>
+            <div class="cinder-stacked-list-item__line-two" title={lineMetaTooltip}>
               {#if description}
                 <div class="cinder-stacked-list-item__description">{@render description()}</div>
               {/if}
@@ -321,12 +359,14 @@
           {/if}
         {:else}
           {#if description}
-            <div class="cinder-stacked-list-item__description" title={metaTooltip}>
+            <div class="cinder-stacked-list-item__description" title={lineMetaTooltip}>
               {@render description()}
             </div>
           {/if}
           {#if meta}
-            <div class="cinder-stacked-list-item__meta" title={metaTooltip}>{@render meta()}</div>
+            <div class="cinder-stacked-list-item__meta" title={lineMetaTooltip}>
+              {@render meta()}
+            </div>
           {/if}
         {/if}
       </div>

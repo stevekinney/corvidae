@@ -1,3 +1,4 @@
+import type { Principal } from '@lostgradient/backchannel';
 import { ActivityStartedEvent } from '../../core/events.ts';
 import { tagWorkflowEventGeneration } from '../../core/events/workflow-event-generation.ts';
 import type { JSONValue } from '../../core/json.ts';
@@ -11,7 +12,6 @@ import { commitTaskLedgerTransition } from '../../core/task-ledger/task-ledger-r
 import { claimQueued, renewAttemptLease } from '../../core/task-ledger/task-ledger-transitions.ts';
 import { decodeRemoteTaskRecord, taskLedgerKey } from '../../core/task-ledger/task-ledger.ts';
 import type { ServeOptions } from '../index.ts';
-import type { Principal } from '../principal.ts';
 import type { PendingTask } from '../task-queue-types.ts';
 import type { ServerContext } from './context.ts';
 import { recordTaskBacklogMetric, recordTaskQueueLatencyMetric } from './task-metrics.ts';

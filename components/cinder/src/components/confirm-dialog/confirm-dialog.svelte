@@ -8,7 +8,7 @@
   import Callout from '../callout/callout.svelte';
   import Input from '../input/input.svelte';
   import Modal from '../modal/modal.svelte';
-  import { PHONE_VIEWPORT_BREAKPOINT } from '../../_internal/viewport-below.svelte.ts';
+  import { DIALOG_SHEET_BREAKPOINT } from '../../_internal/viewport-below.svelte.ts';
   import { classNames } from '../../utilities/class-names.ts';
 
   const descriptionId = $props.id();
@@ -33,7 +33,7 @@
     onConfirm,
     onCancel,
     triggerRef = null,
-    sheetBelow = PHONE_VIEWPORT_BREAKPOINT,
+    sheetBelow = DIALOG_SHEET_BREAKPOINT,
     onExitComplete,
     class: className,
   }: ConfirmDialogProps = $props();

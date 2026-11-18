@@ -8,7 +8,7 @@
  */
 import { describe, expect, it } from 'bun:test';
 
-import { anonymousPrincipal } from '../src/server/principal.ts';
+import { anonymousPrincipal } from '@lostgradient/backchannel';
 import { snapshotTestOperation } from './operation-client-test-support.ts';
 
 describe('snapshotTestOperation', () => {

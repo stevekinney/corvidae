@@ -116,6 +116,28 @@ export function approvalArrivalShift(
 }
 
 /**
+ * Where a waiting approval's arrival placement rests (COR-2327): `approvalArrivalShift`, except that
+ * a card that fits the transcript rests at the transcript's end whenever the end still shows it
+ * whole. `toEnd` is how far the transcript can still scroll down. The end is where the transcript's
+ * own pin to its last message puts it, so the placement and the pin come to rest in one place
+ * whichever of them runs last; a card stopped with its bottom on the clearance would rest the
+ * transcript's end padding, less the clearance, above the pin.
+ */
+export function approvalArrivalRestShift(
+  card: Pick<DOMRectReadOnly, 'top' | 'bottom'>,
+  viewport: Pick<DOMRectReadOnly, 'top' | 'bottom'>,
+  toEnd: number,
+  clearance = APPROVAL_BOTTOM_CLEARANCE,
+): number {
+  const shift = approvalArrivalShift(card, viewport, clearance);
+  if (shift < 0 || toEnd <= 0.5 || toEnd < shift) return shift;
+  if (approvalTallerThanTranscript(card, viewport, clearance)) return shift;
+  // Scrolled to the end the card moves up by `toEnd`, past where its bottom and the clearance
+  // show, so it is whole there while its top is still in view.
+  return card.top - toEnd >= viewport.top - 0.5 ? toEnd : shift;
+}
+
+/**
  * The room a drawn approval reminder takes from the transcript under `root`: its height and its
  * block margins, or 0 when none is drawn. Read from the page, so it is what is drawn now.
  */

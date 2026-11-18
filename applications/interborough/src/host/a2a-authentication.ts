@@ -26,8 +26,8 @@
 
 import { createHash, timingSafeEqual } from 'node:crypto';
 
+import { principalFromApiKey, type AuthConfig } from '@lostgradient/backchannel';
 import { type Bungalow } from '@lostgradient/bungalow';
-import { principalFromApiKey, type AuthConfig } from '@lostgradient/weft';
 
 import { PUBLIC_ORIGIN_VARIABLE } from './environment-configuration.ts';
 

@@ -1,5 +1,3 @@
-import { basename } from 'node:path';
-
 /**
  * Whether `filePath` is one of a component's examples: a file in an `examples/` directory beside
  * the component's source (COR-2081). Examples are documentation that consumes the package through
@@ -8,15 +6,4 @@ import { basename } from 'node:path';
  */
 export function isComponentExample(filePath: string): boolean {
   return filePath.replaceAll('\\', '/').split('/').includes('examples');
-}
-
-export function isExcludedComponentSource(filePath: string): boolean {
-  const normalizedPath = filePath.replaceAll('\\', '/');
-  const fileName = basename(normalizedPath);
-  return (
-    normalizedPath.split('/').includes('__test-helpers__') ||
-    fileName.includes('fixture') ||
-    fileName.endsWith('.type-test.svelte') ||
-    fileName.endsWith('-harness.svelte')
-  );
 }

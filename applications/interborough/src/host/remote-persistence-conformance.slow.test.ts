@@ -1,3 +1,4 @@
+import { AUTHORIZATION_SCOPES, principalFromApiKey } from '@lostgradient/backchannel';
 import { BUREAU_SCOPES, type WorkspaceMembership } from '@lostgradient/bureau';
 import { definePlugin, type PluginSetupContext } from '@lostgradient/interborough-plugin';
 import { createAgent, createDefaultRuntimeServices } from '@lostgradient/operative';
@@ -8,7 +9,6 @@ import {
 } from '@lostgradient/testing/postgres-server';
 import { createS3TestServer } from '@lostgradient/testing/s3-server';
 import { waitUntil } from '@lostgradient/testing/wait-until';
-import { AUTHORIZATION_SCOPES, principalFromApiKey } from '@lostgradient/weft';
 import { afterAll, expect, test } from 'bun:test';
 import { chmod, mkdir, mkdtemp, readdir, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -556,11 +556,23 @@ const remoteConformance = await (async () => {
         (header) => header === `Bearer ${expiredToken}`,
       ).length;
       oauth.expireAccessTokens();
+      const expiredOperations = oauth.gateExpiredAccessTokenOperations(2);
       await second.close();
       await concurrent.close();
       hosts.splice(hosts.indexOf(second), 1);
       hosts.splice(hosts.indexOf(concurrent), 1);
-      [second, concurrent] = await Promise.all([start(secondHome), start(firstHome)]);
+      const restarted = Promise.all([start(secondHome), start(firstHome)]);
+      try {
+        await expiredOperations.entered;
+        // Only POST MCP operations carrying the old token count. A held response prevents its
+        // retry, while transport GETs do not count, so one host cannot satisfy both admissions.
+        expect(expiredOperations.requests()).toBe(2);
+        expiredOperations.release();
+        [second, concurrent] = await restarted;
+      } finally {
+        // A later assertion or startup failure must not leave a fixture request stranded.
+        expiredOperations.release();
+      }
       expect(
         oauth.authorizations.filter((header) => header === `Bearer ${expiredToken}`).length -
           expiredAttemptsBefore,

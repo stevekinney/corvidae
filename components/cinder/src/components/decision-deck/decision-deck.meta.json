@@ -22,8 +22,14 @@
   "rationale": "Nearest alternative: ApprovalCard — ApprovalCard resolves one request with its full detail; DecisionDeck moves through a whole queue of short cards.",
   "a11y": {
     "keyboard": [
-      { "keys": "ArrowRight", "action": "Accepts the focused top card." },
-      { "keys": "ArrowLeft", "action": "Rejects the focused top card." },
+      {
+        "keys": "ArrowRight",
+        "action": "Accepts the focused top card, or rejects it right to left."
+      },
+      {
+        "keys": "ArrowLeft",
+        "action": "Rejects the focused top card, or accepts it right to left."
+      },
       { "keys": "ArrowDown", "action": "Sets the focused top card aside for later." }
     ],
     "notes": [

@@ -9,12 +9,14 @@
  * @module server/weft-documents
  */
 
+import type { DiscoveryInfo } from '@lostgradient/backchannel';
+import {
+  type OperationRegistry,
+  generateOpenRpcDocument,
+} from '@lostgradient/backchannel/internals';
 import type { Engine } from '../core/engine.ts';
 import { listMcpTools } from '../mcp/tools.ts';
 import { VERSION } from '../version.ts';
-import type { DiscoveryInfo } from './discovery-info.ts';
-import { generateOpenRpcDocument } from './openrpc.ts';
-import type { OperationRegistry } from './operation-catalog.ts';
 
 /** The title of Weft's own documents. */
 export const WEFT_DOCUMENT_TITLE = 'Weft Workflow Engine';
