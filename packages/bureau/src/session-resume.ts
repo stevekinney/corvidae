@@ -6,14 +6,16 @@
  * `error`: the provider dropped the connection, the model call failed), has ended its durable
  * workflow, which the engine does not resume. The turn goes on as a continuation run instead: a new
  * run of the same chat, started with no message from the person. It is seeded from the stored
- * conversation, the partial reply included, and the one row it adds before its own is a hidden
- * continuation row (`<stoppedRunId>:continuation`) that names the stopped run and the command. A
- * hidden row is never sent to the model, so the model is asked over the history as it stands,
- * ending in the partial reply, and continues it. Operative's provider adapters do not prefill a
- * trailing assistant message, so what the continuation writes is a new assistant turn after the
- * partial reply, linked to the stopped run by that row; nothing of the stopped run is rewritten.
+ * conversation, the partial reply included, and adds two rows before its own: a hidden
+ * continuation row (`<stoppedRunId>:continuation`) that names the stopped run and the command,
+ * which the model is never sent; and a model-only instruction turn
+ * (`<stoppedRunId>:continuation:instruction`, {@link CONTINUATION_INSTRUCTION}), a user-role turn
+ * the model is sent and people are never shown. Every provider so receives a history ending in a
+ * user turn: a trailing assistant message would be a prefill, which some providers refuse (with
+ * extended thinking on, or when it ends in whitespace). What the continuation writes is a new
+ * assistant turn after the partial reply; nothing of the stopped run is rewritten.
  *
- * The start is one atomic session write: the run creation's own save, which appends the row and
+ * The start is one atomic session write: the run creation's own save, which appends both rows and
  * names the new run as the chat's last, judges the history again inside its update
  * ({@link judgeResumableTurn}). A message, a discard or another continuation that lands first wins,
  * and this start is refused. A repeated `commandId` finds its row and answers the run it started,
@@ -38,7 +40,7 @@
 
 import type { AgentSession } from '@lostgradient/operative';
 import { parseStepRowIdentifier } from '@lostgradient/operative';
-import { getOwn, type Message } from 'conversationalist';
+import { getOwn, type Message, MODEL_ONLY_METADATA_KEY } from 'conversationalist';
 
 /** Why a resume was refused. Each is stable: the management plane carries it as `data.reason`. */
 export type SessionResumeRefusalReason =
@@ -140,6 +142,43 @@ export function continuationRow(
       [CONTINUATION_OF_METADATA_KEY]: runId,
       [CONTINUATION_COMMAND_METADATA_KEY]: commandId,
       [CONTINUATION_OWNER_METADATA_KEY]: owner,
+    },
+  };
+}
+
+/**
+ * The words the continuation run is prompted with (COR-2437): the one instruction turn it adds
+ * after the partial reply, which the model is sent and people are never shown.
+ */
+export const CONTINUATION_INSTRUCTION =
+  'Continue from where you stopped. Do not repeat what you already wrote.';
+
+/** The metadata key of the instruction turn that names the stopped run it asks to go on from. */
+export const CONTINUATION_INSTRUCTION_OF_METADATA_KEY = 'bureau:continuationInstructionOf';
+
+/** The id of the instruction turn of the stopped run `runId`'s continuation. */
+export function continuationInstructionId(runId: string): string {
+  return `${runId}:continuation:instruction`;
+}
+
+/**
+ * The instruction turn a continuation run is asked over (COR-2437): a user-role turn after the
+ * partial reply, so every provider receives a history ending in a user turn. It is model-only:
+ * sent to the model, and left out of the chat, its title and preview, its exports and what is
+ * drawn from the person's words.
+ */
+export function continuationInstruction(runId: string, createdAt: string): Message {
+  return {
+    id: continuationInstructionId(runId),
+    role: 'user',
+    content: CONTINUATION_INSTRUCTION,
+    hidden: false,
+    // The append re-stamps both, as it does every row a run is started with.
+    position: 0,
+    createdAt,
+    metadata: {
+      [MODEL_ONLY_METADATA_KEY]: true,
+      [CONTINUATION_INSTRUCTION_OF_METADATA_KEY]: runId,
     },
   };
 }

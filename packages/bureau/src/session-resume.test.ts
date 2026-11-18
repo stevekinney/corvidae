@@ -16,6 +16,7 @@ import {
   Conversation,
   type ConversationHistory,
   createConversationHistory,
+  MODEL_ONLY_METADATA_KEY,
 } from 'conversationalist';
 import { afterEach, describe, expect, it } from 'bun:test';
 import { MemoryStorage, type Storage } from '@lostgradient/storage';
@@ -24,7 +25,10 @@ import { z } from 'zod';
 import type { AgentDefinitions } from './agent-catalog';
 import { BureauShuttingDownError, ContextArchivedError } from './bureau-errors';
 import { createBureau } from './create-bureau';
+import { snapshotMessages } from './http/ag-ui-messages';
 import {
+  CONTINUATION_INSTRUCTION,
+  continuationInstructionId,
   continuationRowId,
   CONTINUATION_OF_METADATA_KEY,
   judgeResumableTurn,
@@ -54,7 +58,10 @@ let secondStep = Promise.withResolvers<void>();
  * An agent whose first step calls a tool; its second fails, finishes, or waits to be stopped. A
  * step that answers a continuation row records the rows the model is sent and finishes the turn.
  */
-function agentThat(second: 'waits' | 'fails' | 'finishes') {
+function agentThat(
+  second: 'waits' | 'fails' | 'finishes',
+  continuation: 'answers' | 'fails' = 'answers',
+) {
   secondStep = Promise.withResolvers<void>();
   continuedOver = [];
   return createAgent({
@@ -70,9 +77,15 @@ function agentThat(second: 'waits' | 'fails' | 'finishes') {
     generate: async (context: GenerateContext) => {
       const history = context.conversation.current;
       const lastId = history.ids.at(-1) ?? '';
-      if (lastId.endsWith(':continuation')) {
+      // A continuation is asked over a history ending in its instruction turn.
+      if (lastId.endsWith(':continuation:instruction')) {
         continuedOver.push(history.ids.filter((id) => history.messages[id]?.hidden !== true));
-        return { content: 'and so the answer goes on.', toolCalls: [] };
+        return continuation === 'answers'
+          ? { content: 'and so the answer goes on.', toolCalls: [] }
+          : { content: 'going on', toolCalls: [{ id: 'c-2', name: 'noop', arguments: {} }] };
+      }
+      if (history.messages[lastId]?.toolResult?.callId === 'c-2') {
+        throw new Error('the continuation failed');
       }
       if (history.messages[lastId]?.toolResult === undefined) {
         return { content: 'thinking', toolCalls: [{ id: 'c-1', name: 'noop', arguments: {} }] };
@@ -165,14 +178,32 @@ describe('a resumed turn', () => {
     const marker = after.conversationHistory.messages[continuationRowId(run.id)];
     expect(marker?.hidden).toBe(true);
     expect(marker?.metadata?.[CONTINUATION_OF_METADATA_KEY]).toBe(run.id);
-    const added = after.conversationHistory.ids.slice(kept.length + 1);
+    // The one instruction turn the continuation is prompted with: a user turn the model is sent
+    // and people are never shown.
+    const instructionId = continuationInstructionId(run.id);
+    expect(after.conversationHistory.ids[kept.length + 1]).toBe(instructionId);
+    const instruction = after.conversationHistory.messages[instructionId];
+    expect(instruction?.role).toBe('user');
+    expect(instruction?.content).toBe(CONTINUATION_INSTRUCTION);
+    expect(instruction?.hidden).toBe(false);
+    expect(instruction?.metadata?.[MODEL_ONLY_METADATA_KEY]).toBe(true);
+    const added = after.conversationHistory.ids.slice(kept.length + 2);
     expect(added.length).toBeGreaterThan(0);
     expect(added.every((id) => id.startsWith(`${result.runId}:step:`))).toBe(true);
     expect(after.conversationHistory.messages[added.at(-1)!]?.content).toBe(
       'and so the answer goes on.',
     );
-    // The model was sent the history as it stood: the partial turn is its last part.
-    expect(continuedOver).toEqual([[...kept]]);
+    // The model was sent the history as it stood, ending in the instruction turn, after the
+    // partial reply; the hidden row is not sent.
+    expect(continuedOver).toEqual([[...kept, instructionId]]);
+    // The instruction is never the chat's words: its preview is the continuation's reply.
+    const listed = await bureau.contexts.list();
+    const summary = listed.find((entry) => entry.id === run.contextId);
+    expect(summary?.lastMessagePreview).toBe('and so the answer goes on.');
+    // Nor is it in the thread the page reads: the AG-UI snapshot leaves both rows out.
+    const shown = JSON.stringify(snapshotMessages(after.conversationHistory));
+    expect(shown).not.toContain(CONTINUATION_INSTRUCTION);
+    expect(shown).toContain('and so the answer goes on.');
     // The stopped run's task still says it was stopped; the continuation is the chat's newest.
     const stopped = await bureau.tasks.get(run.id);
     expect(stopped?.status).toBe('canceled');
@@ -209,6 +240,31 @@ describe('a resumed turn', () => {
     await restarted.recovery();
     expect(await resume(restarted, run.contextId, run.id)).toEqual(started);
     expect(await tasksOf(restarted, run.contextId)).toEqual([started.runId, run.id]);
+  });
+});
+
+// COR-2437: the instruction turn belongs to the continuation it prompted; a discard of that
+// continuation takes it away, and the stopped run's turn stays as it was.
+describe('a continuation that stopped in its turn', () => {
+  it('is discarded with its instruction turn, and a second resume of the stopped run answers the same run', async () => {
+    const bureau = await openBureau(agentThat('waits', 'fails'));
+    const { run, before } = await stoppedTurn(bureau);
+    const started = await resume(bureau, run.contextId, run.id);
+    await untilEnded(bureau, run.contextId, started.runId);
+
+    const discarded = await bureau.contexts.discardTurn(run.contextId, {
+      owner: ALICE,
+      commandId: 'discard-continuation',
+      runId: started.runId,
+    });
+
+    const after = (await bureau.contexts.get(run.contextId))!;
+    expect(discarded.removed).toBeGreaterThan(1);
+    expect(after.conversationHistory.ids).toEqual([
+      ...before.conversationHistory.ids,
+      continuationRowId(run.id),
+    ]);
+    expect(await resume(bureau, run.contextId, run.id)).toEqual(started);
   });
 });
 

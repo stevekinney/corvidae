@@ -453,7 +453,10 @@ export interface BureauContexts {
    * have been stopped by the person or have failed on finish reason `error`. The start is one
    * atomic session write that appends a hidden continuation row naming the stopped run and the
    * command, names the new run as the chat's last, and judges the history again inside its update,
-   * so a message, a discard or another resume that lands first wins. A repeated `commandId`
+   * so a message, a discard or another resume that lands first wins. The continuation is prompted
+   * by one model-only instruction turn after the partial reply (`CONTINUATION_INSTRUCTION`, a
+   * user turn the model is sent and people are never shown), so every provider is asked over a
+   * history ending in a user turn. A repeated `commandId`
    * answers the run it started, after a restart too, and never starts a second; the same
    * `commandId` for another run is `command-conflict`. Anything else throws a
    * {@link SessionResumeRefusedError} and starts nothing: `run-not-found`, `not-latest-turn`,

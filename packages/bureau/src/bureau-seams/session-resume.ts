@@ -17,6 +17,7 @@ import {
   type ResumeTurnResult,
   SessionResumeRefusedError,
   commandContinuesAnotherRun,
+  continuationInstruction,
   continuationRow,
   judgeResumableTurn,
   startedContinuation,
@@ -132,7 +133,12 @@ export function createSessionResume<D extends AgentDefinitions>(
         sessionId,
         principal: owner,
         origin: { kind: 'chat' },
-        appendMessages: [continuationRow(runId, commandId, owner, runtimeServices.clock.nowISO())],
+        // Both rows in the save that starts the run: the hidden row the command is found by, and
+        // the model-only instruction turn the continuation is asked over.
+        appendMessages: [
+          continuationRow(runId, commandId, owner, runtimeServices.clock.nowISO()),
+          continuationInstruction(runId, runtimeServices.clock.nowISO()),
+        ],
         // Judged again inside the save that starts the run: whatever landed since wins.
         startGuard: (current: AgentSession | undefined) => {
           if (current === undefined || current.incarnation !== session.incarnation) {

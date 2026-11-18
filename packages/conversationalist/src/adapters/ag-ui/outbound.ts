@@ -1,6 +1,7 @@
 import type { Message as AGUIMessage, AssistantMessage, ToolCall } from '@ag-ui/core';
 import { MessageSchema } from '@ag-ui/core/schemas';
 import { assertConversationSafe } from '../../conversation/validation';
+import { isModelOnlyMessage } from '../../model-only';
 import type { MultiModalContent } from '../../multi-modal';
 import { isStreamingMessage } from '../../streaming';
 import type {
@@ -52,7 +53,8 @@ export function toAGUIMessages(
   const recorded = options.createdAt === true;
 
   for (const original of getOrderedMessages(conversation)) {
-    if (original.hidden || isStreamingMessage(original)) continue;
+    // A model-only row (COR-2437) is the product's instruction to the model, never shown to people.
+    if (original.hidden || isModelOnlyMessage(original) || isStreamingMessage(original)) continue;
     const message = recorded ? withRecordedTime(original) : original;
 
     if (message.role === 'tool-call') {

@@ -1,7 +1,11 @@
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 import { MemoryStorage, textValueStore } from '@lostgradient/storage';
 import { describe, expect, it } from 'bun:test';
-import { Conversation, createConversationHistory } from 'conversationalist';
+import {
+  Conversation,
+  createConversationHistory,
+  MODEL_ONLY_METADATA_KEY,
+} from 'conversationalist';
 
 import { rejectionOf, throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { createAgentSession } from '../agent-session';
@@ -2701,6 +2705,25 @@ describe('session summaries carry a title, a last-message preview and an owner (
       lastMessagePreview: 'next Friday',
       messageCount: 3,
     });
+  });
+
+  // COR-2437: a model-only row is the product's instruction to the model (the turn that asks a
+  // stopped answer to go on), never the chat's words, so it is neither its title nor its preview.
+  it('takes no title or preview from a model-only row', async () => {
+    const store = createSessionStore(textValueStore(new MemoryStorage()));
+    await store.save(sessionWith('continued', [['assistant', 'I can refund the']]));
+    const loaded = await store.load('continued');
+    const conversation = new Conversation(loaded!.conversationHistory);
+    conversation.appendMessages({
+      role: 'user',
+      content: 'Continue from where you stopped.',
+      metadata: { [MODEL_ONLY_METADATA_KEY]: true },
+    });
+    await store.save({ ...loaded!, conversationHistory: conversation.current });
+
+    const [summary] = await store.list();
+
+    expect(summary).toMatchObject({ title: null, lastMessagePreview: 'I can refund the' });
   });
 
   it('updates the preview on every save and keeps the title the first user message gave', async () => {

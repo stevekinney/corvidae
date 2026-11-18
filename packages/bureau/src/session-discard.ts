@@ -39,6 +39,7 @@ import {
   type CommandLedgerIdentity,
   createCommandLedger,
 } from './command-ledger';
+import { CONTINUATION_INSTRUCTION_OF_METADATA_KEY } from './session-resume';
 
 /** The key prefix of the discard command ledger, apart from every other ledger's. */
 export const DISCARD_LEDGER_KEY_PREFIX = 'command-ledger:discard-turn:v1';
@@ -338,7 +339,16 @@ export function judgeDiscardableTurn(
   if (turn.length === 0) {
     return refuse('nothing-to-discard', 'The run wrote nothing after the person’s message.');
   }
-  return { ok: true, removed: turn };
+  // A continuation's model-only instruction turn (COR-2437) belongs to the run it prompted, and
+  // goes with its turn. It is the product's, never the person's message, so it never keeps a turn.
+  const before = start > 0 ? ids[start - 1] : undefined;
+  const instruction =
+    before === undefined
+      ? undefined
+      : getOwn(session.conversationHistory.messages, before)?.metadata?.[
+          CONTINUATION_INSTRUCTION_OF_METADATA_KEY
+        ];
+  return { ok: true, removed: instruction === undefined ? turn : [before!, ...turn] };
 }
 
 function withoutRows(

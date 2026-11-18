@@ -1,5 +1,5 @@
 import type { Conversation } from 'conversationalist';
-import { messageText } from 'conversationalist';
+import { isModelOnlyMessage, messageText } from 'conversationalist';
 
 import type { Scratchpad } from './create-scratchpad';
 import type { OnStepHook, PrepareStepHook, StepResult } from './types';
@@ -53,9 +53,10 @@ export interface CreateMemoryBridgeOptions {
 // ---------------------------------------------------------------------------
 
 function extractLastUserMessage(conversation: Conversation): string | undefined {
+  // A model-only row is the product's instruction (COR-2437), not what the person asked about.
   const lastUserMessage = [...conversation.getMessages()]
     .toReversed()
-    .find((message) => message.role === 'user');
+    .find((message) => message.role === 'user' && !isModelOnlyMessage(message));
   if (lastUserMessage === undefined) return undefined;
   // The recall query is the message's text, whatever shape its content has: a
   // multimodal message contributes its text parts and a message with none
