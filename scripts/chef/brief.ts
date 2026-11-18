@@ -829,8 +829,10 @@ async function readIssue(
 }
 
 /**
- * Reads every issue of a batch and renders one brief, in the given order. Ordering is not
- * completion evidence, so every native dependency remains until Linear reports it complete.
+ * Reads every issue of a batch and renders one brief, in the given order. A blocker that is an
+ * earlier issue of the same batch counts as cleared for dispatch: the worker lands it first, in its
+ * own commit (owner decision, 2026-11-16, "one worker takes consecutive issues on one branch").
+ * Every other blocker stays open until Linear reports it complete.
  */
 export async function readBatchBrief(
   identifiers: readonly string[],
@@ -849,8 +851,13 @@ export async function readBatchBrief(
 }> {
   const entries: { issue: IssueSummary; options: BriefOptions }[] = [];
   let foreignClaim: string | undefined;
-  for (const identifier of identifiers) {
-    const read = await readIssue(identifier, options, dependencies);
+  for (const [index, identifier] of identifiers.entries()) {
+    const read = await readIssue(
+      identifier,
+      options,
+      dependencies,
+      new Set(identifiers.slice(0, index)),
+    );
     entries.push(read);
     if (read.foreignClaim !== undefined && foreignClaim === undefined)
       foreignClaim = `${read.issue.identifier} is ${read.foreignClaim}`;
@@ -905,6 +912,44 @@ export async function readBrief(
   };
 }
 
+/** Why each refused assignment is not dispatchable, one line per issue, so a refusal needs no `--json`. */
+export function refusalReasons(
+  assignments: readonly Assignment[],
+  gates: readonly AssignmentGate[],
+): string {
+  const lines: string[] = [];
+  gates.forEach((gate, index) => {
+    if (gate.dispatchable) return;
+    const assignment = assignments[index];
+    const reasons: string[] = [];
+    if (gate.blockers.length > 0)
+      reasons.push(`blocked by ${gate.blockers.map((b) => b.identifier).join(', ')}`);
+    if (gate.unreadableDependencies.length > 0)
+      reasons.push(
+        `blockers unreadable: ${gate.unreadableDependencies.map((b) => b.identifier).join(', ')}`,
+      );
+    if (gate.missingContext.length > 0)
+      reasons.push(
+        `required context unreadable: ${gate.missingContext.map((r) => r.locator).join(', ')}`,
+      );
+    reasons.push(...gate.identityErrors);
+    if (gate.claimStatus === 'foreign') reasons.push('claimed by another run');
+    if (assignment !== undefined && gate.status === 'invalid') {
+      if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(assignment.identity.repository))
+        reasons.push('no --repository <owner/name> pin');
+      if (!/^[0-9a-f]{40}$/i.test(assignment.identity.base))
+        reasons.push('no --base <40-character commit> pin');
+      if (assignment.criteria.length === 0 && assignment.classification !== 'no-behavior')
+        reasons.push('no acceptance criteria');
+    }
+    if (reasons.length === 0) reasons.push(`gate ${gate.status}`);
+    lines.push(
+      `- ${assignment?.identity.identifier ?? `assignment ${index + 1}`}: ${reasons.join('; ')}`,
+    );
+  });
+  return lines.join('\n');
+}
+
 /** Writes one batch brief for `identifiers`, in the given order, to `<out-dir>/<IDs joined by _>.md`. */
 export async function writeBatchBrief(
   identifiers: readonly string[],
@@ -914,7 +959,7 @@ export async function writeBatchBrief(
   const brief = await readBatchBrief(identifiers, options, dependencies);
   if (brief.gates.some((gate) => !gate.dispatchable))
     throw new LinearError(
-      'Refused: one or more assignments are not dispatchable; no brief was written.',
+      `Refused: one or more assignments are not dispatchable; no brief was written.\n${refusalReasons(brief.assignments, brief.gates)}`,
     );
   if (brief.foreignClaim !== undefined)
     throw new LinearError(
@@ -943,7 +988,9 @@ export async function writeBrief(
 ): Promise<BriefResult> {
   const brief = await readBrief(identifier, options, dependencies);
   if (!brief.gate.dispatchable)
-    throw new LinearError('Refused: assignment is not dispatchable; no brief was written.');
+    throw new LinearError(
+      `Refused: assignment is not dispatchable; no brief was written.\n${refusalReasons([brief.assignment], [brief.gate])}`,
+    );
   if (brief.foreignClaim !== undefined)
     throw new LinearError(
       `Refused: ${brief.identifier} is ${brief.foreignClaim}; no brief was written${options.run === undefined ? " (pass --run <id> when the claim is this run's)" : ''}.`,
@@ -1057,7 +1104,7 @@ export async function run(
     if (rejected) {
       const error =
         brief.foreignClaim === undefined
-          ? 'Refused: one or more assignments are not dispatchable; no brief was written.'
+          ? `Refused: one or more assignments are not dispatchable; no brief was written.\n${refusalReasons(contracts.assignments, contracts.gates)}`
           : `Refused: ${brief.foreignClaim}; no brief was written${options.run === undefined ? " (pass --run <id> when the claim is this run's)" : ''}.`;
       const structured = {
         ok: false,
