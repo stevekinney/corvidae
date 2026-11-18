@@ -34,13 +34,33 @@ afterAll(() => {
 });
 
 const { render, cleanup, fireEvent } = await import('@testing-library/svelte');
-const { flushSync } = await import('svelte');
+const { createRawSnippet, flushSync } = await import('svelte');
+const { default: StackedListItem } = await import('./stacked-list-item.svelte');
 const { default: ExtrasFixture } =
   await import('../../test/fixtures/stacked-list-item-extras-fixture.svelte');
 const { default: StatusListFixture } =
   await import('../../test/fixtures/status-list-fixture.svelte');
 
 const stylesheet = readFileSync(new URL('./stacked-list-item.css', import.meta.url), 'utf8');
+
+/**
+ * The declarations of the phone rule for a status-first row with a trailing control, which is not a
+ * group row or one whose actions drop under it, ending in `cell`.
+ */
+function cappedRule(cell: string): string {
+  const escaped = cell
+    .replaceAll(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`)
+    .replaceAll(' ', String.raw`\s*`);
+  return (
+    new RegExp(
+      String.raw`\.cinder-stacked-list-item--lines\.cinder-stacked-list-item--has-trailing:not\(\s*\.cinder-stacked-list-item--band,\s*\.cinder-stacked-list-item--group,\s*\.cinder-stacked-list-item--phone-buttons\s*\)\.cinder-stacked-list-item--status-leading\s*${escaped}\s*\{([^}]*)\}`,
+    ).exec(stylesheet)?.[1] ?? ''
+  );
+}
+
+function textSnippet(text: string) {
+  return createRawSnippet(() => ({ render: () => `<span>${text}</span>`, setup: () => {} }));
+}
 
 function setPhone(next: boolean) {
   phone = next;
@@ -219,22 +239,113 @@ describe('StackedListItem on a phone', () => {
       phoneBlocks,
     ) ?? [undefined, ''];
     expect(layout).toMatch(/--_cinder-status-track:\s*max-content;/);
-    // The time gives way instead: at most 5rem, wrapping at its spaces.
-    expect(layout).toMatch(/--_cinder-time-track:\s*fit-content\(5rem\);/);
+    // Not every row's time: that is only the rows with a trailing control.
+    expect(layout).not.toContain('--_cinder-time-track');
     const [, status] = leadingPhone(String.raw`\.cinder-stacked-list-item__status`).exec(
       phoneBlocks,
     ) ?? [undefined, ''];
     expect(status).toMatch(/flex:\s*none;/);
     expect(status).toMatch(/min-inline-size:\s*max-content;/);
-    const [, time] = leadingPhone(String.raw`\.cinder-stacked-list-item__time`).exec(
-      phoneBlocks,
-    ) ?? [undefined, ''];
-    expect(time).toMatch(/white-space:\s*normal;/);
+    // A row with a hook's switch at its end: the title keeps 11rem, and the time takes the rest
+    // between 5rem (all a 320px phone leaves it, where the status words stay whole) and 9rem.
+    expect(cappedRule('> .cinder-stacked-list-item__layout')).toMatch(
+      /--_cinder-time-track:\s*fit-content\(clamp\(5rem, 100cqi - 11rem, 9rem\)\);/,
+    );
+    expect(cappedRule('.cinder-stacked-list-item__time')).toMatch(/white-space:\s*normal;/);
     // The phone grid reads the time track from that property.
     expect(stylesheet).toMatch(
       /\[title\] minmax\(0, 1fr\)\s*\[time\] var\(--_cinder-time-track, auto\) \[trailing\] auto;/,
     );
     cleanup();
+    setPhone(false);
+  });
+
+  test('at 320 a group row keeps its time and its Show on one line: the disclosure never shrinks or breaks, and its time is never capped', () => {
+    setPhone(true);
+    const { container } = render(StackedListItem, {
+      props: {
+        title: textSnippet('Daily summary'),
+        status: textSnippet('Missed runs'),
+        time: textSnippet('Oct 30'),
+        meta: textSnippet('Schedule, Assistant, every day at 3:00 AM'),
+        details: textSnippet('Mon, Nov 2, 3:00 AM'),
+      },
+    });
+    const row = container.querySelector('.cinder-stacked-list-item');
+    expect(row?.classList.contains('cinder-stacked-list-item--group')).toBe(true);
+    // The disclosure shares the time's cell, so the cell's rules reach it.
+    const disclosure = row?.querySelector(
+      '.cinder-stacked-list-item__time > .cinder-stacked-list-item__disclosure',
+    );
+    expect(disclosure?.textContent).toContain('Show');
+    const own = /\.cinder-stacked-list-item__disclosure\s*\{([^}]*)\}/.exec(stylesheet)?.[1] ?? '';
+    expect(own).toMatch(/flex:\s*none;/);
+    expect(own).toMatch(/white-space:\s*nowrap;/);
+    // The cap and the wrapping name a group row among the rows they leave alone.
+    expect(cappedRule('> .cinder-stacked-list-item__layout')).not.toBe('');
+    expect(cappedRule('.cinder-stacked-list-item__time')).not.toBe('');
+    // No other rule lets a time cell wrap.
+    const wrappingTimeRules = [
+      ...stylesheet.matchAll(
+        /([^{}]*\.cinder-stacked-list-item__time)\s*\{[^}]*white-space:\s*normal/g,
+      ),
+    ].map((match) => match[1] ?? '');
+    expect(wrappingTimeRules).toHaveLength(1);
+    expect(wrappingTimeRules[0]).toContain('--has-trailing');
+    expect(wrappingTimeRules[0]).toContain('.cinder-stacked-list-item--group');
+    cleanup();
+    setPhone(false);
+  });
+
+  test('at 375 a short title with a long time and no trailing control keeps the time on one line', () => {
+    setPhone(true);
+    const { container } = render(StackedListItem, {
+      props: {
+        title: textSnippet('Daily summary'),
+        status: textSnippet('Active'),
+        time: textSnippet('Next Fri Nov 6, 11:00 AM'),
+        meta: textSnippet('Workflow, Release notes'),
+      },
+    });
+    const row = container.querySelector('.cinder-stacked-list-item');
+    // No trailing control, so neither the cap nor the wrapping reaches it: the time cell keeps the
+    // two-line layout's own `nowrap` and an `auto` track, as it has on a tablet.
+    expect(row?.classList.contains('cinder-stacked-list-item--has-trailing')).toBe(false);
+    const base =
+      /\.cinder-stacked-list-item--lines \.cinder-stacked-list-item__time\s*\{([^}]*)\}/.exec(
+        stylesheet,
+      )?.[1] ?? '';
+    expect(base).toMatch(/white-space:\s*nowrap;/);
+    expect(stylesheet).toMatch(/\[time\] var\(--_cinder-time-track, auto\)/);
+    expect([...stylesheet.matchAll(/--_cinder-time-track:/g)]).toHaveLength(1);
+    cleanup();
+    setPhone(false);
+  });
+
+  test('at 320 a row with a switch at its end keeps Delivered, Unavailable and Needs setup whole', () => {
+    setPhone(true);
+    for (const word of ['Delivered', 'Unavailable', 'Needs setup']) {
+      const { container } = render(StackedListItem, {
+        props: {
+          title: textSnippet('Post settled runs'),
+          badge: textSnippet('Plugin'),
+          status: textSnippet(word),
+          time: textSnippet('Yesterday, 6:00 PM'),
+          meta: textSnippet('When a review is waiting, run Post message from Slack'),
+          trailing: textSnippet('On'),
+        },
+      });
+      const row = container.querySelector('.cinder-stacked-list-item');
+      expect(row?.classList.contains('cinder-stacked-list-item--has-trailing')).toBe(true);
+      expect(row?.querySelector('.cinder-stacked-list-item__status')?.textContent).toBe(word);
+      cleanup();
+    }
+    // The word's track is its own width and it never shrinks; the time gives way, never below 5rem.
+    const phoneBlocks = stylesheet.slice(
+      stylesheet.indexOf('/* A narrow row puts a leading status on line two'),
+    );
+    expect(phoneBlocks).toMatch(/--_cinder-status-track:\s*max-content;/);
+    expect(cappedRule('> .cinder-stacked-list-item__layout')).toContain('clamp(5rem,');
     setPhone(false);
   });
 

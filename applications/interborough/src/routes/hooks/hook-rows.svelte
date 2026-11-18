@@ -51,6 +51,9 @@
 
   let { hooks }: Props = $props();
 
+  /** Where a delivery time may break on a phone: after the day's comma ("Yesterday," / "6:00 PM"). */
+  const TIME_PARTS = /(?<=,) /;
+
   const queryClient = useQueryClient();
 
   const ordered = $derived(failingFirst(hooks, hookFailing));
@@ -154,7 +157,12 @@
         {/snippet}
         {#snippet title()}{text.title}{/snippet}
         {#snippet time()}
-          {#if delivered !== undefined}<span data-last-delivery>{delivered}</span>{/if}
+          <!-- The day and the clock each stay whole: on a phone the time breaks only between them. -->
+          {#if delivered !== undefined}<span data-last-delivery
+              >{#each delivered.split(TIME_PARTS) as part, index (index)}{#if index > 0}{' '}{/if}<span
+                  class="ib-hooks__time-part">{part}</span
+                >{/each}</span
+            >{/if}
         {/snippet}
         {#snippet meta()}
           {#if text.line !== ''}<span class="ib-hooks__line">{text.line}</span>{/if}
@@ -204,6 +212,10 @@
 
   .ib-hooks__alert-body {
     margin: 4px 0 8px;
+  }
+
+  .ib-hooks__time-part {
+    white-space: nowrap;
   }
 
   /* A long sentence (a webhook's address) ends at the second line with an ellipsis; an unbroken value wraps anywhere. */

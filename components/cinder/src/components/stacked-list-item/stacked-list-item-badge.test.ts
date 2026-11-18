@@ -68,6 +68,17 @@ describe('StackedListItem badge (R10-01)', () => {
     const badge = ruleBody('.cinder-stacked-list-item__badge');
     expect(badge).toMatch(/flex:\s*none;/);
     expect(badge).toMatch(/white-space:\s*nowrap;/);
+    // On a phone (320 and 375 pixels) the title beside a mark is one line ending in an ellipsis, so
+    // the mark sits the 6px gap after the last character drawn, within 8px of the title's text: a
+    // title that wrapped would keep its box's width and strand the mark after a short first line.
+    // The browser measures it on /hooks at both widths (hooks.spec.ts, [default-hooks]).
+    const phoneTitle =
+      /@container cinder-stacked-list-item \(max-width: 639\.98px\)\s*\{\s*\.cinder-stacked-list-item__title-row > \.cinder-stacked-list-item__title\s*\{([^}]*)\}/.exec(
+        stylesheet,
+      )?.[1] ?? '';
+    expect(phoneTitle).toMatch(/display:\s*block;/);
+    expect(phoneTitle).toMatch(/white-space:\s*nowrap;/);
+    expect(phoneTitle).toMatch(/text-overflow:\s*ellipsis;/);
     // In the two-line layout the pair takes the title's grid cell.
     expect(
       ruleBody('.cinder-stacked-list-item--lines .cinder-stacked-list-item__title-row'),

@@ -19,6 +19,7 @@ import { expect, loggedFailedResponse, test } from './fixtures.ts';
 import { readBoxes } from './read-boxes.ts';
 import { bureauCall } from './task-support.ts';
 import { TEXT_ECHO_AGENT_NAME } from './text-echo-agent.ts';
+import { textLines } from './text-lines.ts';
 
 const WIDTHS = [375, 1280] as const;
 const SECRET = 'e2e-hooks-signing-secret-0123456789';
@@ -662,6 +663,50 @@ for (const width of WIDTHS) {
       page.getByRole('tooltip').filter({ hasText: standing.withdrawnSwitch('Slack') }),
     ).toBeVisible();
     await checkA11y(`hooks — default hooks in the list at ${width}px`);
+  });
+}
+
+// R10-01 and R10-02 on the narrowest phones, measured: the status word whole, the Plugin badge just
+// after the name it marks, and the time broken only between its day and its clock.
+for (const width of [320, 375] as const) {
+  test(`[default-hooks] at ${width} pixels each status word is whole and each Plugin badge sits just after its name`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await openHooks(page, '/hooks', [
+      DEFAULT_ON,
+      DEFAULT_OFF,
+      DEFAULT_WITHDRAWN,
+      DEFAULT_DISABLED_PLUGIN,
+      DEFAULT_NEEDS_SETUP,
+      OWNER_PLUGIN_HOOK,
+    ]);
+    await expect(page.locator('[data-view="hooks"]')).toHaveAttribute('data-state', 'ready');
+    const rows = page.locator('li[data-hook]');
+    await expect(rows).toHaveCount(6);
+    for (const row of await rows.all()) {
+      const id = await row.getAttribute('data-hook');
+      const word = row.locator('[data-status-word]');
+      if ((await word.count()) > 0) {
+        expect((await textLines(word)).lines, `${id}: the status word is one line`).toBe(1);
+        const clipped = await row
+          .locator('.cinder-stacked-list-item__status')
+          .evaluate((cell) => cell.scrollWidth > cell.clientWidth + 0.5);
+        expect(clipped, `${id}: the status word is not cut`).toBe(false);
+      }
+      for (const part of await row.locator('.ib-hooks__time-part').all()) {
+        expect((await textLines(part)).lines, `${id}: a day or a clock is never broken`).toBe(1);
+      }
+      const badge = row.getByTestId('hook-plugin-badge');
+      if ((await badge.count()) === 0) continue;
+      const title = await textLines(row.locator('.cinder-stacked-list-item__title'));
+      const mark = await badge.boundingBox();
+      expect(title.lines, `${id}: a name beside its badge is one line`).toBe(1);
+      // From the last character drawn (or the ellipsis that ends the name) to the badge's edge.
+      const gap = (mark?.x ?? Number.NaN) - title.right;
+      expect(gap, `${id}: the badge follows the name`).toBeGreaterThanOrEqual(0);
+      expect(gap, `${id}: the badge is within 8px of the name`).toBeLessThanOrEqual(8);
+    }
   });
 }
 
