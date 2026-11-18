@@ -70,7 +70,7 @@ export async function createDeliveryVerificationFixture(
     };
   }
   const { base, revision, integrationTree } = identity;
-  const outputDirectory = identity.outputDirectory ?? directory;
+  const outputDirectory = identity.outputDirectory ?? mkdtempSync(join(scratch, 'control-'));
   const state = createExecutionStateStore({
     stateDirectory: join(outputDirectory, 'state'),
     hostId: options.hostId ?? 'fixture',
