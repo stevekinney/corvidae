@@ -57,6 +57,16 @@
     border-block-end: 1px solid var(--cinder-border-muted);
   }
 
+  /* The label, with the count as a muted line under it at the start; the switch and the copy
+     button keep the title's row. */
+  .cinder-payload-inspector__title {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--cinder-space-0-5);
+    min-inline-size: 0;
+  }
+
   .cinder-payload-inspector__label {
     font-size: var(--cinder-text-sm);
     font-weight: var(--cinder-font-semibold);

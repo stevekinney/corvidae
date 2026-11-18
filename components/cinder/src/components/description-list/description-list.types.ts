@@ -111,6 +111,12 @@ export type DescriptionListItem = {
    * and is left out when empty.
    */
   note?: string;
+  /**
+   * An identifier the note starts with, drawn in the mono family at the note's size, such as a
+   * workflow's `agentRun` before "(built in)". It is drawn with or without `note`, a space apart
+   * from it, and is left out when empty.
+   */
+  noteCode?: string;
 };
 export type DescriptionListProps = Omit<HTMLAttributes<HTMLDListElement>, 'class'> & {
   items: DescriptionListItem[];

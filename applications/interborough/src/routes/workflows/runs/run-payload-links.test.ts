@@ -29,22 +29,30 @@ describe('inputEnvelopeView (rows 55c, S38, 28e)', () => {
       workspaceAuthority: { workspaceId: 'w', actorId: 'a' },
     };
     const view = inputEnvelopeView(envelope);
-    expect(view.value).toEqual({
+    // The Fields view's object: the input's keys with the envelope's beside them, JSON only.
+    expect(view.fields).toEqual({
       branch: 'main',
       kind: 'schedule',
       scheduleId: 'release-notes-digest',
       workspaceAuthority: { workspaceId: 'w', actorId: 'a' },
     });
     expect(view.jsonOnly).toEqual(['kind', 'scheduleId', 'workspaceAuthority']);
+    // The JSON view and Copy get the payload as the engine stored it: `input` still nested.
+    expect(view.stored).toBe(envelope);
   });
 
-  test('a key of the input wins over the envelope’s, and a value that is no envelope is left as it is', () => {
-    expect(inputEnvelopeView({ kind: 'manual', input: { kind: 'refund' } })).toEqual({
-      value: { kind: 'refund' },
-      jsonOnly: [],
-    });
+  test('a key of the input wins in the Fields view, and the stored payload keeps both', () => {
+    const colliding = { kind: 'manual', input: { kind: 'refund' } };
+    const view = inputEnvelopeView(colliding);
+    expect(view.fields).toEqual({ kind: 'refund' });
+    expect(view.jsonOnly).toEqual([]);
+    // The envelope's own `kind` is not lost from what the JSON view and Copy show.
+    expect(view.stored).toEqual({ kind: 'manual', input: { kind: 'refund' } });
+  });
+
+  test('a value that is no envelope is left as it is, for both views', () => {
     for (const value of [{ branch: 'main' }, { kind: 'schedule', input: 'text' }, null, [1]]) {
-      expect(inputEnvelopeView(value)).toEqual({ value, jsonOnly: [] });
+      expect(inputEnvelopeView(value)).toEqual({ stored: value, fields: value, jsonOnly: [] });
     }
   });
 });

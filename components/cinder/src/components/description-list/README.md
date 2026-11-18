@@ -53,7 +53,9 @@ The `grid` variant lays the pairs out in as many equal columns as the list's own
 
 ### A note under a value
 
-Give an item a `note` for a muted second line under its definition: what the value is called elsewhere, such as a check read in words with its name and version beneath (`Contains phrase`, then `contains-phrase, version 1`). The note is plain text, read with the definition, and is left out when empty. Use it instead of a second row that states the same fact twice.
+Give an item a `note` for a muted second line under its definition: what the value is called elsewhere, such as a check read in words with its name and version beneath (`Contains phrase`, then `contains-phrase, version 1`). The note is plain text, read with the definition, and is left out when empty. Use it instead of a second row that states the same fact twice. An identifier at the note's start goes in `noteCode`, drawn in the mono family at the note's size: `{ term: 'Workflow', definition: 'Chat with an agent', noteCode: 'agentRun', note: '(built in)' }` reads `agentRun` (built in) under the name.
+
+A long tag in a `tags` definition is shortened with an ellipsis and keeps its whole text as its title, so it never runs out of its row.
 
 ### Formatted values
 

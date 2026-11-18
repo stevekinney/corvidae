@@ -339,12 +339,14 @@ function instanceTask(
     readonly awaitingSignal?: string;
     readonly wakeAt?: string;
     readonly scheduleName?: string;
+    /** The agent its steps run as, which line two names after the kind (10h). */
+    readonly agentName: string;
   },
 ) {
   return {
     id,
     contextId: id,
-    agentName: null,
+    agentName: fields.agentName,
     owner: 'anonymous:local',
     actor: null,
     kind: 'catalog',
@@ -368,6 +370,18 @@ function instanceTask(
   };
 }
 
+/** The task of the step an instance is at, which names the agent the step runs as. */
+function stepTask(instance: ReturnType<typeof instanceTask>, agentName: string) {
+  return {
+    ...instance,
+    id: `${instance.id}-step`,
+    contextId: `${instance.id}-step`,
+    agentName,
+    origin: { kind: 'parent', parentRunId: instance.id },
+    workflow: undefined,
+  };
+}
+
 for (const width of WIDTHS) {
   test(`the row states the sample world lacks, a Running, a Waiting for a signal and a Scheduled row, at ${width} pixels (10h)`, async ({
     page,
@@ -375,17 +389,19 @@ for (const width of WIDTHS) {
     // The sample world's own runs, with three more the Bureau would list in a busier world: a
     // workflow running at step 2 of 4, one parked on the signal notes-approved, and one asleep until
     // its due time (Monday, Nov 2, 11:00 AM Central, after the sample clock's 10:46 AM).
-    const extra = [
+    const instances = [
       instanceTask('row-states-running', 'release-notes', {
         createdAt: '2026-11-02T16:31:00.000Z',
         status: 'working',
         steps: { total: 4, at: 2 },
+        agentName: 'assistant',
       }),
       instanceTask('row-states-waiting', 'release-notes', {
         createdAt: '2026-11-02T16:20:00.000Z',
         status: 'working',
         steps: { total: 4, at: 2 },
         awaitingSignal: 'notes-approved',
+        agentName: 'assistant',
       }),
       instanceTask('row-states-scheduled', 'weekly-refund-audit', {
         createdAt: '2026-11-02T16:40:00.000Z',
@@ -393,8 +409,14 @@ for (const width of WIDTHS) {
         steps: { total: 3, at: 1 },
         wakeAt: '2026-11-02T17:00:00.000Z',
         scheduleName: 'Weekly refund audit',
+        agentName: 'tool-runner',
       }),
     ];
+    // Each instance with the task of the step it is at, which names the agent that step runs as.
+    const extra = instances.flatMap((instance) => [
+      instance,
+      stepTask(instance, instance.agentName),
+    ]);
     await page.route('**/bureau/jsonrpc', async (route) => {
       const body = JSON.parse(route.request().postData() ?? '{}') as {
         method?: string;

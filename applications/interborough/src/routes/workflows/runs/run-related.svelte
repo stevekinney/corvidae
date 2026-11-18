@@ -10,7 +10,7 @@
   import type { Snippet } from 'svelte';
 
   import { RETRY_LABEL } from '../../../app/copy/views.ts';
-  import { RUN_RELATED_COPY } from '../../../app/copy/runs.ts';
+  import { RUN_DETAIL_COPY, RUN_RELATED_COPY } from '../../../app/copy/runs.ts';
   import { createActiveRevisionComparisons } from '../../../lib/active-revision-comparisons.svelte.ts';
   import { faultTreatment } from '../../../lib/faults.ts';
   import RelatedRunLink from './related-run-link.svelte';
@@ -42,9 +42,25 @@
     readonly hasExtra?: boolean;
     /** Whether the run is over, which says nothing came from it rather than nothing yet (row 55d). */
     readonly over?: boolean;
+    /** Whether the run is a chat's, which says nothing came from "this chat" (row 54j). */
+    readonly inChat?: boolean;
   }
 
-  let { client, workflow, extra, hasExtra = false, over = false }: RunRelatedProps = $props();
+  let {
+    client,
+    workflow,
+    extra,
+    hasExtra = false,
+    over = false,
+    inChat = false,
+  }: RunRelatedProps = $props();
+  const noneWords = $derived(
+    inChat
+      ? RUN_DETAIL_COPY.related.noneInChat
+      : over
+        ? RUN_RELATED_COPY.noneOver
+        : RUN_RELATED_COPY.none,
+  );
 
   let topologyOpen = $state(false);
 
@@ -119,7 +135,7 @@
     {#if hasExtra && extra !== undefined}
       {@render extra()}
     {:else}
-      <p class="ib-run__note">{over ? RUN_RELATED_COPY.noneOver : RUN_RELATED_COPY.none}</p>
+      <p class="ib-run__note">{noneWords}</p>
     {/if}
   {:else}
     {#if hasExtra && extra !== undefined}{@render extra()}{/if}

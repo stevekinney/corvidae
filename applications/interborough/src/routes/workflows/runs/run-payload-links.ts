@@ -84,10 +84,13 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
  * with an envelope, `{ kind, scheduleId, input, workspaceAuthority }`, whose `input` is what the
  * person or the schedule gave the run. The card shows that input's fields ("Input, 1 field",
  * Branch main), and the envelope's other keys in the JSON view only, so the Fields list ends
- * "3 more in JSON". A value that is no envelope, or whose `input` is not an object, is left as it is.
+ * "3 more in JSON". That flattened object is for the Fields view ONLY: `stored` is the payload as
+ * the engine stored it, which the JSON view and Copy show, `input` still nested and no key lost. A
+ * value that is no envelope, or whose `input` is not an object, is left as it is.
  */
 export function inputEnvelopeView(value: unknown): {
-  readonly value: unknown;
+  readonly stored: unknown;
+  readonly fields: unknown;
   readonly jsonOnly: readonly string[];
 } {
   if (
@@ -95,15 +98,16 @@ export function inputEnvelopeView(value: unknown): {
     typeof value['kind'] !== 'string' ||
     !Object.hasOwn(value, 'input')
   ) {
-    return { value, jsonOnly: [] };
+    return { stored: value, fields: value, jsonOnly: [] };
   }
   const input = value['input'];
-  if (!isPlainObject(input)) return { value, jsonOnly: [] };
+  if (!isPlainObject(input)) return { stored: value, fields: value, jsonOnly: [] };
   const envelope = Object.entries(value).filter(
     ([key]) => key !== 'input' && !Object.hasOwn(input, key),
   );
   return {
-    value: { ...input, ...Object.fromEntries(envelope) },
+    stored: value,
+    fields: { ...input, ...Object.fromEntries(envelope) },
     jsonOnly: envelope.map(([key]) => key),
   };
 }

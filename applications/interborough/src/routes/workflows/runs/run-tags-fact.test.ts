@@ -4,7 +4,24 @@
  */
 import { describe, expect, test } from 'bun:test';
 
-import { editableRunTags, isSystemTag, runTagsFact } from './run-tags.ts';
+import { RESERVED_RUN_TAG_PREFIXES } from '@lostgradient/bureau';
+
+import { editableRunTags, isSystemTag, runTagsFact, SYSTEM_TAG_PREFIXES } from './run-tags.ts';
+
+describe('the system tag prefixes', () => {
+  test('hold every prefix the Bureau reserves for its run tags', () => {
+    for (const prefix of RESERVED_RUN_TAG_PREFIXES) {
+      expect(SYSTEM_TAG_PREFIXES, prefix).toContain(prefix);
+    }
+  });
+
+  test('count the steering tag, a 40-character hash, and never list it', () => {
+    const steering = `bureau-steering-run:${'a1b2c3d4e5'.repeat(4)}`;
+    expect(isSystemTag(steering)).toBe(true);
+    expect(runTagsFact([steering, 'origin:chat'])).toEqual({ tags: [], systemTagCount: 2 });
+    expect(isSystemTag('hook-origin:hook-1')).toBe(true);
+  });
+});
 
 describe('runTagsFact', () => {
   test('counts the origin tags and lists only a person’s own', () => {
