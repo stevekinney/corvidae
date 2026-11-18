@@ -148,19 +148,27 @@ function relativeSpecifier(from: string, to: string): string {
 
 /**
  * Re-points a moved (or unmoved) file's relative imports, from its old place `before` to `after`,
- * through the moves; the root suite's environment configuration becomes the testing package's.
+ * through the moves; the root suite's environment configuration becomes the testing package's,
+ * and a spec helper that left the root suite for the testing package (`./layout-fixture.ts`, which
+ * `testingHelpers` names as `layout-fixture`) becomes its `@lostgradient/testing/playwright/…`
+ * export: a spec written after the helper left can still name it the old way.
  */
 export function rewriteRelativeImports(
   source: string,
   before: string,
   after: string,
   moves: ReadonlyMap<string, string>,
+  testingHelpers: ReadonlySet<string> = new Set(),
 ): string {
   return source.replace(SPECIFIER, (whole, lead: string, quote: string, specifier: string) => {
     if (!specifier.startsWith('.')) return whole;
     const target = posix.normalize(posix.join(posix.dirname(before), specifier));
     if (target === `${ROOT_SUITE}/environment-configuration.ts`) {
       return `${lead}${quote}@lostgradient/testing/environment-configuration${quote}`;
+    }
+    const helper = new RegExp(`^${ROOT_SUITE}/tests/([\\w-]+)\\.ts$`).exec(target)?.[1];
+    if (helper !== undefined && !moves.has(target) && testingHelpers.has(helper)) {
+      return `${lead}${quote}@lostgradient/testing/playwright/${helper}${quote}`;
     }
     const moved = moves.get(target) ?? target;
     if (moved === target && before === after) return whole;
@@ -574,12 +582,13 @@ async function moveLinked(options: Options): Promise<number> {
       .map((workspace) => workspace.directory),
   );
   const coreDependencies = new Set(repository.workspaces.get(CORE_PACKAGE)?.dependencies ?? []);
+  const testingHelpers = playwrightHelpers(root);
   for (const file of tracked(root, '*.ts', '*.svelte')) {
     const before = reverse.get(file) ?? file;
     const path = join(root, file);
     if (!existsSync(path)) continue;
     const source = readFileSync(path, 'utf8');
-    let next = rewriteRelativeImports(source, before, file, moves);
+    let next = rewriteRelativeImports(source, before, file, moves, testingHelpers);
     if (reverse.has(file)) next = rewriteLocationPaths(next, before, file, moves);
     const directory = file.split('/')[1];
     const owner = [...repository.workspaces.values()].find(
@@ -782,6 +791,19 @@ async function moveLinked(options: Options): Promise<number> {
     );
   }
   return 0;
+}
+
+/** The spec helpers the testing package exports as `./playwright/<name>`, by name. */
+function playwrightHelpers(root: string): Set<string> {
+  const manifest = JSON.parse(
+    readFileSync(join(root, 'testing', 'testing', 'package.json'), 'utf8'),
+  ) as { exports?: Record<string, unknown> };
+  return new Set(
+    Object.keys(manifest.exports ?? {}).flatMap((key) => {
+      const name = /^\.\/playwright\/([\w-]+)$/.exec(key)?.[1];
+      return name === undefined ? [] : [name];
+    }),
+  );
 }
 
 /**

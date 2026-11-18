@@ -47,6 +47,27 @@ describe('rewriteRelativeImports', () => {
     );
   });
 
+  test('names a spec helper the testing package took by its export', () => {
+    const source = [
+      "import { fixtureRoute } from './layout-fixture.ts';",
+      "import { local } from './local-helper.ts';",
+    ].join('\n');
+    expect(
+      rewriteRelativeImports(
+        source,
+        'scripts/browser-fixtures/tests/a.playwright.ts',
+        'components/button/browser/tests/a.playwright.ts',
+        moves,
+        new Set(['layout-fixture']),
+      ),
+    ).toBe(
+      [
+        "import { fixtureRoute } from '@lostgradient/testing/playwright/layout-fixture';",
+        "import { local } from '../../../../scripts/browser-fixtures/tests/local-helper.ts';",
+      ].join('\n'),
+    );
+  });
+
   test('leaves an unmoved file whose imports moved nothing alone', () => {
     const source = "import { a } from './a.ts';\n";
     expect(rewriteRelativeImports(source, 'scripts/x.ts', 'scripts/x.ts', moves)).toBe(source);

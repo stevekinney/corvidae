@@ -6,9 +6,9 @@
  * on the pane the `narrow-trailing` fixture draws under its two rows.
  */
 
+import { boxOf } from '@lostgradient/testing/playwright/first-line-alignment';
 import { fixtureRoute } from '@lostgradient/testing/playwright/overlay-fixture';
 import { expect, test } from '@playwright/test';
-import { boxOf } from './first-line-alignment.ts';
 
 test.describe('StackedListItem in a narrow pane of a wide viewport', () => {
   test('the name column is wider than 120px in a 360px pane at 1280px', async ({ page }) => {

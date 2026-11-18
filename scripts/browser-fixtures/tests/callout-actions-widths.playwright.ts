@@ -1,5 +1,5 @@
+import { fixtureRoute } from '@lostgradient/testing/playwright/layout-fixture';
 import { expect, test } from '@playwright/test';
-import { fixtureRoute } from './layout-fixture.ts';
 
 // COR-2445 AC3 (COR-2314 AC4): a neutral Callout's actions hold at 360, 768 and 1280 px: they stay
 // inside the callout, at its trailing end, with each label on one line and nothing scrolling

@@ -1,5 +1,5 @@
+import { fixtureRoute } from '@lostgradient/testing/playwright/layout-fixture';
 import { expect, test } from '@playwright/test';
-import { fixtureRoute } from './layout-fixture.ts';
 
 // COR-2443 AC4 and COR-2503 AC1, AC5 and AC6: a time-led row leads with its window, on one line,
 // and the name leads: the meta shares the name's line only while the name keeps its room, and the
