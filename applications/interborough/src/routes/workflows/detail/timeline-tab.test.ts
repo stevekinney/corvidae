@@ -1,5 +1,6 @@
 import { fireEvent, render, waitFor } from '@testing-library/svelte';
 import { describe, expect, test } from 'bun:test';
+import { readFileSync } from 'node:fs';
 
 import type { WorkflowState, WorkflowTimelineEntry } from '@lostgradient/weft';
 import { QueryClient } from '@tanstack/svelte-query';
@@ -96,6 +97,40 @@ describe('TimelineTab', () => {
     });
 
     await waitFor(() => expect(getByText('No steps yet')).not.toBeNull());
+  });
+
+  // COR-2489: with no step chosen the detail pane was the frame's whole height (about 1,300px at
+  // 1280) with "Choose a step" centred in it. The empty pane is as tall as what it says.
+  test('with no step chosen, the detail pane is only as tall as "Choose a step"', async () => {
+    const entries = [
+      entry({ step: 1, operationLabel: 'reserveFlight' }),
+      entry({ step: 2, operationLabel: 'reserveHotel' }),
+    ];
+    const { container, getAllByText } = render(TimelineTabHarness, {
+      props: {
+        client: baseClient(entries),
+        workflow: workflow(),
+        liveObservations: liveObservations(),
+        finalizerStatus: null,
+      },
+    });
+    await waitFor(() => expect(getAllByText('Choose a step').length).toBeGreaterThan(0));
+    // The empty state is the detail body's own child, which is what the frame's rule names.
+    const detail = container.querySelector('[data-testid="run-steps"] .cinder-list-detail__detail');
+    const empty = detail?.querySelector(
+      ':scope > .cinder-list-detail__detail-body > .cinder-empty-state',
+    );
+    expect(empty?.textContent).toContain('Choose a step');
+
+    const source = readFileSync(new URL('./timeline-tab.svelte', import.meta.url), 'utf8');
+    const rule =
+      /\.ib-steps-frame\s+:global\(\s*\.cinder-list-detail__detail:has\(> \.cinder-list-detail__detail-body > \.cinder-empty-state\)\s*\)\s*\{([^}]*)\}/.exec(
+        source,
+      )?.[1];
+    expect(rule).toContain('block-size: auto;');
+    expect(rule).toContain('align-self: flex-start;');
+    // A chosen step's pane keeps the frame's height: the frame itself is unchanged.
+    expect(source).toMatch(/\.ib-steps-frame \{\s*block-size: max\(24rem, 60dvh\);/);
   });
 
   test('lists the steps in order, each in words and in code, with the count in the list header', async () => {
