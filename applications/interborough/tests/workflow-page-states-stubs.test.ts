@@ -19,6 +19,7 @@ import {
   asOutsideSchedule,
   asSignalStarted,
   listWithSignalStarted,
+  MORNING_BRIEFING_SAMPLE_TEXT,
   MORNING_BRIEFING_TEXT,
   OUTSIDE_SCHEDULE_ID,
   REFUSED_LINE,
@@ -108,6 +109,22 @@ describe('the builder’s states (COR-2432, rows 65d, 65n, 65w, 65z, 66a)', () =
       'activity',
       'await-signal',
       'fan-out',
+    ]);
+  });
+
+  test('the board’s sample is the morning briefing with four steps the builder draws (row 65d)', () => {
+    const document = parseWorkflowText(MORNING_BRIEFING_SAMPLE_TEXT);
+    expect(document).toMatchObject({
+      name: 'morning-briefing',
+      title: 'Morning briefing',
+      description: 'Summarizes yesterday for the team.',
+      trigger: { kind: 'schedule', spec: '0 9 * * 1-5', overlap: 'skip', catchUp: false },
+    });
+    expect(document?.steps.map((step) => step.kind)).toEqual([
+      'activity',
+      'await-signal',
+      'activity',
+      'sleep',
     ]);
   });
 

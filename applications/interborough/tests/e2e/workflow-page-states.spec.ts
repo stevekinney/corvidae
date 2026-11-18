@@ -11,8 +11,9 @@
  *   schedule that runs it from outside its file (rows 62q, 62r), its menu open (62q), its delete
  *   dialog (62s) and that dialog with the schedule checked (63l), by route stubbing of the file and
  *   its schedules; and its Runs tab as the sample world holds it (63p).
- * - A workflow that does not exist (63h), and Edit on Order refund, whose file can't load, open on
- *   its JSON tab (63g, 66f).
+ * - A workflow that does not exist (63h), Order refund's Code tab with its Edit as JSON banner (63g),
+ *   and Edit on Order refund, whose file can't load, open on its JSON tab (63g, 66f).
+ * - Release notes' run setup, its Input and When sections (S52).
  *
  * The stubbed answers are `workflow-page-states-stubs.ts`, which a unit test checks against the
  * client's schemas. Not run on this host (the browser suites run on GitHub, `main.yml`).
@@ -21,6 +22,7 @@ import type { Locator, Page, Route } from '@playwright/test';
 
 import { SAMPLE_NOW, SAMPLE_TIME_ZONE } from '../../fixtures/sample-now.ts';
 import { readSampleWorldRecords } from '../../fixtures/sample-world-records.ts';
+import { TASK_COPY } from '../../src/app/copy/tasks.ts';
 import { WORKFLOW_COPY } from '../../src/app/copy/workflows.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
 import { E2E_SHOWCASE_URL } from './e2e-constants.ts';
@@ -30,6 +32,7 @@ import {
   asOutsideSchedule,
   asSignalStarted,
   listWithSignalStarted,
+  MORNING_BRIEFING_SAMPLE_TEXT,
   MORNING_BRIEFING_TEXT,
   REFUSED_LINE,
   refusedValidation,
@@ -141,6 +144,23 @@ for (const width of WIDTHS) {
         route: '/workflows/:workflow',
         tab: 'runs',
         state: 'a run waiting on a signal',
+        source: SOURCE,
+      });
+
+      // The segment a parked run counts under, shown only while one is (row 63o): a bar that
+      // folds its segments into one select is opened, so the capture shows it either way.
+      const signalSegment = TASK_COPY.list.segments.signal;
+      const folded = runs.getByRole('combobox', { name: TASK_COPY.statusLabel });
+      if (await folded.isVisible()) {
+        await folded.click();
+        await expect(page.getByRole('option', { name: new RegExp(signalSegment) })).toBeVisible();
+      } else {
+        await expect(runs.getByRole('radio', { name: new RegExp(signalSegment) })).toBeVisible();
+      }
+      await captureForDesignReview(page, {
+        route: '/workflows/:workflow',
+        tab: 'runs',
+        state: 'a run waiting on a signal, its segment',
         source: SOURCE,
       });
     });
@@ -255,6 +275,43 @@ for (const width of WIDTHS) {
       });
     });
 
+    test('Order refund’s Code tab: the banner of a file that can’t load, with Edit as JSON (63g)', async ({
+      page,
+    }) => {
+      const world = await readSampleWorldRecords(E2E_SHOWCASE_URL);
+      await openWorkflow(
+        page,
+        `/workflows/${encodeURIComponent(world.workflows.orderRefund)}?tab=code`,
+        width,
+      );
+      await expect(detail(page).getByTestId('workflow-code')).toBeVisible();
+      await expect(
+        detail(page).getByRole('button', { name: WORKFLOW_COPY.page.problem.editAsJson }),
+      ).toBeVisible();
+      await captureForDesignReview(page, {
+        route: '/workflows/:workflow',
+        tab: 'code',
+        state: 'a file that can’t load, Edit as JSON',
+        source: SOURCE,
+      });
+    });
+
+    test('/workflows/:workflow/run for Release notes: its Input and When sections (S52)', async ({
+      page,
+    }) => {
+      const world = await readSampleWorldRecords(E2E_SHOWCASE_URL);
+      await page.clock.setFixedTime(SAMPLE_NOW);
+      await page.setViewportSize({ width, height: 900 });
+      await page.goto(`/workflows/${encodeURIComponent(world.workflows.releaseNotes)}/run`);
+      const setup = page.locator('[data-page="run-setup"]');
+      await expect(setup.locator('.cinder-form-section').first()).toBeVisible();
+      await captureForDesignReview(page, {
+        route: '/workflows/:workflow/run',
+        state: 'Input and When sections',
+        source: SOURCE,
+      });
+    });
+
     test('a workflow that does not exist: neutral, Back to workflows, breadcrumb Workflows (63h)', async ({
       page,
     }) => {
@@ -304,22 +361,29 @@ for (const width of WIDTHS) {
       test('New workflow On a schedule, on its JSON tab: every field the builder writes (65d)', async ({
         page,
       }) => {
+        // The board's sample is filled in first, so both captures show the morning briefing: its
+        // name, title, description, weekday schedule and four steps (design correction, row 65d).
         const root = await openBuilder(page, '/workflows/new', width);
-        await root.getByRole('radio', { name: BUILDER.triggers.schedule }).click();
-        await expect(root.getByTestId('schedule-when')).toBeVisible();
-        await captureForDesignReview(page, {
-          route: '/workflows/new',
-          state: 'on a schedule, the When block',
-          source: SOURCE,
-        });
         await openJsonTab(builderTabs(root));
         const editor = await jsonEditor(root, WORKFLOW_COPY.creator.textLabel);
+        await replaceJsonEditorText(editor, MORNING_BRIEFING_SAMPLE_TEXT);
         await expect(editor).toContainText('"timezone"');
         await expect(editor).toContainText('"catchUp"');
+        await expect(editor).toContainText('"15m"');
         await captureForDesignReview(page, {
           route: '/workflows/new',
           tab: 'json',
           state: 'a schedule, every field',
+          source: SOURCE,
+        });
+        await openTab(builderTabs(root), BUILDER.builderTab);
+        await expect(root.getByTestId('schedule-when')).toBeVisible();
+        await expect(root.getByLabel(BUILDER.titleLabel, { exact: true })).toHaveValue(
+          'Morning briefing',
+        );
+        await captureForDesignReview(page, {
+          route: '/workflows/new',
+          state: 'on a schedule, the When block',
           source: SOURCE,
         });
       });
@@ -334,6 +398,8 @@ for (const width of WIDTHS) {
         await expect(root.locator('.cinder-json-editor__status')).toContainText(
           WORKFLOW_COPY.builder.json.invalid,
         );
+        // The marked line is brought into view, so the capture shows the mark (design correction).
+        await root.locator('.cinder-json-editor__line--problem').first().scrollIntoViewIfNeeded();
         await captureForDesignReview(page, {
           route: '/workflows/new',
           tab: 'json',

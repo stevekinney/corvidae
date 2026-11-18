@@ -112,6 +112,42 @@ export const MORNING_BRIEFING_TEXT = `${JSON.stringify(
   2,
 )}\n`;
 
+/**
+ * The morning briefing as the board's "JSON tab" frame holds it (row 65d): the same name, title,
+ * description and weekday schedule, and four steps the builder draws: a question to Assistant, a
+ * person's review of `approve-briefing`, another question, and a wait of 15 minutes.
+ */
+export const MORNING_BRIEFING_SAMPLE_TEXT = `${JSON.stringify(
+  {
+    name: 'morning-briefing',
+    title: 'Morning briefing',
+    description: 'Summarizes yesterday for the team.',
+    trigger: {
+      kind: 'schedule',
+      spec: '0 9 * * 1-5',
+      timezone: 'America/Chicago',
+      overlap: 'skip',
+      catchUp: false,
+    },
+    steps: [
+      {
+        kind: 'activity',
+        handler: 'agent',
+        input: { agent: 'assistant', message: 'Summarize what happened yesterday.' },
+      },
+      { kind: 'await-signal', signal: 'approve-briefing', review: true },
+      {
+        kind: 'activity',
+        handler: 'agent',
+        input: { agent: 'assistant', message: 'Post it.' },
+      },
+      { kind: 'sleep', duration: '15m' },
+    ],
+  },
+  null,
+  2,
+)}\n`;
+
 /** The line of {@link MORNING_BRIEFING_TEXT} the refused document is marked at (row 65z). */
 export const REFUSED_LINE = 27;
 
