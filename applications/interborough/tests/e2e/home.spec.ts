@@ -259,7 +259,7 @@ test.describe('Home on the sample world, with something waiting on you', () => {
     const rows = page.getByRole('list', { name: 'Recent chats' }).getByRole('listitem');
     await expect(rows).toHaveCount(3);
     await expect(rows.nth(0)).toContainText('Waiting on you');
-    await expect(rows.nth(0)).toContainText('Please refund order 4471, it arrived damaged.');
+    await expect(rows.nth(0)).toContainText('Refund order 4471');
     // A chat that waits on an approval says what the agent said, and one that waits on a question
     // says the question.
     await expect(rows.nth(0)).toContainText(
@@ -269,7 +269,7 @@ test.describe('Home on the sample world, with something waiting on you', () => {
     // The 4472 refund is a chat of its own, done once it was approved at 10:33 AM, so it is the
     // second chat last in, ahead of the release question (9:46 AM) and Say hello (yesterday).
     await expect(rows.nth(1)).toContainText('Done');
-    await expect(rows.nth(1)).toContainText('Please refund order 4472, $18.50.');
+    await expect(rows.nth(1)).toContainText('Refund order 4472');
     await expect(rows.nth(2)).toContainText('Which environment should the release go to?');
     await expect(rows.nth(2)).toContainText('Waiting on you');
   });

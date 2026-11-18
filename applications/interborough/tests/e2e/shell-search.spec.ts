@@ -183,11 +183,8 @@ test.describe('the search palette on the sample world', () => {
     await expect(first).toHaveAttribute('aria-selected', 'true');
     expect(await rowText(first)).toEqual(['Refund order 4471 for $42.00?', 'Approval, waiting']);
 
-    const chat = group('Chats').getByRole('option', { name: /^Please refund order 4471/ });
-    expect(await rowText(chat)).toEqual([
-      'Please refund order 4471, it arrived damaged.',
-      'Tool runner',
-    ]);
+    const chat = group('Chats').getByRole('option', { name: /^Refund order 4471/ });
+    expect(await rowText(chat)).toEqual(['Refund order 4471', 'Tool runner']);
 
     const run = group('Runs').getByRole('option', {
       name: /^Refund order 4471, Tool runner, waiting for approval$/,

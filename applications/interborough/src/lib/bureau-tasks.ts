@@ -80,6 +80,11 @@ export const taskViewSchema = z.object({
    * started.
    */
   origin: z.looseObject({ kind: z.string() }).nullable().optional(),
+  /**
+   * The run this task continues (COR-2423): the run the Bureau starts to answer a chat's decided
+   * tool approvals names the run that asked for them. `null`, or absent from a Bureau before it.
+   */
+  continues: z.string().nullable().optional(),
   status: taskStateSchema,
   finishReason: z.string().nullable(),
   statusMessage: z.string().nullable(),

@@ -155,7 +155,8 @@ const rowOf = (page: Page, tool: string): Locator => railRows(page).filter({ has
 const chatRow = (page: Page, title: string): Locator =>
   page.locator('[data-chat]').filter({ hasText: title });
 
-const REFUND = 'Please refund order 4471, it arrived damaged.';
+/** The 4471 refund chat's title, as the list rows read it. */
+const REFUND = 'Refund order 4471';
 
 test.describe('the long turn beside the chat list (21o, 21p, 21q)', () => {
   test('copies the shell: Chat active, Reviews still 2, the amber Health dot, the breadcrumb and the top bar (21o)', async ({

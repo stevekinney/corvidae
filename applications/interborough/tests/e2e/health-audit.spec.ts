@@ -199,7 +199,7 @@ test.describe('Health › Audit log on the sample world', () => {
       '10:42 AM',
       'You',
       'Started a run',
-      'Chat › Please refund order 4471, it arrived damaged.',
+      'Chat › Refund order 4471',
     ]);
     expect(await cellsOf(page, 3)).toEqual([
       '10:33 AM',
@@ -354,9 +354,7 @@ test.describe('Health › Audit log on the sample world', () => {
 
     // 82x: the title, and the line that names the chat by its real title.
     await expect(pane.locator('h3')).toHaveText('Tool runner asked to refund order 4471');
-    await expect(pane).toContainText(
-      'Today at 10:42:20 AM, in the chat “Please refund order 4471, it arrived damaged.”',
-    );
+    await expect(pane).toContainText('Today at 10:42:20 AM, in the chat “Refund order 4471”');
 
     // 82y: Tool with the small identifier, Risk as muted text, Amount, and Status in the warning
     // tone with the shared word; the agent and the chat repeat the title, so they are no rows.

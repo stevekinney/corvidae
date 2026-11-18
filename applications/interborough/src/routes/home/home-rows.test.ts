@@ -9,6 +9,7 @@ import { describe, expect, test } from 'bun:test';
 import type { AttentionItem } from '../../lib/bureau-attention.ts';
 import { contextFixture, taskFixture } from '../../lib/bureau-fixtures.test-support.ts';
 import { chatStatusWord } from '../chat/session-groups.ts';
+import { buildRunRows, isRunRowRunning, runListRows } from '../workflows/runs/run-rows.ts';
 import {
   attentionRows,
   checklistSteps,
@@ -438,6 +439,38 @@ describe('runningRows', () => {
     expect(withChat[0]?.title).toBe('Plan the launch');
     expect(runningRows([chatRun], context)[0]?.title).toBe('Assistant');
     expect(runningRows([{ ...chatRun, agentName: null }], context)[0]?.title).toBe('A run');
+  });
+
+  test('opens a run that continues another at the run it continues, one row as Runs lists it (COR-2423)', () => {
+    const continued = taskFixture({
+      id: 'run-continued',
+      contextId: 'chat-1',
+      origin: { kind: 'chat', contextId: 'chat-1' },
+      continues: 'run-asked',
+    });
+    const rows = runningRows([continued], {
+      ...context,
+      chats: [contextFixture('chat-1', { title: 'Refund order 4472' })],
+    });
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ key: 'run-continued', href: '/runs/run-asked' });
+    // The Runs list counts the two as one row, whose status is the continuation's.
+    const listed = runListRows(
+      buildRunRows({
+        tasks: [
+          continued,
+          taskFixture({
+            id: 'run-asked',
+            contextId: 'chat-1',
+            status: 'completed',
+            origin: { kind: 'chat', contextId: 'chat-1' },
+          }),
+        ],
+        goals: [],
+        chats: [],
+      }),
+    );
+    expect(listed.filter((row) => isRunRowRunning(row, HOME_NOW))).toHaveLength(rows.length);
   });
 
   test('waits for the schedules without losing the row: the title falls back until they arrive', () => {

@@ -22,7 +22,8 @@ import { readBoxes } from './read-boxes.ts';
 test.use({ baseURL: E2E_SHOWCASE_URL, timezoneId: SAMPLE_TIME_ZONE });
 
 const SOURCE = 'chat-responsive.spec.ts';
-const REFUND = 'Please refund order 4471, it arrived damaged.';
+/** The 4471 refund chat's title, as a generated title reads. */
+const REFUND = 'Refund order 4471';
 /** Chat's blocked row with no model provider, beside a chat with messages (COR-2285 V4). */
 const REASON = 'Connect a model provider';
 const CONNECT = 'Connect provider';
@@ -244,7 +245,7 @@ test.describe('Chat on a phone (04y, 06l, 06m)', () => {
     // The back link takes the menu button's place, so the chat's title in the bar keeps room to
     // say more than its first letters (06m).
     await expect(page.getByRole('button', { name: 'Open navigation' })).toHaveCount(0);
-    const title = trail(page).getByRole('button', { name: /Please refund order 4471/ });
+    const title = trail(page).getByRole('button', { name: /Refund order 4471/ });
     const titleBox = await boxOf(title);
     expect(titleBox.width).toBeGreaterThanOrEqual(110);
 

@@ -25,7 +25,8 @@ import { readBoxes } from './read-boxes.ts';
 test.use({ baseURL: E2E_SHOWCASE_URL, timezoneId: SAMPLE_TIME_ZONE });
 
 const SOURCE = 'chat-page.spec.ts';
-const TITLE = 'Please refund order 4471, it arrived damaged.';
+/** The 4471 refund chat's title, as a generated title reads; its first message is the request. */
+const TITLE = 'Refund order 4471';
 
 /**
  * Answers the host's provider list as it would with a key in place. The sample world holds no key,

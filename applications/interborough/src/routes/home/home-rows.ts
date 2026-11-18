@@ -429,7 +429,9 @@ export function runningRows(tasks: readonly TaskView[], context: RunningContext)
       title,
       line: `${copy.status}, ${parts.join(', ')}`,
       detail: parts.join(', '),
-      href: workflowDetailPath(run.id),
+      // A run that carries on after its approvals is the run it continues, as Runs lists it
+      // (COR-2423): the card opens that one, and counts the two once, as Runs does.
+      href: workflowDetailPath(run.continues ?? run.id),
     };
   });
 }

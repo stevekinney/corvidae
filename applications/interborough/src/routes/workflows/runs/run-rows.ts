@@ -165,6 +165,13 @@ export type RunRow = {
    * is the engine's, so it opens for a caller who may read the engine (`workflows:read`).
    */
   readonly engineRun?: boolean;
+  /**
+   * The run this one continues (COR-2423): the run Bureau starts to answer a chat's decided tool
+   * approvals names the run that asked for them. The list folds it into that run.
+   */
+  readonly continues?: string | null;
+  /** The runs folded into this row because they continue it, oldest first (COR-2423). */
+  readonly continuedBy?: readonly string[];
 };
 
 /** The workflow types a task record is made for; every other type is a run only the engine holds. */
@@ -512,7 +519,59 @@ function taskRow(
       null,
     dueAt: task.status === 'working' && !Number.isNaN(wake) ? wake : null,
     engineRun: isEngineRunTask(task),
+    continues: task.continues ?? null,
   };
+}
+
+/**
+ * The rows with each run that continues another (COR-2423) folded into the run it continues, as
+ * one piece of work: the first run's title, time and origin, the latest run's status, and the
+ * time every run of it took, summed. A chain of continuations folds into its first run; a run
+ * whose continued run is not among `rows` stands on its own.
+ */
+export function foldContinuations(rows: readonly RunRow[]): RunRow[] {
+  const byId = new Map(rows.map((row) => [row.id, row] as const));
+  const rootOf = (row: RunRow): RunRow => {
+    let current = row;
+    const seen = new Set<string>([current.id]);
+    while (current.continues != null) {
+      const previous = byId.get(current.continues);
+      if (previous === undefined || seen.has(previous.id)) break;
+      seen.add(previous.id);
+      current = previous;
+    }
+    return current;
+  };
+  const chains = new Map<string, RunRow[]>();
+  for (const row of rows) {
+    const root = rootOf(row);
+    chains.set(root.id, [...(chains.get(root.id) ?? []), row]);
+  }
+  const folded: RunRow[] = [];
+  for (const [rootId, chain] of chains) {
+    const root = byId.get(rootId);
+    if (root === undefined || chain.length === 1) {
+      folded.push(...chain);
+      continue;
+    }
+    const ordered = chain.toSorted(
+      (left, right) => left.startedAt - right.startedAt || left.id.localeCompare(right.id),
+    );
+    const latest = ordered.at(-1) ?? root;
+    const durations = ordered.map((row) => row.durationMs);
+    folded.push({
+      ...root,
+      status: latest.status,
+      summary: latest.summary,
+      updatedAt: latest.updatedAt,
+      dueAt: latest.dueAt ?? null,
+      durationMs: durations.every((duration) => duration !== null)
+        ? durations.reduce<number>((sum, duration) => sum + (duration ?? 0), 0)
+        : null,
+      continuedBy: ordered.filter((row) => row.id !== root.id).map((row) => row.id),
+    });
+  }
+  return folded;
 }
 
 const ATTEMPT_STATUS = {
@@ -667,7 +726,8 @@ export function runListRows(rows: readonly RunRow[]): RunRow[] {
       if (agentName !== null) listed.set(parentRunId, { ...instance, agentName });
     }
   }
-  return [...listed.values()].toSorted(
+  // A run that carries on after its approvals were decided is the same piece of work (COR-2423).
+  return foldContinuations([...listed.values()]).toSorted(
     (left, right) => right.startedAt - left.startedAt || left.id.localeCompare(right.id),
   );
 }
@@ -915,7 +975,12 @@ export function runLineTwo(row: RunRow, context: RunLineContext): string {
   }
   const steps = instance ? workflow?.steps : null;
   const reached = steps?.at ?? null;
-  const took = durationWords(row.updatedAt - row.startedAt);
+  // A row its continuations were folded into says the time every run of it took (COR-2423).
+  const took = durationWords(
+    row.continuedBy !== undefined && row.durationMs !== null
+      ? row.durationMs
+      : row.updatedAt - row.startedAt,
+  );
   const awaiting = awaitingSignalOf(row);
   switch (row.status) {
     case 'input-required':

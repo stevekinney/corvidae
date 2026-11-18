@@ -420,7 +420,7 @@ test.describe('on a phone', () => {
     // the showcase host whose chat it has since deleted, and that run's page reads 404s.
     const href = await page
       .locator('main a[href^="/runs/run-"]')
-      .filter({ hasText: 'Please refund order 4471' })
+      .filter({ hasText: 'Refund order 4471' })
       .first()
       .getAttribute('href');
     await page.goto(href ?? '/runs');

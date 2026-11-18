@@ -124,11 +124,14 @@ export const SAMPLE_WORLD_CHATS = {
     threadId: SAMPLE_WORLD_THREADS.refund,
     agent: 'tool-runner',
     message: 'Please refund order 4471, it arrived damaged.',
+    /** Its title, as a generated title reads, which its Runs row and Started by say (rows 09p, 06d). */
+    title: 'Refund order 4471',
   },
   refund4472: {
     threadId: SAMPLE_WORLD_THREADS.refund4472,
     agent: 'tool-runner',
     message: 'Please refund order 4472, $18.50.',
+    title: 'Refund order 4472',
   },
 } as const;
 
@@ -516,7 +519,7 @@ async function monday(
   await waitForIdle(host, refundEarlier.threadId);
   await bureauCall(host, 'bureau.contexts.rename', {
     contextId: refundEarlier.threadId,
-    title: refundEarlier.message,
+    title: refundEarlier.title,
   });
 
   // 10:42 AM: the 4471 refund, a chat of its own, which waits on you.
@@ -525,7 +528,7 @@ async function monday(
   const refund4471 = await pendingReviewOf(host, refund.threadId);
   await bureauCall(host, 'bureau.contexts.rename', {
     contextId: refund.threadId,
-    title: refund.message,
+    title: refund.title,
   });
   // The 4471 chat runs at Medium effort, which its details popover and composer say (ChatPage).
   await bureauCall(host, 'bureau.contexts.steer', {

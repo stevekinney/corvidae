@@ -32,12 +32,16 @@ const WIDTHS = [1280, 375] as const;
 /** Every request the page makes of the host, which a test takes away to make the server stop answering. */
 const HOST_REQUESTS = /\/(v1|bureau|api)\//;
 
-/** The runs the sample world holds, as the segments count them (Nov 3 correction). */
+/**
+ * The runs the sample world holds, as the segments count them (Nov 3 correction): All 20, with the
+ * 4472 refund's run and the run that continued it after its approval one row (COR-2423), and the
+ * billing chat's canceled run beside the goal attempt's.
+ */
 const SEGMENTS = [
-  ['All', 19],
+  ['All', 20],
   ['Waiting on you', 2],
   ['Running', 0],
-  ['Done', 14],
+  ['Done', 15],
   ['Failed', 1],
   ['Canceled', 2],
 ] as const;
@@ -52,7 +56,7 @@ async function expectSegmentCounts(scope: Page | Locator): Promise<void> {
   await expect(done).toBeVisible();
   const doneText = (await done.textContent()) ?? '';
   const doneCount = Number(/(\d+)\s*$/.exec(doneText)?.[1]);
-  expect(doneCount).toBeGreaterThanOrEqual(14);
+  expect(doneCount).toBeGreaterThanOrEqual(15);
   let total = doneCount;
   for (const [word, count] of SEGMENTS) {
     if (word === 'All' || word === 'Done') continue;
