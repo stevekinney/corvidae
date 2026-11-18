@@ -16,7 +16,7 @@
    * the composer included, and never under Shift (⌘⇧K is the composer's link shortcut); the plain
    * keys never act inside a field, and a person can turn them off in Settings.
    */
-  import { Banner, guardThemeTransitions } from '@lostgradient/cinder';
+  import { Banner, guardThemeTransitions, trackInputModality } from '@lostgradient/cinder';
   import type { HttpClient } from '@lostgradient/weft';
   import { useQueryClient } from '@tanstack/svelte-query';
   import { onDestroy, untrack } from 'svelte';
@@ -174,6 +174,8 @@
         },
   );
   onDestroy(disarmWriteGuard);
+  // A focus the page moves by script draws its ring only after the keyboard was the last input.
+  onDestroy(trackInputModality(document));
   $effect(() => {
     const stopObserving = connection.observe(queryClient);
     const goOffline = () => connection.setBrowserOffline(true);

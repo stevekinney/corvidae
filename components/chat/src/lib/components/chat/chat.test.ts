@@ -418,9 +418,9 @@ describe('Chat — scrollFadeVisible', () => {
     // agrees with the transcript's end pin, and runs again on the transcript's, the card's and the
     // fonts' layout changes, never on a timer.
     expect(source).toContain('const viewportBox = approvalArrivalBox(scroller);');
-    expect(source).toContain(
-      'const shift = approvalArrivalRestShift( cardBox, viewportBox, scroller.scrollHeight - scroller.clientHeight - scroller.scrollTop, );',
-    );
+    // The card and the row that labels it are placed as one unit, resting at the transcript's end
+    // while that still clears the overlay.
+    expect(source).toContain('const shift = approvalPlacementShift(scroller, card) ?? 0;');
     expect(source).toContain('resizes?.observe(card);');
     expect(source).toContain('fonts?.ready.then(');
     // The lift leaves a waiting approval to that placement.
@@ -452,7 +452,7 @@ describe('Chat — scrollFadeVisible', () => {
     // Each edge's band is 0 until the overflow attributes say content lies past it.
     expect(source).toContain('--_chat-timeline-fade-start: 0px; --_chat-timeline-fade-end: 0px;');
     expect(source).toContain(
-      '.chat-timeline-mask-fade[data-cinder-overflows-start] { --_chat-timeline-fade-start: var(--_chat-timeline-fade-size); }',
+      '.chat-timeline-mask-fade[data-cinder-overflows-start] { --_chat-timeline-fade-start: var(--_chat-timeline-fade-start-size); }',
     );
     expect(source).toContain(
       '.chat-timeline-mask-fade[data-cinder-overflows] { --_chat-timeline-fade-end: var(--_chat-timeline-fade-size); }',

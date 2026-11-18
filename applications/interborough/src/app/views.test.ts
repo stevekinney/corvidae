@@ -28,6 +28,7 @@ describe('page width by kind of page', () => {
   test('a list with its detail, a table, an editor and an overview are wide, and a form and prose read', () => {
     expect(PAGE_KINDS.map((kind) => [kind, pageWidth(kind)])).toEqual([
       ['list-detail', 'full'],
+      ['panes', 'panes'],
       ['table', 'full'],
       ['editor', 'full'],
       ['overview', 'full'],
@@ -82,9 +83,10 @@ describe('page width by kind of page', () => {
     expect(widthOf('/settings/allowed-models')).toBe('full');
     expect(widthOf('/settings/plugins')).toBe('full');
     expect(widthOf('/settings/data-and-retention')).toBe('full');
-    // The chat list sits beside the open chat, so every chat route is a list with its detail.
+    // The chat list sits beside the open chat and each pane carries its own inset, so every chat
+    // route is the whole page as panes, which the outlet does not pad.
     for (const pattern of ['/chats', '/chats/new', '/chats/:chat']) {
-      expect(widthOf(pattern), pattern).toBe('full');
+      expect(widthOf(pattern), pattern).toBe('panes');
     }
   });
 });

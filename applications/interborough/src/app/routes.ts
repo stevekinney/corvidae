@@ -70,7 +70,7 @@ export const routes: readonly RouteDefinition[] = [
   // Chat sessions live under `/chats/:chat`.
   {
     pattern: '/chats',
-    kind: 'list-detail',
+    kind: 'panes',
     crumb: VIEW_COPY.chat.label,
     view: 'chat',
     load: () => import('../routes/chat/chats.svelte'),
@@ -78,14 +78,14 @@ export const routes: readonly RouteDefinition[] = [
   // `/chats/new` is registered before `/chats/:chat`: the first match wins.
   {
     pattern: '/chats/new',
-    kind: 'list-detail',
+    kind: 'panes',
     crumb: 'New chat',
     view: 'chat',
     load: () => import('../routes/chat/chats.svelte'),
   },
   {
     pattern: '/chats/:chat',
-    kind: 'list-detail',
+    kind: 'panes',
     crumb: { param: 'chat' },
     view: 'chat',
     load: () => import('../routes/chat/chats.svelte'),
