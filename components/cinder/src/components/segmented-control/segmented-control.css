@@ -385,7 +385,8 @@
     outline: var(--cinder-ring-width) solid transparent;
     box-shadow:
       0 0 0 var(--cinder-ring-offset) var(--cinder-ring-offset-color),
-      0 0 0 calc(var(--cinder-ring-offset) + var(--cinder-ring-width)) var(--cinder-ring-color);
+      0 0 0 calc(var(--cinder-ring-offset) + var(--cinder-ring-width))
+        var(--_cinder-segmented-control-ring, var(--cinder-ring-color));
     z-index: 1;
   }
 
@@ -463,7 +464,8 @@
     /* The pill is a surface shift, not a fill (focus-ring-policy.md), so it keeps the tight ring. */
     box-shadow:
       0 0 0 var(--cinder-ring-offset) var(--cinder-ring-offset-color),
-      0 0 0 calc(var(--cinder-ring-offset) + var(--cinder-ring-width)) var(--cinder-ring-color);
+      0 0 0 calc(var(--cinder-ring-offset) + var(--cinder-ring-width))
+        var(--_cinder-segmented-control-ring, var(--cinder-ring-color));
     z-index: 1;
   }
 
@@ -543,7 +545,8 @@
     .cinder-segmented-control-option[data-cinder-selected]:focus-visible {
     box-shadow:
       0 0 0 var(--cinder-ring-offset) var(--cinder-ring-offset-color),
-      0 0 0 calc(var(--cinder-ring-offset) + var(--cinder-ring-width)) var(--cinder-ring-color);
+      0 0 0 calc(var(--cinder-ring-offset) + var(--cinder-ring-width))
+        var(--_cinder-segmented-control-ring, var(--cinder-ring-color));
   }
 
   /* Forced-colors / Windows High Contrast: box-shadow rings are suppressed by the
