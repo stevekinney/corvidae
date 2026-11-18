@@ -42,7 +42,7 @@ Every library and component runs `scripts/check-inherited-key-reads.ts` in its `
 
 `bun run audit` runs `bun audit --audit-level=high` through `scripts/check-audit-exceptions.ts`. An advisory may be tolerated only by an entry in `scripts/audit-exceptions.ts`, which needs an owner decision, a tracking issue, a review-by date, and the exact dependency chains that may reach the package; the guard fails on a stale, expired, or widened exception. Never add a bare `--ignore`.
 
-The registry is empty: the last exception, for `picomatch` under GHSA-fc5q-39xc-vjpf, was removed when GitHub withdrew that advisory on 2026-11-18 and `bun audit` stopped reporting it. A tooling-only exception may bind its readable chains to a SHA-256 digest of the complete sorted lockfile inventory (`reviewedReachability`), including edge kinds and package identities, so any new route, nested hop, version, or dependency-kind change fails the audit for renewed review.
+No advisory is currently tolerated.
 
 ## Middle-dot separators
 
