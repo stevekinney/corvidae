@@ -129,17 +129,46 @@ describe('Home while it loads (02c, 02d)', () => {
     ).toBe(true);
     expect(
       [...container.querySelectorAll('h2')].map((heading) => heading.textContent?.trim()),
-    ).toEqual(['Needs attention', 'Start a chat', 'Recent chats']);
+    ).toEqual([
+      'Needs attention',
+      'Start a chat',
+      'Recent chats',
+      'Workflow activity',
+      'Agent activity',
+    ]);
     // The Needs you rows have no heading, as the loaded ones do: the Spotlight is their title.
     expect(cardOf(container, 'Needs you').querySelector('h2')).toBeNull();
-    // Rows are Cinder's grouped placeholders, with a button block where a row has a button.
+    // Rows are Cinder's grouped placeholders, with a button block where a row has a button, and a
+    // glyph and a time where an activity row has them (COR-2227).
     const placeholders = [
       ...container.querySelectorAll('.cinder-skeleton-group[data-cinder-variant="grouped"]'),
     ];
-    expect(placeholders).toHaveLength(3);
+    expect(placeholders).toHaveLength(5);
     expect(
       placeholders.map((group) => group.querySelectorAll('.cinder-skeleton-action-bar').length),
-    ).toEqual([2, 3, 0]);
+    ).toEqual([2, 3, 0, 0, 0]);
+    expect(
+      placeholders.map(
+        (group) => group.querySelectorAll('.cinder-skeleton-grouped-leading').length,
+      ),
+    ).toEqual([0, 0, 0, 3, 3]);
+    expect(
+      placeholders.map((group) => group.querySelectorAll('.cinder-skeleton-trailing-bar').length),
+    ).toEqual([0, 0, 0, 3, 3]);
+    expect(
+      placeholders.map(
+        (group) => group.querySelectorAll('.cinder-skeleton-trailing-bar--chevron-column').length,
+      ),
+    ).toEqual([0, 0, 0, 3, 3]);
+    // Each band is its own wrapper's one Section: two adjacent Sections take Cinder's space
+    // between sections as a margin on top of the region's gap (the design review's 32px misalignment).
+    const region = container.querySelector('[data-testid="home-activity"]');
+    expect(region?.querySelectorAll('.cinder-section + .cinder-section')).toHaveLength(0);
+    expect(
+      [...(region?.querySelectorAll('.ib-home__activity-band') ?? [])].map(
+        (band) => band.querySelectorAll(':scope > .cinder-section').length,
+      ),
+    ).toEqual([1, 1]);
     // The composer is a placeholder too: no list, no link, no message box.
     expect(container.querySelector('textarea')).toBeNull();
     expect(container.querySelector('[role="listitem"], [role="list"]')).toBeNull();

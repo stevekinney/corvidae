@@ -38,6 +38,21 @@
       "description": "Draw a block the size of a small button at the end of each row when `variant` is `'grouped'`,\nfor a grouped list whose rows end in text actions. In a row narrower than 26rem, as on a phone,\nthe block drops under the text at its own width, starting at the text's leading edge, where the\nreal buttons go. Ignored by other variants.",
       "default": false
     },
+    "leading": {
+      "type": "boolean",
+      "description": "Draw a leading icon block in each row when `variant` is `'grouped'`, with a grouped-list\nrow's icon slot metrics (the 28px slot, its 12px gap, and the glyph on the title's first line),\nso the bars start where the row's text starts, for a list whose rows lead with a glyph.\nIgnored by other variants.",
+      "default": false
+    },
+    "trailing": {
+      "type": "boolean",
+      "description": "Draw a short bar at the inline end of each row's title line when `variant` is `'grouped'`,\nstanding for a trailing value such as a time. It is the height of small text and stays on the\ntitle's line at every width, unlike `action`'s button block. Ignored by other variants.",
+      "default": false
+    },
+    "chevronColumn": {
+      "type": "boolean",
+      "description": "With `trailing`, end the trailing bar before a grouped-list row's chevron column (the 16px\nchevron and its gap), so the bar ends where the trailing value of a row that draws a chevron,\nor keeps its column with `GroupedListItem`'s `chevronColumn`, ends. Ignored without\n`trailing` and by other variants.",
+      "default": false
+    },
     "statusMarker": {
       "enum": ["bar", "dot"],
       "description": "What fills the status column of each row when `variant` is `'list'`. `'bar'` is a short bar\nwhere the status word reads; `'dot'` is a small circle where the status dot sits. The column\nkeeps its width either way, so nothing shifts when data arrives. Ignored by other variants.",

@@ -5,6 +5,7 @@ export default GroupedListItem;
 export type {
   GroupedListItemAction,
   GroupedListItemLeadingKind,
+  GroupedListItemLines,
   GroupedListItemProps,
   GroupedListItemUrgency,
 } from './grouped-list-item.types.ts';

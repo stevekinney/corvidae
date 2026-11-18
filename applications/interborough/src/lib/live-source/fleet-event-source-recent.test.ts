@@ -73,6 +73,56 @@ describe('FleetEventSource.recent', () => {
     source.close();
   });
 
+  // COR-2227: Home's Workflow activity offers Try again when its first window cannot be read.
+  test('retryNow connects at once when a reconnect is waiting out its backoff', async () => {
+    let requests = 0;
+    restoreFetch = installFetchImplementation(async () => {
+      requests += 1;
+      return new Response('down', { status: 503 });
+    });
+    const source = new FleetEventSource({ baseUrl: '', computeReconnectDelayMs: () => 1_000_000 });
+    const unsubscribe = source.subscribe(() => {});
+    await waitFor(() => expect(source.reconnectAttempt).toBe(1));
+    expect(source.status).toBe('reconnecting');
+    source.retryNow();
+    await waitFor(() => expect(source.reconnectAttempt).toBe(2));
+    expect(requests).toBe(2);
+    unsubscribe();
+    source.close();
+  });
+
+  test('failedConnections counts every failure and drop, and a ping that resets the attempt never lowers it', async () => {
+    const encoder = new TextEncoder();
+    let requests = 0;
+    let open: ReadableStreamDefaultController<Uint8Array> | undefined;
+    restoreFetch = installFetchImplementation(async () => {
+      requests += 1;
+      if (requests === 1) return new Response('down', { status: 503 });
+      const body = new ReadableStream<Uint8Array>({
+        start(controller) {
+          open = controller;
+        },
+      });
+      return new Response(body, { headers: { 'Content-Type': 'text/event-stream' } });
+    });
+    const source = new FleetEventSource({ baseUrl: '', computeReconnectDelayMs: () => 1_000_000 });
+    const unsubscribe = source.subscribe(() => {});
+    await waitFor(() => expect(source.failedConnections).toBe(1));
+    expect(source.reconnectAttempt).toBe(1);
+    source.retryNow();
+    await waitFor(() => expect(open).toBeDefined());
+    // The connection answers (a ping, not the end of the replay), so the attempt starts again at 0.
+    open?.enqueue(encoder.encode('event: ping\ndata: {"emittedAtMs":0}\n\n'));
+    await waitFor(() => expect(source.reconnectAttempt).toBe(0));
+    expect(source.failedConnections).toBe(1);
+    // Then it drops: the attempt is 1 again, as it was before, and the failures are 2.
+    open?.close();
+    await waitFor(() => expect(source.failedConnections).toBe(2));
+    expect(source.reconnectAttempt).toBe(1);
+    unsubscribe();
+    source.close();
+  });
+
   test('holds no more than the cap, dropping the oldest', async () => {
     serveFrames(RECENT_FRAME_CAP + 5);
     const source = new FleetEventSource({ baseUrl: '' });
