@@ -132,6 +132,26 @@ describe('bureau.contexts.discardturn', () => {
     });
   });
 
+  // The rule, as for regenerating: outside a workspace, an operator holding both context scopes
+  // may discard any owner's turn. Inside one, no scope reaches another member's chat.
+  it('lets an operator holding read and write discard another owner’s turn', async () => {
+    await withBureau(async (opened) => {
+      const run = await stoppedTurn(opened);
+
+      const operator = await discardCall(opened, run.contextId, 'operator-key', {
+        commandId: 'operator-discard',
+        runId: run.id,
+      });
+
+      expect(operator.error).toBeUndefined();
+      expect(operator.result).toMatchObject({ contextId: run.contextId, runId: run.id });
+      const after = await opened.bureau.contexts.get(run.contextId);
+      expect(after?.conversationHistory.ids.some((id) => id.startsWith(`${run.id}:step:`))).toBe(
+        false,
+      );
+    });
+  });
+
   it('refuses a caller holding only the write scope, since a discard reads the history', async () => {
     await withBureau(async (opened) => {
       const run = await stoppedTurn(opened);
