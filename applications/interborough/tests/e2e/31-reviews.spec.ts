@@ -472,11 +472,11 @@ test.describe('a Bureau that fails', () => {
     // Each read of the review list the page makes on arrival fails once; none retries, and the
     // feed's catch-up is held, so the count is exact. Observed on arrival, by the request each
     // read sends: the view's probe and the notification feed ask the Bureau's own list, one read
-    // each; the merged waiting list is read once by the navigation's count, once more when the
-    // page's own query mounts onto the failed one, and once by a further observer of it; the Done
-    // tab's list reads once.
+    // each; the merged waiting list is read once by the navigation's count, which the page's own
+    // query shares now that the page draws its own loading and mounts with the probe (row 26a), and
+    // once more by a further observer of it; the Done tab's list reads once.
     const PROBE_AND_FEED_READS = 2;
-    const WAITING_LIST_READS = 3;
+    const WAITING_LIST_READS = 2;
     const DONE_LIST_READS = 1;
     pageErrors.expect({
       pattern: loggedFailedResponse(500, /bureau\/jsonrpc/),
