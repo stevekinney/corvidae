@@ -2,7 +2,12 @@ import { describe, expect, test } from 'bun:test';
 
 import { readFileSync } from 'node:fs';
 
-import { normalizeJobLog, omittedFailures, replayRevision } from './affected-tests-shadow.ts';
+import {
+  classifyFailureRecords,
+  normalizeJobLog,
+  omittedFailures,
+  replayRevision,
+} from './affected-tests-shadow.ts';
 import { failureRecords } from './chef/ci-compare.ts';
 
 // The replay opens Git objects. Run that real process work at module scope so the test callback
@@ -45,6 +50,20 @@ describe('shadow failure accounting', () => {
 
   test('does not turn absent failure evidence into a miss', () => {
     expect(omittedFailures(['scripts/a.test.ts'], [])).toEqual([]);
+  });
+
+  test('serializes known, residual unknown, and missing provider evidence distinctly', () => {
+    const known = classifyFailureRecords(
+      ['src/a.test.ts'],
+      [{ kind: 'test', job: 'tests', identity: 'src/a.test.ts › assertion' }],
+      ['tests'],
+    );
+    expect(known).toMatchObject({ omittedFailures: [], unclassifiedFailures: [] });
+    expect(
+      classifyFailureRecords([], [{ kind: 'unknown', job: 'tests' }], ['tests'])
+        .unclassifiedFailures,
+    ).toHaveLength(1);
+    expect(classifyFailureRecords([], [], ['tests']).unclassifiedFailures).toHaveLength(1);
   });
 
   test('replays a revision through the supported entrypoint without a stale selection reference', () => {

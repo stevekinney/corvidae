@@ -5,7 +5,7 @@ import { join } from 'node:path';
 
 import { type SourceTree, type WorkspaceDescription } from './affected-tests-graph.ts';
 import { selectTests } from './affected-tests-selection.ts';
-import { failureRecords } from './chef/ci-compare.ts';
+import { failureRecords, type FailureRecord } from './chef/ci-compare.ts';
 
 interface FrozenRun {
   frozenSample?: { databaseId?: number; headSha?: string; status?: string; conclusion?: string };
@@ -30,6 +30,39 @@ export function omittedFailures(
     (failure) =>
       !selected.some((test) => failure.includes(test.split('/').at(-1)!.replace(/\.ts$/, ''))),
   );
+}
+
+/** Serialize qualified and residual parser evidence without hiding an unknown behind a known test. */
+export function classifyFailureRecords(
+  selected: readonly string[],
+  records: readonly FailureRecord[],
+  failedJobs: readonly string[],
+) {
+  const attributedFailures = records.flatMap((record) =>
+    record.identity === undefined ? [] : [record.identity],
+  );
+  const represented = new Set(records.map((record) => record.job));
+  const unclassifiedFailures = [
+    ...records
+      .filter((record) => record.kind === 'unknown')
+      .map((record) => ({
+        job: record.job,
+        classification: 'unattributable' as const,
+        reason: record.diagnostic ?? 'unparseable provider failure evidence',
+      })),
+    ...failedJobs
+      .filter((job) => !represented.has(job))
+      .map((job) => ({
+        job,
+        classification: 'unattributable' as const,
+        reason: 'missing provider failure evidence',
+      })),
+  ];
+  return {
+    attributedFailures,
+    omittedFailures: omittedFailures(selected, attributedFailures),
+    unclassifiedFailures,
+  };
 }
 
 /** Give an authenticated raw single-job log the job prefix the shared CI parser consumes. */
@@ -141,7 +174,7 @@ export function replayRevision(
   const fullRunFailures = jobs
     .filter((job) => job.conclusion === 'failure')
     .map((job) => job.name ?? 'unnamed job');
-  const attributedFailures =
+  const records: FailureRecord[] =
     input.failureLog === undefined
       ? []
       : [
@@ -151,26 +184,17 @@ export function replayRevision(
               readFileSync(input.failureLog, 'utf8'),
             ),
           ).values(),
-        ].flatMap((records) =>
-          records.flatMap((record) => (record.identity === undefined ? [] : [record.identity])),
-        );
-  const omitted = omittedFailures(selected, attributedFailures);
+        ].flatMap((group) => group);
+  const classified = classifyFailureRecords(selected, records, fullRunFailures);
   return {
     name: input.name,
-    disposition: 'complete',
+    disposition: classified.unclassifiedFailures.length === 0 ? 'complete' : 'inconclusive',
     revision: input.revision,
     base: input.base,
     changed,
     selected,
     fullRunFailures,
-    attributedFailures,
-    omittedFailures: omitted,
-    unclassifiedFailures: fullRunFailures.map((job) => ({
-      job,
-      classification: 'unattributable',
-      reason:
-        'Candidate provider evidence has no test-level execution inventory for this failed job.',
-    })),
+    ...classified,
     inputIdentity: input.provider,
   };
 }
