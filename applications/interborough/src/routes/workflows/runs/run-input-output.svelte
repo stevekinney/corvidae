@@ -202,17 +202,20 @@
             <p class="ib-run__note" role="status">{TASK_COPY.followReconnecting}</p>
           {/if}
           {#if hasAnswer && !scheduled}
-            <p class="ib-run__note">
-              {copy.deliveredToChat}
-              {#if onShowRaw !== undefined}
+            <p class="ib-run__note">{copy.deliveredToChat}</p>
+            {#if onShowRaw !== undefined}
+              <!-- On a line of its own, pulled back to the card's text edge (COR-2489: at 320 it
+                   wrapped and its label sat 13px inside the text above it). -->
+              <div>
                 <Button
                   variant="ghost-accent"
                   size="sm"
+                  flush
                   label={copy.showRawPayloads}
                   onclick={onShowRaw}
                 />
-              {/if}
-            </p>
+              </div>
+            {/if}
           {/if}
         </section>
       </div>

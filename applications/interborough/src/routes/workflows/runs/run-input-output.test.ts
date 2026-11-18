@@ -432,7 +432,11 @@ describe('the message in and the reply out of a chat run', () => {
     });
 
     expect(view.getByText(copy.deliveredToChat, { exact: false })).not.toBeNull();
-    await fireEvent.click(view.getByRole('button', { name: copy.showRawPayloads }));
+    // COR-2489: the action starts its own line, pulled back to the card's text edge.
+    const showRaw = view.getByRole('button', { name: copy.showRawPayloads });
+    expect(showRaw.hasAttribute('data-cinder-flush')).toBe(true);
+    expect(showRaw.closest('p')).toBeNull();
+    await fireEvent.click(showRaw);
 
     expect(opened).toBe(1);
   });
