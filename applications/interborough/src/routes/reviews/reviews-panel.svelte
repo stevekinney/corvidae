@@ -221,6 +221,7 @@
     lingering.set(key, { item, index: Math.max(0, index) });
     lingerTimers.set(
       key,
+      // poll-reason: timer
       setTimeout(() => {
         lingerTimers.delete(key);
         lingering.delete(key);
