@@ -1,0 +1,23 @@
+{
+  "baseRevision": "721367ba220dc2384c83ee1c33b3a38bdf702e5b",
+  "repository": "stevekinney/corvidae",
+  "sources": {
+    ".agents/skills/chef/SKILL.md": "5e46a898180ea0b698b0dae666970c38851ce81740ca2371a77855e2cd287334",
+    ".codex/agents/chef-worker.toml": "c16689f0d62d623f09eed04f2dfcd7d23d4f86328a986d1175d8b6aabae02199",
+    ".codex/agents/chef-reviewer.toml": "eee2003e00eddea83a92556f3df240a9cffbe3db4642de18c0122571c33b2bbc",
+    ".claude/agents/chef-worker.md": "ede039fb772ad3ca538b15f4c3b7d2f54bf5f406089f334851f3098c1cb73ed0",
+    ".claude/agents/chef-reviewer.md": "026d045ceccb7ac566e55bd9128afc7dfbead731284c0356bd410f656cef80b1",
+    ".github/workflows/main.yml": "47a89bb93c961d5e0cb77ba20dc7bbc72ca1216bfc23a0c177cf903b3fd28013",
+    ".github/workflows/pull-request.yml": "5c025169cf806476e0fe76d985e9fc6a9acf949d9312d6dff521baa2746551f6",
+    ".agents/skills/chef/references/execution-record.md": "35accb8aca56d8d1c93a18d903f73eff89dcd59391dd887dbad6b438de17ed64",
+    ".claude/workflows/answer-threads.js": "8dd45254440206544b516f17a5615055f6bcec0b008b78558b3f57c195fd62b4",
+    ".claude/workflows/deliver-issue.js": "7f60b2d4b42d065828a3e7dd04f245d16262d4ef12c1c15a2f93f139ccb412ed",
+    ".agents/skills/chef/references/codex-protocol.md": "8c22044ae1f6893b6fc7e009cd46684386d8dca2dad5d1c1ca67872b57565bf9",
+    ".agents/skills/chef/references/coordination.md": "11cc0e5031d1f6b7caf80a17514e49c24d3fbc2e64403d36f65336628a7ff5bd",
+    ".agents/skills/chef/references/decisions.md": "4457dccc3518b61e93fafe09eb6ad561ad469753188a346c663308cde96640d5",
+    ".agents/skills/chef/references/planning-and-routing.md": "81ab673443d2133208b5477938054fc856cf527e3ff5a4f6ec83cf73af1057ab",
+    ".agents/skills/chef/references/review-and-deliver.md": "f941ceeac701f6b4eaf716015f5e25d23f7939911d91effa7f9fe0fba0c6bd23",
+    "AGENTS.md": "93447ca5b95759bf12fa5908b04eea5a15951c1e8af8af50d79f02723ba71e28",
+    "CLAUDE.md": "cff03976cc515bbe1c972554f53782d80ec208d3440890d4208efd2f79a5e880"
+  }
+}

@@ -26,11 +26,38 @@ const documentGlobs = [
  */
 const notPaths = new Map<string, string>([]);
 
-/** Documents that record deleted scripts by name; each needs a reason. */
-const historicalDocuments = new Map<string, string>([
+/**
+ * Deleted script paths that a document records as historical evidence. Each exception is limited
+ * to one document and one exact extracted path, so a new missing command remains a failure.
+ */
+const historicalScriptPaths = new Map<string, Map<string, string>>([
   [
     'documentation/repository/chef-assessment.md',
-    'The assessment is the record of the scripts COR-2377 deleted.',
+    new Map([
+      ['scripts/chef/drift.ts', 'COR-2377 deletion history.'],
+      ['scripts/chef/jev-predicates.ts', 'COR-2377 deletion history.'],
+      ['scripts/chef/jev.ts', 'COR-2377 deletion history.'],
+      ['scripts/chef/mutation-check.ts', 'COR-2377 deletion history.'],
+      ['scripts/chef/packet.ts', 'COR-2377 deletion history.'],
+      ['scripts/chef/review-boundary.ts', 'COR-2377 deletion history.'],
+      ['scripts/chef/worktree-scope.ts', 'COR-2377 deletion history.'],
+    ]),
+  ],
+  [
+    'documentation/repository/sdlc-research-and-plan.md',
+    new Map([
+      ['scripts/shiki-grammar-assets.ts', 'P10 research records the removed orphan helper.'],
+      ['scripts/shiki-grammar-assets.test.ts', 'P10 research records the removed orphan test.'],
+      ['scripts/test-deadlines.d.ts', 'P10 research records the removed redundant declaration.'],
+    ]),
+  ],
+  [
+    'documentation/repository/sdlc-implementation-plan.md',
+    new Map([
+      ['scripts/shiki-grammar-assets.ts', 'P10 acceptance records the removed orphan helper.'],
+      ['scripts/shiki-grammar-assets.test.ts', 'P10 acceptance records the removed orphan test.'],
+      ['scripts/test-deadlines.d.ts', 'P10 acceptance records the removed redundant declaration.'],
+    ]),
   ],
 ]);
 
@@ -95,6 +122,14 @@ function scriptPathExists(path: string): boolean {
     if (!existsSync(cwd)) return false;
     for (const _ of glob.scanSync({ cwd, onlyFiles: false, dot: true })) return true;
     return false;
+  });
+}
+
+function missingScriptPaths(document: string, text: string): string[] {
+  const historicalPaths = historicalScriptPaths.get(document);
+  return scriptPathsIn(text).flatMap((path) => {
+    if (notPaths.has(path) || historicalPaths?.has(path) || scriptPathExists(path)) return [];
+    return [`${document}: ${path}`];
   });
 }
 
@@ -186,17 +221,21 @@ describe('the process documents', () => {
     const missing: string[] = [];
     let checked = 0;
     for (const document of paths) {
-      if (historicalDocuments.has(document)) continue;
       const text = readFileSync(join(root, document), 'utf8');
-      for (const path of scriptPathsIn(text)) {
-        checked += 1;
-        if (notPaths.has(path) || scriptPathExists(path)) continue;
-        missing.push(`${document}: ${path}`);
-      }
+      checked += scriptPathsIn(text).length;
+      missing.push(...missingScriptPaths(document, text));
     }
     expect(missing).toEqual([]);
     // The extractor must keep finding the paths the documents name, or the check proves nothing.
     expect(checked).toBeGreaterThan(100);
+  });
+
+  test('allows only each documented historical path, not unrelated missing commands', () => {
+    const document = 'documentation/repository/sdlc-implementation-plan.md';
+    const text = readFileSync(join(root, document), 'utf8');
+    expect(
+      missingScriptPaths(document, `${text}\nRun bun scripts/does-not-exist.ts for this test.`),
+    ).toEqual([`${document}: scripts/does-not-exist.ts`]);
   });
 
   test('link only to files and headings that exist', () => {

@@ -150,11 +150,18 @@ export async function openTab(root: Locator, name: string): Promise<void> {
 
 /** Expects the tab `name` of the bar in `root` to be the one that is open. */
 export async function expectTabOpen(root: Locator, name: string): Promise<void> {
-  if (await tabsAreCollapsed(root)) {
-    await expect(collapsedTabs(root)).toContainText(name);
-    return;
-  }
-  await expect(root.getByRole('tab', { name })).toHaveAttribute('aria-selected', 'true');
+  // `collapseOnOverflow` changes after the bar has measured its container. Read both valid ARIA
+  // representations together rather than freezing the pre-measurement shape at a phone width.
+  await expect
+    .poll(async () => {
+      const collapsed = collapsedTabs(root);
+      if ((await collapsed.count()) > 0) {
+        const selected = await collapsed.textContent();
+        return selected?.includes(name);
+      }
+      return (await root.getByRole('tab', { name, selected: true }).count()) > 0;
+    })
+    .toBe(true);
 }
 
 /**

@@ -23,7 +23,7 @@
   import { trackKeyboardInset } from '../../_internal/keyboard-inset.ts';
   import { reducedMotionFadeIn } from '../../_internal/reduced-motion-fade.ts';
   import {
-    PHONE_VIEWPORT_BREAKPOINT,
+    DIALOG_SHEET_BREAKPOINT,
     readViewportBreakpoint,
     useViewportBelow,
   } from '../../_internal/viewport-below.svelte.ts';
@@ -65,7 +65,7 @@
     dismissOnBackdropClick = true,
     dismissOnEscape = true,
     closeButtonVisible = true,
-    sheetBelow = PHONE_VIEWPORT_BREAKPOINT,
+    sheetBelow = DIALOG_SHEET_BREAKPOINT,
     class: className,
     children,
     footer,
@@ -105,7 +105,7 @@
 
   const reducedMotion = useReducedMotion();
 
-  // Below `sheetBelow` (the phone breakpoint unless told otherwise) the modal is a bottom sheet
+  // Below `sheetBelow` (760px of viewport unless told otherwise) the modal is a bottom sheet
   // (row 05d), the one phone presentation every dialog shares, ConfirmDialog and a form modal
   // alike (COR-2448 AC5). `false` keeps a centred card. A chromeless modal owns the whole
   // surface, so never docks.

@@ -9,24 +9,9 @@ import type { HTMLLiAttributes } from 'svelte/elements';
 export type GroupedListItemLeadingKind = 'icon' | 'avatar' | 'media' | 'control';
 
 /**
- * The closed vocabulary of a time-led row's lead unit: how much time is left (`min left`, `left`),
- * how long until it begins (`min to go`, `starts`), or the weekday it falls on. A range of times
- * never goes in the lead; it belongs in the content.
+ * How pressing a time-led row is: `urgent` draws the caption under the time window in the warning
+ * colour; `soon` draws the window in the muted text colour.
  */
-export type GroupedListItemLeadUnit =
-  | 'min left'
-  | 'left'
-  | 'min to go'
-  | 'starts'
-  | 'Mon'
-  | 'Tue'
-  | 'Wed'
-  | 'Thu'
-  | 'Fri'
-  | 'Sat'
-  | 'Sun';
-
-/** How pressing a time-led row's lead is: `urgent` reads loudest, in the warning colour; `soon` is muted. */
 export type GroupedListItemUrgency = 'urgent' | 'soon';
 
 /** A text action at the end of a row: a secondary small button, or a link drawn as one. */
@@ -66,11 +51,11 @@ export type GroupedListItemProps = Omit<HTMLLiAttributes, 'class' | 'children' |
   leadingKind?: GroupedListItemLeadingKind;
   /** A fixed-width column for a time or number, such as "45 min left", drawn before the title. Rows in one list line up. */
   lead?: Snippet;
-  /** The number or word of a time-led row's lead, such as `45` or `9:30`, drawn in semibold on the title's first line. Pair it with `leadUnit`. Ignored when a `lead` snippet is given. A range of times never goes here. */
-  leadValue?: string | number;
-  /** The small unit under the lead number, from a closed vocabulary. Used with `leadValue`. */
-  leadUnit?: GroupedListItemLeadUnit;
-  /** How pressing the lead is. `urgent` uses the warning text colour and `soon` is muted; left unset, the lead uses the default text colour. Used with `leadValue`. */
+  /** The time window a time-led row leads with, such as `3–6 pm`, `10 pm–1 am` or `All day`, drawn right-aligned, bold and tabular on one line on the title's first line. Ignored when a `lead` snippet is given. */
+  timeWindow?: string;
+  /** Free text in a small line under the time window, such as `45 min left`, `starts in 1 h` or `Sun to Tue`. Leave it out and the lead draws no empty line. Used with `timeWindow`. */
+  timeCaption?: string;
+  /** How pressing the row is. `urgent` draws only the caption in the warning text colour and `soon` mutes the window; left unset, both use their default colours. Used with `timeWindow`. */
   urgency?: GroupedListItemUrgency;
   /** A short age, such as `3d`, drawn with a gray clock before the trailing value. Give it only when the row's information is stale; a fresh row draws no marker. */
   staleAge?: string;
