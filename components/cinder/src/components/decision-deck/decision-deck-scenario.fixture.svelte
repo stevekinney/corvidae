@@ -89,6 +89,8 @@
   // the capture's own round trips, so the frame it takes is always the final one.
   const root = document.documentElement;
   const previous = root.dataset['reducedMotion'];
+  // A scenario never changes after mount, so the initial value is the one meant.
+  // svelte-ignore state_referenced_locally
   if (scenario === 'last-card') root.dataset['reducedMotion'] = 'on';
 
   onMount(() => {
