@@ -57,6 +57,14 @@ async function run(script: string, cwd: string) {
 const root = await temporaryRepository();
 const written = createPackage(root, 'demo');
 const directory = join(root, 'components', 'demo');
+// What `bun install` would link for the one workspace package the scaffold's source imports: the
+// component tooling, whose example-mount helper `src/examples.test.ts` calls.
+mkdirSync(join(directory, 'node_modules', '@lostgradient'), { recursive: true });
+symlinkSync(
+  join(repositoryRoot, 'internal', 'component-tooling'),
+  join(directory, 'node_modules', '@lostgradient', 'component-tooling'),
+  'dir',
+);
 const results: Awaited<ReturnType<typeof run>>[] = [];
 for (const script of ['types', 'lint', 'typecheck', 'test']) {
   results.push(await run(script, directory));

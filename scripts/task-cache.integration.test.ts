@@ -653,8 +653,11 @@ test('a test task whose files read generated .metadata waits for a metadata task
   const tasks: Record<string, { dependsOn?: string[] }> = configuration.tasks;
   const { listTree } = await import('./affected-tests.ts');
   const files = [...listTree(root).paths].filter((file) => /\.test(?:-support)?\.ts$/.test(file));
+  // A quoted `'.metadata/<id>/schema.json'` is a manifest's package-relative artifact path, a value a
+  // manifest test compares, not a read; a path built under a package root, a comment naming the
+  // directory, or a metadata helper is.
   const readers = files.filter((file) =>
-    /\.metadata\/|metadata-files|readMetadata|metadataDirectory/.test(
+    /(?<!['"])\.metadata\/|metadata-files|readMetadata|metadataDirectory/.test(
       readFileSync(join(root, file), 'utf8'),
     ),
   );
@@ -695,8 +698,29 @@ test('a test task whose files read generated .metadata waits for a metadata task
       if (!waits) missing.push(`${manifest.name}#${name}`);
     }
   }
-  expect(directories).toContain('internal/component-tooling');
+  expect(directories).toContain('components/cinder');
   expect(missing.toSorted()).toEqual([]);
+});
+
+test("the component tooling's tests read no component example and wait for no package's metadata", async () => {
+  // An example edit must reach only its own package and the packages that depend on it (COR-2081).
+  // The tooling's tests read every component workspace's source, so the task excludes examples,
+  // and the tests that read Cinder's generated `.metadata` live in Cinder, whose test task waits
+  // for it: a named `@lostgradient/cinder#metadata` here would carry every example edit, through
+  // Cinder's metadata and its dependencies' `transit`, into the tooling's test hash.
+  const configuration = await Bun.file(join(root, 'turbo.json')).json();
+  const task = configuration.tasks['@lostgradient/component-tooling#test'];
+  expect(task?.dependsOn).toEqual(['transit']);
+  expect(task?.inputs).toContain('$TURBO_ROOT$/components/*/src/**');
+  expect(task?.inputs).toContain('!$TURBO_ROOT$/components/*/src/**/examples/**');
+  // Every workspace's lint and test wait for `metadata`, whose inputs include core's source: the
+  // generators read a component's `<id>.examples.json`, never its `*.example.svelte`, so an example
+  // file is no input of it, or a core example edit would reach every workspace's tasks.
+  const metadata: string[] = configuration.tasks.metadata?.inputs ?? [];
+  for (const included of metadata.filter((input) => input.endsWith('/src/**'))) {
+    expect(metadata).toContain(`!${included}/*.example.svelte`);
+  }
+  expect(metadata).toContain('!**/*.example.svelte');
 });
 
 test('the bureau tests hash the runtime contracts guide they compare a fixture with', async () => {

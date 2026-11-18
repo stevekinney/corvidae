@@ -168,7 +168,7 @@ it('generates root imports and package-relative artifact paths for every compone
   for (const component of manifest.components) {
     expect(component.import).toBe('@lostgradient/cinder');
     for (const path of Object.values(component.artifacts)) {
-      // Derived files live in the metadata task's `.metadata/`; authored ones beside the component,
+      // Derived files live in the metadata task's output directory; authored ones beside the component,
       // relative to the package that holds it (core, or the family the split moved it into).
       expect(path.startsWith('.metadata/') || path.startsWith('src/components/')).toBe(true);
       if (path.startsWith('src/components/')) {

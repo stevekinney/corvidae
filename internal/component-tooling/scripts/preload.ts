@@ -32,6 +32,9 @@ export function allowCinderTestStyleBlock(path: string): boolean {
   const relativePath = normalizedPath.slice(sourceDirectory.length + 1);
   return (
     relativePath.startsWith('test/fixtures/') ||
+    // A component's examples (COR-2081) are documentation pages render; `examples.test.ts` mounts
+    // them with their own styles, as the playground does.
+    /(?:^|\/)examples\/[^/]+\.example\.svelte$/.test(relativePath) ||
     // Core's tests directory keeps the fixtures that mount several packages' components (COR-2091).
     /^(?:components|component-tests)\/[^/]+\/[^/]+\.fixture\.svelte$/.test(relativePath)
   );

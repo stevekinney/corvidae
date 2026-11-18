@@ -10,14 +10,17 @@
  * `types` script, the `types`/`svelte`/`default` export conditions, and the `./styles` and
  * `./*.css` stylesheet exports), a two-line `tsconfig.json` extending
  * `@lostgradient/typescript/component.json`, the `tsconfig.browser.json` the `types` script's
- * declaration emitter reads, a `bunfig.toml` that preloads the shared test preload, and a
+ * declaration emitter reads, a `bunfig.toml` that preloads the shared test preload, a
  * `src/index.ts`, `src/styles/index.css`, `src/index.test.ts` and a first
  * `src/components/<name>/<name>.svelte` so the package's declarations, lint, type-check and test
- * pass the moment it exists. It never overwrites a file.
+ * pass the moment it exists, and `src/examples.test.ts`, which mounts every example the package's
+ * components keep in their `examples/` directories (COR-2081). It never overwrites a file.
  */
 
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
+
+import { EXAMPLE_MOUNT_TEST_FILE, EXAMPLE_MOUNT_TEST_SOURCE } from './example-mount-tests.ts';
 
 const KEBAB_CASE = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/;
 const TOOLING_SCRIPTS = '../../internal/component-tooling/scripts';
@@ -79,6 +82,8 @@ export function packageFiles(name: string): Record<string, string> {
     // the family's real components replace it.
     [`src/components/${name}/${name}.svelte`]: `<script lang="ts">\n  import type { Snippet } from 'svelte';\n\n  let { children }: { children?: Snippet } = $props();\n</script>\n\n<div class="cinder-${name}">{@render children?.()}</div>\n`,
     'src/index.test.ts': `import { expect, test } from 'bun:test';\n\nimport { packageName } from './index.ts';\n\ntest('names its package', () => {\n  expect(packageName).toBe('@lostgradient/${name}');\n});\n`,
+    // Mounts every example the package's components keep in their `examples/` (COR-2081).
+    [EXAMPLE_MOUNT_TEST_FILE]: EXAMPLE_MOUNT_TEST_SOURCE,
   };
 }
 
