@@ -108,7 +108,7 @@ import type { WorkflowRevisionSteps } from './workflow-review-waits';
 import { createWorkflowScheduleHolds, type WorkflowScheduleHolds } from './workflow-schedule-holds';
 import { toWeftDocument, validateBureauWorkflowDocument } from './workflow-document-handlers';
 import { bureauNameOf, isMappedWeftName, weftNameOf } from './namespaced-identifier';
-import { awaitedSignalOf, boundedStatusMessage, stepOf } from './engine-run-tasks';
+import { awaitedSignalOf, boundedStatusMessage, instanceStartOf, stepOf } from './engine-run-tasks';
 import { NO_WORKFLOW_CONTRIBUTIONS, type WorkflowContributions } from './workflow-contributions';
 import {
   createWorkflowTriggerSupervisor,
@@ -2127,10 +2127,16 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
     input?: unknown;
   }): Omit<WorkflowRunSummary, keyof RunProgress> {
     const input = state.input;
-    const origin =
+    const recorded =
       typeof input === 'object' && input !== null && 'origin' in input
         ? (input.origin as TaskOrigin | null)
         : null;
+    // A fire of the file's own schedule records no origin, only the schedule's trigger
+    // (`{ kind: 'schedule', scheduleId }`): it is said as the schedule that fired it, as the
+    // instance's task says it (`instanceStartOf`), so its row names the schedule and its cadence
+    // (design correction, rows 62n and 63p). The input is the run's own record, so a run fired
+    // before this reads the same.
+    const origin = recorded ?? instanceStartOf(input, state.id).origin;
     return {
       id: state.id,
       workflow: bureauNameOf(state.type),

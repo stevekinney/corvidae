@@ -975,6 +975,30 @@ describe('results', () => {
     expect(listOf(reviews, 'runs')[0]).toMatchObject({ id: 'review-run', awaitingSignal: null });
   });
 
+  it('design correction: a fire of the file’s own schedule reads as started by that schedule (rows 62n, 63p)', async () => {
+    const served = await serve();
+    await seed(served);
+    const scheduleId = 'bureau-workflow-schedule:digest:fire-test';
+    const fired = await served.bureau
+      .durableEngine()!
+      .start('digest', { kind: 'schedule', scheduleId }, { id: 'digest-fired' });
+    await fired.result();
+    const run = await ownerRpc(served.owner, 'bureau.workflows.runs.get', {
+      runId: 'digest-fired',
+    });
+    expect(run.result?.['origin']).toEqual({
+      kind: 'schedule',
+      scheduleId,
+      fireId: 'digest-fired',
+    });
+    const listed = await ownerRpc(served.owner, 'bureau.workflows.runs.list', {
+      workflow: 'digest',
+    });
+    const row = listOf(listed, 'runs').find((entry) => entry.id === 'digest-fired') as
+      Record<string, unknown> | undefined;
+    expect(row?.['origin']).toMatchObject({ kind: 'schedule', scheduleId });
+  });
+
   it('answers a run that is not an instance of a workflow file as it answers a missing run', async () => {
     const served = await serve();
     await seed(served);
