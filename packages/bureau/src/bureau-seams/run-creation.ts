@@ -39,6 +39,7 @@ import { registerTrailingOnStep } from '../bureau-invariant-hooks';
 import { sessionRunMediaOptions } from '../provider-resolution';
 import {
   type BureauToolbox,
+  type CatalogRunRecordedDefinition,
   type SessionAgentRun,
   type SessionAgentRunResolution,
 } from '../runtime-composition-types';
@@ -248,6 +249,19 @@ function continuesStartedRun(
   return typeof row === 'object' && row !== null && Reflect.get(row, 'toolResult') !== undefined;
 }
 
+/**
+ * What a start tells the agent resolver it continues: a run that already started, for a start that
+ * only continues a chat ending in a decided tool result ({@link continuesStartedRun}); nothing for
+ * any other start, which is a new run.
+ */
+function continuationRecord(
+  ...parameters: Parameters<typeof continuesStartedRun>
+): CatalogRunRecordedDefinition | undefined {
+  return continuesStartedRun(...parameters)
+    ? { agentDefinitionHash: undefined, alreadyStarted: true }
+    : undefined;
+}
+
 /** Builds the run creation functions of one Bureau. Synchronous, and registers nothing. */
 export function createRunCreation<D extends AgentDefinitions>(
   core: BureauCore<D>,
@@ -340,9 +354,7 @@ export function createRunCreation<D extends AgentDefinitions>(
       agentName,
       runId,
       owner,
-      continuesStartedRun(session, conversation, request)
-        ? { agentDefinitionHash: undefined, alreadyStarted: true }
-        : undefined,
+      continuationRecord(session, conversation, request),
       { sessionId, metadata: session?.metadata },
     );
     if (resolution.status === 'missing-agent') throw peers.missingAgentError(agentName);
