@@ -101,6 +101,7 @@
     builtInLine,
     lastRunLine,
     scheduleLine,
+    sharedStepAgent,
     startsLine,
     type HeaderLine,
     type HeaderSchedule,
@@ -593,9 +594,15 @@
     return saved.length === 0 ? undefined : saved;
   });
 
-  const agentName = $derived(
-    file?.agent === null || file?.agent === undefined ? null : agentLabel(file.agent, undefined),
+  /**
+   * The agent the workflow runs as: the file's own `agent`, else the one agent every agent step
+   * names (rows 62c, 62r, 62v, 63p), else none. A file that can't load is read from the last good
+   * version's steps, as its Overview is.
+   */
+  const workflowAgent = $derived(
+    file === undefined ? null : (file.agent ?? sharedStepAgent(overviewSteps ?? [])),
   );
+  const agentName = $derived(workflowAgent === null ? null : agentLabel(workflowAgent, undefined));
   const internal = $derived(
     engineType ? internalWords(type, definition?.description ?? null) : null,
   );
@@ -981,7 +988,7 @@
             {type}
             kind={resolved.kind}
             title={heading}
-            agentName={file?.agent ?? null}
+            agentName={workflowAgent}
             {canStart}
             paused={file?.paused === true}
             {scheduleNames}

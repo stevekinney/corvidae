@@ -8,6 +8,7 @@ import {
   lastRunLine,
   LONG_STEP_DESCRIPTION,
   scheduleLine,
+  sharedStepAgent,
   startsLine,
   startsPart,
   stepRows,
@@ -72,6 +73,25 @@ describe('what starts a workflow', () => {
       startsLine({ trigger: { kind: 'signal', name: 'go' }, canStart: false, agent: null })?.parts,
     ).toHaveLength(1);
     expect(startsLine({ trigger: null, canStart: true, agent: null })).toBeNull();
+  });
+});
+
+describe('design correction: the agent a file with no agent of its own runs as (rows 62c, 62r, 62v, 63p)', () => {
+  const ask = (agent: string) => ({
+    kind: 'activity',
+    handler: 'agent',
+    input: { agent, message: 'Do it.' },
+  });
+
+  test('is the one agent every agent step names', () => {
+    expect(
+      sharedStepAgent([ask('assistant'), { kind: 'await-signal', signal: 'go' }, ask('assistant')]),
+    ).toBe('assistant');
+  });
+
+  test('is none when the steps name different agents, or no agent step', () => {
+    expect(sharedStepAgent([ask('assistant'), ask('tool-runner')])).toBeNull();
+    expect(sharedStepAgent([{ kind: 'sleep', duration: '1m' }])).toBeNull();
   });
 });
 

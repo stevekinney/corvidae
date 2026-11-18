@@ -1021,6 +1021,28 @@ describe('a type with little to show', () => {
   });
 });
 
+describe('design correction: the agent a file runs as', () => {
+  test('a file with no agent of its own runs as the one agent its steps share (row 62c)', async () => {
+    const text = JSON.stringify({
+      name: 'shared',
+      trigger: { kind: 'signal', name: 'go' },
+      steps: [
+        { kind: 'activity', handler: 'agent', input: { agent: 'writer', message: 'One.' } },
+        { kind: 'activity', handler: 'agent', input: { agent: 'writer', message: 'Two.' } },
+      ],
+    });
+    const { container } = open('/workflows/shared', {
+      files: [readyFile('shared', { agent: null, text })],
+    });
+    const root = await ready(container);
+    await waitFor(() =>
+      expect(testId(root, 'workflow-line-starts')?.textContent).toContain(
+        WORKFLOW_COPY.page.header.runsAs('Writer'),
+      ),
+    );
+  });
+});
+
 describe('a part of the page that fails', () => {
   test('says the schedules could not be loaded, and shows the rest', async () => {
     const { container } = open('/workflows/order-processing', { failSchedules: true });

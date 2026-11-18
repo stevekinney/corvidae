@@ -238,6 +238,23 @@ export function builtInLine(input: {
   return { id: 'built-in', parts };
 }
 
+/**
+ * The one agent every agent step of a workflow names, or `null` when it has no agent step or its
+ * agent steps name different agents: the agent a file with no `agent` of its own runs as.
+ */
+export function sharedStepAgent(steps: readonly WorkflowStepSource[]): string | null {
+  const agents = new Set<string>();
+  for (const step of steps) {
+    if (step.kind !== 'activity' || step['handler'] !== 'agent') continue;
+    const input = step['input'];
+    const agent = isRecord(input) ? input['agent'] : undefined;
+    if (typeof agent !== 'string' || agent === '') return null;
+    agents.add(agent);
+  }
+  const [only] = agents;
+  return agents.size === 1 && only !== undefined ? only : null;
+}
+
 /** A step as a file writes it: its `kind`, and whatever else that kind carries. */
 export type WorkflowStepSource = { readonly kind: string; readonly [key: string]: unknown };
 
