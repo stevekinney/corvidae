@@ -121,57 +121,151 @@ const STEP_FAILURE = /^([^\t]+)\t.*?##\[error\]Process completed with exit code 
 /** A Playwright failure heading, `  1) [chromium] › tests/e2e/x.spec.ts:69:3 › title`. */
 const PLAYWRIGHT_FAILURE = /^([^\t]+)\t.*?\s\d+\) \[[\w-]+\] › (.+?)\s*$/;
 
-/** The failing test names in a `--log-failed` dump, keyed by the job name each line starts with. */
-export function failingTests(log: string): Map<string, string[]> {
-  const byJob = new Map<string, Set<string>>();
-  const fileByJob = new Map<string, string>();
-  const assertionByJob = new Map<string, { file: string; assertion: string }>();
-  const taskByJob = new Map<string, string>();
+interface TestEvidence {
+  job: string;
+  /** A run-local provenance key; it never participates in cross-run identity matching. */
+  step?: string | undefined;
+  command?: string | undefined;
+  identity?: string | undefined;
+  unparseable?: boolean | undefined;
+}
+
+interface TestContext {
+  step: string;
+  command: string;
+  task?: string | undefined;
+  file?: string | undefined;
+  assertion?: string | undefined;
+  unparseable?: boolean | undefined;
+}
+
+/**
+ * Extract test evidence once, scoped to an individual GitHub Actions Run occurrence. A test
+ * identity is deliberately separate from the occurrence that produced it: topology may change
+ * between runs, while a later Run step may never inherit a previous step's file or task context.
+ */
+function testEvidence(log: string): TestEvidence[] {
+  const contexts = new Map<string, TestContext>();
+  const unscopedFiles = new Set<string>();
+  const counts = new Map<string, number>();
+  const found: TestEvidence[] = [];
+  const markUnknown = (job: string, context: TestContext | undefined) => {
+    if (context?.unparseable === true) return;
+    if (context !== undefined) context.unparseable = true;
+    found.push({
+      job,
+      ...(context === undefined ? {} : { step: context.step, command: context.command }),
+      unparseable: true,
+    });
+  };
+  const finish = (job: string) => {
+    const context = contexts.get(job);
+    if (context?.assertion !== undefined) markUnknown(job, context);
+  };
+  const identity = (context: TestContext, value: string) =>
+    `${context.task === undefined ? '' : `${context.task} › `}${context.file} › ${value}`;
+
   for (const line of log.split('\n')) {
+    const step = RUN_STEP.exec(line);
+    if (step !== null) {
+      const job = step[1] ?? '';
+      finish(job);
+      const command = step[2] ?? '';
+      const index = (counts.get(job) ?? 0) + 1;
+      counts.set(job, index);
+      contexts.set(job, { command, step: `${command}#${index}` });
+      unscopedFiles.delete(job);
+      continue;
+    }
     const task = TURBO_TASK.exec(line);
     if (task !== null) {
-      taskByJob.set(task[1] ?? '', task[2] ?? '');
+      const context = contexts.get(task[1] ?? '');
+      if (context !== undefined) context.task = task[2] ?? '';
       continue;
     }
     const file = BUN_TEST_FILE.exec(line);
     if (file !== null) {
-      const [, job = '', path = ''] = file;
-      fileByJob.set(job, path);
+      const context = contexts.get(file[1] ?? '');
+      if (context !== undefined) {
+        context.file = file[2] ?? '';
+        context.assertion = undefined;
+      } else unscopedFiles.add(file[1] ?? '');
       continue;
     }
     const assertion = BUN_ASSERTION.exec(line);
     if (assertion !== null) {
-      const [, job = '', message = ''] = assertion;
-      const currentFile = fileByJob.get(job);
-      // Bun sometimes omits the `(fail)` line. Do not treat a generic error in a file group as a
-      // known failure: wait for its assertion-specific expected value below.
-      if (currentFile !== undefined)
-        assertionByJob.set(job, { file: currentFile, assertion: message });
+      const context = contexts.get(assertion[1] ?? '');
+      if (context?.file !== undefined) context.assertion = assertion[2] ?? '';
+      else markUnknown(assertion[1] ?? '', context);
       continue;
     }
     const expected = BUN_EXPECTED.exec(line);
     if (expected !== null) {
-      const [, job = '', value = ''] = expected;
-      const currentAssertion = assertionByJob.get(job);
-      if (currentAssertion !== undefined) {
-        let tests = byJob.get(job);
-        if (tests === undefined) byJob.set(job, (tests = new Set()));
-        tests.add(
-          `${taskByJob.get(job) === undefined ? '' : `${taskByJob.get(job)} › `}${currentAssertion.file} › ${currentAssertion.assertion} › ${value}`,
-        );
-        assertionByJob.delete(job);
-      }
+      const job = expected[1] ?? '';
+      const context = contexts.get(job);
+      if (context?.file !== undefined && context.assertion !== undefined) {
+        found.push({
+          job,
+          step: context.step,
+          command: context.command,
+          identity: identity(context, `${context.assertion} › ${expected[2] ?? ''}`),
+        });
+        context.assertion = undefined;
+      } else markUnknown(job, context);
       continue;
     }
-    const match = BUN_FAILURE.exec(line) ?? PLAYWRIGHT_FAILURE.exec(line);
-    if (match === null) continue;
-    const [, job = '', rawTest = ''] = match;
-    const test = BUN_FAILURE.test(line)
-      ? `${taskByJob.get(job) === undefined ? '' : `${taskByJob.get(job)} › `}${fileByJob.get(job) ?? '<unknown test file>'} › ${rawTest}`
-      : rawTest;
-    let tests = byJob.get(job);
-    if (tests === undefined) byJob.set(job, (tests = new Set()));
-    tests.add(test);
+    const bun = BUN_FAILURE.exec(line);
+    if (bun !== null) {
+      const job = bun[1] ?? '';
+      const context = contexts.get(job);
+      if (context?.file !== undefined)
+        found.push({
+          job,
+          step: context.step,
+          command: context.command,
+          identity: identity(context, bun[2] ?? ''),
+        });
+      else markUnknown(job, context);
+      continue;
+    }
+    const playwright = PLAYWRIGHT_FAILURE.exec(line);
+    if (playwright !== null) {
+      const job = playwright[1] ?? '';
+      const context = contexts.get(job);
+      if (context !== undefined)
+        found.push({
+          job,
+          step: context.step,
+          command: context.command,
+          identity: playwright[2] ?? '',
+        });
+      else markUnknown(job, context);
+      continue;
+    }
+    const error = BUN_ERROR.exec(line);
+    if (error !== null) {
+      const job = error[1] ?? '';
+      const context = contexts.get(job);
+      const diagnostic = line.split('error: ').at(-1)?.trim();
+      if (
+        (context?.file !== undefined || unscopedFiles.has(job)) &&
+        (diagnostic === undefined || !BUN_SCRIPT_EXIT.test(diagnostic))
+      )
+        markUnknown(job, context);
+    }
+  }
+  for (const job of contexts.keys()) finish(job);
+  return found;
+}
+
+/** The failing test names in a `--log-failed` dump, keyed by the job name each line starts with. */
+export function failingTests(log: string): Map<string, string[]> {
+  const byJob = new Map<string, Set<string>>();
+  for (const evidence of testEvidence(log)) {
+    if (evidence.identity === undefined) continue;
+    const tests = byJob.get(evidence.job) ?? new Set<string>();
+    tests.add(evidence.identity);
+    byJob.set(evidence.job, tests);
   }
   return new Map([...byJob].map(([job, tests]) => [job, [...tests].toSorted()]));
 }
@@ -231,71 +325,44 @@ function stepFailures(log: string): FailureRecord[] {
   return found;
 }
 
-/** Which individual workflow steps contain a file-qualified failed Bun test. */
-function qualifiedTestSteps(log: string): Set<string> {
-  const current = new Map<string, string>();
-  const counts = new Map<string, number>();
-  const files = new Map<string, string>();
-  const assertions = new Set<string>();
-  const qualified = new Set<string>();
-  for (const line of log.split('\n')) {
-    const step = RUN_STEP.exec(line);
-    if (step !== null) {
-      const job = step[1] ?? '';
-      const command = step[2] ?? '';
-      const index = (counts.get(job) ?? 0) + 1;
-      counts.set(job, index);
-      current.set(job, `${command}#${index}`);
-      continue;
-    }
-    const file = BUN_TEST_FILE.exec(line);
-    if (file !== null) {
-      files.set(file[1] ?? '', file[2] ?? '');
-      continue;
-    }
-    const assertion = BUN_ASSERTION.exec(line);
-    if (assertion !== null && files.has(assertion[1] ?? '')) {
-      assertions.add(assertion[1] ?? '');
-      continue;
-    }
-    const expected = BUN_EXPECTED.exec(line);
-    if (expected !== null && assertions.delete(expected[1] ?? '')) {
-      const job = expected[1] ?? '';
-      const currentStep = current.get(job);
-      if (currentStep !== undefined) qualified.add(currentStep);
-      continue;
-    }
-    const failed = BUN_FAILURE.exec(line) ?? PLAYWRIGHT_FAILURE.exec(line);
-    if (failed !== null) {
-      const job = failed[1] ?? '';
-      const currentStep = current.get(job);
-      if (currentStep !== undefined) qualified.add(currentStep);
-    }
-  }
-  return qualified;
-}
-
 function isTestLauncher(command: string): boolean {
-  return /\b(?:bun(?:x)?(?:\s+--bun)?\s+(?:test|playwright)|bun(?:x)?\s+(?:\S+\s+)?run\s+test(?::|\s|$)|run-gated-browser-suite)\b/.test(
+  return /\b(?:bun(?:x)?\s+(?:--bun\s+)?(?:test|playwright)\b|bun(?:x)?\s+run\s+test(?=:|\s|$)|bunx\s+turbo\s+run\s+test(?=:|\s|$)|run-gated-browser-suite)\b/.test(
     command,
   );
 }
 
 /** Parse all failure roles; unqualified launchers and diagnostics remain explicit unknown evidence. */
 export function failureRecords(log: string): Map<string, FailureRecord[]> {
-  const tests = failingTests(log);
-  const unknown = unparseableTestJobs(log);
-  const qualified = qualifiedTestSteps(log);
+  const evidence = testEvidence(log);
+  const qualified = new Set(
+    evidence.flatMap((item) =>
+      item.identity === undefined || item.step === undefined ? [] : [item.step],
+    ),
+  );
   const records = new Map<string, FailureRecord[]>();
   const add = (job: string, record: FailureRecord) => {
     const values = records.get(job) ?? [];
     values.push(record);
     records.set(job, values);
   };
-  for (const [job, identities] of tests)
-    for (const identity of identities) add(job, { kind: 'test', job, identity });
-  for (const job of unknown)
-    add(job, { kind: 'unknown', job, diagnostic: 'unparseable test error' });
+  for (const item of evidence) {
+    if (item.identity !== undefined)
+      add(item.job, {
+        kind: 'test',
+        job: item.job,
+        step: item.step,
+        command: item.command,
+        identity: item.identity,
+      });
+    else if (item.unparseable === true)
+      add(item.job, {
+        kind: 'unknown',
+        job: item.job,
+        step: item.step,
+        command: item.command,
+        diagnostic: 'unparseable test error',
+      });
+  }
   for (const step of stepFailures(log)) {
     if (isTestLauncher(step.command ?? '')) {
       if (!qualified.has(step.step ?? ''))
@@ -311,34 +378,11 @@ export function failureRecords(log: string): Map<string, FailureRecord[]> {
 
 /** Test-file errors without a complete identity stay unknown instead of inheriting a known step. */
 export function unparseableTestJobs(log: string): Set<string> {
-  const files = new Set<string>();
-  const pending = new Set<string>();
-  for (const line of log.split('\n')) {
-    const file = BUN_TEST_FILE.exec(line);
-    if (file !== null) {
-      files.add(file[1] ?? '');
-      continue;
-    }
-    const expected = BUN_EXPECTED.exec(line);
-    if (expected !== null) {
-      pending.delete(expected[1] ?? '');
-      continue;
-    }
-    const failed = BUN_FAILURE.exec(line);
-    if (failed !== null) {
-      pending.delete(failed[1] ?? '');
-      continue;
-    }
-    const error = BUN_ERROR.exec(line);
-    const diagnostic = line.split('error: ').at(-1)?.trim();
-    if (
-      error !== null &&
-      files.has(error[1] ?? '') &&
-      (diagnostic === undefined || !BUN_SCRIPT_EXIT.test(diagnostic))
-    )
-      pending.add(error[1] ?? '');
-  }
-  return pending;
+  return new Set(
+    testEvidence(log)
+      .filter((item) => item.unparseable === true)
+      .map((item) => item.job),
+  );
 }
 
 /** A run's failed jobs and their failing tests, read from GitHub. */

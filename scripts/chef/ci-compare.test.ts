@@ -23,22 +23,26 @@ const failures = (id: string, jobs: [string, string[]][], status = 'completed'):
 describe('failingTests', () => {
   test('reads each (fail) line under its job, once, without the duration', () => {
     const log = [
+      'Tests (apps)\tUNKNOWN STEP\t2026-11-17T00:10:24Z ##[group]Run bun run test:self',
       'Tests (apps)\tRun bun test\t2026-11-17T00:10:25Z ##[group]src/schedule-detail.test.ts:',
       'Tests (apps)\tRun bun test\t2026-11-17T00:10:26Z (fail) ScheduleDetail > a current run [120111.22ms]',
       'Tests (apps)\tRun bun test\t2026-11-17T00:10:26Z (fail) ScheduleDetail > a current run [120111.22ms]',
       'Tests (apps)\tRun bun test\t2026-11-17T00:10:25Z (pass) storageGet > ok [0.62ms]',
-      'Slow\tUNKNOWN STEP\t2026-11-16T22:59:14Z (fail) two hosts > B completes [5521.48ms]',
+      'Slow\tUNKNOWN STEP\t2026-11-16T22:59:13Z ##[group]Run bun run test:slow',
+      'Slow\tUNKNOWN STEP\t2026-11-16T22:59:14Z ##[group]src/slow.test.ts:',
+      'Slow\tUNKNOWN STEP\t2026-11-16T22:59:15Z (fail) two hosts > B completes [5521.48ms]',
     ].join('\n');
     expect(failingTests(log)).toEqual(
       new Map([
         ['Tests (apps)', ['src/schedule-detail.test.ts › ScheduleDetail > a current run']],
-        ['Slow', ['<unknown test file> › two hosts > B completes']],
+        ['Slow', ['src/slow.test.ts › two hosts > B completes']],
       ]),
     );
   });
 
   test('reads Playwright failure headings, not the progress lines', () => {
     const log = [
+      'E2E (4/4)\tUNKNOWN STEP\t2026-11-17T00:03:02Z ##[group]Run bun --bun playwright test tests/e2e/settings.spec.ts',
       'E2E (4/4)\tUNKNOWN STEP\t2026-11-17T00:03:03Z [129/354] [chromium] › tests/e2e/settings.spec.ts:69:3 › draws a control',
       'E2E (4/4)\tUNKNOWN STEP\t2026-11-17T00:03:03Z   1) [chromium] › tests/e2e/settings.spec.ts:69:3 › draws a control ',
       'E2E (4/4)\tUNKNOWN STEP\t2026-11-17T00:03:03Z     Error: expect(locator).toBeVisible() failed',
@@ -50,6 +54,7 @@ describe('failingTests', () => {
 
   test('reads a Bun assertion without a fail summary by its owning file and expected assertion', () => {
     const log = [
+      'Affected fast-lane tests\tUNKNOWN STEP\t2026-11-17T18:34:00Z ##[group]Run bunx turbo run test --continue --filter=@lostgradient/example',
       'Affected fast-lane tests\tUNKNOWN STEP\t2026-11-17T18:34:01.1149205Z ##[group]src/lib/components/chat/chat.test.ts:',
       'Affected fast-lane tests\tUNKNOWN STEP\t2026-11-17T18:34:01.1163486Z error: expect(received).toContain(expected)',
       'Affected fast-lane tests\tUNKNOWN STEP\t2026-11-17T18:34:01.1162773Z ',
@@ -69,6 +74,7 @@ describe('failingTests', () => {
 
   test('does not classify an unqualified generic error in a file group as a known test', () => {
     const log = [
+      'Tests (components)\tUNKNOWN STEP\t2026-11-17T19:21:39Z ##[group]Run bun run test:self',
       'Tests (components)\tRun bun test\t2026-11-17T19:21:40Z ##[group]src/lib/components/chat/chat.test.ts:',
       'Tests (components)\tRun bun test\t2026-11-17T19:21:40Z error: unexpected failure',
     ].join('\n');
@@ -78,6 +84,7 @@ describe('failingTests', () => {
 
   test('does not turn a qualified failure unknown for Bun script-exit wrapper output', () => {
     const log = [
+      'Tests\tUNKNOWN STEP\t2026-11-17T19:21:39Z ##[group]Run bun run test:slow',
       'Tests\tRun bun test\t2026-11-17T19:21:40Z ##[group]src/slow.test.ts:',
       'Tests\tRun bun test\t2026-11-17T19:21:41Z (fail) slow behavior > remains stable [1ms]',
       'Tests\tRun bun test\t2026-11-17T19:21:42Z error: script "test:slow" exited with code 1',
@@ -94,6 +101,7 @@ describe('failingTests', () => {
 
   test('keeps a non-wrapper error after a qualified failure unknown', () => {
     const log = [
+      'Tests\tUNKNOWN STEP\t2026-11-17T19:21:39Z ##[group]Run bun run test:slow',
       'Tests\tRun bun test\t2026-11-17T19:21:40Z ##[group]src/slow.test.ts:',
       'Tests\tRun bun test\t2026-11-17T19:21:41Z (fail) slow behavior > remains stable [1ms]',
       'Tests\tRun bun test\t2026-11-17T19:21:42Z error: database connection failed',
@@ -103,6 +111,7 @@ describe('failingTests', () => {
 
   test('qualifies identical Bun tests by their Turbo workspace across changed job topology', () => {
     const log = [
+      'Affected fast-lane tests\tUNKNOWN STEP\t2026-11-17T18:21:18Z ##[group]Run bunx turbo run test --continue --filter=@lostgradient/example',
       'Affected fast-lane tests\tUNKNOWN STEP\t2026-11-17T18:21:19Z ##[group]@lostgradient/storage-lmdb:test',
       'Affected fast-lane tests\tUNKNOWN STEP\t2026-11-17T18:21:20Z ##[group]src/index.test.ts:',
       'Affected fast-lane tests\tUNKNOWN STEP\t2026-11-17T18:21:21Z (fail) package entry > exports the adapter [1ms]',
@@ -161,7 +170,13 @@ describe('failingTests', () => {
       'Tests\tUNKNOWN STEP\t2026-11-17T19:19:02Z ##[error]Process completed with exit code 1.',
     ].join('\n');
     const records = failureRecords(log).get('Tests') ?? [];
-    expect(records).toContainEqual({ kind: 'test', job: 'Tests', identity: known });
+    expect(records).toContainEqual({
+      kind: 'test',
+      job: 'Tests',
+      step: 'bun run test:self#1',
+      command: 'bun run test:self',
+      identity: known,
+    });
     expect(records).toContainEqual({
       kind: 'unknown',
       job: 'Tests',
@@ -216,19 +231,149 @@ describe('failingTests', () => {
     ]);
   });
 
-  test.each(['bun --bun playwright test tests/e2e/x.spec.ts', 'run-gated-browser-suite'])(
-    'keeps a qualified Playwright failure known for %s',
-    (command) => {
-      const log = [
-        `Browser\tUNKNOWN STEP\t2026-11-17T19:18:57Z ##[group]Run ${command}`,
-        'Browser\tUNKNOWN STEP\t2026-11-17T19:18:58Z   1) [chromium] › tests/e2e/x.spec.ts:9:3 › keeps its identity',
-        'Browser\tUNKNOWN STEP\t2026-11-17T19:18:59Z ##[error]Process completed with exit code 1.',
-      ].join('\n');
-      expect(failureRecords(log).get('Browser')).toEqual([
-        { kind: 'test', job: 'Browser', identity: 'tests/e2e/x.spec.ts:9:3 › keeps its identity' },
-      ]);
-    },
-  );
+  test.each([
+    'bun --bun playwright test tests/e2e/x.spec.ts',
+    'bun applications/interborough/scripts/run-gated-browser-suite.ts',
+  ])('keeps a qualified Playwright failure known for %s', (command) => {
+    const log = [
+      `Browser\tUNKNOWN STEP\t2026-11-17T19:18:57Z ##[group]Run ${command}`,
+      'Browser\tUNKNOWN STEP\t2026-11-17T19:18:58Z   1) [chromium] › tests/e2e/x.spec.ts:9:3 › keeps its identity',
+      'Browser\tUNKNOWN STEP\t2026-11-17T19:18:59Z ##[error]Process completed with exit code 1.',
+    ].join('\n');
+    expect(failureRecords(log).get('Browser')).toEqual([
+      {
+        kind: 'test',
+        job: 'Browser',
+        step: `${command}#1`,
+        command,
+        identity: 'tests/e2e/x.spec.ts:9:3 › keeps its identity',
+      },
+    ]);
+  });
+
+  test.each([
+    'bun run test:self',
+    'bun run test:browser-fixtures',
+    'bunx turbo run test --continue --filter=@lostgradient/example',
+    'bun run test:slow',
+    'bunx turbo run test:slow --concurrency=1 --filter=@lostgradient/example',
+  ])('keeps a matching qualified Bun failure known for %s', (command) => {
+    const known = 'src/example.test.ts › remains known';
+    const log = [
+      `Tests\tUNKNOWN STEP\t2026-11-17T19:18:57Z ##[group]Run ${command}`,
+      ...(command.includes('turbo')
+        ? ['Tests\tUNKNOWN STEP\t2026-11-17T19:18:58Z ##[group]@lostgradient/example:test']
+        : []),
+      'Tests\tUNKNOWN STEP\t2026-11-17T19:18:59Z ##[group]src/example.test.ts:',
+      'Tests\tUNKNOWN STEP\t2026-11-17T19:19:00Z (fail) remains known [1ms]',
+      'Tests\tUNKNOWN STEP\t2026-11-17T19:19:01Z ##[error]Process completed with exit code 1.',
+    ].join('\n');
+    const records = failureRecords(log).get('Tests') ?? [];
+    expect(records).toContainEqual({
+      kind: 'test',
+      job: 'Tests',
+      step: `${command}#1`,
+      command,
+      identity: command.includes('turbo') ? `@lostgradient/example › ${known}` : known,
+    });
+    expect(
+      compare(
+        {
+          id: 'candidate',
+          status: 'completed',
+          conclusion: 'failure',
+          jobs: [{ name: 'Tests', tests: [], failures: records }],
+        },
+        [
+          {
+            id: 'main',
+            status: 'completed',
+            conclusion: 'failure',
+            jobs: [{ name: 'Main', tests: [], failures: records }],
+          },
+        ],
+      ).hasNew,
+    ).toBe(false);
+  });
+
+  test('does not let a Turbo task heading or file context qualify a later failed producer', () => {
+    const command = 'bunx turbo run test --continue --filter=@lostgradient/example';
+    const known = '@lostgradient/workspace-a › src/example.test.ts › remains known';
+    const positiveLog = [
+      `Tests\tUNKNOWN STEP\t2026-11-17T19:18:57Z ##[group]Run ${command}`,
+      'Tests\tUNKNOWN STEP\t2026-11-17T19:18:58Z ##[group]@lostgradient/workspace-a:test',
+      'Tests\tUNKNOWN STEP\t2026-11-17T19:18:59Z ##[group]src/example.test.ts:',
+      'Tests\tUNKNOWN STEP\t2026-11-17T19:19:00Z (fail) remains known [1ms]',
+      'Tests\tUNKNOWN STEP\t2026-11-17T19:19:01Z ##[error]Process completed with exit code 1.',
+    ].join('\n');
+    const negativeLog = [
+      `Tests\tUNKNOWN STEP\t2026-11-17T19:18:57Z ##[group]Run ${command}`,
+      'Tests\tUNKNOWN STEP\t2026-11-17T19:18:58Z ##[group]@lostgradient/workspace-a:test',
+      'Tests\tUNKNOWN STEP\t2026-11-17T19:18:59Z ##[group]src/example.test.ts:',
+      'Tests\tUNKNOWN STEP\t2026-11-17T19:19:00Z (fail) remains known [1ms]',
+      'Tests\tUNKNOWN STEP\t2026-11-17T19:19:01Z ##[group]@lostgradient/workspace-b:test',
+      'Tests\tUNKNOWN STEP\t2026-11-17T19:19:02Z ##[group]src/other.test.ts:',
+      'Tests\tUNKNOWN STEP\t2026-11-17T19:19:03Z error: workspace-b failed-producer marker',
+      'Tests\tUNKNOWN STEP\t2026-11-17T19:19:04Z ##[error]Process completed with exit code 1.',
+    ].join('\n');
+    const positive = failureRecords(positiveLog).get('Tests') ?? [];
+    const negative = failureRecords(negativeLog).get('Tests') ?? [];
+    expect(positive).toEqual([
+      { kind: 'test', job: 'Tests', step: `${command}#1`, command, identity: known },
+    ]);
+    expect(negative).toContainEqual({
+      kind: 'unknown',
+      job: 'Tests',
+      step: `${command}#1`,
+      command,
+      diagnostic: 'unparseable test error',
+    });
+    expect(
+      compare(
+        {
+          id: 'candidate',
+          status: 'completed',
+          conclusion: 'failure',
+          jobs: [{ name: 'Tests', tests: [], failures: negative }],
+        },
+        [
+          {
+            id: 'main',
+            status: 'completed',
+            conclusion: 'failure',
+            jobs: [{ name: 'Main', tests: [], failures: positive }],
+          },
+        ],
+      ).hasNew,
+    ).toBe(true);
+  });
+
+  test('does not carry file or pending assertion context into a later Run occurrence', () => {
+    const first = 'bun run test:self';
+    const second = 'bun run test:browser-fixtures';
+    const log = [
+      `Tests\tUNKNOWN STEP\t2026-11-17T19:18:57Z ##[group]Run ${first}`,
+      'Tests\tUNKNOWN STEP\t2026-11-17T19:18:58Z ##[group]src/first.test.ts:',
+      'Tests\tUNKNOWN STEP\t2026-11-17T19:18:59Z error: expect(received).toContain(expected)',
+      `Tests\tUNKNOWN STEP\t2026-11-17T19:19:00Z ##[group]Run ${second}`,
+      'Tests\tUNKNOWN STEP\t2026-11-17T19:19:01Z Expected to contain: "stale assertion"',
+      'Tests\tUNKNOWN STEP\t2026-11-17T19:19:02Z (fail) stale file must not qualify [1ms]',
+      'Tests\tUNKNOWN STEP\t2026-11-17T19:19:03Z ##[error]Process completed with exit code 1.',
+    ].join('\n');
+    const records = failureRecords(log).get('Tests') ?? [];
+    expect(records).not.toContainEqual(
+      expect.objectContaining({
+        kind: 'test',
+        identity: 'src/first.test.ts › stale file must not qualify',
+      }),
+    );
+    expect(records).toContainEqual({
+      kind: 'unknown',
+      job: 'Tests',
+      step: `${second}#2`,
+      command: second,
+    });
+  });
 });
 
 describe('compare', () => {
@@ -426,6 +571,15 @@ describe('compare', () => {
     expect(result.hasNew).toBe(false);
   });
 
+  test('a Playwright location identity seen under a different control topology is known', () => {
+    const identity = 'tests/e2e/settings.spec.ts:69:3 › draws a control';
+    const result = compare(failures('1', [['Browser shard (4/4)', [identity]]]), [
+      failures('10', [['Browser shard (2/4)', [identity]]]),
+    ]);
+    expect(result.jobs[0]?.tests[0]?.seenIn).toEqual(['10']);
+    expect(result.hasNew).toBe(false);
+  });
+
   test('a same-title test from a different Turbo workspace remains new', () => {
     const result = compare(
       failures('1', [
@@ -536,7 +690,9 @@ describe('run', () => {
         return {
           code: 0,
           stderr: '',
-          stdout: joined.includes(' 1 ') ? 'Unit\tstep\tt (fail) brand new [1ms]' : '',
+          stdout: joined.includes(' 1 ')
+            ? 'Unit\tstep\tt ##[group]Run bun run test:self\nUnit\tstep\tt ##[group]src/x.test.ts:\nUnit\tstep\tt (fail) brand new [1ms]'
+            : '',
         };
       const id = command[3];
       return {
@@ -551,7 +707,7 @@ describe('run', () => {
     };
     const result = run(['1', '--main-runs', '3'], runner);
     expect(result.code).toBe(1);
-    expect(result.output).toContain('NEW test <unknown test file> › brand new');
+    expect(result.output).toContain('NEW test src/x.test.ts › brand new');
     expect(result.output).toContain('compared with 1 main run(s)');
     expect(calls.some((c) => c.includes('5'))).toBe(false);
     // Most completed main runs are replaced ones, so the listing reads well past the count.
