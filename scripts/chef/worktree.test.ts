@@ -267,7 +267,7 @@ describe('removeWorktree delivery guard with a fake runner', () => {
     pullRequest?: { state: string; headRefOid: string } | undefined;
     ghCode?: number;
     /** What `lsof +D` answers; the default is exit 1 with no output, which means no process. */
-    lsof?: { code: number; stdout: string; stderr: string };
+    lsof?: { code: number; stdout: string; stderr: string; pid?: number };
     /**
      * What each host-wide working-directory `lsof` answers, in turn, as `pid cwd` pairs under the
      * worktree's path (`{}` stands for it); the last answer repeats.
@@ -477,7 +477,11 @@ describe('removeWorktree delivery guard with a fake runner', () => {
 
   test('without endProcesses a process inside still refuses the removal', () => {
     removal(
-      { ancestor: 0, lsof: { code: 0, stdout: 'p10\ncbun\n', stderr: '' } },
+      {
+        ancestor: 0,
+        // A real runner reports its probe PID separately; it need not itself appear in `lsof +D`.
+        lsof: { code: 0, pid: 99, stdout: 'p10\ncbun\n', stderr: '' },
+      },
       (remove, calls, _path, signals) => {
         expect(() => remove()).toThrow('processes are inside it: 10 bun');
         expect(signals).toEqual([]);

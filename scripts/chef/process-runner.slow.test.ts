@@ -7,7 +7,8 @@ const scenarios = createScenarios();
 
 scenarios.scenario('defaultRunner captures stdout, stderr and the exit code', () => {
   const result = defaultRunner(['sh', '-c', 'echo out; echo err >&2; exit 3']);
-  expect(result).toEqual({ code: 3, stdout: 'out\n', stderr: 'err\n' });
+  expect(result).toMatchObject({ code: 3, stdout: 'out\n', stderr: 'err\n' });
+  expect(result.pid).toEqual(expect.any(Number));
 });
 
 scenarios.scenario('defaultRunner passes input on standard input', () => {

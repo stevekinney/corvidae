@@ -67,7 +67,7 @@
   import {
     approvalActionRow,
     approvalArrivalBox,
-    approvalArrivalShift,
+    approvalArrivalRestShift,
     approvalRowVisible,
     focusPendingApproval,
     PENDING_APPROVAL_CARD_SELECTOR,
@@ -1790,7 +1790,13 @@
       // A layout not yet measured (zero-sized boxes) says nothing about where the card stands, so
       // the reminder stays available; the resize that measures it places the card.
       if (cardBox.height <= 0 || viewportBox.bottom - viewportBox.top <= 0) return settled();
-      const shift = approvalArrivalShift(cardBox, viewportBox);
+      // A card that fits rests at the end the transcript pins itself to, so the pin and this
+      // placement agree on one position whichever runs last.
+      const shift = approvalArrivalRestShift(
+        cardBox,
+        viewportBox,
+        scroller.scrollHeight - scroller.clientHeight - scroller.scrollTop,
+      );
       if (shift === 0) {
         movedFrom = undefined;
         return settled();

@@ -1,6 +1,7 @@
 /**
  * The design-system build's headless-browser stages: capturing static renditions of previews too
- * large to ship as scripts, and the render check every card must pass.
+ * large to ship as scripts, the render check every card must pass, and the check that
+ * `components/bundle.js` loads and mounts under React.
  *
  * Both wait a fixed settle time after load, as the original generator did, because a preview's
  * examples can lay out over several frames (charts measure their container, editors load
@@ -13,6 +14,13 @@ import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
+import {
+  BUNDLE_PROBE,
+  bundleHarnessHtml,
+  bundleProblems,
+  probeCinderBundle,
+  REACT_HARNESS_SCRIPTS,
+} from './bundle-harness.ts';
 import type { PreviewMeasurement, StaticSnapshot } from './components.ts';
 
 const SNAPSHOT_SETTLE_MILLISECONDS = 800;
@@ -152,6 +160,42 @@ export async function checkRenders(
     await Promise.all(Array.from({ length: CHECK_WORKERS }, worker));
   });
   return { results, problems };
+}
+
+/**
+ * Loads `components/bundle.js` into a harness page after React 18, as a design canvas does, and
+ * mounts {@link BUNDLE_PROBE} through its React wrapper. Returns one line per failure: an error
+ * the page logged or threw while loading the bundle, a missing `window.Cinder`, or a probe
+ * component that did not render its children.
+ */
+export async function checkBundle(
+  projectDirectory: string,
+  checkDirectory: string,
+): Promise<string[]> {
+  mkdirSync(checkDirectory, { recursive: true });
+  const page = join(checkDirectory, 'index.html');
+  writeFileSync(
+    page,
+    bundleHarnessHtml({
+      tokensCss: pathToFileURL(join(projectDirectory, 'tokens.css')).href,
+      bundleCss: pathToFileURL(join(projectDirectory, 'components/bundle.css')).href,
+      react: pathToFileURL(REACT_HARNESS_SCRIPTS.react).href,
+      reactDom: pathToFileURL(REACT_HARNESS_SCRIPTS.reactDom).href,
+      bundleJs: pathToFileURL(join(projectDirectory, 'components/bundle.js')).href,
+    }),
+  );
+  return withBrowser(async (browser) => {
+    const tab = await browser.newPage({ viewport: { width: VIEWPORT_WIDTH, height: 600 } });
+    const errors: string[] = [];
+    tab.on('console', (message) => {
+      if (message.type() === 'error') errors.push(message.text().slice(0, 160));
+    });
+    tab.on('pageerror', (error) => errors.push(String(error).slice(0, 160)));
+    await tab.goto(pathToFileURL(page).href);
+    const probe = await tab.evaluate(probeCinderBundle, BUNDLE_PROBE);
+    await tab.close();
+    return bundleProblems(errors, probe);
+  });
 }
 
 /** The widths an archetype card is rendered at: a phone and a desktop. */

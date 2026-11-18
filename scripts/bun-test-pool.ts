@@ -60,7 +60,8 @@
  * The pool's size is {@link defaultPoolSize}, or `CORVIDAE_TEST_SLOTS` when set. A request above it
  * is clamped: the run holds every slot and its `--parallel` is rewritten to the pool's size, so the
  * slots held always equal the workers running. A checkout whose wrappers predate the pool simply
- * goes uncounted. When the pool cannot be used at all, the run warns and runs without a slot.
+ * goes uncounted. When the pool cannot be used, the run does not start tests and reports the
+ * admission failure.
  *
  * Usage: `bun scripts/bun-test-pool.ts status [--pool <directory>] [--size <n>]` prints the holders
  * and the free slots.
@@ -113,6 +114,12 @@ export const poolSizeVariable = 'CORVIDAE_TEST_SLOTS';
 /** Names the slots a run holds, in the environment of the `bun test` it starts. */
 export const heldSlotsTokenVariable = 'CORVIDAE_TEST_SLOTS_TOKEN';
 
+/** A bounded waiter did not start tests because all host-wide test slots remained held. */
+export const poolBusyExitCode = 75;
+
+/** The pool could not admit a test run, so no child was started outside the cap. */
+export const poolAdmissionErrorExitCode = 76;
+
 /** The pool's directory inside the Git common directory. */
 export const poolDirectoryName = 'corvidae-test-slots';
 
@@ -157,6 +164,22 @@ export function poolSize(
   const override = environment[poolSizeVariable];
   if (override !== undefined && /^[1-9]\d*$/.test(override)) return Number(override);
   return defaultPoolSize(host);
+}
+
+/**
+ * Bounds how long a run waits for its slots, in seconds; unset, it waits as long as the holders
+ * run. The focused checks set it: a worker's handful of direct tests that wait hours behind other
+ * sessions' suites cost more (a session resumed again and again) than the load they would add, so
+ * past the bound the run goes ahead without a slot, as it does when the pool cannot be used.
+ */
+export const poolWaitVariable = 'CORVIDAE_TEST_POOL_WAIT_SECONDS';
+
+/** The wait bound of {@link poolWaitVariable} in milliseconds, or undefined for none. */
+export function poolWaitLimitMs(
+  environment: Readonly<Record<string, string | undefined>>,
+): number | undefined {
+  const value = environment[poolWaitVariable];
+  return value !== undefined && /^[1-9]\d*$/.test(value) ? Number(value) * 1000 : undefined;
 }
 
 const parallelArgument = /^--parallel(?:=(\d+))?$/;
@@ -790,6 +813,7 @@ export async function runPooledBunTest(input: RunPooledBunTestOptions): Promise<
   };
   clampTo(size, 'the size of the pool');
   const read = options.readProcessTable ?? readProcessTable;
+  const waitLimit = poolWaitLimitMs(environment);
   let held: HeldTestSlots | undefined;
   try {
     const poolDirectory = await (options.poolDirectory ?? defaultPoolDirectory());
@@ -812,10 +836,18 @@ export async function runPooledBunTest(input: RunPooledBunTestOptions): Promise<
         readProcessTable: read,
         ...(options.pollIntervalMs === undefined ? {} : { pollIntervalMs: options.pollIntervalMs }),
         onWait: (line) => report(`bun-test-pool: ${line}`),
+        ...(waitLimit === undefined ? {} : { signal: AbortSignal.timeout(waitLimit) }),
       });
     }
   } catch (error) {
-    report(`bun-test-pool: running without a test slot: ${(error as Error).message}`);
+    if ((error as Error).name === 'TimeoutError') {
+      report(
+        `bun-test-pool: not run locally: pool busy after ${(waitLimit ?? 0) / 1000}s (${poolWaitVariable})`,
+      );
+      return poolBusyExitCode;
+    }
+    report(`bun-test-pool: not run locally: test pool unavailable: ${(error as Error).message}`);
+    return poolAdmissionErrorExitCode;
   }
   // Bun starts workers only under `--parallel`; without it the leader runs the tests itself.
   const tracker = argumentsList.some((argument) => parallelArgument.test(argument))
