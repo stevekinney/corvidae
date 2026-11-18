@@ -1316,6 +1316,7 @@ export async function claimIssue(
     branch: string;
     head?: string | undefined;
     identity: ProviderOperationIdentity;
+    expectedCurrent?: ProviderOperationIdentity;
   },
   now: Date,
 ): Promise<Outcome> {
@@ -1329,12 +1330,12 @@ export async function claimIssue(
   if (
     current !== undefined &&
     claimIsLive(current.marker, now) &&
-    !sameProviderIdentity(current.marker.identity, options.identity)
+    !sameProviderIdentity(current.marker.identity, options.expectedCurrent ?? options.identity)
   )
     return refuse(current);
   const own =
     current?.marker.run === options.run &&
-    sameProviderIdentity(current.marker.identity, options.identity)
+    sameProviderIdentity(current.marker.identity, options.expectedCurrent ?? options.identity)
       ? current
       : undefined;
   const held = own !== undefined && own.marker.status === 'held';
@@ -1508,6 +1509,7 @@ export async function leaseProject(
   reference: string,
   runId: string,
   identity: ProviderOperationIdentity,
+  expectedCurrent: ProviderOperationIdentity | undefined,
   now: Date,
 ): Promise<Outcome> {
   const resolved = await resolveProject(client, reference);
@@ -1526,7 +1528,7 @@ export async function leaseProject(
   const kept =
     current?.marker.run === runId &&
     current.marker.status === 'held' &&
-    sameProviderIdentity(current.marker.identity, identity);
+    sameProviderIdentity(current.marker.identity, expectedCurrent ?? identity);
   const marker: LeaseMarker = {
     run: runId,
     since: kept ? current.marker.since : now.toISOString(),
@@ -1644,12 +1646,15 @@ async function withLocalAuthority(
   dependencies: LinearDependencies,
   request: { resource: string; runId: string; ownerId: string },
   inspectClaim: () => Promise<
-    { holder: string; live: boolean; identity?: ProviderOperationIdentity } | undefined
+    { holder: string; live: boolean; identity: ProviderOperationIdentity | undefined } | undefined
   >,
   action: string,
   fingerprint: () => string,
   inspect: (authority: ProviderOperationIdentity) => Promise<Outcome | undefined>,
-  perform: (authority: ProviderOperationIdentity) => Promise<Outcome>,
+  perform: (
+    authority: ProviderOperationIdentity,
+    expectedCurrent: ProviderOperationIdentity | undefined,
+  ) => Promise<Outcome>,
 ): Promise<Outcome> {
   const stateModule = await import('./execution-state.ts');
   const store = stateModule.createExecutionStateStore({
@@ -1666,23 +1671,30 @@ async function withLocalAuthority(
     } catch {
       // A missing, cancelled or foreign snapshot cannot prove ownership of a live provider marker.
     }
-    const priorIdentity =
-      priorAuthority === undefined
-        ? undefined
-        : {
-            ownerId: request.ownerId,
-            generation: priorAuthority.generation,
-            operationId: `${request.resource}:${priorAuthority.generation}:${action}:${operationFingerprint.slice(0, 16)}`,
-            intentFingerprint: operationFingerprint,
-          };
+    let expectedCurrent: ProviderOperationIdentity | undefined;
     const acquired = await stateModule.acquireDispatchWithinTransition(store, request, {
       inspectClaim: async () => {
         const remote = await inspectClaim();
-        return remote?.live === true &&
-          priorIdentity !== undefined &&
-          sameProviderIdentity(remote.identity, priorIdentity)
-          ? undefined
-          : remote;
+        if (remote?.live !== true || remote.identity === undefined || priorAuthority === undefined)
+          return remote;
+        const matched = Object.values(stateModule.readExecutionSnapshot(store).operations).find(
+          (operation) =>
+            operation.action === action &&
+            operation.authority.resource === request.resource &&
+            operation.authority.runId === request.runId &&
+            operation.authority.ownerId === request.ownerId &&
+            operation.authority.generation === priorAuthority.generation &&
+            operation.operationId === remote.identity?.operationId &&
+            operation.intentFingerprint === remote.identity.intentFingerprint,
+        );
+        if (matched === undefined) return remote;
+        expectedCurrent = {
+          ownerId: matched.authority.ownerId,
+          generation: matched.authority.generation,
+          operationId: matched.operationId,
+          intentFingerprint: matched.intentFingerprint,
+        };
+        return undefined;
       },
     });
     if (!acquired.granted)
@@ -1730,7 +1742,7 @@ async function withLocalAuthority(
     });
     try {
       stateModule.requireAuthority(store, acquired.authority);
-      const outcome = await perform(identity);
+      const outcome = await perform(identity, expectedCurrent);
       await stateModule.recordMutationResult(store, acquired.authority, operationId, {
         outcome: outcome.ok ? 'observed' : 'unknown',
         observed: outcome.data,
@@ -2013,7 +2025,8 @@ export async function run(
                 }
               : undefined;
           },
-          (identity) => leaseProject(client, target as string, runId, identity, now),
+          (identity, expectedCurrent) =>
+            leaseProject(client, target as string, runId, identity, expectedCurrent, now),
         );
       };
     } else if (release) {
@@ -2081,11 +2094,17 @@ export async function run(
                 }
               : undefined;
           },
-          (identity) =>
+          (identity, expectedCurrent) =>
             claimIssue(
               client,
               target as string,
-              { run: runId, branch, identity, ...(head === undefined ? {} : { head }) },
+              {
+                run: runId,
+                branch,
+                identity,
+                ...(expectedCurrent === undefined ? {} : { expectedCurrent }),
+                ...(head === undefined ? {} : { head }),
+              },
               now,
             ),
         );
