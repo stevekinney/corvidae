@@ -62,8 +62,14 @@ jobs:
         with:
           name: junit-root
           path: |
-            **/test-output/junit/*.xml
-            !**/node_modules/**
+            test-output/junit/*.xml
+            applications/*/test-output/junit/*.xml
+            components/*/test-output/junit/*.xml
+            packages/*/test-output/junit/*.xml
+            testing/*/test-output/junit/*.xml
+            internal/*/test-output/junit/*.xml
+            plugins/*/test-output/junit/*.xml
+            scripts/browser-fixtures/test-output/junit/*.xml
           if-no-files-found: ignore
 
   workspaces:
@@ -136,8 +142,14 @@ jobs:
         with:
           name: junit-tests-${{ strategy.job-index }}
           path: |
-            **/test-output/junit/*.xml
-            !**/node_modules/**
+            test-output/junit/*.xml
+            applications/*/test-output/junit/*.xml
+            components/*/test-output/junit/*.xml
+            packages/*/test-output/junit/*.xml
+            testing/*/test-output/junit/*.xml
+            internal/*/test-output/junit/*.xml
+            plugins/*/test-output/junit/*.xml
+            scripts/browser-fixtures/test-output/junit/*.xml
           if-no-files-found: ignore
 
   tests-slow:
@@ -178,8 +190,8 @@ jobs:
     name: Test durations
     needs: [root, tests]
     if: ${{ !cancelled() }}
-    # A duration on a shared runner is a report and never turns the run red; a shard with no report is named in the job's output.
-    continue-on-error: true
+    # A duration on a shared runner is a report and never turns the run or this job red: every
+    # session read the red job as a failure to triage. A shard with no report is named in its output.
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -198,3 +210,4 @@ jobs:
           path: .
       # The check alone: `bun run check:test-durations` would run the whole fast lane again first.
       - run: bun scripts/check-test-durations.ts
+        continue-on-error: true

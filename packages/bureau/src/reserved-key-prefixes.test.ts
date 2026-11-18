@@ -45,6 +45,9 @@ const NOT_STORAGE_KEYS = new Set([
   // trigger's per-file state inside the plugin's own storage, which `plugin:` names; not a family
   // of Bureau's own.
   'TRIGGER_NAMESPACE',
+  // COR-2099: what the kind of every event a hook delivery publishes starts with
+  // (`hook.delivery.failed`), an event kind, not a storage key.
+  'HOOK_DELIVERY_EVENT_PREFIX',
 ]);
 
 /**

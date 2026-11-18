@@ -17,6 +17,7 @@ import {
   APPROVAL_DRAWER_TEXT,
   approvalActionRowShift,
   approvalArrivalBox,
+  approvalArrivalRestShift,
   approvalArrivalShift,
   approvalCardFitsViewport,
   approvalReviewBox,
@@ -389,6 +390,42 @@ describe('where a waiting approval lands when it opens (COR-2327)', () => {
     expect(approvalArrivalShift(fromTop, viewport)).toBe(493 + APPROVAL_BOTTOM_CLEARANCE - 386);
     // Already aligned, it stays.
     expect(approvalArrivalShift({ top: -11, bottom: 374 }, viewport)).toBe(0);
+  });
+
+  test('a card that fits rests at the end the transcript pins to, reached from above or from the end', () => {
+    // The transcript ends 15px under the card: its end padding, more than the clearance.
+    const atEnd = { top: 131, bottom: 371 };
+    // From above, 169px short of the end: it scrolls to the end, not 3px short of it.
+    const fromAbove = { top: 300, bottom: 540 };
+    expect(approvalArrivalShift(fromAbove, viewport)).toBe(166);
+    expect(approvalArrivalRestShift(fromAbove, viewport, 169)).toBe(169);
+    // Already at the end, where the transcript's pin put it, it stays: one resting place.
+    expect(approvalArrivalRestShift(atEnd, viewport, 0)).toBe(0);
+    // Whole in view but short of the end, it goes on to the end while the end keeps it whole.
+    expect(approvalArrivalRestShift({ top: 151, bottom: 359 }, viewport, 20)).toBe(20);
+  });
+
+  test('a card rests short of the end when the end would scroll its top off', () => {
+    const card = { top: 120, bottom: 360 };
+    expect(approvalArrivalRestShift(card, viewport, 40)).toBe(0);
+    expect(approvalArrivalRestShift({ top: 300, bottom: 540 }, viewport, 400)).toBe(166);
+  });
+
+  test('a card with its labelling row above it rests at the end only while the whole unit clears the overlay', () => {
+    // `viewport` here starts below the header overlay. The labelling row (top 159) leads the unit.
+    const unit = { top: 159, bottom: 340 };
+    // The end moves the unit up 20px: its top lands at 139, still below the box's top (100).
+    expect(approvalArrivalRestShift(unit, viewport, 20)).toBe(20);
+    // The end would move it up 80px, its top to 79: under the header, so it stays where it is.
+    expect(approvalArrivalRestShift(unit, viewport, 80)).toBe(0);
+  });
+
+  test('a card above the transcript, or taller than it, keeps the shift that places it', () => {
+    expect(approvalArrivalRestShift({ top: 40, bottom: 200 }, viewport, 100)).toBe(-60);
+    const taller = { top: 200, bottom: 585 };
+    expect(approvalArrivalRestShift(taller, viewport, 300)).toBe(
+      585 + APPROVAL_BOTTOM_CLEARANCE - 386,
+    );
   });
 
   test('the clearance counts: a card exactly the transcript tall is taller with it', () => {

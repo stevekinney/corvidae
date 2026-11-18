@@ -54,6 +54,7 @@ import {
   ancestorsOf,
   enqueue,
   gitCommonDirectory,
+  isAbsentOrPartial,
   readTicket,
   reclaimAbandonedAs,
   removeLock,
@@ -115,8 +116,11 @@ function ledgerDirectory(directory: string, sessionId: string): string {
 async function readJson<T>(path: string): Promise<T | undefined> {
   try {
     return JSON.parse(await readFile(path, 'utf8')) as T;
-  } catch {
-    return undefined;
+  } catch (error) {
+    // Missing or half written: every caller treats an absent record as not there yet. Any other
+    // failure to read it is thrown, never read as no record.
+    if (isAbsentOrPartial(error)) return undefined;
+    throw error;
   }
 }
 

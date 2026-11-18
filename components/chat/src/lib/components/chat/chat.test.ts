@@ -414,12 +414,14 @@ describe('Chat — scrollFadeVisible', () => {
     expect(source).toContain(
       '{#if approvalWaiting && approvalArrivalSettled && !approvalFullyVisible}',
     );
-    // The placement is judged against the transcript without the reminder, by one rule, and runs
-    // again on the transcript's, the card's and the fonts' layout changes, never on a timer.
+    // The placement is judged against the transcript without the reminder, by one rest rule that
+    // agrees with the transcript's end pin, and runs again on the transcript's, the card's and the
+    // fonts' layout changes, never on a timer.
     expect(source).toContain('const viewportBox = approvalArrivalBox(scroller);');
-    // The card and the row that labels it are placed as one unit.
+    // The card and the row that labels it are placed as one unit, resting at the transcript's end
+    // while that still clears the overlay.
     expect(source).toContain(
-      'const shift = approvalArrivalShift(approvalUnitBox(card), viewportBox);',
+      'const shift = approvalArrivalRestShift( approvalUnitBox(card), viewportBox, scroller.scrollHeight - scroller.clientHeight - scroller.scrollTop, );',
     );
     expect(source).toContain('resizes?.observe(card);');
     expect(source).toContain('fonts?.ready.then(');

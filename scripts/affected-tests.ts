@@ -72,11 +72,7 @@ const LANE_SCRIPTS = new Set([
   'test:browser-fixtures',
 ]);
 
-function readJson<T>(path: string): T {
-  return JSON.parse(readFileSync(path, 'utf8')) as T;
-}
-
-function stringExports(exportsField: unknown): Record<string, string> | null {
+export function stringExports(exportsField: unknown): Record<string, string> | null {
   if (typeof exportsField !== 'object' || exportsField === null || Array.isArray(exportsField)) {
     return null;
   }
@@ -89,16 +85,22 @@ function stringExports(exportsField: unknown): Record<string, string> | null {
 }
 
 /** The preload files a workspace's `bunfig*.toml` files and `--preload` flags name. */
-function preloadFiles(root: string, directory: string, testScripts: readonly string[]): string[] {
-  const absolute = join(root, directory);
+function preloadFiles(
+  tree: SourceTree,
+  directory: string,
+  testScripts: readonly string[],
+  exists: (path: string) => boolean,
+): string[] {
   const found = new Set<string>();
   const add = (base: string, path: string) => {
     found.add(join(base, path).replace(/^\.\//, '').split('\\').join('/'));
   };
-  for (const entry of readdirSync(absolute)) {
-    if (!/^bunfig.*\.toml$/.test(entry)) continue;
+  for (const treePath of tree.paths) {
+    if (!treePath.startsWith(directory === '' ? '' : `${directory}/`)) continue;
+    const entry = directory === '' ? treePath : treePath.slice(directory.length + 1);
+    if (entry.includes('/') || !/^bunfig.*\.toml$/.test(entry)) continue;
     try {
-      const parsed = Bun.TOML.parse(readFileSync(join(absolute, entry), 'utf8')) as {
+      const parsed = Bun.TOML.parse(tree.read(treePath) ?? '') as {
         test?: { preload?: string | string[] };
         preload?: string | string[];
       };
@@ -113,20 +115,24 @@ function preloadFiles(root: string, directory: string, testScripts: readonly str
       if (match[1] !== undefined) add(directory, match[1]);
     }
   }
-  return [...found].filter((path) => existsSync(join(root, path)));
+  return [...found].filter(exists);
 }
 
-export function discoverWorkspaces(root: string = repositoryRoot): WorkspaceDescription[] {
-  const rootManifest = readJson<PackageManifest>(join(root, 'package.json'));
+/** Describe workspaces from the source tree the selector will actually inspect. */
+export function discoverWorkspacesInTree(
+  tree: SourceTree,
+  exists: (path: string) => boolean = (path) => tree.paths.has(path),
+): WorkspaceDescription[] {
+  const rootManifest = JSON.parse(tree.read('package.json') ?? '{}') as PackageManifest;
   const directories = new Set<string>(['']);
   for (const pattern of rootManifest.workspaces ?? []) {
-    for (const match of new Bun.Glob(`${pattern}/package.json`).scanSync({ cwd: root })) {
-      directories.add(match.slice(0, -'/package.json'.length));
-    }
+    const manifestPattern = new Bun.Glob(`${pattern}/package.json`);
+    for (const path of tree.paths)
+      if (manifestPattern.match(path)) directories.add(path.slice(0, -'/package.json'.length));
   }
   const manifests = [...directories].map((directory) => ({
     directory,
-    manifest: readJson<PackageManifest>(join(root, directory, 'package.json')),
+    manifest: JSON.parse(tree.read(join(directory, 'package.json')) ?? '{}') as PackageManifest,
   }));
   const names = new Set(manifests.map(({ manifest }) => manifest.name));
   return manifests.map(({ directory, manifest }) => {
@@ -144,10 +150,33 @@ export function discoverWorkspaces(root: string = repositoryRoot): WorkspaceDesc
       directory,
       dependencies: declared.filter((name) => names.has(name)),
       exports: stringExports(manifest.exports),
-      preloads: preloadFiles(root, directory, testScripts),
+      preloads: preloadFiles(tree, directory, testScripts, exists),
       testScripts,
     };
   });
+}
+
+export function discoverWorkspaces(root: string = repositoryRoot): WorkspaceDescription[] {
+  const rootManifest = JSON.parse(
+    readFileSync(join(root, 'package.json'), 'utf8'),
+  ) as PackageManifest;
+  const paths = new Set<string>(['package.json']);
+  for (const pattern of rootManifest.workspaces ?? []) {
+    for (const match of new Bun.Glob(`${pattern}/package.json`).scanSync({ cwd: root })) {
+      const directory = match.slice(0, -'/package.json'.length);
+      paths.add(match);
+      for (const entry of readdirSync(join(root, directory)))
+        if (/^bunfig.*\.toml$/.test(entry)) paths.add(join(directory, entry));
+    }
+  }
+  return discoverWorkspacesInTree(
+    {
+      paths,
+      read: (path) =>
+        existsSync(join(root, path)) ? readFileSync(join(root, path), 'utf8') : undefined,
+    },
+    (path) => existsSync(join(root, path)),
+  );
 }
 
 // --- Git ---------------------------------------------------------------------------------------
@@ -247,6 +276,35 @@ export function explain(selection: Selection, changed: readonly string[]): strin
     `package-level --affected would run ${before.tests} test files across ${before.workspaces.length} workspaces`,
   );
   return output.join('\n');
+}
+
+/** A machine-readable selection explanation, including every deliberately unselected test. */
+export function explainJson(selection: Selection, changed: readonly string[]) {
+  const selected = new Set<string>();
+  const obligations = selection.workspaces.flatMap((workspace) =>
+    [...workspace.tests].map(([path, reason]) => {
+      selected.add(path);
+      return { path, workspace: workspace.name, reason: describeReason(reason) };
+    }),
+  );
+  const exclusions = selection.workspaces.flatMap((workspace) =>
+    workspace.allTests
+      .filter((path) => !selected.has(path))
+      .map((path) => ({
+        path,
+        workspace: workspace.name,
+        reason:
+          'no static import, path-literal, fallback, or workspace rule reaches this changed input',
+      })),
+  );
+  return {
+    changed: [...changed],
+    repositoryRule: selection.repositoryRule,
+    obligations,
+    exclusions,
+    coverage:
+      'The full CI suite remains the audit reference; this is a direct-selection explanation.',
+  };
 }
 
 // --- Running -----------------------------------------------------------------------------------
@@ -458,13 +516,7 @@ async function main(): Promise<number> {
   );
 
   if (options.command === 'json') {
-    const view = selection.workspaces.map((workspace) => ({
-      name: workspace.name,
-      mode: workspace.mode,
-      total: workspace.total,
-      tests: [...workspace.tests.keys()],
-    }));
-    console.log(JSON.stringify({ repositoryRule: selection.repositoryRule, view }, null, 2));
+    console.log(JSON.stringify(explainJson(selection, changed), null, 2));
     return 0;
   }
   if (options.command === 'explain') {

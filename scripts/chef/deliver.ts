@@ -222,6 +222,14 @@ export function executionReportProblems(text: string): string[] {
   return problems;
 }
 
+/**
+ * `path` resolved against this process's working directory. The merge runs `git commit-tree` from
+ * the worktree, so a relative `--message-file` would otherwise be read from the wrong directory.
+ */
+function absolute(path: string | undefined): string | undefined {
+  return path === undefined ? undefined : resolve(path);
+}
+
 /** `text` led by `identifier` unless it already is, so a failure names its issue exactly once. */
 function named(identifier: string, text: string): string {
   return text.startsWith(`${identifier}:`) ? text : `${identifier}: ${text}`;
@@ -540,16 +548,16 @@ export async function run(
       configPath: parsed.values['config'] ?? DEFAULT_CONFIGURATION_PATH,
       pr: pr === undefined ? undefined : Number(pr),
       branch,
-      worktree: requireOption(parsed, 'worktree'),
-      commentFile: parsed.values['comment-file'],
-      messageFile: parsed.values['message-file'],
+      worktree: resolve(requireOption(parsed, 'worktree')),
+      commentFile: absolute(parsed.values['comment-file']),
+      messageFile: absolute(parsed.values['message-file']),
       expectedHead,
       issues,
-      completionFiles,
+      completionFiles: completionFiles.map((path) => resolve(path)),
       closes,
       intended: parsed.repeated['intended'] ?? [],
-      usageLog,
-      transcripts,
+      usageLog: absolute(usageLog),
+      transcripts: transcripts.map((path) => resolve(path)),
       fixesMain: parsed.flags.has('fixes-main'),
       keepWorktree: parsed.flags.has('keep-worktree'),
     },
