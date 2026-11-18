@@ -13,19 +13,19 @@
   import { onDestroy, untrack } from 'svelte';
   import type { Attachment } from 'svelte/attachments';
   import type { Placement } from '@floating-ui/dom';
-  import { createAnchoredOverlay } from '../../_internal/anchored-overlay.svelte.ts';
-  import { createAnchoredOverlayExitState } from '../../_internal/anchored-overlay-exit.svelte.ts';
-  import { captureFocus, pushEscapeHandler } from '../../_internal/overlay.ts';
+  import { createAnchoredOverlay } from '@lostgradient/foundation/_internal/anchored-overlay.svelte.ts';
+  import { createAnchoredOverlayExitState } from '@lostgradient/foundation/_internal/anchored-overlay-exit.svelte.ts';
+  import { captureFocus, pushEscapeHandler } from '@lostgradient/foundation/_internal/overlay.ts';
   import {
     PHONE_VIEWPORT_BREAKPOINT,
     readViewportBreakpoint,
     useViewportBelow,
-  } from '../../_internal/viewport-below.svelte.ts';
-  import { devWarn } from '../../utilities/dev-warn.ts';
-  import { classNames } from '../../utilities/class-names.ts';
-  import { restoreFocusTo } from '../../utilities/focus.ts';
-  import { createClickOutside } from '../../utilities/attachments.ts';
-  import { useReducedMotion } from '../../utilities/use-reduced-motion.svelte.ts';
+  } from '@lostgradient/foundation/_internal/viewport-below.svelte.ts';
+  import { devWarn } from '@lostgradient/foundation/utilities/dev-warn.ts';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
+  import { restoreFocusTo } from '@lostgradient/foundation/utilities/focus.ts';
+  import { createClickOutside } from '@lostgradient/foundation/utilities/attachments.ts';
+  import { useReducedMotion } from '@lostgradient/foundation/utilities/use-reduced-motion.svelte.ts';
   import Drawer from '../drawer/drawer.svelte';
   import { createPortalAttachment } from '../portal/index.ts';
   import {

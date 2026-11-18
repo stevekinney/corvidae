@@ -5,7 +5,7 @@ import {
   type InterpreterCompiled,
   type InterpreterError,
   type InterpreterKnownDraft,
-} from '../../utilities/json-schema-interpreter.ts';
+} from '@lostgradient/foundation/utilities/json-schema-interpreter.ts';
 import { describeDuration } from '../duration-field/duration-units.ts';
 import {
   isMillisecondsField,

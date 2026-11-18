@@ -10,7 +10,7 @@ setupHappyDom();
 
 const { render, waitFor, fireEvent, cleanup } = await import('@testing-library/svelte');
 const { default: Badge } = await import('./badge.svelte');
-const { stubCutLayout } = await import('../../_internal/cut-layout-stub.ts');
+const { stubCutLayout } = await import('@lostgradient/foundation/_internal/cut-layout-stub.ts');
 
 afterEach(() => {
   cleanup();

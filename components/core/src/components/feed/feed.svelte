@@ -14,7 +14,7 @@
   import type { HTMLAttributes } from 'svelte/elements';
 
   import type { FeedProps } from './feed.types.ts';
-  import { classNames } from '../../utilities/class-names.ts';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
   import { default as StatusDot } from '../status-dot/index.ts';
 
   let {

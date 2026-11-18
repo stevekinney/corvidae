@@ -2,7 +2,7 @@
   import type {
     IntersectionCallback,
     UseIntersectionOptions,
-  } from '../../utilities/use-intersection.types.ts';
+  } from '@lostgradient/foundation/utilities/use-intersection.types.ts';
 
   export type UseIntersectionAttachFixtureProps = {
     onIntersect: IntersectionCallback;
@@ -11,7 +11,7 @@
 </script>
 
 <script lang="ts">
-  import { useIntersection } from '../../utilities/use-intersection.svelte.ts';
+  import { useIntersection } from '@lostgradient/foundation/utilities/use-intersection.svelte.ts';
 
   let { onIntersect, options }: UseIntersectionAttachFixtureProps = $props();
 </script>

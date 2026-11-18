@@ -57,7 +57,7 @@ const { render, fireEvent, waitFor, cleanup } = await import('@testing-library/s
 const { default: Popover } = await import('./popover.svelte');
 const { default: BindableFixture } =
   await import('../../test/fixtures/popover-bindable-fixture.svelte');
-const { resetEscapeStack } = await import('../../_internal/overlay.ts');
+const { resetEscapeStack } = await import('@lostgradient/foundation/_internal/overlay.ts');
 
 const triggerSnippet = createRawSnippet(() => ({
   render: () => `<button type="button">Open</button>`,
@@ -1579,7 +1579,7 @@ describe('Popover — no-anchor degradation', () => {
     // bails before pushing onto the shared escape stack — so a sibling overlay
     // can still receive Escape.
     let siblingEscapes = 0;
-    const overlay = await import('../../_internal/overlay.ts');
+    const overlay = await import('@lostgradient/foundation/_internal/overlay.ts');
     const release = overlay.pushEscapeHandler(() => {
       siblingEscapes += 1;
     });

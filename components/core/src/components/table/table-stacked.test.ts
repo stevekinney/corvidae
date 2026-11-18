@@ -13,7 +13,7 @@ import { waitUntil } from '@lostgradient/testing/wait-until';
 setupHappyDom();
 
 const { render, fireEvent } = await import('@testing-library/svelte');
-const { stubCutLayout } = await import('../../_internal/cut-layout-stub.ts');
+const { stubCutLayout } = await import('@lostgradient/foundation/_internal/cut-layout-stub.ts');
 const { default: Wrapper } = await import('../../test/fixtures/table-fixture.svelte');
 const { default: CardFixture } = await import('./table-card.fixture.svelte');
 const { default: DescriptionList } = await import('../description-list/description-list.svelte');

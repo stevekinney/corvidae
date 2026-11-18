@@ -457,7 +457,10 @@ describe('Textarea — error live region', () => {
   test('the errorless live region has no layout footprint (shared _form-field-error.css, CIN-315 follow-up)', async () => {
     const textareaCss = await Bun.file(new URL('./textarea.css', import.meta.url)).text();
     const sharedErrorCss = await Bun.file(
-      new URL('../../styles/components/_form-field-error.css', import.meta.url),
+      new URL(
+        '../../../../foundation/src/styles/components/_form-field-error.css',
+        import.meta.url,
+      ),
     ).text();
     const removeStyles = injectStrippedStyles(textareaCss, sharedErrorCss);
     try {

@@ -1415,10 +1415,34 @@ export type { ZoomPanViewerProps } from './components/zoom-pan-viewer/index.ts';
 // </generated:component-exports>
 
 // Hand-authored root exports: everything that is not a component barrel.
+export {
+  copyToClipboard,
+  formatCompactAge,
+  formatDate,
+  formatDateTime,
+  formatDayAndTime,
+  formatDayHeading,
+  formatDuration,
+  formatRelativeTime,
+  formatScheduleTime,
+  formatTimeOfDay,
+  formatTimeZoneLabel,
+  formatTimestamp,
+} from '@lostgradient/foundation';
+export type {
+  DateFormatOptions,
+  DateInput,
+  DayHeadingOptions,
+  FormFieldContext,
+  RelativeTimeFormatOptions,
+  SortableAnnouncements,
+  SortableItemContext,
+  SortableReorderChange,
+  TimeZoneLabelOptions,
+} from '@lostgradient/foundation';
 export { THEME_CHANGING_ATTRIBUTE, guardThemeTransitions } from '@lostgradient/tokens';
 export type { ThemeTransitionGuardOptions } from '@lostgradient/tokens';
 export { setCodeHighlighterContext } from './_internal/code-highlighter-context.ts';
-export type { FormFieldContext } from './_internal/form-field-context.ts';
 export type {
   AreaChartMode,
   BarChartDatum,
@@ -1455,35 +1479,10 @@ export type {
 export * from './exports/icons.ts';
 export * from './exports/utilities.ts';
 export * from './highlighters/shiki/index.ts';
-export { copyToClipboard } from './utilities/clipboard.ts';
-export {
-  formatCompactAge,
-  formatDate,
-  formatDateTime,
-  formatDayAndTime,
-  formatDayHeading,
-  formatRelativeTime,
-  formatScheduleTime,
-  formatTimeOfDay,
-  formatTimeZoneLabel,
-  formatTimestamp,
-} from './utilities/format-date.ts';
-export type {
-  DateFormatOptions,
-  DateInput,
-  DayHeadingOptions,
-  RelativeTimeFormatOptions,
-  TimeZoneLabelOptions,
-} from './utilities/format-date.ts';
-export { formatDuration } from './utilities/format-duration.ts';
-export type {
-  SortableAnnouncements,
-  SortableItemContext,
-  SortableReorderChange,
-} from './utilities/sortable-controller.types.ts';
 // The full-registry adapter keeps its own module so that only a consumer that
 // imports `fullShikiHighlighter` bundles Shiki's complete grammar and theme
 // registries. Nothing else in cinder imports `default.ts`.
+export { createBodyScrollLock, dockedToBottom, scrollEdgeFade } from '@lostgradient/foundation';
 export {
   TOKEN_REGISTRY,
   colorTokens,
@@ -1504,4 +1503,3 @@ export {
 } from '@lostgradient/tokens';
 export type { TokenRegistry, TokenRegistryEntry } from '@lostgradient/tokens';
 export { shikiHighlighter as fullShikiHighlighter } from './highlighters/shiki/default.ts';
-export { createBodyScrollLock, dockedToBottom, scrollEdgeFade } from './utilities/attachments.ts';

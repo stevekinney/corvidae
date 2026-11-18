@@ -12,7 +12,7 @@
     type ModalApi,
     type ModalComponent,
     type OpenModalOptions,
-  } from '../../_internal/modal-context.ts';
+  } from '@lostgradient/foundation/_internal/modal-context.ts';
   import type { ModalRegionProps } from './modal-region.types.ts';
 
   let { children }: ModalRegionProps = $props();

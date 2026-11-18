@@ -19,7 +19,8 @@ const {
   cleanup,
 } = await import('@testing-library/svelte');
 const { default: Combobox } = await import('./combobox.svelte');
-const { pushEscapeHandler, resetEscapeStack } = await import('../../_internal/overlay.ts');
+const { pushEscapeHandler, resetEscapeStack } =
+  await import('@lostgradient/foundation/_internal/overlay.ts');
 
 // These tests render into the shared `document.body` (see `render` below). The
 // listbox opens on focus through Svelte effects, so options are not guaranteed

@@ -1,8 +1,12 @@
 /// <reference lib="dom" />
+import {
+  pushEscapeHandler,
+  resetEscapeStack,
+  resetScrollLock,
+} from '@lostgradient/foundation/_internal/overlay.ts';
 import { requiredInstance, setupHappyDom } from '@lostgradient/testing';
 import { afterAll, afterEach, describe, expect, test } from 'bun:test';
 import { tick } from 'svelte';
-import { pushEscapeHandler, resetEscapeStack, resetScrollLock } from '../../_internal/overlay.ts';
 import {
   emptySnippet,
   installDrawerDialogStubs,

@@ -52,6 +52,7 @@
     "@codemirror/view": "catalog:",
     "@floating-ui/dom": "catalog:",
     "@lezer/highlight": "catalog:",
+    "@lostgradient/foundation": "workspace:*",
     "@lostgradient/markdown": "workspace:*",
     "@lostgradient/tokens": "workspace:*",
     "@lucide/svelte": "catalog:",

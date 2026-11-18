@@ -1,10 +1,10 @@
-import type { Snippet } from 'svelte';
-import type { HTMLAnchorAttributes, HTMLAttributes, HTMLButtonAttributes } from 'svelte/elements';
 import type {
   DataAttributes,
   PadUnion,
   WithoutDataAttributes,
-} from '../../_internal/union-props.ts';
+} from '@lostgradient/foundation/_internal/union-props.ts';
+import type { Snippet } from 'svelte';
+import type { HTMLAnchorAttributes, HTMLAttributes, HTMLButtonAttributes } from 'svelte/elements';
 
 // COR-239: keyof Props became too complex for TypeScript to represent (TS2590) once a consumer
 // type-checked this published declaration under `skipLibCheck: false` — `LinkArm`/`ButtonArm`

@@ -5,23 +5,23 @@
 <script lang="ts">
   import type { ModalProps } from './modal.types.ts';
   import { onDestroy } from 'svelte';
-  import { trackKeyboardInset } from '../../_internal/keyboard-inset.ts';
-  import { reducedMotionFadeIn } from '../../_internal/reduced-motion-fade.ts';
+  import { trackKeyboardInset } from '@lostgradient/foundation/_internal/keyboard-inset.ts';
+  import { reducedMotionFadeIn } from '@lostgradient/foundation/_internal/reduced-motion-fade.ts';
   import {
     DIALOG_SHEET_BREAKPOINT,
     readViewportBreakpoint,
     useViewportBelow,
-  } from '../../_internal/viewport-below.svelte.ts';
-  import { devWarn } from '../../utilities/dev-warn.ts';
-  import { overflowFade } from '../../utilities/attachments.ts';
-  import { classNames } from '../../utilities/class-names.ts';
-  import { useReducedMotion } from '../../utilities/use-reduced-motion.svelte.ts';
+  } from '@lostgradient/foundation/_internal/viewport-below.svelte.ts';
+  import { devWarn } from '@lostgradient/foundation/utilities/dev-warn.ts';
+  import { overflowFade } from '@lostgradient/foundation/utilities/attachments.ts';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
+  import { useReducedMotion } from '@lostgradient/foundation/utilities/use-reduced-motion.svelte.ts';
   import { createFocusTrap } from '../focus-trap/index.ts';
   import Tooltip from '../tooltip/tooltip.svelte';
   import {
     createSlidingDialogState,
     focusDialogBodyUnlessAutofocused,
-  } from '../_internal/create-sliding-dialog-state.svelte.ts';
+  } from '@lostgradient/foundation/components/_internal/create-sliding-dialog-state.svelte.ts';
 
   /**
    * `typeof value === 'string'` first, THEN `.trim()` — a bare truthiness

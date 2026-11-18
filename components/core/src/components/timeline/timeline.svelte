@@ -15,7 +15,7 @@
 </script>
 
 <script lang="ts">
-  import { classNames } from '../../utilities/class-names.ts';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
   import TimelineItem from '../_timeline-item/timeline-item.svelte';
   import { buildTimelineRenderPlan } from './timeline-groups.ts';
   import type { TimelineProps } from './timeline.types.ts';

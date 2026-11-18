@@ -5,11 +5,11 @@
 <script lang="ts">
   import type { Attachment } from 'svelte/attachments';
 
-  import { classNames } from '../../utilities/class-names.ts';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
 
   import FullTextTooltip from '../../_internal/full-text-tooltip.svelte';
-  import { createCutText } from '../../_internal/cut-text.svelte.ts';
-  import { getTooltipTriggerContext } from '../../_internal/tooltip-trigger-context.ts';
+  import { createCutText } from '@lostgradient/foundation/_internal/cut-text.svelte.ts';
+  import { getTooltipTriggerContext } from '@lostgradient/foundation/_internal/tooltip-trigger-context.ts';
   import Tooltip from '../tooltip/tooltip.svelte';
   import { fitMiddleHead } from './text-middle.ts';
   import type { TextElement, TextProps, TextVariant } from './text.types.ts';

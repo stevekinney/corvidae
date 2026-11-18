@@ -5,10 +5,10 @@ import {
   OverflowFadeResizeObserver,
   setScrollMeasurements,
 } from '@lostgradient/component-tooling/test/overflow-fade-test-helpers.ts';
+import { resetScrollLock } from '@lostgradient/foundation/_internal/overlay.ts';
 import { requiredInstance, setupHappyDom } from '@lostgradient/testing';
 import { afterEach, describe, expect, test } from 'bun:test';
 import { createRawSnippet } from 'svelte';
-import { resetScrollLock } from '../../_internal/overlay.ts';
 import {
   emptySnippet,
   fireNativeClose,
@@ -176,7 +176,7 @@ describe('Modal', () => {
   });
   test('an autofocused child takes focus from the dialog element itself, which is where a browser puts it when it sees no autofocus attribute', async () => {
     const { focusDialogBodyUnlessAutofocused } =
-      await import('../_internal/create-sliding-dialog-state.svelte.ts');
+      await import('@lostgradient/foundation/components/_internal/create-sliding-dialog-state.svelte.ts');
     const dialog = document.createElement('dialog');
     dialog.setAttribute('open', '');
     dialog.tabIndex = -1;

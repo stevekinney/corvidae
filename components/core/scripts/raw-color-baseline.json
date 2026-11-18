@@ -65,12 +65,12 @@
     "allowedCount": 1
   },
   {
-    "filePath": "src/styles/components/_status-surface.css",
+    "filePath": "../foundation/src/styles/components/_status-surface.css",
     "colorClass": "light-dark",
     "allowedCount": 3
   },
   {
-    "filePath": "src/styles/components/_status-surface.css",
+    "filePath": "../foundation/src/styles/components/_status-surface.css",
     "colorClass": "oklch",
     "allowedCount": 6
   }

@@ -1,4 +1,4 @@
-import type { Highlighter } from '../../utilities/highlighter.ts';
+import type { Highlighter } from '@lostgradient/foundation/utilities/highlighter.ts';
 
 /** How loud a note on a line is. A note on a line that is wrong is `danger`; the default. */
 export type CodeBlockAnnotationTone = 'danger' | 'warning' | 'info';

@@ -17,12 +17,12 @@
   import TriangleAlertIcon from '@lucide/svelte/icons/triangle-alert';
   import UploadIcon from '@lucide/svelte/icons/upload';
 
-  import { resolveFieldControl } from '../../_internal/field-control.ts';
-  import { getFormFieldContext } from '../../_internal/form-field-context.ts';
-  import { classNames } from '../../utilities/class-names.ts';
-  import { devWarn } from '../../utilities/dev-warn.ts';
-  import { formatBytes } from '../../utilities/format-bytes.ts';
-  import { useAnnouncer } from '../../utilities/use-announcer.svelte.ts';
+  import { resolveFieldControl } from '@lostgradient/foundation/_internal/field-control.ts';
+  import { getFormFieldContext } from '@lostgradient/foundation/_internal/form-field-context.ts';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
+  import { devWarn } from '@lostgradient/foundation/utilities/dev-warn.ts';
+  import { formatBytes } from '@lostgradient/foundation/utilities/format-bytes.ts';
+  import { useAnnouncer } from '@lostgradient/foundation/utilities/use-announcer.svelte.ts';
   import Alert from '../alert/alert.svelte';
   import Button from '../button/button.svelte';
   import FileUploadList from './file-upload-list.svelte';

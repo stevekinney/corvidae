@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs';
 import { textSnippet } from './navigation-bar-snippet-helpers.ts';
 setupHappyDom();
 const { render, cleanup } = await import('@testing-library/svelte');
-const { resetEscapeStack } = await import('../../_internal/overlay.ts');
+const { resetEscapeStack } = await import('@lostgradient/foundation/_internal/overlay.ts');
 const { default: NavigationBar } = await import('./navigation-bar.svelte');
 
 const navigationBarSource = readFileSync(

@@ -17,7 +17,7 @@ const { default: MultiSelect } = await import('../multi-select/multi-select.svel
 const { default: Dropdown } = await import('../dropdown/dropdown.svelte');
 const { default: DropdownCompoundFixture } =
   await import('../../test/fixtures/dropdown-compound-fixture.svelte');
-const { resetEscapeStack } = await import('../../_internal/overlay.ts');
+const { resetEscapeStack } = await import('@lostgradient/foundation/_internal/overlay.ts');
 
 beforeEach(() => {
   document.body.replaceChildren();

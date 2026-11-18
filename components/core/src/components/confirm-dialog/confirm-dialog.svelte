@@ -8,8 +8,8 @@
   import Callout from '../callout/callout.svelte';
   import Input from '../input/input.svelte';
   import Modal from '../modal/modal.svelte';
-  import { DIALOG_SHEET_BREAKPOINT } from '../../_internal/viewport-below.svelte.ts';
-  import { classNames } from '../../utilities/class-names.ts';
+  import { DIALOG_SHEET_BREAKPOINT } from '@lostgradient/foundation/_internal/viewport-below.svelte.ts';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
 
   const descriptionId = $props.id();
   const typedConfirmationId = `${descriptionId}-typed-confirmation`;

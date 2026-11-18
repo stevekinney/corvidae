@@ -103,7 +103,7 @@ describe('adjacent compact icon-only header buttons on a coarse pointer (COR-238
     // Evaluate the margin with the real tokens: the gap and the margin together must hold both
     // extensions, (touch - drawn) / 2 past each button's face.
     const foundation = readFileSync(
-      new URL('../../styles/foundation.css', import.meta.url),
+      new URL('../../../../foundation/src/styles/foundation.css', import.meta.url),
       'utf8',
     );
     const drawn =
@@ -142,7 +142,7 @@ describe('adjacent compact icon-only header buttons on a coarse pointer (COR-238
     }
     // 44 and 24: the icon-only button reaches 10px past its face, the header gap is 8px.
     const foundation = readFileSync(
-      new URL('../../styles/foundation.css', import.meta.url),
+      new URL('../../../../foundation/src/styles/foundation.css', import.meta.url),
       'utf8',
     );
     const drawn =

@@ -17,7 +17,8 @@ const {
 const { default: MultiSelect } = await import('./multi-select.svelte');
 const { default: FormFieldMultiSelectFixture } =
   await import('../../test/fixtures/form-field-multi-select-fixture.svelte');
-const { pushEscapeHandler, resetEscapeStack } = await import('../../_internal/overlay.ts');
+const { pushEscapeHandler, resetEscapeStack } =
+  await import('@lostgradient/foundation/_internal/overlay.ts');
 
 // The panel now portals to `document.body` (see multi-select.svelte) so an
 // ancestor with `overflow: hidden` cannot clip it. Render into the shared

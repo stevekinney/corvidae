@@ -1,10 +1,10 @@
-import type { Snippet } from 'svelte';
-import type { HTMLAttributes, HTMLButtonAttributes } from 'svelte/elements';
 import type {
   DataAttributes,
   PadUnion,
   WithoutDataAttributes,
-} from '../../_internal/union-props.ts';
+} from '@lostgradient/foundation/_internal/union-props.ts';
+import type { Snippet } from 'svelte';
+import type { HTMLAttributes, HTMLButtonAttributes } from 'svelte/elements';
 import type { BadgeVariant } from '../badge/badge.types.ts';
 export type ChipVariant = BadgeVariant;
 export type ChipSize = 'sm' | 'md';

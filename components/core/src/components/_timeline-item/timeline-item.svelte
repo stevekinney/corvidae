@@ -5,7 +5,7 @@
 <script lang="ts">
   import { ChevronRight } from '@lucide/svelte';
 
-  import { classNames } from '../../utilities/class-names.ts';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
   import StackedListItem from '../stacked-list-item/stacked-list-item.svelte';
   import StatusDot from '../status-dot/status-dot.svelte';
   import type { StatusDotStatus } from '../status-dot/status-dot.types.ts';

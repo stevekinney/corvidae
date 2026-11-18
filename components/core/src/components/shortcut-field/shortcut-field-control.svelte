@@ -6,7 +6,7 @@
    * resolves the `FormFieldProvider` context `FormFieldFrame` sets moments
    * earlier, not a self-computed guess. See shortcut-field.svelte and COR-443.
    */
-  import { getFormFieldContext } from '../../_internal/form-field-context.ts';
+  import { getFormFieldContext } from '@lostgradient/foundation/_internal/form-field-context.ts';
   import Kbd from '../kbd/kbd.svelte';
 
   let {

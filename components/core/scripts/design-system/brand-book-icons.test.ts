@@ -13,7 +13,10 @@ const section = brandBook.slice(
   brandBook.indexOf('## Icons and imagery'),
   brandBook.indexOf('## Using it'),
 );
-const icons = readFileSync(new URL('../../src/components/icons/index.ts', import.meta.url), 'utf8');
+const icons = readFileSync(
+  new URL('../../../foundation/src/components/icons/index.ts', import.meta.url),
+  'utf8',
+);
 
 /** Each `noun` (`Export`) pair of the vocabulary comment in the icon module. */
 function vocabulary(): [string, string][] {

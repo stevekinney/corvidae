@@ -9,12 +9,12 @@
 <script lang="ts">
   import { slide } from 'svelte/transition';
 
-  import { classNames } from '../../utilities/class-names.ts';
-  import { useReducedMotion } from '../../utilities/use-reduced-motion.svelte.ts';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
+  import { useReducedMotion } from '@lostgradient/foundation/utilities/use-reduced-motion.svelte.ts';
   import {
     getCollapsibleNestingContext,
     setCollapsibleNestingContext,
-  } from '../../_internal/collapsible-nesting-context.ts';
+  } from '@lostgradient/foundation/_internal/collapsible-nesting-context.ts';
 
   import type { CollapsibleProps } from './collapsible.types.ts';
 

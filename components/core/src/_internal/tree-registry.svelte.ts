@@ -1,7 +1,7 @@
 import { SvelteMap } from 'svelte/reactivity';
 
-import { inDocumentOrder } from '../utilities/document-order.ts';
-import { findTypeaheadMatch } from '../utilities/typeahead.ts';
+import { inDocumentOrder } from '@lostgradient/foundation/utilities/document-order.ts';
+import { findTypeaheadMatch } from '@lostgradient/foundation/utilities/typeahead.ts';
 
 /** A single registered tree node. */
 export type TreeNodeRegistration = {

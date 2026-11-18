@@ -15,7 +15,7 @@
   import Check from '@lucide/svelte/icons/check';
   import Sparkles from '@lucide/svelte/icons/sparkles';
   import type { ChipProps, ChipRemovableProps, ChipToggleProps } from './chip.types.ts';
-  import { classNames } from '../../utilities/class-names.ts';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
 
   // `ChipProps` is a discriminated union across three variants with different underlying HTML
   // element types (<button> for toggle, <span> for display/removable). Destructuring the union

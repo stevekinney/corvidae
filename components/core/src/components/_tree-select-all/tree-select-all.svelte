@@ -5,7 +5,7 @@
 <script lang="ts">
   import type { TreeContext } from '../../_internal/tree-context.ts';
   import { getTreeContext } from '../../_internal/tree-context.ts';
-  import { classNames } from '../../utilities/class-names.ts';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
   import type { TreeSelectAllProps } from './tree-select-all.types.ts';
 
   let {

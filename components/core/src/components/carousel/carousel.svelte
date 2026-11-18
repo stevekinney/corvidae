@@ -15,13 +15,13 @@
   import { SvelteSet } from 'svelte/reactivity';
   import Tooltip from '../tooltip/tooltip.svelte';
 
-  import { observeTextDirection } from '../../_internal/text-direction.ts';
-  import { classNames } from '../../utilities/class-names.ts';
-  import { devWarn } from '../../utilities/dev-warn.ts';
-  import { useDragScroll } from '../../utilities/use-drag-scroll.svelte.ts';
-  import { useFinePointer } from '../../utilities/use-fine-pointer.svelte.ts';
-  import { useReducedMotion } from '../../utilities/use-reduced-motion.svelte.ts';
-  import { useResizeObserver } from '../../utilities/use-resize-observer.svelte.ts';
+  import { observeTextDirection } from '@lostgradient/foundation/_internal/text-direction.ts';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
+  import { devWarn } from '@lostgradient/foundation/utilities/dev-warn.ts';
+  import { useDragScroll } from '@lostgradient/foundation/utilities/use-drag-scroll.svelte.ts';
+  import { useFinePointer } from '@lostgradient/foundation/utilities/use-fine-pointer.svelte.ts';
+  import { useReducedMotion } from '@lostgradient/foundation/utilities/use-reduced-motion.svelte.ts';
+  import { useResizeObserver } from '@lostgradient/foundation/utilities/use-resize-observer.svelte.ts';
   import type { CarouselProps, CarouselSlide } from './carousel.types.ts';
 
   const reducedMotion = useReducedMotion();

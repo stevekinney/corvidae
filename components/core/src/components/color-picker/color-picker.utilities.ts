@@ -1,4 +1,4 @@
-import { parseCssColor } from '../../utilities/color-format.ts';
+import { parseCssColor } from '@lostgradient/foundation/utilities/color-format.ts';
 
 export type Hsla = { h: number; s: number; l: number; a: number };
 

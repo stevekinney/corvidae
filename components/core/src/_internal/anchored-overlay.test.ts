@@ -2,14 +2,14 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, mock, test } from 'bun:test';
 import { compileModule } from 'svelte/compiler';
 
-import { setupHappyDom } from '@lostgradient/testing';
 import {
   applyAnchoredOverlayMaxBlockSize,
   getAnchoredOverlayAvailableHeightStyle,
   getAnchoredOverlayMaxBlockSizeStyle,
   getAnchoredOverlayWidthStyle,
   isAnchoredOverlayWriteCurrent,
-} from './anchored-overlay.svelte.ts';
+} from '@lostgradient/foundation/_internal/anchored-overlay.svelte.ts';
+import { setupHappyDom } from '@lostgradient/testing';
 
 setupHappyDom();
 
@@ -179,7 +179,7 @@ describe('anchored overlay width styles', () => {
   });
 
   test('server compilation omits Floating UI runtime imports', async () => {
-    const sourcePath = `${import.meta.dir}/anchored-overlay.svelte.ts`;
+    const sourcePath = `${import.meta.dir}/../../../foundation/src/_internal/anchored-overlay.svelte.ts`;
     const source = await Bun.file(sourcePath).text();
     expect(source).toContain('sizeMiddleware({');
     expect(source).toContain('padding: shiftPadding');

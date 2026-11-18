@@ -3,16 +3,18 @@ import { afterEach, describe, expect, jest, test } from 'bun:test';
 
 import { setupHappyDom } from '@lostgradient/testing';
 
-import { resetEscapeStack } from '../../_internal/overlay.ts';
-import type { ToastApi } from '../../_internal/toast-context.ts';
+import { resetEscapeStack } from '@lostgradient/foundation/_internal/overlay.ts';
+import type { ToastApi } from '@lostgradient/foundation/_internal/toast-context.ts';
 
 setupHappyDom();
 
 const { cleanup, fireEvent, render, waitFor } = await import('@testing-library/svelte');
 const { tick } = await import('svelte');
 const { default: Wrapper } = await import('../../test/fixtures/toast-fixture.svelte');
-const { PHONE_VIEWPORT_BREAKPOINT } = await import('../../_internal/viewport-below.svelte.ts');
-const { KEYBOARD_INSET_PROPERTY } = await import('../../_internal/keyboard-inset.ts');
+const { PHONE_VIEWPORT_BREAKPOINT } =
+  await import('@lostgradient/foundation/_internal/viewport-below.svelte.ts');
+const { KEYBOARD_INSET_PROPERTY } =
+  await import('@lostgradient/foundation/_internal/keyboard-inset.ts');
 
 const cssText = await Bun.file(new URL('./toast-region.css', import.meta.url)).text();
 const sourceText = await Bun.file(new URL('./toast-region.svelte', import.meta.url)).text();

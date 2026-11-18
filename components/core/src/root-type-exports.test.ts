@@ -1,5 +1,13 @@
 import { expect, expectTypeOf, test } from 'bun:test';
 
+import {
+  createBodyScrollLock as ownedBodyScrollLock,
+  dockedToBottom as ownedDockedToBottom,
+} from '@lostgradient/foundation/utilities/attachments.ts';
+import {
+  formatDateTime as ownedFormatDateTime,
+  formatRelativeTime as ownedFormatRelativeTime,
+} from '@lostgradient/foundation/utilities/format-date.ts';
 import { isRedispatchedPortaledEvent as ownedPortalEventPredicate } from './components/portal/index.ts';
 import {
   createBodyScrollLock,
@@ -11,14 +19,6 @@ import {
   ToolbarGroup,
   ToolbarSpacer,
 } from './index.ts';
-import {
-  createBodyScrollLock as ownedBodyScrollLock,
-  dockedToBottom as ownedDockedToBottom,
-} from './utilities/attachments.ts';
-import {
-  formatDateTime as ownedFormatDateTime,
-  formatRelativeTime as ownedFormatRelativeTime,
-} from './utilities/format-date.ts';
 
 import type {
   AreaChartDataTableVisibility,

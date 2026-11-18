@@ -5,7 +5,7 @@
 <script lang="ts">
   import type { HTMLAttributes } from 'svelte/elements';
 
-  import { classNames } from '../../utilities/class-names.ts';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
   import type { CalloutProps } from './callout.types.ts';
 
   let {

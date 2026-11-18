@@ -13,7 +13,7 @@ setupHappyDom();
 const { cleanup, render, fireEvent, waitFor } = await import('@testing-library/svelte');
 const { tick } = await import('svelte');
 const { default: DataTable } = await import('./data-table.svelte');
-const { stubCutLayout } = await import('../../_internal/cut-layout-stub.ts');
+const { stubCutLayout } = await import('@lostgradient/foundation/_internal/cut-layout-stub.ts');
 const { default: SnippetsFixture } = await import('./data-table-snippets.fixture.svelte');
 
 afterEach(() => cleanup());

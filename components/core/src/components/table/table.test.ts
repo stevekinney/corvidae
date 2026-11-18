@@ -16,7 +16,7 @@ afterEach(() => {
   document.body.replaceChildren();
 });
 const { default: Wrapper } = await import('../../test/fixtures/table-fixture.svelte');
-const { stubCutLayout } = await import('../../_internal/cut-layout-stub.ts');
+const { stubCutLayout } = await import('@lostgradient/foundation/_internal/cut-layout-stub.ts');
 
 // Strip the @layer wrapper: happy-dom does not apply layer-nested rules to
 // getComputedStyle or expose them as top-level CSSStyleRules.

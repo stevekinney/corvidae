@@ -12,9 +12,9 @@
 
   import type { Attachment } from 'svelte/attachments';
 
-  import { createCutText } from '../../_internal/cut-text.svelte.ts';
-  import { getTooltipTriggerContext } from '../../_internal/tooltip-trigger-context.ts';
-  import { classNames } from '../../utilities/class-names.ts';
+  import { createCutText } from '@lostgradient/foundation/_internal/cut-text.svelte.ts';
+  import { getTooltipTriggerContext } from '@lostgradient/foundation/_internal/tooltip-trigger-context.ts';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
   import FullTextTooltip from '../../_internal/full-text-tooltip.svelte';
 
   import type { BadgeProps, BadgeSubscriptionState, BadgeVariant } from './badge.types.ts';

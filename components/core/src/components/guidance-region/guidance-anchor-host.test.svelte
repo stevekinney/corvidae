@@ -1,6 +1,6 @@
 <script lang="ts">
-  import type { GuidanceApi } from '../../_internal/guidance-context.ts';
-  import { useGuidance } from '../../utilities/use-guidance.ts';
+  import type { GuidanceApi } from '@lostgradient/foundation/_internal/guidance-context.ts';
+  import { useGuidance } from '@lostgradient/foundation/utilities/use-guidance.ts';
   import GuidanceRegion from './guidance-region.svelte';
 
   let { onReady }: { onReady: (api: GuidanceApi) => void } = $props();

@@ -8,9 +8,9 @@
 
 <script lang="ts">
   import type { DescriptionListProps } from './description-list.types.ts';
-  import { classNames } from '../../utilities/class-names.ts';
-  import { devWarn } from '../../utilities/dev-warn.ts';
-  import { formatDate } from '../../utilities/format-date.ts';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
+  import { devWarn } from '@lostgradient/foundation/utilities/dev-warn.ts';
+  import { formatDate } from '@lostgradient/foundation/utilities/format-date.ts';
   import Button from '../button/button.svelte';
   import Chip from '../chip/chip.svelte';
   import CopyButton from '../copy-button/copy-button.svelte';

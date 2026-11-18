@@ -1,8 +1,11 @@
 import type { SvelteSet } from 'svelte/reactivity';
 
-import { strictStableContext } from '../../_internal/strict-stable-context.ts';
-import { inDocumentOrder } from '../../utilities/document-order.ts';
-import { getFocusableIndex, handleRovingKeydown } from '../../utilities/roving-tabindex.ts';
+import { strictStableContext } from '@lostgradient/foundation/_internal/strict-stable-context.ts';
+import { inDocumentOrder } from '@lostgradient/foundation/utilities/document-order.ts';
+import {
+  getFocusableIndex,
+  handleRovingKeydown,
+} from '@lostgradient/foundation/utilities/roving-tabindex.ts';
 
 // Re-export for backward compatibility with anything that imported the helper
 // from this module before the utility was promoted to its own file.

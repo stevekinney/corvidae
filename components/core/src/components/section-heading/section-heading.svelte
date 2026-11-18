@@ -4,8 +4,8 @@
 
 <script lang="ts">
   import type { SectionHeadingLevel, SectionHeadingProps } from './section-heading.types.ts';
-  import CompactActions from '../../_internal/compact-actions.svelte';
-  import { classNames } from '../../utilities/class-names.ts';
+  import CompactActions from '@lostgradient/foundation/_internal/compact-actions.svelte';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
 
   let {
     title,

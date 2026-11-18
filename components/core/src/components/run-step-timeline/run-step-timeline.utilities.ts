@@ -1,4 +1,4 @@
-import { planFold } from '../../utilities/fold-middle.ts';
+import { planFold } from '@lostgradient/foundation/utilities/fold-middle.ts';
 import type { StatusDotStatus } from '../status-dot/status-dot.types.ts';
 import type {
   RunStep,

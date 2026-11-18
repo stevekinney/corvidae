@@ -32,7 +32,8 @@ const { cleanup, fireEvent, render, waitFor } = await import('@testing-library/s
 const { prepareSvelteServerSource, renderSvelteOnServer } = await import('@lostgradient/testing');
 const { tick } = await import('svelte');
 const { default: MenuBar } = await import('./menu-bar.svelte');
-const { pushEscapeHandler, resetEscapeStack } = await import('../../_internal/overlay.ts');
+const { pushEscapeHandler, resetEscapeStack } =
+  await import('@lostgradient/foundation/_internal/overlay.ts');
 const MENU_BAR_SOURCE = `${import.meta.dir}/_menu-bar-ssr-test.svelte`;
 
 await prepareSvelteServerSource(MENU_BAR_SOURCE);

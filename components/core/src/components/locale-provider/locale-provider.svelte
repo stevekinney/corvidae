@@ -7,7 +7,7 @@
     getLocaleContext,
     setLocaleContext,
     type LocaleContext,
-  } from '../../_internal/locale-context.ts';
+  } from '@lostgradient/foundation/_internal/locale-context.ts';
   import type { LocaleProviderProps } from './locale-provider.types.ts';
 
   let { locale, direction, children }: LocaleProviderProps = $props();

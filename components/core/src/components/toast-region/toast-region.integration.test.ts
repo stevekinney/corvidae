@@ -5,9 +5,9 @@ import { join } from 'node:path';
 
 import { afterEach, describe, expect, jest, test } from 'bun:test';
 
+import { pushEscapeHandler, resetEscapeStack } from '@lostgradient/foundation/_internal/overlay.ts';
+import type { ToastApi } from '@lostgradient/foundation/_internal/toast-context.ts';
 import { expectNoLeakedTimers, setupHappyDom, trackTimers } from '@lostgradient/testing';
-import { pushEscapeHandler, resetEscapeStack } from '../../_internal/overlay.ts';
-import type { ToastApi } from '../../_internal/toast-context.ts';
 
 setupHappyDom();
 
@@ -1390,7 +1390,7 @@ describe('useToast outside a region', () => {
     // during component initialisation. Calling it from a plain test function
     // throws a Svelte lifecycle error before our own check can run — that's
     // actually fine; both errors mean "you're using this wrong."
-    const { useToast } = await import('../../utilities/use-toast.ts');
+    const { useToast } = await import('@lostgradient/foundation/utilities/use-toast.ts');
     let error: Error | null = null;
     try {
       useToast();

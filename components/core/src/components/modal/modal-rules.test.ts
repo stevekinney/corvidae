@@ -5,10 +5,10 @@ import {
   OverflowFadeResizeObserver,
   setScrollMeasurements,
 } from '@lostgradient/component-tooling/test/overflow-fade-test-helpers.ts';
+import { resetScrollLock } from '@lostgradient/foundation/_internal/overlay.ts';
 import { requiredInstance, setupHappyDom } from '@lostgradient/testing';
 import { afterEach, describe, expect, test } from 'bun:test';
 import { parse } from 'postcss';
-import { resetScrollLock } from '../../_internal/overlay.ts';
 import { installModalDialogStubs, textSnippet } from './modal-test-helpers.ts';
 
 setupHappyDom();

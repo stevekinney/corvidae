@@ -476,7 +476,10 @@ describe('Checkbox — error live region', () => {
   test('the errorless live region has no layout footprint (shared _form-field-error.css, CIN-315 follow-up)', async () => {
     const checkboxCss = readFileSync(new URL('./checkbox.css', import.meta.url), 'utf8');
     const sharedErrorCss = readFileSync(
-      new URL('../../styles/components/_form-field-error.css', import.meta.url),
+      new URL(
+        '../../../../foundation/src/styles/components/_form-field-error.css',
+        import.meta.url,
+      ),
       'utf8',
     );
     const removeStyles = injectStrippedStyles(checkboxCss, sharedErrorCss);

@@ -17,10 +17,10 @@
   import type { HTMLAnchorAttributes, HTMLAttributes, HTMLButtonAttributes } from 'svelte/elements';
 
   import type { CardProps } from './card.types.ts';
-  import CompactActions from '../../_internal/compact-actions.svelte';
-  import { composeDescribedBy } from '../../_internal/field-control.ts';
-  import { setFramedSurfaceContext } from '../../_internal/framed-surface-context.ts';
-  import { classNames } from '../../utilities/class-names.ts';
+  import CompactActions from '@lostgradient/foundation/_internal/compact-actions.svelte';
+  import { composeDescribedBy } from '@lostgradient/foundation/_internal/field-control.ts';
+  import { setFramedSurfaceContext } from '@lostgradient/foundation/_internal/framed-surface-context.ts';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
 
   const generatedId = $props.id();
 

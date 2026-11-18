@@ -28,7 +28,7 @@
   import SourceDiffViewer from '../source-diff-viewer/source-diff-viewer.svelte';
   import { countPatchChanges } from '../source-diff-viewer/source-diff-viewer.utilities.ts';
   import Tooltip from '../tooltip/tooltip.svelte';
-  import { humanizeIdentifier } from '../../utilities/humanize-identifier.ts';
+  import { humanizeIdentifier } from '@lostgradient/foundation/utilities/humanize-identifier.ts';
   import { readPayloadEntries, isUnifiedPatch } from './payload-inspector-fields.ts';
   import {
     classifyArray,

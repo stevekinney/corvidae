@@ -12,8 +12,8 @@
 
 import { createContext } from 'svelte';
 
-import type { Highlighter } from '../utilities/highlighter.ts';
-import { optionalContext } from './optional-context.ts';
+import { optionalContext } from '@lostgradient/foundation/_internal/optional-context.ts';
+import type { Highlighter } from '@lostgradient/foundation/utilities/highlighter.ts';
 
 const [getCodeHighlighterContextStrict, setCodeHighlighterContextRaw] =
   createContext<Highlighter>();

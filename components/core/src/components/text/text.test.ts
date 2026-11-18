@@ -17,7 +17,7 @@ beforeEach(() => {
 });
 
 const { default: Text } = await import('./text.svelte');
-const { stubCutLayout } = await import('../../_internal/cut-layout-stub.ts');
+const { stubCutLayout } = await import('@lostgradient/foundation/_internal/cut-layout-stub.ts');
 const { createRawSnippet } = await import('svelte');
 
 const textCss = await Bun.file(new URL('./text.css', import.meta.url)).text();

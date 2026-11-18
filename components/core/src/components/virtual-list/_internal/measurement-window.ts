@@ -9,8 +9,8 @@ import type {
   FixedVirtualWindow,
   FixedVirtualWindowItem,
   VirtualListKey,
-} from '../../../utilities/fixed-virtual-window.ts';
-import { resolveVirtualOverscan } from '../../../utilities/fixed-virtual-window.ts';
+} from '@lostgradient/foundation/utilities/fixed-virtual-window.ts';
+import { resolveVirtualOverscan } from '@lostgradient/foundation/utilities/fixed-virtual-window.ts';
 
 /**
  * A cumulative offsets table for the dynamic-size engine, plus the total

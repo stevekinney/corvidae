@@ -4,16 +4,16 @@
 
 <script lang="ts">
   import { onDestroy } from 'svelte';
-  import { createAnchoredOverlayExitState } from '../../_internal/anchored-overlay-exit.svelte.ts';
-  import { pushEscapeHandler } from '../../_internal/overlay.ts';
+  import { createAnchoredOverlayExitState } from '@lostgradient/foundation/_internal/anchored-overlay-exit.svelte.ts';
+  import { pushEscapeHandler } from '@lostgradient/foundation/_internal/overlay.ts';
   import {
     PHONE_VIEWPORT_BREAKPOINT,
     readViewportBreakpoint,
     useViewportBelow,
-  } from '../../_internal/viewport-below.svelte.ts';
-  import { createClickOutside } from '../../utilities/attachments.ts';
-  import { classNames } from '../../utilities/class-names.ts';
-  import { useReducedMotion } from '../../utilities/use-reduced-motion.svelte.ts';
+  } from '@lostgradient/foundation/_internal/viewport-below.svelte.ts';
+  import { createClickOutside } from '@lostgradient/foundation/utilities/attachments.ts';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
+  import { useReducedMotion } from '@lostgradient/foundation/utilities/use-reduced-motion.svelte.ts';
   import {
     setDropdownContext,
     setDropdownRegister,

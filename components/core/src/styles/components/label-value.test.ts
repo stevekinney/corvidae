@@ -9,7 +9,10 @@ const componentFile = (path: string) => cinderComponentFile(path);
 
 describe('shared label/value hierarchy', () => {
   test('defines every axis of the shared hierarchy', () => {
-    const css = readFileSync(resolve(import.meta.dir, '_label-value.css'), 'utf8');
+    const css = readFileSync(
+      resolve(import.meta.dir, '../../../../foundation/src/styles/components/_label-value.css'),
+      'utf8',
+    );
 
     expect(css).toContain('color: var(--cinder-text-default);');
     expect(css).toContain('font-size: var(--cinder-text-base);');

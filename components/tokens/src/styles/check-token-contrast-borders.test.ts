@@ -410,7 +410,7 @@ describe('field edges (COR-1814)', () => {
     combobox: '../../../core/src/components/combobox/combobox.css',
     multiSelect: '../../../core/src/components/multi-select/multi-select.css',
     textarea: '../../../core/src/components/textarea/textarea.css',
-    inputFrame: '../../../core/src/styles/components/_input-frame.css',
+    inputFrame: '../../../foundation/src/styles/components/_input-frame.css',
   } as const;
 
   it('the field edge tokens alias the control border tiers', async () => {

@@ -1,6 +1,6 @@
 import { createContext } from 'svelte';
 
-import { optionalContext } from '../../_internal/optional-context.ts';
+import { optionalContext } from '@lostgradient/foundation/_internal/optional-context.ts';
 import type {
   TableContext,
   TableHeaderSelectionContext,

@@ -9,7 +9,10 @@ const componentFile = (path: string) => cinderComponentFile(path);
 
 describe('shared row-item boundary', () => {
   test('suppresses a divider on both sides of a hovered row', () => {
-    const shared = readFileSync(resolve(import.meta.dir, '_row-item.css'), 'utf8');
+    const shared = readFileSync(
+      resolve(import.meta.dir, '../../../../foundation/src/styles/components/_row-item.css'),
+      'utf8',
+    );
 
     expect(shared).toContain('.cinder-command-item');
     expect(shared).toContain(':hover::after');
@@ -18,15 +21,24 @@ describe('shared row-item boundary', () => {
   });
 
   test('consumes the shared row divider marker instead of inferring sibling boundaries in CSS', () => {
-    const shared = readFileSync(resolve(import.meta.dir, '_row-item.css'), 'utf8');
+    const shared = readFileSync(
+      resolve(import.meta.dir, '../../../../foundation/src/styles/components/_row-item.css'),
+      'utf8',
+    );
 
     expect(shared).toContain('[data-cinder-row-divider]::after');
   });
 
   test('is composed by the option-like families only', () => {
-    const shared = readFileSync(resolve(import.meta.dir, '_row-item.css'), 'utf8');
+    const shared = readFileSync(
+      resolve(import.meta.dir, '../../../../foundation/src/styles/components/_row-item.css'),
+      'utf8',
+    );
     const floatingSurface = readFileSync(
-      resolve(import.meta.dir, '_floating-surface.css'),
+      resolve(
+        import.meta.dir,
+        '../../../../foundation/src/styles/components/_floating-surface.css',
+      ),
       'utf8',
     ).replace(/\/\*[\s\S]*?\*\//g, '');
     expect(shared).toContain('.cinder-_row-item');

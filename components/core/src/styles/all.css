@@ -5,6 +5,6 @@
 @layer cinder.tokens, cinder.foundation, cinder.components, cinder.utilities;
 
 @import '@lostgradient/tokens/tokens.css' layer(cinder.tokens);
-@import './foundation.css' layer(cinder.foundation);
+@import '@lostgradient/foundation/foundation.css' layer(cinder.foundation);
 @import './components.css';
-@import './utilities.css' layer(cinder.utilities);
+@import '@lostgradient/foundation/utilities.css' layer(cinder.utilities);

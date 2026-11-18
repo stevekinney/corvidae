@@ -1,7 +1,10 @@
 <script lang="ts">
   import { default as CopyButton } from '../copy-button/index.ts';
 
-  import { isOpaqueForFormat, type ColorOutputFormat } from '../../utilities/color-format.ts';
+  import {
+    isOpaqueForFormat,
+    type ColorOutputFormat,
+  } from '@lostgradient/foundation/utilities/color-format.ts';
 
   type ColorPickerControlsProps = {
     gradientId: string;

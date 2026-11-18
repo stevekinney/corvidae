@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { createAnchoredOverlay } from '../../_internal/anchored-overlay.svelte.ts';
+  import { createAnchoredOverlay } from '@lostgradient/foundation/_internal/anchored-overlay.svelte.ts';
 
   interface Props {
     open?: boolean;

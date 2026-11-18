@@ -11,7 +11,7 @@
 <script lang="ts">
   import { ChevronRight } from '@lucide/svelte';
   import Clock from '@lucide/svelte/icons/clock';
-  import { classNames } from '../../utilities/class-names.ts';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
   import Button from '../button/button.svelte';
   import type { GroupedListItemAction, GroupedListItemProps } from './grouped-list-item.types.ts';
 

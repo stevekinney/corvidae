@@ -5,10 +5,10 @@
 <script lang="ts">
   import type { Attachment } from 'svelte/attachments';
 
-  import { createCutText } from '../../_internal/cut-text.svelte.ts';
+  import { createCutText } from '@lostgradient/foundation/_internal/cut-text.svelte.ts';
   import { tryGetTableContext } from '../table/table.context.ts';
   import type { TableCellProps } from './table-cell.types.ts';
-  import { classNames } from '../../utilities/class-names.ts';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
   import FullTextTooltip from '../../_internal/full-text-tooltip.svelte';
 
   let {

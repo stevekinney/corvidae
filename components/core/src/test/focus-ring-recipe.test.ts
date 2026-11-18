@@ -1000,7 +1000,7 @@ describe('filled controls paint a gap before the ring (COR-1498)', () => {
   }
 
   test('the filled formula and its private gap live in foundation.css', () => {
-    const foundation = normalizeCssValue(css('../styles/foundation.css'));
+    const foundation = normalizeCssValue(css('../../../foundation/src/styles/foundation.css'));
     expect(foundation).toContain('--_cinder-focus-ring-filled-gap: 2px;');
     expect(foundation).toContain(
       `--_cinder-focus-ring-filled-shadow: ${gapRecipe('var(--cinder-ring-color)')};`,
@@ -1009,7 +1009,7 @@ describe('filled controls paint a gap before the ring (COR-1498)', () => {
 });
 
 describe('COR-2010 row 05k: the global focus ring names the system focus color under forced colors', () => {
-  const foundationRoot = parsePostcss(loadCss('../styles/foundation.css'));
+  const foundationRoot = parsePostcss(loadCss('../../../foundation/src/styles/foundation.css'));
 
   test('a forced-colors rule repaints the bare :focus-visible outline with Highlight', () => {
     const rules = findRulesByNormalizedSelector(foundationRoot, ':focus-visible').filter((rule) =>

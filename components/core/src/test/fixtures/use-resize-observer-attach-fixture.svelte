@@ -2,7 +2,7 @@
   import type {
     ResizeCallback,
     UseResizeObserverOptions,
-  } from '../../utilities/use-resize-observer.types.ts';
+  } from '@lostgradient/foundation/utilities/use-resize-observer.types.ts';
 
   export type UseResizeObserverAttachFixtureProps = {
     onResize: ResizeCallback;
@@ -11,7 +11,7 @@
 </script>
 
 <script lang="ts">
-  import { useResizeObserver } from '../../utilities/use-resize-observer.svelte.ts';
+  import { useResizeObserver } from '@lostgradient/foundation/utilities/use-resize-observer.svelte.ts';
 
   let { onResize, options }: UseResizeObserverAttachFixtureProps = $props();
 </script>

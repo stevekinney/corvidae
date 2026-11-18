@@ -18,7 +18,14 @@ const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const packageRoot = resolve(scriptDirectory, '../../../components/core');
 const packageJsonPath = join(packageRoot, 'package.json');
 const virtualListRoot = join(packageRoot, 'src', 'components', 'virtual-list');
-const fixedVirtualWindowFile = join(packageRoot, 'src', 'utilities', 'fixed-virtual-window.ts');
+const fixedVirtualWindowFile = join(
+  packageRoot,
+  '..',
+  'foundation',
+  'src',
+  'utilities',
+  'fixed-virtual-window.ts',
+);
 const SELF_TEST_RELATIVE_PATH = join('_internal', 'dependency-free.test.ts');
 
 function isRelativeSpecifier(specifier: string): boolean {

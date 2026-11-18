@@ -6,11 +6,11 @@
   import type { LoadMoreProps } from './load-more.types.ts';
   import { untrack } from 'svelte';
 
-  import { classNames } from '../../utilities/class-names.ts';
-  import { formatNumber } from '../../utilities/format-number.ts';
-  import { useIntersection } from '../../utilities/use-intersection.svelte.ts';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
+  import { formatNumber } from '@lostgradient/foundation/utilities/format-number.ts';
+  import { useIntersection } from '@lostgradient/foundation/utilities/use-intersection.svelte.ts';
   import Button from '../button/button.svelte';
-  import VisuallyHiddenLiveRegion from '../_visually-hidden-live-region.svelte';
+  import VisuallyHiddenLiveRegion from '@lostgradient/foundation/components/_visually-hidden-live-region.svelte';
 
   let {
     onLoadMore = async () => {},

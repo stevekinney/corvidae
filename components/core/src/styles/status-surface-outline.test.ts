@@ -13,7 +13,20 @@ import { join } from 'node:path';
 
 import { describe, expect, test } from 'bun:test';
 
-const source = readFileSync(join(import.meta.dir, 'components', '_status-surface.css'), 'utf8');
+const source = readFileSync(
+  join(
+    import.meta.dir,
+    '..',
+    '..',
+    '..',
+    'foundation',
+    'src',
+    'styles',
+    'components',
+    '_status-surface.css',
+  ),
+  'utf8',
+);
 
 function ruleBody(selector: string): string {
   const start = source.indexOf(`${selector} {`);

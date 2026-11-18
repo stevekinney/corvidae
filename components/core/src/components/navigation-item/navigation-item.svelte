@@ -5,9 +5,9 @@
 <script lang="ts">
   import type { HTMLAnchorAttributes, HTMLButtonAttributes } from 'svelte/elements';
 
-  import { classNames } from '../../utilities/class-names.ts';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
   import type { NavigationItemProps } from './navigation-item.types.ts';
-  import { rowDividerAttachment } from '../../utilities/row-divider.ts';
+  import { rowDividerAttachment } from '@lostgradient/foundation/utilities/row-divider.ts';
 
   // `href` and `onclick` are destructured explicitly because they drive the link-vs-button
   // discriminant and are handled by the internal `handleClick` wrapper.

@@ -9,9 +9,9 @@
     getStaleRegionContext,
     isStaleInert,
     mergeDescribedBy,
-  } from '../../_internal/stale-region-context.ts';
+  } from '@lostgradient/foundation/_internal/stale-region-context.ts';
   import { getButtonGroupContext } from '../../_internal/button-group-context.ts';
-  import { classNames } from '../../utilities/class-names.ts';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
   import type { ButtonSize, ButtonVariant } from '../button/button.types.ts';
   import {
     getDropdownContext,

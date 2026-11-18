@@ -30,11 +30,11 @@
     PHONE_VIEWPORT_BREAKPOINT,
     readViewportBreakpoint,
     useViewportBelow,
-  } from '../../_internal/viewport-below.svelte.ts';
-  import { getFramedSurfaceContext } from '../../_internal/framed-surface-context.ts';
-  import { classNames } from '../../utilities/class-names.ts';
-  import { useResizeObserver } from '../../utilities/use-resize-observer.svelte.ts';
-  import { overflowFadeEdges } from '../../utilities/attachments.ts';
+  } from '@lostgradient/foundation/_internal/viewport-below.svelte.ts';
+  import { getFramedSurfaceContext } from '@lostgradient/foundation/_internal/framed-surface-context.ts';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
+  import { useResizeObserver } from '@lostgradient/foundation/utilities/use-resize-observer.svelte.ts';
+  import { overflowFadeEdges } from '@lostgradient/foundation/utilities/attachments.ts';
 
   const FIT_STACK_BREAKPOINT = '26rem';
 

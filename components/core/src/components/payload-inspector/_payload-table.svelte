@@ -17,8 +17,8 @@
 
   import Button from '../button/button.svelte';
   import { Table } from '../table/index.ts';
-  import { formatNumber } from '../../utilities/format-number.ts';
-  import { humanizeIdentifier } from '../../utilities/humanize-identifier.ts';
+  import { formatNumber } from '@lostgradient/foundation/utilities/format-number.ts';
+  import { humanizeIdentifier } from '@lostgradient/foundation/utilities/humanize-identifier.ts';
   import { isNumberColumn, isTokenColumn, TABLE_ROW_LIMIT } from './payload-inspector-model.ts';
   import PayloadScalar from './_payload-scalar.svelte';
 

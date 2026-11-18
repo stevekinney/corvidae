@@ -1,4 +1,4 @@
-import { createLabelFit } from '../../utilities/fit-label-to-row.ts';
+import { createLabelFit } from '@lostgradient/foundation/utilities/fit-label-to-row.ts';
 
 /** The attribute that turns the "Add note" button into its icon-only form. */
 export const NOTE_COMPACT_ATTRIBUTE = 'data-cinder-note-compact';

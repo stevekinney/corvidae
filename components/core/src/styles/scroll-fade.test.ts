@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 
-const cssPath = `${import.meta.dir}/components/_scroll-fade.css`;
+const cssPath = `${import.meta.dir}/../../../foundation/src/styles/components/_scroll-fade.css`;
 
 async function readCss(): Promise<string> {
   return Bun.file(cssPath).text();

@@ -7,12 +7,12 @@
 
   import Check from '@lucide/svelte/icons/check';
   import Copy from '@lucide/svelte/icons/copy';
-  import { getTooltipTriggerContext } from '../../_internal/tooltip-trigger-context.ts';
-  import { copyToClipboard } from '../../utilities/clipboard.ts';
-  import { classNames } from '../../utilities/class-names.ts';
-  import { devWarn } from '../../utilities/dev-warn.ts';
+  import { getTooltipTriggerContext } from '@lostgradient/foundation/_internal/tooltip-trigger-context.ts';
+  import { copyToClipboard } from '@lostgradient/foundation/utilities/clipboard.ts';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
+  import { devWarn } from '@lostgradient/foundation/utilities/dev-warn.ts';
   import Tooltip from '../tooltip/tooltip.svelte';
-  import VisuallyHiddenLiveRegion from '../_visually-hidden-live-region.svelte';
+  import VisuallyHiddenLiveRegion from '@lostgradient/foundation/components/_visually-hidden-live-region.svelte';
 
   let {
     value,

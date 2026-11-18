@@ -3,9 +3,9 @@
 </script>
 
 <script lang="ts">
-  import { trackDockedBar } from '../../_internal/docked-bar-height.ts';
-  import { trackKeyboardInset } from '../../_internal/keyboard-inset.ts';
-  import { classNames } from '../../utilities/class-names.ts';
+  import { trackDockedBar } from '@lostgradient/foundation/_internal/docked-bar-height.ts';
+  import { trackKeyboardInset } from '@lostgradient/foundation/_internal/keyboard-inset.ts';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
   import Alert from '../alert/alert.svelte';
   import type { FormActionsProps } from './form-actions.types.ts';
 

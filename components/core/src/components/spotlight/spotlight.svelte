@@ -3,7 +3,7 @@
 </script>
 
 <script lang="ts">
-  import { classNames } from '../../utilities/class-names.ts';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
   import StatusDot from '../status-dot/status-dot.svelte';
   import type { SpotlightProps } from './spotlight.types.ts';
 
