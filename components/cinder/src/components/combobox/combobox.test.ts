@@ -985,6 +985,21 @@ describe('Combobox keyboard', () => {
     expect(rule('\\.cinder-combobox__content')).toMatch(/100vh/);
   });
 
+  test('a raw identifier that does not fit beside its label drops under it, and only it wraps anywhere', () => {
+    // happy-dom lays nothing out, so the rules are read here and the 320-pixel row is measured in
+    // a browser (Interborough's hooks.spec.ts, `new-hook-plugin-event-long`).
+    const styles = readComboboxStyles();
+    const rule = (selector: string): string =>
+      styles.match(new RegExp(`(?:^|\\n)\\s*${selector}\\s*\\{([^}]*)\\}`))?.[1] ?? '';
+    const heading = rule('\\.cinder-combobox__option-heading');
+    expect(heading).toMatch(/flex-wrap:\s*wrap/);
+    // No gap between the label's line and the identifier's.
+    expect(heading).toMatch(/gap:\s*0 var\(--cinder-space-2\)/);
+    const code = rule('\\.cinder-combobox__option-code');
+    expect(code).toMatch(/min-inline-size:\s*0/);
+    expect(code).toMatch(/overflow-wrap:\s*anywhere/);
+  });
+
   test('hovering a disabled option does not clear the keyboard-active option', async () => {
     const optionsWithDisabled = [
       { value: 'apple', label: 'Apple' },

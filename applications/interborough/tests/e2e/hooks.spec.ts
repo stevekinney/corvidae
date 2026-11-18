@@ -1803,6 +1803,71 @@ for (const width of [320, ...WIDTHS] as const) {
   });
 }
 
+/** A kind longer than a 320-pixel panel is wide (62 characters), under the Weekly reports title. */
+const LONG_KIND = 'reports:weekly-digest-ready-for-every-workspace-member-to-read';
+
+// R9: a raw kind longer than the phone's panel drops under its words and wraps there, whole words
+// in its label, and nothing pushes the page sideways.
+test('[new-hook-plugin-event-long] a raw kind too long for the phone’s panel drops under its words, which stay whole, at 320 pixels', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 320, height: 900 });
+  await openHooks(
+    page,
+    '/hooks/new',
+    [],
+    {
+      'bureau.events.catalog': () => ({
+        events: [...PLUGIN_EVENT_CATALOG().events, catalogKind(LONG_KIND, 'reports', '1.0.0')],
+      }),
+    },
+    EVENT_PLUGINS,
+  );
+  const picker = page.getByRole('combobox', { name: copy.event.label });
+  await picker.click();
+  await picker.fill('every workspace');
+  const option = page.getByRole('option', { name: /^Weekly digest ready for every workspace/ });
+  await expect(option).toBeVisible();
+  const geometry = await option.evaluate((row) => {
+    const label = row.querySelector('.cinder-combobox__option-label');
+    const code = row.querySelector('.cinder-combobox__option-code');
+    if (label === null || code === null) throw new Error('The option has no label or code.');
+    const labelBox = label.getBoundingClientRect();
+    const codeBox = code.getBoundingClientRect();
+    // Each word of the label sits on one line: none is broken across two.
+    const text = label.firstChild;
+    const words: boolean[] = [];
+    if (text !== null && text.nodeType === Node.TEXT_NODE) {
+      for (const match of (text.textContent ?? '').matchAll(/\S+/g)) {
+        const range = document.createRange();
+        range.setStart(text, match.index);
+        range.setEnd(text, match.index + match[0].length);
+        words.push(new Set([...range.getClientRects()].map((rect) => Math.round(rect.top))).size === 1);
+      }
+    }
+    return {
+      codeBelowLabel: codeBox.top >= labelBox.bottom - 1,
+      codeAtLabelStart: Math.abs(codeBox.left - labelBox.left) <= 1,
+      labelWordsWhole: words.length > 0 && words.every(Boolean),
+      rowRight: row.getBoundingClientRect().right,
+      codeRight: codeBox.right,
+    };
+  });
+  expect(geometry.codeBelowLabel).toBe(true);
+  expect(geometry.codeAtLabelStart).toBe(true);
+  expect(geometry.labelWordsWhole).toBe(true);
+  expect(geometry.codeRight).toBeLessThanOrEqual(geometry.rowRight);
+  expect(
+    await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
+  ).toBe(true);
+  await captureForDesignReview(page, {
+    route: '/hooks/new',
+    state: 'new-hook-plugin-event-long',
+    source: SOURCE,
+  });
+  await page.keyboard.press('Escape');
+});
+
 // R3, R4: a chosen plugin kind reads with its plugin's title, and its raw kind carries its pin, muted.
 for (const width of WIDTHS) {
   test(`[new-hook-plugin-event-chosen] two plugins’ kinds of one name, chosen, never read the same, at ${width} pixels`, async ({

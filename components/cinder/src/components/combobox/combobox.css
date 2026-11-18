@@ -313,11 +313,13 @@
     min-inline-size: 0;
   }
 
-  /* The label, with a raw identifier beside it when the option has one. */
+  /* The label, with a raw identifier beside it when the option has one. An identifier that does not
+     fit beside the label drops under it, at its inline start, so the label keeps whole words. */
   .cinder-combobox__option-heading {
     display: flex;
+    flex-wrap: wrap;
     align-items: baseline;
-    gap: var(--cinder-space-2);
+    gap: 0 var(--cinder-space-2);
     min-inline-size: 0;
   }
 
@@ -328,8 +330,8 @@
     overflow-wrap: anywhere;
   }
 
-  /* A long identifier shrinks and wraps anywhere in a narrow panel rather than overflowing it; a
-     short one keeps its width, since it only shrinks once the row has no room left. */
+  /* On a line of its own, an identifier longer than the panel is wide shrinks and wraps anywhere
+     rather than overflowing it. */
   .cinder-combobox__option-code {
     flex: 0 1 auto;
     min-inline-size: 0;
