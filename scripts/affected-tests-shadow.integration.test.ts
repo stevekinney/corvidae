@@ -37,6 +37,16 @@ const incompleteProviderCases: ProviderControl[] = [
   },
   { status: 'completed', conclusion: 'success', jobs: [] },
   { status: 'completed', conclusion: 'success', jobs: [{ status: 'in_progress' }] },
+  {
+    status: 'completed',
+    conclusion: 'failure',
+    jobs: [{ status: 'completed', conclusion: 'success' }],
+  },
+  {
+    status: 'completed',
+    conclusion: 'success',
+    jobs: [{ status: 'completed', conclusion: 'failure' }],
+  },
 ];
 const incompleteRouteDispositions = incompleteProviderCases.map((provider) => ({
   replay: replayRevision(process.cwd(), {

@@ -105,11 +105,14 @@ function terminalEvidence(provider: ProviderEvidence): { failures: string[]; rea
       failures: [],
       reason: 'provider job is canceled, pending, or lacks a terminal conclusion',
     };
-  return {
-    failures: jobs
-      .filter((job) => job.conclusion === 'failure')
-      .map((job) => job.name ?? 'unnamed job'),
-  };
+  const failures = jobs
+    .filter((job) => job.conclusion === 'failure')
+    .map((job) => job.name ?? 'unnamed job');
+  if (provider.conclusion === 'failure' && failures.length === 0)
+    return { failures: [], reason: 'failed provider run has no failed job' };
+  if (provider.conclusion === 'success' && failures.length > 0)
+    return { failures: [], reason: 'successful provider run has a failed job' };
+  return { failures };
 }
 
 /** Correlate parser-provided failing test identities with the selector's exact test paths. */
