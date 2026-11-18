@@ -242,8 +242,11 @@ describe('ScheduleDetail', () => {
             document
               .querySelector('.cinder-page-header [data-status-word]')
               ?.getAttribute('data-status-word'),
-          ).toBe('Missed runs, 3'),
+          ).toBe('Missed runs'),
         );
+        expect(
+          document.querySelector('.cinder-page-header .cinder-status-dot__qualifier')?.textContent,
+        ).toBe('3');
         // They are one band below Now, and open to each miss.
         const band = await findByText(/^Missed \d+ times since /);
         expect(band).not.toBeNull();

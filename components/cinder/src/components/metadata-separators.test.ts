@@ -1,11 +1,18 @@
 import { describe, expect, test } from 'bun:test';
 import { readdirSync, readFileSync } from 'node:fs';
 
+import { setupHappyDom } from '@lostgradient/testing';
+
+setupHappyDom();
+
+const { render } = await import('@testing-library/svelte');
+const { default: StatusDot } = await import('./status-dot/status-dot.svelte');
+
 /**
  * No comma between metadata pieces (COR-2445 AC12). Pieces are told apart by a space and a step in
  * weight or colour, never by a drawn "," or a middle dot. StackedListItem's own test (COR-2449)
- * holds its rule; this one holds it for ApprovalCard and ToolCallRail. StatusDot's word with a
- * qualifier is held by the branch that owns its `qualifier` prop.
+ * holds its rule; this one holds it for ApprovalCard, ToolCallRail and StatusDot's word with a
+ * qualifier.
  */
 const components = ['approval-card', 'tool-call-rail'] as const;
 
@@ -51,6 +58,14 @@ describe('metadata pieces are not separated by a comma (COR-2445)', () => {
     expect(css).toMatch(
       /\.cinder-approval-card__line-source > span,\s*\.cinder-approval-card__eyebrow > span,\s*\.cinder-approval-card__detail-ask > span \{\s*color: var\(--cinder-text-muted\);/,
     );
+  });
+
+  test('StatusDot draws its word and qualifier as two pieces with no comma between them', () => {
+    const { container } = render(StatusDot, { props: { word: 'Missed runs', qualifier: 4 } });
+    const text = container.textContent?.replace(/\s+/g, ' ').trim();
+    expect(text).toBe('Missed runs 4');
+    expect(text).not.toContain(',');
+    expect(container.querySelector('.cinder-status-dot__qualifier')?.textContent).toBe('4');
   });
 
   test('ToolCallRail tells its counts and duration apart by the summary gap and a colour step', () => {
