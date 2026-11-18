@@ -217,6 +217,23 @@ describe('SchemaForm setting-rows variant', () => {
       });
     }
 
+    test('draws a secret as one row whose key choice is named once, by the field, and shows no second label', async () => {
+      const view = await mount(group({ type: 'string', secret: true }), {
+        secrets: { keys: [{ key: 'billing-token', set: true }] },
+      });
+      expect(view.container.querySelectorAll('.cinder-setting-row')).toHaveLength(1);
+      const account = rowOf(view, 'account');
+      expect(account.getAttribute('role')).toBe('group');
+      const control = requiredInstance(account.querySelector('[role="combobox"]'), HTMLElement);
+      expect(control.closest('.cinder-setting-row__field')).not.toBeNull();
+      // One label names the control, by the field's own words, for assistive technology only:
+      // the row's title is the one label a reader sees.
+      expect(screen.getByRole('combobox', { name: 'Owner' })).toBe(control);
+      const labels = [...view.container.querySelectorAll(`label[for="${control.id}"]`)];
+      expect(labels.map((label) => label.textContent?.trim())).toEqual(['Owner']);
+      expect(labels[0]?.classList.contains('cinder-sr-only')).toBe(true);
+    });
+
     test('keeps the switch at the inline end and the other controls stretched', async () => {
       const text = await mount(group({ type: 'string' }));
       expect(
@@ -270,6 +287,17 @@ describe('SchemaForm setting-rows variant', () => {
       const view = await mount(nested);
       expect(rowOf(view, 'account').getAttribute('role')).toBeNull();
     });
+  });
+
+  test('draws a secret row with the row label alone: its key choice draws no second visible label', async () => {
+    const view = await mount(
+      { type: 'object', properties: { token: { type: 'string', title: 'Token', secret: true } } },
+      { secrets: { keys: [{ key: 'billing-token', set: true }] } },
+    );
+    const visible = [...rowOf(view, 'token').querySelectorAll('label')].filter(
+      (label) => !label.classList.contains('cinder-sr-only'),
+    );
+    expect(visible.map((label) => label.textContent?.trim())).toEqual(['Token']);
   });
 
   test('shows a host issue as the error of the row it names, and clears it when the field is edited', async () => {

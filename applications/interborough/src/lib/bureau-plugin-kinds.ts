@@ -21,9 +21,22 @@ export type ContributedTriggerKind = Contributions['triggers'][number];
 /**
  * A hook action kind a running plugin contributes: the `plugin` and `kind` of a `{ type: 'plugin' }`
  * action. `dryRun` says whether `hooks.test` can call the kind's `dryRun`: a hook of a kind without
- * one cannot be tested.
+ * one cannot be tested. `availability` is `needs-setup` while a secret its plugin declared is
+ * missing (COR-2181).
  */
 export type ContributedHookActionKind = Contributions['reactions'][number];
+
+/**
+ * A hook action kind as a Bureau that predates `availability` has it: available. The server's
+ * schema always sends the field, so this default belongs to the browser, applied to the typed result.
+ */
+export function hookActionKindOf(
+  kind: Omit<ContributedHookActionKind, 'availability'> & {
+    readonly availability?: ContributedHookActionKind['availability'] | undefined;
+  },
+): ContributedHookActionKind {
+  return { ...kind, availability: kind.availability ?? 'available' };
+}
 
 /** Everything the running plugins contribute that a file or a hook can name. */
 export type ContributedKinds = {
@@ -34,7 +47,10 @@ export type ContributedKinds = {
 /** The trigger and hook action kinds of the running plugins, each with its configuration schema. */
 export async function listContributedKinds(options?: Options): Promise<ContributedKinds> {
   const contributions = await bureauClient['bureau.plugins.contributions']({}, options);
-  return { triggers: contributions.triggers, reactions: contributions.reactions };
+  return {
+    triggers: contributions.triggers,
+    reactions: contributions.reactions.map(hookActionKindOf),
+  };
 }
 
 /**

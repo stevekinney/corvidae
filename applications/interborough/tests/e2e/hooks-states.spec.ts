@@ -7,14 +7,18 @@
  * that is not that world is drawn by answering `bureau.hooks.list` differently, which is also the
  * probe the view frame makes. Each state is a named capture for the design review. The timings the
  * placeholders keep (nothing for 300 ms, a status line at 10 s) are Cinder's own and are not slept
- * here.
+ * here: the still-loading state drives them with the page's clock.
  *
  * Not drawn: the hook that "Can't load" (row 86e). Nothing the list carries says why a workflow hook
  * failed, so the row reads Failed until the Bureau reports it.
  */
 import type { Page } from '@playwright/test';
 
-import { SAMPLE_TIME_ZONE } from '../../fixtures/sample-now.ts';
+import {
+  SAMPLE_NOW,
+  SAMPLE_NOW_MILLISECONDS,
+  SAMPLE_TIME_ZONE,
+} from '../../fixtures/sample-now.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
 import { E2E_SHOWCASE_URL } from './e2e-constants.ts';
 import { expect, loggedFailedResponse, pressRecorder, test } from './fixtures.ts';
@@ -102,7 +106,7 @@ test.describe('the hooks list states', () => {
     // The hook that is off leads with Off, says no time, and keeps its switch off.
     const refund = rows.nth(4);
     await expect(refund.locator('[data-status-word="Off"]')).toBeVisible();
-    await expect(refund.locator('[data-last-delivery]')).toHaveCount(0);
+    await expect(refund.locator('.cinder-stacked-list-item__time')).toHaveCount(0);
     await expect(refund.getByRole('switch')).toHaveAttribute('aria-checked', 'false');
     await expect(refund).toContainText('only for Tool runner');
     await expect(refund).not.toContainText(String.fromCodePoint(0xb7));
@@ -192,6 +196,47 @@ test.describe('the hooks list states', () => {
 
       release();
       await expect(main.locator('li[data-hook]')).toHaveCount(5);
+    });
+
+    test(`a read that runs long says so after 10 s, and Cancel leaves Stopped loading hooks, at ${width} pixels`, async ({
+      page,
+    }) => {
+      // The placeholders' timers are driven with the page's clock, never slept.
+      await page.clock.install({ time: SAMPLE_NOW_MILLISECONDS - 1_000 });
+      await page.clock.pauseAt(SAMPLE_NOW);
+      await page.setViewportSize({ width, height: 900 });
+      let release!: () => void;
+      const held = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      await page.route(BUREAU_CALLS, async (route) => {
+        if ((route.request().postData() ?? '').includes('"bureau.hooks.list"')) await held;
+        await route.fallback().catch(() => undefined);
+      });
+      await page.goto('/hooks');
+      const main = page.locator('main');
+      await expect(main.getByRole('heading', { level: 1, name: 'Hooks' })).toBeVisible();
+
+      await page.clock.runFor(300);
+      await expect(main.locator('.cinder-skeleton-row').first()).toBeVisible();
+      await expect(main).not.toContainText('Still loading.');
+      await page.clock.runFor(10_000);
+      await expect(main).toContainText('Still loading. This is taking longer than usual.');
+      // A capture at a phone width waits on animation frames, which a paused clock never runs; the
+      // read is still held, so the line stays.
+      await page.clock.resume();
+      await captureForDesignReview(page, {
+        route: '/hooks',
+        state: 'still loading',
+        source: SOURCE,
+      });
+
+      await main.getByRole('button', { name: 'Cancel' }).click();
+      await expect(
+        main.getByRole('heading', { level: 2, name: 'Stopped loading hooks' }),
+      ).toBeVisible();
+      await captureForDesignReview(page, { route: '/hooks', state: 'stopped', source: SOURCE });
+      release();
     });
 
     test(`a first load that failed is the error state under the header, with the plus inert, at ${width} pixels`, async ({

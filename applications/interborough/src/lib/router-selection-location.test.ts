@@ -36,6 +36,16 @@ describe('a selection kept in the address', () => {
     expect(router.search.get('tab')).toBe('done');
   });
 
+  test('builds the address that opens the page with an item selected, from any page', () => {
+    router.navigate('/hooks/default-on?tab=done', { replace: true });
+    const location = routerSelectionLocationFor('/settings/plugins');
+    expect(location.pathTo('plugin', 'slack')).toBe('/settings/plugins?plugin=slack');
+    expect(location.pathTo('plugin', 'a b&c')).toBe('/settings/plugins?plugin=a+b%26c');
+    // The address the list reads back is the key it was given.
+    router.navigate(location.pathTo('plugin', 'a b&c'), { replace: true });
+    expect(location.read('plugin')).toBe('a b&c');
+  });
+
   test('writes nothing onto another page, which the list outlives the navigation to by a tick', () => {
     router.navigate('/chats', { replace: true });
     routerSelectionLocationFor('/reviews').write('review', 'bureau:a');

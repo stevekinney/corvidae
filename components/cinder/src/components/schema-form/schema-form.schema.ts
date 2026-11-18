@@ -38,6 +38,11 @@ const schema = {
       description:
         'Whether the form is drawn inside another surface, such as a card or a page\'s own form. A hosted\nform is a `div` with `role="group"` and no `<form>` of its own, which a `<form>` in a `<form>`\nwould be, so it never submits, draws no submit button and offers no Edit as JSON panel. A group\ninside it is a legend line with its fields indented and no border, and the items of an array\nare told apart by a hairline instead of a dashed box, so the host\'s own border is the only box.\nRead the value through `onDraftChange`. Defaults to `false`.',
     },
+    readOnly: {
+      type: 'boolean',
+      description:
+        'Draws every field as a label and its value, with no control, no submit button and no Edit\nas JSON: a form the person can read and not change, such as a default hook\'s configuration. A\nsecret field shows its key in monospace beside a Set or Missing dot, and a `writeOnly` field\nshows "Hidden". Defaults to `false`.',
+    },
     class: {
       type: 'string',
       description: 'Custom class merged with `.cinder-schema-form`.',
@@ -68,6 +73,12 @@ const schema = {
         reason: 'unknown-shape',
         required: true,
         description: 'JSON Schema object used to render and validate the form.',
+      },
+      {
+        name: 'secrets',
+        reason: 'unknown-shape',
+        description:
+          'The saved secret keys a field marked `secret: true` offers, with the words and actions around\nit. A schema string marked `secret: true` is drawn as a Select of keys (never a text input) and\nits value is `{ "$secret": key }`. Without this prop such a field has no key to choose.',
       },
       {
         name: 'value',

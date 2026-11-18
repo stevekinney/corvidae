@@ -19,7 +19,9 @@ import type { StatusDotStatus } from './status-dot.types.ts';
  * - Everything else that finished or stopped is neutral, and "Waiting" and "Scheduled" are the
  *   hollow `pending` ring.
  *
- * Some words are scoped: "Ended" is chats only, "Delivered" and "Retrying" are hooks only, and
+ * Some words are scoped: "Disabled" is a plugin that is turned off, "Set" and "Missing" are a secret
+ * a plugin declared (a key that is saved, and one that is not: neutral, because a missing secret is
+ * a state, not a failure; the plugin's own "Needs setup" says what waits on it), "Ended" is chats only, "Delivered" and "Retrying" are hooks only, and
  * "Connected", "Draining" and "Disconnected" are workers only, "Listening", "Ready", "Standby" and
  * "Waiting for a secret" are a workflow trigger's states ("Failed" and "Stopped" serve it too),
  * "Failed for good" is a task that ran out of tries, and "Live" and "Reconnecting…" are for the line above a streaming run's steps.
@@ -57,6 +59,9 @@ export const statusDotWordTones = {
   'Missed runs': 'warning',
   Available: 'success',
   Unavailable: 'neutral',
+  Disabled: 'neutral',
+  Set: 'success',
+  Missing: 'neutral',
   'Needs setup': 'neutral',
   'Needs attention': 'warning',
   'Needs sign-in': 'warning',

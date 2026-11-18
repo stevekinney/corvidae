@@ -92,6 +92,46 @@ A form with more than eight fields (an object group counts as the fields inside 
 
 A failed submit clears the filter and opens every group that holds an error, so focus always has a field to land on.
 
+## Secret fields
+
+A string marked `secret: true` (what a Zod schema's `.meta({ secret: true })` writes) is a reference to a saved secret, never a text value. SchemaForm draws it as a `Select` of the keys the host passes in `secrets.keys`, grouped by each key's `group` (a plugin's title, say), with the note "Set" or "Missing" on each option, and it draws no text or password input for it. Its value is `{ "$secret": key }` and nothing else: that object is what `onDraftChange` and `onSubmit` report, the validator accepts it where the schema says `string` (and refuses a plain string, or a reference with another member), and a plain value a host seeds in `value` is dropped, so it is never shown or sent. `writeOnly` still draws the password input it always did.
+
+The Select holds one key at a time; an optional field also offers "None". A key longer than 32 characters is cut in the middle in the option and shown whole on the option's own line, and the field's trigger is monospace. A chosen key the host does not list reads as Missing. The field also says what is wrong around it:
+
+- A chosen key that is Missing shows "&lt;key&gt; isn’t saved yet." under the Select, the key in monospace, with an "Add the key" button when `secrets.onAdd` is given. The host saves the key and passes the keys again, and the option's note reads Set with no reload.
+- With no keys the Select is disabled and reads "No secrets to choose", and the line under it is `copy.emptyHelp`, then the `manage` link, then `copy.emptyHelpEnd`.
+- With `status: "failed"` the Select is replaced by an `ErrorState variant="row"` under the field's label (its required dot kept): "Couldn’t load the saved secrets." and, when `onRetry` is given, its own "Try again". The rest of the form stays usable.
+- The one action that ends the missing-key warning, "Add the key", is Button's `link` variant, so it reads as the Settings › Plugins link of the empty state does.
+
+Every sentence is a member of `secrets.copy`, with a default, so a host words the field in its own terms.
+
+```svelte
+<script lang="ts">
+  import { SchemaForm } from '@lostgradient/cinder';
+
+  const schema = {
+    type: 'object',
+    properties: {
+      channel: { type: 'string', title: 'Channel' },
+      token: { type: 'string', title: 'Token', secret: true },
+    },
+    required: ['channel', 'token'],
+  };
+  const secrets = {
+    keys: [
+      { key: 'slack-bot-token', group: 'Slack', set: true },
+      { key: 'slack-signing-key', group: 'Slack', set: false },
+    ],
+  };
+</script>
+
+<SchemaForm {schema} {secrets} hosted onDraftChange={(draft) => console.log(draft)} />
+```
+
+## Read only
+
+`readOnly` draws the form as label and value pairs: no control, no submit button, no hidden output and no Edit as JSON, in a `div` with `role="group"`. A boolean reads "Yes" or "No", an option reads its label, a list of tags reads comma-separated, a duration reads in words, and a group nests its own pairs under a hairline. A value wraps anywhere and never widens its column. A secret field shows its key in monospace beside a Set or Missing dot (the dot of the key in `secrets.keys`, Missing when it is not listed) and "Not chosen" when it names none, and a `writeOnly` field shows only "Hidden". Use it for configuration the person may read and not change, never as a disabled form: a disabled input would still look like something to edit.
+
 ## Hosted in another surface
 
 Set `hosted` when the form sits inside a card, a panel or a page's own `<form>`, as a workflow step's input does. The root is a `div` with `role="group"`, because a `<form>` inside a `<form>` is invalid; it never submits, draws no Submit button and no hidden output field, and offers no Edit as JSON panel, so the host reads the value through `onDraftChange`. A group is a legend line over its fields, indented one step with no border, and the items of an array are told apart by a hairline instead of a dashed box, so the host's own border is the only box. A large form keeps Find a field but draws its groups open.
@@ -107,6 +147,7 @@ Set `hosted` when the form sits inside a card, a panel or a page's own `<form>`,
 | `hosted` | `boolean` | no | — | Whether the form is drawn inside another surface, such as a card or a page's own form. A hosted form is a `div` with `role="group"` and no `<form>` of its own, which a `<form>` in a `<form>` would be, so it never submits, draws no submit button and offers no Edit as JSON panel. A group inside it is a legend line with its fields indented and no border, and the items of an array are told apart by a hairline instead of a dashed box, so the host's own border is the only box. Read the value through `onDraftChange`. Defaults to `false`. |
 | `jsonEditable` | `boolean` | no | — | Whether a large form offers its own Edit as JSON panel. Defaults to `true`; set `false` when the host already provides a JSON entry point for the same payload, so the page does not show two. Find a field and the other large-form affordances are unaffected. |
 | `name` | `string` | no | — | Name of the hidden serialized output field. Defaults to `value`. |
+| `readOnly` | `boolean` | no | — | Draws every field as a label and its value, with no control, no submit button and no Edit as JSON: a form the person can read and not change, such as a default hook's configuration. A secret field shows its key in monospace beside a Set or Missing dot, and a `writeOnly` field shows "Hidden". Defaults to `false`. |
 | `submitLabel` | `string` | no | — | Label for the built-in submit button. Defaults to `Submit`. |
 | `submitVisible` | `boolean` | no | — | Whether the form draws its own submit button. Set `false` when the host submits the form from a button elsewhere on the page, such as a footer, whose `form` attribute names this form's `id`. Without the built-in button a form with several fields does not submit on Enter. Defaults to `true`. |
 | `variant` | `"default"` \| `"input"` \| `"setting-rows"` | no | `"default"` | How the fields are drawn. `default` is the plain form. `input` is the Input block of a page that runs or schedules something: short fields share a row two at a time (a switch, an array, a group or a JSON field takes the whole row), a boolean is a switch with its description beside it, and an array of objects is one JSON editor whose status line counts the items. `setting-rows` draws each top-level property as one Settings row (`SettingRow`): the label, the key and the description at the start, the control at the inline end, and a hairline between rows. A property whose control does not fit a column (an object, an array of objects, a JSON field) is drawn under its row, full width and with no box of its own. The rows stack below a container width. A large form keeps the same rows: no Find a field, no Edit as JSON, no reordering. |
@@ -114,6 +155,7 @@ Set `hosted` when the form sits inside a card, a panel or a page's own `<form>`,
 | `onDraftChange` | `(opaque)` | no | — | Called after each edit with the complete current draft, before schema validation. The draft can be schema-invalid and does not change the seed-only `value` contract. In-progress numeric editors and temporarily unparseable JSON fields are reported as their current raw text until the value commits or parses successfully. Not expressible in JSON Schema; see the component types for the signature. |
 | `onSubmit` | `(opaque)` | no | — | Called after validation passes with the schema-conformant output value. Not expressible in JSON Schema; see the component types for the signature. |
 | `schema` | `(opaque)` | yes | — | JSON Schema object used to render and validate the form. Not expressible in JSON Schema; see the component types for the signature. |
+| `secrets` | `(opaque)` | no | — | The saved secret keys a field marked `secret: true` offers, with the words and actions around it. A schema string marked `secret: true` is drawn as a Select of keys (never a text input) and its value is `{ "$secret": key }`. Without this prop such a field has no key to choose. Not expressible in JSON Schema; see the component types for the signature. |
 | `value` | `(opaque)` | no | — | Initial form value. Missing fields are seeded from the schema where possible. **Seed-only — value changes do not reset form state.** After mount the consumer owns the form state. Changing `value` with the same `schema` does NOT reset the form (formValue, errors, rawDrafts). Only changing `schema` causes a remount and resets form state. This is intentional: the form is an editing surface and resetting it on every external value change would silently discard in-progress user edits. Not expressible in JSON Schema; see the component types for the signature. |
 
 <!-- generated:props:end -->
