@@ -205,20 +205,20 @@
             <p class="ib-run__note" role="status">{TASK_COPY.followReconnecting}</p>
           {/if}
           {#if hasAnswer && !scheduled}
-            <p class="ib-run__note">{copy.deliveredToChat}</p>
-            {#if onShowRaw !== undefined}
-              <!-- On a line of its own, pulled back to the card's text edge (COR-2489: at 320 it
-                   wrapped and its label sat 13px inside the text above it). -->
-              <div>
+            <!-- Show raw payloads follows "Delivered to chat." on its line, and takes a line of its
+                 own only when it wraps, with its words on the card's text edge (COR-2489: at 320 it
+                 wrapped and its label sat 13px inside the text above it; tasks.css). -->
+            <div class="ib-run__delivered" data-run-delivered>
+              <p class="ib-run__note">{copy.deliveredToChat}</p>
+              {#if onShowRaw !== undefined}
                 <Button
                   variant="ghost-accent"
                   size="sm"
-                  flush
                   label={copy.showRawPayloads}
                   onclick={onShowRaw}
                 />
-              </div>
-            {/if}
+              {/if}
+            </div>
           {/if}
         </section>
       </div>
