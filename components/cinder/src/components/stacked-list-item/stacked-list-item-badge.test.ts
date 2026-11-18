@@ -40,9 +40,13 @@ describe('StackedListItem badge (R10-01)', () => {
     const row = container.querySelector('.cinder-stacked-list-item__title-row');
     expect(row).not.toBeNull();
     const [title, badge] = [...(row?.children ?? [])];
-    // The title keeps its clamp and its tooltip; the mark is a sibling after it, never inside it.
+    // The title keeps its clamp; the mark is a sibling after it, never inside it. A linked row has
+    // one tooltip, on the row (COR-2227): the whole name, which a one-line phone title cuts.
     expect(title?.classList.contains('cinder-stacked-list-item__title')).toBe(true);
-    expect(title?.getAttribute('title')).toBe('Post settled runs');
+    expect(title?.hasAttribute('title')).toBe(false);
+    expect(container.querySelector('.cinder-stacked-list-item')?.getAttribute('title')).toBe(
+      'Post settled runs',
+    );
     expect(title?.textContent).not.toContain('Plugin');
     expect(badge?.classList.contains('cinder-stacked-list-item__badge')).toBe(true);
     expect(badge?.textContent).toBe('Plugin');

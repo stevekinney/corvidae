@@ -122,6 +122,17 @@
   // A group row is not a link: its only control is the disclosure button. A row that failed to
   // load is not a link either: its details are the thing that is missing.
   const linkHref = $derived(details === undefined && error === undefined ? href : undefined);
+  // A linked row's title link covers every line, so a tooltip on line two could never be reached
+  // (COR-2227): the linked row draws one tooltip on the row itself, the title, a line break, then
+  // line two, and none on its lines. An unlinked row keeps one tooltip per line.
+  const rowTooltip = $derived(
+    linkHref === undefined
+      ? undefined
+      : [tooltip, metaTooltip].filter((part) => part !== undefined && part !== '').join('\n') ||
+          undefined,
+  );
+  const lineTooltip = $derived(linkHref === undefined ? tooltip : undefined);
+  const lineMetaTooltip = $derived(linkHref === undefined ? metaTooltip : undefined);
   // The phone form is the row's own width below 640px, not the viewport's (COR-2448), so a row in
   // a 360px pane of a wide window takes it and a row in a wide column of a narrow window does not.
   // The stylesheet asks the same question with a container query; the script needs the answer for
@@ -199,7 +210,11 @@
 {/snippet}
 
 {#snippet titleText()}
-  <div class="cinder-stacked-list-item__title" data-cinder-title-lines={titleLines} title={tooltip}>
+  <div
+    class="cinder-stacked-list-item__title"
+    data-cinder-title-lines={titleLines}
+    title={lineTooltip}
+  >
     {#if linkHref !== undefined}
       <a
         class="cinder-stacked-list-item__title-link"
@@ -252,6 +267,7 @@
   data-cinder-expanded={details !== undefined && expanded ? '' : undefined}
   data-cinder-selected={selected ? '' : undefined}
   aria-current={selected && linkHref === undefined ? 'true' : undefined}
+  title={rowTooltip}
   {...safeRest}
   {@attach measureRow}
 >
@@ -353,7 +369,7 @@
               {/if}
             </div>
           {:else if description || meta}
-            <div class="cinder-stacked-list-item__line-two" title={metaTooltip}>
+            <div class="cinder-stacked-list-item__line-two" title={lineMetaTooltip}>
               {#if description}
                 <div class="cinder-stacked-list-item__description">{@render description()}</div>
               {/if}
@@ -371,12 +387,14 @@
           {/if}
         {:else}
           {#if description}
-            <div class="cinder-stacked-list-item__description" title={metaTooltip}>
+            <div class="cinder-stacked-list-item__description" title={lineMetaTooltip}>
               {@render description()}
             </div>
           {/if}
           {#if meta}
-            <div class="cinder-stacked-list-item__meta" title={metaTooltip}>{@render meta()}</div>
+            <div class="cinder-stacked-list-item__meta" title={lineMetaTooltip}>
+              {@render meta()}
+            </div>
           {/if}
         {/if}
       </div>

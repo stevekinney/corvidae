@@ -149,18 +149,6 @@
     white-space: nowrap;
   }
 
-  /* On a phone a title with a mark takes one line and ends in an ellipsis, so the mark sits 6px after
-     the last character drawn. A title that wrapped would keep the width of its box, not of its last
-     line, and leave the mark stranded beside a short first line (R10-01). The row's tooltip is the
-     whole name. */
-  @container cinder-stacked-list-item (max-width: 639.98px) {
-    .cinder-stacked-list-item__title-row > .cinder-stacked-list-item__title {
-      display: block;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-  }
-
   .cinder-stacked-list-item__title-link {
     color: inherit;
     text-decoration: none;
@@ -346,6 +334,18 @@
       ).cinder-stacked-list-item--status-leading
       .cinder-stacked-list-item__status::before {
       display: none;
+    }
+  }
+
+  /* On a phone a title with a mark takes one line and ends in an ellipsis, so the mark sits 6px after
+     the last character drawn. A title that wrapped would keep the width of its box, not of its last
+     line, and leave the mark stranded beside a short first line (R10-01). The row's one tooltip is
+     the whole name. */
+  @container cinder-stacked-list-item (max-width: 639.98px) {
+    .cinder-stacked-list-item__title-row > .cinder-stacked-list-item__title {
+      display: block;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
   }
 

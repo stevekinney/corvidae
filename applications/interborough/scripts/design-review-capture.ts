@@ -107,6 +107,8 @@ const SHOWCASE_SPECIFICATIONS = [
   'tests/e2e/api-reference.spec.ts',
   'tests/e2e/first-run.spec.ts',
   'tests/e2e/home.spec.ts',
+  // Home's two activity bands in each state their design rows name (COR-2227).
+  'tests/e2e/home-activity.spec.ts',
   'tests/e2e/chat-list.spec.ts',
   'tests/e2e/chat-page.spec.ts',
   'tests/e2e/chat-responsive.spec.ts',
