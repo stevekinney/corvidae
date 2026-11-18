@@ -507,13 +507,18 @@
     readonly signal: AbortSignal;
   };
 
+  // `onError` on both: the page places every refusal itself (`describe` of the flow puts it under a
+  // field, in the stale notice, in the test result or in the connect failure), so the query
+  // client's default toast would be a second, generic notice for the same refusal.
   const test = createMutation(() => ({
     gcTime: 0,
+    onError: () => undefined,
     mutationFn: ({ name: id, request, signal }: Ready) => probeToolSource(id, request, { signal }),
   }));
 
   const connect = createMutation(() => ({
     gcTime: 0,
+    onError: () => undefined,
     // `create`: the host refuses a name another tab saved since this page listed the sources.
     mutationFn: ({ name: id, request, signal }: Ready) =>
       editing.data === undefined

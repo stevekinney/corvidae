@@ -7,6 +7,7 @@
  */
 import { cleanup, fireEvent, render, waitFor } from '@testing-library/svelte';
 import { afterEach, describe, expect, test } from 'bun:test';
+import { tick } from 'svelte';
 
 import { breadcrumbTrail } from '../../app/breadcrumbs.svelte.ts';
 import { CAPABILITIES_COPY } from '../../app/copy/capabilities.ts';
@@ -58,6 +59,11 @@ function serve(editing: Response) {
       : other(url, init),
   ).restore;
   return host;
+}
+
+/** Lets what a failed save would have queued, a toast among it, happen before the page is read. */
+async function awakeTicks(): Promise<void> {
+  for (let turn = 0; turn < 5; turn += 1) await tick();
 }
 
 const mount = () => render(QueryPage, { props: { page: ConnectTools } } as never);
@@ -145,12 +151,31 @@ describe('Edit connection', () => {
     const stale = await findByTestId('connect-edit-stale');
     expect(stale.textContent).toContain(copy.edit.stale);
     expect(container.textContent).not.toContain('secret provider');
+    // One notice: the page's own callout, and not the generic toast the query client would add.
+    await awakeTicks();
+    expect(document.body.textContent).not.toContain('Something went wrong');
     expect(container.querySelector('[data-testid="connect-failed"]')).toBeNull();
 
     await fireEvent.click(getByRole('button', { name: copy.edit.reload }));
 
     await waitFor(() => expect(field('connect-name').value).toBe('GitHub'));
     expect(container.querySelector('[data-testid="connect-edit-stale"]')).toBeNull();
+  });
+
+  test('a save refused for a reason the page has no words for shows exactly one notice, its own', async () => {
+    const host = serve(Response.json(EDITING));
+    host.refuseNext = Response.json({ error: 'failed', message: '' }, { status: 500 });
+    landAt('/capabilities/connect?source=github');
+    const { getByRole, findByTestId } = mount();
+    await waitFor(() => expect(field('connect-url').value).toBe('https://mcp.github.example/mcp'));
+
+    await fireEvent.click(getByRole('button', { name: copy.edit.save }));
+
+    // The save tests first, and the refusal lands on that test: the page's own failure notice.
+    const failed = await findByTestId('connect-failure');
+    expect(failed.textContent).toContain(copy.probe.failed);
+    await awakeTicks();
+    expect(document.body.textContent).not.toContain('Something went wrong');
   });
 
   test('says why a source cannot be edited here, with the way back', async () => {
