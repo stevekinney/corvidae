@@ -240,6 +240,8 @@ export const WORKFLOW_COPY = {
       fileLabel: 'file',
       /** The schedule the file defines, with its name as a link between these. */
       scheduleDefined: { before: 'Schedule: ', after: ', defined in this file.' },
+      /** The same, for a schedule that is paused (row 62v): "…, defined in this file (paused)." */
+      scheduleDefinedPaused: ', defined in this file (paused).',
       /** A schedule that starts the workflow without being defined in the file. */
       alsoStartedBy: { before: 'Also started by the ', after: ' schedule' },
       alsoStartedByMany: (count: number): string => `Also started by ${String(count)} schedules.`,

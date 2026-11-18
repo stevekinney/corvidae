@@ -542,17 +542,34 @@
   );
   /** The engine's definition of the type: a code type's own, or the one it loaded a ready file as. */
   const definition = $derived(resolved?.definition);
+  /**
+   * The version the header reads: the file's own document, or for a file that cannot load the
+   * newest version the Bureau saved. What starts it, its schedule's name and its description all
+   * come from this one version, so the header says its schedule once (design correction, row 62v).
+   */
+  const headerVersion = $derived.by(() => {
+    if (file === undefined) return undefined;
+    // A file that cannot load reads as the version the Bureau still runs, as its Overview's steps
+    // do, even when its broken text parses; one that is not saved yet reads as its own text.
+    const saved = file.state === 'invalid' ? history.data?.[0] : undefined;
+    if (saved !== undefined) {
+      return { trigger: saved.trigger, description: saved.description ?? file.description ?? null };
+    }
+    return document === undefined
+      ? undefined
+      : { trigger: document.trigger, description: file.description ?? null };
+  });
   const description = $derived(
     resolved?.kind === 'agent-authored'
-      ? (file?.description ?? null)
+      ? (headerVersion?.description ?? file?.description ?? null)
       : (definition?.description ?? null),
   );
   const details = $derived(definitionDetails(definition, acceptedSignals));
-  // What starts the workflow: a file's trigger (for a file that cannot load, the newest version that
-  // ran, which is the last the Bureau could read), or the schedules the engine has for a code type.
+  // What starts the workflow: a file's trigger (for a file that cannot load, the newest version the
+  // Bureau saved, which is the last it could read), or the schedules the engine has for a code type.
   const starts = $derived.by(() => {
     if (file === undefined) return schedulesSummary(schedules.data ?? null);
-    const trigger = document?.trigger ?? history.data?.[0]?.trigger ?? null;
+    const trigger = headerVersion?.trigger ?? null;
     // A trigger a plugin contributes says what starts it in its kind's own description.
     return triggerSummary(trigger) ?? pluginTriggerSummary(trigger, pluginKinds.data?.triggers);
   });
@@ -633,10 +650,10 @@
   /** The newest run, `undefined` until the engine has said. */
   const lastRun = $derived(headline.data === undefined ? undefined : headline.data.newest);
 
-  const fileSchedule = $derived(document?.trigger.kind === 'schedule');
-  /** The name the file gives its schedule, when its trigger is one. */
+  const fileSchedule = $derived(headerVersion?.trigger['kind'] === 'schedule');
+  /** The name the file (or its last saved version) gives its schedule, when its trigger is one. */
   const scheduleName = $derived.by(() => {
-    const named = fileSchedule ? document?.trigger['name'] : undefined;
+    const named = fileSchedule ? headerVersion?.trigger['name'] : undefined;
     return typeof named === 'string' ? named : undefined;
   });
   /** The name a person reads for each schedule that starts the workflow, which a run's row names. */

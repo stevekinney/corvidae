@@ -185,7 +185,10 @@ export function scheduleLine(input: {
         [
           { text: copy.scheduleDefined.before },
           { text: only.label, href: only.href },
-          { text: copy.scheduleDefined.after },
+          {
+            text:
+              only.status === 'paused' ? copy.scheduleDefinedPaused : copy.scheduleDefined.after,
+          },
         ],
       ],
     };

@@ -321,6 +321,8 @@ export const workflowHistorySchema = z.object({
       origin: z.enum(['write', 'file']),
       surface: z.enum(['web', 'palette', 'api']).nullable(),
       title: z.string().nullable(),
+      // What the version said the workflow is for, which the header of a file that cannot load reads.
+      description: z.string().nullable().optional(),
       trigger: z.record(z.string(), z.unknown()),
       steps: z.array(z.record(z.string(), z.unknown())),
       previousVersion: z.string().nullable(),

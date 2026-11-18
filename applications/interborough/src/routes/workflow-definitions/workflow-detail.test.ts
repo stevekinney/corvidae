@@ -1043,6 +1043,32 @@ describe('design correction: the agent a file runs as', () => {
   });
 });
 
+describe('design correction: the header of a file that cannot load (row 62v)', () => {
+  test('reads its trigger, schedule name and description from its last saved version, and says its paused schedule once, as its own', async () => {
+    const description = 'Looks up an order, waits for a person to approve, then issues the refund.';
+    const { container } = open('/workflows/refund', {
+      files: [invalidFile('refund')],
+      schedules: [scheduleFixture('refund-audit', 'refund', { status: 'paused' })],
+      history: {
+        refund: [
+          historyEntry({
+            description,
+            trigger: { kind: 'schedule', name: 'Weekly refund audit', spec: '0 11 * * 1' },
+          }),
+        ],
+      },
+    });
+    const root = await ready(container);
+    await waitFor(() =>
+      expect(testId(root, 'workflow-line-schedule')?.textContent?.trim()).toBe(
+        'Schedule: Weekly refund audit, defined in this file (paused).',
+      ),
+    );
+    expect(root.textContent).not.toContain('Also started by');
+    expect(root.textContent).toContain(description);
+  });
+});
+
 describe('a part of the page that fails', () => {
   test('says the schedules could not be loaded, and shows the rest', async () => {
     const { container } = open('/workflows/order-processing', { failSchedules: true });

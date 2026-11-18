@@ -213,6 +213,15 @@ describe('the schedule line', () => {
     ]);
   });
 
+  test('says a schedule the file defines is paused, in the same sentence (row 62v)', () => {
+    expect(
+      scheduleLine({
+        schedules: [{ ...schedule, status: 'paused' }],
+        definedInFile: true,
+      })?.parts[0]?.at(-1)?.text,
+    ).toBe(', defined in this file (paused).');
+  });
+
   test('says "Also started by" for another schedule, with its cadence while it is active and "paused" when it is not', () => {
     const active = scheduleLine({ schedules: [schedule], definedInFile: false });
     expect(active?.parts[0]?.map((run) => run.text)).toEqual([
