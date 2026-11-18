@@ -10807,7 +10807,7 @@
       }
     },
     {
-      "description": "Lets the last stopped turn of one of the caller’s own contexts go on: the run itself, from where it stopped, its reply so far kept, with no new message from the person. No kind of stop can be resumed yet, so every call is refused and nothing is started or written. A run the person stopped, or that failed, has ended its workflow, and the engine cannot go on with the same run: a `Conflict` with reason `run-not-resumable`. A run whose process stopped is taken up by the Bureau that next boots, which goes on with it from its checkpoint or ends it when it cannot: `turn-recovering`. A reply the model cut at its token limit is a finished turn: `turn-finished`. A run still going is `turn-running`, and one waiting on an approval or a question `turn-awaiting-person`, which goes on once it is answered. A later run of the context is `not-latest-turn`, and a run the context does not have is `NotFound`. An archived context is a `Conflict` with reason `context-archived`. A Bureau that is shutting down is `Unavailable` with reason `shutting-down`. Another owner’s context and a missing one answer `NotFound`, whatever run they name; another owner’s needs both `bureau.contexts:read` and `bureau.contexts:write`. No scope is needed for the caller’s own.",
+      "description": "Lets the last stopped turn of one of the caller’s own contexts go on. A continuation run starts on the stored conversation, the partial reply included, with no message from the person, and writes a new assistant turn after the partial reply; the answer names it as `runId`, and the stopped run as `resumedRunId`. `runId` must be the context’s last run, stopped by the person or failed on a cause worth trying again (finish reason `error`). The start is one atomic write to the context that adds a hidden continuation row naming the stopped run and the command and judges the history again, so a message, a discard or another resume that lands first wins and this one is refused. `commandId` is the caller’s own identifier: a retry answers the run the first call started, after a restart too, and never starts a second; the same `commandId` for another run is a `Conflict` with reason `command-conflict`. Each refusal is a `Conflict` and starts nothing: `not-latest-turn` (a later run, or the turn already went on), `turn-running`, `turn-awaiting-person` (it goes on once the approval or question is answered), `turn-recovering` (the run’s process stopped, and the Bureau that next boots goes on with it from its checkpoint or ends it when it cannot), `turn-finished` (a reply cut at the token limit included), `run-not-resumable` (a failure going on would meet again), `turn-interrupted-call` (the turn stopped inside a tool call, which going on would run again unasked), `follow-up-delivered`, `follow-ups-queued` and `nothing-to-resume`. A run the context does not have is `NotFound`. An archived context is a `Conflict` with reason `context-archived`. A Bureau that is shutting down is `Unavailable` with reason `shutting-down`. Another owner’s context and a missing one answer `NotFound`, whatever run they name; another owner’s needs both `bureau.contexts:read` and `bureau.contexts:write`. No scope is needed for the caller’s own.",
       "errors": [
         {
           "$ref": "#/components/errors/Unauthorized"
@@ -10841,7 +10841,7 @@
           "name": "commandId",
           "required": true,
           "schema": {
-            "description": "The caller’s own identifier for the command; a retry of it is answered the same.",
+            "description": "The caller’s own identifier for the command; a retry of it answers the run the first call started.",
             "maxLength": 256,
             "minLength": 1,
             "type": "string"
@@ -10860,7 +10860,7 @@
           "name": "runId",
           "required": true,
           "schema": {
-            "description": "The run whose turn to resume: the context’s last run, which stopped.",
+            "description": "The run whose turn to resume: the context’s last run, which the person stopped or which failed.",
             "minLength": 1,
             "type": "string"
           }
@@ -10875,13 +10875,17 @@
             "contextId": {
               "type": "string"
             },
+            "resumedRunId": {
+              "type": "string"
+            },
             "runId": {
               "type": "string"
             }
           },
           "required": [
             "contextId",
-            "runId"
+            "runId",
+            "resumedRunId"
           ],
           "type": "object"
         }
@@ -10899,7 +10903,7 @@
         "additionalProperties": false,
         "properties": {
           "commandId": {
-            "description": "The caller’s own identifier for the command; a retry of it is answered the same.",
+            "description": "The caller’s own identifier for the command; a retry of it answers the run the first call started.",
             "maxLength": 256,
             "minLength": 1,
             "type": "string"
@@ -10910,7 +10914,7 @@
             "type": "string"
           },
           "runId": {
-            "description": "The run whose turn to resume: the context’s last run, which stopped.",
+            "description": "The run whose turn to resume: the context’s last run, which the person stopped or which failed.",
             "minLength": 1,
             "type": "string"
           }

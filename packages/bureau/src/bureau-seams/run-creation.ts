@@ -600,6 +600,8 @@ export function createRunCreation<D extends AgentDefinitions>(
         undefined,
         // COR-2285 — this save starts the run, so it refuses a context archived meanwhile.
         true,
+        // COR-2437 — a continuation's own judgment, decided inside the same atomic update.
+        request.startGuard,
       );
 
       // F3 — opt-in `requestHumanInput` wiring for a REAL durable run

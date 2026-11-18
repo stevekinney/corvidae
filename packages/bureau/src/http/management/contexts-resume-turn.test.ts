@@ -1,7 +1,8 @@
 /**
- * COR-2437 — `bureau.contexts.resumeturn` resumes no kind of stop yet: the owner is answered the
- * Bureau's reason as a `Conflict`, a run the context does not have as `NotFound`, and another
- * owner's context exactly as a missing one, whatever run it names.
+ * COR-2437 — `bureau.contexts.resumeturn` answers each refusal of the Bureau's as a `Conflict` with
+ * its reason, a run the context does not have as `NotFound`, and another owner's context exactly
+ * as a missing one, whatever run it names. A turn that goes on is `session-resume.test.ts`'s and
+ * `workspace-context-privacy.test.ts`'s.
  */
 import { createAgent } from '@lostgradient/operative';
 import { createOperationHandler, unauthenticatedLocalAuthContext } from '@lostgradient/backchannel';
@@ -120,6 +121,11 @@ describe('bureau.contexts.resumeturn refusals', () => {
     'turn-recovering',
     'turn-finished',
     'run-not-resumable',
+    'turn-interrupted-call',
+    'follow-up-delivered',
+    'follow-ups-queued',
+    'nothing-to-resume',
+    'command-conflict',
   ] satisfies SessionResumeRefusalReason[])(
     'answers %s as a Conflict with that reason',
     async (reason) => {

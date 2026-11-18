@@ -2,26 +2,31 @@ import { authorizeWorkspaceOperation } from '../workspace-authorization.ts';
 
 /**
  * `bureau.contexts.resumeturn`: let a context's last stopped turn go on, through
- * `Bureau.contexts.resumeTurn` (COR-2437). The run itself would go on from where it stopped, its
- * reply so far kept, with no new message from the person. No kind of stop can be resumed today,
- * so every call is refused with a named fault and a stable `data.reason`, and nothing is started
- * or written:
+ * `Bureau.contexts.resumeTurn` (COR-2437). A continuation run starts on the stored conversation,
+ * the partial reply included, with no message from the person, and writes a new assistant turn
+ * after the partial reply. A `commandId` makes the call idempotent: a retry answers the run the
+ * first call started, after a restart too, and never starts a second.
  *
- * | Refusal                                         | Fault      | `data.reason`                       |
- * | ----------------------------------------------- | ---------- | ----------------------------------- |
- * | a missing or invisible context                  | `NotFound` | none (`data.resource` is `context`) |
- * | a run the context does not have                 | `NotFound` | none (`data.resource` is `run`)     |
- * | a later run of the context                      | `Conflict` | `not-latest-turn`                   |
- * | the run is still going                          | `Conflict` | `turn-running`                      |
- * | the run waits on an approval or a question      | `Conflict` | `turn-awaiting-person`              |
- * | the run's process stopped; boot recovery has it | `Conflict` | `turn-recovering`                   |
- * | the run finished, or hit its token limit        | `Conflict` | `turn-finished`                     |
- * | the person stopped the run, or it failed        | `Conflict` | `run-not-resumable`                 |
- * | the context is archived                         | `Conflict` | `context-archived`                  |
- * | Bureau is shutting down                         | `Unavailable` | `shutting-down`                  |
+ * | Refusal                                         | Fault         | `data.reason`                       |
+ * | ----------------------------------------------- | ------------- | ----------------------------------- |
+ * | a missing or invisible context                  | `NotFound`    | none (`data.resource` is `context`) |
+ * | a run the context does not have                 | `NotFound`    | none (`data.resource` is `run`)     |
+ * | a later run, or the turn already went on        | `Conflict`    | `not-latest-turn`                   |
+ * | the run is still going                          | `Conflict`    | `turn-running`                      |
+ * | the run waits on an approval or a question      | `Conflict`    | `turn-awaiting-person`              |
+ * | the run's process stopped; boot recovery has it | `Conflict`    | `turn-recovering`                   |
+ * | the run finished, or hit its token limit        | `Conflict`    | `turn-finished`                     |
+ * | the run failed on a cause it would meet again   | `Conflict`    | `run-not-resumable`                 |
+ * | the turn stopped inside a tool call             | `Conflict`    | `turn-interrupted-call`             |
+ * | a follow-up was delivered into the turn         | `Conflict`    | `follow-up-delivered`               |
+ * | a follow-up is still queued                     | `Conflict`    | `follow-ups-queued`                 |
+ * | the run wrote nothing, or was discarded         | `Conflict`    | `nothing-to-resume`                 |
+ * | the `commandId` resumed another run             | `Conflict`    | `command-conflict`                  |
+ * | the context is archived                         | `Conflict`    | `context-archived`                  |
+ * | Bureau is shutting down                         | `Unavailable` | `shutting-down`                     |
  *
  * It needs both `bureau.contexts:read` and `bureau.contexts:write` for another owner's context,
- * as discarding a turn does, and none for the caller's own.
+ * as discarding a turn does, and none for the caller's own. The continuation run is the caller's.
  *
  * @module contexts-resume-turn-operation
  */
@@ -55,18 +60,24 @@ const contextsResumeTurnInput = z.object({
     .string()
     .min(1)
     .max(256)
-    .describe('The caller’s own identifier for the command; a retry of it is answered the same.'),
+    .describe(
+      'The caller’s own identifier for the command; a retry of it answers the run the first call started.',
+    ),
   runId: z
     .string()
     .min(1)
-    .describe('The run whose turn to resume: the context’s last run, which stopped.'),
+    .describe(
+      'The run whose turn to resume: the context’s last run, which the person stopped or which failed.',
+    ),
 });
 
 const contextsResumeTurnOutput = z.object({
   /** The context whose turn went on. */
   contextId: z.string(),
-  /** The run that went on. */
+  /** The continuation run, which goes on from the stopped run's partial reply. */
   runId: z.string(),
+  /** The stopped run whose turn went on. */
+  resumedRunId: z.string(),
 });
 
 export const contextsResumeTurnOperation = defineOperation<
@@ -79,7 +90,7 @@ export const contextsResumeTurnOperation = defineOperation<
   mcpExposable: false,
   summary: 'Resume a context’s last stopped turn',
   description:
-    'Lets the last stopped turn of one of the caller’s own contexts go on: the run itself, from where it stopped, its reply so far kept, with no new message from the person. No kind of stop can be resumed yet, so every call is refused and nothing is started or written. A run the person stopped, or that failed, has ended its workflow, and the engine cannot go on with the same run: a `Conflict` with reason `run-not-resumable`. A run whose process stopped is taken up by the Bureau that next boots, which goes on with it from its checkpoint or ends it when it cannot: `turn-recovering`. A reply the model cut at its token limit is a finished turn: `turn-finished`. A run still going is `turn-running`, and one waiting on an approval or a question `turn-awaiting-person`, which goes on once it is answered. A later run of the context is `not-latest-turn`, and a run the context does not have is `NotFound`. An archived context is a `Conflict` with reason `context-archived`. A Bureau that is shutting down is `Unavailable` with reason `shutting-down`. Another owner’s context and a missing one answer `NotFound`, whatever run they name; another owner’s needs both `bureau.contexts:read` and `bureau.contexts:write`. No scope is needed for the caller’s own.',
+    'Lets the last stopped turn of one of the caller’s own contexts go on. A continuation run starts on the stored conversation, the partial reply included, with no message from the person, and writes a new assistant turn after the partial reply; the answer names it as `runId`, and the stopped run as `resumedRunId`. `runId` must be the context’s last run, stopped by the person or failed on a cause worth trying again (finish reason `error`). The start is one atomic write to the context that adds a hidden continuation row naming the stopped run and the command and judges the history again, so a message, a discard or another resume that lands first wins and this one is refused. `commandId` is the caller’s own identifier: a retry answers the run the first call started, after a restart too, and never starts a second; the same `commandId` for another run is a `Conflict` with reason `command-conflict`. Each refusal is a `Conflict` and starts nothing: `not-latest-turn` (a later run, or the turn already went on), `turn-running`, `turn-awaiting-person` (it goes on once the approval or question is answered), `turn-recovering` (the run’s process stopped, and the Bureau that next boots goes on with it from its checkpoint or ends it when it cannot), `turn-finished` (a reply cut at the token limit included), `run-not-resumable` (a failure going on would meet again), `turn-interrupted-call` (the turn stopped inside a tool call, which going on would run again unasked), `follow-up-delivered`, `follow-ups-queued` and `nothing-to-resume`. A run the context does not have is `NotFound`. An archived context is a `Conflict` with reason `context-archived`. A Bureau that is shutting down is `Unavailable` with reason `shutting-down`. Another owner’s context and a missing one answer `NotFound`, whatever run they name; another owner’s needs both `bureau.contexts:read` and `bureau.contexts:write`. No scope is needed for the caller’s own.',
   destructive: false,
   tags: ['Contexts'],
   inputSchema: contextsResumeTurnInput,
@@ -128,7 +139,11 @@ export const contextsResumeTurnOperation = defineOperation<
         commandId: input.commandId,
         runId: input.runId,
       });
-      return { contextId: result.contextId, runId: result.runId };
+      return {
+        contextId: result.contextId,
+        runId: result.runId,
+        resumedRunId: result.resumedRunId,
+      };
     } catch (error) {
       if (error instanceof SessionResumeRefusedError) {
         if (error.reason === 'run-not-found') throw resourceNotFound('run', input.runId);
