@@ -371,7 +371,11 @@
         </Collapsible>
       </section>
     {/if}
-    <div class="ib-steps-frame" data-testid="run-steps">
+    <div
+      class="ib-steps-frame"
+      data-testid="run-steps"
+      data-step-chosen={selectedKey === null ? undefined : ''}
+    >
       <ListDetail
         items={pageEntries}
         key={(entry: WorkflowTimelineEntry) => String(entry.step)}
@@ -574,15 +578,13 @@
     overflow: hidden;
   }
 
-  /* With no step chosen the detail pane says "Choose a step" at its top and is as tall as that,
-   * never a pane of the frame's whole height with the words centred in it (COR-2489: about 1,300px
-   * at 1280). A chosen step's pane keeps the frame's height and scrolls. */
-  .ib-steps-frame
-    :global(
-      .cinder-list-detail__detail:has(> .cinder-list-detail__detail-body > .cinder-empty-state)
-    ) {
+  /* With no step chosen the frame is as tall as what it holds, the list and "Choose a step", up to
+   * the same height, and scrolls past it: never a frame of that whole height with the words centred
+   * in an empty pane (COR-2489: about 1,300px at 1280). A chosen step keeps the frame's height. */
+  .ib-steps-frame:not([data-step-chosen]) {
     block-size: auto;
-    align-self: flex-start;
+    max-block-size: max(24rem, 60dvh);
+    overflow-y: auto;
   }
 
   .ib-steps-summary {
