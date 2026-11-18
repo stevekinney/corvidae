@@ -123,11 +123,12 @@ function dailySummary() {
 }
 
 describe('a schedule that runs an agent', () => {
-  test('says Missed runs, 4 in line one, the kind first in line two, and no provider blocker for a scripted agent', () => {
+  test('says Missed runs with a count of 4 in line one, the kind first in line two, and no provider blocker for a scripted agent', () => {
     const { summary, attention, overlay: bureau } = dailySummary();
     const row = scheduleRowOf(summary, context({ overlay: bureau, attention }));
     expect(row.title).toBe('Daily summary');
-    expect(row.statusWord).toBe('Missed runs, 4');
+    expect(row.statusWord).toBe('Missed runs');
+    expect(row.missedCount).toBe(4);
     expect(row.statusKey).toBe('missed');
     expect(row.blockers).toEqual([]);
     expect(text(row.lineTwo)).toMatch(
@@ -168,7 +169,8 @@ describe('a schedule that runs an agent', () => {
         overlay: overlay({ agents: new Map([['daily', 'assistant']]) }),
       }),
     );
-    expect(row.statusWord).toBe('Missed runs, 4');
+    expect(row.statusWord).toBe('Missed runs');
+    expect(row.missedCount).toBe(4);
     expect(row.missedSince).toBeUndefined();
     expect(text(row.phoneLineThree)).toBe('Missed 4 times');
     const caughtUp = scheduleRowOf(

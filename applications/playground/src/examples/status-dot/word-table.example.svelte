@@ -20,7 +20,7 @@
   </div>
   <div class="example-preview-row">
     <StatusDot word="Running, checking the result" size="sm" />
-    <StatusDot word="Missed runs, 4" size="sm" />
+    <StatusDot word="Missed runs" qualifier={4} size="sm" />
     <StatusDot word="Done, refund not issued" size="sm" />
   </div>
 </div>

@@ -59,7 +59,7 @@ for (const width of WIDTHS) {
     const toggle = main.getByRole('switch', { name: 'Active, Daily summary schedule' });
     await expect(toggle).toBeVisible();
     await expect(toggle).toHaveAttribute('aria-checked', 'true');
-    await expect(main.locator('.cinder-page-header')).toContainText('Missed runs, 4');
+    await expect(main.locator('.cinder-page-header')).toContainText(/Missed runs\s*4/);
     // The actions: secondary Edit and Run now, and the menu.
     for (const name of ['Edit', 'Run now']) {
       await expect(main.getByRole('button', { name })).toHaveAttribute(
@@ -517,7 +517,7 @@ for (const width of WIDTHS) {
       await expect(
         page.getByRole('switch', { name: 'Active, Daily summary schedule' }),
       ).toBeChecked();
-      await expect(page.locator('main')).toContainText('Missed runs, 4');
+      await expect(page.locator('main')).toContainText(/Missed runs\s*4/);
       await expect(list.locator('li[data-cinder-kind="now"]')).toContainText('Mon Nov 2, 10:46 AM');
       // The pointer leaves the row, so the capture shows Undo at rest rather than hovered.
       await page.mouse.move(0, 0);

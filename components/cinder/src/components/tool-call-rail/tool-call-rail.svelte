@@ -416,35 +416,22 @@
           {/if}
         </span>
         <span class="cinder-tool-call-rail__summary-text">{words.used(calls.length, false)}</span
-        >{#if failedCount > 0}<span
-            class="cinder-tool-call-rail__summary-separator"
-            aria-hidden="true">,</span
-          >
+        >{#if failedCount > 0}
           <span class="cinder-tool-call-rail__count" data-cinder-count="failed">
             <span class="cinder-tool-call-rail__count-dot" aria-hidden="true"></span>
             {words.failed(failedCount)}
           </span>
-        {/if}{#if waitingCount > 0}<span
-            class="cinder-tool-call-rail__summary-separator"
-            aria-hidden="true">,</span
-          >
+        {/if}{#if waitingCount > 0}
           <span class="cinder-tool-call-rail__count" data-cinder-count="waiting">
             <span class="cinder-tool-call-rail__count-dot" aria-hidden="true"></span>
             {words.waiting(waitingCount)}
           </span>
-        {/if}{#if expiredCount > 0}<span
-            class="cinder-tool-call-rail__summary-separator"
-            aria-hidden="true">,</span
-          >
+        {/if}{#if expiredCount > 0}
           <span class="cinder-tool-call-rail__count" data-cinder-count="expired">
             <span class="cinder-tool-call-rail__count-dot" aria-hidden="true"></span>
             {words.expired(expiredCount)}
           </span>
-        {/if}{#if duration !== undefined && duration !== ''}<span
-            class="cinder-tool-call-rail__summary-separator"
-            data-cinder-duration=""
-            aria-hidden="true">,</span
-          >
+        {/if}{#if duration !== undefined && duration !== ''}{' '}
           <span class="cinder-tool-call-rail__summary-duration">{duration}</span>
         {/if}
       </button>

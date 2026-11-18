@@ -362,6 +362,74 @@ describe('StatusDot wordTone (row 33h)', () => {
   });
 });
 
+describe('StatusDot qualifier (row 09q)', () => {
+  test('draws the qualifier as its own piece after the word, with no separator in the visible text', () => {
+    const { container } = render(StatusDot, { props: { word: 'Missed runs', qualifier: 4 } });
+    const root = container.querySelector('.cinder-status-dot');
+    const label = container.querySelector('.cinder-status-dot__label');
+    const qualifier = label?.querySelector('.cinder-status-dot__qualifier');
+    expect(qualifier?.textContent).toBe('4');
+    // A count keeps tabular numerals.
+    expect(qualifier?.hasAttribute('data-cinder-numeric')).toBe(true);
+    // The word, a space, then the qualifier: no comma and no middle dot between them.
+    const visible = label?.textContent?.replaceAll(/\s+/g, ' ').trim();
+    expect(visible).toBe('Missed runs 4');
+    expect(visible).not.toContain(',');
+    expect(visible).not.toContain(String.fromCodePoint(0xb7));
+    // The accessible name keeps a pause between the two.
+    expect(root?.getAttribute('aria-label')).toBe('Missed runs, 4');
+  });
+
+  test('draws the qualifier a weight and a colour step lighter than the word', async () => {
+    const css = await Bun.file(new URL('./status-dot.css', import.meta.url)).text();
+    expect(css).toMatch(
+      /\.cinder-status-dot__qualifier \{[^}]*color: var\(--cinder-text-muted\);[^}]*font-weight: var\(--cinder-font-normal\);/,
+    );
+    expect(css).toMatch(/__qualifier\[data-cinder-numeric\] \{[^}]*tabular-nums/);
+    const phrase = render(StatusDot, { props: { word: 'Running', qualifier: 'checking' } });
+    expect(
+      phrase.container
+        .querySelector('.cinder-status-dot__qualifier')
+        ?.hasAttribute('data-cinder-numeric'),
+    ).toBe(false);
+  });
+
+  test('the qualifier does not change the tone of its word', () => {
+    const { container } = render(StatusDot, { props: { word: 'Missed runs', qualifier: 4 } });
+    expect(container.querySelector('.cinder-status-dot')?.getAttribute('data-cinder-status')).toBe(
+      'warning',
+    );
+  });
+
+  test('a qualifier on Done is neutral, as the word table has it for a qualified Done', () => {
+    const { container } = render(StatusDot, {
+      props: { word: 'Done', qualifier: 'refund not issued' },
+    });
+    expect(container.querySelector('.cinder-status-dot')?.getAttribute('data-cinder-status')).toBe(
+      'neutral',
+    );
+  });
+
+  test('a qualifier of 0 is shown, and a blank one is not', () => {
+    const zero = render(StatusDot, { props: { word: 'Missed runs', qualifier: 0 } });
+    expect(zero.container.querySelector('.cinder-status-dot__qualifier')?.textContent).toBe('0');
+    expect(zero.container.querySelector('.cinder-status-dot')?.getAttribute('aria-label')).toBe(
+      'Missed runs, 0',
+    );
+    const blank = render(StatusDot, { props: { word: 'Missed runs', qualifier: '  ' } });
+    expect(blank.container.querySelector('.cinder-status-dot__label')?.textContent).toBe(
+      'Missed runs',
+    );
+  });
+
+  test('an explicit label still wins over the word and its qualifier', () => {
+    const { container } = render(StatusDot, {
+      props: { word: 'Missed runs', qualifier: 4, label: 'Four missed' },
+    });
+    expect(container.querySelector('.cinder-status-dot__label')?.textContent).toBe('Four missed');
+  });
+});
+
 describe('StatusDot CSS contract', () => {
   test('connection presets tint the root text with their semantic state colors', async () => {
     const css = await Bun.file(new URL('./status-dot.css', import.meta.url)).text();

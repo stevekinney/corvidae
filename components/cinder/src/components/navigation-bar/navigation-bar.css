@@ -53,7 +53,9 @@
     justify-content: center;
     min-height: 4rem;
     height: auto;
-    padding-inline: var(--cinder-space-2);
+    /* A container cannot query its own size, so the bar's inline padding lives on the tab row
+       (below), where a narrow bar gives the room back to the labels. */
+    padding-inline: 0;
     border-bottom: none;
     border-top: 1px solid var(--cinder-border-muted);
   }
@@ -133,6 +135,7 @@
     );
 
     padding-block: var(--_cinder-navigation-bar-tab-ring-room);
+    padding-inline: var(--cinder-space-1);
     margin-block: calc(-1 * var(--_cinder-navigation-bar-tab-ring-room));
   }
 
@@ -141,6 +144,15 @@
   .cinder-navigation-bar[data-cinder-placement='bottom']
     .cinder-navigation-bar__items::-webkit-scrollbar {
     display: none;
+  }
+
+  /* A bar under 360px (five tabs on a 320px phone) keeps its edge padding and each tab's own
+     padding to the smallest steps, so five labels get about 58px each and the ellipsis is only
+     the last resort. A wider bar gets the roomier steps back. */
+  @container cinder-navigation-bar (min-width: 22.5rem) {
+    .cinder-navigation-bar[data-cinder-placement='bottom'] .cinder-navigation-bar__items {
+      padding-inline: var(--cinder-space-2);
+    }
   }
 
   .cinder-navigation-bar__actions {
@@ -177,11 +189,18 @@
        both axes, not just the one that happened to already clear it. */
     min-inline-size: var(--cinder-touch-target-min);
     padding-block: var(--cinder-space-1);
-    padding-inline: var(--cinder-space-2);
+    padding-inline: var(--cinder-space-0-5);
     border-bottom: none;
     border-top: none;
     border-radius: 0;
     text-align: center;
+  }
+
+  @container cinder-navigation-bar (min-width: 22.5rem) {
+    .cinder-navigation-bar[data-cinder-placement='bottom']
+      .cinder-navigation-item[data-variant='mobile'] {
+      padding-inline: var(--cinder-space-2);
+    }
   }
 
   /* The icon stacks above the label at 20px, and the label is the small caption of a tab. */

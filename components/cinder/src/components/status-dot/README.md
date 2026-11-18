@@ -30,11 +30,23 @@ Status-dot owns the word-to-tone table for Interborough's status words, so a pag
 
 One word has one tone, identical in light and dark. A qualifier after a comma rides along on its base word (`Running, checking the result` is `info`, `Missed runs, 4` is `warning`) unless the table lists the whole phrase (`Done, refund not issued` is `neutral`, because a finished run whose task was not achieved is never green). An explicit `status` or `label` still wins over what the word supplies.
 
+A count or short phrase that belongs after the word goes in `qualifier`, which draws it as its own piece after the word, a space apart, in the muted text colour at the normal weight, with tabular numerals for a count. The visible text has no separator between them (no comma, no middle dot); the accessible name keeps a pause:
+
+```svelte
+<script lang="ts">
+  import { StatusDot } from '@lostgradient/cinder';
+</script>
+
+<StatusDot word="Missed runs" qualifier={4} size="sm" />
+```
+
+The dot shows "Missed runs" and then a muted "4", in the amber of "Missed runs", and is named "Missed runs, 4". The tone is read off the word, unless the word table lists the whole phrase (a qualified "Done" is neutral). A blank qualifier is ignored and `0` is shown.
+
 | Tone | Words |
 | --- | --- |
 | `warning` (amber) | Waiting on you, Missed runs, Disconnected, Needs attention, Needs sign-in, Waiting for a secret, Warning |
 | `info` (solid neutral) | Running, Running, checking the result, Live, Live, last event 1 s ago |
-| `pending` (hollow ring) | Waiting, Scheduled, Standby, Reconnecting… |
+| `pending` (hollow ring) | Waiting, Waiting for a signal, Scheduled, Standby, Reconnecting… |
 | `success` (green dot) | Done, Approved, Active, Available, Set, Delivered, Connected, Listening, Ready, Check met |
 | `danger` (red) | Failed, Failed for good, Gave up, Can't load, Can't find workflow, Not loaded, Couldn't check, Tripped, Critical |
 | `neutral` | Done, refund not issued, Check not met, Denied, Sent back, Expired, Canceled, Stopped, Paused, Off, Unavailable, Disabled, Missing, Needs setup, Ended, Retrying, Draining, No verdict, Blocked, Warned, Sanitized, Redacted, Flagged |
@@ -56,6 +68,7 @@ Some words are scoped, and the page decides where they belong: Disabled is a plu
 | `label` | `string` | no | — | Human label. Rendered visibly when `labelVisible` is true; used as the accessible name either way. Defaults to a word derived from `status` (for example "Online"), so a bare StatusDot is a dot and a word, never a dot alone. |
 | `labelVisible` | `boolean` | no | `true` | Whether to render the visible label. |
 | `live` | `boolean` | no | — | Use role="status" with polite live-region attributes. Defaults true when connectionState is provided. |
+| `qualifier` | `string` \| `number` | no | — | A count or short phrase drawn as its own piece after the `word`, a space apart and muted, with no separator in the visible text: `word="Missed runs"` with `qualifier={4}` shows "Missed runs" then "4", and is named "Missed runs, 4". It does not change the word's tone, except that a qualified "Done" is neutral. A blank qualifier is ignored and `0` is shown. It has no effect without a `word`, or beside an explicit `label`. |
 | `size` | `"sm"` \| `"md"` | no | `"md"` | Dot size. |
 | `status` | `"online"` \| `"offline"` \| `"warning"` \| `"danger"` \| `"info"` \| `"pending"` \| `"neutral"` \| `"success"` \| `"accent"` | no | — | Semantic status. Drives color via `data-cinder-status`; defaults to a neutral dot or derives from `connectionState`. `success` maps to `--cinder-status-success-solid`; `info` maps to `--cinder-border-control`, the neutral dot; `pending` is a hollow ring; `accent` maps to `--cinder-accent-solid`. |
 | `wordTone` | `"muted"` \| `"status"` | no | `"muted"` | How the visible word is coloured: `muted` (the default) leaves a success, neutral, info or pending word muted so the dot carries the tone; `status` paints it in the status's text colour, for a result sentence such as a green "Found 3 tools". Warning and danger words are always coloured. |

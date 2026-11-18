@@ -68,7 +68,8 @@ for (const width of WIDTHS) {
         : ['Daily summary', 'Weekly refund audit', 'Release notes digest', 'Inbox triage'],
     );
     const words = main.locator('li[data-schedule]');
-    await expect(words.nth(0)).toHaveAttribute('data-status-word', 'Missed runs, 4');
+    await expect(words.nth(0)).toHaveAttribute('data-status-word', 'Missed runs');
+    await expect(words.nth(0).locator('.cinder-status-dot__qualifier')).toHaveText('4');
     await expect(words.nth(phone ? 3 : 1)).toHaveAttribute('data-status-word', 'Active');
     await expect(words.nth(phone ? 1 : 3)).toHaveAttribute('data-status-word', 'Paused');
 
