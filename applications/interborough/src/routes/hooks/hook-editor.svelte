@@ -189,6 +189,14 @@
   const listedProblems = $derived(
     availability.data?.find((listed) => listed.id === hookId)?.problems ?? [],
   );
+  /**
+   * Whether the Bureau lists this hook's reaction as not registered (COR-2182, R10-17). Its header
+   * says it can't run, so the page treats the action as not offered, whatever the contributions
+   * list: no live form, and no test.
+   */
+  const reactionUnavailable = $derived(
+    listedProblems.some((problem) => problem.code === 'reaction-unavailable'),
+  );
   const kinds = createQuery(
     () => ({
       queryKey: queryKeys.hooks.events(),
@@ -573,6 +581,25 @@
   let failure = $state<string | null>(null);
   /** What the Bureau refused at a field of the plugin action's configuration, shown on that field. */
   let configurationIssues = $state<{ path: readonly string[]; message: string }[]>([]);
+  /**
+   * The fields the Bureau lists as no longer fitting the action's schema (COR-2182), marked on the
+   * form as a refused save marks them, until a save says what it refused. Editing a field clears
+   * its mark.
+   */
+  const listedConfigurationIssues = $derived.by(() => {
+    if (hook?.action.type !== 'plugin') return [];
+    const message = HOOKS_COPY.editor.action.configurationIssue(
+      pluginTitleOf(hook.action.plugin, plugins.data?.plugins),
+    );
+    return listedProblems.flatMap((problem) =>
+      problem.code === 'configuration-invalid'
+        ? problem.issues.map((issue) => ({ path: issue.path, message }))
+        : [],
+    );
+  });
+  const shownConfigurationIssues = $derived(
+    configurationIssues.length > 0 ? configurationIssues : listedConfigurationIssues,
+  );
   let stale = $state(false);
 
   const saving = createMutation(() => ({
@@ -755,7 +782,7 @@
    * other hook, and for a plugin hook whose kind is not listed (its plugin is off).
    */
   const savedKind = $derived(
-    hook?.action.type === 'plugin'
+    hook?.action.type === 'plugin' && !reactionUnavailable
       ? contributedKinds.find(
           (kind) =>
             hook.action.type === 'plugin' &&
@@ -806,6 +833,9 @@
     if (hook?.action.type !== 'plugin') return 'plugin-off';
     const { plugin } = hook.action;
     const state = plugins.data?.plugins.find((candidate) => candidate.descriptor.name === plugin);
+    // A reaction the Bureau lists as unavailable is not offered unless its plugin is off, as the
+    // header's standing reads it.
+    if (reactionUnavailable && state?.status !== 'disabled') return 'not-offered';
     // Only a plugin the host says is on can have dropped the action; anything else is "turn it on".
     return state?.status === 'running' || state?.status === 'needs-setup'
       ? 'not-offered'
@@ -1029,7 +1059,7 @@
                       schema={savedKind.configuration}
                       value={form.contributedConfiguration}
                       readOnly={isDefault}
-                      issues={configurationIssues}
+                      issues={shownConfigurationIssues}
                       disabled={saving.isPending}
                       plugin={hook.action.plugin}
                       reportInitialDraft={form.storedConfigurationDrawable}
@@ -1286,7 +1316,7 @@
           </section>
         </form>
         <aside id={LOG_ID} class="ib-hook-editor__aside" tabindex="-1">
-          <HookDeliveries hookId={isNew ? undefined : hookId} />
+          <HookDeliveries hookId={isNew ? undefined : hookId} events={hook?.events ?? []} />
         </aside>
       </div>
     {/if}

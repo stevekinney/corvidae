@@ -277,8 +277,50 @@ describe('the list (rows R10-01 to R10-03)', () => {
         'Needs attention',
       );
     });
+    // The sentence ends in the next step, and the field the Bureau names is marked as a refused save marks it.
     expect(within(header).getByTestId('hook-standing-sentence').textContent).toBe(
-      HOOKS_COPY.standing.configurationInvalid('Slack', 'Post message'),
+      HOOKS_COPY.standing.configurationInvalid('Slack', 'Post message', true),
+    );
+    expect(within(header).getByTestId('hook-standing-sentence').textContent).toContain(
+      'Change the marked fields and save.',
+    );
+    const action = await view.findByTestId('contributed-action');
+    await waitFor(() => {
+      expect(
+        within(action)
+          .getByLabelText(/^Channel/)
+          .getAttribute('aria-invalid'),
+      ).toBe('true');
+    });
+    expect(action.textContent).toContain(HOOKS_COPY.editor.action.configurationIssue('Slack'));
+  });
+
+  test('treats a hook the Bureau lists as reaction-unavailable as not offered, though its plugin still lists the action (R10-17)', async () => {
+    const lost = hook('owned-lost', { name: 'My lost post', declaredBy: null });
+    const view = open('/hooks/owned-lost', [lost], {
+      'bureau.hooks.list': () => ({
+        hooks: [{ ...lost, lastDelivery: null, problems: [{ code: 'reaction-unavailable' }] }],
+      }),
+    });
+
+    const sentence = await view.findByTestId('hook-standing-sentence');
+    await waitFor(() => {
+      expect(sentence.textContent).toBe(
+        'Slack no longer offers Post message, so this hook can’t run.',
+      );
+    });
+    // One verdict: no live form, the stored pairs read only, and no test.
+    await waitFor(() => {
+      expect(view.getByTestId('hook-test-reason').textContent?.trim()).toBe(
+        copy.check.testNoLongerOffered('Slack'),
+      );
+    });
+    expect(view.queryByTestId('contributed-action')).toBeNull();
+    expect(view.getByTestId('stored-configuration').textContent).toContain(
+      copy.action.storedConfiguration,
+    );
+    expect(view.getByRole('button', { name: copy.check.test }).getAttribute('aria-disabled')).toBe(
+      'true',
     );
   });
 

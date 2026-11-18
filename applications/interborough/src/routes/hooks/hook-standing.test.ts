@@ -147,9 +147,19 @@ describe('hookStanding', () => {
       state: 'configuration-invalid',
       word: 'Needs attention',
       sentence:
-        'Slack changed what Post message takes, so this hook’s configuration no longer fits.',
+        'Slack changed what Post message takes, so this hook’s configuration no longer fits. Change the marked fields and save.',
       plugin: 'slack',
     });
+    // A default hook cannot be changed: its next step, Duplicate, is the note's to say, once.
+    expect(
+      hookStanding(
+        pluginHook({
+          problems: [invalid],
+          declaredBy: { plugin: 'slack', withdrawn: false, ownerDisabled: false },
+        }),
+        { plugins: [SLACK], reactions: [reaction('slack', 'post-message', 'available')] },
+      ).sentence,
+    ).toBe('Slack changed what Post message takes, so this hook’s configuration no longer fits.');
     // Off and Unavailable still come first.
     expect(
       hookStanding(pluginHook({ enabled: false, problems: [invalid] }), {

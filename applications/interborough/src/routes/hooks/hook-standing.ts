@@ -146,7 +146,11 @@ export function hookStanding(hook: StandingHook, context: StandingContext): Hook
       return {
         state: 'configuration-invalid',
         word: 'Needs attention',
-        sentence: copy.configurationInvalid(title, actionTitleOf(kind)),
+        sentence: copy.configurationInvalid(
+          title,
+          actionTitleOf(kind),
+          hook.declaredBy === null || hook.declaredBy === undefined,
+        ),
         plugin,
       };
     }

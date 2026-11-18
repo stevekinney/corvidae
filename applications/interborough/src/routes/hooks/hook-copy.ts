@@ -124,9 +124,15 @@ export const HOOKS_COPY = {
     notOffered: (plugin: string, action: string): string =>
       `${plugin} no longer offers ${action}, so this hook can’t run.`,
     needsSetup: (plugin: string): string => `${plugin} needs setup before this hook can run.`,
-    /** A hook whose stored configuration the action's schema now refuses (COR-2182). */
-    configurationInvalid: (plugin: string, action: string): string =>
-      `${plugin} changed what ${action} takes, so this hook’s configuration no longer fits.`,
+    /**
+     * A hook whose stored configuration the action's schema now refuses (COR-2182), ending in the
+     * next step for a hook the owner can change. A default hook's next step, Duplicate, is said
+     * once, by the note above its steps.
+     */
+    configurationInvalid: (plugin: string, action: string, changeable: boolean): string =>
+      `${plugin} changed what ${action} takes, so this hook’s configuration no longer fits.${
+        changeable ? ' Change the marked fields and save.' : ''
+      }`,
     addKey: 'Add the key',
     /** The tooltip of the disabled switch of a default hook its plugin withdrew. */
     withdrawnSwitch: (plugin: string): string =>
@@ -321,9 +327,14 @@ export const HOOKS_COPY = {
       needsSetup: 'Needs setup',
       /** What a saved plugin hook says in place of a choice: its kind is fixed. */
       pluginFixed: (action: string, plugin: string): string => `${action} from ${plugin}`,
-      /** Above the saved configuration of a plugin hook whose action is not offered now (row R10-08). */
+      /**
+       * Above the saved configuration of a plugin hook whose action is not offered now (row R10-08):
+       * why its text values read Hidden, said once.
+       */
       storedConfiguration:
-        'Its configuration, kept as it was saved while the action is not offered.',
+        'Its configuration, as it was saved. The plugin that describes these fields isn’t available, so their values are hidden until it’s back.',
+      /** The mark on a field of a configuration the action's schema now refuses (COR-2182). */
+      configurationIssue: (plugin: string): string => `${plugin} no longer accepts this value.`,
       /** What a hook that notifies says in place of fields. */
       notifyNote: 'You get a notification in Interborough, in the bell at the top right.',
       plugin: 'Run an action from a plugin',
