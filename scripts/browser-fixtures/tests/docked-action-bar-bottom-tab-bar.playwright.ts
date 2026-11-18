@@ -5,7 +5,9 @@
  * bottom of the scrolling page, which ends where the tab bar starts, and covers no tab. Measured on
  * the `toast-region` assertion fixture with `?docked-page=1`, a column the height of the viewport
  * with the scrolling page above an in-flow bottom NavigationBar, as Interborough's shell lays a
- * phone out. The boxes are read in one pass.
+ * phone out. The page keeps 12px of bottom padding and names it in
+ * `--cinder-docked-action-bar-end-offset`, so the bar sits flush on the tabs over that padding,
+ * not 12px above them. The boxes are read in one pass.
  */
 
 import { expect, test } from '@playwright/test';
