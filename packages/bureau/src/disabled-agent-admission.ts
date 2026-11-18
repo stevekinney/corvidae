@@ -61,14 +61,14 @@ export interface DisabledAgentAdmissionReads {
   readonly decidedReviews: (() => Promise<readonly ResolvedReview[]>) | undefined;
 }
 
-const CONTINUATION_PREFIX = 'review-continuation:';
-
 /**
  * The decided run a continuation's command id names in chat `sessionId`, or `undefined` when the
- * command id is not a continuation's of that chat.
+ * command id is not a continuation's of that chat. The form is `reviewContinuationCommandId`'s
+ * (`http/review-continuation.ts`); the approve and deny cases of `agent-disabled-start-paths.test.ts`
+ * start through it, so the two cannot drift apart unnoticed.
  */
 function continuedRunOf(commandId: string | undefined, sessionId: string): string | undefined {
-  const prefix = `${CONTINUATION_PREFIX}${sessionId}:`;
+  const prefix = `review-continuation:${sessionId}:`;
   if (commandId === undefined || !commandId.startsWith(prefix)) return undefined;
   const runId = commandId.slice(prefix.length);
   return runId === '' ? undefined : runId;
