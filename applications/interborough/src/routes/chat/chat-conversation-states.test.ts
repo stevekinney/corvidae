@@ -343,6 +343,12 @@ describe('a reply the person stopped (COR-2437)', () => {
     expect(String(call?.params['commandId'])).toMatch(/^discard:/);
     expect(container.textContent).toContain('Rename the billing tables');
     expect(container.querySelector('.chat-turn-outcome') === null).toBe(true);
+    // The run's task still says it was stopped, so the person's message keeps the plain line that
+    // says so, which tells why it has no reply, and offers nothing more to do.
+    expect(
+      notes(container).map((note) => note.textContent?.replaceAll(/\s+/g, ' ').trim()),
+    ).toEqual(['Stopped The run was stopped.']);
+    expect(notes(container)[0]?.querySelector('button') === null).toBe(true);
   });
 });
 

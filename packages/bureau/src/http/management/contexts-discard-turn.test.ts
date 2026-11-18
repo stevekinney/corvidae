@@ -69,7 +69,9 @@ async function stoppedTurn(opened: OpenedBureau, principal: string = OWNER.alice
   await waitForTaskState(opened.bureau, run.id);
   await waitForCondition(async () => {
     const record = await opened.bureau.internals.taskRegistry.record(run.id);
-    return record?.settled !== undefined;
+    const session = await opened.bureau.contexts.get(run.contextId);
+    // The run's terminal save, which writes its rows, records its end in the chat last.
+    return record?.settled !== undefined && session?.metadata['lastRunId'] === run.id;
   }, 'the run has ended');
   return run;
 }

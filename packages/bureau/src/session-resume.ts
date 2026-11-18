@@ -12,7 +12,8 @@
  *   its input), and a new run under a new id would write the rows of the old one's steps again.
  *   Both are engine changes this operation does not make: it refuses `run-not-resumable`.
  * - A run whose process stopped (`owner-lost`) is still `running` in the engine, and the Bureau
- *   that next boots over the store recovers it itself, from its checkpoint: `turn-recovering`.
+ *   that next boots over the store takes it up: it goes on from its checkpoint, or is ended when
+ *   recovery cannot take it (`recovered-run-classification.ts`): `turn-recovering`.
  * - A reply the model cut at its token limit ends the run normally, as any finished turn:
  *   `turn-finished`.
  * - A run still going is `turn-running`, and one waiting on an approval or a question is
@@ -34,7 +35,10 @@ export type SessionResumeRefusalReason =
   | 'turn-running'
   /** The run waits on an approval or a question, and goes on once the person answers it. */
   | 'turn-awaiting-person'
-  /** The run's process stopped before it recorded its end, and the Bureau recovers it itself. */
+  /**
+   * The run's process stopped before it recorded its end: the Bureau that next boots goes on with
+   * it from its checkpoint, or ends it when recovery cannot take it.
+   */
   | 'turn-recovering'
   /** The run finished normally, including a reply the model cut at its token limit. */
   | 'turn-finished'

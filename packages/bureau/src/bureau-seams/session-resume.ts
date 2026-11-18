@@ -95,7 +95,7 @@ export function createSessionResume<D extends AgentDefinitions>(
     if (settled.finishReason === TASK_OWNER_LOST_FINISH_REASON) {
       return refuse(
         'turn-recovering',
-        'The process running the turn stopped, and the Bureau recovers the run itself from where it was.',
+        'The process running the turn stopped; the Bureau that next boots goes on with the run from its checkpoint, or ends it when it cannot.',
       );
     }
     if (settled.status === 'completed') {

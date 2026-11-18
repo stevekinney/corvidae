@@ -106,8 +106,9 @@ for (const row of cases) {
         if (namesAFailedTurn(row.operation))
           await waitForCondition(async () => {
             const record = await opened.bureau.internals.taskRegistry.record(task.id);
-            return record?.settled !== undefined;
-          }, 'the failed turn is settled');
+            const session = await opened.bureau.contexts.get(task.contextId);
+            return record?.settled !== undefined && session?.metadata['lastRunId'] === task.id;
+          }, 'the failed turn is settled and recorded in the chat');
         if (row.operation === 'bureau.contexts.regenerate')
           await waitForCondition(async () => {
             const record = await opened.bureau.internals.taskRegistry.record(task.id);
