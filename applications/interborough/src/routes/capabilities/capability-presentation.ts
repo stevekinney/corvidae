@@ -84,14 +84,33 @@ function serverOf(tool: Pick<CatalogTool, 'name'>): string | undefined {
 }
 
 /** The words of the source chip: "Built in", "From notes", "From the Demo plugin". */
-export function toolSourceChip(tool: ShownTool): string {
+export function toolSourceChip(
+  tool: ShownTool,
+  sourceNames: ReadonlyMap<string, string> = new Map(),
+): string {
   const chip = TOOL.chips.source;
   if (tool.source === 'bureau') return chip.bureau;
   // A plugin that is off is named by its title, which its last listing kept (row 30p).
   if (tool.lost?.kind === 'plugin') return chip.plugin(tool.lost.title);
   if (tool.source === 'plugin') return chip.plugin(tool.plugin ?? '');
   if (tool.source === 'skill') return chip.skill(tool.skill ?? '');
-  return chip.host(serverOf(tool));
+  // A source is named as a person calls it ("GitHub"), when it has a name, and by its id otherwise.
+  if (tool.lost?.kind === 'source') return chip.host(tool.lost.name);
+  const server = serverOf(tool);
+  return chip.host(server === undefined ? undefined : (sourceNames.get(server) ?? server));
+}
+
+/** The names people call the saved sources, by source id, for the chips that say where a tool comes from. */
+export function sourceNamesOf(
+  sources: readonly Pick<ToolSourceStanding, 'id' | 'name'>[] | undefined,
+): Map<string, string> {
+  const names = new Map<string, string>();
+  for (const source of sources ?? []) {
+    if (source.name !== undefined && source.name !== null && source.name.trim() !== '') {
+      names.set(source.id, source.name.trim());
+    }
+  }
+  return names;
 }
 
 /** The sentence the source chip's tooltip says. */

@@ -71,6 +71,8 @@ export const CAPABILITIES_COPY = {
         `${source} is disconnected. Agents can’t use this tool until it is reconnected.`,
       signIn: (source: string): string =>
         `${source} needs a sign-in. Agents can’t use this tool until you sign in again.`,
+      /** The muted word in a lost tool's row in the list. */
+      paused: 'Paused',
       reconnect: 'Reconnect',
       plugin: (plugin: string): string =>
         `The ${plugin} plugin is disabled. Enabling it restarts the server.`,

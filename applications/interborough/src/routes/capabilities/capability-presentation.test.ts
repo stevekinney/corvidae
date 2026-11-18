@@ -23,6 +23,7 @@ import {
   skillSourceLabel,
   sourceHeading,
   sourceKindLabel,
+  sourceNamesOf,
   sourceStateDescription,
   sourceStateLabel,
   sourceStateVariant,
@@ -137,6 +138,20 @@ describe('a tool’s source chip and heading', () => {
   test('says Built in, From the server its name leads with, From the plugin, or From the skill', () => {
     expect(toolSourceChip({ ...TOOL, source: 'bureau' })).toBe('Built in');
     expect(toolSourceChip({ ...TOOL, name: 'github__create_issue' })).toBe('From github');
+    // A source that has a name is called by it, as a plugin is by its title.
+    const names = sourceNamesOf([
+      { id: 'github', name: 'GitHub' },
+      { id: 'files', name: null },
+    ]);
+    expect(toolSourceChip({ ...TOOL, name: 'github__create_issue' }, names)).toBe('From GitHub');
+    expect(toolSourceChip({ ...TOOL, name: 'files__read' }, names)).toBe('From files');
+    expect(
+      toolSourceChip({
+        ...TOOL,
+        name: 'github__create_issue',
+        lost: { kind: 'source', id: 'github', name: 'GitHub', state: 'failed' },
+      }),
+    ).toBe('From GitHub');
     expect(toolSourceChip(TOOL)).toBe('From an MCP server');
     expect(toolSourceChip({ ...TOOL, source: 'plugin', plugin: 'demo' })).toBe(
       'From the demo plugin',

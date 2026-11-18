@@ -14,6 +14,7 @@
 
   import { usePageLeaf } from '../../app/breadcrumbs.svelte.ts';
   import { listAgentDefinitions } from '../../lib/agent-definitions.ts';
+  import { getToolSources } from '../../lib/host-tool-sources.ts';
   import { queryKeys } from '../../lib/query.ts';
   import { CAPABILITIES_COPY } from '../../app/copy/capabilities.ts';
   import AgentUsers from './agent-users.svelte';
@@ -23,6 +24,7 @@
     hasBlockedUser,
     riskLabel,
     riskTooltip,
+    sourceNamesOf,
     tierOf,
     toolHeading,
     toolSourceChip,
@@ -58,6 +60,17 @@
     }),
     undefined,
   );
+  // The names people call the saved sources, so the chip says "From GitHub". The same key and
+  // options as the Sources tab's query: a list already read is not read again.
+  const sources = createQuery(
+    () => ({
+      queryKey: queryKeys.toolSources.list(),
+      queryFn: ({ signal }) => getToolSources({ signal }),
+      retry: false,
+    }),
+    undefined,
+  );
+  const sourceNames = $derived(sourceNamesOf(sources.data?.sources));
   const codeAgents = $derived(
     new Set(
       (definitions.data ?? []).filter((agent) => agent.source === 'code').map((agent) => agent.id),
@@ -93,7 +106,12 @@
     </li>
     <li>
       <Tooltip text={toolSourceTooltip(tool)}>
-        <Chip size="sm" tabindex={0} label={toolSourceChip(tool)} data-testid="tool-source" />
+        <Chip
+          size="sm"
+          tabindex={0}
+          label={toolSourceChip(tool, sourceNames)}
+          data-testid="tool-source"
+        />
       </Tooltip>
     </li>
   </ul>

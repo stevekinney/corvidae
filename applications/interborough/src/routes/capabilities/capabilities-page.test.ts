@@ -1159,6 +1159,17 @@ describe('a skill’s page', () => {
     const lostRows = rows.filter((row) => row.hasAttribute('data-lost'));
     expect(lostRows.map((row) => row.dataset['toolRow'])).toEqual(['github__create_issue']);
     expect(rows.length - lostRows.length).toBe(TOOLS.length);
+    // A lost row says so in its own muted word; a tool that runs does not.
+    expect(lostRows[0]?.querySelector('[data-testid="tool-row-paused"]')?.textContent?.trim()).toBe(
+      copy.tool.lost.paused,
+    );
+    expect(
+      rows.filter((row) => row.querySelector('[data-testid="tool-row-paused"]') !== null),
+    ).toHaveLength(1);
+    // And its chip names the source as a person does.
+    expect(container.querySelector('[data-testid="tool-source"]')?.textContent?.trim()).toBe(
+      'From GitHub',
+    );
     expect(container.querySelector('[data-testid="tab-count-tools"]')?.textContent?.trim()).toBe(
       String(TOOLS.length + lostRows.length),
     );

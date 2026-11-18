@@ -86,6 +86,21 @@
     return grouped ? groupToolsBySource(matching) : matching;
   });
 
+  // A lost tool sits after every tool the catalog holds, often below the fold: the one the address
+  // names is brought into view in the list.
+  $effect(() => {
+    const name = router.search.get('tool');
+    if (name === null || !tools.some((tool) => tool.name === name && tool.lost !== undefined)) {
+      return;
+    }
+    const frame = requestAnimationFrame(() => {
+      for (const row of document.querySelectorAll<HTMLElement>('[data-tool-row]')) {
+        if (row.dataset['toolRow'] === name) row.scrollIntoView({ block: 'nearest' });
+      }
+    });
+    return () => cancelAnimationFrame(frame);
+  });
+
   /** The tool the address names (`?tool=`), which is a tool's own page while it loads, fails or is missing. */
   const requested = $derived(router.search.get('tool'));
   const asked = $derived(requested !== null && requested !== '');
@@ -156,7 +171,14 @@
           </div>
         {/snippet}
         {#snippet list(tool, row)}
+          <!-- A tool that cannot run now says so in the row, in the same muted word as its risk. -->
+          {#snippet pausedWord()}
+            <span class="ib-capabilities__row-risk" data-testid="tool-row-paused"
+              >{copy.tool.lost.paused}</span
+            >
+          {/snippet}
           <SelectableRow
+            meta={tool.lost === undefined ? undefined : pausedWord}
             selected={row.selected}
             selectedState="current"
             onclick={row.open}
