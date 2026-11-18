@@ -34,7 +34,7 @@ describe('QueryFaultBanner', () => {
       },
     });
 
-    await fireEvent.click(getByRole('button', { name: 'Retry' }));
+    await fireEvent.click(getByRole('button', { name: 'Try again' }));
     expect(retried).toBe(true);
   });
 });

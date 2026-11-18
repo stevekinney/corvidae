@@ -38,14 +38,14 @@ describe('QueryFaultBanner', () => {
       props: { error, onRetry: () => (retried += 1) },
     });
 
-    await fireEvent.click(getByRole('button', { name: 'Retry' }));
+    await fireEvent.click(getByRole('button', { name: 'Try again' }));
     expect(retried).toBe(1);
   });
 
   test('omits the Retry button when onRetry is not provided', async () => {
     const error = new HttpClientError(500, 'boom');
     const { queryByRole } = render(QueryFaultBanner, { props: { error } });
-    expect(queryByRole('button', { name: 'Retry' })).toBeNull();
+    expect(queryByRole('button', { name: 'Try again' })).toBeNull();
   });
 
   test('an unclassifiable error falls back to the internal treatment', async () => {

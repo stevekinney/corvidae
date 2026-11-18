@@ -39,6 +39,8 @@
 
   import { HttpClientError } from '@lostgradient/weft';
 
+  import { RETRY_LABEL } from './copy/views.ts';
+
   import {
     classifyFault,
     FAULT_TREATMENT_TITLE,
@@ -112,7 +114,8 @@
         <Icon aria-hidden="true" size={16} class="weft-fault-boundary__icon" />
         <Badge variant={tone}>{FAULT_TREATMENT_TITLE[treatment.kind]}</Badge>
         <p class="weft-fault-boundary__message">{treatment.message}</p>
-        <Button size="sm" variant="secondary" label="Retry" onclick={reset} />
+        <!-- The app's one word for asking again, as every banner and error says it (COR-2489). -->
+        <Button size="sm" variant="secondary" label={RETRY_LABEL} onclick={reset} />
       </div>
 
       {#if treatment.kind === 'conflict' && treatment.isSpentIdempotencyKey}

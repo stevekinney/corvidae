@@ -44,11 +44,11 @@ describe('FaultBanner', () => {
     const { queryByRole, getByRole, rerender } = render(FaultBanner, {
       props: { treatment },
     });
-    expect(queryByRole('button', { name: 'Retry' })).toBeNull();
+    expect(queryByRole('button', { name: 'Try again' })).toBeNull();
 
     let retried = false;
     await rerender({ treatment, onRetry: () => (retried = true) });
-    await fireEvent.click(getByRole('button', { name: 'Retry' }));
+    await fireEvent.click(getByRole('button', { name: 'Try again' }));
     expect(retried).toBe(true);
   });
 });

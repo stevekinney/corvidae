@@ -133,7 +133,7 @@ describe('AlertsTab — active alerts (weft.alerts.list)', () => {
 
     const { findByText, findByRole } = await renderAlertsTab();
     expect(await findByText('Not authorized')).not.toBeNull();
-    expect(await findByRole('button', { name: 'Retry' })).not.toBeNull();
+    expect(await findByRole('button', { name: 'Try again' })).not.toBeNull();
   });
 });
 

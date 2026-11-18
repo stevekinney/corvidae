@@ -91,7 +91,7 @@ describe('RealmsTab', () => {
           typeof call.init?.body === 'string' && call.init.body.includes('weft.realms.diagnostics'),
       ).length ?? 0;
     const readsBeforeRetry = reads();
-    await fireEvent.click(await findByRole('button', { name: 'Retry' }));
+    await fireEvent.click(await findByRole('button', { name: 'Try again' }));
     await waitFor(() => expect(reads()).toBeGreaterThan(readsBeforeRetry));
     unmount();
   });
