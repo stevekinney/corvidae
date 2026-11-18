@@ -900,7 +900,8 @@ describe('run', () => {
 
   test('accepts verified design content through the CLI context path and rejects missing or changed content', async () => {
     const locator = 'https://claude.ai/artifact/GDeC387KnFkpSQoLz86jLw';
-    const designDescription = `${description}\n\n## Design source\n${locator}`;
+    const duplicateLocator = 'https://claude.ai/artifact/HDeC387KnFkpSQoLz86jLw';
+    const designDescription = `${description}\n\n## Design source\n${locator}\n${duplicateLocator}`;
     const designFetch: FetchLike = async (_url, init) => {
       const { query } = JSON.parse(init.body as string) as { query: string };
       const data = query.includes('IssueRelations')
@@ -913,7 +914,13 @@ describe('run', () => {
       return new Response(JSON.stringify({ data }), { status: 200 });
     };
     const context = join(sandbox, 'design-context.json');
-    writeFileSync(context, JSON.stringify([{ locator, content: 'verified design v1' }]));
+    writeFileSync(
+      context,
+      JSON.stringify([
+        { locator, content: 'verified design v1' },
+        { locator: duplicateLocator, content: 'verified design v1' },
+      ]),
+    );
     const command = [
       'COR-7',
       '--out-dir',
@@ -933,22 +940,38 @@ describe('run', () => {
       scratch: string;
       path: string;
     };
-    expect(readFileSync(first.path, 'utf8')).toContain(
-      'Use these pinned bytes; do not refetch live sources.',
-    );
-    expect(
-      readFileSync(join(first.scratch, `context-${digest('verified design v1')}.txt`), 'utf8'),
-    ).toBe('verified design v1');
+    const firstSnapshot = join(first.scratch, `context-${digest('verified design v1')}.txt`);
+    const firstText = readFileSync(first.path, 'utf8');
+    expect(firstText).toContain('Use these pinned bytes; do not refetch live sources.');
+    expect(readFileSync(firstSnapshot, 'utf8')).toBe('verified design v1');
+    for (const reference of [locator, duplicateLocator])
+      expect(firstText).toContain(
+        `- ${reference} → ${digest('verified design v1')} → \`${firstSnapshot}\``,
+      );
+    expect(readdirSync(first.scratch)).toEqual([`context-${digest('verified design v1')}.txt`]);
+    const missingOutDirectory = join(sandbox, 'missing-context');
     const missing = await run(
-      command.filter((part) => part !== '--context' && part !== context),
+      command
+        .filter((part) => part !== '--context' && part !== context)
+        .map((part) => (part === sandbox ? missingOutDirectory : part)),
       { ...dependencies, fetch: designFetch },
       pinnedRunner(),
     );
     expect(missing.code).toBe(1);
-    expect(JSON.parse(missing.output).gate.missingContext).toEqual([
-      expect.objectContaining({ locator, access: 'unreadable' }),
-    ]);
-    writeFileSync(context, JSON.stringify([{ locator, content: 'verified design v2' }]));
+    expect(JSON.parse(missing.output).gate.missingContext).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ locator, access: 'unreadable' }),
+        expect.objectContaining({ locator: duplicateLocator, access: 'unreadable' }),
+      ]),
+    );
+    expect(existsSync(missingOutDirectory)).toBe(false);
+    writeFileSync(
+      context,
+      JSON.stringify([
+        { locator, content: 'verified design v2' },
+        { locator: duplicateLocator, content: 'verified design v1' },
+      ]),
+    );
     const changed = await run(command, { ...dependencies, fetch: designFetch }, pinnedRunner());
     expect(changed.code).toBe(0);
     expect(JSON.parse(changed.output).assignments[0].identity.digest).not.toBe(
@@ -957,6 +980,61 @@ describe('run', () => {
     expect(
       readFileSync(join(first.scratch, `context-${digest('verified design v1')}.txt`), 'utf8'),
     ).toBe('verified design v1');
+    const changedParsed = JSON.parse(changed.output) as { scratch: string; path: string };
+    const changedSnapshot = join(
+      changedParsed.scratch,
+      `context-${digest('verified design v2')}.txt`,
+    );
+    expect(readFileSync(changedSnapshot, 'utf8')).toBe('verified design v2');
+    expect(readFileSync(changedParsed.path, 'utf8')).toContain(
+      `- ${locator} → ${digest('verified design v2')} → \`${changedSnapshot}\``,
+    );
+    const batchOutDirectory = join(sandbox, 'batch');
+    const batchFetch: FetchLike = async (_url, init) => {
+      const { query, variables } = JSON.parse(init.body as string) as {
+        query: string;
+        variables: { id: string };
+      };
+      const data = query.includes('IssueRelations')
+        ? relations(false)
+        : query.includes('IssueComments')
+          ? {
+              issue: { comments: { nodes: [], pageInfo: { hasNextPage: false, endCursor: null } } },
+            }
+          : { issue: { ...issue(designDescription), identifier: variables.id } };
+      return new Response(JSON.stringify({ data }), { status: 200 });
+    };
+    const batch = await run(
+      [
+        'COR-7',
+        'COR-8',
+        '--out-dir',
+        batchOutDirectory,
+        '--repository',
+        'stevekinney/corvidae',
+        '--base',
+        pinnedBase,
+        '--context',
+        context,
+        '--json',
+      ],
+      { ...dependencies, fetch: batchFetch },
+      pinnedRunner(),
+    );
+    expect(batch.code).toBe(0);
+    const batchParsed = JSON.parse(batch.output) as { scratch: string; path: string };
+    const batchSnapshot = join(batchParsed.scratch, `context-${digest('verified design v2')}.txt`);
+    expect(readFileSync(batchSnapshot, 'utf8')).toBe('verified design v2');
+    expect(readFileSync(batchParsed.path, 'utf8')).toContain(`\`${batchSnapshot}\``);
+    const previewBefore = readdirSync(sandbox).toSorted();
+    const preview = await run(
+      ['COR-7', '--stdout', '--json', '--context', context],
+      { ...dependencies, fetch: designFetch },
+      pinnedRunner(),
+    );
+    expect(preview.code).toBe(0);
+    expect(JSON.parse(preview.output).text).not.toContain('## Verified context snapshots');
+    expect(readdirSync(sandbox).toSorted()).toEqual(previewBefore);
     writeFileSync(
       context,
       JSON.stringify([{ locator, content: 'verified design v2', digest: 'wrong' }]),
