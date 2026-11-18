@@ -450,7 +450,7 @@ const catalogSchema = z.object({
       defaultApproval: z.enum(['allow', 'ask']),
       /**
        * The level the tool is enforced at when an agent's file states none (`never`, `on-changes` or
-       * `always`): the one its source picked, else Always for a dangerous tool. A Bureau that sends
+       * `always`): the one its source picked or its tier gives. A Bureau that sends
        * none leaves it to the tier's rule.
        */
       defaultAsks: z.enum(['never', 'on-changes', 'always']).optional(),

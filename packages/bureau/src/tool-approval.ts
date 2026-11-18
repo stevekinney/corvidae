@@ -125,9 +125,11 @@ export function readToolDefaultApproval(
 /**
  * The level a tool asks at when an agent's `approvals` says nothing about it, the one value every
  * reader shares (the hook, the catalog's `defaultAsks`, the grant check): the pick its source
- * stored, else Always for a dangerous tool (design rows 30i and 33i), Never for a tool that only
- * reads, and On changes for the rest. A read at Never and at On changes both run, so only the
- * words differ there; a dangerous tool at Always asks even in an "allow all" chat and after a
+ * stored, else Never for a tool that only reads and On changes for the rest, which is what the hook
+ * does with a tool that carries none (the precedence table, COR-1936). A read at Never and at On
+ * changes both run, so only the words differ there. A dangerous tool is enforced at Always only
+ * when it carries that pick: the host attaches the level its tier gives (Always for a dangerous
+ * tool) to every tool of a saved source, so those ask even in an "allow all" chat and after a
  * remembered grant.
  */
 export function enforcedDefaultApproval(
@@ -136,7 +138,6 @@ export function enforcedDefaultApproval(
 ): Exclude<ToolApprovalMode, 'blocked'> {
   const picked = readToolDefaultApproval(metadata);
   if (picked !== undefined) return picked;
-  if (tier === 'dangerous') return 'always';
   return tier === 'read-only' ? 'never' : (TOOL_APPROVAL_DEFAULT_MODE as 'on-changes');
 }
 
@@ -561,12 +562,8 @@ export function createToolApprovalHooks(
       const key = governed === undefined ? context.toolName : governed.get(context.toolName);
       if (key === undefined) return { allow: true, status: 'allow' };
       const tier = resolveCapabilityTier(context.metadata, context.tags);
-      // The agent's own entry first, then the tool's pick, then Always for a dangerous tool, then
-      // the hook's own default.
-      const setting =
-        modes.get(key) ??
-        readToolDefaultApproval(context.metadata) ??
-        (tier === 'dangerous' ? 'always' : defaultMode);
+      // The agent's own entry first, then the tool's pick, then the hook's own default.
+      const setting = modes.get(key) ?? readToolDefaultApproval(context.metadata) ?? defaultMode;
       const chat = chatPermissionOf(context);
       const { mode, unreadable } = chat ?? (await modeOfChat());
       let status = decideToolApproval({ mode, setting, tier, remembered: false });

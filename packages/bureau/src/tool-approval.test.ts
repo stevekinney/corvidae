@@ -130,19 +130,19 @@ describe('createToolApprovalHooks', () => {
       ...(pick === undefined ? {} : { defaultApproval: pick }),
     });
 
-    it('is the pick, else Always for a dangerous tool, Never for a read, On changes for the rest', () => {
+    it('is the pick, else Never for a read and On changes for the rest', () => {
       for (const tier of TIERS) {
         for (const pick of PICKS) {
-          const expected =
-            pick ??
-            (tier === 'dangerous' ? 'always' : tier === 'read-only' ? 'never' : 'on-changes');
+          // With no pick the hook's own default (the precedence table, COR-1936): the host attaches
+          // the tier's level to every tool of a saved source, so a dangerous one carries Always.
+          const expected = pick ?? (tier === 'read-only' ? 'never' : 'on-changes');
           expect(enforcedDefaultApproval(metadataOf(tier, pick), tier)).toBe(expected);
         }
       }
     });
 
-    it('asks about a dangerous tool with no pick in an allow-all chat and after a remembered grant', async () => {
-      const dangerous = metadataOf('dangerous', undefined);
+    it('asks about a dangerous tool at Always, which the host attaches when no pick is stored, in an allow-all chat and after a remembered grant', async () => {
+      const dangerous = metadataOf('dangerous', 'always');
       const inAllowAll = createToolbox([subject(dangerous)], {
         policy: createToolApprovalHooks({}, { permissionMode: allowAll }),
       });
@@ -187,7 +187,7 @@ describe('createToolApprovalHooks', () => {
       // `compose-plugins.ts` builds a plugin's code agent's policy as `createToolApprovalHooks(undefined, { tools })`,
       // and `code-agent-effective.ts` as `createToolApprovalHooks(overrides.approvals, { tools })`.
       const tools = {
-        subject: subject(metadataOf('dangerous', undefined)),
+        subject: subject(metadataOf('dangerous', 'always')),
         quiet: createTool({
           name: 'quiet',
           description: 'A change a source picked Never for',

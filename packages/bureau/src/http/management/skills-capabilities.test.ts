@@ -641,10 +641,12 @@ describe('bureau.agents.catalog', () => {
       defaultApproval: 'allow',
       defaultAsks: 'never',
     });
+    // A tool that carries no pick is enforced as the hook always has (On changes); a saved
+    // source's tools always carry one, so a dangerous one of those reads and asks at Always.
     expect(byName['risky-unpicked']).toMatchObject({
       tier: 'dangerous',
       defaultApproval: 'ask',
-      defaultAsks: 'always',
+      defaultAsks: 'on-changes',
     });
   });
 

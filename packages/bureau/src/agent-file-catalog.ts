@@ -276,8 +276,9 @@ export interface AgentToolDescription {
   readonly defaultApproval: Exclude<ApprovalStatus, 'deny'>;
   /**
    * The level the tool is enforced at when an agent's file states none, one value every reader
-   * and the approval hook share (`enforcedDefaultApproval`): the pick its source stored, else
-   * Always for a dangerous tool, Never for a tool that only reads, On changes for the rest.
+   * and the approval hook share (`enforcedDefaultApproval`): the pick its source stored (the host
+   * gives every tool of a saved source one, Always for a dangerous tool), else Never for a tool
+   * that only reads and On changes for the rest.
    */
   readonly defaultAsks: Exclude<ToolApprovalMode, 'blocked'>;
   /**
