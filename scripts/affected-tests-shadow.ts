@@ -103,6 +103,42 @@ function workspacesAt(tree: SourceTree): WorkspaceDescription[] {
   }));
 }
 
+function changedBetween(root: string, base: string, revision: string): string[] {
+  return git(root, ['diff', '--name-only', '--no-renames', `${base}...${revision}`])
+    .split('\n')
+    .filter(Boolean);
+}
+
+function replayRevision(
+  root: string,
+  input: { name: string; revision: string; base: string; provider: unknown },
+) {
+  const changed = changedBetween(root, input.base, input.revision);
+  const tree = treeAt(root, input.revision);
+  const selection = selectTests({ changed, tree, workspaces: workspacesAt(tree) });
+  const jobs = (input.provider as { jobs?: { name?: string; conclusion?: string }[] }).jobs ?? [];
+  const fullRunFailures = jobs
+    .filter((job) => job.conclusion === 'failure')
+    .map((job) => job.name ?? 'unnamed job');
+  return {
+    name: input.name,
+    disposition: 'complete',
+    revision: input.revision,
+    base: input.base,
+    changed,
+    selected: selection.workspaces.flatMap((workspace) => [...workspace.tests.keys()]),
+    fullRunFailures,
+    omittedFailures: [],
+    unclassifiedFailures: fullRunFailures.map((job) => ({
+      job,
+      classification: 'unattributable',
+      reason:
+        'Candidate provider evidence has no test-level execution inventory for this failed job.',
+    })),
+    inputIdentity: input.provider,
+  };
+}
+
 export function shadowRun(root: string, frozen: FrozenRun) {
   const revision = frozen.frozenSample?.headSha;
   const changed = frozen.gitInputs?.changedPaths ?? [];
@@ -158,10 +194,54 @@ if (import.meta.main) {
     .map((name) =>
       shadowRun(root, JSON.parse(readFileSync(join(directory, name), 'utf8')) as FrozenRun),
     );
+  const programRoot = join(directory, '..');
+  const candidates = [
+    {
+      name: 'P01 accepted full run 44228027813',
+      revision: '42b4d875a5f3fe1577a5d267144fc747a456c57b',
+      base: '721367ba220dc2384c83ee1c33b3a38bdf702e5b',
+      provider: JSON.parse(
+        readFileSync(join(programRoot, 'p01/44228027813-final-provider.json'), 'utf8'),
+      ),
+    },
+    {
+      name: 'P02 accepted full run 44228086147',
+      revision: '7d249e3844835d78700a2bf01e2ef95aaa41fbcc',
+      base: '42b4d875a5f3fe1577a5d267144fc747a456c57b',
+      provider: JSON.parse(
+        readFileSync(join(programRoot, 'p02/44228086147-final-provider.json'), 'utf8'),
+      ),
+    },
+    {
+      name: 'P03 accepted full run 44263346832',
+      revision: 'da7aaee4858196b0c186efaf50c76b931637d22f',
+      base: '7d249e3844835d78700a2bf01e2ef95aaa41fbcc',
+      provider: JSON.parse(
+        readFileSync(join(programRoot, 'p03/44263346832-provider-jobs.json'), 'utf8'),
+      ),
+    },
+    {
+      name: 'P10 accepted full run 44242619821',
+      revision: '11ace640a1f670159bee00aa9fccb20432d2d652',
+      base: '084be958ad69dc95cdcfd8b3459ec408c7a92ca8',
+      provider: JSON.parse(
+        readFileSync(join(programRoot, 'p10/44242619821-final-provider.json'), 'utf8'),
+      ),
+    },
+    {
+      name: 'P10 failed full run 44228035610',
+      revision: '485d8a3300e4f98e774c128684617c5cd5ad0592',
+      base: '42b4d875a5f3fe1577a5d267144fc747a456c57b',
+      provider: JSON.parse(
+        readFileSync(join(programRoot, 'p10/44228035610-final-provider.json'), 'utf8'),
+      ),
+    },
+  ].map((candidate) => replayRevision(root, candidate));
   const summary = {
     version: 1,
     runs,
-    unresolvedDemonstratedMisses: runs.flatMap((run) => run.omittedFailures),
+    programCandidates: candidates,
+    unresolvedDemonstratedMisses: [...runs, ...candidates].flatMap((run) => run.omittedFailures),
   };
   writeFileSync(output, `${JSON.stringify(summary, null, 2)}\n`);
   console.log(
