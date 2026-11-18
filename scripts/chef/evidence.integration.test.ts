@@ -104,6 +104,9 @@ const values = await (async () => {
   writeFileSync(artifact, 'tampered artifact');
   const tamperedArtifactValidation = validateEvidence(cleanRequest.plan, clean, cleanExpected).ok;
   writeFileSync(artifact, 'artifact');
+  unlinkSync(artifact);
+  const deletedArtifactValidation = validateEvidence(cleanRequest.plan, clean, cleanExpected).ok;
+  writeFileSync(artifact, 'artifact');
   writeFileSync(join(fixture, 'input'), 'dirty\n');
   const dirty = collectLocalEvidence(await request(), passing, fixture);
   await git('checkout', '--', 'input');
@@ -188,6 +191,13 @@ const values = await (async () => {
   ).ok;
   writeFileSync(report, 'tampered report');
   const tamperedReportValidation = validateEvidence(
+    defaultRequest.plan,
+    defaultReceipt,
+    defaultExpected,
+  ).ok;
+  writeFileSync(report, '<testsuite><testcase name="input.test.ts" /></testsuite>');
+  unlinkSync(report);
+  const deletedReportValidation = validateEvidence(
     defaultRequest.plan,
     defaultReceipt,
     defaultExpected,
@@ -306,6 +316,7 @@ const values = await (async () => {
     clean,
     intactArtifactValidation,
     tamperedArtifactValidation,
+    deletedArtifactValidation,
     dirty,
     mutating,
     missing,
@@ -316,6 +327,7 @@ const values = await (async () => {
     defaultReceipt,
     intactReportValidation,
     tamperedReportValidation,
+    deletedReportValidation,
     runtimeReuse,
     runtimeCommandCalled,
     reused,
@@ -343,6 +355,7 @@ test('validates an actual clean checkout receipt', () =>
 test('ordinary validation rejects modified retained artifacts', () => {
   expect(values.intactArtifactValidation).toBe(true);
   expect(values.tamperedArtifactValidation).toBe(false);
+  expect(values.deletedArtifactValidation).toBe(false);
 });
 test('binds dirty and mutated content instead of clean head', () => {
   expect(values.dirty.records[0]?.dirtyContentIdentity).toBeDefined();
@@ -358,6 +371,7 @@ test('default local composition executes explicit argv without a shell', () => {
   expect(values.defaultReceipt.records[0]?.status).toBe('pass');
   expect(values.intactReportValidation).toBe(true);
   expect(values.tamperedReportValidation).toBe(false);
+  expect(values.deletedReportValidation).toBe(false);
   expect(values.runtimeReuse.records[0]?.status).toBe('pending');
   expect(values.runtimeCommandCalled).toBe(true);
 });
