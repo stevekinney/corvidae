@@ -136,8 +136,8 @@ describe('assignment gate and verification plan', () => {
     const controls = createVerificationPlan({
       assignment: assignment({
         ownedPaths: [
-          'packages/a2a-authentication/src/session.ts',
-          'packages/storage-postgres/src/persistence.ts',
+          'packages/a2a-authentication/src/index.ts',
+          'packages/storage-postgres/src/index.ts',
         ],
       }),
       commands: [],

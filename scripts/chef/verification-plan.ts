@@ -128,17 +128,16 @@ export function classifyRisks(
 ): Record<RiskArea, boolean> {
   const unknown = paths.length === 0;
   const has = (pattern: RegExp) => unknown || paths.some((path) => pattern.test(path));
-  const domain = (pattern: RegExp) => unknown || paths.some((path) => pattern.test(path));
   return {
     'root-scripts': has(/^scripts\//),
     'shared-configuration': has(/(?:^|\/)(?:package\.json|turbo\.json|.*\.(?:json|ya?ml|toml))$/),
     'transitive-consumers': has(/^packages\/|^components\//),
     'dynamic-entrypoints': has(/^applications\/|(?:^|\/)bin\//),
-    authorization: domain(
-      /(?:^|\/)(?:auth(?:entication|orization)?|identity|session|access-control)(?:\/|\.|$)/i,
+    authorization: has(
+      /(?:^|[/_-])(?:auth(?:entication|orization)?|identity|session|access-control)(?=[/_.-]|$)/i,
     ),
-    'persistence-protocols': domain(
-      /(?:^|\/)(?:storage|persistence|protocol|database)(?:\/|\.|$)/i,
+    'persistence-protocols': has(
+      /(?:^|[/_-])(?:storage|persistence|protocol|database)(?=[/_.-]|$)/i,
     ),
     'installed-artifacts': has(/(?:package\.json|release|publish|payload)/),
     'shared-ui-design': hasDesign || has(/^components\/|^applications\/interborough\//),
