@@ -717,7 +717,7 @@ const supervisor = createSupervisor({
 console.log(supervisor !== undefined);
 ```
 
-A `pass` may say why the attempt met the check, as its optional `reason` (`{ kind: 'pass', evidence: [], reason: 'Reply said hello' }`, COR-2425). The goal's record keeps it on the attempt's verdict, held to 1,024 characters; a reason that is not a string makes the verdict a malformed-output `error`, and a verdict recorded before a pass could say has none. The owner's `bureau.goals.get` serves it as `attempts[].reason`, as owner-only as a failing attempt's `feedback`, and `bureau.goals.verdict` as `reason`.
+A `pass` may say why the attempt met the check, as its optional `reason` (`{ kind: 'pass', evidence: [], reason: 'Reply said hello' }`, COR-2425). The goal's record keeps it on the attempt's verdict, held to 1,024 characters; a reason that is not a string, or holds nothing but white space, is dropped and the check is still met, and a verdict recorded before a pass could say has none. The owner's `bureau.goals.get` serves it as `attempts[].reason`, as owner-only as a failing attempt's `feedback`, and `bureau.goals.verdict` as `reason`.
 
 ### Settings (`bureau.settings`)
 
