@@ -42,6 +42,8 @@ export interface FailedJob {
 export interface FailureRecord {
   kind: 'test' | 'step' | 'unknown';
   job: string;
+  /** The individual GitHub Actions `Run …` step that produced this evidence. */
+  step?: string | undefined;
   command?: string | undefined;
   identity?: string | undefined;
   diagnostic?: string | undefined;
@@ -197,12 +199,20 @@ export function failingSteps(log: string): Map<string, string[]> {
 }
 
 function stepFailures(log: string): FailureRecord[] {
-  const steps = new Map<string, { command: string; diagnostic?: string | undefined }>();
+  const steps = new Map<
+    string,
+    { command: string; step: string; diagnostic?: string | undefined }
+  >();
+  const counts = new Map<string, number>();
   const found: FailureRecord[] = [];
   for (const line of log.split('\n')) {
     const step = RUN_STEP.exec(line);
     if (step !== null) {
-      steps.set(step[1] ?? '', { command: step[2] ?? '' });
+      const job = step[1] ?? '';
+      const command = step[2] ?? '';
+      const index = (counts.get(job) ?? 0) + 1;
+      counts.set(job, index);
+      steps.set(job, { command, step: `${command}#${index}` });
       continue;
     }
     const error = BUN_ERROR.exec(line);
@@ -221,6 +231,50 @@ function stepFailures(log: string): FailureRecord[] {
   return found;
 }
 
+/** Which individual workflow steps contain a file-qualified failed Bun test. */
+function qualifiedTestSteps(log: string): Set<string> {
+  const current = new Map<string, string>();
+  const counts = new Map<string, number>();
+  const files = new Map<string, string>();
+  const assertions = new Set<string>();
+  const qualified = new Set<string>();
+  for (const line of log.split('\n')) {
+    const step = RUN_STEP.exec(line);
+    if (step !== null) {
+      const job = step[1] ?? '';
+      const command = step[2] ?? '';
+      const index = (counts.get(job) ?? 0) + 1;
+      counts.set(job, index);
+      current.set(job, `${command}#${index}`);
+      continue;
+    }
+    const file = BUN_TEST_FILE.exec(line);
+    if (file !== null) {
+      files.set(file[1] ?? '', file[2] ?? '');
+      continue;
+    }
+    const assertion = BUN_ASSERTION.exec(line);
+    if (assertion !== null && files.has(assertion[1] ?? '')) {
+      assertions.add(assertion[1] ?? '');
+      continue;
+    }
+    const expected = BUN_EXPECTED.exec(line);
+    if (expected !== null && assertions.delete(expected[1] ?? '')) {
+      const job = expected[1] ?? '';
+      const currentStep = current.get(job);
+      if (currentStep !== undefined) qualified.add(currentStep);
+      continue;
+    }
+    const failed = BUN_FAILURE.exec(line) ?? PLAYWRIGHT_FAILURE.exec(line);
+    if (failed !== null) {
+      const job = failed[1] ?? '';
+      const currentStep = current.get(job);
+      if (currentStep !== undefined) qualified.add(currentStep);
+    }
+  }
+  return qualified;
+}
+
 function isTestLauncher(command: string): boolean {
   return /\b(?:bun(?:x)?(?:\s+--bun)?\s+(?:test|playwright)|bun(?:x)?\s+(?:\S+\s+)?run\s+test(?::|\s|$)|run-gated-browser-suite)\b/.test(
     command,
@@ -231,6 +285,7 @@ function isTestLauncher(command: string): boolean {
 export function failureRecords(log: string): Map<string, FailureRecord[]> {
   const tests = failingTests(log);
   const unknown = unparseableTestJobs(log);
+  const qualified = qualifiedTestSteps(log);
   const records = new Map<string, FailureRecord[]>();
   const add = (job: string, record: FailureRecord) => {
     const values = records.get(job) ?? [];
@@ -242,9 +297,9 @@ export function failureRecords(log: string): Map<string, FailureRecord[]> {
   for (const job of unknown)
     add(job, { kind: 'unknown', job, diagnostic: 'unparseable test error' });
   for (const step of stepFailures(log)) {
-    const hasTest = (records.get(step.job) ?? []).some((record) => record.kind === 'test');
     if (isTestLauncher(step.command ?? '')) {
-      if (!hasTest) add(step.job, { kind: 'unknown', job: step.job, command: step.command });
+      if (!qualified.has(step.step ?? ''))
+        add(step.job, { kind: 'unknown', job: step.job, step: step.step, command: step.command });
       continue;
     }
     if (step.diagnostic === undefined)
