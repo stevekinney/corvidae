@@ -1041,6 +1041,13 @@ describe('the step builder in the editor', () => {
     expect(section?.getAttribute('data-columns')).toBe('1');
   });
 
+  test('design correction: Starts is one column, so the When block sits under the choices (rows 65d, 65q)', async () => {
+    const { container } = open('/workflows/digest/edit');
+    await builderReady(container);
+    const when = container.querySelector('[data-testid="schedule-when"]');
+    expect(when?.closest('.cinder-form-section')?.getAttribute('data-columns')).toBe('1');
+  });
+
   test('COR-2432: a file that names its schedule says saving changes that schedule, under its When block (row 65q)', async () => {
     const text = JSON.stringify(
       {

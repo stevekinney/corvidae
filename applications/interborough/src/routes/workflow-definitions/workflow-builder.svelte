@@ -764,7 +764,9 @@
             />
           </FormSection>
 
-          <FormSection heading={copy.startsHeading}>
+          <!-- One column: the trigger's choices, then its When block under them in the section's
+               width, as run setup lays it out (rows 65d, 65q). -->
+          <FormSection heading={copy.startsHeading} columns={1}>
             <SegmentedControl
               id="workflow-builder-trigger-kind"
               label={copy.triggerKindLabel}
