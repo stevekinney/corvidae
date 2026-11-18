@@ -21,6 +21,17 @@ interface ShadowFailure {
   reason: string;
 }
 
+/** Correlate parser-provided failing test identities with the selector's exact test paths. */
+export function omittedFailures(
+  selected: readonly string[],
+  failures: readonly string[],
+): string[] {
+  return failures.filter(
+    (failure) =>
+      !selected.some((test) => failure.includes(test.split('/').at(-1)!.replace(/\.ts$/, ''))),
+  );
+}
+
 function git(root: string, args: string[]) {
   const result = Bun.spawnSync(['git', '-C', root, ...args]);
   if (result.exitCode !== 0) throw new Error(result.stderr.toString());
@@ -129,10 +140,7 @@ function replayRevision(
             .filter((record) => record.kind === 'test' && record.identity !== undefined)
             .map((record) => record.identity!),
         );
-  const omittedFailures = attributedFailures.filter(
-    (failure) =>
-      !selected.some((test) => failure.includes(test.split('/').at(-1)!.replace(/\.ts$/, ''))),
-  );
+  const omitted = omittedFailures(selected, attributedFailures);
   return {
     name: input.name,
     disposition: 'complete',
@@ -142,7 +150,7 @@ function replayRevision(
     selected: selection.workspaces.flatMap((workspace) => [...workspace.tests.keys()]),
     fullRunFailures,
     attributedFailures,
-    omittedFailures,
+    omittedFailures: omitted,
     unclassifiedFailures: fullRunFailures.map((job) => ({
       job,
       classification: 'unattributable',
