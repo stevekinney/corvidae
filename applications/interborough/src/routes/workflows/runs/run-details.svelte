@@ -7,7 +7,13 @@
    * one (with a topology that opens in a drawer), and every line the run logged. The run's status is
    * not here: it is in the header, once.
    */
-  import { DescriptionList, StatusDot, type DescriptionListItem } from '@lostgradient/cinder';
+  import {
+    DescriptionList,
+    Section,
+    Stack,
+    StatusDot,
+    type DescriptionListItem,
+  } from '@lostgradient/cinder';
   import type { WorkflowState } from '@lostgradient/weft';
 
   import { RUN_DETAIL_COPY, RUN_PAGE_COPY } from '../../../app/copy/runs.ts';
@@ -390,14 +396,19 @@
   <span class="ib-run-value" title={finalizer?.tooltip}>{finalizer?.label}</span>
 {/snippet}
 
-<aside class="ib-run__rail" aria-labelledby="ib-run-details">
-  <h2 id="ib-run-details" class="ib-run__heading-2">{RUN_PAGE_COPY.detailsHeading}</h2>
-  <DescriptionList {items} variant="default" />
+<!-- The rail is a landmark named as its first Section is titled; each block in it is a Cinder
+     Section, spaced as the page's main column spaces its blocks. -->
+<aside class="ib-run__rail" aria-label={RUN_PAGE_COPY.detailsHeading}>
+  <Section title={RUN_PAGE_COPY.detailsHeading} data-section="details">
+    <Stack gap="var(--cinder-space-3)">
+      <DescriptionList {items} variant="default" />
+      {#if engine !== undefined && workflow !== undefined && editingTags && scheduleRules.tags}
+        <!-- Add a tag opens the editor in place of the Tags row. -->
+        <RunTags client={engine.client} {workflow} {tagGate} />
+      {/if}
+    </Stack>
+  </Section>
   {#if engine !== undefined && workflow !== undefined}
-    <!-- Add a tag opens the editor in place of the Tags row. -->
-    {#if editingTags && scheduleRules.tags}
-      <RunTags client={engine.client} {workflow} {tagGate} />
-    {/if}
     <!-- The goal's other attempts and the schedule's last run are said inside the engine's one Related runs. -->
     <RunRelated
       client={engine.client}
