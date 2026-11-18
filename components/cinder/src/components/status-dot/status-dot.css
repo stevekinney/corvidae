@@ -64,6 +64,18 @@
     font-weight: var(--cinder-font-semibold);
   }
 
+  /* A qualifier is its own piece after the word, a space apart and a weight and colour step
+     lighter, never a separator glyph (owner rule): "Missed runs 4". A count keeps its digits
+     the same width as it changes. */
+  .cinder-status-dot .cinder-status-dot__qualifier {
+    color: var(--cinder-text-muted);
+    font-weight: var(--cinder-font-normal);
+  }
+
+  .cinder-status-dot__qualifier[data-cinder-numeric] {
+    font-variant-numeric: tabular-nums;
+  }
+
   /* ----------------------------------------
  * Size variants
  * ---------------------------------------- */

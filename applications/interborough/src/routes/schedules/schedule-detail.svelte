@@ -2,7 +2,7 @@
   /**
    * One schedule (`/schedules/:schedule`; COR-2018, the heading, its actions and the details card
    * of `ScheduleDetail`): named by what it does ("Daily summary"), with the Active switch and its
-   * one status word ("Missed runs, 4", "Paused") beside the name, and the sentence that says what
+   * one status word ("Missed runs" with a muted 4, "Paused") beside the name, and the sentence that says what
    * it runs and when ("Runs Chat with an agent with Assistant every day at 3:00 AM (9:00 AM
    * UTC)."), then the line that says when it runs next and when it last ran. Under them are its
    * runs, and beside them the details card: what runs, its input, when, and how it behaves.
@@ -345,7 +345,13 @@
           <Divider orientation="vertical" decorative class="ib-schedule__status-divider" />
         {/if}
         <!-- The switch, labeled Active, already says Active; Paused and the exceptions are words it cannot say. -->
-        <StatusDot word={statusWord} data-status-word={statusWord} />
+        <StatusDot
+          word={statusWord}
+          qualifier={going === undefined && row.statusKey === 'missed'
+            ? row.missedCount
+            : undefined}
+          data-status-word={statusWord}
+        />
       {/if}
     {/snippet}
     {#snippet headerActions()}

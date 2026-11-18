@@ -56,7 +56,11 @@
   data-status-key={row.statusKey}
   data-status-word={row.statusWord}
 >
-  {#snippet status()}<StatusDot word={row.statusWord} size="sm" />{/snippet}
+  {#snippet status()}<StatusDot
+      word={row.statusWord}
+      qualifier={row.statusKey === 'missed' ? row.missedCount : undefined}
+      size="sm"
+    />{/snippet}
   {#snippet title()}{row.title}{/snippet}
   {#snippet time()}
     <span class="ib-schedule-next" data-tone={next.tone} data-testid="schedule-next"
