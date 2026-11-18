@@ -5,6 +5,7 @@
  */
 import { describe, expect, test } from 'bun:test';
 
+import { SIGNAL_WAIT_WORD } from '../../../app/copy/tasks.ts';
 import { taskFixture } from '../../../lib/bureau-fixtures.test-support.ts';
 import {
   howItRanOpensFirst,
@@ -157,7 +158,7 @@ describe('runStatusLine', () => {
       waitingForSignals: ['notes-approved'],
     });
 
-    expect(line).toEqual({ word: 'Waiting', phrases: [], signals: ['notes-approved'] });
+    expect(line).toEqual({ word: SIGNAL_WAIT_WORD, phrases: [], signals: ['notes-approved'] });
   });
 
   test('a task is never Waiting: its wait is a person’s, and a working task reads Running', () => {

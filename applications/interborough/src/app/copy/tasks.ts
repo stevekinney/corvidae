@@ -1,4 +1,13 @@
+import type { StatusDotWord } from '@lostgradient/cinder';
+
 import { NOT_FOUND_COPY } from './views.ts';
+
+/**
+ * The one word for a run the engine parked on a signal (rows 56g, 10h): the run's status on its
+ * page, its row's status on the Runs list, and the label of the Runs list's segment that counts
+ * such runs. It is a word of Cinder's StatusDot, so its tone is StatusDot's (the hollow ring).
+ */
+export const SIGNAL_WAIT_WORD = 'Waiting' as const satisfies StatusDotWord;
 
 /** The words the Tasks view uses outside its states. */
 export const TASK_COPY = {
@@ -16,8 +25,11 @@ export const TASK_COPY = {
     segments: {
       all: 'All',
       waiting: 'Waiting on you',
-      /** A run parked on a signal: it needs nobody at the page, and is drawn only while one is. */
-      signal: 'Waiting for a signal',
+      /**
+       * Runs parked on a signal: they need nobody at the page, and the segment is drawn only while
+       * one is. It is called by the word each such run reads (row 56g).
+       */
+      signal: SIGNAL_WAIT_WORD,
       running: 'Running',
       done: 'Done',
       failed: 'Failed',

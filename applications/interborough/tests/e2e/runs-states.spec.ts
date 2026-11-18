@@ -18,6 +18,7 @@ import {
   SAMPLE_NOW_MILLISECONDS,
   SAMPLE_TIME_ZONE,
 } from '../../fixtures/sample-now.ts';
+import { SIGNAL_WAIT_WORD } from '../../src/app/copy/tasks.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
 import { E2E_SHOWCASE_URL } from './e2e-constants.ts';
 import { expect, loggedFailedResponse, test } from './fixtures.ts';
@@ -448,7 +449,7 @@ for (const width of WIDTHS) {
     );
     await expect(main.locator('li[data-run="row-states-waiting"]')).toHaveAttribute(
       'data-status',
-      'Waiting',
+      SIGNAL_WAIT_WORD,
     );
     await expect(main.locator('li[data-run="row-states-scheduled"]')).toHaveAttribute(
       'data-status',

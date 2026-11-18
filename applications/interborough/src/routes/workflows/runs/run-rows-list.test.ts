@@ -4,8 +4,10 @@
  * segments they count under, line two, the day bands, and the page of ten with the missed runs.
  * Read in the sample world's zone at its clock: Monday, Nov 2, 10:50 AM Central time.
  */
+import { statusForStatusDotWord } from '@lostgradient/cinder';
 import { describe, expect, test } from 'bun:test';
 
+import { SIGNAL_WAIT_WORD, TASK_COPY } from '../../../app/copy/tasks.ts';
 import {
   contextFixture,
   goalAttemptFixture,
@@ -34,6 +36,7 @@ import {
   waitedWords,
   type RunRow,
 } from './run-rows.ts';
+import { runStatusLine } from './run-status-line.ts';
 
 const ZONE = 'America/Chicago';
 /** Monday, Nov 2, 2026, 10:50 AM Central time (CST: the clocks went back on Nov 1). */
@@ -757,6 +760,38 @@ describe('the Bureau’s own runs (COR-2423)', () => {
     expect(visibleRunSegments(none, 'signal')).toContain('signal');
   });
 
+  test('a run parked on a signal has one word: its row, its page and the segment that counts it say the same (rows 56g, 10h)', () => {
+    const [row] = buildRunRows({
+      tasks: [
+        taskFixture({
+          id: 'parked',
+          contextId: 'parked',
+          kind: 'catalog',
+          agentName: null,
+          status: 'working',
+          workflow: workflowOf('release-notes', { awaitingSignal: 'notes-approved' }),
+        }),
+      ],
+      goals: [],
+      chats: [],
+    });
+    const page = runStatusLine({
+      status: 'Running',
+      startedAt: 0,
+      over: false,
+      now: 1000,
+      task: undefined,
+      waitingForSignals: ['notes-approved'],
+      attempt: undefined,
+    });
+
+    expect(row === undefined ? undefined : runStatusWord(row)).toBe(SIGNAL_WAIT_WORD);
+    expect(page.word).toBe(SIGNAL_WAIT_WORD);
+    expect(TASK_COPY.list.segments.signal).toBe(SIGNAL_WAIT_WORD);
+    // A word of StatusDot's own table, so the dot draws its tone (the hollow ring) and never a default.
+    expect(statusForStatusDotWord(SIGNAL_WAIT_WORD)).toBe('pending');
+  });
+
   test('an instance with its own row is not folded into a second "Workflow run" by its steps', () => {
     const rows = runListRows(
       buildRunRows({
@@ -805,7 +840,7 @@ describe('the Bureau’s own runs (COR-2423)', () => {
       goals: [],
       chats: [],
     });
-    expect(runStatusWord(row, NOW)).toBe('Waiting');
+    expect(runStatusWord(row, NOW)).toBe(SIGNAL_WAIT_WORD);
     // What it waits for, and nothing of its step (10h).
     expect(runLineTwo(row, context)).toBe('API, waiting for signal notes-approved');
     expect(isRunRowRunning(row, NOW)).toBe(false);

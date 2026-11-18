@@ -18,7 +18,7 @@
  */
 import { humanizeIdentifier, type DataListGroup } from '@lostgradient/cinder';
 
-import { TASK_COPY } from '../../../app/copy/tasks.ts';
+import { SIGNAL_WAIT_WORD, TASK_COPY } from '../../../app/copy/tasks.ts';
 import type { ChatContext } from '../../../lib/bureau-client.ts';
 import type { Goal } from '../../../lib/bureau-goals.ts';
 import {
@@ -746,7 +746,7 @@ export function serializeRunFilter(filter: RunFilter): string {
 }
 
 /** The word a run's status reads as: one of the seven, or "Check not met" for a goal's attempt. */
-export type RunStatusWord = StatusWord | 'Check not met' | 'Waiting';
+export type RunStatusWord = StatusWord | 'Check not met' | typeof SIGNAL_WAIT_WORD;
 
 /** Whether a run that has not ended is parked at an `await-signal` step, waiting for a signal. */
 function awaitingSignalOf(
@@ -766,7 +766,9 @@ export function runStatusWord(
   now?: number,
 ): RunStatusWord {
   if (row.checkNotMet) return 'Check not met';
-  if (awaitingSignalOf({ status: row.status, workflow: row.workflow }) !== null) return 'Waiting';
+  if (awaitingSignalOf({ status: row.status, workflow: row.workflow }) !== null) {
+    return SIGNAL_WAIT_WORD;
+  }
   if (
     row.status === 'working' &&
     row.dueAt !== undefined &&
