@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'bun:test';
+import { join } from 'node:path';
 
 import { selectTests } from './affected-tests-selection.ts';
 import {
@@ -65,6 +66,30 @@ const incompleteRouteDispositions = incompleteProviderCases.map((provider) => ({
     gitInputs: { changedPaths: [] },
   }).disposition,
 }));
+const failedProvider = {
+  status: 'completed',
+  conclusion: 'failure',
+  jobs: [{ name: 'Root typecheck', status: 'completed', conclusion: 'failure' }],
+};
+const stepOnlyReplay = replayRevision(process.cwd(), {
+  name: 'step-only public replay control',
+  revision: frozenRevision,
+  base: frozenRevision,
+  provider: failedProvider,
+  failureLog: join(import.meta.dir, 'chef/fixtures/shadow-step-only-failure.log'),
+});
+const mixedReplay = replayRevision(process.cwd(), {
+  name: 'mixed public replay control',
+  revision: frozenRevision,
+  base: frozenRevision,
+  provider: failedProvider,
+  failureLog: join(import.meta.dir, 'chef/fixtures/shadow-step-and-test-failure.log'),
+});
+const failedBaseline = shadowRun(process.cwd(), {
+  frozenSample: { headSha: frozenRevision, status: 'completed', conclusion: 'failure' },
+  jobs: failedProvider.jobs,
+  gitInputs: { changedPaths: [] },
+});
 
 // The replay opens Git objects. Run that real process work at module scope so the test callback
 // only asserts its recorded result, independent of the per-test clock.
@@ -306,5 +331,20 @@ describe('shadow failure accounting', () => {
         baseline: 'inconclusive',
       })),
     );
+  });
+
+  test('retains non-test steps and mixed test records through public replay routes', () => {
+    expect(stepOnlyReplay).toMatchObject({ disposition: 'inconclusive', attributedFailures: [] });
+    expect(stepOnlyReplay.unclassifiedFailures).toContainEqual(
+      expect.objectContaining({ job: 'Root typecheck', reason: 'TypeScript typecheck failed' }),
+    );
+    expect(mixedReplay.attributedFailures).toHaveLength(1);
+    expect(mixedReplay.unclassifiedFailures).toContainEqual(
+      expect.objectContaining({ job: 'Root typecheck', reason: 'TypeScript typecheck failed' }),
+    );
+    expect(failedBaseline).toMatchObject({
+      disposition: 'inconclusive',
+      fullRunFailures: ['Root typecheck'],
+    });
   });
 });

@@ -145,7 +145,7 @@ export function classifyFailureRecords(
     ...records
       .filter(
         (record) =>
-          record.kind === 'unknown' ||
+          record.kind !== 'test' ||
           (record.identity !== undefined &&
             failureResolution(selected, inventory, workspaces, record.identity) !== 'selected' &&
             failureResolution(selected, inventory, workspaces, record.identity) !== 'omitted'),
@@ -156,7 +156,9 @@ export function classifyFailureRecords(
         reason:
           record.diagnostic ??
           (record.identity === undefined
-            ? 'unparseable provider failure evidence'
+            ? record.kind === 'step'
+              ? 'provider non-test step failure'
+              : 'unparseable provider failure evidence'
             : 'provider test identity is not workspace-qualified'),
       })),
     ...failedJobs
