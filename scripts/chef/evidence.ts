@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, statSync } from 'node:fs';
-import { isAbsolute, resolve } from 'node:path';
+import { isAbsolute, resolve, sep } from 'node:path';
 import { createGitHubEvidenceTransport, inspectArtifact, parseJUnit } from './evidence-provider.ts';
 import { EvidenceRequestError, type ProviderEvidenceTransport } from './evidence-transport.ts';
 import type { VerificationObligation, VerificationPlan } from './verification-plan.ts';
@@ -24,12 +24,25 @@ export interface EvidenceRecord {
   exitCode: number | null;
   assertionPassed: boolean | null;
   dirtyContentIdentity?: string | undefined;
+  sourceRevision?: string | undefined;
+  inputIdentity?: string | undefined;
+  reports?: { path: string; digest: string }[] | undefined;
+  artifacts?: { path: string; digest: string }[] | undefined;
 }
 
 /** A collection returned by a coordinator-owned local collector or authenticated provider read. */
 export interface CollectedEvidence {
   source: 'coordinator' | 'provider';
   records: EvidenceRecord[];
+}
+const issuedCollections = new WeakSet<CollectedEvidence>();
+function collected(
+  source: CollectedEvidence['source'],
+  records: EvidenceRecord[],
+): CollectedEvidence {
+  const value = { source, records };
+  issuedCollections.add(value);
+  return value;
 }
 
 export interface EvidenceExpectation {
@@ -65,6 +78,7 @@ export interface LocalEvidenceProcess {
     inventory: string[];
     assertionPassed: boolean | null;
     reportPaths?: string[];
+    artifactPaths?: string[];
   };
 }
 
@@ -137,6 +151,8 @@ export function readVerificationRequest(path: string, digest: string): Verificat
       !['worker', 'coordinator', 'provider'].includes(obligation.executionBoundary) ||
       !Array.isArray(obligation.expectedInventory) ||
       !Array.isArray(obligation.relevantInputs) ||
+      !obligation.expectedInventory.every((entry) => typeof entry === 'string' && entry !== '') ||
+      !obligation.relevantInputs.every((entry) => typeof entry === 'string' && entry !== '') ||
       obligation.commandOrProviderJob.trim() === '' ||
       obligation.environmentToolchain.trim() === ''
     )
@@ -170,9 +186,9 @@ export function collectProviderEvidence(
   request: VerificationRequest,
   transport: ProviderEvidenceTransport,
 ): CollectedEvidence {
-  return {
-    source: 'provider',
-    records: request.providerRuns.map((entry) => {
+  return collected(
+    'provider',
+    request.providerRuns.map((entry) => {
       const run = transport.run(entry.id);
       const job = transport.job(entry.id, entry.job);
       const obligation =
@@ -230,7 +246,7 @@ export function collectProviderEvidence(
         artifact: entry.artifact,
       };
     }),
-  };
+  );
 }
 
 /** The provider collection boundary: parse and validate before any authenticated read. */
@@ -255,36 +271,64 @@ export function collectLocalEvidence(
   if (!isAbsolute(cwd) || !existsSync(cwd) || !statSync(cwd).isDirectory())
     throw new EvidenceRequestError('local collection cwd is not a readable directory');
   const safeCwd = resolve(cwd);
-  return {
-    source: 'coordinator',
-    records: request.plan.obligations
-      .filter((item) => item.executionBoundary !== 'provider')
-      .map((item) => {
-        const result = process.run(commandArgv(item.commandOrProviderJob), safeCwd);
-        let inventory = result.inventory;
-        let assertionPassed = result.assertionPassed;
-        for (const reportPath of result.reportPaths ?? []) {
-          const path = resolve(safeCwd, reportPath);
-          if (!path.startsWith(`${safeCwd}/`) || !existsSync(path) || !statSync(path).isFile())
-            throw new EvidenceRequestError('local report path is invalid');
-          const parsed = parseJUnit(new Uint8Array(readFileSync(path)));
-          inventory = [...inventory, ...parsed.inventory];
-          if (!parsed.assertionPassed) assertionPassed = false;
-        }
-        return {
-          obligation: obligationKey(item),
-          status: result.exitCode === 0 && assertionPassed !== false ? 'pass' : 'fail',
-          revision: request.revision,
-          integrationTree: request.integrationTree,
-          environment: request.environment,
-          command: item.commandOrProviderJob,
-          relevantInputs: item.relevantInputs,
-          inventory,
-          exitCode: result.exitCode,
-          assertionPassed,
-        };
-      }),
-  };
+  const obligations = request.plan.obligations.filter(
+    (item) => item.executionBoundary !== 'provider',
+  );
+  const commands = obligations.map((item) => ({
+    item,
+    argv: commandArgv(item.commandOrProviderJob),
+  }));
+  const inputPaths = [...new Set(obligations.flatMap((item) => item.relevantInputs))];
+  for (const path of inputPaths) validateLocalPath(safeCwd, path);
+  const before = localProvenance(safeCwd, request.base, inputPaths);
+  return collected(
+    'coordinator',
+    commands.map(({ item, argv }) => {
+      const result = process.run(argv, safeCwd);
+      let inventory = result.inventory;
+      let assertionPassed = result.assertionPassed;
+      const reports = (result.reportPaths ?? []).map((reportPath) => {
+        const path = validateLocalPath(safeCwd, reportPath);
+        const bytes = new Uint8Array(readFileSync(path));
+        const parsed = parseJUnit(bytes);
+        inventory = [...inventory, ...parsed.inventory];
+        if (!parsed.assertionPassed) assertionPassed = false;
+        return { path, digest: sha256(bytes) };
+      });
+      const artifacts = (result.artifactPaths ?? []).map((artifactPath) => {
+        const path = validateLocalPath(safeCwd, artifactPath);
+        return { path, digest: sha256(readFileSync(path)) };
+      });
+      const after = localProvenance(safeCwd, request.base, inputPaths);
+      const stableInputs = before.inputIdentity === after.inputIdentity;
+      const identityMatches =
+        before.revision === request.revision && before.integrationTree === request.integrationTree;
+      return {
+        obligation: obligationKey(item),
+        status:
+          !identityMatches || !stableInputs || assertionPassed === null || inventory.length === 0
+            ? 'pending'
+            : result.exitCode === 0 && assertionPassed
+              ? 'pass'
+              : 'fail',
+        revision: after.revision,
+        integrationTree: after.integrationTree,
+        environment: after.runtime,
+        command: item.commandOrProviderJob,
+        relevantInputs: item.relevantInputs.map((path) => `${path}:${after.inputs[path] ?? ''}`),
+        inventory,
+        exitCode: result.exitCode,
+        assertionPassed,
+        ...(after.dirtyContentIdentity === undefined
+          ? {}
+          : { dirtyContentIdentity: after.dirtyContentIdentity }),
+        sourceRevision: before.revision,
+        inputIdentity: after.inputIdentity,
+        ...(reports.length === 0 ? {} : { reports }),
+        ...(artifacts.length === 0 ? {} : { artifacts }),
+      };
+    }),
+  );
 }
 
 /** The local collection boundary: parse and validate before any owned process starts. */
@@ -302,11 +346,120 @@ export function collectLocalEvidenceFromRequest(
   return collectLocalEvidence(readVerificationRequest(path, digest), executor, cwd);
 }
 
+interface LocalProvenance {
+  revision: string;
+  integrationTree: string;
+  runtime: string;
+  inputs: Record<string, string>;
+  inputIdentity: string;
+  dirtyContentIdentity?: string;
+}
+
+function output(argv: string[], cwd: string): string {
+  const result = Bun.spawnSync(argv, { cwd, stdout: 'pipe', stderr: 'pipe' });
+  return result.exitCode === 0 ? new TextDecoder().decode(result.stdout).trim() : '';
+}
+
+function validateLocalPath(cwd: string, candidate: string): string {
+  if (
+    candidate === '' ||
+    candidate.includes('\0') ||
+    isAbsolute(candidate) ||
+    candidate.split(/[\\/]/).some((part) => part === '..')
+  )
+    throw new EvidenceRequestError('local evidence path is invalid');
+  const path = resolve(cwd, candidate);
+  if (!path.startsWith(`${cwd}${sep}`) || !existsSync(path) || !statSync(path).isFile())
+    throw new EvidenceRequestError('local evidence path is not a readable regular file');
+  return path;
+}
+
+function localProvenance(cwd: string, requestedBase: string, inputs: string[]): LocalProvenance {
+  const revision = output(['git', 'rev-parse', 'HEAD'], cwd);
+  const base = output(['git', 'merge-base', 'HEAD', requestedBase], cwd);
+  const runtime = output(['bun', '--version'], cwd);
+  const entries = Object.fromEntries(
+    inputs.map((path) => [path, sha256(readFileSync(validateLocalPath(cwd, path)))]),
+  );
+  const inputIdentity = sha256(JSON.stringify(entries));
+  const dirty = output(
+    ['git', 'status', '--porcelain', '--untracked-files=all', '--', ...inputs],
+    cwd,
+  );
+  return {
+    revision,
+    integrationTree: sha256(`${base}\0${revision}`),
+    runtime,
+    inputs: entries,
+    inputIdentity,
+    ...(dirty === '' ? {} : { dirtyContentIdentity: sha256(`${dirty}\0${inputIdentity}`) }),
+  };
+}
+
+/** Reissues in-memory local evidence only when the current task inputs still match the receipt. */
+export function reuseLocalEvidence(
+  evidence: CollectedEvidence,
+  request: VerificationRequest,
+  cwd: string,
+): CollectedEvidence {
+  if (!issuedCollections.has(evidence) || evidence.source !== 'coordinator')
+    throw new EvidenceRequestError('local evidence was not returned by a collector');
+  if (!isAbsolute(cwd) || !existsSync(cwd) || !statSync(cwd).isDirectory())
+    throw new EvidenceRequestError('local collection cwd is not a readable directory');
+  const safeCwd = resolve(cwd);
+  const records: EvidenceRecord[] = [];
+  for (const obligation of request.plan.obligations.filter(
+    (item) => item.executionBoundary !== 'provider',
+  )) {
+    const previous = evidence.records.filter(
+      (record) => record.obligation === obligationKey(obligation),
+    );
+    if (previous.length !== 1)
+      throw new EvidenceRequestError('local evidence has no unique obligation');
+    const inputs = obligation.relevantInputs;
+    for (const path of inputs) validateLocalPath(safeCwd, path);
+    const current = localProvenance(safeCwd, request.base, inputs);
+    const prior = previous[0] as EvidenceRecord;
+    const reportsIntact = (prior.reports ?? []).every(
+      ({ path, digest }) =>
+        existsSync(path) && statSync(path).isFile() && sha256(readFileSync(path)) === digest,
+    );
+    const reusable =
+      prior.status === 'pass' &&
+      prior.command === obligation.commandOrProviderJob &&
+      prior.inputIdentity === current.inputIdentity &&
+      prior.environment === current.runtime &&
+      reportsIntact &&
+      artifactIsIntact(prior) &&
+      current.revision === request.revision &&
+      current.integrationTree === request.integrationTree;
+    records.push({
+      ...prior,
+      status: reusable ? 'reused-pass' : 'pending',
+      revision: current.revision,
+      integrationTree: current.integrationTree,
+      environment: current.runtime,
+      relevantInputs: inputs.map((path) => `${path}:${current.inputs[path] ?? ''}`),
+      inputIdentity: current.inputIdentity,
+      sourceRevision: prior.sourceRevision ?? prior.revision,
+      ...(current.dirtyContentIdentity === undefined
+        ? {}
+        : { dirtyContentIdentity: current.dirtyContentIdentity }),
+    });
+  }
+  return collected('coordinator', records);
+}
+
 function obligationKey(obligation: VerificationObligation): string {
   return `${obligation.criterionId}:${obligation.commandOrProviderJob}`;
 }
 
 function artifactIsIntact(record: EvidenceRecord): boolean {
+  if (record.artifacts !== undefined)
+    return record.artifacts.every(
+      ({ path, digest }) =>
+        existsSync(path) && statSync(path).isFile() && sha256(readFileSync(path)) === digest,
+    );
   return (
     record.artifact === undefined ||
     (existsSync(record.artifact) && statSync(record.artifact).isFile())
@@ -337,7 +490,13 @@ function recordProblems(
     problems.push(`${record.obligation} is for a different environment`);
   if (record.command !== obligation.commandOrProviderJob)
     problems.push(`${record.obligation} has a different command or provider job`);
-  if (!obligation.relevantInputs.every((input) => record.relevantInputs.includes(input)))
+  if (
+    !obligation.relevantInputs.every((input) =>
+      record.relevantInputs.some(
+        (identity) => identity === input || identity.startsWith(`${input}:`),
+      ),
+    )
+  )
     problems.push(`${record.obligation} lacks a relevant input identity`);
   if (obligation.expectedInventory.length > 0 && record.inventory.length === 0)
     problems.push(`${record.obligation} unexpectedly discovered no tests or jobs`);
@@ -366,6 +525,7 @@ export function validateEvidence(
   expected: EvidenceExpectation,
 ): EvidenceValidation {
   const problems: string[] = [];
+  if (!issuedCollections.has(evidence)) problems.push('evidence was not returned by a collector');
   const records = [...evidence.records];
   for (const obligation of plan.obligations) {
     const key = obligationKey(obligation);

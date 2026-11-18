@@ -19,7 +19,7 @@ interface GitHubObject {
 function object(value: unknown): GitHubObject {
   if (typeof value !== 'object' || value === null || Array.isArray(value))
     throw new EvidenceRequestError('authenticated GitHub response has invalid shape');
-  return value as GitHubObject;
+  return value;
 }
 function api(repository: string, path: string): unknown {
   const result = Bun.spawnSync(['gh', 'api', `repos/${repository}/${path}`], {
