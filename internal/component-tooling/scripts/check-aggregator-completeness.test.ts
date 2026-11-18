@@ -9,11 +9,14 @@ import {
   checkAggregatorCompleteness,
   computeImportClosure,
 } from './check-aggregator-completeness.ts';
+import { cinderComponentFile, cinderComponentRoots } from './discover-component-directories.ts';
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const componentsRoot = resolve(scriptDirectory, '../../../components/cinder');
 const componentsSource = join(componentsRoot, 'src');
-const realComponentsDirectory = join(componentsSource, 'components');
+// Every components directory of the real Cinder: core's, and each family package's once the
+// split extracts it (core then has none of its own).
+const realComponentsDirectories = cinderComponentRoots(componentsRoot);
 const realAggregator = join(componentsSource, 'styles', 'components.css');
 
 // Track every temp tree so it's removed after each test — otherwise repeated
@@ -338,7 +341,8 @@ describe('checkAggregatorCompleteness', () => {
 
 describe('the real cinder aggregator', () => {
   it('imports every component CSS partial (or excludes it with a reason)', () => {
-    const violations = checkAggregatorCompleteness(realComponentsDirectory, realAggregator);
+    expect(realComponentsDirectories.length).toBeGreaterThan(0);
+    const violations = checkAggregatorCompleteness(realComponentsDirectories, realAggregator);
     // A failure here lists each component CSS that would ship unstyled to
     // /styles consumers. Add the @import (alphabetical) or an exclusion entry.
     expect(violations).toEqual([]);
@@ -347,7 +351,7 @@ describe('the real cinder aggregator', () => {
   it('keeps every exclusion honest — each excluded file actually exists and is uncovered', () => {
     const reachable = computeImportClosure(realAggregator);
     for (const exclusion of AGGREGATOR_EXCLUSIONS) {
-      const absolute = join(realComponentsDirectory, exclusion.path);
+      const absolute = cinderComponentFile(exclusion.path, componentsRoot);
       // The file must exist (no stale exclusions) …
       expect(Bun.file(absolute).size).toBeGreaterThan(0);
       // … and must genuinely be outside the CSS chain (else the exclusion is

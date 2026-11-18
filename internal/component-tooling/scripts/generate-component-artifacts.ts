@@ -54,7 +54,12 @@ function writeJson(path: string, value: unknown): void {
  * `.metadata/<name>/` (P-COR-101). False when the family has not generated them, and core
  * generates them itself.
  */
-function copyPackageMetadata(familyRoot: string, coreRoot: string, name: string): boolean {
+function copyPackageMetadata(
+  familyRoot: string,
+  coreRoot: string,
+  name: string,
+  relocate: (text: string, fromPath: string, toPath: string) => string,
+): boolean {
   const source = join(familyRoot, '.metadata', name);
   if (!existsSync(join(source, 'schema.json')) || !existsSync(join(source, 'variables.json'))) {
     return false;
@@ -62,7 +67,13 @@ function copyPackageMetadata(familyRoot: string, coreRoot: string, name: string)
   const target = join(coreRoot, '.metadata', name);
   mkdirSync(target, { recursive: true });
   for (const file of ['schema.json', 'variables.json', 'examples.json']) {
-    if (existsSync(join(source, file))) copyFileSync(join(source, file), join(target, file));
+    const from = join(source, file);
+    if (!existsSync(from)) continue;
+    // A relative `$schema` (an examples document's) names the same file from core's copy.
+    writeFileSync(
+      join(target, file),
+      relocate(readFileSync(from, 'utf8'), from, join(target, file)),
+    );
   }
   return true;
 }
@@ -84,7 +95,7 @@ async function runMetadataMode(pkg: ComponentPackage): Promise<void> {
     // which core's runs after (`^metadata`); core copies it, so its subpath exports still resolve.
     if (
       resolve(packageRoot) !== resolve(pkg.root) &&
-      copyPackageMetadata(packageRoot, pkg.root, name)
+      copyPackageMetadata(packageRoot, pkg.root, name, relocatedJsonDocument)
     ) {
       continue;
     }

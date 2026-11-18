@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'bun:test';
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 
 const markdownEditorPath = new URL('./markdown-editor.svelte', import.meta.url);
 const editorToolbarPath = new URL('./editor-toolbar/editor-toolbar.svelte', import.meta.url);
@@ -10,10 +12,30 @@ const toolbarDropdownPath = new URL('./editor-toolbar/toolbar-dropdown.svelte', 
 const editorPackageManifest: { private?: boolean } = await Bun.file(
   new URL('../../../../package.json', import.meta.url),
 ).json();
-const utilitiesCssPath = new URL(
-  `../../../../../${editorPackageManifest.private === true ? 'cinder' : 'components'}/src/styles/utilities.css`,
-  import.meta.url,
-);
+const utilitiesCssPath =
+  editorPackageManifest.private === true
+    ? cinderUtilitiesStylesheet()
+    : new URL('../../../../../components/src/styles/utilities.css', import.meta.url);
+
+/**
+ * The utilities stylesheet Cinder's root stylesheet imports, wherever the package that holds it
+ * keeps it: core's own `styles/utilities.css`, or the foundation package's once the Cinder split
+ * moves it there (P-COR-101), which core then names by package specifier.
+ */
+function cinderUtilitiesStylesheet(): string {
+  const index = join(
+    dirname(Bun.resolveSync('@lostgradient/cinder', import.meta.dir)),
+    'styles',
+    'index.css',
+  );
+  const specifier = /@import\s+['"]([^'"]*utilities\.css)['"]/.exec(
+    readFileSync(index, 'utf8'),
+  )?.[1];
+  if (specifier === undefined) throw new Error(`${index} imports no utilities stylesheet.`);
+  return specifier.startsWith('.')
+    ? join(dirname(index), specifier)
+    : Bun.resolveSync(specifier, dirname(index));
+}
 
 function stripCssComments(source: string): string {
   return source.replace(/\/\*[\s\S]*?\*\//g, '');

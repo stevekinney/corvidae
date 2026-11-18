@@ -23,6 +23,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path';
 
 import type { ComponentSchema } from '../../src/schema-types.ts';
+import { CORE_ROOT, cinderComponentRoots } from '../discover-component-directories.ts';
 
 /**
  * The text of a JSON document copied from `fromPath` to `toPath`, with a relative `$schema`
@@ -66,7 +67,12 @@ export function manifestMetadataPath(packageRoot: string): string {
 
 /** The command that writes a package's `.metadata/`, for error messages. */
 export function metadataCommand(packageRoot: string): string {
-  return `bunx turbo run metadata --filter=@lostgradient/${basename(packageRoot)}`;
+  // The package's own name: core's directory (`components/core`) is not its name.
+  const manifestPath = join(packageRoot, 'package.json');
+  const name = existsSync(manifestPath)
+    ? (JSON.parse(readFileSync(manifestPath, 'utf8')) as { name?: unknown }).name
+    : undefined;
+  return `bunx turbo run metadata --filter=${typeof name === 'string' ? name : `@lostgradient/${basename(packageRoot)}`}`;
 }
 
 /** Parse one generated metadata file, or throw naming the command that generates it. */
@@ -85,20 +91,32 @@ export function readComponentMetadata<T>(
   return readMetadataFile<T>(componentMetadataPath(packageRoot, id, kind), packageRoot);
 }
 
-const CINDER_PACKAGE_ROOT = join(import.meta.dir, '../../../../components/cinder');
-
-/** A component's generated props schema (cinder's unless `packageRoot` names another package). */
-export function readComponentSchema(
-  id: string,
-  packageRoot: string = CINDER_PACKAGE_ROOT,
-): ComponentSchema {
-  return readComponentMetadata<ComponentSchema>(packageRoot, id, 'schema');
+/**
+ * The Cinder package that holds a component and whose `metadata` task writes its files: core while
+ * core holds it, its family package once the split extracts it (P-COR-101). A family's tests wait
+ * for their own package's `metadata` task, never core's, which depends on them.
+ */
+export function cinderMetadataPackageRoot(id: string): string {
+  const componentsRoot = cinderComponentRoots().find((root) =>
+    existsSync(join(root, id, `${id}.svelte`)),
+  );
+  return componentsRoot === undefined ? CORE_ROOT : dirname(dirname(componentsRoot));
 }
 
-/** The custom properties a component declares (cinder's unless `packageRoot` says otherwise). */
-export function readComponentVariables(
-  id: string,
-  packageRoot: string = CINDER_PACKAGE_ROOT,
-): readonly string[] {
-  return readComponentMetadata<string[]>(packageRoot, id, 'variables');
+/** A component's generated props schema (Cinder's unless `packageRoot` names another package). */
+export function readComponentSchema(id: string, packageRoot?: string): ComponentSchema {
+  return readComponentMetadata<ComponentSchema>(
+    packageRoot ?? cinderMetadataPackageRoot(id),
+    id,
+    'schema',
+  );
+}
+
+/** The custom properties a component declares (Cinder's unless `packageRoot` says otherwise). */
+export function readComponentVariables(id: string, packageRoot?: string): readonly string[] {
+  return readComponentMetadata<string[]>(
+    packageRoot ?? cinderMetadataPackageRoot(id),
+    id,
+    'variables',
+  );
 }

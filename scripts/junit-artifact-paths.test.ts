@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, relative } from 'node:path';
 
@@ -7,10 +7,15 @@ import { workspaceParentDirectories } from './workspace-directories.ts';
 
 const root = join(import.meta.dir, '..');
 const workflow = Bun.file(join(root, '.github/workflows/main.yml'));
+// The single-directory workspaces the root manifest lists beside the parent directories (the
+// groom script's): each writes its report under its own directory.
+const singleWorkspaces = (
+  JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')) as { workspaces: string[] }
+).workspaces.filter((pattern) => !pattern.endsWith('/*'));
 const reportPathPatterns = [
   'test-output/junit/*.xml',
   ...workspaceParentDirectories.map((directory) => `${directory}/*/test-output/junit/*.xml`),
-  'scripts/browser-fixtures/test-output/junit/*.xml',
+  ...singleWorkspaces.map((directory) => `${directory}/test-output/junit/*.xml`),
 ];
 
 function writeReport(directory: string, path: string): string {
@@ -41,12 +46,14 @@ function selectedReports(directory: string): string[] {
 }
 
 describe('JUnit artifact paths', () => {
-  test('bound discovery to root, workspaces, and browser fixtures without descending dependencies', async () => {
+  test('bound discovery to root and workspaces without descending dependencies', async () => {
     const fixture = mkdtempSync(join(tmpdir(), 'junit-artifact-paths-'));
     try {
       const expected = [
         writeReport(fixture, 'test-output/junit/root.xml'),
-        writeReport(fixture, 'scripts/browser-fixtures/test-output/junit/fixtures.xml'),
+        ...singleWorkspaces.map((directory) =>
+          writeReport(fixture, `${directory}/test-output/junit/single.xml`),
+        ),
         ...workspaceParentDirectories.map((parent) =>
           writeReport(fixture, `${parent}/existing/test-output/junit/existing.xml`),
         ),
