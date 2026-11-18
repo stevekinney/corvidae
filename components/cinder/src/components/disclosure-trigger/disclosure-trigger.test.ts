@@ -52,6 +52,15 @@ describe('DisclosureTrigger (board row X3)', () => {
     );
   });
 
+  test('lets its words take the rest of a widened row, so a time can sit at the line end', () => {
+    // The trigger is a flex row and the label grows: a trigger sized to its words is unchanged,
+    // and a step row that fills its line keeps its duration at the far edge (COR-2440).
+    expect(cssText).toMatch(/\.cinder-disclosure-trigger \{[^}]*display: inline-flex;/);
+    expect(cssText).toMatch(
+      /\.cinder-disclosure-trigger__label \{[^}]*flex: 1 1 auto;[^}]*min-inline-size: 0;/,
+    );
+  });
+
   test('passes a class and other attributes through, and keeps type button', () => {
     const { container } = render(DisclosureTrigger, {
       props: {

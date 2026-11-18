@@ -679,49 +679,13 @@
     gap: var(--cinder-space-1);
   }
 
-  .cinder-approval-card__input-toggle {
-    appearance: none;
-    display: flex;
-    align-items: center;
-    gap: var(--cinder-space-2);
-    min-block-size: 24px;
-    min-inline-size: 0;
-    padding: 0;
-    border: 0;
-    border-radius: var(--cinder-radius-sm);
-    background: none;
-    color: var(--cinder-text-subtle);
-    font: inherit;
-    text-align: start;
-    cursor: pointer;
-  }
-
-  /* Input, Why, Details and source-said disclosures share the compact Cinder trigger contract:
-   * a text-sized desktop face, one token of vertical breathing room, and the coarse-pointer
-   * target expansion below. */
-  .cinder-approval-card__input-toggle,
+  /* The source-said disclosure keeps the compact trigger contract: a text-sized desktop face, one
+   * token of vertical breathing room, and the coarse-pointer target expansion below. */
   .cinder-approval-card__said-toggle {
     padding-block: var(--cinder-space-0-5);
   }
 
-  .cinder-approval-card__input-toggle:focus-visible {
-    outline: var(--cinder-ring-width) solid transparent;
-    box-shadow: var(--_cinder-focus-ring-shadow);
-  }
-
-  .cinder-approval-card__input-toggle svg {
-    flex: none;
-    align-self: center;
-    margin-block-start: 1px;
-    transition: transform var(--cinder-duration-fast) var(--cinder-ease-standard);
-  }
-
-  .cinder-approval-card__input-toggle svg[data-cinder-open] {
-    transform: rotate(90deg);
-  }
-
   /* A collapsed disclosure points toward the inline end, so RTL mirrors it. */
-  .cinder-approval-card__input-toggle:dir(rtl) svg:not([data-cinder-open]),
   .cinder-approval-card:has(
       :is(
         .cinder-approval-card__title,
@@ -729,26 +693,41 @@
         .cinder-approval-card__row-question
       ):dir(rtl)
     )
-    :is(.cinder-approval-card__input-toggle, .cinder-approval-card__said-toggle)
+    .cinder-approval-card__said-toggle
     svg:not([data-cinder-open]),
-  .cinder-approval-card[dir='rtl']
-    :is(.cinder-approval-card__input-toggle, .cinder-approval-card__said-toggle)
-    svg:not([data-cinder-open]) {
+  .cinder-approval-card[dir='rtl'] .cinder-approval-card__said-toggle svg:not([data-cinder-open]) {
     transform: scaleX(-1);
+  }
+
+  /* The arguments line is DisclosureTrigger (board row X3): its chevron, words, focus ring and
+   * touch hit area are the shared ones. It fills the card's column so its pairs can be cut with an
+   * ellipsis, and its label box steps aside, so the name and the pairs are the trigger's own items:
+   * a narrow card wraps the pairs onto the line under the name, at the content edge. */
+  .cinder-approval-card__arguments-toggle {
+    display: flex;
+  }
+
+  .cinder-approval-card__arguments-toggle .cinder-disclosure-trigger__label {
+    display: contents;
   }
 
   .cinder-approval-card__input-word {
     flex: none;
-    color: var(--cinder-text-muted);
-    font-weight: var(--cinder-font-semibold);
   }
 
-  /* The summary is one line: a few short pairs, cut with an ellipsis only if it must. */
+  /* The summary is one line: a few short pairs, cut with an ellipsis only if it must. Each pair is
+   * its label in the default ink and its value a colour step down, a gap from the next: no comma
+   * between them. */
   .cinder-approval-card__input-pairs {
     min-inline-size: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    font-weight: var(--cinder-font-normal);
+  }
+
+  .cinder-approval-card__input-pair + .cinder-approval-card__input-pair {
+    margin-inline-start: var(--cinder-space-2);
   }
 
   .cinder-approval-card__pair-value {
@@ -1083,12 +1062,6 @@
    * title to break, the badge is the item that wraps, onto the line directly under the title. */
   .cinder-approval-card__decision-head .cinder-approval-card__decision-title {
     flex: 0 1 auto;
-  }
-
-  .cinder-approval-card__receipt .cinder-approval-card__input-toggle {
-    align-items: center;
-    align-self: flex-start;
-    line-height: var(--cinder-leading-tight);
   }
 
   .cinder-approval-card__pause {
@@ -1683,10 +1656,6 @@
    * they outrank the compact desktop height without a cross-component custom property. */
   @container (inline-size < 32rem) {
     /* The input line wraps rather than cutting its values, so a phone still reads all of it. */
-    .cinder-approval-card__input-toggle {
-      align-items: center;
-    }
-
     .cinder-approval-card__input-pairs {
       overflow: visible;
       white-space: normal;
@@ -1695,7 +1664,7 @@
     /* The card's arguments line names its block in more than one word, so its pairs take the line
      * under the name and start at the body's content edge, where the command and the chevron
      * start, instead of a squeezed column beside it or a column past the chevron. */
-    .cinder-approval-card__disclosures .cinder-approval-card__input-toggle {
+    .cinder-approval-card__disclosures .cinder-approval-card__arguments-toggle {
       flex-wrap: wrap;
       row-gap: 0;
     }
@@ -1780,15 +1749,14 @@
       min-inline-size: var(--cinder-touch-target-min);
     }
 
-    /* The disclosures (Input, Details, Why the agent wants to do this, what the source said) are painted at text height; on a touch screen each reaches a 44px hit area
-     * through a pseudo-element that takes no layout space, so the rows keep their rhythm. */
-    .cinder-approval-card__input-toggle,
+    /* What the source said and Show all are painted at text height; on a touch screen each
+     * reaches a 44px hit area through a pseudo-element that takes no layout space, so the rows
+     * keep their rhythm. The DisclosureTrigger reveals (Arguments, Details, Why) bring their own. */
     .cinder-approval-card__said-toggle,
     .cinder-approval-card__show-all {
       position: relative;
     }
 
-    .cinder-approval-card__input-toggle::before,
     .cinder-approval-card__said-toggle::before,
     .cinder-approval-card__show-all::before {
       content: '';
@@ -1808,7 +1776,6 @@
     }
 
     .cinder-approval-card__risk-icon:focus-visible,
-    .cinder-approval-card__input-toggle:focus-visible,
     .cinder-approval-card__show-all:focus-visible {
       outline: 2px solid CanvasText;
       outline-offset: 2px;

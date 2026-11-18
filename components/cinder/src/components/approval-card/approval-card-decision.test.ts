@@ -848,12 +848,12 @@ describe('ApprovalCard decision layout stylesheet', () => {
       /\.cinder-approval-card__row-actions \.cinder-inline-confirm__two-press \{[^}]*display:\s*contents;/s,
     );
     expect(css).toMatch(/\.cinder-inline-confirm__two-press-hint \{[^}]*flex:\s*1 0 100%;/s);
+    // The arguments line is DisclosureTrigger, whose painted size is the shared one; the
+    // source-said toggle keeps one token of breathing room.
     expect(css).toMatch(
-      /@container \(inline-size < 32rem\) \{[^}]*\.cinder-approval-card__input-toggle \{\s*align-items:\s*center;/s,
+      /\.cinder-approval-card__said-toggle\s*\{[\s\S]*?padding-block:\s*var\(--cinder-space-0-5\);/,
     );
-    expect(css).toMatch(
-      /\.cinder-approval-card__input-toggle,\s*\.cinder-approval-card__said-toggle\s*\{[\s\S]*?padding-block:\s*var\(--cinder-space-0-5\);/,
-    );
+    expect(css).not.toMatch(/__input-toggle/);
     // No negative margin pulls the status row up: the toggles are painted at text height.
     expect(css).not.toMatch(/__why ~ \.cinder-approval-card__decision-tools/);
   });
@@ -1183,7 +1183,7 @@ describe('ApprovalCard decision layout stylesheet', () => {
     const coarse = css.slice(css.indexOf('@media (any-pointer: coarse)'));
     // Painted at text height: the 44px hit area is a pseudo-element that takes no layout space.
     expect(coarse).toContain(
-      ".cinder-approval-card__input-toggle::before, .cinder-approval-card__said-toggle::before, .cinder-approval-card__show-all::before { content: ''; position: absolute; inset-block: min(0px, calc((100% - var(--cinder-touch-target-min)) / 2)); inset-inline: min(0px, calc((100% - var(--cinder-touch-target-min)) / 2)); }",
+      ".cinder-approval-card__said-toggle::before, .cinder-approval-card__show-all::before { content: ''; position: absolute; inset-block: min(0px, calc((100% - var(--cinder-touch-target-min)) / 2)); inset-inline: min(0px, calc((100% - var(--cinder-touch-target-min)) / 2)); }",
     );
     expect(coarse).not.toMatch(/__(?:input|said|note)-toggle\s*\{\s*min-block-size/);
   });

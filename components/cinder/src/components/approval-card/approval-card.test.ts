@@ -1284,7 +1284,11 @@ describe('ApprovalCard card layout anatomy', () => {
     // Both disclosures start closed: the summary line shows, the inspector and the details wait.
     expect(argumentsToggle.getAttribute('aria-expanded')).toBe('false');
     // The title already names the tool, so the closed line does not say it again.
-    expect(squash(argumentsToggle.textContent)).toBe('Arguments Dry run No, Retries 1');
+    // The one disclosure trigger (board row X3), and its pairs a gap apart with no comma.
+    expect(argumentsToggle.classList.contains('cinder-disclosure-trigger')).toBe(true);
+    expect(squash(argumentsToggle.textContent)).toBe('Arguments Dry run No Retries 1');
+    expect(argumentsToggle.querySelectorAll('.cinder-approval-card__input-pair')).toHaveLength(2);
+    expect(argumentsToggle.querySelector('.cinder-approval-card__separator')).toBeNull();
     const argumentsRegion = requiredInstance(
       document.getElementById(argumentsToggle.getAttribute('aria-controls') ?? ''),
       HTMLElement,
@@ -1421,7 +1425,7 @@ describe('ApprovalCard row layout', () => {
       'Sends $42.00 back to the original card',
     );
     // The input is in the open: one pair per line, in a group named Input, with no disclosure.
-    expect(container.querySelector('.cinder-approval-card__input-toggle')).toBeNull();
+    expect(container.querySelector('.cinder-approval-card__arguments-toggle')).toBeNull();
     const input = getByRole('group', { name: 'Input' });
     expect(
       [...input.querySelectorAll('.cinder-description-list__row')].map((row) =>
