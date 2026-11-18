@@ -2,6 +2,7 @@
   export type {
     GroupedListItemAction,
     GroupedListItemLeadingKind,
+    GroupedListItemLines,
     GroupedListItemProps,
     GroupedListItemUrgency,
   } from './grouped-list-item.types.ts';
@@ -29,6 +30,12 @@
     action,
     actions,
     chevron,
+    chevronColumn = false,
+    titleLines,
+    subtitleLines,
+    tooltip,
+    subtitleTooltip,
+    arriving = false,
     selected = false,
     suggested = false,
     suggestedLabel = 'Suggested',
@@ -40,6 +47,14 @@
   }: GroupedListItemProps = $props();
 
   const showChevron = $derived(chevron ?? href !== undefined);
+
+  // One native tooltip on the row, never one per line: on a linked row the link's cover lies over
+  // every line, so a tooltip on the subtitle could never be reached. The title, a line break, then
+  // the subtitle's text; whichever is set, alone, when only one is.
+  const rowTooltip = $derived(
+    [tooltip, subtitleTooltip].filter((part) => part !== undefined && part !== '').join('\n') ||
+      undefined,
+  );
 
   // A `lead` snippet wins; otherwise a time window makes the row time-led.
   const timed = $derived(!lead && timeWindow !== undefined);
@@ -77,8 +92,16 @@
     timed && 'cinder-grouped-list-item--timed',
     hasActions && 'cinder-grouped-list-item--actions',
     trailing !== undefined && 'cinder-grouped-list-item--trailing',
+    showChevron && 'cinder-grouped-list-item--chevron',
+    // A row whose title's first line is not at the top of its content keeps its chevron in the flow.
+    (suggested ||
+      (leading !== undefined && (leadingKind === 'avatar' || leadingKind === 'media'))) &&
+      'cinder-grouped-list-item--flow-chevron',
+    !showChevron && chevronColumn && 'cinder-grouped-list-item--chevron-column',
+    arriving && 'cinder-grouped-list-item--arriving',
     className,
   )}
+  title={rowTooltip}
   data-cinder-selected={selected ? '' : undefined}
   data-cinder-suggested={suggested ? '' : undefined}
   aria-current={selected && href === undefined ? 'true' : undefined}
@@ -106,7 +129,7 @@
       {#if suggested}
         <span class="cinder-grouped-list-item__suggested">{suggestedLabel}</span>
       {/if}
-      <div class="cinder-grouped-list-item__title">
+      <div class="cinder-grouped-list-item__title" data-cinder-lines={titleLines}>
         {#if href !== undefined}
           <a
             class="cinder-grouped-list-item__link"
@@ -120,7 +143,9 @@
         {/if}
       </div>
       {#if subtitle}
-        <div class="cinder-grouped-list-item__subtitle">{@render subtitle()}</div>
+        <div class="cinder-grouped-list-item__subtitle" data-cinder-lines={subtitleLines}>
+          {@render subtitle()}
+        </div>
       {/if}
     </div>
     {#if staleAge}

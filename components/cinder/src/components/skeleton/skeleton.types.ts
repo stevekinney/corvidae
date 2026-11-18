@@ -58,6 +58,29 @@ export type SkeletonProps = {
    */
   action?: boolean;
   /**
+   * Draw a leading icon block in each row when `variant` is `'grouped'`, with a grouped-list
+   * row's icon slot metrics (the 28px slot, its 12px gap, and the glyph on the title's first line),
+   * so the bars start where the row's text starts, for a list whose rows lead with a glyph.
+   * Ignored by other variants.
+   * @default false
+   */
+  leading?: boolean;
+  /**
+   * Draw a short bar at the inline end of each row's title line when `variant` is `'grouped'`,
+   * standing for a trailing value such as a time. It is the height of small text and stays on the
+   * title's line at every width, unlike `action`'s button block. Ignored by other variants.
+   * @default false
+   */
+  trailing?: boolean;
+  /**
+   * With `trailing`, end the trailing bar before a grouped-list row's chevron column (the 16px
+   * chevron and its gap), so the bar ends where the trailing value of a row that draws a chevron,
+   * or keeps its column with `GroupedListItem`'s `chevronColumn`, ends. Ignored without
+   * `trailing` and by other variants.
+   * @default false
+   */
+  chevronColumn?: boolean;
+  /**
    * What fills the status column of each row when `variant` is `'list'`. `'bar'` is a short bar
    * where the status word reads; `'dot'` is a small circle where the status dot sits. The column
    * keeps its width either way, so nothing shifts when data arrives. Ignored by other variants.

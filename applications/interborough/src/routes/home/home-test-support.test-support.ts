@@ -206,6 +206,7 @@ export function installHome(home: HomeWorld): InstalledHome {
   const bureauFetch = globalThis.fetch;
   const restoreFetch = installFetchImplementation(async (input, init) => {
     const url = new URL(urlOf(input), 'http://localhost');
+    if (url.pathname.endsWith('/v1/events/sse')) return quietFleetFeed(init?.signal);
     if (url.pathname === '/host/providers') {
       return Response.json({
         configurationRevision: 'fixture',
@@ -239,6 +240,33 @@ export function installHome(home: HomeWorld): InstalledHome {
       stub.restore();
     },
   };
+}
+
+/**
+ * The engine's fleet feed as the sample world's quiet host answers it: no event retained, the
+ * replay ended at once, and the stream left open until the page closes it, so Workflow activity
+ * reads an empty window (COR-2227).
+ */
+function quietFleetFeed(signal: AbortSignal | null | undefined): Response {
+  const body = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(
+        new TextEncoder().encode('event: ping\ndata: {"replayComplete":true}\n\n'),
+      );
+      signal?.addEventListener(
+        'abort',
+        () => {
+          try {
+            controller.close();
+          } catch {
+            // Already closed.
+          }
+        },
+        { once: true },
+      );
+    },
+  });
+  return new Response(body, { headers: { 'Content-Type': 'text/event-stream' } });
 }
 
 /** An agent as `bureau.agents.list` shows it; `media: null` is a scripted agent that needs no model. */

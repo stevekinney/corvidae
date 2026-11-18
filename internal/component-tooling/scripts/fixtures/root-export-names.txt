@@ -713,6 +713,7 @@ GridListProps
 GridProps
 GroupedListItemAction
 GroupedListItemLeadingKind
+GroupedListItemLines
 GroupedListItemProps
 GroupedListItemUrgency
 GroupedListProps
