@@ -31,7 +31,7 @@ import {
 } from './agent-support.ts';
 import { deleteChats, newThreadId, runToEnd } from './chat-support.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
-import { expect, test } from './fixtures.ts';
+import { expect, loggedFailedResponse, test } from './fixtures.ts';
 import { SINGLE_MODEL_AGENT_NAME } from './model-agents.ts';
 import { E2E_SKILLS } from './skills-support.ts';
 import { bureauCall, waitingReviewOf } from './task-support.ts';
@@ -408,7 +408,12 @@ for (const width of WIDTHS) {
 
     test(`/reviews shows a workflow’s review with its step and message, and a Done list longer than a page, at ${width} pixels`, async ({
       page,
+      pageErrors,
     }) => {
+      pageErrors.expect({
+        pattern: loggedFailedResponse(500, /reviews\/[^/]+\/decision/),
+        reason: 'the test answers the workflow review’s decision with a 500, for its error toast',
+      });
       await page.setViewportSize({ width, height: 900 });
       const now = Date.now();
       const workflowReview = {
@@ -473,6 +478,26 @@ for (const width of WIDTHS) {
         state: 'a workflow review',
         source: SOURCE,
       });
+
+      // The decision fails: an error toast that stays until it is dismissed comes up while the
+      // docked Send back and Approve are on screen, so the two are drawn together (design review 3).
+      await page.route('**/reviews/*/decision', async (route) => {
+        await route.fulfill({ status: 500, json: { error: 'The engine broke.' } });
+      });
+      await approve.click();
+      const toast = page.locator('.cinder-toast').first();
+      await expect(toast).toBeVisible();
+      await toast.evaluate((element) =>
+        Promise.all(
+          element.getAnimations({ subtree: true }).map((animation) => animation.finished),
+        ),
+      );
+      await captureForDesignReview(page, {
+        route: '/reviews',
+        state: 'a workflow review, with an error toast',
+        source: SOURCE,
+      });
+      await page.unroute('**/reviews/*/decision');
 
       await page.goto('/reviews?tab=done');
       await expect(page.getByRole('button', { name: REVIEWS_COPY.loadMore })).toBeVisible();

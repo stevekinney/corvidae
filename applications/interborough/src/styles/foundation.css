@@ -57,6 +57,9 @@
   /* The end keeps room under a toast that stays until it is acted on (an Undo), so what the page
      holds can be scrolled clear of it on a phone (`--cinder-toast-reserve`, Cinder's ToastRegion). */
   --weft-outlet-padding-block-end: calc(var(--cinder-space-6) + var(--cinder-toast-reserve, 0px));
+  /* A docked action bar on any page sticks flush to the bottom of what the outlet shows, over this
+     bottom padding, so no strip of the page shows under it (Cinder's DockedActionBar). */
+  --cinder-docked-action-bar-end-offset: var(--weft-outlet-padding-block-end);
   padding: var(--cinder-space-4) var(--weft-outlet-gutter) var(--weft-outlet-padding-block-end);
   scroll-padding-block-end: var(--cinder-toast-reserve, 0px);
 }
