@@ -1943,6 +1943,13 @@
                   "contextId": {
                     "type": "string"
                   },
+                  "continues": {
+                    "description": "The run this task continues (COR-2423): the run Bureau starts to answer a chat’s decided tool approvals names the run that asked for them, so a list can show the two as one piece of work. `null` for every other task, and for one recorded before it was kept.",
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
                   "createdAt": {
                     "type": "string"
                   },
@@ -2384,6 +2391,7 @@
                   "actor",
                   "kind",
                   "origin",
+                  "continues",
                   "status",
                   "finishReason",
                   "statusMessage",
@@ -2572,6 +2580,13 @@
             },
             "contextId": {
               "type": "string"
+            },
+            "continues": {
+              "description": "The run this task continues (COR-2423): the run Bureau starts to answer a chat’s decided tool approvals names the run that asked for them, so a list can show the two as one piece of work. `null` for every other task, and for one recorded before it was kept.",
+              "type": [
+                "string",
+                "null"
+              ]
             },
             "createdAt": {
               "type": "string"
@@ -3014,6 +3029,7 @@
             "actor",
             "kind",
             "origin",
+            "continues",
             "status",
             "finishReason",
             "statusMessage",
@@ -3627,6 +3643,13 @@
                 "contextId": {
                   "type": "string"
                 },
+                "continues": {
+                  "description": "The run this task continues (COR-2423): the run Bureau starts to answer a chat’s decided tool approvals names the run that asked for them, so a list can show the two as one piece of work. `null` for every other task, and for one recorded before it was kept.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
                 "createdAt": {
                   "type": "string"
                 },
@@ -4068,6 +4091,7 @@
                 "actor",
                 "kind",
                 "origin",
+                "continues",
                 "status",
                 "finishReason",
                 "statusMessage",
@@ -4233,6 +4257,13 @@
                 "contextId": {
                   "type": "string"
                 },
+                "continues": {
+                  "description": "The run this task continues (COR-2423): the run Bureau starts to answer a chat’s decided tool approvals names the run that asked for them, so a list can show the two as one piece of work. `null` for every other task, and for one recorded before it was kept.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
                 "createdAt": {
                   "type": "string"
                 },
@@ -4674,6 +4705,7 @@
                 "actor",
                 "kind",
                 "origin",
+                "continues",
                 "status",
                 "finishReason",
                 "statusMessage",

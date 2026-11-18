@@ -125,6 +125,8 @@ export type SessionTaskFields = {
   readonly taskInput?: TaskInput | undefined;
   /** Where the task came from, as the caller declared it. See {@link StartTaskOptions.origin}. */
   readonly origin?: StartTaskOrigin | undefined;
+  /** The run this task continues. See {@link StartTaskOptions.continues}. */
+  readonly continues?: string | undefined;
   readonly inputParts?: Exclude<SessionInputPayload, string> | undefined;
   readonly onActiveRun?: ((activeRun: ActiveRun) => void) | undefined;
   /**
@@ -308,10 +310,14 @@ export function snapshotStartOptions(options: StartTaskOptions): StartTaskOption
     commandId,
     requestContext,
     origin,
+    continues,
     signal,
     traceContext,
     withTraceContext,
   } = options;
+  if (continues !== undefined && (typeof continues !== 'string' || continues === '')) {
+    toBadRequest('"options.continues" must be a non-empty run id');
+  }
   if (signal !== undefined && !(signal instanceof AbortSignal)) {
     toBadRequest('"options.signal" must be an AbortSignal');
   }
@@ -330,6 +336,7 @@ export function snapshotStartOptions(options: StartTaskOptions): StartTaskOption
     ...(commandId === undefined ? {} : { commandId }),
     ...(requestContext === undefined ? {} : { requestContext }),
     ...(declaredOrigin === undefined ? {} : { origin: declaredOrigin }),
+    ...(continues === undefined ? {} : { continues }),
     ...(signal === undefined ? {} : { signal }),
     ...(traceContext === undefined ? {} : { traceContext }),
     ...(withTraceContext === undefined ? {} : { withTraceContext }),

@@ -141,6 +141,23 @@ async function resolveThroughOperation(
   return (await response.json()) as ResolveReply;
 }
 
+/** The result of one Bureau operation, called over the handler as the local caller. */
+async function operationResult(
+  handler: Handler,
+  method: string,
+  params: Record<string, unknown>,
+): Promise<Record<string, unknown> | undefined> {
+  const response = await handler(
+    new Request('http://localhost/jsonrpc', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }),
+    }),
+  );
+  const body = (await response.json()) as { result?: Record<string, unknown> };
+  return body.result;
+}
+
 async function withHarness<T>(
   options: Parameters<typeof openHarness>[0],
   body: (harness: Harness) => Promise<T>,
@@ -265,6 +282,20 @@ describe('a decision through bureau.reviews.resolve continues the chat (COR-2016
         const task = await harness.bureau.tasks.get(continuation);
         expect(task?.origin).toMatchObject({ kind: 'chat', contextId: 'thread-1' });
         expect(task?.contextId).toBe('thread-1');
+        // COR-2423 — it records the run it continues, from its record to the view and the wire, so
+        // the Runs list shows the two as one piece of work; the run it continues names none.
+        expect(task?.continues).toBe(runId);
+        expect((await harness.bureau.tasks.get(runId))?.continues).toBeNull();
+        const wire = await operationResult(harness.handler, 'bureau.tasks.get', {
+          taskId: continuation,
+        });
+        expect(wire?.['continues']).toBe(runId);
+        const listed = await operationResult(harness.handler, 'bureau.tasks.list', {
+          contextId: 'thread-1',
+        });
+        const rows = (listed?.['tasks'] ?? []) as Array<Record<string, unknown>>;
+        expect(rows.find((row) => row['id'] === continuation)?.['continues']).toBe(runId);
+        expect(rows.find((row) => row['id'] === runId)?.['continues']).toBeNull();
         const receipt = await harness.bureau.tasks.receipt({
           principal: 'anonymous:local',
           agentName: 'assistant',

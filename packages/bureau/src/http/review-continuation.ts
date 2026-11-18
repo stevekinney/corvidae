@@ -116,6 +116,8 @@ async function startContinuationFrom(
       commandId: reviewContinuationCommandId(request.sessionId, request.runId),
       // The continuation is the chat's own: the Bureau fills the context, agent, and principal.
       origin: { kind: 'chat' },
+      // COR-2423 — it carries on from the run whose approvals were decided, which its record keeps.
+      continues: request.runId,
     },
   );
   return created.id;

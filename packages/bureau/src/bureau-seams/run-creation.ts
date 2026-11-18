@@ -752,6 +752,8 @@ export function createRunCreation<D extends AgentDefinitions>(
           agentName,
           owner,
           origin: taskOrigin,
+          // COR-2423 — the run this one continues, when it answers a chat's decided approvals.
+          ...(request.continues === undefined ? {} : { continues: request.continues }),
           // The text the run began with, whether it came as `message` or as an appended user row.
           message: request.message ?? (requestText === '' ? undefined : requestText),
           tools: toolGrant,
