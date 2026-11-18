@@ -24,6 +24,11 @@ import type {
   SessionDiscardRefusedError,
 } from '../session-discard';
 import type {
+  ResumeTurnRequest,
+  ResumeTurnResult,
+  SessionResumeRefusedError,
+} from '../session-resume';
+import type {
   SessionSteeringState,
   SteeringCommandAdmissionOutcome,
   SteeringCommandRequest,
@@ -439,6 +444,21 @@ export interface BureauContexts {
    * when Bureau is shutting down.
    */
   discardTurn(contextId: string, request: DiscardTurnRequest): Promise<DiscardTurnResult>;
+
+  /**
+   * Resumes the context's last stopped turn (COR-2437): the run itself would go on from where it
+   * stopped, its reply so far kept, with no new message from the person. No kind of stop can be
+   * resumed today, so this throws a {@link SessionResumeRefusedError} naming why, and starts or
+   * writes nothing: a run the person stopped, or that failed, has ended its workflow, which the
+   * engine cannot go on with (`run-not-resumable`); a run whose process stopped is recovered by the
+   * Bureau itself (`turn-recovering`); a reply cut at the token limit is a finished turn
+   * (`turn-finished`); a run still going is `turn-running`, and one waiting on an approval or a
+   * question `turn-awaiting-person`; a later run is `not-latest-turn`, and a run the context does
+   * not have `run-not-found`. It does not authorize the caller. Throws a `BureauError`
+   * `NOT_FOUND` for a context this Bureau does not hold, a `ContextArchivedError` for an archived
+   * one, and a `BureauShuttingDownError` when Bureau is shutting down.
+   */
+  resumeTurn(contextId: string, request: ResumeTurnRequest): Promise<ResumeTurnResult>;
 
   /**
    * One page of the context's durable event history, from the exclusive `options.since` cursor. It

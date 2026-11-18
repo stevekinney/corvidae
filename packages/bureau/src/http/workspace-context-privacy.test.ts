@@ -38,7 +38,13 @@ const cases = [
   { operation: 'bureau.contexts.regenerate', input: { commandId: 'private-regenerate' } },
   // COR-2437: each actor names its context's one run, which wrote a step and then failed.
   { operation: 'bureau.contexts.discardturn', input: { commandId: 'private-discard' } },
+  // COR-2437: as for a discard; the owner is refused `run-not-resumable`, which no stop escapes yet.
+  { operation: 'bureau.contexts.resumeturn', input: { commandId: 'private-resume' } },
 ] as const;
+
+/** Whether `operation` names its context's one run, a turn that wrote a step and then failed. */
+const namesAFailedTurn = (operation: string): boolean =>
+  operation === 'bureau.contexts.discardturn' || operation === 'bureau.contexts.resumeturn';
 
 /**
  * A Bureau whose runs call a tool, then fail: a turn with rows, which ended without finishing, so
@@ -77,7 +83,7 @@ for (const row of cases) {
     const opened = await openWorkspacePrivacyBureau(
       row.operation === 'bureau.contexts.input' || row.operation === 'bureau.contexts.retract'
         ? {}
-        : row.operation === 'bureau.contexts.discardturn'
+        : namesAFailedTurn(row.operation)
           ? failingAfterAStep()
           : { generate: async () => ({ content: sentinel, toolCalls: [] }) },
     );
@@ -94,10 +100,10 @@ for (const row of cases) {
           await waitForCondition(
             () =>
               opened.bureau.tasks.detail(task.id)?.status ===
-              (row.operation === 'bureau.contexts.discardturn' ? 'error' : 'completed'),
+              (namesAFailedTurn(row.operation) ? 'error' : 'completed'),
             'context task finishes',
           );
-        if (row.operation === 'bureau.contexts.discardturn')
+        if (namesAFailedTurn(row.operation))
           await waitForCondition(async () => {
             const record = await opened.bureau.internals.taskRegistry.record(task.id);
             return record?.settled !== undefined;
@@ -136,12 +142,14 @@ for (const row of cases) {
           ...(row.operation === 'bureau.contexts.regenerate'
             ? { messageId: answerOf(task.id) }
             : {}),
-          ...(row.operation === 'bureau.contexts.discardturn' ? { runId: task.id } : {}),
+          ...(namesAFailedTurn(row.operation) ? { runId: task.id } : {}),
           contextId: task.contextId,
         });
         witnesses.observeWire(row.operation, actor, result);
         if (actor === 'foreign' || actor === 'removed') expect(result.status).toBe(403);
-        else if (actor === 'owner') {
+        else if (actor === 'owner' && row.operation === 'bureau.contexts.resumeturn') {
+          expect(result.body?.error?.data).toMatchObject({ reason: 'run-not-resumable' });
+        } else if (actor === 'owner') {
           expect(result.body?.error).toBeUndefined();
           if (row.operation === 'bureau.contexts.retract')
             expect(result.body?.result?.['outcome']).toBe('retracted');
@@ -157,7 +165,7 @@ for (const row of cases) {
             ...(row.operation === 'bureau.contexts.regenerate'
               ? { messageId: answerOf(task.id) }
               : {}),
-            ...(row.operation === 'bureau.contexts.discardturn' ? { runId: task.id } : {}),
+            ...(namesAFailedTurn(row.operation) ? { runId: task.id } : {}),
             contextId: 'unknown-context',
           });
           expect(JSON.stringify(result.body?.error).replaceAll(task.contextId, '<id>')).toBe(

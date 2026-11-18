@@ -377,6 +377,7 @@ import {
   type SessionRegenerationPeers,
 } from './bureau-seams/session-regeneration';
 import { createSessionDiscard, type SessionDiscardPeers } from './bureau-seams/session-discard';
+import { createSessionResume, type SessionResumePeers } from './bureau-seams/session-resume';
 import {
   createSteeringAdmission,
   type SteeringAdmissionPeers,
@@ -437,6 +438,7 @@ type BureauPeers = EventHistoryPeers &
   SessionForksPeers &
   SessionRegenerationPeers &
   SessionDiscardPeers &
+  SessionResumePeers &
   SteeringAdmissionPeers &
   RecoveredRunsPeers &
   SessionsPeers &
@@ -2378,6 +2380,7 @@ async function constructBureau<const D extends AgentDefinitions>(
   } = createSessionForks<D>(core, peers);
   const { regenerateSession } = createSessionRegeneration<D>(core, peers);
   const { discardSessionTurn } = createSessionDiscard<D>(core, peers);
+  const { resumeSessionTurn } = createSessionResume<D>(core, peers);
   const { admitSteeringRequest, resolveLiveSessionPreAdmission, liveSessionRunIdsEverywhere } =
     createSteeringAdmission<D>(core, peers);
   const {
@@ -4746,6 +4749,7 @@ async function constructBureau<const D extends AgentDefinitions>(
     fork: forkSession,
     regenerate: regenerateSession,
     discardTurn: discardSessionTurn,
+    resumeTurn: resumeSessionTurn,
     window: getContextWindow,
     eventHistory: readEventHistory,
     subscribeEventHistory: subscribeToEventHistory,
