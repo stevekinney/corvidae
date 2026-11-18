@@ -1791,6 +1791,32 @@ describe('claim', () => {
     expect(claimLines(fake)).toHaveLength(1);
   });
 
+  test('a missing snapshot refuses same-run markers with a different intent or owner', async () => {
+    const fake = fakeLinear();
+    await run(['claim', 'COR-1', '--run', 'run-a', '--branch', 'branch-a'], {
+      ...withClock(fake),
+      executionStateDirectory: join(sandbox, 'claim-source'),
+      ownerId: 'owner-a',
+    });
+    const before = claimLines(fake).length;
+    const differentIntent = await run(
+      ['claim', 'COR-1', '--run', 'run-a', '--branch', 'branch-a', '--head', 'def5678'],
+      {
+        ...withClock(fake),
+        executionStateDirectory: join(sandbox, 'claim-missing-intent'),
+        ownerId: 'owner-a',
+      },
+    );
+    const foreignOwner = await run(['claim', 'COR-1', '--run', 'run-a', '--branch', 'branch-a'], {
+      ...withClock(fake),
+      executionStateDirectory: join(sandbox, 'claim-missing-owner'),
+      ownerId: 'owner-b',
+    });
+    expect(differentIntent.code).toBe(1);
+    expect(foreignOwner.code).toBe(1);
+    expect(claimLines(fake)).toHaveLength(before);
+  });
+
   test('a checkpoint without --head keeps the recorded head', async () => {
     const fake = fakeLinear();
     await take(fake, 'run-a', '--head', 'abc1234');
@@ -1974,6 +2000,23 @@ describe('lease', () => {
     );
     expect(expired.code).toBe(0);
     expect(leases(fake).at(-1)?.body).toContain('run run-b');
+  });
+
+  test('a missing snapshot refuses a same-run lease marker owned by another coordinator', async () => {
+    const fake = fakeLinear();
+    await run(['lease', 'Alpha', '--run', 'run-a'], {
+      ...withClock(fake),
+      executionStateDirectory: join(sandbox, 'lease-source'),
+      ownerId: 'owner-a',
+    });
+    const before = leases(fake).length;
+    const refused = await run(['lease', 'Alpha', '--run', 'run-a'], {
+      ...withClock(fake),
+      executionStateDirectory: join(sandbox, 'lease-missing'),
+      ownerId: 'owner-b',
+    });
+    expect(refused.code).toBe(1);
+    expect(leases(fake)).toHaveLength(before);
   });
 
   test('--release ends the lease; it refuses a run that does not hold it', async () => {
