@@ -267,6 +267,7 @@
    * stylesheet overrides, so the lift costs no second set of dark-theme anchors: the property is
    * read only by the dark swap above. Comments take `--cinder-text-subtle`, the quietest text
    * role that still clears AA on the inset. */
+  /* cinder-allow-raw-color: domain-rendering — matches the colour Shiki writes inline, never paints it */
   .cinder-code-block :where(pre.shiki) span[style*='--shiki-dark:#6a737d' i] {
     --shiki-dark: var(--cinder-text-subtle) !important;
   }
@@ -275,22 +276,25 @@
    * #9ecbff), so the two read as one hue. The design draws keys blue and strings green, as
    * json-highlight does. A string takes the success text role; keys, numbers and booleans keep
    * the theme's blue. Same lift as the comment above, so the dark swap reads it unchanged. */
+  /* cinder-allow-raw-color: domain-rendering — matches the colour Shiki writes inline, never paints it */
   .cinder-code-block :where(pre.shiki) span[style*='--shiki-dark:#9ecbff' i] {
     --shiki-dark: var(--cinder-status-success-text) !important;
   }
 
   /* The same theme paints a number in the key blue (#79b8ff), so `{ "total": 42.0 }` reads as one
-   * hue. The design draws a number in amber, oklch(82% 0.14 75), which is close to the dark warning
-   * fill (oklch(82% 0.156 75)), written as a literal because the fill token must not be consumed as
-   * text (scripts/status-solid-foreground.test.ts); this rule is dark-only. The warning text role is a pale 90%
+   * hue. The design draws a number in amber, `--cinder-code-block-number` (oklch(82% 0.14 75)),
+   * which is close to the dark warning fill (oklch(82% 0.156 75)) but its own token, because the
+   * fill token must not be consumed as text (scripts/status-solid-foreground.test.ts); this rule is
+   * dark-only. The warning text role is a pale 90%
    * step that reads almost as the plain text beside it. The fill clears AA on the inset by a wide
    * margin. The stylesheet cannot read a token's text, so `code-block-lines.ts` marks the tokens
    * that are numeric literals, and only a marked token painted in that blue is lifted: a number a
    * theme paints another color is left to the theme. */
   .cinder-code-block
     :where(pre.shiki)
+    /* cinder-allow-raw-color: domain-rendering — matches the colour Shiki writes inline, never paints it */
     span.cinder-code-block__number[style*='--shiki-dark:#79b8ff' i] {
-    --shiki-dark: oklch(82% 0.14 75) !important;
+    --shiki-dark: var(--cinder-code-block-number) !important;
   }
 
   /* Quiet icon-only copy button inside the meta row: no chip, no border, just

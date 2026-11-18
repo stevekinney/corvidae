@@ -82,10 +82,13 @@ describe('Banner layout', () => {
     expect(narrow.get('margin-inline-start')).toBe('0');
   });
 
-  test('stackActions puts each action on its own full-width line under the message on a phone', () => {
+  test('stackActions puts each action on its own full-width line under the message on a narrow banner', () => {
+    // The phone breakpoint (640px) less the banner's 2rem of inline padding: a size query measures
+    // the content box, so a full-width banner switches at the same viewport width it always did.
+    expect(css).not.toMatch(/@media[^{]*width/);
     const stacked = atRuleDeclarations(
-      'media',
-      '(max-width: 39.99rem)',
+      'container',
+      'cinder-banner (max-width: 37.99rem)',
       ".cinder-banner > .cinder-banner__actions[data-cinder-stacked='true']",
     );
     expect(stacked.get('grid-row')).toBe('2');

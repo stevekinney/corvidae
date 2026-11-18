@@ -206,7 +206,13 @@ export function blockBaselineGuard(
     `  ${baselinePath}`,
     '',
     'Block mode compares against committed baselines, but none exists for this case.',
-    'Baselines are authored only in the renderer image. Commit, then run:',
+    `The rendered image is saved beside this test's output as ${missingBaselineActualName(baselinePath)},`,
+    "so a CI run's playwright-fixtures artifact carries it. Look at it, then copy it to its",
+    'baseline from that run (the run must have built the current HEAD):',
+    '',
+    `  ${BASELINES_FROM_RUN_COMMAND}`,
+    '',
+    'Or author it in the renderer image. Commit, then run:',
     '',
     '  bun run test:browser:update:docker',
     '',
@@ -218,6 +224,22 @@ export function blockBaselineGuard(
   ].join('\n');
 
   return { ok: false, message };
+}
+
+/** The command that copies a run's actual images over their baselines. */
+export const BASELINES_FROM_RUN_COMMAND =
+  'bun scripts/browser-fixtures/scripts/baselines-from-run.ts <run-id> --write';
+
+/**
+ * The `<component>/<name>-actual.png` path, relative to the test's output directory, under which a
+ * block-mode capture with no baseline saves what it rendered: the same shape Playwright gives the
+ * actual of a changed baseline, so `baselines-from-run.ts` maps it to the baseline it would add.
+ */
+export function missingBaselineActualName(baselinePath: string): string {
+  const segments = baselinePath.split(/[\\/]/);
+  const fileName = segments.at(-1) ?? '';
+  const component = segments.at(-2) ?? '';
+  return `${component}/${fileName.replace(/\.png$/, '')}-actual.png`;
 }
 
 /** Returns whether a screenshot path belongs to the requested component scope. */
@@ -365,52 +387,6 @@ async function captureOffMode(page: Page, key: ArtifactKey): Promise<void> {
   });
 }
 
-/**
- * Where a missing baseline's actual goes: `<test output>/<slug>/<name>-actual.png`, the path
- * Playwright gives the actual of a failed comparison, which `baselines-from-run.ts` maps to the
- * baseline it would create (`new`).
- */
-export function missingBaselineActualPath(
-  key: ArtifactKey,
-  testInfo: Pick<TestInfo, 'outputPath'>,
-): string {
-  const [slug, fileName] = screenshotName(key);
-  return testInfo.outputPath(slug, `${fileName.replace(/\.png$/u, '')}-actual.png`);
-}
-
-/**
- * Writes the page's screenshot as the missing baseline's actual before block mode fails. Without
- * it a new fixture uploads nothing, and the baseline can only be a placeholder. A failure to write
- * it never hides the missing-baseline error.
- */
-export async function writeMissingBaselineActual(
-  page: Pick<Page, 'screenshot'>,
-  key: ArtifactKey,
-  testInfo: Pick<TestInfo, 'outputPath'>,
-  options?: CaptureScreenshotOptions,
-): Promise<string | undefined> {
-  const path = missingBaselineActualPath(key, testInfo);
-  try {
-    await mkdir(dirname(path), { recursive: true });
-    await page.screenshot({
-      path,
-      fullPage: false,
-      animations: 'disabled',
-      caret: 'hide',
-      // `toHaveScreenshot` captures at CSS pixels; `page.screenshot` defaults to device pixels. With
-      // a baseline missing it returns before it captures anything, so this stands in for it.
-      scale: 'css',
-      ...(options?.masks !== undefined && options.masks.length > 0
-        ? { mask: masksToLocators(page as Page, options.masks) }
-        : {}),
-    });
-    return path;
-  } catch {
-    // The caller is about to throw the missing-baseline error, which is the failure to report.
-    return undefined;
-  }
-}
-
 async function captureBlockMode(
   page: Page,
   key: ArtifactKey,
@@ -424,13 +400,46 @@ async function captureBlockMode(
   const baseline = screenshotBaselinePath(key, testInfo);
   const guard = blockBaselineGuard(baseline, existsSync(baseline), testInfo.config.updateSnapshots);
   if (!guard.ok) {
-    await writeMissingBaselineActual(page, key, testInfo, options);
+    // Save what the page renders, with the comparison's own options, where Playwright saves the
+    // actual of a changed baseline, so the run's artifact carries the image the missing baseline
+    // would hold. The test still fails: a missing baseline never passes.
+    await saveMissingBaselineActual(page, testInfo, baseline, screenshotOptions(page, options));
     throw new Error(guard.message);
   }
 
   // Pass [slug, filename] so the app's snapshotPathTemplate resolves the
   // baseline under snapshots/<projectName>/<platform>/<slug>/filename.
   await expect(page).toHaveScreenshot(screenshotName(key), screenshotOptions(page, options));
+}
+
+/**
+ * The `page.screenshot` options that render what `toHaveScreenshot` with `snapshotOptions` would
+ * compare: the viewport at CSS scale, animations and caret settled, and the same masks.
+ */
+export function missingBaselineCaptureOptions(
+  snapshotOptions: ToHaveScreenshotOptions,
+  path: string,
+): Parameters<Page['screenshot']>[0] {
+  return {
+    path,
+    fullPage: snapshotOptions.fullPage ?? false,
+    scale: snapshotOptions.scale ?? 'css',
+    animations: snapshotOptions.animations ?? 'disabled',
+    caret: snapshotOptions.caret ?? 'hide',
+    ...(snapshotOptions.mask === undefined ? {} : { mask: snapshotOptions.mask }),
+  };
+}
+
+async function saveMissingBaselineActual(
+  page: Page,
+  testInfo: TestInfo,
+  baseline: string,
+  snapshotOptions: ToHaveScreenshotOptions,
+): Promise<void> {
+  const actual = testInfo.outputPath(...missingBaselineActualName(baseline).split('/'));
+  await mkdir(dirname(actual), { recursive: true });
+  await page.screenshot(missingBaselineCaptureOptions(snapshotOptions, actual));
+  await testInfo.attach('actual', { path: actual, contentType: 'image/png' });
 }
 
 function diffPixelsFromError(error: unknown): number {

@@ -40,7 +40,7 @@
   .cinder-docked-action-bar[data-cinder-variant='card'] {
     border: 1px solid var(--cinder-border);
     border-radius: var(--cinder-radius-lg);
-    box-shadow: 0 -4px 16px light-dark(oklch(0% 0 0 / 0.08), oklch(0% 0 0 / 0.4));
+    box-shadow: 0 -4px 16px var(--cinder-docked-action-bar-shadow-color);
   }
 
   .cinder-docked-action-bar__row {

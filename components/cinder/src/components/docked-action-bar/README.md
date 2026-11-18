@@ -73,7 +73,8 @@ Before publishing this component, complete the live [component authoring pre-fli
 
 <!-- generated:variables:start -->
 
-This component does not declare any local CSS variables.
+- `--cinder-docked-action-bar-shadow-color`
+
 <!-- generated:variables:end -->
 
 ## Subcomponents

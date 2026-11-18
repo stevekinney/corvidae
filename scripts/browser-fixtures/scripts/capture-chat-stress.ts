@@ -2563,6 +2563,7 @@ export const ACTION_ROW_SELECTORS: readonly string[] = [
   '.cinder-empty-state[data-cinder-align="start"] .cinder-empty-state-action',
   '.cinder-empty-state[data-cinder-layout="row"] .cinder-empty-state-action',
   '.cinder-error-state[data-cinder-variant="flat"] .cinder-error-state-action',
+  '.cinder-error-state[data-cinder-variant="row"] .cinder-error-state-action',
 ];
 
 /** How far the last control of an action row may sit from the trailing content edge, in pixels. */

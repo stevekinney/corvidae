@@ -121,12 +121,18 @@ export const COMPONENT_DOC_SECTIONS: readonly DocSection[] = ([] = [
       '--cinder-code-block-height',
       '--cinder-code-block-line-height',
       '--cinder-code-block-padding',
+      '--cinder-code-block-number',
     ],
   },
   {
     slug: 'data-table',
     headings: ['## Component tokens', '### Data Table'],
     cssProperties: ['--cinder-data-table-height'],
+  },
+  {
+    slug: 'docked-action-bar',
+    headings: ['## Component tokens', '### Docked Action Bar'],
+    cssProperties: ['--cinder-docked-action-bar-shadow-color'],
   },
   {
     slug: 'feed-event',
@@ -152,6 +158,16 @@ export const COMPONENT_DOC_SECTIONS: readonly DocSection[] = ([] = [
       '--cinder-kanban-column-background',
       '--cinder-kanban-card-background',
       '--cinder-kanban-board-scroll-edge',
+    ],
+  },
+  {
+    slug: 'map-marker',
+    headings: ['## Component tokens', '### Map Marker'],
+    cssProperties: [
+      '--cinder-map-marker-fill',
+      '--cinder-map-marker-ink',
+      '--cinder-map-marker-live-fill',
+      '--cinder-map-marker-live-ink',
     ],
   },
   {
@@ -221,6 +237,25 @@ export const COMPONENT_DOC_SECTIONS: readonly DocSection[] = ([] = [
       '--cinder-table-of-contents-link-color',
       '--cinder-table-of-contents-link-active-color',
       '--cinder-table-of-contents-link-indent-step',
+    ],
+  },
+  {
+    slug: 'theme-switch',
+    headings: ['## Component tokens', '### Theme Switch'],
+    cssProperties: [
+      '--cinder-theme-switch-sky-track',
+      '--cinder-theme-switch-sky-border',
+      '--cinder-theme-switch-sky-icon',
+      '--cinder-theme-switch-sky-icon-hover',
+      '--cinder-theme-switch-sky-icon-selected',
+      '--cinder-theme-switch-sky-thumb',
+      '--cinder-theme-switch-night-track',
+      '--cinder-theme-switch-night-border',
+      '--cinder-theme-switch-night-icon',
+      '--cinder-theme-switch-night-icon-hover',
+      '--cinder-theme-switch-night-icon-selected',
+      '--cinder-theme-switch-night-thumb',
+      '--cinder-theme-switch-thumb-shadow-color',
     ],
   },
   {

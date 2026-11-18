@@ -1,7 +1,10 @@
 /// <reference lib="dom" />
 import { afterEach, describe, expect, mock, test } from 'bun:test';
 
-import { declarationsFor } from '@lostgradient/component-tooling/test/css.ts';
+import {
+  atRuleDeclarationsFor,
+  declarationsFor,
+} from '@lostgradient/component-tooling/test/css.ts';
 import { setupHappyDom } from '@lostgradient/testing';
 
 // setupHappyDom() MUST run before any `@testing-library/svelte` import. testing-library
@@ -454,6 +457,37 @@ describe('EmptyState layout', () => {
     );
     expect(action.get('grid-area')).toBe('action');
     expect(action.get('justify-content')).toBe('flex-end');
+  });
+
+  test('a narrow row drops the action under the words, by its own width, not the viewport (COR-2394)', () => {
+    const root = declarationsFor(emptyStateCss, ".cinder-empty-state[data-cinder-layout='row']");
+    expect(root.get('container-type')).toBe('inline-size');
+    expect(root.get('container-name')).toBe('cinder-empty-state');
+    expect(emptyStateCss).not.toMatch(/@media[^{]*width/);
+    // 28rem: the action keeps the inline end whenever it has room beside the words, and a
+    // full-width row on a phone still drops it (actions at the inline end on wide layouts).
+    const narrow = (selector: string) =>
+      atRuleDeclarationsFor(
+        emptyStateCss,
+        'container',
+        'cinder-empty-state (max-width: 28rem)',
+        selector,
+      );
+    const withDisc = ".cinder-empty-state[data-cinder-layout='row']:has(.cinder-empty-state-icon)";
+    const words = narrow(
+      `${withDisc} :is(.cinder-empty-state-title, .cinder-empty-state-description)`,
+    );
+    expect(words.get('grid-column')).toBe('2 / -1');
+    // A dropped action spans the whole row and ends on its trailing edge (trailing-edge actions
+    // everywhere, owner 2026-11-13), the edge a narrow ErrorState row ends its retry on.
+    const action = narrow(`${withDisc} .cinder-empty-state-action`);
+    expect(action.get('grid-column')).toBe('1 / -1');
+    expect(action.get('grid-row')).toBe('3');
+    const anyAction = narrow(
+      ".cinder-empty-state[data-cinder-layout='row'] .cinder-empty-state-action",
+    );
+    expect(anyAction.get('justify-content')).toBe('flex-end');
+    expect(anyAction.get('margin-block-start')).toBe('var(--cinder-space-2)');
   });
 
   test('a row keeps its parts in reading order: disc, title, description, action', () => {
