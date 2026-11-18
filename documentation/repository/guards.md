@@ -64,7 +64,7 @@ Every library and component runs `scripts/check-inherited-key-reads.ts` in its `
 
 `lint:guards` runs `scripts/check-swallowed-catches.ts`, which scans the host lock files (`run-exclusively.ts`, `host-sessions.ts`, `bun-test-pool.ts`, `host-slots.ts`). It fails on a `catch` with no binding whose block does not open with a comment saying why every failure is safe to treat alike. Such a catch cannot look at the error's code, and two review rounds on COR-2463 found a permission error read as "released" or "not removed" one instance at a time: a real fault became a lock taken twice or a wait that never ended. Catch `(error)`, handle the codes you expect (`ENOENT`, `ENOTEMPTY`, `ESRCH`) and rethrow the rest, or write the reason as the block's first line.
 
-## No `gh run watch`
+## Waiting on a workflow run
 
 `lint:guards` runs `scripts/check-gh-run-watch.ts`, which fails when `gh run watch` appears in `.agents/`, `.claude/`, `.codex/`, `scripts/` or `documentation/`, except in a line that says never or not to use it. Loops of it from many sessions drained the account's 5000-call GitHub API limit on 2026-11-17. Wait with `bun scripts/chef/wait-run.ts <run id>`: one status call per interval (180 seconds by default, 60 at least), and a wait for the rate limit's reset when fewer than 500 calls remain.
 

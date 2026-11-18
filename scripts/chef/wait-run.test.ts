@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 
+import { rejectionOf } from '../../testing/testing/src/helpers/promise-outcome.ts';
 import type { Runner } from './process-runner.ts';
 import { run, UsageError, type WaitDependencies } from './wait-run.ts';
 
@@ -73,7 +74,8 @@ describe('wait-run', () => {
       statuses: ['completed'],
       outcome: { conclusion: 'success', jobs: [] },
     });
-    expect((await run(['7', '--interval-seconds', '60'], dependencies)).code).toBe(0);
+    const result = await run(['7', '--interval-seconds', '60'], dependencies);
+    expect(result.code).toBe(0);
   });
 
   test('sleeps until the reset, then polls, when fewer than 500 calls remain', async () => {
@@ -98,10 +100,10 @@ describe('wait-run', () => {
 
   test('refuses an interval under 60 seconds and a bad run id', async () => {
     const { dependencies } = scripted({ statuses: [] });
-    await expect(run(['1', '--interval-seconds', '30'], dependencies)).rejects.toBeInstanceOf(
-      UsageError,
-    );
-    await expect(run(['abc'], dependencies)).rejects.toBeInstanceOf(UsageError);
+    const tooShort = await rejectionOf(run(['1', '--interval-seconds', '30'], dependencies));
+    expect(tooShort).toBeInstanceOf(UsageError);
+    const badId = await rejectionOf(run(['abc'], dependencies));
+    expect(badId).toBeInstanceOf(UsageError);
   });
 
   test('a rate limit that cannot be read does not stop the wait', async () => {
@@ -111,7 +113,8 @@ describe('wait-run', () => {
       command[2] === 'rate_limit'
         ? { code: 1, stdout: '', stderr: 'offline' }
         : original(command, options);
-    expect((await run(['5'], dependencies)).code).toBe(1);
+    const result = await run(['5'], dependencies);
+    expect(result.code).toBe(1);
     expect(calls.length).toBeGreaterThan(0);
   });
 });
