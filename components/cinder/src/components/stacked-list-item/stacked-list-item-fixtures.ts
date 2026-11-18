@@ -18,4 +18,10 @@ export default [
     name: 'narrow-trailing',
     host: './stacked-list-item-trailing.fixture.svelte',
   },
+  // A `wrapMeta` row at 320px whose line two wraps: it reads as one run of text, the dot, the word
+  // and the meta, so the wrapped line starts at the row's text edge.
+  {
+    name: 'wrap-meta',
+    host: './stacked-list-item-wrap-meta.fixture.svelte',
+  },
 ];

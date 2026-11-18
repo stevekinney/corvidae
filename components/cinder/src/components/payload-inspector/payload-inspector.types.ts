@@ -102,6 +102,12 @@ export type PayloadInspectorProps = Omit<HTMLAttributes<HTMLElement>, 'class' | 
    */
   jsonOnly?: readonly string[];
   /**
+   * What the Fields view lays out and counts, when it is not `value` itself: a run's input
+   * unwrapped from the envelope the engine stores it in, with the envelope's keys named in
+   * `jsonOnly`. The JSON view, the size and Copy always show `value`, the payload as stored.
+   */
+  fieldsValue?: unknown;
+  /**
    * Writes a value in the Fields view as the caller wants it, such as cents as
    * dollars. It receives the path and the stored value; return `undefined` to
    * keep the default. The JSON view and Copy always show the stored value.

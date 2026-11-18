@@ -271,7 +271,8 @@ describe('the attempts of a goal that gave up (rows 67i and 67l)', () => {
     // said nothing, or whose read carried no feedback at all, is line two as it was.
     // The reason has no prefix: "Assistant, took 6 s, <reason>" (67l).
     expect(rows.map((row) => row.lineTwo)).toEqual([
-      'Assistant, took 6 s, The notes never mention the staging fix.',
+      // The reason starts in lower case after the comma (`reasonClause`).
+      'Assistant, took 6 s, the notes never mention the staging fix.',
       'Assistant, took 7 s',
       'Assistant, took 5 s',
       'Assistant, took 6 s',
@@ -297,7 +298,7 @@ describe('the attempts of a goal that gave up (rows 67i and 67l)', () => {
       now: 0,
       liveWait: undefined,
     });
-    expect(newest?.lineTwo).toBe('Assistant, took 6 s, Reply said hello');
+    expect(newest?.lineTwo).toBe('Assistant, took 6 s, reply said hello');
   });
 
   test('say how long the attempt’s run took, as Runs does, not until its check answered (67l, 67r)', () => {

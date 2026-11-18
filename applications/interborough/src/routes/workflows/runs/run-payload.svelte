@@ -41,6 +41,11 @@
     labelCode?: string | undefined;
     /** Top-level keys shown in the JSON view only, beside the run's own identifier (row 28e). */
     jsonOnlyKeys?: readonly string[] | undefined;
+    /**
+     * What the Fields view lays out, when it is not the stored payload (an instance's own input,
+     * unwrapped from its envelope, row 55c). The JSON view and Copy keep `value` as stored.
+     */
+    fieldsValue?: unknown;
   }
 
   let {
@@ -49,11 +54,13 @@
     ownRunId = undefined,
     labelCode = undefined,
     jsonOnlyKeys = [],
+    fieldsValue = undefined,
   }: RunPayloadProps = $props();
 
-  const jsonOnly = $derived([...ownRunIdKeys(value, ownRunId), ...jsonOnlyKeys]);
+  const fieldsSource = $derived(fieldsValue === undefined ? value : fieldsValue);
+  const jsonOnly = $derived([...ownRunIdKeys(fieldsSource, ownRunId), ...jsonOnlyKeys]);
 
-  const references = $derived(payloadReferences(value));
+  const references = $derived(payloadReferences(fieldsSource));
 
   const chats = createQueries(() => ({
     queries: references.chats.map((id) => ({
@@ -126,6 +133,7 @@
     {value}
     {label}
     {...labelCode === undefined ? {} : { labelCode }}
+    {...fieldsValue === undefined ? {} : { fieldsValue }}
     redact={[]}
     {jsonOnly}
     {linkFor}

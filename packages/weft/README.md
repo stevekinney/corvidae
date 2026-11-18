@@ -906,6 +906,10 @@ import { HTTPStorage } from '@lostgradient/weft/storage/http';
 
 The `bun` runtime version `1.3.13` or later is required.
 
+## Maintainer tool
+
+Weft owns `scripts/import-string-kv-sqlite-to-weft.ts`, a manual migration CLI that copies a legacy SQLite string key-value table into a Weft SQLite store. From this workspace, run `bun scripts/import-string-kv-sqlite-to-weft.ts --source <path> --target <path> --target-prefix app:my-service`; use `--help` to inspect the required arguments before running a migration.
+
 ## Step API for `async`/`await` Users
 
 If generator syntax is unfamiliar, the same workflow can be written with `ctx.step()` calls and plain `async`/`await`:

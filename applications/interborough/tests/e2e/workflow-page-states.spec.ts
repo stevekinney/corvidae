@@ -114,7 +114,7 @@ async function triageAsDrawn(page: Page, id: string): Promise<void> {
 }
 
 for (const width of WIDTHS) {
-  test.describe(`at ${String(width)} pixels`, () => {
+  test.describe(`/workflows/:workflow at ${String(width)} pixels`, () => {
     test('Release notes with a run waiting on a signal: Runs 2, the header names the signal, the row reads Waiting (63n, 63o)', async ({
       page,
     }) => {
@@ -274,7 +274,7 @@ for (const width of WIDTHS) {
       });
     });
 
-    test('Edit on a file that can’t load opens on the JSON tab, Invalid JSON, Builder off (63g, 66f)', async ({
+    test('/workflows/:workflow/edit on a file that can’t load opens on the JSON tab, Invalid JSON, Builder off (63g, 66f)', async ({
       page,
     }) => {
       const world = await readSampleWorldRecords(E2E_SHOWCASE_URL);
@@ -298,7 +298,7 @@ for (const width of WIDTHS) {
 
     // COR-2432: the builder's states (board PageWorkflowBuilder). Below 640 pixels the builder is
     // read-only and says "Open on a larger screen" (row 05n), so these are drawn on a desktop.
-    test.describe('the builder', () => {
+    test.describe('the builder, /workflows/new and /workflows/:workflow/edit', () => {
       test.skip(width !== 1280, 'The builder is read-only below 640 pixels (row 05n).');
 
       test('New workflow On a schedule, on its JSON tab: every field the builder writes (65d)', async ({

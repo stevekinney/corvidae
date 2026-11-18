@@ -165,6 +165,18 @@ describe('RunRelated', () => {
     expect(await findByText('No other runs came from this one.')).not.toBeNull();
   });
 
+  test('says nothing came from this chat for a chat’s run (54j)', async () => {
+    const { findByText } = render(RunRelatedHarness, {
+      props: {
+        client: client({ empty: true }),
+        workflow: { ...selfRun, parentWorkflowId: undefined },
+        over: true,
+        inChat: true,
+      },
+    });
+    expect(await findByText('No other runs came from this chat.')).not.toBeNull();
+  });
+
   test('shows an error state with a way to try again when the runs cannot be read', async () => {
     const { findByText, findByRole } = render(RunRelatedHarness, {
       props: { client: client({ failList: true }), workflow: selfRun },

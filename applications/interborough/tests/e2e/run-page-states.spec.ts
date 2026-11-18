@@ -37,7 +37,8 @@ async function openRun(page: Page, path: string, width: number): Promise<void> {
 }
 
 for (const width of WIDTHS) {
-  test.describe(`at ${String(width)} pixels`, () => {
+  // The route leads the title, so a design review's route filter (`--grep '/runs/:run'`) runs these.
+  test.describe(`/runs/:run at ${String(width)} pixels`, () => {
     test('a failed instance says where it failed, shows the failure on its step, and the older version it ran (54y, 14t, 55b, 55d)', async ({
       page,
     }) => {

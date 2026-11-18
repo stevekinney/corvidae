@@ -30,6 +30,7 @@ import {
 import { calendarDay, clockTime, dateLine, zoneLabel } from '../../../lib/format/clock.ts';
 import { chatSessionPath, goalPath } from '../../../lib/identifier-paths.ts';
 import { oneLine } from '../../../lib/one-line.ts';
+import { reasonClause } from '../../../lib/reason-clause.ts';
 import { scheduleDetailPath, workflowDetailPath } from '../../../lib/router.svelte.ts';
 import { taskStatusWord, type StatusWord } from '../../../lib/status.ts';
 import { isBuiltInWorkflow, workflowTypeName } from '../../../lib/workflow-type-name.ts';
@@ -945,7 +946,7 @@ export function runLineTwo(row: RunRow, context: RunLineContext): string {
       // What the run said, never the error's own JSON: "GitHub didn’t answer (HTTP 503)".
       if (row.summary !== '') {
         const said = oneLine(row.summary, { keepParenthetical: true });
-        if (said !== '') parts.push(said);
+        if (said !== '') parts.push(reasonClause(said));
       }
       parts.push(took);
       break;

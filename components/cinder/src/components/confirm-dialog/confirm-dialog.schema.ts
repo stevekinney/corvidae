@@ -74,8 +74,8 @@ const schema = {
         },
       ],
       description:
-        'Viewport width below which the dialog is a bottom sheet: a grabber, a compact Cancel beside\nthe confirmation, which fills the rest of the row (above Cancel when the two do not fit), both\ndrawn at the button\'s painted height and reaching 44px through its hit area, with Cancel\nkeeping initial focus. A CSS length such as `"640px"`, or `false` for the centred dialog at\nevery width.',
-      default: '640px',
+        'Viewport width below which the dialog is a bottom sheet: a grabber, a compact Cancel beside\nthe confirmation, which fills the rest of the row (above Cancel when the two do not fit), both\ndrawn at the button\'s painted height and reaching 44px through its hit area, with Cancel\nkeeping initial focus. A CSS length such as `"760px"`, or `false` for the centred dialog at\nevery width.',
+      default: '760px',
     },
     class: {
       type: 'string',

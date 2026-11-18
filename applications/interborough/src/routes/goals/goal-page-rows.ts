@@ -22,6 +22,7 @@ import type { TaskView } from '../../lib/bureau-tasks.ts';
 import { checkText } from '../../lib/check-text.ts';
 import { clockTime } from '../../lib/format/clock.ts';
 import { goalPath } from '../../lib/identifier-paths.ts';
+import { reasonClause } from '../../lib/reason-clause.ts';
 import { durationWords, waitedWords } from '../workflows/runs/run-rows.ts';
 import { goalListWord } from './goal-rows.ts';
 
@@ -203,7 +204,7 @@ export function attemptLineTwo(attempt: GoalAttempt, context: AttemptLineContext
       // The owner's read carries what the check said, met or not ("Reply said hello", 67v); every
       // other read leaves it out. The reason is said as it is, with no prefix (67l).
       const said = checkReason(attempt.feedback);
-      if (said !== undefined) parts.push(said);
+      if (said !== undefined) parts.push(reasonClause(said));
       break;
     }
   }

@@ -51,7 +51,8 @@
 {#if workflow !== undefined || record !== undefined}
   <div class="ib-run__payloads">
     <RunPayload
-      value={input.value}
+      value={input.stored}
+      fieldsValue={input.fields === input.stored ? undefined : input.fields}
       label={copy.input}
       ownRunId={workflow?.id ?? record?.id}
       jsonOnlyKeys={input.jsonOnly}

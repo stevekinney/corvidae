@@ -9,6 +9,15 @@ import { MediaQuery } from 'svelte/reactivity';
  */
 export const PHONE_VIEWPORT_BREAKPOINT = '640px';
 
+/**
+ * Viewport width below which Modal and ConfirmDialog dock as a bottom sheet (the sheet design's
+ * 760px, COR-2443 AC1). It is a viewport length, not a container query: a dialog opens in the top
+ * layer, where it has no sized ancestor, so the viewport is the only container it has. A centred
+ * card on a 640px to 759px screen would leave under 64px either side of a 32rem dialog, so those
+ * widths take the sheet too.
+ */
+export const DIALOG_SHEET_BREAKPOINT = '760px';
+
 const SIMPLE_CSS_LENGTH =
   /^(?:0|(?:\d+|\d*\.\d+)(?:px|rem|em|ch|vw|vh|vmin|vmax|svw|svh|lvw|lvh|dvw|dvh|cqw|cqh|cqi|cqb|cqmin|cqmax))$/;
 

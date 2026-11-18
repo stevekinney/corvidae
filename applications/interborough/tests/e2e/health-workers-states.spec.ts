@@ -16,6 +16,7 @@ import { captureForDesignReview } from './design-review-capture.ts';
 import { E2E_SHOWCASE_URL } from './e2e-constants.ts';
 import { expect, test } from './fixtures.ts';
 import { readBoxes } from './read-boxes.ts';
+import { expectTabOpen } from './workflow-support.ts';
 
 test.use({ baseURL: E2E_SHOWCASE_URL, timezoneId: SAMPLE_TIME_ZONE });
 
@@ -354,8 +355,10 @@ test('a deployment with remote workers: the list, the open worker, its notice, f
   await expect(first.getByRole('link', { name: 'Release notes run' })).toBeVisible();
   await expect(first).toContainText('Failed after 5 tries, GitHub didn’t answer (HTTP 503).');
   await expect(first.getByRole('button', { name: 'View payload' })).toBeVisible();
-  await expect(first.getByRole('button', { name: 'Retry' })).toBeVisible();
-  await expect(first.getByRole('button', { name: 'Clear' })).toBeVisible();
+  // The row's two secondary actions are one responsive menu, even inside the wide page layout.
+  await first.getByRole('button', { name: 'More actions' }).click();
+  const actions = page.getByRole('menu');
+  await expect(actions.getByRole('menuitem')).toHaveText(['Retry', 'Clear']);
   await expect(tasks.getByText(/Retry puts a task back on the queue/)).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 
@@ -377,6 +380,11 @@ test('a deployment with remote workers: the list, the open worker, its notice, f
   });
   await payload.getByRole('button', { name: /close/i }).click();
   await expect(payload).toBeHidden();
+
+  // Retry is an action of this failed row, not merely an entry in a generic overflow menu.
+  await first.getByRole('button', { name: 'More actions' }).click();
+  await actions.getByRole('menuitem', { name: 'Retry' }).click();
+  await expect.poll(() => fleet.retried).toEqual(['collect-merged-changes']);
 });
 
 test('Drain asks first, saying what happens to the running and waiting work', async ({
@@ -762,11 +770,7 @@ for (const width of STATE_WIDTHS) {
 
     // 78a, 78b: Health's header with Workers active; the shell's own rows are `shell-chrome.spec.ts`.
     await expect(page.getByRole('heading', { level: 1, name: 'Health' })).toBeVisible();
-    if (width >= 640) {
-      await expect(page.getByRole('tab', { name: 'Workers', selected: true })).toBeVisible();
-    } else {
-      await expect(page.locator('.cinder-tabs__collapse')).toContainText('Section: Workers');
-    }
+    await expectTabOpen(page.locator('main'), 'Workers');
     // 78c: one line under the section heading.
     await expect(region).toHaveAttribute('data-state', 'empty');
     await expect(region.getByRole('heading', { level: 2, name: 'Workers' })).toBeVisible();
