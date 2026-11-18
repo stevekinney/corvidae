@@ -185,6 +185,28 @@ export class BureauShuttingDownError extends BureauError {
 }
 
 /**
+ * COR-2437 — a run start refused because rows of the chat it loaded were removed before its start
+ * was saved (a discard that committed meanwhile). Starting would put those rows back and ask the
+ * model over a reply the person threw away; nothing was stored, and sending again starts the run
+ * on the chat as it is. A `CONFLICT` `BureauError` with the stable `reason` `history-changed`.
+ */
+export class ContextHistoryChangedError extends BureauError {
+  /** The stable reason a client branches on. */
+  readonly reason = 'history-changed' as const;
+  /** The context whose history changed. */
+  readonly contextId: string;
+
+  constructor(contextId: string) {
+    super(
+      `Context "${contextId}" lost rows while the run was starting (a turn was discarded): send the message again.`,
+      'CONFLICT',
+    );
+    this.name = 'ContextHistoryChangedError';
+    this.contextId = contextId;
+  }
+}
+
+/**
  * New work refused because its context is archived (COR-2285): a task started in it, input sent
  * to it, a steering command for it, a regenerated answer, or a schedule's fire into it. It is a
  * `CONFLICT` `BureauError` with the stable `reason` `context-archived`, so a caller tells it apart

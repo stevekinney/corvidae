@@ -20,10 +20,15 @@ import {
 } from 'conversationalist';
 import { afterEach, describe, expect, it } from 'bun:test';
 import { MemoryStorage, type Storage } from '@lostgradient/storage';
+import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 import { z } from 'zod';
 
 import type { AgentDefinitions } from './agent-catalog';
-import { BureauShuttingDownError, ContextArchivedError } from './bureau-errors';
+import {
+  BureauShuttingDownError,
+  ContextArchivedError,
+  ContextHistoryChangedError,
+} from './bureau-errors';
 import { createBureau } from './create-bureau';
 import { digestCommandPayload } from './command-ledger';
 import {
@@ -246,6 +251,8 @@ describe('the discard receipt', () => {
 
 /** Settles once the newest stoppable agent's run reaches its second step, which waits to be stopped. */
 let secondStep = Promise.withResolvers<void>();
+/** The rows each model call of the newest agent was asked over. */
+let askedOver: string[][] = [];
 
 /**
  * An agent whose first step thinks and calls a tool, and whose second waits until the run is
@@ -253,6 +260,7 @@ let secondStep = Promise.withResolvers<void>();
  */
 function stoppableAgent(options: { readonly fail?: boolean; readonly finish?: boolean } = {}) {
   secondStep = Promise.withResolvers<void>();
+  askedOver = [];
   const noop = createTool({
     name: 'noop',
     description: 'Does nothing',
@@ -265,6 +273,7 @@ function stoppableAgent(options: { readonly fail?: boolean; readonly finish?: bo
     generate: async (context: GenerateContext) => {
       if (options.fail === true) throw new Error('the model failed');
       const history = context.conversation.current;
+      askedOver.push([...history.ids]);
       const last = history.messages[history.ids.at(-1) ?? ''];
       if (last?.toolResult === undefined) {
         return {
@@ -534,6 +543,107 @@ describe('discarding a stopped turn', () => {
     expect(after.conversationHistory.ids.some((id) => id.startsWith(`${run.id}:step:`))).toBe(
       false,
     );
+  });
+});
+
+// COR-2437 review: a run that starts while a discard commits must not write the discarded rows
+// back, and its model must never read them.
+describe('a discard racing a new message', () => {
+  it('refuses a start that loaded the chat before the discard and saves after it, and the rows stay gone', async () => {
+    const bureau = await openBureau();
+    const { run, before } = await stoppedTurn(bureau);
+    const sessions = bureau.internals.sessionStore!;
+    const update = sessions.update.bind(sessions);
+    let discarded: Promise<unknown> | undefined;
+    // The discard commits between the start's read of the chat and its save.
+    (sessions as { update: typeof sessions.update }).update = async (id, updater, options) => {
+      if (discarded === undefined) {
+        (sessions as { update: typeof sessions.update }).update = update;
+        discarded = discard(bureau, run.contextId, run.id);
+        await discarded;
+      }
+      return update(id, updater, options);
+    };
+
+    const start = await startTaskFrom(bureau, {
+      input: 'something else',
+      agentName: 'agent',
+      principal: ALICE,
+      contextId: run.contextId,
+    }).catch((error: unknown) => error);
+
+    expect(start).toBeInstanceOf(ContextHistoryChangedError);
+    const removed = (await discarded) as { removed: number };
+    expect(removed.removed).toBeGreaterThan(0);
+    const after = (await bureau.contexts.get(run.contextId))!;
+    expect(after.conversationHistory.ids.some((id) => id.startsWith(`${run.id}:step:`))).toBe(
+      false,
+    );
+    expect(after.conversationHistory.ids.length).toBeLessThan(
+      before.conversationHistory.ids.length,
+    );
+  });
+
+  it('starts a message sent after the discard on the chat without the discarded rows', async () => {
+    const bureau = await openBureau();
+    const { run } = await stoppedTurn(bureau);
+    await discard(bureau, run.contextId, run.id);
+    secondStep = Promise.withResolvers<void>();
+
+    const next = await startTaskFrom(bureau, {
+      input: 'something else',
+      agentName: 'agent',
+      principal: ALICE,
+      contextId: run.contextId,
+    });
+    await secondStep.promise;
+
+    const during = (await bureau.contexts.get(run.contextId))!;
+    expect(during.conversationHistory.ids.some((id) => id.startsWith(`${run.id}:step:`))).toBe(
+      false,
+    );
+    expect(askedOver.at(-1)?.some((id) => id.startsWith(`${run.id}:step:`))).toBe(false);
+    await bureau.tasks.cancel(next.id);
+  });
+});
+
+// COR-2437 review: the discard ledger was never pruned, so its entries outlived their retention.
+describe('the discard ledger', () => {
+  it('is pruned by maintenance once an answered command is past its retention', async () => {
+    const origin = Date.parse('2026-11-18T00:00:00.000Z');
+    const runtime = createManualRuntimeServices({ origin: new Date(origin).toISOString() });
+    const bureau = await createBureau<AgentDefinitions>({
+      models: { catalog: createVendorCatalog().descriptors },
+      agents: { agent: stoppableAgent() },
+      runtime,
+      storage: new MemoryStorage(),
+      durable: true,
+      durableOwnership: { ownership: 'none' },
+      maintenance: 'manual',
+    });
+    cleanups.push(() => bureau.dispose());
+    const ledger = createDiscardLedger(bureau.internals.kv, runtime);
+    const identity = {
+      callerId: ALICE,
+      target: 'context-1',
+      requestId: 'discard-old',
+      operationVersion: DISCARD_OPERATION_VERSION,
+    };
+    const claimed = await ledger.claim(identity, 'digest', { incarnation: 'i', revision: 1 });
+    if (claimed.outcome !== 'claimed') throw new Error('expected a fresh claim');
+    await ledger.complete(claimed.entry, {
+      contextId: 'context-1',
+      runId: 'run-1',
+      removed: 1,
+      incarnation: 'i',
+      previousRevision: 1,
+      revision: 2,
+    });
+
+    runtime.setTime(origin + 2 * 86_400_000);
+    await bureau.maintain();
+
+    expect(await ledger.read(identity)).toBeUndefined();
   });
 });
 

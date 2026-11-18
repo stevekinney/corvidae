@@ -8,6 +8,7 @@ import { describe, expect, it } from 'bun:test';
 import { Conversation, createConversationHistory } from 'conversationalist';
 
 import { createSessionPersistence } from './bureau-session-persistence';
+import { ContextHistoryChangedError } from './bureau-errors';
 
 describe('createSessionPersistence', () => {
   it('matches native object-spread semantics for malformed incoming strings and arrays', async () => {
@@ -102,5 +103,112 @@ describe('createSessionPersistence', () => {
 
     await save('incarnation-2');
     expect(storedSession.metadata['lastRunStatus']).toBe('completed');
+  });
+
+  // COR-2437 review: a run that loaded the chat before a discard committed, and saves after it,
+  // wrote the discarded rows back, because a row missing from the stored chat read as new.
+  describe('a save racing a removal it did not make', () => {
+    const rows = (ids: readonly string[]) => {
+      const conversation = new Conversation(createConversationHistory({ id: 'session-raced' }));
+      for (const id of ids) {
+        conversation.appendMessages({
+          role: id.startsWith('u') ? 'user' : 'assistant',
+          content: id,
+          id,
+        } as never);
+      }
+      return conversation;
+    };
+    function persistenceOver(ids: readonly string[]) {
+      let storedSession: AgentSession | undefined = createAgentSession({
+        id: 'session-raced',
+        agentName: 'default',
+        conversationHistory: rows(ids).current,
+        metadata: { sessionOwner: 'alice' },
+      });
+      const sessionStore: Pick<SessionStore, 'load' | 'update'> = {
+        load: async () => storedSession,
+        update: async (_id, updater) => {
+          storedSession = (await updater(storedSession)) ?? undefined;
+          return storedSession;
+        },
+      };
+      const persistence = createSessionPersistence({
+        sessionStore,
+        orphanedRunIds: new Set(),
+        store: { getRun: () => undefined },
+        retryDelayMilliseconds: 1,
+        sleep: async () => {},
+        diagnose: () => {},
+        serializeError: String,
+      });
+      return {
+        persistence,
+        stored: () => storedSession!,
+        remove: (id: string) => {
+          const history = storedSession!.conversationHistory;
+          const { [id]: _removed, ...messages } = history.messages;
+          storedSession = {
+            ...storedSession!,
+            conversationHistory: {
+              ...history,
+              ids: history.ids.filter((row) => row !== id),
+              messages,
+            },
+          };
+        },
+      };
+    }
+
+    it('keeps a row another writer removed out of a terminal save', async () => {
+      const over = persistenceOver(['u1', 'run:step:0']);
+      const conversation = rows(['u1', 'run:step:0']);
+      const base = conversation.current;
+      conversation.appendMessages({
+        role: 'assistant',
+        content: 'later',
+        id: 'other:step:0',
+      } as never);
+      over.remove('run:step:0');
+
+      await over.persistence.saveSession('session-raced', conversation, {}, undefined, base);
+
+      expect(over.stored().conversationHistory.ids).toEqual(['u1', 'other:step:0']);
+    });
+
+    it('refuses a run start whose loaded chat lost a row before it saved, so its model never reads it', async () => {
+      const over = persistenceOver(['u1', 'run:step:0']);
+      const conversation = rows(['u1', 'run:step:0']);
+      const base = conversation.current;
+      conversation.appendMessages({ role: 'user', content: 'next', id: 'u2' } as never);
+      over.remove('run:step:0');
+
+      const refused = await over.persistence
+        .saveSession('session-raced', conversation, {}, undefined, base, undefined, undefined, true)
+        .catch((error: unknown) => error);
+
+      expect(refused).toBeInstanceOf(ContextHistoryChangedError);
+      expect(over.stored().conversationHistory.ids).toEqual(['u1']);
+    });
+
+    it('starts a run as before when nothing it loaded was removed', async () => {
+      const over = persistenceOver(['u1']);
+      const conversation = rows(['u1']);
+      const base = conversation.current;
+      conversation.appendMessages({ role: 'user', content: 'next', id: 'u2' } as never);
+
+      await over.persistence.saveSession(
+        'session-raced',
+        conversation,
+        {},
+        undefined,
+        base,
+        undefined,
+        undefined,
+        true,
+      );
+
+      expect(over.stored().conversationHistory.ids).toEqual(['u1', 'u2']);
+    });
   });
 });
