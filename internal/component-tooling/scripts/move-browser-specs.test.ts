@@ -1,10 +1,14 @@
 import { describe, expect, test } from 'bun:test';
+import { join, resolve } from 'node:path';
+import { format, resolveConfig } from 'prettier';
 
 import {
   declarationsSource,
   rewriteBarrelImports,
   rewriteLocationPaths,
   rewriteRelativeImports,
+  stylesheetImports,
+  stylesheetOrderModule,
 } from './move-browser-specs.ts';
 import type { ExportSource } from './place-browser-specs.ts';
 
@@ -147,5 +151,82 @@ describe('declarationsSource', () => {
     expect(merged).toBe(
       'export const chatAppFixtureDeclarations = {\n  chat: [\'assertion\'],\n  "chat-stress": ["assertion"],\n} as const satisfies Record<string, readonly string[]>;\n',
     );
+  });
+});
+
+describe('stylesheetImports', () => {
+  const files: Record<string, string> = {
+    '/r/components/core/src/styles/index.css':
+      "@import '@lostgradient/tokens/tokens.css' layer(tokens);\n@import '../../../foundation/src/f.css';\n",
+    '/r/components/foundation/src/f.css': 'body {}',
+    '/r/components/tokens/src/styles/tokens.css': "@import './tokens-base.css';\n:root {}",
+    '/r/components/tokens/src/styles/tokens-base.css': ':root { --a: 1; }',
+    '/r/components/button/src/button.css': "@import url('./partial.css');\n.cinder-button {}",
+    '/r/components/button/src/partial.css': '.cinder-button {}',
+    '/r/node_modules/.bun/@x+y@1.0.0/node_modules/@x/y/css/y.css': '.y {}',
+  };
+  const read = (path: string) => files[path];
+  const resolveImport = (specifier: string, directory: string) =>
+    specifier.startsWith('.')
+      ? resolve(directory, specifier)
+      : specifier.replace('@lostgradient/tokens/', '/r/components/tokens/src/styles/');
+
+  test('names each stylesheet once, in order, leaving out what a conditional @import reaches', () => {
+    expect(
+      stylesheetImports(
+        [
+          '/r/components/tokens/src/styles/tokens-base.css',
+          '/r/components/tokens/src/styles/tokens.css',
+          '/r/components/foundation/src/f.css',
+          '/r/components/core/src/styles/index.css',
+          '/r/components/button/src/partial.css',
+          '/r/node_modules/.bun/@x+y@1.0.0/node_modules/@x/y/css/y.css',
+          '/r/components/button/src/button.css',
+          '/r/components/core/src/styles/index.css',
+        ],
+        '/r/components/core/browser',
+        read,
+        resolveImport,
+      ),
+    ).toEqual([
+      "import '../../foundation/src/f.css';",
+      "import '../src/styles/index.css';",
+      "import '../../button/src/partial.css';",
+      "import '@x/y/css/y.css';",
+      "import '../../button/src/button.css';",
+    ]);
+  });
+
+  test('refuses a stylesheet that is not on disk', () => {
+    expect(() =>
+      stylesheetImports(
+        ['/r/components/gone.css'],
+        '/r/components/core/browser',
+        read,
+        resolveImport,
+      ),
+    ).toThrow('/r/components/gone.css');
+  });
+});
+
+describe('stylesheetOrderModule', () => {
+  test('keeps its imports in the recorded order through the formatter', async () => {
+    const imports = [
+      "import '../../tokens/src/styles/tokens.css';",
+      "import '../../alert/src/alert.css';",
+    ];
+    const path = join(
+      import.meta.dirname,
+      '..',
+      '..',
+      '..',
+      'components',
+      'core',
+      'browser',
+      'stylesheet-order.ts',
+    );
+    const source = stylesheetOrderModule(imports);
+    const formatted = await format(source, { ...(await resolveConfig(path)), filepath: path });
+    expect(formatted.split('\n').filter((line) => line.startsWith('import'))).toEqual(imports);
   });
 });
