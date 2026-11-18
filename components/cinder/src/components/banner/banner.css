@@ -194,9 +194,12 @@
   /* Touch: an action that is a Button reaches 44 by 44 through the Button's own pseudo-element hit
    * area, so it keeps its painted height. */
 
-  /* A phone: a banner that stacks the actions puts them under the message, whatever its own
-   * width, and gives each its own full line, so the buttons are as wide as the words. */
-  @media (max-width: 39.99rem) {
+  /* A narrow banner that stacks the actions puts them under the message and gives each its own
+   * full line, so the buttons are as wide as the words. The threshold is the phone breakpoint
+   * (640px) less the banner's 2rem of inline padding, because a size query measures the content
+   * box: a full-width banner switches at the same viewport width it always did, and a banner in a
+   * narrow column switches too. */
+  @container cinder-banner (max-width: 37.99rem) {
     .cinder-banner > .cinder-banner__actions[data-cinder-stacked='true'] {
       flex-direction: column;
       flex-wrap: nowrap;

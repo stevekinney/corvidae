@@ -3,12 +3,17 @@
   /* ========================================
  * INSPECTOR
  *
- * A group of property rows for a detail page. At desktop width it is a right rail on one tinted
- * surface; below 700px it reads as a grouped list, on the raised surface a grouped list uses. The
- * group carries the tone and clips its rows; the rows draw their own inset separators.
+ * A group of property rows for a detail page. When its own box is 700px or wider it is one tinted
+ * surface with each label beside its value; narrower, it reads as a grouped list, on the raised
+ * surface a grouped list uses, with each label above its value. The group carries the tone and
+ * clips its rows; the rows draw their own inset separators.
  * ======================================== */
 
+  /* The inspector is the inline-size container its rows and its group query. It has no padding,
+   * so a full-width inspector switches at the 700px viewport width it always did. */
   .cinder-inspector {
+    container-type: inline-size;
+    container-name: cinder-inspector;
     display: block;
     min-inline-size: 0;
   }
@@ -30,8 +35,8 @@
     background: var(--cinder-surface-inset);
   }
 
-  /* On a phone the rows sit on the raised surface of a grouped list, and each label stacks above its value. */
-  @media (width < 700px) {
+  /* A narrow inspector sits on the raised surface of a grouped list, and each label stacks above its value. */
+  @container cinder-inspector (width < 700px) {
     .cinder-inspector__group {
       background: var(--cinder-surface-raised);
     }

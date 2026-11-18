@@ -790,6 +790,7 @@ Component-owned custom-property theming surfaces, one section per component (bes
 | `--cinder-code-block-height` | `auto` | Block height. Real value is CSS `auto` (intrinsic content height); DTCG's dimension type has no keyword form, so `$value` is a non-authoritative placeholder and `cssRecipe` governs emission. Flagged in the CIN-472 PR body as a type-system limitation, not a design decision. Excluded from the published resolved-context JSON (`nonRepresentableValue`) so a generic consumer applying `$value` literally does not collapse the block to zero height. |
 | `--cinder-code-block-line-height` | `var(--cinder-leading-relaxed)` | Code text line height. |
 | `--cinder-code-block-padding` | `var(--cinder-space-4)` | Code viewport padding. |
+| `--cinder-code-block-number` | `oklch(82% 0.14 75)` | The amber a numeric literal is drawn in on the dark theme, where Shiki's `github-dark` paints a number in the same blue as a key. Read only by the dark swap, so the light theme keeps the highlighter's own color. Close to the dark warning fill, but its own token, because the fill must not be consumed as text. |
 
 <!-- END GENERATED TOKEN TABLE -->
 
@@ -800,6 +801,16 @@ Component-owned custom-property theming surfaces, one section per component (bes
 | Token                        | Default | Description                     |
 | ---------------------------- | ------- | ------------------------------- |
 | `--cinder-data-table-height` | `24rem` | Default scroll-viewport height. |
+
+<!-- END GENERATED TOKEN TABLE -->
+
+### Docked Action Bar
+
+<!-- BEGIN GENERATED TOKEN TABLE: docked-action-bar -->
+
+| Token | Default | Description |
+| --- | --- | --- |
+| `--cinder-docked-action-bar-shadow-color` | `light-dark(oklch(0% 0 0 / 0.08), oklch(0% 0 0 / 0.4))` | The color of the card variant's upward shadow. Black in both themes; the dark arm is denser, because a shadow has to be to read against a dark surface. |
 
 <!-- END GENERATED TOKEN TABLE -->
 
@@ -837,6 +848,19 @@ Component-owned custom-property theming surfaces, one section per component (bes
 | `--cinder-kanban-column-background` | `var(--cinder-surface-raised)` | Column background. |
 | `--cinder-kanban-card-background` | `var(--cinder-surface)` | Card background. |
 | `--cinder-kanban-board-scroll-edge` | `color-mix(in oklch, var(--cinder-text-default), transparent 88%)` | Horizontal scroll-edge fade gradient color -- `text-default` at 12% opacity, tracking whichever theme arm resolves. |
+
+<!-- END GENERATED TOKEN TABLE -->
+
+### Map Marker
+
+<!-- BEGIN GENERATED TOKEN TABLE: map-marker -->
+
+| Token | Default | Description |
+| --- | --- | --- |
+| `--cinder-map-marker-fill` | `var(--cinder-surface-raised)` | The marker's body and anchor fill: the raised surface, so a marker reads as a chip over the map. |
+| `--cinder-map-marker-ink` | `var(--cinder-text-default)` | The marker's text color on its fill. |
+| `--cinder-map-marker-live-fill` | `var(--cinder-surface-inverse)` | A live marker's fill: the inverse surface, so the one that is happening now stands out from the rest. |
+| `--cinder-map-marker-live-ink` | `var(--cinder-text-inverse)` | A live marker's text color on its inverse fill. |
 
 <!-- END GENERATED TOKEN TABLE -->
 
@@ -946,6 +970,28 @@ Component-owned custom-property theming surfaces, one section per component (bes
 | `--cinder-table-of-contents-link-color` | `var(--cinder-text-muted)` | Inactive link color. |
 | `--cinder-table-of-contents-link-active-color` | `var(--cinder-text-default)` | Active link color. |
 | `--cinder-table-of-contents-link-indent-step` | `var(--cinder-space-3)` | Indent added per heading-depth level. |
+
+<!-- END GENERATED TOKEN TABLE -->
+
+### Theme Switch
+
+<!-- BEGIN GENERATED TOKEN TABLE: theme-switch -->
+
+| Token | Default | Description |
+| --- | --- | --- |
+| `--cinder-theme-switch-sky-track` | `oklch(93% 0.04 235)` | The track while Light is selected: a pale sky. |
+| `--cinder-theme-switch-sky-border` | `oklch(84% 0.05 235)` | The track's edge while Light is selected. |
+| `--cinder-theme-switch-sky-icon` | `oklch(32% 0.014 245)` | An unselected icon on the sky track. |
+| `--cinder-theme-switch-sky-icon-hover` | `oklch(20% 0.018 245)` | A hovered icon on the sky track. |
+| `--cinder-theme-switch-sky-icon-selected` | `oklch(20% 0.018 245)` | The selected icon on the sky track, over the thumb. |
+| `--cinder-theme-switch-sky-thumb` | `oklch(100% 0 255)` | The thumb behind the selected icon on the sky track. |
+| `--cinder-theme-switch-night-track` | `oklch(25% 0.05 265)` | The track while Dark is selected: a deep night. |
+| `--cinder-theme-switch-night-border` | `oklch(38% 0.05 265)` | The track's edge while Dark is selected. |
+| `--cinder-theme-switch-night-icon` | `oklch(80% 0.03 265)` | An unselected icon on the night track. |
+| `--cinder-theme-switch-night-icon-hover` | `oklch(97% 0.01 265)` | A hovered icon on the night track. |
+| `--cinder-theme-switch-night-icon-selected` | `oklch(97% 0.01 265)` | The selected icon on the night track, over the thumb. |
+| `--cinder-theme-switch-night-thumb` | `oklch(42% 0.06 265)` | The thumb behind the selected icon on the night track. |
+| `--cinder-theme-switch-thumb-shadow-color` | `oklch(0% 0 0 / 0.25)` | The color of the thumb's small drop shadow, in every track and theme. |
 
 <!-- END GENERATED TOKEN TABLE -->
 

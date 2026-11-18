@@ -4,12 +4,16 @@
  * browser; they only exercise the pure string-to-mode mapping.
  */
 
-import type { FullConfig } from '@playwright/test';
+import type { FullConfig, Locator } from '@playwright/test';
 import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test';
 import {
+  BASELINES_FROM_RUN_COMMAND,
   blockBaselineGuard,
   isScreenshotInComponentScope,
+  missingBaselineActualName,
+  missingBaselineCaptureOptions,
   resolveVisualDiffMode,
+  SNAPSHOT_DIFF_OPTIONS,
   type UpdateSnapshotsState,
 } from './screenshot.ts';
 
@@ -178,6 +182,42 @@ describe('blockBaselineGuard — validating (updateSnapshots: none)', () => {
     expect(result.message).toContain('bun run test:browser:update:docker');
     expect(result.message).toContain('bun run test:browser:visual:docker');
     expect(result.message).toContain('visual-baselines.md');
+  });
+
+  it("names the saved actual and the command that copies it from a run's artifact", () => {
+    const result = blockBaselineGuard(BASELINE, false, 'none');
+    if (result.ok) throw new Error('expected guard to fail');
+    expect(result.message).toContain('button/light-desktop-default-actual.png');
+    expect(result.message).toContain('playwright-fixtures artifact');
+    expect(result.message).toContain(BASELINES_FROM_RUN_COMMAND);
+    expect(BASELINES_FROM_RUN_COMMAND).toBe(
+      'bun scripts/browser-fixtures/scripts/baselines-from-run.ts <run-id> --write',
+    );
+  });
+});
+
+describe('missing-baseline actual', () => {
+  it('takes the <component>/<name>-actual.png shape Playwright gives a changed baseline', () => {
+    expect(missingBaselineActualName(BASELINE)).toBe('button/light-desktop-default-actual.png');
+    expect(
+      missingBaselineActualName(
+        '/repo/scripts/browser-fixtures/snapshots/chromium/linux/inspector/dark-tablet-wide.png',
+      ),
+    ).toBe('inspector/dark-tablet-wide-actual.png');
+  });
+
+  it('captures with the comparison options: viewport only, CSS scale, settled, same masks', () => {
+    expect(missingBaselineCaptureOptions(SNAPSHOT_DIFF_OPTIONS, '/out/actual.png')).toEqual({
+      path: '/out/actual.png',
+      fullPage: false,
+      scale: 'css',
+      animations: 'disabled',
+      caret: 'hide',
+    });
+    const mask: Locator[] = [];
+    expect(
+      missingBaselineCaptureOptions({ ...SNAPSHOT_DIFF_OPTIONS, mask }, '/out/actual.png'),
+    ).toMatchObject({ mask });
   });
 });
 

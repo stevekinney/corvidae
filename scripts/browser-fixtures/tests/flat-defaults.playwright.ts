@@ -19,8 +19,15 @@ test.describe('flat by default, framed on request', () => {
     await page.goto(fixtureRoute('description-list'), { waitUntil: 'load' });
     const flat = page.getByTestId('description-list-fields-flat').locator('dl');
     const framed = page.getByTestId('description-list-fields-framed').locator('dl');
-    await expect(flat).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
-    await expect(framed).not.toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+    // A framed group paints its fill on the list's `::before` (COR-2394), so both are read there.
+    const fill = async (list: typeof flat) =>
+      list.evaluate((element) => ({
+        own: getComputedStyle(element).backgroundColor,
+        layer: getComputedStyle(element, '::before').backgroundColor,
+      }));
+    const [flatFill, framedFill] = await Promise.all([fill(flat), fill(framed)]);
+    expect(flatFill).toEqual({ own: 'rgba(0, 0, 0, 0)', layer: 'rgba(0, 0, 0, 0)' });
+    expect(framedFill.layer).not.toBe('rgba(0, 0, 0, 0)');
     await expect(flat).toHaveCSS('border-top-width', '0px');
   });
 
