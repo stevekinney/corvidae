@@ -162,6 +162,43 @@ const values = await (async () => {
   );
   writeFileSync(report, '<testsuite><testcase name="input.test.ts" /></testsuite>');
   const initial = collectLocalEvidence(await request(), passing, fixture);
+  const traversalRequest = await request();
+  traversalRequest.localRuns![0] = {
+    ...traversalRequest.localRuns![0]!,
+    argv: ['true'],
+    reportPaths: ['../report.xml'],
+    artifactPaths: ['../artifact.bin'],
+  };
+  let directTraversalCalls = 0;
+  expect(() =>
+    collectLocalEvidence(
+      traversalRequest,
+      {
+        run: () => {
+          directTraversalCalls += 1;
+          return { exitCode: 0 };
+        },
+      },
+      fixture,
+    ),
+  ).toThrow();
+  const traversalPath = join(fixture, 'traversal-request.json');
+  const traversalText = JSON.stringify(traversalRequest);
+  writeFileSync(traversalPath, traversalText);
+  let requestTraversalCalls = 0;
+  expect(() =>
+    collectLocalEvidenceFromRequest(
+      traversalPath,
+      createHash('sha256').update(traversalText).digest('hex'),
+      {
+        run: () => {
+          requestTraversalCalls += 1;
+          return { exitCode: 0 };
+        },
+      },
+      fixture,
+    ),
+  ).toThrow();
   writeFileSync(join(fixture, 'unrelated'), 'changed\n');
   await git('add', 'unrelated');
   await git('commit', '-m', 'unrelated');
@@ -190,6 +227,8 @@ const values = await (async () => {
     reused,
     reportTamper,
     artifactTamper,
+    directTraversalCalls,
+    requestTraversalCalls,
     invalidReuse,
     reportDigest: createHash('sha256').update(readFileSync(report)).digest('hex'),
   };
@@ -222,4 +261,8 @@ test('reuses only unchanged relevant content', () => {
   expect(values.reportTamper.records[0]?.status).toBe('pending');
   expect(values.artifactTamper.records[0]?.status).toBe('pending');
   expect(values.invalidReuse.records[0]?.status).toBe('pending');
+});
+test('rejects traversal report and artifact mappings before either local runner starts', () => {
+  expect(values.directTraversalCalls).toBe(0);
+  expect(values.requestTraversalCalls).toBe(0);
 });
