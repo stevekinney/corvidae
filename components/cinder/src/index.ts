@@ -911,6 +911,9 @@ export type {
   SchemaFormOutput,
   SchemaFormProps,
   SchemaFormSchema,
+  SchemaFormSecretCopy,
+  SchemaFormSecretKey,
+  SchemaFormSecrets,
   SchemaFormSubmitHandler,
   SchemaFormVariant,
 } from './components/schema-form/index.ts';

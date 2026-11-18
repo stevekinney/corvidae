@@ -5,7 +5,7 @@
  * one `kv` and one `clock` are a restart.
  */
 import type { generateEncryptionKey } from '@lostgradient/cryptography';
-import type { PluginReactionContext } from '@lostgradient/interborough-plugin';
+import type { PluginReactionContext, PluginReceipt } from '@lostgradient/interborough-plugin';
 import { MemoryStorage, textValueStore } from '@lostgradient/storage';
 import { waitUntil } from '@lostgradient/testing/wait-until';
 import { expect } from 'bun:test';
@@ -40,7 +40,10 @@ export const DEFAULT_TIMEOUT = 10_000;
 export type Kv = ReturnType<typeof textValueStore>;
 
 /** What a run does; `call` counts from 1 across the harness. */
-export type RunBehavior = (context: PluginReactionContext, call: number) => Promise<void>;
+export type RunBehavior = (
+  context: PluginReactionContext,
+  call: number,
+) => Promise<void | { readonly receipt?: PluginReceipt }>;
 
 export interface HarnessOptions {
   /** Shared by two harnesses, a restart reads what the first left. */
@@ -70,7 +73,7 @@ export interface HarnessOptions {
   /** How long a request may take; the default timeout of a reaction that sets none. */
   readonly requestTimeoutMilliseconds?: number;
   readonly registrations?: (
-    run: (context: PluginReactionContext) => Promise<void>,
+    run: (context: PluginReactionContext) => Promise<void | { readonly receipt?: PluginReceipt }>,
   ) => readonly HookActionKindRegistration[];
   readonly fetch?: typeof fetch;
   readonly keys?: Awaited<ReturnType<typeof generateEncryptionKey>>;
@@ -84,6 +87,10 @@ export interface HarnessOptions {
   readonly configurationSecrets?: HooksDependencies['configurationSecrets'];
   /** The workspace the hooks capture their owner's authority from. */
   readonly workspace?: HooksDependencies['workspace'];
+  /** Writes an event as a person reads it: a reaction's `format`, and a notification's words (COR-2178). */
+  readonly formatEvent?: HooksDependencies['formatEvent'];
+  /** What an owner is allowed to see of an event, applied before a delivery is written. */
+  readonly eventForHookOwner?: HooksDependencies['eventForHookOwner'];
   /** The records a hook's scope is matched against. */
   readonly subjects?: HooksDependencies['subjects'];
   /** What publishing a delivery event does (COR-2099); the harness captures every one either way. */
@@ -193,13 +200,17 @@ export function harness(options: HarnessOptions = {}) {
     tracked: (_id, _hookId, work) => work(),
   };
   const run: RunBehavior = options.run ?? (() => Promise.resolve());
-  const execute = (context: PluginReactionContext): Promise<void> => {
+  const execute = (
+    context: PluginReactionContext,
+  ): Promise<void | { readonly receipt?: PluginReceipt }> => {
     calls.push(context);
     return run(context, calls.length);
   };
   const dryRunCalls: PluginReactionContext[] = [];
   const dryRunBehavior = options.dryRun;
-  const executeDryRun = (context: PluginReactionContext): Promise<void> => {
+  const executeDryRun = (
+    context: PluginReactionContext,
+  ): Promise<void | { readonly receipt?: PluginReceipt }> => {
     dryRunCalls.push(context);
     return dryRunBehavior === undefined
       ? Promise.resolve()
@@ -268,6 +279,10 @@ export function harness(options: HarnessOptions = {}) {
       : { configurationSecrets: options.configurationSecrets }),
     ...(options.workspace === undefined ? {} : { workspace: options.workspace }),
     ...(options.subjects === undefined ? {} : { subjects: options.subjects }),
+    ...(options.formatEvent === undefined ? {} : { formatEvent: options.formatEvent }),
+    ...(options.eventForHookOwner === undefined
+      ? {}
+      : { eventForHookOwner: options.eventForHookOwner }),
   });
   const view = {
     kv,

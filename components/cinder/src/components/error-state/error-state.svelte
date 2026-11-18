@@ -83,7 +83,10 @@
         <svelte:element this={tag} id={titleId} class="cinder-error-state-title">
           {title}
         </svelte:element>
-        <p class="cinder-error-state-description">{description}</p>
+        <!-- A row whose title is its whole sentence passes no description, and draws no empty line. -->
+        {#if description !== ''}
+          <p class="cinder-error-state-description">{description}</p>
+        {/if}
         {#if retryStatus}
           <p class="cinder-error-state-status" aria-live="off">{retryStatus}</p>
         {/if}

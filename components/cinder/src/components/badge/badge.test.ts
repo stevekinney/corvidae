@@ -84,7 +84,9 @@ describe('Badge', () => {
     const xsRule = cssRule(".cinder-badge[data-cinder-size='xs']");
     const smRule = cssRule(".cinder-badge[data-cinder-size='sm']");
 
-    expect(xsRule).toContain('font-size: 0.625rem');
+    // Both are 11px, the type floor (R10-01): no badge sets its word at 10px.
+    expect(xsRule).toContain('font-size: var(--cinder-text-2xs)');
+    expect(xsRule).not.toContain('0.625rem');
     expect(xsRule).toContain('line-height: 0.875rem');
     expect(smRule).toContain('font-size: var(--cinder-text-2xs');
     expect(smRule).toContain('line-height: 1rem');

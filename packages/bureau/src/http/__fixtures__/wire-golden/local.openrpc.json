@@ -21734,6 +21734,14 @@
               "items": {
                 "additionalProperties": false,
                 "properties": {
+                  "availability": {
+                    "description": "Whether the kind can run now: `needs-setup` while a secret its plugin declared is missing, when a hook of it waits instead of running, and `available` otherwise. Read each time, so a secret saved since is seen without a restart.",
+                    "enum": [
+                      "available",
+                      "needs-setup"
+                    ],
+                    "type": "string"
+                  },
                   "configuration": {
                     "anyOf": [
                       {
@@ -21776,6 +21784,7 @@
                   "description",
                   "version",
                   "dryRun",
+                  "availability",
                   "configuration"
                 ],
                 "type": "object"
@@ -34028,6 +34037,37 @@
               "description": "Epoch milliseconds.",
               "type": "number"
             },
+            "declaredBy": {
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "ownerDisabled": {
+                      "description": "The owner turned the hook off; a reconcile keeps it off.",
+                      "type": "boolean"
+                    },
+                    "plugin": {
+                      "description": "The plugin that declared the hook.",
+                      "type": "string"
+                    },
+                    "withdrawn": {
+                      "description": "The plugin no longer declares the hook, so it is off and the owner cannot turn it on.",
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "plugin",
+                    "ownerDisabled",
+                    "withdrawn"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Where a default hook comes from: the plugin that declared it (COR-2179). The owner can turn it on or off and copy it, and changes nothing else about it. `null` for a hook the owner made."
+            },
             "enabled": {
               "type": "boolean"
             },
@@ -34104,6 +34144,7 @@
             "action",
             "events",
             "scope",
+            "declaredBy",
             "enabled",
             "createdAt",
             "updatedAt",
@@ -34827,6 +34868,37 @@
               "description": "Epoch milliseconds.",
               "type": "number"
             },
+            "declaredBy": {
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "ownerDisabled": {
+                      "description": "The owner turned the hook off; a reconcile keeps it off.",
+                      "type": "boolean"
+                    },
+                    "plugin": {
+                      "description": "The plugin that declared the hook.",
+                      "type": "string"
+                    },
+                    "withdrawn": {
+                      "description": "The plugin no longer declares the hook, so it is off and the owner cannot turn it on.",
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "plugin",
+                    "ownerDisabled",
+                    "withdrawn"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Where a default hook comes from: the plugin that declared it (COR-2179). The owner can turn it on or off and copy it, and changes nothing else about it. `null` for a hook the owner made."
+            },
             "enabled": {
               "type": "boolean"
             },
@@ -34891,6 +34963,7 @@
             "action",
             "events",
             "scope",
+            "declaredBy",
             "enabled",
             "createdAt",
             "updatedAt",
@@ -35349,6 +35422,37 @@
               "description": "Epoch milliseconds.",
               "type": "number"
             },
+            "declaredBy": {
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "ownerDisabled": {
+                      "description": "The owner turned the hook off; a reconcile keeps it off.",
+                      "type": "boolean"
+                    },
+                    "plugin": {
+                      "description": "The plugin that declared the hook.",
+                      "type": "string"
+                    },
+                    "withdrawn": {
+                      "description": "The plugin no longer declares the hook, so it is off and the owner cannot turn it on.",
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "plugin",
+                    "ownerDisabled",
+                    "withdrawn"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Where a default hook comes from: the plugin that declared it (COR-2179). The owner can turn it on or off and copy it, and changes nothing else about it. `null` for a hook the owner made."
+            },
             "enabled": {
               "type": "boolean"
             },
@@ -35417,6 +35521,7 @@
             "action",
             "events",
             "scope",
+            "declaredBy",
             "enabled",
             "createdAt",
             "updatedAt",
@@ -35681,6 +35786,37 @@
               "description": "Epoch milliseconds.",
               "type": "number"
             },
+            "declaredBy": {
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "ownerDisabled": {
+                      "description": "The owner turned the hook off; a reconcile keeps it off.",
+                      "type": "boolean"
+                    },
+                    "plugin": {
+                      "description": "The plugin that declared the hook.",
+                      "type": "string"
+                    },
+                    "withdrawn": {
+                      "description": "The plugin no longer declares the hook, so it is off and the owner cannot turn it on.",
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "plugin",
+                    "ownerDisabled",
+                    "withdrawn"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Where a default hook comes from: the plugin that declared it (COR-2179). The owner can turn it on or off and copy it, and changes nothing else about it. `null` for a hook the owner made."
+            },
             "enabled": {
               "type": "boolean"
             },
@@ -35745,6 +35881,7 @@
             "action",
             "events",
             "scope",
+            "declaredBy",
             "enabled",
             "createdAt",
             "updatedAt",
@@ -35942,6 +36079,37 @@
                     "description": "Epoch milliseconds.",
                     "type": "number"
                   },
+                  "declaredBy": {
+                    "anyOf": [
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "ownerDisabled": {
+                            "description": "The owner turned the hook off; a reconcile keeps it off.",
+                            "type": "boolean"
+                          },
+                          "plugin": {
+                            "description": "The plugin that declared the hook.",
+                            "type": "string"
+                          },
+                          "withdrawn": {
+                            "description": "The plugin no longer declares the hook, so it is off and the owner cannot turn it on.",
+                            "type": "boolean"
+                          }
+                        },
+                        "required": [
+                          "plugin",
+                          "ownerDisabled",
+                          "withdrawn"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "Where a default hook comes from: the plugin that declared it (COR-2179). The owner can turn it on or off and copy it, and changes nothing else about it. `null` for a hook the owner made."
+                  },
                   "enabled": {
                     "type": "boolean"
                   },
@@ -36080,6 +36248,66 @@
                     "description": "The principal that owns the hook.",
                     "type": "string"
                   },
+                  "problems": {
+                    "description": "Why a plugin hook cannot do what it says, as codes. `reaction-unavailable`: its reaction is not registered (its plugin is disabled, removed or dropped the kind), or it is a default hook its plugin withdrew, so it writes no delivery. `configuration-invalid`: the reaction’s schema now refuses the configuration the hook stored. Empty when nothing is wrong, and for every other action.",
+                    "items": {
+                      "oneOf": [
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "code": {
+                              "const": "reaction-unavailable",
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        },
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "code": {
+                              "const": "configuration-invalid",
+                              "type": "string"
+                            },
+                            "issues": {
+                              "description": "Every field the reaction’s schema refuses, by its path and Zod’s code, never a message.",
+                              "items": {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "code": {
+                                    "description": "Zod’s issue code, such as `invalid_type` or `too_small`.",
+                                    "type": "string"
+                                  },
+                                  "path": {
+                                    "description": "The path to the field, from the configuration’s root.",
+                                    "items": {
+                                      "type": "string"
+                                    },
+                                    "type": "array"
+                                  }
+                                },
+                                "required": [
+                                  "path",
+                                  "code"
+                                ],
+                                "type": "object"
+                              },
+                              "type": "array"
+                            }
+                          },
+                          "required": [
+                            "code",
+                            "issues"
+                          ],
+                          "type": "object"
+                        }
+                      ]
+                    },
+                    "type": "array"
+                  },
                   "revision": {
                     "description": "Pass it back as `expectedRevision`.",
                     "maximum": 9007199254740991,
@@ -36122,11 +36350,13 @@
                   "action",
                   "events",
                   "scope",
+                  "declaredBy",
                   "enabled",
                   "createdAt",
                   "updatedAt",
                   "revision",
-                  "lastDelivery"
+                  "lastDelivery",
+                  "problems"
                 ],
                 "type": "object"
               },
@@ -36271,6 +36501,13 @@
                       {
                         "additionalProperties": false,
                         "properties": {
+                          "id": {
+                            "description": "What a plugin’s reaction made in the other service, as it named it.",
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
                           "notificationId": {
                             "type": [
                               "string",
@@ -36282,11 +36519,28 @@
                               "string",
                               "null"
                             ]
+                          },
+                          "summary": {
+                            "description": "What was made, at most 200 characters; a longer one is dropped.",
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "url": {
+                            "description": "Where to see it: an `https:` address; a reaction’s other value is dropped.",
+                            "type": [
+                              "string",
+                              "null"
+                            ]
                           }
                         },
                         "required": [
                           "runId",
-                          "notificationId"
+                          "notificationId",
+                          "id",
+                          "url",
+                          "summary"
                         ],
                         "type": "object"
                       },
@@ -36294,7 +36548,7 @@
                         "type": "null"
                       }
                     ],
-                    "description": "What a `completed` `start-workflow` or `notify` attempt made."
+                    "description": "What a `completed` attempt made: the run, the notification, or a plugin reaction’s receipt."
                   },
                   "responseExcerpt": {
                     "type": [
@@ -36637,6 +36891,13 @@
                       {
                         "additionalProperties": false,
                         "properties": {
+                          "id": {
+                            "description": "What a plugin’s reaction made in the other service, as it named it.",
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
                           "notificationId": {
                             "type": [
                               "string",
@@ -36648,11 +36909,28 @@
                               "string",
                               "null"
                             ]
+                          },
+                          "summary": {
+                            "description": "What was made, at most 200 characters; a longer one is dropped.",
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "url": {
+                            "description": "Where to see it: an `https:` address; a reaction’s other value is dropped.",
+                            "type": [
+                              "string",
+                              "null"
+                            ]
                           }
                         },
                         "required": [
                           "runId",
-                          "notificationId"
+                          "notificationId",
+                          "id",
+                          "url",
+                          "summary"
                         ],
                         "type": "object"
                       },
@@ -36660,7 +36938,7 @@
                         "type": "null"
                       }
                     ],
-                    "description": "What a `completed` `start-workflow` or `notify` attempt made."
+                    "description": "What a `completed` attempt made: the run, the notification, or a plugin reaction’s receipt."
                   },
                   "responseExcerpt": {
                     "type": [
@@ -37016,6 +37294,13 @@
                             {
                               "additionalProperties": false,
                               "properties": {
+                                "id": {
+                                  "description": "What a plugin’s reaction made in the other service, as it named it.",
+                                  "type": [
+                                    "string",
+                                    "null"
+                                  ]
+                                },
                                 "notificationId": {
                                   "type": [
                                     "string",
@@ -37027,11 +37312,28 @@
                                     "string",
                                     "null"
                                   ]
+                                },
+                                "summary": {
+                                  "description": "What was made, at most 200 characters; a longer one is dropped.",
+                                  "type": [
+                                    "string",
+                                    "null"
+                                  ]
+                                },
+                                "url": {
+                                  "description": "Where to see it: an `https:` address; a reaction’s other value is dropped.",
+                                  "type": [
+                                    "string",
+                                    "null"
+                                  ]
                                 }
                               },
                               "required": [
                                 "runId",
-                                "notificationId"
+                                "notificationId",
+                                "id",
+                                "url",
+                                "summary"
                               ],
                               "type": "object"
                             },
@@ -37039,7 +37341,7 @@
                               "type": "null"
                             }
                           ],
-                          "description": "What a `completed` `start-workflow` or `notify` attempt made."
+                          "description": "What a `completed` attempt made: the run, the notification, or a plugin reaction’s receipt."
                         },
                         "responseExcerpt": {
                           "type": [
@@ -37399,6 +37701,13 @@
                       {
                         "additionalProperties": false,
                         "properties": {
+                          "id": {
+                            "description": "What a plugin’s reaction made in the other service, as it named it.",
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
                           "notificationId": {
                             "type": [
                               "string",
@@ -37410,11 +37719,28 @@
                               "string",
                               "null"
                             ]
+                          },
+                          "summary": {
+                            "description": "What was made, at most 200 characters; a longer one is dropped.",
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "url": {
+                            "description": "Where to see it: an `https:` address; a reaction’s other value is dropped.",
+                            "type": [
+                              "string",
+                              "null"
+                            ]
                           }
                         },
                         "required": [
                           "runId",
-                          "notificationId"
+                          "notificationId",
+                          "id",
+                          "url",
+                          "summary"
                         ],
                         "type": "object"
                       },
@@ -37422,7 +37748,7 @@
                         "type": "null"
                       }
                     ],
-                    "description": "What a `completed` `start-workflow` or `notify` attempt made."
+                    "description": "What a `completed` attempt made: the run, the notification, or a plugin reaction’s receipt."
                   },
                   "responseExcerpt": {
                     "type": [
@@ -37671,6 +37997,310 @@
         "required": [
           "hookId",
           "deliveryId"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "description": "Makes a hook of the caller’s own from one the caller may read (COR-2181): the same action, events and scope, off, with no `declaredBy`, so a default hook a plugin declared becomes a hook the owner can change. `name` labels the copy, else it keeps the hook’s own label. The copy is owned by the caller, whoever owned the original, and is checked as `bureau.hooks.create` checks a hook, so it needs `bureau.events:observe-all` (a hook observes the whole Bureau’s events), and a copy of a `start-workflow` hook needs a caller allowed to start workflows. A webhook’s copy gets a signing secret the Bureau generates, shown once as `signingSecret` on the answer (`null` otherwise) and never copied from the original. A caller copies its own hooks, and `bureau.hooks:read` reads any owner’s to copy; another owner’s hook the caller may not read answers `NotFound`, as `bureau.hooks.get` does, and in a workspace a hook of another owner is copied only when it is a webhook for events shared to the workspace. A hook whose plugin no longer offers its action is `InvalidParams` on `action.kind`, because a copy would be checked against a schema that is gone. The copy is made of the hook as it was when the caller was allowed to copy it: a hook that changed in between is a `StaleRevision` fault whose `currentRevision` is the revision now current, and nothing is made.",
+      "errors": [
+        {
+          "$ref": "#/components/errors/Unauthorized"
+        },
+        {
+          "$ref": "#/components/errors/Forbidden"
+        },
+        {
+          "$ref": "#/components/errors/InvalidParams"
+        },
+        {
+          "$ref": "#/components/errors/EngineFailure"
+        },
+        {
+          "$ref": "#/components/errors/NotFound"
+        },
+        {
+          "$ref": "#/components/errors/StaleRevision"
+        },
+        {
+          "$ref": "#/components/errors/UnsupportedCapability"
+        }
+      ],
+      "name": "bureau.hooks.duplicate",
+      "paramStructure": "by-name",
+      "params": [
+        {
+          "name": "hookId",
+          "required": true,
+          "schema": {
+            "description": "The identifier of the hook.",
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        {
+          "name": "name",
+          "required": false,
+          "schema": {
+            "description": "The copy’s label, 1 to 100 characters. Omitted, it keeps the hook’s own.",
+            "maxLength": 100,
+            "minLength": 1,
+            "type": "string"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "required": true,
+        "schema": {
+          "additionalProperties": false,
+          "properties": {
+            "action": {
+              "description": "What the hook does for each event. A hook stored before actions existed is a `webhook`.",
+              "oneOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "type": {
+                      "const": "webhook",
+                      "type": "string"
+                    },
+                    "url": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "url"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "input": {
+                      "enum": [
+                        "payload",
+                        "event"
+                      ],
+                      "type": "string"
+                    },
+                    "type": {
+                      "const": "start-workflow",
+                      "type": "string"
+                    },
+                    "workflowId": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "workflowId",
+                    "input"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "title": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "type": {
+                      "const": "notify",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "title"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "configuration": {
+                      "anyOf": [
+                        {},
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "kind": {
+                      "type": "string"
+                    },
+                    "plugin": {
+                      "type": "string"
+                    },
+                    "type": {
+                      "const": "plugin",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "plugin",
+                    "kind",
+                    "configuration"
+                  ],
+                  "type": "object"
+                }
+              ]
+            },
+            "createdAt": {
+              "description": "Epoch milliseconds.",
+              "type": "number"
+            },
+            "declaredBy": {
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "ownerDisabled": {
+                      "description": "The owner turned the hook off; a reconcile keeps it off.",
+                      "type": "boolean"
+                    },
+                    "plugin": {
+                      "description": "The plugin that declared the hook.",
+                      "type": "string"
+                    },
+                    "withdrawn": {
+                      "description": "The plugin no longer declares the hook, so it is off and the owner cannot turn it on.",
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "plugin",
+                    "ownerDisabled",
+                    "withdrawn"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Where a default hook comes from: the plugin that declared it (COR-2179). The owner can turn it on or off and copy it, and changes nothing else about it. `null` for a hook the owner made."
+            },
+            "enabled": {
+              "type": "boolean"
+            },
+            "events": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "id": {
+              "type": "string"
+            },
+            "name": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "owner": {
+              "description": "The principal that owns the hook.",
+              "type": "string"
+            },
+            "revision": {
+              "description": "Pass it back as `expectedRevision`.",
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "scope": {
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "kind": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "id"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The one subject the hook fires for; `null` for a hook that fires for the whole Bureau. `kind` is `agent`, `workflow` or `schedule`. A stored kind this release does not know is shown as stored, and a stored value it cannot read is shown with an empty `kind`; neither fires."
+            },
+            "signingSecret": {
+              "anyOf": [
+                {
+                  "description": "The signing secret the Bureau generated, `whsec_` and 24 hexadecimal digits. This is the only answer that carries it: no operation returns it again, so keep it now, or replace it later with `bureau.hooks.secret.replace`.",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The signing secret the Bureau generated for a webhook created without one, shown this once; `null` when the caller chose the secret or the action has none."
+            },
+            "updatedAt": {
+              "description": "Epoch milliseconds.",
+              "type": "number"
+            }
+          },
+          "required": [
+            "id",
+            "owner",
+            "name",
+            "action",
+            "events",
+            "scope",
+            "declaredBy",
+            "enabled",
+            "createdAt",
+            "updatedAt",
+            "revision",
+            "signingSecret"
+          ],
+          "type": "object"
+        }
+      },
+      "summary": "Copy a hook",
+      "tags": [
+        {
+          "name": "Hooks"
+        }
+      ],
+      "x-weft-access": {
+        "kind": "authenticated"
+      },
+      "x-weft-paramsSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "hookId": {
+            "description": "The identifier of the hook.",
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          },
+          "name": {
+            "description": "The copy’s label, 1 to 100 characters. Omitted, it keeps the hook’s own.",
+            "maxLength": 100,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "hookId"
         ],
         "type": "object"
       }

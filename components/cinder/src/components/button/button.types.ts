@@ -19,9 +19,11 @@ import type {
  * ask for it by name. It is kept as `secondary` rather than `outline` because `ghost` covers the
  * transparent-background case and many call sites name `secondary` explicitly.
  *
- * `link` reads as an inline text link: the accent text with no fill or border, underlined on
- * hover, for an action that sits beside a row's state as a word, such as Undo beside "Skipped".
- * It is still a button, so it acts and is announced as one.
+ * `link` reads as an inline text link, as `Link underline="always"` does: the accent text,
+ * underlined, with no fill, no border and no padding, in the type of the sentence around it. It is
+ * for the one action that ends a sentence of state, such as "Add the key" after "Pager needs setup
+ * before this hook can run.", so it reads like the links beside it while it opens a dialog. It
+ * is still a button, so it acts and is announced as one, and its hit area takes no layout.
  *
  * @default `"soft"`
  */
@@ -33,7 +35,8 @@ export type ButtonVariant =
   | 'soft-danger'
   | 'ghost'
   | 'ghost-danger'
-  | 'ghost-accent';
+  | 'ghost-accent'
+  | 'link';
 
 /**
  * Size of the button. All sizes use compact visual heights; see button.a11y.md for touch-target guidance.

@@ -961,6 +961,9 @@ SchemaFormDraftChangeHandler
 SchemaFormOutput
 SchemaFormProps
 SchemaFormSchema
+SchemaFormSecretCopy
+SchemaFormSecretKey
+SchemaFormSecrets
 SchemaFormSubmitHandler
 SchemaFormVariant
 SchemaViewProps

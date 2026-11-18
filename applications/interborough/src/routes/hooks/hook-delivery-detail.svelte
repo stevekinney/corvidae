@@ -6,7 +6,7 @@
    * inspector (Fields first, with JSON and Copy), and "Retry delivery" for one that failed. The log
    * owns the retry itself; this draws what the delivery says and asks the log to send it again.
    */
-  import { Button, PayloadInspector } from '@lostgradient/cinder';
+  import { Button, Link, PayloadInspector, Text } from '@lostgradient/cinder';
   import { RefreshCw } from '@lucide/svelte';
 
   import type { HookDelivery } from '../../lib/bureau-hooks.ts';
@@ -30,16 +30,18 @@
     retrying: boolean;
     /** Sends this delivery again from its record. */
     onRetry: () => void;
+    /** The event kinds that read alike among the hook's events, the only ones whose raw kind shows. */
+    alike?: ReadonlySet<string>;
   }
 
-  let { delivery, retrying, onRetry }: Props = $props();
+  let { delivery, retrying, onRetry, alike = new Set<string>() }: Props = $props();
 
   const copy = HOOKS_COPY.editor.deliveries;
 
   let showAllTries = $state(false);
 
   const cause = $derived(deliveryCause(delivery));
-  const facts = $derived(deliveryFacts(delivery));
+  const facts = $derived(deliveryFacts(delivery, alike));
   const tries = $derived(attemptList(delivery, showAllTries));
   const payload = $derived(deliveryPayload(delivery));
   const canRetry = $derived(retryKind(delivery) === 'retry');
@@ -55,7 +57,14 @@
       <div class="ib-hook-delivery__fact">
         <dt>{fact.label}</dt>
         <dd>
-          {fact.value}
+          {#if fact.identifier !== undefined}
+            <!-- An identifier never breaks mid-token: it is cut in its middle, whole in its tooltip. -->
+            <Text variant="code" truncate="middle" text={fact.identifier} />
+          {:else if fact.href !== undefined}
+            <Link href={fact.href} external>{fact.value}</Link>
+          {:else}
+            {fact.value}
+          {/if}
           {#if fact.code !== undefined}
             <code class="ib-hook-delivery__code">{fact.code}</code>
           {/if}
@@ -153,6 +162,7 @@
   }
 
   .ib-hook-delivery__fact dd {
+    min-inline-size: 0;
     margin: 0;
   }
 

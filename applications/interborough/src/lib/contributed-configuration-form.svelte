@@ -9,7 +9,12 @@
    * A kind whose schema has no fields says so, and one the form cannot draw says that. The form
    * draws no Submit button: the page's own action saves what the form reports.
    */
-  import { SchemaForm, schemaFormInitialDraft, type SchemaFormVariant } from '@lostgradient/cinder';
+  import {
+    SchemaForm,
+    schemaFormInitialDraft,
+    type SchemaFormSecrets,
+    type SchemaFormVariant,
+  } from '@lostgradient/cinder';
   import { untrack } from 'svelte';
 
   import { PLUGIN_KINDS_COPY } from '../app/copy/plugins.ts';
@@ -55,6 +60,16 @@
     onPending?: () => void;
     /** Whether every control is disabled, as a page does for a configuration its deployment holds. */
     disabled?: boolean;
+    /**
+     * The saved secrets a field marked `secret: true` offers, with the words and actions around it
+     * (`SchemaForm`'s `secrets`). The form holds a reference to a key, never a value.
+     */
+    secrets?: SchemaFormSecrets | undefined;
+    /**
+     * Whether the configuration is shown as label and value pairs and cannot be changed
+     * (`SchemaForm`'s `readOnly`), as a default hook's is. Nothing is reported while it is read only.
+     */
+    readOnly?: boolean;
     /** What it says when the schema takes no fields, and when the form cannot draw it. Default to the plugin words. */
     noFieldsText?: string;
     unavailableText?: string;
@@ -69,6 +84,8 @@
     reportInitialDraft = true,
     variant = 'default',
     disabled = false,
+    secrets,
+    readOnly = false,
     onPending,
     noFieldsText = PLUGIN_KINDS_COPY.noFields,
     unavailableText = PLUGIN_KINDS_COPY.fieldsUnavailable,
@@ -90,7 +107,7 @@
   // The form emits no draft until an edit, so the one it shows at mount is reported here, once per
   // schema. `value` is read untracked: the report changes it, and must not run this again.
   $effect(() => {
-    if (!reportInitialDraft || formSchema === undefined || !hasFields) return;
+    if (readOnly || !reportInitialDraft || formSchema === undefined || !hasFields) return;
     const shown = schemaFormInitialDraft(
       formSchema,
       untrack(() => value),
@@ -140,6 +157,8 @@
         {variant}
         {disabled}
         {issues}
+        {...secrets === undefined ? {} : { secrets }}
+        {readOnly}
         onDraftChange={draft}
       />
     {/key}

@@ -39,6 +39,7 @@
     statusColumn,
     statusPlacement = 'leading',
     title,
+    badge,
     titleLines = 2,
     tooltip,
     time,
@@ -115,6 +116,14 @@
       : [tooltip, metaTooltip].filter((part) => part !== undefined && part !== '').join('\n') ||
           undefined,
   );
+  // A time given as text is drawn as its parts, each kept whole: the day with its comma, then the
+  // clock after the last comma ("Yesterday," and "6:00 PM"; "Mon, Nov 2," and "3:00 AM"). Where
+  // the row lets its time wrap, it breaks only there.
+  const timeParts = $derived.by(() => {
+    if (typeof time !== 'string') return undefined;
+    const comma = time.lastIndexOf(', ');
+    return comma < 0 ? [time] : [time.slice(0, comma + 1), time.slice(comma + 2)];
+  });
   const lineTooltip = $derived(linkHref === undefined ? tooltip : undefined);
   const lineMetaTooltip = $derived(linkHref === undefined ? metaTooltip : undefined);
   // The phone form is the row's own width below 640px, not the viewport's (COR-2448), so a row in
@@ -182,6 +191,18 @@
 </script>
 
 {#snippet titleRegion()}
+  {#if badge}
+    <!-- The mark sits after the title, outside its clamp: the title gives way, the mark is never cut. -->
+    <div class="cinder-stacked-list-item__title-row">
+      {@render titleText()}
+      <span class="cinder-stacked-list-item__badge">{@render badge()}</span>
+    </div>
+  {:else}
+    {@render titleText()}
+  {/if}
+{/snippet}
+
+{#snippet titleText()}
   <div
     class="cinder-stacked-list-item__title"
     data-cinder-title-lines={titleLines}
@@ -304,7 +325,11 @@
         {#if isLines}
           {#if time || details}
             <div class="cinder-stacked-list-item__time">
-              {#if time}{@render time()}{/if}
+              {#if timeParts !== undefined}<span class="cinder-stacked-list-item__time-text"
+                  >{#each timeParts as part, index (index)}{#if index > 0}{' '}{/if}<span
+                      class="cinder-stacked-list-item__time-part">{part}</span
+                    >{/each}</span
+                >{:else if typeof time === 'function'}{@render time()}{/if}
               {#if details}
                 <button
                   type="button"
