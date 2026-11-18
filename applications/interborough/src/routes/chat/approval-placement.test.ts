@@ -64,13 +64,14 @@ describe('placing the approval again when the header grows', () => {
 
     // The header settles at 115px: the line is 52 + 127 = 179. From there to the end fade's line
     // (487 less 32) is 276px and the unit is 302px, so it cannot all show. The decision row, the
-    // card's bottom, outranks the row that labels it: the unit comes down only until that bottom is
-    // on the fade line, the card's top is clear of the header, and the label passes under it.
+    // card's bottom, outranks the row that labels it: it is whole above the fade line where it
+    // stands, so nothing moves, the card's top is clear of the header, and the label is what
+    // passes under it. (Scrolling up to give the label back brings Jump to latest, which shrinks
+    // the transcript and feeds the placement.)
     setHeader(transcript, 115);
-    const shift = approvalPlacementShift(transcript, card);
-    expect(shift).toBe(-30);
-    expect(425 - shift!).toBe(487 - 32);
-    expect(180 - shift!).toBeGreaterThanOrEqual(179);
+    expect(approvalPlacementShift(transcript, card)).toBe(0);
+    expect(425).toBeLessThanOrEqual(487 - 32);
+    expect(180).toBeGreaterThanOrEqual(179);
   });
 
   test('a unit that fits under the grown header rests with its labelling row clear of it', () => {

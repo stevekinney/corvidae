@@ -168,9 +168,17 @@ export function approvalArrivalRestShift(
     const reachable = Math.min(shift, Math.max(toEnd, 0));
     return Math.abs(reachable) <= 0.5 ? 0 : reachable;
   };
-  // Does not fit between the header's line and the fade line: the decision row's bottom rests on
-  // the fade line, from above or below, and the label row is what passes under the header.
-  if (toFadeLine > toTop + 0.5) return limited(toFadeLine);
+  // Does not fit between the header's line and the fade line: the label row is what passes under
+  // the header. A decision row below the fade line comes up to it. One already above the line, in
+  // the box's lower half, rests where it is, which at the transcript's end is the end: scrolling
+  // up off the end to give the label back a few pixels brings Jump to latest, whose band shrinks
+  // the transcript and feeds this placement until the card has left the view. Only a decision row
+  // higher than that, scrolled off the top, comes down to the line.
+  if (toFadeLine > toTop + 0.5) {
+    if (toFadeLine > 0) return limited(toFadeLine);
+    const lowerHalf = card.bottom >= (viewport.top + viewport.bottom) / 2;
+    return lowerHalf ? 0 : limited(toFadeLine);
+  }
   // Fits: the usual resting place, held between the two lines.
   return limited(Math.min(Math.max(result, toFadeLine), toTop));
 }

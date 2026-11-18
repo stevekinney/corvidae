@@ -561,9 +561,31 @@ describe('where a waiting approval lands when it opens (COR-2327)', () => {
         // The decision row, the unit's bottom, is whole above the end fade either way.
         expect(placed.bottom, `${blockSize}px unit from ${top}`).toBeLessThanOrEqual(476 - 24);
         if (blockSize === 200) expect(placed.top).toBeGreaterThanOrEqual(179);
-        // The unit that does not fit gives up only the deficit: its bottom is on the fade line.
-        else expect(placed.bottom).toBe(476 - 32);
+        // The unit that does not fit keeps its decision row in the box's lower half: on the fade
+        // line when it had to move, and where it was when it was already there.
+        else expect(placed.bottom).toBeGreaterThanOrEqual((179 + 476) / 2);
       }
+    }
+  });
+
+  test('a unit that does not fit and already shows its decision row is never scrolled up off the end', () => {
+    // 320 by 640 at the transcript's end: the label row is at 123, under the header that ends at
+    // 167, and the card's bottom is at 428, above the fade line (444). It rests there.
+    const box = { top: 179, bottom: 476 };
+    expect(
+      approvalArrivalRestShift({ top: 123, bottom: 428 }, box, 0, APPROVAL_BOTTOM_CLEARANCE, true),
+    ).toBe(0);
+    // Jump to latest's band, were it to show, shrinks the box: still no shift, so nothing feeds.
+    for (const bottom of [476, 440, 430]) {
+      expect(
+        approvalArrivalRestShift(
+          { top: 123, bottom: 428 },
+          { top: 179, bottom },
+          0,
+          APPROVAL_BOTTOM_CLEARANCE,
+          true,
+        ),
+      ).toBe(0);
     }
   });
 
