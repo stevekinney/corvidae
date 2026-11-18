@@ -1,5 +1,10 @@
 import { describe, expect, test } from 'bun:test';
-import { mainCiHealth, mainCiWarning, renderMainCiHealth } from './main-ci.ts';
+import {
+  mainCiComparisonWarning,
+  mainCiHealth,
+  mainCiWarning,
+  renderMainCiHealth,
+} from './main-ci.ts';
 import type { Runner } from './process-runner.ts';
 
 const runs =
@@ -7,7 +12,13 @@ const runs =
   () => ({ code, stdout, stderr });
 const run = (conclusion: string) =>
   JSON.stringify([
-    { conclusion, headSha: 'f'.repeat(40), url: 'https://x.test/1', createdAt: 't' },
+    {
+      databaseId: 77,
+      conclusion,
+      headSha: 'f'.repeat(40),
+      url: 'https://x.test/1',
+      createdAt: 't',
+    },
   ]);
 
 describe('mainCiHealth', () => {
@@ -60,5 +71,30 @@ describe('mainCiHealth', () => {
     const health = mainCiHealth(runs(stdout), 'o/n', 'main');
     expect(health.red).toBe(false);
     expect(mainCiWarning(health, 'main')).toContain('main health unknown');
+  });
+
+  test('consumes the exact main run through ci-compare and preserves recurrence diagnostics', () => {
+    const calls: string[][] = [];
+    const warning = mainCiComparisonWarning(
+      (command) => {
+        calls.push(command);
+        return {
+          code: 1,
+          stderr: '',
+          stdout: JSON.stringify({ run: '77', hasNew: true, recurrence: 'COR-2504' }),
+        };
+      },
+      { id: '77', conclusion: 'failure', head: 'h', url: 'u', time: 't' },
+      '/x/repository.json',
+    );
+    expect(calls[0]).toEqual([
+      process.execPath,
+      expect.stringContaining('ci-compare.ts'),
+      '77',
+      '--config',
+      '/x/repository.json',
+      '--json',
+    ]);
+    expect(warning).toContain('COR-2504');
   });
 });

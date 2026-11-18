@@ -111,6 +111,7 @@ describe('planSteps', () => {
         command: [
           'env',
           'CORVIDAE_TEST_SELECTION=dig',
+          'CORVIDAE_TEST_POOL_WAIT_SECONDS=300',
           'bunx',
           'turbo',
           'run',
@@ -123,6 +124,7 @@ describe('planSteps', () => {
         command: [
           'env',
           'CORVIDAE_TEST_SELECTION=dig',
+          'CORVIDAE_TEST_POOL_WAIT_SECONDS=300',
           'bunx',
           'turbo',
           'run',
@@ -427,6 +429,24 @@ describe('runChecks', () => {
     expect(result.output).toBe('focused-checks: 2 passed, 2 failed (lint:root, typecheck:root)');
   });
 
+  test('keeps a pool-admission result pending and never calls it passed', async () => {
+    const { runner } = fakeRunner({ changed: ['scripts/chef/a.ts'] });
+    const deps = dependencies(runner, { 'lint:root': 75 });
+    const result = await runChecks('/repo', { ...options, json: true }, deps);
+    expect(result.code).toBe(1);
+    const output = JSON.parse(result.output) as { ok: boolean; steps: unknown[] };
+    expect(output.ok).toBe(false);
+    const pending = output.steps.find(
+      (step): step is { name: string; command: string; exitCode: number; pending?: boolean } =>
+        typeof step === 'object' &&
+        step !== null &&
+        (step as { name?: unknown }).name === 'lint:root',
+    );
+    expect(pending).toBeDefined();
+    expect(pending).toMatchObject({ name: 'lint:root', exitCode: 75, pending: true });
+    expect(pending?.command).toBe('bun run lint:root');
+  });
+
   test('reports a step ended by a signal as killed, with exit code 3 and not as failed', async () => {
     const { runner } = fakeRunner({ changed: ['scripts/chef/a.ts'] });
     const deps = {
@@ -499,7 +519,7 @@ describe('runChecks', () => {
     const result = await runChecks('/repo', options, deps);
     expect(written[0]?.workspaces['testing/testing']?.files).toEqual(['src/c.slow.test.ts']);
     expect(deps.executed.at(-1)).toBe(
-      'env CORVIDAE_TEST_SELECTION=digest bunx turbo run test:slow --filter=@lostgradient/testing --concurrency=1',
+      'env CORVIDAE_TEST_SELECTION=digest CORVIDAE_TEST_POOL_WAIT_SECONDS=300 bunx turbo run test:slow --filter=@lostgradient/testing --concurrency=1',
     );
     expect(result.output).toContain(
       'testing/testing/src/probe.integration.test.ts launch a browser',
@@ -539,7 +559,7 @@ describe('runChecks', () => {
     expect(calls[0]).toEqual(['git', 'merge-base', 'origin/main', 'HEAD']);
     expect(deps.executed.some((command) => command.includes('affected-tests'))).toBe(false);
     expect(deps.executed.at(-1)).toBe(
-      'env CORVIDAE_TEST_SELECTION=digest bunx turbo run test:slow --filter=@lostgradient/weft --concurrency=1',
+      'env CORVIDAE_TEST_SELECTION=digest CORVIDAE_TEST_POOL_WAIT_SECONDS=300 bunx turbo run test:slow --filter=@lostgradient/weft --concurrency=1',
     );
   });
 

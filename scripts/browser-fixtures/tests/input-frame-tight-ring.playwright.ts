@@ -68,7 +68,11 @@ async function makeReadOnly(focusTarget: Locator): Promise<void> {
 const inputControl = (page: Page) => page.locator('input.cinder-input').first();
 const schemaSelect = (page: Page) => page.locator('select.cinder-select').first();
 const numberInput = (page: Page) => page.locator('#number-input');
-const numberFrame = (page: Page) => page.locator('.cinder-input-group.cinder-number-input');
+// The page also shows unit-suffixed NumberInputs (seconds, days); the frame is the one around #number-input.
+const numberFrame = (page: Page) =>
+  page
+    .locator('.cinder-input-group.cinder-number-input')
+    .filter({ has: page.locator('#number-input') });
 
 function otherBorderedCases(): FrameCase[] {
   const textarea = (page: Page) => page.locator('textarea.cinder-textarea').first();

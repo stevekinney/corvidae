@@ -65,6 +65,11 @@ import { constants } from 'node:os';
 import { join } from 'node:path';
 import { SELECTION_VARIABLE, writeManifest, type Manifest } from '../affected-tests-manifest.ts';
 import { ISOLATED_SUFFIXES } from '../affected-tests.ts';
+import {
+  poolAdmissionErrorExitCode,
+  poolBusyExitCode,
+  poolWaitVariable,
+} from '../bun-test-pool.ts';
 import { terminateProcessGroup } from '../run-exclusively.ts';
 import { directoryGlob, workspaceParentDirectories } from '../workspace-directories.ts';
 import {
@@ -300,7 +305,15 @@ export function planSteps(input: PlanInput): PlannedStep[] {
   const lanes = (isolated: boolean) => {
     const suffix = isolated ? ':isolated' : '';
     const extra = isolated ? ['--concurrency=1'] : [];
-    const select = ['env', `${SELECTION_VARIABLE}=${direct.digest}`, 'bunx', 'turbo', 'run'];
+    // A worker's direct tests wait at most five minutes for a pool slot, then run without one.
+    const select = [
+      'env',
+      `${SELECTION_VARIABLE}=${direct.digest}`,
+      `${poolWaitVariable}=300`,
+      'bunx',
+      'turbo',
+      'run',
+    ];
     if (filters.length > 0)
       steps.push({
         name: `tests${suffix}`,
@@ -461,6 +474,8 @@ export interface StepResult {
   signal?: string;
   /** Set when the step produced no result within the hang guard and was stopped. */
   hung?: true;
+  /** The test pool did not admit this step, so it did not start tests. */
+  pending?: true;
 }
 
 /** How a step ended without an exit code: by a signal, or by outliving the hang guard. */
@@ -698,25 +713,36 @@ export async function runChecks(
     activeStep.name = undefined;
     results.push(
       typeof ended === 'number'
-        ? { name: step.name, command, exitCode: ended }
+        ? {
+            name: step.name,
+            command,
+            exitCode: ended,
+            ...(ended === poolBusyExitCode || ended === poolAdmissionErrorExitCode
+              ? { pending: true as const }
+              : {}),
+          }
         : { name: step.name, command, exitCode: null, ...ended },
     );
   }
-  const failed = results.filter((step) => step.exitCode !== null && step.exitCode !== 0);
+  const pending = results.filter((step) => step.pending === true);
+  const failed = results.filter(
+    (step) => step.exitCode !== null && step.exitCode !== 0 && step.pending !== true,
+  );
   const killed = results.filter((step) => step.signal !== undefined);
   const hung = results.filter((step) => step.hung === true);
-  const ok = failed.length + killed.length + hung.length === 0;
+  const ok = failed.length + killed.length + hung.length + pending.length === 0;
   // A signal or a hang means a step gave no verdict, so it outranks a failure that did.
-  const code = killed.length > 0 ? 3 : hung.length > 0 ? 4 : failed.length > 0 ? 1 : 0;
+  const code =
+    killed.length > 0 ? 3 : hung.length > 0 ? 4 : failed.length + pending.length > 0 ? 1 : 0;
   if (options.json) return { code, output: JSON.stringify({ ok, steps: results, warnings }) };
   const named = (group: StepResult[]) => group.map((step) => step.name).join(', ');
   const summary = options.dryRun
     ? `focused-checks: dry run, ${results.length} steps planned`
-    : `focused-checks: ${results.length - failed.length - killed.length - hung.length} passed, ${failed.length} failed${
+    : `focused-checks: ${results.length - failed.length - killed.length - hung.length - pending.length} passed, ${failed.length} failed${
         failed.length > 0 ? ` (${named(failed)})` : ''
-      }${killed.length > 0 ? `, ${killed.length} killed by a signal` : ''}${
-        hung.length > 0 ? `, ${hung.length} hung` : ''
-      }`;
+      }${pending.length > 0 ? `, ${pending.length} pending (${named(pending)})` : ''}${
+        killed.length > 0 ? `, ${killed.length} killed by a signal` : ''
+      }${hung.length > 0 ? `, ${hung.length} hung` : ''}`;
   const lines = [
     ...warnings.map((warning) => `focused-checks: warning: ${warning}`),
     ...(options.dryRun ? results.map((step) => `  ${step.name}: ${step.command}`) : []),

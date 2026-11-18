@@ -230,9 +230,21 @@ function isProcessGroupAlive(processGroup: number, leaderStartedAt: string | und
 export async function readOwner(lockDirectory: string): Promise<OwnerRecord | undefined> {
   try {
     return JSON.parse(await readFile(join(lockDirectory, ownerFileName), 'utf8')) as OwnerRecord;
-  } catch {
-    return undefined;
+  } catch (error) {
+    // Missing or half written: an ownerless lock, which callers judge by its age after a grace.
+    // Any other failure to read it is thrown, never read as no owner.
+    if (isAbsentOrPartial(error)) return undefined;
+    throw error;
   }
+}
+
+/**
+ * A missing file (or a path through a file where a directory belongs, which garbage in a pool
+ * leaves), or one caught half written: the only reads a record reader treats as absent.
+ */
+export function isAbsentOrPartial(error: unknown): boolean {
+  const code = errorCode(error);
+  return code === 'ENOENT' || code === 'ENOTDIR' || error instanceof SyntaxError;
 }
 
 /**
@@ -245,14 +257,12 @@ async function lockState(
   ownerlessGraceMs: number,
 ): Promise<'released' | 'abandoned' | 'held'> {
   if (owner) return judgeByProcess()(owner) ? 'held' : 'abandoned';
-  try {
-    const { mtimeMs } = await stat(lockDirectory);
-    // Whole milliseconds on both sides: `mtimeMs` keeps a fraction `Date.now()` drops, so a
-    // directory written earlier in this millisecond would otherwise read as written in the future.
-    return Date.now() - Math.floor(mtimeMs) >= ownerlessGraceMs ? 'abandoned' : 'held';
-  } catch {
-    return 'released';
-  }
+  // Only a missing lock is released; any other failure to look at it is thrown, never read as free.
+  const status = await statIfPresent(lockDirectory);
+  if (status === undefined) return 'released';
+  // Whole milliseconds on both sides: `mtimeMs` keeps a fraction `Date.now()` drops, so a
+  // directory written earlier in this millisecond would otherwise read as written in the future.
+  return Date.now() - Math.floor(status.mtimeMs) >= ownerlessGraceMs ? 'abandoned' : 'held';
 }
 
 function errorCode(error: unknown): string | undefined {
@@ -701,8 +711,10 @@ export async function readTicket(
 ): Promise<OwnerRecord | undefined> {
   try {
     return JSON.parse(await readFile(join(queueDirectory, name), 'utf8')) as OwnerRecord;
-  } catch {
-    return undefined;
+  } catch (error) {
+    // Gone (its waiter took its turn or gave up) or half written: no ticket to read yet.
+    if (isAbsentOrPartial(error)) return undefined;
+    throw error;
   }
 }
 
@@ -900,6 +912,7 @@ export function readMemory(): MemoryReading | undefined {
     );
     return result.exitCode === 0 ? parseDarwinMemory(result.stdout.toString()) : undefined;
   } catch {
+    // Memory pressure is advisory: when the platform cannot say, it is unknown, never a refusal.
     return undefined;
   }
 }
@@ -1144,8 +1157,10 @@ export async function terminateProcessGroup(processGroup: number): Promise<void>
     try {
       process.kill(-processGroup, signal);
       return true;
-    } catch {
-      return false;
+    } catch (error) {
+      // The group has exited; any other failure to signal our own child's group is thrown.
+      if (errorCode(error) === 'ESRCH') return false;
+      throw error;
     }
   };
   if (!signalGroup('SIGTERM')) return;
