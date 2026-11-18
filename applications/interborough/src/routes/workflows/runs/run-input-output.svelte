@@ -261,6 +261,14 @@
         </Collapsible>
       {/if}
     </div>
+  {:else if task !== undefined && workflow === undefined && task.status === 'failed' && task.statusMessage}
+    <!-- A run only the Bureau holds says why in its own words, here and not only in the rail, which
+         sits under everything on a phone (COR-2489). -->
+    <Section
+      title={RUN_DETAIL_COPY.instance.whyItFailed}
+      description={oneLine(task.statusMessage)}
+      data-run-failure
+    />
   {:else if record !== undefined && workflow === undefined && !failureOnStep}
     {#if record.error !== undefined && record.error !== null}
       <Section
