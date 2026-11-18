@@ -1,25 +1,4 @@
 <script lang="ts" module>
-  /**
-   * @cinder
-   * @category layout
-   * @status beta
-   * @purpose Resizable list-and-detail layout with a list header, keyboard selection, the open item kept in the URL, a remembered divider width, and a one-pane-at-a-time layout on narrow containers.
-   * @tag layout
-   * @tag list
-   * @tag detail
-   * @tag selection
-   * @tag master-detail
-   * @useWhen Browsing a collection of records where choosing one shows it beside the list, such as chats, runs, or memories.
-   * @useWhen The open record must survive a reload and be shareable as a link.
-   * @avoidWhen Each record has its own page and the list is only a way to navigate there. | stacked-list-item
-   * @avoidWhen You need the resizable layout alone, with no list. | resizable-panels
-   * @related resizable-panels, data-list, selectable-row, empty-state
-   * @a11yPattern Region landmarks with a native button or link row action
-   * @keyboardShortcut J | Moves the keyboard cursor to the next row.
-   * @keyboardShortcut K | Moves the keyboard cursor to the previous row.
-   * @keyboardShortcut Enter | Opens the row the cursor is on.
-   * @a11yNote J and K are ignored while focus is in a text field, a menu, a listbox, a combobox or a dialog, so typing is never taken.
-   */
   export type {
     ListDetailListBodyContext,
     ListDetailProps,

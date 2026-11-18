@@ -1,0 +1,18 @@
+{
+  "$schema": "../../../../../internal/component-tooling/src/schemas/component-meta.schema.json",
+  "category": "form",
+  "status": "stable",
+  "purpose": "Individual option inside a SegmentedControl that renders either a selection button or a route-backed link with shared segmented styling.",
+  "tags": ["form", "selection"],
+  "useWhen": [
+    "Authoring SegmentedControl children declaratively so consumers can compose icons, labels, and badges per segment.",
+    "Mixing disabled and enabled segments inside a single radiogroup/tablist where each segment carries its own metadata.",
+    "Rendering route filters as real links inside `SegmentedControl variant=\"navigation\"`."
+  ],
+  "avoidWhen": [
+    { "reason": "Building a standalone toggle button — use Button or Toggle instead." },
+    { "reason": "Selecting one option from a long list — use Select or Combobox instead." }
+  ],
+  "related": ["segmented-control", "button", "toggle"],
+  "composeOnly": true
+}

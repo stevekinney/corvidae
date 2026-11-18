@@ -10,8 +10,8 @@
  */
 
 import { loadManifest } from '@lostgradient/testing';
+import { test } from '@lostgradient/testing/playwright/component-page-fixture';
 import { expect, type Locator } from '@playwright/test';
-import { test } from './component-page-fixture.ts';
 
 const WIDTHS = [
   { name: 'mobile', width: 375, height: 900 },

@@ -6,8 +6,8 @@
  * without touching the default fixture's baselines. Every box is read in one pass.
  */
 
+import { fixtureRoute } from '@lostgradient/testing/playwright/overlay-fixture';
 import { expect, test } from '@playwright/test';
-import { fixtureRoute } from './overlay-fixture.ts';
 
 test('the count sits under the label at the start, and the copy button stays on the label’s row', async ({
   page,

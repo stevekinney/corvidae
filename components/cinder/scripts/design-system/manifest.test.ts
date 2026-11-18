@@ -81,8 +81,8 @@ describe('mergeManifests', () => {
 });
 
 describe('the design system’s sources', () => {
-  test('read Cinder eagerly, then the editor package lazily', () => {
-    const [cinderSource, editorSource, ...rest] = readManifestSources();
+  test('read Cinder eagerly, then the editor package lazily', async () => {
+    const [cinderSource, editorSource, ...rest] = await readManifestSources();
     expect(rest).toEqual([]);
     expect(cinderSource?.lazy).toBe(false);
     expect(cinderSource?.entry).toEndWith('components/cinder/src/index.ts');
@@ -91,8 +91,8 @@ describe('the design system’s sources', () => {
     expect(editorSource?.componentsDirectory).toEndWith('components/editor/src/lib/components');
   });
 
-  test('merge without a clash and bundle the editors behind the lazy source', () => {
-    const sources = readManifestSources();
+  test('merge without a clash and bundle the editors behind the lazy source', async () => {
+    const sources = await readManifestSources();
     const { manifest } = mergeManifests(sources);
     const names = manifest.components.map((entry) => entry.exportName);
     for (const name of [

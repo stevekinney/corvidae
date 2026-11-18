@@ -1,0 +1,16 @@
+{
+  "$schema": "../../../../../internal/component-tooling/src/schemas/component-meta.schema.json",
+  "category": "data-display",
+  "status": "stable",
+  "purpose": "Tile within a grid-list that combines an image, title, subtitle, meta, and action slots and may link via href.",
+  "tags": ["grid", "tile"],
+  "useWhen": [
+    "Rendering a single card cell inside a grid-list parent.",
+    "Turning the tile into an anchor by passing href."
+  ],
+  "avoidWhen": [
+    { "reason": "Standing alone outside a grid-list — it inherits the grid layout context." }
+  ],
+  "related": ["grid-list"],
+  "composeOnly": true
+}

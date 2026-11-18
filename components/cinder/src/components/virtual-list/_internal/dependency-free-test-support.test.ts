@@ -1,9 +1,9 @@
 import { describe, expect, test } from 'bun:test';
 import { join } from 'node:path';
 
-import { walkDependencyGraph } from '../../../../scripts/check-virtual-list-dependency-free-graph.ts';
-import { FORBIDDEN_SPECIFIER } from '../../../../scripts/check-virtual-list-dependency-free-policy.ts';
-import { withTemporaryFileTree } from '../../../../scripts/check-virtual-list-dependency-free-test-utilities.ts';
+import { walkDependencyGraph } from '@lostgradient/component-tooling/scripts/check-virtual-list-dependency-free-graph.ts';
+import { FORBIDDEN_SPECIFIER } from '@lostgradient/component-tooling/scripts/check-virtual-list-dependency-free-policy.ts';
+import { withTemporaryFileTree } from '@lostgradient/component-tooling/scripts/check-virtual-list-dependency-free-test-utilities.ts';
 
 describe('virtual-list dependency guard test-support ownership', () => {
   test.each(['helpers', 'fixtures', 'utilities'])(

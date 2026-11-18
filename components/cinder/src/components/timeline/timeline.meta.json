@@ -1,0 +1,25 @@
+{
+  "$schema": "../../../../../internal/component-tooling/src/schemas/component-meta.schema.json",
+  "category": "data-display",
+  "status": "stable",
+  "purpose": "Timestamp-first event rail with grouping, tone markers, and connector continuity.",
+  "tags": ["timeline", "history", "events"],
+  "useWhen": [
+    "Showing dated workflow, audit, or run-history events on a temporal rail.",
+    "Listing upcoming and past runs as compact rows split by a Now marker, with a labelled break where the clock changed."
+  ],
+  "avoidWhen": [
+    {
+      "reason": "Surfacing a real-time social or activity stream — feed is the higher-affordance composition."
+    },
+    { "reason": "Guiding users through a numbered procedural flow.", "alternative": "steps" },
+    {
+      "reason": "Showing async execution state with retries, branches, or progress.",
+      "alternative": "run-step-timeline"
+    },
+    {
+      "reason": "Showing a live activity or dense operational stream — use feed (its log arm covers operational streams)."
+    }
+  ],
+  "related": ["feed", "run-step-timeline"]
+}

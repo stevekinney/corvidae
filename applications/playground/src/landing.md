@@ -189,22 +189,22 @@ Useful package commands:
 
 ```bash
 bun run --filter=@lostgradient/cinder build
-bun run --filter=@lostgradient/cinder components:check
-bun run --filter=@lostgradient/cinder components:generate
+bunx turbo run metadata lint --filter=@lostgradient/cinder
 bun run --filter=@lostgradient/cinder exports:check
 bun run --filter=@lostgradient/chat build
-bun run --filter=@lostgradient/chat components:check
+bunx turbo run metadata lint --filter=@lostgradient/chat
 ```
 
 When adding or changing core components, update files under `packages/components/src/components/<component-id>/`, then run:
 
 ```bash
-bun run --filter=@lostgradient/cinder components:generate
+bunx turbo run metadata --filter=@lostgradient/cinder
+(cd components/cinder && bun scripts/generate-component-artifacts.ts --fix)
 ```
 
-That regenerates schemas, variables, examples, constraints, the manifest, generated README sections, package exports, and related artifacts.
+The `metadata` task regenerates schemas, variables, examples and the manifest into the ignored `.metadata/` directory; `--fix` rewrites the generated README sections and the root registries.
 
-For the Chat family, update `packages/chat/src/lib/components/<component-id>/` and run the matching `@lostgradient/chat` `components:generate` command.
+For the Chat family, update `components/chat/src/lib/components/<component-id>/` and run the same two commands for `@lostgradient/chat` (`bun ../cinder/scripts/generate-component-artifacts.ts --package-root . --fix` in `components/chat`).
 
 ## Release
 

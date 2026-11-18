@@ -1,5 +1,5 @@
+import { openFixture } from '@lostgradient/testing/playwright/overlay-fixture';
 import { expect, test } from '@playwright/test';
-import { openFixture } from './overlay-fixture.ts';
 
 async function clipComponent(page: import('@playwright/test').Page, selector: string) {
   return page

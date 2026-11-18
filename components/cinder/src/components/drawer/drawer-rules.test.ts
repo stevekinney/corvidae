@@ -1,13 +1,13 @@
 /// <reference lib="dom" />
-import { requiredInstance, setupHappyDom } from '@lostgradient/testing';
-import { afterEach, describe, expect, test } from 'bun:test';
-import { parse } from 'postcss';
 import {
   flushOverflowFadeAnimationFrames,
   installOverflowFadeTestEnvironment,
   OverflowFadeResizeObserver,
   setScrollMeasurements,
-} from '../../test/overflow-fade-test-helpers.ts';
+} from '@lostgradient/component-tooling/test/overflow-fade-test-helpers.ts';
+import { requiredInstance, setupHappyDom } from '@lostgradient/testing';
+import { afterEach, describe, expect, test } from 'bun:test';
+import { parse } from 'postcss';
 import { installDrawerDialogStubs, textSnippet } from './drawer-test-helpers.ts';
 
 setupHappyDom();

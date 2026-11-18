@@ -1,0 +1,20 @@
+{
+  "$schema": "../../../../../internal/component-tooling/src/schemas/component-meta.schema.json",
+  "category": "overlay",
+  "status": "stable",
+  "purpose": "Hover-and-focus triggered descriptive hint anchored to a focusable child element, wired through aria-describedby.",
+  "tags": ["overlay", "hint"],
+  "useWhen": [
+    "Showing a short non-interactive label or description for an icon-only button or terse control.",
+    "Supplementing a control with a hint that should appear on hover or keyboard focus and dismiss on Escape."
+  ],
+  "avoidWhen": [
+    {
+      "reason": "Hosting interactive content or focusable controls — use popover instead, since tooltip content is not reachable."
+    },
+    {
+      "reason": "Communicating the only accessible name for a control — use aria-label or visible text rather than tooltip text."
+    }
+  ],
+  "related": ["popover"]
+}

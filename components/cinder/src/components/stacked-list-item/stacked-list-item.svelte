@@ -1,19 +1,4 @@
 <script lang="ts" module>
-  /**
-   * @cinder
-   * @category data-display
-   * @status stable
-   * @purpose Dense list row with leading, status, title, time, description, meta, and trailing slots; the status-first two-line row has a fixed 128px status column, a two-line title clamp and a whole-row link.
-   * @tag list
-   * @tag row
-   * @tag status
-   * @useWhen Listing entities vertically with consistent leading icons or avatars and trailing actions.
-   * @useWhen Linking each row to a detail view by passing href, which makes the whole row one link.
-   * @useWhen Listing runs, goals, schedules or agents with a status word, bold title and time on line one and muted meta on line two.
-   * @avoidWhen Comparing tabular data across columns — use table instead.
-   * @avoidWhen Rendering cards in a responsive grid — use grid-list instead.
-   * @related grid-list-item, table-row, avatar
-   */
   export type {
     StackedListItemAction,
     StackedListItemDensity,

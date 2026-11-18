@@ -1,8 +1,8 @@
 /// <reference lib="dom" />
 import { afterEach, describe, expect, mock, test } from 'bun:test';
 
+import { injectStrippedStyles } from '@lostgradient/component-tooling/test/css.ts';
 import { setupHappyDom } from '@lostgradient/testing';
-import { injectStrippedStyles } from '../../test/css.ts';
 import type { TimeFieldChange } from './time-field.types.ts';
 
 setupHappyDom();

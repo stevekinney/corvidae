@@ -2,7 +2,7 @@ import { expect, test } from 'bun:test';
 import { join } from 'node:path';
 import ts from 'typescript';
 
-import { discoverComponents } from '../../scripts/lib/discover-components.ts';
+import { discoverComponents } from '@lostgradient/component-tooling/scripts/lib/discover-components.ts';
 
 function importsSidecar(source: string, componentName: string): boolean {
   const parsed = ts.createSourceFile('index.ts', source, ts.ScriptTarget.Latest, true);

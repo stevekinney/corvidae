@@ -5,12 +5,32 @@ import { join } from 'node:path';
 import ts from 'typescript';
 
 import {
+  ALLOWLIST_FILE,
   expressionOf,
   findInheritedKeyReads,
   judgeReads,
+  readAllowlist,
   type AllowlistEntry,
   type InheritedKeyRead,
 } from './check-inherited-key-reads.ts';
+
+describe('a missing allowlist file', () => {
+  test('reads as the empty list an empty file holds, so deleting an empty allowlist keeps the check passing', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'inherited-key-reads-allowlist-'));
+    try {
+      const path = join(directory, ALLOWLIST_FILE);
+      await Bun.write(path, JSON.stringify({ description: 'empty', entries: [] }));
+      const empty = await readAllowlist(path);
+      rmSync(path);
+      const missing = await readAllowlist(path);
+      expect(missing).toEqual([]);
+      expect(missing).toEqual(empty);
+      expect(judgeReads([], missing)).toEqual(judgeReads([], empty));
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+});
 
 const fixture = mkdtempSync(join(tmpdir(), 'inherited-key-reads-'));
 afterAll(() => rmSync(fixture, { recursive: true, force: true }));

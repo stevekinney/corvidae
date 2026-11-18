@@ -5,8 +5,8 @@
  * tab read "Revie...". Every label's `scrollWidth` must fit its `clientWidth`, read in one pass.
  */
 
+import { fixtureRoute } from '@lostgradient/testing/playwright/overlay-fixture';
 import { expect, test } from '@playwright/test';
-import { fixtureRoute } from './overlay-fixture.ts';
 
 test('five bottom tabs in a 320px bar show every label whole', async ({ page }) => {
   await page.setViewportSize({ width: 375, height: 800 });

@@ -1,18 +1,4 @@
 <script lang="ts" module>
-  /**
-   * @cinder
-   * @category data-display
-   * @status stable
-   * @purpose Responsive SVG line chart for comparing one or more numeric series over an ordered x domain.
-   * @tag chart
-   * @tag line
-   * @tag analytics
-   * @useWhen Showing trends over time or another ordered domain.
-   * @useWhen Comparing several metric series on the same numeric axis.
-   * @avoidWhen Comparing discrete category totals — use bar-chart instead.
-   * @avoidWhen Showing cumulative filled trends — use area-chart instead.
-   * @related area-chart, bar-chart, table, statistic
-   */
   export type { LineChartProps, LineChartSchemaProps } from './line-chart.types.ts';
 </script>
 

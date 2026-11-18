@@ -1,18 +1,4 @@
 <script lang="ts" module>
-  /**
-   * @cinder
-   * @category feedback
-   * @status alpha
-   * @purpose Bounded measurement gauge with meter semantics for readings like battery, quota, CPU, and memory utilization.
-   * @tag feedback
-   * @tag measurement
-   * @tag gauge
-   * @useWhen Showing a fluctuating value within a known minimum and maximum range.
-   * @useWhen Communicating low/optimal/high regions of a bounded measurement.
-   * @avoidWhen Reporting task completion over time such as uploads/imports. | progress
-   * @related progress, statistic, slider
-   * @a11yPattern WAI-ARIA Meter
-   */
   export type {
     MeterProps,
     MeterRemainder,

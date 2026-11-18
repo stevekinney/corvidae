@@ -1,17 +1,4 @@
 <script lang="ts" module>
-  /**
-   * @cinder
-   * @category overlay
-   * @status stable
-   * @purpose Anchored floating panel positioned by Floating UI that hosts non-modal contextual content beside a trigger element.
-   * @tag overlay
-   * @tag floating
-   * @useWhen Showing rich, interactive contextual content anchored to a trigger such as a help panel, color picker, or listbox surface.
-   * @useWhen Presenting non-blocking supplementary controls that should dismiss on outside click or Escape.
-   * @avoidWhen Showing a short descriptive hint on hover or focus — use tooltip instead.
-   * @avoidWhen Interrupting the user for a focused task — use modal or drawer so the surface is modal.
-   * @related modal, drawer, tooltip
-   */
   export type {
     PopoverFocusManagement,
     PopoverPlacement,

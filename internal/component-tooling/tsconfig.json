@@ -1,0 +1,9 @@
+{
+  "extends": "@lostgradient/typescript/library.json",
+  "compilerOptions": {
+    "types": ["bun"],
+    "customConditions": ["browser", "svelte"]
+  },
+  "include": ["scripts", "src"],
+  "exclude": ["node_modules", "scripts/fixtures"]
+}

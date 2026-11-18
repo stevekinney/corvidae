@@ -1,20 +1,4 @@
 <script lang="ts" module>
-  /**
-   * @cinder
-   * @category data-display
-   * @status alpha
-   * @purpose ARIA data grid foundation for spreadsheet-like datasets with explicit row identity, column sizing, keyboard navigation, range selection, and pinning metadata.
-   * @tag grid
-   * @tag data
-   * @tag spreadsheet
-   * @useWhen Rendering interactive tabular data that will need grid behavior such as selection, virtualization, resizing, or editing.
-   * @useWhen You need role=grid semantics instead of native table semantics.
-   * @useWhen You need inline cell editing backed by Cinder's own Input, with commit/cancel keyboard behavior handled for you.
-   * @useWhen You need opt-in pointer- and keyboard-driven column resizing or reordering (`resizableColumns` / `reorderableColumns`).
-   * @useWhen You need opt-in toolbar search/zoom controls, or `zoom` scaling row/header height, column width, and text.
-   * @avoidWhen You only need a semantic read-only table — use DataTable or the Table family instead.
-   * @related data-table, table
-   */
   export type {
     DataGridCellContext,
     DataGridColumnDef,

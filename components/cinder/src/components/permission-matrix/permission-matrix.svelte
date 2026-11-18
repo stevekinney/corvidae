@@ -1,19 +1,4 @@
 <script lang="ts" module>
-  /**
-   * @cinder
-   * @category data-display
-   * @status alpha
-   * @purpose Categorical permission matrix for scanning discrete access states across scopes and operations.
-   * @tag matrix
-   * @tag permission
-   * @tag authorization
-   * @tag table
-   * @useWhen Showing whether scopes, roles, or policy categories grant specific operations.
-   * @useWhen Each cell represents a discrete state such as granted, denied, or not applicable.
-   * @avoidWhen Showing numeric density or magnitude across two categorical dimensions — use matrix-chart instead.
-   * @avoidWhen Rendering editable permissions — use a purpose-built form or data-grid instead.
-   * @related matrix-chart, data-grid, table
-   */
   export type {
     PermissionMatrixAxisItem,
     PermissionMatrixCellState,

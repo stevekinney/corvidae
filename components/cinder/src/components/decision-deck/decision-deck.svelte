@@ -1,23 +1,4 @@
 <script lang="ts" module>
-  /**
-   * @cinder
-   * @category action
-   * @status beta
-   * @purpose Stack of decision cards for working through a review queue on a phone: drag a card to accept or reject it, or press the equal round buttons, with Undo, progress and an all-caught-up state.
-   * @tag review
-   * @tag queue
-   * @tag swipe
-   * @tag decision
-   * @useWhen Working through a queue of items one at a time on a phone, where each item gets an accept, reject or later decision.
-   * @useWhen Offering a swipe as a shortcut for decisions that also have buttons and keys, with a visible Undo after each one.
-   * @avoidWhen Reviewing one pending tool call with its full detail and an audit trail. | approval-card
-   * @avoidWhen Deciding many items at once from a table, where rows need sorting and bulk actions. | data-table
-   * @rationale Nearest alternative: ApprovalCard — ApprovalCard resolves one request with its full detail; DecisionDeck moves through a whole queue of short cards.
-   * @keyboardShortcut ArrowRight | Accepts the focused top card, or rejects it right to left.
-   * @keyboardShortcut ArrowLeft | Rejects the focused top card, or accepts it right to left.
-   * @keyboardShortcut ArrowDown | Sets the focused top card aside for later.
-   * @a11yNote Every swipe decision is also a labelled button and an arrow key, and each decision is announced and can be undone.
-   */
   export type {
     DecisionDeckDecision,
     DecisionDeckItem,

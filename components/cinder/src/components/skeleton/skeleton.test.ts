@@ -2,8 +2,8 @@
 import { afterEach, describe, expect, jest, test } from 'bun:test';
 import { createRawSnippet, flushSync } from 'svelte';
 
+import { declarationsFor } from '@lostgradient/component-tooling/test/css.ts';
 import { setupHappyDom } from '@lostgradient/testing';
-import { declarationsFor } from '../../test/css.ts';
 
 // setupHappyDom() MUST run before any `@testing-library/svelte` import. testing-library
 // reads `globalThis.document` / `window` at module-init (top-level, not inside test bodies),

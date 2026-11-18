@@ -1,18 +1,4 @@
 <script lang="ts" module>
-  /**
-   * @cinder
-   * @category data-display
-   * @status stable
-   * @purpose Grid container that arranges a set of statistic tiles into a responsive multi-column layout with shared labelling.
-   * @tag data-display
-   * @tag dashboard
-   * @useWhen Showing a row of related statistic tiles such as the top metrics of a dashboard.
-   * @useWhen Giving a cluster of statistic entries a single accessible group label.
-   * @useWhen Setting one quiet stat in the page flow under a spotlight, with variant plain.
-   * @avoidWhen Rendering exactly one metric at full size — use statistic on its own.
-   * @avoidWhen Building a freeform card grid unrelated to numeric metrics — compose surface or grid-list directly.
-   * @related statistic
-   */
   export type {
     StatisticGroupColumns,
     StatisticGroupProps,

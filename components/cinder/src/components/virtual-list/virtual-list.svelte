@@ -1,21 +1,4 @@
 <script lang="ts" module>
-  /**
-   * @cinder
-   * @category data-display
-   * @status beta
-   * @purpose Windowing primitive for long lists along either axis, rendering only the visible rows plus overscan, with fixed-height rows by default and opt-in measured rows.
-   * @tag list
-   * @tag virtualization
-   * @tag performance
-   * @useWhen Rendering thousands of rows: logs, event streams, activity feeds.
-   * @useWhen Rows vary in size because they wrap or embed media — dynamicSize measures each.
-   * @useWhen Windowing the inline axis — horizontal, which also resolves right-to-left.
-   * @useWhen A transcript anchored to its newest message, or paging in at either edge.
-   * @avoidWhen Two-dimensional grids, which need column virtualization and grid semantics. | data-grid
-   * @avoidWhen A native table or a hierarchy — data-table and tree window those already.
-   * @avoidWhen The collection is small enough to render in full.
-   * @related data-list, data-table, data-grid, load-more
-   */
   export type {
     VirtualListProps,
     VirtualListRef,

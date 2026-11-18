@@ -4,7 +4,7 @@ import { dirname, join } from 'node:path';
 import { describe, expect, test } from 'bun:test';
 import { parse, type ChildNode } from 'postcss';
 
-import { COMPONENT_LAYER_NAME } from '../../scripts/check-component-css.ts';
+import { COMPONENT_LAYER_NAME } from '@lostgradient/component-tooling/scripts/check-component-css.ts';
 
 /**
  * Cascade-identity guard for the aggregated `@lostgradient/cinder` entry point.

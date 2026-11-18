@@ -1,5 +1,5 @@
 {
-  "$schema": "../../schemas/examples.schema.json",
+  "$schema": "../../../../../internal/component-tooling/src/schemas/examples.schema.json",
   "component": "filter-bar",
   "import": "@lostgradient/cinder",
   "examples": [

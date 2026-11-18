@@ -1,17 +1,27 @@
 import { describe, expect, test } from 'bun:test';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { compile } from 'svelte/compiler';
 import ts from 'typescript';
 
 import { THEME_TOKENS } from './terminal-theme.ts';
-import schema from './terminal.schema.ts';
-import variables from './terminal.variables.ts';
 
 const directory = import.meta.dir;
 const packageRoot = join(directory, '../../../..');
 const read = (name: string) => Bun.file(join(directory, name)).text();
 const readJson = async (name: string) => JSON.parse(await read(name)) as unknown;
+
+/** A file the `metadata` task generated, read through the package's own export of it. */
+const readMetadata = (subpath: string): unknown =>
+  JSON.parse(readFileSync(Bun.resolveSync(`@lostgradient/terminal/${subpath}`, directory), 'utf8'));
+
+type Schema = {
+  properties: Record<string, unknown>;
+  required?: string[];
+  metadata?: { unsupportedProps?: Array<{ name: string; required?: boolean }> };
+};
+const schema = readMetadata('terminal/schema') as Schema;
+const variables = readMetadata('terminal/variables') as string[];
 
 /** The members of the exported `TerminalProps` object type and `TerminalState` union, from source. */
 async function readTypesSource() {
@@ -54,25 +64,22 @@ async function readTypesSource() {
 }
 
 describe('terminal.schema', () => {
-  test('the committed JSON schema matches the typed schema', async () => {
-    expect(await readJson('terminal.schema.json')).toEqual(schema);
-  });
-
   test('describes exactly the props declared in terminal.types.ts', async () => {
     const { props } = await readTypesSource();
+    const byName = (left: string, right: string) => left.localeCompare(right);
     const described = [
       ...Object.keys(schema.properties),
-      ...schema.metadata.unsupportedProps.map(({ name }) => name),
+      ...(schema.metadata?.unsupportedProps ?? []).map(({ name }) => name),
     ];
-    expect(described.toSorted()).toEqual(props.map(({ name }) => name).toSorted());
+    expect(described.toSorted(byName)).toEqual(props.map(({ name }) => name).toSorted(byName));
     expect(new Set(described).size).toBe(described.length);
   });
 
   test('marks as required exactly the props declared without a question mark', async () => {
     const { props } = await readTypesSource();
     const required = props.filter(({ optional }) => !optional).map(({ name }) => name);
-    expect([...schema.required]).toEqual(required);
-    const unsupportedRequired = schema.metadata.unsupportedProps
+    expect([...(schema.required ?? [])]).toEqual(required);
+    const unsupportedRequired = (schema.metadata?.unsupportedProps ?? [])
       .filter(({ required }) => required === true)
       .map(({ name }) => name);
     expect(unsupportedRequired).toEqual([]);
@@ -95,15 +102,19 @@ describe('terminal.schema', () => {
 });
 
 describe('terminal.variables', () => {
-  test('the committed JSON matches the typed list', async () => {
-    expect(await readJson('terminal.variables.json')).toEqual(variables);
-  });
-
-  test('lists exactly the custom properties the stylesheet and the theme bridge read', async () => {
-    const css = await read('terminal.css');
-    const used = new Set([...css.matchAll(/var\((--[a-z0-9-]+)/g)].map((match) => match[1]!));
-    for (const token of Object.values(THEME_TOKENS)) used.add(token);
-    expect([...variables].toSorted()).toEqual([...used].toSorted());
+  // The component generator lists the custom properties a component declares for a consumer to
+  // override, as it does for every Cinder component. The terminal declares none of its own: the
+  // stylesheet and the theme bridge only read Cinder's tokens.
+  test('lists exactly the custom properties the stylesheet declares', async () => {
+    const source = await read('terminal.css');
+    const css = source.replace(/\/\*[\s\S]*?\*\//g, '');
+    const declared = new Set(
+      [...css.matchAll(/(?:^|[;{\s])(--cinder-[a-z0-9-]+)\s*:/g)].map((match) => match[1]!),
+    );
+    expect([...variables]).toEqual(
+      [...declared].toSorted((left, right) => left.localeCompare(right)),
+    );
+    for (const token of Object.values(THEME_TOKENS)) expect(declared.has(token)).toBe(false);
   });
 
   test('is sorted and free of duplicates', () => {
@@ -164,9 +175,7 @@ type Manifest = {
 
 describe('components.json', () => {
   test('describes the one Terminal component the package exports', async () => {
-    const manifest = JSON.parse(
-      await Bun.file(join(packageRoot, 'components.json')).text(),
-    ) as Manifest;
+    const manifest = readMetadata('manifest') as Manifest;
     const packageJson = JSON.parse(await Bun.file(join(packageRoot, 'package.json')).text()) as {
       name: string;
     };
@@ -180,22 +189,24 @@ describe('components.json', () => {
       import: packageJson.name,
       hasExamples: true,
     });
-    for (const artifact of Object.values(component!.artifacts))
-      expect(artifact).toBe(packageJson.name);
+    expect(component!.artifacts).toEqual({
+      schema: '.metadata/terminal/schema.json',
+      variables: '.metadata/terminal/variables.json',
+      examples: '.metadata/terminal/examples.json',
+    });
   });
 
-  test('repeats the doc tags of terminal.svelte, so the two cannot drift', async () => {
-    const manifest = JSON.parse(
-      await Bun.file(join(packageRoot, 'components.json')).text(),
-    ) as Manifest;
+  test('repeats the authored metadata of terminal.meta.json, so the two cannot drift', async () => {
+    const manifest = readMetadata('manifest') as Manifest;
     const [component] = manifest.components;
-    const source = await read('terminal.svelte');
-    const tag = (name: string) =>
-      [...source.matchAll(new RegExp(`@${name} (.+)`, 'g'))].map((match) => match[1]!.trim());
-    expect([component!.purpose]).toEqual(tag('purpose'));
-    expect(component!.useWhen).toEqual(tag('useWhen'));
-    expect(component!.avoidWhen.map(({ reason }) => reason)).toEqual(tag('avoidWhen'));
-    expect(component!.related.join(', ')).toBe(tag('related')[0]!);
+    const meta = (await readJson('terminal.meta.json')) as Pick<
+      Manifest['components'][number],
+      'purpose' | 'useWhen' | 'avoidWhen' | 'related'
+    >;
+    expect(component!.purpose).toBe(meta.purpose);
+    expect(component!.useWhen).toEqual(meta.useWhen);
+    expect(component!.avoidWhen).toEqual(meta.avoidWhen);
+    expect(component!.related).toEqual(meta.related);
   });
 });
 
@@ -271,17 +282,13 @@ describe('component files', () => {
     'terminal.css',
     'README.md',
     'terminal.a11y.md',
-    'terminal.schema.ts',
-    'terminal.schema.json',
-    'terminal.variables.ts',
-    'terminal.variables.json',
     'terminal.examples.json',
   ])('%s exists', (name) => {
     expect(existsSync(join(directory, name))).toBe(true);
   });
 
-  test('the workspace root has its manifest', () => {
-    expect(existsSync(join(packageRoot, 'components.json'))).toBe(true);
+  test('the metadata task wrote the package manifest', () => {
+    expect(existsSync(join(packageRoot, '.metadata', 'components.json'))).toBe(true);
   });
 
   test('the README documents every public prop', async () => {

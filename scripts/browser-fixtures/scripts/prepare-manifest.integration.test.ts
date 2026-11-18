@@ -3,17 +3,17 @@ import { mkdir, mkdtemp, rm, stat, utimes } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join, relative, resolve } from 'node:path';
 
-import { runWithHangGuard } from '@lostgradient/testing/hang-guard';
-import { rejectionOf } from '@lostgradient/testing/promise-outcome';
-import { outcomeOf, rethrow } from '../../module-scope-scenario.test-support.ts';
 import {
-  defaultManifestLayout,
   hashManifestInputs,
   manifestInputFiles,
   manifestOutputPaths,
   prepareManifest,
   type ManifestLayout,
-} from './prepare-manifest.ts';
+} from '@lostgradient/testing/browser/prepare-manifest';
+import { runWithHangGuard } from '@lostgradient/testing/hang-guard';
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
+import { outcomeOf, rethrow } from '../../module-scope-scenario.test-support.ts';
+import { defaultManifestLayout } from './prepare-manifest.ts';
 
 const fixtureFile = (name: string) =>
   `export default [{ name: '${name}', props: { label: '${name}' } }];\n`;
@@ -60,14 +60,15 @@ beforeEach(async () => {
     repositoryRoot: directory,
     fixtureRoots: [join(directory, 'roots/cinder'), join(directory, 'roots/chat')],
     sourceRoot: join(directory, 'src'),
-    appFixtureRoot: join(directory, 'src/fixtures'),
+    appFixtureRoots: [join(directory, 'src/fixtures')],
     appFixtureDeclarations: { panel: ['assertion'] },
     codeInputs: ['code/*.ts'],
     outputDirectory: join(directory, '.playwright'),
   };
   logged = [];
-  const spy = spyOn(console, 'log').mockImplementation((...values: unknown[]) => {
-    logged.push(values.join(' '));
+  const spy = spyOn(process.stdout, 'write').mockImplementation((chunk: string | Uint8Array) => {
+    logged.push(String(chunk).trimEnd());
+    return true;
   });
   restoreLog = () => spy.mockRestore();
 });

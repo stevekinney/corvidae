@@ -1,20 +1,4 @@
 <script lang="ts" module>
-  /**
-   * @cinder
-   * @category navigation
-   * @status stable
-   * @purpose Vertical navigation column that hosts grouped side-navigation-item entries with a required accessible label for the landmark.
-   * @tag navigation
-   * @tag sidebar
-   * @useWhen Building a tall, dense application sidebar with many sections and nested groups.
-   * @useWhen Pairing with sidebar so the column collapses responsively on narrow viewports.
-   * @avoidWhen Anchoring primary navigation across the top of the page. | navigation-bar
-   * @avoidWhen Rendering a single flat horizontal nav row. | navigation-bar
-   * @avoidWhen Showing an in-page heading outline. | table-of-contents
-   * @avoidWhen Rendering expandable hierarchical non-navigation data. | tree
-   * @avoidWhen Needing the shell. | sidebar
-   * @related side-navigation-item, side-navigation-group, navigation-bar, table-of-contents, tree, sidebar
-   */
   export type { SideNavigationProps } from './side-navigation.types.ts';
 </script>
 

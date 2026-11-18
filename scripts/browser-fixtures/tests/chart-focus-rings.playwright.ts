@@ -1,3 +1,4 @@
+import { expect, test } from '@lostgradient/testing/playwright/review-editor-browser-errors';
 import {
   chartRoot,
   charts,
@@ -18,7 +19,6 @@ import {
   expectBoxInside,
   ringScreenshotClip,
 } from './chart-focus-rings-visual-support.ts';
-import { expect, test } from './review-editor-browser-errors.ts';
 
 test.describe('chart SVG focus rings', () => {
   for (const chart of charts) {

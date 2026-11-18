@@ -7,8 +7,8 @@
  * assertion fixture, the plain trail and the trail with a selector (`?popover=1`), in one pass.
  */
 
+import { fixtureRoute } from '@lostgradient/testing/playwright/overlay-fixture';
 import { expect, test } from '@playwright/test';
-import { fixtureRoute } from './overlay-fixture.ts';
 
 test('at 1280px a crumb link is 20px tall and shares a centre line with its separators and the selector', async ({
   page,

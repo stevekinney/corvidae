@@ -1,0 +1,17 @@
+{
+  "$schema": "../../../../../internal/component-tooling/src/schemas/component-meta.schema.json",
+  "category": "form",
+  "status": "alpha",
+  "purpose": "Keyboard-navigable month grid for choosing a calendar date with full styling control and min/max constraints.",
+  "tags": ["form", "date", "calendar"],
+  "useWhen": [
+    "Rendering a custom date-grid picker inside an input popover.",
+    "Requiring consistent cross-browser calendar behavior that native date controls cannot provide."
+  ],
+  "avoidWhen": [
+    {
+      "reason": "A plain browser-managed date input is sufficient and custom keyboard semantics are not required."
+    }
+  ],
+  "related": ["date-picker", "date-range-field"]
+}

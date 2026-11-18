@@ -13,7 +13,7 @@ setupHappyDom();
 const { cleanup, fireEvent, render, screen, waitFor } = await import('@testing-library/svelte');
 const { default: Fixture } = await import('../../test/fixtures/segmented-control-fixture.svelte');
 const { installOverflowFadeTestEnvironment, OverflowFadeResizeObserver } =
-  await import('../../test/overflow-fade-test-helpers.ts');
+  await import('@lostgradient/component-tooling/test/overflow-fade-test-helpers.ts');
 
 const options = [
   { value: 'webhook', label: 'Send a webhook' },

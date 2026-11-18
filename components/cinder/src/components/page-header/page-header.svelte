@@ -1,19 +1,4 @@
 <script lang="ts" module>
-  /**
-   * @cinder
-   * @category layout
-   * @status stable
-   * @purpose Page-level heading with named title, description, breadcrumb, and action regions, as a default header, a large title that collapses on scroll, or a full-bleed hero band.
-   * @tag page
-   * @tag heading
-   * @tag layout
-   * @useWhen Rendering a route-level heading that needs consistent spacing and border treatment across pages.
-   * @useWhen Pairing page context and supporting copy with optional right-aligned controls.
-   * @useWhen Opening an overview page with a full-bleed hero band: an eyebrow, a display title, facts and one focal value.
-   * @avoidWhen Rendering section-scoped headings within page content — use section-heading.
-   * @avoidWhen Building a marketing page with photography and several columns of copy — compose container (see its hero-section example).
-   * @related section-heading, container, app-bar
-   */
   export type {
     PageHeaderCreateAction,
     PageHeaderHeadingLevel,

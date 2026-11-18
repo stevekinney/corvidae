@@ -1,15 +1,4 @@
 <script lang="ts" module>
-  /**
-   * @cinder
-   * @category domain
-   * @status alpha
-   * @purpose Render a terminal session's screen, cursor, colors, and scrollback inside Cinder's TerminalFrame, with the selected engine mounted only in the browser.
-   * @tag terminal
-   * @tag pty
-   * @useWhen Showing the output of a real terminal session, with a measured grid the host sizes its process to.
-   * @avoidWhen Rendering a read-only log of finished text — use TerminalOutput.
-   * @related terminal-frame, terminal-output
-   */
   export type {
     TerminalGeometry,
     TerminalOutputListener,

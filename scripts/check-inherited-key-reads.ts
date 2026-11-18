@@ -649,7 +649,8 @@ function readConfiguration(directory: string): ts.ParsedCommandLine {
   return ts.parseJsonConfigFileContent(loaded.config, ts.sys, directory);
 }
 
-async function readAllowlist(path: string): Promise<AllowlistEntry[]> {
+/** Reads an allowlist's entries; a missing file is an empty list, so an empty one can be deleted. */
+export async function readAllowlist(path: string): Promise<AllowlistEntry[]> {
   if (!existsSync(path)) return [];
   const contents: { entries?: AllowlistEntry[] } = await Bun.file(path).json();
   return contents.entries ?? [];

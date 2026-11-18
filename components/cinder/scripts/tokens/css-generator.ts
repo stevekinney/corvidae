@@ -1,3 +1,4 @@
+import { assertPrettierResolvesToRoot } from '@lostgradient/component-tooling/scripts/lib/prettier-resolution.ts';
 import { format } from 'prettier';
 import { scopeIndexFromDocuments } from '../../src/tokens/runtime/context-order.ts';
 import {
@@ -10,7 +11,6 @@ import {
 } from '../../src/tokens/runtime/css-support.ts';
 import { renderStylesheetSkeleton } from '../../src/tokens/runtime/stylesheet-skeleton.ts';
 import type { ResolverDocument, TokenDocument } from '../../src/tokens/runtime/types.ts';
-import { assertPrettierResolvesToRoot } from '../lib/prettier-resolution.ts';
 import { prepareCss } from './css-preparation.ts';
 import { CSS_PLUGINS, PRETTIER_OPTIONS, REGENERATE_COMMAND } from './generator-configuration.ts';
 

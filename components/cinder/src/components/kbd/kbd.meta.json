@@ -1,0 +1,13 @@
+{
+  "$schema": "../../../../../internal/component-tooling/src/schemas/component-meta.schema.json",
+  "category": "typography",
+  "status": "stable",
+  "purpose": "Inline element that styles a single keystroke or shortcut sequence with the semantic kbd tag.",
+  "tags": ["shortcut", "inline"],
+  "useWhen": [
+    "Calling out a keyboard shortcut inline within prose or a tooltip.",
+    "Composing chorded shortcuts by rendering multiple kbd elements side by side."
+  ],
+  "avoidWhen": [{ "reason": "Displaying a block of source code — use code-block instead." }],
+  "related": ["code-block"]
+}
