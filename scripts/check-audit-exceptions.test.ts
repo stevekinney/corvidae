@@ -14,6 +14,7 @@ import {
   repositoryRoot,
   runAuditGate,
   validateRegistry,
+  workspaceReachabilityDigest,
   type CommandResult,
 } from './check-audit-exceptions';
 
@@ -102,6 +103,11 @@ describe('registry validation', () => {
     ['an impossible review-by date', { reviewBy: '2026-02-31' }, 'not a valid YYYY-MM-DD'],
     ['no allowed chains', { allowedChains: [] }, '"allowedChains" must be'],
     ['a one-package chain', { allowedChains: [['ui']] }, '"allowedChains" must be'],
+    [
+      'a missing reviewed inventory digest',
+      { reviewedReachability: { sha256: '', exposure: 'build-or-development-only' } },
+      'reviewed reachability needs a lowercase SHA-256 digest',
+    ],
   ] as const)('rejects %s', (_label, override, message) => {
     expect(validateRegistry([{ ...entry, ...override }]).join('\n')).toContain(message);
   });
@@ -319,6 +325,54 @@ describe('reachability from the lockfile', () => {
         'root > other > micromatch > braces',
       ]);
     });
+  });
+});
+
+describe('reviewed tooling reachability', () => {
+  const reviewed = (lock = lockfile()): AuditException => ({
+    ...entry,
+    allowedChains: [['stylelint', 'micromatch', 'braces']],
+    reviewedReachability: {
+      sha256: workspaceReachabilityDigest(buildGraph(lock), 'braces')!,
+      exposure: 'build-or-development-only',
+    },
+  });
+
+  test('rejects a non-workspace importer without a reviewed inventory', async () => {
+    const problems = await checkExceptions(
+      [{ ...entry, allowedChains: [['stylelint', 'micromatch', 'braces']] }],
+      beforeReview,
+      reporting,
+      lockfile(),
+    );
+    expect(problems.join('\n')).toContain('non-workspace chain importer without a reviewed');
+  });
+
+  test('accepts the matching frozen workspace inventory', async () => {
+    expect(await checkExceptions([reviewed()], beforeReview, reporting, lockfile())).toEqual([]);
+  });
+
+  test.each([
+    [
+      'a new workspace prefix',
+      lockfile({ rootDependencies: { another: 'workspace:*' } })
+        .replace(
+          '"applications/app": {',
+          '"applications/another": { "name": "another", "dependencies": { "ui": "workspace:*" } },\n      "applications/app": {',
+        )
+        .replace(
+          '"app": ["app@workspace:applications/app"],',
+          '"app": ["app@workspace:applications/app"], "another": ["another@workspace:applications/another"],',
+        ),
+    ],
+    ['a new nested hop', withNewStylelintRoute(lockfile())],
+    [
+      'a runtime edge-kind change',
+      lockfile({ uiDevelopment: {}, uiDependencies: { stylelint: '^1' } }),
+    ],
+  ])('rejects %s even when its readable suffix still matches', async (_label, changedLock) => {
+    const problems = await checkExceptions([reviewed()], beforeReview, reporting, changedLock);
+    expect(problems.join('\n')).toContain('reachability inventory changed');
   });
 });
 
