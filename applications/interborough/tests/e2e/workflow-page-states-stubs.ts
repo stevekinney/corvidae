@@ -148,6 +148,19 @@ export const MORNING_BRIEFING_SAMPLE_TEXT = `${JSON.stringify(
   2,
 )}\n`;
 
+/**
+ * The morning briefing as the board's "JSON tab, invalid" frame holds it (row 65f): the comma at
+ * the end of line 8, after the trigger's `timezone`, is left out, so the mark is on line 8 and the
+ * parser stops at line 9.
+ */
+export const MORNING_BRIEFING_MISSING_COMMA_TEXT = MORNING_BRIEFING_SAMPLE_TEXT.replace(
+  '"timezone": "America/Chicago",',
+  '"timezone": "America/Chicago"',
+);
+
+/** The line of {@link MORNING_BRIEFING_MISSING_COMMA_TEXT} the mark is on (row 65f). */
+export const MISSING_COMMA_LINE = 8;
+
 /** The line of {@link MORNING_BRIEFING_TEXT} the refused document is marked at (row 65z). */
 export const REFUSED_LINE = 27;
 

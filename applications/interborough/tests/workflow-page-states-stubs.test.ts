@@ -15,6 +15,7 @@ import {
 } from '../src/lib/workflow-files.ts';
 import { documentProblemOf } from '../src/routes/workflow-definitions/workflow-issue-line.ts';
 import { workflowRunRow } from '../src/routes/workflow-definitions/workflow-run-rows.ts';
+import { locateJsonProblem } from '../src/routes/workflow-definitions/workflow-source.ts';
 import { runStatusWord } from '../src/routes/workflows/runs/run-rows.ts';
 import {
   asOutsideSchedule,
@@ -22,6 +23,8 @@ import {
   asRefundOutsideSchedule,
   asSignalStarted,
   listWithSignalStarted,
+  MISSING_COMMA_LINE,
+  MORNING_BRIEFING_MISSING_COMMA_TEXT,
   MORNING_BRIEFING_SAMPLE_TEXT,
   MORNING_BRIEFING_TEXT,
   OUTSIDE_SCHEDULE_ID,
@@ -174,6 +177,14 @@ describe('the builder’s states (COR-2432, rows 65d, 65n, 65w, 65z, 66a)', () =
       'activity',
       'sleep',
     ]);
+  });
+
+  test('the invalid sample leaves out the comma at the end of line 8, and the parser stops at line 9 (row 65f)', () => {
+    expect(locateJsonProblem(MORNING_BRIEFING_MISSING_COMMA_TEXT)).toEqual({
+      line: MISSING_COMMA_LINE,
+      stoppedAt: MISSING_COMMA_LINE + 1,
+      kind: 'comma',
+    });
   });
 
   test('the refusal parses as a validation answer and names the line the capture expects', () => {

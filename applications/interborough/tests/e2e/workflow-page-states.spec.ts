@@ -34,6 +34,8 @@ import {
   asRefundOutsideSchedule,
   asSignalStarted,
   listWithSignalStarted,
+  MISSING_COMMA_LINE,
+  MORNING_BRIEFING_MISSING_COMMA_TEXT,
   MORNING_BRIEFING_SAMPLE_TEXT,
   MORNING_BRIEFING_TEXT,
   REFUND_SIGNAL,
@@ -437,9 +439,13 @@ for (const width of WIDTHS) {
         const root = await openBuilder(page, '/workflows/new', width);
         await openJsonTab(builderTabs(root));
         const editor = await jsonEditor(root, WORKFLOW_COPY.creator.textLabel);
-        await replaceJsonEditorText(editor, MORNING_BRIEFING_TEXT.replace('"title": ', '"title" '));
+        // The row's case: the comma at the end of line 8 left out, the parser stopping at line 9.
+        await replaceJsonEditorText(editor, MORNING_BRIEFING_MISSING_COMMA_TEXT);
         await expect(root.locator('.cinder-json-editor__status')).toContainText(
           WORKFLOW_COPY.builder.json.invalid,
+        );
+        await expect(root.getByTestId('workflow-builder-summary')).toHaveText(
+          WORKFLOW_COPY.builder.json.fixLine(MISSING_COMMA_LINE),
         );
         // The marked line is brought into view, so the capture shows the mark (design correction).
         await root.locator('.cinder-json-editor__line--problem').first().scrollIntoViewIfNeeded();
