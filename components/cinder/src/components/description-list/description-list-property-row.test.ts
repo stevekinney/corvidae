@@ -121,6 +121,15 @@ describe('DescriptionList fields: the PropertyRow trailing chevron', () => {
       /@media \(width < 700px\)\s*\{\s*\.cinder-description-list\[data-cinder-variant='fields'\]\[data-cinder-framed\]\s*\{[^}]*background: var\(--cinder-surface-raised\)/s,
     );
   });
+
+  test("the label takes InspectorRow's sizes: the body size, and the small size on a phone", () => {
+    expect(css).toMatch(
+      /\.cinder-description-list\[data-cinder-variant='fields'\] dt\s*\{[^}]*font-size: var\(--cinder-text-base\)/s,
+    );
+    expect(css).toMatch(
+      /@media \(width < 700px\)\s*\{[^@]*\.cinder-description-list\[data-cinder-variant='fields'\] dt\s*\{[^}]*font-size: var\(--cinder-text-sm\)/s,
+    );
+  });
 });
 
 describe('DescriptionList fields: stacking below 23rem of its own width', () => {
