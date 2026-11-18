@@ -10,6 +10,7 @@ import { afterEach, describe, expect, test } from 'bun:test';
 import { Window } from 'happy-dom';
 
 import { SCHEDULE_COPY } from '../../app/copy/schedules.ts';
+import { RETRY_LABEL } from '../../app/copy/views.ts';
 import { router } from '../../lib/router.svelte.ts';
 import {
   codeDefinition,
@@ -385,7 +386,7 @@ describe('the past runs of a schedule', () => {
 
     await findByText(SCHEDULE_COPY.detail.missedFailed, { exact: false });
     failing = false;
-    await fireEvent.click(await findByRole('button', { name: 'Try again' }));
+    await fireEvent.click(await findByRole('button', { name: RETRY_LABEL }));
 
     await findByText(/^Missed once on /);
   });
