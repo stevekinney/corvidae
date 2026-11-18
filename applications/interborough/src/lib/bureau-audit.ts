@@ -1,37 +1,19 @@
 /**
- * The browser's view of the Bureau's audit trail: `bureau.audit.query` (COR-1482), parsed at the
- * boundary. The trail answers records as metadata only, oldest first unless a query asks for the
- * newest (`order: 'newest'`), and pages by a cursor that the answer hands back. The operation takes
- * an upper bound on time (`until`) and an actor (`principal`), which the audit log does not use.
+ * The browser's view of the Bureau's audit trail: `bureau.audit.query` (COR-1482), through the
+ * generated client. The trail answers records as metadata only, oldest first unless a query asks for
+ * the newest (`order: 'newest'`), and pages by a cursor that the answer hands back. The operation
+ * takes an upper bound on time (`until`) and an actor (`principal`), which the audit log does not use.
  */
-import { z } from 'zod';
+import { bureauClient, type BureauOutput } from './bureau-api.ts';
+import type { Fetcher } from './bureau-client.ts';
 
-import { callBureau, type Fetcher } from './bureau-client.ts';
-
-const recordSchema = z.object({
-  /** The trail's own order among records of one millisecond; `null` for a record written before it existed. */
-  sequence: z.number().int().nullable(),
-  timestamp: z.string(),
-  type: z.string(),
-  /** What the record is about: a run id, or `schedule:<id>`, `session:<id>`, `agent:<id>`, `workflow:<id>`. */
-  resource: z.string(),
-  /** The actor, when the record names one. */
-  principal: z.string().nullable(),
-  detail: z.record(z.string(), z.union([z.string(), z.number(), z.boolean()])).nullable(),
-});
+type JsonPage = Extract<BureauOutput<'bureau.audit.query'>, { readonly records: unknown }>;
 
 /** One audit record, as `bureau.audit.query` shows it. */
-export type AuditRecord = z.infer<typeof recordSchema>;
-
-const pageSchema = z.object({
-  records: z.array(recordSchema),
-  nextCursor: z.string().nullable(),
-  /** How many records match the filter, present only when the query asked for it. */
-  total: z.number().int().nonnegative().optional(),
-});
+export type AuditRecord = JsonPage['records'][number];
 
 /** One page of the trail, and the cursor for the next, or `null` on the last. */
-export type AuditPage = z.infer<typeof pageSchema>;
+export type AuditPage = JsonPage;
 
 /** What a search narrows the trail to. A field that is absent narrows nothing. */
 export type AuditFilter = {
@@ -65,7 +47,7 @@ export async function queryAudit(
     readonly includeTotal?: boolean;
   },
 ): Promise<AuditPage> {
-  const params: Record<string, unknown> = {
+  const params = {
     limit: options?.limit ?? AUDIT_PAGE_SIZE,
     ...(options?.order === undefined ? {} : { order: options.order }),
     ...(options?.includeTotal === true ? { includeTotal: true } : {}),
@@ -75,5 +57,8 @@ export async function queryAudit(
     ...(filter.resource === undefined || filter.resource === '' ? {} : { runId: filter.resource }),
     ...(cursor === undefined ? {} : { cursor }),
   };
-  return pageSchema.parse(await callBureau('bureau.audit.query', params, options));
+  const page = await bureauClient['bureau.audit.query'](params, options);
+  // The `jsonl` format is a download, which no page of the console asks for.
+  if (!('records' in page)) throw new Error('The audit trail answered a download, not a page.');
+  return page;
 }

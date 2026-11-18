@@ -10,7 +10,7 @@ import { afterEach, beforeEach, describe, expect, jest, spyOn, test } from 'bun:
 import { quietFor } from '@lostgradient/testing/wait-until';
 import { CHAT_COPY } from '../../app/copy/chat.ts';
 import { toolApprovalFixture } from '../../lib/bureau-fixtures.test-support.ts';
-import { readyAgent } from '../../lib/bureau-stub.test-support.ts';
+import { readyAgent, StubFault } from '../../lib/bureau-stub.test-support.ts';
 import { settle, until } from '../../lib/fake-timers.test-support.ts';
 import { BureauEventSource } from '../../lib/live-source/bureau-event-source.svelte.ts';
 import {
@@ -786,7 +786,10 @@ describe('an existing session', () => {
     restore = bureau(
       {
         'bureau.contexts.get': () => CONTEXT,
-        'bureau.contexts.regenerate': () => ({}),
+        // The Bureau refuses the regeneration, so the answer's status says it failed.
+        'bureau.contexts.regenerate': () => {
+          throw new StubFault('Unavailable', 503, 'The Bureau could not regenerate.');
+        },
         'bureau.tasks.list': () => ({ tasks: [], nextPageToken: null }),
         'bureau.agents.list': () => ({ agents: [AGENT] }),
       },

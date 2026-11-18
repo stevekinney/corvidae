@@ -96,7 +96,7 @@ async function openLongTurn(page: Page, request: APIRequestContext, height = 110
       // The divider is left where it is.
     }
   }, LIST_WIDTH);
-  await page.route('**/bureau/jsonrpc', async (route) => {
+  await page.route('**/jsonrpc', async (route) => {
     const body = operationOf(route);
     if (body.method === 'bureau.contexts.get' && body.params?.contextId === TOOL_CALL_TURN_THREAD) {
       await route.fulfill({ json: { jsonrpc: '2.0', id: body.id, result: context } });

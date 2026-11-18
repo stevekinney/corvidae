@@ -21,7 +21,6 @@
    * @a11yNote J and K are ignored while focus is in a text field, a menu, a listbox, a combobox or a dialog, so typing is never taken.
    */
   export type {
-    ListDetailHeaderContext,
     ListDetailListBodyContext,
     ListDetailProps,
     ListDetailRowContext,
@@ -150,9 +149,11 @@
     const stored = readStoredListCollapsed(resolveStorage(storage), storageKey);
     if (stored !== null) listCollapsed = stored;
   });
-  // The list is hidden only beside an open item, where both panes could show: one pane at a time
-  // has nothing to hide, and with nothing open the list is all there is to choose from.
-  const toggleShown = $derived(listCollapsible && !narrow && selectedEntry !== undefined);
+  // The toggle is drawn, and its corner of the header held, whenever the panes sit side by side and
+  // the list can be hidden, with or without an open item: the corner is never empty, and the header
+  // does not move when an item opens. One pane at a time has nothing to hide. Hiding the list with
+  // nothing open leaves the detail's empty state, with the way back on the rail.
+  const toggleShown = $derived(listCollapsible && !narrow);
   const collapsed = $derived(toggleShown && listCollapsed);
 
   /** Hides or shows the list, remembers it, and moves focus to the toggle, which has moved. */
@@ -362,16 +363,21 @@
     onkeydown={handleKeydown}
   >
     {#if header}
-      <!-- The host places the toggle, so the header keeps its width for the search and filter. -->
+      <!-- The list toggle stands in the header's start corner (drawn once, outside the pane), and
+           the heading starts after it, so the header keeps its full width for its own search and
+           filter. -->
       <header class="cinder-list-detail__header">
         <CompactActions>
-          {@render header({ listToggle: toggleShown ? listToggle : undefined })}
+          {@render header()}
         </CompactActions>
       </header>
     {:else if toggleShown}
-      <header class="cinder-list-detail__header" data-cinder-list-toggle="">
-        <CompactActions>{@render listToggle()}</CompactActions>
-      </header>
+      <!-- No header of its own: an empty one holds the toggle's place at the top of the list. -->
+      <header
+        class="cinder-list-detail__header"
+        data-cinder-toggle-space=""
+        aria-hidden="true"
+      ></header>
     {/if}
     <div class="cinder-list-detail__rows" aria-busy={loading ? 'true' : undefined}>
       {#if loading}
@@ -422,7 +428,7 @@
 
 {#snippet listToggle()}
   {@const label = collapsed ? expandListLabel : collapseListLabel}
-  <Tooltip text={label} describe={false}>
+  <Tooltip text={label} placement="right" describe={false}>
     <Button
       variant="ghost"
       size="sm"
@@ -438,6 +444,13 @@
       {/if}
     </Button>
   </Tooltip>
+{/snippet}
+
+{#snippet toggleAnchor()}
+  <!-- One button, mounted while the list shows and while it is hidden, at one place: the start
+       corner of the list's header, which is also where the rail's top is, so the control does not
+       move when it is pressed and focus stays on it. -->
+  <div class="cinder-list-detail__toggle">{@render listToggle()}</div>
 {/snippet}
 
 {#snippet detailPane()}
@@ -485,6 +498,7 @@
   data-cinder-flush-detail={flushDetail ? '' : undefined}
   data-cinder-showing={narrow ? (selectedEntry ? 'detail' : 'list') : undefined}
   data-cinder-list-collapsed={collapsed ? '' : undefined}
+  data-cinder-toggle-slot={toggleShown && !collapsed ? '' : undefined}
 >
   {#if narrow}
     {#if selectedEntry}
@@ -494,9 +508,13 @@
     {/if}
   {:else if below}
     <div class="cinder-list-detail__below">
+      {#if toggleShown}
+        {@render toggleAnchor()}
+      {/if}
       {#if collapsed}
-        <div class="cinder-list-detail__rail">{@render listToggle()}</div>
-      {:else}
+        <div class="cinder-list-detail__rail"></div>
+      {/if}
+      {#if !collapsed}
         {@render listPane()}
       {/if}
       {@render detailPane()}
@@ -507,8 +525,11 @@
          focus, and the rail beside them keeps the way back. An open item that mounted again
          would read its data again and could take focus for itself. -->
     <div class="cinder-list-detail__split">
+      {#if toggleShown}
+        {@render toggleAnchor()}
+      {/if}
       {#if collapsed}
-        <div class="cinder-list-detail__rail">{@render listToggle()}</div>
+        <div class="cinder-list-detail__rail"></div>
       {/if}
       <ResizablePanels {panes} class="cinder-list-detail__panels" onLayoutCommit={commitLayout}>
         {#snippet children(pane)}

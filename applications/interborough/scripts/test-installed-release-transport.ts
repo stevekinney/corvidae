@@ -219,7 +219,10 @@ export function createResponseDroppingProxy(upstream: URL) {
         headers,
         ...(body === undefined ? {} : { body }),
       });
-      if (target.pathname === '/bureau/jsonrpc' && request.method === 'POST') {
+      if (
+        (target.pathname === '/bureau/jsonrpc' || target.pathname === '/jsonrpc') &&
+        request.method === 'POST'
+      ) {
         const forwardedBody = body === undefined ? '' : new TextDecoder().decode(body);
         if (forwardedBody.includes('bureau.agents.definitions.create')) {
           droppedMutationRequests.push(forwardedBody);

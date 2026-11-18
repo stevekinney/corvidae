@@ -93,6 +93,14 @@ import { guardThemeTransitions } from '@lostgradient/cinder';
 const stopGuarding = guardThemeTransitions();
 ```
 
+Call `trackInputModality()` once at application start as well. It writes `data-cinder-input-modality` (`keyboard` or `pointer`) on the root from the last input, and the foundation styles draw the global default focus ring on a script focus target (`tabindex="-1"`) only while it says `keyboard`; without it a keyboard user never sees that ring. A ring a component draws on such a target, and an application's own unlayered `:focus-visible` rule, are unaffected (see the [focus ring policy](./documentation/focus-ring-policy.md#script-focus-targets)).
+
+```ts
+import { trackInputModality } from '@lostgradient/cinder';
+
+const stopTracking = trackInputModality();
+```
+
 To author a complete theme, use the theme builder: the `/theme-builder` route of the playground application (`bun run --filter=@lostgradient/playground dev`). It edits every public token, reports scoped accessibility findings, and exports a Cinder Theme v1 source file, deployment CSS, and portable DTCG. See [Theming](./documentation/theming.md#the-theme-builder) for the export formats, a worked example, and what the accessibility checks do and do not cover, and [Design tokens](./documentation/tokens.md#editing-the-full-registry-in-the-theme-builder) for how the registry is exposed for editing.
 
 Public tokens use the `--cinder-` prefix. Internal implementation variables use `--_cinder-`; do not redefine those.

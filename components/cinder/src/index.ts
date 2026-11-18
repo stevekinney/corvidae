@@ -345,6 +345,8 @@ export {
 } from './utilities/theme-transition-guard.ts';
 export type { ThemeTransitionGuardOptions } from './utilities/theme-transition-guard.ts';
 
+export { INPUT_MODALITY_ATTRIBUTE, trackInputModality } from './utilities/input-modality.ts';
+
 export { default as DataList } from './components/data-list/index.ts';
 export type { DataListGroup, DataListProps } from './components/data-list/index.ts';
 
@@ -704,7 +706,6 @@ export type { LocaleProviderProps, TextDirection } from './components/locale-pro
 
 export { LIST_DETAIL_SHORTCUTS, default as ListDetail } from './components/list-detail/index.ts';
 export type {
-  ListDetailHeaderContext,
   ListDetailListBodyContext,
   ListDetailProps,
   ListDetailRowContext,

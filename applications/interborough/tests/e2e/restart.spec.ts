@@ -146,7 +146,7 @@ async function captureAtBothWidths(page: Page, route: string, state: string) {
  */
 async function installSettingsHost(page: Page) {
   let state: HostState = 'up';
-  await page.route('**/bureau/jsonrpc', async (route) => {
+  await page.route('**/jsonrpc', async (route) => {
     const body = route.request().postDataJSON() as { method?: string } | null;
     if (body?.method !== 'bureau.settings.get') {
       await route.continue();

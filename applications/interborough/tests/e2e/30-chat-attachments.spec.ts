@@ -76,7 +76,7 @@ test('draws an upload’s progress on its tile as the Bureau takes each chunk (C
   let release: (() => void) | undefined;
   const released = new Promise<void>((resolve) => (release = resolve));
   let appends = 0;
-  await page.route('**/bureau/jsonrpc', async (route) => {
+  await page.route('**/jsonrpc', async (route) => {
     const body = route.request().postDataJSON() as { method: string };
     if (body.method === 'bureau.assets.uploads.append' && (appends += 1) === 2) {
       // The second chunk waits, so the tile is caught with one chunk of three acknowledged.

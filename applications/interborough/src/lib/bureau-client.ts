@@ -1,15 +1,16 @@
 /**
- * The browser's door to the Bureau's management plane, `/bureau/jsonrpc` on the host's own origin
- * (`src/host/host.ts`). Weft's `HttpClient` speaks only the engine's operations, so the Bureau's
- * are called here, with the same fault vocabulary: a fault answers as an `HttpClientError`, which
- * `classifyFault` (`./faults.ts`) already treats.
+ * The browser's calls to the Bureau's chat and session operations, through the one generated client
+ * (`./bureau-api.ts`), which sends them to the host's composed `/jsonrpc` (`src/host/host.ts`).
+ * Weft's `HttpClient` speaks only the engine's operations, so the Bureau's are called here, with
+ * the same fault vocabulary: a fault answers as an `HttpClientError`, which `classifyFault`
+ * (`./faults.ts`) already treats.
  *
  * There is no sign-in. The host serves every request as the one local caller.
  */
 import { HttpClientError } from '@lostgradient/weft';
 import { z } from 'zod';
 
-import { refuseWrite } from './write-guard.ts';
+import { bureauClient, type BureauInput, type BureauOutput } from './bureau-api.ts';
 
 /** The part of `fetch` the application's requests use, so a test can stand a stub in for it. */
 export type Fetcher = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
@@ -27,68 +28,63 @@ export type ContextOrigin = 'chat' | 'goal' | 'schedule';
  */
 export type ReportedOrigin = ContextOrigin | 'try';
 
-/** A session (a Bureau context), as `bureau.contexts.get` and `.list` show it. */
-export const chatContextSchema = z.object({
-  id: z.string(),
-  owner: z.string().nullable(),
-  agentName: z.string(),
-  title: z.string().nullable(),
-  lastMessagePreview: z.string().nullable(),
-  /** The session this one was branched from (`bureau.contexts.fork`), or `null`. */
-  parentContextId: z.string().nullable(),
-  /** The message of the parent this one was branched at, or `null`. */
-  forkedFromMessageId: z.string().nullable(),
-  /**
-   * What started the session: a person's `chat`, a `goal`, a `schedule`'s fire, or `try`, a
-   * throwaway chat with an agent definition that is not saved (`bureau.agents.try`), which the list
-   * leaves out unless it is asked for. The Bureau
-   * records it when a goal or a fire creates the session, and a session that records none is a chat,
-   * which is also how an answer that names none reads here. A value this client does not know (a
-   * Bureau newer than the browser) reads `other`: the session is kept, and since only a `chat`
-   * is shown in Chat, it is not one.
-   */
-  origin: z
-    .enum(['chat', 'goal', 'schedule', 'try'])
-    .or(z.unknown().transform((): 'other' => 'other'))
-    .default('chat'),
-  messageCount: z.number(),
-  createdAt: z.string(),
-  updatedAt: z.string(),
-  activity: z.enum(['running', 'awaiting-input', 'idle']),
-  /**
-   * Why the chat's last run ended when the host stopped it: `host-stopped`, a run that a restart
-   * aborted, which can no longer continue (COR-2009). `null` for a chat whose run ended on its own
-   * or ran again since, and absent from a Bureau that does not say; a reason this client does not know
-   * reads `other`.
-   */
-  endReason: z
-    .enum(['host-stopped'])
-    .nullable()
-    .or(z.unknown().transform((): 'other' => 'other'))
-    .optional(),
-  /**
-   * When the session was archived (`bureau.contexts.archive`), as an ISO 8601 timestamp, or `null`
-   * when it is not. An archived session takes no new message, steering or regenerated answer until
-   * it is unarchived. Absent from a Bureau that does not say, as `endReason` is, which reads as not
-   * archived.
-   */
-  archivedAt: z.string().nullable().optional(),
-});
+type ListedContext = BureauOutput<'bureau.contexts.list'>['contexts'][number];
+
+/** What a session reads as when the Bureau names an origin this client does not know. */
+type OriginReading = ReportedOrigin | 'other';
 
 /**
- * One session as the session list shows it: its agent, title, preview, origin, activity, and
- * counts and timestamps.
+ * A session (a Bureau context), as `bureau.contexts.get` and `.list` show it, once
+ * {@link chatContextOf} has read it. `origin` is what started the session: a person's `chat`, a
+ * `goal`, a `schedule`'s fire, or `try`; a session that records none is a chat, and a value this
+ * client does not know (a Bureau newer than the browser) reads `other`: the session is kept, and
+ * since only a `chat` is shown in Chat, it is not one. `endReason` is why the chat's last run ended
+ * when the host stopped it (`host-stopped`, a run that a restart aborted, which can no longer
+ * continue, COR-2009): `null` for a chat whose run ended on its own or ran again since, absent from
+ * a Bureau that does not say; a reason this client does not know reads `other`. `archivedAt` is when
+ * the session was archived (`bureau.contexts.archive`), as an ISO 8601 timestamp, or `null` when it
+ * is not; an archived session takes no new message, steering or regenerated answer until it is
+ * unarchived. It is absent from a Bureau that does not say, which reads as not archived.
  */
-export type ChatContext = z.infer<typeof chatContextSchema>;
+export type ChatContext = Omit<ListedContext, 'origin' | 'endReason' | 'archivedAt'> & {
+  readonly origin: OriginReading;
+  readonly endReason?: 'host-stopped' | 'other' | null | undefined;
+  readonly archivedAt?: string | null | undefined;
+};
+
+/** A session as a Bureau of any release can answer it: an origin or an end reason may be one this client does not know. */
+type WireContext = Omit<ListedContext, 'origin' | 'endReason' | 'archivedAt'> & {
+  readonly origin?: unknown;
+  readonly endReason?: unknown;
+  readonly archivedAt?: string | null | undefined;
+};
+
+function originOf(origin: unknown): OriginReading {
+  if (origin === undefined) return 'chat';
+  if (origin === 'chat' || origin === 'goal' || origin === 'schedule' || origin === 'try') {
+    return origin;
+  }
+  return 'other';
+}
+
+/**
+ * Reads what the server's schema leaves open in a session: a session that names no origin is a
+ * chat, an origin this client does not know reads `other`, and an end reason it does not know reads
+ * `other`.
+ */
+export function chatContextOf(context: WireContext): ChatContext {
+  const { origin, endReason, ...rest } = context;
+  return {
+    ...rest,
+    origin: originOf(origin),
+    ...(endReason === undefined
+      ? {}
+      : { endReason: endReason === null || endReason === 'host-stopped' ? endReason : 'other' }),
+  };
+}
 
 /** The reasoning efforts a session can be set to (`bureau.contexts.steer`'s `effort`). */
-const effortSchema = z.enum(['low', 'medium', 'high', 'xhigh', 'max']);
-
-/** A reasoning effort, as `bureau.contexts.steer` takes it and `bureau.contexts.get` reports it. */
-export type Effort = z.infer<typeof effortSchema>;
-
-/** The permission modes a session can be set to (`bureau.contexts.steer`'s `permissionMode`). */
-const permissionModeSchema = z.enum(['always', 'on-changes', 'allow-all', 'read-only']);
+export type Effort = 'low' | 'medium' | 'high' | 'xhigh' | 'max';
 
 /**
  * How readily a session's tool calls ask a person, as `bureau.contexts.steer` takes it and
@@ -97,7 +93,9 @@ const permissionModeSchema = z.enum(['always', 'on-changes', 'allow-all', 'read-
  * denies every tool that is not read-only. It governs every tool of the chat's runs, whichever
  * kind of agent holds it; only `requestHumanInput`, which just asks a person, stands outside it.
  */
-export type PermissionMode = z.infer<typeof permissionModeSchema>;
+export type PermissionMode = 'always' | 'on-changes' | 'allow-all' | 'read-only';
+
+type DetailedContext = BureauOutput<'bureau.contexts.get'>;
 
 /**
  * One session as `bureau.contexts.get` shows it: the summary, and what its steering has settled on.
@@ -106,90 +104,22 @@ export type PermissionMode = z.infer<typeof permissionModeSchema>;
  * is its permission mode, `on-changes` before one was set; `configVersion` is
  * the version a later `bureau.contexts.steer`'s `expectedRevision` is compared against.
  */
-export const contextDetailSchema = chatContextSchema.extend({
-  model: z.object({ provider: z.string().nullable(), model: z.string() }).nullable(),
-  effort: effortSchema.nullable(),
-  permissionMode: permissionModeSchema,
-  configVersion: z.number().int().nonnegative(),
-});
+export type ContextDetail = ChatContext &
+  Pick<DetailedContext, 'model' | 'effort' | 'permissionMode' | 'configVersion'>;
 
-/**
- * One session with its agent, title, and the model and configuration version its steering has
- * settled on.
- */
-export type ContextDetail = z.infer<typeof contextDetailSchema>;
-
-/** What `bureau.contexts.input` answers for an input it admitted. */
-const contextInputReceiptSchema = z.object({
-  outcome: z.enum(['admitted', 'replayed']),
-  receipt: z.object({ id: z.string(), state: z.string() }),
-});
-
-/**
- * What the Bureau answers for an input it admitted: whether it was admitted or replayed, and the
- * receipt's identifier and state.
- */
-export type ContextInputReceipt = z.infer<typeof contextInputReceiptSchema>;
-
-const contextRegenerateReceiptSchema = z.object({
-  contextId: z.string().min(1),
-  messageId: z.string().min(1),
-  revision: z.number().int().nonnegative(),
-});
+/** What `bureau.contexts.input` answers for an input it admitted: whether it was admitted or replayed, and the receipt's identifier and state. */
+export type ContextInputReceipt = BureauOutput<'bureau.contexts.input'>;
 
 /** The committed replacement returned by `bureau.contexts.regenerate`. */
-export type ContextRegenerateReceipt = z.infer<typeof contextRegenerateReceiptSchema>;
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-/** Calls one Bureau operation and returns its result, or throws the fault it answered. */
-export async function callBureau(
-  method: string,
-  params: unknown,
-  options: { readonly signal?: AbortSignal; readonly fetch?: Fetcher } = {},
-): Promise<unknown> {
-  // A write is refused here, by operation, before any fetch is chosen: see `./write-guard.ts`.
-  refuseWrite(method);
-  const send = options.fetch ?? fetch;
-  const response = await send(`${BUREAU_PATH}/jsonrpc`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ jsonrpc: '2.0', id: method, method, params }),
-    ...(options.signal === undefined ? {} : { signal: options.signal }),
-  });
-  let body: unknown;
-  try {
-    body = await response.json();
-  } catch {
-    throw new HttpClientError(response.status, response.statusText || `HTTP ${response.status}`);
-  }
-  if (isRecord(body) && isRecord(body['error'])) {
-    const fault = body['error'];
-    const data = isRecord(fault['data']) ? fault['data'] : undefined;
-    const status = typeof data?.['httpStatus'] === 'number' ? data['httpStatus'] : response.status;
-    // The status says what kind of fault it is, which is all the console's treatments read.
-    throw new HttpClientError(
-      status,
-      typeof fault['message'] === 'string' ? fault['message'] : `HTTP ${status}`,
-      { data },
-    );
-  }
-  if (!isRecord(body) || !('result' in body)) {
-    throw new HttpClientError(response.status, 'The server answered with no result.');
-  }
-  return body['result'];
-}
-
-const deploymentIdSchema = z.object({ id: z.string().min(1) });
+export type ContextRegenerateReceipt = BureauOutput<'bureau.contexts.regenerate'>;
 
 /**
  * The Bureau's own identifier (`bureau.deployment.get`), which `bureau.events` names as its
  * `bureauId`. The feed is addressed by it and answers `NotFound` for any other.
  */
 export async function getBureauId(options?: { readonly signal?: AbortSignal }): Promise<string> {
-  return deploymentIdSchema.parse(await callBureau('bureau.deployment.get', {}, options)).id;
+  const answer = await bureauClient['bureau.deployment.get']({}, options);
+  return answer.id;
 }
 
 /** One session, with its agent, title and model. A session the caller cannot see is a not-found fault. */
@@ -197,7 +127,14 @@ export async function getContext(
   contextId: string,
   options?: { readonly signal?: AbortSignal },
 ): Promise<ContextDetail> {
-  return contextDetailSchema.parse(await callBureau('bureau.contexts.get', { contextId }, options));
+  const detail = await bureauClient['bureau.contexts.get']({ contextId }, options);
+  return {
+    ...chatContextOf(detail),
+    model: detail.model,
+    effort: detail.effort,
+    permissionMode: detail.permissionMode,
+    configVersion: detail.configVersion,
+  };
 }
 
 /** What fills a context's window, as `bureau.contexts.window` names the categories, in its order. */
@@ -206,91 +143,50 @@ export const WINDOW_CATEGORIES = ['system', 'tools', 'messages', 'memory', 'atta
 /** One thing that fills a context's window. */
 export type WindowCategoryName = (typeof WINDOW_CATEGORIES)[number];
 
-const contextWindowSchema = z.object({
-  maxTokens: z.number().int().nonnegative().nullable(),
-  usedEstimated: z.number().int().nonnegative(),
-  usedReported: z.number().int().nonnegative().nullable(),
-  categories: z.array(
-    z.object({ name: z.enum(WINDOW_CATEGORIES), tokens: z.number().int().nonnegative() }),
-  ),
-});
-
 /**
  * How full a context's window is (`bureau.contexts.window`): `maxTokens` is the window of the model
  * that would answer, `null` when it is not known; `usedEstimated` is the estimated size of the next
  * prompt and always the sum of `categories`; `usedReported` is the provider's own count for the
  * latest step, `null` when there is none. It holds counts only.
  */
-export type ContextWindow = z.infer<typeof contextWindowSchema>;
+export type ContextWindow = BureauOutput<'bureau.contexts.window'>;
 
 /** How full one session's window is, and what fills it (`bureau.contexts.window`). */
 export async function getContextWindow(
   contextId: string,
   options?: { readonly signal?: AbortSignal },
 ): Promise<ContextWindow> {
-  return contextWindowSchema.parse(
-    await callBureau('bureau.contexts.window', { contextId }, options),
-  );
+  return bureauClient['bureau.contexts.window']({ contextId }, options);
 }
-
-/** One model an agent allows, named the way a model override names it. */
-const agentModelChoiceSchema = z.object({
-  provider: z.string(),
-  model: z.string(),
-  displayName: z.string(),
-  /** Present when the agent has a cost budget and the catalog has no price for the model, so a switch to it is refused. */
-  unpriced: z.literal(true).optional(),
-  /** Present when the deployment's or the Bureau's model policy forbids the model, so a switch to it is refused. */
-  denied: z.literal(true).optional(),
-});
 
 /**
  * One model an agent allows a session to be switched to: its provider, model name, and display
  * name; `unpriced` when the agent's cost budget cannot count the model, `denied` when the model
  * policy forbids it.
  */
-export type AgentModelChoice = z.infer<typeof agentModelChoiceSchema>;
-
-const agentModelsSchema = z.object({
-  selectable: z.boolean(),
-  models: z.array(agentModelChoiceSchema),
-  /** The model the agent's next step uses with no override, or `null` when that is not known. */
-  default: agentModelChoiceSchema.pick({ provider: true, model: true }).nullable(),
-});
+export type AgentModelChoice = BureauOutput<'bureau.agents.models'>['models'][number];
 
 /**
  * The models a session of an agent may be switched to, whether the agent allows a choice at all,
- * and the model used with no override.
+ * and the model used with no override (`null` when that is not known).
  */
-export type AgentModels = z.infer<typeof agentModelsSchema>;
+export type AgentModels = BureauOutput<'bureau.agents.models'>;
 
 /** The models a session of an agent may be switched to (`bureau.agents.models`). */
 export async function getAgentModels(
   agentName: string,
   options?: { readonly signal?: AbortSignal },
 ): Promise<AgentModels> {
-  return agentModelsSchema.parse(await callBureau('bureau.agents.models', { agentName }, options));
+  return bureauClient['bureau.agents.models']({ agentName }, options);
 }
 
 /**
- * What `bureau.contexts.steer` answers: Bureau's admission outcome, as data. A refusal is an
- * outcome and not a fault; only a missing session or a malformed request is a fault. The reasons
+ * How the Bureau answered a request to switch a session's model: accepted, replayed, conflicting,
+ * rejected with a reason, or refused because the session ended or cannot be steered. A refusal is
+ * an outcome and not a fault; only a missing session or a malformed request is a fault. The reasons
  * are read as the Bureau names them (`model-not-allowed`, `stale-revision`, and so on).
  */
-const steerOutcomeSchema = z.discriminatedUnion('outcome', [
-  z.object({ outcome: z.literal('accepted') }),
-  z.object({ outcome: z.literal('replayed') }),
-  z.object({ outcome: z.literal('conflict') }),
-  z.object({ outcome: z.literal('rejected'), failure: z.object({ reason: z.string() }) }),
-  z.object({ outcome: z.literal('session-terminal') }),
-  z.object({ outcome: z.literal('unsupported-capability'), reason: z.string() }),
-]);
-
-/**
- * How the Bureau answered a request to switch a session's model: accepted, replayed, conflicting,
- * rejected with a reason, or refused because the session ended or cannot be steered.
- */
-export type SteerOutcome = z.infer<typeof steerOutcomeSchema>;
+export type SteerOutcome = BureauOutput<'bureau.contexts.steer'>;
 
 /**
  * Changes one setting of a session (`bureau.contexts.steer`): `override` switches it to another
@@ -323,7 +219,7 @@ export async function steerContext(
   ),
   options?: { readonly signal?: AbortSignal },
 ): Promise<SteerOutcome> {
-  return steerOutcomeSchema.parse(await callBureau('bureau.contexts.steer', input, options));
+  return bureauClient['bureau.contexts.steer'](input, options);
 }
 
 /**
@@ -339,9 +235,8 @@ export async function forkContext(
   },
   options?: { readonly signal?: AbortSignal },
 ): Promise<string> {
-  return z
-    .object({ contextId: z.string() })
-    .parse(await callBureau('bureau.contexts.fork', input, options)).contextId;
+  const answer = await bureauClient['bureau.contexts.fork'](input, options);
+  return answer.contextId;
 }
 
 /** Why a branch was refused: the `data.reason` of the fault, or `undefined` for any other fault. */
@@ -371,12 +266,10 @@ export function steerRefusalReason(error: unknown): string | undefined {
 /** Sends an input to a session's run in flight (`bureau.contexts.input`, steer delivery). */
 export async function sendContextInput(
   contextId: string,
-  input: { readonly id: string; readonly payload: unknown },
+  input: BureauInput<'bureau.contexts.input'>['input'],
   options?: { readonly signal?: AbortSignal },
 ): Promise<ContextInputReceipt> {
-  return contextInputReceiptSchema.parse(
-    await callBureau('bureau.contexts.input', { contextId, input }, options),
-  );
+  return bureauClient['bureau.contexts.input']({ contextId, input }, options);
 }
 
 /** Replaces the final ended assistant answer without starting a new turn or running tools. */
@@ -388,9 +281,7 @@ export async function regenerateContext(
   },
   options?: { readonly signal?: AbortSignal; readonly fetch?: Fetcher },
 ): Promise<ContextRegenerateReceipt> {
-  return contextRegenerateReceiptSchema.parse(
-    await callBureau('bureau.contexts.regenerate', input, options),
-  );
+  return bureauClient['bureau.contexts.regenerate'](input, options);
 }
 
 /**
@@ -406,9 +297,8 @@ export async function retractContextInput(
   options?: { readonly signal?: AbortSignal },
 ): Promise<'retracted' | 'delivered'> {
   try {
-    return z
-      .object({ outcome: z.enum(['retracted', 'delivered']) })
-      .parse(await callBureau('bureau.contexts.retract', { contextId, inputId }, options)).outcome;
+    const answer = await bureauClient['bureau.contexts.retract']({ contextId, inputId }, options);
+    return answer.outcome;
   } catch (error) {
     if (wireCodeOf(error) === 'NotFound') return 'retracted';
     throw error;
@@ -426,9 +316,8 @@ export async function forgetContextGrants(
   input: { readonly contextId: string; readonly tools: readonly string[] },
   options?: { readonly signal?: AbortSignal },
 ): Promise<readonly string[]> {
-  return z
-    .object({ forgotten: z.array(z.string()) })
-    .parse(await callBureau('bureau.contexts.forgetgrants', input, options)).forgotten;
+  const answer = await bureauClient['bureau.contexts.forgetgrants'](input, options);
+  return answer.forgotten;
 }
 
 /**
@@ -442,23 +331,15 @@ export async function renameContext(
   input: { readonly contextId: string; readonly title: string | null },
   options?: { readonly signal?: AbortSignal },
 ): Promise<string | null> {
-  return z
-    .object({ contextId: z.string(), title: z.string().nullable() })
-    .parse(await callBureau('bureau.contexts.rename', input, options)).title;
+  const answer = await bureauClient['bureau.contexts.rename'](input, options);
+  return answer.title;
 }
-
-/** What `bureau.contexts.archive` and `bureau.contexts.unarchive` answer. */
-const contextArchiveReceiptSchema = z.object({
-  id: z.string(),
-  changed: z.boolean(),
-  archivedAt: z.string().nullable(),
-});
 
 /**
  * What archiving or unarchiving a session settled: whether this call changed it, and when it was
  * archived (`null` once it is not).
  */
-export type ContextArchiveReceipt = z.infer<typeof contextArchiveReceiptSchema>;
+export type ContextArchiveReceipt = BureauOutput<'bureau.contexts.archive'>;
 
 /**
  * Archives a session (`bureau.contexts.archive`), so it takes no new message, steering or
@@ -472,9 +353,7 @@ export async function archiveContext(
   contextId: string,
   options?: { readonly signal?: AbortSignal },
 ): Promise<ContextArchiveReceipt> {
-  return contextArchiveReceiptSchema.parse(
-    await callBureau('bureau.contexts.archive', { contextId }, options),
-  );
+  return bureauClient['bureau.contexts.archive']({ contextId }, options);
 }
 
 /**
@@ -485,9 +364,7 @@ export async function unarchiveContext(
   contextId: string,
   options?: { readonly signal?: AbortSignal },
 ): Promise<ContextArchiveReceipt> {
-  return contextArchiveReceiptSchema.parse(
-    await callBureau('bureau.contexts.unarchive', { contextId }, options),
-  );
+  return bureauClient['bureau.contexts.unarchive']({ contextId }, options);
 }
 
 /**
@@ -495,18 +372,7 @@ export async function unarchiveContext(
  * `cleaned-up`, or a cleanup still going or unfinished, and `rejected` when the Bureau was shutting
  * down and deleted nothing.
  */
-export const contextDeleteReceiptSchema = z.enum([
-  'applied',
-  'rejected',
-  'cleanup-pending',
-  'cleaned-up',
-  'cleanup-failed',
-  'cleanup-unresolved',
-  'unknown-outcome',
-]);
-
-/** What {@link deleteContext} answers: the receipt for the session's live runs. */
-export type ContextDeleteReceipt = z.infer<typeof contextDeleteReceiptSchema>;
+export type ContextDeleteReceipt = BureauOutput<'bureau.contexts.delete'>['receipt'];
 
 /**
  * Deletes a session and its content, cancelling the runs it has going (`bureau.contexts.delete`).
@@ -517,18 +383,15 @@ export async function deleteContext(
   contextId: string,
   options?: { readonly signal?: AbortSignal; readonly fetch?: Fetcher },
 ): Promise<ContextDeleteReceipt> {
-  return z
-    .object({ contextId: z.string(), receipt: contextDeleteReceiptSchema })
-    .parse(await callBureau('bureau.contexts.delete', { contextId }, options)).receipt;
+  const answer = await bureauClient['bureau.contexts.delete']({ contextId }, options);
+  return answer.receipt;
 }
 
-const contextPageSchema = z.object({
-  contexts: z.array(chatContextSchema),
-  nextOffset: z.number().nullable(),
-});
-
 /** One page of sessions and the offset of the next page, or `null` on the last. */
-export type ContextPage = z.infer<typeof contextPageSchema>;
+export type ContextPage = {
+  readonly contexts: readonly ChatContext[];
+  readonly nextOffset: number | null;
+};
 
 /**
  * One page of the caller's sessions, newest update first (`bureau.contexts.list`). `origin` keeps
@@ -556,7 +419,8 @@ export async function listContexts(
   } = {},
   options?: { readonly signal?: AbortSignal },
 ): Promise<ContextPage> {
-  return contextPageSchema.parse(await callBureau('bureau.contexts.list', input, options));
+  const page = await bureauClient['bureau.contexts.list'](input, options);
+  return { contexts: page.contexts.map(chatContextOf), nextOffset: page.nextOffset };
 }
 
 /** How many sessions one request of {@link listAllContexts} asks for. */
@@ -585,7 +449,10 @@ export async function listAllContexts(options?: {
   }
 }
 
-/** What an agent's model takes in the way of media (`bureau.agents.list`'s `media`). */
+/**
+ * What an agent's model takes in the way of media (`bureau.agents.list`'s `media`). The server's
+ * schema leaves the modalities untyped, so this reads their shape.
+ */
 export const agentMediaSchema = z.object({
   modalities: z.record(z.string(), z.object({ input: z.boolean(), output: z.boolean() })),
   mimeFamilies: z.array(z.string()),
@@ -594,48 +461,40 @@ export const agentMediaSchema = z.object({
   ),
 });
 
-/** An agent as `bureau.agents.list` shows it. */
-export const agentSummarySchema = z.object({
-  name: z.string(),
-  displayName: z.string(),
-  description: z.string().nullable(),
-  definitionRevision: z.number(),
-  kind: z.enum(['code', 'file']),
-  /** Whether the agent opts into A2A. Every listed agent can take a chat whatever this says. */
-  a2a: z.boolean(),
-  /** `null` for an agent that names no model, which can take no attachment. */
-  media: agentMediaSchema.nullable().default(null),
-  /**
-   * The names of the agent's tools. Absent when the Bureau does not say, which is not the same as
-   * `[]`, an agent it says has none.
-   */
-  tools: z.array(z.string()).optional(),
-  /**
-   * Prompts that show what a person might ask the agent, which a new chat offers as buttons.
-   * Absent when the agent has none.
-   */
-  examples: z.array(z.string()).optional(),
-  /**
-   * `hidden` for an agent a plugin keeps out of Chat's agent list (COR-2233); every other surface
-   * still lists it. Absent for an agent a chat can start with.
-   */
-  visibility: z.literal('hidden').optional(),
-});
+/** What an agent's model takes in the way of media: its modalities, MIME families, and size limits. */
+export type AgentMedia = z.infer<typeof agentMediaSchema>;
+
+type ListedAgent = BureauOutput<'bureau.agents.list'>['agents'][number];
 
 /**
- * An agent as the agent list shows it: its name, description, kind, A2A opt-in, attachment
- * support, tools, and example prompts.
+ * An agent as the agent list shows it: its name, description, kind, A2A opt-in, attachment support
+ * (`media`, `null` for an agent that names no model, which can take no attachment), tools (absent
+ * when the Bureau does not say, which is not the same as `[]`, an agent it says has none), example
+ * prompts a new chat offers as buttons, and `visibility`: `hidden` for an agent a plugin keeps out
+ * of Chat's agent list (COR-2233), absent for an agent a chat can start with.
  */
-export type AgentSummary = z.infer<typeof agentSummarySchema>;
+export type AgentSummary = Omit<ListedAgent, 'media'> & { readonly media: AgentMedia | null };
+
+/**
+ * An agent as a Bureau of any release lists it: one that does not say `media` reads as taking none,
+ * and the media it does say are read by shape.
+ */
+export function agentSummaryOf(
+  agent: Omit<ListedAgent, 'media'> & { readonly media?: unknown },
+): AgentSummary {
+  const { media, ...rest } = agent;
+  return {
+    ...rest,
+    media: media === undefined || media === null ? null : agentMediaSchema.parse(media),
+  };
+}
 
 /** The agents the Bureau lists, each of which can take a chat (`bureau.agents.list`). */
 export async function listAgents(options?: {
   readonly signal?: AbortSignal;
 }): Promise<readonly AgentSummary[]> {
-  const body = z
-    .object({ agents: z.array(agentSummarySchema) })
-    .parse(await callBureau('bureau.agents.list', {}, options));
-  return body.agents;
+  const body = await bureauClient['bureau.agents.list']({}, options);
+  return body.agents.map(agentSummaryOf);
 }
 
 const threadMessagesSchema = z.object({ threadId: z.string(), messages: z.array(z.unknown()) });

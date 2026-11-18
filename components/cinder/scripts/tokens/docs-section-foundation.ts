@@ -138,6 +138,7 @@ export const FOUNDATION_DOC_SECTIONS: readonly DocSection[] = ([] = [
     headings: ['## Surfaces'],
     cssProperties: [
       '--cinder-surface-canvas',
+      '--cinder-surface-translucent',
       '--cinder-surface',
       '--cinder-surface-raised',
       '--cinder-surface-inset',

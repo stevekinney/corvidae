@@ -157,6 +157,22 @@
     white-space: nowrap;
   }
 
+  /* The label is centred as a line box, and a line box is not centred on its capitals: Chromium
+   * rounds a font's ascent and descent to whole pixels and floors the half-leading of a line whose
+   * height is not a whole number of pixels (here 1.15 of 14px, 16.1px), so the capitals stood
+   * about 1.5px above the middle of the 30px box in the 320 and 375 captures (the same
+   * derivation error `callout.css` measures). Where `text-box-trim` ships (Chromium, Safari) the
+   * label is trimmed to its capitals and baseline, so flex centring centres the capitals exactly,
+   * for any font. The trim leaves no room for ascenders and descenders, and the label clips, so the
+   * block padding gives them room and the negative margin hands it back, as Button's label does. */
+  @supports (text-box-trim: trim-both) {
+    .cinder-breadcrumbs__trigger-label {
+      text-box: trim-both cap alphabetic;
+      padding-block: 0.25em;
+      margin-block: -0.25em;
+    }
+  }
+
   .cinder-breadcrumbs__trigger-icon {
     flex: none;
     inline-size: var(--cinder-space-4);

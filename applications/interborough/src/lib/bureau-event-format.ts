@@ -2,16 +2,15 @@
  * `bureau.events.format` (COR-1893, COR-2227): the Bureau's events as a person reads them, each in
  * the words a plugin's formatter writes for its kind (a title, a body, a tier, a Lucide icon name and
  * a router-relative link), or its raw kind as the title when no formatter claims it. The answer is
- * parsed at the boundary.
+ * read through the generated client.
  *
  * Envelopes are sent in batches of at most {@link MAXIMUM_EVENTS_PER_FORMAT}, one call per batch,
  * and the answer is matched to them by position. A batch whose call fails, or whose answer does not
  * hold one entry per envelope, is `null` for each of its envelopes, so the caller shows them in its
  * own words and the batches that answered stay worded.
  */
-import { z } from 'zod';
-
-import { callBureau, getBureauId, type Fetcher } from './bureau-client.ts';
+import { bureauClient, type BureauOutput } from './bureau-api.ts';
+import { getBureauId, type Fetcher } from './bureau-client.ts';
 import type { BureauEventFrame } from './live-source/bureau-event-frame.ts';
 
 type Options = { readonly signal?: AbortSignal; readonly fetch?: Fetcher };
@@ -19,22 +18,8 @@ type Options = { readonly signal?: AbortSignal; readonly fetch?: Fetcher };
 /** The most events one `bureau.events.format` call formats. */
 export const MAXIMUM_EVENTS_PER_FORMAT = 200;
 
-const formattedEventSchema = z.object({
-  kind: z.string(),
-  title: z.string(),
-  body: z.string().optional(),
-  tier: z.enum(['critical', 'warning', 'info']),
-  icon: z.string().optional(),
-  link: z.string().optional(),
-  runId: z.string().optional(),
-  source: z.string().optional(),
-  formattedBy: z.string().optional(),
-});
-
-const formatAnswerSchema = z.object({ events: z.array(formattedEventSchema) });
-
 /** One event as the Bureau words it. `formattedBy` is absent when no formatter claimed its kind. */
-export type FormattedBureauEvent = z.infer<typeof formattedEventSchema>;
+export type FormattedBureauEvent = BureauOutput<'bureau.events.format'>['events'][number];
 
 /** The tier a formatted event has: how much it matters. */
 export type FormattedEventTier = FormattedBureauEvent['tier'];
@@ -45,24 +30,21 @@ async function formatBatch(
   options: Options,
 ): Promise<(FormattedBureauEvent | null)[]> {
   try {
-    const answer = formatAnswerSchema.parse(
-      await callBureau(
-        'bureau.events.format',
-        {
-          events: batch.map((envelope) => ({
-            kind: envelope.kind,
-            bureauId,
-            emittedAtMs: envelope.emittedAtMs,
-            // The operation refuses an event without its payload; a frame that carried none sends null.
-            payload: envelope.payload ?? null,
-            ...(envelope.source === undefined ? {} : { source: envelope.source }),
-          })),
-        },
-        options,
-      ),
+    const answer = await bureauClient['bureau.events.format'](
+      {
+        events: batch.map((envelope) => ({
+          kind: envelope.kind,
+          bureauId,
+          emittedAtMs: envelope.emittedAtMs,
+          // The operation refuses an event without its payload; a frame that carried none sends null.
+          payload: envelope.payload ?? null,
+          ...(envelope.source === undefined ? {} : { source: envelope.source }),
+        })),
+      },
+      options,
     );
     if (answer.events.length !== batch.length) return batch.map(() => null);
-    return answer.events;
+    return [...answer.events];
   } catch {
     return batch.map(() => null);
   }

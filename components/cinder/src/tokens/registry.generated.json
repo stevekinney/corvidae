@@ -1009,6 +1009,15 @@
       "description": "Page canvas background, distinct from `surface.base` (a card body). Light mode is a grey page under white panels (owner decision, 2026-11-15): the canvas (0.976) sits below the white surface and raised (1.000) and above the inset well (0.955), dark enough that the focus ring still reads 3.5:1 on it. Dark mode builds up from the canvas (0.145) through the surface (0.185) and the inset (0.210) to raised (0.235)."
     },
     {
+      "path": "surface.translucent",
+      "cssProperty": "--cinder-surface-translucent",
+      "category": "color",
+      "public": true,
+      "themeAware": true,
+      "deprecated": false,
+      "description": "The canvas at 90%, for a header or bar that content scrolls under, drawn with a backdrop blur (`.cinder-translucent-surface`; AppBar keeps its own 82% mix), and opaque canvas where the platform cannot blur or `prefers-reduced-transparency` is set. The 90% is the least the canvas can keep so that the body and status text on it hold 4.5:1 over the worst backdrop, pure black or pure white, in both themes (`translucent-surface-contrast.test.ts`)."
+    },
+    {
       "path": "polarity.ink",
       "cssProperty": "--cinder-polarity-ink",
       "category": "color",
@@ -3314,6 +3323,7 @@
     "surface.inverse": "--cinder-surface-inverse",
     "surface.upcoming-marker": "--cinder-surface-upcoming-marker",
     "surface.canvas": "--cinder-surface-canvas",
+    "surface.translucent": "--cinder-surface-translucent",
     "polarity.ink": "--cinder-polarity-ink",
     "border": "--cinder-border",
     "border.ink": "--cinder-border-ink",
@@ -3662,6 +3672,7 @@
     "--cinder-surface-inverse": "surface.inverse",
     "--cinder-surface-upcoming-marker": "surface.upcoming-marker",
     "--cinder-surface-canvas": "surface.canvas",
+    "--cinder-surface-translucent": "surface.translucent",
     "--cinder-polarity-ink": "polarity.ink",
     "--cinder-border": "border",
     "--cinder-border-ink": "border.ink",
@@ -4010,6 +4021,7 @@
     "--cinder-surface-inverse": ["surface.inverse"],
     "--cinder-surface-upcoming-marker": ["surface.upcoming-marker"],
     "--cinder-surface-canvas": ["surface.canvas"],
+    "--cinder-surface-translucent": ["surface.translucent"],
     "--cinder-polarity-ink": ["polarity.ink"],
     "--cinder-border": ["border"],
     "--cinder-border-ink": ["border.ink"],
@@ -4386,6 +4398,7 @@
       "surface.inverse",
       "surface.upcoming-marker",
       "surface.canvas",
+      "surface.translucent",
       "polarity.ink",
       "border",
       "border.ink",

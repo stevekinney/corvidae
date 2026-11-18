@@ -1,4 +1,3 @@
-import { rejectionOf } from '@lostgradient/testing';
 import { HttpClientError } from '@lostgradient/weft';
 import { describe, expect, test } from 'bun:test';
 
@@ -149,13 +148,6 @@ describe('the Bureau’s review operations', () => {
     expect(isReviewNoLongerWaiting(conflict('REVIEW_ROUND_CHANGED: now at round 3'))).toBe(false);
     expect(isReviewNoLongerWaiting(conflict('Another resolver won.'))).toBe(false);
     expect(isReviewNoLongerWaiting(new Error('REVIEW_ALREADY_RESOLVED: x'))).toBe(false);
-  });
-
-  test('a review of a kind the Bureau does not define is a fault, not a row', async () => {
-    const stub = answering({ reviews: [{ ...HUMAN_WAIT, kind: 'mystery' }] });
-    expect(await rejectionOf(withFetch(stub.fetch, () => listBureauReviews()))).toBeInstanceOf(
-      Error,
-    );
   });
 });
 

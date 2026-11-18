@@ -78,6 +78,17 @@ describe('the route outlet', () => {
     expect(outlet?.getAttribute('data-width')).toBe('full');
   });
 
+  test('carries the panes width on the chat page at the first render, before its code has loaded', () => {
+    restore = installFetchImplementation(async () => Response.json({}));
+    landAt('/chats/session-1');
+    const { container } = mount();
+    // Read synchronously after mount: no page content has been awaited, so a padding that waited
+    // for a descendant of the page would not be on the outlet yet.
+    const outlet = container.querySelector('main.weft-shell-outlet');
+    expect(outlet?.getAttribute('data-width')).toBe('panes');
+    expect(container.querySelector('.ib-chats')).toBeNull();
+  });
+
   test('reads like a reading page where no view owns the path', async () => {
     restore = installFetchImplementation(async () => Response.json({}));
     landAt('/nowhere');
