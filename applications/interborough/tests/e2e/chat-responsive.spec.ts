@@ -660,9 +660,18 @@ test.describe('Chat on a phone (04y, 06l, 06m)', () => {
     const facts = card.locator('.cinder-approval-card__facts-line');
     await expect(facts).toContainText('Expires');
     const title = card.locator('.cinder-approval-card__decision-title');
-    const factsBox = await boxOf(facts);
-    const titleBox = await boxOf(title);
-    expect(factsBox.y + factsBox.height).toBeLessThanOrEqual(titleBox.y + 1);
+    // Both boxes are read in one layout pass, and read again until the card is drawn: the card
+    // mounts again when the review's deadline arrives (its key is the entry's state and deadline),
+    // and under the design-review capture's paused clock that can fall between two separate
+    // reads, which then find no box (the capture run on 38cbd2dec).
+    await expect
+      .poll(async () => {
+        const boxes = await readBoxes(page, { factsBox: facts, titleBox: title }).catch(() => null);
+        if (boxes === null) return 'not drawn yet';
+        const { factsBox, titleBox } = boxes;
+        return factsBox.y + factsBox.height <= titleBox.y + 1 ? 'status above title' : 'below';
+      })
+      .toBe('status above title');
     await captureForDesignReview(page, {
       route: '/chats/:chat',
       state: 'phone expiring approval, status above the title',

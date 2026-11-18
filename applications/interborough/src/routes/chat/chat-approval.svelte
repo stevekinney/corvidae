@@ -143,6 +143,9 @@
         ? undefined
         : new Date(entry.approvalExpiresAt).toISOString(),
   );
+  // An expired card writes when it lapsed in its own status line (board row A4), so it is given the
+  // moment it lapsed as its deadline.
+  const cardDeadline = $derived(expired ? lapsedAt : expiresAt);
 </script>
 
 <ApprovalCard
@@ -164,9 +167,7 @@
   operation={operation ?? { kind: 'other', argsPreview: entry.arguments }}
   policyVersion={policyVersion ?? id}
   idempotencyKey={idempotencyKey ?? entry.callId}
-  {...(expired ? lapsedAt : expiresAt) === undefined
-    ? {}
-    : { expiresAt: expired ? lapsedAt : expiresAt }}
+  {...cardDeadline === undefined ? {} : { expiresAt: cardDeadline }}
   {...actionLabel === undefined ? {} : { actionLabel }}
   {...consequence === undefined ? {} : { consequence }}
   {...why === undefined ? {} : { why }}
