@@ -32,13 +32,30 @@ import {
 /** At or below this width a capture is of a phone, and is taken with a coarse pointer. */
 const PHONE_WIDTH_MAXIMUM = GEOMETRY_THRESHOLDS.phoneWidthMaximum;
 
-async function nextFrame(page: Page): Promise<void> {
-  await page.evaluate(
-    () =>
-      new Promise<void>((resolve) => {
-        requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
-      }),
-  );
+/**
+ * Waits until the browser has laid out and painted a frame. It listens with a `ResizeObserver`,
+ * whose first callback for an element comes in the next frame's rendering steps, after layout, and
+ * never with `requestAnimationFrame`: a specification that stops the page's clock
+ * (`page.clock.pauseAt`) stops its animation frames too, because the fake clock owns
+ * `requestAnimationFrame`, so a wait on it never ended. Home's loading capture at 1280 timed out
+ * that way once the activity bands made the page taller than its viewport and the capture took the
+ * whole-page path (COR-2227). Two observations in turn, so the frame the first lands in has been
+ * painted when the second lands; each is its own evaluation, so the second is never made inside
+ * the first's callback, where the browser would skip it and report a ResizeObserver loop error.
+ */
+export async function nextFrame(page: Page): Promise<void> {
+  for (let frame = 0; frame < 2; frame += 1) {
+    await page.evaluate(
+      () =>
+        new Promise<void>((resolve) => {
+          const observer = new ResizeObserver(() => {
+            observer.disconnect();
+            resolve();
+          });
+          observer.observe(document.documentElement);
+        }),
+    );
+  }
 }
 
 /**

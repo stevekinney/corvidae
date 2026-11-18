@@ -44,7 +44,7 @@ const schema = {
     keyboardHint: {
       type: 'string',
       description:
-        "Hidden text that names the keys on a focused card, read after the card's name. Defaults to a sentence naming ArrowRight, ArrowLeft and ArrowDown.",
+        "Hidden text that names the keys on a focused card, read after the card's name. Defaults to a sentence naming the arrow keys, which follow the reading direction (accept is the arrow toward the inline-end edge).",
     },
     class: {
       type: 'string',

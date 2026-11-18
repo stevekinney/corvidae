@@ -62,6 +62,41 @@ The name leads. In a row at least 26rem wide the name keeps at least 10rem, and 
 </GroupedList>
 ```
 
+## Clamped text and recent activity
+
+`titleLines` and `subtitleLines` (`1` or `2`) hold the title and the subtitle to at most that many lines at every width, each ending in an ellipsis; left unset, the text wraps unclamped. The clamp is visual only, so the whole text stays in the document and in the row's accessible text. Pass the full text as `tooltip` and `subtitleTooltip`: the row draws them as one native tooltip on the row itself (the title, a line break, then line two), never one per line, because a linked row's link covers every line and a tooltip on line two could never be reached. The tooltip is on the `li`, not the link, so it adds nothing to the link's description and no focus stop.
+
+A leading icon sits on the title's first line at every width, beside the trailing value and the chevron, so a row whose text runs to several lines never centres its glyph. Narrower than 26rem, a linked row's chevron is pinned to the title's first line at the content's inline end: its column is reserved, the title and the trailing value measure against what is left, a value too long to fit beside 5rem of title drops to a line of its own, and the subtitle runs under the chevron's column to the content's edge. The pinned chevron takes no pointer, so a press on it opens the row; a suggested row, and one led by an avatar or a thumbnail, keeps its chevron in the flow, since its title does not start at the top of its content. `chevronColumn` keeps that column on a row with no link, at every width, so the times of a list that mixes linked and unlinked rows end on one edge. `arriving` fades a row in over the fast duration when it arrives in a live list; reduced motion shows it at once.
+
+A recent-activity summary on an overview page is a `GroupedList` of these rows: a glyph for the kind of event, the title, a `StatusDot` word for a warning or critical event at the start of line two, and the time as the trailing value. A full history or audit page stays a `Timeline`.
+
+```svelte
+<script lang="ts">
+  import { GroupedList, GroupedListItem, StatusDot } from '@lostgradient/cinder';
+  import { Activity } from '@lucide/svelte';
+</script>
+
+<GroupedList aria-label="Recent workflow activity">
+  <GroupedListItem
+    href="/runs/7"
+    titleLines={2}
+    subtitleLines={2}
+    tooltip="Run failed"
+    subtitleTooltip="Critical, Release notes digest stopped at step 3"
+  >
+    {#snippet leading()}<Activity aria-hidden="true" size={16} />{/snippet}
+    {#snippet title()}Run failed{/snippet}
+    {#snippet subtitle()}<StatusDot word="Critical" />, Release notes digest stopped at step 3{/snippet}
+    {#snippet trailing()}<time datetime="2026-11-02T16:42:00.000Z">10:42 AM</time>{/snippet}
+  </GroupedListItem>
+  <GroupedListItem chevronColumn titleLines={2} tooltip="Worker connected">
+    {#snippet leading()}<Activity aria-hidden="true" size={16} />{/snippet}
+    {#snippet title()}Worker connected{/snippet}
+    {#snippet trailing()}<time datetime="2026-11-02T16:40:00.000Z">10:40 AM</time>{/snippet}
+  </GroupedListItem>
+</GroupedList>
+```
+
 ## Suggested rows
 
 `suggested` marks a row the product drafted that is not saved until the person confirms it. The row says so in words: a quiet "Suggested" label in the accent text colour on a line above the title, which `suggestedLabel` can change, for example to "Suggested wording". The row keeps its own surface: no tint, no dashed or accent border and no pill.
@@ -85,18 +120,24 @@ The name leads. In a row at least 26rem wide the name keeps at least 10rem, and 
 
 | Prop | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
+| `arriving` | `boolean` | no | `false` | Fades the row in over the fast duration when it is drawn, for a row that has just arrived in a live list. With reduced motion it appears at once. |
 | `chevron` | `boolean` | no | — | Draws a trailing chevron. Left unset, a row with `href` draws one. |
+| `chevronColumn` | `boolean` | no | `false` | Keeps the chevron's column on a row that draws no chevron, as reserved space at the end of its content at every width, so the trailing values that share their title's first line end on one edge in a list that mixes linked and unlinked rows. |
 | `class` | `string` | no | — | Custom class merged with `.cinder-grouped-list-item`. |
 | `href` | `string` | no | — | Makes the whole row a link to this address. |
 | `leadingKind` | `"icon"` \| `"avatar"` \| `"media"` \| `"control"` | no | `"icon"` | What the leading slot holds. |
 | `rel` | `string` | no | — | The link's relationship; `noopener noreferrer` is added for `_blank`. |
 | `selected` | `boolean` | no | `false` | Marks the row as the current one with a tint. |
 | `staleAge` | `string` | no | — | A short age, such as `3d`, drawn with a gray clock before the trailing value. Give it only when the row's information is stale; a fresh row draws no marker. |
+| `subtitleLines` | `1` \| `2` | no | — | The most lines the subtitle takes, at every width, before it ends in an ellipsis. Left unset, the subtitle wraps unclamped. |
+| `subtitleTooltip` | `string` | no | — | The subtitle's full text, the second line of the row's one native tooltip (see `tooltip`). |
 | `suggested` | `boolean` | no | `false` | Marks the row as a suggestion that is not saved until the person confirms it: a quiet accent text label on a line above the title, with no tint, border or pill. |
 | `suggestedLabel` | `string` | no | `"Suggested"` | The words of the suggested label, such as "Suggested wording". Used with `suggested`. |
 | `target` | `string` | no | — | Where to open the link. |
 | `timeCaption` | `string` | no | — | Free text in a small line under the time window, such as `45 min left`, `starts in 1 h` or `Sun to Tue`. Leave it out and the lead draws no empty line. Used with `timeWindow`. |
 | `timeWindow` | `string` | no | — | The time window a time-led row leads with, such as `3–6 pm`, `10 pm–1 am` or `All day`, drawn right-aligned, bold and tabular on one line on the title's first line. Ignored when a `lead` snippet is given. |
+| `titleLines` | `1` \| `2` | no | — | The most lines the title takes, at every width, before it ends in an ellipsis. Left unset, the title wraps unclamped. The whole title stays in the document and in the row's accessible text; pass `tooltip` so a pointer can read what the clamp cut. |
+| `tooltip` | `string` | no | — | The full title as text. With `subtitleTooltip` it is the row's one native tooltip, on the row itself rather than on a line, so a pointer reads it anywhere on a linked row: the title, a line break, then the subtitle's text. |
 | `urgency` | `"urgent"` \| `"soon"` | no | — | How pressing the row is. `urgent` draws only the caption in the warning text colour and `soon` mutes the window; left unset, both use their default colours. Used with `timeWindow`. |
 | `action` | `(opaque)` | no | — | A trailing action such as a menu button. It sits in a fixed-width column, so a changing value never moves its click target. Not expressible in JSON Schema; see the component types for the signature. |
 | `actions` | `(opaque)` | no | — | Text actions at the end of the row, each a secondary small button (a link drawn as one when it has `href`), for a row whose action is the point of the row, such as a review waiting on you. They sit above the row's own link. In a row narrower than 26rem, as on a phone, they leave the end of the row for a line of their own under its text, each at its own width from the text's leading edge, never collapsing into a menu, each a 44px target under a coarse pointer. Not expressible in JSON Schema; see the component types for the signature. |

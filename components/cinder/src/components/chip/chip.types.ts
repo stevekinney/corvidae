@@ -33,7 +33,7 @@ export type ChipDisplayProps = Omit<HTMLAttributes<HTMLSpanElement>, 'class'> & 
   /**
    * Marks the chip as a suggestion that is not saved until the person confirms it. On a neutral
    * chip the label reads in the accent text colour, and assistive technology hears "Suggested"
-   * before it. The chip gains no tint or border.
+   * before it. A small sparkle glyph before the label tells a sighted person too, not colour alone. The chip gains no tint or border.
    */
   suggested?: boolean;
   leadingIcon?: Snippet;
@@ -73,7 +73,7 @@ export type ChipToggleProps = Omit<
   /**
    * Marks the chip as a suggestion that is not saved until the person confirms it. On a neutral
    * chip the label reads in the accent text colour, and assistive technology hears "Suggested"
-   * before it. The chip gains no tint or border.
+   * before it. A small sparkle glyph before the label tells a sighted person too, not colour alone. The chip gains no tint or border.
    */
   suggested?: boolean;
   leadingIcon?: Snippet;
@@ -106,7 +106,7 @@ export type ChipRemovableProps = Omit<HTMLAttributes<HTMLSpanElement>, 'class'> 
   /**
    * Marks the chip as a suggestion that is not saved until the person confirms it. On a neutral
    * chip the label reads in the accent text colour, and assistive technology hears "Suggested"
-   * before it. The chip gains no tint or border.
+   * before it. A small sparkle glyph before the label tells a sighted person too, not colour alone. The chip gains no tint or border.
    */
   suggested?: boolean;
   leadingIcon?: Snippet;
@@ -198,7 +198,7 @@ export type ChipProps = SharedHtmlAttributes &
     /**
      * Marks the chip as a suggestion that is not saved until the person confirms it. On a neutral
      * chip the label reads in the accent text colour, and assistive technology hears "Suggested"
-     * before it. The chip gains no tint or border.
+     * before it. A small sparkle glyph before the label tells a sighted person too, not colour alone. The chip gains no tint or border.
      */
     suggested?: boolean;
     leadingIcon?: Snippet;
