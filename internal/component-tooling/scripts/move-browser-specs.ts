@@ -344,11 +344,6 @@ export async function stylesheetOrderSource(
     ownAppFixtures: [],
   });
   const directory = mkdtempSync(join(tmpdir(), 'corvidae-stylesheet-order-'));
-  // The root suite's fixtures import the workspaces its own package used to declare; outside the
-  // workspace list now, it reaches them through links made for this build alone.
-  const links = join(root, ROOT_SUITE, 'node_modules');
-  const linked = !existsSync(links);
-  if (linked) linkWorkspaces(root, links);
   try {
     await suite.bundleInto(directory, true);
     const html = readFileSync(join(directory, 'index.html'), 'utf8');
@@ -372,7 +367,6 @@ export async function stylesheetOrderSource(
     ].join('\n');
   } finally {
     rmSync(directory, { recursive: true, force: true });
-    if (linked) rmSync(links, { recursive: true, force: true });
   }
 }
 
@@ -391,6 +385,21 @@ function linkWorkspaces(root: string, directory: string): void {
 }
 
 export async function moveBrowserSpecs(options: Options): Promise<number> {
+  // The root suite's fixtures import the workspaces its own package used to declare; outside the
+  // workspace list now, they reach them through links made for this run alone. They are made
+  // before anything resolves a module from the suite, since the resolver remembers a directory
+  // that had no `node_modules`.
+  const links = join(options.root, ROOT_SUITE, 'node_modules');
+  const linked = existsSync(join(options.root, ROOT_SUITE)) && !existsSync(links);
+  if (linked) linkWorkspaces(options.root, links);
+  try {
+    return await moveLinked(options);
+  } finally {
+    if (linked) rmSync(links, { recursive: true, force: true });
+  }
+}
+
+async function moveLinked(options: Options): Promise<number> {
   const { root } = options;
   const started = performance.now();
   const { map, problems, moved } = await computePlacement(root);
