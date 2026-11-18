@@ -41,7 +41,7 @@ import {
  *
  * @example
  * ```ts
- * import { type ApiKeyRegistration } from '@lostgradient/weft';
+ * import { type ApiKeyRegistration } from '@lostgradient/backchannel';
  *
  * const registration: ApiKeyRegistration = {
  *   subject: 'service-account-7',
@@ -71,7 +71,7 @@ export type ApiKeyRegistration = {
  *
  * @example
  * ```ts
- * import { createRotatingApiKeyStore, type RotatingApiKeyStore } from '@lostgradient/weft';
+ * import { createRotatingApiKeyStore, type RotatingApiKeyStore } from '@lostgradient/backchannel';
  *
  * const store: RotatingApiKeyStore = createRotatingApiKeyStore();
  * await store.add('key-old', { subject: 'svc', scopes: ['workflows:read'] });
@@ -130,7 +130,7 @@ function isExpired(stored: StoredKey, currentTime: number): boolean {
  *
  * @example
  * ```ts
- * import { createRotatingApiKeyStore } from '@lostgradient/weft';
+ * import { createRotatingApiKeyStore } from '@lostgradient/backchannel';
  * import { serve } from '@lostgradient/weft';
  * import { Engine } from '@lostgradient/weft';
  * import { MemoryStorage } from '@lostgradient/storage';

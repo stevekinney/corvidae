@@ -7,6 +7,7 @@
 
 import { copyBytesToArrayBuffer } from '../byte-arrays.ts';
 
+/** Builds a JSON response with the given body and status, 200 by default. */
 export function jsonResponse(body: unknown, status: number = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
@@ -14,6 +15,7 @@ export function jsonResponse(body: unknown, status: number = 200): Response {
   });
 }
 
+/** Builds a JSON error response with the given message and status. */
 export function errorResponse(message: string, status: number): Response {
   return jsonResponse({ error: message }, status);
 }

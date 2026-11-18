@@ -57,11 +57,12 @@ export const polarityInk = readOklchToken('--cinder-polarity-ink');
 export const borderMuted = readTranslucentToken('--cinder-border-muted');
 export const border = readTranslucentToken('--cinder-border');
 export const borderStrong = readTranslucentToken('--cinder-border-strong');
-// The control edge is a quiet alpha step over the ink in both arms (owner decision, 2026-11-11).
+// The control edge is an alpha step over the ink: quiet in light (owner decision, 2026-11-11) and
+// at least 3:1 in dark (owner decision, 2026-11-17, controls only).
 export const borderControl = readTranslucentToken('--cinder-border-control');
 export const borderControlHover = readTranslucentToken('--cinder-border-control-hover');
 // The 3:1 tier: what the control edge becomes under `prefers-contrast: more`, and the fill of
-// neutral indicators. Its dark arm is the opaque oklch(56% .05 248), not a step over the ink (a
+// neutral indicators. Its dark arm is the opaque oklch(64% .03 265), not a step over the ink (a
 // literal, so it clears 3:1 against `surface.raised`, a control's own fill).
 export const borderContrast = readTranslucentToken('--cinder-border-contrast', {
   opaqueArms: ['dark'],

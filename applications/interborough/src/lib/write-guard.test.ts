@@ -62,6 +62,11 @@ describe('classifyRequest', () => {
     expect(isReadOperation('bureau.memory.embedding.cancel')).toBe(false);
   });
 
+  // COR-2227: Home's Agent activity words its events while the server is down too.
+  test('formatting events is a read', () => {
+    expect(isReadOperation('bureau.events.format')).toBe(true);
+  });
+
   test('archiving and unarchiving a chat are writes', () => {
     const url = 'http://localhost/bureau/jsonrpc';
     for (const method of ['bureau.contexts.archive', 'bureau.contexts.unarchive']) {

@@ -147,7 +147,10 @@ describe('StackedListItem status-first row', () => {
     const { container } = render(StatusListFixture, { props: { rows: runs } });
     const title = container.querySelector('.cinder-stacked-list-item__title');
     expect(title?.getAttribute('data-cinder-title-lines')).toBe('2');
-    expect(title?.getAttribute('title')).toBe('Refund order 4471');
+    // The fixture's rows are links, so the tooltip is the row's own (COR-2227).
+    expect(container.querySelector('.cinder-stacked-list-item')?.getAttribute('title')).toBe(
+      'Refund order 4471',
+    );
 
     const single = render(StackedListItem, {
       props: { titleLines: 1, title: textSnippet('Short') },

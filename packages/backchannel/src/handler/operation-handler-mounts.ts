@@ -31,6 +31,7 @@ export type OperationHandlerMountOperation = Pick<
  * `mcp` admits exactly the operations the catalog marks `mcpExposable`.
  */
 export type OperationHandlerMountDispatchOptions = {
+  /** The transport the dispatch runs as: `http-rest` by default, or `mcp`. */
   readonly transport?: 'http-rest' | 'mcp';
 };
 
@@ -85,6 +86,7 @@ export type OperationHandlerMount = {
    * so a mount cannot make another route public.
    */
   readonly isPublicPath?: (pathname: string) => boolean;
+  /** Answers a request under the mount's path prefix. */
   readonly fetch: (request: Request, context: OperationHandlerMountContext) => Promise<Response>;
 };
 

@@ -113,8 +113,8 @@ describe('color checker tokens', () => {
     const base = lightDarkArms(declarationValue(tokensCss, '--cinder-checker-base'));
     const tile = lightDarkArms(declarationValue(tokensCss, '--cinder-checker-tile'));
 
-    expect(base).toEqual(['#fff', 'oklch(28% 0.02 245)']);
-    expect(tile).toEqual(['#ccc', 'oklch(38% 0.02 245)']);
+    expect(base).toEqual(['#fff', 'oklch(28% 0.02 265)']);
+    expect(tile).toEqual(['#ccc', 'oklch(38% 0.02 265)']);
     expect(base[0]).not.toBe(base[1]);
     expect(tile[0]).not.toBe(tile[1]);
   });

@@ -133,7 +133,7 @@ Pass `selected` for the row open in the detail beside the list (the worker list)
 
 ### Line two tooltip
 
-Line two ends in an ellipsis when it is long. Pass `metaTooltip` with the same text to carry it in full as a tooltip over the line, as `tooltip` does for the title.
+Line two ends in an ellipsis when it is long. Pass `metaTooltip` with the same text to carry it in full as a tooltip over the line, as `tooltip` does for the title. On a linked row the title link's cover lies over every line, so a tooltip on line two could never be reached: a linked row draws one native tooltip on the row itself instead (the title, a line break, then line two) and none on its lines, and line two is never raised above the cover, so a click on it follows the link. The tooltip is on the row, not the link, so it adds nothing to the link's description. A row with no link keeps one tooltip per line.
 
 ### A leading checkbox
 
