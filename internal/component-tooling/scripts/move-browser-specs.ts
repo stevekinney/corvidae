@@ -317,11 +317,13 @@ function ownedSlugs(
 /**
  * The side-effect imports that load `paths`, a built page's stylesheets in its order, from
  * `browserRoot`. Naming every one in that order rebuilds it: the bundler keeps a stylesheet's last
- * occurrence, and the page's order already is the result of that rule. A stylesheet reached through
- * a conditional `@import` (`layer(...)`, `supports(...)` or a media query), directly or below one,
- * is left out: the bundler keeps the conditional copy apart, so naming it again would add an
- * unconditional second copy. A stylesheet a dependency installs is named by its package specifier,
- * so the importing package can resolve it.
+ * occurrence, and the page's order already is the result of that rule. Everything below a layer
+ * entry, a stylesheet with a conditional `@import` (`layer(...)`, `supports(...)` or a media query),
+ * is left to that entry: the bundler keeps a conditional copy apart, so naming it again would add an
+ * unconditional second one, and a partial named before its entry would open a cascade layer before
+ * the entry's `@layer` statement orders them. A stylesheet a dependency installs is named by its
+ * package specifier, so the importing package can resolve it. `moveLinked` builds the page again
+ * with the module and refuses a page that differs.
  */
 export function stylesheetImports(
   paths: readonly string[],
@@ -338,19 +340,22 @@ export function stylesheetImports(
       path: resolveImport(match[2]!, dirname(path)),
       conditional: match[3]!.trim() !== '',
     }));
-  const conditional = new Set<string>();
+  const leftOut = new Set<string>();
   const below = (path: string) => {
-    if (conditional.has(path)) return;
-    conditional.add(path);
+    if (leftOut.has(path)) return;
+    leftOut.add(path);
     for (const child of importsOf(path)) below(child.path);
   };
   for (const path of unique) {
     if (path.split(sep).join('/').includes('/node_modules/')) continue;
-    for (const child of importsOf(path)) if (child.conditional) below(child.path);
+    const children = importsOf(path);
+    if (children.some((child) => child.conditional)) {
+      for (const child of children) below(child.path);
+    }
   }
   const imports: string[] = [];
   for (const path of unique) {
-    if (conditional.has(path)) continue;
+    if (leftOut.has(path)) continue;
     const installed = path.split(sep).join('/').lastIndexOf('/node_modules/');
     if (installed !== -1) {
       imports.push(
@@ -368,16 +373,18 @@ export function stylesheetImports(
   return imports;
 }
 
+/** A built page's stylesheet: its sources in order, and its text without their markers. */
+type PageStylesheet = { paths: string[]; text: string };
+
 /**
- * The root page's stylesheets, in its order, as a module of side-effect imports for core's host: the
- * page is built from the root suite's layout (every fixture root, the root suite's and the packages'
- * application fixtures, core's host) before anything moves.
+ * The root page's stylesheet, built from the root suite's layout (every fixture root, the root
+ * suite's and the packages' application fixtures, core's host) before anything moves.
  */
-export async function stylesheetOrderSource(
+async function rootPageStylesheet(
   root: string,
   repository: Repository,
   declarations: Record<string, readonly string[]>,
-): Promise<string> {
+): Promise<PageStylesheet> {
   const coreRoot = join(root, 'components', repository.core);
   const browserRoot = join(coreRoot, 'browser');
   const fixtureRoots = cinderComponentRoots(coreRoot);
@@ -405,19 +412,41 @@ export async function stylesheetOrderSource(
     const stylesheet = /href="\/([^"]+\.css)"/.exec(html)?.[1];
     if (stylesheet === undefined) throw new Error('The root page has no stylesheet.');
     const css = readFileSync(join(directory, stylesheet), 'utf8');
-    // The bundler names each stylesheet by its path from the working directory.
-    const paths = [...css.matchAll(/^\/\* (.+?\.css) \*\/$/gm)].map((match) =>
-      resolve(process.cwd(), match[1]!),
-    );
-    const imports = stylesheetImports(paths, browserRoot, (path) =>
-      existsSync(path) ? readFileSync(path, 'utf8') : undefined,
-    );
-    if (imports.length === 0)
-      throw new Error('The root page loads no stylesheet this move can name.');
-    return stylesheetOrderModule(imports);
+    const marker = /^\/\* (.+?\.css) \*\/$/gm;
+    return {
+      // The bundler names each stylesheet by its path from the working directory.
+      paths: [...css.matchAll(marker)].map((match) => resolve(process.cwd(), match[1]!)),
+      text: css.replace(marker, ''),
+    };
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }
+}
+
+/** The root page's stylesheets, in its order, as a module of side-effect imports for core's host. */
+function stylesheetOrderSource(page: PageStylesheet, browserRoot: string): string {
+  const imports = stylesheetImports(page.paths, browserRoot, (path) =>
+    existsSync(path) ? readFileSync(path, 'utf8') : undefined,
+  );
+  if (imports.length === 0)
+    throw new Error('The root page loads no stylesheet this move can name.');
+  return stylesheetOrderModule(imports);
+}
+
+/** How the page built with the order module differs from the root page, or undefined. */
+export function stylesheetDifference(
+  before: PageStylesheet,
+  after: PageStylesheet,
+): string | undefined {
+  const length = Math.max(before.paths.length, after.paths.length);
+  for (let index = 0; index < length; index += 1) {
+    if (before.paths[index] !== after.paths[index]) {
+      return `stylesheet ${index + 1} is ${after.paths[index] ?? 'missing'}, not ${before.paths[index] ?? 'absent'}`;
+    }
+  }
+  return before.text === after.text
+    ? undefined
+    : 'the stylesheets are in order, but their text differs';
 }
 
 /** The stylesheet-order module for `imports`, marked so the formatter keeps their order. */
@@ -498,9 +527,24 @@ async function moveLinked(options: Options): Promise<number> {
     return 0;
   }
 
-  // The root page's stylesheet order, before anything moves (see core's `browser/host.ts`).
-  const orderPath = join(root, 'components', repository.core, 'browser', 'stylesheet-order.ts');
-  writeFileSync(orderPath, await stylesheetOrderSource(root, repository, declarations));
+  // The root page's stylesheet order, before anything moves (see core's `browser/host.ts`), checked
+  // by building the page again with it.
+  const browserRoot = join(root, 'components', repository.core, 'browser');
+  const orderPath = join(browserRoot, 'stylesheet-order.ts');
+  const placeholder = readFileSync(orderPath, 'utf8');
+  const page = await rootPageStylesheet(root, repository, declarations);
+  writeFileSync(orderPath, stylesheetOrderSource(page, browserRoot));
+  const difference = stylesheetDifference(
+    page,
+    await rootPageStylesheet(root, repository, declarations),
+  );
+  if (difference !== undefined) {
+    writeFileSync(orderPath, placeholder);
+    process.stderr.write(
+      `The recorded stylesheet order does not rebuild the root page: ${difference}.\n`,
+    );
+    return 1;
+  }
 
   // Move.
   for (const [from, to] of moves) {
