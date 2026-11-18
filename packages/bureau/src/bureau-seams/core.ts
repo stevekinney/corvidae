@@ -87,6 +87,7 @@ import type { createDiagnosticDispatcher, subscribeEventFeed } from '../bureau-e
 import type { createFireReviewSeeds } from '../fire-review-seeds';
 import type { createForkLedger } from '../session-fork';
 import type { createRegenerateLedger } from '../session-regenerate';
+import type { createDiscardLedger } from '../session-discard';
 import type { createGoalAttemptFenceHost } from '../goal-attempt-fence';
 import type { createGoalValidatorCatalog } from '../goal-validator-catalog';
 import type { createGoalWorkflowHost } from '../goal-ports';
@@ -606,6 +607,8 @@ export interface BureauCore<D extends AgentDefinitions> {
   readonly forkLedger: ReturnType<typeof createForkLedger>;
   /** The answer regeneration ledger (COR-2296). */
   readonly regenerateLedger: ReturnType<typeof createRegenerateLedger>;
+  /** The turn discard ledger (COR-2437). */
+  readonly discardLedger: ReturnType<typeof createDiscardLedger>;
   /** The durable storage, when it persists. */
   readonly persistentDurableStorage:
     NonNullable<RuntimeComposition['durable']>['engine']['storage'] | undefined;

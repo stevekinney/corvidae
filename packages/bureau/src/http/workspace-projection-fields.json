@@ -626,6 +626,7 @@
     "$|anyOf[0].target.kind",
     "$|anyOf[1].forgotten"
   ],
+  "output:bureau.contexts.discardturn": ["$.contextId", "$.removed", "$.revision", "$.runId"],
   "output:bureau.contexts.fork": [
     "$.carriedEffort",
     "$.carriedEffort|anyOf[0]|oneOf[0].command",

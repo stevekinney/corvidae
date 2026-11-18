@@ -586,6 +586,7 @@ describe('createBureauHandler catalog', () => {
         'bureau.checks.list',
         'bureau.contexts.archive',
         'bureau.contexts.delete',
+        'bureau.contexts.discardturn',
         'bureau.contexts.forgetgrants',
         'bureau.contexts.fork',
         'bureau.contexts.get',
