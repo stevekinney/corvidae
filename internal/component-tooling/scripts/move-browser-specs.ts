@@ -33,7 +33,15 @@
  */
 
 import { cinderComponentRoots, packageSuite } from '@lostgradient/testing/browser/package-suite';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, posix, resolve, sep } from 'node:path';
 import { parseArgs } from 'node:util';
@@ -336,6 +344,11 @@ export async function stylesheetOrderSource(
     ownAppFixtures: [],
   });
   const directory = mkdtempSync(join(tmpdir(), 'corvidae-stylesheet-order-'));
+  // The root suite's fixtures import the workspaces its own package used to declare; outside the
+  // workspace list now, it reaches them through links made for this build alone.
+  const links = join(root, ROOT_SUITE, 'node_modules');
+  const linked = !existsSync(links);
+  if (linked) linkWorkspaces(root, links);
   try {
     await suite.bundleInto(directory, true);
     const html = readFileSync(join(directory, 'index.html'), 'utf8');
@@ -359,6 +372,21 @@ export async function stylesheetOrderSource(
     ].join('\n');
   } finally {
     rmSync(directory, { recursive: true, force: true });
+    if (linked) rmSync(links, { recursive: true, force: true });
+  }
+}
+
+/** Links every workspace package, by name, into `directory`. */
+function linkWorkspaces(root: string, directory: string): void {
+  for (const manifestPath of new Bun.Glob(
+    '{applications,components,packages,testing,internal,plugins}/*/package.json',
+  ).scanSync({ cwd: root })) {
+    const name = (JSON.parse(readFileSync(join(root, manifestPath), 'utf8')) as { name?: string })
+      .name;
+    if (name === undefined) continue;
+    const link = join(directory, name);
+    mkdirSync(dirname(link), { recursive: true });
+    symlinkSync(join(root, dirname(manifestPath)), link, 'dir');
   }
 }
 
