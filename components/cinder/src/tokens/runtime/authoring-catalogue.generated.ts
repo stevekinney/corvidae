@@ -3710,6 +3710,56 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       ],
     },
     {
+      path: 'toast.reserve-padding',
+      cssProperty: '--cinder-toast-reserve-padding',
+      category: 'spacing',
+      component: null,
+      description:
+        "Room a page's scrolling area keeps at its end for a toast that stays until it is acted on (an Undo, a failure): ToastRegion sets it on the document element, to how far up from the viewport's bottom edge a bottom-anchored region reaches, while such a toast is shown, and 0 otherwise.",
+      themeAware: false,
+      deprecated: false,
+      profile: 'padding',
+      disposition: {
+        edit: 'supported',
+        cssExport: 'supported',
+        dtcgExport: 'complete',
+        cssSerialization: 'typed-value',
+      },
+      variants: [
+        {
+          contexts: [
+            'light/default',
+            'light/reduced',
+            'light/forced-reduced-motion',
+            'dark/default',
+            'dark/reduced',
+            'dark/forced-reduced-motion',
+          ],
+          provenance: {
+            winner: { document: 'sets/foundation.tokens.json', path: 'toast.reserve-padding' },
+            layers: [
+              {
+                document: 'sets/foundation.tokens.json',
+                kind: 'set',
+                layer: 'sets.foundation',
+                path: 'toast.reserve-padding',
+                via: 'declared',
+              },
+            ],
+            effectiveType: {
+              type: 'dimension',
+              origin: 'local',
+              declaredAt: {
+                document: 'sets/foundation.tokens.json',
+                path: 'toast.reserve-padding',
+              },
+            },
+            inputs: { aliases: [], refs: [], extends: [], recipes: [] },
+          },
+        },
+      ],
+    },
+    {
       path: 'content.width',
       cssProperty: '--cinder-content-width',
       category: 'size',
@@ -6475,6 +6525,93 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
               declaredAt: { document: 'themes/dark.tokens.json', path: 'surface.canvas' },
             },
             inputs: { aliases: [], refs: [], extends: [], recipes: [] },
+          },
+        },
+      ],
+    },
+    {
+      path: 'surface.translucent',
+      cssProperty: '--cinder-surface-translucent',
+      category: 'color',
+      component: null,
+      description:
+        'The canvas at 90%, for a header or bar that content scrolls under, drawn with a backdrop blur (`.cinder-translucent-surface`; AppBar keeps its own 82% mix), and opaque canvas where the platform cannot blur or `prefers-reduced-transparency` is set. The 90% is the least the canvas can keep so that the body and status text on it hold 4.5:1 over the worst backdrop, pure black or pure white, in both themes (`translucent-surface-contrast.test.ts`).',
+      themeAware: true,
+      deprecated: false,
+      profile: 'color',
+      palette: { family: 'unknown', role: 'unknown', anchor: 'unknown' },
+      disposition: {
+        edit: 'recipe',
+        cssExport: 'supported',
+        dtcgExport: 'subset',
+        cssSerialization: 'trusted-recipe',
+        reason: 'The DTCG value is exported; the trusted CSS recipe that governs emission is not.',
+      },
+      variants: [
+        {
+          contexts: ['light/default', 'light/reduced', 'light/forced-reduced-motion'],
+          provenance: {
+            winner: { document: 'themes/light.tokens.json', path: 'surface.translucent' },
+            layers: [
+              {
+                document: 'sets/semantic.tokens.json',
+                kind: 'set',
+                layer: 'sets.foundation',
+                path: 'surface.translucent',
+                via: 'declared',
+              },
+              {
+                document: 'themes/light.tokens.json',
+                kind: 'modifier',
+                layer: 'theme.light',
+                path: 'surface.translucent',
+                via: 'declared',
+              },
+            ],
+            effectiveType: {
+              type: 'color',
+              origin: 'local',
+              declaredAt: { document: 'themes/light.tokens.json', path: 'surface.translucent' },
+            },
+            inputs: {
+              aliases: [],
+              refs: [],
+              extends: [],
+              recipes: [{ cssProperty: '--cinder-surface-canvas', path: 'surface.canvas' }],
+            },
+          },
+        },
+        {
+          contexts: ['dark/default', 'dark/reduced', 'dark/forced-reduced-motion'],
+          provenance: {
+            winner: { document: 'themes/dark.tokens.json', path: 'surface.translucent' },
+            layers: [
+              {
+                document: 'sets/semantic.tokens.json',
+                kind: 'set',
+                layer: 'sets.foundation',
+                path: 'surface.translucent',
+                via: 'declared',
+              },
+              {
+                document: 'themes/dark.tokens.json',
+                kind: 'modifier',
+                layer: 'theme.dark',
+                path: 'surface.translucent',
+                via: 'declared',
+              },
+            ],
+            effectiveType: {
+              type: 'color',
+              origin: 'local',
+              declaredAt: { document: 'themes/dark.tokens.json', path: 'surface.translucent' },
+            },
+            inputs: {
+              aliases: [],
+              refs: [],
+              extends: [],
+              recipes: [{ cssProperty: '--cinder-surface-canvas', path: 'surface.canvas' }],
+            },
           },
         },
       ],

@@ -369,7 +369,9 @@ export function createChildRuns<D extends AgentDefinitions>(
       }
       return agentStepResultFromState(request.agent, await awaitWorkflowStepRun(runId));
     }
-    if (core.agentCatalog.find(request.agent) === undefined) {
+    // COR-2429: the gate is read from the store, so a step never starts on an agent another
+    // Bureau on it disabled; `startWorkflowStepRun` below sees what this read.
+    if ((await core.agentCatalog.findToStart(request.agent)) === undefined) {
       throw new WorkflowAgentStepError(
         'agent-not-found',
         request.agent,

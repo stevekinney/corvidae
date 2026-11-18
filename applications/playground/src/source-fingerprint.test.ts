@@ -260,9 +260,9 @@ describe('newestSourceMtimeMs', () => {
   });
 
   test('includes package manifests that control discovery and bundling', () => {
-    expect(FINGERPRINT_SOURCE_FILES).toContain('components/cinder/components.json');
+    expect(FINGERPRINT_SOURCE_FILES).toContain('components/cinder/.metadata/components.json');
     expect(FINGERPRINT_SOURCE_FILES).toContain('components/chat/package.json');
-    expect(FINGERPRINT_SOURCE_FILES).toContain('components/chat/components.json');
+    expect(FINGERPRINT_SOURCE_FILES).toContain('components/chat/.metadata/components.json');
   });
 
   test('includes the server and bundler script trees the playground server runs', () => {
@@ -271,6 +271,7 @@ describe('newestSourceMtimeMs', () => {
     // fingerprint too, or a running server with the old server code loaded
     // looks fresh.
     expect(FINGERPRINT_SOURCE_DIRECTORIES).toContain('components/cinder/scripts');
+    expect(FINGERPRINT_SOURCE_DIRECTORIES).toContain('internal/component-tooling/scripts');
     expect(FINGERPRINT_SOURCE_DIRECTORIES).toContain('applications/playground/scripts');
   });
 

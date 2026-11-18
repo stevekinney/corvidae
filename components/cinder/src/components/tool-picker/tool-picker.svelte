@@ -1,20 +1,4 @@
 <script lang="ts" module>
-  /**
-   * @cinder
-   * @category overlay
-   * @status beta
-   * @purpose Dialog for choosing tools and skills from a searchable list grouped by source, with each tool's risk and starting level, a counter, a loading state and collapsing groups for long lists.
-   * @tag overlay
-   * @tag dialog
-   * @tag selection
-   * @tag search
-   * @useWhen Letting a person choose several items that carry a name, an identifier, a description and trailing facts, from grouped sources.
-   * @useWhen The list can be long enough to need search and collapsing groups, and some entries are shown but cannot be chosen.
-   * @avoidWhen Choosing one item from a short list — use select or combobox instead.
-   * @avoidWhen Moving items between two lists the person keeps open — use transfer-list instead.
-   * @rationale Nearest alternative: Modal with a Checkbox group — this adds the grouped, sticky-headed list, the search, the counter and the loading and empty states a long catalogue needs.
-   * @related modal, checkbox, transfer-list, combobox, skeleton
-   */
   export type { ToolPickerGroup, ToolPickerItem, ToolPickerProps } from './tool-picker.types.ts';
 </script>
 

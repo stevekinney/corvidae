@@ -1,0 +1,19 @@
+{
+  "$schema": "../../../../../internal/component-tooling/src/schemas/component-meta.schema.json",
+  "category": "data-display",
+  "status": "stable",
+  "purpose": "Card for any payload: sentence-case fields by default, a Fields / JSON switch, count and size, one copy action, secret masking, and states from streaming to failed.",
+  "tags": ["json", "inspector", "payload"],
+  "useWhen": [
+    "Inspecting workflow inputs, signal payloads, activity results, or API response bodies in a dashboard.",
+    "Displaying a structured payload with a visible label, byte size, and copy affordance.",
+    "Reading a payload as data first, with the raw JSON one switch away."
+  ],
+  "avoidWhen": [
+    { "reason": "Rendering a raw code block only — use code-block directly instead." },
+    {
+      "reason": "Needing search, filtering, or virtualization over large collections — compose a custom viewer."
+    }
+  ],
+  "related": ["json-viewer", "code-block", "copy-button", "schema-view"]
+}

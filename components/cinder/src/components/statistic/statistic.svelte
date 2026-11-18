@@ -1,17 +1,4 @@
 <script lang="ts" module>
-  /**
-   * @cinder
-   * @category data-display
-   * @status stable
-   * @purpose Single key metric with a label, formatted value, and optional change indicator that pairs into a statistic-group dashboard tile.
-   * @tag data-display
-   * @tag metric
-   * @useWhen Highlighting one important number such as revenue, signups, or error rate.
-   * @useWhen Composing a dashboard tile alongside other Statistic instances inside statistic-group.
-   * @avoidWhen Conveying status with a short label or icon — use badge instead.
-   * @avoidWhen Showing tabular numeric breakdowns — use table or data-list instead.
-   * @related statistic-group, badge
-   */
   export type {
     StatisticChange,
     StatisticChangeDirection,

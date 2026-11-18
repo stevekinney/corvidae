@@ -1,0 +1,19 @@
+{
+  "$schema": "../../../../../internal/component-tooling/src/schemas/component-meta.schema.json",
+  "category": "data-display",
+  "status": "beta",
+  "purpose": "Read-only view of a JSON Schema: one row per field with its label, a coloured type mark, a required dot, the description and facts, nested fields folding.",
+  "tags": ["schema", "json-schema", "read-only", "data-display"],
+  "useWhen": [
+    "Showing the shape of a workflow input or output, a tool input, or a signal or update payload without a raw JSON dump.",
+    "Telling the reader which fields are required and what type each one takes."
+  ],
+  "avoidWhen": [
+    { "reason": "The schema must be edited.", "alternative": "json-schema-editor" },
+    {
+      "reason": "You are showing a value rather than the shape it must have.",
+      "alternative": "payload-inspector"
+    }
+  ],
+  "related": ["json-schema-editor", "payload-inspector", "json-viewer", "description-list"]
+}

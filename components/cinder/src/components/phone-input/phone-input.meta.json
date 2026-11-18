@@ -1,0 +1,18 @@
+{
+  "$schema": "../../../../../internal/component-tooling/src/schemas/component-meta.schema.json",
+  "category": "form",
+  "status": "stable",
+  "purpose": "International phone-number input pairing a country-code dropdown with an as-you-type national number input and emitting E.164 values.",
+  "tags": ["form", "phone"],
+  "useWhen": [
+    "Collecting an international phone number that must be stored in a canonical E.164 form.",
+    "Letting the user pick a calling country and a national number side-by-side."
+  ],
+  "avoidWhen": [
+    {
+      "reason": "Collecting a free-form local number with no country context — use input type=\"tel\" instead."
+    },
+    { "reason": "Collecting an SMS verification code — use pin-input instead." }
+  ],
+  "related": ["input", "pin-input", "form-field"]
+}

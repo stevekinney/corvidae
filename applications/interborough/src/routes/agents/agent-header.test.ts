@@ -7,8 +7,9 @@
 import { cleanup, fireEvent, render, waitFor, within } from '@testing-library/svelte';
 import { afterEach, describe, expect, test } from 'bun:test';
 
-import { AGENT_PAGE_COPY } from '../../app/copy/agents.ts';
+import { AGENT_PAGE_COPY, AGENTS_COPY } from '../../app/copy/agents.ts';
 import {
+  catalogFixture,
   installBureauStub,
   readyAgent,
   StubFault,
@@ -164,6 +165,58 @@ describe('the header every tab of an agent’s page shares', () => {
     // Memory is a tab, not an action, and an owner's agent is edited, not duplicated, from here.
     expect(within(header).queryByRole('link', { name: /Memory/ })).toBeNull();
     expect(within(header).queryByRole('link', { name: AGENT_PAGE_COPY.duplicate })).toBeNull();
+  });
+});
+
+describe('the skills the header names (sweep S65, COR-2429)', () => {
+  test('are the merged list the Access tab grants: the file’s own skills, then the ones it is granted', async () => {
+    landAt('/agents/researcher/access');
+    const detail = readyAgent({ id: 'researcher' });
+    if (detail.definition === null) throw new Error('expected a definition');
+    const skill = (name: string, description: string) => ({
+      name,
+      description,
+      source: { id: 'home', kind: 'user', location: '/skills/home', plugin: null },
+      trust: 'trusted',
+      trustReason: 'Listed in the configuration.',
+      available: true,
+      unavailableReason: null,
+      allowedTools: [],
+    });
+    serve({
+      'bureau.agents.definitions.get': () => ({
+        ...detail,
+        // The card's own skill, and one granted from the host's.
+        definition: { ...detail.definition, skills: ['summarize'] },
+      }),
+      'bureau.agents.catalog': () => catalogFixture(),
+      'bureau.guardrails.list': () => ({ guardrails: [] }),
+      'bureau.skills.list': () => ({
+        revision: 1,
+        skills: [skill('summarize', 'Summarizes a document.'), skill('deploy', 'Ships a build.')],
+        sources: [],
+        trustLocked: null,
+      }),
+    });
+    const { findByTestId } = mount();
+
+    const skills = await findByTestId('agent-access-skills');
+    await waitFor(() => expect(skills.querySelector('[data-skill="summarize"]')).not.toBeNull());
+    const granted = [...skills.querySelectorAll<HTMLElement>('[data-skill]')]
+      .filter(
+        (row) => row.querySelector<HTMLInputElement>('input[type="checkbox"]')?.checked === true,
+      )
+      .map((row) => row.getAttribute('data-skill'));
+    expect(granted).toEqual(['cite', 'summarize']);
+
+    const facts = await findByTestId('agent-facts');
+    const named = await waitFor(() => {
+      const list = within(facts).getByRole('list', { name: AGENTS_COPY.skillsLabel });
+      const items = [...list.querySelectorAll('li')].map((item) => item.textContent?.trim());
+      expect(items).toHaveLength(granted.length);
+      return items;
+    });
+    expect(named).toEqual(['Cite', 'Summarize']);
   });
 });
 

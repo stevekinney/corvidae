@@ -109,7 +109,10 @@
           "default": "./dist/index.js"
         },
         "./package.json": "./package.json",
-        "./manifest": "./components.json",
+        "./manifest": "./.metadata/components.json",
+        "./*/schema": "./.metadata/*/schema.json",
+        "./*/variables": "./.metadata/*/variables.json",
+        "./*/examples": "./.metadata/*/examples.json",
         "./markdown-editor": {
           "types": "./dist/components/markdown-editor/index.d.ts",
           "browser": "./src/lib/components/markdown-editor/index.ts",
@@ -118,21 +121,6 @@
           "import": "./src/lib/components/markdown-editor/index.ts",
           "default": "./dist/components/markdown-editor/index.js"
         },
-        "./markdown-editor/schema": {
-          "types": "./dist/components/markdown-editor/markdown-editor.schema.d.ts",
-          "browser": "./src/lib/components/markdown-editor/markdown-editor.schema.ts",
-          "svelte": "./src/lib/components/markdown-editor/markdown-editor.schema.ts",
-          "import": "./src/lib/components/markdown-editor/markdown-editor.schema.ts",
-          "default": "./dist/components/markdown-editor/markdown-editor.schema.js"
-        },
-        "./markdown-editor/variables": {
-          "types": "./dist/components/markdown-editor/markdown-editor.variables.d.ts",
-          "browser": "./src/lib/components/markdown-editor/markdown-editor.variables.ts",
-          "svelte": "./src/lib/components/markdown-editor/markdown-editor.variables.ts",
-          "import": "./src/lib/components/markdown-editor/markdown-editor.variables.ts",
-          "default": "./dist/components/markdown-editor/markdown-editor.variables.js"
-        },
-        "./markdown-editor/examples": "./dist/components/markdown-editor/markdown-editor.examples.json",
         "./review-editor": {
           "types": "./dist/components/review-editor/index.d.ts",
           "browser": "./src/lib/components/review-editor/index.ts",
@@ -141,25 +129,10 @@
           "import": "./src/lib/components/review-editor/index.ts",
           "default": "./dist/components/review-editor/index.js"
         },
-        "./review-editor/schema": {
-          "types": "./dist/components/review-editor/review-editor.schema.d.ts",
-          "browser": "./src/lib/components/review-editor/review-editor.schema.ts",
-          "svelte": "./src/lib/components/review-editor/review-editor.schema.ts",
-          "import": "./src/lib/components/review-editor/review-editor.schema.ts",
-          "default": "./dist/components/review-editor/review-editor.schema.js"
-        },
-        "./review-editor/variables": {
-          "types": "./dist/components/review-editor/review-editor.variables.d.ts",
-          "browser": "./src/lib/components/review-editor/review-editor.variables.ts",
-          "svelte": "./src/lib/components/review-editor/review-editor.variables.ts",
-          "import": "./src/lib/components/review-editor/review-editor.variables.ts",
-          "default": "./dist/components/review-editor/review-editor.variables.js"
-        },
         "./review-editor/styles": {
           "types": "./dist/components/review-editor/review-editor.css.d.ts",
           "default": "./dist/components/review-editor/review-editor.css"
         },
-        "./review-editor/examples": "./dist/components/review-editor/review-editor.examples.json",
         "./diff-viewer": {
           "types": "./dist/components/diff-viewer/index.d.ts",
           "browser": "./src/lib/components/diff-viewer/index.ts",
@@ -168,21 +141,6 @@
           "import": "./src/lib/components/diff-viewer/index.ts",
           "default": "./dist/components/diff-viewer/index.js"
         },
-        "./diff-viewer/schema": {
-          "types": "./dist/components/diff-viewer/diff-viewer.schema.d.ts",
-          "browser": "./src/lib/components/diff-viewer/diff-viewer.schema.ts",
-          "svelte": "./src/lib/components/diff-viewer/diff-viewer.schema.ts",
-          "import": "./src/lib/components/diff-viewer/diff-viewer.schema.ts",
-          "default": "./dist/components/diff-viewer/diff-viewer.schema.js"
-        },
-        "./diff-viewer/variables": {
-          "types": "./dist/components/diff-viewer/diff-viewer.variables.d.ts",
-          "browser": "./src/lib/components/diff-viewer/diff-viewer.variables.ts",
-          "svelte": "./src/lib/components/diff-viewer/diff-viewer.variables.ts",
-          "import": "./src/lib/components/diff-viewer/diff-viewer.variables.ts",
-          "default": "./dist/components/diff-viewer/diff-viewer.variables.js"
-        },
-        "./diff-viewer/examples": "./dist/components/diff-viewer/diff-viewer.examples.json",
         "./diff-review": {
           "types": "./dist/components/diff-review/index.d.ts",
           "browser": "./src/lib/components/diff-review/index.ts",
@@ -191,25 +149,10 @@
           "import": "./src/lib/components/diff-review/index.ts",
           "default": "./dist/components/diff-review/index.js"
         },
-        "./diff-review/schema": {
-          "types": "./dist/components/diff-review/diff-review.schema.d.ts",
-          "browser": "./src/lib/components/diff-review/diff-review.schema.ts",
-          "svelte": "./src/lib/components/diff-review/diff-review.schema.ts",
-          "import": "./src/lib/components/diff-review/diff-review.schema.ts",
-          "default": "./dist/components/diff-review/diff-review.schema.js"
-        },
-        "./diff-review/variables": {
-          "types": "./dist/components/diff-review/diff-review.variables.d.ts",
-          "browser": "./src/lib/components/diff-review/diff-review.variables.ts",
-          "svelte": "./src/lib/components/diff-review/diff-review.variables.ts",
-          "import": "./src/lib/components/diff-review/diff-review.variables.ts",
-          "default": "./dist/components/diff-review/diff-review.variables.js"
-        },
         "./diff-review/styles": {
           "types": "./dist/components/diff-review/diff-review.css.d.ts",
           "default": "./dist/components/diff-review/diff-review.css"
         },
-        "./diff-review/examples": "./dist/components/diff-review/diff-review.examples.json",
         "./diff-review-comments": {
           "types": "./dist/components/diff-review-comments/index.d.ts",
           "browser": "./src/lib/components/diff-review-comments/index.ts",
@@ -218,25 +161,10 @@
           "import": "./src/lib/components/diff-review-comments/index.ts",
           "default": "./dist/components/diff-review-comments/index.js"
         },
-        "./diff-review-comments/schema": {
-          "types": "./dist/components/diff-review-comments/diff-review-comments.schema.d.ts",
-          "browser": "./src/lib/components/diff-review-comments/diff-review-comments.schema.ts",
-          "svelte": "./src/lib/components/diff-review-comments/diff-review-comments.schema.ts",
-          "import": "./src/lib/components/diff-review-comments/diff-review-comments.schema.ts",
-          "default": "./dist/components/diff-review-comments/diff-review-comments.schema.js"
-        },
-        "./diff-review-comments/variables": {
-          "types": "./dist/components/diff-review-comments/diff-review-comments.variables.d.ts",
-          "browser": "./src/lib/components/diff-review-comments/diff-review-comments.variables.ts",
-          "svelte": "./src/lib/components/diff-review-comments/diff-review-comments.variables.ts",
-          "import": "./src/lib/components/diff-review-comments/diff-review-comments.variables.ts",
-          "default": "./dist/components/diff-review-comments/diff-review-comments.variables.js"
-        },
         "./diff-review-comments/styles": {
           "types": "./dist/components/diff-review-comments/diff-review-comments.css.d.ts",
           "default": "./dist/components/diff-review-comments/diff-review-comments.css"
         },
-        "./diff-review-comments/examples": "./dist/components/diff-review-comments/diff-review-comments.examples.json",
         "./anchor-decorations": {
           "types": "./dist/anchor-decorations.d.ts",
           "bun": "./src/lib/anchor-decorations.ts",

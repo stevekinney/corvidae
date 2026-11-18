@@ -1,0 +1,20 @@
+{
+  "$schema": "../../../../../internal/component-tooling/src/schemas/component-meta.schema.json",
+  "category": "data-display",
+  "status": "stable",
+  "purpose": "Context control for selecting or clearing a Tree level in checkbox multi-selection mode.",
+  "tags": ["tree", "selection"],
+  "useWhen": [
+    "Adding select-all and select-none controls to a Tree selectionControls snippet.",
+    "Selecting a registered tree level without placing non-treeitem controls inside role=\"tree\"."
+  ],
+  "avoidWhen": [
+    {
+      "reason": "Rendering outside a Tree component — it requires Tree selectionControls context."
+    },
+    {
+      "reason": "Selecting arbitrary data that is not represented by registered tree items or selectionScopeIds."
+    }
+  ],
+  "related": ["tree", "tree-item"]
+}

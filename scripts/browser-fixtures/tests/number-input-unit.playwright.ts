@@ -5,8 +5,8 @@
  * browser resolves, so the distance between the digits and the unit is measured here.
  */
 
+import { fixtureRoute } from '@lostgradient/testing/playwright/overlay-fixture';
 import { expect, test } from '@playwright/test';
-import { fixtureRoute } from './overlay-fixture.ts';
 
 for (const testId of ['number-input-unit', 'number-input-unit-fixed'] as const) {
   test(`the unit follows the digits (${testId})`, async ({ page }) => {

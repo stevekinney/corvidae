@@ -1,3 +1,4 @@
+import { assertPrettierResolvesToRoot } from '@lostgradient/component-tooling/scripts/lib/prettier-resolution.ts';
 import { format } from 'prettier';
 import {
   RESOLVED_CONTEXT_COMBOS,
@@ -7,7 +8,6 @@ import {
 import { cinderExtensions } from '../../src/tokens/runtime/corpus.ts';
 import { resolveDocuments } from '../../src/tokens/runtime/resolve.ts';
 import type { ResolverDocument, TokenDocument } from '../../src/tokens/runtime/types.ts';
-import { assertPrettierResolvesToRoot } from '../lib/prettier-resolution.ts';
 import { JSON_PLUGINS, PRETTIER_OPTIONS } from './generator-configuration.ts';
 
 export async function buildResolvedContexts(

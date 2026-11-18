@@ -5,7 +5,7 @@
    * a question that has no chat) to where it is, and the time to the run it belongs to. A review
    * that was decided says when it was asked rather than that it is waiting.
    */
-  import { RelativeTime } from '@lostgradient/cinder';
+  import { RelativeTime, humanizeIdentifier } from '@lostgradient/cinder';
   import { createQuery } from '@tanstack/svelte-query';
 
   import { REVIEWS_COPY } from '../../app/copy/reviews.ts';
@@ -14,6 +14,7 @@
   import { agentPath } from '../../lib/agent-paths.ts';
   import { getContext } from '../../lib/bureau-client.ts';
   import type { ListedReview } from '../../lib/bureau-reviews.ts';
+  import { waitingFor } from '../../lib/format/clock.ts';
   import { truncateId } from '../../lib/format/index.ts';
   import { chatSessionPath } from '../../lib/identifier-paths.ts';
   import { queryKeys } from '../../lib/query.ts';
@@ -65,24 +66,50 @@
   }
 </script>
 
-<p class="ib-review-source" data-testid="review-source">
-  {REVIEWS_COPY.source.askedBy}
-  {#if agent !== undefined}
-    <a href={router.href(agentPath(agent))} onclick={(event) => follow(event, agentPath(agent))}
-      >{agentLabel(displayName(agent), undefined)}</a
+{#snippet when()}
+  {#if waiting}
+    <!-- How long it has waited, as a duration: "waiting 4 min" (rows 25f, 26o). -->
+    {REVIEWS_COPY.source.waiting}
+    <a href={router.href(runPath)} onclick={(event) => follow(event, runPath)}
+      >{waitingFor(review.requestedAt, Date.now())}</a
     >
   {:else}
-    <span
-      >{review.kind === 'engine-review'
-        ? REVIEWS_COPY.source.unknownWorkflow
-        : REVIEWS_COPY.unknownAgent}</span
+    {REVIEWS_COPY.source.askedAt}
+    <a href={router.href(runPath)} onclick={(event) => follow(event, runPath)}
+      ><RelativeTime date={review.requestedAt} /></a
     >
   {/if}
-  {REVIEWS_COPY.source.in}
-  <a href={router.href(place.path)} onclick={(event) => follow(event, place.path)}>{place.label}</a
-  >,
-  {waiting ? REVIEWS_COPY.source.waitingSince : REVIEWS_COPY.source.askedAt}
-  <a href={router.href(runPath)} onclick={(event) => follow(event, runPath)}
-    ><RelativeTime date={review.requestedAt} /></a
-  >
-</p>
+{/snippet}
+
+{#if review.kind === 'engine-review' && review.workflowName !== undefined}
+  <!-- COR-2426, row 25o: the workflow by its name, and the step that asked. -->
+  <p class="ib-review-source" data-testid="review-source">
+    {REVIEWS_COPY.source.askedBy}
+    <a href={router.href(runPath)} onclick={(event) => follow(event, runPath)}
+      >{REVIEWS_COPY.source.workflowNamed(
+        humanizeIdentifier(review.workflowName, { casing: 'sentence' }),
+      )}</a
+    >{#if review.step !== undefined}, {REVIEWS_COPY.source.step(review.step)}{/if},
+    {@render when()}
+  </p>
+{:else}
+  <p class="ib-review-source" data-testid="review-source">
+    {REVIEWS_COPY.source.askedBy}
+    {#if agent !== undefined}
+      <a href={router.href(agentPath(agent))} onclick={(event) => follow(event, agentPath(agent))}
+        >{agentLabel(displayName(agent), undefined)}</a
+      >
+    {:else}
+      <span
+        >{review.kind === 'engine-review'
+          ? REVIEWS_COPY.source.unknownWorkflow
+          : REVIEWS_COPY.unknownAgent}</span
+      >
+    {/if}
+    {REVIEWS_COPY.source.in}
+    <a href={router.href(place.path)} onclick={(event) => follow(event, place.path)}
+      >{place.label}</a
+    >,
+    {@render when()}
+  </p>
+{/if}

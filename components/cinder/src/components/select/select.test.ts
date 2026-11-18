@@ -3,8 +3,8 @@ import * as matchers from '@testing-library/jest-dom/matchers';
 import { describe, expect, mock, spyOn, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 
+import { stripCinderComponentsLayer } from '@lostgradient/component-tooling/test/css.ts';
 import { requiredInstance, setupHappyDom } from '@lostgradient/testing';
-import { stripCinderComponentsLayer } from '../../test/css.ts';
 
 // Extend Bun's expect with @testing-library/jest-dom matchers (e.g. toBeDisabled, toBeVisible).
 // The cast to `Parameters<typeof expect.extend>[0]` satisfies Bun's extend signature while

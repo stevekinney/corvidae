@@ -17,7 +17,7 @@
   import { AGENT_EDITOR_COPY } from '../../app/copy/agents.ts';
   import { router } from '../../lib/router.svelte.ts';
   import { providerDisplayName } from '../settings/models/format-model.ts';
-  import { abilitiesOf, type ModelChoice } from './agent-editor-models.ts';
+  import { abilitiesOf, abilitiesSentence, type ModelChoice } from './agent-editor-models.ts';
   import type { AgentEditorState } from './agent-editor-state.svelte.ts';
 
   interface Props {
@@ -44,10 +44,10 @@
   function abilityLine(choice: ModelChoice): string {
     if (choice.row === undefined) return '';
     const abilities = abilitiesOf(choice.row);
-    return [
+    return abilitiesSentence([
       copy.context(abilities.context),
       ...abilities.has.map((ability) => copy.abilities[ability]),
-    ].join(', ');
+    ]);
   }
 
   function optionOf(choice: ModelChoice, group: string): ComboboxOption {

@@ -92,6 +92,37 @@ describe('the top bar', () => {
     }
   });
 
+  test('the bar keeps its surface and its rule in every mode (COR-2445)', async () => {
+    for (const matching of [[DRAWER_QUERY], [EXPANDED_QUERY]]) {
+      viewport(matching);
+      landAt('/health');
+      const { container, unmount } = mount();
+      const header = container.querySelector('header');
+      expect(header?.classList.contains('cinder-translucent-surface')).toBe(false);
+      unmount();
+    }
+    const css = await Bun.file(new URL('../../styles/foundation.css', import.meta.url)).text();
+    expect(css).toMatch(/\.weft-shell-topbar \{[^}]*border-bottom:[^}]*background:/);
+  });
+
+  test('the phone controls are the Buttons own faces a step apart, with no sized layout box (COR-2445)', async () => {
+    const css = await Bun.file(new URL('../../styles/foundation.css', import.meta.url)).text();
+    const phone = css.match(/@media \(max-width: 639\.98px\) \{[\s\S]*?\n\}\n/)?.[0] ?? '';
+    expect(phone).toMatch(/\.weft-shell-topbar \{\s*gap: var\(--cinder-space-1\);/);
+    expect(phone).not.toMatch(/(block-size|min-inline-size|inline-size|min-width): (40|44)px/);
+    // One 32px face for the four icon controls, in pixels: a face in `rem` doubled at 200% text and
+    // squeezed the title to one letter, and the control-height tokens rise to 44px on a coarse
+    // pointer. Never an aspect ratio either: the wide rule gives the search trigger 300px of width.
+    expect(phone).toMatch(
+      /\.weft-shell-topbar \.weft-shell-topbar-control \{\s*flex: none;\s*inline-size: 32px;\s*min-inline-size: 32px;\s*block-size: 32px;\s*min-block-size: 32px;/,
+    );
+    expect(phone).not.toMatch(/var\(--cinder-(control|button)-height/);
+    expect(phone).not.toContain('aspect-ratio');
+    // The search trigger's own clip (for the wide field's ellipsis) is lifted, or it cuts Button's
+    // hit area down to the face.
+    expect(phone).toMatch(/\.weft-shell-search-trigger \{\s*overflow: visible;/);
+  });
+
   test('names the page in words in the breadcrumb, and Home at the root', () => {
     viewport([EXPANDED_QUERY]);
     for (const [path, name] of [

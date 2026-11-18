@@ -1,21 +1,4 @@
 <script lang="ts" module>
-  /**
-   * @cinder
-   * @category feedback
-   * @status stable
-   * @purpose Colored dot indicator that communicates static entity state or live realtime connection state with an accessible text label.
-   * @tag connection
-   * @tag feedback
-   * @tag realtime
-   * @tag status
-   * @useWhen Indicating the current state of a list row, user, deployment, or other entity alongside its name.
-   * @useWhen Communicating status compactly when many indicators appear together without triggering live-region announcements.
-   * @useWhen Surfacing whether a realtime channel is connected, connecting, disconnected, or errored on a dashboard or app chrome.
-   * @useWhen Giving operators an at-a-glance health signal for a long-lived transport.
-   * @avoidWhen Counting items or showing a numeric value — use badge instead.
-   * @avoidWhen Announcing a transient status change — use toast-region or alert so assistive tech reads it.
-   * @related badge
-   */
   export type { StatusDotProps, StatusDotSize, StatusDotStatus } from './status-dot.types.ts';
 </script>
 
@@ -58,6 +41,7 @@
   let {
     status,
     word,
+    qualifier,
     connectionState,
     label,
     live,
@@ -70,7 +54,25 @@
   }: StatusDotProps = $props();
 
   const normalizedAriaLabel = $derived(ariaLabel?.trim() ? ariaLabel.trim() : undefined);
-  const trimmedWord = $derived(word?.trim() ? word.trim() : undefined);
+  const trimmedWordOnly = $derived(word?.trim() ? word.trim() : undefined);
+  // The qualifier is drawn as its own element after the word, a space apart and a colour step
+  // lighter, with no separator in the visible text: "Missed runs 4". The accessible name keeps a
+  // pause between them ("Missed runs, 4"), and the tone is still read off the word (a phrase the
+  // table lists whole, such as "Done, refund not issued", keeps its own). A blank qualifier says
+  // nothing, and a qualifier of 0 does.
+  const trimmedQualifier = $derived(
+    qualifier === undefined || String(qualifier).trim() === ''
+      ? undefined
+      : String(qualifier).trim(),
+  );
+  const numericQualifier = $derived(
+    trimmedQualifier !== undefined && /^\d[\d,.]*$/.test(trimmedQualifier),
+  );
+  const trimmedWord = $derived(
+    trimmedWordOnly !== undefined && trimmedQualifier !== undefined
+      ? `${trimmedWordOnly}, ${trimmedQualifier}`
+      : trimmedWordOnly,
+  );
   // A word the table does not know stays neutral rather than guessing a tone.
   const wordStatus = $derived(
     trimmedWord === undefined ? undefined : (statusForStatusDotWord(trimmedWord) ?? 'neutral'),
@@ -95,6 +97,13 @@
             : undefined,
   );
   const hasVisibleLabel = $derived(labelVisible && normalizedLabel !== undefined);
+  // The word and its qualifier are drawn apart only when the word supplies the label.
+  const splitQualifier = $derived(
+    !label?.trim() &&
+      label === undefined &&
+      trimmedWordOnly !== undefined &&
+      trimmedQualifier !== undefined,
+  );
 
   // `role="img"` needs an author-provided name. Blank labels are treated as
   // absent so status is never communicated by color alone.
@@ -137,7 +146,17 @@
   aria-label={resolvedLive ? liveAriaLabel : resolvedAriaLabel}
 >
   <span class="cinder-status-dot__indicator" aria-hidden="true"></span>
-  {#if hasVisibleLabel}
+  {#if hasVisibleLabel && splitQualifier}
+    <span
+      class="cinder-status-dot__label"
+      aria-hidden={visibleLabelIsLiveDuplicate ? 'true' : undefined}
+      >{trimmedWordOnly}
+      <span
+        class="cinder-status-dot__qualifier"
+        data-cinder-numeric={numericQualifier ? '' : undefined}>{trimmedQualifier}</span
+      ></span
+    >
+  {:else if hasVisibleLabel}
     <span
       class="cinder-status-dot__label"
       aria-hidden={visibleLabelIsLiveDuplicate ? 'true' : undefined}>{normalizedLabel}</span

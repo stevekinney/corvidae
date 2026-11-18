@@ -1,17 +1,4 @@
 <script lang="ts" module>
-  /**
-   * @cinder
-   * @category form
-   * @status stable
-   * @purpose Star rating control with bindable numeric value, optional half-star precision, and a non-interactive readonly display mode.
-   * @tag form
-   * @tag selection
-   * @useWhen Letting the user score something on a small ordinal scale such as 1-5 stars.
-   * @useWhen Displaying an existing rating in readonly mode alongside a count or average.
-   * @avoidWhen Picking a value from a numeric continuum — use slider instead.
-   * @avoidWhen Capturing a binary preference — use toggle or checkbox.
-   * @related slider, segmented-control, radio-group, form-field
-   */
   export type { RatingPrecision, RatingProps } from './rating.types.ts';
 </script>
 

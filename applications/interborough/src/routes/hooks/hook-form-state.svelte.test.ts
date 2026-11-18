@@ -17,6 +17,7 @@ function hook(action: Hook['action'], overrides: Partial<Hook> = {}): Hook {
     action,
     events: ['review.requested'],
     scope: null,
+    declaredBy: null,
     enabled: true,
     createdAt: 1,
     updatedAt: 1,
@@ -151,9 +152,14 @@ describe('an existing hook', () => {
     expect(form.toChange(loaded)).toMatchObject({ name: null });
   });
 
-  test('leaves the action of a plugin’s hook alone, and changes its name and events', () => {
+  test('leaves the action of a plugin’s hook alone while its configuration is as it was, and changes its name and events', () => {
     const form = new HookFormState(false);
-    const loaded = hook({ type: 'plugin', plugin: 'acme', kind: 'page' });
+    const loaded = hook({
+      type: 'plugin',
+      plugin: 'acme',
+      kind: 'page',
+      configuration: { team: 'ops', apiKey: { $secret: 'acme-api-key' } },
+    });
     form.load(loaded);
     form.events = ['goal.failed'];
     // It has no address or workflow of its own to fill in, and still saves.
@@ -162,6 +168,102 @@ describe('an existing hook', () => {
     form.events = [];
     expect(form.isValid).toBe(false);
   });
+});
+
+describe('a saved hook that runs a plugin’s action (COR-2181)', () => {
+  const configuration = { team: 'ops', apiKey: { $secret: 'acme-api-key' } };
+  const saved = () => hook({ type: 'plugin', plugin: 'acme', kind: 'page', configuration });
+
+  test('shows its configuration in the form, the kind fixed, and is not dirty until it is changed', () => {
+    const form = new HookFormState(false);
+    form.load(saved());
+
+    expect(form.contributedKind).toEqual({ plugin: 'acme', kind: 'page' });
+    expect(form.contributedConfiguration).toEqual(configuration);
+    expect(form.dirty).toBe(false);
+    form.contributedConfiguration = { ...configuration, team: 'platform' };
+    expect(form.dirty).toBe(true);
+  });
+
+  test('saves a changed configuration through update as the whole configuration, and nothing the person did not change', () => {
+    const form = new HookFormState(false);
+    const loaded = saved();
+    form.load(loaded);
+    form.contributedConfiguration = { ...configuration, team: 'platform' };
+
+    expect(form.toChange(loaded)).toEqual({
+      name: 'Kept',
+      action: {
+        type: 'plugin',
+        plugin: 'acme',
+        kind: 'page',
+        configuration: { team: 'platform', apiKey: { $secret: 'acme-api-key' } },
+      },
+    });
+  });
+
+  test('sends a secret field as { "$secret": key } and nothing else, and never a value', () => {
+    const form = new HookFormState(false);
+    const loaded = saved();
+    form.load(loaded);
+    form.contributedConfiguration = { ...configuration, apiKey: { $secret: 'other-key' } };
+
+    const change = form.toChange(loaded);
+    const sent = JSON.stringify(change);
+    expect(sent).toContain('{"$secret":"other-key"}');
+    expect(change).toMatchObject({
+      action: { configuration: { apiKey: { $secret: 'other-key' } } },
+    });
+    expect(Object.keys((form.contributedConfiguration['apiKey'] as object) ?? {})).toEqual([
+      '$secret',
+    ]);
+  });
+
+  test('is unchanged when only the order of the keys differs', () => {
+    const form = new HookFormState(false);
+    const loaded = saved();
+    form.load(loaded);
+    form.contributedConfiguration = { apiKey: { $secret: 'acme-api-key' }, team: 'ops' };
+
+    expect(form.toChange(loaded)).toEqual({ name: 'Kept' });
+  });
+
+  test('a hook with no configuration loads an empty one, and a refused field is not for the form to judge', () => {
+    const form = new HookFormState(false);
+    const loaded = hook({ type: 'plugin', plugin: 'acme', kind: 'page' });
+    form.load(loaded);
+
+    expect(form.contributedConfiguration).toEqual({});
+    expect(form.toChange(loaded)).toEqual({ name: 'Kept' });
+  });
+
+  test.each([
+    ['a string', 'ops-channel'],
+    ['an array', ['ops', 'platform']],
+  ])(
+    'keeps a configuration that is %s, which the editor cannot draw: a rename sends no action, and only an edit replaces it',
+    (_name, stored) => {
+      const form = new HookFormState(false);
+      const loaded = hook({ type: 'plugin', plugin: 'acme', kind: 'page', configuration: stored });
+      form.load(loaded);
+      expect(form.contributedConfiguration).toEqual({});
+      expect(form.dirty).toBe(false);
+
+      // A rename leaves the stored configuration as it is: no action is sent to replace it.
+      form.name = 'Renamed';
+      expect(form.toChange(loaded)).toEqual({ name: 'Renamed' });
+      // Nor against a newer revision whose configuration another client changed.
+      const newer = hook({ type: 'plugin', plugin: 'acme', kind: 'page', configuration: 'other' });
+      expect(form.toChange(newer)).toEqual({ name: 'Renamed' });
+
+      // An edit of the configuration is what replaces it.
+      form.contributedConfiguration = { channel: 'ops' };
+      expect(form.toChange(loaded)).toEqual({
+        name: 'Renamed',
+        action: { type: 'plugin', plugin: 'acme', kind: 'page', configuration: { channel: 'ops' } },
+      });
+    },
+  );
 });
 
 describe('the other actions', () => {

@@ -1,15 +1,4 @@
 <script lang="ts" module>
-  /**
-   * @cinder
-   * @category navigation
-   * @status stable
-   * @purpose Navigates user-authored transcript turns with keyboard and pointer scrubbing.
-   * @tag chat
-   * @tag navigation
-   * @useWhen A long transcript needs direct navigation between user turns.
-   * @avoidWhen The transcript is short enough to scan without an auxiliary navigation surface.
-   * @related chat
-   */
   import type { ChatNavigationRailProps } from './chat-navigation-rail.types.ts';
   export type { ChatNavigationRailProps };
 </script>

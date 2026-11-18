@@ -3,6 +3,7 @@ import type { AgentDetail } from '../../lib/agent-definitions.ts';
 import type { AgentModels, AgentSummary, ChatContext } from '../../lib/bureau-client.ts';
 import { viewerTimeZone } from '../../lib/format/clock.ts';
 import { formatBytes } from '../../lib/format/index.ts';
+import { skillHeading } from '../capabilities/capability-presentation.ts';
 
 /** The path that opens a new chat with `agent`. */
 export function newChatPath(agent: string): string {
@@ -74,10 +75,28 @@ export type AgentFacts = {
   readonly skills: readonly { readonly id: string; readonly name: string }[];
 };
 
+/**
+ * The agent's skills as one list (sweep S65): the skills its own definition states first ("Defined
+ * in this file" on the Access tab), then each skill it is granted that is not one of them, by
+ * name. It is the set the Access tab marks granted, so the header and the tab read the same skills.
+ */
+export function mergedSkills(
+  card: readonly { readonly id: string; readonly name: string }[],
+  granted: readonly string[],
+): AgentFacts['skills'] {
+  const own = card.map((skill) => ({ id: skill.id, name: skill.name }));
+  const named = new Set(own.map((skill) => skill.name));
+  const added = [...new Set(granted)]
+    .filter((name) => !named.has(name))
+    .map((name) => ({ id: name, name: skillHeading({ name }) }));
+  return [...own, ...added];
+}
+
 export function agentFacts(
   agent: Pick<AgentSummary, 'kind' | 'media'> & { readonly tools?: readonly string[] | undefined },
   definition: AgentDetail['definition'] | undefined,
   models: AgentModels | undefined,
+  code?: AgentDetail['codeDefinition'],
 ): AgentFacts {
   if (agent.kind === 'file') {
     return {
@@ -86,20 +105,24 @@ export function agentFacts(
           ? { kind: 'unknown' }
           : { kind: 'model', name: definition.model },
       tools: definition?.tools ?? agent.tools ?? null,
-      skills: definition?.card.map((skill) => ({ id: skill.id, name: skill.name })) ?? [],
+      skills:
+        definition === null || definition === undefined
+          ? []
+          : mergedSkills(definition.card, definition.skills ?? []),
     };
   }
+  const skills = code === null || code === undefined ? [] : mergedSkills(code.card, code.skills);
   // A code-defined agent with no model descriptor has an opaque generator: it may be a script or a
   // model the Bureau cannot introspect, and the listing does not say which, so it claims neither.
   // One with descriptors names its model through `bureau.agents.models`, when it has a single one.
   if (agent.media === null) {
-    return { model: { kind: 'unknown' }, tools: agent.tools ?? null, skills: [] };
+    return { model: { kind: 'unknown' }, tools: agent.tools ?? null, skills };
   }
   const only = models?.default ?? (models?.models.length === 1 ? models.models[0] : undefined);
   return {
     model: only === undefined ? { kind: 'unknown' } : { kind: 'model', name: only.model },
     tools: agent.tools ?? null,
-    skills: [],
+    skills,
   };
 }
 

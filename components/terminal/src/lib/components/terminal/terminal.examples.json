@@ -1,4 +1,5 @@
 {
+  "$schema": "../../../../../../internal/component-tooling/src/schemas/examples.schema.json",
   "component": "terminal",
   "import": "@lostgradient/terminal",
   "examples": [

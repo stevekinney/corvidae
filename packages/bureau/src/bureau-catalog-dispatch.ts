@@ -103,7 +103,9 @@ export interface CatalogDispatcherDependencies {
   readonly configureDurableRun?:
     ((runId: string, services: DurableRunDeps, principal: string) => void) | undefined;
   readonly agentCatalog: Pick<BureauAgentCatalog<AgentDefinitions>, 'find'> &
-    Partial<Pick<BureauAgentCatalog<AgentDefinitions>, 'definitionPin' | 'overrides'>>;
+    Partial<
+      Pick<BureauAgentCatalog<AgentDefinitions>, 'definitionPin' | 'overrides' | 'findToStart'>
+    >;
   readonly runtime: RuntimeComposition;
   readonly runtimeServices: RuntimeServices;
   readonly getShutdownPromise: () => Promise<unknown> | undefined;
@@ -395,7 +397,7 @@ export function createCatalogDispatcher({
 }: CatalogDispatcherDependencies): {
   planChildRun: (
     name: string,
-  ) => { readonly durable: boolean; readonly agentVersion: string } | undefined;
+  ) => Promise<{ readonly durable: boolean; readonly agentVersion: string } | undefined>;
   startChildRun: (start: ChildTopologyStart) => AgentRun<unknown, boolean>;
   startGoalAttemptRun: (start: GoalAttemptStart) => GoalAttemptRun;
   startWorkflowStepRun: (start: WorkflowStepStart) => AgentRun<unknown, boolean>;
@@ -1301,12 +1303,18 @@ export function createCatalogDispatcher({
   /**
    * COR-772 — what dispatching `name` as a child would look like, read before
    * anything starts so Bureau can record the child's workflow identity
-   * first. `undefined` for an agent the catalog does not have.
+   * first. `undefined` for an agent the catalog does not have, or one a person disabled: the gate
+   * is read again from the store here (COR-2429), so the start that follows in the same turn sees
+   * what another Bureau on the store wrote.
    */
-  function planChildRun(
+  async function planChildRun(
     name: string,
-  ): { readonly durable: boolean; readonly agentVersion: string } | undefined {
-    const agent = agentCatalog.find(name);
+  ): Promise<{ readonly durable: boolean; readonly agentVersion: string } | undefined> {
+    // A catalog with no store to read again (a test's) answers from what it holds.
+    const agent =
+      agentCatalog.findToStart === undefined
+        ? agentCatalog.find(name)
+        : await agentCatalog.findToStart(name);
     if (!agent) return undefined;
     return {
       durable: runtime.durable !== undefined && hasDefinitionResolver(agent),

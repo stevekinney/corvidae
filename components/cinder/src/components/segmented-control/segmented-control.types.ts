@@ -57,6 +57,16 @@ type CommonProps<T extends string> = Omit<HTMLAttributes<HTMLElement>, Component
   fullWidth?: boolean | undefined;
   /** ARIA interaction pattern. Use `navigation` for route-backed links. */
   variant?: 'radiogroup' | 'tablist' | 'navigation' | undefined;
+  /**
+   * What the control does when its segments are wider than the room it has (COR-2181). `scroll`
+   * (the default) keeps the strip and lets it scroll sideways, as it always has. `select` draws the
+   * same options as a Select with the same accessible name, so every option stays on screen on a
+   * phone; the segments stay in the document, hidden, so the control knows how much room they need
+   * and returns to the strip when the room is there. It applies to a single-choice `radiogroup`
+   * only.
+   * @default "scroll"
+   */
+  overflow?: 'scroll' | 'select' | undefined;
   /** Additional class names merged with `.cinder-segmented-control`. */
   class?: string | undefined;
   /** Called when the selected value changes (single mode only). */

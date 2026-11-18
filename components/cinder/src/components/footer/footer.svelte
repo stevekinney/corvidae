@@ -1,18 +1,4 @@
 <script lang="ts" module>
-  /**
-   * @cinder
-   * @category layout
-   * @status beta
-   * @purpose Footer composition primitive with brand copy, grouped links, and legal row content.
-   * @tag layout
-   * @tag navigation
-   * @tag footer
-   * @useWhen Building page-level footer chrome with grouped resource links and legal text.
-   * @useWhen Keeping lower-page wayfinding and compliance links in one responsive region.
-   * @avoidWhen You need top-level route switching with active state handling. | navigation-bar
-   * @avoidWhen You need dense in-content navigation rather than page chrome.
-   * @related navigation-bar, side-navigation, container, grid
-   */
   export type { FooterGroup, FooterLink, FooterProps } from './footer.types.ts';
 </script>
 

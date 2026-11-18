@@ -462,7 +462,7 @@ async function describeWorkflow(page: Page, name: string, inputSchema: unknown):
       },
     });
   });
-  await page.route('**/bureau/jsonrpc', async (route) => {
+  await page.route('**/jsonrpc', async (route) => {
     const body = route.request().postData() ?? '';
     if (body.includes('"bureau.workflows.list"')) {
       const response = await route.fetch();

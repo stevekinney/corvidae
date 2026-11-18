@@ -1,18 +1,4 @@
 <script lang="ts" module>
-  /**
-   * @cinder
-   * @category data-display
-   * @status beta
-   * @purpose Segmented bar with one segment per allowed attempt, filled for the attempts made, that reads as an image named "2 of 5 attempts".
-   * @tag attempts
-   * @tag progress
-   * @tag segments
-   * @useWhen Showing how many of a fixed number of attempts a goal, retry or reconnection has used, beside its count.
-   * @useWhen Drawing a neutral attempts bar on a list row's second line, where the word beside it carries the outcome.
-   * @avoidWhen Showing continuous progress toward a value — use progress or meter.
-   * @avoidWhen Drawing a trend over time — use sparkbar.
-   * @rationale Nearest alternative: Progress — AttemptsIndicator draws whole attempts as segments rather than a continuous fill.
-   */
   export type {
     AttemptsIndicatorLayout,
     AttemptsIndicatorProps,

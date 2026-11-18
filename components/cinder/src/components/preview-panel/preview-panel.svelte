@@ -1,18 +1,4 @@
 <script lang="ts" module>
-  /**
-   * @cinder
-   * @category layout
-   * @status alpha
-   * @purpose Bounded preview layout shell with title, status, optional chrome regions, and nested overflow discipline.
-   * @tag layout
-   * @tag preview
-   * @tag panel
-   * @useWhen Framing a generated preview, artifact inspection area, or side-by-side review surface.
-   * @useWhen A preview needs consistent header, tabs, body, and footer slots without owning product-specific behavior.
-   * @avoidWhen Communicating an urgent standalone message — use alert.
-   * @avoidWhen You only need generic spacing — use stack.
-   * @related stack, card, tabs, alert
-   */
   export type { PreviewPanelProps, PreviewPanelStatus } from './preview-panel.types.ts';
 </script>
 

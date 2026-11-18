@@ -39,22 +39,4 @@ export type AuditException = {
   readonly reviewBy: string;
 };
 
-export const auditExceptions: readonly AuditException[] = [
-  {
-    advisory: 'GHSA-fc5q-39xc-vjpf',
-    package: 'picomatch',
-    allowedChains: [
-      ['@lostgradient/environmentalist', 'ts-morph', '@ts-morph/common', 'tinyglobby', 'picomatch'],
-      ['@lostgradient/playground', 'ts-morph', '@ts-morph/common', 'tinyglobby', 'picomatch'],
-      ['@lostgradient/cinder', 'ts-morph', '@ts-morph/common', 'tinyglobby', 'picomatch'],
-    ],
-    reviewedReachability: {
-      sha256: '7b6b31f61063bb59be476cbd6affd28a37d670973016e1a265e0c2559f536dc9',
-      exposure: 'build-or-development-only',
-    },
-    reason:
-      'picomatch 4.0.4 is only in reviewed static-export, type-generation and developer-check tooling; no inspected caller passes request-controlled globs. The frozen workspace inventory binds all current paths, including runtime-classified manifest edges, to this decision.',
-    trackingIssue: 'COR-2515',
-    reviewBy: '2026-12-17',
-  },
-];
+export const auditExceptions: readonly AuditException[] = [];

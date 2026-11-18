@@ -1,17 +1,4 @@
 <script lang="ts" module>
-  /**
-   * @cinder
-   * @category data-display
-   * @status beta
-   * @purpose Encodes a string payload as an inline SVG QR code with an explicit accessible label.
-   * @tag qr-code
-   * @tag sharing
-   * @useWhen Presenting a scannable URL, token, or Wi-Fi credential that users can scan from another device.
-   * @useWhen You need a theme-aware QR graphic that stays crisp at any scale.
-   * @avoidWhen You only need to expose a copyable short text value without camera scanning affordance. | copy-button
-   * @avoidWhen The payload is sensitive and should never be displayed as machine-readable visual data.
-   * @related copy-button, share-card
-   */
   export type { QrCodeErrorCorrectionLevel, QrCodeProps } from './qr-code.types.ts';
 </script>
 

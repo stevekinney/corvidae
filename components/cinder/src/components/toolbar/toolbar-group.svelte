@@ -1,16 +1,4 @@
 <script lang="ts" module>
-  /**
-   * @cinder
-   * @category action
-   * @status stable
-   * @purpose Compound child for Toolbar that clusters related controls inside the roving tabindex boundary.
-   * @tag action
-   * @tag grouping
-   * @useWhen Clustering related toolbar controls such as a viewport preset control plus its numeric width field.
-   * @useWhen Keeping related toolbar controls together as the toolbar wraps in constrained containers.
-   * @avoidWhen Rendering a standalone action group outside a Toolbar — use button-group or plain layout primitives instead.
-   * @related toolbar, button-group
-   */
   export type { ToolbarGroupProps } from './toolbar.types.ts';
 </script>
 

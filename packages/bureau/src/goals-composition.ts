@@ -75,7 +75,10 @@ export interface GoalsCompositionDependencies {
   readonly getDurable: () => (DurableActiveRunContext & { engine: GoalEngine }) | undefined;
   readonly planAgent: (
     agentName: string,
-  ) => { readonly durable: boolean; readonly agentVersion: string } | undefined;
+  ) =>
+    | { readonly durable: boolean; readonly agentVersion: string }
+    | undefined
+    | Promise<{ readonly durable: boolean; readonly agentVersion: string } | undefined>;
   readonly startAttemptRun: (start: GoalAttemptStart) => GoalAttemptRun;
   readonly cancelRun: (runId: string) => Promise<CancelDurableRunOutcome>;
   /** Reads the recovery record that marks which goal attempt a run was started for. */

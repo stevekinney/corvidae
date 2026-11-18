@@ -2,8 +2,8 @@
 import { afterEach, describe, expect, mock, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 
+import { injectStrippedStyles } from '@lostgradient/component-tooling/test/css.ts';
 import { requiredInstance, setupHappyDom } from '@lostgradient/testing';
-import { injectStrippedStyles } from '../../test/css.ts';
 
 setupHappyDom();
 

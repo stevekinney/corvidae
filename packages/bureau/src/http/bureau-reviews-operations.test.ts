@@ -8,6 +8,7 @@ import {
   type OperationHandlerAuthenticate,
   type WorkspaceIdentity,
 } from '@lostgradient/backchannel';
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { createTool, createToolbox, type Toolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 import { workspaceConformanceLedger } from './workspace-conformance-ledger.test-support.ts';
@@ -16,6 +17,7 @@ import { z } from 'zod';
 import {
   ApprovalOutcomeNotWrittenError,
   BureauError,
+  ReviewAlreadyResolvedError,
   ReviewRoundChangedError,
 } from '../bureau-errors.ts';
 import { createBureau } from '../create-bureau.ts';
@@ -207,7 +209,7 @@ describe('the parks of runs another process holds (COR-1579)', () => {
     const body = await call(serve(host, authenticate), 'bureau.reviews.list', {
       status: 'resolved',
     });
-    expect(body.result).toEqual({ reviews: [], nextPageToken: null });
+    expect(body.result).toEqual({ reviews: [], nextPageToken: null, total: 0 });
   });
 
   it('lists every page of running agent runs, by what each page reports, with the local entry winning', async () => {
@@ -293,7 +295,7 @@ describe('a human wait of a run with no session (COR-1577)', () => {
     const hidden = await call(serve(owned), 'bureau.reviews.list', {});
     const visible = await call(serve(owned, operator), 'bureau.reviews.list', {});
 
-    expect(hidden.result).toEqual({ reviews: [], nextPageToken: null });
+    expect(hidden.result).toEqual({ reviews: [], nextPageToken: null, total: 0 });
     expect(visible.result).toMatchObject({ reviews: [{ id: 'human-wait:run-2:answer:0' }] });
   });
 });
@@ -306,6 +308,7 @@ describe('bureau.reviews.list', () => {
 
     expect(body.result).toEqual({
       nextPageToken: null,
+      total: 1,
       reviews: [
         {
           source: 'bureau',
@@ -731,6 +734,15 @@ describe('bureau.reviews.resolve', () => {
       (reply.error?.data as { reason?: string } | undefined)?.reason;
     expect(reasonOf(unwritten)?.startsWith('APPROVAL_OUTCOME_NOT_WRITTEN: ')).toBe(true);
     expect(reasonOf(lost)?.startsWith('APPROVAL_OUTCOME_NOT_WRITTEN')).toBe(false);
+    // COR-2426: a review already resolved with another decision carries its own token.
+    const alreadyResolved = await call(
+      failing(new ReviewAlreadyResolvedError('Review "x" is already resolved')),
+      'bureau.reviews.resolve',
+      input,
+    );
+    expect(alreadyResolved.error?.data?.httpStatus).toBe(409);
+    expect(reasonOf(alreadyResolved)?.startsWith('REVIEW_ALREADY_RESOLVED: ')).toBe(true);
+    expect(reasonOf(lost)?.startsWith('REVIEW_ALREADY_RESOLVED')).toBe(false);
     expect(JSON.stringify(lost.error)).not.toContain('APPROVAL_OUTCOME_NOT_WRITTEN');
     expect(JSON.stringify(unwritten.error)).not.toContain('"code":"APPROVAL');
   });
@@ -964,9 +976,22 @@ describe('the reviews operations against a real Bureau', () => {
       });
 
       const after = await call(handler, 'bureau.reviews.list', {});
-      expect(after.result).toEqual({ reviews: [], nextPageToken: null });
+      expect(after.result).toEqual({ reviews: [], nextPageToken: null, total: 0 });
       const again = await call(handler, 'bureau.reviews.resolve', { id, decision: 'approve' });
       expect(again.error?.data?.httpStatus).toBe(404);
+      // COR-2426: another decision on a review that is already resolved is told apart from any other
+      // lost race, so a client can say it is no longer waiting.
+      const other = await call(handler, 'bureau.reviews.resolve', {
+        id,
+        decision: 'reject',
+        reason: 'Too late',
+      });
+      expect(other.error?.data?.httpStatus).toBe(409);
+      expect(
+        String((other.error?.data as { reason?: string } | undefined)?.reason).startsWith(
+          'REVIEW_ALREADY_RESOLVED: ',
+        ),
+      ).toBe(true);
       const resolvedReview = await call(handler, 'bureau.reviews.get', { id });
       expect(resolvedReview.result).toMatchObject({ id, status: 'approved' });
     } finally {
@@ -1070,6 +1095,84 @@ describe('the reviews operations against a real Bureau', () => {
       expect(row?.toolResult?.outcome).toBe('success');
       expect(row?.toolResult?.content).toEqual({ charged: 500 });
       expect(charges).toEqual([500]);
+    } finally {
+      await bureau.dispose();
+    }
+  });
+
+  it('resolves a tool approval of an agent disabled meanwhile (COR-2429)', async () => {
+    const charges: number[] = [];
+    let generations = 0;
+    const toolbox = createToolbox(
+      [
+        createTool({
+          name: 'charge-card',
+          version: '1.0.0',
+          description: 'Charge a payment card',
+          input: z.object({ cents: z.number() }),
+          async execute({ cents }) {
+            charges.push(cents);
+            return { charged: cents };
+          },
+        }),
+      ],
+      {
+        approvalSecret: 'handler-approval-secret',
+        policy: {
+          beforeExecute: () => ({
+            allow: false,
+            status: 'needs_approval',
+            reason: 'Operator approval required',
+            action: { message: 'Approve charge' },
+          }),
+        },
+      },
+    ) as unknown as Toolbox;
+    const bureau = await createBureau<AgentDefinitions>({
+      assets: { storage: createMemoryAssetStorage() },
+      id: 'reviews-disabled-agent-bureau',
+      agents: {
+        default: createAgent({
+          generate: async () => {
+            generations++;
+            return generations === 1
+              ? {
+                  content: '',
+                  toolCalls: [{ id: 'call-1', name: 'charge-card', arguments: { cents: 500 } }],
+                }
+              : { content: 'Charged.', toolCalls: [] };
+          },
+          toolbox,
+          stopWhen: stopWhen.some(stopWhen.pendingApproval(), stopWhen.noToolCalls()),
+        }),
+      },
+      storage: new MemoryStorage(),
+      durable: true,
+    });
+    try {
+      const run = await bureau.tasks.start('default', 'Charge it', { principal: 'api-key:tester' });
+      await waitForCondition(
+        () => bureau.reviews.list().some((review) => review.runId === run.id),
+        'expected the tool call to surface a pending approval',
+      );
+      await bureau.agents.disable('default', { disabledBy: 'operator' });
+      const handler = createBureauHandler(bureau, { authentication });
+      const listed = await call(handler, 'bureau.reviews.list', {});
+      const [review] = (listed.result?.['reviews'] ?? []) as Array<{ id: string }>;
+
+      const resolved = await call(handler, 'bureau.reviews.resolve', {
+        id: review?.id,
+        decision: 'approve',
+      });
+
+      // What the agent had started finishes: the decision is recorded and the approved call runs
+      // once, as a file agent's parked run resumes from its snapshot. Nothing new starts on it.
+      expect(resolved.result).toMatchObject({ decision: 'approve', receipt: 'applied' });
+      expect(charges).toEqual([500]);
+      const after = await call(handler, 'bureau.reviews.list', {});
+      expect(after.result).toEqual({ reviews: [], nextPageToken: null, total: 0 });
+      expect(await rejectionOf(bureau.tasks.start('default', 'Again'))).toBeDefined();
+      expect(generations).toBe(1);
     } finally {
       await bureau.dispose();
     }
@@ -1266,6 +1369,63 @@ describe('workspace privacy for reviews', () => {
     }
   });
 
+  it('lists a workflow review with its workflow’s name and the step and message its request kept, pending and resolved (COR-2426)', async () => {
+    const opened = await openWorkspacePrivacyBureau();
+    try {
+      const host = buildBureauHandlerHost(opened.bureau, []);
+      const engine = host.reviews.durableEngine?.();
+      if (!(engine instanceof Engine)) throw new Error('Expected the real durable engine');
+      const reviewWorkflow = workflow({ name: 'release-notes' }).execute(async function* (context) {
+        return yield* context.review({
+          artifact: { text: 'Draft notes' },
+          reviewType: 'content',
+          reviewers: ['alice'],
+          step: 'Collect merged changes',
+          message: 'Approve to publish, or send it back with a note.',
+        });
+      });
+      const register: unknown = Reflect.get(engine, 'register');
+      if (typeof register !== 'function') throw new Error('Expected engine workflow registration');
+      Reflect.apply(register, engine, [reviewWorkflow]);
+      await engine.start('release-notes', null);
+      await waitForCondition(async () => {
+        const reviews = await engine.listReviews();
+        return reviews.length > 0;
+      }, 'engine review is parked');
+      const control = createOperationHandler({
+        operations: bureauReviewsOperations,
+        host,
+        authenticate: createOperationHandlerAuthenticator(
+          {
+            resolveApiKeyPrincipal: async (key) =>
+              key === API_KEY
+                ? principalFromApiKey({ subject: 'control', scopes: ['reviews:read'] })
+                : null,
+            auditSink: silent,
+          },
+          { additionalScopes: BUREAU_SCOPES },
+        ),
+      });
+      const kept = {
+        source: 'engine',
+        workflowName: 'release-notes',
+        step: 'Collect merged changes',
+        message: 'Approve to publish, or send it back with a note.',
+      };
+
+      const pending = await call(control, 'bureau.reviews.list', {});
+      expect(pending.result?.['reviews']).toEqual([expect.objectContaining(kept)]);
+
+      const [entry] = await engine.listReviews();
+      if (entry === undefined) throw new Error('Expected the engine review');
+      await engine.submitReview(entry.reviewId, { decision: 'approved', reviewer: 'alice' });
+      const resolved = await call(control, 'bureau.reviews.list', { status: 'resolved' });
+      expect(resolved.result?.['reviews']).toEqual([expect.objectContaining(kept)]);
+    } finally {
+      await opened.dispose();
+    }
+  });
+
   it('keeps list, get, and resolve owner-scoped for all six actor outcomes', async () => {
     const opened = await openWorkspacePrivacyBureau({
       agents: {
@@ -1442,7 +1602,7 @@ describe('who reaches the human wait of a bureau.run() run, through a real Burea
       expect(JSON.stringify(get.error).replaceAll(id, '<id>')).toBe(
         JSON.stringify(unknown.error).replaceAll('no-such', '<id>'),
       );
-      expect(list.result).toEqual({ reviews: [], nextPageToken: null });
+      expect(list.result).toEqual({ reviews: [], nextPageToken: null, total: 0 });
       // The refusals left the review pending and the run parked.
       expect(bureau.reviews.list().map((review) => review.id)).toEqual([id]);
       const owner = await callAs(OWNER_KEY, handler, 'bureau.reviews.resolve', {
@@ -1469,7 +1629,7 @@ describe('who reaches the human wait of a bureau.run() run, through a real Burea
         const hidden = await callAs(key, keyed, 'bureau.reviews.get', { id });
         expect(hidden.error?.data?.httpStatus).toBe(404);
         const listed = await callAs(key, keyed, 'bureau.reviews.list', {});
-        expect(listed.result).toEqual({ reviews: [], nextPageToken: null });
+        expect(listed.result).toEqual({ reviews: [], nextPageToken: null, total: 0 });
       }
       const refused = await callAs(OTHER_KEY, keyed, 'bureau.reviews.resolve', {
         id,

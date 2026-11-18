@@ -37,10 +37,9 @@
   {...withFooter ? { listFooter: archivedLink } : {}}
   {...rest}
 >
-  {#snippet header({ listToggle })}
+  {#snippet header()}
     <div class="list-detail-fixture-title-row">
       <h2>Chats</h2>
-      {@render listToggle?.()}
     </div>
     <input type="search" aria-label="Search chats" />
   {/snippet}

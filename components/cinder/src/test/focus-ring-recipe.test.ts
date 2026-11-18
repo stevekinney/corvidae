@@ -15,8 +15,8 @@ import { describe, expect, test } from 'bun:test';
 
 import { parse as parsePostcss, type Rule } from 'postcss';
 
+import { isUnderForcedColors } from '@lostgradient/component-tooling/test/focus-ring-helpers.ts';
 import { DEFAULT_CHART_FOCUS_RING_STROKE_PADDING } from '../_internal/chart/chart-focus-ring.ts';
-import { isUnderForcedColors } from './focus-ring-helpers.ts';
 
 function loadCss(relativePath: string): string {
   const fullPath = fileURLToPath(new URL(relativePath, import.meta.url));

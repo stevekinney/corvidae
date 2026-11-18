@@ -1,17 +1,4 @@
 <script lang="ts" module>
-  /**
-   * @cinder
-   * @category layout
-   * @status beta
-   * @purpose Auto-scrolling horizontal or vertical ticker that loops content continuously with reduced-motion-safe behavior.
-   * @tag marquee
-   * @tag ticker
-   * @useWhen Showing repeating announcements, partner logos, or status strips in a constrained space.
-   * @useWhen You need CSS-driven, seamless loop motion that can pause on hover/focus.
-   * @avoidWhen Users need to manually scroll and inspect static overflow content. | scroll-area
-   * @avoidWhen Information should remain fixed in place without motion emphasis.
-   * @related scroll-area, banner
-   */
   export type { MarqueeDirection, MarqueeProps } from './marquee.types.ts';
 </script>
 

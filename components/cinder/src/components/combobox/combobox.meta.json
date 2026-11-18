@@ -1,0 +1,18 @@
+{
+  "$schema": "../../../../../internal/component-tooling/src/schemas/component-meta.schema.json",
+  "category": "form",
+  "status": "stable",
+  "purpose": "Single-select input that filters a fixed option list as the user types, combining free-text search with constrained values.",
+  "tags": ["form", "autocomplete"],
+  "useWhen": [
+    "Choosing one value from a long list where typing is faster than scrolling.",
+    "Letting users narrow options by substring while still requiring a constrained selection."
+  ],
+  "avoidWhen": [
+    { "reason": "Picking from a short fixed list with no need to filter — use select instead." },
+    {
+      "reason": "Querying remote data or accepting free-text submissions — use search-field instead."
+    }
+  ],
+  "related": ["select", "search-field", "dropdown"]
+}

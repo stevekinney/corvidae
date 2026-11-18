@@ -244,6 +244,7 @@ describe('dependencyClosure', () => {
       'components/chat',
       'components/cinder',
       'components/editor',
+      'internal/component-tooling',
       'internal/typescript',
       'packages/armorer',
       'packages/conversationalist',

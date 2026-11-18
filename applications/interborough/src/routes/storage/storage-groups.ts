@@ -23,6 +23,7 @@ export const GROUP_NAMES: Readonly<Record<string, string>> = Object.freeze({
   'audit:': 'Audit log',
   'audit-dedupe:': 'Audit de-duplication',
   'audit-sequence:': 'Audit order',
+  'bureau-agent-disabled:': 'Disabled agents',
   'bureau-agent-override-version:': 'Agent overrides',
   'bureau-catalog-run:': 'Runs',
   'bureau-goal:': 'Goals',

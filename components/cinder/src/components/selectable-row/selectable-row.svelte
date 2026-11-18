@@ -1,23 +1,4 @@
 <script lang="ts" module>
-  /**
-   * @cinder
-   * @category action
-   * @status beta
-   * @purpose Full-width row with a native button or link primary action and independent sibling trailing actions.
-   * @tag row
-   * @tag list
-   * @tag selection
-   * @tag navigation
-   * @useWhen The main row body must activate as one native action while rename, menu, or external-link controls remain independently focusable.
-   * @useWhen A rich row needs leading, title, description, and metadata regions plus multiple trailing controls.
-   * @avoidWhen The entire row is one button with no interactive trailing content. | action-row
-   * @avoidWhen Only the title links and the rest of the row is static record content. | stacked-list-item
-   * @related action-row, stacked-list-item, button
-   * @a11yPattern Native button or link
-   * @keyboardShortcut Enter | Activates the primary button or link.
-   * @keyboardShortcut Space | Activates the primary action when it is a button.
-   * @a11yNote The primary action and trailing controls are siblings, so trailing activation never bubbles through the primary action.
-   */
   export type {
     SelectableRowCurrentValue,
     SelectableRowDensity,

@@ -25,6 +25,7 @@ const cases = [
   { operation: 'bureau.hooks.get', parameters: {}, deploymentOnly: false },
   { operation: 'bureau.hooks.list', parameters: {}, deploymentOnly: false },
   { operation: 'bureau.hooks.test', parameters: {}, deploymentOnly: false },
+  { operation: 'bureau.hooks.duplicate', parameters: {}, deploymentOnly: false },
   { operation: 'bureau.hooks.secret.replace', parameters: {}, deploymentOnly: true },
   { operation: 'bureau.hooks.deliveries', parameters: {}, deploymentOnly: true },
   {

@@ -33,7 +33,7 @@ async function makeInspectable(page: Page): Promise<void> {
       // shell keeps open, would answer it with a 400.
       if (forceSnapshot && headers.has('Last-Event-ID') && url.includes('/bureau/ag-ui/threads/'))
         headers.set('Last-Event-ID', 'agui-live-v1.invalid');
-      const bureau = url.endsWith('/bureau/jsonrpc');
+      const bureau = url.endsWith('/jsonrpc');
       if (bureau) {
         bureauInFlight += 1;
         lastBureauActivity = Date.now();

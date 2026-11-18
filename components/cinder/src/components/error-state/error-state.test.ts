@@ -1,8 +1,8 @@
 /// <reference lib="dom" />
 import { afterEach, describe, expect, mock, test } from 'bun:test';
 
+import { declarationsFor } from '@lostgradient/component-tooling/test/css.ts';
 import { setupHappyDom } from '@lostgradient/testing';
-import { declarationsFor } from '../../test/css.ts';
 
 // setupHappyDom() MUST run before any `@testing-library/svelte` import. testing-library
 // reads `globalThis.document` / `window` at module-init, so register happy-dom's globals first.
@@ -343,6 +343,16 @@ describe('ErrorState neutral tone', () => {
 });
 
 describe('ErrorState row variant', () => {
+  test('a row whose title is its whole sentence passes an empty description and draws no empty line', () => {
+    const { container } = render(ErrorState, {
+      props: { variant: 'row', title: 'Couldn’t load the saved secrets.', description: '' },
+    });
+    expect(container.querySelector('.cinder-error-state-title')?.textContent?.trim()).toBe(
+      'Couldn’t load the saved secrets.',
+    );
+    expect(container.querySelector('.cinder-error-state-description')).toBeNull();
+  });
+
   test('is one line: a small glyph, the title and description as one sentence, a secondary retry', async () => {
     const onRetry = mock();
     const { container, getByRole } = render(ErrorState, {

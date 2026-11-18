@@ -20,6 +20,7 @@ import {
 } from 'bun:test';
 import { Window } from 'happy-dom';
 
+import { envelopeChunk } from '../../lib/live-source/event-stream-hub.test-support.ts';
 import { router } from '../../lib/router.svelte.ts';
 import Harness from './home-activity.test-harness.svelte';
 import {
@@ -344,9 +345,10 @@ describe('Agent activity when its feed cannot be read', () => {
     await fireEvent.click(retry);
     await waitUntil(() => opened.world.hub.opened('bureau') === 1);
     expect(failure()).toBeNull();
-    // The feed answers, which starts the source's attempt count again at 0, and then drops
-    // before its replay ends: the attempt is 1 again, as it was when Try again was pressed.
-    opened.world.hub.write('bureau', 'event: ping\ndata: {"emittedAtMs":0}\n\n');
+    // The feed delivers an event, which starts the source's attempt count again at 0 (a
+    // heartbeat or an error frame does not), and then drops before its replay ends: the attempt is
+    // 1 again, as it was when Try again was pressed.
+    opened.world.hub.write('bureau', envelopeChunk({ kind: 'run.settled', cursor: 'a:1' }));
     await waitUntil(() => opened.world.bureauEvents.reconnectAttempt === 0);
     opened.world.hub.end('bureau');
     await waitUntil(() => opened.world.bureauEvents.reconnectAttempt === 1);

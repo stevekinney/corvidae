@@ -1,19 +1,4 @@
 <script lang="ts" module>
-  /**
-   * @cinder
-   * @category data-display
-   * @status beta
-   * @purpose Read-only view of a JSON Schema: one row per field with its label, a coloured type mark, a required dot, the description and facts, nested fields folding.
-   * @tag schema
-   * @tag json-schema
-   * @tag read-only
-   * @tag data-display
-   * @useWhen Showing the shape of a workflow input or output, a tool input, or a signal or update payload without a raw JSON dump.
-   * @useWhen Telling the reader which fields are required and what type each one takes.
-   * @avoidWhen The schema must be edited. | json-schema-editor
-   * @avoidWhen You are showing a value rather than the shape it must have. | payload-inspector
-   * @related json-schema-editor, payload-inspector, json-viewer, description-list
-   */
   export type { SchemaViewProps } from './schema-view.types.ts';
 </script>
 

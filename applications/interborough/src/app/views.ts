@@ -43,10 +43,12 @@ export type ViewStateName = (typeof VIEW_STATES)[number];
  * `list-detail` is a list with the open item beside it, `table` is a page of rows read across,
  * `editor` is an editor with a side panel, `overview` is cards read across the page in columns
  * (Home), `form` is a form filled in from top to bottom, and `reading` is prose and cards read
- * down the page.
+ * down the page. `panes` is a page that is nothing but a list and its detail, each pane carrying
+ * its own inset (the chats): the outlet pads it not at all.
  */
 export const PAGE_KINDS = [
   'list-detail',
+  'panes',
   'table',
   'editor',
   'overview',
@@ -58,9 +60,11 @@ export type PageKind = (typeof PAGE_KINDS)[number];
 
 /**
  * How wide a page is: `reading` centres it in Cinder's 760px reading column, and `full` gives it
- * the whole width of the outlet. The shell writes it to the outlet as `data-width`.
+ * the whole width of the outlet, and `panes` the whole width and height with no outlet padding. The
+ * shell writes it to the outlet as `data-width`, from the route, so it is on the outlet from the
+ * first frame, before the route's code is loaded and before any pane measures its container.
  */
-export const VIEW_WIDTHS = ['reading', 'full'] as const;
+export const VIEW_WIDTHS = ['reading', 'full', 'panes'] as const;
 
 export type ViewWidth = (typeof VIEW_WIDTHS)[number];
 
@@ -69,6 +73,7 @@ export type ViewWidth = (typeof VIEW_WIDTHS)[number];
  * need the room, and a form or prose keeps the reading width.
  */
 export function pageWidth(kind: PageKind): ViewWidth {
+  if (kind === 'panes') return 'panes';
   return kind === 'form' || kind === 'reading' ? 'reading' : 'full';
 }
 
@@ -192,8 +197,10 @@ export const VIEWS: Readonly<Record<ViewName, ViewDefinition>> = {
   },
   // What is waiting on the caller. It holds no console scope: the console drops the Bureau's, and
   // the Bureau answers the caller its own reviews. The page shows its own empty state, because
-  // the engine's reviews are listed beside the Bureau's and the probe asks only the Bureau.
-  reviews: { scopes: [], canBeEmpty: false },
+  // the engine's reviews are listed beside the Bureau's and the probe asks only the Bureau. It draws
+  // its own loading too: the header, the segments with a dash for each count, the J and K hint and
+  // three placeholder rows, at once (row 26a).
+  reviews: { scopes: [], canBeEmpty: false, pageOwnsLoadingOn: ['/reviews'] },
   // The Health tab keeps its heading, its tab bar and its Live indicator in every state, so the page
   // draws its own loading, empty and failed states under them (`routes/workers/workers-states.svelte`).
   workers: { scopes: ['system:read'], canBeEmpty: false, ownsStates: true },

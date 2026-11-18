@@ -1,0 +1,15 @@
+{
+  "$schema": "../../../../../internal/component-tooling/src/schemas/component-meta.schema.json",
+  "category": "data-display",
+  "status": "stable",
+  "purpose": "Profile graphic that renders a user image with automatic initials fallback when the source is missing or fails to load.",
+  "tags": ["identity", "image"],
+  "useWhen": [
+    "Representing a person or account next to their name or activity.",
+    "Displaying initials when no avatar image is available."
+  ],
+  "avoidWhen": [
+    { "reason": "Showing a small status or count indicator — use badge or status-dot instead." }
+  ],
+  "related": ["badge", "status-dot", "image"]
+}

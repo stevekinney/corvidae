@@ -90,7 +90,7 @@ async function sendFollowUp(page: Page, text: string): Promise<void> {
   await expect(upNext).toContainText(text);
   const answered = page.waitForResponse(
     (response) =>
-      response.url().endsWith('/bureau/jsonrpc') &&
+      response.url().endsWith('/jsonrpc') &&
       (response.request().postData() ?? '').includes('"bureau.contexts.input"'),
   );
   await upNext.getByRole('button', { name: 'Send now instead' }).click();

@@ -207,10 +207,11 @@ describe('createCatalogDispatcher — startChildRun', () => {
     expect(runAttribution.size).toBe(0);
   });
 
-  it('refuses to start a child for an agent the catalog does not have', () => {
+  it('refuses to start a child for an agent the catalog does not have', async () => {
     const dispatcher = createDispatcher(false);
 
-    expect(dispatcher.planChildRun('nobody')).toBeUndefined();
+    // The plan reads the gate from the store first (COR-2429), so it is awaited.
+    expect(await dispatcher.planChildRun('nobody')).toBeUndefined();
     expect(() => dispatcher.startChildRun({ ...start, agentName: 'nobody' })).toThrow(
       expect.objectContaining({ code: 'NOT_FOUND' }),
     );

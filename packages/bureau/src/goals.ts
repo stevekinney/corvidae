@@ -79,10 +79,13 @@ export interface BureauGoalsDependencies extends GoalControlDependencies {
   readonly runtime: Pick<RuntimeServices, 'identifiers'>;
   /** See `BureauOptions.resolveFreshAttemptSource`. */
   readonly resolveFreshAttemptSource: FreshAttemptSourceResolver | undefined;
-  /** `undefined` when the catalog has no agent by this name. */
+  /** `undefined` when the catalog has no agent by this name, or a person disabled it (COR-2429). */
   readonly planAgent: (
     agentName: string,
-  ) => { readonly durable: boolean; readonly agentVersion: string } | undefined;
+  ) =>
+    | { readonly durable: boolean; readonly agentVersion: string }
+    | undefined
+    | Promise<{ readonly durable: boolean; readonly agentVersion: string } | undefined>;
 }
 
 const NO_ENGINE_TO_READ_RUN =
@@ -388,7 +391,7 @@ export function createBureauGoals<TName extends string = string>(
     if (typeof request.agentName !== 'string') {
       return rejected('invalid-configuration', 'The goal agent name must be text.');
     }
-    const plan = planAgent(request.agentName);
+    const plan = await planAgent(request.agentName);
     if (plan === undefined) {
       return rejected('agent-not-found', `Unknown agent "${request.agentName}".`);
     }

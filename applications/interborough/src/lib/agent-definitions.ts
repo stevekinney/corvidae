@@ -1,6 +1,6 @@
 /**
  * The browser's view of the Bureau's agent definitions: the operations `bureau.agents.definitions.*`
- * and `bureau.agents.catalog` (COR-1526), parsed at the boundary, and the faults a write can answer
+ * and `bureau.agents.catalog` (COR-1526), through the generated client, and the faults a write can answer
  * with, sorted into the few the editor tells apart.
  *
  * An agent is a Markdown file, and its identifier is the filename without `.md`. Every write names
@@ -10,7 +10,8 @@
 import { HttpClientError } from '@lostgradient/weft';
 import { z } from 'zod';
 
-import { callBureau, type Fetcher } from './bureau-client.ts';
+import { bureauClient, type BureauInput, type BureauOutput } from './bureau-api.ts';
+import type { Fetcher } from './bureau-client.ts';
 
 /**
  * What an agent's identifier must look like, and the longest it may be. The Bureau owns both rules
@@ -214,8 +215,12 @@ const unavailableSchema = z
 const detailSchema = z.object({
   id: z.string(),
   source: z.enum(['code', 'file']),
-  /** `unavailable` is a code agent of a disabled plugin: it can be read and duplicated, never run. */
-  state: z.enum(['ready', 'invalid', 'unavailable']),
+  /**
+   * `unavailable` is a code agent of a disabled plugin: it can be read and duplicated, never run.
+   * `disabled` is an agent a person disabled (COR-2429): it can be read, and runs nothing until it
+   * is enabled again.
+   */
+  state: z.enum(['ready', 'invalid', 'unavailable', 'disabled']),
   unavailable: unavailableSchema,
   name: z.string(),
   description: z.string().nullable(),
@@ -363,12 +368,11 @@ const overridesStateSchema = z.object({
 /** A code agent's overrides, the version they were saved as, their hash and the agent's own tools. */
 export type AgentOverridesState = z.infer<typeof overridesStateSchema>;
 
-const revisionsSchema = z.object({
-  revisions: z.array(z.object({ hash: z.string(), firstRunAt: z.string(), lastRunAt: z.string() })),
-});
-
 /** A version of the agent's definition that has run. */
-export type AgentRevision = z.infer<typeof revisionsSchema>['revisions'][number];
+export type AgentRevision = Pick<
+  BureauOutput<'bureau.agents.definitions.revisions'>['revisions'][number],
+  'hash' | 'firstRunAt' | 'lastRunAt'
+>;
 
 const versionsSchema = z.object({
   versions: z.array(
@@ -382,6 +386,12 @@ const versionsSchema = z.object({
       /** The overrides a code agent's version holds (COR-2229); `null` for a file agent's. */
       overrides: overridesSchema.nullable().default(null),
       changedKeys: z.array(z.string()),
+      /**
+       * What the version changed, in words the Bureau read from its content (COR-2429): `Created`,
+       * or each changed part, such as `Instructions: added “Refunds over $25 need approval.”`.
+       * `null` from a Bureau that predates it, where the page words the change itself.
+       */
+      summary: z.string().nullable().default(null),
     }),
   ),
 });
@@ -463,10 +473,8 @@ const catalogSchema = z.object({
 /** The models and tools an agent may name, as `bureau.agents.catalog` lists them. */
 export type AgentCatalog = z.infer<typeof catalogSchema>;
 
-const writeResultSchema = z.object({ id: z.string(), hash: z.string() });
-
 /** What a write answers: the agent's identifier and the hash of the file now on disk. */
-export type AgentWriteResult = z.infer<typeof writeResultSchema>;
+export type AgentWriteResult = BureauOutput<'bureau.agents.definitions.create'>;
 
 /**
  * What a caller supplies to create or update an agent. An optional key is left out, never sent as
@@ -536,7 +544,7 @@ type Options = { readonly signal?: AbortSignal; readonly fetch?: Fetcher };
 
 /** One agent by identifier. A code-defined agent answers too, with `source: 'code'` and no hash. */
 export async function getAgentDefinition(id: string, options?: Options): Promise<AgentDetail> {
-  return detailSchema.parse(await callBureau('bureau.agents.definitions.get', { id }, options));
+  return detailSchema.parse(await bureauClient['bureau.agents.definitions.get']({ id }, options));
 }
 
 /**
@@ -546,10 +554,8 @@ export async function getAgentDefinition(id: string, options?: Options): Promise
  * identifier that is no code agent the catalog runs is a `NotFound` fault.
  */
 export async function getAgentOverrideModel(id: string, options?: Options): Promise<string | null> {
-  const answer = z
-    .object({ overrides: z.object({ model: z.string().nullable().default(null) }) })
-    .parse(await callBureau('bureau.agents.overrides.get', { id }, options));
-  return answer.overrides.model;
+  const answer = await bureauClient['bureau.agents.overrides.get']({ id }, options);
+  return answer.overrides.model ?? null;
 }
 
 /**
@@ -561,18 +567,12 @@ export async function getAgentOverrides(
   options?: Options,
 ): Promise<AgentOverridesState> {
   return overridesStateSchema.parse(
-    await callBureau('bureau.agents.overrides.get', { id }, options),
+    await bureauClient['bureau.agents.overrides.get']({ id }, options),
   );
 }
 
-const overridesWriteSchema = z.object({
-  id: z.string(),
-  hash: z.string(),
-  version: z.number().int().nullable().default(null),
-});
-
 /** What a save of overrides answers: the hash now in force and the version it made. */
-export type AgentOverridesWriteResult = z.infer<typeof overridesWriteSchema>;
+export type AgentOverridesWriteResult = BureauOutput<'bureau.agents.overrides.update'>;
 
 /**
  * Saves `overrides` as the next version of a code agent (`bureau.agents.overrides.update`), if the
@@ -585,8 +585,15 @@ export async function updateAgentOverrides(
   overrides: AgentOverridesInput,
   options?: Options,
 ): Promise<AgentOverridesWriteResult> {
-  return overridesWriteSchema.parse(
-    await callBureau('bureau.agents.overrides.update', { id, expectedHash, overrides }, options),
+  return bureauClient['bureau.agents.overrides.update'](
+    // The Bureau validates the overrides whatever their static type (an approval's wire words).
+    {
+      id,
+      expectedHash,
+      // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+      overrides: overrides as BureauInput<'bureau.agents.overrides.update'>['overrides'],
+    },
+    options,
   );
 }
 
@@ -595,37 +602,30 @@ export async function listAgentRevisions(
   id: string,
   options?: Options,
 ): Promise<readonly AgentRevision[]> {
-  const result = revisionsSchema.parse(
-    await callBureau('bureau.agents.definitions.revisions', { id }, options),
-  );
-  return result.revisions;
+  const answer = await bureauClient['bureau.agents.definitions.revisions']({ id }, options);
+  return answer.revisions;
 }
-
-const referencesSchema = z.object({
-  schedules: z.array(z.object({ id: z.string(), name: z.string().nullable() })),
-  workflows: z.array(z.object({ id: z.string(), title: z.string().nullable() })),
-  hooks: z.array(z.object({ id: z.string(), name: z.string().nullable() })),
-});
 
 /**
  * What finds an agent by its identifier (`bureau.agents.references`): the schedules that run it, the
  * workflows with a step that calls it, and the hooks scoped to it, each with its name or title
  * (`null` when it has none). Each stops finding the agent once it is deleted.
  */
-export type AgentReferences = z.infer<typeof referencesSchema>;
+export type AgentReferences = Pick<
+  BureauOutput<'bureau.agents.references'>,
+  'schedules' | 'workflows' | 'hooks'
+>;
 
 /** What finds the agent by its identifier, and so stops finding it once it is deleted. */
 export async function listAgentReferences(id: string, options?: Options): Promise<AgentReferences> {
-  return referencesSchema.parse(
-    await callBureau('bureau.agents.references', { agentName: id }, options),
-  );
+  return bureauClient['bureau.agents.references']({ agentName: id }, options);
 }
 
 const listingSchema = z.object({
   id: z.string(),
   source: z.enum(['code', 'file']),
-  /** `unavailable` is a code agent of a disabled plugin: it can be read and duplicated, never run. */
-  state: z.enum(['ready', 'invalid', 'unavailable']),
+  /** `unavailable` is a code agent of a disabled plugin, `disabled` an agent a person disabled (COR-2429). */
+  state: z.enum(['ready', 'invalid', 'unavailable', 'disabled']),
   unavailable: unavailableSchema,
   name: z.string(),
   description: z.string().nullable(),
@@ -636,11 +636,6 @@ const listingSchema = z.object({
 
 /** One entry of `bureau.agents.definitions.list`, which holds the files the Bureau cannot use. */
 export type AgentListing = z.infer<typeof listingSchema>;
-
-const listingPageSchema = z.object({
-  agents: z.array(listingSchema),
-  nextOffset: z.number().nullable(),
-});
 
 /** The largest page `bureau.agents.definitions.list` answers. */
 const LISTING_PAGE_SIZE = 100;
@@ -654,14 +649,10 @@ export async function listAgentDefinitions(options?: Options): Promise<readonly 
   const listings: AgentListing[] = [];
   let offset: number | null = 0;
   while (offset !== null) {
-    const page: z.infer<typeof listingPageSchema> = listingPageSchema.parse(
-      await callBureau(
-        'bureau.agents.definitions.list',
-        { limit: LISTING_PAGE_SIZE, offset },
-        options,
-      ),
-    );
-    listings.push(...page.agents);
+    const page: BureauOutput<'bureau.agents.definitions.list'> = await bureauClient[
+      'bureau.agents.definitions.list'
+    ]({ limit: LISTING_PAGE_SIZE, offset }, options);
+    listings.push(...page.agents.map((agent) => listingSchema.parse(agent)));
     offset = page.nextOffset;
   }
   return listings;
@@ -686,7 +677,19 @@ export function hasAvailableModel(catalog: {
 
 /** The models and tools an agent may name. */
 export async function getAgentCatalog(options?: Options): Promise<AgentCatalog> {
-  return catalogSchema.parse(await callBureau('bureau.agents.catalog', {}, options));
+  return catalogSchema.parse(await bureauClient['bureau.agents.catalog']({}, options));
+}
+
+/**
+ * The definition as the operations take it. The editor's own type keeps a `card` entry's unknown
+ * keys (a save sends them back unchanged), which the server's input type does not name; the Bureau
+ * validates the definition whatever its static type.
+ */
+function wireDefinition(
+  definition: AgentDefinitionInput,
+): BureauInput<'bureau.agents.definitions.create'>['definition'] {
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+  return definition as BureauInput<'bureau.agents.definitions.create'>['definition'];
 }
 
 /** Writes a new agent file. A taken identifier is a `Conflict` fault. */
@@ -695,8 +698,9 @@ export async function createAgent(
   definition: AgentDefinitionInput,
   options?: Options,
 ): Promise<AgentWriteResult> {
-  return writeResultSchema.parse(
-    await callBureau('bureau.agents.definitions.create', { id, definition }, options),
+  return bureauClient['bureau.agents.definitions.create'](
+    { id, definition: wireDefinition(definition) },
+    options,
   );
 }
 
@@ -707,8 +711,9 @@ export async function updateAgent(
   definition: AgentDefinitionInput,
   options?: Options,
 ): Promise<AgentWriteResult> {
-  return writeResultSchema.parse(
-    await callBureau('bureau.agents.definitions.update', { id, expectedHash, definition }, options),
+  return bureauClient['bureau.agents.definitions.update'](
+    { id, expectedHash, definition: wireDefinition(definition) },
+    options,
   );
 }
 
@@ -717,19 +722,11 @@ export async function updateAgent(
  * tools unversioned. A name the owner already uses is a `Conflict` (`agent-file-exists`).
  */
 export async function duplicateAgent(id: string, options?: Options): Promise<AgentWriteResult> {
-  return writeResultSchema.parse(
-    await callBureau('bureau.agents.definitions.duplicate', { id }, options),
-  );
+  return bureauClient['bureau.agents.definitions.duplicate']({ id }, options);
 }
 
-const triedAgentSchema = z.object({
-  contextId: z.string(),
-  agentName: z.string(),
-  taskId: z.string(),
-});
-
 /** What `bureau.agents.try` started: the throwaway chat, and the name its agent runs under. */
-export type TriedAgent = z.infer<typeof triedAgentSchema>;
+export type TriedAgent = BureauOutput<'bureau.agents.try'>;
 
 /**
  * Starts a throwaway chat with a definition that is not saved (`bureau.agents.try`, COR-1911) and
@@ -742,8 +739,9 @@ export async function tryAgent(
   message: string,
   options?: Options,
 ): Promise<TriedAgent> {
-  return triedAgentSchema.parse(
-    await callBureau('bureau.agents.try', { definition, message }, options),
+  return bureauClient['bureau.agents.try'](
+    { definition: wireDefinition(definition), message },
+    options,
   );
 }
 
@@ -753,9 +751,26 @@ export async function deleteAgent(
   expectedHash: string,
   options?: Options,
 ): Promise<AgentWriteResult> {
-  return writeResultSchema.parse(
-    await callBureau('bureau.agents.definitions.delete', { id, expectedHash }, options),
-  );
+  return bureauClient['bureau.agents.definitions.delete']({ id, expectedHash }, options);
+}
+
+/**
+ * Disables the agent (`bureau.agents.disable`, COR-2429): it stays listed as `disabled` and can be
+ * read, and nothing starts on it until {@link enableAgent}.
+ */
+export async function disableAgent(
+  id: string,
+  options?: Options,
+): Promise<BureauOutput<'bureau.agents.disable'>> {
+  return bureauClient['bureau.agents.disable']({ id }, options);
+}
+
+/** Enables an agent {@link disableAgent} disabled (`bureau.agents.enable`, COR-2429). */
+export async function enableAgent(
+  id: string,
+  options?: Options,
+): Promise<BureauOutput<'bureau.agents.enable'>> {
+  return bureauClient['bureau.agents.enable']({ id }, options);
 }
 
 /** The saved versions of the agent, newest first, whether or not each ran (`bureau.agents.versions.list`). */
@@ -763,7 +778,7 @@ export async function listAgentVersions(
   id: string,
   options?: Options,
 ): Promise<readonly AgentVersion[]> {
-  return versionsSchema.parse(await callBureau('bureau.agents.versions.list', { id }, options))
+  return versionsSchema.parse(await bureauClient['bureau.agents.versions.list']({ id }, options))
     .versions;
 }
 
@@ -778,11 +793,7 @@ export async function restoreAgentVersion(
   expectedHash: string,
   options?: Options,
 ): Promise<AgentWriteResult> {
-  return writeResultSchema
-    .extend({ revision: z.number().int().nullable() })
-    .parse(
-      await callBureau('bureau.agents.versions.restore', { id, revision, expectedHash }, options),
-    );
+  return bureauClient['bureau.agents.versions.restore']({ id, revision, expectedHash }, options);
 }
 
 /** Why an identifier cannot be used for a new agent. */

@@ -2,8 +2,8 @@
 import { afterEach, describe, expect, jest, test } from 'bun:test';
 import { tick } from 'svelte';
 
+import { captureZeroDelayTimers } from '@lostgradient/component-tooling/test/zero-delay-timers.ts';
 import { expectNoLeakedTimers, setupHappyDom, trackTimers } from '@lostgradient/testing';
-import { captureZeroDelayTimers } from '../test/zero-delay-timers.ts';
 
 setupHappyDom();
 

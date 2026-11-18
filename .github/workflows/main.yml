@@ -43,6 +43,9 @@ jobs:
           bun-version-file: package.json
       - run: bun --version
       - run: bun install --frozen-lockfile
+      # Component packages' derived metadata (schemas, variables, manifests) is generated, not
+      # committed: the steps below run tests and servers outside Turborepo, so make it first.
+      - run: bunx turbo run metadata
       - run: bun run lint:root
       - run: bun run typecheck:root
         if: ${{ !cancelled() }}

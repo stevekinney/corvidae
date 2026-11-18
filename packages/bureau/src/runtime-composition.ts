@@ -908,6 +908,8 @@ async function buildRuntimeComposition(
         definitionRevision: record.definitionRevision,
         // COR-2230 — the pin the run started with; a record from before it holds neither.
         ...pinOf(record.agentPluginVersion, record.agentOverrideHash),
+        // COR-2429 — the run's durable workflow, which dispatch makes only after asking the gate.
+        startedEvidence: { kind: 'gated-durable-run', runId },
       },
     );
     if (resolution.status === 'missing-agent') {

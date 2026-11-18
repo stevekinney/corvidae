@@ -4358,7 +4358,7 @@
       }
     },
     {
-      "description": "Answers one open wait of a task as the authenticated caller. `answer` (text, or a list of parts joined with a newline) answers a human-input wait; `decision` (`approve`, `deny`, or `reject`, which requires a `reason`) decides an approval or a human wait. `signalName` or `callId` says which wait when several are open; with neither, exactly one must be. `messageId` is the idempotency key: an exact retry returns the original receipt, and the same `messageId` with a different command is a `Conflict`. The task’s owner answers anything; a caller holding `bureau.tasks:write` answers human-input waits only, and another owner’s approval answers as a missing task. The `receipt` is `applied` or `superseded` (the approval was gated again and the tool did not run).",
+      "description": "Answers one open wait of a task as the authenticated caller. `answer` (text, or a list of parts joined with a newline) answers a human-input wait; `decision` (`approve`, `deny`, or `reject`, which requires a `reason`) decides an approval or a human wait. `signalName` or `callId` says which wait when several are open; with neither, exactly one must be. `messageId` is the idempotency key: an exact retry returns the original receipt, and the same `messageId` with a different command is a `Conflict`. The task’s owner answers anything; a caller holding `bureau.tasks:write` answers human-input waits only, and another owner’s approval answers as a missing task. The `receipt` is `applied` or `superseded` (the approval was gated again and the tool did not run). An answer that names, by `signalName`, a question the task asked and that was already decided is a `Conflict` whose `reason` starts `REVIEW_ALREADY_RESOLVED:`, as `bureau.reviews.resolve` answers a review already resolved; a `signalName` the task never asked is a plain `Conflict`.",
       "errors": [
         {
           "$ref": "#/components/errors/Unauthorized"
@@ -11196,7 +11196,8 @@
               "enum": [
                 "ready",
                 "invalid",
-                "unavailable"
+                "unavailable",
+                "disabled"
               ],
               "type": "string"
             },
@@ -11434,7 +11435,8 @@
                     "enum": [
                       "ready",
                       "invalid",
-                      "unavailable"
+                      "unavailable",
+                      "disabled"
                     ],
                     "type": "string"
                   },
@@ -12510,7 +12512,7 @@
       }
     },
     {
-      "description": "Lists the versions of the agent’s definition, newest first, each with its `revision`, the `hash` it was saved at (the file’s hash, or for an agent with references the identity hash described below, which is not the `expectedHash` a write takes), when it was saved (`savedAt`), who saved it (`savedBy`, or `null` for an edit made to the file directly), the whole `definition`, the `referenceDigests` of the reference documents it read (`null` without references; for an agent that has them `hash` is the identity hash that folds the digests in, and an edit to a document alone gives `changedKeys` `[\"references\"]`), and the `changedKeys` that differ from the version before it (a change to the instructions alone gives `[\"instructions\"]`). Every save and every direct edit is one version, whether or not the agent ran, and a version outlives the runs that used it. Bureau keeps the newest 50 and any older version a retained run still references. A file agent’s version has its `definition` and `overrides: null`. A code agent the catalog runs (a built-in agent the host defines, or the agent of a running plugin) has a version for each save of its overrides (`bureau.agents.overrides.update`, COR-2009, COR-2228), numbered from 1, with `definition: null`, its `overrides` (each key `null` when not overridden), `hash` the hash of those overrides, `referenceDigests: null`, and the override keys that changed in `changedKeys`; one nobody changed has none, and the newest 50 are kept. The agent of a plugin that is not running has none. `bureau.agents.definitions.revisions` is the history of the runs, not of the saves. Requires `bureau.agents:read` unless the caller owns the deployment’s agents; anyone else, and an identifier with neither an agent nor a stored version, is answered `NotFound`; a deleted agent still lists the versions it kept.",
+      "description": "Lists the versions of the agent’s definition, newest first, each with its `revision`, the `hash` it was saved at (the file’s hash, or for an agent with references the identity hash described below, which is not the `expectedHash` a write takes), when it was saved (`savedAt`), who saved it (`savedBy`, or `null` for an edit made to the file directly), the whole `definition`, the `referenceDigests` of the reference documents it read (`null` without references; for an agent that has them `hash` is the identity hash that folds the digests in, and an edit to a document alone gives `changedKeys` `[\"references\"]`), and the `changedKeys` that differ from the version before it (a change to the instructions alone gives `[\"instructions\"]`), with `summary`, what the version changed in words read from its content and the version before it (`Created` for a first version, `Saved with no change`, or each changed key joined by semicolons, such as `Instructions: added “Refunds over $25 need approval.”; Tools: added issue-refund`; a key whose earlier version is no longer kept says only that it changed). Every save and every direct edit is one version, whether or not the agent ran, and a version outlives the runs that used it. Bureau keeps the newest 50 and any older version a retained run still references. A file agent’s version has its `definition` and `overrides: null`. A code agent the catalog runs (a built-in agent the host defines, or the agent of a running plugin) has a version for each save of its overrides (`bureau.agents.overrides.update`, COR-2009, COR-2228), numbered from 1, with `definition: null`, its `overrides` (each key `null` when not overridden), `hash` the hash of those overrides, `referenceDigests: null`, and the override keys that changed in `changedKeys`; one nobody changed has none, and the newest 50 are kept. The agent of a plugin that is not running has none. `bureau.agents.definitions.revisions` is the history of the runs, not of the saves. Requires `bureau.agents:read` unless the caller owns the deployment’s agents; anyone else, and an identifier with neither an agent nor a stored version, is answered `NotFound`; a deleted agent still lists the versions it kept.",
       "errors": [
         {
           "$ref": "#/components/errors/Unauthorized"
@@ -13268,6 +13270,9 @@
                       "string",
                       "null"
                     ]
+                  },
+                  "summary": {
+                    "type": "string"
                   }
                 },
                 "required": [
@@ -13279,7 +13284,8 @@
                   "definition",
                   "overrides",
                   "referenceDigests",
-                  "changedKeys"
+                  "changedKeys",
+                  "summary"
                 ],
                 "type": "object"
               },
@@ -15294,6 +15300,162 @@
           "id",
           "expectedHash",
           "overrides"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "description": "Disables the agent `id` (a built-in agent the host defines, the agent of a running plugin, `plugin:name`, or an agent file) durably, without deleting anything, and returns `disabled: true`. A disabled agent is listed with state `disabled` by `bureau.agents.definitions.list` and `.get`, and can still be read: its definition, versions, overrides, chats and memory. No new chat, run, schedule, workflow step or hook can start on it, because every lookup of an agent by name consults the one gate this operation writes: `bureau.agents.list` leaves it out, a run that names it is refused as an unknown agent, and it opts into no A2A. `bureau.agents.enable` brings it back as it was. Disabling an agent that is already disabled changes nothing. The change is appended to the audit trail as `agent.disabled`. An identifier that is no agent, and the agent of a disabled plugin (state `unavailable`, which runs nothing already), is `NotFound`. Requires `bureau.agents:write` unless the caller owns the deployment’s agents; anyone else is answered `NotFound`.",
+      "errors": [
+        {
+          "$ref": "#/components/errors/Unauthorized"
+        },
+        {
+          "$ref": "#/components/errors/Forbidden"
+        },
+        {
+          "$ref": "#/components/errors/InvalidParams"
+        },
+        {
+          "$ref": "#/components/errors/EngineFailure"
+        },
+        {
+          "$ref": "#/components/errors/NotFound"
+        }
+      ],
+      "name": "bureau.agents.disable",
+      "paramStructure": "by-name",
+      "params": [
+        {
+          "name": "id",
+          "required": true,
+          "schema": {
+            "description": "The identifier of the agent: a built-in agent, a plugin’s, or an agent file.",
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "required": true,
+        "schema": {
+          "additionalProperties": false,
+          "properties": {
+            "disabled": {
+              "type": "boolean"
+            },
+            "id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "disabled"
+          ],
+          "type": "object"
+        }
+      },
+      "summary": "Disable an agent until it is enabled again",
+      "tags": [
+        {
+          "name": "Agents"
+        }
+      ],
+      "x-weft-access": {
+        "kind": "authenticated"
+      },
+      "x-weft-paramsSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "description": "The identifier of the agent: a built-in agent, a plugin’s, or an agent file.",
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "description": "Enables the agent `id` that `bureau.agents.disable` disabled, so chats, runs, schedules, workflow steps and hooks find it again, and returns `disabled: false`. Enabling an agent that is not disabled changes nothing. The change is appended to the audit trail as `agent.enabled`. An identifier that is no agent is `NotFound`. Requires `bureau.agents:write` unless the caller owns the deployment’s agents; anyone else is answered `NotFound`.",
+      "errors": [
+        {
+          "$ref": "#/components/errors/Unauthorized"
+        },
+        {
+          "$ref": "#/components/errors/Forbidden"
+        },
+        {
+          "$ref": "#/components/errors/InvalidParams"
+        },
+        {
+          "$ref": "#/components/errors/EngineFailure"
+        },
+        {
+          "$ref": "#/components/errors/NotFound"
+        }
+      ],
+      "name": "bureau.agents.enable",
+      "paramStructure": "by-name",
+      "params": [
+        {
+          "name": "id",
+          "required": true,
+          "schema": {
+            "description": "The identifier of the agent: a built-in agent, a plugin’s, or an agent file.",
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "required": true,
+        "schema": {
+          "additionalProperties": false,
+          "properties": {
+            "disabled": {
+              "type": "boolean"
+            },
+            "id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "disabled"
+          ],
+          "type": "object"
+        }
+      },
+      "summary": "Enable an agent a person disabled",
+      "tags": [
+        {
+          "name": "Agents"
+        }
+      ],
+      "x-weft-access": {
+        "kind": "authenticated"
+      },
+      "x-weft-paramsSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "description": "The identifier of the agent: a built-in agent, a plugin’s, or an agent file.",
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
         ],
         "type": "object"
       }
@@ -21734,6 +21896,14 @@
               "items": {
                 "additionalProperties": false,
                 "properties": {
+                  "availability": {
+                    "description": "Whether the kind can run now: `needs-setup` while a secret its plugin declared is missing, when a hook of it waits instead of running, and `available` otherwise. Read each time, so a secret saved since is seen without a restart.",
+                    "enum": [
+                      "available",
+                      "needs-setup"
+                    ],
+                    "type": "string"
+                  },
                   "configuration": {
                     "anyOf": [
                       {
@@ -21776,6 +21946,7 @@
                   "description",
                   "version",
                   "dryRun",
+                  "availability",
                   "configuration"
                 ],
                 "type": "object"
@@ -22292,7 +22463,7 @@
       }
     },
     {
-      "description": "Returns the reviews of the caller’s own runs, which is what an inbox shows; a caller holding `bureau.reviews:read` sees every owner’s. `status` is `pending` (the default: oldest request first, by `requestedAt`) or `resolved` (the reviews a person decided, latest decision first, by `resolution.decidedAt`, optionally only those decided at or after `resolvedAfter`); each item carries `source`, `bureau` for a tool approval or a question the Bureau holds, and `engine` for a workflow review of the durable engine (`kind: \"engine-review\"`), which only a caller holding the Weft scope `reviews:read` is shown. Ties break on source, then id. Pages with `limit` (1 to 100, default 50) and `pageToken`; `nextPageToken` is `null` when no review remains. A token is an opaque position in that order, valid only with the `status` and `resolvedAfter` it was issued for; any other token is `InvalidParams`. A resolved review is kept until `retention.audit` retires it, and carries `resolution` (who decided, what, and when); a secret answer appears only as its reference, never its value. A review that expired, was revoked or was canceled has no decision and is not listed as resolved; `bureau.reviews.get` still reads it.",
+      "description": "Returns the reviews of the caller’s own runs, which is what an inbox shows; a caller holding `bureau.reviews:read` sees every owner’s. `status` is `pending` (the default: oldest request first, by `requestedAt`) or `resolved` (the reviews a person decided, latest decision first, by `resolution.decidedAt`, optionally only those decided at or after `resolvedAfter`); each item carries `source`, `bureau` for a tool approval or a question the Bureau holds, and `engine` for a workflow review of the durable engine (`kind: \"engine-review\"`), which only a caller holding the Weft scope `reviews:read` is shown. Ties break on source, then id. Pages with `limit` (1 to 100, default 50) and `pageToken`; `nextPageToken` is `null` when no review remains, and `total` is how many reviews the whole listing holds for the caller and these filters, the same on every page (COR-2426). A token is an opaque position in that order, valid only with the `status` and `resolvedAfter` it was issued for; any other token is `InvalidParams`. A resolved review is kept until `retention.audit` retires it, and carries `resolution` (who decided, what, and when); a secret answer appears only as its reference, never its value. A review that expired, was revoked or was canceled has no decision and is not listed as resolved; `bureau.reviews.get` still reads it.",
       "errors": [
         {
           "$ref": "#/components/errors/Unauthorized"
@@ -22715,6 +22886,9 @@
                       "runId": {
                         "type": "string"
                       },
+                      "said": {
+                        "type": "string"
+                      },
                       "sessionId": {
                         "type": "string"
                       },
@@ -22792,6 +22966,9 @@
                         "const": "engine-review",
                         "type": "string"
                       },
+                      "message": {
+                        "type": "string"
+                      },
                       "requestedAt": {
                         "type": "number"
                       },
@@ -22845,6 +23022,12 @@
                           "completed"
                         ],
                         "type": "string"
+                      },
+                      "step": {
+                        "type": "string"
+                      },
+                      "workflowName": {
+                        "type": "string"
                       }
                     },
                     "required": [
@@ -22864,11 +23047,17 @@
                 ]
               },
               "type": "array"
+            },
+            "total": {
+              "maximum": 9007199254740991,
+              "minimum": 0,
+              "type": "integer"
             }
           },
           "required": [
             "reviews",
-            "nextPageToken"
+            "nextPageToken",
+            "total"
           ],
           "type": "object"
         }
@@ -23299,6 +23488,9 @@
                 "runId": {
                   "type": "string"
                 },
+                "said": {
+                  "type": "string"
+                },
                 "sessionId": {
                   "type": "string"
                 },
@@ -23387,7 +23579,7 @@
       }
     },
     {
-      "description": "Resolves a pending review of one of the caller’s own runs as the authenticated caller; the reviewer is never a payload field. A caller holding `bureau.reviews:resolve` resolves any owner’s. `reject` requires a `reason`. The `receipt` is `applied` (including a landed reject, which `decision` reports) or `superseded`. Resolving a review that is already resolved answers `Conflict` when the call asks for a different decision than the one recorded (a resolver that lost), and 404 when it repeats that decision, until command receipts exist; one the caller may not resolve answers 404. `remember: true` on approving a tool approval also allows its tool for the rest of the chat: the next ask for it in that chat that the agent file would make by `on-changes` runs without asking, and no other chat, fork, tool, `always` or `blocked` value, agent-wide always mode or read-only restriction is affected; the response says `remembered`. Resolving a tool approval also writes its outcome into the session’s conversation: the executed result on approve, an error result carrying the reason on deny and reject, each replacing the pending `action_required` result in place, so a run started next on the session answers an up-to-date conversation. The outcome row’s metadata records who decided and when, with the note, the sentence the tool asked with, and the `decisionSurface` the call gave, under `approvalDecision`. A `superseded` receipt writes nothing. A tool approval does not park its run, so once this call decides the last pending review of a chat’s run (approve, deny or reject), it starts the run that answers the decisions, as the chat’s own resume does: one run, owned by the chat’s owner whoever decided, under a command id of the decided run alone, so the chat’s resume of the same reviews, a decision racing it, and a retry all continue with that one run. `continuation` says which run (`started`), or why none could start (`not-started`, the decision having taken effect); it is absent while another review of the run is pending, for a run that is not a chat’s, and for a human wait, whose answer continues its parked run. Approving a human wait takes an `answer`; when the review has an `inputSchema` the answer is checked against it before anything is decided, and one that does not fit answers `InvalidParams` with `data.issues` (`path` rooted at `answer`, `message`, and `code`, the schema keyword that failed) and leaves the review pending. `round` is the round of the review the caller read (`bureau.reviews.get` and `list` return it): a re-gated approval keeps its id and advances its round, so a decision made on round N is refused with a `Conflict` once the review is at another round, before anything is decided, written, or audited. A `Conflict` whose `reason` begins `REVIEW_ROUND_CHANGED: ` is that refusal (nothing took effect; read the review again); one that begins `APPROVAL_OUTCOME_NOT_WRITTEN: ` means the decision took effect (the tool ran or was refused) and only that write failed; any other `Conflict` is a resolver that lost. Omit `round` and the call is not fenced.",
+      "description": "Resolves a pending review of one of the caller’s own runs as the authenticated caller; the reviewer is never a payload field. A caller holding `bureau.reviews:resolve` resolves any owner’s. `reject` requires a `reason`. The `receipt` is `applied` (including a landed reject, which `decision` reports) or `superseded`. Resolving a review that is already resolved answers `Conflict` when the call asks for a different decision than the one recorded (a resolver that lost), and 404 when it repeats that decision, until command receipts exist; one the caller may not resolve answers 404. `remember: true` on approving a tool approval also allows its tool for the rest of the chat: the next ask for it in that chat that the agent file would make by `on-changes` runs without asking, and no other chat, fork, tool, `always` or `blocked` value, agent-wide always mode or read-only restriction is affected; the response says `remembered`. Resolving a tool approval also writes its outcome into the session’s conversation: the executed result on approve, an error result carrying the reason on deny and reject, each replacing the pending `action_required` result in place, so a run started next on the session answers an up-to-date conversation. The outcome row’s metadata records who decided and when, with the note, the sentence the tool asked with, and the `decisionSurface` the call gave, under `approvalDecision`. A `superseded` receipt writes nothing. A tool approval does not park its run, so once this call decides the last pending review of a chat’s run (approve, deny or reject), it starts the run that answers the decisions, as the chat’s own resume does: one run, owned by the chat’s owner whoever decided, under a command id of the decided run alone, so the chat’s resume of the same reviews, a decision racing it, and a retry all continue with that one run. `continuation` says which run (`started`), or why none could start (`not-started`, the decision having taken effect); it is absent while another review of the run is pending, for a run that is not a chat’s, and for a human wait, whose answer continues its parked run. Approving a human wait takes an `answer`; when the review has an `inputSchema` the answer is checked against it before anything is decided, and one that does not fit answers `InvalidParams` with `data.issues` (`path` rooted at `answer`, `message`, and `code`, the schema keyword that failed) and leaves the review pending. `round` is the round of the review the caller read (`bureau.reviews.get` and `list` return it): a re-gated approval keeps its id and advances its round, so a decision made on round N is refused with a `Conflict` once the review is at another round, before anything is decided, written, or audited. A `Conflict` whose `reason` begins `REVIEW_ROUND_CHANGED: ` is that refusal (nothing took effect; read the review again); one that begins `APPROVAL_OUTCOME_NOT_WRITTEN: ` means the decision took effect (the tool ran or was refused) and only that write failed; one that begins `REVIEW_ALREADY_RESOLVED: ` (COR-2426) means the review was already resolved with another decision, so nothing took effect and it is no longer waiting; any other `Conflict` is a resolver that lost. Omit `round` and the call is not fenced.",
       "errors": [
         {
           "$ref": "#/components/errors/Unauthorized"
@@ -34028,6 +34220,37 @@
               "description": "Epoch milliseconds.",
               "type": "number"
             },
+            "declaredBy": {
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "ownerDisabled": {
+                      "description": "The owner turned the hook off; a reconcile keeps it off.",
+                      "type": "boolean"
+                    },
+                    "plugin": {
+                      "description": "The plugin that declared the hook.",
+                      "type": "string"
+                    },
+                    "withdrawn": {
+                      "description": "The plugin no longer declares the hook, so it is off and the owner cannot turn it on.",
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "plugin",
+                    "ownerDisabled",
+                    "withdrawn"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Where a default hook comes from: the plugin that declared it (COR-2179). The owner can turn it on or off and copy it, and changes nothing else about it. `null` for a hook the owner made."
+            },
             "enabled": {
               "type": "boolean"
             },
@@ -34104,6 +34327,7 @@
             "action",
             "events",
             "scope",
+            "declaredBy",
             "enabled",
             "createdAt",
             "updatedAt",
@@ -34827,6 +35051,37 @@
               "description": "Epoch milliseconds.",
               "type": "number"
             },
+            "declaredBy": {
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "ownerDisabled": {
+                      "description": "The owner turned the hook off; a reconcile keeps it off.",
+                      "type": "boolean"
+                    },
+                    "plugin": {
+                      "description": "The plugin that declared the hook.",
+                      "type": "string"
+                    },
+                    "withdrawn": {
+                      "description": "The plugin no longer declares the hook, so it is off and the owner cannot turn it on.",
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "plugin",
+                    "ownerDisabled",
+                    "withdrawn"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Where a default hook comes from: the plugin that declared it (COR-2179). The owner can turn it on or off and copy it, and changes nothing else about it. `null` for a hook the owner made."
+            },
             "enabled": {
               "type": "boolean"
             },
@@ -34891,6 +35146,7 @@
             "action",
             "events",
             "scope",
+            "declaredBy",
             "enabled",
             "createdAt",
             "updatedAt",
@@ -35349,6 +35605,37 @@
               "description": "Epoch milliseconds.",
               "type": "number"
             },
+            "declaredBy": {
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "ownerDisabled": {
+                      "description": "The owner turned the hook off; a reconcile keeps it off.",
+                      "type": "boolean"
+                    },
+                    "plugin": {
+                      "description": "The plugin that declared the hook.",
+                      "type": "string"
+                    },
+                    "withdrawn": {
+                      "description": "The plugin no longer declares the hook, so it is off and the owner cannot turn it on.",
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "plugin",
+                    "ownerDisabled",
+                    "withdrawn"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Where a default hook comes from: the plugin that declared it (COR-2179). The owner can turn it on or off and copy it, and changes nothing else about it. `null` for a hook the owner made."
+            },
             "enabled": {
               "type": "boolean"
             },
@@ -35417,6 +35704,7 @@
             "action",
             "events",
             "scope",
+            "declaredBy",
             "enabled",
             "createdAt",
             "updatedAt",
@@ -35681,6 +35969,37 @@
               "description": "Epoch milliseconds.",
               "type": "number"
             },
+            "declaredBy": {
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "ownerDisabled": {
+                      "description": "The owner turned the hook off; a reconcile keeps it off.",
+                      "type": "boolean"
+                    },
+                    "plugin": {
+                      "description": "The plugin that declared the hook.",
+                      "type": "string"
+                    },
+                    "withdrawn": {
+                      "description": "The plugin no longer declares the hook, so it is off and the owner cannot turn it on.",
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "plugin",
+                    "ownerDisabled",
+                    "withdrawn"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Where a default hook comes from: the plugin that declared it (COR-2179). The owner can turn it on or off and copy it, and changes nothing else about it. `null` for a hook the owner made."
+            },
             "enabled": {
               "type": "boolean"
             },
@@ -35745,6 +36064,7 @@
             "action",
             "events",
             "scope",
+            "declaredBy",
             "enabled",
             "createdAt",
             "updatedAt",
@@ -35942,6 +36262,37 @@
                     "description": "Epoch milliseconds.",
                     "type": "number"
                   },
+                  "declaredBy": {
+                    "anyOf": [
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "ownerDisabled": {
+                            "description": "The owner turned the hook off; a reconcile keeps it off.",
+                            "type": "boolean"
+                          },
+                          "plugin": {
+                            "description": "The plugin that declared the hook.",
+                            "type": "string"
+                          },
+                          "withdrawn": {
+                            "description": "The plugin no longer declares the hook, so it is off and the owner cannot turn it on.",
+                            "type": "boolean"
+                          }
+                        },
+                        "required": [
+                          "plugin",
+                          "ownerDisabled",
+                          "withdrawn"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "Where a default hook comes from: the plugin that declared it (COR-2179). The owner can turn it on or off and copy it, and changes nothing else about it. `null` for a hook the owner made."
+                  },
                   "enabled": {
                     "type": "boolean"
                   },
@@ -36080,6 +36431,66 @@
                     "description": "The principal that owns the hook.",
                     "type": "string"
                   },
+                  "problems": {
+                    "description": "Why a plugin hook cannot do what it says, as codes. `reaction-unavailable`: its reaction is not registered (its plugin is disabled, removed or dropped the kind), or it is a default hook its plugin withdrew, so it writes no delivery. `configuration-invalid`: the reaction’s schema now refuses the configuration the hook stored. Empty when nothing is wrong, and for every other action.",
+                    "items": {
+                      "oneOf": [
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "code": {
+                              "const": "reaction-unavailable",
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        },
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "code": {
+                              "const": "configuration-invalid",
+                              "type": "string"
+                            },
+                            "issues": {
+                              "description": "Every field the reaction’s schema refuses, by its path and Zod’s code, never a message.",
+                              "items": {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "code": {
+                                    "description": "Zod’s issue code, such as `invalid_type` or `too_small`.",
+                                    "type": "string"
+                                  },
+                                  "path": {
+                                    "description": "The path to the field, from the configuration’s root.",
+                                    "items": {
+                                      "type": "string"
+                                    },
+                                    "type": "array"
+                                  }
+                                },
+                                "required": [
+                                  "path",
+                                  "code"
+                                ],
+                                "type": "object"
+                              },
+                              "type": "array"
+                            }
+                          },
+                          "required": [
+                            "code",
+                            "issues"
+                          ],
+                          "type": "object"
+                        }
+                      ]
+                    },
+                    "type": "array"
+                  },
                   "revision": {
                     "description": "Pass it back as `expectedRevision`.",
                     "maximum": 9007199254740991,
@@ -36122,11 +36533,13 @@
                   "action",
                   "events",
                   "scope",
+                  "declaredBy",
                   "enabled",
                   "createdAt",
                   "updatedAt",
                   "revision",
-                  "lastDelivery"
+                  "lastDelivery",
+                  "problems"
                 ],
                 "type": "object"
               },
@@ -36271,6 +36684,13 @@
                       {
                         "additionalProperties": false,
                         "properties": {
+                          "id": {
+                            "description": "What a plugin’s reaction made in the other service, as it named it.",
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
                           "notificationId": {
                             "type": [
                               "string",
@@ -36282,11 +36702,28 @@
                               "string",
                               "null"
                             ]
+                          },
+                          "summary": {
+                            "description": "What was made, at most 200 characters; a longer one is dropped.",
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "url": {
+                            "description": "Where to see it: an `https:` address; a reaction’s other value is dropped.",
+                            "type": [
+                              "string",
+                              "null"
+                            ]
                           }
                         },
                         "required": [
                           "runId",
-                          "notificationId"
+                          "notificationId",
+                          "id",
+                          "url",
+                          "summary"
                         ],
                         "type": "object"
                       },
@@ -36294,7 +36731,7 @@
                         "type": "null"
                       }
                     ],
-                    "description": "What a `completed` `start-workflow` or `notify` attempt made."
+                    "description": "What a `completed` attempt made: the run, the notification, or a plugin reaction’s receipt."
                   },
                   "responseExcerpt": {
                     "type": [
@@ -36637,6 +37074,13 @@
                       {
                         "additionalProperties": false,
                         "properties": {
+                          "id": {
+                            "description": "What a plugin’s reaction made in the other service, as it named it.",
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
                           "notificationId": {
                             "type": [
                               "string",
@@ -36648,11 +37092,28 @@
                               "string",
                               "null"
                             ]
+                          },
+                          "summary": {
+                            "description": "What was made, at most 200 characters; a longer one is dropped.",
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "url": {
+                            "description": "Where to see it: an `https:` address; a reaction’s other value is dropped.",
+                            "type": [
+                              "string",
+                              "null"
+                            ]
                           }
                         },
                         "required": [
                           "runId",
-                          "notificationId"
+                          "notificationId",
+                          "id",
+                          "url",
+                          "summary"
                         ],
                         "type": "object"
                       },
@@ -36660,7 +37121,7 @@
                         "type": "null"
                       }
                     ],
-                    "description": "What a `completed` `start-workflow` or `notify` attempt made."
+                    "description": "What a `completed` attempt made: the run, the notification, or a plugin reaction’s receipt."
                   },
                   "responseExcerpt": {
                     "type": [
@@ -37016,6 +37477,13 @@
                             {
                               "additionalProperties": false,
                               "properties": {
+                                "id": {
+                                  "description": "What a plugin’s reaction made in the other service, as it named it.",
+                                  "type": [
+                                    "string",
+                                    "null"
+                                  ]
+                                },
                                 "notificationId": {
                                   "type": [
                                     "string",
@@ -37027,11 +37495,28 @@
                                     "string",
                                     "null"
                                   ]
+                                },
+                                "summary": {
+                                  "description": "What was made, at most 200 characters; a longer one is dropped.",
+                                  "type": [
+                                    "string",
+                                    "null"
+                                  ]
+                                },
+                                "url": {
+                                  "description": "Where to see it: an `https:` address; a reaction’s other value is dropped.",
+                                  "type": [
+                                    "string",
+                                    "null"
+                                  ]
                                 }
                               },
                               "required": [
                                 "runId",
-                                "notificationId"
+                                "notificationId",
+                                "id",
+                                "url",
+                                "summary"
                               ],
                               "type": "object"
                             },
@@ -37039,7 +37524,7 @@
                               "type": "null"
                             }
                           ],
-                          "description": "What a `completed` `start-workflow` or `notify` attempt made."
+                          "description": "What a `completed` attempt made: the run, the notification, or a plugin reaction’s receipt."
                         },
                         "responseExcerpt": {
                           "type": [
@@ -37399,6 +37884,13 @@
                       {
                         "additionalProperties": false,
                         "properties": {
+                          "id": {
+                            "description": "What a plugin’s reaction made in the other service, as it named it.",
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
                           "notificationId": {
                             "type": [
                               "string",
@@ -37410,11 +37902,28 @@
                               "string",
                               "null"
                             ]
+                          },
+                          "summary": {
+                            "description": "What was made, at most 200 characters; a longer one is dropped.",
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "url": {
+                            "description": "Where to see it: an `https:` address; a reaction’s other value is dropped.",
+                            "type": [
+                              "string",
+                              "null"
+                            ]
                           }
                         },
                         "required": [
                           "runId",
-                          "notificationId"
+                          "notificationId",
+                          "id",
+                          "url",
+                          "summary"
                         ],
                         "type": "object"
                       },
@@ -37422,7 +37931,7 @@
                         "type": "null"
                       }
                     ],
-                    "description": "What a `completed` `start-workflow` or `notify` attempt made."
+                    "description": "What a `completed` attempt made: the run, the notification, or a plugin reaction’s receipt."
                   },
                   "responseExcerpt": {
                     "type": [
@@ -37671,6 +38180,310 @@
         "required": [
           "hookId",
           "deliveryId"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "description": "Makes a hook of the caller’s own from one the caller may read (COR-2181): the same action, events and scope, off, with no `declaredBy`, so a default hook a plugin declared becomes a hook the owner can change. `name` labels the copy, else it keeps the hook’s own label. The copy is owned by the caller, whoever owned the original, and is checked as `bureau.hooks.create` checks a hook, so it needs `bureau.events:observe-all` (a hook observes the whole Bureau’s events), and a copy of a `start-workflow` hook needs a caller allowed to start workflows. A webhook’s copy gets a signing secret the Bureau generates, shown once as `signingSecret` on the answer (`null` otherwise) and never copied from the original. A caller copies its own hooks, and `bureau.hooks:read` reads any owner’s to copy; another owner’s hook the caller may not read answers `NotFound`, as `bureau.hooks.get` does, and in a workspace a hook of another owner is copied only when it is a webhook for events shared to the workspace. A hook whose plugin no longer offers its action is `InvalidParams` on `action.kind`, because a copy would be checked against a schema that is gone. The copy is made of the hook as it was when the caller was allowed to copy it: a hook that changed in between is a `StaleRevision` fault whose `currentRevision` is the revision now current, and nothing is made.",
+      "errors": [
+        {
+          "$ref": "#/components/errors/Unauthorized"
+        },
+        {
+          "$ref": "#/components/errors/Forbidden"
+        },
+        {
+          "$ref": "#/components/errors/InvalidParams"
+        },
+        {
+          "$ref": "#/components/errors/EngineFailure"
+        },
+        {
+          "$ref": "#/components/errors/NotFound"
+        },
+        {
+          "$ref": "#/components/errors/StaleRevision"
+        },
+        {
+          "$ref": "#/components/errors/UnsupportedCapability"
+        }
+      ],
+      "name": "bureau.hooks.duplicate",
+      "paramStructure": "by-name",
+      "params": [
+        {
+          "name": "hookId",
+          "required": true,
+          "schema": {
+            "description": "The identifier of the hook.",
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        {
+          "name": "name",
+          "required": false,
+          "schema": {
+            "description": "The copy’s label, 1 to 100 characters. Omitted, it keeps the hook’s own.",
+            "maxLength": 100,
+            "minLength": 1,
+            "type": "string"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "required": true,
+        "schema": {
+          "additionalProperties": false,
+          "properties": {
+            "action": {
+              "description": "What the hook does for each event. A hook stored before actions existed is a `webhook`.",
+              "oneOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "type": {
+                      "const": "webhook",
+                      "type": "string"
+                    },
+                    "url": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "url"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "input": {
+                      "enum": [
+                        "payload",
+                        "event"
+                      ],
+                      "type": "string"
+                    },
+                    "type": {
+                      "const": "start-workflow",
+                      "type": "string"
+                    },
+                    "workflowId": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "workflowId",
+                    "input"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "title": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "type": {
+                      "const": "notify",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "title"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "configuration": {
+                      "anyOf": [
+                        {},
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "kind": {
+                      "type": "string"
+                    },
+                    "plugin": {
+                      "type": "string"
+                    },
+                    "type": {
+                      "const": "plugin",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "plugin",
+                    "kind",
+                    "configuration"
+                  ],
+                  "type": "object"
+                }
+              ]
+            },
+            "createdAt": {
+              "description": "Epoch milliseconds.",
+              "type": "number"
+            },
+            "declaredBy": {
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "ownerDisabled": {
+                      "description": "The owner turned the hook off; a reconcile keeps it off.",
+                      "type": "boolean"
+                    },
+                    "plugin": {
+                      "description": "The plugin that declared the hook.",
+                      "type": "string"
+                    },
+                    "withdrawn": {
+                      "description": "The plugin no longer declares the hook, so it is off and the owner cannot turn it on.",
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "plugin",
+                    "ownerDisabled",
+                    "withdrawn"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Where a default hook comes from: the plugin that declared it (COR-2179). The owner can turn it on or off and copy it, and changes nothing else about it. `null` for a hook the owner made."
+            },
+            "enabled": {
+              "type": "boolean"
+            },
+            "events": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "id": {
+              "type": "string"
+            },
+            "name": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "owner": {
+              "description": "The principal that owns the hook.",
+              "type": "string"
+            },
+            "revision": {
+              "description": "Pass it back as `expectedRevision`.",
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "scope": {
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "kind": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "id"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The one subject the hook fires for; `null` for a hook that fires for the whole Bureau. `kind` is `agent`, `workflow` or `schedule`. A stored kind this release does not know is shown as stored, and a stored value it cannot read is shown with an empty `kind`; neither fires."
+            },
+            "signingSecret": {
+              "anyOf": [
+                {
+                  "description": "The signing secret the Bureau generated, `whsec_` and 24 hexadecimal digits. This is the only answer that carries it: no operation returns it again, so keep it now, or replace it later with `bureau.hooks.secret.replace`.",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The signing secret the Bureau generated for a webhook created without one, shown this once; `null` when the caller chose the secret or the action has none."
+            },
+            "updatedAt": {
+              "description": "Epoch milliseconds.",
+              "type": "number"
+            }
+          },
+          "required": [
+            "id",
+            "owner",
+            "name",
+            "action",
+            "events",
+            "scope",
+            "declaredBy",
+            "enabled",
+            "createdAt",
+            "updatedAt",
+            "revision",
+            "signingSecret"
+          ],
+          "type": "object"
+        }
+      },
+      "summary": "Copy a hook",
+      "tags": [
+        {
+          "name": "Hooks"
+        }
+      ],
+      "x-weft-access": {
+        "kind": "authenticated"
+      },
+      "x-weft-paramsSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "hookId": {
+            "description": "The identifier of the hook.",
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          },
+          "name": {
+            "description": "The copy’s label, 1 to 100 characters. Omitted, it keeps the hook’s own.",
+            "maxLength": 100,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "hookId"
         ],
         "type": "object"
       }

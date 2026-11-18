@@ -318,6 +318,8 @@ export const WORKSPACE_CONFORMANCE_GROUPS = [
       ['bureau.agents.versions.restore', 'administrator'],
       ['bureau.agents.overrides.get', 'shared'],
       ['bureau.agents.overrides.update', 'administrator'],
+      ['bureau.agents.disable', 'administrator'],
+      ['bureau.agents.enable', 'administrator'],
     ],
   },
   {
@@ -335,6 +337,7 @@ export const WORKSPACE_CONFORMANCE_GROUPS = [
       ['bureau.hooks.draft.test', 'deployment'],
       ['bureau.hooks.deliveries', 'deployment'],
       ['bureau.hooks.deliveries.retry', 'deployment'],
+      ['bureau.hooks.duplicate', 'administrator'],
     ],
   },
 ] as const satisfies readonly {

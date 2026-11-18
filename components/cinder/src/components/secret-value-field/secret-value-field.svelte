@@ -1,17 +1,4 @@
 <script lang="ts" module>
-  /**
-   * @cinder
-   * @category data-display
-   * @status stable
-   * @purpose Displays a masked secret (API key, token, webhook secret) with copy action and optional reveal toggle.
-   * @tag clipboard
-   * @tag security
-   * @useWhen Showing a newly-created API key or token that the user must copy before it is gone.
-   * @useWhen Displaying an existing masked key in a settings table where the full value should stay hidden.
-   * @avoidWhen The value is not sensitive and can be shown as plain text — use a code or input component.
-   * @avoidWhen You need inline editing of the secret value — use a password input instead.
-   * @related copy-button, input, badge
-   */
   export type { SecretValueFieldProps } from './secret-value-field.types.ts';
 </script>
 

@@ -415,6 +415,16 @@ export interface PluginReactionContext {
    * idempotency key, or a lookup of what it already did) to make the repeat a no-op.
    */
   readonly idempotencyKey: string;
+  /**
+   * An event as a person reads it (COR-2178): the formatting the registered formatter of the event's
+   * kind gives, with the `tier` always set (`info` when the formatter gave none), so a reaction that
+   * posts a message uses the host's own sentence instead of writing one. An event of a kind no
+   * formatter claims, and one whose formatter throws or gives no title, is `{ title: event.kind,
+   * tier: 'info' }`. It never throws, runs no code of the reaction's, and holds nothing the event does
+   * not: the `title` is one line of at most 200 characters, the `body` at most 2,000, and the `link`
+   * a path in the host's router.
+   */
+  format(event: PluginEvent): PluginFormatting;
   /** The id of the hook this attempt runs for. */
   readonly hookId: string;
   /** The principal that owns the hook: `api-key:<subject>` or `anonymous:local`. */
@@ -471,9 +481,11 @@ export interface PluginReaction {
    * Carries out the action for one event. A rejection fails that attempt, and the delivery is tried
    * again until it runs out of attempts. Reject with a `PluginReactionError` whose `permanent`
    * is `true` when a retry cannot change the answer (the channel does not exist, the service
-   * refuses the input for good): the delivery then ends `failed` after that one attempt.
+   * refuses the input for good): the delivery then ends `failed` after that one attempt. It can
+   * resolve `{ receipt }` to say what it made, and the delivery keeps it on the attempt for the
+   * owner to read ({@link PluginReceipt}).
    */
-  run(context: PluginReactionContext): Promise<void>;
+  run(context: PluginReactionContext): Promise<void | { readonly receipt?: PluginReceipt }>;
   /**
    * What `hooks.test` runs instead of `run`: the same checks and the same effect, without the part
    * a person cannot take back (a message not sent, a record not written). It gets the same context
@@ -484,7 +496,23 @@ export interface PluginReaction {
    * `hooks.test` is refused: a test would otherwise call `run` for a real effect. A rejection, a
    * timeout and a `PluginReactionError` are handled as for `run`.
    */
-  dryRun?(context: PluginReactionContext): Promise<void>;
+  dryRun?(context: PluginReactionContext): Promise<void | { readonly receipt?: PluginReceipt }>;
+}
+
+/**
+ * What a reaction says it made (COR-2182): resolved from `run` or `dryRun` as `{ receipt }`, kept on
+ * the attempt, and shown with the delivery. Every member is optional and checked by the host: a
+ * `url` that is not `https:` and a `summary` of more than 200 characters are dropped, the delivery
+ * stays completed, and the host reports one warning. Hold nothing secret in it: it is stored and
+ * shown to the hook's owner as it is.
+ */
+export interface PluginReceipt {
+  /** The identifier of what the reaction made in the other service, such as a message id. */
+  readonly id?: string;
+  /** Where the owner can see it, an `https:` address. */
+  readonly url?: string;
+  /** What was made, in a sentence of at most 200 characters. */
+  readonly summary?: string;
 }
 
 /**

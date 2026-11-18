@@ -163,7 +163,7 @@ test.describe('Settings › General', () => {
       reason: 'the test refuses the save, so the request fails',
     });
     await openGeneral(page);
-    await page.route('**/bureau/jsonrpc', async (route) => {
+    await page.route('**/jsonrpc', async (route) => {
       const body = route.request().postDataJSON() as { method?: string } | null;
       if (body?.method === 'bureau.settings.update') {
         await route.abort('connectionfailed');
@@ -196,7 +196,7 @@ test.describe('Settings › General', () => {
         },
       });
     });
-    await page.route('**/bureau/jsonrpc', async (route) => {
+    await page.route('**/jsonrpc', async (route) => {
       const body = route.request().postDataJSON() as { method?: string } | null;
       if (body?.method !== 'bureau.settings.get') {
         await route.continue();
@@ -248,10 +248,10 @@ test.describe('Settings › General', () => {
     // The test answers every read of the settings with an error, and Chromium logs each one. How
     // many there are is not the test's to say: the view's probe and the page's own reads both ask.
     pageErrors.expectEvery({
-      pattern: loggedFailedResponse(500, /\/bureau\/jsonrpc/),
+      pattern: loggedFailedResponse(500, /\/jsonrpc/),
       reason: 'the test answers the reads of the settings with a 500',
     });
-    await page.route('**/bureau/jsonrpc', async (route) => {
+    await page.route('**/jsonrpc', async (route) => {
       const body = route.request().postDataJSON() as { method?: string } | null;
       if (body?.method === 'bureau.settings.get' || body?.method === 'bureau.settings.schema') {
         await route.fulfill({ status: 500, json: { error: 'The server broke.' } });
@@ -291,7 +291,7 @@ test.describe('Settings › General', () => {
     const held = new Promise<void>((resolve) => {
       release = resolve;
     });
-    await page.route('**/bureau/jsonrpc', async (route) => {
+    await page.route('**/jsonrpc', async (route) => {
       const body = route.request().postDataJSON() as { method?: string } | null;
       if (body?.method === 'bureau.settings.get' || body?.method === 'bureau.settings.schema') {
         await held;
@@ -442,7 +442,7 @@ const rpcFault = (id: unknown, weftCode: string, httpStatus: number, message: st
 
 /** Answers the embedding operations, the write of `memory.embedder`, the plugins and the session from `world`. */
 async function stubEmbedding(page: Page, world: EmbeddingWorld): Promise<void> {
-  await page.route('**/bureau/jsonrpc', async (route) => {
+  await page.route('**/jsonrpc', async (route) => {
     const body = route.request().postDataJSON() as {
       id?: unknown;
       method?: string;

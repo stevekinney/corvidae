@@ -221,9 +221,7 @@ test.describe('the seeded agent run', () => {
       await editor.getByLabel(/^Message/).fill(EDITED_INPUT);
       const sent = page.waitForRequest((candidate) => {
         const body = candidate.postData() ?? '';
-        return (
-          candidate.url().endsWith('/bureau/jsonrpc') && body.includes('bureau.schedules.update')
-        );
+        return candidate.url().endsWith('/jsonrpc') && body.includes('bureau.schedules.update');
       });
       await editor.getByRole('button', { name: 'Save changes' }).click();
       const updateRequest = await sent;

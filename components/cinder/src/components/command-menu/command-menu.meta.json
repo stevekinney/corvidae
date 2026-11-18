@@ -1,0 +1,17 @@
+{
+  "$schema": "../../../../../internal/component-tooling/src/schemas/component-meta.schema.json",
+  "category": "overlay",
+  "status": "stable",
+  "purpose": "Inline caret-anchored slash-command list for textareas and single-line text inputs.",
+  "tags": ["overlay", "command"],
+  "useWhen": [
+    "Showing a contextual command list at the caret while a user types in a textarea or input.",
+    "Building slash-command insertion flows where the host owns text replacement."
+  ],
+  "avoidWhen": [
+    { "reason": "Exposing a global app launcher — use command-palette instead." },
+    { "reason": "Selecting from a static form option list — use combobox instead." }
+  ],
+  "related": ["command-palette", "command-item", "popover", "combobox"],
+  "compound": { "parts": ["command-item"] }
+}

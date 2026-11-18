@@ -1,0 +1,24 @@
+{
+  "$schema": "../../../../../internal/component-tooling/src/schemas/component-meta.schema.json",
+  "category": "data-display",
+  "status": "stable",
+  "purpose": "Execution-state rail for async steps, durations, retries, branches, speculation, and compensation.",
+  "tags": ["timeline", "progress", "execution"],
+  "useWhen": [
+    "Showing live or completed CI, workflow, import, or deployment steps.",
+    "Showing speculative parallel branches or saga compensation."
+  ],
+  "avoidWhen": [
+    {
+      "reason": "Guiding users through an interactive wizard where they choose what to do next — use steps instead."
+    },
+    {
+      "reason": "Showing a flat timestamp-first event log without structured step state — use timeline instead."
+    },
+    { "reason": "Showing an activity stream — use feed instead." },
+    {
+      "reason": "Showing a dense operational log without structured step state, such as raw CI or job output — use feed's log arm instead."
+    }
+  ],
+  "related": ["timeline", "feed", "steps"]
+}

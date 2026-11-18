@@ -1,7 +1,7 @@
 /**
  * The browser's view of the Bureau's workflow files: the operations `bureau.workflows.*`
- * (COR-1527, COR-1528), parsed at the boundary, and the text of a file turned into what an update
- * sends.
+ * (COR-1527, COR-1528), through the generated client, and the text of a file turned into what an
+ * update sends.
  *
  * A workflow is a JSON file, and its identifier is the filename without `.json`, which is also the
  * name of its type in the engine. Every write names the `hash` of the file the caller read, so a
@@ -11,25 +11,43 @@
 import { HttpClientError } from '@lostgradient/weft';
 import { z } from 'zod';
 
-import { callBureau, type Fetcher } from './bureau-client.ts';
+import { bureauClient, type BureauInput, type BureauOutput } from './bureau-api.ts';
+import type { Fetcher } from './bureau-client.ts';
 
 /** Where a call is sent from: an abort signal, and a `fetch` for a caller that is not a page. */
 type Options = { readonly signal?: AbortSignal; readonly fetch?: Fetcher };
 
-const problemSchema = z.object({
-  code: z.string(),
-  message: z.string(),
-  issues: z.array(z.object({ path: z.string(), message: z.string() })).nullable(),
-});
+type ListedWorkflow = BureauOutput<'bureau.workflows.list'>['workflows'][number];
+type CodeEntry = Extract<ListedWorkflow, { readonly kind: 'code' }>;
+type FileEntry = Exclude<ListedWorkflow, { readonly kind: 'code' }>;
+
+/**
+ * One entry of `bureau.workflows.list`: a file, with whether the Bureau could use it. `title` is
+ * the name a person reads, when the file gives one (an invalid file has none); `inputSchema` and
+ * `outputSchema` are the JSON Schemas an instance's input and result must satisfy, or `null` when
+ * the file declares none; `trigger` is the trigger as written; `steps` are the steps as written,
+ * each agent step naming the agent it runs in `input.agent`; `listener` is what the file's
+ * contributed trigger is doing, or `null` for a built-in trigger kind, a file that is not ready, and
+ * a listener whose first start has not settled; `runs` are the counts of a file that loaded, and
+ * `null` for one the Bureau cannot use.
+ */
+export type WorkflowFileListing = AbsentTolerant<FileEntry>;
+
+/** A file as a Bureau that predates `title`, `steps` or `listener` shows it: without them. */
+type AbsentTolerant<File extends Pick<FileEntry, 'title' | 'steps' | 'listener'>> = Omit<
+  File,
+  'title' | 'steps' | 'listener'
+> & {
+  readonly title?: File['title'] | undefined;
+  readonly steps?: File['steps'] | undefined;
+  readonly listener?: File['listener'] | undefined;
+};
 
 /**
  * A problem the Bureau found in a workflow file: a code, a message, and the field-level issues
  * behind it when there are any.
  */
-export type WorkflowProblem = z.infer<typeof problemSchema>;
-
-/** A JSON Schema as a workflow file declares it. */
-const jsonSchemaField = z.record(z.string(), z.unknown());
+export type WorkflowProblem = NonNullable<WorkflowFileListing['problem']>;
 
 /**
  * What a ready file's contributed trigger is doing (COR-2165, COR-2167, COR-2168): `listening`
@@ -37,173 +55,50 @@ const jsonSchemaField = z.record(z.string(), z.unknown());
  * sharing the storage runs it, `waiting-for-secret`, `failed` with a `code` and, for a start that
  * threw, when it is tried again, and `stopped` for a paused file.
  */
-const listenerSchema = z.object({
-  state: z.enum(['listening', 'waiting-for-secret', 'failed', 'stopped', 'ready', 'standby']),
-  /** When `state` last changed. */
-  since: z.string(),
-  code: z.enum(['start-failed', 'configuration-refused']).nullable(),
-  /** When a fire last started a run since the Bureau started, or `null`. */
-  lastFiredAt: z.string().nullable(),
-  /** When a `start-failed` listener is next tried, or `null`. */
-  retryAt: z.string().nullable(),
-});
+export type WorkflowListener = NonNullable<WorkflowFileListing['listener']>;
 
-/** What a ready file's contributed trigger is doing, as `bureau.workflows.get` and `list` say. */
-export type WorkflowListener = z.infer<typeof listenerSchema>;
-
-const fileSchema = z.object({
-  id: z.string(),
-  state: z.enum(['ready', 'invalid']),
-  owner: z.string(),
-  hash: z.string().nullable(),
-  /** The name a person reads, when the file gives one; an invalid file has none. */
-  title: z.string().nullable().optional(),
-  /** What the workflow is for, in a sentence, when the file says. */
-  description: z.string().nullable(),
-  agent: z.string().nullable(),
-  paused: z.boolean(),
-  /** The JSON Schema an instance's input must satisfy, or `null` when the file declares none. */
-  inputSchema: jsonSchemaField.nullable(),
-  /** The JSON Schema an instance's result must satisfy, or `null` when the file declares none. */
-  outputSchema: jsonSchemaField.nullable(),
-  version: z.string().nullable(),
-  /** The trigger as written (`kind`, and `spec` or `name`), for a file that loaded. */
-  trigger: z.record(z.string(), z.unknown()).nullable(),
-  /** The steps as written, for a file that loaded; each agent step names the agent it runs in `input.agent`. */
-  steps: z.array(z.record(z.string(), z.unknown())).nullable().optional(),
-  problem: problemSchema.nullable(),
-  /**
-   * What the file's contributed trigger is doing, or `null` for a built-in trigger kind, a file that
-   * is not ready, and a listener whose first start has not settled.
-   */
-  listener: listenerSchema.nullable().optional(),
-});
-
-const runCountsSchema = z.object({
-  /** Instances that have not finished. */
-  active: z.number(),
-  /** Instances that began in the last 24 hours. */
-  last24Hours: z.number(),
-  /** When the newest instance began (ISO 8601), or `null` for a workflow that has not run. */
-  lastRunAt: z.string().nullable(),
-});
-
-/** How busy a workflow is, as the Bureau counts its instances. */
-export type WorkflowRunCounts = z.infer<typeof runCountsSchema>;
-
-const listingSchema = fileSchema.extend({
-  /** The counts of a file that loaded, and `null` for one the Bureau cannot use. */
-  runs: runCountsSchema.nullable(),
-});
-
-/** One entry of `bureau.workflows.list`: a file, with whether the Bureau could use it. */
-export type WorkflowFileListing = z.infer<typeof listingSchema>;
+/**
+ * How busy a workflow is, as the Bureau counts its instances: the instances that have not finished,
+ * those that began in the last 24 hours, and when the newest began (ISO 8601), or `null` for a
+ * workflow that has not run.
+ */
+export type WorkflowRunCounts = NonNullable<WorkflowFileListing['runs']>;
 
 /**
  * A code workflow a plugin contributed, which the list shows after the files with an explicit
  * `kind` and none of a file's members (no state, hash or trigger). {@link listWorkflowFiles} leaves
  * it out, so the workflow pages show files; the builder reads the code workflows from the catalog.
+ * `id` is `plugin:name`, the `workflow` of a `workflow` step.
  */
-const codeListingSchema = z.object({
-  kind: z.literal('code'),
-  id: z.string(),
-  name: z.string(),
-  title: z.string(),
-  plugin: z.string(),
-  version: z.string(),
-});
-
-/** A code workflow a plugin contributed: `id` is `plugin:name`, the `workflow` of a `workflow` step. */
-export type CodeWorkflowListing = z.infer<typeof codeListingSchema>;
-
-const detailSchema = fileSchema.extend({
-  text: z.string().nullable(),
-  schedule: z
-    .object({
-      id: z.string(),
-      status: z.enum(['active', 'paused']),
-      nextFireAt: z.string().nullable(),
-    })
-    .nullable(),
-});
+export type CodeWorkflowListing = CodeEntry;
 
 /** One file as `bureau.workflows.get` shows it, with its text and its live schedule. */
-export type WorkflowFileDetail = z.infer<typeof detailSchema>;
-
-/** Weft's verdict on whether a revision is compatible with the workflow's current revision. */
-const compatibilitySchema = z.discriminatedUnion('compatible', [
-  z.object({ compatible: z.literal(true) }),
-  z.object({ compatible: z.literal(false), reasons: z.array(z.string()) }),
-]);
-
-/** A revision's compatibility with the current revision: `{ compatible: true }`, or the reasons it is not. */
-export type WorkflowCompatibility = z.infer<typeof compatibilitySchema>;
-
-const revisionsSchema = z.object({
-  revisions: z.array(
-    z.object({
-      workflowVersion: z.string(),
-      firstRunAt: z.string(),
-      lastRunAt: z.string(),
-      document: z.object({
-        name: z.string(),
-        trigger: z.record(z.string(), z.unknown()),
-        steps: z.array(z.record(z.string(), z.unknown())),
-        inputSchema: jsonSchemaField.nullable(),
-        outputSchema: jsonSchemaField.nullable(),
-      }),
-      /** The verdict against the current revision, or `null` when there is no current revision to compare with. */
-      compatibility: compatibilitySchema.nullable(),
-    }),
-  ),
-});
+export type WorkflowFileDetail = AbsentTolerant<BureauOutput<'bureau.workflows.get'>>;
 
 /** A version of the workflow's document that has run. */
-export type WorkflowRevision = z.infer<typeof revisionsSchema>['revisions'][number];
+export type WorkflowRevision = BureauOutput<'bureau.workflows.revisions'>['revisions'][number];
 
-const codeWorkflowSchema = z.object({
-  id: z.string(),
-  description: z.string().nullable(),
-  version: z.string().nullable(),
-  source: z.object({ kind: z.literal('code'), text: z.string() }),
-});
+/** A revision's compatibility with the current revision: `{ compatible: true }`, or the reasons it is not. */
+export type WorkflowCompatibility = NonNullable<WorkflowRevision['compatibility']>;
 
 /**
  * A workflow that code registered, as `bureau.workflows.internal.get` shows it. `source.text` is
  * the workflow's description followed by its registered contract as JSON; the code is not exposed.
  */
-export type CodeWorkflow = z.infer<typeof codeWorkflowSchema>;
-
-const startResultSchema = z.object({
-  runId: z.string(),
-  workflow: z.string(),
-  workflowVersion: z.string(),
-});
+export type CodeWorkflow = BureauOutput<'bureau.workflows.internal.get'>;
 
 /** What starting a workflow answers: the new instance's identifier and the revision it runs. */
-export type WorkflowStartResult = z.infer<typeof startResultSchema>;
-
-const writeResultSchema = z.object({ id: z.string(), hash: z.string() });
+export type WorkflowStartResult = BureauOutput<'bureau.workflows.start'>;
 
 /** What a write answers: the workflow's identifier and the hash of the file now on disk. */
-export type WorkflowWriteResult = z.infer<typeof writeResultSchema>;
+export type WorkflowWriteResult = BureauOutput<'bureau.workflows.create'>;
 
-const signalResultSchema = z.object({
-  started: z.array(z.string()),
-  delivered: z.array(z.string()),
-  /** The matching workflows whose `inputSchema` the payload broke: nothing started for them. */
-  rejected: z.array(
-    z.object({
-      id: z.string(),
-      issues: z.array(
-        z.object({ path: z.array(z.union([z.string(), z.number()])), message: z.string() }),
-      ),
-    }),
-  ),
-});
-
-/** The instances a signal started and was delivered to, and the workflows that refused its payload. */
-export type SignalResult = z.infer<typeof signalResultSchema>;
+/**
+ * The instances a signal started and was delivered to, and the workflows that refused its payload
+ * (`rejected`: the matching workflows whose `inputSchema` the payload broke, for which nothing
+ * started).
+ */
+export type SignalResult = BureauOutput<'bureau.workflows.signal'>;
 
 /** The largest page `bureau.workflows.list` answers. */
 const LISTING_PAGE_SIZE = 100;
@@ -230,21 +125,14 @@ export async function listWorkflowEntries(
   const listings: WorkflowFileListing[] = [];
   const code: CodeWorkflowListing[] = [];
   let offset: number | null = 0;
-  const pageSchema = z.object({
-    workflows: z.array(z.union([codeListingSchema, listingSchema])),
-    nextOffset: z.number().nullable(),
-  });
   while (offset !== null) {
-    const page: z.infer<typeof pageSchema> = pageSchema.parse(
-      await callBureau(
-        'bureau.workflows.list',
-        {
-          limit: LISTING_PAGE_SIZE,
-          offset,
-          ...(options?.includeRuns === true ? { includeRuns: true } : {}),
-        },
-        options,
-      ),
+    const page: BureauOutput<'bureau.workflows.list'> = await bureauClient['bureau.workflows.list'](
+      {
+        limit: LISTING_PAGE_SIZE,
+        offset,
+        ...(options?.includeRuns === true ? { includeRuns: true } : {}),
+      },
+      options,
     );
     for (const entry of page.workflows) {
       if ('kind' in entry) code.push(entry);
@@ -257,7 +145,7 @@ export async function listWorkflowEntries(
 
 /** One workflow file. A file that is gone is a `NotFound` fault. */
 export async function getWorkflowFile(id: string, options?: Options): Promise<WorkflowFileDetail> {
-  return detailSchema.parse(await callBureau('bureau.workflows.get', { id }, options));
+  return bureauClient['bureau.workflows.get']({ id }, options);
 }
 
 /** The versions of the workflow that have run, most recently run first. */
@@ -265,18 +153,9 @@ export async function listWorkflowRevisions(
   id: string,
   options?: Options,
 ): Promise<readonly WorkflowRevision[]> {
-  return revisionsSchema.parse(await callBureau('bureau.workflows.revisions', { id }, options))
-    .revisions;
+  const answer = await bureauClient['bureau.workflows.revisions']({ id }, options);
+  return answer.revisions;
 }
-
-const historySchema = z.object({
-  revisions: z.array(
-    z.object({
-      current: z.boolean(),
-      steps: z.array(z.record(z.string(), z.unknown())),
-    }),
-  ),
-});
 
 /**
  * The steps of the newest version the Bureau saved of a workflow's file, as `bureau.workflows.history`
@@ -288,17 +167,13 @@ export async function getLatestSavedSteps(
   id: string,
   options?: Options,
 ): Promise<readonly Readonly<Record<string, unknown>>[] | undefined> {
-  const { revisions } = historySchema.parse(
-    await callBureau('bureau.workflows.history', { id }, options),
-  );
+  const { revisions } = await bureauClient['bureau.workflows.history']({ id }, options);
   return revisions[0]?.steps;
 }
 
 /** A code-defined workflow's description and registered contract. Anything the caller may not read is a `NotFound` fault. */
 export async function getCodeWorkflow(id: string, options?: Options): Promise<CodeWorkflow> {
-  return codeWorkflowSchema.parse(
-    await callBureau('bureau.workflows.internal.get', { id }, options),
-  );
+  return bureauClient['bureau.workflows.internal.get']({ id }, options);
 }
 
 /**
@@ -310,12 +185,9 @@ export async function startWorkflowFile(
   input: unknown,
   options?: Options,
 ): Promise<WorkflowStartResult> {
-  return startResultSchema.parse(
-    await callBureau(
-      'bureau.workflows.start',
-      { id, surface: 'web', ...(input === undefined ? {} : { input }) },
-      options,
-    ),
+  return bureauClient['bureau.workflows.start'](
+    { id, surface: 'web', ...(input === undefined ? {} : { input }) },
+    options,
   );
 }
 
@@ -326,91 +198,61 @@ export async function startWorkflowFile(
  */
 export type WorkflowDefinitionInput = Readonly<Record<string, unknown>>;
 
+/**
+ * The definition as the operations take it. It is a document as the editor's text holds it, so
+ * its static type names no member; the Bureau validates it and refuses one that is wrong.
+ */
+function wireDefinition(
+  definition: WorkflowDefinitionInput,
+): BureauInput<'bureau.workflows.create'>['definition'] {
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+  return definition as BureauInput<'bureau.workflows.create'>['definition'];
+}
+
 /** Writes a new workflow file for `id`, which a taken identifier refuses (`Conflict`). */
 export async function createWorkflowFile(
   id: string,
   definition: WorkflowDefinitionInput,
   options?: Options,
 ): Promise<WorkflowWriteResult> {
-  return writeResultSchema.parse(
-    await callBureau('bureau.workflows.create', { id, definition }, options),
+  return bureauClient['bureau.workflows.create'](
+    { id, definition: wireDefinition(definition) },
+    options,
   );
 }
 
-const runSummarySchema = z.object({
-  id: z.string(),
-  workflow: z.string(),
-  workflowVersion: z.string(),
-  status: z.enum([
-    'pending',
-    'running',
-    'completed',
-    'failed',
-    'cancelled',
-    'timed-out',
-    'suspended',
-  ]),
-  createdAt: z.string(),
-  updatedAt: z.string(),
-  origin: z
-    .discriminatedUnion('kind', [
-      z.object({
-        kind: z.literal('chat'),
-        contextId: z.string(),
-        agentName: z.string(),
-        principal: z.string(),
-      }),
-      z.object({
-        kind: z.literal('person'),
-        principal: z.string(),
-        surface: z.enum(['web', 'palette', 'api']),
-      }),
-      z.object({
-        kind: z.literal('schedule'),
-        scheduleId: z.string(),
-        fireId: z.string(),
-        manual: z.literal(true).optional(),
-      }),
-      z.object({ kind: z.literal('api') }),
-      z.object({
-        kind: z.literal('agent'),
-        parentRunId: z.string(),
-        parentContextId: z.string().optional(),
-        agentName: z.string(),
-        toolCallId: z.string().optional(),
-      }),
-      z.object({ kind: z.literal('agent-run'), runId: z.string(), agentId: z.string() }),
-      z.object({ kind: z.literal('goal'), goalRunId: z.string(), attemptId: z.string() }),
-      z.object({ kind: z.literal('parent'), parentRunId: z.string() }),
-      z.object({ kind: z.literal('system') }),
-      z.object({ kind: z.literal('trigger'), plugin: z.string(), workflowId: z.string() }),
-    ])
-    .nullable()
-    .default(null),
-});
+type RunSummary = BureauOutput<'bureau.workflows.runs.list'>['runs'][number];
 
-/** One instance of a workflow file, as `bureau.workflows.runs.list` summarises it. */
-type ParsedWorkflowFileRun = z.infer<typeof runSummarySchema>;
-/** One workflow-file run summary returned by the Bureau list operation. */
-export type WorkflowFileRun = Omit<ParsedWorkflowFileRun, 'origin'> & {
-  /** Older fixtures and Bureau versions omit this field; the decoder defaults it to `null`. */
-  readonly origin?: ParsedWorkflowFileRun['origin'];
+/**
+ * One workflow-file run summary returned by the Bureau list operation, as
+ * `bureau.workflows.runs.list` summarises an instance. Older fixtures and Bureau versions omit
+ * `origin`, which {@link workflowRunOf} defaults to `null`.
+ */
+export type WorkflowFileRun = Omit<RunSummary, 'origin'> & {
+  readonly origin?: RunSummary['origin'] | undefined;
 };
 
-const runDetailSchema = runSummarySchema.extend({
-  trigger: z.unknown(),
-  // The Bureau answers `null` for a result or an error the instance has not got.
-  result: z.unknown().optional(),
-  error: z.string().nullable().optional(),
-  finishReason: z.string().nullable().optional(),
-});
-
-/** One instance of a workflow file with what started it and how it ended (`bureau.workflows.runs.get`). */
-type ParsedWorkflowFileRunDetail = z.infer<typeof runDetailSchema>;
-/** One workflow-file run detail returned by the Bureau get operation. */
-export type WorkflowFileRunDetail = Omit<ParsedWorkflowFileRunDetail, 'origin'> & {
-  readonly origin?: ParsedWorkflowFileRunDetail['origin'];
+/** One workflow-file run detail returned by the Bureau get operation, with what started it and how it ended. */
+export type WorkflowFileRunDetail = Omit<
+  BureauOutput<'bureau.workflows.runs.get'>,
+  'origin' | 'result' | 'error' | 'finishReason'
+> & {
+  readonly origin?: RunSummary['origin'] | undefined;
+  /** The Bureau answers `null` for a result or an error the instance has not got. */
+  readonly result?: unknown;
+  readonly error?: string | null | undefined;
+  readonly finishReason?: BureauOutput<'bureau.workflows.runs.get'>['finishReason'] | undefined;
 };
+
+/**
+ * A run as a Bureau that predates `origin` has it: with no origin. The server's schema always sends
+ * the field, so this default belongs to the browser, applied to the typed result.
+ */
+export function workflowRunOf<Run extends { readonly origin?: RunSummary['origin'] | undefined }>(
+  run: Run,
+): Run & { readonly origin: RunSummary['origin'] } {
+  return { ...run, origin: run.origin ?? null };
+}
 
 /**
  * One instance of a workflow file, by the identifier `bureau.workflows.start` or a trigger gave it.
@@ -422,7 +264,7 @@ export async function getWorkflowFileRun(
   runId: string,
   options?: Options,
 ): Promise<WorkflowFileRunDetail> {
-  return runDetailSchema.parse(await callBureau('bureau.workflows.runs.get', { runId }, options));
+  return workflowRunOf(await bureauClient['bureau.workflows.runs.get']({ runId }, options));
 }
 
 /** The newest `limit` instances of one workflow file. */
@@ -431,10 +273,8 @@ export async function listWorkflowFileRuns(
   limit: number,
   options?: Options,
 ): Promise<readonly WorkflowFileRun[]> {
-  const page = z
-    .object({ runs: z.array(runSummarySchema) })
-    .parse(await callBureau('bureau.workflows.runs.list', { workflow: id, limit }, options));
-  return page.runs;
+  const page = await bureauClient['bureau.workflows.runs.list']({ workflow: id, limit }, options);
+  return page.runs.map(workflowRunOf);
 }
 
 /** Replaces the workflow's file, if it still hashes to `expectedHash`. */
@@ -444,28 +284,11 @@ export async function updateWorkflowFile(
   definition: WorkflowDefinitionInput,
   options?: Options,
 ): Promise<WorkflowWriteResult> {
-  return writeResultSchema.parse(
-    await callBureau('bureau.workflows.update', { id, expectedHash, definition }, options),
+  return bureauClient['bureau.workflows.update'](
+    { id, expectedHash, definition: wireDefinition(definition) },
+    options,
   );
 }
-
-const impactChangeSchema = z.object({
-  kind: z.string(),
-  /** The step's position, counted from 1, for a change to one step. */
-  step: z.number().optional(),
-  /** What it was and what it becomes, for a change that names both (a step's signal, its agent). */
-  from: z.unknown().optional(),
-  to: z.unknown().optional(),
-  breaking: z.boolean(),
-});
-
-const impactSchema = z.object({
-  version: z.string().nullable(),
-  previousVersion: z.string().nullable(),
-  changes: z.array(impactChangeSchema),
-  compatibility: z.enum(['compatible', 'breaking']).nullable(),
-  inFlight: z.number().nullable(),
-});
 
 /**
  * What saving a definition would do, as `bureau.workflows.impact` answers it: the `version` the
@@ -473,7 +296,7 @@ const impactSchema = z.object({
  * each change with whether it is `breaking`, the verdict, and how many runs are `inFlight` (`null`
  * when the caller may not count them).
  */
-export type WorkflowImpact = z.infer<typeof impactSchema>;
+export type WorkflowImpact = BureauOutput<'bureau.workflows.impact'>;
 
 /** One change {@link WorkflowImpact} lists. */
 export type WorkflowImpactChange = WorkflowImpact['changes'][number];
@@ -484,8 +307,9 @@ export async function getWorkflowImpact(
   definition: WorkflowDefinitionInput,
   options?: Options,
 ): Promise<WorkflowImpact> {
-  return impactSchema.parse(
-    await callBureau('bureau.workflows.impact', { id, definition }, options),
+  return bureauClient['bureau.workflows.impact'](
+    { id, definition: wireDefinition(definition) },
+    options,
   );
 }
 
@@ -495,12 +319,8 @@ export async function pauseWorkflowFile(
   expectedHash: string,
   options?: Options,
 ): Promise<WorkflowWriteResult> {
-  return writeResultSchema.parse(
-    await callBureau('bureau.workflows.pause', { id, expectedHash }, options),
-  );
+  return bureauClient['bureau.workflows.pause']({ id, expectedHash }, options);
 }
-
-const retrySchema = z.object({ id: z.string(), listener: listenerSchema });
 
 /**
  * Starts the failed listener of the workflow `id`'s contributed trigger at once
@@ -512,8 +332,8 @@ export async function retryWorkflowTrigger(
   id: string,
   options?: Options,
 ): Promise<WorkflowListener> {
-  return retrySchema.parse(await callBureau('bureau.workflows.triggers.retry', { id }, options))
-    .listener;
+  const answer = await bureauClient['bureau.workflows.triggers.retry']({ id }, options);
+  return answer.listener;
 }
 
 /** Sets `paused: false` in the workflow's file, if it still hashes to `expectedHash`. */
@@ -522,9 +342,7 @@ export async function resumeWorkflowFile(
   expectedHash: string,
   options?: Options,
 ): Promise<WorkflowWriteResult> {
-  return writeResultSchema.parse(
-    await callBureau('bureau.workflows.resume', { id, expectedHash }, options),
-  );
+  return bureauClient['bureau.workflows.resume']({ id, expectedHash }, options);
 }
 
 /** Deletes the workflow's file, if it still hashes to `expectedHash`. */
@@ -533,9 +351,7 @@ export async function deleteWorkflowFile(
   expectedHash: string,
   options?: Options,
 ): Promise<WorkflowWriteResult> {
-  return writeResultSchema.parse(
-    await callBureau('bureau.workflows.delete', { id, expectedHash }, options),
-  );
+  return bureauClient['bureau.workflows.delete']({ id, expectedHash }, options);
 }
 
 /**
@@ -547,7 +363,7 @@ export async function signalWorkflows(
   options?: Options,
 ): Promise<SignalResult> {
   const params = input.payload === undefined ? { name: input.name } : input;
-  return signalResultSchema.parse(await callBureau('bureau.workflows.signal', params, options));
+  return bureauClient['bureau.workflows.signal'](params, options);
 }
 
 /**

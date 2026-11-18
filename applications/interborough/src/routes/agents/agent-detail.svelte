@@ -132,6 +132,8 @@
     undefined,
   );
   const unavailable = $derived(listed === undefined && definition.data?.state === 'unavailable');
+  // COR-2429: an agent a person disabled is left out of the list too, and its page still opens.
+  const disabled = $derived(listed === undefined && definition.data?.state === 'disabled');
 
   // An agent defined in code that the catalog runs (a built-in agent, or a running plugin's) is
   // changed through its overrides (COR-2229): they are read here, beside its definition, and the
@@ -203,7 +205,7 @@
   /** The agent's name as a person reads it, and its description: the listing's, or its definition's. */
   const name = $derived(
     listed?.displayName ??
-      (unavailable ? agentLabel(definition.data?.name ?? id, undefined) : undefined),
+      (unavailable || disabled ? agentLabel(definition.data?.name ?? id, undefined) : undefined),
   );
   const description = $derived(
     listed !== undefined ? listed.description : (definition.data?.description ?? null),
@@ -500,6 +502,13 @@
         {CHAT_COPY.newChat}
       </Button>
     </Tooltip>
+  {:else if disabled}
+    <Tooltip text={copy.settings.disable.newChatReason(name ?? id)}>
+      <Button variant={newChatVariant} size="sm" aria-disabled="true">
+        {#snippet leadingIcon()}<Plus aria-hidden="true" size={14} />{/snippet}
+        {CHAT_COPY.newChat}
+      </Button>
+    </Tooltip>
   {:else}
     <Button
       href={router.href(newChatPath(id))}
@@ -598,7 +607,7 @@
       </div>
 
       {#if listed !== undefined}
-        <AgentFacts agent={listed} detailed />
+        <AgentFacts agent={listed} detailed detail={definition.data} />
       {/if}
 
       <Tabs bind:value={activeTab} onValueChangeRequest={requestTab} activateOnFocus={false}>

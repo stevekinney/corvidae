@@ -2,10 +2,13 @@
 import { afterEach, describe, expect, test } from 'bun:test';
 import { flushSync, tick } from 'svelte';
 
+import { stripCinderComponentsLayer } from '@lostgradient/component-tooling/test/css.ts';
+import {
+  DEFAULT_TEST_VIEWPORT,
+  setTestViewportWidth,
+} from '@lostgradient/component-tooling/test/viewport.ts';
 import { setupHappyDom } from '@lostgradient/testing';
 import { waitUntil } from '@lostgradient/testing/wait-until';
-import { stripCinderComponentsLayer } from '../../test/css.ts';
-import { DEFAULT_TEST_VIEWPORT, setTestViewportWidth } from '../../test/viewport.ts';
 
 setupHappyDom();
 

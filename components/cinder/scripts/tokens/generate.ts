@@ -31,12 +31,12 @@
  * adding generator formatting logic.
  */
 
+import { assertPrettierResolvesToRoot } from '@lostgradient/component-tooling/scripts/lib/prettier-resolution.ts';
 import { join } from 'node:path';
 import { format } from 'prettier';
 import { validateLoadedTokenDocuments } from '../../src/tokens/runtime/corpus-documents.ts';
 import { normalizedDocumentsByPath } from '../../src/tokens/runtime/resolver-order.ts';
 import type { ResolverDocument, TokenDocument } from '../../src/tokens/runtime/types.ts';
-import { assertPrettierResolvesToRoot } from '../lib/prettier-resolution.ts';
 import { buildTokensBaseCss } from './css-generator.ts';
 import { materializeDerivedValues, rewriteSourceText } from './derived-values.ts';
 import {

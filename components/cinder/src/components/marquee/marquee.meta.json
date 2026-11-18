@@ -1,0 +1,19 @@
+{
+  "$schema": "../../../../../internal/component-tooling/src/schemas/component-meta.schema.json",
+  "category": "layout",
+  "status": "beta",
+  "purpose": "Auto-scrolling horizontal or vertical ticker that loops content continuously with reduced-motion-safe behavior.",
+  "tags": ["marquee", "ticker"],
+  "useWhen": [
+    "Showing repeating announcements, partner logos, or status strips in a constrained space.",
+    "You need CSS-driven, seamless loop motion that can pause on hover/focus."
+  ],
+  "avoidWhen": [
+    {
+      "reason": "Users need to manually scroll and inspect static overflow content.",
+      "alternative": "scroll-area"
+    },
+    { "reason": "Information should remain fixed in place without motion emphasis." }
+  ],
+  "related": ["scroll-area", "banner"]
+}

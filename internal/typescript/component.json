@@ -1,0 +1,8 @@
+{
+  "extends": "./browser.json",
+  "compilerOptions": {
+    "types": ["bun"]
+  },
+  "include": ["${configDir}/src", "${configDir}/scripts"],
+  "exclude": ["${configDir}/node_modules", "${configDir}/coverage", "${configDir}/.types"]
+}

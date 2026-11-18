@@ -21,7 +21,12 @@ export type SchemaFormFieldKind =
   | 'choice'
   | 'array'
   | 'object'
-  | 'json';
+  | 'json'
+  /**
+   * A string marked `secret: true`: a reference to a saved secret, `{ "$secret": key }`, chosen from
+   * the host's list of keys. It never holds a value, so no text control is drawn for it.
+   */
+  | 'secret';
 
 export type SchemaFormOption = {
   label: string;
@@ -123,6 +128,10 @@ function fieldFromJsonSchema(
   }
 
   const normalizedSchema = schema;
+  // A string marked `secret: true` is a reference to a saved secret, never a text value.
+  if (normalizedSchema['secret'] === true && schemaTypeOf(normalizedSchema) === 'string') {
+    return baseField('secret', normalizedSchema, path, key, required);
+  }
   const options = enumOptions(normalizedSchema);
   if (options.length > 0) {
     const clearable =
@@ -374,7 +383,9 @@ function fieldLabel(schema: JsonSchemaObject, key: string): string {
  * `x-secret`, or an array whose items are. Summaries, headers and the JSON panel mask such a value.
  */
 export function isConcealedSchema(schema: JsonSchemaObject): boolean {
-  if (schema['writeOnly'] === true || schema['x-secret'] === true) return true;
+  if (schema['writeOnly'] === true || schema['x-secret'] === true || schema['secret'] === true) {
+    return true;
+  }
   const items = schema['items'];
   return isRecord(items) && (items['writeOnly'] === true || items['x-secret'] === true);
 }
@@ -431,7 +442,25 @@ export function fieldAtPathExists(field: SchemaFormField, path: readonly string[
   return field.kind === 'enumArray' || field.kind === 'tags' || field.kind === 'record';
 }
 
+/** The name of the one member a secret reference has. */
+export const SECRET_REFERENCE_PROPERTY = '$secret';
+
+/** Whether `value` is exactly `{ "$secret": key }` with a non-empty key. */
+export function isSecretReference(value: unknown): value is { readonly $secret: string } {
+  if (!isRecord(value)) return false;
+  const names = Object.keys(value);
+  const key = value[SECRET_REFERENCE_PROPERTY];
+  return names.length === 1 && typeof key === 'string' && key !== '';
+}
+
+/** The key a secret field's value names, or `undefined` when it names none. */
+export function secretKeyOf(value: unknown): string | undefined {
+  return isSecretReference(value) ? value.$secret : undefined;
+}
+
 export function defaultValueForField(field: SchemaFormField): unknown {
+  // A secret field never starts from a value: not a default, and not a text a host seeded.
+  if (field.kind === 'secret') return undefined;
   if ('default' in field.schema) return cloneJsonCompatible(field.schema['default']);
 
   if (field.kind === 'object') {
@@ -480,6 +509,8 @@ export function initialDraftOf(
 }
 
 function mergeInitialValueWithFieldDefaults(field: SchemaFormField, value: unknown): unknown {
+  // Only a reference is kept: a plain value a host seeded is dropped, so it is never shown or sent.
+  if (field.kind === 'secret') return isSecretReference(value) ? { ...value } : undefined;
   if (field.kind === 'object' && isRecord(value)) {
     const defaultValue = defaultValueForField(field);
     const defaultRecord = isRecord(defaultValue) ? defaultValue : {};

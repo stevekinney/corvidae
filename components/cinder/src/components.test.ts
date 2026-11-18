@@ -2,7 +2,7 @@ import { sveltePlugin, throwingRejectionOf } from '@lostgradient/testing';
 import { describe, expect, test } from 'bun:test';
 import { mkdir } from 'node:fs/promises';
 
-import { allowCinderTestStyleBlock } from '../scripts/preload.ts';
+import { allowCinderTestStyleBlock } from '@lostgradient/component-tooling/scripts/preload.ts';
 import Button from './components/button/button.svelte';
 
 describe('svelte plugin', () => {

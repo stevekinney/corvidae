@@ -1,0 +1,18 @@
+{
+  "$schema": "../../../../../internal/component-tooling/src/schemas/component-meta.schema.json",
+  "category": "overlay",
+  "status": "stable",
+  "purpose": "Modal-backed confirmation prompt with cancel and confirm actions, including a destructive variant for irreversible operations.",
+  "tags": ["overlay", "dialog"],
+  "useWhen": [
+    "Requiring an explicit yes/no acknowledgement before performing a destructive or irreversible action.",
+    "Asking the user to confirm a discrete decision with two clear outcomes."
+  ],
+  "avoidWhen": [
+    {
+      "reason": "Collecting structured input or multiple fields — compose a modal with form controls instead."
+    },
+    { "reason": "Announcing a non-blocking result — use toast-region or banner." }
+  ],
+  "related": ["modal", "alert-dialog", "drawer"]
+}

@@ -94,6 +94,63 @@ describe('bureau.agents.versions.list', () => {
     expect(listOf(runs, 'revisions')).toHaveLength(1);
   });
 
+  it('says what each version of an agent file changed, in words read from its content (COR-2429)', async () => {
+    const served = await serve();
+    const first = await seed(served);
+    const saved = await callAs(served.owner, 'bureau.agents.definitions.update', {
+      id: 'researcher',
+      expectedHash: first,
+      definition: {
+        ...DEFINITION,
+        name: 'Researcher',
+        model: OTHER_MODEL,
+        instructions: 'You are careful.\nRefunds over $25 need approval.\n',
+      },
+    });
+    expect(saved.error).toBeUndefined();
+
+    const versions = listOf(
+      await callAs(served.owner, 'bureau.agents.versions.list', { id: 'researcher' }),
+      'versions',
+    );
+
+    expect(versions.map((entry) => entry['revision'])).toEqual([2, 1]);
+    const summary = String(versions[0]?.['summary']);
+    expect(summary).toContain('Instructions: added “Refunds over $25 need approval.”');
+    expect(summary).toContain('Model: anthropic/claude-opus-5-5 to anthropic/claude-opus-5');
+    expect(summary).toContain('Description: set to “Writes things”');
+    // One part for each changed key, in the order `changedKeys` names them.
+    const changedKeys = (versions[0]?.['changedKeys'] ?? []) as string[];
+    expect(summary.split('; ')).toHaveLength(changedKeys.length);
+    expect(versions[1]?.['summary']).toBe('Created');
+  });
+
+  it('says what each version of a code agent’s overrides changed (COR-2429)', async () => {
+    const served = await serve();
+    const save = async (overrides: Record<string, unknown>) => {
+      const read = await callAs(served.owner, 'bureau.agents.overrides.get', { id: 'alpha' });
+      const written = await callAs(served.owner, 'bureau.agents.overrides.update', {
+        id: 'alpha',
+        expectedHash: read.result?.['hash'],
+        overrides,
+      });
+      expect(written.error).toBeUndefined();
+    };
+    await save({ instructions: 'Answer briefly.' });
+    await save({ instructions: 'Answer briefly.\nAsk before any refund.', limits: { steps: 20 } });
+
+    const versions = listOf(
+      await callAs(served.owner, 'bureau.agents.versions.list', { id: 'alpha' }),
+      'versions',
+    );
+
+    expect(versions.map((entry) => [entry['revision'], entry['summary']])).toEqual([
+      // What changed, by name: the limit set, not only that limits changed (design review 1).
+      [2, 'Instructions: added “Ask before any refund.”; Limits: Steps 20'],
+      [1, 'Created'],
+    ]);
+  });
+
   it('answers a code-defined agent with none and an unknown agent with NotFound', async () => {
     const served = await serve();
     const code = await callAs(served.owner, 'bureau.agents.versions.list', { id: 'alpha' });

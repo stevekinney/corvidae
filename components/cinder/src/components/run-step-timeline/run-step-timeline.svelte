@@ -1,20 +1,4 @@
 <script lang="ts" module>
-  /**
-   * @cinder
-   * @category data-display
-   * @status stable
-   * @purpose Execution-state rail for async steps, durations, retries, branches, speculation, and compensation.
-   * @tag timeline
-   * @tag progress
-   * @tag execution
-   * @useWhen Showing live or completed CI, workflow, import, or deployment steps.
-   * @useWhen Showing speculative parallel branches or saga compensation.
-   * @avoidWhen Guiding users through an interactive wizard where they choose what to do next — use steps instead.
-   * @avoidWhen Showing a flat timestamp-first event log without structured step state — use timeline instead.
-   * @avoidWhen Showing an activity stream — use feed instead.
-   * @avoidWhen Showing a dense operational log without structured step state, such as raw CI or job output — use feed's log arm instead.
-   * @related timeline, feed, steps
-   */
   import type { RunStep, RunStepBranchGroup } from './run-step-timeline.types.ts';
   import type { RailThrough } from './run-step-timeline.utilities.ts';
 

@@ -1,0 +1,19 @@
+{
+  "$schema": "../../../../../internal/component-tooling/src/schemas/component-meta.schema.json",
+  "category": "navigation",
+  "status": "stable",
+  "purpose": "Collapsible labelled bucket inside side-navigation that groups related side-navigation-item entries under a single heading.",
+  "tags": ["navigation", "grouping"],
+  "useWhen": [
+    "Splitting a long side-navigation column into clearly named sections.",
+    "Letting users collapse rarely used groups to reduce visual noise in the sidebar."
+  ],
+  "avoidWhen": [
+    { "reason": "Used outside a side-navigation ancestor — it expects that landmark for context." },
+    {
+      "reason": "Hosting a single flat list with no grouping — place side-navigation-item entries directly."
+    }
+  ],
+  "related": ["side-navigation", "side-navigation-item"],
+  "composeOnly": true
+}

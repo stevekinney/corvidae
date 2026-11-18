@@ -1,17 +1,4 @@
 <script lang="ts" module>
-  /**
-   * @cinder
-   * @category overlay
-   * @status stable
-   * @purpose Modal search overlay for keyboard-first command launching and navigation. Filtering is consumer-owned: the `items` snippet receives `{ query }` and renders only the matching rows.
-   * @tag overlay
-   * @tag command
-   * @useWhen Exposing a global keyboard-first launcher for power-user actions and navigation.
-   * @useWhen Letting users search across heterogeneous results such as commands, pages, and records in one input.
-   * @avoidWhen Picking a single value bound to a form field — use combobox instead.
-   * @avoidWhen Showing a contextual action menu attached to a trigger — use dropdown instead.
-   * @related combobox, dropdown, command-item
-   */
   export type { CommandPaletteProps } from './command-palette.types.ts';
 </script>
 

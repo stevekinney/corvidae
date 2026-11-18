@@ -6,8 +6,8 @@
  * rows are 20rem wide; every box is read in one pass.
  */
 
+import { fixtureRoute } from '@lostgradient/testing/playwright/overlay-fixture';
 import { expect, test } from '@playwright/test';
-import { fixtureRoute } from './overlay-fixture.ts';
 
 test('a narrow row keeps a trailing glyph beside the body and drops a trailing control under it', async ({
   page,

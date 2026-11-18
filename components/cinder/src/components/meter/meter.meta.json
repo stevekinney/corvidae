@@ -1,0 +1,19 @@
+{
+  "$schema": "../../../../../internal/component-tooling/src/schemas/component-meta.schema.json",
+  "category": "feedback",
+  "status": "alpha",
+  "purpose": "Bounded measurement gauge with meter semantics for readings like battery, quota, CPU, and memory utilization.",
+  "tags": ["feedback", "measurement", "gauge"],
+  "useWhen": [
+    "Showing a fluctuating value within a known minimum and maximum range.",
+    "Communicating low/optimal/high regions of a bounded measurement."
+  ],
+  "avoidWhen": [
+    {
+      "reason": "Reporting task completion over time such as uploads/imports.",
+      "alternative": "progress"
+    }
+  ],
+  "related": ["progress", "statistic", "slider"],
+  "a11y": { "pattern": "WAI-ARIA Meter" }
+}

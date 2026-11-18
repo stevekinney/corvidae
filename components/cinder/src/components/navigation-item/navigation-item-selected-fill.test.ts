@@ -6,8 +6,8 @@
  */
 import { describe, expect, test } from 'bun:test';
 
+import { declarationsFor } from '@lostgradient/component-tooling/test/css.ts';
 import { readOklchToken } from '../../styles/token-contrast-test-readers.ts';
-import { declarationsFor } from '../../test/css.ts';
 import {
   AA_TEXT,
   type OklchColor,

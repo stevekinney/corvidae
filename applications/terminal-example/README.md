@@ -129,4 +129,4 @@ default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:
   - the profiles, read-only mode, disconnect, exit and restart, paste review, search and export, and cleanup of background and escaped jobs;
   - the review controls (`tests/review-controls.playwright.ts`): theme, `?autostart=off`, held loading and connecting with `Cancel`, a real denial and a real failure, injected engine failure, real backpressure from a stalled program (held, no Cancel, recovery), a real escaped job, the links profile with links off and on, and focus after the `Export` button is removed.
 
-The Playwright checks are a separate script rather than part of `test`, like the playground's `test:browser` and the root `test:browser:terminal`: browser suites with real shells and a fixed port are explicit commands and are not part of the turbo `test` or `validate` graph.
+The Playwright checks are a separate script rather than part of `test`, like the playground's `test:browser` and the terminal package's `test:browser:engines`: browser suites with real shells and a fixed port are explicit commands and are not part of the turbo `test` or `validate` graph.
