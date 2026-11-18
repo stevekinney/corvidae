@@ -9,6 +9,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { SUBSCRIPTION_OPERATION_NAMES } from '../lib/generated/bureau-operation-client.generated.ts';
 import { startHost, type Host } from './host.ts';
 import { BUREAU_METHOD_SCOPES } from './scope-gate.ts';
 
@@ -73,7 +74,9 @@ async function operationsCalledByTheBrowser(): Promise<string[]> {
 
 describe('the operations the browser calls', () => {
   test('every one is a method /jsonrpc answers, and a name it does not serve is not', async () => {
-    const names = await operationsCalledByTheBrowser();
+    // The feeds are subscriptions, served under `/bureau/v1/subscriptions`, not methods of `/jsonrpc`.
+    const feeds: readonly string[] = SUBSCRIPTION_OPERATION_NAMES;
+    const names = (await operationsCalledByTheBrowser()).filter((name) => !feeds.includes(name));
     expect(names.length).toBeGreaterThan(20);
     const { body } = await post('/jsonrpc', 'rpc.discover', undefined);
     const served = new Set(
