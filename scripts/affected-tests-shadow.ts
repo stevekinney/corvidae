@@ -32,6 +32,14 @@ export function omittedFailures(
   );
 }
 
+/** Give an authenticated raw single-job log the job prefix the shared CI parser consumes. */
+export function normalizeJobLog(job: string, log: string): string {
+  return log
+    .split('\n')
+    .map((line) => `${job}\t${line.replace(/^\d{4}-\d\d-\d\dT[^ ]+\s+/, '')}`)
+    .join('\n');
+}
+
 function git(root: string, args: string[]) {
   const result = Bun.spawnSync(['git', '-C', root, ...args]);
   if (result.exitCode !== 0) throw new Error(result.stderr.toString());
@@ -136,10 +144,15 @@ export function replayRevision(
   const attributedFailures =
     input.failureLog === undefined
       ? []
-      : [...failureRecords(readFileSync(input.failureLog, 'utf8')).values()].flatMap((records) =>
-          records
-            .filter((record) => record.kind === 'test' && record.identity !== undefined)
-            .map((record) => record.identity!),
+      : [
+          ...failureRecords(
+            normalizeJobLog(
+              fullRunFailures[0] ?? input.name,
+              readFileSync(input.failureLog, 'utf8'),
+            ),
+          ).values(),
+        ].flatMap((records) =>
+          records.flatMap((record) => (record.identity === undefined ? [] : [record.identity])),
         );
   const omitted = omittedFailures(selected, attributedFailures);
   return {
