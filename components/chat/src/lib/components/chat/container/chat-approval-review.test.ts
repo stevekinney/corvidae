@@ -370,11 +370,98 @@ describe('the box an arriving approval is placed against (COR-2327)', () => {
     stubBox(card, 357, 602);
 
     const shift = approvalPlacementShift(transcript, card);
-    // The unit's top lands on the header's bottom plus the padding (179), not 6px above it, and the
-    // plain rule (no header) would have scrolled 127px and left the row under the header.
-    expect(shift).toBe(121);
-    expect(300 - shift!).toBeGreaterThanOrEqual(179);
+    // The decision row wins: the card's bottom (602) rests 32px above the transcript's end (487),
+    // the end fade and its margin, so the shift is 602 - 455 = 147. The label row (300) then stands
+    // at 153, 26px above the 179 line, under the header and its top fade, and the card (357 - 147 =
+    // 210) stays clear of the header. Before the decision row ranked first the shift was 121.
+    expect(shift).toBe(147);
+    expect(602 - shift!).toBeLessThanOrEqual(487 - 32);
+    expect(357 - shift!).toBeGreaterThanOrEqual(179);
     container.remove();
+  });
+
+  test('at 320 by 640 the decision row rests whole above the end fade and the reminder is not shown, in the page’s real markup', () => {
+    // Interborough's shape: a rail item holding the row and, in `nested`, the card, no article.
+    // The transcript ends at 476, the header's bottom is 167 and the padding 12 (line 179); the unit
+    // is 300px (row 52, card 243 under a 5px gap), too tall for the 297px between the line and the end.
+    const timeline = document.createElement('div');
+    const rail = document.createElement('div');
+    rail.className = 'cinder-tool-call-rail';
+    const item = document.createElement('div');
+    item.className = 'cinder-tool-call-rail__item';
+    const label = document.createElement('button');
+    label.className = 'cinder-tool-call-rail__row';
+    const nested = document.createElement('div');
+    nested.className = 'cinder-tool-call-rail__nested';
+    const card = document.createElement('div');
+    const actionRow = document.createElement('div');
+    actionRow.className = 'cinder-approval-card__action-row';
+    card.append(actionRow);
+    nested.append(card);
+    item.append(label, nested);
+    rail.append(item);
+    timeline.append(rail);
+    document.body.append(timeline);
+    stubBox(timeline, 52, 476);
+    timeline.style.setProperty('--cinder-chat-overlay-inset-start', '115px');
+    timeline.style.paddingTop = '127px';
+    Object.defineProperty(timeline, 'scrollHeight', { value: 800, configurable: true });
+    Object.defineProperty(timeline, 'clientHeight', { value: 424, configurable: true });
+    // Placed before arrival at the bottom of the room: label 300, card 357 to 600.
+    stubBox(label, 300, 352);
+    stubBox(card, 357, 600);
+    stubBox(actionRow, 540, 600);
+
+    const shift = approvalPlacementShift(timeline, card);
+    // The card's bottom lands on 476 - 32 = 444: the shift is 600 - 444 = 156.
+    expect(shift).toBe(156);
+    const cardBottom = 600 - shift!;
+    expect(cardBottom).toBeLessThanOrEqual(476 - 24);
+    expect(357 - shift!).toBeGreaterThanOrEqual(179);
+    // The reminder shows only while the action row is not wholly inside the transcript's box; at the
+    // placed position the row (bottom 444) is whole with 32px to spare, in light and dark alike.
+    const row = { top: 540 - shift!, bottom: cardBottom, left: 0, right: 320 };
+    expect(approvalRowVisible(row, { top: 52, bottom: 476, left: 0, right: 320 }, false, 0)).toBe(
+      true,
+    );
+    timeline.remove();
+  });
+
+  test('the labelling row is found in the real Interborough shape: a rail item holding the row and the card, with no message article', () => {
+    // Interborough draws its messages through its own `row` snippet: a ToolCallRail whose item holds
+    // the call's row and, in `.cinder-tool-call-rail__nested`, the approval card. There is no
+    // `article[data-message-id]` around them.
+    const timeline = document.createElement('div');
+    timeline.className = 'chat-timeline';
+    const wrapper = document.createElement('div');
+    const rail = document.createElement('div');
+    rail.className = 'cinder-tool-call-rail';
+    const earlierItem = document.createElement('div');
+    earlierItem.className = 'cinder-tool-call-rail__item';
+    const earlier = document.createElement('button');
+    earlier.className = 'cinder-tool-call-rail__row';
+    earlierItem.append(earlier);
+    const item = document.createElement('div');
+    item.className = 'cinder-tool-call-rail__item';
+    const label = document.createElement('button');
+    label.className = 'cinder-tool-call-rail__row';
+    const nested = document.createElement('div');
+    nested.className = 'cinder-tool-call-rail__nested';
+    const card = document.createElement('div');
+    nested.append(card);
+    item.append(label, nested);
+    rail.append(earlierItem, item);
+    wrapper.append(rail);
+    timeline.append(wrapper);
+    document.body.append(timeline);
+    stubBox(earlier, 60, 100);
+    stubBox(label, 123, 175);
+    stubBox(card, 180, 425);
+
+    expect(card.closest('article[data-message-id]')).toBeNull();
+    // The row of the card's own item leads the unit, not the earlier call's row.
+    expect(approvalUnitBox(card)).toEqual({ top: 123, bottom: 425 });
+    timeline.remove();
   });
 
   test('the card and the row that labels it are one unit to keep clear', () => {
@@ -452,6 +539,54 @@ describe('where a waiting approval lands when it opens (COR-2327)', () => {
     expect(approvalArrivalRestShift(unit, viewport, 20)).toBe(20);
     // The end would move it up 80px, its top to 79: under the header, so it stays where it is.
     expect(approvalArrivalRestShift(unit, viewport, 80)).toBe(0);
+  });
+
+  test('under a header, the place a unit is put is a place it rests: a second pass moves nothing', () => {
+    // 320 by 640: the box runs from 179, under the header, to 476. A unit of 300px does not fit
+    // above the end fade, and one of 200px does; each starts below, above and astride its rest.
+    const box = { top: 179, bottom: 476 };
+    for (const blockSize of [300, 200]) {
+      for (const top of [-200, 60, 144, 179, 240, 520]) {
+        const unit = { top, bottom: top + blockSize };
+        const shift = approvalArrivalRestShift(unit, box, 1000, APPROVAL_BOTTOM_CLEARANCE, true);
+        const placed = { top: unit.top - shift, bottom: unit.bottom - shift };
+        const again = approvalArrivalRestShift(
+          placed,
+          box,
+          1000 - shift,
+          APPROVAL_BOTTOM_CLEARANCE,
+          true,
+        );
+        expect(again, `${blockSize}px unit from ${top}`).toBe(0);
+        // The decision row, the unit's bottom, is whole above the end fade either way.
+        expect(placed.bottom, `${blockSize}px unit from ${top}`).toBeLessThanOrEqual(476 - 24);
+        if (blockSize === 200) expect(placed.top).toBeGreaterThanOrEqual(179);
+        // The unit that does not fit keeps its decision row in the box's lower half: on the fade
+        // line when it had to move, and where it was when it was already there.
+        else expect(placed.bottom).toBeGreaterThanOrEqual((179 + 476) / 2);
+      }
+    }
+  });
+
+  test('a unit that does not fit and already shows its decision row is never scrolled up off the end', () => {
+    // 320 by 640 at the transcript's end: the label row is at 123, under the header that ends at
+    // 167, and the card's bottom is at 428, above the fade line (444). It rests there.
+    const box = { top: 179, bottom: 476 };
+    expect(
+      approvalArrivalRestShift({ top: 123, bottom: 428 }, box, 0, APPROVAL_BOTTOM_CLEARANCE, true),
+    ).toBe(0);
+    // Jump to latest's band, were it to show, shrinks the box: still no shift, so nothing feeds.
+    for (const bottom of [476, 440, 430]) {
+      expect(
+        approvalArrivalRestShift(
+          { top: 123, bottom: 428 },
+          { top: 179, bottom },
+          0,
+          APPROVAL_BOTTOM_CLEARANCE,
+          true,
+        ),
+      ).toBe(0);
+    }
   });
 
   test('a card above the transcript, or taller than it, keeps the shift that places it', () => {

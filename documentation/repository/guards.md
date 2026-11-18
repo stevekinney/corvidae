@@ -42,7 +42,7 @@ Every library and component runs `scripts/check-inherited-key-reads.ts` in its `
 
 `bun run audit` runs `bun audit --audit-level=high` through `scripts/check-audit-exceptions.ts`. An advisory may be tolerated only by an entry in `scripts/audit-exceptions.ts`, which needs an owner decision, a tracking issue, a review-by date, and the exact dependency chains that may reach the package; the guard fails on a stale, expired, or widened exception. Never add a bare `--ignore`.
 
-`GHSA-fc5q-39xc-vjpf` affects `picomatch` through reviewed static-export, type-generation and developer-check tooling only. It remains until COR-2515 removes the dated exception by 2026-12-17 or an upstream patched release becomes available. Its current inventory has 7,796 workspace-rooted routes, chiefly through Environmentalist's optional `ts-morph` CLI/type generation, Playground's static export analyser, and Cinder's developer checks. The readable tooling chains are bound to a SHA-256 digest of the complete sorted lockfile inventory, including edge kinds and package identities: any new route, nested hop, version, or dependency-kind change fails the audit for renewed review. The advisory is documented at [GHSA-fc5q-39xc-vjpf](https://github.com/advisories/GHSA-fc5q-39xc-vjpf).
+No advisory is currently tolerated.
 
 ## Middle-dot separators
 

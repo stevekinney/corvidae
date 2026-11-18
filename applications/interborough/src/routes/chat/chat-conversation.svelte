@@ -59,6 +59,7 @@
   import {
     approvalPlacementShift,
     Chat,
+    CHAT_OVERLAY_INSET_START_PROPERTY,
     ChatNote,
     ChatQuestion,
     createConversationHistory,
@@ -770,7 +771,7 @@
   let route = $state<HTMLElement | undefined>();
   let head = $state<HTMLElement | undefined>();
   // The header is laid over the top of the conversation on a translucent ground, so the transcript
-  // scrolls under it. Its height is the transcript's top inset (`--cinder-chat-overlay-inset-start`,
+  // scrolls under it. Its height is the transcript's top inset (Chat's overlay inset property,
   // read by Chat for the first row, for scrolling to a row and for placing an approval), kept as
   // the header grows and shrinks with its banners and alerts.
   $effect(() => {
@@ -780,7 +781,7 @@
       return;
     const write = (): void => {
       owner.style.setProperty(
-        '--cinder-chat-overlay-inset-start',
+        CHAT_OVERLAY_INSET_START_PROPERTY,
         `${element.getBoundingClientRect().height}px`,
       );
       approvalPlacement.headerChanged();
@@ -790,7 +791,7 @@
     observer.observe(element);
     return () => {
       observer.disconnect();
-      owner.style.removeProperty('--cinder-chat-overlay-inset-start');
+      owner.style.removeProperty(CHAT_OVERLAY_INSET_START_PROPERTY);
     };
   });
   /** The frames to wait for the approval's row to be drawn before giving up on bringing the person to it. */

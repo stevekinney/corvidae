@@ -68,6 +68,13 @@ export function approvalRowVisible(
 export const APPROVAL_BOTTOM_CLEARANCE = 12;
 
 /**
+ * The room kept under the decision row at the transcript's end, in pixels, while the transcript
+ * can still scroll: the end edge's fade (24px, `--cinder-space-6`) and an 8px margin, so the row
+ * is neither washed out by the fade nor on the edge of where the reminder shows.
+ */
+export const APPROVAL_END_FADE_CLEARANCE = 32;
+
+/**
  * The box an approval must show inside the transcript: from the decision row's top down to the
  * card's bottom edge plus the clearance, so the buttons and their hit overhang clear the composer.
  * A card that draws no row, or one taller than the transcript box, is judged by the row alone.
@@ -142,11 +149,38 @@ export function approvalArrivalRestShift(
     // show, so it is whole there while its top is still in view.
     result = card.top - toEnd >= viewport.top - 0.5 ? toEnd : shift;
   }
-  // Under a header laid over the transcript (`viewport.top` is already below it) the unit's top is
-  // never scrolled above that line, whether it fits or not: a unit too tall for the room rests with
-  // its top on the line and its end under the composer or below the fold, because the row that
-  // labels the card is what names what is waiting.
-  return keepTopClear ? Math.min(result, card.top - viewport.top) : result;
+  if (!keepTopClear) return result;
+  // Under a header laid over the transcript (`viewport.top` is already below it), ranked:
+  //   1. The decision row, whose bottom is the card's, rests whole above the transcript's end fade
+  //      and so above where the reminder would stand (the transcript's end, which the reminder
+  //      shows below). This always wins, and it is a shift down only as far as the transcript can
+  //      still scroll (at its end the fade is off).
+  //   2. When the unit also fits there, its top rests on the header's line (the shift above,
+  //      limited so the top never passes it).
+  //   3. When it does not fit, it shifts by only the deficit: the label row passes under the header
+  //      and the top fade, and the card, below it, stays clear.
+  //
+  // Each case names one resting position, so a second pass from there is no shift: a rule that
+  // pulled the decision row down in one pass and the label row back up in the next never settled.
+  const toTop = card.top - viewport.top;
+  const toFadeLine = card.bottom - (viewport.bottom - APPROVAL_END_FADE_CLEARANCE);
+  const limited = (shift: number): number => {
+    const reachable = Math.min(shift, Math.max(toEnd, 0));
+    return Math.abs(reachable) <= 0.5 ? 0 : reachable;
+  };
+  // Does not fit between the header's line and the fade line: the label row is what passes under
+  // the header. A decision row below the fade line comes up to it. One already above the line, in
+  // the box's lower half, rests where it is, which at the transcript's end is the end: scrolling
+  // up off the end to give the label back a few pixels brings Jump to latest, whose band shrinks
+  // the transcript and feeds this placement until the card has left the view. Only a decision row
+  // higher than that, scrolled off the top, comes down to the line.
+  if (toFadeLine > toTop + 0.5) {
+    if (toFadeLine > 0) return limited(toFadeLine);
+    const lowerHalf = card.bottom >= (viewport.top + viewport.bottom) / 2;
+    return lowerHalf ? 0 : limited(toFadeLine);
+  }
+  // Fits: the usual resting place, held between the two lines.
+  return limited(Math.min(Math.max(result, toFadeLine), toTop));
 }
 
 /**
@@ -186,12 +220,18 @@ export function approvalReminderRoom(root: ParentNode | null | undefined): numbe
 }
 
 /**
+ * The custom property a host sets, on Chat or any ancestor of it, to the height of a header it
+ * lays over the top of the transcript. Chat owns the name; a host writes it through this constant.
+ */
+export const CHAT_OVERLAY_INSET_START_PROPERTY = '--cinder-chat-overlay-inset-start';
+
+/**
  * The height of a header the host lays over the top of the transcript
  * (`--cinder-chat-overlay-inset-start`), or 0 when none is.
  */
 export function approvalOverlayCovered(transcript: HTMLElement): number {
   const covered = Number.parseFloat(
-    getComputedStyle(transcript).getPropertyValue('--cinder-chat-overlay-inset-start'),
+    getComputedStyle(transcript).getPropertyValue(CHAT_OVERLAY_INSET_START_PROPERTY),
   );
   return Number.isFinite(covered) && covered > 0 ? covered : 0;
 }
@@ -276,19 +316,36 @@ export function pendingApprovalCard(
   );
 }
 
+/** Where the row that labels an approval card is looked for, nearest container first. */
+const LABEL_SCOPES = [
+  '.cinder-tool-call-rail__item',
+  '.cinder-tool-call-rail',
+  'article[data-message-id]',
+  '.chat-timeline > *',
+] as const;
+
 /**
  * The box of a pending approval to keep clear of the header and the composer: the card and the rail
- * row that labels it ("Issue refund 4471, Waiting on you"), the one above it in the same message,
- * as one unit. The labelling row sits above the card, so a card placed on its own top leaves the
- * row's top under the header, where it takes no tap.
+ * row that labels it ("Issue refund 4471, Waiting on you"), the one above it, as one unit. The
+ * labelling row sits above the card, so a card placed on its own top leaves the row's top under the
+ * header, where it takes no tap.
+ *
+ * The row is searched for in the closest container that holds both, in the order the markup really
+ * has them: the tool-call rail's item (an application that draws the card inside the rail, as
+ * Interborough does through its own `row` snippet, has no message article), the rail, the message
+ * article (Chat's own message), and the timeline's row wrapper.
  */
 export function approvalUnitBox(card: HTMLElement): Pick<DOMRectReadOnly, 'top' | 'bottom'> {
   const box = card.getBoundingClientRect();
-  const message = card.closest<HTMLElement>('article[data-message-id]');
-  // The nearest row before the card in document order is the one that labels it.
   let label: HTMLElement | undefined;
-  for (const row of message?.querySelectorAll<HTMLElement>('.cinder-tool-call-rail__row') ?? []) {
-    if (row.compareDocumentPosition(card) & Node.DOCUMENT_POSITION_FOLLOWING) label = row;
+  for (const selector of LABEL_SCOPES) {
+    const scope = card.closest<HTMLElement>(selector);
+    if (scope === null) continue;
+    // The nearest row before the card in document order is the one that labels it.
+    for (const row of scope.querySelectorAll<HTMLElement>('.cinder-tool-call-rail__row')) {
+      if (row.compareDocumentPosition(card) & Node.DOCUMENT_POSITION_FOLLOWING) label = row;
+    }
+    if (label !== undefined) break;
   }
   return {
     top: Math.min(box.top, label?.getBoundingClientRect().top ?? box.top),
