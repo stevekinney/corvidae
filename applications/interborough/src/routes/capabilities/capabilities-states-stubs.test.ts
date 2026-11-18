@@ -9,12 +9,24 @@ import { describe, expect, test } from 'bun:test';
 import {
   DEMO_PLUGIN,
   githubNotLoaded,
+  githubWithAddress,
   LEDGER_EDITING,
   LEDGER_PROBE,
+  paymentsSource,
   RELEASE_NOTES_INSTRUCTIONS,
   RELEASE_NOTES_SKILLS,
   SIGN_IN_START,
+  SKILL_AGENT_DETAIL,
+  SKILL_AGENTS,
+  USED_BY_DEFINITIONS,
+  USED_BY_TOOL_FIELDS,
 } from '../../../tests/e2e/capabilities-states-stubs.ts';
+import {
+  getAgentCatalog,
+  getAgentDefinition,
+  listAgentDefinitions,
+} from '../../lib/agent-definitions.ts';
+import { agentSummarySchema } from '../../lib/bureau-client.ts';
 import { getSkillInstructions, listSkillCatalog } from '../../lib/bureau-skills.ts';
 import { getPlugins } from '../../lib/host-plugins.ts';
 import {
@@ -92,6 +104,58 @@ describe('the stubs of the capabilities states spec', () => {
       fetch: answering(SIGN_IN_START),
     });
     expect(started.authorized).toBe(false);
+  });
+
+  test('the agents that use a tool, the agent list and the code agent are read by the page', async () => {
+    const catalog = await getAgentCatalog({
+      fetch: bureauAnswering({
+        models: [],
+        tools: [
+          {
+            name: 'github__create_issue',
+            description: 'Opens an issue.',
+            shortDescription: null,
+            title: 'Create issue',
+            inputSchema: null,
+            tier: 'mutating',
+            defaultApproval: 'ask',
+            source: 'host',
+            plugin: null,
+            ...USED_BY_TOOL_FIELDS,
+          },
+        ],
+      }),
+    });
+    expect(catalog.tools[0]?.users).toHaveLength(4);
+    expect(catalog.tools[0]?.userApprovals).toEqual({
+      'release-writer': 'always',
+      'former-intern': 'blocked',
+    });
+    const definitions = await listAgentDefinitions({ fetch: bureauAnswering(USED_BY_DEFINITIONS) });
+    expect(definitions.filter((agent) => agent.source === 'code').map((agent) => agent.id)).toEqual(
+      ['code-assistant'],
+    );
+    // `listAgents` reads with the page's own `fetch`; its row schema is the one that parses the stub.
+    const agents = SKILL_AGENTS.agents.map((agent) => agentSummarySchema.parse(agent));
+    expect(agents.map((agent) => agent.name)).toEqual(['workflow-author']);
+    const detail = await getAgentDefinition('workflow-author', {
+      fetch: bureauAnswering(SKILL_AGENT_DETAIL),
+    });
+    expect(detail.codeDefinition?.skills).toEqual(['release-notes']);
+  });
+
+  test('the GitHub source with an address and the Payments API are sources the page reads', async () => {
+    const snapshot = await getToolSources({
+      fetch: answering({
+        configurationRevision: null,
+        sources: [githubWithAddress(SAMPLE_GITHUB), paymentsSource('2026-11-17T09:00:00.000Z')],
+      }),
+    });
+    expect(snapshot.sources.map((source) => [source.id, source.address])).toEqual([
+      ['github', 'https://mcp.github.example/mcp'],
+      ['payments', 'https://api.example.com/openapi.json'],
+    ]);
+    expect(snapshot.sources[1]?.kind).toBe('openapi');
   });
 
   test('a stub the schema does not accept fails here', async () => {

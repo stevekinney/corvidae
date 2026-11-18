@@ -13,11 +13,18 @@ import { CAPABILITIES_COPY } from '../../src/app/copy/capabilities.ts';
 import {
   DEMO_PLUGIN,
   githubNotLoaded,
+  githubWithAddress,
   LEDGER_EDITING,
   LEDGER_PROBE,
+  paymentsSource,
+  RELEASE_NOTES_DESCRIPTION,
   RELEASE_NOTES_INSTRUCTIONS,
   RELEASE_NOTES_SKILLS,
   SIGN_IN_START,
+  SKILL_AGENT_DETAIL,
+  SKILL_AGENTS,
+  USED_BY_DEFINITIONS,
+  USED_BY_TOOL_FIELDS,
 } from './capabilities-states-stubs.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
 import { E2E_SHOWCASE_URL } from './e2e-constants.ts';
@@ -106,20 +113,29 @@ async function open(page: Page, width: number, path: string): Promise<void> {
   await page.goto(path);
 }
 
+/** The Sources tab as a world with these sources would list it (the sample world's own are `base`). */
+async function sourcesAre(page: Page, change: (sources: Json[]) => Json[]): Promise<void> {
+  await amendRead(page, '**/host/tool-sources', (body) => ({
+    ...body,
+    sources: change(body['sources'] as Json[]),
+  }));
+}
+
 for (const width of WIDTHS) {
   // The sample world's own pages, under state names `responsive.spec.ts` (which captures the same
   // routes with stress data under the same file names) never writes.
   test(`the sample world's tools, sources and connect form, at ${width} pixels`, async ({
     page,
   }) => {
-    for (const [path, state] of [
-      ['/capabilities', 'sample world tools'],
-      ['/capabilities?tab=sources', 'sample world sources'],
-      ['/capabilities/connect', 'sample world connect form'],
+    for (const [path, state, settled] of [
+      ['/capabilities', 'sample world tools', '[data-tool-row]'],
+      ['/capabilities?tab=sources', 'sample world sources', '[data-source-row]'],
+      ['/capabilities/connect', 'sample world connect form', '#connect-url'],
     ] as const) {
       await open(page, width, path);
-      await expect(page.locator('main').first()).toBeVisible();
       await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+      // Settled: the list has its rows (not a skeleton) before the page is captured.
+      await expect(page.locator(settled).first()).toBeVisible();
       await captureForDesignReview(page, {
         route: path.split('?')[0] ?? path,
         state,
@@ -159,6 +175,7 @@ for (const width of WIDTHS) {
       await githubIs(page, 'failed', 'The source could not be reached.');
       await open(page, width, '/capabilities?tab=sources&source=github');
       await expect(page.getByTestId('source-detail')).toContainText(copy.source.tools.pausedFailed);
+      await expect(page.getByTestId('source-tool-table')).toHaveAttribute('data-paused', '');
       await captureForDesignReview(page, {
         route: '/capabilities',
         state: 'failed source, tools paused',
@@ -172,6 +189,9 @@ for (const width of WIDTHS) {
       await githubIs(page, 'needs-authorization');
       await open(page, width, '/capabilities?tab=sources&source=github');
       await expect(page.getByTestId('source-detail')).toContainText(copy.source.tools.paused);
+      // Settled: the table is drawn, paused, and the sentence the listing makes false is not there.
+      await expect(page.getByTestId('source-tool-table')).toHaveAttribute('data-paused', '');
+      await expect(page.getByTestId('source-state-description')).toHaveCount(0);
       await captureForDesignReview(page, {
         route: '/capabilities',
         state: 'source waiting for sign-in',
@@ -212,6 +232,9 @@ for (const width of WIDTHS) {
     }) => {
       await answerOperation(page, 'bureau.skills.list', RELEASE_NOTES_SKILLS);
       await answerOperation(page, 'bureau.skills.get', RELEASE_NOTES_INSTRUCTIONS);
+      // Workflow author names the skill, so Used by lists it with the skill's own description (31m).
+      await answerOperation(page, 'bureau.agents.list', SKILL_AGENTS);
+      await answerOperation(page, 'bureau.agents.definitions.get', SKILL_AGENT_DETAIL);
       await open(page, width, '/capabilities?tab=skills&skill=built-in%2Frelease-notes');
       const instructions = page.getByTestId('skill-instructions');
       await expect(instructions.getByTestId('skill-instructions-title')).toContainText(
@@ -221,9 +244,131 @@ for (const width of WIDTHS) {
         'Group the merged pull requests by what changed for a customer.',
       );
       await expect(instructions.getByTestId('skill-instructions-raw')).toBeVisible();
+      // Used by: Workflow author, with the skill's own description beside it (31m).
+      const users = page.getByTestId('skill-detail').getByTestId('capability-users');
+      await expect(users).toContainText('workflow-author');
+      await expect(users).toContainText(`Loads it when relevant: ${RELEASE_NOTES_DESCRIPTION}`);
       await captureForDesignReview(page, {
         route: '/capabilities',
         state: 'skill detail with instructions',
+        source: SOURCE,
+      });
+    });
+
+    test('a tool used by four agents says each one’s asks level, and the blocked one (30c, 30d, 31j, 31w, 31x)', async ({
+      page,
+    }) => {
+      await amendOperation(page, 'bureau.agents.catalog', (result) => ({
+        ...result,
+        tools: (result['tools'] as { name: string }[]).map((tool) =>
+          tool.name === 'github__create_issue' ? { ...tool, ...USED_BY_TOOL_FIELDS } : tool,
+        ),
+      }));
+      await answerOperation(page, 'bureau.agents.definitions.list', USED_BY_DEFINITIONS);
+      await open(page, width, '/capabilities?tool=github__create_issue');
+      const users = page.getByTestId('tool-detail').getByTestId('capability-users');
+      await expect(users).toBeVisible();
+      await expect(users).toContainText(/Asks: [A-Za-z ]+ \(the default\)/);
+      await expect(users).toContainText('Asks: Always');
+      await expect(users).toContainText(copy.tool.userAsks.inCode);
+      await expect(users).toContainText(copy.tool.userAsks.blocked);
+      await expect(page.getByTestId('tool-blocked-note')).toHaveText(copy.tool.blockedNote);
+      await captureForDesignReview(page, {
+        route: '/capabilities',
+        state: 'tool used by four agents',
+        source: SOURCE,
+      });
+    });
+
+    test('the agent’s Access tab states the same asks vocabulary (30d)', async ({ page }) => {
+      await open(page, width, '/agents/workflow-author/access');
+      await expect(page.locator('[data-tool]').first()).toBeVisible();
+      await captureForDesignReview(page, {
+        route: '/agents/:agent/access',
+        state: 'agent access tab, asks levels',
+        source: SOURCE,
+      });
+    });
+  });
+
+  test.describe(`sources, at ${width} pixels`, () => {
+    test('the GitHub source with its address and sentence, and a secondary Test connection (31o)', async ({
+      page,
+    }) => {
+      await sourcesAre(page, (sources) =>
+        sources.map((source) => (source['id'] === 'github' ? githubWithAddress(source) : source)),
+      );
+      await open(page, width, '/capabilities?tab=sources&source=github');
+      const detail = page.getByTestId('source-detail');
+      await expect(detail).toContainText('https://mcp.github.example/mcp');
+      await expect(detail).toContainText(
+        'An MCP server for issues and files in your repositories.',
+      );
+      await expect(page.getByTestId('source-tool-table')).toBeVisible();
+      await captureForDesignReview(page, {
+        route: '/capabilities',
+        state: 'source detail with address',
+        source: SOURCE,
+      });
+    });
+
+    test('first use is the only primary Connect tools, and it opens Connect tools (32a)', async ({
+      page,
+    }) => {
+      await sourcesAre(page, () => []);
+      await open(page, width, '/capabilities?tab=sources');
+      await expect(
+        page.getByRole('heading', { level: 2, name: copy.source.empty.title }),
+      ).toBeVisible();
+      await expect(page.locator('main [data-cinder-variant="primary"]')).toHaveCount(1);
+      await expect(page.locator('main [data-cinder-variant="primary"]')).toHaveText(
+        copy.source.connect.action,
+      );
+      await captureForDesignReview(page, {
+        route: '/capabilities',
+        state: 'sources first use',
+        source: SOURCE,
+      });
+      await page.locator('main [data-cinder-variant="primary"]').click();
+      await expect(page).toHaveURL(/\/capabilities\/connect$/);
+    });
+
+    test('an OpenAPI source shows its spec address, an API key line and the menu (32k)', async ({
+      page,
+    }) => {
+      await sourcesAre(page, (sources) => [
+        ...sources,
+        paymentsSource(new Date(Date.now() - 60 * 60 * 1000).toISOString()),
+      ]);
+      await open(page, width, '/capabilities?tab=sources&source=payments');
+      const detail = page.getByTestId('source-detail');
+      await expect(detail).toContainText('https://api.example.com/openapi.json');
+      await expect(page.getByTestId('source-status')).toContainText(
+        /API key.*last tested.*OpenAPI spec/,
+      );
+      await expect(page.getByTestId('source-tool-table')).toBeVisible();
+      await captureForDesignReview(page, {
+        route: '/capabilities',
+        state: 'openapi source',
+        source: SOURCE,
+      });
+    });
+
+    test('the more menu lists Edit connection, Test connection and Remove source in that order (32m)', async ({
+      page,
+    }) => {
+      await open(page, width, '/capabilities?tab=sources&source=github');
+      await expect(page.getByTestId('source-detail')).toBeVisible();
+      await page.getByRole('button', { name: copy.source.menu.label }).click();
+      const items = page.getByRole('menuitem');
+      await expect(items).toHaveText([
+        copy.source.menu.edit,
+        copy.source.menu.test,
+        copy.source.menu.remove,
+      ]);
+      await captureForDesignReview(page, {
+        route: '/capabilities',
+        state: 'source menu open',
         source: SOURCE,
       });
     });
@@ -313,6 +458,9 @@ async function signInGoes(
 
 /** Opens Connect tools with an OAuth MCP server named GitHub filled in, ready to sign in. */
 async function openOAuthForm(page: Page, width: number): Promise<void> {
+  // A world with no GitHub source saved, so the address typed below is not a duplicate of one and
+  // rows 33f and 33g are captured without a duplicate-name error.
+  await sourcesAre(page, (sources) => sources.filter((source) => source['id'] !== 'github'));
   await open(page, width, '/capabilities/connect');
   await page.locator('#connect-name').fill('GitHub');
   await page.locator('#connect-url').fill('https://mcp.github.example/mcp');
@@ -341,6 +489,7 @@ for (const width of WIDTHS) {
     });
 
     test('Bearer token asks for a masked Token with its help (34q)', async ({ page }) => {
+      await sourcesAre(page, (sources) => sources.filter((source) => source['id'] !== 'github'));
       await open(page, width, '/capabilities/connect');
       await page.locator('#connect-name').fill('GitHub');
       await page.locator('#connect-url').fill('https://mcp.github.example/mcp');

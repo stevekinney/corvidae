@@ -16,6 +16,7 @@
     SelectableRow,
   } from '@lostgradient/cinder';
   import { createQuery } from '@tanstack/svelte-query';
+  import type { Snippet } from 'svelte';
 
   import { CAPABILITIES_COPY } from '../../app/copy/capabilities.ts';
   import { RETRY_LABEL } from '../../app/copy/views.ts';
@@ -178,7 +179,7 @@
             >
           {/snippet}
           <SelectableRow
-            meta={tool.lost === undefined ? undefined : pausedWord}
+            {...tool.lost === undefined ? {} : { meta: pausedWord as Snippet }}
             selected={row.selected}
             selectedState="current"
             onclick={row.open}

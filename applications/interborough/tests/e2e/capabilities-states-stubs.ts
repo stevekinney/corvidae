@@ -175,3 +175,132 @@ export const SIGN_IN_START = {
   signIn: 'sign-in-1',
   authorizationUrl: 'about:blank',
 };
+
+/**
+ * Four agents that use one tool, one of each way Used by says it (rows 30c, 30d, 31j, 31w, 31x): the
+ * default level, a level the agent's file states, an agent defined in code, and one that has the
+ * tool blocked.
+ */
+export const USED_BY_AGENTS = {
+  fallback: 'workflow-author',
+  stated: 'release-writer',
+  code: 'code-assistant',
+  blocked: 'former-intern',
+} as const;
+
+/** What a catalog tool gains from those users. */
+export const USED_BY_TOOL_FIELDS = {
+  users: [
+    USED_BY_AGENTS.fallback,
+    USED_BY_AGENTS.stated,
+    USED_BY_AGENTS.code,
+    USED_BY_AGENTS.blocked,
+  ],
+  userApprovals: {
+    [USED_BY_AGENTS.stated]: 'always',
+    [USED_BY_AGENTS.blocked]: 'blocked',
+  },
+};
+
+/** `bureau.agents.definitions.list` holding those agents, one defined in code. */
+export const USED_BY_DEFINITIONS = {
+  nextOffset: null,
+  agents: [
+    USED_BY_AGENTS.fallback,
+    USED_BY_AGENTS.stated,
+    USED_BY_AGENTS.code,
+    USED_BY_AGENTS.blocked,
+  ].map((id) => ({
+    id,
+    source: id === USED_BY_AGENTS.code ? 'code' : 'file',
+    state: 'ready',
+    unavailable: null,
+    name: id,
+    description: null,
+    a2a: false,
+    hash: null,
+    problem: null,
+  })),
+};
+
+/** `bureau.agents.list` with the agent that uses the skill (row 31m). */
+export const SKILL_AGENTS = {
+  agents: [
+    {
+      name: 'workflow-author',
+      displayName: 'Workflow author',
+      description: null,
+      definitionRevision: 1,
+      kind: 'code',
+      a2a: false,
+    },
+  ],
+};
+
+/** `bureau.agents.definitions.get` for that agent: a code agent that names the skill. */
+export const SKILL_AGENT_DETAIL = {
+  id: 'workflow-author',
+  source: 'code',
+  state: 'ready',
+  unavailable: null,
+  name: 'workflow-author',
+  description: null,
+  a2a: false,
+  hash: null,
+  problem: null,
+  definition: null,
+  codeDefinition: {
+    name: 'workflow-author',
+    description: null,
+    model: null,
+    models: [],
+    tools: [],
+    skills: ['release-notes'],
+    card: [],
+    instructions: null,
+  },
+};
+
+/** The sample world's GitHub source as it reads once it has an address and a sentence (row 31o). */
+export function githubWithAddress(source: Json): Json {
+  return {
+    ...source,
+    name: 'GitHub',
+    description: 'An MCP server for issues and files in your repositories.',
+    address: 'https://mcp.github.example/mcp',
+    localCommand: false,
+  };
+}
+
+/** The Payments API, an OpenAPI source that is connected with an API key (row 32k). */
+export function paymentsSource(testedAt: string): Json {
+  const tool = (name: string, title: string, tier: 'read-only' | 'mutating') => ({
+    name: `payments__${name}`,
+    tool: name,
+    acceptsSecrets: false,
+    savedAcceptsSecrets: false,
+    enabled: true,
+    savedEnabled: true,
+    tier,
+    approval: tier === 'read-only' ? 'never' : 'on-changes',
+    approvalSaved: false,
+    title,
+  });
+  return {
+    id: 'payments',
+    kind: 'openapi',
+    name: 'Payments API',
+    description: 'Charges, refunds and payouts.',
+    address: 'https://api.example.com/openapi.json',
+    lastTested: testedAt,
+    localCommand: false,
+    state: 'loaded',
+    tools: [
+      tool('list_charges', 'List charges', 'read-only'),
+      tool('refund_charge', 'Refund charge', 'mutating'),
+    ],
+    skipped: [],
+    unmatchedSettings: [],
+    credentials: ['key'],
+  };
+}

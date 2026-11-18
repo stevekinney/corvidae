@@ -1027,6 +1027,7 @@
             <SegmentedControl
               id="connect-authentication"
               label={copy.authentication.label}
+              selectionMode="single"
               value={authentication}
               disabled={connecting}
               description={signInNotice?.description}
