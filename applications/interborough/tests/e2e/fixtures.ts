@@ -147,6 +147,12 @@ export type PageErrorAllowance = {
    * Suite-wide entries cover every match.
    */
   readonly count?: number;
+  /**
+   * For a cause whose exact count follows the order the network answers in: the declaration then
+   * covers at least `count` and at most `atMost` matching reports, so a loop that keeps failing
+   * still fails the test. Left out, it covers exactly `count`.
+   */
+  readonly atMost?: number;
 };
 
 export const ALLOWED_PAGE_ERRORS: readonly PageErrorAllowance[] = [];
@@ -317,7 +323,7 @@ export class PageErrorLog {
       if (this.#standing.some((entry) => entry.pattern.test(line))) continue;
       const index = this.#declared.findIndex(
         (entry, position) =>
-          (matched[position] ?? 0) < (entry.allowance.count ?? 1) &&
+          (matched[position] ?? 0) < (entry.allowance.atMost ?? entry.allowance.count ?? 1) &&
           entry.allowance.pattern.test(line),
       );
       if (index < 0) unexpected.push(line);
