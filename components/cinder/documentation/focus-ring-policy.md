@@ -46,6 +46,8 @@ A target the page focuses by script and nobody tabs to (`tabindex="-1"`: the car
 
 - `trackInputModality()` (exported from `@lostgradient/cinder`) writes `data-cinder-input-modality="keyboard"` or `"pointer"` on the document element from the last key press (a modifier alone does not count) or press, and writes nothing before the first input. An application installs it once, in its shell, and removes it with the function it returns.
 - `foundation.css` removes the ring from `[tabindex='-1']:focus-visible` unless the attribute says `keyboard`. The target is still focused and still announced; only the ring is withheld.
+- The foundation rule withdraws only the global default ring. A ring a component draws in the component layer on a `tabindex="-1"` target, and an application's own unlayered `:focus-visible` rule, are unaffected.
+- An application must install `trackInputModality` once at start (the shell, or the page's entry). Without it the attribute is never written and a keyboard user never sees the global default ring on a script focus target.
 - Cost: a keyboard user who arrives by typing an address (or reloading) gets no ring on the landing target until the first key press.
 - Targets that draw no ring of their own are unchanged: Chat's transcript viewport and ListDetail's detail region already draw none.
 
