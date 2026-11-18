@@ -134,6 +134,32 @@ describe('a call whose approval a person decided', () => {
     expect(call.decision).toBe('Approved by you 10:46 AM, refunded 4200');
   });
 
+  test('leaves the decision to the receipt card drawn under the row, so a turn says it once (A4)', () => {
+    const context = { owner: 'anonymous:local', zone: 'America/Chicago' };
+    const approved = railCall(entryDecided(APPROVED), true, context, true);
+    expect(approved.status).toBe('approved');
+    expect(approved.decision).toBeUndefined();
+    const deniedEntry = entryDecided(
+      { ...APPROVED, decision: 'deny' },
+      'error',
+      'Tool call denied',
+    );
+    const denied = railCall(deniedEntry, true, context, true);
+    expect(denied.status).toBe(railCall(deniedEntry, true, context).status);
+    expect(denied.decision).toBeUndefined();
+    expect(denied.result ?? '').not.toContain('by you');
+    // A continuing run still reads as running, without the decision's words.
+    const entry = entryDecided(APPROVED);
+    const going = railCall(
+      entry,
+      true,
+      { ...context, elsewhere: new Set([entry.callId]), continuing: new Set([entry.callId]) },
+      true,
+    );
+    expect(going.status).toBe('running');
+    expect(going.result).toBeUndefined();
+  });
+
   test('says where when the page watched it decided on another page', () => {
     const entry = entryDecided(APPROVED);
     const context = {

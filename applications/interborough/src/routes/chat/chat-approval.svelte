@@ -4,10 +4,10 @@
    * surface (`layout="decision"`, COR-2282), the one Chat draws for a single approval. Waiting, it
    * asks the question with the tool and the input, says why when the approval does, takes a note and
    * Allow for the rest of this chat, and offers Deny and Approve; while Interborough cannot be
-   * reached both are off, with the reason written above them. Decided, it collapses to what was
-   * asked and what became of it: "Approved by you, 10:33 AM", or "Approved by you in Reviews,
-   * 10:46 AM" when the decision was made in Reviews, with Reviews a link to it, and the note a
-   * refusal carried. The row is a group named by its question and focusable by script alone, so the
+   * reached both are off, with the reason written above them. Decided, it folds to one line (board
+   * row A4): the status, the action, "by you" and the time, then Details, or "by Priya Raman in
+   * Reviews" when the decision was made in Reviews, with Reviews a link to it, and the note a
+   * refusal carried behind Details. The row is a group named by its question and focusable by script alone, so the
    * page can bring the person to it on opening without answering it. A held approval of an agent
    * whose plugin is disabled reads Unavailable with its reason and no buttons; while no provider is
    * connected a waiting one stays answerable, and a muted line under it says the run continues once
@@ -15,7 +15,6 @@
    */
   import {
     ApprovalCard,
-    formatTimeOfDay,
     type ApprovalFailure,
     type ApprovalOperation,
     type ApprovalResolution,
@@ -165,7 +164,9 @@
   operation={operation ?? { kind: 'other', argsPreview: entry.arguments }}
   policyVersion={policyVersion ?? id}
   idempotencyKey={idempotencyKey ?? entry.callId}
-  {...expiresAt === undefined ? {} : { expiresAt }}
+  {...(expired ? lapsedAt : expiresAt) === undefined
+    ? {}
+    : { expiresAt: expired ? lapsedAt : expiresAt }}
   {...actionLabel === undefined ? {} : { actionLabel }}
   {...consequence === undefined ? {} : { consequence }}
   {...why === undefined ? {} : { why }}
@@ -213,20 +214,8 @@
       }
     : {}}
 />
-{#if decision === undefined && unavailableReason === undefined && expired && lapsedAt !== undefined}
-  <!-- When it lapsed is a line under the card in a message's time style (Chat's rule for
-       `.chat-approval-time`), not text inside the card. -->
-  <div class="chat-approval-time">
-    <time datetime={lapsedAt}><bdi>{formatTimeOfDay(lapsedAt)}</bdi></time>
-  </div>
-{:else if decision !== undefined}
-  <!-- The decision surface's receipt leaves when it was decided to the host, under the card, as an
-       expired card's lapse is. -->
-  {@const decidedAt = new Date(decision.decidedAt).toISOString()}
-  <div class="chat-approval-time">
-    <time datetime={decidedAt}><bdi>{formatTimeOfDay(decidedAt)}</bdi></time>
-  </div>
-{/if}
+<!-- When it was decided, or when it lapsed, is a piece of the card's own status line (board row
+     A4), not a line under the card. -->
 {#if decision === undefined && unavailableReason === undefined && providerNote !== undefined}
   <p class="weft-chat-approval__provider-note">{providerNote}</p>
 {/if}

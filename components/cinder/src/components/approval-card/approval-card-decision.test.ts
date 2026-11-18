@@ -2,7 +2,12 @@
 import { afterEach, describe, expect, jest, mock, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 
-import { expectNoLeakedTimers, setupHappyDom, trackTimers } from '@lostgradient/testing';
+import {
+  expectNoLeakedTimers,
+  requiredInstance,
+  setupHappyDom,
+  trackTimers,
+} from '@lostgradient/testing';
 
 import type { ApprovalCardProps } from './approval-card.types.ts';
 
@@ -452,38 +457,56 @@ describe('ApprovalCard decision layout: why the agent wants to do this', () => {
 describe('ApprovalCard decision layout: the retained receipt', () => {
   // C#6 (chat stress sweep): a receipt repeated the question it asked ("Refund order 4471 for
   // $42.00?") beside "Approved", and never said what was approved.
-  test('an approval is the expired card pattern: what was approved, one status line, no time inside', () => {
+  test('an approval is one line: the status, what was approved, who and when, the chevron (A4)', () => {
     const { container, getByRole, queryByRole } = render(ApprovalCard, {
       props: decisionCard({
         state: 'approved',
         decidedBy: 'you',
         decidedAt: '2026-11-02T10:46:00.000Z',
+        decisionNote: 'Checked',
       }),
     });
 
-    const row = container.querySelector(
-      '.cinder-approval-card__receipt > .cinder-approval-card__settled-row',
+    const receipt = container.querySelector('.cinder-approval-card__receipt');
+    expect(receipt?.getAttribute('data-cinder-tone')).toBe('success');
+    const line = requiredInstance(
+      container.querySelector('.cinder-approval-card__receipt-line'),
+      HTMLElement,
     );
-    expect(row?.getAttribute('data-cinder-tone')).toBe('success');
-    const title = row?.querySelector('.cinder-approval-card__settled-title');
-    expect(squash(title?.textContent)).toBe('Approved: Refund $42.00, order 4471');
+    // The pieces in A4's order, the status first so a narrow card puts it above the action.
+    expect([...line.children].map((child) => child.className.split(' ').at(-1))).toEqual([
+      'cinder-approval-card__receipt-status',
+      'cinder-approval-card__receipt-action',
+      'cinder-approval-card__receipt-by',
+      'cinder-approval-card__receipt-time',
+      'cinder-approval-card__receipt-toggle',
+    ]);
+    expect(squash(line.textContent)).toBe(
+      'Approved Approved: Refund $42.00, order 4471 by you 10:46 AM Details',
+    );
+    const status = line.querySelector('.cinder-approval-card__receipt-status');
+    expect(status?.getAttribute('aria-hidden')).toBe('true');
+    expect(status?.querySelector('.cinder-approval-card__settled-dot')).not.toBeNull();
+    const title = line.querySelector('.cinder-approval-card__decision-title');
     expect(title?.querySelector('.cinder-sr-only')?.textContent).toBe('Approved:');
     expect(getByRole('article', { name: 'Approved: Refund $42.00, order 4471' })).toBeTruthy();
-    expect(squash(title?.textContent)).not.toContain('Refund order 4471 for $42.00?');
-    // One status line: the word, then who. When it was decided is the host's, under the card.
-    expect(squash(row?.querySelector('.cinder-approval-card__settled-note')?.textContent)).toBe(
-      'Approved by you',
+    expect(squash(title?.textContent)).not.toContain('?');
+    const time = line.querySelector('.cinder-approval-card__receipt-time');
+    expect(time?.tagName).toBe('TIME');
+    expect(time?.getAttribute('datetime')).toBe('2026-11-02T10:46:00.000Z');
+    // No comma and no middle dot between the pieces.
+    expect(line.textContent).not.toContain(',  ');
+    expect(squash(line.querySelector('.cinder-approval-card__receipt-by')?.textContent)).toBe(
+      'by you',
     );
-    expect(row?.querySelector('.cinder-approval-card__settled-dot')).not.toBeNull();
-    expect(container.textContent).not.toContain('10:46 AM');
-    // No badge, and none of the old receipt's parts.
+    expect(line.textContent).not.toContain(String.fromCodePoint(0xb7));
+    // No badge, and no answer buttons.
     expect(container.querySelector('.cinder-badge')).toBeNull();
-    expect(container.querySelector('.cinder-approval-card__receipt-by')).toBeNull();
     expect(queryByRole('button', { name: 'Deny' })).toBeNull();
     expect(queryByRole('button', { name: 'Refund $42.00' })).toBeNull();
   });
 
-  test('a decision made elsewhere names the actor and links the surface, with a comma and no middle dot', () => {
+  test('a decision made elsewhere names the actor and links the surface, with no comma and no middle dot', () => {
     const { container, getByRole } = render(ApprovalCard, {
       props: decisionCard({
         state: 'approved',
@@ -493,13 +516,17 @@ describe('ApprovalCard decision layout: the retained receipt', () => {
         decidedAt: '2026-11-02T10:46:00.000Z',
       }),
     });
-    const by = container.querySelector('.cinder-approval-card__settled-note');
+    const by = container.querySelector('.cinder-approval-card__receipt-by');
 
-    expect(squash(by?.textContent)).toBe('Approved by Priya Raman in Reviews');
+    expect(squash(by?.textContent)).toBe('by Priya Raman in Reviews');
+    expect(by?.textContent).not.toContain(',');
     expect(by?.textContent).not.toContain(String.fromCodePoint(0xb7));
     const link = getByRole('link', { name: 'Reviews' });
     expect(link.getAttribute('href')).toBe('/reviews');
     expect(by?.contains(link)).toBe(true);
+    expect(
+      squash(container.querySelector('.cinder-approval-card__receipt-time')?.textContent),
+    ).toBe('10:46 AM');
   });
 
   test('writes the place as plain text when it has no link', () => {
@@ -513,12 +540,12 @@ describe('ApprovalCard decision layout: the retained receipt', () => {
     });
 
     expect(queryByRole('link')).toBeNull();
-    expect(
-      squash(container.querySelector('.cinder-approval-card__settled-note')?.textContent),
-    ).toBe('Approved by Priya Raman in Reviews');
+    expect(squash(container.querySelector('.cinder-approval-card__receipt-by')?.textContent)).toBe(
+      'by Priya Raman in Reviews',
+    );
   });
 
-  test('a denial is the same pattern in a neutral tone, with its reason in the one disclosure', async () => {
+  test('a denial is the same line in a neutral tone, with its reason in the one disclosure', async () => {
     const { container, getByRole } = render(ApprovalCard, {
       props: decisionCard({
         state: 'denied',
@@ -527,11 +554,14 @@ describe('ApprovalCard decision layout: the retained receipt', () => {
         decisionNote: 'Refund it through the original card instead',
       }),
     });
-    const row = container.querySelector('.cinder-approval-card__settled-row');
+    const receipt = container.querySelector('.cinder-approval-card__receipt');
 
-    expect(row?.getAttribute('data-cinder-tone')).toBe('neutral');
-    expect(squash(row?.querySelector('.cinder-approval-card__settled-note')?.textContent)).toBe(
-      'Denied by you',
+    expect(receipt?.getAttribute('data-cinder-tone')).toBe('neutral');
+    expect(
+      squash(container.querySelector('.cinder-approval-card__receipt-status')?.textContent),
+    ).toBe('Denied');
+    expect(squash(container.querySelector('.cinder-approval-card__receipt-by')?.textContent)).toBe(
+      'by you',
     );
     // The reason is not a second line on the card: it is in the disclosure, with the note's label.
     expect(container.querySelector('.cinder-approval-card__receipt-quote')).toBeNull();
@@ -543,28 +573,24 @@ describe('ApprovalCard decision layout: the retained receipt', () => {
     );
   });
 
-  test('approved, denied and expired share one structure and differ only in tone and words', () => {
-    const shapeOf = (state: 'approved' | 'denied' | 'expired'): string[] => {
+  test('approved and denied share one line and differ only in tone and words', () => {
+    const shapeOf = (state: 'approved' | 'denied'): string[] => {
       const { container, unmount } = render(ApprovalCard, {
-        props: decisionCard({
-          state,
-          decidedBy: 'you',
-          ...(state === 'expired' ? { expiresAt: '2026-11-02T10:15:00.000Z' } : {}),
-        }),
+        props: decisionCard({ state, decidedBy: 'you', decidedAt: '2026-11-02T10:15:00.000Z' }),
       });
-      const row = container.querySelector('.cinder-approval-card__settled-row');
-      const shape = [...(row?.children ?? [])].map((child) => child.className.split(' ')[0] ?? '');
+      const line = container.querySelector('.cinder-approval-card__receipt-line');
+      const shape = [...(line?.children ?? [])].map(
+        (child) => child.className.split(' ').at(-1) ?? '',
+      );
       unmount();
       return shape;
     };
 
-    // The title and the one status line, in that order, in every settled state.
-    for (const state of ['approved', 'denied', 'expired'] as const) {
-      expect(shapeOf(state).slice(0, 2)).toEqual([
-        'cinder-approval-card__settled-title',
-        'cinder-approval-card__settled-note',
-      ]);
-    }
+    expect(shapeOf('approved')).toEqual(shapeOf('denied'));
+    expect(shapeOf('denied').slice(0, 2)).toEqual([
+      'cinder-approval-card__receipt-status',
+      'cinder-approval-card__receipt-action',
+    ]);
   });
 
   test('expands to the note, the result and the command, and shows none of them until asked', async () => {
@@ -629,20 +655,26 @@ describe('ApprovalCard decision layout: the retained receipt', () => {
     ]);
   });
 
-  test('folds the settled receipt to one row at 30rem and wider, the chevron at its end (A4)', () => {
-    const css = readFileSync(new URL('./approval-card.css', import.meta.url), 'utf8');
-    const wide = css.match(
-      /@container \(inline-size >= 30rem\) \{\s*\.cinder-approval-card__receipt \{([^}]*)\}([\s\S]*?)\n {2}\}/,
+  test('folds the settled receipt to one line with the chevron at its end, the status above the action when narrow (A4)', () => {
+    const css = readFileSync(new URL('./approval-card.css', import.meta.url), 'utf8').replace(
+      /\s+/g,
+      ' ',
     );
-    expect(wide?.[1]).toMatch(/flex-direction:\s*row;/);
-    expect(wide?.[2]).toMatch(
-      /\.cinder-approval-card__receipt > \.cinder-approval-card__settled-row \{[^}]*display:\s*flex;/,
+    expect(css).toMatch(
+      /\.cinder-approval-card__receipt-line \{[^}]*display: flex;[^}]*flex-wrap: wrap;/,
     );
-    expect(wide?.[2]).toMatch(
-      /\.cinder-approval-card__receipt > \.cinder-approval-card__input \{\s*display:\s*contents;/,
+    expect(css).toMatch(
+      /\.cinder-approval-card__receipt-line > \.cinder-approval-card__receipt-toggle \{[^}]*margin-inline-start: auto;/,
     );
-    expect(wide?.[2]).toMatch(
-      /\.cinder-approval-card__receipt \.cinder-approval-card__receipt-details \{\s*flex:\s*0 0 100%;/,
+    expect(css).toMatch(
+      /@container \(inline-size < 30rem\) \{ \.cinder-approval-card__receipt-status \{ flex-basis: 100%; \} \}/,
+    );
+    // The time is a quieter piece than who decided: a colour step, not a comma.
+    expect(css).toMatch(
+      /\.cinder-approval-card__receipt-by \{ color: var\(--cinder-text-muted\); \}/,
+    );
+    expect(css).toMatch(
+      /\.cinder-approval-card__receipt-time, \.cinder-approval-card__settled-time \{ color: var\(--cinder-text-subtle\);/,
     );
   });
 
@@ -697,13 +729,15 @@ describe('ApprovalCard decision layout: the retained receipt', () => {
     // The title carries the state, so no second "Expired" word or Irreversible badge follows it.
     expect(container.querySelector('[data-cinder-state-word]')).toBeNull();
     expect(container.querySelector('.cinder-approval-card__irreversible')).toBeNull();
-    // The time is the host's to write under the card, in the line any message's time uses.
-    expect(container.textContent).not.toContain('10:15 AM');
     expect(container.querySelector('.cinder-approval-card__countdown')).toBeNull();
-    // One small muted line says why it is read-only; the title is the question alone.
+    // One small muted line says why it is read-only and, a piece of its own with no comma, when
+    // it lapsed (A4: the time is in the card's own line, not under the card).
     expect(
       squash(container.querySelector('.cinder-approval-card__settled-note')?.textContent),
-    ).toBe('Expired before a decision');
+    ).toBe('Expired before a decision 10:15 AM');
+    const lapsed = container.querySelector('.cinder-approval-card__settled-time');
+    expect(lapsed?.tagName).toBe('TIME');
+    expect(lapsed?.getAttribute('datetime')).toBe('2026-11-02T10:15:00.000Z');
     expect(container.querySelector('.cinder-approval-card__settled-dot')).toBeNull();
     expect(queryByRole('button', { name: 'Deny' })).toBeNull();
     // "Ask again" is last, at the trailing end.
@@ -731,7 +765,7 @@ describe('ApprovalCard decision layout: the retained receipt', () => {
     expect(getByRole('article', { name: 'Denied: Issue refund, order 4471' })).toBeTruthy();
   });
 
-  test('with neither a named action nor a target, a decided card keeps its question', () => {
+  test('with neither a named action nor a target, a decided card keeps its question’s words', () => {
     const { container } = render(ApprovalCard, {
       props: decisionCard({
         state: 'denied',
@@ -742,9 +776,10 @@ describe('ApprovalCard decision layout: the retained receipt', () => {
       }),
     });
 
+    // The question's words, as a statement: the status before it has answered it (A4).
     expect(
       squash(container.querySelector('.cinder-approval-card__decision-title')?.textContent),
-    ).toBe('Denied: Refund order 4471 for $42.00?');
+    ).toBe('Denied: Refund order 4471 for $42.00');
   });
 
   test('an unavailable approval still asks its question, with the state word beside it', () => {
@@ -757,6 +792,60 @@ describe('ApprovalCard decision layout: the retained receipt', () => {
     ).toBe('Refund order 4471 for $42.00?');
     expect(squash(container.querySelector('[data-cinder-state-word]')?.textContent)).toBe(
       'Unavailable',
+    );
+  });
+
+  test('a waiting card says who asked and how long ago in its context line, two pieces and no comma', () => {
+    const now = Date.now();
+    const { container, unmount } = render(ApprovalCard, {
+      props: decisionCard({
+        source: 'Tool runner',
+        requestedAt: new Date(now - 3 * 60_000).toISOString(),
+      }),
+    });
+    const asker = requiredInstance(
+      container.querySelector('.cinder-approval-card__context .cinder-approval-card__asker'),
+      HTMLElement,
+    );
+    expect(squash(asker.querySelector('.cinder-approval-card__asker-source')?.textContent)).toBe(
+      'Approval from Tool runner',
+    );
+    const time = asker.querySelector('.cinder-approval-card__asker-time');
+    expect(time?.tagName).toBe('TIME');
+    expect(squash(time?.textContent)).toBe('3 min ago');
+    expect(asker.textContent).not.toContain(',');
+    // It comes before the title, as the context line does.
+    const title = container.querySelector('.cinder-approval-card__decision-title');
+    expect(asker.compareDocumentPosition(title!) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+    unmount();
+
+    // A settled card drops who asked: its own line says who decided.
+    const settled = render(ApprovalCard, {
+      props: decisionCard({
+        state: 'approved',
+        decidedBy: 'you',
+        source: 'Tool runner',
+        requestedAt: new Date(now - 3 * 60_000).toISOString(),
+      }),
+    });
+    expect(settled.container.querySelector('.cinder-approval-card__asker')).toBeNull();
+  });
+
+  test('facts and input share one style: each muted label over its value (note 4)', () => {
+    const css = readFileSync(new URL('./approval-card.css', import.meta.url), 'utf8').replace(
+      /\s+/g,
+      ' ',
+    );
+    expect(css).toMatch(
+      /\.cinder-approval-card__fact \{ display: grid; grid-template-columns: minmax\(0, 1fr\);/,
+    );
+    expect(css).toMatch(
+      /\.cinder-approval-card__fact > dt \{ color: var\(--cinder-text-muted\); font-size: var\(--cinder-text-sm\); font-weight: var\(--cinder-font-normal\);/,
+    );
+    expect(css).toMatch(
+      /\.cinder-approval-card__facts \{[^}]*grid-template-columns: repeat\( auto-fill,/,
     );
   });
 

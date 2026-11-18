@@ -97,6 +97,17 @@ function resumedConversation(id: string): ConversationHistory {
   );
 }
 
+/** A receipt's status word and who decided, as its one line writes them (board row A4). */
+function receiptPieces(receipt: HTMLElement): string[] {
+  return ['status', 'by'].map(
+    (piece) =>
+      receipt
+        .querySelector(`.cinder-approval-card__receipt-${piece}`)
+        ?.textContent?.replaceAll(/\s+/g, ' ')
+        .trim() ?? '',
+  );
+}
+
 function composerOf(container: HTMLElement): HTMLTextAreaElement {
   return container.querySelector<HTMLTextAreaElement>('textarea.chat-input-editor')!;
 }
@@ -614,10 +625,11 @@ describe('Chat approval receipt', () => {
     await tick();
 
     const receipt = getByRole(container, 'article', { name: 'Approved: Refund' });
-    expect(receipt.querySelector('.cinder-approval-card__settled-note')?.textContent?.trim()).toBe(
-      'Approved by you',
-    );
-    expect(receipt.nextElementSibling?.textContent?.trim()).toMatch(/\d{1,2}:\d{2} [AP]M$/);
+    // One line (board row A4): the status, the action, who and when, each a piece of its own.
+    expect(receiptPieces(receipt)).toEqual(['Approved', 'by you']);
+    expect(
+      receipt.querySelector('.cinder-approval-card__receipt-time')?.textContent?.trim(),
+    ).toMatch(/^\d{1,2}:\d{2} [AP]M$/);
     expect(queryByRole(receipt, 'button', { name: 'Refund' })).toBeNull();
   });
 
@@ -643,9 +655,7 @@ describe('Chat approval receipt', () => {
 
     const receipt = getByRole(view.container, 'article', { name: APPROVED_REFUND });
     expect(receipt.getAttribute('data-cinder-state')).toBe('approved');
-    expect(receipt.querySelector('.cinder-approval-card__settled-note')?.textContent?.trim()).toBe(
-      'Approved by you',
-    );
+    expect(receiptPieces(receipt)).toEqual(['Approved', 'by you']);
     expect(drawerOf(view.container)).toBeNull();
   });
 
@@ -675,9 +685,7 @@ describe('Chat approval receipt', () => {
 
     const receipt = getByRole(view.container, 'article', { name: APPROVED_REFUND });
     expect(receipt.getAttribute('data-cinder-state')).toBe('approved');
-    expect(receipt.querySelector('.cinder-approval-card__settled-note')?.textContent?.trim()).toBe(
-      'Approved by you',
-    );
+    expect(receiptPieces(receipt)).toEqual(['Approved', 'by you']);
   });
 
   test('a decided call keeps its own row beside a neighbouring completed call, so the receipt is not folded into a group', async () => {

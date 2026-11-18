@@ -93,9 +93,11 @@ describe('Chat — an approval that expired before a decision', () => {
     expect(card.textContent).toContain('Expired before a decision');
     expect(queryByRole(card, 'button', { name: 'Deny' })).toBeNull();
     expect(queryByRole(card, 'button', { name: /^Approve/ })).toBeNull();
-    expect(container.querySelector('.chat-approval-time time')?.getAttribute('datetime')).toBe(
-      '2020-01-01T10:15:00.000Z',
-    );
+    // When it lapsed is a piece of the card's own status line (board row A4), not a line under it.
+    expect(container.querySelector('.chat-approval-time')).toBeNull();
+    expect(
+      card.querySelector('.cinder-approval-card__settled-time')?.getAttribute('datetime'),
+    ).toBe('2020-01-01T10:15:00.000Z');
 
     await fireEvent.click(getByRole(card, 'button', { name: 'Ask again' }));
     expect(asked).toEqual(['call-refund']);

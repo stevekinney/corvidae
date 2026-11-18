@@ -555,8 +555,11 @@ export function railCall(
   entry: ToolCallEntry,
   nested: boolean,
   context: DecisionContext = {},
+  receiptBelow = false,
 ): ToolCallRailCall {
-  const decided = decidedLine(entry, context);
+  // A receipt card drawn under the row already says what was decided, by whom and when (board row
+  // A4), so the row does not say it again.
+  const decided = receiptBelow ? undefined : decidedLine(entry, context);
   const named = {
     id: entry.railId ?? entry.callId,
     name: entry.title ?? entry.name,
@@ -585,7 +588,7 @@ export function railCall(
       return {
         ...named,
         status: 'denied',
-        result: entry.summary || CHAT_COPY.tools.denied,
+        result: receiptBelow ? '' : entry.summary || CHAT_COPY.tools.denied,
         ...(decided === undefined ? {} : { decision: decided }),
       };
     case 'failed': {
@@ -612,9 +615,13 @@ export function railCall(
       }
       // A call decided in Reviews whose continuing run is going reads as that run (design row
       // 18i): the spinner, the decision with "running…" as its words, and no duration of its own.
-      if (decided !== undefined && continuesAfterDecision(entry, context)) {
+      if (entry.decision !== undefined && continuesAfterDecision(entry, context)) {
         const { duration: _finished, ...going } = named;
-        return { ...going, status: 'running', result: decided };
+        if (decided !== undefined) return { ...going, status: 'running', result: decided };
+        if (receiptBelow) return { ...going, status: 'running' };
+      }
+      if (entry.decision?.outcome === 'approved' && receiptBelow) {
+        return { ...named, status: 'approved' };
       }
       return decided !== undefined && entry.decision?.outcome === 'approved'
         ? { ...named, status: 'approved', decision: decided }

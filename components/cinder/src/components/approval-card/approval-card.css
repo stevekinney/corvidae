@@ -1071,29 +1071,39 @@
     text-align: start;
   }
 
-  /* Host facts read as a compact definition list. Tool identity is already in the surrounding
-   * step/title hierarchy, while the command remains visible without a redundant label row. */
+  /* Host facts read in the one fact style the card's input uses (DescriptionList's grid): as many
+   * columns as the card is wide, each muted label over its value. Tool identity is already in the
+   * surrounding step/title hierarchy, and the command takes the whole row with no label row. */
   .cinder-approval-card__facts {
-    display: flex;
-    flex-direction: column;
-    gap: var(--cinder-space-1);
+    --_cinder-approval-card-fact-column-min: calc(var(--cinder-space-24) + var(--cinder-space-2));
+
+    display: grid;
+    grid-template-columns: repeat(
+      auto-fill,
+      minmax(min(100%, var(--_cinder-approval-card-fact-column-min)), 1fr)
+    );
+    gap: var(--cinder-space-2) var(--cinder-space-3);
     margin: 0;
   }
 
   .cinder-approval-card__fact {
     display: grid;
-    grid-template-columns: minmax(4.5rem, max-content) minmax(0, 1fr);
-    align-items: baseline;
-    column-gap: var(--cinder-space-3);
+    grid-template-columns: minmax(0, 1fr);
+    align-content: start;
+    min-inline-size: 0;
   }
 
   .cinder-approval-card__fact > dt {
-    color: var(--cinder-text-subtle);
+    color: var(--cinder-text-muted);
+    font-size: var(--cinder-text-sm);
+    font-weight: var(--cinder-font-normal);
+    line-height: var(--cinder-leading-normal);
     text-align: start;
   }
 
   .cinder-approval-card__fact--command {
     display: block;
+    grid-column: 1 / -1;
   }
 
   .cinder-approval-card__fact--command > dd {
@@ -1120,34 +1130,22 @@
    * reading order, but mirror the definition-list columns with the actual fact direction so RTL
    * labels, values, and their alignment do not leave the card half-LTR. */
   .cinder-approval-card__fact:dir(rtl) {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: baseline;
-    justify-content: flex-start;
-    gap: 0 var(--cinder-space-3);
     direction: rtl;
   }
 
   .cinder-approval-card__fact:dir(rtl) > dd {
-    flex: 0 1 auto;
     direction: ltr;
     unicode-bidi: isolate;
   }
 
   .cinder-approval-card:has(.cinder-approval-card__title:dir(rtl))
     .cinder-approval-card__fact:not(.cinder-approval-card__fact--command) {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: baseline;
-    justify-content: flex-start;
-    gap: 0 var(--cinder-space-3);
     direction: rtl;
   }
 
   .cinder-approval-card:has(.cinder-approval-card__title:dir(rtl))
     .cinder-approval-card__fact:not(.cinder-approval-card__fact--command)
     > dd {
-    flex: 0 1 auto;
     direction: ltr;
     unicode-bidi: isolate;
   }
@@ -1167,18 +1165,12 @@
 
   .cinder-approval-card[dir='rtl']
     .cinder-approval-card__fact:not(.cinder-approval-card__fact--command) {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: baseline;
-    justify-content: flex-start;
-    gap: 0 var(--cinder-space-3);
     direction: rtl;
   }
 
   .cinder-approval-card[dir='rtl']
     .cinder-approval-card__fact:not(.cinder-approval-card__fact--command)
     > dd {
-    flex: 0 1 auto;
     direction: ltr;
     unicode-bidi: isolate;
   }
@@ -1326,12 +1318,85 @@
     display: none;
   }
 
-  /* The retained receipt: what was approved, who decided where and when, and the details a
-     disclosure away. */
+  /* The retained receipt (board row A4): one line of pieces a gap apart, never a comma: the status
+     with its dot, the action decided, who decided and where a colour step quieter, when a step
+     quieter again, and the Details chevron at the trailing end; the list opens under the line. */
   .cinder-approval-card__receipt {
     display: flex;
     flex-direction: column;
     gap: var(--cinder-gap-stack);
+  }
+
+  .cinder-approval-card__receipt-line {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: var(--cinder-space-0-5) var(--cinder-space-2);
+    min-inline-size: 0;
+    font-size: var(--cinder-text-sm);
+    line-height: var(--cinder-leading-normal);
+  }
+
+  .cinder-approval-card__receipt-status {
+    flex: none;
+    color: var(--cinder-text-default);
+    font-weight: var(--cinder-font-medium);
+    white-space: nowrap;
+  }
+
+  .cinder-approval-card__receipt[data-cinder-tone='success'] .cinder-approval-card__settled-dot {
+    background: var(--cinder-status-success-solid);
+  }
+
+  .cinder-approval-card__receipt-line .cinder-approval-card__receipt-action {
+    min-inline-size: 0;
+    margin: 0;
+    overflow-wrap: anywhere;
+    color: var(--cinder-text-default);
+    font-size: inherit;
+    font-weight: var(--cinder-font-medium);
+    line-height: inherit;
+  }
+
+  .cinder-approval-card__receipt-by {
+    color: var(--cinder-text-muted);
+  }
+
+  .cinder-approval-card__receipt-time,
+  .cinder-approval-card__settled-time {
+    color: var(--cinder-text-subtle);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+
+  /* The Details chevron ends the line. */
+  .cinder-approval-card__receipt-line > .cinder-approval-card__receipt-toggle {
+    align-self: center;
+    margin-inline-start: auto;
+  }
+
+  /* A narrow card puts the status on its own line above the action (owner decision, status above
+   * title). */
+  @container (inline-size < 30rem) {
+    .cinder-approval-card__receipt-status {
+      flex-basis: 100%;
+    }
+  }
+
+  /* Who asked and how long ago, while a question is open: two pieces a gap apart, no comma. */
+  .cinder-approval-card__asker {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0 var(--cinder-space-2);
+    margin: 0;
+  }
+
+  .cinder-approval-card__asker-source {
+    color: var(--cinder-text-muted);
+  }
+
+  .cinder-approval-card__asker-time {
+    color: var(--cinder-text-subtle);
   }
 
   .cinder-approval-card__receipt-details {
@@ -1369,33 +1434,6 @@
     color: var(--cinder-text-muted);
     font-size: var(--cinder-text-xs);
     font-weight: var(--cinder-font-medium);
-  }
-
-  /* At 30rem and wider the settled receipt folds to one row: the decided action, who decided, and
-   * the Details chevron at the trailing end; the list opens under the row, the full width. */
-  @container (inline-size >= 30rem) {
-    .cinder-approval-card__receipt {
-      flex-direction: row;
-      flex-wrap: wrap;
-      align-items: center;
-      column-gap: var(--cinder-space-3);
-    }
-
-    .cinder-approval-card__receipt > .cinder-approval-card__settled-row {
-      display: flex;
-      flex: 1 1 0;
-      flex-wrap: wrap;
-      align-items: baseline;
-      column-gap: var(--cinder-space-3);
-    }
-
-    .cinder-approval-card__receipt > .cinder-approval-card__input {
-      display: contents;
-    }
-
-    .cinder-approval-card__receipt .cinder-approval-card__receipt-details {
-      flex: 0 0 100%;
-    }
   }
 
   /* ----------------------------------------

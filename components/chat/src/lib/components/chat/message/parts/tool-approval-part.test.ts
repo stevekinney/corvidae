@@ -169,7 +169,7 @@ describe('ToolApprovalPart', () => {
     expect(calls).toEqual(['call-1']);
   });
 
-  test('an expired approval writes when it lapsed under the card, as a message time, not in it', () => {
+  test('an expired approval writes when it lapsed in its own status line, not under the card (A4)', () => {
     const part = pendingPart({ state: 'expired' });
     const { container } = render(ToolApprovalPart, {
       props: {
@@ -177,13 +177,10 @@ describe('ToolApprovalPart', () => {
       },
     });
 
-    const time = container.querySelector('.chat-approval-time time');
+    const time = container.querySelector('article .cinder-approval-card__settled-time');
     expect(time?.getAttribute('datetime')).toBe('2026-11-02T10:15:00.000Z');
     expect(time?.textContent).toMatch(/10:15/);
-    expect(container.querySelector('.chat-approval-time')?.previousElementSibling?.tagName).toBe(
-      'ARTICLE',
-    );
-    expect(container.querySelector('article')?.textContent).not.toMatch(/10:15/);
+    expect(container.querySelector('.chat-approval-time')).toBeNull();
   });
 
   test('a pending approval whose deadline has passed writes its time as the card reads Expired', () => {
@@ -195,9 +192,9 @@ describe('ToolApprovalPart', () => {
     });
 
     expect(container.querySelector('article')?.getAttribute('data-cinder-state')).toBe('expired');
-    expect(container.querySelector('.chat-approval-time time')?.getAttribute('datetime')).toBe(
-      '2026-11-02T10:15:00.000Z',
-    );
+    expect(
+      container.querySelector('.cinder-approval-card__settled-time')?.getAttribute('datetime'),
+    ).toBe('2026-11-02T10:15:00.000Z');
   });
 
   test('a pending approval writes no time line under its card', () => {

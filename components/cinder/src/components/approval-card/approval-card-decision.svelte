@@ -63,6 +63,20 @@
     decidedIn: string | undefined;
     /** Where `decidedIn` leads. */
     decidedInHref: string | undefined;
+    /** When it was decided, as a time of day such as "10:40 AM", or `undefined` when unknown. */
+    decidedTime: string | undefined;
+    /** When it was decided, as an ISO timestamp for the `<time>` element. */
+    decidedIso: string | undefined;
+    /** When an expired approval lapsed, as a time of day, or `undefined` when it had no deadline. */
+    lapsedTime: string | undefined;
+    /** When it lapsed, as an ISO timestamp for the `<time>` element. */
+    lapsedIso: string | undefined;
+    /** Who asked, such as "Approval from Tool runner", or `undefined` when the host did not say. */
+    sourceText: string | undefined;
+    /** How long ago it was asked, such as "3 min ago", while it is still undecided. */
+    requestedText: string | undefined;
+    /** When it was asked, as an ISO timestamp for the `<time>` element. */
+    requestedIso: string | undefined;
     /** Requests a fresh approval after expiration. */
     onAskAgain: (() => void) | undefined;
     /** The note the approver left with the decision. */
@@ -128,6 +142,13 @@
     decidedBy,
     decidedIn,
     decidedInHref,
+    decidedTime,
+    decidedIso,
+    lapsedTime,
+    lapsedIso,
+    sourceText,
+    requestedText,
+    requestedIso,
     onAskAgain,
     decisionNote,
     context,
@@ -192,9 +213,14 @@
   const decidedAction = $derived(describeDecidedAction(approveLabel, tool, facts, question));
   const undecidedPrefix = $derived(UNDECIDED_PREFIX[approvalState]);
 
+  const statusWord = $derived(outcomeWord ?? STATE_LABELS[approvalState]);
+  // Who asked and how long ago are the context of a question still open: a settled card drops them.
+  const hasAsker = $derived(
+    (isPending || isUnavailable) && (sourceText !== undefined || requestedText !== undefined),
+  );
   const hasWho = $derived(decidedBy !== undefined || decidedIn !== undefined);
-  // The status line reads "Approved by Priya Raman in Reviews": the place is the only link. When it
-  // was decided is the host's to say under the card, as it says an expired card's.
+  // Who decided reads "by Priya Raman in Reviews", a piece of its own after the action, with the
+  // place the only link; when it was decided is the next piece.
   const byText = $derived(decidedBy === undefined ? '' : `by ${decidedBy}`);
   const inText = $derived(decidedIn === undefined ? '' : decidedBy === undefined ? 'in ' : ' in ');
   // The note, the result and the command are what a receipt has beyond its one line, in one
@@ -216,8 +242,22 @@
   }
 </script>
 
-{#if context !== undefined}
-  <div class="cinder-approval-card__context">{@render context()}</div>
+{#if context !== undefined || hasAsker}
+  <!-- The context line: the host's context, then, while it is undecided, who asked and how long
+       ago, two pieces a gap apart with no comma, the time a colour step quieter. -->
+  <div class="cinder-approval-card__context">
+    {#if context !== undefined}{@render context()}{/if}
+    {#if hasAsker}
+      <p class="cinder-approval-card__asker">
+        {#if sourceText !== undefined}<span class="cinder-approval-card__asker-source"
+            >{sourceText}</span
+          >{/if}{#if sourceText !== undefined && requestedText !== undefined}{' '}{/if}{#if requestedText !== undefined}<time
+            class="cinder-approval-card__asker-time"
+            datetime={requestedIso}>{requestedText}</time
+          >{/if}
+      </p>
+    {/if}
+  </div>
 {/if}
 
 {#if approvalState === 'expired'}
@@ -229,74 +269,86 @@
     {onAskAgain}
     titleClass="cinder-approval-card__decision-title"
   >
-    {#snippet status()}Expired before a decision{/snippet}
+    {#snippet status()}Expired before a decision{#if lapsedTime !== undefined}{' '}<time
+          class="cinder-approval-card__settled-time"
+          datetime={lapsedIso}>{lapsedTime}</time
+        >{/if}{/snippet}
   </ApprovalCardSettled>
 {:else if isReceipt}
   <div class="cinder-approval-card__receipt" data-cinder-tone={outcomeTone}>
-    <!-- The same pattern as an expired card: the decided action as the title, one status line, and
-         the time under the card, which the host writes as it writes a message's. -->
-    <ApprovalCardSettled
-      {titleTag}
-      {titleId}
-      title={decidedAction}
-      stateName={outcomeWord ?? STATE_LABELS[approvalState]}
-      tone={outcomeTone}
-      titleClass="cinder-approval-card__decision-title"
-    >
-      {#snippet status()}
-        {outcomeWord ??
-          STATE_LABELS[
-            approvalState
-          ]}{#if hasWho}{' '}{byText}{inText}{#if decidedIn !== undefined}{#if decidedInHref !== undefined}<Link
+    <!-- Board row A4: one line of pieces a gap apart, never a comma: the status with its dot, the
+         action decided (a statement, not the question), who decided and where, when, and the
+         Details chevron at the end. The status leads, so a narrow card puts it above the action.
+         The heading keeps the status in its accessible name; the visible word is not read twice. -->
+    <div class="cinder-approval-card__receipt-line">
+      <span class="cinder-approval-card__receipt-status" aria-hidden="true"
+        ><span class="cinder-approval-card__settled-dot"></span>{statusWord}</span
+      >
+      <svelte:element
+        this={titleTag}
+        id={titleId}
+        class="cinder-approval-card__decision-title cinder-approval-card__receipt-action"
+        dir="auto"
+      >
+        <span class="cinder-sr-only">{statusWord}:</span>{' '}{decidedAction}
+      </svelte:element>
+      {#if hasWho}
+        <span class="cinder-approval-card__receipt-by"
+          >{byText}{inText}{#if decidedIn !== undefined}{#if decidedInHref !== undefined}<Link
                 href={decidedInHref}>{decidedIn}</Link
-              >{:else}{decidedIn}{/if}{/if}{/if}
-      {/snippet}
-    </ApprovalCardSettled>
-    {#if hasReceiptDetails}
-      <div class="cinder-approval-card__input">
+              >{:else}{decidedIn}{/if}{/if}</span
+        >
+      {/if}
+      {#if decidedTime !== undefined}
+        <time class="cinder-approval-card__receipt-time" datetime={decidedIso}>{decidedTime}</time>
+      {/if}
+      {#if hasReceiptDetails}
         <!-- The one disclosure trigger every reveal shares (board row X3, COR-2440). -->
         <DisclosureTrigger
+          class="cinder-approval-card__receipt-toggle"
           open={detailsOpen}
           controls={detailsId}
           onclick={() => (detailsOpen = !detailsOpen)}
         >
           Details
         </DisclosureTrigger>
-        <!-- The note, the result and the command are one definition list with one label style
+      {/if}
+    </div>
+    {#if hasReceiptDetails}
+      <!-- The note, the result and the command are one definition list with one label style
              (board row A4), each term over its value. -->
-        <dl
-          id={detailsId}
-          class="cinder-approval-card__receipt-details cinder-approval-card__receipt-facts"
-          hidden={!detailsOpen}
-        >
-          {#if hasNote}
-            <div class="cinder-approval-card__receipt-fact cinder-approval-card__decision-note">
-              <dt class="cinder-approval-card__receipt-term">Your note</dt>
-              <dd class="cinder-approval-card__decision-note-text" dir="auto">{decisionNote}</dd>
-            </div>
-          {/if}
-          {#if result !== undefined}
-            <div class="cinder-approval-card__receipt-fact cinder-approval-card__result">
-              <dt class="cinder-approval-card__receipt-term">Result</dt>
-              <dd dir="auto">{result}</dd>
-            </div>
-          {/if}
-          {#if command !== undefined}
-            <div class="cinder-approval-card__receipt-fact">
-              <dt class="cinder-approval-card__receipt-term">Command</dt>
-              <dd class="cinder-approval-card__command">
-                <CodeBlock
-                  code={command}
-                  language="shell"
-                  languageLabelVisible={false}
-                  copyable={false}
-                  wrap
-                />
-              </dd>
-            </div>
-          {/if}
-        </dl>
-      </div>
+      <dl
+        id={detailsId}
+        class="cinder-approval-card__receipt-details cinder-approval-card__receipt-facts"
+        hidden={!detailsOpen}
+      >
+        {#if hasNote}
+          <div class="cinder-approval-card__receipt-fact cinder-approval-card__decision-note">
+            <dt class="cinder-approval-card__receipt-term">Your note</dt>
+            <dd class="cinder-approval-card__decision-note-text" dir="auto">{decisionNote}</dd>
+          </div>
+        {/if}
+        {#if result !== undefined}
+          <div class="cinder-approval-card__receipt-fact cinder-approval-card__result">
+            <dt class="cinder-approval-card__receipt-term">Result</dt>
+            <dd dir="auto">{result}</dd>
+          </div>
+        {/if}
+        {#if command !== undefined}
+          <div class="cinder-approval-card__receipt-fact">
+            <dt class="cinder-approval-card__receipt-term">Command</dt>
+            <dd class="cinder-approval-card__command">
+              <CodeBlock
+                code={command}
+                language="shell"
+                languageLabelVisible={false}
+                copyable={false}
+                wrap
+              />
+            </dd>
+          </div>
+        {/if}
+      </dl>
     {/if}
     {#if notice !== undefined}
       <p

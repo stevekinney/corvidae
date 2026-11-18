@@ -122,21 +122,18 @@
     return { iso, text: (today ? timeFormatter : dateTimeFormatter).format(moment) };
   }
   /**
-   * When the card settled, under it: an expired card's deadline, or the moment an approval or a
-   * denial was decided. The three settled states are one pattern, and none holds its time inside.
+   * When a row-layout card expired, under it. The decision surface writes when it settled (a
+   * receipt's decision, an expired card's deadline) as a piece of its own status line (board row
+   * A4), and the row layout keeps a decision's time in its own line, so only this case is left.
    */
   const expiredTime = $derived.by(() => {
+    if (layout === 'decision') return undefined;
     if (
       part.state === 'approved' ||
       part.state === 'approved_with_edits' ||
       part.state === 'denied'
     ) {
-      // The row layout keeps the time in its own line; the decision surface leaves it to this one.
-      if (layout !== 'decision' || part.receipt === undefined) return undefined;
-      const decided = new Date(part.receipt.decidedAt);
-      return Number.isNaN(decided.getTime())
-        ? undefined
-        : settledMoment(decided, decided.toISOString());
+      return undefined;
     }
     const expiresAt = part.action.expiresAt;
     if (expiresAt === undefined) return undefined;

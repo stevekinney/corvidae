@@ -211,6 +211,15 @@
       ? formatTimeOfDay(decidedDate)
       : undefined,
   );
+  const decidedIso = $derived(
+    outcomeTime === undefined || decidedDate === undefined ? undefined : decidedDate.toISOString(),
+  );
+  // When an expired approval lapsed: its deadline, as the decision layout writes it in its status.
+  const lapsedDate = $derived(
+    effectiveState === 'expired' && expirationTimestamp !== undefined
+      ? new Date(expirationTimestamp)
+      : undefined,
+  );
   // "Approved by you in Reviews at 10:44 AM" when a card was decided somewhere else, otherwise
   // "Denied by you" with the time after a comma, as the row writes it too: "Approved by you in
   // Reviews, 10:46 AM".
@@ -693,6 +702,13 @@
       {decidedBy}
       {decidedIn}
       {decidedInHref}
+      decidedTime={outcomeTime}
+      {decidedIso}
+      lapsedTime={lapsedDate === undefined ? undefined : formatTimeOfDay(lapsedDate)}
+      lapsedIso={lapsedDate?.toISOString()}
+      {sourceText}
+      {requestedText}
+      {requestedIso}
       {onAskAgain}
       {decisionNote}
       {context}

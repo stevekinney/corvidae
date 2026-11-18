@@ -91,7 +91,7 @@ test.describe('ApprovalCard decision layout', () => {
     expect(style.background).toBe('rgba(0, 0, 0, 0)');
   });
 
-  test('a settled receipt folds to one row at 30rem and wider (COR-2440 A4)', async ({
+  test('a settled receipt is one line: status, action, who, when, chevron (COR-2440 A4)', async ({
     componentPage,
   }) => {
     const page = await componentPage.open({
@@ -100,18 +100,62 @@ test.describe('ApprovalCard decision layout', () => {
       viewport: desktop,
     });
     const card = page.locator('#approval-card-decision-receipt');
-    const title = await card.locator('.cinder-approval-card__settled-title').boundingBox();
-    const note = await card.locator('.cinder-approval-card__settled-note').boundingBox();
-    const toggle = await card.getByRole('button', { name: 'Details' }).boundingBox();
-    // One row: the action, who decided and the chevron share one band.
-    for (const box of [note!, toggle!]) {
-      expect(box.y).toBeLessThan(title!.y + title!.height);
-      expect(box.y + box.height).toBeGreaterThan(title!.y);
+    const line = card.locator('.cinder-approval-card__receipt-line');
+    const boxes = await line.evaluate((element) =>
+      [...element.children].map((child) => {
+        const box = child.getBoundingClientRect();
+        return {
+          name: child.className.split(' ').at(-1),
+          top: box.top,
+          bottom: box.bottom,
+          left: box.left,
+        };
+      }),
+    );
+    expect(boxes.map((box) => box.name)).toEqual([
+      'cinder-approval-card__receipt-status',
+      'cinder-approval-card__receipt-action',
+      'cinder-approval-card__receipt-by',
+      'cinder-approval-card__receipt-time',
+      'cinder-approval-card__receipt-toggle',
+    ]);
+    // One band, read left to right in A4's order, the chevron at the end.
+    const band = boxes[1]!;
+    for (const box of boxes) {
+      expect(box.top).toBeLessThan(band.bottom);
+      expect(box.bottom).toBeGreaterThan(band.top);
     }
-    expect(toggle!.x).toBeGreaterThan(note!.x);
+    for (const [index, box] of boxes.entries()) {
+      if (index > 0) expect(box.left).toBeGreaterThan(boxes[index - 1]!.left);
+    }
+    await expect(line).not.toContainText('?');
     await card.getByRole('button', { name: 'Details' }).click();
     await expect(card.locator('dl.cinder-approval-card__receipt-facts')).toBeVisible();
     await expect(card.locator('dl')).toHaveCount(1);
+  });
+
+  test('a narrow receipt puts its status above its action (owner decision)', async ({
+    componentPage,
+  }) => {
+    const page = await componentPage.open({
+      entry: approvalEntry,
+      theme: 'light',
+      viewport: narrowPhone,
+    });
+    const line = page.locator(
+      '#approval-card-decision-receipt .cinder-approval-card__receipt-line',
+    );
+    const read = await line.evaluate((element) => {
+      const status = element.querySelector('.cinder-approval-card__receipt-status');
+      const action = element.querySelector('.cinder-approval-card__receipt-action');
+      if (status == null || action == null) return null;
+      return {
+        statusBottom: status.getBoundingClientRect().bottom,
+        actionTop: action.getBoundingClientRect().top,
+      };
+    });
+    expect(read).not.toBeNull();
+    expect(read!.statusBottom).toBeLessThanOrEqual(read!.actionTop + 0.5);
   });
 });
 

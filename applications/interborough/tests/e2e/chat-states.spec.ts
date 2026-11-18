@@ -376,11 +376,16 @@ test.describe('Restarting after Enable and restart (frame i: 20f)', () => {
     const card = conversation.locator('.cinder-approval-card');
     await expect(card).toContainText('Publish notes for 2.4?');
     await expect(card.locator('.cinder-approval-card__state-word')).toHaveText('Unavailable');
-    // The chat's approval is the decision surface (COR-2438): its risk is the card's own, and the
-    // agent and the time are the turn's, so the card carries the question, its state, what it asks
-    // and why it waits.
+    // The chat's approval is the decision surface (COR-2438): who asked and how long ago are its
+    // context line, two pieces with no comma, and the card carries the question, its state, what it
+    // asks and why it waits.
     await expect(card).toHaveAttribute('data-cinder-layout', 'decision');
     await expect(card).toHaveAttribute('data-cinder-risk', 'medium');
+    const asker = card.locator('.cinder-approval-card__asker');
+    await expect(asker.locator('.cinder-approval-card__asker-source')).toHaveText(
+      'Approval from Release helper',
+    );
+    await expect(asker.locator('.cinder-approval-card__asker-time')).toHaveText('12 min ago');
     await expect(card).toContainText('Version 2.4');
     await expect(card).toContainText('Changes 12');
     await expect(card).toContainText(HELD_BY_PLUGIN_REASON);

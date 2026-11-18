@@ -105,6 +105,8 @@
         entry,
         showsDecision(entry) || (inline && openDetails.has(entry.callId)) || showsPanel(entry),
         decided,
+        // A decided call whose receipt card is drawn under its row: the card says the decision.
+        showsDecision(entry) && entry.decision !== undefined,
       ),
       ...(showsPanel(entry) ? { pinned: true } : {}),
     })),

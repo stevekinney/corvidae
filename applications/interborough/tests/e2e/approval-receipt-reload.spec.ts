@@ -17,9 +17,9 @@ test.use({ viewport: { width: 1600, height: 900 } });
 const inboxAt = (review: WaitingReview): string =>
   `/reviews?review=${encodeURIComponent(`bureau:${review.id}`)}`;
 
-/** The decided receipts of a chat: the decision surface's status line, one per receipt. */
+/** The decided receipts of a chat: the decision surface's one line (board row A4), one per receipt. */
 const receiptsOf = (page: Page) =>
-  page.locator('.cinder-approval-card--decision .cinder-approval-card__settled-note');
+  page.locator('.cinder-approval-card--decision .cinder-approval-card__receipt-line');
 
 test('a decision made in Reviews and one made in the chat each read as one receipt after a reload', async ({
   page,
@@ -44,7 +44,15 @@ test('a decision made in Reviews and one made in the chat each read as one recei
   await page.goto(`/chats/${viaReviews}`);
   await page.reload();
   await expect(receiptsOf(page)).toHaveCount(1);
-  await expect(receiptsOf(page)).toHaveText(/^Approved by .+ in Reviews$/);
+  await expect(receiptsOf(page).locator('.cinder-approval-card__receipt-status')).toHaveText(
+    'Approved',
+  );
+  await expect(receiptsOf(page).locator('.cinder-approval-card__receipt-by')).toHaveText(
+    /^by .+ in Reviews$/,
+  );
+  await expect(receiptsOf(page).locator('.cinder-approval-card__receipt-time')).toHaveText(
+    /^\d{1,2}:\d{2} [AP]M$/,
+  );
   await expect(
     page.locator('.cinder-approval-card--decision').getByRole('link', { name: 'Reviews' }),
   ).toHaveAttribute(
@@ -53,11 +61,14 @@ test('a decision made in Reviews and one made in the chat each read as one recei
   );
   await expect(page.locator('[data-approval-decision]')).toHaveCount(0);
 
-  // The rail row says the same decision in its own words, once.
+  // The rail row above the receipt leaves the decision to it, so the turn says it once (A4).
+  const approvedRow = page.locator(
+    '.cinder-tool-call-rail__item[data-cinder-status="approved"] > .cinder-tool-call-rail__row',
+  );
+  await expect(approvedRow).toHaveCount(1);
+  await expect(approvedRow).not.toContainText('Approved by');
   const decidedRows = (where: Page) =>
-    where.locator('.cinder-tool-call-rail__item').filter({ hasText: /Approved by / });
-  await expect(decidedRows(page)).toHaveCount(1);
-  await expect(decidedRows(page)).toContainText('in Reviews');
+    where.locator('.cinder-tool-call-rail__row').filter({ hasText: /Approved by / });
 
   // And the chat decision is one receipt that names no place: an approval made and carried out in
   // the chat reads on its rail row, which is the answer, and draws no card under it.

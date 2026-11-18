@@ -60,6 +60,20 @@ const PARKED = [
 ];
 
 /** The thread once the refund is decided: the Bureau replaced the waiting row with the outcome. */
+/** A receipt's status and who decided, the pieces its one line writes them as (board row A4). */
+function receiptOf(card: Element | null | undefined): string {
+  return ['status', 'by']
+    .map(
+      (piece) =>
+        card
+          ?.querySelector(`.cinder-approval-card__receipt-${piece}`)
+          ?.textContent?.replace(/\s+/g, ' ')
+          .trim() ?? '',
+    )
+    .join(' ')
+    .trim();
+}
+
 function decidedThread(decision: Record<string, unknown>, content: unknown) {
   return [
     { id: 'user-1', role: 'user', content: 'Please refund order 4471.' },
@@ -156,30 +170,28 @@ describe('an approval decided on another page', () => {
     );
 
     await until(() => expect(container.querySelector('[data-approval-decision]')).toBeNull());
-    // The explicit decision surface's receipt (COR-2282): the decided action as its title, one
-    // status line, Reviews a link to the review, and when, under the card.
+    // The explicit decision surface's receipt (board row A4): one line of the status, the decided
+    // action as a statement, who decided with Reviews a link to the review, and when.
     // Exactly one receipt: the page's own row, not a second one drawn from the same record.
     expect(container.querySelectorAll('.cinder-approval-card')).toHaveLength(1);
     const row = container.querySelector('.cinder-approval-card--decision');
-    expect(row?.querySelector('h4')?.textContent).toContain('Refund order 4471 for $42.00?');
-    expect(
-      row
-        ?.querySelector('.cinder-approval-card__settled-note')
-        ?.textContent?.replace(/\s+/g, ' ')
-        .trim(),
-    ).toBe('Approved by you in Reviews');
+    expect(row?.querySelector('h4')?.textContent).toContain('Refund order 4471 for $42.00');
+    expect(row?.querySelector('h4')?.textContent).not.toContain('?');
+    expect(receiptOf(row)).toBe('Approved by you in Reviews');
     // A decided review is listed under Done, so the link opens that tab with the review selected.
     expect(row?.querySelector('a[href]')?.getAttribute('href')).toContain(
       `/reviews?tab=done&review=${encodeURIComponent('bureau:approval:native-1:call-refund')}`,
     );
-    expect(container.querySelector('.chat-approval-time')?.textContent).toMatch(
-      /\d{1,2}:\d{2} [AP]M/,
+    expect(row?.querySelector('.cinder-approval-card__receipt-time')?.textContent).toMatch(
+      /^\d{1,2}:\d{2} [AP]M$/,
     );
+    expect(container.querySelector('.chat-approval-time')).toBeNull();
     expect(queryByRole('button', { name: 'Deny' })).toBeNull();
     expect(queryByRole('button', { name: 'Approve' })).toBeNull();
-    // The rail row speaks for the same decision in its own words.
-    expect(container.querySelector('.cinder-tool-call-rail__item')?.textContent).toMatch(
-      /Approved by you in Reviews \d{1,2}:\d{2} [AP]M/,
+    // The rail row above it does not say the decision again: the receipt under it says it once.
+    const railItem = container.querySelector('.cinder-tool-call-rail__item');
+    expect(railItem?.querySelector('.cinder-tool-call-rail__row')?.textContent).not.toMatch(
+      /in Reviews|\d{1,2}:\d{2} [AP]M/,
     );
     const live = getByTestId('chat-decision-announcement');
     expect(live.getAttribute('role')).toBe('status');
@@ -204,7 +216,7 @@ describe('an approval decided on another page', () => {
       'Denied in Reviews. Refund order 4471 for $42.00.',
     );
     const row = container.querySelector('.cinder-approval-card--decision');
-    expect(row?.textContent).toContain('Denied by you in Reviews');
+    expect(receiptOf(row)).toBe('Denied by you in Reviews');
     expect(row?.querySelector('.cinder-approval-card__decision-note')?.textContent).toContain(
       'Check the carrier’s claim first.',
     );
@@ -227,12 +239,7 @@ describe('an approval decided on another page', () => {
       expect(narrow.container.querySelectorAll('.cinder-approval-card--decision')).toHaveLength(1),
     );
     const card = narrow.container.querySelector('.cinder-approval-card--decision');
-    expect(
-      card
-        ?.querySelector('.cinder-approval-card__settled-note')
-        ?.textContent?.replace(/\s+/g, ' ')
-        .trim(),
-    ).toBe('Approved by you in Reviews');
+    expect(receiptOf(card)).toBe('Approved by you in Reviews');
     expect(card?.querySelector('a[href]')?.getAttribute('href')).toContain(
       `/reviews?tab=done&review=${encodeURIComponent('bureau:approval:native-1:call-refund')}`,
     );
@@ -342,13 +349,16 @@ describe('the run a decision on another page continues the chat with (design row
     expect(getByTestId('chat-decision-announcement').textContent?.trim()).toBe(
       'Approved in Reviews. Refund order 4471 for $42.00.',
     );
-    expect(container.querySelector('.cinder-approval-card__settled-note')?.textContent).toContain(
+    expect(receiptOf(container.querySelector('.cinder-approval-card--decision'))).toBe(
       'Approved by you in Reviews',
     );
-    // While the continuation goes, the rail row reads as that run (18i).
+    // While the continuation goes, the rail row reads as that run (18i), and leaves the decision to
+    // the receipt under it (board row A4).
     const railRow = () => container.querySelector('.cinder-tool-call-rail__item');
+    const railLine = () => railRow()?.querySelector('.cinder-tool-call-rail__row')?.textContent;
     expect(railRow()?.getAttribute('data-cinder-status')).toBe('running');
-    expect(railRow()?.textContent).toMatch(/in Reviews \d{1,2}:\d{2} [AP]M, running…/);
+    expect(railLine()).toMatch(/running…/i);
+    expect(railLine()).not.toContain('in Reviews');
 
     // The continuation stops. The decision is no longer running, even though the chat as last read
     // still says a run is going: "running…" belongs to the run the decision continued, not the page.
@@ -360,8 +370,10 @@ describe('the run a decision on another page continues the chat with (design row
     continuation?.close();
     await settle(20);
     await until(() => expect(railRow()?.getAttribute('data-cinder-status')).toBe('approved'));
-    expect(railRow()?.textContent).not.toContain('running…');
-    expect(railRow()?.textContent).toMatch(/Approved by you in Reviews \d{1,2}:\d{2} [AP]M/);
+    expect(railLine()).not.toMatch(/running…/i);
+    expect(receiptOf(container.querySelector('.cinder-approval-card--decision'))).toBe(
+      'Approved by you in Reviews',
+    );
   });
 });
 
@@ -493,7 +505,7 @@ describe('a continuation that stops before the chat could join it (design row 18
     await settle(20);
     await until(() => expect(view.container.querySelector('[data-approval-decision]')).toBeNull());
     const railRow = () => view.container.querySelector('.cinder-tool-call-rail__item');
-    expect(railRow()?.textContent).toContain('running…');
+    expect(railRow()?.textContent).toMatch(/running…/i);
 
     // The continuation ran and stopped between two reads of the chat's runs.
     ran = true;
@@ -507,7 +519,7 @@ describe('a continuation that stops before the chat could join it (design row 18
 
     await until(() => expect(container.textContent).toContain('Refund issued for order 4471.'));
     await until(() => expect(railRow()?.getAttribute('data-cinder-status')).toBe('approved'));
-    expect(railRow()?.textContent).not.toContain('running…');
+    expect(railRow()?.textContent).not.toMatch(/running…/i);
     // The chat never joined a run, so Send keeps its place.
     expect(container.querySelector('button[aria-label="Stop generating"]')).toBeNull();
   });
@@ -518,6 +530,6 @@ describe('a continuation that stops before the chat could join it (design row 18
     await until(() => expect(container.textContent).toContain('Refund issued for order 4471.'));
     await until(() => expect(container.querySelector('[data-approval-decision]')).not.toBeNull());
     expect(container.textContent).toContain('Email the customer about order 4471?');
-    expect(railRow()?.textContent).not.toContain('running…');
+    expect(railRow()?.textContent).not.toMatch(/running…/i);
   });
 });

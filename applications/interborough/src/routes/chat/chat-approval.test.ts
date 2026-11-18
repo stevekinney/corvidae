@@ -188,10 +188,22 @@ describe('a waiting approval', () => {
     const link = view.container.querySelector<HTMLAnchorElement>('.cinder-approval-card a[href]');
     expect(link?.getAttribute('href')).toBe('#/reviews?review=bureau%3Aapproval%3Arun-1%3Acall-1');
     expect(link?.textContent?.trim()).toBe('Reviews');
-    expect(view.container.textContent?.replace(/\s+/g, ' ')).toContain('Approved by priya in');
+    // One line (board row A4): the status, then the action, then who decided and where.
+    expect(
+      view.container.querySelector('.cinder-approval-card__receipt-status')?.textContent?.trim(),
+    ).toBe('Approved');
+    expect(
+      view.container
+        .querySelector('.cinder-approval-card__receipt-by')
+        ?.textContent?.replace(/\s+/g, ' ')
+        .trim(),
+    ).toBe('by priya in Reviews');
+    // When it was decided is a piece of that line, not a line under the card.
+    expect(view.container.querySelector('.cinder-approval-card__receipt-time')).not.toBeNull();
+    expect(view.container.querySelector('.chat-approval-time')).toBeNull();
   });
 
-  test('reads expired from its expiresAt alone, writes when it lapsed under it, and offers Ask again (COR-2280)', async () => {
+  test('reads expired from its expiresAt alone, writes when it lapsed in its status line, and offers Ask again (COR-2280)', async () => {
     const onAskAgain = mock(() => undefined);
     const view = render(ChatApproval, {
       props: {
@@ -211,9 +223,10 @@ describe('a waiting approval', () => {
     expect(card?.getAttribute('data-cinder-state')).toBe('expired');
     expect(card?.textContent).toContain('Expired before a decision');
     expect(view.queryByRole('button', { name: 'Deny' })).toBeNull();
-    expect(view.container.querySelector('.chat-approval-time time')?.getAttribute('datetime')).toBe(
-      '2026-11-01T09:15:00.000Z',
-    );
+    expect(
+      card?.querySelector('.cinder-approval-card__settled-time')?.getAttribute('datetime'),
+    ).toBe('2026-11-01T09:15:00.000Z');
+    expect(view.container.querySelector('.chat-approval-time')).toBeNull();
     await fireEvent.click(view.getByRole('button', { name: 'Ask again' }));
     expect(onAskAgain).toHaveBeenCalledTimes(1);
   });

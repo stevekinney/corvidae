@@ -72,10 +72,22 @@ function decided(id: string, record: Record<string, string>): ConversationHistor
   );
 }
 
+/**
+ * The receipt's status word and who decided, the two pieces its one line leads with and follows the
+ * action with (board row A4): "Approved by Priya Raman in Reviews".
+ */
 function receiptText(container: HTMLElement): string {
-  return (
-    container.querySelector('.cinder-approval-card')?.textContent?.replace(/\s+/g, ' ').trim() ?? ''
-  );
+  const card = container.querySelector('.cinder-approval-card');
+  return ['status', 'by']
+    .map(
+      (piece) =>
+        card
+          ?.querySelector(`.cinder-approval-card__receipt-${piece}`)
+          ?.textContent?.replace(/\s+/g, ' ')
+          .trim() ?? '',
+    )
+    .join(' ')
+    .trim();
 }
 
 describe('Chat — a decision recorded on the outcome row', () => {

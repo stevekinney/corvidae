@@ -105,8 +105,9 @@ export function parseExpirationTimestamp(value: string | undefined): number | un
  * (or the tool's label, or its humanized name) and the Target fact when there is one, such as
  * "Refund $42.00, order 4471". A decided card titles itself with this instead of repeating the
  * question it asked, which no longer reads as a question once it is answered. With neither a
- * named action nor a target the tool alone would say less than the question did, so the question
- * stays.
+ * named action nor a target the tool alone would say less than the question did, so the question's
+ * words stay, as a statement: "Refund order 4398 for $27.25", never ending in a question mark once
+ * the receipt's status ("Denied") has answered it (board row A4).
  */
 export function describeDecidedAction(
   approveLabel: string | undefined,
@@ -116,7 +117,7 @@ export function describeDecidedAction(
 ): string {
   const target = facts.find((fact) => fact.label.trim().toLowerCase() === 'target')?.value.trim();
   const hasTarget = target !== undefined && target !== '';
-  if (approveLabel === undefined && !hasTarget) return question;
+  if (approveLabel === undefined && !hasTarget) return question.replace(/[\s?？]+$/u, '');
   const action =
     approveLabel ?? tool.label ?? humanizeIdentifier(tool.name, { casing: 'sentence' });
   return hasTarget ? `${action}, ${target}` : action;
