@@ -16,11 +16,17 @@
     onvalidationErrorcount?: ((count: number) => void) | undefined;
     onEnumDraftsChange?: ((next: Record<string, Record<number, EnumDraft>>) => void) | undefined;
     onValueChange: (properties: Record<string, JsonSchemaValue>, required: string[]) => void;
+    /**
+     * Whether the list offers required names with no field of their own. The fields form leaves it
+     * out: there, Required is the table's own column and nothing else (row 65s).
+     */
+    requiredOnlyVisible?: boolean;
   };
 </script>
 
 <script lang="ts">
   import ChevronDown from '@lucide/svelte/icons/chevron-down';
+  import Ellipsis from '@lucide/svelte/icons/ellipsis';
   import { onDestroy, tick } from 'svelte';
   import { classNames } from '../../utilities/class-names.ts';
   import Alert from '../alert/alert.svelte';
@@ -29,6 +35,7 @@
   import Chip from '../chip/chip.svelte';
   import { default as Badge } from '../badge/index.ts';
   import { default as Collapsible } from '../collapsible/index.ts';
+  import { default as Dropdown } from '../dropdown/index.ts';
   import { default as Table } from '../table/index.ts';
   import Input from '../input/input.svelte';
   import PropertyEditor from './property-editor.svelte';
@@ -47,6 +54,7 @@
     onvalidationErrorcount,
     onEnumDraftsChange,
     onValueChange,
+    requiredOnlyVisible = true,
   }: PropertyListProps = $props();
 
   const propertyNames = $derived(Object.keys(properties));
@@ -366,10 +374,16 @@
       <Table.Header class={classNames(depth > 0 && 'cinder-sr-only')}>
         <Table.Row>
           <Table.HeaderCell>Field</Table.HeaderCell>
-          <Table.HeaderCell>Type</Table.HeaderCell>
-          <Table.HeaderCell>Description</Table.HeaderCell>
-          <Table.HeaderCell>Required</Table.HeaderCell>
-          <Table.HeaderCell><span class="cinder-sr-only">Actions</span></Table.HeaderCell>
+          <Table.HeaderCell class="cinder-jse-property-table__type-heading">Type</Table.HeaderCell>
+          <Table.HeaderCell class="cinder-jse-property-table__description-heading"
+            >Description</Table.HeaderCell
+          >
+          <Table.HeaderCell class="cinder-jse-property-table__required-heading"
+            >Required</Table.HeaderCell
+          >
+          <Table.HeaderCell class="cinder-jse-property-table__actions-heading"
+            ><span class="cinder-sr-only">Actions</span></Table.HeaderCell
+          >
         </Table.Row>
       </Table.Header>
       <Table.Body>
@@ -420,6 +434,11 @@
                   </Badge>
                 {/if}
               </button>
+              {#if description !== ''}
+                <!-- In a narrow container the description reads under the field's name, where
+                     its own column has no room (row 65s). -->
+                <span class="cinder-jse-property-row__key-description">{description}</span>
+              {/if}
             </Table.Cell>
             <Table.Cell class="cinder-jse-property-row__type">
               {summariseType(propertySchema)}
@@ -437,33 +456,61 @@
               />
             </Table.Cell>
             <Table.Cell class="cinder-jse-property-row__actions">
-              <Button
-                variant="ghost"
-                size="xs"
-                disabled={readonly || !canMoveProperty(index, -1)}
-                aria-label={`Move ${key} up`}
-                onclick={() => moveProperty(key, -1, index)}
-              >
-                ↑
-              </Button>
-              <Button
-                variant="ghost"
-                size="xs"
-                disabled={readonly || !canMoveProperty(index, 1)}
-                aria-label={`Move ${key} down`}
-                onclick={() => moveProperty(key, 1, index)}
-              >
-                ↓
-              </Button>
-              <Button
-                variant="ghost-danger"
-                size="xs"
-                disabled={readonly}
-                aria-label={`Delete ${key}`}
-                onclick={() => deleteProperty(key, index)}
-              >
-                Delete
-              </Button>
+              <!-- A row keeps its own actions inside its box: wide, three buttons; in a narrow
+                   container one icon menu that holds them (row 65s). The table never scrolls
+                   sideways to reach them. -->
+              <span class="cinder-jse-property-row__inline-actions">
+                <Button
+                  variant="ghost"
+                  size="xs"
+                  disabled={readonly || !canMoveProperty(index, -1)}
+                  aria-label={`Move ${key} up`}
+                  onclick={() => moveProperty(key, -1, index)}
+                >
+                  ↑
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="xs"
+                  disabled={readonly || !canMoveProperty(index, 1)}
+                  aria-label={`Move ${key} down`}
+                  onclick={() => moveProperty(key, 1, index)}
+                >
+                  ↓
+                </Button>
+                <Button
+                  variant="ghost-danger"
+                  size="xs"
+                  disabled={readonly}
+                  aria-label={`Delete ${key}`}
+                  onclick={() => deleteProperty(key, index)}
+                >
+                  Delete
+                </Button>
+              </span>
+              <span class="cinder-jse-property-row__menu">
+                <Dropdown id={`${idPrefix}-${key}-actions`} placement="bottom-end">
+                  <Dropdown.Trigger caretVisible={false} variant="ghost" size="xs">
+                    <Ellipsis aria-hidden="true" size={16} />
+                    <span class="cinder-sr-only">{`Actions for ${key}`}</span>
+                  </Dropdown.Trigger>
+                  <Dropdown.Menu>
+                    <Dropdown.Item
+                      disabled={readonly || !canMoveProperty(index, -1)}
+                      onclick={() => moveProperty(key, -1, index)}>Move up</Dropdown.Item
+                    >
+                    <Dropdown.Item
+                      disabled={readonly || !canMoveProperty(index, 1)}
+                      onclick={() => moveProperty(key, 1, index)}>Move down</Dropdown.Item
+                    >
+                    <Dropdown.Item
+                      variant="danger"
+                      disabled={readonly}
+                      onclick={() => deleteProperty(key, index)}>Delete</Dropdown.Item
+                    >
+                  </Dropdown.Menu>
+                </Dropdown>
+              </span>
             </Table.Cell>
           </Table.Row>
 
@@ -512,7 +559,7 @@
     </Button>
   </span>
 
-  {#if !readonly || requiredOnly.length > 0}
+  {#if requiredOnlyVisible && (!readonly || requiredOnly.length > 0)}
     <Collapsible
       class="cinder-jse-required-only"
       trigger={`Required fields not yet defined (${requiredOnly.length})`}

@@ -1321,3 +1321,77 @@ describe('JsonSchemaEditor — controlled and uncontrolled schema inputs', () =>
     expect(observedChanges).toEqual([]);
   });
 });
+
+describe('JsonSchemaEditor — the fields form (COR-2432, row 65s)', () => {
+  const schema = {
+    type: 'object',
+    required: ['branch'],
+    properties: {
+      branch: { type: 'string', description: 'The branch to release from.' },
+      since: { type: 'string', format: 'date' },
+    },
+  };
+
+  test('is the fields table alone: no toolbar, views, document fields or second Required', () => {
+    const { container } = render(JsonSchemaEditorImplementation, {
+      props: { id: 'jse-fields', defaultSchema: schema, variant: 'fields' as const },
+    });
+    const root = requiredInstance(container.querySelector('[data-cinder-jse]'), HTMLElement);
+    expect(root.getAttribute('data-cinder-variant')).toBe('fields');
+    expect(screen.queryByRole('tablist')).toBeNull();
+    expect(container.textContent).not.toContain('Valid (');
+    expect(container.textContent).not.toContain('Required fields not yet defined');
+    expect(screen.queryByLabelText('Title')).toBeNull();
+    const table = screen.getByRole('table', { name: 'Schema properties' });
+    expect(
+      within(table)
+        .getAllByRole('columnheader')
+        .map((header) => header.textContent?.trim())
+        .slice(0, 4),
+    ).toEqual(['Field', 'Type', 'Description', 'Required']);
+    expect(screen.getByRole('checkbox', { name: 'branch' })).toHaveProperty('checked', true);
+    expect(screen.getByRole('button', { name: 'Add a field' })).toBeTruthy();
+  });
+
+  test('commits a Required change as the object schema with the field required', async () => {
+    const changes: string[] = [];
+    render(JsonSchemaEditorImplementation, {
+      props: {
+        id: 'jse-fields-commit',
+        defaultSchema: schema,
+        variant: 'fields' as const,
+        onSchemaChange: (event: JsonSchemaEditorChangeEvent) => changes.push(event.jsonString),
+      },
+    });
+    await fireEvent.click(screen.getByRole('checkbox', { name: 'since' }));
+    await waitFor(() => expect(changes.length).toBeGreaterThan(0));
+    const committed = JSON.parse(changes.at(-1) ?? '{}') as { required?: string[]; type?: string };
+    expect(committed.type).toBe('object');
+    expect(committed.required).toEqual(['branch', 'since']);
+  });
+
+  test('keeps every row’s actions in the row, with an icon menu for a narrow container and the description under the name', () => {
+    const { container } = render(JsonSchemaEditorImplementation, {
+      props: { id: 'jse-fields-narrow', defaultSchema: schema, variant: 'fields' as const },
+    });
+    const row = requiredInstance(container.querySelector('.cinder-jse-property-row'), HTMLElement);
+    expect(row.querySelector('.cinder-jse-property-row__inline-actions')).not.toBeNull();
+    expect(row.querySelector('.cinder-jse-property-row__menu')?.textContent?.trim()).toContain(
+      'Actions for branch',
+    );
+    expect(row.querySelector('.cinder-jse-property-row__key-description')?.textContent).toBe(
+      'The branch to release from.',
+    );
+  });
+
+  test('the narrow container rule folds the actions and the description, measured on the list, not the viewport', async () => {
+    const css = await Bun.file(new URL('./json-schema-editor.css', import.meta.url)).text();
+    expect(css).toMatch(/container-type:\s*inline-size/);
+    const narrow =
+      /@container cinder-jse-properties \(max-width: 36rem\) \{([\s\S]*?)\n {2}\}/.exec(css)?.[1];
+    expect(narrow).toBeDefined();
+    expect(narrow).toContain('.cinder-jse-property-row__inline-actions');
+    expect(narrow).toMatch(/\.cinder-jse-property-row__menu \{\s*display: inline-flex;/);
+    expect(narrow).toMatch(/\.cinder-jse-property-row__key-description \{\s*display: block;/);
+  });
+});

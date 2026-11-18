@@ -9,7 +9,8 @@ export const appFixtureDeclarations = {
   'chat-navigation-rail': ['assertion'],
   'chat-stress': ['assertion'],
   'chat-sub-session': ['assertion'],
-  'json-schema-editor': ['assertion'],
+  // The fields form, at the page's width and in a 350px column (COR-2432, row 65s).
+  'json-schema-editor': ['assertion', 'fields', 'fields-narrow'],
   citation: ['assertion'],
   'code-location': ['assertion'],
   'donut-chart': ['assertion'],

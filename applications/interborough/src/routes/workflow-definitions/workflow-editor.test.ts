@@ -1014,6 +1014,33 @@ describe('the step builder in the editor', () => {
     expect(getByRole('button', { name: EDITOR.saveAction })).toBeTruthy();
   });
 
+  test('design correction: Input and Output are the fields table alone, in one column (row 65s)', async () => {
+    const text = JSON.stringify(
+      {
+        name: 'digest',
+        trigger: { kind: 'manual' },
+        inputSchema: {
+          type: 'object',
+          required: ['branch'],
+          properties: { branch: { type: 'string', description: 'The branch to release from.' } },
+        },
+        steps: [{ kind: 'sleep', duration: '1m' }],
+      },
+      null,
+      2,
+    );
+    const { container } = open('/workflows/digest/edit', {
+      files: [readyFile('digest', { text })],
+    });
+    await builderReady(container);
+    const editor = container.querySelector('#workflow-builder-inputSchema');
+    expect(editor?.getAttribute('data-cinder-variant')).toBe('fields');
+    expect(editor?.querySelector('[role="tablist"]')).toBeNull();
+    expect(editor?.textContent).not.toContain('Required fields not yet defined');
+    const section = editor?.closest('.cinder-form-section');
+    expect(section?.getAttribute('data-columns')).toBe('1');
+  });
+
   test('COR-2432: a file that names its schedule says saving changes that schedule, under its When block (row 65q)', async () => {
     const text = JSON.stringify(
       {

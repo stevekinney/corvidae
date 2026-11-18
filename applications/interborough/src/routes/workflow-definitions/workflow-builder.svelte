@@ -621,7 +621,9 @@
 
 {#snippet schemaSection(key: SchemaKey, heading: string, description: string, empty: string)}
   {@const schema = schemaFor(key)}
-  <FormSection {heading} {description}>
+  <!-- One column, the fields table alone: Field, Type, Description, Required and each row's
+       actions in the section's full width, with no editor chrome around them (row 65s). -->
+  <FormSection {heading} {description} columns={1}>
     {#if schema.kind === 'unreadable'}
       <p class="weft-workflow-builder__note">{copy.schemaUnreadable}</p>
     {:else if schema.kind === 'none' && !schemaOpened[key]}
@@ -638,6 +640,7 @@
     {:else}
       <JsonSchemaEditor
         id={`workflow-builder-${key}`}
+        variant="fields"
         schema={shownSchema(schema)}
         onValueChangeRequest={(event) => changeSchema(key, event.schema)}
       />

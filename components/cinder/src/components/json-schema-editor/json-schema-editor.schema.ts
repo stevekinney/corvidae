@@ -20,6 +20,12 @@ const schema = {
       type: 'boolean',
       description: 'Read-only mode disables all mutations.',
     },
+    variant: {
+      enum: ['document', 'fields'],
+      description:
+        '`document` (the default) is the whole editor: its validity toolbar, the Form, JSON and Diff\nviews, and the schema\'s title, description and type. `fields` is the fields table alone, for\nan object schema whose page already says what it is: Field, Type, Description and Required,\neach row\'s actions, and "Add a field", with no document chrome around it.',
+      default: 'document',
+    },
     maxHistory: {
       type: 'number',
       description: 'Maximum history entries (default 100).',
