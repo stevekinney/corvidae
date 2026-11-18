@@ -134,7 +134,7 @@ export class ConnectionMonitor {
   }
 
   /**
-   * The banner's Retry now: starts the count of probes again from the first and asks the server
+   * The banner's Try again: starts the count of probes again from the first and asks the server
    * right away. It is always available, including after the probes stopped.
    */
   async retryNow(): Promise<void> {

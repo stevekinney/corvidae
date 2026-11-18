@@ -12,7 +12,7 @@
   title="Couldn’t load runs"
   description="Interborough didn’t answer. Your runs are safe; they’re stored on this machine."
   retryStatus="Retrying in 8 s (attempt 3 of 8)"
-  retryLabel="Retry now"
+  retryLabel="Try again"
   detail="HTTP 500 from /api/runs"
   onRetry={() => {}}
 >

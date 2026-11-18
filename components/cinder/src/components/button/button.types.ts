@@ -157,7 +157,7 @@ export type ButtonProps = SharedHtmlAttributes &
      * Marks a button that changes something (Edit, Save, Delete, a header "+"). Inside a stale
      * `<StaleRegion>` it goes inert: `aria-disabled`, still focusable, ignoring the press, and
      * described by the region's reason ("Off until it’s back"). It returns by itself when the
-     * region stops being stale. A button that only reads (a link, Retry now) leaves this off and
+     * region stops being stale. A button that only reads (a link, Try again) leaves this off and
      * stays live.
      */
     mutating?: boolean;

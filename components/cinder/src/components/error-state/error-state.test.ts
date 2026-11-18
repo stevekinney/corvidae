@@ -250,7 +250,7 @@ describe('ErrorState actions', () => {
     const buttons = getAllByRole('button');
     expect(buttons.map((button) => button.textContent?.trim())).toEqual([
       'Open Health',
-      'Retry now',
+      'Try again',
     ]);
     const row = container.querySelector('.cinder-error-state-action');
     expect(buttons.every((button) => row?.contains(button))).toBe(true);

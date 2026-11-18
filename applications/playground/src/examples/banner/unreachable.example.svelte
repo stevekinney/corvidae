@@ -1,7 +1,7 @@
 <script lang="ts" module>
   export const title = 'Unreachable preset';
   export const description =
-    'The server is down: the preset writes the sentence, the absolute as-of time, the countdown and Retry now.';
+    'The server is down: the preset writes the sentence, the absolute as-of time, the countdown and Try again.';
 </script>
 
 <script lang="ts">
