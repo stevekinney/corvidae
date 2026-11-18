@@ -33,15 +33,15 @@ export type { AlertProps, AlertVariant } from '@lostgradient/alert/components/al
 export { default as AlertDialog } from '@lostgradient/alert-dialog/components/alert-dialog/index.ts';
 export type { AlertDialogProps } from '@lostgradient/alert-dialog/components/alert-dialog/index.ts';
 
-export { default as AppBar } from './components/app-bar/index.ts';
+export { default as AppBar } from '@lostgradient/app-bar/components/app-bar/index.ts';
 export type {
   AppBarAction,
   AppBarBackAction,
   AppBarHeadingLevel,
   AppBarProps,
-} from './components/app-bar/index.ts';
+} from '@lostgradient/app-bar/components/app-bar/index.ts';
 
-export { default as ApprovalCard } from './components/approval-card/index.ts';
+export { default as ApprovalCard } from '@lostgradient/approval-card/components/approval-card/index.ts';
 export type {
   ApprovalCardCallbacks,
   ApprovalCardHeadingLevel,
@@ -59,14 +59,14 @@ export type {
   ApprovalState,
   ApprovalTool,
   ApprovalToolRisk,
-} from './components/approval-card/index.ts';
+} from '@lostgradient/approval-card/components/approval-card/index.ts';
 
-export { default as AreaChart } from './components/area-chart/index.ts';
+export { default as AreaChart } from '@lostgradient/chart/components/area-chart/index.ts';
 export type {
   ChartDataTableVisibility as AreaChartDataTableVisibility,
   AreaChartProps,
   AreaChartSchemaProps,
-} from './components/area-chart/index.ts';
+} from '@lostgradient/chart/components/area-chart/index.ts';
 
 export { default as AttemptsIndicator } from '@lostgradient/attempts-indicator/components/attempts-indicator/index.ts';
 export type {
@@ -136,12 +136,12 @@ export type {
   BannerVariant,
 } from '@lostgradient/banner/components/banner/index.ts';
 
-export { default as BarChart } from './components/bar-chart/index.ts';
+export { default as BarChart } from '@lostgradient/chart/components/bar-chart/index.ts';
 export type {
   ChartDataTableVisibility as BarChartDataTableVisibility,
   BarChartProps,
   BarChartSchemaProps,
-} from './components/bar-chart/index.ts';
+} from '@lostgradient/chart/components/bar-chart/index.ts';
 
 export { default as Breadcrumbs } from '@lostgradient/breadcrumbs/components/breadcrumbs/index.ts';
 export type {
@@ -242,12 +242,12 @@ export type {
   CollapsibleVariant,
 } from '@lostgradient/collapsible/components/collapsible/index.ts';
 
-export { default as ColorField } from './components/color-field/index.ts';
+export { default as ColorField } from '@lostgradient/color-field/components/color-field/index.ts';
 export type {
   ColorFieldFormat,
   ColorFieldOutputFormat,
   ColorFieldProps,
-} from './components/color-field/index.ts';
+} from '@lostgradient/color-field/components/color-field/index.ts';
 
 export { default as ColorPicker } from '@lostgradient/color-picker/components/color-picker/index.ts';
 export type {
@@ -261,14 +261,14 @@ export type {
   ColorSwatchPickerProps,
 } from '@lostgradient/color-swatch-picker/components/color-swatch-picker/index.ts';
 
-export { default as Combobox } from './components/combobox/index.ts';
+export { default as Combobox } from '@lostgradient/combobox/components/combobox/index.ts';
 export type {
   ComboboxFooterContext,
   ComboboxLoadError,
   ComboboxOption,
   ComboboxPresentation,
   ComboboxProps,
-} from './components/combobox/index.ts';
+} from '@lostgradient/combobox/components/combobox/index.ts';
 
 export { default as CommandItem } from '@lostgradient/command-menu/components/command-item/index.ts';
 export type { CommandItemProps } from '@lostgradient/command-menu/components/command-item/index.ts';
@@ -285,8 +285,8 @@ export type {
   CommandMenuTriggerMatch,
 } from '@lostgradient/command-menu/components/command-menu/index.ts';
 
-export { default as CommandPalette } from './components/command-palette/index.ts';
-export type { CommandPaletteProps } from './components/command-palette/index.ts';
+export { default as CommandPalette } from '@lostgradient/command-palette/components/command-palette/index.ts';
+export type { CommandPaletteProps } from '@lostgradient/command-palette/components/command-palette/index.ts';
 
 export { default as ConfirmDialog } from '@lostgradient/confirm-dialog/components/confirm-dialog/index.ts';
 export type { ConfirmDialogProps } from '@lostgradient/confirm-dialog/components/confirm-dialog/index.ts';
@@ -305,11 +305,11 @@ export type {
   ContainerProps,
 } from '@lostgradient/container/components/container/index.ts';
 
-export { default as ContextMenu } from './components/context-menu/index.ts';
-export type { ContextMenuProps } from './components/context-menu/index.ts';
+export { default as ContextMenu } from '@lostgradient/context-menu/components/context-menu/index.ts';
+export type { ContextMenuProps } from '@lostgradient/context-menu/components/context-menu/index.ts';
 
-export { default as ContextMenuTrigger } from './components/context-menu-trigger/index.ts';
-export type { ContextMenuTriggerProps } from './components/context-menu-trigger/index.ts';
+export { default as ContextMenuTrigger } from '@lostgradient/context-menu/components/context-menu-trigger/index.ts';
+export type { ContextMenuTriggerProps } from '@lostgradient/context-menu/components/context-menu-trigger/index.ts';
 
 export { default as CopyButton } from '@lostgradient/copy-button/components/copy-button/index.ts';
 export type { CopyButtonProps } from '@lostgradient/copy-button/components/copy-button/index.ts';
@@ -317,8 +317,11 @@ export type { CopyButtonProps } from '@lostgradient/copy-button/components/copy-
 export { default as CopyableValue } from '@lostgradient/copyable-value/components/copyable-value/index.ts';
 export type { CopyableValueProps } from '@lostgradient/copyable-value/components/copyable-value/index.ts';
 
-export { default as DataList } from './components/data-list/index.ts';
-export type { DataListGroup, DataListProps } from './components/data-list/index.ts';
+export { default as DataList } from '@lostgradient/data-list/components/data-list/index.ts';
+export type {
+  DataListGroup,
+  DataListProps,
+} from '@lostgradient/data-list/components/data-list/index.ts';
 
 export {
   default as DataGrid,
@@ -340,7 +343,7 @@ export type {
   ParsedDelimitedText,
 } from '@lostgradient/data-grid/components/data-grid/index.ts';
 
-export { default as DataTable } from './components/data-table/index.ts';
+export { default as DataTable } from '@lostgradient/data-table/components/data-table/index.ts';
 export type {
   DataTableCellContext,
   DataTableColumn,
@@ -348,7 +351,7 @@ export type {
   DataTableRow,
   DataTableRowContext,
   DataTableSelectionMode,
-} from './components/data-table/index.ts';
+} from '@lostgradient/data-table/components/data-table/index.ts';
 
 export { default as DatePicker } from '@lostgradient/date-picker/components/date-picker/index.ts';
 export type {
@@ -372,7 +375,7 @@ export type {
   DecisionDeckProps,
 } from '@lostgradient/decision-deck/components/decision-deck/index.ts';
 
-export { default as DescriptionList } from './components/description-list/index.ts';
+export { default as DescriptionList } from '@lostgradient/description-list/components/description-list/index.ts';
 export type {
   DescriptionListDefinition,
   DescriptionListFormattedValue,
@@ -382,7 +385,7 @@ export type {
   DescriptionListTags,
   DescriptionListTimestamp,
   DescriptionListVariant,
-} from './components/description-list/index.ts';
+} from '@lostgradient/description-list/components/description-list/index.ts';
 
 export { default as DiffStatistics } from '@lostgradient/diff-statistics/components/diff-statistics/index.ts';
 export type {
@@ -448,8 +451,11 @@ export {
   durationUnitFor,
   fromMilliseconds,
   toMilliseconds,
-} from './components/duration-field/index.ts';
-export type { DurationFieldProps, DurationUnit } from './components/duration-field/index.ts';
+} from '@lostgradient/duration-field/components/duration-field/index.ts';
+export type {
+  DurationFieldProps,
+  DurationUnit,
+} from '@lostgradient/duration-field/components/duration-field/index.ts';
 
 export { default as EmptyState } from '@lostgradient/empty-state/components/empty-state/index.ts';
 export type {
@@ -460,16 +466,16 @@ export type {
   EmptyStateSize,
 } from '@lostgradient/empty-state/components/empty-state/index.ts';
 
-export { default as ErrorState } from './components/error-state/index.ts';
+export { default as ErrorState } from '@lostgradient/error-state/components/error-state/index.ts';
 export type {
   ErrorStateProps,
   ErrorStateRetryVariant,
   ErrorStateSize,
   ErrorStateTone,
   ErrorStateVariant,
-} from './components/error-state/index.ts';
+} from '@lostgradient/error-state/components/error-state/index.ts';
 
-export { default as FilterBar } from './components/filter-bar/index.ts';
+export { default as FilterBar } from '@lostgradient/filter-bar/components/filter-bar/index.ts';
 export type {
   AppliedFilter,
   ChoiceFacet,
@@ -482,7 +488,7 @@ export type {
   SelectFacet,
   ToggleFacet,
   ToggleFacetTone,
-} from './components/filter-bar/index.ts';
+} from '@lostgradient/filter-bar/components/filter-bar/index.ts';
 
 export { default as FeedBoundary } from '@lostgradient/feed/components/feed-boundary/index.ts';
 export type { FeedBoundaryProps } from '@lostgradient/feed/components/feed-boundary/index.ts';
@@ -599,17 +605,17 @@ export type {
   InputVariant,
 } from '@lostgradient/input/components/input/index.ts';
 
-export { default as Inspector } from './components/inspector/index.ts';
-export type { InspectorProps } from './components/inspector/index.ts';
+export { default as Inspector } from '@lostgradient/inspector/components/inspector/index.ts';
+export type { InspectorProps } from '@lostgradient/inspector/components/inspector/index.ts';
 
-export { default as InspectorRow } from './components/inspector-row/index.ts';
+export { default as InspectorRow } from '@lostgradient/inspector/components/inspector-row/index.ts';
 export type {
   InspectorRowEditorContext,
   InspectorRowKind,
   InspectorRowOption,
   InspectorRowProps,
   InspectorRowValue,
-} from './components/inspector-row/index.ts';
+} from '@lostgradient/inspector/components/inspector-row/index.ts';
 
 export { default as InlineLoading } from '@lostgradient/inline-loading/components/inline-loading/index.ts';
 export type {
@@ -624,7 +630,7 @@ export type {
   JsonEditorSchema,
 } from '@lostgradient/json-editor/components/json-editor/index.ts';
 
-export { default as JsonSchemaEditor } from './components/json-schema-editor/index.ts';
+export { default as JsonSchemaEditor } from '@lostgradient/json-schema-editor/components/json-schema-editor/index.ts';
 export type {
   JsonSchemaDraft,
   JsonSchemaEditorChangeEvent,
@@ -638,9 +644,9 @@ export type {
   JsonSchemaValidationResult,
   JsonSchemaValidationStatus,
   JsonSchemaValue,
-} from './components/json-schema-editor/index.ts';
+} from '@lostgradient/json-schema-editor/components/json-schema-editor/index.ts';
 
-export { default as InvocationRuleBuilder } from './components/invocation-rule-builder/index.ts';
+export { default as InvocationRuleBuilder } from '@lostgradient/invocation-rule-builder/components/invocation-rule-builder/index.ts';
 export type {
   InvocationRule,
   InvocationRuleAction,
@@ -654,7 +660,7 @@ export type {
   InvocationRuleFieldType,
   InvocationRuleOption,
   InvocationRuleValueChoice,
-} from './components/invocation-rule-builder/index.ts';
+} from '@lostgradient/invocation-rule-builder/components/invocation-rule-builder/index.ts';
 
 export { default as JsonViewer } from '@lostgradient/json-viewer/components/json-viewer/index.ts';
 export type { JsonViewerProps } from '@lostgradient/json-viewer/components/json-viewer/index.ts';
@@ -666,7 +672,7 @@ export type {
   CapabilityGateVariant,
 } from '@lostgradient/capability-gate/components/capability-gate/index.ts';
 
-export { default as KanbanBoard } from './components/kanban-board/index.ts';
+export { default as KanbanBoard } from '@lostgradient/kanban-board/components/kanban-board/index.ts';
 export type {
   KanbanBoardCardContext,
   KanbanBoardCardMoveChange,
@@ -676,7 +682,7 @@ export type {
   KanbanBoardColumnContext,
   KanbanBoardColumnMoveChange,
   KanbanBoardProps,
-} from './components/kanban-board/index.ts';
+} from '@lostgradient/kanban-board/components/kanban-board/index.ts';
 
 export { default as KeyFacts } from '@lostgradient/key-facts/components/key-facts/index.ts';
 export type { KeyFact, KeyFactsProps } from '@lostgradient/key-facts/components/key-facts/index.ts';
@@ -720,12 +726,12 @@ export type {
   LinkVariant,
 } from '@lostgradient/link/components/link/index.ts';
 
-export { default as LineChart } from './components/line-chart/index.ts';
+export { default as LineChart } from '@lostgradient/chart/components/line-chart/index.ts';
 export type {
   ChartDataTableVisibility as LineChartDataTableVisibility,
   LineChartProps,
   LineChartSchemaProps,
-} from './components/line-chart/index.ts';
+} from '@lostgradient/chart/components/line-chart/index.ts';
 
 export { default as LocaleProvider } from '@lostgradient/locale-provider/components/locale-provider/index.ts';
 export type {
@@ -733,7 +739,10 @@ export type {
   TextDirection,
 } from '@lostgradient/locale-provider/components/locale-provider/index.ts';
 
-export { LIST_DETAIL_SHORTCUTS, default as ListDetail } from './components/list-detail/index.ts';
+export {
+  LIST_DETAIL_SHORTCUTS,
+  default as ListDetail,
+} from '@lostgradient/list-detail/components/list-detail/index.ts';
 export type {
   ListDetailHeaderContext,
   ListDetailListBodyContext,
@@ -742,7 +751,7 @@ export type {
   ListDetailSelectionLocation,
   ListDetailShortcut,
   ListDetailStorage,
-} from './components/list-detail/index.ts';
+} from '@lostgradient/list-detail/components/list-detail/index.ts';
 
 export { default as LoadMore } from '@lostgradient/load-more/components/load-more/index.ts';
 export type {
@@ -764,7 +773,7 @@ export type {
   MegaMenuSection,
 } from '@lostgradient/mega-menu/components/mega-menu/index.ts';
 
-export { default as MenuBar } from './components/menu-bar/index.ts';
+export { default as MenuBar } from '@lostgradient/menu-bar/components/menu-bar/index.ts';
 export type {
   MenuBarEntry,
   MenuBarItem,
@@ -775,7 +784,7 @@ export type {
   MenuBarSeparator,
   MenuBarSubmenu,
   MenuBarSubmenuEntry,
-} from './components/menu-bar/index.ts';
+} from '@lostgradient/menu-bar/components/menu-bar/index.ts';
 
 export { default as Message } from '@lostgradient/message/components/message/index.ts';
 export type { MessageProps, MessageRole } from '@lostgradient/message/components/message/index.ts';
@@ -791,13 +800,13 @@ export type {
   MeterVerdictLevel,
 } from '@lostgradient/meter/components/meter/index.ts';
 
-export { default as MatrixChart } from './components/matrix-chart/index.ts';
+export { default as MatrixChart } from '@lostgradient/chart/components/matrix-chart/index.ts';
 export type {
   ChartDataTableVisibility as MatrixChartDataTableVisibility,
   MatrixChartProps,
   MatrixChartSchemaProps,
   MatrixColorScale,
-} from './components/matrix-chart/index.ts';
+} from '@lostgradient/chart/components/matrix-chart/index.ts';
 
 export { default as Masonry } from '@lostgradient/masonry/components/masonry/index.ts';
 export type { MasonryProps } from '@lostgradient/masonry/components/masonry/index.ts';
@@ -805,13 +814,13 @@ export type { MasonryProps } from '@lostgradient/masonry/components/masonry/inde
 export { default as Modal } from '@lostgradient/modal/components/modal/index.ts';
 export type { ModalProps } from '@lostgradient/modal/components/modal/index.ts';
 
-export { default as MultiSelect } from './components/multi-select/index.ts';
+export { default as MultiSelect } from '@lostgradient/multi-select/components/multi-select/index.ts';
 export type {
   MultiSelectDirection,
   MultiSelectItem,
   MultiSelectProps,
   MultiSelectSelectionFeedback,
-} from './components/multi-select/index.ts';
+} from '@lostgradient/multi-select/components/multi-select/index.ts';
 
 export { default as NavigationBar } from '@lostgradient/navigation-bar/components/navigation-bar/index.ts';
 export type {
@@ -844,26 +853,26 @@ export type { NumberInputProps } from '@lostgradient/number-input/components/num
 export { default as Pagination } from '@lostgradient/pagination/components/pagination/index.ts';
 export type { PaginationProps } from '@lostgradient/pagination/components/pagination/index.ts';
 
-export { default as PageHeader } from './components/page-header/index.ts';
+export { default as PageHeader } from '@lostgradient/page-header/components/page-header/index.ts';
 export type {
   PageHeaderHeadingLevel,
   PageHeaderOverflowAction,
   PageHeaderProps,
   PageHeaderTone,
   PageHeaderVariant,
-} from './components/page-header/index.ts';
+} from '@lostgradient/page-header/components/page-header/index.ts';
 
 export {
   default as PayloadInspector,
   readSecretPaths,
-} from './components/payload-inspector/index.ts';
+} from '@lostgradient/payload-inspector/components/payload-inspector/index.ts';
 export type {
   PayloadInspectorField,
   PayloadInspectorProps,
   PayloadInspectorSchemaProps,
   PayloadInspectorSchemaValue,
   PayloadInspectorView,
-} from './components/payload-inspector/index.ts';
+} from '@lostgradient/payload-inspector/components/payload-inspector/index.ts';
 
 export { default as PermissionMatrix } from '@lostgradient/permission-matrix/components/permission-matrix/index.ts';
 export type {
@@ -874,14 +883,14 @@ export type {
   PermissionMatrixStateLabels,
 } from '@lostgradient/permission-matrix/components/permission-matrix/index.ts';
 
-export { default as PhoneInput } from './components/phone-input/index.ts';
+export { default as PhoneInput } from '@lostgradient/phone-input/components/phone-input/index.ts';
 export type {
   PhoneInputChange,
   PhoneInputCountryCode,
   PhoneInputCountryOption,
   PhoneInputProps,
   PhoneInputReason,
-} from './components/phone-input/index.ts';
+} from '@lostgradient/phone-input/components/phone-input/index.ts';
 
 export { default as PinInput } from '@lostgradient/pin-input/components/pin-input/index.ts';
 export type {
@@ -939,7 +948,7 @@ export type {
 export { default as Rating } from '@lostgradient/rating/components/rating/index.ts';
 export type { RatingPrecision, RatingProps } from '@lostgradient/rating/components/rating/index.ts';
 
-export { default as RunStepTimeline } from './components/run-step-timeline/index.ts';
+export { default as RunStepTimeline } from '@lostgradient/run-step-timeline/components/run-step-timeline/index.ts';
 export type {
   RunStep,
   RunStepBranchGroup,
@@ -962,7 +971,7 @@ export type {
   RunStepTimelineSchemaProps,
   RunStepTimelineSchemaStep,
   RunStepTimelineVariant,
-} from './components/run-step-timeline/index.ts';
+} from '@lostgradient/run-step-timeline/components/run-step-timeline/index.ts';
 
 export { default as ResizablePanels } from '@lostgradient/resizable-panels/components/resizable-panels/index.ts';
 export type {
@@ -982,13 +991,16 @@ export {
   RESTART_RETRY_MAXIMUM_SECONDS,
   default as RestartState,
   restartRetryDelaySeconds,
-} from './components/restart-state/index.ts';
-export type { RestartStatePhase, RestartStateProps } from './components/restart-state/index.ts';
+} from '@lostgradient/restart-state/components/restart-state/index.ts';
+export type {
+  RestartStatePhase,
+  RestartStateProps,
+} from '@lostgradient/restart-state/components/restart-state/index.ts';
 
 export {
   default as ScheduleBuilder,
   describeScheduleFields,
-} from './components/schedule-builder/index.ts';
+} from '@lostgradient/schedule-builder/components/schedule-builder/index.ts';
 export type {
   ScheduleBuilderProps,
   ScheduleBuilderSchemaProps,
@@ -1000,7 +1012,7 @@ export type {
   ScheduleRepeats,
   ScheduleValue,
   ScheduleValueSchema,
-} from './components/schedule-builder/index.ts';
+} from '@lostgradient/schedule-builder/components/schedule-builder/index.ts';
 
 export {
   default as SchemaForm,
@@ -1009,7 +1021,7 @@ export {
   schemaFormInitialDraft,
   schemaHoldsConcealedField,
   validateSchemaFormValue,
-} from './components/schema-form/index.ts';
+} from '@lostgradient/schema-form/components/schema-form/index.ts';
 export type {
   SchemaFormDraftChangeHandler,
   SchemaFormOutput,
@@ -1017,7 +1029,7 @@ export type {
   SchemaFormSchema,
   SchemaFormSubmitHandler,
   SchemaFormVariant,
-} from './components/schema-form/index.ts';
+} from '@lostgradient/schema-form/components/schema-form/index.ts';
 
 export { default as SchemaView } from '@lostgradient/schema-view/components/schema-view/index.ts';
 export type { SchemaViewProps } from '@lostgradient/schema-view/components/schema-view/index.ts';
@@ -1078,8 +1090,11 @@ export type {
   SelectionPopoverProps,
 } from '@lostgradient/selection-popover/components/selection-popover/index.ts';
 
-export { default as SettingRow } from './components/setting-row/index.ts';
-export type { SettingRowProps, SettingRowStatus } from './components/setting-row/index.ts';
+export { default as SettingRow } from '@lostgradient/setting-row/components/setting-row/index.ts';
+export type {
+  SettingRowProps,
+  SettingRowStatus,
+} from '@lostgradient/setting-row/components/setting-row/index.ts';
 
 export { default as ShareCard } from '@lostgradient/share-card/components/share-card/index.ts';
 export type {
@@ -1115,12 +1130,12 @@ export type {
   SortableReorderMode,
 } from '@lostgradient/sortable-list/components/sortable-list/index.ts';
 
-export { default as Skeleton } from './components/skeleton/index.ts';
+export { default as Skeleton } from '@lostgradient/skeleton/components/skeleton/index.ts';
 export type {
   SkeletonProps,
   SkeletonStatusMarker,
   SkeletonVariant,
-} from './components/skeleton/index.ts';
+} from '@lostgradient/skeleton/components/skeleton/index.ts';
 
 export { default as SkipLink } from '@lostgradient/skip-link/components/skip-link/index.ts';
 export type {
@@ -1162,7 +1177,7 @@ export type {
   SourceDiffViewerVariant,
 } from '@lostgradient/source-diff-viewer/components/source-diff-viewer/index.ts';
 
-export { default as StackedListItem } from './components/stacked-list-item/index.ts';
+export { default as StackedListItem } from '@lostgradient/data-list/components/stacked-list-item/index.ts';
 export type {
   StackedListItemAction,
   StackedListItemDensity,
@@ -1173,7 +1188,7 @@ export type {
   StackedListItemStatusPlacement,
   StackedListItemTitleLines,
   StackedListItemTone,
-} from './components/stacked-list-item/index.ts';
+} from '@lostgradient/data-list/components/stacked-list-item/index.ts';
 
 export { default as StaleRegion } from '@lostgradient/stale-region/components/stale-region/index.ts';
 export type { StaleRegionProps } from '@lostgradient/stale-region/components/stale-region/index.ts';
@@ -1186,21 +1201,21 @@ export type {
   StackProps,
 } from '@lostgradient/stack/components/stack/index.ts';
 
-export { default as Spectrogram } from './components/spectrogram/index.ts';
+export { default as Spectrogram } from '@lostgradient/chart/components/spectrogram/index.ts';
 export type {
   ChartDataTableVisibility as SpectrogramDataTableVisibility,
   SpectrogramFrame,
   SpectrogramProps,
   SpectrogramSchemaProps,
-} from './components/spectrogram/index.ts';
+} from '@lostgradient/chart/components/spectrogram/index.ts';
 
-export { default as SpectrumChart } from './components/spectrum-chart/index.ts';
+export { default as SpectrumChart } from '@lostgradient/chart/components/spectrum-chart/index.ts';
 export type {
   SpectrumBin,
   ChartDataTableVisibility as SpectrumChartDataTableVisibility,
   SpectrumChartProps,
   SpectrumChartSchemaProps,
-} from './components/spectrum-chart/index.ts';
+} from '@lostgradient/chart/components/spectrum-chart/index.ts';
 
 export { default as Spinner } from '@lostgradient/spinner/components/spinner/index.ts';
 export type {
@@ -1226,14 +1241,14 @@ export type {
   SpeedDialActionProps,
 } from '@lostgradient/speed-dial/components/speed-dial-action/index.ts';
 
-export { default as Sparkbar } from './components/sparkbar/index.ts';
+export { default as Sparkbar } from '@lostgradient/chart/components/sparkbar/index.ts';
 export type {
   SparkbarBarProps,
   SparkbarLineProps,
   SparkbarProps,
   SparkbarSize,
   SparkbarVariant,
-} from './components/sparkbar/index.ts';
+} from '@lostgradient/chart/components/sparkbar/index.ts';
 
 export { default as Steps } from '@lostgradient/steps/components/steps/index.ts';
 export type {
@@ -1244,20 +1259,20 @@ export type {
   StepsVariant,
 } from '@lostgradient/steps/components/steps/index.ts';
 
-export { default as Statistic } from './components/statistic/index.ts';
+export { default as Statistic } from '@lostgradient/statistic/components/statistic/index.ts';
 export type {
   StatisticChange,
   StatisticChangeDirection,
   StatisticProps,
-} from './components/statistic/index.ts';
+} from '@lostgradient/statistic/components/statistic/index.ts';
 
-export { default as StatisticGroup } from './components/statistic-group/index.ts';
+export { default as StatisticGroup } from '@lostgradient/statistic/components/statistic-group/index.ts';
 export type {
   StatisticGroupColumns,
   StatisticGroupEdge,
   StatisticGroupProps,
   StatisticGroupVariant,
-} from './components/statistic-group/index.ts';
+} from '@lostgradient/statistic/components/statistic-group/index.ts';
 
 export {
   default as StatusDot,
@@ -1277,16 +1292,16 @@ export type {
 export { default as Surface } from '@lostgradient/surface/components/surface/index.ts';
 export type { SurfaceProps, SurfaceTone } from '@lostgradient/surface/components/surface/index.ts';
 
-export { default as Tab } from './components/tab/index.ts';
-export type { TabProps } from './components/tab/index.ts';
+export { default as Tab } from '@lostgradient/tabs/components/tab/index.ts';
+export type { TabProps } from '@lostgradient/tabs/components/tab/index.ts';
 
-export { default as TabList } from './components/tab-list/index.ts';
-export type { TabListProps } from './components/tab-list/index.ts';
+export { default as TabList } from '@lostgradient/tabs/components/tab-list/index.ts';
+export type { TabListProps } from '@lostgradient/tabs/components/tab-list/index.ts';
 
-export { default as TabPanel } from './components/tab-panel/index.ts';
-export type { TabPanelProps } from './components/tab-panel/index.ts';
+export { default as TabPanel } from '@lostgradient/tabs/components/tab-panel/index.ts';
+export type { TabPanelProps } from '@lostgradient/tabs/components/tab-panel/index.ts';
 
-export { default as Table } from './components/table/index.ts';
+export { default as Table } from '@lostgradient/table/components/table/index.ts';
 export type {
   SortDirection,
   TableContext,
@@ -1295,25 +1310,28 @@ export type {
   TableProps,
   TableSectionContext,
   TableSort,
-} from './components/table/index.ts';
+} from '@lostgradient/table/components/table/index.ts';
 
-export { default as TableBody } from './components/table-body/index.ts';
-export type { TableBodyProps } from './components/table-body/index.ts';
+export { default as TableBody } from '@lostgradient/table/components/table-body/index.ts';
+export type { TableBodyProps } from '@lostgradient/table/components/table-body/index.ts';
 
-export { default as TableCell } from './components/table-cell/index.ts';
-export type { TableCellProps } from './components/table-cell/index.ts';
+export { default as TableCell } from '@lostgradient/table/components/table-cell/index.ts';
+export type { TableCellProps } from '@lostgradient/table/components/table-cell/index.ts';
 
 export { default as TagInput } from '@lostgradient/tag-input/components/tag-input/index.ts';
 export type { TagInputProps } from '@lostgradient/tag-input/components/tag-input/index.ts';
 
-export { default as TableHeader } from './components/table-header/index.ts';
-export type { TableHeaderProps } from './components/table-header/index.ts';
+export { default as TableHeader } from '@lostgradient/table/components/table-header/index.ts';
+export type { TableHeaderProps } from '@lostgradient/table/components/table-header/index.ts';
 
-export { default as TableHeaderCell } from './components/table-header-cell/index.ts';
-export type { TableHeaderCellProps } from './components/table-header-cell/index.ts';
+export { default as TableHeaderCell } from '@lostgradient/table/components/table-header-cell/index.ts';
+export type { TableHeaderCellProps } from '@lostgradient/table/components/table-header-cell/index.ts';
 
-export { default as TableRow } from './components/table-row/index.ts';
-export type { TableRowProps, TableRowSelectionProps } from './components/table-row/index.ts';
+export { default as TableRow } from '@lostgradient/table/components/table-row/index.ts';
+export type {
+  TableRowProps,
+  TableRowSelectionProps,
+} from '@lostgradient/table/components/table-row/index.ts';
 
 export { default as TableOfContents } from '@lostgradient/table-of-contents/components/table-of-contents/index.ts';
 export type {
@@ -1321,8 +1339,12 @@ export type {
   TableOfContentsProps,
 } from '@lostgradient/table-of-contents/components/table-of-contents/index.ts';
 
-export { default as Tabs } from './components/tabs/index.ts';
-export type { TabsContext, TabsOrientation, TabsProps } from './components/tabs/index.ts';
+export { default as Tabs } from '@lostgradient/tabs/components/tabs/index.ts';
+export type {
+  TabsContext,
+  TabsOrientation,
+  TabsProps,
+} from '@lostgradient/tabs/components/tabs/index.ts';
 
 export { default as Text } from '@lostgradient/text/components/text/index.ts';
 export type {
@@ -1361,7 +1383,7 @@ export type {
   TransferListSchemaProps,
 } from '@lostgradient/transfer-list/components/transfer-list/index.ts';
 
-export { default as Timeline } from './components/timeline/index.ts';
+export { default as Timeline } from '@lostgradient/timeline/components/timeline/index.ts';
 export type {
   TimelineEntry,
   TimelineEntryKind,
@@ -1372,7 +1394,7 @@ export type {
   TimelineTone,
   TimelineVariant,
   TimelineWeekStartsOn,
-} from './components/timeline/index.ts';
+} from '@lostgradient/timeline/components/timeline/index.ts';
 
 export { default as ThemeSwitch } from '@lostgradient/theme-switch/components/theme-switch/index.ts';
 export type {
@@ -1383,7 +1405,7 @@ export type {
 export { default as Toggle } from '@lostgradient/toggle/components/toggle/index.ts';
 export type { ToggleProps } from '@lostgradient/toggle/components/toggle/index.ts';
 
-export { default as ToolCallPanel } from './components/tool-call-panel/index.ts';
+export { default as ToolCallPanel } from '@lostgradient/tool-call-panel/components/tool-call-panel/index.ts';
 export type {
   ToolCallPanelError,
   ToolCallPanelLabels,
@@ -1392,22 +1414,22 @@ export type {
   ToolCallPanelResolving,
   ToolCallPanelStatus,
   ToolCallPanelView,
-} from './components/tool-call-panel/index.ts';
+} from '@lostgradient/tool-call-panel/components/tool-call-panel/index.ts';
 
-export { default as ToolCallRail } from './components/tool-call-rail/index.ts';
+export { default as ToolCallRail } from '@lostgradient/tool-call-rail/components/tool-call-rail/index.ts';
 export type {
   ToolCallRailCall,
   ToolCallRailLabels,
   ToolCallRailProps,
   ToolCallRailStatus,
-} from './components/tool-call-rail/index.ts';
+} from '@lostgradient/tool-call-rail/components/tool-call-rail/index.ts';
 
-export { default as ToolPicker } from './components/tool-picker/index.ts';
+export { default as ToolPicker } from '@lostgradient/tool-picker/components/tool-picker/index.ts';
 export type {
   ToolPickerGroup,
   ToolPickerItem,
   ToolPickerProps,
-} from './components/tool-picker/index.ts';
+} from '@lostgradient/tool-picker/components/tool-picker/index.ts';
 
 export {
   default as Toolbar,
@@ -1475,13 +1497,13 @@ export type {
   VisuallyHiddenProps,
 } from '@lostgradient/visually-hidden/components/visually-hidden/index.ts';
 
-export { default as Waveform } from './components/waveform/index.ts';
+export { default as Waveform } from '@lostgradient/chart/components/waveform/index.ts';
 export type {
   ChartDataTableVisibility as WaveformDataTableVisibility,
   WaveformProps,
   WaveformRenderMode,
   WaveformSchemaProps,
-} from './components/waveform/index.ts';
+} from '@lostgradient/chart/components/waveform/index.ts';
 
 export {
   default as Citation,
@@ -1497,19 +1519,25 @@ export type {
 export { default as CodeLocation } from '@lostgradient/code-location/components/code-location/index.ts';
 export type { CodeLocationProps } from '@lostgradient/code-location/components/code-location/index.ts';
 
-export { default as DonutChart } from './components/donut-chart/index.ts';
-export type { DonutChartDatum, DonutChartProps } from './components/donut-chart/index.ts';
+export { default as DonutChart } from '@lostgradient/chart/components/donut-chart/index.ts';
+export type {
+  DonutChartDatum,
+  DonutChartProps,
+} from '@lostgradient/chart/components/donut-chart/index.ts';
 
 export { default as FindBar } from '@lostgradient/find-bar/components/find-bar/index.ts';
 export type { FindBarProps } from '@lostgradient/find-bar/components/find-bar/index.ts';
 
-export { default as GuidanceRegion, useGuidance } from './components/guidance-region/index.ts';
+export {
+  default as GuidanceRegion,
+  useGuidance,
+} from '@lostgradient/guidance-region/components/guidance-region/index.ts';
 export type {
   GuidanceApi,
   GuidanceClaim,
   GuidanceRegionProps,
   GuidanceStorage,
-} from './components/guidance-region/index.ts';
+} from '@lostgradient/guidance-region/components/guidance-region/index.ts';
 
 export { default as InlineConfirm } from '@lostgradient/inline-confirm/components/inline-confirm/index.ts';
 export type { InlineConfirmProps } from '@lostgradient/inline-confirm/components/inline-confirm/index.ts';
@@ -1520,13 +1548,16 @@ export type {
   KeyValueEntry,
 } from '@lostgradient/key-value-editor/components/key-value-editor/index.ts';
 
-export { default as ModalRegion, useModal } from './components/modal-region/index.ts';
+export {
+  default as ModalRegion,
+  useModal,
+} from '@lostgradient/modal-region/components/modal-region/index.ts';
 export type {
   ModalApi,
   ModalContentControls,
   ModalRegionProps,
   OpenModalOptions,
-} from './components/modal-region/index.ts';
+} from '@lostgradient/modal-region/components/modal-region/index.ts';
 
 export { default as QuotaMeter } from '@lostgradient/quota-meter/components/quota-meter/index.ts';
 export type { QuotaMeterProps } from '@lostgradient/quota-meter/components/quota-meter/index.ts';
@@ -1557,6 +1588,39 @@ export type { ZoomPanViewerProps } from '@lostgradient/zoom-pan-viewer/component
 // </generated:component-exports>
 
 // Hand-authored root exports: everything that is not a component barrel.
+export type {
+  AreaChartMode,
+  BarChartDatum,
+  BarChartMode,
+  BarChartOrientation,
+  BarChartPlacedBar,
+  BarChartSchemaDatum,
+  BarChartSchemaSeries,
+  BarChartSeries,
+  ChartAxisConfiguration,
+  ChartAxisSchemaConfiguration,
+  ChartCartesianSchemaSeries,
+  ChartCartesianSeries,
+  ChartDataTableVisibility,
+  ChartFormatterContext,
+  ChartGeometry,
+  ChartJsonValue,
+  ChartJsonXValue,
+  ChartLegendPosition,
+  ChartMarkContext,
+  ChartNumericValue,
+  ChartPoint,
+  ChartSchemaPoint,
+  ChartSharedProps,
+  ChartTarget,
+  ChartTheme,
+  ChartTickFormatter,
+  ChartValueFormatter,
+  ChartXAxisConfiguration,
+  ChartXValue,
+  NormalizedXValue,
+  PlacedPoint,
+} from '@lostgradient/chart/components/chart.types.ts';
 export {
   createRetryingLoaderCache,
   createShikiModule,
@@ -1591,39 +1655,6 @@ export type {
 } from '@lostgradient/foundation';
 export { THEME_CHANGING_ATTRIBUTE, guardThemeTransitions } from '@lostgradient/tokens';
 export type { ThemeTransitionGuardOptions } from '@lostgradient/tokens';
-export type {
-  AreaChartMode,
-  BarChartDatum,
-  BarChartMode,
-  BarChartOrientation,
-  BarChartPlacedBar,
-  BarChartSchemaDatum,
-  BarChartSchemaSeries,
-  BarChartSeries,
-  ChartAxisConfiguration,
-  ChartAxisSchemaConfiguration,
-  ChartCartesianSchemaSeries,
-  ChartCartesianSeries,
-  ChartDataTableVisibility,
-  ChartFormatterContext,
-  ChartGeometry,
-  ChartJsonValue,
-  ChartJsonXValue,
-  ChartLegendPosition,
-  ChartMarkContext,
-  ChartNumericValue,
-  ChartPoint,
-  ChartSchemaPoint,
-  ChartSharedProps,
-  ChartTarget,
-  ChartTheme,
-  ChartTickFormatter,
-  ChartValueFormatter,
-  ChartXAxisConfiguration,
-  ChartXValue,
-  NormalizedXValue,
-  PlacedPoint,
-} from './components/chart.types.ts';
 export * from './exports/icons.ts';
 export * from './exports/utilities.ts';
 // The full-registry adapter keeps its own module so that only a consumer that

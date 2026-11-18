@@ -24,7 +24,7 @@ const rowCss = await Bun.file(
   ),
 ).text();
 const inspectorCss = await Bun.file(
-  new URL('../../../../core/src/components/inspector-row/inspector-row.css', import.meta.url),
+  new URL('../../../../inspector/src/components/inspector-row/inspector-row.css', import.meta.url),
 ).text();
 
 describe('suggested Chip visible cue', () => {

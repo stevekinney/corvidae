@@ -45,7 +45,7 @@
     "allowedCount": 1
   },
   {
-    "filePath": "src/components/skeleton/skeleton.css",
+    "filePath": "../skeleton/src/components/skeleton/skeleton.css",
     "colorClass": "oklch",
     "allowedCount": 1
   },

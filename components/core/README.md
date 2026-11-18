@@ -109,10 +109,10 @@ The root `lint:root` guard `scripts/check-middle-dot-separators.ts` fails on a m
 
 Most defects in a generated page come from how the components are arranged, not from the components. The [brand book](./scripts/design-system/assets/brand-book.md) states the binding composition rules and [Composing a page](./documentation/interface-guide.md#composing-a-page) names the page archetypes. Two rules apply to every page:
 
-- **Record metadata is label and value, not pills.** A [`Badge`](../badge/src/components/badge/README.md) or a [`Chip`](../chip/src/components/chip/README.md) is for a status or a short tag. The label and value metadata of a record (an owner, a created date, a price) goes in a [`DescriptionList`](./src/components/description-list/README.md), or a [`KeyFacts`](../key-facts/src/components/key-facts/README.md) row for a few typed facts.
+- **Record metadata is label and value, not pills.** A [`Badge`](../badge/src/components/badge/README.md) or a [`Chip`](../chip/src/components/chip/README.md) is for a status or a short tag. The label and value metadata of a record (an owner, a created date, a price) goes in a [`DescriptionList`](../description-list/src/components/description-list/README.md), or a [`KeyFacts`](../key-facts/src/components/key-facts/README.md) row for a few typed facts.
 - **An inline choice stays in the page flow.** Do not wrap a form control or an inline choice, such as a [`SegmentedControl`](../segmented-control/src/components/segmented-control/README.md), in a tinted [`Callout`](../callout/src/components/callout/README.md) or [`Alert`](../alert/src/components/alert/README.md). Place it in the flow with a plain label, and keep the callout or alert for a note or a message about it.
 
-A third applies to lists: trailing row actions sit in a fixed column, so a badge never changes where an action button lands. Put the badge with the metadata in the content column of the [`StackedListItem`](./src/components/stacked-list-item/README.md).
+A third applies to lists: trailing row actions sit in a fixed column, so a badge never changes where an action button lands. Put the badge with the metadata in the content column of the [`StackedListItem`](../data-list/src/components/stacked-list-item/README.md).
 
 A surface of your own docked to the bottom of the page, such as a composer, takes the `dockedToBottom()` attachment, so a [`ToastRegion`](../toast-region/src/components/toast-region/README.md#where-the-region-sits) sits above it as it sits above a `DockedActionBar` or a bottom `NavigationBar`.
 

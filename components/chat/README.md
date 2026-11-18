@@ -318,7 +318,7 @@ A tool result with `outcome: 'action_required'` and an `input` action that carri
 | Number | `type: 'number'` or `'integer'` | A number field |
 | Date or time | `format: 'date'`, `'time'` or `'date-time'` | Date and time fields, answered as RFC 3339 |
 | Rating | `type: 'integer'` with `x-kind: 'rating'` | A step per integer, labelled from `x-labels` |
-| A few fields | `type: 'object'`, or any schema that matches no other kind | Cinder's [`SchemaForm`](../core/src/components/schema-form/README.md) |
+| A few fields | `type: 'object'`, or any schema that matches no other kind | Cinder's [`SchemaForm`](../schema-form/src/components/schema-form/README.md) |
 | Secret | `x-secret: true` | A password field; the answer is never rendered or kept |
 | File | `x-asset: true` | A drop zone that uploads through `uploadAttachment` and answers the managed asset id |
 

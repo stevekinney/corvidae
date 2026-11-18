@@ -126,7 +126,7 @@ describe('repointExamplePaths', () => {
   const moved = new Map([
     [
       `${OLD}/drawer/detents.example.svelte`,
-      'components/core/src/components/drawer/examples/detents.example.svelte',
+      'components/core/src/component-tests/drawer/examples/detents.example.svelte',
     ],
   ]);
 
@@ -141,7 +141,7 @@ describe('repointExamplePaths', () => {
     ).toBe(
       [
         "new URL('./examples/detents.example.svelte', import.meta.url);",
-        "const path = 'components/core/src/components/drawer/examples/detents.example.svelte';",
+        "const path = 'components/core/src/component-tests/drawer/examples/detents.example.svelte';",
         `const other = '${OLD}/drawer/other.example.svelte';`,
       ].join('\n'),
     );

@@ -1,0 +1,24 @@
+<script lang="ts" module>
+  export const title = 'Decision receipt';
+  export const description =
+    'A decided approval stays in the transcript as the action with one status line saying what was decided and by whom, and the note, result and command behind Details.';
+</script>
+
+<script lang="ts">
+  import { ApprovalCard } from '@lostgradient/approval-card';
+</script>
+
+<ApprovalCard
+  layout="decision"
+  question="Refund order 4471 for $42.00?"
+  tool={{ name: 'issue-refund', label: 'Issue refund', risk: 'high', irreversible: true }}
+  operation={{ kind: 'command', command: 'refund --order 4471 --amount 42.00' }}
+  policyVersion="policy-2026-06"
+  idempotencyKey="approval-decision-02"
+  state="approved"
+  decidedBy="Priya Raman"
+  decidedIn="Reviews"
+  decidedInHref="/reviews"
+  decisionNote="Checked the order first."
+  result="Refunded $42.00 to the original card."
+/>

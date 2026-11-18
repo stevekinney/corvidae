@@ -5,7 +5,7 @@ import { describe, expect, test } from 'bun:test';
 // sets it to its white ring; the public ring token, indigo, is about 2.3:1 on the accent band.
 const control = await Bun.file(new URL('./segmented-control.css', import.meta.url)).text();
 const hero = await Bun.file(
-  new URL('../../../../core/src/components/page-header/page-header.css', import.meta.url),
+  new URL('../../../../page-header/src/components/page-header/page-header.css', import.meta.url),
 ).text();
 
 /** Relative luminance of an `oklch()` colour, through OKLab to linear sRGB. */

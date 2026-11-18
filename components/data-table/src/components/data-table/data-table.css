@@ -1,0 +1,208 @@
+@layer cinder.tokens, cinder.foundation, cinder.components, cinder.utilities;
+/* Compound-family aggregation: DataTable renders the whole Table family, so
+ * `cinder/data-table/styles` must pull in the Table CSS (which itself imports
+ * table-body / table-cell / table-header / table-header-cell / table-row and
+ * defines `.cinder-table-scroll`). Without this, the data-table subpath ships
+ * an unstyled table and the scroll override below has no base behaviour to
+ * extend. Sibling-leaf paths resolve identically in `src/` and `dist/`. */
+@import '@lostgradient/table/table.css';
+@import '@lostgradient/checkbox/checkbox.css';
+
+@layer cinder.components {
+  /* ========================================
+ * DATA TABLE
+ * Thin wrapper div that scopes the data-driven DataTable component.
+ * Visual treatment for the table itself lives in table.css.
+ * ======================================== */
+
+  /* The non-scrollable wrapper is a pure structural pass-through: `display:
+   * contents` lets the inner <table> participate directly in the parent layout
+   * with no extra box. A scrollable wrapper (the default) is the `.cinder-table-scroll`
+   * box from table.css and keeps its own box, which owns the frame and the scrolling. */
+  .cinder-data-table:not(.cinder-table-scroll) {
+    display: contents;
+  }
+
+  .cinder-data-table[data-cinder-virtualized] {
+    block-size: var(--cinder-data-table-height, 24rem);
+    overflow: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+    contain: layout paint;
+  }
+
+  .cinder-data-table[data-cinder-selectable] .cinder-table__cell--selection,
+  .cinder-data-table[data-cinder-selectable] .cinder-table__header-cell--selection {
+    width: 1px;
+    padding-inline: var(--cinder-space-3);
+    padding-block: var(--cinder-space-2);
+    text-align: center;
+    vertical-align: middle;
+  }
+
+  .cinder-data-table .cinder-table__cell--selection .cinder-checkbox-field,
+  .cinder-data-table .cinder-table__header-cell--selection .cinder-checkbox-field {
+    display: inline-block;
+  }
+
+  .cinder-data-table .cinder-table__cell--selection .cinder-checkbox-row,
+  .cinder-data-table .cinder-table__header-cell--selection .cinder-checkbox-row {
+    display: inline-flex;
+  }
+
+  .cinder-data-table[data-cinder-virtualized] .cinder-table__row[data-cinder-virtual-row] {
+    block-size: var(--_cinder-data-table-row-height, 44px);
+  }
+
+  .cinder-data-table tbody .cinder-table__row:focus-within {
+    background: var(--_cinder-table-row-hover);
+  }
+
+  /* ----------------------------------------
+ * Rows that open a detail pane: an open row is tinted like a selected list row, and a row that
+ * opens shows the pointer and keeps its focus ring inside the frame.
+ * ---------------------------------------- */
+
+  .cinder-data-table .cinder-table__row[data-cinder-row-opens] {
+    cursor: pointer;
+  }
+
+  .cinder-data-table .cinder-table__row[data-cinder-open],
+  .cinder-data-table .cinder-table__row[data-cinder-open]:hover {
+    background: color-mix(in oklch, var(--cinder-accent-solid), transparent 92%);
+  }
+
+  @media (forced-colors: active) {
+    .cinder-data-table .cinder-table__row[data-cinder-open] {
+      outline: 1px solid Highlight;
+      outline-offset: -1px;
+    }
+  }
+
+  /* A monospace column holds identifiers, keys and paths: data, in the regular weight even when it
+   * is the row header, which the browser would otherwise set bold. */
+  .cinder-data-table [data-cinder-monospace] {
+    font-family: var(--cinder-font-mono);
+    font-weight: var(--cinder-font-normal);
+  }
+
+  /* ----------------------------------------
+ * Group rows, row messages and the footer: rows that span the table.
+ * ---------------------------------------- */
+
+  .cinder-data-table__group-cell {
+    padding-block: var(--cinder-space-2);
+    padding-inline: var(--cinder-space-3);
+    text-align: start;
+    font-size: var(--cinder-text-sm);
+    font-weight: var(--cinder-font-semibold);
+    color: var(--cinder-text-default);
+    /* A flat row in the table's fill: the semibold label and the hairlines above and below set a
+     * group apart, never a darker band (which in dark would sit below the cards beside it). */
+    background: var(--_cinder-table-fill);
+    border-block: 1px solid var(--cinder-border-muted);
+  }
+
+  .cinder-data-table__group-detail {
+    margin-inline-start: var(--cinder-space-1);
+    font-weight: var(--cinder-font-normal);
+    color: var(--cinder-text-muted);
+  }
+
+  /* The comma that ends the group's label sits against it. */
+  .cinder-data-table__group-separator {
+    margin-inline-start: 0;
+  }
+
+  /* A row with a message keeps no bottom edge of its own: the message row draws it, so the two
+   * read as one row. */
+  .cinder-data-table .cinder-table__row[data-cinder-message] > .cinder-table__cell {
+    border-bottom: 0;
+  }
+
+  .cinder-data-table__row-message-cell {
+    padding-block: 0 var(--cinder-space-2);
+    padding-inline: var(--cinder-space-3);
+    font-size: var(--cinder-text-sm);
+    border-bottom: 1px solid var(--cinder-border-muted);
+  }
+
+  .cinder-data-table__footer-cell {
+    position: relative;
+    padding-block: var(--cinder-space-2);
+    padding-inline: var(--cinder-space-3);
+    font-size: var(--cinder-text-sm);
+    color: var(--cinder-text-muted);
+    border-block-start: 1px solid var(--cinder-border-muted);
+  }
+
+  /* The last body row draws no bottom edge of its own, so the footer's top edge is the only line. */
+  .cinder-data-table__end {
+    position: absolute;
+    inset-inline: 0;
+    inset-block-end: 0;
+    block-size: 1px;
+    pointer-events: none;
+  }
+
+  /* Stacked: the rows that span the table are blocks of their own. */
+  .cinder-table[data-cinder-stacked] .cinder-data-table__group-row,
+  .cinder-table[data-cinder-stacked] .cinder-data-table__row-message,
+  .cinder-table[data-cinder-stacked] .cinder-data-table__footer,
+  .cinder-table[data-cinder-stacked] .cinder-data-table__footer > tr {
+    display: block;
+  }
+
+  .cinder-table[data-cinder-stacked] .cinder-data-table__group-cell,
+  .cinder-table[data-cinder-stacked] .cinder-data-table__row-message-cell,
+  .cinder-table[data-cinder-stacked] .cinder-data-table__footer-cell {
+    display: block;
+  }
+
+  .cinder-data-table[data-cinder-virtualized]
+    .cinder-table__row[data-cinder-virtual-row]:focus-visible,
+  .cinder-data-table .cinder-table__row[data-cinder-row-opens]:focus-visible {
+    outline: var(--cinder-ring-width) solid transparent;
+    box-shadow: var(--_cinder-focus-ring-shadow);
+  }
+
+  .cinder-data-table[data-cinder-resizable] .cinder-table {
+    table-layout: fixed;
+    inline-size: var(--_cinder-data-table-width);
+    min-inline-size: var(--_cinder-data-table-width);
+  }
+
+  @media (forced-colors: active) {
+    .cinder-data-table[data-cinder-virtualized]
+      .cinder-table__row[data-cinder-virtual-row]:focus-visible,
+    .cinder-data-table .cinder-table__row[data-cinder-row-opens]:focus-visible {
+      outline: var(--cinder-ring-width) solid ButtonText;
+      outline-offset: calc(-1 * var(--cinder-ring-width));
+      box-shadow: none;
+    }
+  }
+
+  .cinder-data-table__virtual-spacer-cell {
+    padding: 0;
+    border: 0;
+  }
+  .cinder-data-table__column-resizer {
+    display: inline-block;
+    inline-size: 0.75rem;
+    block-size: 1.5rem;
+    cursor: col-resize;
+    touch-action: none;
+    vertical-align: middle;
+  }
+  .cinder-data-table__column-resizer:focus-visible {
+    outline: var(--cinder-ring-width) solid transparent;
+    box-shadow: var(--_cinder-focus-ring-shadow);
+  }
+  @media (forced-colors: active) {
+    .cinder-data-table__column-resizer:focus-visible {
+      outline: var(--cinder-ring-width) solid ButtonText;
+      outline-offset: 1px;
+      box-shadow: none;
+    }
+  }
+}

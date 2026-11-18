@@ -1,6 +1,6 @@
 [
   {
-    "filePath": "src/components/kanban-board/kanban-board.css",
+    "filePath": "../kanban-board/src/components/kanban-board/kanban-board.css",
     "name": "--cinder-shadow-xs",
     "allowedCount": 1
   },

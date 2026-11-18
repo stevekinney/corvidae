@@ -22,7 +22,7 @@ The box is drawn 18px, but the row around it is the hit area: at least 24px squa
 
 ### Alignment with the label
 
-The box sits beside the first line of its label, never the middle of a label that wraps: the field aligns its items to the start and offsets the box so its centre meets the centre of that first line. A one-line label looks the same as it did centred. The label takes the rest of the line and wraps inside it, so a long label stays beside its box. A list row that leads with a checkbox follows the same rule: [`StackedListItem`](../../../../core/src/components/stacked-list-item/README.md) aligns a leading checkbox to the first line of its title.
+The box sits beside the first line of its label, never the middle of a label that wraps: the field aligns its items to the start and offsets the box so its centre meets the centre of that first line. A one-line label looks the same as it did centred. The label takes the rest of the line and wraps inside it, so a long label stays beside its box. A list row that leads with a checkbox follows the same rule: [`StackedListItem`](../../../../data-list/src/components/stacked-list-item/README.md) aligns a leading checkbox to the first line of its title.
 
 ### Task variant
 
