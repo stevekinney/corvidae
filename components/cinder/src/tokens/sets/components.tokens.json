@@ -358,7 +358,7 @@
             "public": true,
             "category": "color",
             "component": "toggle",
-            "cssRecipe": "light-dark(var(--cinder-border-contrast), oklch(58% 0.02 245))"
+            "cssRecipe": "light-dark(var(--cinder-border-contrast), oklch(58% 0.02 265))"
           }
         }
       },
@@ -375,7 +375,7 @@
             "public": true,
             "category": "color",
             "component": "toggle",
-            "cssRecipe": "light-dark(var(--cinder-border-contrast-hover), oklch(64% 0.02 245))"
+            "cssRecipe": "light-dark(var(--cinder-border-contrast-hover), oklch(64% 0.02 265))"
           }
         }
       }

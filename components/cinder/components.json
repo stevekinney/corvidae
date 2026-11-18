@@ -1868,11 +1868,11 @@
         "keyboard": [
           {
             "keys": "ArrowRight",
-            "action": "Accepts the focused top card."
+            "action": "Accepts the focused top card, or rejects it right to left."
           },
           {
             "keys": "ArrowLeft",
-            "action": "Rejects the focused top card."
+            "action": "Rejects the focused top card, or accepts it right to left."
           },
           {
             "keys": "ArrowDown",

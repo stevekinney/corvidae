@@ -97,8 +97,15 @@ describe('Banner layout', () => {
     expect(stacked.get('inline-size')).toBe('100%');
   });
 
-  test('the feature variant takes the shared actions layout, not its own', () => {
-    expect(css).not.toContain("[data-cinder-variant='feature'] > .cinder-banner__actions");
+  test('the feature variant takes the shared actions layout wide, and only re-spans it when narrow', () => {
+    // COR-2441: below 560px the feature banner's art column is 2rem and the actions start under the
+    // art's left edge, so the narrow block spans them across it; nothing outside the container
+    // query sets the feature banner's actions.
+    const outside = css.replace(/@container cinder-banner[^{]*\{[\s\S]*?\n {2}\}\n/g, '');
+    expect(outside).not.toContain("[data-cinder-variant='feature'] > .cinder-banner__actions");
+    expect(css).toMatch(
+      /@container cinder-banner \(max-width: 34\.99rem\)\s*\{[\s\S]*?\.cinder-banner\[data-cinder-variant='feature'\] > \.cinder-banner__actions\s*\{[^}]*grid-column: 1 \/ 3;/,
+    );
   });
 
   // The ink is the letters: the line's own air (half of what its height leaves beside the
