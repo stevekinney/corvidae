@@ -83,12 +83,12 @@
 </script>
 
 <script lang="ts">
-  import ChevronRight from '@lucide/svelte/icons/chevron-right';
   import { untrack } from 'svelte';
 
   import Button from '../button/button.svelte';
   import Checkbox from '../checkbox/checkbox.svelte';
   import CodeBlock from '../code-block/code-block.svelte';
+  import DisclosureTrigger from '../disclosure-trigger/disclosure-trigger.svelte';
   import Link from '../link/link.svelte';
   import InlineConfirm from '../inline-confirm/inline-confirm.svelte';
   import Textarea from '../textarea/textarea.svelte';
@@ -254,22 +254,14 @@
     </ApprovalCardSettled>
     {#if hasReceiptDetails}
       <div class="cinder-approval-card__input">
-        <button
-          type="button"
-          class="cinder-approval-card__input-toggle"
-          aria-expanded={detailsOpen}
-          aria-controls={detailsId}
+        <!-- The one disclosure trigger every reveal shares (board row X3, COR-2440). -->
+        <DisclosureTrigger
+          open={detailsOpen}
+          controls={detailsId}
           onclick={() => (detailsOpen = !detailsOpen)}
         >
-          <ChevronRight
-            class="cinder-approval-card__input-chevron"
-            size={12}
-            strokeWidth={2}
-            aria-hidden="true"
-            data-cinder-open={detailsOpen || undefined}
-          />
-          <span class="cinder-approval-card__input-word">Details</span>
-        </button>
+          Details
+        </DisclosureTrigger>
         <!-- The note, the result and the command are one definition list with one label style
              (board row A4), each term over its value. -->
         <dl
@@ -370,22 +362,9 @@
   {#if isPending}
     {#if why !== undefined}
       <div class="cinder-approval-card__input cinder-approval-card__why">
-        <button
-          type="button"
-          class="cinder-approval-card__input-toggle"
-          aria-expanded={whyOpen}
-          aria-controls={whyId}
-          onclick={() => (whyOpen = !whyOpen)}
-        >
-          <ChevronRight
-            class="cinder-approval-card__input-chevron"
-            size={12}
-            strokeWidth={2}
-            aria-hidden="true"
-            data-cinder-open={whyOpen || undefined}
-          />
-          <span class="cinder-approval-card__input-word">Why the agent wants to do this</span>
-        </button>
+        <DisclosureTrigger open={whyOpen} controls={whyId} onclick={() => (whyOpen = !whyOpen)}>
+          Why the agent wants to do this
+        </DisclosureTrigger>
         <p id={whyId} class="cinder-approval-card__why-body" hidden={!whyOpen} dir="auto">{why}</p>
       </div>
     {/if}

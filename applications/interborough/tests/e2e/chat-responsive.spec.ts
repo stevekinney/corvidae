@@ -622,9 +622,12 @@ test.describe('Chat on a phone (04y, 06l, 06m)', () => {
     browserName,
   }) => {
     test.skip(browserName !== 'chromium', 'The layout is checked once, in Chromium.');
-    const deadline = new Date(Date.parse(SAMPLE_NOW) + 30 * 60_000).toISOString();
-    // The expiring approval fixture: the Bureau's reviews say the refund's approval lapses in
-    // thirty minutes, which the page reads back as the approval's deadline.
+    // The expiring approval fixture: the Bureau's reviews give the refund's approval a deadline,
+    // which the page reads back as the approval's. The page reads deadlines on the Bureau's clock,
+    // which is the host's real time and not the browser's sample clock, so a deadline near the
+    // sample time had already passed there and the card read Expired (CI run 44130268106): the
+    // deadline is far enough ahead to be pending on either clock.
+    const deadline = '2099-06-30T14:30:00.000Z';
     await page.route('**/bureau/jsonrpc', async (route) => {
       const body = route.request().postDataJSON() as { method?: string } | null;
       if (body?.method !== 'bureau.reviews.get' && body?.method !== 'bureau.reviews.list') {

@@ -646,6 +646,29 @@ describe('ApprovalCard decision layout: the retained receipt', () => {
     );
   });
 
+  test('reveals its Details and its why through the one DisclosureTrigger, with no chevron of its own (X3)', async () => {
+    const receipt = render(ApprovalCard, {
+      props: decisionCard({ state: 'approved', decidedBy: 'you', decisionNote: 'Checked' }),
+    });
+    const details = receipt.getByRole('button', { name: 'Details' });
+    expect(details.classList.contains('cinder-disclosure-trigger')).toBe(true);
+    expect(details.getAttribute('aria-expanded')).toBe('false');
+    expect(receipt.container.querySelector('.cinder-approval-card__input-chevron')).toBeNull();
+    await fireEvent.click(details);
+    expect(details.getAttribute('aria-expanded')).toBe('true');
+    receipt.unmount();
+
+    const pending = render(ApprovalCard, {
+      props: decisionCard({ why: 'The order arrived damaged.' }),
+    });
+    const why = pending.getByRole('button', { name: 'Why the agent wants to do this' });
+    expect(why.classList.contains('cinder-disclosure-trigger')).toBe(true);
+    expect(why.getAttribute('aria-controls')).toBe(
+      pending.container.querySelector('.cinder-approval-card__why-body')?.id ?? '',
+    );
+    expect(pending.container.querySelector('.cinder-approval-card__input-chevron')).toBeNull();
+  });
+
   test('offers no disclosure when there is nothing more to show', () => {
     const { queryByRole } = render(ApprovalCard, {
       props: decisionCard({

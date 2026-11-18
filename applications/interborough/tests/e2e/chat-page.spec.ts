@@ -722,14 +722,17 @@ test.describe('an open chat whose approval is answered in Reviews (18i, 18j)', (
     await expect(decided.getByRole('button', { name: 'Deny' })).toHaveCount(0);
     await expect(decided.getByRole('button', { name: 'Approve' })).toHaveCount(0);
     await expect(page.locator('[data-approval-decision]')).toHaveCount(0);
-    // The row collapses to a check, the question and the decision: no tool line and no Input.
-    // The card holds the question twice in its text: once in an aria-hidden screen-reader-only
-    // span that only matchers read, and once as the heading a person sees.
+    // The receipt collapses to the decided action and one status line: no tool line and no Input,
+    // and the time is under the card, not in it. The card holds the question twice in its text:
+    // once in an aria-hidden span that only matchers read, and once as the heading, whose name
+    // leads with the outcome for a screen reader ("Approved: …").
     await expect(decided).toHaveText(
-      /^\s*(?:Refund order 4471 for \$42\.00\?\s*){2}Approved by you in Reviews,\s*10:46 AM\s*$/,
+      /^\s*Refund order 4471 for \$42\.00\?\s*Approved: Refund order 4471 for \$42\.00\?\s*Approved by you in Reviews\s*$/,
     );
-    await expect(decided.getByRole('heading')).toHaveText('Refund order 4471 for $42.00?');
-    await expect(decided.locator('.cinder-approval-card__decided-glyph')).toHaveAttribute(
+    await expect(decided.getByRole('heading')).toHaveText(
+      'Approved: Refund order 4471 for $42.00?',
+    );
+    await expect(decided.locator('.cinder-approval-card__settled-row')).toHaveAttribute(
       'data-cinder-tone',
       'success',
     );

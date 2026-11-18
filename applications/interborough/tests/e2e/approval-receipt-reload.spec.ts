@@ -1,8 +1,9 @@
 /**
  * COR-2292 D6 (COR-2439 AC1): a tool approval's receipt survives a reload, once. One refund is
  * approved through Reviews and another in its chat; reloading each chat shows exactly one receipt
- * for its decision: the Reviews one says where, with Reviews a link to the review, and the chat one
- * names no place. Runs against the real host; sessions are started through the AG-UI mount.
+ * for its decision: the Reviews one is a card under its rail row that says where, with Reviews a
+ * link to the review, and the chat one is its rail row's line, which names no place. Runs against
+ * the real host; sessions are started through the AG-UI mount.
  */
 import type { Page } from '@playwright/test';
 
@@ -52,11 +53,18 @@ test('a decision made in Reviews and one made in the chat each read as one recei
   );
   await expect(page.locator('[data-approval-decision]')).toHaveCount(0);
 
-  // And the chat decision is one receipt that names no place.
+  // The rail row says the same decision in its own words, once.
+  const decidedRows = (where: Page) =>
+    where.locator('.cinder-tool-call-rail__item').filter({ hasText: /Approved by / });
+  await expect(decidedRows(page)).toHaveCount(1);
+  await expect(decidedRows(page)).toContainText('in Reviews');
+
+  // And the chat decision is one receipt that names no place: an approval made and carried out in
+  // the chat reads on its rail row, which is the answer, and draws no card under it.
   await page.goto(`/chats/${viaChat}`);
   await page.reload();
-  await expect(receiptsOf(page)).toHaveCount(1);
-  await expect(receiptsOf(page)).toHaveText(/^Approved by .+$/);
-  await expect(receiptsOf(page)).not.toContainText('in Reviews');
+  await expect(decidedRows(page)).toHaveCount(1);
+  await expect(decidedRows(page)).not.toContainText('in Reviews');
+  await expect(receiptsOf(page)).toHaveCount(0);
   await expect(page.locator('[data-approval-decision]')).toHaveCount(0);
 });
