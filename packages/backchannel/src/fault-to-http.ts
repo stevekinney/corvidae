@@ -13,6 +13,7 @@ import {
   type RestFaultResponseOptions,
 } from './operation-fault.ts';
 
+/** Maps an {@link OperationFault} to its REST response. */
 export function faultToHttpResponse(
   fault: OperationFault,
   options?: RestFaultResponseOptions,

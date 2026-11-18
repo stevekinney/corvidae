@@ -13,6 +13,7 @@ export interface ParsedSequenceCursor {
 
 const DECIMAL_INTEGER_PATTERN = /^-?\d+$/;
 
+/** Reads an optional cursor from a request parameter, or reports it as invalid. */
 export function parseOptionalSequenceCursor(
   rawValue: string | null | undefined,
   parameterName: string,
@@ -51,7 +52,8 @@ export function parseOptionalSequenceCursor(
  *
  * @example
  * ```ts
- * import type { Cursor, EventEnvelope } from '@lostgradient/weft';
+ * import type { Cursor } from '@lostgradient/backchannel';
+ * import type { EventEnvelope } from '@lostgradient/weft';
  *
  * declare const envelope: EventEnvelope;
  * const lastCursor: Cursor = envelope.cursor;
@@ -87,6 +89,7 @@ function decodeCursorOrThrow(cursor: Cursor): number {
   return sequence;
 }
 
+/** Compares two cursors by sequence position. */
 export function compareCursor(a: Cursor, b: Cursor): 'before' | 'at' | 'after' {
   const delta = decodeCursorOrThrow(a) - decodeCursorOrThrow(b);
   return delta === 0 ? 'at' : delta < 0 ? 'before' : 'after';
@@ -94,6 +97,8 @@ export function compareCursor(a: Cursor, b: Cursor): 'before' | 'at' | 'after' {
 
 /** An event envelope a replay-and-live feed can order: its sequence and its cursor. */
 export type SequencedEventEnvelope = {
+  /** The envelope's position in the log. */
   readonly sequence: number;
+  /** The opaque token a consumer passes back to resume after this envelope. */
   readonly cursor: Cursor;
 };

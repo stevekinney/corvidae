@@ -37,6 +37,7 @@ const encodeCursor = (sequence: number): Cursor => String(sequence);
 
 const DEFAULT_LIVE_BUFFER_SIZE = 1000;
 
+/** Builds a {@link ReplayLiveFeed} over a backend. `liveBufferSize` bounds the envelopes buffered for a subscriber that reads slowly. */
 export function createReplayLiveFeed<TEnvelope extends SequencedEventEnvelope>(
   backend: ReplayLiveFeedBackend<TEnvelope>,
   options?: WorkflowEventFeedOptions,

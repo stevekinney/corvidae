@@ -48,7 +48,7 @@ export type InspectorRowProps = Omit<HTMLAttributes<HTMLDivElement>, 'class' | '
   disabled?: boolean;
   /**
    * Marks the value as a suggestion that is not saved until the person confirms it: a quiet accent
-   * text label under the row's label, with no tint, border or pill.
+   * text label above the row's label, with no tint, border or pill.
    * @default false
    */
   suggested?: boolean;

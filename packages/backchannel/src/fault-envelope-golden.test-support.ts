@@ -12,6 +12,7 @@ import { faultToJsonRpcError } from './fault-to-json-rpc.ts';
 import { formatGoldenJson, writeGoldenDirectory } from './golden-files.test-support.ts';
 import type { OperationFault } from './operation-fault.ts';
 
+/** The directory holding the fault-envelope golden files. */
 export const FAULT_ENVELOPE_GOLDEN_DIRECTORY = join(
   import.meta.dir,
   '__fixtures__',

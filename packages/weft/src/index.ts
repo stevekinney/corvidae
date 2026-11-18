@@ -229,8 +229,7 @@ export {
 export { WorkerPool, type WorkerPoolOptions } from './workers/pool.ts';
 
 export * from './client/generated/operation-client.generated.ts';
-export type { JsonRpcCallResult, JsonRpcErrorObject } from './client/json-rpc-request.ts';
-export * from './client/operation-client-runtime.ts';
+export type { WeftClientConnection } from './client/weft-connection-transport.ts';
 export { CodegenEmitError, jsonSchemaToTypeScript } from './json-schema/codegen-emit.ts';
 export { createCatalogSnapshot } from './server/weft-catalog-snapshot.ts';
 
