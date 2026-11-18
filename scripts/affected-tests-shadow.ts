@@ -14,6 +14,12 @@ interface FrozenRun {
   failureJobs?: unknown;
 }
 
+interface ShadowFailure {
+  job: string;
+  classification: 'unattributable';
+  reason: string;
+}
+
 function git(root: string, args: string[]) {
   const result = Bun.spawnSync(['git', '-C', root, ...args]);
   if (result.exitCode !== 0) throw new Error(result.stderr.toString());
@@ -24,14 +30,33 @@ function treeAt(root: string, revision: string): SourceTree {
   const paths = new Set(
     git(root, ['ls-tree', '-r', '--name-only', revision]).split('\n').filter(Boolean),
   );
-  const cache = new Map<string, string | undefined>();
+  // `git cat-file --batch` accepts every revision:path request on one stream. The selector reads
+  // source and manifests repeatedly, so one object process per file made replay impractically slow.
+  const requested = [...paths]
+    .filter((path) => /\.(?:[cm]?[jt]sx?|svelte|css)$/.test(path) || path.endsWith('package.json'))
+    .map((path) => `${revision}:${path}`);
+  const result = Bun.spawnSync({
+    cmd: ['git', '-C', root, 'cat-file', '--batch'],
+    stdin: new Blob([`${requested.join('\n')}\n`]),
+  });
+  if (result.exitCode !== 0) throw new Error(result.stderr.toString());
+  const output = result.stdout;
+  const cache = new Map<string, string>();
+  let offset = 0;
+  for (const path of requested.map((request) => request.slice(revision.length + 1))) {
+    const newline = output.indexOf(10, offset);
+    if (newline < 0) throw new Error('git cat-file batch ended before its header');
+    const header = output.subarray(offset, newline).toString();
+    offset = newline + 1;
+    const match = /^(\S+) (\S+) (\d+)$/.exec(header);
+    if (match === null) throw new Error(`git cat-file could not read ${path}: ${header}`);
+    const size = Number(match[3]);
+    cache.set(path, output.subarray(offset, offset + size).toString());
+    offset += size + 1;
+  }
   return {
     paths,
-    read(path) {
-      if (!paths.has(path)) return undefined;
-      if (!cache.has(path)) cache.set(path, git(root, ['show', `${revision}:${path}`]));
-      return cache.get(path);
-    },
+    read: (path) => cache.get(path),
   };
 }
 
@@ -102,13 +127,22 @@ export function shadowRun(root: string, frozen: FrozenRun) {
     frozen.jobs
       ?.filter((job) => job.conclusion === 'failure')
       .map((job) => job.name ?? 'unnamed job') ?? [];
+  // Job-level conclusions and text logs do not contain the executed test inventory. A job failure
+  // therefore cannot demonstrate that an omitted test caused it. Preserve it as inconclusive
+  // instead of turning missing attribution into a false zero-miss result.
+  const unclassifiedFailures: ShadowFailure[] = fullRunFailures.map((job) => ({
+    job,
+    classification: 'unattributable',
+    reason: 'Frozen provider evidence has no test-level execution inventory for this failed job.',
+  }));
   return {
-    disposition: 'complete',
+    disposition: unclassifiedFailures.length === 0 ? 'complete' : 'inconclusive',
     revision,
     changed,
     selected,
     fullRunFailures,
     omittedFailures: [],
+    unclassifiedFailures,
     inputIdentity: frozen.gitInputs ?? null,
   };
 }
