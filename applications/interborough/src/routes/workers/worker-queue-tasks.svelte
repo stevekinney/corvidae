@@ -28,6 +28,7 @@
   import { RefreshCw, Trash2 } from '@lucide/svelte';
 
   import { router, workflowDetailPath } from '../../lib/router.svelte.ts';
+  import TimeParts from '../../lib/time-parts.svelte';
   import type { ScopeGate } from '../../lib/scopes.svelte.ts';
   import { queueTaskRows, type QueueTaskRow } from './queue-task-rows.ts';
   import type { QueueTask, QueueTaskTab } from './queue-tasks-data.ts';
@@ -226,7 +227,7 @@
               {/if}
             </span>
           {/snippet}
-          {#snippet time()}{row.time}{/snippet}
+          {#snippet time()}<TimeParts text={row.time} />{/snippet}
           {#snippet meta()}
             {row.line}
             {#if row.failed}

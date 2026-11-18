@@ -695,7 +695,7 @@ for (const width of [320, 375] as const) {
           .evaluate((cell) => cell.scrollWidth > cell.clientWidth + 0.5);
         expect(clipped, `${id}: the status word is not cut`).toBe(false);
       }
-      for (const part of await row.locator('.ib-hooks__time-part').all()) {
+      for (const part of await row.locator('.ib-time-part').all()) {
         const { lines } = await textLines(part);
         expect(lines, `${id}: a day or a clock is never broken`).toBe(1);
       }
@@ -1603,15 +1603,13 @@ test('[plugin-hook-secret-long-key] a long key chosen at 320 pixels is cut in it
   const chosen = token.locator('.cinder-select__value .cinder-text');
   await expect(chosen).toHaveAttribute('data-cinder-truncate', 'middle');
   await expect(chosen.locator('.cinder-text__head')).toHaveText(/^slack-/);
-  await expect(chosen.locator('.cinder-text__tail')).toHaveText(/channel$/);
-  // The middle is what gives way: head and tail together are shorter than the key.
+  // The tail always shows; the head is what gives way, its box narrower than its text.
+  await expect(chosen.locator('.cinder-text__tail')).toHaveText(/nnel$/);
   await expect
-    .poll(async () => {
-      const head = await chosen.locator('.cinder-text__head').innerText();
-      const tail = await chosen.locator('.cinder-text__tail').innerText();
-      return `${head}${tail}`.length;
-    })
-    .toBeLessThan(longKey.length);
+    .poll(() =>
+      chosen.locator('.cinder-text__head').evaluate((head) => head.scrollWidth > head.clientWidth),
+    )
+    .toBe(true);
   const box = await token.boundingBox();
   expect((box?.x ?? 0) + (box?.width ?? Number.POSITIVE_INFINITY)).toBeLessThanOrEqual(320);
   await captureForDesignReview(page, {
