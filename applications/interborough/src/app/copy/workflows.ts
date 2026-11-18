@@ -858,6 +858,8 @@ export const WORKFLOW_COPY = {
       fillIn: (position: number): string =>
         `Fill in step ${String(position)} to see what this workflow does.`,
       manual: 'Run it when you press Start run',
+      /** After a schedule's or a plugin trigger's sentence, while the file is not paused (row 65j). */
+      startItYourself: 'You can also start it yourself.',
       signal: (name: string): string => `Each time ${name} is sent`,
       anySignal: 'Each time a signal is sent',
       contributed: (id: string): string => `When ${id} fires`,

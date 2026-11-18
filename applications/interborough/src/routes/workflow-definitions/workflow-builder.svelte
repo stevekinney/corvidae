@@ -276,6 +276,8 @@
       agentName: (identifier) => agentLabel(identifier, agents.data),
       activityName: titleOfActivity,
       workflowName: titleOfWorkflow,
+      // A saved workflow can be started by the person editing it; a new one cannot yet (row 65j).
+      canStart: mode === 'edit',
     }),
   );
 

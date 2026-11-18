@@ -29,6 +29,11 @@ export interface ReadBackOptions {
   readonly workflowName?: (identifier: string) => string;
   /** The instant whose zone abbreviation a schedule names (CST in winter, CDT in summer). Defaults to now. */
   readonly now?: number;
+  /**
+   * Whether the person can start the workflow themselves: it is a saved workflow, not a new one,
+   * and not paused. A sentence whose trigger starts it on its own then says they can too (row 65j).
+   */
+  readonly canStart?: boolean;
 }
 
 const copy = WORKFLOW_COPY.builder.readBack;
@@ -257,5 +262,10 @@ export function readBackOf(
   const sentence = [leadOf(rawTrigger, trigger, now), ...phrases]
     .filter((part) => part !== '')
     .join(', ');
-  return `${sentence.charAt(0).toUpperCase()}${sentence.slice(1)}.`;
+  const said = `${sentence.charAt(0).toUpperCase()}${sentence.slice(1)}.`;
+  // A trigger that starts it on its own leaves a person able to start a saved workflow too, which
+  // the sentence then says (row 65j); a new one has nothing to start yet (rows 64r, 65m), and a
+  // manual start already says how.
+  const startsItself = trigger !== null && trigger.kind !== 'manual';
+  return startsItself && options.canStart === true ? `${said} ${copy.startItYourself}` : said;
 }

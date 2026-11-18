@@ -505,7 +505,11 @@ export function readBuilder(text: string, options: ReadBackOptions = {}): Builde
     stepsEditable: steps === undefined || Array.isArray(steps),
     inputSchema: schemaOf(document, 'inputSchema'),
     outputSchema: schemaOf(document, 'outputSchema'),
-    readBack: readBackOf(document['trigger'], trigger, rows, options),
+    // A paused file starts for no one, whoever is editing it.
+    readBack: readBackOf(document['trigger'], trigger, rows, {
+      ...options,
+      canStart: options.canStart === true && document['paused'] !== true,
+    }),
   };
 }
 

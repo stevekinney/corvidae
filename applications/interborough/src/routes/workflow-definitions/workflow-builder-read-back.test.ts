@@ -85,6 +85,27 @@ describe('the read-back sentence', () => {
     );
   });
 
+  test('design correction: a saved workflow a person can start says so after its sentence (row 65j)', () => {
+    const release = {
+      trigger: { kind: 'schedule', spec: '0 11 * * 5', timezone: 'America/Chicago' },
+      steps: [{ kind: 'await-signal', signal: 'notes-approved' }],
+    };
+    const saved = (file: unknown) =>
+      readBuilder(JSON.stringify(file), { now: NOVEMBER, canStart: true })?.readBack;
+    expect(saved(release)).toBe(
+      `Every Friday at 11:00 AM CST, wait for notes-approved. ${WORKFLOW_COPY.builder.readBack.startItYourself}`,
+    );
+    // A new workflow has nothing to start yet (row 64r), a paused one starts for no one, and a
+    // manual start already says how it starts.
+    expect(readBack(release)).toBe('Every Friday at 11:00 AM CST, wait for notes-approved.');
+    expect(saved({ ...release, paused: true })).toBe(
+      'Every Friday at 11:00 AM CST, wait for notes-approved.',
+    );
+    expect(saved({ ...release, trigger: { kind: 'manual' } })).not.toContain(
+      WORKFLOW_COPY.builder.readBack.startItYourself,
+    );
+  });
+
   test('names a weekly schedule’s day, and a zone the trigger does not name as UTC', () => {
     const steps = [{ kind: 'await-signal', signal: 'notes-approved' }];
     expect(
