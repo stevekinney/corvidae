@@ -164,8 +164,8 @@ export function approvalArrivalRestShift(
   // pulled the decision row down in one pass and the label row back up in the next never settled.
   const toTop = card.top - viewport.top;
   const toFadeLine = card.bottom - (viewport.bottom - APPROVAL_END_FADE_CLEARANCE);
-  const limited = (shift: number): number => {
-    const reachable = Math.min(shift, Math.max(toEnd, 0));
+  const limited = (wanted: number): number => {
+    const reachable = Math.min(wanted, Math.max(toEnd, 0));
     return Math.abs(reachable) <= 0.5 ? 0 : reachable;
   };
   // Does not fit between the header's line and the fade line: the label row is what passes under
