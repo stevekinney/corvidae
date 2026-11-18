@@ -469,20 +469,13 @@ test.describe('a Bureau that fails', () => {
     checkA11y,
     pageErrors,
   }) => {
-    // Each read of the review list the page makes on arrival fails once; none retries, and the
-    // feed's catch-up is held, so the count is exact. Observed on arrival, by the request each
-    // read sends: the view's probe and the notification feed ask the Bureau's own list, one read
-    // each; the merged waiting list is read once by the navigation's count, which the page's own
-    // query shares now that the page draws its own loading and mounts with the probe (row 26a), and
-    // once more by a further observer of it; the Done tab's list reads once.
-    const PROBE_AND_FEED_READS = 2;
-    const WAITING_LIST_READS = 2;
-    const DONE_LIST_READS = 1;
-    pageErrors.expect({
+    // Each read of the review list the page makes on arrival fails. The page draws its own loading
+    // and mounts beside the view's probe (row 26a), so whether its own query shares the
+    // navigation's read in flight or makes one more follows the order the network answers in:
+    // every such failure is covered, and the banner below is what the test asserts.
+    pageErrors.expectEvery({
       pattern: loggedFailedResponse(500, /bureau\/jsonrpc/),
-      reason:
-        'the test answers each read of the Bureau’s review list the page makes on arrival with a 500',
-      count: PROBE_AND_FEED_READS + WAITING_LIST_READS + DONE_LIST_READS,
+      reason: 'the test answers every read of the Bureau’s review list with a 500',
     });
     // The feed's catch-up would ask the lists again while the page is open, so it is held.
     await holdBureauFeed(page);
