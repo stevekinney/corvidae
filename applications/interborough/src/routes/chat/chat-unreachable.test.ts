@@ -52,7 +52,9 @@ describe('the chat composer while the server does not answer', () => {
 
     monitor.reportUnreachable();
 
-    await waitFor(() => expect(drawer()).not.toBeNull());
+    // Waits assert a boolean, never an element: a failed element assertion serializes the whole
+    // happy-dom graph into its message, seconds of blocked loop per retry.
+    await waitFor(() => expect(drawer() === null).toBe(false));
     expect(drawer()?.textContent).toContain(CHAT_COPY.composer.hostUnreachable);
     expect(drawer()?.getAttribute('data-cinder-variant')).toBe('warning');
     // The host is down, not the network: the drawer does not say the person is offline.
@@ -72,7 +74,7 @@ describe('the chat composer while the server does not answer', () => {
 
     monitor.reportReachable();
 
-    await waitFor(() => expect(drawer()).toBeNull());
+    await waitFor(() => expect(drawer() === null).toBe(true));
     expect(composer()?.value).toBe('What did I approve yesterday?');
     expect(send()?.disabled).toBe(false);
   });
@@ -85,7 +87,9 @@ describe('the chat composer while the server does not answer', () => {
     monitor.setBrowserOffline(true);
 
     await waitFor(() =>
-      expect(view.container.querySelector('[data-chat-composer-drawer="offline"]')).not.toBeNull(),
+      expect(view.container.querySelector('[data-chat-composer-drawer="offline"]') === null).toBe(
+        false,
+      ),
     );
     expect(view.container.querySelector(DRAWER)?.textContent).toContain('Your draft is saved here');
   });

@@ -1836,7 +1836,7 @@ describe('attachments', () => {
 
     await sendMessage(container, 'Hello');
 
-    await waitFor(() => expect(picker(container)).toBeNull());
+    await waitFor(() => expect(picker(container) === null).toBe(true));
   });
 
   test('turns the picker off while the run waits on a person’s answer', async () => {

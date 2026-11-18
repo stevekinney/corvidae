@@ -8,6 +8,15 @@ type MarkdownPipelineLoader = () => Promise<MarkdownPipeline>;
 
 let pipelinePromise: Promise<MarkdownPipeline | undefined> | undefined;
 
+/**
+ * Forgets the loaded pipeline, so the next preload loads again. The cache lives for the whole
+ * process: a test that preloads a stand-in pipeline forgets it afterwards, so a later file in the
+ * same process (Bun runs many in one) starts from no pipeline, as a page does.
+ */
+export function forgetMarkdownPipeline(): void {
+  pipelinePromise = undefined;
+}
+
 /** Start loading the markdown renderer before the first streamed token arrives. */
 export function preloadMarkdownPipeline(
   loadPipeline?: MarkdownPipelineLoader,

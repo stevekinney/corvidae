@@ -29,6 +29,9 @@ describe('waitFor element absence assertions', () => {
     'await screen.waitFor(() => expect(queryMenu()).toBeNull());',
     'await waitFor(() => {\n  expect(queryMenu()).not.toBeNull();\n  expect(queryPanel()).toBeNull();\n});',
     'await waitFor(function () {\n  expect(queryMenu()).toBeNull();\n});',
+    // A same-file helper whose body is an element query returns an element whatever its name says
+    // (a 47-second CI timeout in chat-unreachable.test.ts, COR-2437).
+    "const drawer = () => view.container.querySelector('[data-drawer]');\nawait waitFor(() => expect(drawer()).toBeNull());",
   ])('rejects %s', (source) => {
     expect(inspect(source)).toHaveLength(1);
   });

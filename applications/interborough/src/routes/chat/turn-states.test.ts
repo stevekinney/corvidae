@@ -24,13 +24,13 @@ describe('the reconnecting turn', () => {
       turnStateOf(message('a2', 'assistant'), {
         reconnect: schedule(),
         lastAssistantId: 'a2',
-        now: NOW,
+        now: () => NOW,
       }),
     ).toEqual({ kind: 'reconnecting', attempt: 2, attempts: 7, nextTryIn: 1, wait: 1 });
   });
 
   test('is no turn while the stream is up, for an earlier turn, a person’s message, or a first read that failed', () => {
-    const facts = { reconnect: schedule(), lastAssistantId: 'a2', now: NOW };
+    const facts = { reconnect: schedule(), lastAssistantId: 'a2', now: () => NOW };
     expect(turnStateOf(message('a2', 'assistant'), { ...facts, reconnect: undefined })).toBe(
       undefined,
     );

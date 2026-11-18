@@ -271,8 +271,18 @@ function isElementValued(
   );
   if (narrowedByConstructor) return true;
   if (!ts.isIdentifier(expression.expression)) return false;
-  return (declarations.functions.get(expression.expression.text) ?? []).some((declaration) =>
-    namesElementType(declaration.type),
+  const helper = expression.expression.text;
+  if (visiting.has(`${helper}()`)) return false;
+  visiting.add(`${helper}()`);
+  return (declarations.functions.get(helper) ?? []).some(
+    (declaration) =>
+      namesElementType(declaration.type) ||
+      // A same-file helper whose body is an element query, such as
+      // `const drawer = () => container.querySelector('[data-drawer]')`, returns an element whatever
+      // its name says.
+      (ts.isArrowFunction(declaration) &&
+        !ts.isBlock(declaration.body) &&
+        isElementValued(declaration.body, declarations, visiting)),
   );
 }
 
@@ -313,7 +323,10 @@ export function findWaitForElementAssertionViolations(
       if (!matcher || reported.has(matcher.call)) return;
       const [value] = inner.arguments;
       const absenceOfElement =
-        value !== undefined && isElementShaped(value) && assertsAbsence(matcher);
+        value !== undefined &&
+        (isElementShaped(value) ||
+          (ts.isCallExpression(unwrap(value)) && isElementValued(value, declarations))) &&
+        assertsAbsence(matcher);
       if (!absenceOfElement && !comparesElements(inner, matcher, declarations)) return;
       reported.add(matcher.call);
       const { line } = sourceFile.getLineAndCharacterOfPosition(matcher.call.getStart(sourceFile));

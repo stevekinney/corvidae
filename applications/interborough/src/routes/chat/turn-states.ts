@@ -32,7 +32,11 @@ export interface TurnFacts {
   /** The id of the transcript's last assistant message, the one a dropped stream was writing. */
   readonly lastAssistantId: string | undefined;
   /** Now, in milliseconds since the epoch, for the countdown. */
-  readonly now: number;
+  /**
+   * Now, in milliseconds since the epoch, for the countdown. Read only for the reconnecting turn,
+   * so a page whose clock ticks re-renders that turn alone, not every turn each second.
+   */
+  readonly now: () => number;
 }
 
 /**
@@ -43,7 +47,7 @@ export interface TurnFacts {
 export function turnStateOf(message: Message, facts: TurnFacts): ChatTurnState | undefined {
   if (message.role !== 'assistant' || message.id !== facts.lastAssistantId) return undefined;
   if (facts.reconnect === undefined || !facts.reconnect.runDropped) return undefined;
-  return reconnectingTurnState(facts.reconnect, facts.now);
+  return reconnectingTurnState(facts.reconnect, facts.now());
 }
 
 /**

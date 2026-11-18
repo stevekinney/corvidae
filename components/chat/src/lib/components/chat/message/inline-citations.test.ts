@@ -14,13 +14,15 @@ const { render, cleanup, waitFor } = await import('@testing-library/svelte');
 const { createRawSnippet } = await import('svelte');
 const { default: MarkdownPreview, segmentRenderedMarkdown } =
   await import('./markdown-preview.svelte');
-const { preloadMarkdownPipeline } = await import('./markdown-pipeline.ts');
+const { forgetMarkdownPipeline, preloadMarkdownPipeline } = await import('./markdown-pipeline.ts');
 const { anchorClaims, claimOf, inlineCitationGroups, MAX_CLAIM_LENGTH } =
   await import('./inline-citations.ts');
 
 const originalWindowDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'window');
 afterEach(() => {
   cleanup();
+  // The stand-in pipeline is forgotten, so a later file in this process starts with none.
+  forgetMarkdownPipeline();
   if (originalWindowDescriptor)
     Object.defineProperty(globalThis, 'window', originalWindowDescriptor);
 });

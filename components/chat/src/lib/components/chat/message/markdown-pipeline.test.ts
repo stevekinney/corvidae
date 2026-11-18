@@ -1,10 +1,14 @@
-import { afterEach, describe, expect, test } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 
-import { preloadMarkdownPipeline } from './markdown-pipeline.ts';
+import { forgetMarkdownPipeline, preloadMarkdownPipeline } from './markdown-pipeline.ts';
 
 const originalWindowDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'window');
 
+// The pipeline is cached for the whole process, and another file may have loaded one first.
+beforeEach(() => forgetMarkdownPipeline());
+
 afterEach(() => {
+  forgetMarkdownPipeline();
   if (originalWindowDescriptor) {
     Object.defineProperty(globalThis, 'window', originalWindowDescriptor);
   } else {

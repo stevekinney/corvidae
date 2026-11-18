@@ -331,7 +331,8 @@ describe('Chat — sourcesByMessageId', () => {
   });
 
   test('a source that names its claim is a marker inside the paragraph at the claim, on a phone too, and the rest keep today’s placement (board row M4)', async () => {
-    const { preloadMarkdownPipeline } = await import('./message/markdown-pipeline.ts');
+    const { forgetMarkdownPipeline, preloadMarkdownPipeline } =
+      await import('./message/markdown-pipeline.ts');
     const realm = Object.getOwnPropertyDescriptor(globalThis, 'window');
     Object.defineProperty(globalThis, 'window', { configurable: true, value: globalThis });
     try {
@@ -384,6 +385,8 @@ describe('Chat — sourcesByMessageId', () => {
         expect(container.querySelectorAll('[data-chat-inline-citation]')).toHaveLength(1);
       });
     } finally {
+      // The stand-in pipeline is forgotten, so a later file in this process starts with none.
+      forgetMarkdownPipeline();
       if (realm) Object.defineProperty(globalThis, 'window', realm);
     }
   });

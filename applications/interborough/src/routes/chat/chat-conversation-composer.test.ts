@@ -196,7 +196,7 @@ describe('the draft store (COR-2284 C7)', () => {
     )!;
     await fireEvent.click(discard);
 
-    await waitFor(() => expect(drawer()).toBeNull());
+    await waitFor(() => expect(drawer() === null).toBe(true));
     expect(window.localStorage.getItem(KEY)).toBe('');
   });
 

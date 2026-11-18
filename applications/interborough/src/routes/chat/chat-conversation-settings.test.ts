@@ -190,7 +190,7 @@ describe('the composer’s settings', () => {
     serve({ 'bureau.agents.models': () => ({ selectable: true, models: [], default: null }) });
     const other = mount();
     await waitFor(() => expect(control(other.container, 'weft-chat-permission')).not.toBeNull());
-    await waitFor(() => expect(control(other.container, 'weft-chat-model')).toBeNull());
+    await waitFor(() => expect(control(other.container, 'weft-chat-model') === null).toBe(true));
   });
 
   test('says what each permission mode means, as the Bureau defines it, under its option', async () => {
@@ -231,7 +231,7 @@ describe('the composer’s settings', () => {
     const { container } = mount();
 
     // Until the agent is read, the composer cannot tell a scripted agent from a model's.
-    await waitFor(() => expect(control(container, 'weft-chat-model')).toBeNull());
+    await waitFor(() => expect(control(container, 'weft-chat-model') === null).toBe(true));
     expect(control(container, 'weft-chat-effort')).toBeNull();
     expect(control(container, 'weft-chat-permission')).not.toBeNull();
   });

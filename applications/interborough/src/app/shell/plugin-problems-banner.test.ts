@@ -98,7 +98,7 @@ describe('the plugins that did not load banner', () => {
     ]);
 
     await waitFor(() => expect(host?.requests.length).toBeGreaterThan(0));
-    await waitFor(() => expect(region()).toBeNull());
+    await waitFor(() => expect(region() === null).toBe(true));
   });
 
   test('is absent when the host cannot be read', async () => {
@@ -137,7 +137,7 @@ describe('the plugins that did not load banner', () => {
     await waitFor(() => expect(region()).not.toBeNull());
 
     await fireEvent.click(getByRole('button', { name: /dismiss/i }));
-    await waitFor(() => expect(region()).toBeNull());
+    await waitFor(() => expect(region() === null).toBe(true));
 
     // The same startup, reading the plugins again: still dismissed.
     await rerender({ unreachable: false });

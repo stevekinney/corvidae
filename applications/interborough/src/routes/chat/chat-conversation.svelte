@@ -611,7 +611,12 @@
       agentsHref: router.href('/agents'),
       connectHref: router.href('/settings/models'),
       newChatHref: router.href('/chats/new'),
-      reconnectAttempt: session.reconnectAttempt,
+      // Only the dropped stream of a run the page was reading is a reconnect the composer says: Chat
+      // treats a reconnecting composer as a run that is going and holds a message in Up next. A
+      // first read of the thread that fails has no run, so a message sent meanwhile goes at once
+      // (the read failure is the page's own alert).
+      reconnectAttempt:
+        session.reconnectSchedule?.runDropped === true ? session.reconnectAttempt : 0,
       restoredDraft:
         restoredDraftAt === undefined
           ? undefined
@@ -1019,7 +1024,8 @@
   const lastAssistant = $derived(lastAssistantId(shown));
   let reconnectNow = $state(Date.now());
   $effect(() => {
-    if (session.reconnectSchedule === undefined) return;
+    // The clock ticks only while a turn shows the countdown: a first read that fails has no turn.
+    if (session.reconnectSchedule?.runDropped !== true) return;
     reconnectNow = Date.now();
     // poll-reason: clock
     const timer = setInterval(() => {
@@ -1031,7 +1037,7 @@
     return turnStateOf(message, {
       reconnect: session.reconnectSchedule,
       lastAssistantId: lastAssistant,
-      now: reconnectNow,
+      now: () => reconnectNow,
     });
   }
 
