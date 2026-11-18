@@ -62,8 +62,14 @@ jobs:
         with:
           name: junit-root
           path: |
-            **/test-output/junit/*.xml
-            !**/node_modules/**
+            test-output/junit/*.xml
+            applications/*/test-output/junit/*.xml
+            components/*/test-output/junit/*.xml
+            packages/*/test-output/junit/*.xml
+            testing/*/test-output/junit/*.xml
+            internal/*/test-output/junit/*.xml
+            plugins/*/test-output/junit/*.xml
+            scripts/browser-fixtures/test-output/junit/*.xml
           if-no-files-found: ignore
 
   workspaces:
@@ -136,8 +142,14 @@ jobs:
         with:
           name: junit-tests-${{ strategy.job-index }}
           path: |
-            **/test-output/junit/*.xml
-            !**/node_modules/**
+            test-output/junit/*.xml
+            applications/*/test-output/junit/*.xml
+            components/*/test-output/junit/*.xml
+            packages/*/test-output/junit/*.xml
+            testing/*/test-output/junit/*.xml
+            internal/*/test-output/junit/*.xml
+            plugins/*/test-output/junit/*.xml
+            scripts/browser-fixtures/test-output/junit/*.xml
           if-no-files-found: ignore
 
   tests-slow:
