@@ -438,6 +438,7 @@ export function reuseLocalEvidence(
   evidence: CollectedEvidence,
   request: VerificationRequest,
   cwd: string,
+  runtime = () => output(['bun', '--version'], cwd),
 ): CollectedEvidence {
   if (!issuedCollections.has(evidence) || evidence.source !== 'coordinator')
     throw new EvidenceRequestError('local evidence was not returned by a collector');
@@ -456,6 +457,7 @@ export function reuseLocalEvidence(
     const inputs = obligation.relevantInputs;
     for (const path of inputs) validateLocalPath(safeCwd, path);
     const current = localProvenance(safeCwd, request.base, inputs);
+    current.runtime = runtime();
     const prior = previous[0] as EvidenceRecord;
     const reportsIntact = (prior.reports ?? []).every(
       ({ path, digest }) =>

@@ -160,6 +160,12 @@ const values = await (async () => {
     undefined,
     fixture,
   );
+  const runtimeReuse = reuseLocalEvidence(
+    defaultReceipt,
+    defaultRequest,
+    fixture,
+    () => 'other-bun',
+  );
   writeFileSync(report, '<testsuite><testcase name="input.test.ts" /></testsuite>');
   const initial = collectLocalEvidence(await request(), passing, fixture);
   const traversalRequest = await request();
@@ -224,6 +230,7 @@ const values = await (async () => {
     reported,
     failedReport,
     defaultReceipt,
+    runtimeReuse,
     reused,
     reportTamper,
     artifactTamper,
@@ -255,6 +262,7 @@ test('requires structured results and retains report identity', () => {
 });
 test('default local composition executes explicit argv without a shell', () => {
   expect(values.defaultReceipt.records[0]?.status).toBe('pass');
+  expect(values.runtimeReuse.records[0]?.status).toBe('pending');
 });
 test('reuses only unchanged relevant content', () => {
   expect(values.reused.records[0]?.status).toBe('reused-pass');
