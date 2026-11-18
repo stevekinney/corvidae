@@ -266,6 +266,11 @@ function testDelivery(status: 'delivered' | 'exhausted') {
 describe('the configuration of a saved plugin hook when another revision is adopted (COR-2181)', () => {
   const teamField = (view: ReturnType<typeof open>) =>
     waitFor(() => view.getByLabelText(/team/i) as HTMLInputElement);
+  /** What the Team field holds now. */
+  const teamValue = async (view: ReturnType<typeof open>) => {
+    const field = await teamField(view);
+    return field.value;
+  };
 
   test('shows a newer revision’s configuration after a refresh, so the next save does not put the old one back', async () => {
     let served = { ...PAGER_HOOK };
@@ -273,7 +278,7 @@ describe('the configuration of a saved plugin hook when another revision is adop
       'bureau.hooks.get': () => served,
       'bureau.hooks.update': (params) => ({ ...served, ...params, revision: served.revision + 1 }),
     });
-    expect((await teamField(view)).value).toBe('ops');
+    expect(await teamValue(view)).toBe('ops');
 
     // Another client changes the configuration; the unedited form adopts the newer revision.
     served = {
@@ -285,13 +290,13 @@ describe('the configuration of a saved plugin hook when another revision is adop
     focusManager.setFocused(false);
     focusManager.setFocused(true);
     await waitFor(() => expect(stub?.callsTo('bureau.hooks.get').length).toBeGreaterThan(reads));
-    await waitFor(async () => expect((await teamField(view)).value).toBe('platform'));
+    await waitFor(async () => expect(await teamValue(view)).toBe('platform'));
 
     // An edit of the draft keeps the field it was typed into: the form is not made again.
     const field = await teamField(view);
     await fireEvent.input(field, { target: { value: 'platform-oncall' } });
     expect(field.isConnected).toBe(true);
-    expect((await teamField(view)).value).toBe('platform-oncall');
+    expect(await teamValue(view)).toBe('platform-oncall');
 
     await fireEvent.click(view.getByRole('button', { name: HOOKS_COPY.editor.check.save }));
     await waitFor(() => expect(stub?.callsTo('bureau.hooks.update').length).toBe(1));
@@ -363,10 +368,10 @@ describe('the configuration of a saved plugin hook when another revision is adop
     focusManager.setFocused(false);
     focusManager.setFocused(true);
     await view.findByTestId('hook-changed');
-    expect((await teamField(view)).value).toBe('mine');
+    expect(await teamValue(view)).toBe('mine');
 
     await fireEvent.click(view.getByRole('button', { name: HOOKS_COPY.editor.reload }));
-    await waitFor(async () => expect((await teamField(view)).value).toBe('theirs'));
+    await waitFor(async () => expect(await teamValue(view)).toBe('theirs'));
     expect(view.queryByTestId('hook-changed')).toBeNull();
   });
 });
