@@ -102,6 +102,8 @@ export const bureauReviewSchema = z.discriminatedUnion('kind', [
     sessionId: z.string().optional(),
     signalName: z.string(),
     prompt: z.string().optional(),
+    /** What the agent wrote beside its question in the step that asked it (COR-2426). */
+    said: z.string().optional(),
     /** The JSON Schema the answer must satisfy; it says which control draws the question. */
     inputSchema: z.record(z.string(), z.unknown()).optional(),
   }),
@@ -125,6 +127,10 @@ export const engineReviewSchema = z.object({
   reviewers: z.array(z.string()),
   allowPartial: z.boolean(),
   artifact: z.unknown().optional(),
+  /** The workflow's name (its engine type), the step that asked, and what its author says (COR-2426). */
+  workflowName: z.string().optional(),
+  step: z.string().optional(),
+  message: z.string().optional(),
   resolution: z
     .object({
       decision: z.enum(['approved', 'rejected', 'needs-changes']),

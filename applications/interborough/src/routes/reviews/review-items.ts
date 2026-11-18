@@ -79,17 +79,21 @@ export function reviewTitle(review: ListedReview): string {
  * display name (`agentName`, already worded by the page), and, for an approval of a call that
  * cannot be undone (the risk the tool declares high), that it cannot be.
  */
-export function reviewLineTwo(review: ListedReview, agentName: string | undefined): string {
-  const parts = [reviewKindLabel(review)];
-  if (agentName !== undefined) parts.push(` ${REVIEWS_COPY.fromAgent(agentName)}`);
-  if (
+export function reviewLineTwo(
+  review: ListedReview,
+  agentName: string | undefined,
+): { readonly kind: string; readonly from?: string; readonly risk?: string } {
+  const irreversible =
+    review.status === 'pending' &&
     review.kind === 'tool-approval' &&
     review.approval.action.type === 'approval' &&
-    review.approval.action.risk === 'high'
-  ) {
-    parts.push(`, ${REVIEWS_COPY.cantBeUndone}`);
-  }
-  return parts.join('');
+    review.approval.action.risk === 'high';
+  return {
+    kind: reviewKindLabel(review),
+    ...(agentName === undefined ? {} : { from: REVIEWS_COPY.fromAgent(agentName) }),
+    // Only a review still waiting says so: a decided one has nothing left to undo (row 25x).
+    ...(irreversible ? { risk: REVIEWS_COPY.cantBeUndone } : {}),
+  };
 }
 
 /**
@@ -97,9 +101,16 @@ export function reviewLineTwo(review: ListedReview, agentName: string | undefine
  * name in words and its value, in the order the tool took them ("Order ID order-1001, Cents 4200").
  */
 export function inputLine(args: unknown): string {
-  return argumentEntries(args)
-    .map(([key, value]) => `${humanizeIdentifier(key, { casing: 'sentence' })} ${value}`)
+  return inputParts(args)
+    .map(([key, value]) => `${key} ${value}`)
     .join(', ');
+}
+
+/** The input line's parts, each argument's name in words and its value, for the pane to mute the names. */
+export function inputParts(args: unknown): readonly (readonly [string, string])[] {
+  return argumentEntries(args).map(
+    ([key, value]) => [humanizeIdentifier(key, { casing: 'sentence' }), value] as const,
+  );
 }
 
 /** The label of what kind of review it is. */

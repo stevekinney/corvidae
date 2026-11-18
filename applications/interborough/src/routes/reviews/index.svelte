@@ -244,6 +244,11 @@
           onDone();
         },
         onError: (error) => {
+          // Answered already, by someone else or because the agent moved on: said in its place.
+          if (isReviewNoLongerWaiting(error)) {
+            gone(review);
+            return;
+          }
           // A refusal that names fields is shown on them; any other failure is the message beside the question.
           const issues = answerRefusalIssues(error);
           outcome = {

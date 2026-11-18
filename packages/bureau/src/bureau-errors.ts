@@ -267,6 +267,8 @@ export class TaskRespondError extends BureauError {
   readonly reason: string | undefined;
   /** Every field of the answer that failed the wait's schema, when that is what was refused (COR-1804). */
   readonly issues: TaskRespondRefusal['issues'];
+  /** COR-2426 — the wait was already resolved: nothing took effect, and it is no longer waiting. */
+  readonly alreadyResolved: boolean;
 
   constructor(refusal: TaskRespondRefusal) {
     super(refusal.message, refusal.code);
@@ -274,6 +276,7 @@ export class TaskRespondError extends BureauError {
     this.field = refusal.field;
     this.reason = refusal.reason;
     this.issues = refusal.issues;
+    this.alreadyResolved = refusal.alreadyResolved === true;
   }
 }
 

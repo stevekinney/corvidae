@@ -1369,6 +1369,63 @@ describe('workspace privacy for reviews', () => {
     }
   });
 
+  it('lists a workflow review with its workflow’s name and the step and message its request kept, pending and resolved (COR-2426)', async () => {
+    const opened = await openWorkspacePrivacyBureau();
+    try {
+      const host = buildBureauHandlerHost(opened.bureau, []);
+      const engine = host.reviews.durableEngine?.();
+      if (!(engine instanceof Engine)) throw new Error('Expected the real durable engine');
+      const reviewWorkflow = workflow({ name: 'release-notes' }).execute(async function* (context) {
+        return yield* context.review({
+          artifact: { text: 'Draft notes' },
+          reviewType: 'content',
+          reviewers: ['alice'],
+          step: 'Collect merged changes',
+          message: 'Approve to publish, or send it back with a note.',
+        });
+      });
+      const register: unknown = Reflect.get(engine, 'register');
+      if (typeof register !== 'function') throw new Error('Expected engine workflow registration');
+      Reflect.apply(register, engine, [reviewWorkflow]);
+      await engine.start('release-notes', null);
+      await waitForCondition(
+        async () => (await engine.listReviews()).length > 0,
+        'engine review is parked',
+      );
+      const control = createOperationHandler({
+        operations: bureauReviewsOperations,
+        host,
+        authenticate: createOperationHandlerAuthenticator(
+          {
+            resolveApiKeyPrincipal: async (key) =>
+              key === API_KEY
+                ? principalFromApiKey({ subject: 'control', scopes: ['reviews:read'] })
+                : null,
+            auditSink: silent,
+          },
+          { additionalScopes: BUREAU_SCOPES },
+        ),
+      });
+      const kept = {
+        source: 'engine',
+        workflowName: 'release-notes',
+        step: 'Collect merged changes',
+        message: 'Approve to publish, or send it back with a note.',
+      };
+
+      const pending = await call(control, 'bureau.reviews.list', {});
+      expect(pending.result?.['reviews']).toEqual([expect.objectContaining(kept)]);
+
+      const [entry] = await engine.listReviews();
+      if (entry === undefined) throw new Error('Expected the engine review');
+      await engine.submitReview(entry.reviewId, { decision: 'approved', reviewer: 'alice' });
+      const resolved = await call(control, 'bureau.reviews.list', { status: 'resolved' });
+      expect(resolved.result?.['reviews']).toEqual([expect.objectContaining(kept)]);
+    } finally {
+      await opened.dispose();
+    }
+  });
+
   it('keeps list, get, and resolve owner-scoped for all six actor outcomes', async () => {
     const opened = await openWorkspacePrivacyBureau({
       agents: {

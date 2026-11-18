@@ -194,12 +194,45 @@
   gap: var(--cinder-space-2);
 }
 
-/* On a phone the decisions are equal-width, 44px-high buttons. */
-@media (max-width: 639.98px) {
-  .ib-review-pane__actions > * {
-    flex: 1 1 8rem;
-    min-block-size: 44px;
-  }
+/* Cinder's Button reaches a 44px target through its own hit area, so the buttons keep their size. */
+
+/* What a workflow's author says above the draft (row 25o). */
+.ib-review-pane__intro {
+  margin: 0;
+  font-size: var(--cinder-text-sm);
+  overflow-wrap: anywhere;
+}
+
+/* What an agent said when it asked, collapsed under its first words (row 25f). */
+.ib-review-pane__said-text {
+  margin: 0;
+  font-size: var(--cinder-text-sm);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* The input line: each name muted, so names and values read apart (row 26o). */
+.ib-review-pane__input-key {
+  color: var(--cinder-text-muted);
+}
+
+/* A row's second line: the agent's name takes the ellipsis, and the risk always shows. */
+.ib-review-row__kind {
+  display: flex;
+  gap: 0.25em;
+  min-inline-size: 0;
+}
+
+.ib-review-row__from {
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ib-review-row__risk {
+  flex: none;
+  white-space: nowrap;
 }
 
 /* What became of a review that is no longer waiting, on a neutral surface. */

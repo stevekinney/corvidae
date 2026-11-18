@@ -145,7 +145,9 @@ describe('the reviews page', () => {
     await openRow(container, 0);
     const source = await findByTestId('review-source');
     expect(source.textContent).toContain('Asked by');
-    expect(source.textContent).toContain('waiting since');
+    // How long it has waited, as a duration (rows 25f, 26o).
+    expect(source.textContent?.replace(/\s+/g, ' ')).toMatch(/waiting \d+ (min|h|days?)/);
+    expect(source.textContent).not.toContain('ago');
     const hrefs = [...source.querySelectorAll('a')].map((link) => link.getAttribute('href'));
     expect(hrefs).toEqual(['/agents/tool-runner', '/chats/session-1', '/runs/run-1']);
   });
@@ -161,13 +163,17 @@ describe('the reviews page', () => {
 
 describe('deciding a Bureau tool approval', () => {
   test('shows the tool and what it was given before it is decided', async () => {
-    const { container, findByRole, findByText } = open({ reviews: [APPROVAL] });
+    const { container, findByRole, findByTestId } = open({ reviews: [APPROVAL] });
     await waitFor(() => expect(rows(container).length).toBe(1));
     await openRow(container, 0);
     await findByRole('button', { name: 'Approve' });
-    // What it was given, on one line with each name in words (row 26o, COR-2426).
-    const input = await findByText('Order ID order-1001, Cents 4200');
-    expect(input.getAttribute('data-testid')).toBe('review-input-line');
+    // What it was given, on one line with each name in words (row 26o, COR-2426), the names muted
+    // apart from the values (design review 1).
+    const input = await findByTestId('review-input-line');
+    expect(input.textContent?.replace(/\s+/g, ' ').trim()).toBe('Order ID order-1001, Cents 4200');
+    expect(
+      [...input.querySelectorAll('.ib-review-pane__input-key')].map((key) => key.textContent),
+    ).toEqual(['Order ID', 'Cents']);
   });
 
   test('approves through bureau.reviews.resolve with the review’s id and round, and the row goes', async () => {
@@ -248,8 +254,9 @@ describe('deciding a Bureau tool approval', () => {
     const { container, findByLabelText } = open({ reviews: [APPROVAL] });
     await waitFor(() => expect(rows(container).length).toBe(1));
     await openRow(container, 0);
-    expect(await findByLabelText('Note')).not.toBeNull();
-    expect(container.textContent).not.toContain('(optional)');
+    // A visible label, as rows 07f and 26o draw it.
+    expect(await findByLabelText('Note (optional)')).not.toBeNull();
+    expect(container.textContent).toContain('Note (optional)');
   });
 
   test('says the approval was not remembered when the Bureau could not store the grant', async () => {
@@ -742,6 +749,36 @@ describe('answering a Bureau question', () => {
     });
   });
 
+  test('says a question answered elsewhere is no longer waiting, not a failure (COR-2426)', async () => {
+    const { container, findByRole, findByTestId } = open({ reviews: [CHOICES] });
+    await waitFor(() => expect(rows(container).length).toBe(1));
+    await openRow(container, 0);
+    stub?.on('bureau.tasks.respond', () => {
+      throw new StubFault('Conflict', 409, 'The task has no open wait for signal "environment"', {
+        reason: 'REVIEW_ALREADY_RESOLVED: The task has no open wait for signal "environment"',
+      });
+    });
+
+    await fireEvent.click(await findByRole('radio', { name: 'production' }));
+
+    const gone = await findByTestId('review-gone');
+    expect(gone.textContent).toContain(REVIEWS_COPY.noLongerWaiting.message);
+    expect(container.ownerDocument.querySelector('.cinder-toast')).toBeNull();
+  });
+
+  test('shows what the agent said when it asked, under its first words, apart from the question (COR-2426)', async () => {
+    const said = 'I found two release branches and need your pick before I tag one.';
+    const { container, findByTestId } = open({ reviews: [{ ...CHOICES, said }] });
+    await waitFor(() => expect(rows(container).length).toBe(1));
+    await openRow(container, 0);
+
+    const disclosure = await findByTestId('review-said');
+    expect(disclosure.textContent).toContain('said');
+    expect(disclosure.textContent).toContain('I found two release branches');
+    // The question itself is still the pane's heading, not repeated in the disclosure.
+    expect(disclosure.textContent?.includes(CHOICES.prompt ?? '')).toBe(false);
+  });
+
   test('picks the numbered choice when a number key is pressed, and says the keys do', async () => {
     const { container, findByText, findByRole } = open({ reviews: [CHOICES] });
     await waitFor(() => expect(rows(container).length).toBe(1));
@@ -786,6 +823,27 @@ describe('answering a Bureau question', () => {
 });
 
 describe('an engine review', () => {
+  test('says which workflow asked, at which step, and what its author says (rows 25o to 25q, COR-2426)', async () => {
+    const pending = weftPending({
+      step: 'Collect merged changes',
+      message: 'Here is the draft. Approve it to publish, or send it back with a note.',
+    });
+    const { container, findByTestId } = open({
+      weftReviews: [pending],
+      workflowNames: { [pending.workflowId]: 'release-notes' },
+    });
+    await waitFor(() => expect(rows(container).length).toBe(1));
+    await openRow(container, 0);
+
+    const source = await findByTestId('review-source');
+    expect(source.textContent?.replace(/\s+/g, ' ')).toContain(
+      'Asked by the Release notes workflow, step Collect merged changes,',
+    );
+    expect((await findByTestId('review-intro')).textContent).toBe(
+      'Here is the draft. Approve it to publish, or send it back with a note.',
+    );
+  });
+
   test('is approved from its own bar as the caller, and goes from the list', async () => {
     const { container, findByRole } = open({ weftReviews: [weftPending()] });
     await waitFor(() => expect(rows(container).length).toBe(1));
@@ -824,8 +882,8 @@ describe('an engine review', () => {
     expect(queryByRole('button', { name: 'Deny' })).toBeNull();
     expect(queryByRole('button', { name: 'Submit decision' })).toBeNull();
     expect(queryByLabelText(/Reviewer/)).toBeNull();
-    expect(getByLabelText('Note')).not.toBeNull();
-    expect(container.textContent).not.toContain('(optional)');
+    // Row 25p: "Note (optional)".
+    expect(getByLabelText('Note (optional)')).not.toBeNull();
     expect(getByText(REVIEWS_COPY.workflow.noteDescription)).not.toBeNull();
     expect(getByText(REVIEWS_COPY.workflow.footer)).not.toBeNull();
     expect(getByText(REVIEWS_COPY.workflowEyebrow)).not.toBeNull();

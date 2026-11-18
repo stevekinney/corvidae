@@ -42,6 +42,8 @@ export type BureauWorld = {
   contexts?: readonly string[];
   /** The engine's reviews, which `GET /v1/reviews` answers by status. Empty unless a test sets some. */
   weftReviews: ReviewListEntry[];
+  /** Each workflow's name by its identifier, which the Bureau reads from the engine as it lists. */
+  workflowNames?: Readonly<Record<string, string>>;
 };
 
 export type BureauWorldStub = {
@@ -74,7 +76,13 @@ export function emptyBureauWorld(overrides: Partial<BureauWorld> = {}): BureauWo
 }
 
 /** One of the engine's reviews as the merged list shows it (`source: 'engine'`). */
-function engineReviewOf(entry: ReviewListEntry): EngineReview {
+function engineReviewOf(
+  entry: ReviewListEntry,
+  workflowNames: Readonly<Record<string, string>> = {},
+): EngineReview {
+  const workflowName = Object.hasOwn(workflowNames, entry.workflowId)
+    ? workflowNames[entry.workflowId]
+    : undefined;
   const common = {
     source: 'engine' as const,
     kind: 'engine-review' as const,
@@ -86,6 +94,10 @@ function engineReviewOf(entry: ReviewListEntry): EngineReview {
     reviewers: entry.reviewers,
     allowPartial: entry.allowPartial,
     artifact: entry.artifact,
+    // COR-2426: as the Bureau carries them from the stored request.
+    ...(workflowName === undefined ? {} : { workflowName }),
+    ...(entry.step === undefined ? {} : { step: entry.step }),
+    ...(entry.message === undefined ? {} : { message: entry.message }),
   };
   if (entry.status === 'pending') return { ...common, status: 'pending' };
   return {
@@ -150,7 +162,7 @@ function defaultHandlers(world: BureauWorld): Record<string, BureauHandler> {
         ...world.reviews.filter((review) => (review.status === 'pending') !== resolved),
         ...world.weftReviews
           .filter((entry) => (entry.status === 'pending') !== resolved)
-          .map(engineReviewOf),
+          .map((entry) => engineReviewOf(entry, world.workflowNames)),
       ];
       // Waiting: the longest first. Decided: the latest decision first.
       const decidedAt = (review: BureauReview | EngineReview): number =>

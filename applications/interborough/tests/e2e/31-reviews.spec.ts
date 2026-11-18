@@ -118,7 +118,7 @@ test.describe('a tool approval', () => {
     const source = paneOf(page).getByTestId('review-source');
     await expect(source).toContainText('Asked by');
     await expect(source.getByRole('link', { name: /tool runner/i })).toBeVisible();
-    await expect(source).toContainText('waiting since');
+    await expect(source).toContainText(/waiting \d+ (min|h|days?)/);
     await expect(paneOf(page)).toContainText('order-1001');
     // No raw policy string, no Live toggle, and no separate section for the engine's reviews.
     await expect(page.getByText(/requires approval/)).toHaveCount(0);
@@ -135,7 +135,7 @@ test.describe('a tool approval', () => {
   test('denied from the inbox with a note never runs the tool', async ({ page, request }) => {
     const { threadId, review } = await waitingRefund(page, request, 'reviews-reject');
     const resolves = recordResolves(page);
-    await paneOf(page).getByLabel('Note', { exact: true }).fill('Wrong customer.');
+    await paneOf(page).getByLabel('Note (optional)', { exact: true }).fill('Wrong customer.');
     await paneOf(page).getByRole('button', { name: 'Deny' }).click();
 
     await expect(rowOf(page, review)).toHaveCount(0);
@@ -153,7 +153,7 @@ test.describe('a tool approval', () => {
   }) => {
     const approved = await waitingRefund(page, request, 'reviews-key-approve');
     // Typing an "a" or a "d" into the note is typing, not a decision.
-    const note = paneOf(page).getByLabel('Note', { exact: true });
+    const note = paneOf(page).getByLabel('Note (optional)', { exact: true });
     await note.fill('');
     await note.press('a');
     await note.press('d');
@@ -170,7 +170,7 @@ test.describe('a tool approval', () => {
 
     const denied = await waitingRefund(page, request, 'reviews-key-deny');
     const resolves = recordResolves(page);
-    await paneOf(page).getByLabel('Note', { exact: true }).fill('Not this one.');
+    await paneOf(page).getByLabel('Note (optional)', { exact: true }).fill('Not this one.');
     await paneOf(page).getByRole('heading', { level: 2 }).click();
     await page.keyboard.press('d');
     await expect(rowOf(page, denied.review)).toHaveCount(0);

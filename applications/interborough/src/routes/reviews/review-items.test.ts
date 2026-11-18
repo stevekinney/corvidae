@@ -169,12 +169,14 @@ describe('the dot a decided review carries', () => {
 describe('a row’s second line (rows 25x, 07c, COR-2426)', () => {
   test('names the agent by the display name it is given, and says when the call cannot be undone', () => {
     const approval = toolApprovalFixture();
-    expect(reviewLineTwo(approval, 'Tool runner')).toBe(
-      `${REVIEWS_COPY.toolApproval} from Tool runner, Can’t be undone`,
-    );
+    expect(reviewLineTwo(approval, 'Tool runner')).toEqual({
+      kind: REVIEWS_COPY.toolApproval,
+      from: 'from Tool runner',
+      risk: 'can’t be undone',
+    });
   });
 
-  test('says nothing of undoing for a call that is not high risk, nor for a question', () => {
+  test('says nothing of undoing for a call that is not high risk, a decided one, or a question', () => {
     const fixture = toolApprovalFixture();
     const medium = toolApprovalFixture({
       approval: {
@@ -182,13 +184,16 @@ describe('a row’s second line (rows 25x, 07c, COR-2426)', () => {
         action: { type: 'approval', risk: 'medium', operation: { kind: 'other' } },
       },
     });
-    expect(reviewLineTwo(medium, 'Tool runner')).toBe(
-      `${REVIEWS_COPY.toolApproval} from Tool runner`,
-    );
-    expect(reviewLineTwo(humanWaitFixture(), 'Request human input')).toBe(
-      `${REVIEWS_COPY.humanWait} from Request human input`,
-    );
-    expect(reviewLineTwo(engine(), undefined)).toBe(REVIEWS_COPY.workflowReview);
+    expect(reviewLineTwo(medium, 'Tool runner').risk).toBeUndefined();
+    // A Done row has nothing left to undo (row 25x).
+    expect(
+      reviewLineTwo(toolApprovalFixture({ status: 'approved' }), 'Tool runner').risk,
+    ).toBeUndefined();
+    expect(reviewLineTwo(humanWaitFixture(), 'Request human input')).toEqual({
+      kind: REVIEWS_COPY.humanWait,
+      from: 'from Request human input',
+    });
+    expect(reviewLineTwo(engine(), undefined)).toEqual({ kind: REVIEWS_COPY.workflowReview });
   });
 });
 

@@ -51,6 +51,10 @@
   <p class="ib-review-pane__eyebrow">{REVIEWS_COPY.workflowEyebrow}</p>
   <h2 class="ib-review-pane__question">{review.reviewType}</h2>
   <ReviewSource {review} {waiting} />
+  {#if review.message !== undefined}
+    <!-- COR-2426, row 25o: what the workflow's author says to the reviewer. -->
+    <p class="ib-review-pane__intro" data-testid="review-intro">{review.message}</p>
+  {/if}
 
   {#if resolution !== undefined}
     <div class="ib-review-resolution" data-testid="review-resolution">

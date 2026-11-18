@@ -1843,6 +1843,7 @@
     "$|oneOf[1].resolution.reason",
     "$|oneOf[1].resolution.secretRefs",
     "$|oneOf[1].runId",
+    "$|oneOf[1].said",
     "$|oneOf[1].sessionId",
     "$|oneOf[1].signalName",
     "$|oneOf[1].source",
@@ -1917,6 +1918,7 @@
     "$.reviews[]|oneOf[1].resolution.reason",
     "$.reviews[]|oneOf[1].resolution.secretRefs",
     "$.reviews[]|oneOf[1].runId",
+    "$.reviews[]|oneOf[1].said",
     "$.reviews[]|oneOf[1].sessionId",
     "$.reviews[]|oneOf[1].signalName",
     "$.reviews[]|oneOf[1].source",
@@ -1932,6 +1934,7 @@
     "$.reviews[]|oneOf[2].artifact.*",
     "$.reviews[]|oneOf[2].id",
     "$.reviews[]|oneOf[2].kind",
+    "$.reviews[]|oneOf[2].message",
     "$.reviews[]|oneOf[2].requestedAt",
     "$.reviews[]|oneOf[2].resolution",
     "$.reviews[]|oneOf[2].resolution.decidedAt",
@@ -1943,6 +1946,8 @@
     "$.reviews[]|oneOf[2].runId",
     "$.reviews[]|oneOf[2].source",
     "$.reviews[]|oneOf[2].status",
+    "$.reviews[]|oneOf[2].step",
+    "$.reviews[]|oneOf[2].workflowName",
     "$.total"
   ],
   "output:bureau.reviews.resolve": [

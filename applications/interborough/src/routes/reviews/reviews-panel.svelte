@@ -571,11 +571,18 @@
             >{/snippet}
           {#snippet description()}
             {@const agent = agentOf(item.review)}
+            {@const line = reviewLineTwo(
+              item.review,
+              agent === undefined ? undefined : agentLabel(displayName(agent), undefined),
+            )}
+            <!-- The agent's name takes the ellipsis; the risk is its own span and always shows. -->
             <span class="ib-review-row__kind">
-              {reviewLineTwo(
-                item.review,
-                agent === undefined ? undefined : agentLabel(displayName(agent), undefined),
-              )}
+              <span class="ib-review-row__from"
+                >{line.kind}{line.from === undefined ? '' : ` ${line.from}`}</span
+              >{#if line.risk !== undefined}<span
+                  class="ib-review-row__risk"
+                  data-testid="review-row-risk">, {line.risk}</span
+                >{/if}
             </span>
           {/snippet}
           {#snippet meta()}

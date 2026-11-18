@@ -20,8 +20,10 @@ export const REVIEWS_COPY = {
   wantsToRun: 'It wants to run',
   /** How risky the tool is, by the risk the approval declares; a low risk says nothing. */
   risk: { high: 'Dangerous, Can’t be undone', medium: 'Changes things' },
+  /** The disclosure of what an agent said when it asked (row 25f): "Request human input said …". */
+  said: (agent: string, text: string): string => `${agent} said ${text}`,
   /** On a row's second line, for an approval of a call that cannot be undone (rows 25x, 07c). */
-  cantBeUndone: 'Can’t be undone',
+  cantBeUndone: 'can’t be undone',
   /** The placeholder of the note field on an approval. */
   notePlaceholder: 'Add a note',
   /** Said in place of a review that left the queue while it was open: the agent moved on. */
@@ -78,7 +80,7 @@ export const REVIEWS_COPY = {
   /** The footer button that commits a structured answer (a form), which picking a value does not send. */
   sendAnswer: 'Send answer',
   /** The optional note saved with any decision; on a denial the agent reads it. */
-  noteLabel: 'Note',
+  noteLabel: 'Note (optional)',
   /** Said under the note field: where the note goes. */
   noteDescription: 'Saved with your decision. If you deny, the agent reads it as the reason.',
   toolLabel: 'Tool',
@@ -105,8 +107,13 @@ export const REVIEWS_COPY = {
   source: {
     askedBy: 'Asked by',
     in: 'in',
-    waitingSince: 'waiting since',
+    /** Before how long it has waited, as a duration: "waiting 4 min" (rows 25f, 26o). */
+    waiting: 'waiting',
     askedAt: 'asked',
+    /** The workflow that asked, by its name (row 25o): "the Release notes workflow". */
+    workflowNamed: (name: string): string => `the ${name} workflow`,
+    /** The step of that workflow that asked: "step Collect merged changes". */
+    step: (step: string): string => `step ${step}`,
     thisRun: 'this run',
     unknownWorkflow: 'a workflow',
   },

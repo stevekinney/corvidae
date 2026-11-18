@@ -245,6 +245,11 @@ const humanWaitReviewSchema = z.object({
   signalName: z.string(),
   prompt: z.string().optional(),
   /**
+   * COR-2426: what the agent wrote beside its question in the step that asked it, kept with the
+   * park; absent when it kept none.
+   */
+  said: z.string().optional(),
+  /**
    * The JSON Schema (2020-12) the answer must satisfy, when the question has one: the model's
    * per-call `answerSchema`, else the author's per-signal one. It carries the `x-` keywords that
    * choose the control (`x-labels`, `x-allowOther`, `x-kind`, `x-secret`, `x-asset`). Absent, any
@@ -294,6 +299,16 @@ const engineReviewSchema = z.object({
   allowPartial: z.boolean(),
   /** What the reviewer is asked to judge; whatever the workflow put there. */
   artifact: z.unknown().optional(),
+  /**
+   * COR-2426: the workflow the review belongs to, by its name (the engine's workflow type, such as
+   * `release-notes`), read from the engine as the list is read; absent when the engine no longer
+   * holds the workflow.
+   */
+  workflowName: z.string().optional(),
+  /** COR-2426: the step of the workflow that asked, as its author named it; absent when none was given. */
+  step: z.string().optional(),
+  /** COR-2426: what the workflow's author says to the reviewer above the artifact; absent when none was given. */
+  message: z.string().optional(),
   resolution: z
     .object({
       decision: z.enum(['approved', 'rejected', 'needs-changes']),
@@ -463,6 +478,7 @@ export function projectReview(
     kind: 'human-wait',
     signalName: review.signalName,
     ...(review.prompt === undefined ? {} : { prompt: review.prompt }),
+    ...(review.said === undefined ? {} : { said: review.said }),
     ...(review.inputSchema === undefined ? {} : { inputSchema: review.inputSchema }),
     ...(review.workflow === undefined ? {} : { workflow: projectWorkflowOrigin(review.workflow) }),
   };
@@ -725,9 +741,10 @@ function decodePageToken(token: string, filters: string): ListPosition {
 }
 
 /** An engine review as the list shows it. */
-function projectEngineReview(
+export function projectEngineReview(
   entry: Awaited<ReturnType<RegistryAgnosticEngine['listReviews']>>[number],
   now: number,
+  workflowName?: string,
 ): z.input<typeof engineReviewSchema> {
   return {
     source: 'engine',
@@ -742,6 +759,10 @@ function projectEngineReview(
     reviewers: [...entry.reviewers],
     allowPartial: entry.allowPartial,
     artifact: entry.artifact,
+    // COR-2426: who asks and what the author says, as the stored request keeps them.
+    ...(workflowName === undefined ? {} : { workflowName }),
+    ...(entry.step === undefined ? {} : { step: entry.step }),
+    ...(entry.message === undefined ? {} : { message: entry.message }),
     ...(entry.status === 'completed'
       ? {
           resolution: {
@@ -859,6 +880,22 @@ export const reviewsListOperation = defineOperation<
       const listed = await engine.listReviews({
         status: status === 'pending' ? 'pending' : 'completed',
       });
+      // COR-2426: each workflow's name, read once per workflow; a workflow the engine no longer
+      // holds, or that cannot be read, is listed without one.
+      const workflowNames = new Map<string, string | undefined>();
+      for (const entry of listed) {
+        if (workflowNames.has(entry.workflowId)) continue;
+        let name: string | undefined;
+        try {
+          name =
+            typeof engine.get === 'function'
+              ? (await engine.get(entry.workflowId))?.type
+              : undefined;
+        } catch {
+          name = undefined;
+        }
+        workflowNames.set(entry.workflowId, name);
+      }
       for (const entry of listed) {
         const decidedAt = entry.status === 'completed' ? entry.timestamp : undefined;
         if (
@@ -872,7 +909,7 @@ export const reviewsListOperation = defineOperation<
           at: decidedAt ?? entry.createdAt,
           source: 'engine',
           id: entry.reviewId,
-          item: projectEngineReview(entry, now),
+          item: projectEngineReview(entry, now, workflowNames.get(entry.workflowId)),
         });
       }
     }

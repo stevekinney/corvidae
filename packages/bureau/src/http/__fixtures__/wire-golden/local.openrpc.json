@@ -22877,6 +22877,9 @@
                       "runId": {
                         "type": "string"
                       },
+                      "said": {
+                        "type": "string"
+                      },
                       "sessionId": {
                         "type": "string"
                       },
@@ -22954,6 +22957,9 @@
                         "const": "engine-review",
                         "type": "string"
                       },
+                      "message": {
+                        "type": "string"
+                      },
                       "requestedAt": {
                         "type": "number"
                       },
@@ -23006,6 +23012,12 @@
                           "pending",
                           "completed"
                         ],
+                        "type": "string"
+                      },
+                      "step": {
+                        "type": "string"
+                      },
+                      "workflowName": {
                         "type": "string"
                       }
                     },
@@ -23465,6 +23477,9 @@
                   "type": "object"
                 },
                 "runId": {
+                  "type": "string"
+                },
+                "said": {
                   "type": "string"
                 },
                 "sessionId": {

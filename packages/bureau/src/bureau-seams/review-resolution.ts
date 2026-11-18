@@ -354,6 +354,8 @@ export function createReviewResolution<D extends AgentDefinitions>(
             const promptValue = detail?.['prompt'];
             const prompt = typeof promptValue === 'string' ? promptValue : undefined;
             const inputSchema = humanInputSchemaOf(detail?.['inputSchema']);
+            // COR-2426: what the agent said, which the park event carries from the park itself.
+            const said = detail?.['said'];
             reviews.push({
               kind: 'human-wait',
               id,
@@ -363,6 +365,7 @@ export function createReviewResolution<D extends AgentDefinitions>(
               signalName,
               prompt,
               ...(inputSchema === undefined ? {} : { inputSchema }),
+              ...(typeof said === 'string' && said !== '' ? { said } : {}),
               requestedAt: parkedAction.timestamp,
               ageMilliseconds: now - parkedAction.timestamp,
               status: 'pending',

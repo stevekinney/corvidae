@@ -148,6 +148,18 @@ export function waitedFor(at: number, now: number, zone: string = viewerTimeZone
 }
 
 /**
+ * How long something has been waiting, as a duration for "waiting 4 min" (rows 25f, 26o): under a
+ * minute "1 min", then minutes, hours ("1 h") and days ("1 day", "3 days").
+ */
+export function waitingFor(at: number, now: number): string {
+  const elapsed = Math.max(0, now - at);
+  if (elapsed < 3_600_000) return `${String(Math.max(1, Math.round(elapsed / 60_000)))} min`;
+  if (elapsed < 86_400_000) return `${String(Math.floor(elapsed / 3_600_000))} h`;
+  const days = Math.floor(elapsed / 86_400_000);
+  return days === 1 ? '1 day' : `${String(days)} days`;
+}
+
+/**
  * The calendar day of an instant in a zone, as a number that two instants on one day share and that
  * grows by one each day, so the difference of two is the days between them.
  */

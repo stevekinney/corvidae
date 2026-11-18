@@ -160,6 +160,11 @@ export type TaskRespondRefusal = {
   readonly field?: string;
   readonly reason?: string;
   /**
+   * COR-2426 — set on the `CONFLICT` of a wait that was already resolved: nothing took effect and it
+   * is no longer waiting, which the wire tells apart as `bureau.reviews.resolve` does.
+   */
+  readonly alreadyResolved?: true;
+  /**
    * Every way an answer failed the wait's schema (COR-1804), with `path` relative to the answer
    * (rooted at `field` on the wire). Absent for a refusal that is about the request itself.
    */
@@ -239,6 +244,9 @@ export function createTaskResponder(dependencies: TaskResponderDependencies): Ta
   const notFound = (taskId: string): Error =>
     refuse({ code: 'NOT_FOUND', message: `Task "${taskId}" not found` });
   const conflict = (message: string): Error => refuse({ code: 'CONFLICT', message });
+  // COR-2426: the wait was resolved, or stopped waiting, before this command reached it.
+  const noLongerWaiting = (message: string): Error =>
+    refuse({ code: 'CONFLICT', message, alreadyResolved: true });
   const invalid = (field: string, message: string): Error =>
     refuse({ code: 'BAD_REQUEST', message, field });
   const answerInvalid = (field: string, issues: readonly ReviewAnswerIssue[]): Error =>
@@ -254,10 +262,17 @@ export function createTaskResponder(dependencies: TaskResponderDependencies): Ta
     const offered = isOwner
       ? task.openWaits
       : task.openWaits.filter((wait) => wait.kind === 'human-wait');
+    // A command that names the wait it answers was sent while that wait was open: when it is no
+    // longer, it was answered or stopped waiting first, and is refused as `bureau.reviews.resolve`
+    // refuses a review already resolved (COR-2426).
+    // A non-owner is told nothing of approvals, so only a question it names counts.
+    const named = input.signalName !== undefined || (isOwner && input.callId !== undefined);
     if (offered.length === 0) {
       // A non-owner is never told an approval is open: for it the task has nothing to answer.
       if (!isOwner && task.openWaits.length > 0) throw notFound(task.id);
-      throw conflict('The task is not awaiting input');
+      throw named
+        ? noLongerWaiting('The task is no longer waiting for this answer')
+        : conflict('The task is not awaiting input');
     }
     let matches: readonly OpenWait[] = offered;
     if (input.signalName !== undefined) {
@@ -272,13 +287,13 @@ export function createTaskResponder(dependencies: TaskResponderDependencies): Ta
     const [only, ...rest] = matches;
     if (only === undefined) {
       if (!isOwner && input.callId !== undefined) throw notFound(task.id);
-      throw conflict(
-        input.signalName !== undefined
-          ? `The task has no open wait for signal "${input.signalName}"`
-          : input.callId !== undefined
-            ? `The task has no open approval for call "${input.callId}"`
-            : 'The task is not awaiting input',
-      );
+      if (input.signalName !== undefined) {
+        throw noLongerWaiting(`The task has no open wait for signal "${input.signalName}"`);
+      }
+      if (input.callId !== undefined) {
+        throw noLongerWaiting(`The task has no open approval for call "${input.callId}"`);
+      }
+      throw conflict('The task is not awaiting input');
     }
     if (rest.length > 0) {
       throw invalid(
@@ -605,7 +620,13 @@ export function createTaskResponder(dependencies: TaskResponderDependencies): Ta
             receipt: 'applied',
           };
         } else if (review.status !== 'pending') {
-          return await release(conflict('The review was already resolved'));
+          return await release(
+            refuse({
+              code: 'CONFLICT',
+              message: 'The review was already resolved',
+              alreadyResolved: true,
+            }),
+          );
         } else {
           const resolved: ResolveReviewResult = await reviews.resolve({
             id: reviewId,

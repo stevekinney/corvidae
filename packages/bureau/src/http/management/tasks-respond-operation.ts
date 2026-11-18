@@ -27,7 +27,11 @@ import { BureauError, TaskRespondError } from '../../bureau-errors.ts';
 import { type TasksRespondInput, tasksRespondInput } from '../../tasks/respond-to-task.ts';
 import type { TaskRegistry } from '../../task-registry.ts';
 import type { BureauTasks, TaskRespondResult } from '../../bureau-types/tasks.ts';
-import { reviewFault, reviewReceiptSchema } from '../bureau-reviews-operations.ts';
+import {
+  REVIEW_ALREADY_RESOLVED,
+  reviewFault,
+  reviewReceiptSchema,
+} from '../bureau-reviews-operations.ts';
 import {
   type BureauOwnershipHost,
   mayUseCrossOwnerScope,
@@ -85,6 +89,14 @@ function respondFault(error: unknown, taskId: string): unknown {
                 code: issue.code,
               })),
       },
+    } satisfies OperationFault;
+  }
+  // COR-2426: a wait already resolved carries the token `bureau.reviews.resolve` gives it.
+  if (error instanceof TaskRespondError && error.alreadyResolved) {
+    return {
+      code: 'Conflict',
+      message: error.message,
+      data: { reason: `${REVIEW_ALREADY_RESOLVED}: ${error.message}` },
     } satisfies OperationFault;
   }
   if (error instanceof TaskRespondError && error.reason !== undefined) {
