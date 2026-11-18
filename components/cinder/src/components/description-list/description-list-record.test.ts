@@ -19,8 +19,9 @@ describe('DescriptionList record-details anatomy (fields variant)', () => {
     const flat = /\[data-cinder-variant='fields'\]\s*\{([^}]*)\}/s.exec(css)?.[1] ?? '';
     expect(flat).not.toContain('background');
     expect(flat).not.toContain('border-radius');
+    // The group's fill is the list's `::before`, so a container query on the list can switch it.
     expect(css).toMatch(
-      /\[data-cinder-variant='fields'\]\[data-cinder-framed\]\s*\{[^}]*background: var\(--cinder-surface-inset\)/s,
+      /\[data-cinder-variant='fields'\]\[data-cinder-framed\]::before\s*\{[^}]*background: var\(--cinder-surface-inset\)/s,
     );
     expect(css).toMatch(
       /\[data-cinder-variant='fields'\]\[data-cinder-framed\]\s*\{[^}]*border-radius: var\(--cinder-radius-surface\)/s,

@@ -125,19 +125,33 @@
    * term is a regular-weight muted label in a fixed 140px column, the value beside it in the default
    * color, and each row is at least 44px tall, with a quiet rule under each row. It is flat by
    * default, so it never draws a box inside a pane or a card; `framed` puts the rows in one tinted
-   * group, on the raised fill on a phone as an Inspector's group is. A row with an `href` ends in a
-   * trailing chevron. It stacks below 23rem of its own width. */
+   * group, on the raised fill when the list is narrower than 700px as an Inspector's group is. A row
+   * with an `href` ends in a trailing chevron. It stacks below 23rem of its own width. */
   .cinder-description-list[data-cinder-variant='fields'] {
     container-type: inline-size;
+    container-name: cinder-description-list;
     display: grid;
     grid-template-columns: 8.75rem minmax(0, 1fr);
   }
 
+  /* The group's fill is a pseudo-element under the rows, not the list's own background: the list is
+   * the container its width is measured on, and a container query can restyle the container's
+   * pseudo-elements but not the container itself. */
   .cinder-description-list[data-cinder-variant='fields'][data-cinder-framed] {
+    position: relative;
+    isolation: isolate;
     padding-inline-start: var(--cinder-space-4);
     overflow: hidden;
     border-radius: var(--cinder-radius-surface);
+  }
+
+  .cinder-description-list[data-cinder-variant='fields'][data-cinder-framed]::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: -1;
     background: var(--cinder-surface-inset);
+    pointer-events: none;
   }
 
   .cinder-description-list[data-cinder-variant='fields'] .cinder-description-list__row {
@@ -176,14 +190,22 @@
     padding-inline-end: var(--cinder-space-2);
   }
 
-  /* On a phone, as an Inspector's does, a framed group takes the raised fill of a grouped list, and
-   * the label takes the small size an InspectorRow's label takes. */
-  @media (width < 700px) {
-    .cinder-description-list[data-cinder-variant='fields'][data-cinder-framed] {
+  /* Below 700px of the list's own width, as an Inspector below 700px of its own (COR-2394), a framed
+   * group takes the raised fill of a grouped list and the label takes the small size an
+   * InspectorRow's label takes, so a list and an Inspector of one width agree. A size query measures
+   * the content box, so a framed list, with its 1rem start padding, switches at 42.75rem. */
+  @container cinder-description-list (width < 700px) {
+    .cinder-description-list[data-cinder-variant='fields']:not([data-cinder-framed]) dt {
+      font-size: var(--cinder-text-sm);
+    }
+  }
+
+  @container cinder-description-list (width < 42.75rem) {
+    .cinder-description-list[data-cinder-variant='fields'][data-cinder-framed]::before {
       background: var(--cinder-surface-raised);
     }
 
-    .cinder-description-list[data-cinder-variant='fields'] dt {
+    .cinder-description-list[data-cinder-variant='fields'][data-cinder-framed] dt {
       font-size: var(--cinder-text-sm);
     }
   }

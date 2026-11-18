@@ -130,8 +130,9 @@ describe('DescriptionList', () => {
     const css = readFileSync(new URL('./description-list.css', import.meta.url), 'utf8');
     const base = css.match(/\[data-cinder-variant='fields'\]\s*\{([^}]*)\}/s)?.[1] ?? '';
     expect(base).not.toMatch(/background|border-radius|padding-inline-start/);
+    // The tinted fill is the framed list's `::before` (COR-2394).
     expect(css).toMatch(
-      /\[data-cinder-variant='fields'\]\[data-cinder-framed\]\s*\{[^}]*background: var\(--cinder-surface-inset\)/s,
+      /\[data-cinder-variant='fields'\]\[data-cinder-framed\]::before\s*\{[^}]*background: var\(--cinder-surface-inset\)/s,
     );
   });
 
