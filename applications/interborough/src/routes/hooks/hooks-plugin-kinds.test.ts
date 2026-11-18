@@ -301,6 +301,54 @@ describe('the configuration of a saved plugin hook when another revision is adop
     });
   });
 
+  test('a stored configuration the form cannot draw is not replaced by what the form shows at mount when the hook is renamed', async () => {
+    const LOUD_KIND = {
+      ...PAGE_KIND,
+      configuration: {
+        type: 'object',
+        properties: { loud: { type: 'boolean' }, level: { enum: ['low', 'high'] } },
+      },
+    };
+    const stored = { ...PAGER_HOOK, action: { ...PAGER_HOOK.action, configuration: 'ops' } };
+    const view = open('/hooks/pager-hook', {
+      'bureau.hooks.get': () => stored,
+      'bureau.plugins.contributions': () => ({ triggers: [], reactions: [LOUD_KIND] }),
+      'bureau.hooks.update': (params) => ({ ...stored, ...params, revision: 2 }),
+    });
+    await view.findByTestId('contributed-action');
+    const name = (await view.findByLabelText(
+      HOOKS_COPY.editor.check.nameLabel,
+    )) as HTMLInputElement;
+    await fireEvent.input(name, { target: { value: 'Renamed' } });
+    await fireEvent.click(view.getByRole('button', { name: HOOKS_COPY.editor.check.save }));
+    await waitFor(() => expect(stub?.callsTo('bureau.hooks.update').length).toBe(1));
+    const sent = stub?.callsTo('bureau.hooks.update')[0]?.params ?? {};
+    expect(sent['name']).toBe('Renamed');
+    expect(Object.hasOwn(sent, 'action')).toBe(false);
+  });
+
+  test('the read-only pairs of an action not offered follow a newer revision', async () => {
+    let served = {
+      ...PAGER_HOOK,
+      action: { ...PAGER_HOOK.action, configuration: { limit: 3 } },
+    };
+    const view = open('/hooks/pager-hook', {
+      'bureau.hooks.get': () => served,
+      'bureau.plugins.contributions': () => ({ triggers: [], reactions: [] }),
+    });
+    const pairs = await view.findByTestId('stored-configuration');
+    await waitFor(() => expect(pairs.querySelector('dd')?.textContent?.trim()).toBe('3'));
+
+    served = { ...served, revision: 2, action: { ...served.action, configuration: { limit: 4 } } };
+    focusManager.setFocused(false);
+    focusManager.setFocused(true);
+    await waitFor(() =>
+      expect(
+        view.getByTestId('stored-configuration').querySelector('dd')?.textContent?.trim(),
+      ).toBe('4'),
+    );
+  });
+
   test('shows the reloaded configuration after Reload discards what was typed', async () => {
     let served = { ...PAGER_HOOK };
     const view = open('/hooks/pager-hook', { 'bureau.hooks.get': () => served });

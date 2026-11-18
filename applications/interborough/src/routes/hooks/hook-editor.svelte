@@ -1032,6 +1032,7 @@
                       issues={configurationIssues}
                       disabled={saving.isPending}
                       plugin={hook.action.plugin}
+                      reportInitialDraft={form.storedConfigurationDrawable}
                       onChange={(next) => {
                         form.contributedConfiguration = next;
                       }}
@@ -1040,16 +1041,19 @@
                 </div>
               {:else if contributed.isSuccess && storedSchema !== null}
                 <!-- The action is not offered now, so its schema is unknown: the saved pairs are
-                     shown as they are, read only, and nothing is lost or changed (row R10-08). -->
+                     shown as they are, read only, and nothing is lost or changed (row R10-08). The
+                     pairs are made again for each revision of the hook, which they take at mount. -->
                 <div class="ib-hook-editor__contributed" data-testid="stored-configuration">
                   <p class="ib-hook-editor__plain">{copy.action.storedConfiguration}</p>
-                  <HookConfiguration
-                    kindId={`stored:${hook.id}`}
-                    schema={storedSchema}
-                    value={hook.action.configuration}
-                    readOnly
-                    plugin={hook.action.plugin}
-                  />
+                  {#key hook.revision}
+                    <HookConfiguration
+                      kindId={`stored:${hook.id}`}
+                      schema={storedSchema}
+                      value={hook.action.configuration}
+                      readOnly
+                      plugin={hook.action.plugin}
+                    />
+                  {/key}
                 </div>
               {/if}
             {:else}

@@ -88,7 +88,7 @@ export class HookFormState {
    * editor cannot draw (a string, an array, or nothing): it is sent back unchanged unless the
    * configuration was edited. `null` until a plugin hook is loaded.
    */
-  private storedConfiguration: { readonly value: unknown } | null = null;
+  private storedConfiguration = $state.raw<{ readonly value: unknown } | null>(null);
   /** The editable configuration as it was loaded, to tell whether it was edited since. */
   private configurationBaseline = '';
 
@@ -157,6 +157,15 @@ export class HookFormState {
       }
     }
     this.baseline = this.fingerprint();
+  }
+
+  /**
+   * Whether the form can draw the configuration it was loaded with: an object, or none. A string or
+   * an array it cannot, so the draft the form shows at mount is no edit and must not replace it.
+   */
+  get storedConfigurationDrawable(): boolean {
+    const stored = this.storedConfiguration;
+    return stored === null || stored.value === undefined || isPlainObject(stored.value);
   }
 
   /** Whether the plugin action's configuration differs from the one the form was loaded with. */

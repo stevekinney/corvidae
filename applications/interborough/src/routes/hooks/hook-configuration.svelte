@@ -37,6 +37,11 @@
     disabled?: boolean;
     /** The plugin whose action this is: the link to where a key is saved opens it in Settings. */
     plugin?: string | undefined;
+    /**
+     * Whether the draft the form shows at mount is reported as the configuration. Off for a stored
+     * configuration the form cannot draw, so opening the hook does not replace it.
+     */
+    reportInitialDraft?: boolean;
   }
 
   let {
@@ -48,6 +53,7 @@
     issues,
     disabled = false,
     plugin,
+    reportInitialDraft = true,
   }: Props = $props();
 
   const copy = HOOKS_COPY.secrets;
@@ -119,5 +125,6 @@
   {issues}
   {disabled}
   {secrets}
+  {reportInitialDraft}
 />
 <SecretDialog bind:target={adding} />
