@@ -22,9 +22,11 @@ import {
   tasksOf,
 } from '../../../fixtures/chat-states.ts';
 import { CHAT_COPY } from '../../app/copy/chat.ts';
+import { StubFault } from '../../lib/bureau-stub.test-support.ts';
 import type { ProvidersSnapshot } from '../../lib/host-providers.ts';
 import { createQueryClient, queryKeys } from '../../lib/query.ts';
 import ChatConversation from './chat-conversation.svelte';
+import ChatToasts from './chat-toasts.test-harness.svelte';
 import { AGENT, bureau, CONTEXT, landAt } from './pages.test-support.ts';
 import QueryPage from './query-page.test-harness.svelte';
 
@@ -381,6 +383,70 @@ describe('a reply the person stopped (COR-2437)', () => {
     ).toEqual(['Stopped The run was stopped.']);
     expect(notes(container)[0]?.querySelector('button') === null).toBe(true);
   });
+});
+
+// COR-2437 review: a command the Bureau answered as in doubt stays in doubt for as long as it is
+// sent again, so the page sends a new one; it keeps a command only after a definite refusal of it.
+describe('the command a Discard or a Continue is sent under', () => {
+  const BILLING = [{ id: 'user-1', role: 'user', content: 'Rename the billing tables' }] as Record<
+    string,
+    unknown
+  >[];
+  const canceled = (): unknown => ({
+    tasks: [
+      {
+        ...tasksOf('failed-partway')[0],
+        id: 'run-billing',
+        contextId: 'session-1',
+        status: 'canceled',
+        finishReason: 'aborted',
+        statusMessage: null,
+      },
+    ],
+    nextPageToken: null,
+  });
+
+  for (const [method, button] of [
+    ['bureau.contexts.discardturn', 'Discard'],
+    ['bureau.contexts.resumeturn', 'Continue'],
+  ] as const) {
+    test(`${button} sends a new command after an answer of in doubt, and the same one after a definite refusal`, async () => {
+      const answers = [
+        new StubFault('Conflict', 409, 'in doubt', { reason: 'command-in-doubt' }),
+        new StubFault('Conflict', 409, 'refused', { reason: 'history-changed' }),
+        new StubFault('Conflict', 409, 'refused', { reason: 'history-changed' }),
+      ];
+      const served = serve(billingThreadWithPartialReply(BILLING), {
+        answers: {
+          'bureau.tasks.list': canceled,
+          [method]: () => {
+            throw answers.shift() ?? new Error('no more answers');
+          },
+        },
+      });
+      // A refused Discard or Continue says so in a toast, so the shell's toast host is beside it.
+      const { findByRole } = render(ChatToasts, {
+        props: {
+          page: ChatConversation,
+          pageProps: { sessionId: 'session-1', title: 'Plan the week', agentName: 'tool-runner' },
+          client: createQueryClient(),
+        },
+      } as never);
+      const commands = () =>
+        served.calls
+          .filter((entry) => entry.method === method)
+          .map((entry) => String(entry.params['commandId']));
+
+      for (let attempt = 1; attempt <= 3; attempt += 1) {
+        await fireEvent.click(await findByRole('button', { name: button }));
+        await waitFor(() => expect(commands().length).toBe(attempt));
+      }
+
+      const [first, second, third] = commands();
+      expect(second).not.toBe(first);
+      expect(third).toBe(second);
+    });
+  }
 });
 
 describe('an existing chat with no message yet (COR-2285 V1)', () => {
