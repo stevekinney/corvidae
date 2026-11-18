@@ -1573,6 +1573,43 @@ test('[plugin-hook-secret-list] the secret Select lists the keys by plugin with 
   await page.keyboard.press('Escape');
 });
 
+// R10-13 at 320: a long key chosen in the secret Select is cut in its middle in the trigger, which
+// stays inside the screen, and keeps the key's start and end.
+test('[plugin-hook-secret-long-key] a long key chosen at 320 pixels is cut in its middle in the trigger', async ({
+  page,
+}) => {
+  const longKey = 'slack-workspace-admin-bot-token-for-the-reviews-channel';
+  await page.setViewportSize({ width: 320, height: 900 });
+  await openHooks(page, '/hooks/owner-plugin', [OWNER_PLUGIN_HOOK], {}, () => [
+    pluginStanding('slack', 'Slack', 'running', [...SLACK_KEYS, { key: longKey, set: true }]),
+    pluginStanding('pager', 'Pager', 'disabled'),
+    pluginStanding('calendar', 'Calendar', 'needs-setup', [{ key: 'calendar-token', set: false }]),
+  ]);
+  const token = page.getByTestId('contributed-action').getByRole('combobox', { name: /^Token/ });
+  await token.click();
+  await page.getByRole('option', { name: new RegExp(`^${longKey}`) }).click();
+  await expect(page.getByRole('listbox')).toHaveCount(0);
+  const chosen = token.locator('.cinder-select__value .cinder-text');
+  await expect(chosen).toHaveAttribute('data-cinder-truncate', 'middle');
+  await expect(chosen.locator('.cinder-text__head')).toHaveText(/^slack-/);
+  await expect(chosen.locator('.cinder-text__tail')).toHaveText(/channel$/);
+  // The middle is what gives way: head and tail together are shorter than the key.
+  await expect
+    .poll(async () => {
+      const head = await chosen.locator('.cinder-text__head').innerText();
+      const tail = await chosen.locator('.cinder-text__tail').innerText();
+      return `${head}${tail}`.length;
+    })
+    .toBeLessThan(longKey.length);
+  const box = await token.boundingBox();
+  expect((box?.x ?? 0) + (box?.width ?? Number.POSITIVE_INFINITY)).toBeLessThanOrEqual(320);
+  await captureForDesignReview(page, {
+    route: '/hooks/:hook',
+    state: 'plugin-hook-secret-long-key',
+    source: SOURCE,
+  });
+});
+
 // R10-23: the event picker's list open, each event in words.
 for (const width of WIDTHS) {
   test(`[new-hook-event-picker] the event picker lists events in words, at ${width} pixels`, async ({
