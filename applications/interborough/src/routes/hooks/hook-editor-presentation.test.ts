@@ -74,16 +74,20 @@ describe('a stored configuration with no schema to draw it (row R10-08)', () => 
       loud: true,
       routes: ['a', 'b'],
       odd: { $secret: 'k', extra: 1 },
+      sizes: [1, 2],
     });
+    // With no schema, a string may be one the action marks writeOnly: every string, and any value
+    // holding one, is concealed; a number, a boolean and a reference's key are shown.
     expect(schema).toEqual({
       type: 'object',
       properties: {
-        channel: { type: 'string' },
+        channel: { type: 'string', writeOnly: true },
         token: { type: 'string', secret: true },
         limit: { type: 'number' },
         loud: { type: 'boolean' },
-        routes: {},
-        odd: {},
+        routes: { writeOnly: true },
+        odd: { writeOnly: true },
+        sizes: {},
       },
     });
     // Nothing to show is no schema at all.
@@ -97,6 +101,7 @@ describe('a stored configuration with no schema to draw it (row R10-08)', () => 
       'loud',
       'routes',
       'odd',
+      'sizes',
     ]);
   });
 });

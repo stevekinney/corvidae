@@ -449,7 +449,9 @@ describe('a default hook’s page (rows R10-04 to R10-09 and R10-17)', () => {
       expect(stored.querySelector('code[data-cinder-secret-key]')?.textContent).toBe(
         'slack-bot-token',
       );
-      expect(stored.textContent).toContain('ops');
+      // No schema says which string is writeOnly, so a saved string is Hidden, never shown in clear.
+      expect(stored.textContent).not.toContain('ops');
+      expect(stored.textContent).toContain('Hidden');
       expect(stored.textContent).toContain('3');
       expect(view.queryByTestId('contributed-action')).toBeNull();
       cleanup();

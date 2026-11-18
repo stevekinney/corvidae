@@ -816,7 +816,9 @@ test('[default-hook-plugin-disabled] a hook of a disabled plugin is Unavailable,
   // R10-08: the action is not offered, so its saved configuration is shown as pairs, read only.
   const stored = page.getByTestId('stored-configuration');
   await expect(stored.locator('dt', { hasText: /^channel$/i })).toBeVisible();
-  await expect(stored.locator('dd', { hasText: 'ops' })).toBeVisible();
+  // With no schema, a saved string may be writeOnly, so it reads Hidden, never in clear.
+  await expect(stored.locator('dd', { hasText: 'Hidden' }).first()).toBeVisible();
+  await expect(stored).not.toContainText('ops');
   await expect(stored.locator('input, select, textarea, [role="combobox"]')).toHaveCount(0);
   await captureForDesignReview(page, {
     route: '/hooks/:hook',

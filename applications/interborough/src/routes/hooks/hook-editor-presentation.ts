@@ -315,9 +315,12 @@ export function configurationIssuesOf(
 /**
  * A schema that draws a stored configuration as read-only pairs when the action's own schema is not
  * listed (its plugin is off, dropped the action, or withdrew the hook; row R10-08). Each saved key is
- * a field in the order it was saved: a secret reference reads as its key, a string, number or
- * boolean as itself, and anything else as JSON. No value is invented and none is left out. `null`
- * when there is nothing to show: no saved key, or a configuration that is not an object.
+ * a field in the order it was saved: a secret reference reads as its key, a number or boolean as
+ * itself, and anything else as JSON. With no schema, nothing says which string the action marks
+ * `writeOnly`, so every saved string, and any value holding one, is concealed (`writeOnly`, which
+ * SchemaForm reads as "Hidden") rather than risk showing one in clear. No value is invented and
+ * none is left out. `null` when there is nothing to show: no saved key, or a configuration that is
+ * not an object.
  */
 export function storedConfigurationSchema(configuration: unknown): Record<string, unknown> | null {
   if (typeof configuration !== 'object' || configuration === null || Array.isArray(configuration)) {
@@ -331,7 +334,7 @@ export function storedConfigurationSchema(configuration: unknown): Record<string
 }
 
 function storedFieldSchema(value: unknown): Record<string, unknown> {
-  if (typeof value === 'string') return { type: 'string' };
+  if (typeof value === 'string') return { type: 'string', writeOnly: true };
   if (typeof value === 'number') return { type: 'number' };
   if (typeof value === 'boolean') return { type: 'boolean' };
   if (
@@ -343,7 +346,16 @@ function storedFieldSchema(value: unknown): Record<string, unknown> {
   ) {
     return { type: 'string', secret: true };
   }
-  return {};
+  return holdsString(value, 0) ? { writeOnly: true } : {};
+}
+
+/** Whether a string sits anywhere inside `value`, which would be drawn in clear as JSON. */
+function holdsString(value: unknown, depth: number): boolean {
+  if (typeof value === 'string') return true;
+  if (typeof value !== 'object' || value === null) return false;
+  // Deeper than any configuration is written is treated as holding one, so nothing is shown.
+  if (depth > 32) return true;
+  return Object.values(value).some((member) => holdsString(member, depth + 1));
 }
 
 /**
