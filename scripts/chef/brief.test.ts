@@ -29,6 +29,7 @@ import {
 import type { FetchLike, IssueSummary } from './linear.ts';
 import type { Runner } from './process-runner.ts';
 import { UsageError } from './process-runner.ts';
+import { digest } from './verification-plan.ts';
 
 const description = [
   'Some intro.',
@@ -927,7 +928,17 @@ describe('run', () => {
     ];
     const valid = await run(command, { ...dependencies, fetch: designFetch }, pinnedRunner());
     expect(valid.code).toBe(0);
-    const first = JSON.parse(valid.output) as { assignments: { identity: { digest: string } }[] };
+    const first = JSON.parse(valid.output) as {
+      assignments: { identity: { digest: string } }[];
+      scratch: string;
+      path: string;
+    };
+    expect(readFileSync(first.path, 'utf8')).toContain(
+      'Use these pinned bytes; do not refetch live sources.',
+    );
+    expect(
+      readFileSync(join(first.scratch, `context-${digest('verified design v1')}.txt`), 'utf8'),
+    ).toBe('verified design v1');
     const missing = await run(
       command.filter((part) => part !== '--context' && part !== context),
       { ...dependencies, fetch: designFetch },
@@ -943,6 +954,9 @@ describe('run', () => {
     expect(JSON.parse(changed.output).assignments[0].identity.digest).not.toBe(
       first.assignments[0]?.identity.digest,
     );
+    expect(
+      readFileSync(join(first.scratch, `context-${digest('verified design v1')}.txt`), 'utf8'),
+    ).toBe('verified design v1');
     writeFileSync(
       context,
       JSON.stringify([{ locator, content: 'verified design v2', digest: 'wrong' }]),

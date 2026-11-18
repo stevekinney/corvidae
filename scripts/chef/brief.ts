@@ -539,8 +539,12 @@ function scratchLines(options: BriefOptions): string[] {
 
 function writeContextSnapshots(options: BriefOptions, scratch: string | undefined): void {
   if (scratch === undefined || options.sourceContext === undefined) return;
+  const written = new Set<string>();
   for (const [, content] of options.sourceContext)
-    writeFileSync(join(scratch, `context-${digest(content)}.txt`), content, { flag: 'wx' });
+    if (!written.has(digest(content))) {
+      writeFileSync(join(scratch, `context-${digest(content)}.txt`), content, { flag: 'wx' });
+      written.add(digest(content));
+    }
 }
 
 /** The files, verification and charter sections that close every brief. */
