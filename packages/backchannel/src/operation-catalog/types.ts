@@ -54,9 +54,13 @@ export function isValidOperationName(name: string): boolean {
  * on that transport receive `UnsupportedTransport`, not `MethodNotFound`.
  */
 export type TransportAvailability = {
+  /** Whether REST and Server-Sent Events serve the operation. */
   http: boolean;
+  /** Whether JSON-RPC over HTTP serves the operation. */
   jsonRpcHttp: boolean;
+  /** Whether JSON-RPC over WebSocket serves the operation. */
   jsonRpcWebSocket: boolean;
+  /** Whether JSON-RPC over stdio serves the operation. */
   jsonRpcStdio: boolean;
 };
 
@@ -66,8 +70,11 @@ export type TransportAvailability = {
  */
 export type UnknownKeyDisposition = 'reject' | 'strip' | 'passthrough';
 
+/** How each transport treats input keys the operation's schema does not declare. */
 export type UnknownKeyPolicy = {
+  /** What REST does with an undeclared top-level key. */
   http: UnknownKeyDisposition;
+  /** What JSON-RPC does with an undeclared top-level key. */
   jsonRpc: UnknownKeyDisposition;
 };
 
@@ -85,8 +92,11 @@ export type StreamOperationInvocation<Element> = AsyncIterable<Element>;
 export type SubscriptionOperationInvocation<Element, Envelope> = {
   /** Internal lifecycle key used by transports; independent from the public envelope. */
   readonly subscriptionId: string;
+  /** What the operation answers with before its events. */
   readonly envelope: Envelope;
+  /** The events, in order. */
   readonly iterable: AsyncIterable<Element>;
+  /** Ends the subscription and releases what it holds. */
   readonly close: () => Promise<void>;
 };
 
@@ -136,9 +146,13 @@ export type AuthorizationDecision =
       reason: string;
     };
 
+/** A hint that an operation's required scope depends on one of its input fields. */
 export type ParameterizedAccessHint = {
+  /** The input field that selects the variant. */
   readonly discriminator: string;
+  /** The variant used when the input omits the field. */
   readonly defaultValue?: string;
+  /** The values the field can take, each with its own access. */
   readonly variants: ReadonlyArray<{
     readonly value: string;
     readonly access: AccessPolicy;
@@ -168,7 +182,9 @@ export type PipelineTrace = (marker: PipelineTraceMarker) => void;
  * Context passed to both the `authorize` hook and `invoke`.
  */
 export type OperationContext<Input, Host = unknown> = {
+  /** The parsed, validated input. */
   readonly input: Input;
+  /** The authenticated caller. */
   readonly principal: Principal;
   /**
    * Whatever the transport host registered these operations against. Weft's
@@ -177,6 +193,7 @@ export type OperationContext<Input, Host = unknown> = {
    * so a host that cannot supply it is a compile error at registration.
    */
   readonly host: Host;
+  /** The transport the call arrived on. */
   readonly transport: TransportKind;
   /**
    * The abort signal of the request that carried this call, when its transport has one: an HTTP
@@ -353,7 +370,9 @@ export type ErasedOperation = RegistrableOperation;
 
 /** Read-only registry of operations keyed by name. */
 export type OperationRegistry = {
+  /** The operation with the given name, if any. */
   get(name: string): ErasedOperation | undefined;
+  /** Every registered operation. */
   list(): ReadonlyArray<ErasedOperation>;
 };
 
@@ -405,6 +424,7 @@ type SubscriptionRegistrableOperation<Host> = RegistrableOperationBase<Host> & {
   readonly eventSchema: z.ZodType;
 };
 
+/** An operation the registry can hold, of any kind. */
 export type RegistrableOperation<Host = unknown> =
   | UnaryRegistrableOperation<Host>
   | StreamRegistrableOperation<Host>
@@ -449,6 +469,7 @@ export type DispatchContext<Host = unknown> = {
   readonly signal?: AbortSignal;
 };
 
+/** The outcome of dispatching one operation: its value, or the {@link OperationFault} that stopped it. */
 export type DispatchResult<Output> =
   | { readonly ok: true; readonly value: Output }
   | { readonly ok: false; readonly fault: OperationFault };

@@ -5,6 +5,8 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
+    "./client": "./src/client/index.ts",
+    "./generator": "./src/generator.ts",
     "./internals": "./src/internals.ts",
     "./testing": "./src/testing.ts"
   },

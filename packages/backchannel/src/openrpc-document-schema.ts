@@ -47,6 +47,7 @@ const OpenRpcMcpMetadataSchema = z.strictObject({
   toolNames: z.array(z.string()),
 });
 
+/** The Zod schema an OpenRPC document must satisfy. */
 export const OpenRpcDocumentSchema = z.strictObject({
   openrpc: z.literal('1.3.2'),
   info: z.strictObject({

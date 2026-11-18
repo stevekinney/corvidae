@@ -15,7 +15,8 @@ import { zodToJsonSchema } from './zod-json-schema.ts';
  *
  * @example
  * ```ts
- * import { createCatalogSnapshot, type CatalogRestBindingSnapshot } from '@lostgradient/weft';
+ * import { type CatalogRestBindingSnapshot } from '@lostgradient/backchannel';
+ * import { createCatalogSnapshot } from '@lostgradient/weft';
  *
  * const routes = createCatalogSnapshot()
  *   .operations.map((operation) => operation.rest)
@@ -25,9 +26,13 @@ import { zodToJsonSchema } from './zod-json-schema.ts';
  * ```
  */
 export type CatalogRestBindingSnapshot = {
+  /** The HTTP method. */
   readonly method: string;
+  /** The path template, with `:name` parameters. */
   readonly path: string;
+  /** Where each input field travels: path, query, header or body. */
   readonly inputSources: Readonly<Record<string, ParamSource>>;
+  /** What a successful response looks like. */
   readonly success: ResponseShape;
 };
 
@@ -43,7 +48,7 @@ export type CatalogRestBindingSnapshot = {
  *
  * @example
  * ```ts
- * import type { CatalogAccessSnapshot } from '@lostgradient/weft';
+ * import type { CatalogAccessSnapshot } from '@lostgradient/backchannel';
  *
  * declare const access: CatalogAccessSnapshot;
  *
@@ -85,7 +90,8 @@ export type CatalogAccessSnapshot =
  *
  * @example
  * ```ts
- * import { createCatalogSnapshot, type CatalogOperationSnapshot } from '@lostgradient/weft';
+ * import { type CatalogOperationSnapshot } from '@lostgradient/backchannel';
+ * import { createCatalogSnapshot } from '@lostgradient/weft';
  *
  * const byName = new Map<string, CatalogOperationSnapshot>(
  *   createCatalogSnapshot().operations.map((operation) => [operation.name, operation]),
@@ -96,14 +102,21 @@ export type CatalogAccessSnapshot =
  * ```
  */
 export type CatalogOperationSnapshot = {
+  /** The operation's name. */
   readonly name: string;
+  /** Whether the operation is unary, a stream or a subscription. */
   readonly kind: OperationKind;
+  /** A one-line description of the operation. */
   readonly summary: string;
   /** Optional longer-form prose; present only for the interactive subset. */
   readonly description?: string;
+  /** The groups the operation belongs to; the first names its domain. */
   readonly tags: ReadonlyArray<string>;
+  /** Whether the operation changes or deletes state. */
   readonly destructive: boolean;
+  /** The operation's access policy. */
   readonly access: CatalogAccessSnapshot;
+  /** The input field the required scope depends on, with its variants. */
   readonly parameterizedAccess?: {
     readonly discriminator: string;
     readonly defaultValue?: string;
@@ -112,10 +125,15 @@ export type CatalogOperationSnapshot = {
       readonly access: CatalogAccessSnapshot;
     }>;
   };
+  /** Which transports serve the operation. */
   readonly transports: TransportAvailability;
+  /** The fault codes the operation can produce. */
   readonly producibleFaults: ReadonlyArray<FaultCode>;
+  /** The JSON Schema of the operation's input. */
   readonly inputSchema: Record<string, unknown>;
+  /** The JSON Schema of the operation's output. */
   readonly outputSchema: Record<string, unknown>;
+  /** The JSON Schema of each event, for a stream or subscription operation. */
   readonly eventSchema?: Record<string, unknown>;
   /** Declarative REST route metadata for generated client transports. */
   readonly rest?: CatalogRestBindingSnapshot;
@@ -133,15 +151,19 @@ export type CatalogOperationSnapshot = {
  *
  * @example
  * ```ts
- * import { createCatalogSnapshot, type CatalogSnapshot } from '@lostgradient/weft';
+ * import { type CatalogSnapshot } from '@lostgradient/backchannel';
+ * import { createCatalogSnapshot } from '@lostgradient/weft';
  *
  * const snapshot: CatalogSnapshot = createCatalogSnapshot();
  * console.log(snapshot.version, snapshot.operations.length);
  * ```
  */
 export type CatalogSnapshot = {
+  /** The tool that wrote the snapshot. */
   readonly generatedBy: 'weft catalog snapshot';
+  /** The snapshot format version. */
   readonly version: 1;
+  /** Every operation in the catalog. */
   readonly operations: ReadonlyArray<CatalogOperationSnapshot>;
 };
 
@@ -198,7 +220,8 @@ export function snapshotOperationCatalog(options: {
  *
  * @example
  * ```ts
- * import { createCatalogSnapshot, stringifyCatalogSnapshot } from '@lostgradient/weft';
+ * import { stringifyCatalogSnapshot } from '@lostgradient/backchannel';
+ * import { createCatalogSnapshot } from '@lostgradient/weft';
  *
  * const serialized = stringifyCatalogSnapshot(createCatalogSnapshot());
  *

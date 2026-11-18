@@ -1,4 +1,5 @@
 import type { FaultCode } from '@lostgradient/backchannel';
+import type { CatalogFetch } from '@lostgradient/backchannel/client';
 import { resolveConnection } from '../connection.ts';
 import { failureCategoryForFaultCode } from '../core/fault-code.ts';
 import type { FailureCategory } from '../core/types/identity.ts';
@@ -262,8 +263,9 @@ export async function request<T>(
   path: string,
   baseHeaders: Record<string, string>,
   options?: RequestInit,
+  fetchImplementation: CatalogFetch = fetch,
 ): Promise<T> {
-  const response = await requestResponse(baseUrl, path, baseHeaders, options);
+  const response = await requestResponse(baseUrl, path, baseHeaders, options, fetchImplementation);
   if (response === null) return null as T;
   if (response.status === 204) return undefined as T;
   return response.json() as Promise<T>;
@@ -279,9 +281,10 @@ export async function requestResponse(
   path: string,
   baseHeaders: Record<string, string>,
   options?: RequestInit,
+  fetchImplementation: CatalogFetch = fetch,
 ): Promise<Response | null> {
   const headers = buildRequestHeaders(baseHeaders, options);
-  const response = await fetch(`${baseUrl}/v1${path}`, { ...options, headers });
+  const response = await fetchImplementation(`${baseUrl}/v1${path}`, { ...options, headers });
 
   if (response.status === 404 && (!options?.method || options.method === 'GET')) {
     return null;

@@ -157,7 +157,10 @@ describe('Banner feature styles', () => {
     const background = root.get('background') ?? '';
     expect(background).toContain('radial-gradient(');
     expect(background).toContain('at var(--_cinder-banner-glow-at)');
-    expect(background).toContain(
+    // The wash and the glow are theme-arm custom properties (banner-feature-wash.test.ts).
+    expect(background).toContain('var(--_cinder-banner-wash)');
+    expect(background).toContain('var(--_cinder-banner-glow)');
+    expect(root.get('--_cinder-banner-wash')).toContain(
       'color-mix(in oklch, var(--cinder-surface), var(--cinder-accent-solid) 9%)',
     );
     expect(background).not.toContain('--cinder-status-');

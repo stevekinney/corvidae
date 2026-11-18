@@ -47,7 +47,7 @@ export type DecisionDeckProps<TItem extends DecisionDeckItem = DecisionDeckItem>
   emptyTitle?: string;
   /** Supporting line of the empty state. Left unset, it says how many cards were left for later. */
   emptyDescription?: string;
-  /** Hidden text that names the keys on a focused card, read after the card's name. Defaults to a sentence naming ArrowRight, ArrowLeft and ArrowDown. */
+  /** Hidden text that names the keys on a focused card, read after the card's name. Defaults to a sentence naming the arrow keys, which follow the reading direction (accept is the arrow toward the inline-end edge). */
   keyboardHint?: string;
   /** Builds the progress text from the position of the top card and the total, such as "2 of 5". */
   progressText?: (position: number, total: number) => string;

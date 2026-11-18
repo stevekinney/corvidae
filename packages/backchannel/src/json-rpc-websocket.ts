@@ -111,6 +111,7 @@ function isSessionPrimitive(method: unknown): boolean {
   );
 }
 
+/** Builds a JSON-RPC session over an emitter and an operation registry. */
 export function createJsonRpcWebSocketSession(
   options: JsonRpcWebSocketSessionOptions,
 ): JsonRpcWebSocketSession {

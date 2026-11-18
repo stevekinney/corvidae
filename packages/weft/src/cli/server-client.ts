@@ -16,11 +16,10 @@
  * @module cli/server-client
  */
 
+import { CatalogClientError, createCatalogClient } from '@lostgradient/backchannel/client';
+import { httpJsonRpcTransport } from '../client/weft-connection-transport.ts';
 import {
   CATALOG_OPERATION_NAMES,
-  CatalogClientError,
-  createCatalogWeftClient,
-  httpJsonRpcTransport,
   type CatalogOperationName,
   type CatalogOperationTypes,
   type ConnectionOptions,
@@ -45,7 +44,7 @@ export async function callCatalogOperation<Name extends CatalogOperationName>(
   operationName: Name,
   input: CatalogOperationTypes[Name]['input'],
 ): Promise<CatalogCallResult<CatalogOperationTypes[Name]['output']>> {
-  const client = createCatalogWeftClient<CatalogOperationTypes>(
+  const client = createCatalogClient<CatalogOperationTypes>(
     CATALOG_OPERATION_NAMES,
     httpJsonRpcTransport(connection),
   );
