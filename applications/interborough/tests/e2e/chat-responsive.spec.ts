@@ -863,3 +863,76 @@ test.describe('Chat with no provider (14h)', () => {
     });
   });
 });
+
+/**
+ * Gives the refund chat's approval a deadline that has passed, through the Bureau's reviews, which
+ * the page reads back as the approval's. The page reads deadlines on the Bureau's clock, the host's
+ * real time, so a deadline in 2020 has passed on either clock. Every review it answers with is
+ * checked against the page's own schema for the operation first, so the stub is one the page
+ * could be sent.
+ */
+async function expireRefundApproval(page: Page): Promise<void> {
+  const lapsed = '2020-01-01T15:15:00.000Z';
+  await page.route('**/bureau/jsonrpc', async (route) => {
+    const body = route.request().postDataJSON() as { method?: string } | null;
+    if (body?.method !== 'bureau.reviews.get' && body?.method !== 'bureau.reviews.list') {
+      await route.fallback();
+      return;
+    }
+    const response = await route.fetch();
+    const json = (await response.json()) as { result?: unknown };
+    const withLapsedDeadline = (review: unknown): unknown => {
+      if (typeof review !== 'object' || review === null) return review;
+      const record = review as { kind?: string; approval?: { action?: object } };
+      if (record.kind !== 'tool-approval' || record.approval?.action === undefined) return review;
+      const stubbed = {
+        ...record,
+        approval: { ...record.approval, action: { ...record.approval.action, expiresAt: lapsed } },
+      };
+      bureauReviewSchema.parse(stubbed);
+      return stubbed;
+    };
+    const result = json.result as { reviews?: unknown[] } | undefined;
+    const next =
+      result !== undefined && Array.isArray(result.reviews)
+        ? { ...result, reviews: result.reviews.map(withLapsedDeadline) }
+        : withLapsedDeadline(result);
+    await route.fulfill({ response, json: { ...json, result: next } });
+  });
+}
+
+// COR-2438 AC20 (board row A7): an approval that expired before anyone decided is a quiet dashed
+// neutral row that says so, with when it lapsed and Ask again, and no Deny or Approve.
+test.describe('/chats/:chat: an approval that expired before a decision (COR-2438 AC20)', () => {
+  for (const width of [1280, 375] as const) {
+    test(`is a dashed neutral row with when it lapsed and Ask again, at ${String(width)}`, async ({
+      page,
+      browserName,
+    }) => {
+      test.skip(browserName !== 'chromium', 'The layout is checked once, in Chromium.');
+      await connectProvider(page);
+      await expireRefundApproval(page);
+      await open(page, width, `/chats/${SAMPLE_WORLD_THREADS.refund}`);
+      const card = page.locator('[data-approval-decision]');
+      await expect(card).toHaveAttribute('data-cinder-state', 'expired');
+      await expect(card).toContainText('Expired before a decision');
+      await expect(card.locator('.cinder-approval-card__settled-time')).toHaveAttribute(
+        'datetime',
+        '2020-01-01T15:15:00.000Z',
+      );
+      await expect(card.getByRole('button', { name: 'Ask again' })).toBeVisible();
+      await expect(card.getByRole('button', { name: 'Deny' })).toHaveCount(0);
+      const style = await card.evaluate((element) => {
+        const computed = getComputedStyle(element);
+        return { border: computed.borderTopStyle, background: computed.backgroundColor };
+      });
+      expect(style).toEqual({ border: 'dashed', background: 'rgba(0, 0, 0, 0)' });
+      expect(await scrollsSideways(page)).toBe(false);
+      await captureForDesignReview(page, {
+        route: '/chats/:chat',
+        state: width === 1280 ? 'expired approval' : 'expired approval at 375',
+        source: SOURCE,
+      });
+    });
+  }
+});

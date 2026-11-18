@@ -1025,13 +1025,28 @@ test.describe('an open chat whose approval was denied with a note (18h)', () => 
       state: 'denied approval and note',
       source: SOURCE,
     });
+    // The receipt open (board row A4): the note in the one definition list under the line.
+    const openReceipt = async (state: string): Promise<void> => {
+      const toggle = denied.getByRole('button', { name: 'Details' });
+      await toggle.click();
+      await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+      await expect(denied.locator('dl.cinder-approval-card__receipt-facts')).toBeVisible();
+      await captureForDesignReview(page, { route: '/chats/:chat', state, source: SOURCE });
+    };
+    await openReceipt('denied receipt open');
     await page.setViewportSize({ width: 375, height: 812 });
     await expect(denied).toBeVisible();
+    // A phone width stacks the list and the chat, so the chat mounts again with its receipt
+    // folded; fold it here too if it kept the open state, so the folded receipt is what is drawn.
+    const phoneToggle = denied.getByRole('button', { name: 'Details' });
+    if ((await phoneToggle.getAttribute('aria-expanded')) === 'true') await phoneToggle.click();
+    await expect(phoneToggle).toHaveAttribute('aria-expanded', 'false');
     await captureForDesignReview(page, {
       route: '/chats/:chat',
       state: 'denied approval and note at 375',
       source: SOURCE,
     });
+    await openReceipt('denied receipt open at 375');
   });
 });
 
