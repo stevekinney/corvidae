@@ -95,6 +95,15 @@ const values = await (async () => {
   const passing: LocalEvidenceProcess = { run: () => ({ exitCode: 0 }) };
   const cleanRequest = await request();
   const clean = collectLocalEvidence(cleanRequest, passing, fixture);
+  const cleanExpected = {
+    revision: cleanRequest.revision,
+    integrationTree: cleanRequest.integrationTree,
+    environment: Bun.version,
+  };
+  const intactArtifactValidation = validateEvidence(cleanRequest.plan, clean, cleanExpected).ok;
+  writeFileSync(artifact, 'tampered artifact');
+  const tamperedArtifactValidation = validateEvidence(cleanRequest.plan, clean, cleanExpected).ok;
+  writeFileSync(artifact, 'artifact');
   writeFileSync(join(fixture, 'input'), 'dirty\n');
   const dirty = collectLocalEvidence(await request(), passing, fixture);
   await git('checkout', '--', 'input');
@@ -167,6 +176,23 @@ const values = await (async () => {
     undefined,
     fixture,
   );
+  const defaultExpected = {
+    revision: defaultRequest.revision,
+    integrationTree: defaultRequest.integrationTree,
+    environment: Bun.version,
+  };
+  const intactReportValidation = validateEvidence(
+    defaultRequest.plan,
+    defaultReceipt,
+    defaultExpected,
+  ).ok;
+  writeFileSync(report, 'tampered report');
+  const tamperedReportValidation = validateEvidence(
+    defaultRequest.plan,
+    defaultReceipt,
+    defaultExpected,
+  ).ok;
+  writeFileSync(report, '<testsuite><testcase name="input.test.ts" /></testsuite>');
   const runtimeReuse = reuseLocalEvidence(
     defaultReceipt,
     defaultRequest,
@@ -273,6 +299,8 @@ const values = await (async () => {
   return {
     cleanRequest,
     clean,
+    intactArtifactValidation,
+    tamperedArtifactValidation,
     dirty,
     mutating,
     missing,
@@ -281,6 +309,8 @@ const values = await (async () => {
     reported,
     failedReport,
     defaultReceipt,
+    intactReportValidation,
+    tamperedReportValidation,
     runtimeReuse,
     reused,
     reportTamper,
@@ -304,8 +334,13 @@ test('validates an actual clean checkout receipt', () =>
       environment: Bun.version,
     }).ok,
   ).toBe(true));
+test('ordinary validation rejects modified retained artifacts', () => {
+  expect(values.intactArtifactValidation).toBe(true);
+  expect(values.tamperedArtifactValidation).toBe(false);
+});
 test('binds dirty and mutated content instead of clean head', () => {
   expect(values.dirty.records[0]?.dirtyContentIdentity).toBeDefined();
+  expect(values.dirty.records[0]?.status).toBe('pending');
   expect(values.mutating.records[0]?.status).toBe('pending');
 });
 test('requires structured results and retains report identity', () => {
@@ -315,6 +350,8 @@ test('requires structured results and retains report identity', () => {
 });
 test('default local composition executes explicit argv without a shell', () => {
   expect(values.defaultReceipt.records[0]?.status).toBe('pass');
+  expect(values.intactReportValidation).toBe(true);
+  expect(values.tamperedReportValidation).toBe(false);
   expect(values.runtimeReuse.records[0]?.status).toBe('pending');
 });
 test('reuses only unchanged relevant content', () => {

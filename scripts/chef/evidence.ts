@@ -29,6 +29,7 @@ export interface EvidenceRecord {
   inputIdentity?: string | undefined;
   reports?: { path: string; digest: string }[] | undefined;
   artifacts?: { path: string; digest: string }[] | undefined;
+  localRoot?: string | undefined;
 }
 
 /** A collection returned by a coordinator-owned local collector or authenticated provider read. */
@@ -356,6 +357,7 @@ export function collectLocalEvidence(
           : { dirtyContentIdentity: after.dirtyContentIdentity }),
         sourceRevision: before.revision,
         inputIdentity: after.inputIdentity,
+        localRoot: safeCwd,
         ...(reports.length === 0 ? {} : { reports }),
         ...(artifacts.length === 0 ? {} : { artifacts }),
       };
@@ -505,11 +507,12 @@ function obligationKey(obligation: VerificationObligation): string {
 }
 
 function artifactIsIntact(record: EvidenceRecord, cwd?: string): boolean {
-  if (record.artifacts !== undefined && cwd === undefined) return true;
   if (record.artifacts !== undefined)
     return record.artifacts.every(({ path, digest }) => {
       try {
-        const target = cwd === undefined ? path : validateLocalPath(cwd, path);
+        const root = cwd ?? record.localRoot;
+        if (root === undefined) return false;
+        const target = validateLocalPath(root, path);
         return (
           existsSync(target) && statSync(target).isFile() && sha256(readFileSync(target)) === digest
         );
@@ -521,6 +524,18 @@ function artifactIsIntact(record: EvidenceRecord, cwd?: string): boolean {
     record.artifact === undefined ||
     (existsSync(record.artifact) && statSync(record.artifact).isFile())
   );
+}
+
+function reportsAreIntact(record: EvidenceRecord): boolean {
+  if (record.reports === undefined) return true;
+  if (record.localRoot === undefined) return false;
+  return record.reports.every(({ path, digest }) => {
+    try {
+      return sha256(readFileSync(validateLocalPath(record.localRoot!, path))) === digest;
+    } catch {
+      return false;
+    }
+  });
 }
 
 function recordProblems(
@@ -561,6 +576,8 @@ function recordProblems(
     problems.push(`${record.obligation} lacks required inventory`);
   if (!artifactIsIntact(record))
     problems.push(`${record.obligation} has a missing or corrupt artifact`);
+  if (!reportsAreIntact(record))
+    problems.push(`${record.obligation} has a missing or corrupt report`);
   if (record.exitCode !== 0 && record.status !== 'not-applicable')
     problems.push(`${record.obligation} exited ${String(record.exitCode)}`);
   if (record.assertionPassed === false)
