@@ -2067,8 +2067,9 @@ export async function run(
       const head = parsed.options.get('head');
       if (head !== undefined && !/^[0-9a-f]{7,40}$/.test(head))
         throw new UsageError(`--head needs a commit sha, not "${head}".`);
-      plan = (client) =>
-        withLocalAuthority(
+      plan = (client) => {
+        let effectiveHead = head;
+        return withLocalAuthority(
           dependencies,
           {
             resource: `issue:${target}`,
@@ -2077,6 +2078,12 @@ export async function run(
           },
           async () => {
             const current = latestClaim(await fetchComments(client, target as string));
+            if (
+              effectiveHead === undefined &&
+              current?.marker.run === runId &&
+              current.marker.branch === branch
+            )
+              effectiveHead = current.marker.head;
             if (current === undefined) return undefined;
             if (!claimIsLive(current.marker, now))
               return { holder: current.marker.run, live: false, identity: current.marker.identity };
@@ -2089,7 +2096,7 @@ export async function run(
               run: runId,
               action: 'claim',
               branch,
-              head: head ?? 'none',
+              head: effectiveHead ?? 'none',
             }),
           async (identity) => {
             const current = latestClaim(await fetchComments(client, target as string));
@@ -2111,11 +2118,12 @@ export async function run(
                 branch,
                 identity,
                 ...(expectedCurrent === undefined ? {} : { expectedCurrent }),
-                ...(head === undefined ? {} : { head }),
+                ...(effectiveHead === undefined ? {} : { head: effectiveHead }),
               },
               now,
             ),
         );
+      };
     }
   } else {
     const [id] = identifierArgument(parsed, 1);
