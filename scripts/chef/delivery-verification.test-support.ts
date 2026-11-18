@@ -53,11 +53,11 @@ export async function createDeliveryVerificationFixture(
     await git('init');
     await git('config', 'user.email', 'fixture@example.test');
     await git('config', 'user.name', 'Fixture');
-    writeFileSync(join(directory, 'input'), 'base\n');
+    writeFileSync(join(directory, 'input'), `base:${directory}\n`);
     await git('add', 'input');
     await git('commit', '-m', 'base');
     const base = await git('rev-parse', 'HEAD');
-    writeFileSync(join(directory, 'input'), 'head\n');
+    writeFileSync(join(directory, 'input'), `head:${directory}\n`);
     await git('add', 'input');
     await git('commit', '-m', 'head');
     const revision = await git('rev-parse', 'HEAD');

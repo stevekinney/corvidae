@@ -151,6 +151,7 @@ const scenarios = createScenarios({ setUp, tearDown }, { test: bunTest, describe
 
 interface World {
   head?: string;
+  base?: string;
   pullRequestHead?: string;
   state?: string;
   /** `mergeable` per `gh pr view` read; the last repeats. `MERGEABLE` unless a test says otherwise. */
@@ -174,6 +175,12 @@ interface World {
 }
 
 function fake(world: World = {}) {
+  const identity = {
+    head: HEAD,
+    base: world.base ?? BASE,
+    tree: world.expectedTree ?? EXPECTED_TREE,
+    directory: sandbox,
+  };
   const calls: string[][] = [];
   const comments: string[] = [];
   let fetchCall = 0;
@@ -185,7 +192,7 @@ function fake(world: World = {}) {
     const [program, ...rest] = command;
     if (program === 'git') {
       if (rest[0] === 'rev-parse' && rest.includes('--git-common-dir'))
-        return { code: 0, stdout: join(sandbox, '.git'), stderr: '' };
+        return { code: 0, stdout: join(identity.directory, '.git'), stderr: '' };
       if (rest[0] === 'fetch') {
         const code = world.fetchCodes?.[Math.min(fetchCall, world.fetchCodes.length - 1)] ?? 0;
         fetchCall += 1;
@@ -199,20 +206,20 @@ function fake(world: World = {}) {
         const confirm = mergeTreeCall++ > 0;
         return {
           code: confirm ? (world.mergeTreeCode ?? 0) : 0,
-          stdout: `${world.expectedTree ?? EXPECTED_TREE}\n`,
+          stdout: `${identity.tree}\n`,
           stderr: !confirm || world.mergeTreeCode === undefined ? '' : 'CONFLICT',
         };
       }
       if (rest[0] === 'rev-parse' && rest[1]?.endsWith('^{tree}'))
         return {
           code: 0,
-          stdout: `${world.mergedTree ?? world.expectedTree ?? EXPECTED_TREE}\n`,
+          stdout: `${world.mergedTree ?? identity.tree}\n`,
           stderr: '',
         };
       if (rest[0] === 'rev-parse')
         return {
           code: 0,
-          stdout: `${rest[1] === 'HEAD' ? (world.head ?? HEAD) : BASE}\n`,
+          stdout: `${rest[1] === 'HEAD' ? (world.head ?? identity.head) : identity.base}\n`,
           stderr: '',
         };
     }
@@ -232,7 +239,7 @@ function fake(world: World = {}) {
       return {
         code: 0,
         stdout: JSON.stringify({
-          headRefOid: world.pullRequestHead ?? HEAD,
+          headRefOid: world.pullRequestHead ?? identity.head,
           mergeable,
           mergeStateStatus: world.mergeStateStatus ?? 'CLEAN',
           state: world.state ?? 'OPEN',
@@ -940,9 +947,17 @@ scenarios.describe('run', () => {
 async function lockScenarios() {
   const { directory, prepared } = prepare();
   const fixture = await createDeliveryVerificationFixture(undefined, { route: 'pull-request' });
-  HEAD = fixture.request.revision;
-  BASE = fixture.request.base;
-  EXPECTED_TREE = fixture.request.integrationTree;
+  const lockWorld = (
+    bound: Awaited<ReturnType<typeof createDeliveryVerificationFixture>>,
+    world: World = {},
+  ) =>
+    fake({
+      ...world,
+      head: bound.request.revision,
+      pullRequestHead: bound.request.revision,
+      base: bound.request.base,
+      expectedTree: bound.request.integrationTree,
+    });
   const lockDirectory = join(directory, 'git', 'corvidae-merge-lock');
   mkdirSync(join(directory, 'git'), { recursive: true });
   const lockOptions: MergeGateOptions = {
@@ -970,7 +985,7 @@ async function lockScenarios() {
   // The wait is read from the lock's own report, never from a timer: reading the holder's start time
   // runs `ps`, which a loaded host can make slower than any window a timer would allow.
   plantHolder(process.pid, processStartTime(process.pid));
-  const waiting = fake();
+  const waiting = lockWorld(fixture);
   const waits: unknown[] = [];
   const pending = mergeGateImplementation(
     lockOptions,
@@ -993,10 +1008,10 @@ async function lockScenarios() {
   const child = spawnWithHangGuard(['true']);
   await child.exited;
   plantHolder(child.pid);
-  const reclaimWorld = fake();
   const reclaimedFixture = await createDeliveryVerificationFixture(undefined, {
     route: 'pull-request',
   });
+  const reclaimWorld = lockWorld(reclaimedFixture);
   const reclaimed = {
     report: await mergeGateImplementation(
       {
@@ -1025,7 +1040,7 @@ async function lockScenarios() {
         verification: failedFixture.verification,
       },
       {
-        runner: fake({ mergeCode: 1 }).runner,
+        runner: lockWorld(failedFixture, { mergeCode: 1 }).runner,
         verification: failedFixture.dependencies,
       },
     ),
@@ -1037,7 +1052,7 @@ async function lockScenarios() {
   const dryRun = {
     report: await mergeGateImplementation(
       { ...lockOptions, dryRun: true },
-      { runner: fake().runner, verification: fixture.dependencies },
+      { runner: lockWorld(fixture).runner, verification: fixture.dependencies },
     ),
     holderIntact: existsSync(join(lockDirectory, 'owner.json')),
   };

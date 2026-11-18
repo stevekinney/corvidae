@@ -365,7 +365,7 @@ const newFinding = await outcomeOf(async () => {
   });
   expect(retried).toMatchObject({ merged: true, failedStep: null });
   expect(pushes.filter((command) => command[3] !== '--delete')).toHaveLength(1);
-  expect(refs(w.origin, 'refs/heads/main')).toBe(retried.mergeCommit);
+  expect(retried.mergeCommit).toBe(refs(w.origin, 'refs/heads/main'));
 });
 
 // A pinned head that is not the branch's head is refused before anything else happens.
