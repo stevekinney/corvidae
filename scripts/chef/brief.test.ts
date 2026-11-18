@@ -1,5 +1,13 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from 'node:fs';
+import {
+  existsSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { rejectionOf } from '../../testing/testing/src/helpers/promise-outcome.ts';
@@ -19,7 +27,9 @@ import {
   verificationCommands,
 } from './brief.ts';
 import type { FetchLike, IssueSummary } from './linear.ts';
+import type { Runner } from './process-runner.ts';
 import { UsageError } from './process-runner.ts';
+import { digest } from './verification-plan.ts';
 
 const description = [
   'Some intro.',
@@ -41,6 +51,8 @@ const description = [
   '## Notes',
   'Ignore me.',
 ].join('\n');
+
+const pinnedBase = '4f46c230831feee0459eec754762ed7b317f4b51';
 
 const issue = (text: string | null): IssueSummary => ({
   id: 'u1',
@@ -293,10 +305,28 @@ describe('charter rules', () => {
     expect(rule).toContain('never to `main`');
     expect(rule).toContain('do not wait for the focused checks before that push');
     expect(rule).toContain('still gate ready-for-review');
+    expect(rule).toContain('record its returned run ID in the ready-for-review receipt');
     for (const path of ['.claude/agents/chef-worker.md', '.codex/agents/chef-worker.toml']) {
       const text = readFileSync(join(import.meta.dir, '../..', path), 'utf8');
       expect(text).toContain(`${pushRule.charAt(0).toUpperCase()}${pushRule.slice(1)}`);
     }
+  });
+
+  test('requires every rendered brief to record one final branch CI receipt', () => {
+    expect(pushRule).toContain(
+      'After the final push run `gh workflow run main.yml --ref <branch>` once per batch',
+    );
+    expect(pushRule).not.toContain('When the brief requires branch CI');
+    expect(renderBrief(issue(description), { paths: [], verify: [], model: 'Sonnet' })).toContain(
+      'record its returned run ID in the ready-for-review receipt',
+    );
+  });
+
+  test('requires an owned-PID and worktree leftovers receipt before handoff', () => {
+    expect(charterRules.join('\n')).toContain(
+      'leftovers.ts --worktree <owned-worktree> --pids <owned-pid,...>',
+    );
+    expect(charterRules.join('\n')).toContain('a live owned PID is a reported charter defect');
   });
 
   // The charter rules are the one source of the worker-facing rules. Each pair names a phrase of a
@@ -393,12 +423,13 @@ describe('charter rules', () => {
     const rule = normalize(
       charterRules.find((candidate) => candidate.startsWith('**Processes:**')) ?? '',
     );
-    for (const phrase of ['`pkill`', '`killall`', 'by name or pattern', 'by pid', 'it waits'])
+    for (const phrase of ['`pkill`', '`killall`', 'by name or pattern', 'by pid'])
       expect(rule, phrase).toContain(phrase);
     for (const path of ['.claude/agents/chef-worker.md', '.codex/agents/chef-worker.toml']) {
       const text = read(path);
       expect(text, path).toContain('never end a process by name or pattern');
       expect(text, path).toContain('by pid');
+      expect(text, path).toContain('at most five minutes for a test pool slot');
     }
   });
 
@@ -505,7 +536,7 @@ describe('the create-task ticket template', () => {
       ['Out of scope', 'Filled out of scope.'],
       ['Constraints', 'Filled constraints.'],
       ['Files', '- `scripts/chef/thing.ts`'],
-      ['Verification', '- `bun test scripts/chef/thing.test.ts`\n- `bun run lint:root`'],
+      ['Verification', '- `bun scripts/chef/focused-checks.ts`'],
       ['Delivery boundary', 'Filled delivery boundary.'],
     ])
       expect(text).toContain(`## ${title}\n\n${body}`);
@@ -624,9 +655,32 @@ describe('run', () => {
   const justNow = () => new Date('2026-11-10T12:00:00Z');
   const fetchIssue = answer(false);
   const dependencies = { fetch: fetchIssue, environment: { LINEAR_API_KEY: 'lin_api_test_value' } };
+  const pinnedRunner =
+    (repository = 'stevekinney/corvidae', base = pinnedBase): Runner =>
+    (command) => {
+      if (command.join(' ') === 'git rev-parse --show-toplevel')
+        return { code: 0, stdout: '/checkout\n', stderr: '' };
+      if (command.join(' ') === 'git config --get remote.origin.url')
+        return { code: 0, stdout: `git@github.com:${repository}.git\n`, stderr: '' };
+      if (command.join(' ') === `git rev-parse --verify ${base}^{commit}`)
+        return { code: 0, stdout: `${base}\n`, stderr: '' };
+      return { code: 1, stdout: '', stderr: 'unknown git command' };
+    };
 
   test('writes <ID>.md in the output directory and reports it', async () => {
-    const result = await run(['COR-7', '--out-dir', sandbox, '--json'], dependencies);
+    const result = await run(
+      [
+        'COR-7',
+        '--out-dir',
+        sandbox,
+        '--repository',
+        'stevekinney/corvidae',
+        '--base',
+        pinnedBase,
+        '--json',
+      ],
+      dependencies,
+    );
     expect(result.code).toBe(0);
     const parsed = JSON.parse(result.output) as { path: string };
     expect(parsed.path).toBe(join(sandbox, 'COR-7.md'));
@@ -637,7 +691,19 @@ describe('run', () => {
   test('gives each brief of one issue its own created scratch directory, named in the brief', async () => {
     const scratches: string[] = [];
     for (let attempt = 0; attempt < 2; attempt += 1) {
-      const result = await run(['COR-7', '--out-dir', sandbox, '--json'], dependencies);
+      const result = await run(
+        [
+          'COR-7',
+          '--out-dir',
+          sandbox,
+          '--repository',
+          'stevekinney/corvidae',
+          '--base',
+          pinnedBase,
+          '--json',
+        ],
+        dependencies,
+      );
       const parsed = JSON.parse(result.output) as { path: string; scratch: string };
       expect(parsed.scratch).toMatch(/\/scratch\/COR-7-[0-9a-f]{8}$/);
       expect(statSync(parsed.scratch).isDirectory()).toBe(true);
@@ -688,22 +754,26 @@ describe('run', () => {
             };
       return new Response(JSON.stringify({ data }), { status: 200 });
     };
-    const result = await run(['COR-7', 'COR-8', '--out-dir', sandbox, '--json'], {
-      ...dependencies,
-      fetch: batchFetch,
-    });
-    expect(result.code).toBe(0);
-    const parsed = JSON.parse(result.output) as { path: string };
-    expect(parsed.path).toBe(join(sandbox, 'COR-7_COR-8.md'));
-    const text = readFileSync(parsed.path, 'utf8');
-    expect(text.indexOf('## COR-7: Add the thing')).toBeGreaterThan(-1);
-    expect(text.indexOf('## COR-8: Second thing')).toBeGreaterThan(text.indexOf('## COR-7:'));
-    expect(text.match(/### Acceptance criteria/g)).toHaveLength(2);
-    expect(text.match(/^## Charter rules$/gm)).toHaveLength(1);
-    // COR-7 is in the batch, so COR-8's blocker on it is cleared; COR-5 stays open.
-    expect(text).toContain('- COR-5 [Ready] Blocker COR-5');
-    expect(text).not.toContain('- COR-7 [Ready]');
-    for (const rule of charterRules) expect(text).toContain(rule);
+    const result = await run(
+      [
+        'COR-7',
+        'COR-8',
+        '--out-dir',
+        sandbox,
+        '--repository',
+        'stevekinney/corvidae',
+        '--base',
+        pinnedBase,
+        '--json',
+      ],
+      {
+        ...dependencies,
+        fetch: batchFetch,
+      },
+    );
+    expect(result.code).toBe(1);
+    expect(result.output).toContain('not dispatchable');
+    expect(readdirSync(sandbox)).toEqual([]);
   });
 
   test('a batch of repeated or malformed IDs is a UsageError', async () => {
@@ -717,12 +787,264 @@ describe('run', () => {
   });
 
   test('writes the open blockers it reads from Linear', async () => {
-    const result = await run(['COR-7', '--out-dir', sandbox, '--json'], {
-      ...dependencies,
-      fetch: answer(true),
+    const result = await run(
+      [
+        'COR-7',
+        '--out-dir',
+        sandbox,
+        '--repository',
+        'stevekinney/corvidae',
+        '--base',
+        pinnedBase,
+        '--json',
+      ],
+      {
+        ...dependencies,
+        fetch: answer(true),
+      },
+    );
+    expect(result.code).toBe(1);
+    expect(result.output).toContain('not dispatchable');
+  });
+
+  test('returns the validated assignment, verification plan, and blocked dispatch gate in JSON', async () => {
+    const result = await run(
+      ['COR-7', '--stdout', '--json', '--repository', 'stevekinney/corvidae', '--base', pinnedBase],
+      {
+        ...dependencies,
+        fetch: answer(true),
+      },
+    );
+    const parsed = JSON.parse(result.output) as {
+      assignment: {
+        criteria: { id: string; text: string }[];
+        allowedConsequentialActions: string[];
+        sourceReferences: unknown[];
+      };
+      verificationPlan: { obligations: unknown[]; risks: Record<string, string> };
+      gate: { status: string; dispatchable: boolean; blockers: { identifier: string }[] };
+    };
+    expect(parsed.assignment.criteria.map((criterion) => criterion.id)).toEqual([
+      'AC-b22550984ae4',
+      'AC-9d2aef7a79fa',
+    ]);
+    expect(parsed.assignment.allowedConsequentialActions).not.toContain('deploy');
+    expect(parsed.assignment.sourceReferences).toHaveLength(1);
+    expect(parsed.verificationPlan.obligations.length).toBeGreaterThan(0);
+    expect(Object.keys(parsed.verificationPlan.risks)).toHaveLength(9);
+    expect(parsed.gate).toMatchObject({
+      status: 'blocked',
+      dispatchable: false,
+      blockers: [{ identifier: 'COR-5' }],
     });
-    const parsed = JSON.parse(result.output) as { path: string };
-    expect(readFileSync(parsed.path, 'utf8')).toContain('- COR-5 [Ready] Earlier');
+  });
+
+  test('uses injected Git primitives to accept only the checkout repository and an immutable revision', async () => {
+    const command = [
+      'COR-7',
+      '--out-dir',
+      sandbox,
+      '--repository',
+      'stevekinney/corvidae',
+      '--base',
+      pinnedBase,
+      '--json',
+    ];
+    const accepted = await run(command, dependencies, pinnedRunner());
+    expect(accepted.code).toBe(0);
+    const invalidDirectory = join(sandbox, 'rejected');
+    for (const runner of [
+      pinnedRunner('someone-else/corvidae'),
+      pinnedRunner('stevekinney/corvidae', 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'),
+    ]) {
+      const result = await run(
+        command.map((part) => (part === sandbox ? invalidDirectory : part)),
+        dependencies,
+        runner,
+      );
+      const parsed = JSON.parse(result.output) as {
+        assignment: {
+          identity: {
+            identifier: string;
+            revision: string;
+            repository: string;
+            base: string;
+            digest: string;
+          };
+        };
+        gate: {
+          identityErrors: string[];
+          blockers: unknown[];
+          unreadableDependencies: unknown[];
+          claimStatus: string;
+        };
+        scratch: string;
+      };
+      expect(result.code).toBe(1);
+      expect(parsed.assignment.identity).toEqual({
+        identifier: 'COR-7',
+        revision: '2026-10-23T00:00:00Z',
+        repository: 'stevekinney/corvidae',
+        base: pinnedBase,
+        digest: expect.any(String),
+      });
+      expect(parsed.gate.identityErrors.length).toBeGreaterThan(0);
+      expect(parsed.gate.blockers).toEqual([]);
+      expect(parsed.gate.unreadableDependencies).toEqual([]);
+      expect(parsed.gate.claimStatus).toBe('none');
+      expect(parsed.scratch).toContain('/scratch/COR-7-');
+    }
+    expect(existsSync(invalidDirectory)).toBe(false);
+    expect(readdirSync(sandbox).toSorted()).toEqual(['COR-7.md', 'scratch']);
+  });
+
+  test('accepts verified design content through the CLI context path and rejects missing or changed content', async () => {
+    const locator = 'https://claude.ai/artifact/GDeC387KnFkpSQoLz86jLw';
+    const duplicateLocator = 'https://claude.ai/artifact/HDeC387KnFkpSQoLz86jLw';
+    const designDescription = `${description}\n\n## Design source\n${locator}\n${duplicateLocator}`;
+    const designFetch: FetchLike = async (_url, init) => {
+      const { query } = JSON.parse(init.body as string) as { query: string };
+      const data = query.includes('IssueRelations')
+        ? relations(false)
+        : query.includes('IssueComments')
+          ? {
+              issue: { comments: { nodes: [], pageInfo: { hasNextPage: false, endCursor: null } } },
+            }
+          : { issue: issue(designDescription) };
+      return new Response(JSON.stringify({ data }), { status: 200 });
+    };
+    const context = join(sandbox, 'design-context.json');
+    writeFileSync(
+      context,
+      JSON.stringify([
+        { locator, content: 'verified design v1' },
+        { locator: duplicateLocator, content: 'verified design v1' },
+      ]),
+    );
+    const command = [
+      'COR-7',
+      '--out-dir',
+      sandbox,
+      '--repository',
+      'stevekinney/corvidae',
+      '--base',
+      pinnedBase,
+      '--context',
+      context,
+      '--json',
+    ];
+    const valid = await run(command, { ...dependencies, fetch: designFetch }, pinnedRunner());
+    expect(valid.code).toBe(0);
+    const first = JSON.parse(valid.output) as {
+      assignments: { identity: { digest: string } }[];
+      scratch: string;
+      path: string;
+    };
+    const firstSnapshot = join(first.scratch, `context-${digest('verified design v1')}.txt`);
+    const firstText = readFileSync(first.path, 'utf8');
+    expect(firstText).toContain('Use these pinned bytes; do not refetch live sources.');
+    expect(readFileSync(firstSnapshot, 'utf8')).toBe('verified design v1');
+    for (const reference of [locator, duplicateLocator])
+      expect(firstText).toContain(
+        `- ${reference} → ${digest('verified design v1')} → \`${firstSnapshot}\``,
+      );
+    expect(readdirSync(first.scratch)).toEqual([`context-${digest('verified design v1')}.txt`]);
+    const missingOutDirectory = join(sandbox, 'missing-context');
+    const missing = await run(
+      command
+        .filter((part) => part !== '--context' && part !== context)
+        .map((part) => (part === sandbox ? missingOutDirectory : part)),
+      { ...dependencies, fetch: designFetch },
+      pinnedRunner(),
+    );
+    expect(missing.code).toBe(1);
+    expect(JSON.parse(missing.output).gate.missingContext).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ locator, access: 'unreadable' }),
+        expect.objectContaining({ locator: duplicateLocator, access: 'unreadable' }),
+      ]),
+    );
+    expect(existsSync(missingOutDirectory)).toBe(false);
+    writeFileSync(
+      context,
+      JSON.stringify([
+        { locator, content: 'verified design v2' },
+        { locator: duplicateLocator, content: 'verified design v1' },
+      ]),
+    );
+    const changed = await run(command, { ...dependencies, fetch: designFetch }, pinnedRunner());
+    expect(changed.code).toBe(0);
+    expect(JSON.parse(changed.output).assignments[0].identity.digest).not.toBe(
+      first.assignments[0]?.identity.digest,
+    );
+    expect(
+      readFileSync(join(first.scratch, `context-${digest('verified design v1')}.txt`), 'utf8'),
+    ).toBe('verified design v1');
+    const changedParsed = JSON.parse(changed.output) as { scratch: string; path: string };
+    const changedSnapshot = join(
+      changedParsed.scratch,
+      `context-${digest('verified design v2')}.txt`,
+    );
+    expect(readFileSync(changedSnapshot, 'utf8')).toBe('verified design v2');
+    expect(readFileSync(changedParsed.path, 'utf8')).toContain(
+      `- ${locator} → ${digest('verified design v2')} → \`${changedSnapshot}\``,
+    );
+    const batchOutDirectory = join(sandbox, 'batch');
+    const batchFetch: FetchLike = async (_url, init) => {
+      const { query, variables } = JSON.parse(init.body as string) as {
+        query: string;
+        variables: { id: string };
+      };
+      const data = query.includes('IssueRelations')
+        ? relations(false)
+        : query.includes('IssueComments')
+          ? {
+              issue: { comments: { nodes: [], pageInfo: { hasNextPage: false, endCursor: null } } },
+            }
+          : { issue: { ...issue(designDescription), identifier: variables.id } };
+      return new Response(JSON.stringify({ data }), { status: 200 });
+    };
+    const batch = await run(
+      [
+        'COR-7',
+        'COR-8',
+        '--out-dir',
+        batchOutDirectory,
+        '--repository',
+        'stevekinney/corvidae',
+        '--base',
+        pinnedBase,
+        '--context',
+        context,
+        '--json',
+      ],
+      { ...dependencies, fetch: batchFetch },
+      pinnedRunner(),
+    );
+    expect(batch.code).toBe(0);
+    const batchParsed = JSON.parse(batch.output) as { scratch: string; path: string };
+    const batchSnapshot = join(batchParsed.scratch, `context-${digest('verified design v2')}.txt`);
+    expect(readFileSync(batchSnapshot, 'utf8')).toBe('verified design v2');
+    expect(readFileSync(batchParsed.path, 'utf8')).toContain(`\`${batchSnapshot}\``);
+    const previewBefore = readdirSync(sandbox).toSorted();
+    const preview = await run(
+      ['COR-7', '--stdout', '--json', '--context', context],
+      { ...dependencies, fetch: designFetch },
+      pinnedRunner(),
+    );
+    expect(preview.code).toBe(0);
+    expect(JSON.parse(preview.output).text).not.toContain('## Verified context snapshots');
+    expect(readdirSync(sandbox).toSorted()).toEqual(previewBefore);
+    writeFileSync(
+      context,
+      JSON.stringify([{ locator, content: 'verified design v2', digest: 'wrong' }]),
+    );
+    const rejected = await rejectionOf(
+      run(command, { ...dependencies, fetch: designFetch }, pinnedRunner()),
+    );
+    expect(rejected).toBeInstanceOf(UsageError);
+    if (!(rejected instanceof UsageError)) throw rejected;
+    expect(rejected.message).toBe('--context digest does not match its content.');
   });
 
   test('reports a missing issue as exit 1 and bad usage as a UsageError', async () => {
@@ -738,11 +1060,25 @@ describe('run', () => {
   test('prints the live claim in the brief when it is this run\'s, and "None" without one', async () => {
     const none = await run(['COR-7', '--stdout'], dependencies);
     expect(none.output).toContain('## Claim\n\nnone');
-    const mine = await run(['COR-7', '--out-dir', sandbox, '--run', 'run-a', '--json'], {
-      ...dependencies,
-      fetch: answer(false, claimComment('run-a', '2026-11-10T11:00:00Z')),
-      now: justNow,
-    });
+    const mine = await run(
+      [
+        'COR-7',
+        '--out-dir',
+        sandbox,
+        '--repository',
+        'stevekinney/corvidae',
+        '--base',
+        pinnedBase,
+        '--run',
+        'run-a',
+        '--json',
+      ],
+      {
+        ...dependencies,
+        fetch: answer(false, claimComment('run-a', '2026-11-10T11:00:00Z')),
+        now: justNow,
+      },
+    );
     expect(mine.code).toBe(0);
     const text = readFileSync(join(sandbox, 'COR-7.md'), 'utf8');
     expect(text).toContain(
@@ -760,7 +1096,19 @@ describe('run', () => {
       now: justNow,
     };
     for (const extra of [['--run', 'run-b'], []]) {
-      const result = await run(['COR-7', '--out-dir', sandbox, ...extra], held);
+      const result = await run(
+        [
+          'COR-7',
+          '--out-dir',
+          sandbox,
+          '--repository',
+          'stevekinney/corvidae',
+          '--base',
+          pinnedBase,
+          ...extra,
+        ],
+        held,
+      );
       expect(result.code).toBe(1);
       expect(result.output).toContain('held by run run-a on branch cor-7-x');
       expect(result.output).toContain('no brief was written');
@@ -773,11 +1121,24 @@ describe('run', () => {
       claimComment('run-a', '2026-11-10T11:00:00Z', 'released'),
       claimComment('run-a', '2026-11-09T11:59:00Z'),
     ]) {
-      const result = await run(['COR-7', '--out-dir', sandbox, '--run', 'run-b'], {
-        ...dependencies,
-        fetch: answer(false, comments),
-        now: justNow,
-      });
+      const result = await run(
+        [
+          'COR-7',
+          '--out-dir',
+          sandbox,
+          '--repository',
+          'stevekinney/corvidae',
+          '--base',
+          pinnedBase,
+          '--run',
+          'run-b',
+        ],
+        {
+          ...dependencies,
+          fetch: answer(false, comments),
+          now: justNow,
+        },
+      );
       expect(result.code).toBe(0);
     }
     const scout = await run(['COR-7', '--stdout', '--run', 'run-b'], {
