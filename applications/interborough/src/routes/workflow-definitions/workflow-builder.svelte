@@ -949,9 +949,7 @@
     <p
       id={READ_BACK_ID}
       class="weft-workflow-builder__read-back"
-      data-truncated={summary !== undefined || (mode === 'create' && tab === 'json' && !blocked)
-        ? ''
-        : undefined}
+      data-truncated={summary !== undefined ? '' : undefined}
       data-testid="workflow-builder-summary"
     >
       {#if blocked}

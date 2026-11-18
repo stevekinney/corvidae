@@ -172,6 +172,19 @@ describe('the new-workflow editor', () => {
     );
   });
 
+  test('design correction 2, N2: the JSON tab’s read-back wraps as the Builder tab’s does, never cut to one line', async () => {
+    const { container } = open();
+    await openJson(container);
+    const footer = await waitFor(() => {
+      const found = container.querySelector<HTMLElement>(
+        '[data-testid="workflow-builder-summary"]',
+      );
+      expect(found).toBeTruthy();
+      return found as HTMLElement;
+    });
+    expect(footer.hasAttribute('data-truncated')).toBe(false);
+  });
+
   test('refuses text that is not JSON, and a JSON value that is not an object, says the line to fix once, and sends nothing', async () => {
     const { container, getByRole } = open();
     await openJson(container);
