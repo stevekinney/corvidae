@@ -179,6 +179,21 @@
     display: contents;
   }
 
+  /* "Add a field" is compact at the start of the column on every page, never stretched to the
+     list's width (row 65s). */
+  .cinder-jse-property-list__add-property-reference > .cinder-button {
+    align-self: flex-start;
+  }
+
+  /* The table never grows past its container (row 65s): Table's `min-inline-size: max-content`
+     would let a long description push a row's actions past the column, so it is dropped here, and
+     the selector outweighs Table's `.cinder-table-scroll > .cinder-table` whichever loads first. */
+  .cinder-table-scroll > .cinder-table.cinder-jse-property-table,
+  .cinder-table.cinder-jse-property-table {
+    inline-size: 100%;
+    min-inline-size: 0;
+  }
+
   .cinder-jse-enum-editor {
     display: grid;
     gap: var(--cinder-space-3);
@@ -228,15 +243,26 @@
     color: var(--cinder-text-subtle);
   }
 
-  /* The Required column holds one checkbox under its heading, as narrow as the heading. */
-  .cinder-jse-property-row__required {
+  /* The description is the one column that wraps: it takes the room the others leave, so a long
+     one grows the row downward, never past the column (row 65s). */
+  .cinder-table .cinder-jse-property-row__description {
+    white-space: normal;
+    overflow-wrap: break-word;
+  }
+
+  /* Type, Required and the actions are as narrow as what they hold. */
+  .cinder-jse-property-table__type-heading,
+  .cinder-jse-property-row__type,
+  .cinder-jse-property-table__required-heading,
+  .cinder-jse-property-row__required,
+  .cinder-jse-property-table__actions-heading,
+  .cinder-jse-property-row__actions {
     inline-size: 1%;
     white-space: nowrap;
   }
 
   .cinder-jse-property-row__actions {
     text-align: end;
-    white-space: nowrap;
   }
 
   .cinder-jse-property-row__inline-actions {
@@ -245,10 +271,10 @@
     gap: var(--cinder-space-1);
   }
 
-  /* The one icon menu that holds a row's actions in a narrow container, and the description under
-     the field's name there: both wait for the container to be narrow. */
+  /* The one icon menu that holds a row's actions in a narrow container, and the type and
+     description under the field's name there: both wait for the container to be narrow. */
   .cinder-jse-property-row__menu,
-  .cinder-jse-property-row__key-description {
+  .cinder-jse-property-row__key-meta {
     display: none;
   }
 
@@ -259,21 +285,13 @@
     container-name: cinder-jse-properties;
   }
 
-  /* Narrow (row 65s): every row fits its box. Description moves under the field's name, and move
-     up, move down and delete go into one icon menu, so nothing sits past the right edge and the
-     table never scrolls sideways to reach a row's own actions. */
+  /* Narrow (row 65s): every row fits its box. The type and the description move under the
+     field's name, starting where the name starts, and move up, move down and delete go into one
+     icon menu, so Field keeps the room its names need: a name breaks only when it cannot fit its
+     line at all, and the table never scrolls sideways to reach a row's own actions. */
   @container cinder-jse-properties (max-width: 36rem) {
-    /* The table fits its container: a fixed layout over the container's width. Table's own
-       `min-inline-size: max-content` is dropped here, because a fixed table whose Field column has
-       no width reads its max-content as unbounded and scrolls sideways (row 65s). The selector
-       outweighs Table's `.cinder-table-scroll > .cinder-table` whichever loads first. */
-    .cinder-table-scroll > .cinder-table.cinder-jse-property-table,
-    .cinder-table.cinder-jse-property-table {
-      table-layout: fixed;
-      inline-size: 100%;
-      min-inline-size: 0;
-    }
-
+    .cinder-jse-property-table__type-heading,
+    .cinder-jse-property-row__type,
     .cinder-jse-property-table__description-heading,
     .cinder-jse-property-row__description,
     .cinder-jse-property-row__inline-actions {
@@ -286,30 +304,23 @@
 
     .cinder-jse-property-row__key {
       white-space: normal;
-      overflow-wrap: anywhere;
+      overflow-wrap: break-word;
     }
 
-    .cinder-jse-property-row__key-description {
-      display: block;
+    .cinder-jse-property-row__key-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: var(--cinder-space-0-5) var(--cinder-space-2);
       margin-block-start: var(--cinder-space-0-5);
+      /* Past the chevron and its gap, under the name's first letter. */
+      padding-inline-start: calc(0.875rem + var(--cinder-space-2));
       font-size: var(--cinder-text-xs);
       font-weight: var(--cinder-font-normal);
       color: var(--cinder-text-subtle);
     }
 
-    .cinder-jse-property-table__type-heading,
-    .cinder-jse-property-row__type {
-      inline-size: 5.5rem;
-    }
-
-    .cinder-jse-property-table__required-heading,
-    .cinder-jse-property-row__required {
-      inline-size: 5.5rem;
-    }
-
-    .cinder-jse-property-table__actions-heading,
-    .cinder-jse-property-row__actions {
-      inline-size: 2.75rem;
+    .cinder-jse-property-row__key-type {
+      font-family: var(--cinder-font-mono);
     }
   }
 

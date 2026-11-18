@@ -1,13 +1,16 @@
 import { expect, test } from '@playwright/test';
 import { fixtureRoute } from './layout-fixture.ts';
 
-// COR-2432, row 65s: a fields table's row keeps its own actions inside its box. On a 320px phone,
-// and in a 350px column of a wide page, the Required checkbox and the row's actions (the icon menu
-// once the container is narrow) sit inside the row, and the table never scrolls sideways.
+// COR-2432, row 65s: a fields table's row keeps its own actions inside its box, and the table never
+// scrolls sideways. `#example-mount-fields` is the builder's 720px form column with a long
+// description, which must wrap rather than push Delete past the column (768 and 1280);
+// `#example-mount-fields-narrow` is a 350px column, where the actions sit in one icon menu. On a
+// 320px phone both are narrow, and a field's name is never broken inside a word.
 
 const CASES = [
   { width: 320, mounts: ['#example-mount-fields', '#example-mount-fields-narrow'] },
-  { width: 1280, mounts: ['#example-mount-fields-narrow'] },
+  { width: 768, mounts: ['#example-mount-fields', '#example-mount-fields-narrow'] },
+  { width: 1280, mounts: ['#example-mount-fields', '#example-mount-fields-narrow'] },
 ] as const;
 
 for (const { width, mounts } of CASES) {
@@ -25,11 +28,18 @@ for (const { width, mounts } of CASES) {
         };
         const table = root.querySelector('.cinder-jse-property-table');
         const scroller = table?.parentElement;
+        const rootBox = root.getBoundingClientRect();
         return {
           sideways:
             scroller === null || scroller === undefined
               ? 0
               : scroller.scrollWidth - scroller.clientWidth,
+          tableRight: table?.getBoundingClientRect().right ?? 0,
+          rootRight: rootBox.right,
+          // A name drawn on more than one line box was broken inside the word.
+          brokenNames: [...root.querySelectorAll('.cinder-jse-property-row__name')]
+            .filter((name) => name.getClientRects().length > 1)
+            .map((name) => name.textContent),
           rows: [...root.querySelectorAll<HTMLElement>('.cinder-jse-property-row')].map((row) => {
             const box = row.getBoundingClientRect();
             const controls = [
@@ -43,7 +53,7 @@ for (const { width, mounts } of CASES) {
               controls: controls.map((control) => {
                 const rect = control.getBoundingClientRect();
                 return {
-                  name: control.getAttribute('aria-label') ?? control.textContent,
+                  name: control.getAttribute('aria-label') ?? control.textContent ?? '',
                   left: rect.left,
                   right: rect.right,
                 };
@@ -54,6 +64,10 @@ for (const { width, mounts } of CASES) {
       });
       expect(measured.rows.length, `${mount} rows`).toBeGreaterThan(0);
       expect(measured.sideways, `${mount} scrolls sideways`).toBeLessThanOrEqual(0);
+      expect(measured.tableRight, `${mount} table right edge`).toBeLessThanOrEqual(
+        measured.rootRight + 1,
+      );
+      expect(measured.brokenNames, `${mount} names broken inside a word`).toEqual([]);
       for (const row of measured.rows) {
         // The checkbox and at least one action control are drawn.
         expect(row.controls.length, `${mount} controls`).toBeGreaterThanOrEqual(2);
@@ -62,7 +76,7 @@ for (const { width, mounts } of CASES) {
             row.left - 1,
           );
           expect(control.right, `${mount} ${control.name} right`).toBeLessThanOrEqual(
-            row.right + 1,
+            Math.min(row.right, measured.rootRight) + 1,
           );
         }
       }

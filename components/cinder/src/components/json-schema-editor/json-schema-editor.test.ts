@@ -1323,16 +1323,54 @@ describe('JsonSchemaEditor — controlled and uncontrolled schema inputs', () =>
 });
 
 describe('JsonSchemaEditor — the fields form (COR-2432, row 65s)', () => {
-  test('a narrow table fits its container instead of Table’s max-content width, which a fixed layout reads as unbounded', async () => {
+  test('the table fits its container at every width, a long description wraps, and a narrow name breaks only when it cannot fit (design correction 2, B1 and B2)', async () => {
     const { readFileSync } = await import('node:fs');
     const css = readFileSync(new URL('./json-schema-editor.css', import.meta.url), 'utf8');
-    const narrow = css.slice(css.indexOf('@container cinder-jse-properties'));
-    const rule =
-      /\.cinder-table-scroll > \.cinder-table\.cinder-jse-property-table,\s*\.cinder-table\.cinder-jse-property-table \{([^}]*)\}/.exec(
-        narrow,
-      )?.[1] ?? '';
-    expect(rule).toContain('table-layout: fixed');
-    expect(rule).toContain('min-inline-size: 0');
+    const ruleOf = (source: string, selector: RegExp) =>
+      new RegExp(`${selector.source}\\s*\\{([^}]*)\\}`).exec(source)?.[1] ?? '';
+    // Table's `min-inline-size: max-content` is dropped outside the container query too, so a long
+    // description never pushes a row's actions past a 720px column.
+    const container = css.indexOf('@container cinder-jse-properties');
+    const wide = css.slice(0, container);
+    expect(
+      ruleOf(
+        wide,
+        /\.cinder-table-scroll > \.cinder-table\.cinder-jse-property-table,\s*\.cinder-table\.cinder-jse-property-table/,
+      ),
+    ).toContain('min-inline-size: 0');
+    expect(ruleOf(wide, /\.cinder-table \.cinder-jse-property-row__description/)).toContain(
+      'white-space: normal',
+    );
+    // Narrow: no fixed widths, and a name keeps its words (`break-word`, never `anywhere`).
+    const narrow = css.slice(container, css.indexOf('.cinder-jse-property-row__trigger {'));
+    expect(narrow).not.toContain('table-layout: fixed');
+    expect(narrow).not.toContain('5.5rem');
+    expect(ruleOf(narrow, /\.cinder-jse-property-row__key/)).toContain('overflow-wrap: break-word');
+  });
+
+  test('row actions are the icon buttons a sortable list uses, named for their field, and Add a field has a leading plus (row 65s)', () => {
+    const { container } = render(JsonSchemaEditorImplementation, {
+      props: { id: 'jse-icons', defaultSchema: schema, variant: 'fields' as const },
+    });
+    const root = requiredInstance(container.querySelector('[data-cinder-jse]'), HTMLElement);
+    const inline = requiredInstance(
+      root.querySelector('.cinder-jse-property-row__inline-actions'),
+      HTMLElement,
+    );
+    const buttons = [...inline.querySelectorAll('button')];
+    expect(buttons.map((button) => button.getAttribute('aria-label'))).toEqual([
+      'Move branch up',
+      'Move branch down',
+      'Delete branch',
+    ]);
+    for (const button of buttons) {
+      expect(button.querySelector('svg')).not.toBeNull();
+      expect(button.textContent?.trim()).toBe('');
+    }
+    const add = [...root.querySelectorAll('button')].find(
+      (button) => button.textContent?.trim() === 'Add a field',
+    );
+    expect(add?.querySelector('svg')).not.toBeNull();
   });
 
   const schema: JsonSchemaValue = {
@@ -1396,7 +1434,7 @@ describe('JsonSchemaEditor — the fields form (COR-2432, row 65s)', () => {
     );
   });
 
-  test('the narrow container rule folds the actions and the description, measured on the list, not the viewport', async () => {
+  test('the narrow container rule folds the actions, and the type and description under the name, measured on the list, not the viewport', async () => {
     const css = await Bun.file(new URL('./json-schema-editor.css', import.meta.url)).text();
     expect(css).toMatch(/container-type:\s*inline-size/);
     const narrow =
@@ -1404,6 +1442,7 @@ describe('JsonSchemaEditor — the fields form (COR-2432, row 65s)', () => {
     expect(narrow).toBeDefined();
     expect(narrow).toContain('.cinder-jse-property-row__inline-actions');
     expect(narrow).toMatch(/\.cinder-jse-property-row__menu \{\s*display: inline-flex;/);
-    expect(narrow).toMatch(/\.cinder-jse-property-row__key-description \{\s*display: block;/);
+    expect(narrow).toMatch(/\.cinder-jse-property-row__key-meta \{\s*display: flex;/);
+    expect(narrow).toContain('.cinder-jse-property-row__type,');
   });
 });

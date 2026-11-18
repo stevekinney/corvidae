@@ -19,7 +19,8 @@
       since: {
         type: 'string',
         format: 'date',
-        description: 'Only include changes merged after this date. Defaults to the last release.',
+        description:
+          'Only include changes merged after this date. Defaults to the last release, so a run on a quiet week still has something to say.',
       },
     },
   });
@@ -34,8 +35,9 @@
   />
 </div>
 
-<!-- The fields form, the table alone, at the width the page gives it. -->
-<div id="example-mount-fields">
+<!-- The fields form, the table alone, in the builder's 720px form column: a long description wraps
+     and every row's actions stay inside the row (row 65s). -->
+<div id="example-mount-fields" class="fixture-form-column">
   <JsonSchemaEditor
     id="fixture-schema-editor-fields"
     variant="fields"
@@ -56,6 +58,11 @@
 </div>
 
 <style>
+  .fixture-form-column {
+    inline-size: 720px;
+    max-inline-size: 100%;
+  }
+
   .fixture-narrow-column {
     inline-size: 350px;
     max-inline-size: 100%;

@@ -27,6 +27,9 @@
 <script lang="ts">
   import ChevronDown from '@lucide/svelte/icons/chevron-down';
   import Ellipsis from '@lucide/svelte/icons/ellipsis';
+  import Plus from '@lucide/svelte/icons/plus';
+  import Trash2 from '@lucide/svelte/icons/trash-2';
+  import { ArrowDown, ArrowUp } from '../icons/index.ts';
   import { onDestroy, tick } from 'svelte';
   import { classNames } from '../../utilities/class-names.ts';
   import Alert from '../alert/alert.svelte';
@@ -434,11 +437,16 @@
                   </Badge>
                 {/if}
               </button>
-              {#if description !== ''}
-                <!-- In a narrow container the description reads under the field's name, where
-                     its own column has no room (row 65s). -->
-                <span class="cinder-jse-property-row__key-description">{description}</span>
-              {/if}
+              <!-- In a narrow container the type and the description read under the field's name,
+                   where their own columns have no room (row 65s). -->
+              <span class="cinder-jse-property-row__key-meta">
+                <span class="cinder-jse-property-row__key-type"
+                  >{summariseType(propertySchema)}</span
+                >
+                {#if description !== ''}
+                  <span class="cinder-jse-property-row__key-description">{description}</span>
+                {/if}
+              </span>
             </Table.Cell>
             <Table.Cell class="cinder-jse-property-row__type">
               {summariseType(propertySchema)}
@@ -456,36 +464,40 @@
               />
             </Table.Cell>
             <Table.Cell class="cinder-jse-property-row__actions">
-              <!-- A row keeps its own actions inside its box: wide, three buttons; in a narrow
-                   container one icon menu that holds them (row 65s). The table never scrolls
-                   sideways to reach them. -->
+              <!-- A row keeps its own actions inside its box: wide, the icon buttons a sortable
+                   list's rows use (arrows to move, a trash can to delete); in a narrow container
+                   one icon menu that holds them (row 65s). The table never scrolls sideways to
+                   reach them. -->
               <span class="cinder-jse-property-row__inline-actions">
                 <Button
-                  variant="ghost"
-                  size="xs"
+                  iconOnly
+                  variant="secondary"
+                  size="sm"
                   disabled={readonly || !canMoveProperty(index, -1)}
                   aria-label={`Move ${key} up`}
                   onclick={() => moveProperty(key, -1, index)}
                 >
-                  ↑
+                  <ArrowUp aria-hidden="true" />
                 </Button>
                 <Button
-                  variant="ghost"
-                  size="xs"
+                  iconOnly
+                  variant="secondary"
+                  size="sm"
                   disabled={readonly || !canMoveProperty(index, 1)}
                   aria-label={`Move ${key} down`}
                   onclick={() => moveProperty(key, 1, index)}
                 >
-                  ↓
+                  <ArrowDown aria-hidden="true" />
                 </Button>
                 <Button
-                  variant="ghost-danger"
-                  size="xs"
+                  iconOnly
+                  variant="ghost"
+                  size="sm"
                   disabled={readonly}
                   aria-label={`Delete ${key}`}
                   onclick={() => deleteProperty(key, index)}
                 >
-                  Delete
+                  <Trash2 aria-hidden="true" />
                 </Button>
               </span>
               <span class="cinder-jse-property-row__menu">
@@ -497,17 +509,26 @@
                   <Dropdown.Menu>
                     <Dropdown.Item
                       disabled={readonly || !canMoveProperty(index, -1)}
-                      onclick={() => moveProperty(key, -1, index)}>Move up</Dropdown.Item
+                      onclick={() => moveProperty(key, -1, index)}
                     >
+                      <ArrowUp aria-hidden="true" size={14} />
+                      Move up
+                    </Dropdown.Item>
                     <Dropdown.Item
                       disabled={readonly || !canMoveProperty(index, 1)}
-                      onclick={() => moveProperty(key, 1, index)}>Move down</Dropdown.Item
+                      onclick={() => moveProperty(key, 1, index)}
                     >
+                      <ArrowDown aria-hidden="true" size={14} />
+                      Move down
+                    </Dropdown.Item>
                     <Dropdown.Item
                       variant="danger"
                       disabled={readonly}
-                      onclick={() => deleteProperty(key, index)}>Delete</Dropdown.Item
+                      onclick={() => deleteProperty(key, index)}
                     >
+                      <Trash2 aria-hidden="true" size={14} />
+                      Delete
+                    </Dropdown.Item>
                   </Dropdown.Menu>
                 </Dropdown>
               </span>
@@ -554,7 +575,9 @@
   {/if}
 
   <span class="cinder-jse-property-list__add-property-reference" bind:this={addPropertyElement}>
+    <!-- Compact, with a leading plus, as every "Add a …" button on a builder page (row 65s). -->
     <Button variant="secondary" size="sm" disabled={readonly} onclick={addProperty}>
+      {#snippet leadingIcon()}<Plus aria-hidden="true" />{/snippet}
       Add a field
     </Button>
   </span>
