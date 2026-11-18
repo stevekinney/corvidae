@@ -16,6 +16,8 @@ describe('COR-2311: container roots draw no structural border unless allowlisted
   const EXCEPTIONS: Record<string, string> = {
     accordion: 'a stack of panels, each a real outlined region',
     alert: 'a status role; the border carries the tone',
+    'approval-group':
+      'a batch of approvals is one bordered group of compact rows (COR-2282 A3, COR-2440 AC2)',
     'access-gate': 'a framed gate panel',
     banner: 'a full-width status strip; the rule bounds it',
     button: 'a control; the border is its boundary',
