@@ -7,11 +7,15 @@ import type {
   RequestHumanInputOutcome,
   RequestHumanInputResult,
 } from './create-request-human-input-tool';
-import { createRequestHumanInputTool } from './create-request-human-input-tool';
+import {
+  createRequestHumanInputTool,
+  HUMAN_WAIT_SAID_MAXIMUM_LENGTH,
+} from './create-request-human-input-tool';
 import { createScheduleWakeupTool } from './create-schedule-wakeup-tool';
 import { DurableCapabilityUnavailableError } from './durable/durable-capability-unavailable-error';
 import type { CombinedOperativeEventMap } from './events';
 import { HumanWaitParkedEvent } from './events';
+import { modelFacingToolResult } from './human-wait-parks';
 
 describe('createRequestHumanInputTool', () => {
   it('is named "Ask a person" for a person, and keeps that name through a toolbox (COR-2009)', () => {
@@ -243,6 +247,57 @@ describe('createRequestHumanInputTool', () => {
         signalName: 'b',
         pendingPark: { kind: 'human-input', signalName: 'a' },
       });
+    });
+
+    it('keeps what the step said beside the call with the park, in the result, the event and the pending wait (COR-2426)', async () => {
+      const context = makeContext('run-said');
+      const emitter = makeEmitter();
+      const events: HumanWaitParkedEvent[] = [];
+      emitter.addEventListener(HumanWaitParkedEvent.type, (event) => {
+        events.push(event);
+      });
+      const raw = createRequestHumanInputTool({ context, emitter });
+      const tool = createTool({
+        ...raw,
+        execute: async (input, toolContext) =>
+          await Promise.resolve(raw.execute(input, toolContext)),
+      });
+      const toolbox = createToolbox([tool]);
+
+      const [result] = await toolbox.execute([createToolCall(tool.name, { signalName: 'pick' })], {
+        executionContext: { stepText: '  I need your pick before I tag a branch.  ' },
+      });
+
+      const said = 'I need your pick before I tag a branch.';
+      expect(result?.result).toMatchObject({ parked: true, signalName: 'pick', said });
+      expect(context.pendingHumanWait).toMatchObject({ signalName: 'pick', said });
+      expect(events.map((event) => event.said)).toEqual([said]);
+      // The model wrote it, so the copy of the result it reads back leaves it out.
+      const modelCopy = modelFacingToolResult({
+        toolName: 'requestHumanInput',
+        result: result?.result,
+      });
+      expect(Object.hasOwn(modelCopy.result as object, 'said')).toBe(false);
+    });
+
+    it('keeps no said text for a step that wrote none, and cuts a long one', () => {
+      const quiet = makeContext('run-quiet');
+      const parked = expectParked(
+        createRequestHumanInputTool({ context: quiet }).execute(
+          { signalName: 'a' },
+          { executionContext: { stepText: '   ' } },
+        ),
+      );
+      expect(Object.hasOwn(parked, 'said')).toBe(false);
+
+      const long = expectParked(
+        createRequestHumanInputTool({ context: makeContext('run-long') }).execute(
+          { signalName: 'b' },
+          { executionContext: { stepText: 'x'.repeat(HUMAN_WAIT_SAID_MAXIMUM_LENGTH + 10) } },
+        ),
+      );
+      expect(long.said).toHaveLength(HUMAN_WAIT_SAID_MAXIMUM_LENGTH);
+      expect(long.said?.endsWith('…')).toBe(true);
     });
 
     it('describes the rule to the model in the exact sentence', () => {

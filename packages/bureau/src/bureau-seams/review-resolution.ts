@@ -17,6 +17,7 @@ import {
   APPROVAL_OUTCOME_NOT_WRITTEN_MESSAGE,
   ApprovalOutcomeNotWrittenError,
   BureauError,
+  ReviewAlreadyResolvedError,
   ReviewRoundChangedError,
 } from '../bureau-errors';
 import {
@@ -353,6 +354,8 @@ export function createReviewResolution<D extends AgentDefinitions>(
             const promptValue = detail?.['prompt'];
             const prompt = typeof promptValue === 'string' ? promptValue : undefined;
             const inputSchema = humanInputSchemaOf(detail?.['inputSchema']);
+            // COR-2426: what the agent said, which the park event carries from the park itself.
+            const said = detail?.['said'];
             reviews.push({
               kind: 'human-wait',
               id,
@@ -362,6 +365,7 @@ export function createReviewResolution<D extends AgentDefinitions>(
               signalName,
               prompt,
               ...(inputSchema === undefined ? {} : { inputSchema }),
+              ...(typeof said === 'string' && said !== '' ? { said } : {}),
               requestedAt: parkedAction.timestamp,
               ageMilliseconds: now - parkedAction.timestamp,
               status: 'pending',
@@ -947,7 +951,7 @@ export function createReviewResolution<D extends AgentDefinitions>(
         decided.decidedBy !== input.principal ||
         decided.reason !== input.reason)
     ) {
-      throw new BureauError(`Review with id "${input.id}" is already resolved`, 'CONFLICT');
+      throw new ReviewAlreadyResolvedError(`Review with id "${input.id}" is already resolved`);
     }
   }
 
@@ -1008,7 +1012,7 @@ export function createReviewResolution<D extends AgentDefinitions>(
       if (cleanup) {
         assertExpectedReviewRound(input, cleanup.review);
         if (cleanup.decision !== input.decision) {
-          throw new BureauError(`Review with id "${input.id}" is already resolved`, 'CONFLICT');
+          throw new ReviewAlreadyResolvedError(`Review with id "${input.id}" is already resolved`);
         }
         if (resolvingReviewIds.has(input.id)) {
           throw new BureauError(

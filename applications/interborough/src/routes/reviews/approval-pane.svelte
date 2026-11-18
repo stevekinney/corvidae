@@ -17,6 +17,7 @@
     reasonSaysAlways,
   } from '../../lib/tool-text.ts';
   import BureauReviewOperation from './bureau-review-operation.svelte';
+  import { inputParts } from './review-items.ts';
   import ReviewResolution from './review-resolution.svelte';
   import ReviewSource from './review-source.svelte';
   import type { ReviewOutcome } from './review-outcome.ts';
@@ -80,12 +81,11 @@
     {#if entries.length === 0}
       <p class="ib-review-pane__note">{REVIEWS_COPY.noInput}</p>
     {:else}
-      <dl class="ib-tool__details">
-        {#each entries as [key, value] (key)}
-          <dt>{key}</dt>
-          <dd>{value}</dd>
-        {/each}
-      </dl>
+      <!-- What the call was given, on one line (row 26o). -->
+      <p class="ib-review-pane__input-line" data-testid="review-input-line">
+        <!-- prettier-ignore -->
+        {#each inputParts(review.approval.arguments) as [key, value], index (index)}{#if index > 0}{', '}{/if}<span class="ib-review-pane__input-key">{key}</span> {value}{/each}
+      </p>
     {/if}
     {#if operation !== undefined}
       <BureauReviewOperation {operation} />
@@ -96,7 +96,6 @@
       <Input
         id={`review-${review.id}-note`}
         label={REVIEWS_COPY.noteLabel}
-        labelVisible={false}
         description={REVIEWS_COPY.noteDescription}
         placeholder={REVIEWS_COPY.notePlaceholder}
         bind:value={note}

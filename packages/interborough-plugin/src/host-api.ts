@@ -18,9 +18,10 @@ export interface PluginAgentListing {
   readonly source: 'code' | 'file';
   /**
    * `invalid` when an agent file cannot be used, and `unavailable` for a code agent of a disabled
-   * plugin, which is listed but cannot run, so `schedules.create` and `goals.create` refuse it.
+   * plugin, which is listed but cannot run, so `schedules.create` and `goals.create` refuse it;
+   * `disabled` is an agent a person disabled, refused the same way until it is enabled again.
    */
-  readonly state: 'ready' | 'invalid' | 'unavailable';
+  readonly state: 'ready' | 'invalid' | 'unavailable' | 'disabled';
   /** The agent's description, or `null` when it has none. */
   readonly description: string | null;
 }

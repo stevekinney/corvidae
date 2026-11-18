@@ -259,7 +259,7 @@ export type SharedAgeMillisecondsAgentName_987c1d9b = {
     | 'canceled'
     | 'superseded';
 };
-export type SharedAgeMillisecondsAgentName_f4ab4251 = {
+export type SharedAgeMillisecondsAgentName_f1ceaa2d = {
   readonly ageMilliseconds: number;
   readonly agentName?: string;
   readonly id: string;
@@ -269,6 +269,7 @@ export type SharedAgeMillisecondsAgentName_f4ab4251 = {
   readonly requestedAt: number;
   readonly resolution?: SharedAnswerDigestDecidedAtDec_655ece59;
   readonly runId: string;
+  readonly said?: string;
   readonly sessionId?: string;
   readonly signalName: string;
   readonly source: 'bureau';

@@ -24,6 +24,12 @@ export type ParkedHumanWait = {
   readonly prompt?: string | undefined;
   /** The schema the author configured for the signal, when the park carries one. */
   readonly inputSchema?: HumanInputSchema | undefined;
+  /**
+   * COR-2426 — what the agent wrote beside the call in the step that parked, kept with the park
+   * so a review says what the agent said; absent for a park written before it was kept, or a
+   * step that wrote no text.
+   */
+  readonly said?: string | undefined;
 };
 
 /**
@@ -41,6 +47,7 @@ export function parkedHumanWait(result: ParkableResult): ParkedHumanWait | undef
     signalName?: unknown;
     prompt?: unknown;
     inputSchema?: unknown;
+    said?: unknown;
   };
   if (candidate.parked !== true || typeof candidate.signalName !== 'string') return undefined;
   const inputSchema = humanInputSchemaOf(candidate.inputSchema);
@@ -48,6 +55,9 @@ export function parkedHumanWait(result: ParkableResult): ParkedHumanWait | undef
     signalName: candidate.signalName,
     ...(typeof candidate.prompt === 'string' ? { prompt: candidate.prompt } : {}),
     ...(inputSchema === undefined ? {} : { inputSchema }),
+    ...(typeof candidate.said === 'string' && candidate.said !== ''
+      ? { said: candidate.said }
+      : {}),
   };
 }
 
@@ -61,6 +71,8 @@ export type HumanWaitPark = {
   readonly signalName: string;
   readonly prompt: string | undefined;
   readonly inputSchema?: HumanInputSchema | undefined;
+  /** COR-2426 — what the agent wrote beside the call that parked (see {@link ParkedHumanWait}). */
+  readonly said?: string | undefined;
 };
 
 /**
@@ -80,6 +92,7 @@ export function humanWaitParks(results: ReadonlyArray<ParkableResult>): HumanWai
         signalName: park.signalName,
         prompt: park.prompt,
         ...(park.inputSchema === undefined ? {} : { inputSchema: park.inputSchema }),
+        ...(park.said === undefined ? {} : { said: park.said }),
       });
     }
     previous = park.signalName;
@@ -106,10 +119,13 @@ export function countHumanWaitParks(results: ReadonlyArray<ParkableResult>): num
 export function modelFacingToolResult<
   Result extends ParkableResult & { readonly content?: unknown },
 >(result: Result): Result {
-  if (parkedHumanWait(result)?.inputSchema === undefined) return result;
+  const park = parkedHumanWait(result);
+  // COR-2426: what the agent said is its own text, so the model's copy leaves it out too.
+  if (park?.inputSchema === undefined && park?.said === undefined) return result;
   const withoutSchema = (value: unknown): unknown => {
-    if (typeof value !== 'object' || value === null || !('inputSchema' in value)) return value;
-    const { inputSchema: _inputSchema, ...rest } = value as Record<string, unknown>;
+    if (typeof value !== 'object' || value === null) return value;
+    if (!('inputSchema' in value) && !('said' in value)) return value;
+    const { inputSchema: _inputSchema, said: _said, ...rest } = value as Record<string, unknown>;
     return rest;
   };
   return {

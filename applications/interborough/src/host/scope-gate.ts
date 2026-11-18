@@ -69,6 +69,8 @@ export const BUREAU_METHOD_SCOPES: ReadonlyMap<string, ApiScope> = new Map<strin
   ['bureau.agents.definitions.delete', 'agents:write'],
   ['bureau.agents.versions.restore', 'agents:write'],
   ['bureau.agents.overrides.update', 'agents:write'],
+  ['bureau.agents.disable', 'agents:write'],
+  ['bureau.agents.enable', 'agents:write'],
   ['bureau.hooks.create', 'hooks:write'],
   ['bureau.hooks.update', 'hooks:write'],
   ['bureau.hooks.delete', 'hooks:write'],

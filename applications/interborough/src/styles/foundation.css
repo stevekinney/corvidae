@@ -54,7 +54,22 @@
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: var(--cinder-space-4) var(--weft-outlet-gutter) var(--cinder-space-6);
+  /* The room at the end is a spacer after the page (below), not bottom padding: a docked action bar
+     on any page then sticks flush to the bottom of what the outlet shows, with no strip of the page
+     under it (Cinder's DockedActionBar). */
+  padding: var(--cinder-space-4) var(--weft-outlet-gutter) 0;
+  scroll-padding-block-end: var(--cinder-toast-reserve-padding);
+}
+
+/* The outlet's end: room under the page, and more while a toast that stays until it is acted on
+   (an Undo) is up, so what the page holds can be scrolled clear of it on a phone
+   (`--cinder-toast-reserve-padding`, which Cinder's ToastRegion sets). */
+.weft-shell-outlet::after {
+  content: '';
+  display: block;
+  box-sizing: content-box;
+  block-size: var(--cinder-space-6);
+  padding-block-end: var(--cinder-toast-reserve-padding);
 }
 
 .weft-shell-outlet[data-width='reading'] {

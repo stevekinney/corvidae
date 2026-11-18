@@ -128,7 +128,7 @@ export type AgentsOperationTypes = {
         readonly size: number;
       }> | null;
       readonly source: 'code' | 'file';
-      readonly state: 'ready' | 'invalid' | 'unavailable';
+      readonly state: 'ready' | 'invalid' | 'unavailable' | 'disabled';
       readonly text: string | null;
       readonly unavailable: { readonly code: 'plugin-disabled'; readonly message: string } | null;
     };
@@ -148,7 +148,7 @@ export type AgentsOperationTypes = {
         readonly plugin: string | null;
         readonly problem: SharedCodeIssuesMessage_037571b6 | null;
         readonly source: 'code' | 'file';
-        readonly state: 'ready' | 'invalid' | 'unavailable';
+        readonly state: 'ready' | 'invalid' | 'unavailable' | 'disabled';
         readonly unavailable: { readonly code: 'plugin-disabled'; readonly message: string } | null;
       }>;
       readonly nextOffset: number | null;
@@ -176,6 +176,16 @@ export type AgentsOperationTypes = {
     readonly output: SharedHashId_cce87f20;
     readonly faults:
       'InvalidParams' | 'NotFound' | 'StaleRevision' | 'Unprocessable' | 'UnsupportedCapability';
+  };
+  'bureau.agents.disable': {
+    readonly input: { readonly id: string };
+    readonly output: { readonly disabled: boolean; readonly id: string };
+    readonly faults: 'InvalidParams' | 'NotFound';
+  };
+  'bureau.agents.enable': {
+    readonly input: { readonly id: string };
+    readonly output: { readonly disabled: boolean; readonly id: string };
+    readonly faults: 'InvalidParams' | 'NotFound';
   };
   'bureau.agents.models': {
     readonly input: { readonly agentName: string };
@@ -266,6 +276,7 @@ export type AgentsOperationTypes = {
         readonly revision: number;
         readonly savedAt: string;
         readonly savedBy: string | null;
+        readonly summary: string;
       }>;
     };
     readonly faults: 'InvalidParams' | 'NotFound' | 'UnsupportedCapability';

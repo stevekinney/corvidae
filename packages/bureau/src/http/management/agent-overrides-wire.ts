@@ -31,6 +31,7 @@ import {
 import { auditTrailAgentOwnerId } from '../../audit-trail.ts';
 import { ownerOfPrincipal } from '../owner-predicate.ts';
 import type { BureauAgentDefinitionsOperationHost } from './agent-definitions-operations.ts';
+import { summarizeVersion } from './agent-version-summary.ts';
 
 /** A built-in agent's overrides as the wire shows them: every key, `null` when not overridden. */
 export const agentOverridesOutputSchema = z.object({
@@ -109,8 +110,15 @@ export function overridesOf(input: z.infer<typeof agentOverridesInputSchema>): A
   return overrides;
 }
 
-/** A built-in agent's version in the shape `bureau.agents.versions.list` gives every version. */
-export function overrideVersionView(record: AgentOverrideVersionRecord) {
+/**
+ * A built-in agent's version in the shape `bureau.agents.versions.list` gives every version.
+ * `previous` is the version before it while it is kept; a first version is compared with no
+ * overrides, the agent's own (COR-2429).
+ */
+export function overrideVersionView(
+  record: AgentOverrideVersionRecord,
+  previous: AgentOverrideVersionRecord | undefined,
+) {
   return {
     revision: record.version,
     hash: record.hash,
@@ -121,6 +129,13 @@ export function overrideVersionView(record: AgentOverrideVersionRecord) {
     overrides: overridesView(record.overrides),
     referenceDigests: null,
     changedKeys: [...record.changedKeys],
+    summary: summarizeVersion({
+      changedKeys: record.changedKeys,
+      current: record.overrides,
+      previous: previous?.overrides,
+      // A code agent's first saved version reads Created, as a file agent's does (design review 1).
+      first: record.version === 1,
+    }),
   };
 }
 

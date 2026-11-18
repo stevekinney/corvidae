@@ -87,6 +87,13 @@ export interface PendingHumanWaitReview {
   signalName: string;
   prompt: string | undefined;
   /**
+   * COR-2426 — what the agent wrote beside its `requestHumanInput` call in the step that parked,
+   * kept with the park in the same write (the step record's tool result), so a reviewer reads what
+   * the agent said and not only the question. Absent for a park that kept none: one written
+   * before this was kept, a step that wrote no text, or a workflow step's wait.
+   */
+  said?: string | undefined;
+  /**
    * The JSON Schema (2020-12) the agent's author configured for the signal, when one is: the
    * shape of the answer the wait expects. An A2A task projects it as a form.
    */

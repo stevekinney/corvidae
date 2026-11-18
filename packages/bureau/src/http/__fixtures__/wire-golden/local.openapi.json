@@ -37,6 +37,37 @@
         ],
         "type": "object"
       },
+      "BureauAgentsDisableInput": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "description": "The identifier of the agent: a built-in agent, a plugin’s, or an agent file.",
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "type": "object"
+      },
+      "BureauAgentsDisableOutput": {
+        "additionalProperties": false,
+        "properties": {
+          "disabled": {
+            "type": "boolean"
+          },
+          "id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "disabled"
+        ],
+        "type": "object"
+      },
       "BureauAssetsGetOutput": {
         "additionalProperties": false,
         "properties": {

@@ -216,14 +216,9 @@ describe('the models of a new agent', () => {
     bureau();
     const { findByRole } = mountEditor();
     const options = await openModelOptions(await findByRole('combobox', { name: 'Model' }));
+    // One line, as a sentence reads: lower case after the first part (design review 3).
     expect(optionDescription(options[0] as HTMLElement)).toBe(
-      [
-        copy.context('1M'),
-        copy.abilities.tools,
-        copy.abilities.images,
-        copy.abilities.structuredOutput,
-        copy.abilities.streaming,
-      ].join(', '),
+      '1M context window, tools, images, structured output, streaming',
     );
   });
 });

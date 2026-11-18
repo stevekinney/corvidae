@@ -19,6 +19,24 @@
   overflow: hidden;
 }
 
+/* The frame's width is ListDetail's, so the host measures it for the query below. */
+.ib-reviews__frame-host {
+  container: reviews-frame / inline-size;
+  min-inline-size: 0;
+}
+
+/* One pane at a time (ListDetail below its `pushBelow` of 600px, as reviews-panel.svelte passes
+   it): the pane follows the page, as ListDetail lays it out, so the frame neither fixes its height
+   nor clips. A docked bar in the pane (a workflow review's Send back and Approve) then sticks to
+   the bottom of the page's own scrolling area, which ends where the tab bar starts, instead of to
+   the bottom of a clipped frame below the fold (row 25q). */
+@container reviews-frame (inline-size < 600px) {
+  .ib-reviews__frame {
+    block-size: auto;
+    overflow: visible;
+  }
+}
+
 /* The keys that move through the list, said once at its head. */
 .ib-reviews__hint {
   margin: 0;
@@ -146,6 +164,12 @@
   overflow-wrap: anywhere;
 }
 
+/* The check keeps its size on a phone and sits centered on the first line (row 26g). */
+.ib-review-gone__message > svg {
+  flex: none;
+  margin-block-start: calc((1lh - 18px) / 2);
+}
+
 /* One line under the question: who asked, where, and since when, each part a link. */
 .ib-review-source {
   margin: 0;
@@ -181,18 +205,59 @@
   padding-inline-start: 0;
 }
 
+/* What an approval's call was given, on one line (row 26o). */
+.ib-review-pane__input-line {
+  margin: 0;
+  font-size: var(--cinder-text-sm);
+  overflow-wrap: anywhere;
+}
+
 .ib-review-pane__actions {
   display: flex;
   flex-wrap: wrap;
   gap: var(--cinder-space-2);
 }
 
-/* On a phone the decisions are equal-width, 44px-high buttons. */
-@media (max-width: 639.98px) {
-  .ib-review-pane__actions > * {
-    flex: 1 1 8rem;
-    min-block-size: 44px;
-  }
+/* Cinder's Button reaches a 44px target through its own hit area, so the buttons keep their size. */
+
+/* What a workflow's author says above the draft (row 25o). */
+.ib-review-pane__intro {
+  margin: 0;
+  font-size: var(--cinder-text-sm);
+  overflow-wrap: anywhere;
+}
+
+/* What an agent said when it asked, collapsed under its first words (row 25f). */
+.ib-review-pane__said-text {
+  margin: 0;
+  font-size: var(--cinder-text-sm);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* The input line: each name muted, so names and values read apart (row 26o). */
+.ib-review-pane__input-key {
+  color: var(--cinder-text-muted);
+}
+
+/* A row's second line: the agent's name takes the ellipsis, and the risk always shows. */
+/* No gap: the risk span carries its own ", " so nothing sits before the comma (rows 07c, 07f). */
+.ib-review-row__kind {
+  display: flex;
+  min-inline-size: 0;
+}
+
+.ib-review-row__from {
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* "3 min ago, can't be undone": the time and the risk as one phrase that wraps as a whole. */
+.ib-review-row__when,
+.ib-review-row__risk {
+  white-space: nowrap;
 }
 
 /* What became of a review that is no longer waiting, on a neutral surface. */

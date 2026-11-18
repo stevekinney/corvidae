@@ -7,13 +7,20 @@
    * workflow review takes the engine's decision form. Done lists what was decided. This owns the
    * queries and the writes once and hands them down; the segments (Waiting and Done, each with its
    * count, a dash until it is known) are the address (`?tab=done`). Done is read from the start so
-   * its count is known, and a decision asks both lists again, so both counts follow it. The count is
-   * of the decided reviews read so far (a page is 25), because the Bureau's list carries no total.
+   * its count is known, and a decision asks both lists again, so both counts follow it. Done's count
+   * is the Bureau's total for the whole list, beyond the 25 a page reads (COR-2426).
+   *
+   * An approve that finds the review already resolved (the agent moved on, or it was decided
+   * elsewhere) says "No longer waiting" in its place, as a review that left the list does (row 26g).
    */
   import { Alert, FilterBar, PageHeader, type FilterSegment } from '@lostgradient/cinder';
 
   import { REVIEWS_COPY } from '../../app/copy/reviews.ts';
-  import { isReviewRoundChanged, type BureauHumanWait } from '../../lib/bureau-reviews.ts';
+  import {
+    isReviewNoLongerWaiting,
+    isReviewRoundChanged,
+    type BureauHumanWait,
+  } from '../../lib/bureau-reviews.ts';
   import { answerRefusalIssues, taskAnswerText } from '../../lib/bureau-tasks.ts';
   import { getClient } from '../../lib/client.ts';
   import { combinePages } from '../../lib/combine-pages.ts';
@@ -100,6 +107,15 @@
   let outcome = $state<ReviewOutcome | undefined>(undefined);
   /** A decision that took effect but needs saying so: its outcome was not written, or it was not remembered. */
   let notice = $state<{ title: string; message: string } | undefined>(undefined);
+  /** The review a decision found already resolved, which the panel says is no longer waiting. */
+  let refusedKey = $state<string | null>(null);
+
+  /** A decision found `review` no longer waiting: the panel says so in its place, and both lists are read again. */
+  function gone(review: { readonly source: 'bureau'; readonly id: string }): void {
+    refusedKey = inboxKey(review);
+    void waitingQuery.refetch();
+    void doneQuery.refetch();
+  }
 
   function submitDecision(
     reviewId: string,
@@ -136,7 +152,13 @@
       label: REVIEWS_COPY.tabs.waiting,
       ...segmentCount(waitingQuery, waiting.length),
     },
-    { value: 'done', label: REVIEWS_COPY.tabs.done, ...segmentCount(doneQuery, done.length) },
+    {
+      value: 'done',
+      label: REVIEWS_COPY.tabs.done,
+      // The Bureau's total counts beyond the page read (COR-2426, "Done 13" with 25 loaded); one
+      // that predates it leaves the count of the decided reviews read so far.
+      ...segmentCount(doneQuery, doneQuery.data?.pages[0]?.total ?? done.length),
+    },
   ]);
 
   function resolve(request: ResolveRequest): void {
@@ -177,6 +199,12 @@
           onDone();
         },
         onError: (error) => {
+          if (isReviewNoLongerWaiting(error)) {
+            // Nothing was decided and nothing is needed: its place says so (row 26g), and the list is
+            // read again so the review leaves it.
+            gone(review);
+            return;
+          }
           outcome = isReviewRoundChanged(error)
             ? {
                 reviewId: review.id,
@@ -216,6 +244,11 @@
           onDone();
         },
         onError: (error) => {
+          // Answered already, by someone else or because the agent moved on: said in its place.
+          if (isReviewNoLongerWaiting(error)) {
+            gone(review);
+            return;
+          }
           // A refusal that names fields is shown on them; any other failure is the message beside the question.
           const issues = answerRefusalIssues(error);
           outcome = {
@@ -287,6 +320,7 @@
       {submitGate}
       {outcome}
       {viewer}
+      {refusedKey}
       onResolve={resolve}
       onAnswer={answer}
       onSubmit={submitDecision}

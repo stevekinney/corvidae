@@ -88,6 +88,37 @@
   let politeStack: InternalToastItem[] = $state([]);
   let assertiveStack: InternalToastItem[] = $state([]);
 
+  /**
+   * While a toast that stays until it is acted on (an Undo, an error: no timer) is shown at the
+   * bottom of the viewport, the document element carries the token `--cinder-toast-reserve-padding`
+   * (`0px` by default): how far up from the viewport's bottom edge the region reaches, in pixels. A
+   * page's scrolling area keeps that much room at its end, so nothing it holds stays under such a
+   * toast (a memory's "Came from" on a 320px phone, COR-2429). A toast that leaves on its own
+   * reserves nothing; the override is removed once none stays.
+   */
+  const TOAST_RESERVE_PROPERTY = '--cinder-toast-reserve-padding';
+  const staysUntilActedOn = $derived(
+    [...politeStack, ...assertiveStack].some((toast) => toast.duration <= 0 && !toast.leaving),
+  );
+  $effect(() => {
+    const element = regionElement;
+    if (element === null || !staysUntilActedOn || !position.startsWith('bottom')) return;
+    const root = document.documentElement;
+    const update = (): void => {
+      const reach = Math.ceil(window.innerHeight - element.getBoundingClientRect().top);
+      root.style.setProperty(TOAST_RESERVE_PROPERTY, `${String(Math.max(0, reach))}px`);
+    };
+    update();
+    const observer = typeof ResizeObserver === 'function' ? new ResizeObserver(update) : undefined;
+    observer?.observe(element);
+    window.addEventListener('resize', update);
+    return () => {
+      observer?.disconnect();
+      window.removeEventListener('resize', update);
+      root.style.removeProperty(TOAST_RESERVE_PROPERTY);
+    };
+  });
+
   // Track auto-dismiss timers so we can cancel on dismiss / unmount.
   const timers: Map<string, TimerRecord> = new Map();
   const removalTimers: Map<string, () => void> = new Map();
@@ -188,8 +219,12 @@
         ...(options.icon ? { icon: options.icon } : {}),
         ...(action ? { action } : {}),
         ...(undo ? { undo } : {}),
+        ...(options.onClose ? { onClose: options.onClose } : {}),
       };
     }
+    // A toast shown again under the same id closes the one it replaces.
+    const replaced = findToast(id);
+    if (replaced !== undefined && !replaced.leaving) notifyClose(replaced);
     clearTimer(id);
     clearRemovalTimer(id);
     removeFromBothStacks(id);
@@ -208,6 +243,7 @@
       ...(options.icon ? { icon: options.icon } : {}),
       ...(action ? { action } : {}),
       ...(undo ? { undo } : {}),
+      ...(options.onClose ? { onClose: options.onClose } : {}),
     };
 
     setCurrentStack(variant, [...getCurrentStack(variant), item]);
@@ -350,12 +386,21 @@
     return regionElement?.querySelector(`[data-cinder-toast-id="${CSS.escape(id)}"]`) ?? null;
   }
 
+  /** Tells the toast's `onClose`, once, that it is closing. */
+  function notifyClose(item: InternalToastItem): void {
+    const close = item.onClose;
+    if (close === undefined) return;
+    delete item.onClose;
+    close();
+  }
+
   function beginDismiss(id: string, reason: DismissReason): void {
     const item = findToast(id);
     if (!item || item.leaving) return;
 
     clearTimer(id);
     invalidateGeneration(id);
+    notifyClose(item);
 
     const element = getToastElement(id);
     const shell = element?.closest<HTMLElement>('.cinder-toast-shell');
@@ -616,6 +661,10 @@
     // Tear down timers so unmounting the region (e.g., during route change)
     // doesn't leak timers that fire later and try to mutate disposed state.
     destroyed = true;
+    // Every toast still showing closes with the region.
+    for (const item of [...politeStack, ...assertiveStack]) {
+      if (!item.leaving) notifyClose(item);
+    }
     for (const id of timers.keys()) clearTimer(id);
     for (const id of removalTimers.keys()) clearRemovalTimer(id);
     generations.clear();
