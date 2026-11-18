@@ -1,0 +1,16 @@
+{
+  "$schema": "../../../../../internal/component-tooling/src/schemas/component-meta.schema.json",
+  "category": "data-display",
+  "status": "stable",
+  "purpose": "Separator entry inside a feed marking a stream discontinuity such as a reconnect or a sequence gap.",
+  "tags": ["timeline", "event"],
+  "useWhen": ["Marking a reconnect, replay, or gap between entries in a feed's log arm."],
+  "avoidWhen": [
+    {
+      "reason": "Standing alone outside a feed — it expects the feed list semantics around it.",
+      "alternative": "feed"
+    },
+    { "reason": "Separating generic page content — use divider instead.", "alternative": "divider" }
+  ],
+  "related": ["feed", "feed-event", "divider"]
+}

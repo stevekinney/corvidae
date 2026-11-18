@@ -1,20 +1,4 @@
 <script lang="ts" module>
-  /**
-   * @cinder
-   * @category feedback
-   * @status stable
-   * @purpose Centered placeholder with optional icon, title, description, and call-to-action for views that have no data to render.
-   * @tag feedback
-   * @tag empty
-   * @useWhen Communicating that a list, table, or workspace has no items yet and suggesting a next step.
-   * @useWhen Replacing a primary content region after a filter or search returns no results.
-   * @useWhen Confirming all work is finished (done kind), or that a filter hid every item (filtered kind).
-   * @useWhen Saying a thing doesn't exist (not-found kind), or that a recoverable condition blocks the view (blocked kind).
-   * @useWhen Saying that a setting the person chose, such as a disabled plugin, holds content back with the disabled kind.
-   * @avoidWhen Indicating that data is still loading — use skeleton or spinner instead.
-   * @avoidWhen Reporting a transient error — use alert, banner, or toast-region.
-   * @related skeleton, spinner
-   */
   export type {
     EmptyStateAlign,
     EmptyStateKind,

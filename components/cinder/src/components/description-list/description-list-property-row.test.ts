@@ -56,8 +56,9 @@ describe('DescriptionList fields: the PropertyRow trailing chevron', () => {
       items: [{ term: 'Owner', definition: 'Ada Lovelace', href: '/people/ada' }],
     });
     expect(container.querySelector('dl')?.hasAttribute('data-cinder-framed')).toBe(true);
+    // The fill is a pseudo-element under the rows, so the container query below can switch it.
     expect(css).toMatch(
-      /\[data-cinder-variant='fields'\]\[data-cinder-framed\]\s*\{[^}]*background: var\(--cinder-surface-inset\)/s,
+      /\[data-cinder-variant='fields'\]\[data-cinder-framed\]::before\s*\{[^}]*background: var\(--cinder-surface-inset\)/s,
     );
     expect(container.querySelector('.cinder-description-list__link svg')).not.toBeNull();
   });
@@ -116,19 +117,28 @@ describe('DescriptionList fields: the PropertyRow trailing chevron', () => {
     );
   });
 
-  test("a framed group takes an Inspector's raised phone surface below 700px", () => {
+  test("a framed group takes an Inspector's raised surface below 700px of its own width (COR-2394)", () => {
     expect(css).toMatch(
-      /@media \(width < 700px\)\s*\{\s*\.cinder-description-list\[data-cinder-variant='fields'\]\[data-cinder-framed\]\s*\{[^}]*background: var\(--cinder-surface-raised\)/s,
+      /\[data-cinder-variant='fields'\] \{[^}]*container-name: cinder-description-list/,
+    );
+    expect(css).not.toMatch(/@media[^{]*width/);
+    // 700px less the framed group's 1rem start padding: a size query measures the content box.
+    expect(containerBlock('cinder-description-list (width < 42.75rem)')).toMatch(
+      /\[data-cinder-variant='fields'\]\[data-cinder-framed\]::before\s*\{[^}]*background: var\(--cinder-surface-raised\)/s,
     );
   });
 
-  test("the label takes InspectorRow's sizes: the body size, and the small size on a phone", () => {
+  test("the label takes InspectorRow's sizes: the body size beside its value, the small size stacked", () => {
     expect(css).toMatch(
       /\.cinder-description-list\[data-cinder-variant='fields'\] dt\s*\{[^}]*font-size: var\(--cinder-text-base\)/s,
     );
-    expect(css).toMatch(
-      /@media \(width < 700px\)\s*\{[^@]*\.cinder-description-list\[data-cinder-variant='fields'\] dt\s*\{[^}]*font-size: var\(--cinder-text-sm\)/s,
+    // Only a stacked row drops the label to the small size; beside its value it keeps the body
+    // size, so the two share a baseline whatever the list's surface.
+    expect(containerBlock('(width < 23rem)')).toMatch(
+      /\.cinder-description-list\[data-cinder-variant='fields'\] dt\s*\{[^}]*font-size: var\(--cinder-text-sm\)/s,
     );
+    expect(containerBlock('cinder-description-list (width < 42.75rem)')).not.toMatch(/font-size/);
+    expect(css).not.toMatch(/@container cinder-description-list \(width < 700px\)/);
   });
 });
 

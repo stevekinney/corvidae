@@ -1,17 +1,4 @@
 <script lang="ts" module>
-  /**
-   * @cinder
-   * @category form
-   * @status stable
-   * @purpose Standalone time-of-day field that collects a canonical time string with optional timezone selection.
-   * @tag form
-   * @tag time
-   * @tag internationalization
-   * @useWhen Collecting a time of day without a date, such as a reminder time or office-hours boundary.
-   * @useWhen Pairing a time value with an optional timezone while keeping a canonical `HH:mm` or `HH:mm:ss` value.
-   * @avoidWhen Collecting a full date range — use date-range-field instead.
-   * @related date-range-field, number-input
-   */
   export type {
     TimeFieldChange,
     TimeFieldGranularity,

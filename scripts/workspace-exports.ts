@@ -8,8 +8,24 @@
  * declarations for Svelte source, so such a library's `types` condition names the `.d.ts` its
  * `types` script emits into the ignored `.types/` mirror of `src`, while `svelte` and `default`
  * keep naming source.
+ *
+ * A component library also exports the derived metadata its `metadata` Turborepo task writes into
+ * the ignored `.metadata/` directory (COR-2078): `./manifest`, and the wildcard
+ * `./*\/schema`, `./*\/variables` and `./*\/examples`. Those are JSON a task generates, so they
+ * neither name source nor exist in a fresh checkout.
  */
 const sourceRoot = './src/index.ts';
+const metadataExports: Readonly<Record<string, string>> = {
+  './manifest': './.metadata/components.json',
+  './*/schema': './.metadata/*/schema.json',
+  './*/variables': './.metadata/*/variables.json',
+  './*/examples': './.metadata/*/examples.json',
+};
+
+/** Whether `key` and `target` are one of a component library's `.metadata/` exports. */
+export function isMetadataExport(key: string, target: unknown): boolean {
+  return Object.hasOwn(metadataExports, key) && metadataExports[key] === target;
+}
 const subpathKey = /^\.(?:\/[a-z0-9]+(?:-[a-z0-9]+)*)+$/;
 const sourceTarget = /^\.\/src(?:\/[A-Za-z0-9._-]+)*\/[A-Za-z0-9._-]+\.ts$/;
 
@@ -63,6 +79,7 @@ export function sourceExportViolations(
   }
   for (const [key, entry] of entries) {
     if (key === '.') continue;
+    if (options.declarations === true && isMetadataExport(key, entry)) continue;
     const name = JSON.stringify(key);
     const target = declared(entry) ? exportSourceTarget(entry) : entry;
     if (!subpathKey.test(key)) {
@@ -87,5 +104,19 @@ export function declaresImportSpecifier(
   if (specifier === packageName) return true;
   if (!specifier.startsWith(`${packageName}/`)) return false;
   if (typeof exports !== 'object' || exports === null) return false;
-  return Object.hasOwn(exports, `.${specifier.slice(packageName.length)}`);
+  const subpath = `.${specifier.slice(packageName.length)}`;
+  if (Object.hasOwn(exports, subpath)) return true;
+  // A wildcard subpath (`./*/schema`) declares every specifier its `*` can stand for, as Node's
+  // resolution does: one path segment or more, never empty.
+  return Object.keys(exports).some((key) => {
+    const star = key.indexOf('*');
+    if (star === -1 || key.indexOf('*', star + 1) !== -1) return false;
+    const prefix = key.slice(0, star);
+    const suffix = key.slice(star + 1);
+    return (
+      subpath.length > prefix.length + suffix.length &&
+      subpath.startsWith(prefix) &&
+      subpath.endsWith(suffix)
+    );
+  });
 }

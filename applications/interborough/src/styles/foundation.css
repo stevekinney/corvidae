@@ -54,7 +54,22 @@
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: var(--cinder-space-4) var(--weft-outlet-gutter) var(--cinder-space-6);
+  /* The room at the end is a spacer after the page (below), not bottom padding: a docked action bar
+     on any page then sticks flush to the bottom of what the outlet shows, with no strip of the page
+     under it (Cinder's DockedActionBar). */
+  padding: var(--cinder-space-4) var(--weft-outlet-gutter) 0;
+  scroll-padding-block-end: var(--cinder-toast-reserve-padding);
+}
+
+/* The outlet's end: room under the page, and more while a toast that stays until it is acted on
+   (an Undo) is up, so what the page holds can be scrolled clear of it on a phone
+   (`--cinder-toast-reserve-padding`, which Cinder's ToastRegion sets). */
+.weft-shell-outlet::after {
+  content: '';
+  display: block;
+  box-sizing: content-box;
+  block-size: var(--cinder-space-6);
+  padding-block-end: var(--cinder-toast-reserve-padding);
 }
 
 .weft-shell-outlet[data-width='reading'] {
@@ -285,10 +300,14 @@
   min-width: 0;
   inline-size: 300px;
   flex: 0 1 auto;
-  /* One line always (design row 06l): the label ellipsizes, and the shortcut keeps its room. */
+  /* One line always (design row 06l): the label ellipsizes, and the shortcut keeps its room. The
+   * field clips sideways only: `hidden` clipped both axes and cut Button's hit area, which reaches
+   * above and below the face on a touch screen, down to the face. `clip`, unlike `hidden`, leaves
+   * the other axis visible. */
   flex-wrap: nowrap;
   white-space: nowrap;
-  overflow: hidden;
+  overflow-x: clip;
+  overflow-y: visible;
   justify-content: flex-start;
   color: var(--cinder-text-muted);
   /* The wide trigger is a field, so it keeps a resting fill and rule (the icon buttons beside it
@@ -323,25 +342,36 @@
  * and quick settings as icon buttons, and the search field with its ⌘K hint returns at 640px. The
  * menu button is drawn only while the navigation is a drawer (`topbar.svelte`), which is also the
  * case for a touch tablet, so it is not part of this width rule. No page scrolls sideways at 320px.
- * Each control is a 44px touch target in pixels, not in `rem`: at 200% text size five targets that
- * grew with the text would leave the title no room, and 44px is the target's size however large the
- * text is. */
+ * Each control is a Button with its own icon-only face, and reaches 44px through the Button's own
+ * hit area, a positioned pseudo-element that takes no layout space (COR-2445). The faces sit a
+ * `--cinder-space-1` gap apart, and neighbours' hit areas may overlap invisibly. */
 @media (max-width: 639.98px) {
   .weft-shell-topbar {
+    gap: var(--cinder-space-1);
     padding: 0 var(--cinder-space-2);
   }
 
-  /* One size for every control in the bar, and a touch target. The search trigger is icon-only at
-   * this width. */
+  /* One face for the bar's four icon controls, 32px in pixels: the face a medium Button draws at
+   * 100% text. In pixels, not `rem` and not a control-height token, for two reasons. At 200% text
+   * a face in `rem` doubles to 64px, and four of them leave the title room for one letter; larger
+   * text should grow the words, not the icons. And under a coarse pointer the control-height
+   * tokens rise to 44px, which made the search face wider than its neighbours. Each still takes a
+   * 44px tap through Button's own hit area, which is a pseudo-element and takes no layout. */
   .weft-shell-topbar .weft-shell-topbar-control {
-    block-size: 44px;
-    min-block-size: 44px;
-    min-inline-size: 44px;
+    flex: none;
+    inline-size: 32px;
+    min-inline-size: 32px;
+    block-size: 32px;
+    min-block-size: 32px;
+    padding: 0;
   }
 
+  /* The search trigger is icon-only at this width, like the icon buttons beside it. The wide
+   * rule above clips it (`overflow: hidden`, for the field's ellipsis); here nothing needs
+   * clipping (the label is visually hidden, the key hint is gone), and the clip cut Button's hit
+   * area down to the face. */
   .weft-shell-topbar .weft-shell-search-trigger {
-    min-width: 44px;
-    inline-size: 44px;
+    overflow: visible;
     margin-inline-start: 0;
     padding-inline: 0;
     justify-content: center;

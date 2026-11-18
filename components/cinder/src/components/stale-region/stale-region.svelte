@@ -1,19 +1,4 @@
 <script lang="ts" module>
-  /**
-   * @cinder
-   * @category feedback
-   * @status beta
-   * @purpose Wrapper for a page whose data may be old that keeps that data at full contrast and turns off only the controls that change something, each described by why.
-   * @tag stale
-   * @tag offline
-   * @tag inert
-   * @useWhen The server is unreachable or a refresh failed and the page keeps showing what it loaded, with a banner above it.
-   * @useWhen Turning off a page's writing controls (Edit, Save, Delete, a switch) while its reading controls (links, filters, tabs, Retry) stay live.
-   * @avoidWhen Disabling one control for its own reason, such as a missing provider — set aria-disabled on that control and describe it.
-   * @avoidWhen Showing the connection state itself — use banner with a connection preset.
-   * @rationale Nearest alternative: Banner — Banner says the data is old and why; StaleRegion is what makes the controls under it inert.
-   * @related banner, button, toggle, checkbox, select
-   */
   export type { StaleRegionProps } from './stale-region.types.ts';
 </script>
 

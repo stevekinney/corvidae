@@ -1,18 +1,4 @@
 <script lang="ts" module>
-  /**
-   * @cinder
-   * @category layout
-   * @status stable
-   * @purpose Generic media box that enforces a fixed aspect ratio for arbitrary embedded content using the native CSS aspect-ratio property.
-   * @tag layout
-   * @tag media
-   * @useWhen Reserving stable space for embedded media, previews, or art-directed content before it loads.
-   * @useWhen You need a generic ratio wrapper for iframe, video, canvas, or custom content rather than an image-specific primitive.
-   * @avoidWhen The child already owns its sizing contract and should determine its own height naturally.
-   * @avoidWhen Supporting legacy browsers that lack native aspect-ratio support.
-   * @related image
-   * @related card
-   */
   export type {
     AspectRatioElement,
     AspectRatioOverflow,

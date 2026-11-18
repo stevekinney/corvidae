@@ -1,18 +1,4 @@
 <script lang="ts" module>
-  /**
-   * @cinder
-   * @category navigation
-   * @status stable
-   * @purpose Command menubar for application chrome such as File, Edit, and View menus.
-   * @tag navigation
-   * @tag menu
-   * @tag chrome
-   * @useWhen Building a desktop-style command menubar with dropdown command groups.
-   * @useWhen Exposing top-level application menus that need arrow-key traversal and optional submenus.
-   * @avoidWhen Linking between routes or sections — use navigation-bar or side-navigation instead.
-   * @avoidWhen Showing one standalone trigger with a menu — use dropdown, dropdown-menu, and dropdown-item directly.
-   * @related navigation-bar, dropdown, dropdown-menu, dropdown-item
-   */
   export type {
     MenuBarEntry,
     MenuBarItem,

@@ -8,8 +8,8 @@
  * are read in one pass once the menu is open.
  */
 
+import { fixtureRoute } from '@lostgradient/testing/playwright/overlay-fixture';
 import { expect, test } from '@playwright/test';
-import { fixtureRoute } from './overlay-fixture.ts';
 
 for (const width of [375, 1280]) {
   test(`at ${width}px a disabled item's reason is a second line under its label text, in the muted colour`, async ({

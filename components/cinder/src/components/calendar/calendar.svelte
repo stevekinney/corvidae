@@ -1,17 +1,4 @@
 <script lang="ts" module>
-  /**
-   * @cinder
-   * @category form
-   * @status alpha
-   * @purpose Keyboard-navigable month grid for choosing a calendar date with full styling control and min/max constraints.
-   * @tag form
-   * @tag date
-   * @tag calendar
-   * @useWhen Rendering a custom date-grid picker inside an input popover.
-   * @useWhen Requiring consistent cross-browser calendar behavior that native date controls cannot provide.
-   * @avoidWhen A plain browser-managed date input is sufficient and custom keyboard semantics are not required.
-   * @related date-picker, date-range-field
-   */
   export type { CalendarProps } from './calendar.types.ts';
 </script>
 

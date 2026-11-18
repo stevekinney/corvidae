@@ -55,7 +55,8 @@ const { cleanup, fireEvent, render } = await import('@testing-library/svelte/pur
 const { flushSync, tick } = await import('svelte');
 const { default: ListDetailFixture } = await import('./list-detail.fixture.svelte');
 const { default: ListDetailTableFixture } = await import('./list-detail-table.fixture.svelte');
-const { declarationsFor, stripCinderComponentsLayer } = await import('../../test/css.ts');
+const { declarationsFor, stripCinderComponentsLayer } =
+  await import('@lostgradient/component-tooling/test/css.ts');
 const { LIST_DETAIL_SHORTCUTS } = await import('./list-detail.constants.ts');
 
 afterEach(() => {
@@ -1066,6 +1067,22 @@ describe('ListDetail', () => {
         ).toBe('true');
         // The header stays live while the rows load.
         expect(container.querySelector('input[aria-label="Search chats"]')).not.toBeNull();
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
+    test('draws as many placeholder rows as loadingRows asks for (COR-2426)', () => {
+      jest.useFakeTimers();
+      try {
+        const { container } = render(ListDetailFixture, {
+          props: { selectionLocation: memoryLocation(), loading: true, loadingRows: 3 },
+        });
+        jest.advanceTimersByTime(300);
+        flushSync();
+        expect(
+          container.querySelectorAll('.cinder-list-detail__list .cinder-skeleton-row'),
+        ).toHaveLength(3);
       } finally {
         jest.useRealTimers();
       }

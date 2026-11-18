@@ -21,7 +21,7 @@ import { bundleSources, readManifestSources } from './sources.ts';
 
 installModalDialogStubs();
 
-const sources = bundleSources(readManifestSources());
+const sources = bundleSources(await readManifestSources());
 const names = sources.flatMap((source) => source.names);
 
 let directory: string | undefined;

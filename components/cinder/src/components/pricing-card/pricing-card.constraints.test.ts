@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'bun:test';
 
-import type { ComponentAttributes } from '../../_internal/constraints.ts';
+import type { ComponentAttributes, ConstraintsDocument } from '../../_internal/constraints.ts';
 import { evaluateConstraints } from '../../_internal/constraints.ts';
 import { invalid, valid } from './pricing-card.constraints.fixtures.ts';
-import pricingCardConstraints from './pricing-card.constraints.ts';
+import pricingCardConstraintsJson from './pricing-card.constraints.json' with { type: 'json' };
+
+// The authored JSON, typed: its string literals widen to `string` on import.
+const pricingCardConstraints = pricingCardConstraintsJson as ConstraintsDocument;
 
 /**
  * `JSON.stringify` silently drops function-valued properties, so two fixtures

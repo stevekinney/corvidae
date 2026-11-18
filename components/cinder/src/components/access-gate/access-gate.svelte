@@ -1,19 +1,4 @@
 <script lang="ts" module>
-  /**
-   * @cinder
-   * @category feedback
-   * @status alpha
-   * @purpose Authorization-scope gate that keeps unavailable actions visible with a reason, or replaces a locked section or page with a neutral disc, title, reason, missing scope and actions.
-   * @tag feedback
-   * @tag authorization
-   * @tag permission
-   * @useWhen Showing a mutating action that the current user cannot activate because an application authorization scope is missing.
-   * @useWhen Replacing a panel, tab, or administrative section with a lock state that names the missing scope or permission.
-   * @avoidWhen Checking browser permissions, media capabilities, or feature support — use capability-gate instead.
-   * @avoidWhen Resolving roles, scopes, or policies — compute granted in application code and pass the boolean in.
-   * @related capability-gate, button, callout, empty-state
-   * @a11yNote Denied inline gates render content inert before hydration, then disable controls, remove them from sequential focus, and wire the reason through aria-describedby.
-   */
   export type {
     AccessGateLayout,
     AccessGateProps,

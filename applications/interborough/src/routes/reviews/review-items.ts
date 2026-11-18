@@ -4,9 +4,17 @@
  * key that is unique across the sources, for selection and keyed rendering. The server orders the
  * list (waiting: the longest first; decided: the latest decision first), and this keeps its order.
  */
+import { humanizeIdentifier } from '@lostgradient/cinder';
+
 import { REVIEWS_COPY } from '../../app/copy/reviews.ts';
 import type { ListedReview } from '../../lib/bureau-reviews.ts';
-import { approvalQuestion, declaredSummary } from '../../lib/tool-text.ts';
+import { approvalQuestion, argumentEntries, declaredSummary } from '../../lib/tool-text.ts';
+
+/**
+ * How long a review that is no longer waiting stays in the list, its place saying so, before it
+ * leaves and that is announced (COR-2426, row 26h: "after a moment").
+ */
+export const NO_LONGER_WAITING_LINGER_MILLISECONDS = 3_000;
 
 /** One review of the inbox, with the key the list selects it by. */
 export interface InboxItem {
@@ -53,7 +61,11 @@ export function neighbourKey(items: readonly InboxItem[], key: string): string |
   return items[index + 1]?.key ?? items[index - 1]?.key ?? null;
 }
 
-/** What a review asks, as one sentence: the approval's question, the question's prompt, the engine's type of review. */
+/**
+ * What a review asks, as one sentence: the approval's question, the question's prompt, and for a
+ * workflow's review its draft's own title when it has one (row 25o), else its type of review. The
+ * list row and the pane's heading both read it, so they say the same.
+ */
 export function reviewTitle(review: ListedReview): string {
   if (review.kind === 'tool-approval') {
     return approvalQuestion({
@@ -63,7 +75,55 @@ export function reviewTitle(review: ListedReview): string {
     });
   }
   if (review.kind === 'human-wait') return review.prompt ?? REVIEWS_COPY.questionFallback;
-  return review.reviewType;
+  return draftTitle(review.artifact) ?? review.reviewType;
+}
+
+/** The `title` a workflow's draft gives itself, trimmed, or `undefined` when it gives none. */
+export function draftTitle(artifact: unknown): string | undefined {
+  if (typeof artifact !== 'object' || artifact === null || Array.isArray(artifact)) {
+    return undefined;
+  }
+  const title: unknown = Reflect.get(artifact, 'title');
+  return typeof title === 'string' && title.trim() !== '' ? title.trim() : undefined;
+}
+
+/**
+ * A row's second line (rows 25x, 07c): what kind of review it is, the agent that asked by its
+ * display name (`agentName`, already worded by the page), and, for an approval of a call that
+ * cannot be undone (the risk the tool declares high), that it cannot be.
+ */
+export function reviewLineTwo(
+  review: ListedReview,
+  agentName: string | undefined,
+): { readonly kind: string; readonly from?: string; readonly risk?: string } {
+  const irreversible =
+    review.status === 'pending' &&
+    review.kind === 'tool-approval' &&
+    review.approval.action.type === 'approval' &&
+    review.approval.action.risk === 'high';
+  return {
+    kind: reviewKindLabel(review),
+    ...(agentName === undefined ? {} : { from: REVIEWS_COPY.fromAgent(agentName) }),
+    // Only a review still waiting says so: a decided one has nothing left to undo (row 25x).
+    ...(irreversible ? { risk: REVIEWS_COPY.cantBeUndone } : {}),
+  };
+}
+
+/**
+ * What an approval's call was given, on one line as the pane says it (row 26o): each argument by its
+ * name in words and its value, in the order the tool took them ("Order ID order-1001, Cents 4200").
+ */
+export function inputLine(args: unknown): string {
+  return inputParts(args)
+    .map(([key, value]) => `${key} ${value}`)
+    .join(', ');
+}
+
+/** The input line's parts, each argument's name in words and its value, for the pane to mute the names. */
+export function inputParts(args: unknown): readonly (readonly [string, string])[] {
+  return argumentEntries(args).map(
+    ([key, value]) => [humanizeIdentifier(key, { casing: 'sentence' }), value] as const,
+  );
 }
 
 /** The label of what kind of review it is. */

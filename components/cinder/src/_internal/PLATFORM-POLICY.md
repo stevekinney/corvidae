@@ -42,12 +42,18 @@ Every modern feature Cinder uses falls into exactly one tier. The tier decides w
 
 ## The two rules every component author must internalize
 
-1. **Container width, not viewport width.** If a component changes because _its own_ box is narrow, it must use a container query, not a viewport media query. Viewport queries are only for things the viewport genuinely owns. The documented exception is Sidebar's mobile Drawer switch (see `RESPONSIVE-POLICY.md`).
+1. **Container width, not viewport width.** If a component changes because _its own_ box is narrow, it must use a container query, not a viewport media query. Viewport queries are only for things the viewport genuinely owns. The documented exceptions are listed in `RESPONSIVE-POLICY.md`, and the viewport queries left in component CSS under [Enforcement](#enforcement).
 2. **Native top-layer over hand-rolled geometry.** Prefer `<dialog>` and the Popover API + Anchor Positioning over manual document listeners and Floating UI where the native primitive fits — but always behind the Tier-2 guards in `OVERLAY-POLICY.md`. Virtual anchors (pointer, caret, text selection) stay on the shared anchored-overlay helper with a Floating UI virtual element; CSS Anchor Positioning is intentionally not used for those.
 
 ## Enforcement
 
 `bun run --filter=@lostgradient/cinder platform:audit` reports current usage of every classified feature and flags hard-coded viewport breakpoints in component CSS so a reviewer can confirm each is viewport-owned (allowed) rather than a container-constraint in disguise (a Tier-1 violation). The feature inventory is a **report**, not a hard gate: deliberate adoption is the goal, so the command surfaces usage for human judgment rather than banning features outright. Viewport breakpoints are the one gated part: `lint` runs the audit with `--strict`, which fails on a viewport `@media` width query that `scripts/platform-viewport-baseline.json` does not list. Rewrite a new one as a container query, or, when the viewport genuinely owns it, grandfather it with `--update-baseline`.
+
+Every entry in the baseline was reviewed on 2026-11-16 (COR-2394). Banner, EmptyState, ErrorState, Inspector and InspectorRow moved to container queries, and DescriptionList's framed `fields` surface followed the Inspector's on 2026-11-18. These three are viewport-owned and stay:
+
+- **Card's edge-to-edge bleed** (`card.css`, `@media (width < 640px)`). `edgeToEdgeOnMobile` drops the side borders and the radius and bleeds the card through the page gutter to the viewport edge on a phone. The gutter it cancels belongs to the page at the viewport's width, so the viewport owns the switch: a card in a narrow column on a wide screen keeps its borders.
+- **Sidebar's mobile breakpoint** (`sidebar.css` and `sidebar.svelte`, `639.98px`). The switch from an inline column to a Drawer is a modality switch of the app shell, the documented exception in `RESPONSIVE-POLICY.md`.
+- **PayloadInspector's one-column fields** (`payload-inspector.css`, `@media (max-width: 30rem)`). Below 480px of viewport the label and value grid of every field becomes one column, the phone form of the page or dialog the payload sits in; the owner kept it a viewport query.
 
 When a new modern feature enters the codebase, add a row to the classification table above (with its tier and rule) in the same change. A feature with no row is unclassified and will be flagged in review.
 

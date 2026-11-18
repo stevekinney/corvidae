@@ -1,14 +1,4 @@
 <script lang="ts" module>
-  /**
-   * @cinder
-   * @category domain
-   * @status domain-suite
-   * @purpose Single- and multi-target diff review with file navigation, comments, drafts, and Markdown/JSON export.
-   * @tag diff-review
-   * @useWhen Reviewing one or many mixed Markdown/source-patch targets and collecting comments for an agent handoff.
-   * @avoidWhen Rendering a single diff with no comment/export workflow -- use DiffViewer or SourceDiffViewer directly.
-   * @related diff-review-comments, diff-viewer, review-editor
-   */
   export type { DiffReviewProps } from './diff-review.types.ts';
 </script>
 

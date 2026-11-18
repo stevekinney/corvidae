@@ -1,20 +1,4 @@
 <script lang="ts" module>
-  /**
-   * @cinder
-   * @category domain
-   * @status alpha
-   * @purpose Durable human-in-the-loop approval surface for reviewing risky tool operations before they execute.
-   * @tag approval
-   * @tag human-in-the-loop
-   * @tag tool
-   * @useWhen A tool call, command, file write, or patch needs explicit human approval before execution.
-   * @useWhen Showing policy, sandbox, idempotency, environment-name, and argument context for an approval request.
-   * @avoidWhen The action has already completed and only needs historical display — use feed or run-step-timeline instead.
-   * @avoidWhen Collecting arbitrary form input for a workflow — compose form controls directly instead.
-   * @related card, badge, status-dot, payload-inspector, code-block, collapsible
-   * @a11yNote Renders as an article with native button controls so approval actions are discoverable without polluting the landmark list.
-   * @a11yNote Expiration changes update the visible state but do not fire approval callbacks automatically.
-   */
   export type {
     ApprovalCardCallbacks,
     ApprovalCardHeadingLevel,
@@ -734,7 +718,6 @@
           {outcomeText}
           outcomeTime={outcomeClock}
           tone={outcomeTone}
-          inlineTime
           trailing={source === undefined ? undefined : askedFrom}
           {decisionNote}
           {decisionNoteCaption}
@@ -743,15 +726,10 @@
         <p class="cinder-approval-card__detail-ask">
           {#if source !== undefined}<span
               >{sourcePrefix ?? 'Asked by'}{' '}{@render askedFrom()}</span
-            >{#if requestedText !== undefined}<span
-                class="cinder-approval-card__separator cinder-approval-card__time-separator"
-                aria-hidden="true">,</span
-              >{/if}{/if}{#if requestedText !== undefined}{#if source !== undefined}{' '}{/if}<time
+            >{/if}{#if requestedText !== undefined}{#if source !== undefined}{' '}{/if}<time
               datetime={requestedIso}>{requestedText}</time
             >{/if}{#if effectiveState !== 'pending' || !isActionable || !hasResolutionCallback}
-            {#if source !== undefined || requestedText !== undefined}
-              <span class="cinder-approval-card__separator" aria-hidden="true">,</span>
-            {/if}
+            {' '}
             <StatusDot status={STATE_DOT_STATUS[effectiveState]} label={stateText} size="sm" />
           {/if}
         </p>
@@ -789,10 +767,7 @@
         <p class="cinder-approval-card__detail-tool">
           {toolPrefix ?? 'It wants to run'}{' '}{#if tool.label !== undefined}<span
               class="cinder-approval-card__tool-label">{tool.label}</span
-            >{' '}{/if}<code class="cinder-approval-card__tool-identifier">{tool.name}</code><span
-            class="cinder-approval-card__separator"
-            aria-hidden="true">,</span
-          >
+            >{' '}{/if}<code class="cinder-approval-card__tool-identifier">{tool.name}</code>
           <span class="cinder-approval-card__risk-word">{riskWord}</span>
         </p>
       {/if}
@@ -887,11 +862,7 @@
             {/if}
             {#if sourceText !== undefined || requestedText !== undefined}
               <p class="cinder-approval-card__eyebrow">
-                {#if sourceText !== undefined}<span>{sourceText}</span
-                  >{#if requestedText !== undefined}<span
-                      class="cinder-approval-card__separator cinder-approval-card__time-separator"
-                      aria-hidden="true">,</span
-                    >{/if}{/if}
+                {#if sourceText !== undefined}<span>{sourceText}</span>{/if}
                 {#if requestedText !== undefined}<time datetime={requestedIso}>{requestedText}</time
                   >{/if}
               </p>
@@ -916,12 +887,9 @@
                   >{#if tool.label !== undefined}<span class="cinder-approval-card__tool-label"
                       >{tool.label}</span
                     >{' '}{/if}<code class="cinder-approval-card__tool-identifier">{tool.name}</code
-                  ><span class="cinder-approval-card__separator" aria-hidden="true">,</span></span
+                  ></span
                 >{' '}{/if}<span class="cinder-approval-card__risk-word">{riskWord}</span
-              >{#if tool.irreversible}<span
-                  class="cinder-approval-card__separator"
-                  aria-hidden="true">,</span
-                >
+              >{#if tool.irreversible}{' '}
                 <span class="cinder-approval-card__undone">Can't be undone</span>
               {/if}
             </p>
@@ -968,10 +936,8 @@
                   <span class="cinder-approval-card__input-word">{cardArgumentsWord}</span>
                   <span class="cinder-approval-card__input-pairs">
                     {#each rowInputPairs as pair, index (pair.key)}
-                      {#if index > 0}<span
-                          class="cinder-approval-card__separator"
-                          aria-hidden="true">,</span
-                        >{' '}{/if}<span class="cinder-approval-card__pair-label">{pair.label}</span
+                      {#if index > 0}{' '}{/if}<span class="cinder-approval-card__pair-label"
+                        >{pair.label}</span
                       >{' '}<span
                         class="cinder-approval-card__pair-value"
                         data-cinder-muted={pair.muted || undefined}>{pair.text}</span

@@ -1,5 +1,5 @@
 {
-  "$schema": "../../schemas/constraints.schema.json",
+  "$schema": "../../../../../internal/component-tooling/src/schemas/constraints.schema.json",
   "component": "input",
   "summary": "Input requires an accessible name via the label prop (which renders a programmatically-associated <label> element). When type is \"password\", setting autocomplete is strongly recommended so password managers and browser autofill can recognize the field.",
   "rules": [

@@ -1,0 +1,17 @@
+{
+  "$schema": "../../../../../internal/component-tooling/src/schemas/component-meta.schema.json",
+  "category": "data-display",
+  "status": "beta",
+  "purpose": "Anchored map pin button with live, idle, selected and cluster states, a visible label so state is never colour alone, and a target of at least 44px.",
+  "tags": ["map", "marker", "pin"],
+  "useWhen": [
+    "Placing a place or a group of places on a map you render yourself, with the map library of your choice.",
+    "Showing which pin is selected with a raised pill and a ring."
+  ],
+  "avoidWhen": [
+    { "reason": "Showing a status next to text outside a map — use status-dot." },
+    { "reason": "Explaining the marker states — use map-legend." }
+  ],
+  "related": [],
+  "rationale": "Nearest alternative: Badge — MapMarker is a focusable pin with a tail that anchors it to a point, not a passive label."
+}

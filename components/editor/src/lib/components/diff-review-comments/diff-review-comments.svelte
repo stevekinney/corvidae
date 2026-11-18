@@ -1,16 +1,4 @@
 <script lang="ts" module>
-  /**
-   * @cinder
-   * @category domain
-   * @status domain-suite
-   * @purpose Reusable, resolution-aware comments panel for a `DiffReviewState` session: every saved comment by default, with an unresolved filter, and a review note.
-   * @tag diff-review
-   * @tag comments
-   * @useWhen Building a standalone comment panel next to a `DiffViewer` or `SourceDiffViewer` instance.
-   * @useWhen Composing the aggregate `DiffReview` shell, which renders this panel internally.
-   * @avoidWhen Reviewing ProseMirror document threads with author identity — use ReviewEditor's own comment UI instead.
-   * @related diff-review
-   */
   export type {
     DiffReviewCommentsFilter,
     DiffReviewCommentsProps,

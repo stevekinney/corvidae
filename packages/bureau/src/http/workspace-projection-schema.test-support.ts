@@ -127,6 +127,8 @@ const CROSS_PRODUCER_NAMES: ReadonlySet<string> = new Set([
   'bureau.agents.versions.restore',
   'bureau.agents.overrides.get',
   'bureau.agents.overrides.update',
+  'bureau.agents.disable',
+  'bureau.agents.enable',
 ]);
 
 /** These producers themselves return the seeded private value to the owner. */

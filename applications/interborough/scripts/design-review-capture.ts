@@ -123,6 +123,10 @@ const SHOWCASE_SPECIFICATIONS = [
   // An archived chat, the Archived chats row and view, and a refused archive.
   'tests/e2e/chat-archive.spec.ts',
   'tests/e2e/workflow-builder-cards.spec.ts',
+  // Disable and Enable of an agent and its read-only chat, Forgot with Undo, a memory whose chat was
+  // deleted, Restore, skills and reference documents; Reviews loading, resolved elsewhere, a
+  // workflow review, Denied and a Done list longer than a page (COR-2429, COR-2426).
+  'tests/e2e/agents-reviews-design-states.spec.ts',
   'tests/e2e/hooks.spec.ts',
   'tests/e2e/hooks-states.spec.ts',
 ] as const;

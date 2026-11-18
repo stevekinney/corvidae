@@ -4,7 +4,7 @@
  * reader is the only part that differs between the dev server (HTTP) and the static export (files).
  */
 
-import { importSpecifiersOf } from '../../../components/cinder/scripts/css-fingerprint.ts';
+import { importSpecifiersOf } from '@lostgradient/component-tooling/scripts/css-fingerprint.ts';
 import { normalizeStylesheetUrl, type StylesheetRecord } from './css-serving-parity-compare.ts';
 
 const LINK_TAG = /<link\b[^>]*>/gi;

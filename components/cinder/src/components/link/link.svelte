@@ -1,15 +1,4 @@
 <script lang="ts" module>
-  /**
-   * @cinder
-   * @category typography
-   * @status beta
-   * @purpose Inline text link with consistent focus ring and underline behavior.
-   * @tag typography
-   * @tag link
-   * @useWhen Embedding a navigable link inside body text or prose content.
-   * @avoidWhen Navigating between pages in a sidebar or nav bar — use NavigationItem.
-   * @related navigation-item, button, breadcrumbs
-   */
   export type { LinkProps, LinkColor, LinkUnderline, LinkVariant } from './link.types.ts';
 </script>
 

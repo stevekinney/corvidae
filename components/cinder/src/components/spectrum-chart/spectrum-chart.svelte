@@ -1,20 +1,4 @@
 <script lang="ts" module>
-  /**
-   * @cinder
-   * @category data-display
-   * @status alpha
-   * @purpose Responsive SVG frequency-bin bar chart for visualizing audio spectrum magnitude data.
-   * @tag chart
-   * @tag spectrum
-   * @tag signal
-   * @tag audio
-   * @useWhen Displaying pre-computed frequency-domain magnitude data from an FFT or spectrum analyzer.
-   * @useWhen Showing a static frequency response or spectrum snapshot with labelled frequency bins.
-   * @avoidWhen Real-time live audio spectrum is needed — feed live AnalyserNode data as props yourself.
-   * @avoidWhen A full time × frequency heatmap is needed — use spectrogram instead.
-   * @avoidWhen General categorical bar comparison — use bar-chart instead.
-   * @related waveform, spectrogram, bar-chart
-   */
   export type { SpectrumChartProps, SpectrumChartSchemaProps } from './spectrum-chart.types.ts';
 </script>
 

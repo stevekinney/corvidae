@@ -1,16 +1,4 @@
 <script lang="ts" module>
-  /**
-   * @cinder
-   * @category form
-   * @status stable
-   * @purpose Fieldset that owns the bound value, shared name, and validation state for a set of mutually exclusive radio children.
-   * @tag form
-   * @tag selection
-   * @useWhen Picking exactly one option from a small fixed set where every choice should stay visible.
-   * @useWhen Sharing a single error and description across a set of related radios.
-   * @avoidWhen Selecting zero or more independent options — use checkbox-group instead.
-   * @related checkbox-group
-   */
   export type { RadioGroupContext, RadioGroupProps } from './radio-group.types.ts';
 </script>
 

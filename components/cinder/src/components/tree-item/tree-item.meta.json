@@ -1,0 +1,16 @@
+{
+  "$schema": "../../../../../internal/component-tooling/src/schemas/component-meta.schema.json",
+  "category": "data-display",
+  "status": "stable",
+  "purpose": "Node within a tree that exposes a label, optional children, and expand and selection state through the tree context.",
+  "tags": ["tree", "node"],
+  "useWhen": [
+    "Rendering a single branch or leaf inside a tree parent.",
+    "Nesting further tree-items as children to form a hierarchy."
+  ],
+  "avoidWhen": [
+    { "reason": "Standing alone outside a tree — it requires the tree context and registry." }
+  ],
+  "related": ["tree"],
+  "composeOnly": true
+}

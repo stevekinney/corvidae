@@ -218,10 +218,11 @@
   }
 
   /* ----------------------------------------
- * Phones: the label stacks above the value
+ * A narrow inspector: the label stacks above the value. The container is the Inspector
+ * (`inspector.css`); a row outside one keeps its side-by-side layout.
  * ---------------------------------------- */
 
-  @media (width < 700px) {
+  @container cinder-inspector (width < 700px) {
     .cinder-inspector-row {
       grid-template-columns: minmax(0, 1fr);
     }

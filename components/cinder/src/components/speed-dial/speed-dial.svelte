@@ -1,16 +1,4 @@
 <script lang="ts" module>
-  /**
-   * @cinder
-   * @category action
-   * @status beta
-   * @purpose Floating action cluster that reveals secondary quick actions around a primary FloatingAction trigger.
-   * @tag action
-   * @tag floating
-   * @useWhen One primary floating action needs a small set of closely related quick actions.
-   * @avoidWhen The actions are equally important and always visible - use toolbar instead. | toolbar
-   * @avoidWhen The trigger should open rich contextual content - use popover instead. | popover
-   * @related floating-action, toolbar, popover
-   */
   export type {
     SpeedDialContext,
     SpeedDialDirection,

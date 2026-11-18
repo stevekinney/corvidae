@@ -1,8 +1,11 @@
 /// <reference lib="dom" />
 import { afterEach, describe, expect, mock, test } from 'bun:test';
 
+import {
+  atRuleDeclarationsFor,
+  declarationsFor,
+} from '@lostgradient/component-tooling/test/css.ts';
 import { setupHappyDom } from '@lostgradient/testing';
-import { declarationsFor } from '../../test/css.ts';
 
 // setupHappyDom() MUST run before any `@testing-library/svelte` import. testing-library
 // reads `globalThis.document` / `window` at module-init, so register happy-dom's globals first.
@@ -207,6 +210,26 @@ describe('ErrorState variant', () => {
     expect(flat.get('padding')).toBe('0');
     expect(flat.get('align-items')).toBe('flex-start');
     expect(flat.get('min-block-size')).toBe('0');
+  });
+
+  test('a narrow row puts the action on a line of its own, by its own width (COR-2394)', async () => {
+    const css = await Bun.file(new URL('./error-state.css', import.meta.url)).text();
+    const row = declarationsFor(css, ".cinder-error-state[data-cinder-variant='row']");
+    expect(row.get('container-type')).toBe('inline-size');
+    expect(row.get('container-name')).toBe('cinder-error-state');
+    // The row has no padding, so its content box is its width: 28rem keeps the retry at the inline
+    // end whenever it has room, and a full-width row on a phone still drops it.
+    expect(row.get('padding')).toBe('0');
+    expect(css).not.toMatch(/@media[^{]*width/);
+    const action = atRuleDeclarationsFor(
+      css,
+      'container',
+      'cinder-error-state (max-width: 28rem)',
+      ".cinder-error-state[data-cinder-variant='row'] .cinder-error-state-action",
+    );
+    expect(action.get('flex-basis')).toBe('100%');
+    // Trailing-edge actions everywhere (owner, 2026-11-13): the dropped retry ends the row.
+    expect(action.get('justify-content')).toBe('flex-end');
   });
 });
 

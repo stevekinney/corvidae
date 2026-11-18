@@ -7,8 +7,8 @@
  */
 
 import { loadManifest } from '@lostgradient/testing';
+import { test } from '@lostgradient/testing/playwright/component-page-fixture';
 import { expect, type Locator } from '@playwright/test';
-import { test } from './component-page-fixture.ts';
 
 const entry = loadManifest().find((candidate) => candidate.slug === 'card');
 const fixture = entry?.fixtures?.find((candidate) => candidate.name === 'footer');

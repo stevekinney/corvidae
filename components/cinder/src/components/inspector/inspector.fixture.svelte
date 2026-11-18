@@ -4,6 +4,9 @@
 
   import { Inspector } from './index.ts';
 
+  /** `rail` puts the properties in a 20rem rail beside the content; `wide` puts them under it. */
+  let { layout = 'rail' }: { layout?: 'rail' | 'wide' } = $props();
+
   let title = $state('Spring menu launch');
   let status = $state('open');
   let due = $state('2026-11-30');
@@ -11,7 +14,7 @@
 </script>
 
 <div class="inspector-fixture-page">
-  <div class="inspector-fixture" data-testid="inspector-detail-page">
+  <div class="inspector-fixture" data-layout={layout} data-testid="inspector-detail-page">
     <div class="inspector-fixture__content" data-testid="inspector-detail-content">
       <h2 class="inspector-fixture__title">{title}</h2>
       <p class="inspector-fixture__body">
@@ -76,8 +79,11 @@
 
 <style>
   /* The page a detail inspector sits on: the content, then the properties as a right rail. Below
-   * 700px of the page, where InspectorRow stacks its labels on a phone, the rail becomes a section
-   * under the content. The page is the container, so the fixture reads its own width. */
+   * 700px of the page the rail becomes a section under the content. The page is the container, so
+   * the fixture reads its own width. The Inspector follows its own width (COR-2394): in the 20rem
+   * rail its labels stack above their values on the raised group at every page width, and in the
+   * `wide` layout, a section under the content as wide as the page, they sit beside their values on
+   * the tinted group once the page is 700px or wider. */
   .inspector-fixture {
     display: grid;
     grid-template-columns: minmax(0, 1fr) 20rem;
@@ -99,6 +105,10 @@
   .inspector-fixture__body {
     margin: 0 0 var(--cinder-space-4);
     color: var(--cinder-text-default);
+  }
+
+  .inspector-fixture[data-layout='wide'] {
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .inspector-fixture-page {

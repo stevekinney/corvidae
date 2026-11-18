@@ -4,12 +4,12 @@
  * `::after`, behind the row's text. On a flat list the box reaches `--cinder-space-3` past the row's
  * start with the control radius, so the tint never starts at the text and the ring never crosses
  * the label's first glyph; on a framed list it reaches the group's start edge with no untinted
- * strip. A framed group takes the raised fill on a phone. Measured on the DescriptionList
+ * strip. A framed group takes the raised fill below 700px of its own width. Measured on the DescriptionList
  * `assertion` fixture, whose flat and framed `fields` lists each start with a linked row.
  */
 
+import { fixtureRoute } from '@lostgradient/testing/playwright/overlay-fixture';
 import { expect, test, type Page } from '@playwright/test';
-import { fixtureRoute } from './overlay-fixture.ts';
 
 type Layer = {
   list: number;
@@ -111,16 +111,36 @@ test("a focused link's ring sits on the same layer, clear of the label's first g
   expect(Math.abs(framed.tintStart - framed.list)).toBeLessThan(1);
 });
 
-test('a framed group takes the raised fill on a phone and the inset tint on a desktop', async ({
+test('a framed group takes the raised fill below 700px of its own width and the inset tint at 700 or wider (COR-2394)', async ({
   page,
 }) => {
-  const fill = () =>
-    page
-      .getByTestId('description-list-fields-framed')
-      .locator('dl')
-      .evaluate((list) => getComputedStyle(list).backgroundColor);
+  // The group's fill is the list's `::before`, so a container query on the list can switch it.
+  const framed = page.getByTestId('description-list-fields-framed');
+  const read = () =>
+    framed.locator('dl').evaluate((list) => ({
+      width: list.getBoundingClientRect().width,
+      fill: getComputedStyle(list, '::before').backgroundColor,
+    }));
+  const raised = async () => token(page, 'background-color', '--cinder-surface-raised');
+  const inset = async () => token(page, 'background-color', '--cinder-surface-inset');
+
   await open(page, 375);
-  expect(await fill()).toBe(await token(page, 'background-color', '--cinder-surface-raised'));
+  const phone = await read();
+  expect(phone.width).toBeLessThan(700);
+  expect(phone.fill).toBe(await raised());
+
+  // At 1280 the fixture sets the flat and framed lists side by side, each narrower than 700px, so
+  // the framed one keeps the raised fill on a desktop too: it follows its own width.
   await open(page, 1280);
-  expect(await fill()).toBe(await token(page, 'background-color', '--cinder-surface-inset'));
+  const beside = await read();
+  expect(beside.width).toBeLessThan(700);
+  expect(beside.fill).toBe(await raised());
+
+  // Given the whole row, the same list is wider than 700px and takes the inset tint.
+  await framed.evaluate((wrapper) => {
+    (wrapper as HTMLElement).style.flexBasis = '100%';
+  });
+  const wide = await read();
+  expect(wide.width).toBeGreaterThanOrEqual(700);
+  expect(wide.fill).toBe(await inset());
 });

@@ -1,16 +1,4 @@
 <script lang="ts" module>
-  /**
-   * @cinder
-   * @category data-display
-   * @status stable
-   * @purpose Separator entry inside a feed marking a stream discontinuity such as a reconnect or a sequence gap.
-   * @tag timeline
-   * @tag event
-   * @useWhen Marking a reconnect, replay, or gap between entries in a feed's log arm.
-   * @avoidWhen Standing alone outside a feed — it expects the feed list semantics around it. | feed
-   * @avoidWhen Separating generic page content — use divider instead. | divider
-   * @related feed, feed-event, divider
-   */
   export type { FeedBoundaryProps } from './feed-boundary.types.ts';
 </script>
 

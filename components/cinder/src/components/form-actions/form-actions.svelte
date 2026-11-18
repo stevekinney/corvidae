@@ -1,19 +1,4 @@
 <script lang="ts" module>
-  /**
-   * @cinder
-   * @category form
-   * @status beta
-   * @purpose Action bar for the end of a form: a summary on the left, the secondary then primary buttons on the right, an optional failed-save alert above them, and an option to stay at the bottom of a long form.
-   * @tag form
-   * @tag actions
-   * @tag sticky
-   * @useWhen A form's Save and Cancel belong in one bar with a line of status beside them, such as "N unsaved changes" or what saving will do.
-   * @useWhen A long form's Save must stay in reach, with the effect of saving named beside it.
-   * @avoidWhen The bar belongs to a page that is not a form, such as a run's Send a message and Cancel run — use docked-action-bar.
-   * @avoidWhen The actions belong to a dialog or drawer — use the overlay's own footer.
-   * @rationale Nearest alternative: DockedActionBar — a docked bar belongs to a live page and can go off together; this one belongs to a form and carries its summary and failed-save message.
-   * @related form, button, docked-action-bar, alert
-   */
   export type { FormActionsProps } from './form-actions.types.ts';
 </script>
 

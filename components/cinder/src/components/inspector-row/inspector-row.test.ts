@@ -288,9 +288,10 @@ describe('InspectorRow stylesheet', () => {
     expect(css).not.toMatch(/\[data-cinder-readonly\][^{]*:hover/);
   });
 
-  test('below 700px the label stacks above the value', () => {
+  test("below 700px of the inspector's own width the label stacks above the value", () => {
+    expect(css).not.toMatch(/@media[^{]*width/);
     expect(css).toMatch(
-      /@media \(width < 700px\) \{\s*\.cinder-inspector-row \{[^}]*grid-template-columns: minmax\(0, 1fr\)/,
+      /@container cinder-inspector \(width < 700px\) \{\s*\.cinder-inspector-row \{[^}]*grid-template-columns: minmax\(0, 1fr\)/,
     );
   });
 

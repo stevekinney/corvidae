@@ -1,18 +1,4 @@
 <script lang="ts" module>
-  /**
-   * @cinder
-   * @category data-display
-   * @status stable
-   * @purpose Filled SVG area chart for showing magnitude and cumulative trends across an ordered x domain.
-   * @tag chart
-   * @tag area
-   * @tag analytics
-   * @useWhen Showing magnitude under a trend line.
-   * @useWhen Comparing cumulative or stacked contribution over an ordered domain.
-   * @avoidWhen Exact point comparison matters more than area magnitude — use line-chart instead.
-   * @avoidWhen Comparing discrete category totals — use bar-chart instead.
-   * @related line-chart, bar-chart, table, statistic
-   */
   export type { AreaChartProps, AreaChartSchemaProps } from './area-chart.types.ts';
 </script>
 

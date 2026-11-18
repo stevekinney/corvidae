@@ -282,10 +282,17 @@
     min-block-size: 3.25rem;
     margin-inline: 0;
     padding-block: var(--cinder-space-1-5);
-    padding-inline: var(--cinder-space-0-5);
+    padding-inline: 0;
     text-align: center;
     font-size: 0.6875rem;
     line-height: 0.875rem;
+  }
+
+  /* The labelled rail's items span the 76px rail less one step each side (68px), so the nav gives
+   * up its own inline padding here: an 11px label such as "Capabilities" needs about 62px. */
+  .cinder-sidebar[data-cinder-collapsed][data-cinder-rail-labels]:not(.cinder-sidebar--mobile)
+    .cinder-sidebar__nav {
+    padding-inline: var(--cinder-space-1);
   }
 
   .cinder-sidebar[data-cinder-collapsed][data-cinder-rail-labels]
@@ -303,8 +310,23 @@
     clip-path: none;
     font-size: 0.6875rem;
     line-height: 0.875rem;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    /* A navigation label never ends in an ellipsis: a name that still cannot fit in 68px wraps to
+     * a second line, centred, and the row grows to hold it. */
+    text-overflow: clip;
+    white-space: normal;
+    overflow-wrap: break-word;
+    text-wrap: balance;
+  }
+
+  /* The group break on the labelled rail is one step of space each side of the hairline: the
+   * padding below it, and above it the margin plus the list's own gap (a token, 2px by default),
+   * which together come to the same step. */
+  .cinder-sidebar[data-cinder-collapsed][data-cinder-rail-labels]
+    .cinder-side-navigation-group[data-cinder-static] {
+    margin-block-start: calc(
+      var(--cinder-space-2) - var(--cinder-side-navigation-list-gap, var(--cinder-space-1))
+    );
+    padding-block-start: var(--cinder-space-2);
   }
 
   /* The count and the dot ride the icon's top-right corner, which is left of the row's edge now

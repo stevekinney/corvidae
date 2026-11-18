@@ -6,8 +6,11 @@ import { waitUntil } from '@lostgradient/testing/wait-until';
 import { parse } from 'postcss';
 import { createRawSnippet } from 'svelte';
 
+import {
+  DEFAULT_TEST_VIEWPORT,
+  setTestViewportWidth,
+} from '@lostgradient/component-tooling/test/viewport.ts';
 import { resetScrollLock } from '../../_internal/overlay.ts';
-import { DEFAULT_TEST_VIEWPORT, setTestViewportWidth } from '../../test/viewport.ts';
 import { emptySnippet, installModalDialogStubs } from './modal-test-helpers.ts';
 
 setupHappyDom();

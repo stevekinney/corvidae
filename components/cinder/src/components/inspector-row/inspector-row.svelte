@@ -1,19 +1,4 @@
 <script lang="ts" module>
-  /**
-   * @cinder
-   * @category data-display
-   * @status beta
-   * @purpose One property row of an inspector: a muted label, a value and a trailing affordance; an editable row opens an inline editor or a popover on activation and commits or cancels from the keyboard.
-   * @tag properties
-   * @tag editable
-   * @tag row
-   * @useWhen Showing one property of a record as a quiet row that becomes a text, select, date or toggle editor on activation.
-   * @useWhen Opening a custom editor, such as a picker, in a popover anchored to the row's value.
-   * @avoidWhen The value is read-only and needs no affordance at all — use description-list.
-   * @avoidWhen The control belongs beside a setting's description and save status — use setting-row.
-   * @related inspector, description-list, setting-row, popover
-   * @rationale Nearest alternative: SettingRow — an inspector row is a quiet label and value that turns into an editor on activation, where a setting row always shows its control.
-   */
   export type {
     InspectorRowEditorContext,
     InspectorRowKind,

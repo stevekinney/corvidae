@@ -4,9 +4,9 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { flushSync, tick } from 'svelte';
 
+import { stripCinderComponentsLayer } from '@lostgradient/component-tooling/test/css.ts';
 import { requiredInstance, setupHappyDom, trackTimers } from '@lostgradient/testing';
 import { waitUntil } from '@lostgradient/testing/wait-until';
-import { stripCinderComponentsLayer } from '../../test/css.ts';
 
 expect.extend(matchers);
 

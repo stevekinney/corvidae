@@ -38,6 +38,7 @@ export const statusDotWordTones = {
   'Waiting on you': 'warning',
   Running: 'info',
   Waiting: 'pending',
+  'Waiting for a signal': 'pending',
   Scheduled: 'pending',
   Done: 'success',
   'Done, refund not issued': 'neutral',

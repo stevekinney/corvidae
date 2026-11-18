@@ -252,27 +252,16 @@
             <span class="cinder-approval-card__line-facts"
               >{#if tool.label !== undefined}<span
                   class="cinder-approval-card__keep cinder-approval-card__line-tool-name"
-                  ><span class="cinder-approval-card__tool-label">{tool.label}</span
-                  >{#if !tool.irreversible}<span
-                      class="cinder-approval-card__separator"
-                      aria-hidden="true">,</span
-                    >{/if}</span
+                  ><span class="cinder-approval-card__tool-label">{tool.label}</span></span
                 >{#if !tool.irreversible}{' '}{/if}{/if}{#if !tool.irreversible}<span
                   class="cinder-approval-card__keep"
                   ><span class="cinder-approval-card__risk-word">{riskWord}</span></span
                 >{/if}</span
-            >{#if hasSourceLine && (tool.label !== undefined || !tool.irreversible)}<span
-                class="cinder-approval-card__separator cinder-approval-card__source-separator"
-                aria-hidden="true">,</span
-              >{/if}
+            >
           </span>
           {#if hasSourceLine}
             <span class="cinder-approval-card__line-source">
-              {#if sourceText !== undefined}<span>{sourceText}</span
-                >{#if requestedText !== undefined}<span
-                    class="cinder-approval-card__separator cinder-approval-card__time-separator"
-                    aria-hidden="true">,</span
-                  >{/if}{/if}
+              {#if sourceText !== undefined}<span>{sourceText}</span>{/if}
               {#if requestedText !== undefined}
                 <time datetime={requestedIso}>{requestedText}</time>
               {/if}

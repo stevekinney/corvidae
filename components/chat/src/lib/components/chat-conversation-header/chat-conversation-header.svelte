@@ -1,18 +1,4 @@
 <script lang="ts" module>
-  /**
-   * @cinder
-   * @category domain
-   * @status domain-suite
-   * @purpose Header primitive for the active Chat conversation, composed as a sibling above Chat rather than inside it.
-   * @tag chat
-   * @tag conversation
-   * @tag header
-   * @useWhen Showing the active conversation title, participants, status, and export controls above a Chat transcript.
-   * @useWhen Building a multi-conversation chat layout where the list, header, and Chat surface are composed as siblings.
-   * @avoidWhen Rendering the conversation switcher — use chat-conversation-list.
-   * @avoidWhen Rendering the transcript body and composer — use chat.
-   * @related chat, chat-conversation-list
-   */
   export type {
     ChatConversationHeaderHeadingLevel,
     ChatConversationHeaderProps,

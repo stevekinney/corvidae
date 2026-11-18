@@ -188,6 +188,8 @@ const SHARED_CONFIGURATION_EVENTS: Readonly<Record<string, string>> = {
   'agent.created': 'agent:',
   'agent.updated': 'agent:',
   'agent.deleted': 'agent:',
+  'agent.disabled': 'agent:',
+  'agent.enabled': 'agent:',
   'workflow.created': 'workflow:',
   'workflow.updated': 'workflow:',
   'workflow.paused': 'workflow:',

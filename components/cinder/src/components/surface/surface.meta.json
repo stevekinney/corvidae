@@ -1,0 +1,20 @@
+{
+  "$schema": "../../../../../internal/component-tooling/src/schemas/component-meta.schema.json",
+  "category": "layout",
+  "status": "stable",
+  "purpose": "Neutral background primitive that establishes a tonal layer for nested content and broadcasts its tone to descendants via context.",
+  "tags": ["layout", "container"],
+  "useWhen": [
+    "Wrapping a region in a consistent background tone such as default, raised, or sunken.",
+    "Letting nested components adapt their styling based on the surrounding surface tone."
+  ],
+  "avoidWhen": [
+    {
+      "reason": "Building a self-contained content card with padding and elevation — use card instead."
+    },
+    {
+      "reason": "Standing up a full page scaffold with header and actions — use a hand-rolled page scaffold instead."
+    }
+  ],
+  "related": ["card"]
+}

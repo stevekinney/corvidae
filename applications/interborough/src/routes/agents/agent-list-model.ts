@@ -24,8 +24,11 @@ export type AgentRow = {
   /** The name a person reads, such as "Tool runner". */
   readonly title: string;
   readonly description: string | null;
-  /** `unavailable` is an agent of a plugin that is disabled: it can be read, never run. */
-  readonly state: 'available' | 'unavailable';
+  /**
+   * `unavailable` is an agent of a plugin that is disabled: it can be read, never run. `disabled` is
+   * an agent a person disabled (COR-2429): its page opens, and it starts no chat until it is enabled.
+   */
+  readonly state: 'available' | 'unavailable' | 'disabled';
   /** Whether the host ships the agent itself: defined in code, with no plugin's namespace. */
   readonly builtIn: boolean;
   /** Whether the agent is a file, which has an editor. */
@@ -84,6 +87,26 @@ export function unavailableRow(
     usesModel: false,
     plugin: pluginOfAgent(listing.id),
     reason: listing.unavailable?.message ?? null,
+    usage,
+  };
+}
+
+/** A row for an agent a person disabled (COR-2429), which the Bureau's list of agents leaves out. */
+export function disabledRow(
+  listing: Pick<AgentListing, 'id' | 'name' | 'description' | 'source'>,
+  usage: AgentChatUsage | undefined,
+): AgentRow {
+  const plugin = pluginOfAgent(listing.id);
+  return {
+    id: listing.id,
+    title: agentRowTitle(listing.name),
+    description: listing.description,
+    state: 'disabled',
+    builtIn: listing.source === 'code' && plugin === null,
+    editable: listing.source === 'file',
+    usesModel: false,
+    plugin,
+    reason: null,
     usage,
   };
 }
@@ -149,7 +172,8 @@ export function holdingPlugins(rows: readonly AgentRow[]): string[] {
 }
 
 /** What a row's status column says: `waiting` for an agent with a chat that waits on the person, `unavailable` for a held-back agent. */
-export function rowStatus(row: AgentRow): 'waiting' | 'unavailable' | undefined {
+export function rowStatus(row: AgentRow): 'waiting' | 'unavailable' | 'disabled' | undefined {
   if (row.state === 'unavailable') return 'unavailable';
+  if (row.state === 'disabled') return 'disabled';
   return row.usage !== undefined && row.usage.waiting > 0 ? 'waiting' : undefined;
 }

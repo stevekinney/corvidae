@@ -1,0 +1,18 @@
+{
+  "$schema": "../../../../../internal/component-tooling/src/schemas/component-meta.schema.json",
+  "category": "data-display",
+  "status": "alpha",
+  "purpose": "Responsive SVG rendering of time-domain audio amplitude data as a waveform path or bar display.",
+  "tags": ["chart", "waveform", "signal", "audio"],
+  "useWhen": [
+    "Visualizing pre-recorded or pre-processed audio amplitude samples in a static display.",
+    "Showing an audio waveform thumbnail or preview with mocked or pre-computed sample data."
+  ],
+  "avoidWhen": [
+    {
+      "reason": "Real-time live audio capture is needed — wire AudioContext / AnalyserNode yourself and feed samples as props."
+    },
+    { "reason": "Frequency-domain data — use spectrum-chart or spectrogram instead." }
+  ],
+  "related": ["spectrum-chart", "spectrogram", "bar-chart", "line-chart"]
+}

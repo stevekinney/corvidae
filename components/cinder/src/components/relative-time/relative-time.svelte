@@ -1,15 +1,4 @@
 <script lang="ts" module>
-  /**
-   * @cinder
-   * @category data-display
-   * @status beta
-   * @purpose Live-updating relative or absolute time label in the viewer's zone, with the other reading in a tooltip.
-   * @tag relative-time
-   * @useWhen Showing when a message, issue, or event happened.
-   * @avoidWhen An exact calendar date is required.
-   * @related date-picker
-   * @rationale Nearest alternative: time element — RelativeTime owns the shared date format ("4 min ago", "Yesterday, 4:12 PM"), the viewer's zone and ticking.
-   */
   export type { RelativeTimeProps } from './relative-time.types.ts';
 
   type ClockSubscriber = {

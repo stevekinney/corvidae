@@ -1,4 +1,4 @@
-import { fixtureEntry } from './editor-fixture.ts';
+import { fixtureEntry } from '@lostgradient/testing/playwright/editor-fixture';
 
 const entry = fixtureEntry('token-computation');
 const fixture = entry.fixtures?.find((candidate) => candidate.name === 'assertion');

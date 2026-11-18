@@ -169,6 +169,7 @@ import {
   bureauAgentDefinitionsOperations,
 } from './management/agent-definitions-operations.ts';
 import { bureauAgentOverridesOperations } from './management/agent-overrides-operations.ts';
+import { bureauAgentDisableOperations } from './management/agent-disable-operations.ts';
 import {
   type BureauDiagnosticsOperationHost,
   diagnosticsGetOperation,
@@ -399,6 +400,8 @@ export type BureauHandlerSource = Pick<
     | 'delete'
     | 'duplicate'
     | 'try'
+    | 'disable'
+    | 'enable'
   >;
 };
 
@@ -851,6 +854,7 @@ export const BUREAU_HANDLER_OPERATIONS = [
   contextsWindowOperation,
   ...bureauAgentDefinitionsOperations,
   ...bureauAgentOverridesOperations,
+  ...bureauAgentDisableOperations,
   ...bureauWorkflowsOperations,
   defineBureauEventsSubscriptionOperation('bureau.events:observe-all'),
   eventsCatalogOperation,

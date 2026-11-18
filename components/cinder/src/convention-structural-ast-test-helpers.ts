@@ -1,4 +1,4 @@
-import { isObjectRecord } from '../scripts/validation-utilities.ts';
+import { isObjectRecord } from '@lostgradient/component-tooling/scripts/validation-utilities.ts';
 
 const CHILD_KEYS = [
   'nodes',

@@ -1,14 +1,4 @@
 <script lang="ts" module>
-  /** @cinder
-   * @category data-display
-   * @status beta
-   * @purpose Displays categorical proportions as an accessible donut with an optional center total.
-   * @tag chart
-   * @useWhen Showing a small number of parts-of-whole categories.
-   * @avoidWhen Comparing many categories or precise values; use BarChart.
-   * @related bar-chart
-   * @rationale Nearest alternative: BarChart compares magnitudes; this owns part-to-whole arcs.
-   */
   export type { DonutChartDatum, DonutChartProps } from './donut-chart.types.ts';
 </script>
 

@@ -1,0 +1,18 @@
+{
+  "$schema": "../../../../../internal/component-tooling/src/schemas/component-meta.schema.json",
+  "category": "navigation",
+  "status": "stable",
+  "purpose": "Visually hidden skip link that moves keyboard focus to a landmark element, letting keyboard and screen reader users bypass repeated navigation.",
+  "tags": ["navigation", "accessibility", "skip-link"],
+  "useWhen": [
+    "Providing a keyboard shortcut to jump past site-wide navigation directly to the main content area.",
+    "Meeting WCAG 2.4.1 (Bypass Blocks) without adding visible chrome to the layout."
+  ],
+  "avoidWhen": [
+    {
+      "reason": "The page has no repeated navigation block — a skip link adds no value on single-panel layouts."
+    },
+    { "reason": "The target region already receives focus naturally without intervention." }
+  ],
+  "related": ["visually-hidden"]
+}

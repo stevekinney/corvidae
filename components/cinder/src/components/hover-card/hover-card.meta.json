@@ -1,0 +1,16 @@
+{
+  "$schema": "../../../../../internal/component-tooling/src/schemas/component-meta.schema.json",
+  "category": "overlay",
+  "status": "stable",
+  "purpose": "Hover-and-focus triggered rich preview card for non-interactive contextual content.",
+  "tags": ["overlay", "hover"],
+  "useWhen": [
+    "Showing a profile, issue, or metadata preview that is richer than a tooltip but still read-only.",
+    "Revealing supplementary preview content on pointer hover or keyboard focus without moving focus."
+  ],
+  "avoidWhen": [
+    { "reason": "The floating content contains focusable controls — use popover." },
+    { "reason": "The trigger needs a short accessible description — use tooltip." }
+  ],
+  "related": ["tooltip", "popover"]
+}

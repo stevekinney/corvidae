@@ -1,0 +1,21 @@
+{
+  "$schema": "../../../../../internal/component-tooling/src/schemas/component-meta.schema.json",
+  "category": "data-display",
+  "status": "beta",
+  "purpose": "Encodes a string payload as an inline SVG QR code with an explicit accessible label.",
+  "tags": ["qr-code", "sharing"],
+  "useWhen": [
+    "Presenting a scannable URL, token, or Wi-Fi credential that users can scan from another device.",
+    "You need a theme-aware QR graphic that stays crisp at any scale."
+  ],
+  "avoidWhen": [
+    {
+      "reason": "You only need to expose a copyable short text value without camera scanning affordance.",
+      "alternative": "copy-button"
+    },
+    {
+      "reason": "The payload is sensitive and should never be displayed as machine-readable visual data."
+    }
+  ],
+  "related": ["copy-button", "share-card"]
+}

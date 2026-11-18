@@ -1,24 +1,4 @@
 <script lang="ts" module>
-  /**
-   * @cinder
-   * @category overlay
-   * @status beta
-   * @purpose Chat composer-bound slash-command and mention listbox primitive.
-   * @tag chat
-   * @tag command
-   * @tag overlay
-   * @useWhen Adding slash commands, mentions, or autocomplete to ChatInput without re-implementing combobox ARIA.
-   * @useWhen Composer suggestions should stay anchored to the active token and leave command definitions in application code.
-   * @avoidWhen Opening a global command launcher detached from the composer — use command-palette instead.
-   * @avoidWhen Anchoring a generic command menu to an arbitrary input — use command-menu instead.
-   * @related chat, command-menu, command-item, command-palette
-   * @a11yPattern WAI-ARIA Combobox with Listbox Popup
-   * @keyboardShortcut ArrowUp / ArrowDown | Moves the active suggestion.
-   * @keyboardShortcut Enter | Selects the active suggestion.
-   * @keyboardShortcut Tab | Selects the active suggestion and keeps focus in the composer.
-   * @keyboardShortcut Escape | Dismisses the suggestion popover.
-   * @a11yNote Passes combobox role and aria-expanded, aria-controls, aria-activedescendant, and aria-autocomplete through to ChatInput's composer overlay API.
-   */
   export type {
     ChatComposerPopoverComposerProps,
     ChatComposerPopoverItem,

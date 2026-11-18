@@ -710,7 +710,7 @@ test.describe('an open chat whose approval is answered in Reviews (18i, 18j)', (
     const decided = page.locator('.cinder-approval-card--row').filter({ hasText: question });
     await expect(decided).toBeVisible();
     await expect(decided.locator('.cinder-approval-card__outcome')).toContainText(
-      /Approved by you in Reviews,\s*10:46 AM/,
+      /Approved by you in Reviews\s*10:46 AM/,
     );
     await expect(decided.getByRole('button', { name: 'Deny' })).toHaveCount(0);
     await expect(decided.getByRole('button', { name: 'Approve' })).toHaveCount(0);
@@ -719,7 +719,7 @@ test.describe('an open chat whose approval is answered in Reviews (18i, 18j)', (
     // The card holds the question twice in its text: once in an aria-hidden screen-reader-only
     // span that only matchers read, and once as the heading a person sees.
     await expect(decided).toHaveText(
-      /^\s*(?:Refund order 4471 for \$42\.00\?\s*){2}Approved by you in Reviews,\s*10:46 AM\s*$/,
+      /^\s*(?:Refund order 4471 for \$42\.00\?\s*){2}Approved by you in Reviews\s*10:46 AM\s*$/,
     );
     await expect(decided.getByRole('heading')).toHaveText('Refund order 4471 for $42.00?');
     await expect(decided.locator('.cinder-approval-card__decided-glyph')).toHaveAttribute(
@@ -768,7 +768,7 @@ test.describe('an open chat whose approval is answered in Reviews (18i, 18j)', (
     await expect(conversationArea(page).getByRole('img', { name: 'Running' })).toBeVisible();
     // The decision stays as it was, and is not told again.
     await expect(decided.locator('.cinder-approval-card__outcome')).toContainText(
-      /Approved by you in Reviews,\s*10:46 AM/,
+      /Approved by you in Reviews\s*10:46 AM/,
     );
     await expect(live).toHaveText('Approved in Reviews. Refund order 4471 for $42.00.');
     // While the continuing run is going the rail row says so in place of the result (18i), and
@@ -942,7 +942,7 @@ test.describe('an open chat whose approval was denied with a note (18h)', () => 
       .filter({ hasText: 'Refund order 4398' });
     await expect(denied).toBeVisible();
     await expect(denied.locator('.cinder-approval-card__outcome')).toContainText(
-      /Denied by you,\s*10:40 AM/,
+      /Denied by you\s*10:40 AM/,
     );
     await expect(denied.locator('.cinder-approval-card__decision-note')).toContainText(NOTE);
     await expect(

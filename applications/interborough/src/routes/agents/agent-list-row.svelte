@@ -61,6 +61,10 @@
 {#snippet statusWord()}
   {#if status === 'waiting'}
     <span data-testid="agent-needs-you"><StatusDot word="Waiting on you" size="sm" /></span>
+  {:else if status === 'disabled'}
+    <span data-testid="agent-disabled"
+      ><StatusDot status="neutral" label={AGENTS_COPY.row.disabled} size="sm" /></span
+    >
   {:else}
     <StatusDot word="Unavailable" size="sm" />
   {/if}
@@ -130,7 +134,7 @@
         >
           <MessageSquarePlus size={16} aria-hidden="true" />
         </Button>
-      {:else}
+      {:else if row.state !== 'disabled'}
         <Button
           href={router.href(newChatPath(row.id))}
           variant="ghost"
