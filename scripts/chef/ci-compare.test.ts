@@ -109,6 +109,99 @@ describe('failingTests', () => {
     expect(unparseableTestJobs(log)).toEqual(new Set(['Tests']));
   });
 
+  test.each(['toBe', 'toEqual', 'toThrow'])(
+    'settles an expect(%s) assertion when its normal fail summary follows Expected substring',
+    (matcher) => {
+      const command = 'bun run test:self';
+      const identity = `src/worktree.test.ts › lifecycle > ${matcher} remains known`;
+      const log = [
+        `Tests\tUNKNOWN STEP\t2026-11-17T22:09:50Z ##[group]Run ${command}`,
+        'Tests\tUNKNOWN STEP\t2026-11-17T22:09:51Z ##[group]src/worktree.test.ts:',
+        `Tests\tUNKNOWN STEP\t2026-11-17T22:09:51Z error: expect(received).${matcher}(expected)`,
+        'Tests\tUNKNOWN STEP\t2026-11-17T22:09:51Z Expected substring: "processes are inside it: 10 bun"',
+        `Tests\tUNKNOWN STEP\t2026-11-17T22:09:51Z (fail) lifecycle > ${matcher} remains known [1ms]`,
+        'Tests\tUNKNOWN STEP\t2026-11-17T22:09:51Z ##[error]Process completed with exit code 1.',
+      ].join('\n');
+      const records = failureRecords(log).get('Tests') ?? [];
+      expect(records).toEqual([
+        { kind: 'test', job: 'Tests', step: `${command}#1`, command, identity },
+      ]);
+      expect(
+        compare(
+          {
+            id: 'candidate',
+            status: 'completed',
+            conclusion: 'failure',
+            jobs: [{ name: 'Candidate', tests: [], failures: records }],
+          },
+          [
+            {
+              id: 'main',
+              status: 'completed',
+              conclusion: 'failure',
+              jobs: [{ name: 'Main', tests: [], failures: records }],
+            },
+          ],
+        ).hasNew,
+      ).toBe(false);
+    },
+  );
+
+  test('keeps assertion-only, generic-only, and residual generic errors unknown', () => {
+    const command = 'bun run test:self';
+    const base = [`Tests\tUNKNOWN STEP\t2026-11-17T22:09:50Z ##[group]Run ${command}`];
+    const records = (lines: string[]) =>
+      failureRecords([...base, ...lines].join('\n')).get('Tests') ?? [];
+    for (const log of [
+      [
+        'Tests\tUNKNOWN STEP\t2026-11-17T22:09:51Z ##[group]src/a.test.ts:',
+        'Tests\tUNKNOWN STEP\t2026-11-17T22:09:51Z error: expect(received).toThrow(expected)',
+      ],
+      [
+        'Tests\tUNKNOWN STEP\t2026-11-17T22:09:51Z ##[group]src/a.test.ts:',
+        'Tests\tUNKNOWN STEP\t2026-11-17T22:09:51Z error: module initialization failed',
+      ],
+      [
+        'Tests\tUNKNOWN STEP\t2026-11-17T22:09:51Z ##[group]src/a.test.ts:',
+        'Tests\tUNKNOWN STEP\t2026-11-17T22:09:51Z error: module initialization failed',
+        'Tests\tUNKNOWN STEP\t2026-11-17T22:09:51Z (fail) named failure [1ms]',
+      ],
+    ])
+      expect(records(log)).toContainEqual({
+        kind: 'unknown',
+        job: 'Tests',
+        step: `${command}#1`,
+        command,
+        diagnostic: 'unparseable test error',
+      });
+  });
+
+  test('keeps a module-init error in file A unknown beside a known failure in file B', () => {
+    const command = 'bun run test:self';
+    const log = [
+      `Tests\tUNKNOWN STEP\t2026-11-17T22:09:50Z ##[group]Run ${command}`,
+      'Tests\tUNKNOWN STEP\t2026-11-17T22:09:51Z ##[group]src/a.test.ts:',
+      'Tests\tUNKNOWN STEP\t2026-11-17T22:09:51Z error: module initialization failed',
+      'Tests\tUNKNOWN STEP\t2026-11-17T22:09:51Z ##[group]src/b.test.ts:',
+      'Tests\tUNKNOWN STEP\t2026-11-17T22:09:51Z (fail) known failure [1ms]',
+    ].join('\n');
+    const records = failureRecords(log).get('Tests') ?? [];
+    expect(records).toContainEqual({
+      kind: 'unknown',
+      job: 'Tests',
+      step: `${command}#1`,
+      command,
+      diagnostic: 'unparseable test error',
+    });
+    expect(records).toContainEqual({
+      kind: 'test',
+      job: 'Tests',
+      step: `${command}#1`,
+      command,
+      identity: 'src/b.test.ts › known failure',
+    });
+  });
+
   test('qualifies identical Bun tests by their Turbo workspace across changed job topology', () => {
     const log = [
       'Affected fast-lane tests\tUNKNOWN STEP\t2026-11-17T18:21:18Z ##[group]Run bunx turbo run test --continue --filter=@lostgradient/example',
