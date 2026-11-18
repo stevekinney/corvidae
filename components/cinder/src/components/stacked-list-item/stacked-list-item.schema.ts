@@ -198,7 +198,7 @@ const schema = {
         name: 'time',
         reason: 'function-or-snippet',
         description:
-          'The time, or the next run, at the right edge of line one, aligned to its top. Pass a\n`RelativeTime` or a plain string.',
+          'The time, or the next run, at the right edge of line one, aligned to its top. Pass a\n`RelativeTime` or a plain string. A string keeps its day and its clock each whole: on a phone\nrow with a control at its end, "Yesterday, 6:00 PM" breaks only after the comma.',
       },
       {
         name: 'title',

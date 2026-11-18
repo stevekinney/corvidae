@@ -28,7 +28,6 @@
   import { RefreshCw, Trash2 } from '@lucide/svelte';
 
   import { router, workflowDetailPath } from '../../lib/router.svelte.ts';
-  import TimeParts from '../../lib/time-parts.svelte';
   import type { ScopeGate } from '../../lib/scopes.svelte.ts';
   import { queueTaskRows, type QueueTaskRow } from './queue-task-rows.ts';
   import type { QueueTask, QueueTaskTab } from './queue-tasks-data.ts';
@@ -212,7 +211,13 @@
   {:else}
     <DataList items={rows} key={(row: QueueTaskRow) => row.id} statusColumn>
       {#snippet children(row)}
-        <StackedListItem wrapMeta data-task={row.id} data-word={row.word} actions={rowActions(row)}>
+        <StackedListItem
+          wrapMeta
+          data-task={row.id}
+          data-word={row.word}
+          actions={rowActions(row)}
+          time={row.time}
+        >
           {#snippet status()}<StatusDot word={row.word} size="sm" />{/snippet}
           {#snippet title()}
             <span class="ib-worker-tasks__title">
@@ -227,7 +232,6 @@
               {/if}
             </span>
           {/snippet}
-          {#snippet time()}<TimeParts text={row.time} />{/snippet}
           {#snippet meta()}
             {row.line}
             {#if row.failed}

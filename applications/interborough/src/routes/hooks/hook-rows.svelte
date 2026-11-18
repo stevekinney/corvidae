@@ -34,7 +34,6 @@
   import { hookPath } from '../../lib/identifier-paths.ts';
   import { queryKeys } from '../../lib/query.ts';
   import { router } from '../../lib/router.svelte.ts';
-  import TimeParts from '../../lib/time-parts.svelte';
   import { HOOKS_COPY } from './hook-copy.ts';
   import {
     failingFirst,
@@ -141,6 +140,7 @@
         href={router.href(hookPath(hook.id))}
         tooltip={whole.title}
         {...hook.declaredBy === null ? {} : { badge: pluginBadge }}
+        {...delivered === undefined ? {} : { time: delivered }}
         metaTooltip={whole.line}
         wrapMeta
         data-hook={hook.id}
@@ -154,11 +154,6 @@
           {/if}
         {/snippet}
         {#snippet title()}{text.title}{/snippet}
-        {#snippet time()}
-          <!-- The day and the clock each stay whole: on a phone the time breaks only between them. -->
-          {#if delivered !== undefined}<span data-last-delivery><TimeParts text={delivered} /></span
-            >{/if}
-        {/snippet}
         {#snippet meta()}
           {#if text.line !== ''}<span class="ib-hooks__line">{text.line}</span>{/if}
         {/snippet}

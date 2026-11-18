@@ -398,6 +398,11 @@
     white-space: nowrap;
   }
 
+  /* A time given as text: the day and the clock are each whole, wherever the time may wrap. */
+  .cinder-stacked-list-item__time-part {
+    white-space: nowrap;
+  }
+
   .cinder-stacked-list-item--lines .cinder-stacked-list-item__line-two {
     grid-area: line;
     min-inline-size: 0;
@@ -530,18 +535,18 @@
     }
 
     /* A row with a trailing control (a hook's switch) shares line one between the title, the time
-       and the control, so its time gives way as well: the title keeps 11rem of the row, and the time
-       takes the rest, between 5rem and 9rem. It wraps only when line one cannot hold it, at its
-       spaces ("Yesterday," over "6:00 PM"); a page keeps a date or a clock whole with nowrap spans.
+       and the control, so the time gives way before the title: a time given as text draws its day
+       over its clock ("Yesterday," over "6:00 PM"), and its column is exactly its widest line
+       (`min-content`), so the title takes all the rest. A time given as a snippet stays one line.
        A row with no trailing control, or whose actions drop under it, keeps its time on one line,
-       and a group row's time and disclosure are never capped. */
+       and a group row's time and disclosure are never narrowed. */
     .cinder-stacked-list-item--lines.cinder-stacked-list-item--has-trailing:not(
         .cinder-stacked-list-item--band,
         .cinder-stacked-list-item--group,
         .cinder-stacked-list-item--phone-buttons
       ).cinder-stacked-list-item--status-leading
       > .cinder-stacked-list-item__layout {
-      --_cinder-time-track: fit-content(clamp(5rem, 100cqi - 11rem, 9rem));
+      --_cinder-time-track: min-content;
     }
 
     .cinder-stacked-list-item--lines:not(
@@ -562,6 +567,15 @@
       ).cinder-stacked-list-item--status-leading
       .cinder-stacked-list-item__time {
       text-align: end;
+    }
+
+    /* Only a time given as text wraps, and only between its parts. */
+    .cinder-stacked-list-item--lines.cinder-stacked-list-item--has-trailing:not(
+        .cinder-stacked-list-item--band,
+        .cinder-stacked-list-item--group,
+        .cinder-stacked-list-item--phone-buttons
+      ).cinder-stacked-list-item--status-leading
+      .cinder-stacked-list-item__time-text {
       white-space: normal;
     }
 

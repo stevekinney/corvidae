@@ -88,4 +88,44 @@ describe('StackedListItem badge (R10-01)', () => {
       ruleBody('.cinder-stacked-list-item--lines .cinder-stacked-list-item__title-row'),
     ).toMatch(/grid-area:\s*title;/);
   });
+
+  test('a time given as text is drawn as its day and its clock, each kept whole', () => {
+    const { container } = render(StackedListItem, {
+      props: {
+        title: textSnippet('Post settled runs'),
+        badge: textSnippet('Plugin'),
+        status: textSnippet('Delivered'),
+        time: 'Yesterday, 6:00 PM',
+        trailing: textSnippet('On'),
+      },
+    });
+    const time = container.querySelector('.cinder-stacked-list-item__time');
+    const parts = [...(time?.querySelectorAll('.cinder-stacked-list-item__time-part') ?? [])];
+    expect(parts.map((part) => part.textContent)).toEqual(['Yesterday,', '6:00 PM']);
+    // The row still reads the whole time, one space between the parts.
+    expect(time?.querySelector('.cinder-stacked-list-item__time-text')?.textContent).toBe(
+      'Yesterday, 6:00 PM',
+    );
+    expect(ruleBody('.cinder-stacked-list-item__time-part')).toMatch(/white-space:\s*nowrap;/);
+    // The browser measures the rows on /hooks at 375 and 320 (hooks.spec.ts, [default-hooks]).
+  });
+
+  test('a time with no day is one whole part, and a day with its own comma stays one part', () => {
+    const cases = [
+      ['6:00 PM', ['6:00 PM']],
+      ['Oct 30', ['Oct 30']],
+      ['Mon, Nov 2, 3:00 AM', ['Mon, Nov 2,', '3:00 AM']],
+    ] as const;
+    for (const [text, expected] of cases) {
+      const { container, unmount } = render(StackedListItem, {
+        props: { title: textSnippet('Daily summary'), status: textSnippet('Active'), time: text },
+      });
+      expect(
+        [...container.querySelectorAll('.cinder-stacked-list-item__time-part')].map(
+          (part) => part.textContent,
+        ),
+      ).toEqual([...expected]);
+      unmount();
+    }
+  });
 });

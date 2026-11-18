@@ -419,7 +419,7 @@ describe('the hooks list', () => {
     await waitFor(() => expect(row(view.container, 'quiet')).not.toBeNull());
     const quiet = row(view.container, 'quiet')!;
     expect(quiet.querySelector('[data-status-word]')?.textContent?.trim()).toBe('Off');
-    expect(quiet.querySelector('[data-last-delivery]')).toBeNull();
+    expect(quiet.querySelector('.cinder-stacked-list-item__time')).toBeNull();
     expect(lineTwo(view.container, 'quiet')).toMatch(/, last delivery /);
     expect(within(quiet).getByRole('switch').getAttribute('aria-checked')).toBe('false');
     // The switch's label follows its state: a hook that is off never reads On.

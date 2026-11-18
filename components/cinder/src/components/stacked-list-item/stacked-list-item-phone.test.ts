@@ -246,12 +246,13 @@ describe('StackedListItem on a phone', () => {
     ) ?? [undefined, ''];
     expect(status).toMatch(/flex:\s*none;/);
     expect(status).toMatch(/min-inline-size:\s*max-content;/);
-    // A row with a hook's switch at its end: the title keeps 11rem, and the time takes the rest
-    // between 5rem (all a 320px phone leaves it, where the status words stay whole) and 9rem.
+    // A row with a hook's switch at its end: the time gives way before the title. Its column is
+    // exactly its widest line, and only a time given as text wraps, between its day and its clock.
     expect(cappedRule('> .cinder-stacked-list-item__layout')).toMatch(
-      /--_cinder-time-track:\s*fit-content\(clamp\(5rem, 100cqi - 11rem, 9rem\)\);/,
+      /--_cinder-time-track:\s*min-content;/,
     );
-    expect(cappedRule('.cinder-stacked-list-item__time')).toMatch(/white-space:\s*normal;/);
+    expect(cappedRule('.cinder-stacked-list-item__time')).not.toContain('white-space');
+    expect(cappedRule('.cinder-stacked-list-item__time-text')).toMatch(/white-space:\s*normal;/);
     // The phone grid reads the time track from that property.
     expect(stylesheet).toMatch(
       /\[title\] minmax\(0, 1fr\)\s*\[time\] var\(--_cinder-time-track, auto\) \[trailing\] auto;/,
@@ -283,11 +284,11 @@ describe('StackedListItem on a phone', () => {
     expect(own).toMatch(/white-space:\s*nowrap;/);
     // The cap and the wrapping name a group row among the rows they leave alone.
     expect(cappedRule('> .cinder-stacked-list-item__layout')).not.toBe('');
-    expect(cappedRule('.cinder-stacked-list-item__time')).not.toBe('');
-    // No other rule lets a time cell wrap.
+    expect(cappedRule('.cinder-stacked-list-item__time-text')).not.toBe('');
+    // No other rule lets a time wrap.
     const wrappingTimeRules = [
       ...stylesheet.matchAll(
-        /([^{}]*\.cinder-stacked-list-item__time)\s*\{[^}]*white-space:\s*normal/g,
+        /([^{}]*\.cinder-stacked-list-item__time(?:-text)?)\s*\{[^}]*white-space:\s*normal/g,
       ),
     ].map((match) => match[1] ?? '');
     expect(wrappingTimeRules).toHaveLength(1);
@@ -340,12 +341,12 @@ describe('StackedListItem on a phone', () => {
       expect(row?.querySelector('.cinder-stacked-list-item__status')?.textContent).toBe(word);
       cleanup();
     }
-    // The word's track is its own width and it never shrinks; the time gives way, never below 5rem.
+    // The word's track is its own width and it never shrinks; the time gives way to its widest line.
     const phoneBlocks = stylesheet.slice(
       stylesheet.indexOf('/* A narrow row puts a leading status on line two'),
     );
     expect(phoneBlocks).toMatch(/--_cinder-status-track:\s*max-content;/);
-    expect(cappedRule('> .cinder-stacked-list-item__layout')).toContain('clamp(5rem,');
+    expect(cappedRule('> .cinder-stacked-list-item__layout')).toContain('min-content');
     setPhone(false);
   });
 

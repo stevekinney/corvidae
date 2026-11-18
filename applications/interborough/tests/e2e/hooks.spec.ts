@@ -695,13 +695,34 @@ for (const width of [320, 375] as const) {
           .evaluate((cell) => cell.scrollWidth > cell.clientWidth + 0.5);
         expect(clipped, `${id}: the status word is not cut`).toBe(false);
       }
-      for (const part of await row.locator('.ib-time-part').all()) {
+      for (const part of await row.locator('.cinder-stacked-list-item__time-part').all()) {
         const { lines } = await textLines(part);
         expect(lines, `${id}: a day or a clock is never broken`).toBe(1);
       }
+      // The time gives way before the name: its column is no wider than its widest line, the day
+      // or the clock, so the name keeps the rest of line one.
+      const time = row.locator('.cinder-stacked-list-item__time-text');
+      if ((await time.count()) > 0) {
+        const spare = await time.evaluate((text) => {
+          const widest = Math.max(
+            ...[...text.querySelectorAll('.cinder-stacked-list-item__time-part')].map(
+              (part) => part.getBoundingClientRect().width,
+            ),
+          );
+          return text.getBoundingClientRect().width - widest;
+        });
+        expect(spare, `${id}: the time is no wider than its widest line`).toBeLessThanOrEqual(1);
+      }
       const badge = row.getByTestId('hook-plugin-badge');
       if ((await badge.count()) === 0) continue;
-      const title = await textLines(row.locator('.cinder-stacked-list-item__title'));
+      const titleBox = row.locator('.cinder-stacked-list-item__title');
+      if (width === 375 && id === 'default-on') {
+        // "Post settled runs" beside its badge, its time and its switch is drawn whole at 375.
+        await expect(titleBox).toHaveText('Post settled runs');
+        const cut = await titleBox.evaluate((cell) => cell.scrollWidth > cell.clientWidth + 0.5);
+        expect(cut, `${id}: the name is not cut at 375`).toBe(false);
+      }
+      const title = await textLines(titleBox);
       const mark = await badge.boundingBox();
       expect(title.lines, `${id}: a name beside its badge is one line`).toBe(1);
       // From the last character drawn (or the ellipsis that ends the name) to the badge's edge.

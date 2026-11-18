@@ -122,9 +122,10 @@ type StackedListItemBase = ForwardedLiAttributes & {
   tooltip?: string;
   /**
    * The time, or the next run, at the right edge of line one, aligned to its top. Pass a
-   * `RelativeTime` or a plain string.
+   * `RelativeTime` or a plain string. A string keeps its day and its clock each whole: on a phone
+   * row with a control at its end, "Yesterday, 6:00 PM" breaks only after the comma.
    */
-  time?: Snippet;
+  time?: Snippet | string;
   /** Secondary description below the title. */
   description?: Snippet;
   /**

@@ -106,7 +106,7 @@ test.describe('the hooks list states', () => {
     // The hook that is off leads with Off, says no time, and keeps its switch off.
     const refund = rows.nth(4);
     await expect(refund.locator('[data-status-word="Off"]')).toBeVisible();
-    await expect(refund.locator('[data-last-delivery]')).toHaveCount(0);
+    await expect(refund.locator('.cinder-stacked-list-item__time')).toHaveCount(0);
     await expect(refund.getByRole('switch')).toHaveAttribute('aria-checked', 'false');
     await expect(refund).toContainText('only for Tool runner');
     await expect(refund).not.toContainText(String.fromCodePoint(0xb7));
