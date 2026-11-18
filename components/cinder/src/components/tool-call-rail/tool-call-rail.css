@@ -3,11 +3,14 @@
  * `rows` variant, so the styles travel with it. */
 @import '../spinner/spinner.css';
 @import '../timeline/timeline.css';
+/* The summary and the fold are DisclosureTrigger, and a failed step's Retry is a Button. */
+@import '../disclosure-trigger/disclosure-trigger.css';
+@import '../button/button.css';
 @layer cinder.components {
   /* ========================================
  * TOOL CALL RAIL
  * One turn's tool calls: a rail of one-line rows, the first and last few with the middle folded
- * behind a dashed button, and the calls that failed or need a person always in view. Its rows are
+ * behind one disclosure, and the calls that failed or need a person always in view. Its rows are
  * entries of Timeline's `rows` variant, which draws the marker column and the connector and leaves
  * the content of each row to the rail, because a tool call has no timestamp to lead with.
  * ======================================== */
@@ -28,33 +31,37 @@
   }
 
   /* ----------------------------------------
- * Summary line: "Used 30 tools, 1 failed, 1 waiting on you, 18s"
+ * Summary line: "Used 30 tools  1 failed  1 waiting on you  18s", pieces a gap apart
  * ---------------------------------------- */
 
-  .cinder-tool-call-rail__summary {
+  /* While a call runs the summary is a status line, not a disclosure. */
+  p.cinder-tool-call-rail__summary {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
     gap: var(--cinder-space-1-5);
     margin: 0 0 var(--cinder-space-1-5);
-    padding: 0;
-    border: 0;
-    border-radius: var(--cinder-radius-sm);
-    background: transparent;
     color: var(--cinder-text-default);
-    font: inherit;
     font-weight: var(--cinder-font-semibold);
-    text-align: start;
   }
 
-  button.cinder-tool-call-rail__summary {
+  /* Otherwise it is DisclosureTrigger (board row X3): its chevron, words, focus ring and hit area
+   * are the shared ones; the rail only places it. */
+  .cinder-disclosure-trigger.cinder-tool-call-rail__summary {
     align-self: flex-start;
-    cursor: pointer;
+    margin: 0 0 var(--cinder-space-1-5);
   }
 
-  button.cinder-tool-call-rail__summary:focus-visible,
+  /* No comma between the pieces: each is a piece of its own a gap apart. */
+  .cinder-tool-call-rail__summary-pieces {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    column-gap: var(--cinder-space-2);
+    min-inline-size: 0;
+  }
+
   .cinder-tool-call-rail__row:focus-visible,
-  .cinder-tool-call-rail__more:focus-visible,
   .cinder-tool-call-rail__link:focus-visible {
     outline: var(--cinder-ring-width) solid transparent;
     box-shadow: var(--_cinder-focus-ring-shadow);
@@ -75,20 +82,9 @@
     block-size: 0.75rem;
   }
 
-  .cinder-tool-call-rail__chevron {
-    inline-size: 0.875rem;
-    block-size: 0.875rem;
-  }
-
-  .cinder-tool-call-rail__summary-separator,
   .cinder-tool-call-rail__summary-duration {
     color: var(--cinder-text-subtle);
     font-weight: var(--cinder-font-normal);
-  }
-
-  /* A comma ends the words before it, so it takes back the gap that would stand between them. */
-  .cinder-tool-call-rail__summary-separator {
-    margin-inline-start: calc(var(--cinder-space-1-5) * -1);
   }
 
   .cinder-tool-call-rail__count {
@@ -388,11 +384,15 @@
   .cinder-tool-call-rail__links {
     display: inline-flex;
     flex-wrap: wrap;
-    gap: 0 0.75rem;
+    align-items: center;
+    gap: var(--cinder-space-1) 0.75rem;
     padding-inline-start: calc(0.875rem + var(--cinder-space-1-5));
   }
 
+  /* A link keeps its painted size; a hit area that takes no layout reaches past it, to 24px for any
+   * pointer (target size) and 44px on a touch screen. */
   .cinder-tool-call-rail__link {
+    position: relative;
     padding: 0;
     border: 0;
     border-radius: var(--cinder-radius-sm);
@@ -401,6 +401,18 @@
     cursor: pointer;
     font: inherit;
     font-size: var(--cinder-text-sm);
+  }
+
+  .cinder-tool-call-rail__link::before {
+    content: '';
+    position: absolute;
+    inset: min(0px, calc((100% - 24px) / 2));
+  }
+
+  @media (any-pointer: coarse) {
+    .cinder-tool-call-rail__link::before {
+      inset: min(0px, calc((100% - 44px) / 2));
+    }
   }
 
   @media (hover: hover) {
@@ -416,10 +428,10 @@
   }
 
   /* ----------------------------------------
- * A folded group: one dashed button and what it hides, counted from this turn only
+ * A folded group: one disclosure and what it hides, counted from this turn only
  * ---------------------------------------- */
 
-  /* The dashed button sits level with the marker Timeline draws beside it, 0.8125rem down. */
+  /* The fold's line is centred level with the marker Timeline draws beside it, 0.8125rem down. */
   .cinder-tool-call-rail__group {
     min-block-size: 1.875rem;
     padding-block-start: 0.0625rem;
@@ -429,28 +441,13 @@
     display: flex;
     align-items: center;
     gap: var(--cinder-space-2-5);
+    min-block-size: 1.5rem;
     min-inline-size: 0;
   }
 
-  .cinder-tool-call-rail__more {
-    display: inline-flex;
+  /* "Show 24 more" is DisclosureTrigger, the summary's form (board row X3): no box of its own. */
+  .cinder-disclosure-trigger.cinder-tool-call-rail__more {
     flex: none;
-    align-items: center;
-    gap: var(--cinder-space-1);
-    block-size: 1.5rem;
-    padding: 0 var(--cinder-space-2-5);
-    border: 1px dashed var(--cinder-border-control);
-    border-radius: var(--cinder-radius-sm);
-    background: var(--cinder-surface-raised);
-    color: var(--cinder-text-muted);
-    cursor: pointer;
-    font: inherit;
-    font-weight: var(--cinder-font-semibold);
-  }
-
-  .cinder-tool-call-rail__more-chevron {
-    inline-size: 0.75rem;
-    block-size: 0.75rem;
   }
 
   .cinder-tool-call-rail__group-summary {
@@ -509,8 +506,7 @@
      and Copy error and Retry are how a person recovers the step (COR-2283 R1 and R7). */
   @container cinder-tool-call-rail (max-width: 28rem) {
     .cinder-tool-call-rail .cinder-timeline-item__event::before,
-    .cinder-tool-call-rail__summary-duration,
-    .cinder-tool-call-rail__summary-separator[data-cinder-duration] {
+    .cinder-tool-call-rail__summary-duration {
       display: none;
     }
 
@@ -593,8 +589,9 @@
       display: inline;
     }
 
-    .cinder-tool-call-rail__more {
-      block-size: 2rem;
+    /* The fold's line is centred 1rem down, level with a phone row's first line. */
+    .cinder-tool-call-rail__group-body {
+      min-block-size: 2rem;
     }
   }
 
@@ -617,9 +614,7 @@
     .cinder-tool-call-rail__row:focus-visible,
     .cinder-tool-call-rail__hit:focus-visible,
     .cinder-tool-call-rail__result-link:focus-visible,
-    .cinder-tool-call-rail__more:focus-visible,
-    .cinder-tool-call-rail__link:focus-visible,
-    button.cinder-tool-call-rail__summary:focus-visible {
+    .cinder-tool-call-rail__link:focus-visible {
       outline: var(--cinder-ring-width) solid ButtonText;
       box-shadow: none;
     }

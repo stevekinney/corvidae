@@ -369,7 +369,7 @@ describe('a turn’s tool calls', () => {
     const { container } = render(Harness, { props: { entries, duration: '18s' } } as never);
     const summary = container.querySelector('.cinder-tool-call-rail__summary');
     expect(summary?.textContent?.replaceAll(/\s+/g, ' ').trim()).toBe(
-      'Used 30 tools, 1 failed, 1 waiting on you, 18s',
+      'Used 30 tools 1 failed 1 waiting on you 18s',
     );
     // The first three and the last three stay, the failed and waiting calls with them, and the
     // other twenty-four fold behind one button.

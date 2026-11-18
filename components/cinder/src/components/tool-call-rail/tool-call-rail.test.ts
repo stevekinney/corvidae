@@ -86,18 +86,40 @@ describe('ToolCallRail row count and summary', () => {
       { id: 'refund', name: 'Issue refund', status: 'waiting' },
     ];
     const { container } = render(ToolCallRail, { props: { calls, duration: '18s' } });
-    expect(text(summary(container))).toBe('Used 30 tools, 1 failed, 1 waiting on you, 18s');
+    // Pieces a gap apart with no comma between them, the duration a piece of its own (X3).
+    expect(text(summary(container))).toBe('Used 30 tools 1 failed 1 waiting on you 18s');
+    expect(summary(container)?.textContent).not.toContain(',');
+    expect(container.querySelector('.cinder-tool-call-rail__summary-separator')).toBeNull();
+    expect(text(container.querySelector('.cinder-tool-call-rail__summary-duration'))).toBe('18s');
     expect(
       container.querySelector('[data-cinder-count="failed"] .cinder-tool-call-rail__count-dot'),
     ).not.toBeNull();
     expect(container.querySelector('[data-cinder-count="waiting"]')).not.toBeNull();
   });
 
+  test('the summary and Show N more are the one DisclosureTrigger, with no chevron of their own (X3)', () => {
+    const { container } = render(ToolCallRail, { props: { calls: turn(30) } });
+    const toggle = requiredInstance(summary(container), HTMLElement);
+    expect(toggle.classList.contains('cinder-disclosure-trigger')).toBe(true);
+    expect(toggle.getAttribute('aria-expanded')).toBe('true');
+    const more = requiredInstance(
+      container.querySelector('.cinder-tool-call-rail__more'),
+      HTMLElement,
+    );
+    expect(more.classList.contains('cinder-disclosure-trigger')).toBe(true);
+    expect(more.getAttribute('aria-expanded')).toBe('false');
+    expect(container.querySelector('.cinder-tool-call-rail__summary-marker')).toBeNull();
+    expect(container.querySelector('.cinder-tool-call-rail__more-chevron')).toBeNull();
+    expect(container.querySelectorAll('.cinder-disclosure-trigger__chevron')).toHaveLength(2);
+    // No dashed box: the fold reads as the summary does.
+    expect(cssText).not.toMatch(/__more \{[^}]*dashed/);
+  });
+
   test('counts expired approvals separately with neutral status words', () => {
     const { container } = render(ToolCallRail, {
       props: { calls: [...turn(2), { id: 'expired', name: 'Issue refund', status: 'expired' }] },
     });
-    expect(text(summary(container))).toBe('Used 3 tools, 1 expired');
+    expect(text(summary(container))).toBe('Used 3 tools 1 expired');
     expect(container.querySelector('[data-cinder-count="expired"]')).not.toBeNull();
     const row = rows(container).find(
       (candidate) => candidate.dataset['cinderToolCallRow'] === 'expired',
@@ -178,7 +200,7 @@ describe('ToolCallRail folding', () => {
     expect(rows(container)).toHaveLength(30);
     expect(container.querySelector('.cinder-tool-call-rail__more')).toBeNull();
     expect(rows(container).map((row) => row.dataset['cinderToolCallRow'])[3]).toBe('call-3');
-    expect(text(summary(container))).toContain('1 failed, 1 waiting on you');
+    expect(text(summary(container))).toContain('1 failed 1 waiting on you');
     const fewer = requiredInstance(
       container.querySelector('.cinder-tool-call-rail__fewer button'),
       HTMLElement,
@@ -201,7 +223,7 @@ describe('ToolCallRail folding', () => {
     ]);
     expect(container.querySelector('.cinder-tool-call-rail__group')).toBeNull();
     expect(container.querySelector('.cinder-tool-call-rail__failure')).not.toBeNull();
-    expect(text(toggle)).toContain('Used 30 tools, 1 failed, 1 waiting on you');
+    expect(text(toggle)).toContain('Used 30 tools 1 failed 1 waiting on you');
   });
 
   test('denied calls never fold', () => {
@@ -368,6 +390,23 @@ describe('ToolCallRail rows', () => {
     // A phone keeps the failure line, so the step can be recovered there too.
     expect(cssText).not.toMatch(
       /@container cinder-tool-call-rail \(max-width: 28rem\) \{[^}]*\.cinder-tool-call-rail__failure[,\s{]/,
+    );
+    // Retry re-runs work, so it is a compact button with the retry glyph, never a text link.
+    const retry = requiredInstance(links[1], HTMLElement);
+    expect(retry.classList.contains('cinder-button')).toBe(true);
+    expect(retry.classList.contains('cinder-tool-call-rail__link')).toBe(false);
+    expect(retry.querySelector('svg')).not.toBeNull();
+    expect(links[0]?.classList.contains('cinder-tool-call-rail__link')).toBe(true);
+  });
+
+  test('a text link keeps its painted size and reaches a 24px hit area, 44px on a touch screen', () => {
+    const css = cssText.replace(/\s+/g, ' ');
+    expect(css).toMatch(/\.cinder-tool-call-rail__link \{ position: relative;/);
+    expect(css).toContain(
+      ".cinder-tool-call-rail__link::before { content: ''; position: absolute; inset: min(0px, calc((100% - 24px) / 2)); }",
+    );
+    expect(css).toMatch(
+      /@media \(any-pointer: coarse\) \{ \.cinder-tool-call-rail__link::before \{ inset: min\(0px, calc\(\(100% - 44px\) \/ 2\)\); \}/,
     );
   });
 

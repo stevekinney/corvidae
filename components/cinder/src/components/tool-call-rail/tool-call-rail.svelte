@@ -25,9 +25,8 @@
 <script lang="ts">
   import Ban from '@lucide/svelte/icons/ban';
   import Check from '@lucide/svelte/icons/check';
-  import ChevronDown from '@lucide/svelte/icons/chevron-down';
-  import ChevronRight from '@lucide/svelte/icons/chevron-right';
   import Clock3 from '@lucide/svelte/icons/clock-3';
+  import RefreshCw from '@lucide/svelte/icons/refresh-cw';
   import CircleX from '@lucide/svelte/icons/circle-x';
   import ShieldAlert from '@lucide/svelte/icons/shield-alert';
   import X from '@lucide/svelte/icons/x';
@@ -37,6 +36,8 @@
 
   import { classNames } from '../../utilities/class-names.ts';
   import { planFold, summarizeFoldedNames } from '../../utilities/fold-middle.ts';
+  import Button from '../button/button.svelte';
+  import DisclosureTrigger from '../disclosure-trigger/disclosure-trigger.svelte';
   import Spinner from '../spinner/spinner.svelte';
   import Timeline from '../timeline/timeline.svelte';
   import type { TimelineEntry } from '../timeline/timeline.types.ts';
@@ -373,13 +374,18 @@
             </button>
           {/if}
           {#if onRetry}
-            <button
+            <!-- Retry is a compact button with the retry glyph, as Chat's own Retry is: one
+                 form for re-running work, never a text link. -->
+            <Button
               type="button"
-              class="cinder-tool-call-rail__link"
+              class="cinder-tool-call-rail__retry"
+              size="sm"
+              variant="secondary"
               onclick={() => onRetry(call.id)}
             >
+              {#snippet leadingIcon()}<RefreshCw aria-hidden="true" />{/snippet}
               {words.retry}
-            </button>
+            </Button>
           {/if}
           {#if onCopyInput}
             <button
@@ -402,15 +408,14 @@
 {#snippet foldedGroup(items: readonly ToolCallRailCall[])}
   <div class="cinder-tool-call-rail__group">
     <span class="cinder-tool-call-rail__group-body">
-      <button
-        type="button"
+      <!-- The same disclosure trigger as the summary: one form for every fold (board row X3). -->
+      <DisclosureTrigger
         class="cinder-tool-call-rail__more"
-        aria-expanded="false"
+        open={false}
         onclick={() => toggleGroup(items[0]?.id ?? '')}
       >
-        <ChevronRight class="cinder-tool-call-rail__more-chevron" aria-hidden="true" />
         {words.showMore(items.length)}
-      </button>
+      </DisclosureTrigger>
       <span class="cinder-tool-call-rail__group-summary">
         <span class="cinder-tool-call-rail__group-summary-long">
           {words.folded(items.length, summarizeFoldedNames(items.map((call) => call.name)))}
@@ -467,53 +472,39 @@
         {/if}
       </p>
     {:else}
-      <button
-        type="button"
+      <!-- The one disclosure trigger (board row X3, COR-2440). Its pieces stand a gap apart with
+           no comma between them, the duration in the subtle colour. -->
+      <DisclosureTrigger
         class="cinder-tool-call-rail__summary"
-        aria-expanded={open}
-        aria-controls={listId}
+        {open}
+        controls={listId}
         onclick={() => (open = !open)}
       >
-        <span class="cinder-tool-call-rail__summary-marker" aria-hidden="true">
-          {#if open}
-            <ChevronDown class="cinder-tool-call-rail__chevron" />
-          {:else}
-            <ChevronRight class="cinder-tool-call-rail__chevron" />
+        <span class="cinder-tool-call-rail__summary-pieces">
+          <span class="cinder-tool-call-rail__summary-text">{words.used(calls.length, false)}</span>
+          {#if failedCount > 0}
+            <span class="cinder-tool-call-rail__count" data-cinder-count="failed">
+              <span class="cinder-tool-call-rail__count-dot" aria-hidden="true"></span>
+              {words.failed(failedCount)}
+            </span>
+          {/if}
+          {#if waitingCount > 0}
+            <span class="cinder-tool-call-rail__count" data-cinder-count="waiting">
+              <span class="cinder-tool-call-rail__count-dot" aria-hidden="true"></span>
+              {words.waiting(waitingCount)}
+            </span>
+          {/if}
+          {#if expiredCount > 0}
+            <span class="cinder-tool-call-rail__count" data-cinder-count="expired">
+              <span class="cinder-tool-call-rail__count-dot" aria-hidden="true"></span>
+              {words.expired(expiredCount)}
+            </span>
+          {/if}
+          {#if duration !== undefined && duration !== ''}
+            <span class="cinder-tool-call-rail__summary-duration">{duration}</span>
           {/if}
         </span>
-        <span class="cinder-tool-call-rail__summary-text">{words.used(calls.length, false)}</span
-        >{#if failedCount > 0}<span
-            class="cinder-tool-call-rail__summary-separator"
-            aria-hidden="true">,</span
-          >
-          <span class="cinder-tool-call-rail__count" data-cinder-count="failed">
-            <span class="cinder-tool-call-rail__count-dot" aria-hidden="true"></span>
-            {words.failed(failedCount)}
-          </span>
-        {/if}{#if waitingCount > 0}<span
-            class="cinder-tool-call-rail__summary-separator"
-            aria-hidden="true">,</span
-          >
-          <span class="cinder-tool-call-rail__count" data-cinder-count="waiting">
-            <span class="cinder-tool-call-rail__count-dot" aria-hidden="true"></span>
-            {words.waiting(waitingCount)}
-          </span>
-        {/if}{#if expiredCount > 0}<span
-            class="cinder-tool-call-rail__summary-separator"
-            aria-hidden="true">,</span
-          >
-          <span class="cinder-tool-call-rail__count" data-cinder-count="expired">
-            <span class="cinder-tool-call-rail__count-dot" aria-hidden="true"></span>
-            {words.expired(expiredCount)}
-          </span>
-        {/if}{#if duration !== undefined && duration !== ''}<span
-            class="cinder-tool-call-rail__summary-separator"
-            data-cinder-duration=""
-            aria-hidden="true">,</span
-          >
-          <span class="cinder-tool-call-rail__summary-duration">{duration}</span>
-        {/if}
-      </button>
+      </DisclosureTrigger>
     {/if}
   {/if}
   {#if rows.length > 0}

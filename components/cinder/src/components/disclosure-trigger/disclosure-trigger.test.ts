@@ -61,6 +61,19 @@ describe('DisclosureTrigger (board row X3)', () => {
     );
   });
 
+  test('reaches a 24px hit area for any pointer and 44px on a touch screen, taking no layout', () => {
+    const css = cssText.replace(/\s+/g, ' ');
+    // Outside any media query: a 17px desktop face still meets the 24px target size.
+    const base = css.slice(0, css.indexOf('@media (any-pointer: coarse)'));
+    expect(base).toMatch(/\.cinder-disclosure-trigger \{ position: relative; \}/);
+    expect(base).toContain(
+      ".cinder-disclosure-trigger::before { content: ''; position: absolute; inset: min(0px, calc((100% - 24px) / 2)); }",
+    );
+    expect(css).toMatch(
+      /@media \(any-pointer: coarse\) \{ \.cinder-disclosure-trigger::before \{ inset: min\(0px, calc\(\(100% - 44px\) \/ 2\)\); \}/,
+    );
+  });
+
   test('passes a class and other attributes through, and keeps type button', () => {
     const { container } = render(DisclosureTrigger, {
       props: {

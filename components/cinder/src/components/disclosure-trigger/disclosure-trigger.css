@@ -80,16 +80,20 @@
     color: var(--cinder-text-disabled);
   }
 
-  /* On a touch screen the trigger keeps its painted size; a 44px hit area that takes no layout
-   * reaches past it. */
-  @media (any-pointer: coarse) {
-    .cinder-disclosure-trigger {
-      position: relative;
-    }
+  /* The trigger keeps its painted size; a hit area that takes no layout reaches past it, to 24px
+   * for any pointer (target size) and 44px on a touch screen. */
+  .cinder-disclosure-trigger {
+    position: relative;
+  }
 
+  .cinder-disclosure-trigger::before {
+    content: '';
+    position: absolute;
+    inset: min(0px, calc((100% - 24px) / 2));
+  }
+
+  @media (any-pointer: coarse) {
     .cinder-disclosure-trigger::before {
-      content: '';
-      position: absolute;
       inset: min(0px, calc((100% - 44px) / 2));
     }
   }
