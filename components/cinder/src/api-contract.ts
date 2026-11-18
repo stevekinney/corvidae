@@ -301,6 +301,7 @@ export const CONTRACT: Record<string, ComponentContract> = {
     props: {
       class: { optional: true, type_kind: 'TSStringKeyword', default: NO_DEFAULT },
       caretVisible: { optional: true, type_kind: 'TSBooleanKeyword', default: L(true) },
+      iconOnly: { optional: true, type_kind: 'TSBooleanKeyword', default: L(false) },
       variant: { optional: true, type_kind: 'TSTypeReference', default: NO_DEFAULT },
       size: { optional: true, type_kind: 'TSTypeReference', default: NO_DEFAULT },
       mutating: { optional: true, type_kind: 'TSBooleanKeyword', default: L(false) },
