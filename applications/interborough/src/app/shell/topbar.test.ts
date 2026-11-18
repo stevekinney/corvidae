@@ -113,7 +113,7 @@ describe('the top bar', () => {
     // The search trigger is as wide as the Button's face is tall. Never an aspect ratio: the wide
     // rule gives the trigger 300px of width, which a 1:1 ratio turned into a 300px-tall control.
     expect(phone).toMatch(
-      /\.weft-shell-search-trigger \{\s*flex: none;\s*inline-size: var\(--cinder-button-height-md\);/,
+      /\.weft-shell-search-trigger \{\s*flex: none;\s*inline-size: var\(--cinder-control-height-md\);/,
     );
     expect(phone).not.toContain('aspect-ratio');
   });

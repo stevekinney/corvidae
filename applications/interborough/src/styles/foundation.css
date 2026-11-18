@@ -333,12 +333,13 @@
   }
 
   /* The search trigger is icon-only at this width: square, as wide as the Button's face is tall,
-   * like the icon buttons beside it. The width is the Button's own height token, not an aspect
-   * ratio: the wide rule above gives the trigger a 300px width, which a 1:1 ratio turned into a
-   * 300px height. */
+   * like the icon buttons beside it. The width is the control height a medium Button's face
+   * draws at, not an aspect ratio: the wide rule above gives the trigger a 300px width, which a
+   * 1:1 ratio turned into a 300px height. It is the plain control height, never a touch-target
+   * or button-height token: this sets a width, and the face stays compact on a touch screen. */
   .weft-shell-topbar .weft-shell-search-trigger {
     flex: none;
-    inline-size: var(--cinder-button-height-md);
+    inline-size: var(--cinder-control-height-md);
     margin-inline-start: 0;
     padding-inline: 0;
     justify-content: center;
