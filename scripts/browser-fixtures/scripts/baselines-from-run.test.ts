@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'bun:test';
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { dirname, join, relative, resolve } from 'node:path';
 
-import { LINUX_BASELINE_DIRECTORY } from './baseline-provenance.ts';
+import { missingBaselineActualName } from '@lostgradient/testing';
+
+import playwrightConfiguration from '../playwright.config.ts';
+import { LINUX_BASELINE_DIRECTORY, REPOSITORY_ROOT } from './baseline-provenance.ts';
 import {
   checkRunHead,
   describePlan,
@@ -79,6 +82,43 @@ describe('baselines from a run', () => {
         'utf8',
       ),
     ).toBe('old');
+  });
+
+  it('adds the actual a missing baseline leaves at the path the snapshot template gives', async () => {
+    // The fixture suite saves a missing baseline's render under the test's output directory as
+    // `missingBaselineActualName` names it, and fails; the run's artifact carries the image.
+    const baseline = resolve(
+      import.meta.dirname,
+      '../snapshots/chromium/linux/inspector/dark-tablet-wide.png',
+    );
+    // `{testDir}/../snapshots/{projectName}/{platform}/{arg}{ext}` for chromium on Linux.
+    expect(playwrightConfiguration.snapshotPathTemplate).toBe(
+      '{testDir}/../snapshots/{projectName}/{platform}/{arg}{ext}',
+    );
+    expect(relative(REPOSITORY_ROOT, dirname(dirname(baseline)))).toBe(LINUX_BASELINE_DIRECTORY);
+
+    const repository = mkdtempSync(join(tmpdir(), 'baselines-from-run-repository-'));
+    const download = mkdtempSync(join(tmpdir(), 'baselines-from-run-download-'));
+    put(
+      download,
+      `playwright-fixtures-targeted/test-results/case-c/${missingBaselineActualName(baseline)}`,
+      'never committed',
+    );
+    const plan = await planBaselineCopies(download, repository);
+    expect(plan).toEqual([
+      {
+        kind: 'new',
+        actual: `playwright-fixtures-targeted/test-results/case-c/inspector/dark-tablet-wide-actual.png`,
+        baseline: `${LINUX_BASELINE_DIRECTORY}/inspector/dark-tablet-wide.png`,
+      },
+    ]);
+    await writeBaselineCopies(plan, download, repository);
+    expect(
+      readFileSync(
+        join(repository, LINUX_BASELINE_DIRECTORY, 'inspector/dark-tablet-wide.png'),
+        'utf8',
+      ),
+    ).toBe('never committed');
   });
 
   it('refuses a run whose head is not HEAD', () => {
