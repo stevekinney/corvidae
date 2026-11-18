@@ -690,7 +690,7 @@ describe('an invalid file', () => {
     expect(testId(root, 'workflow-problem')?.textContent).toContain(
       WORKFLOW_COPY.page.problem.located(
         'broken.json',
-        3,
+        2,
         WORKFLOW_COPY.page.problem.expectedComma,
       ),
     );

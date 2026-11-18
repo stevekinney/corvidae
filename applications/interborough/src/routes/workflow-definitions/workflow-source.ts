@@ -171,8 +171,9 @@ export function locateJsonProblem(text: string): JsonProblem | null {
 
 /**
  * The sentence that opens the banner of a file that cannot load. A file whose JSON is broken and
- * whose problem can be placed names the line the parser stopped at, and says "expected a comma"
- * when a comma was left out; any other problem says the Bureau's own words after the file's name.
+ * whose problem can be placed names the line the mark is drawn on, so a page says one line number
+ * (row 66f), and says "expected a comma" when a comma was left out; any other problem says the
+ * Bureau's own words after the file's name.
  */
 export function problemSentence(
   fileName: string,
@@ -182,7 +183,7 @@ export function problemSentence(
   const copy = WORKFLOW_COPY.page.problem;
   if (located === null) return copy.unlocated(fileName, problem.message);
   const reason = located.kind === 'comma' ? copy.expectedComma : problem.message.replace(/\.$/, '');
-  return copy.located(fileName, located.stoppedAt, reason);
+  return copy.located(fileName, located.line, reason);
 }
 
 /** The note drawn under the line a broken file is marked on. */

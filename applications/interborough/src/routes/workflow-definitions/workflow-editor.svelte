@@ -410,14 +410,15 @@
   });
 
   /**
-   * Where a file the Bureau cannot load stops being a workflow: "line 12 expected a comma" for JSON
-   * missing a comma, else the Bureau's own words.
+   * Where a file the Bureau cannot load stops being a workflow: "line 11 expected a comma" for JSON
+   * missing a comma, naming the line the mark is drawn on so the page says one line number (row
+   * 66f), else the Bureau's own words.
    */
   const invalidReason = $derived.by((): string | undefined => {
     if (loaded === undefined || loaded.state !== 'invalid') return undefined;
     const located = locateJsonProblem(loaded.text ?? '');
     if (located !== null && located.kind === 'comma') {
-      return editor.invalid.atLine(located.stoppedAt, editor.invalid.expectedComma);
+      return editor.invalid.atLine(located.line, editor.invalid.expectedComma);
     }
     return (loaded.problem?.message ?? '').replace(/\.$/, '');
   });

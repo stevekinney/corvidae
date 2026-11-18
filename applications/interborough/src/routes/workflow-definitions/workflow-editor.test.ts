@@ -573,8 +573,9 @@ describe('an invalid file', () => {
         ?.textContent?.replace(/\s+/g, ' ')
         .trim(),
     ).toBe(
-      'order-refund.json can’t be read as a workflow: line 4 expected a comma. Fix it here, or Cancel and open the file in your editor.',
+      'order-refund.json can’t be read as a workflow: line 3 expected a comma. Fix it here, or Cancel and open the file in your editor.',
     );
+    // Design correction: the notice names the line the mark and the footer name, one number (row 66f).
     await waitFor(() =>
       expect(tabNamed(container, WORKFLOW_COPY.builder.jsonTab).getAttribute('aria-selected')).toBe(
         'true',

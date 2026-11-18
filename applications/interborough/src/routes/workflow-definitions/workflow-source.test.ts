@@ -111,15 +111,16 @@ describe('the words of a file problem', () => {
   const other = { line: 4, stoppedAt: 5, kind: 'other' } as const;
   const problem = { message: 'The file is not valid JSON: unexpected token.' };
 
-  test('names the line the parser stopped at, and says a comma was left out', () => {
+  test('design correction: names the line the mark is on, the one number the page says, and says a comma was left out (row 66f)', () => {
     expect(problemSentence('order-refund.json', problem, comma)).toBe(
-      'order-refund.json, line 12: expected a comma.',
+      'order-refund.json, line 11: expected a comma.',
     );
+    expect(problemNote(comma).line).toBe(11);
   });
 
   test('says the Bureau’s own words for a problem that is not a missing comma, and names the file alone when it cannot place one', () => {
     expect(problemSentence('order-refund.json', problem, other)).toBe(
-      'order-refund.json, line 5: The file is not valid JSON: unexpected token.',
+      'order-refund.json, line 4: The file is not valid JSON: unexpected token.',
     );
     expect(problemSentence('order-refund.json', problem, null)).toBe(
       'order-refund.json: The file is not valid JSON: unexpected token.',

@@ -559,7 +559,7 @@ test.describe('a file that cannot load', () => {
     await expect(root.getByRole('heading', { level: 1 })).toHaveText(id);
     await expect(root.getByTestId('workflow-state')).toContainText("Can't load");
     await expect(root.getByTestId('workflow-problem')).toContainText(
-      WORKFLOW_COPY.page.problem.located(`${id}.json`, 3, WORKFLOW_COPY.page.problem.expectedComma),
+      WORKFLOW_COPY.page.problem.located(`${id}.json`, 2, WORKFLOW_COPY.page.problem.expectedComma),
     );
     await expect(
       root.getByRole('button', { name: WORKFLOW_COPY.page.startAction }),
