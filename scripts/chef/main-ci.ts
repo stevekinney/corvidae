@@ -7,6 +7,8 @@
 //
 // This module is a library; it has no command line.
 
+import { join } from 'node:path';
+
 import type { Runner } from './process-runner.ts';
 
 export const MAIN_WORKFLOW = 'main.yml';
@@ -17,6 +19,7 @@ const redConclusions = new Set(['failure', 'timed_out', 'startup_failure']);
 const inconclusive = new Set(['cancelled', 'skipped']);
 
 export interface MainRun {
+  id: string;
   conclusion: string;
   head: string;
   url: string;
@@ -58,7 +61,7 @@ export function mainCiHealth(
       '--limit',
       '10',
       '--json',
-      'conclusion,headSha,url,createdAt',
+      'databaseId,conclusion,headSha,url,createdAt',
     ]);
   } catch (error) {
     return unknown(`gh could not run: ${error instanceof Error ? error.message : String(error)}`);
@@ -85,12 +88,46 @@ export function mainCiHealth(
   if (record === undefined)
     return unknown(`no conclusive completed ${MAIN_WORKFLOW} run on ${defaultBranch}`);
   const run: MainRun = {
+    id: typeof record['databaseId'] === 'number' ? String(record['databaseId']) : '',
     conclusion: record['conclusion'] as string,
     head: typeof record['headSha'] === 'string' ? record['headSha'] : '',
     url: typeof record['url'] === 'string' ? record['url'] : '',
     time: typeof record['createdAt'] === 'string' ? record['createdAt'] : '',
   };
   return { red: redConclusions.has(run.conclusion), run };
+}
+
+/** Read-only CI comparison appended to a red-main warning; failure to read it is explicit evidence. */
+export function mainCiComparisonWarning(
+  runner: Runner,
+  run: MainRun,
+  configurationPath: string,
+): string {
+  if (run.id === '') return 'main CI comparison unknown: latest run has no database ID.';
+  const result = runner([
+    process.execPath,
+    join(import.meta.dir, 'ci-compare.ts'),
+    run.id,
+    '--config',
+    configurationPath,
+    '--json',
+  ]);
+  if (result.code !== 0 && result.code !== 1)
+    return `main CI comparison unknown: ci-compare exited ${result.code}: ${result.stderr.trim().split('\n')[0] ?? ''}`;
+  try {
+    const parsed = JSON.parse(result.stdout) as {
+      run?: unknown;
+      hasNew?: unknown;
+      jobs?: unknown;
+    };
+    if (parsed.run !== run.id || typeof parsed.hasNew !== 'boolean')
+      return 'main CI comparison unknown: ci-compare returned malformed JSON.';
+    const jobs = Array.isArray(parsed.jobs) ? parsed.jobs.length : 0;
+    const recurrences = [...new Set(result.stdout.match(/COR-\d+/g) ?? [])];
+    return `main CI comparison ${run.id}: ${parsed.hasNew ? 'new failures' : 'no new failures'} across ${jobs} job(s)${recurrences.length === 0 ? '' : `; COR evidence ${recurrences.join(', ')}`}.`;
+  } catch {
+    return 'main CI comparison unknown: ci-compare returned malformed JSON.';
+  }
 }
 
 /** One line for the report. */

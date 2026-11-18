@@ -151,6 +151,9 @@ type ReadBytes = (path: string) => Promise<Uint8Array>;
 
 const readFileBytes: ReadBytes = (path) => Bun.file(path).bytes();
 
+/** How far a file's modification time may trail `now` for a write made after it (milliseconds). */
+const MODIFICATION_TIME_SLACK = 1000;
+
 /** The sha256 of a file's bytes, or `absent` when it cannot be read. */
 async function fileDigest(path: string, readBytes: ReadBytes): Promise<string> {
   try {
@@ -260,9 +263,12 @@ export function createPanelBuildCache(options: PanelBuildCacheOptions = {}): Pan
     // newer than the build's start and the page is not stored.
     const digest = await inputsDigest(inputs, graph, readBytes);
     // An input newer than the start of the build may not be what the build read. A file that is
-    // gone reads as newer than any build, so a graph that names one is not stored either.
+    // gone reads as newer than any build, so a graph that names one is not stored either. The
+    // file system stamps a write from a coarser clock than `now` (Linux's lags it by a tick or
+    // more), so a save during the build can read as slightly older than its start: anything within
+    // MODIFICATION_TIME_SLACK of the start counts as newer.
     for (const file of [fileURLToPath(inputs.entry), ...graph]) {
-      if (Bun.file(file).lastModified >= startedAt) return;
+      if (Bun.file(file).lastModified >= startedAt - MODIFICATION_TIME_SLACK) return;
     }
     const entry = {
       schemaVersion: 1,
