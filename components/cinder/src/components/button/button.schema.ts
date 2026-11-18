@@ -57,6 +57,12 @@ const schema = {
         'Rests as the bare glyph: drops the resting fill and rule an icon-only `ghost` button\notherwise paints, for a toolbar such as the shell\'s top bar. Hover, pressed and focus still\npaint. It has no effect unless the button is `iconOnly` with `variant="ghost"`.',
       default: false,
     },
+    flush: {
+      type: 'boolean',
+      description:
+        'A quiet button that starts a line under text: it is pulled back by its inline padding and\nits 1px transparent border, so its words start on the text edge above it, and only its hover\ntint and ring reach past. It has no effect unless the variant is `ghost`, `ghost-accent` or\n`ghost-danger` with a label. Set it on the button that starts its line, never on one after\nanother control.',
+      default: false,
+    },
     href: {
       type: 'string',
       description: 'Render as an anchor `<a>` element with this href.',

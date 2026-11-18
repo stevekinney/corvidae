@@ -45,6 +45,7 @@ A disabled button looks the same in every variant: a neutral surface (or none, f
 | Prop | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
 | `class` | `string` | no | — | Custom class merged with `.cinder-button`. |
+| `flush` | `boolean` | no | `false` | A quiet button that starts a line under text: it is pulled back by its inline padding and its 1px transparent border, so its words start on the text edge above it, and only its hover tint and ring reach past. It has no effect unless the variant is `ghost`, `ghost-accent` or `ghost-danger` with a label. Set it on the button that starts its line, never on one after another control. |
 | `fullWidth` | `boolean` | no | `false` | Expand to container width. |
 | `href` | `string` | no | — | Render as an anchor `<a>` element with this href. |
 | `iconOnly` | `boolean` | no | `false` | Render the button with only an icon. Requires an accessible name source. |

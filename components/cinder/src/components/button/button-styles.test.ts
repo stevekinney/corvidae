@@ -301,3 +301,35 @@ describe('the pressed state of a toggle button', () => {
     expect(getByRole('button', { name: 'Capture' }).getAttribute('aria-pressed')).toBe('false');
   });
 });
+
+// COR-2489: a quiet button that starts a line under text sat 13px inside the text edge (its 12px
+// padding and its 1px transparent border).
+describe('Button flush', () => {
+  test('marks only a quiet button with a label', () => {
+    const marked = (props: Record<string, unknown>) => {
+      const view = render(Button, { props: { label: 'Show raw payloads', flush: true, ...props } });
+      const result = view.getByRole('button').hasAttribute('data-cinder-flush');
+      view.unmount();
+      return result;
+    };
+    expect(marked({ variant: 'ghost-accent' })).toBe(true);
+    expect(marked({ variant: 'ghost' })).toBe(true);
+    expect(marked({ variant: 'ghost-danger' })).toBe(true);
+    expect(marked({ variant: 'secondary' })).toBe(false);
+    expect(marked({ variant: 'primary' })).toBe(false);
+    expect(marked({ variant: 'ghost-accent', flush: false })).toBe(false);
+  });
+
+  test('pulls the button back by its own inline padding and border at each size', () => {
+    const css = readButtonSource().replace(/\s+/g, ' ');
+    expect(css).toContain(
+      '.cinder-button[data-cinder-flush] { margin-inline-start: calc(-1 * (var(--cinder-button-padding-x-sm) + 1px)); }',
+    );
+    for (const size of ['xs', 'md', 'lg']) {
+      expect(css).toContain(
+        `.cinder-button[data-cinder-flush][data-cinder-size='${size}'] { margin-inline-start: calc(-1 * (var(--cinder-button-padding-x-${size}) + 1px)); }`,
+      );
+    }
+    expect(css).toContain('border: 1px solid var(--cinder-button-border);');
+  });
+});

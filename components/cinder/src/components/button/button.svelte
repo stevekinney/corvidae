@@ -52,6 +52,7 @@
     mutating = false,
     iconOnly = false,
     quiet = false,
+    flush = false,
     leadingIcon,
     trailingIcon,
     shortcut,
@@ -95,6 +96,8 @@
     'data-cinder-loading': loading ? '' : undefined,
     'data-cinder-icon-only': iconOnly ? '' : undefined,
     'data-cinder-quiet': quiet && iconOnly && resolvedVariant === 'ghost' ? '' : undefined,
+    'data-cinder-flush':
+      flush && !iconOnly && String(resolvedVariant).startsWith('ghost') ? '' : undefined,
   });
 
   // When loading, force aria-disabled/aria-busy to 'true' so assistive tech always hears the
