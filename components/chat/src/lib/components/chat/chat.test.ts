@@ -420,9 +420,7 @@ describe('Chat — scrollFadeVisible', () => {
     expect(source).toContain('const viewportBox = approvalArrivalBox(scroller);');
     // The card and the row that labels it are placed as one unit, resting at the transcript's end
     // while that still clears the overlay.
-    expect(source).toContain(
-      'const shift = approvalArrivalRestShift( approvalUnitBox(card), viewportBox, scroller.scrollHeight - scroller.clientHeight - scroller.scrollTop, );',
-    );
+    expect(source).toContain('const shift = approvalPlacementShift(scroller, card) ?? 0;');
     expect(source).toContain('resizes?.observe(card);');
     expect(source).toContain('fonts?.ready.then(');
     // The lift leaves a waiting approval to that placement.

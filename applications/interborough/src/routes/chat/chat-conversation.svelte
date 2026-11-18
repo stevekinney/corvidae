@@ -57,9 +57,7 @@
     type ApprovalResolution,
   } from '@lostgradient/cinder';
   import {
-    approvalArrivalBox,
-    approvalArrivalShift,
-    approvalUnitBox,
+    approvalPlacementShift,
     Chat,
     ChatNote,
     ChatQuestion,
@@ -784,6 +782,7 @@
         '--cinder-chat-overlay-inset-start',
         `${element.getBoundingClientRect().height}px`,
       );
+      placeApprovalAgain();
     };
     write();
     const observer = new ResizeObserver(write);
@@ -825,18 +824,34 @@
   function bringApprovalIntoView(row: HTMLElement): void {
     const transcript = row.closest<HTMLElement>('.chat-timeline');
     if (transcript !== null) {
-      // The card and the row that labels it, as one unit.
-      const card = approvalUnitBox(row);
-      // Chat's own rule against Chat's own box, the transcript without the reminder, so this and
-      // Chat's arrival placement agree and the reminder cannot move the card (COR-2327).
-      const box = approvalArrivalBox(transcript);
-      // A layout not yet measured (zero-sized boxes) says nothing about fit: centre the card.
-      if (card.bottom - card.top > 0 && box.bottom - box.top > 0) {
-        transcript.scrollTop += approvalArrivalShift(card, box);
+      // Chat's own rule (the card and the row that labels it as one unit, in the box under the
+      // header, resting at the end only where that clears the header), so this and Chat's arrival
+      // placement agree and the reminder cannot move the card (COR-2327).
+      const shift = approvalPlacementShift(transcript, row);
+      // A layout not yet measured says nothing about fit: centre the card.
+      if (shift !== null) {
+        transcript.scrollTop += shift;
+        placedApproval = { row, transcript, scrollTop: transcript.scrollTop };
         return;
       }
     }
     row.scrollIntoView?.({ block: 'center' });
+  }
+
+  /** The approval this page last placed, and where that left the transcript. */
+  let placedApproval: { row: HTMLElement; transcript: HTMLElement; scrollTop: number } | undefined;
+
+  /**
+   * The header grew or shrank (its title and status arrive after the chat opens), so the line the
+   * approval must stay under moved: place it again, while the person has not moved focus or scrolled
+   * the transcript since the page placed it.
+   */
+  function placeApprovalAgain(): void {
+    const placed = placedApproval;
+    if (placed === undefined || !placed.row.isConnected) return;
+    if (document.activeElement !== placed.row) return;
+    if (Math.abs(placed.transcript.scrollTop - placed.scrollTop) > 1) return;
+    bringApprovalIntoView(placed.row);
   }
 
   /** Scrolls the first approval's row into view and focuses it, once it is drawn. */

@@ -32,6 +32,7 @@ export type {
 export {
   approvalArrivalBox,
   approvalArrivalShift,
+  approvalPlacementShift,
   approvalTallerThanTranscript,
   approvalUnitBox,
 } from './container/chat-approval-review.ts';
