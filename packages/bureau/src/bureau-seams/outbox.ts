@@ -28,6 +28,12 @@ import {
   parseRegenerateReceipt,
   receiptAnswersClaim,
 } from '../session-regenerate';
+import {
+  DISCARD_RECEIPT_OUTBOX_NAMESPACE,
+  discardReceiptAnswersClaim,
+  parseDiscardReceipt,
+} from '../session-discard';
+import type { CommandLedger, CommandLedgerIdentity } from '../command-ledger';
 
 /** The callables the outbox reads from elsewhere in `constructBureau`. */
 export interface OutboxPeers {
@@ -244,7 +250,8 @@ export function createOutbox<D extends AgentDefinitions>(core: BureauCore<D>, pe
         if (
           entry.kind === 'session.attachment' &&
           entry.namespace !== REVIEW_AUDIT_OUTBOX_NAMESPACE &&
-          entry.namespace !== REGENERATE_RECEIPT_OUTBOX_NAMESPACE
+          entry.namespace !== REGENERATE_RECEIPT_OUTBOX_NAMESPACE &&
+          entry.namespace !== DISCARD_RECEIPT_OUTBOX_NAMESPACE
         ) {
           diagnose({
             level: 'error',
@@ -470,17 +477,68 @@ export function createOutbox<D extends AgentDefinitions>(core: BureauCore<D>, pe
    * and leaving it pending would hold back every later entry. A claim already completed, released,
    * or pruned needs nothing from it.
    */
-  async function drainRegenerateReceiptEntry(
+  function drainRegenerateReceiptEntry(
     entry: Extract<SessionOutboxEntry, { kind: 'session.attachment' }>,
     outboxSessionStore: SessionStore,
+  ): Promise<'stop' | 'continue'> {
+    return drainCommandReceiptEntry(entry, outboxSessionStore, {
+      label: 'regeneration receipt',
+      ledger: core.regenerateLedger,
+      parse: parseRegenerateReceipt,
+      answers: receiptAnswersClaim,
+    });
+  }
+
+  /**
+   * COR-2437: settles one discard receipt, which a removal of a context's last unfinished turn
+   * committed beside itself, as {@link drainRegenerateReceiptEntry} settles a regeneration's.
+   * The audit entry of the same commit rides its own `audit-record` entry.
+   */
+  function drainDiscardReceiptEntry(
+    entry: Extract<SessionOutboxEntry, { kind: 'session.attachment' }>,
+    outboxSessionStore: SessionStore,
+  ): Promise<'stop' | 'continue'> {
+    return drainCommandReceiptEntry(entry, outboxSessionStore, {
+      label: 'discard receipt',
+      ledger: core.discardLedger,
+      parse: parseDiscardReceipt,
+      answers: discardReceiptAnswersClaim,
+    });
+  }
+
+  /**
+   * Completes the pending ledger claim a command's receipt answers, then acknowledges the entry.
+   * A receipt that answers none is diagnosed and acknowledged: its namespace is this Bureau's own.
+   */
+  async function drainCommandReceiptEntry<
+    Claim,
+    Result,
+    Receipt extends {
+      readonly identity: CommandLedgerIdentity;
+      readonly result: Result & { readonly incarnation: string };
+    },
+  >(
+    entry: Extract<SessionOutboxEntry, { kind: 'session.attachment' }>,
+    outboxSessionStore: SessionStore,
+    command: {
+      readonly label: string;
+      readonly ledger: CommandLedger<Claim, Result>;
+      readonly parse: (payload: unknown) => Receipt | undefined;
+      readonly answers: (
+        receipt: Receipt,
+        identity: CommandLedgerIdentity,
+        payloadDigest: string,
+        claim: Claim,
+      ) => boolean;
+    },
   ): Promise<'stop' | 'continue'> {
     const answersNothing = (): void =>
       diagnose({
         level: 'error',
         scope: 'durable-maintenance',
-        message: `[bureau] Regeneration receipt outbox entry ${entry.ordinal} (session "${entry.sessionId}") answers no pending command; acknowledging it without completing one.`,
+        message: `[bureau] ${command.label} outbox entry ${entry.ordinal} (session "${entry.sessionId}") answers no pending command; acknowledging it without completing one.`,
       });
-    const receipt = parseRegenerateReceipt(entry.payload);
+    const receipt = command.parse(entry.payload);
     // The receipt must name the context and the incarnation the commit it rode on wrote.
     if (
       receipt === undefined ||
@@ -489,10 +547,10 @@ export function createOutbox<D extends AgentDefinitions>(core: BureauCore<D>, pe
     ) {
       answersNothing();
     } else {
-      const stored = await core.regenerateLedger.read(receipt.identity);
+      const stored = await command.ledger.read(receipt.identity);
       if (stored?.state === 'pending') {
-        if (receiptAnswersClaim(receipt, stored.identity, stored.payloadDigest, stored.claim)) {
-          await core.regenerateLedger.complete(stored, receipt.result);
+        if (command.answers(receipt, stored.identity, stored.payloadDigest, stored.claim)) {
+          await command.ledger.complete(stored, receipt.result);
         } else {
           answersNothing();
         }
@@ -506,7 +564,7 @@ export function createOutbox<D extends AgentDefinitions>(core: BureauCore<D>, pe
       diagnose({
         level: 'error',
         scope: 'durable-maintenance',
-        message: `[bureau] Lost the claim on outbox entry ${entry.ordinal} (regeneration receipt for session "${entry.sessionId}") before acknowledging it; a different drainer reclaimed and will retire it.`,
+        message: `[bureau] Lost the claim on outbox entry ${entry.ordinal} (${command.label} for session "${entry.sessionId}") before acknowledging it; a different drainer reclaimed and will retire it.`,
       });
       return 'stop';
     }
@@ -551,9 +609,13 @@ export function createOutbox<D extends AgentDefinitions>(core: BureauCore<D>, pe
     producer: DurableEventProducer | undefined,
   ): Promise<'stop' | 'continue'> {
     if (entry.kind === 'session.attachment') {
-      return entry.namespace === REGENERATE_RECEIPT_OUTBOX_NAMESPACE
-        ? drainRegenerateReceiptEntry(entry, outboxSessionStore)
-        : drainOutboxAttachmentEntry(entry, outboxSessionStore);
+      if (entry.namespace === REGENERATE_RECEIPT_OUTBOX_NAMESPACE) {
+        return drainRegenerateReceiptEntry(entry, outboxSessionStore);
+      }
+      if (entry.namespace === DISCARD_RECEIPT_OUTBOX_NAMESPACE) {
+        return drainDiscardReceiptEntry(entry, outboxSessionStore);
+      }
+      return drainOutboxAttachmentEntry(entry, outboxSessionStore);
     }
     // COR-718 — the deletion's audit entry carries the owner the session had, which
     // the audit listener reads synchronously, so it is loaded before the dispatch.

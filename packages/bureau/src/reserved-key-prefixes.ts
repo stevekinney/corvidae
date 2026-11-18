@@ -202,6 +202,10 @@ export const BUREAU_RESERVED_KEY_FAMILIES: readonly ReservedKeyFamily[] = [
     'a resume’s receipt: thread, run and interrupt ids and their outcomes',
   ),
   contentFree(
+    'command-ledger:discard-turn:v1',
+    'a discard’s receipt: the context and run ids, how many rows went and the revisions it was fenced on; never a row’s text',
+  ),
+  contentFree(
     'command-ledger:fork:v1',
     'a fork’s receipt: the new context id, a model override and an effort',
   ),

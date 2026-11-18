@@ -688,6 +688,12 @@ export type {
   ForkSessionResult,
   SessionForkRefusalReason,
 } from './session-fork';
+export { SessionDiscardRefusedError } from './session-discard';
+export type {
+  DiscardTurnRequest,
+  DiscardTurnResult,
+  SessionDiscardRefusalReason,
+} from './session-discard';
 export { SessionRegenerateRefusedError } from './session-regenerate';
 export type {
   RegenerateSessionRequest,

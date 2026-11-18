@@ -139,6 +139,10 @@ import {
   contextsRegenerateOperation,
 } from './management/contexts-regenerate-operation.ts';
 import {
+  type BureauContextsDiscardTurnOperationHost,
+  contextsDiscardTurnOperation,
+} from './management/contexts-discard-turn-operation.ts';
+import {
   type BureauContextsRenameOperationHost,
   contextsRenameOperation,
 } from './management/contexts-rename-operation.ts';
@@ -346,6 +350,7 @@ export type BureauHandlerSource = Pick<
     | 'steering'
     | 'fork'
     | 'regenerate'
+    | 'discardTurn'
     | 'subscribeEvents'
   >;
   readonly schedules: Pick<
@@ -424,6 +429,7 @@ export type BureauHandlerHost = BureauEventsOperationHost &
   BureauContextsSteerOperationHost &
   BureauContextsForkOperationHost &
   BureauContextsRegenerateOperationHost &
+  BureauContextsDiscardTurnOperationHost &
   BureauContextsRenameOperationHost &
   BureauContextsArchiveOperationHost &
   BureauContextsUnarchiveOperationHost &
@@ -845,6 +851,7 @@ export const BUREAU_HANDLER_OPERATIONS = [
   contextsSteerOperation,
   contextsForkOperation,
   contextsRegenerateOperation,
+  contextsDiscardTurnOperation,
   contextsRenameOperation,
   contextsArchiveOperation,
   contextsUnarchiveOperation,
@@ -1341,6 +1348,7 @@ export function buildBureauHandlerHost(
       steer: (id, request) => bureau.contexts.steer(id, request),
       fork: (id, request) => bureau.contexts.fork(id, request),
       regenerate: (id, request) => bureau.contexts.regenerate(id, request),
+      discardTurn: (id, request) => bureau.contexts.discardTurn(id, request),
       get lifecycle() {
         return bureau.lifecycle;
       },

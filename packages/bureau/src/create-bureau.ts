@@ -281,6 +281,7 @@ import { createSessionInputSettlement } from './session-input-settlement';
 import { generateSessionOutboxDrainOwnerSuffix } from './session-outbox-drain-owner-suffix';
 import { createForkLedger } from './session-fork';
 import { createRegenerateLedger } from './session-regenerate';
+import { createDiscardLedger } from './session-discard';
 import {
   type BureauSteeringGate,
   createSteeringCommandLedger,
@@ -375,6 +376,7 @@ import {
   createSessionRegeneration,
   type SessionRegenerationPeers,
 } from './bureau-seams/session-regeneration';
+import { createSessionDiscard, type SessionDiscardPeers } from './bureau-seams/session-discard';
 import {
   createSteeringAdmission,
   type SteeringAdmissionPeers,
@@ -434,6 +436,7 @@ type BureauPeers = EventHistoryPeers &
   SessionInputAdmissionPeers &
   SessionForksPeers &
   SessionRegenerationPeers &
+  SessionDiscardPeers &
   SteeringAdmissionPeers &
   RecoveredRunsPeers &
   SessionsPeers &
@@ -1794,6 +1797,9 @@ async function constructBureau<const D extends AgentDefinitions>(
     get regenerateLedger() {
       return regenerateLedger;
     },
+    get discardLedger() {
+      return discardLedger;
+    },
     get persistentDurableStorage() {
       return persistentDurableStorage;
     },
@@ -2371,6 +2377,7 @@ async function constructBureau<const D extends AgentDefinitions>(
     getContextWindow,
   } = createSessionForks<D>(core, peers);
   const { regenerateSession } = createSessionRegeneration<D>(core, peers);
+  const { discardSessionTurn } = createSessionDiscard<D>(core, peers);
   const { admitSteeringRequest, resolveLiveSessionPreAdmission, liveSessionRunIdsEverywhere } =
     createSteeringAdmission<D>(core, peers);
   const {
@@ -4309,6 +4316,12 @@ async function constructBureau<const D extends AgentDefinitions>(
    */
   const regenerateLedger = createRegenerateLedger(runtime.kv, runtimeServices);
 
+  /**
+   * COR-2437 — the turn discard command ledger: a duplicate of `discardSessionTurn`, even after a
+   * restart, returns the original result and removes nothing more.
+   */
+  const discardLedger = createDiscardLedger(runtime.kv, runtimeServices);
+
   // Build the bureau object first so the audit trail (and webhook notifier)
   // can subscribe to its action events via addEventListener. The audit trail
   // is best-effort — a write failure must never crash a run (handled inside
@@ -4732,6 +4745,7 @@ async function constructBureau<const D extends AgentDefinitions>(
     steering: getSessionSteering,
     fork: forkSession,
     regenerate: regenerateSession,
+    discardTurn: discardSessionTurn,
     window: getContextWindow,
     eventHistory: readEventHistory,
     subscribeEventHistory: subscribeToEventHistory,

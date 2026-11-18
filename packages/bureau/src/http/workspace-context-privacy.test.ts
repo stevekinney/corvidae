@@ -1,4 +1,7 @@
+import { createTool, createToolbox, type Toolbox } from 'armorer';
 import { expect, test } from 'bun:test';
+import type { ConversationHistory } from 'conversationalist';
+import { z } from 'zod';
 import { workspaceConformanceLedger } from './workspace-conformance-ledger.test-support.ts';
 import { waitForCondition } from '../test';
 import {
@@ -33,7 +36,38 @@ const cases = [
   },
   // COR-2296: the answer each actor is asked to regenerate is its context's one reply, named below.
   { operation: 'bureau.contexts.regenerate', input: { commandId: 'private-regenerate' } },
+  // COR-2437: each actor names its context's one run, which wrote a step and then failed.
+  { operation: 'bureau.contexts.discardturn', input: { commandId: 'private-discard' } },
 ] as const;
+
+/**
+ * A Bureau whose runs call a tool, then fail: a turn with rows, which ended without finishing, so
+ * the owner may discard it.
+ */
+function failingAfterAStep() {
+  return {
+    toolbox: createToolbox([
+      createTool({
+        name: 'noop',
+        description: 'Does nothing',
+        input: z.object({}),
+        execute: async () => 'ok',
+      }),
+    ]) as unknown as Toolbox,
+    generate: async (context: {
+      readonly conversation: { readonly current: ConversationHistory };
+    }) => {
+      const history = context.conversation.current;
+      if (history.messages[history.ids.at(-1) ?? '']?.toolResult !== undefined) {
+        throw new Error('the model failed');
+      }
+      return {
+        content: sentinel,
+        toolCalls: [{ id: `c-${history.ids.length}`, name: 'noop', arguments: {} }],
+      };
+    },
+  };
+}
 
 /** The answer of a context's one-step task: the reply `bureau.contexts.regenerate` replaces. */
 const answerOf = (taskId: string): string => `${taskId}:step:0`;
@@ -43,7 +77,9 @@ for (const row of cases) {
     const opened = await openWorkspacePrivacyBureau(
       row.operation === 'bureau.contexts.input' || row.operation === 'bureau.contexts.retract'
         ? {}
-        : { generate: async () => ({ content: sentinel, toolCalls: [] }) },
+        : row.operation === 'bureau.contexts.discardturn'
+          ? failingAfterAStep()
+          : { generate: async () => ({ content: sentinel, toolCalls: [] }) },
     );
     try {
       // Every mutation has its own settled context, keeping the authorization comparisons independent.
@@ -56,9 +92,16 @@ for (const row of cases) {
           row.operation !== 'bureau.contexts.retract'
         )
           await waitForCondition(
-            () => opened.bureau.tasks.detail(task.id)?.status === 'completed',
+            () =>
+              opened.bureau.tasks.detail(task.id)?.status ===
+              (row.operation === 'bureau.contexts.discardturn' ? 'error' : 'completed'),
             'context task finishes',
           );
+        if (row.operation === 'bureau.contexts.discardturn')
+          await waitForCondition(async () => {
+            const record = await opened.bureau.internals.taskRegistry.record(task.id);
+            return record?.settled !== undefined;
+          }, 'the failed turn is settled');
         if (row.operation === 'bureau.contexts.regenerate')
           await waitForCondition(async () => {
             const record = await opened.bureau.internals.taskRegistry.record(task.id);
@@ -93,6 +136,7 @@ for (const row of cases) {
           ...(row.operation === 'bureau.contexts.regenerate'
             ? { messageId: answerOf(task.id) }
             : {}),
+          ...(row.operation === 'bureau.contexts.discardturn' ? { runId: task.id } : {}),
           contextId: task.contextId,
         });
         witnesses.observeWire(row.operation, actor, result);
@@ -113,6 +157,7 @@ for (const row of cases) {
             ...(row.operation === 'bureau.contexts.regenerate'
               ? { messageId: answerOf(task.id) }
               : {}),
+            ...(row.operation === 'bureau.contexts.discardturn' ? { runId: task.id } : {}),
             contextId: 'unknown-context',
           });
           expect(JSON.stringify(result.body?.error).replaceAll(task.contextId, '<id>')).toBe(

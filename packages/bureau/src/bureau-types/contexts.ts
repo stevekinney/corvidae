@@ -19,6 +19,11 @@ import type {
 import type { ForkSessionRequest, ForkSessionResult } from '../session-fork';
 import type { RegenerateSessionRequest, RegenerateSessionResult } from '../session-regenerate';
 import type {
+  DiscardTurnRequest,
+  DiscardTurnResult,
+  SessionDiscardRefusedError,
+} from '../session-discard';
+import type {
   SessionSteeringState,
   SteeringCommandAdmissionOutcome,
   SteeringCommandRequest,
@@ -408,6 +413,32 @@ export interface BureauContexts {
     contextId: string,
     request: RegenerateSessionRequest,
   ): Promise<RegenerateSessionResult>;
+
+  /**
+   * Discards the context's last unfinished turn (COR-2437): the rows `request.runId` wrote after
+   * the person's message that started it (its replies, tool calls, tool results and the answers
+   * given to its questions) are removed, and the person's message is kept. The run must be the
+   * context's last and must have ended without finishing: the person stopped it, or it failed.
+   * Anything else throws a {@link SessionDiscardRefusedError} naming why: a run still going or
+   * waiting on an approval or a question (`turn-running`: cancel it first), one that finished
+   * normally (`turn-finished`), one a later run or row follows (`not-latest-turn`), one whose
+   * process stopped before it recorded its end (`turn-outcome-unknown`), one a follow-up was
+   * delivered into (`follow-up-delivered`), a context with a follow-up still queued
+   * (`follow-ups-queued`), and a run that wrote nothing (`nothing-to-discard`). The removal is one
+   * compare-and-swap fenced on the incarnation and revision the attempt read, judged again on what
+   * it writes over, and its commit carries the discard's receipt and its audit entry
+   * (`context.turn-discarded`) to the session outbox. The run's task record is kept as it is: it
+   * says how the run ended, which stays true.
+   *
+   * `commandId` is recorded in the durable command ledger: an exact retry, even after a restart,
+   * returns the original result; a duplicate whose first attempt is still pending is answered
+   * from its committed receipt, or refused `command-in-doubt`; the same `commandId` with another
+   * `runId` is refused `command-conflict`. It does not authorize the caller: that is the caller's
+   * to do, as for `contexts.get`. Throws a `BureauError` `NOT_FOUND` for a context this Bureau
+   * does not hold, a `ContextArchivedError` for an archived one, and a `BureauShuttingDownError`
+   * when Bureau is shutting down.
+   */
+  discardTurn(contextId: string, request: DiscardTurnRequest): Promise<DiscardTurnResult>;
 
   /**
    * One page of the context's durable event history, from the exclusive `options.since` cursor. It
