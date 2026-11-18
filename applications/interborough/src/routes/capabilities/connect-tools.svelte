@@ -52,6 +52,7 @@
     FormSection,
     InlineLoading,
     Input,
+    Link,
     PageHeader,
     RadioGroup,
     Segment,
@@ -107,6 +108,7 @@
   } from './connect-choose-tools.svelte';
   import ConnectGiveToAgent from './connect-give-to-agent.svelte';
   import ConnectSignIn from './connect-sign-in.svelte';
+  import type { SignInNotice } from './connect-sign-in-notice.ts';
   import {
     ConnectFlow,
     connectFooterLine,
@@ -178,6 +180,10 @@
   let submitted = $state(false);
   /** A field the host refused, with its words. Cleared by the next change to the form. */
   let hostError = $state<{ readonly field: ToolSourceFormField; readonly message: string }>();
+  /** The Sign in section, whose Try again the refusal under the choice calls. */
+  let signInSection = $state<ConnectSignIn>();
+  /** What the sign-in says under the Sign in choice (rows 34k, 34l, 34y). */
+  let signInNotice = $state<SignInNotice>();
   /** Whether the host refused a save because the source changed after it was read (an edit). */
   let stale = $state(false);
   // The breadcrumb names the page as the person came to it: "Edit connection" for a saved source.
@@ -1023,6 +1029,9 @@
               label={copy.authentication.label}
               value={authentication}
               disabled={connecting}
+              description={signInNotice?.description}
+              note={signInNotice?.note}
+              error={signInNotice?.error}
               onValueChange={(next: string) => (authentication = next)}
             >
               {#each choices as choice (choice)}
@@ -1033,11 +1042,21 @@
                   {/if}
                 </Segment>
               {/each}
+              {#snippet errorAction()}
+                <Link
+                  href="#try-again"
+                  onclick={(event) => (event.preventDefault(), signInSection?.retry())}
+                  data-testid="connect-sign-in-try-again"
+                  >{copy.authentication.signIn.tryAgain}</Link
+                >
+              {/snippet}
             </SegmentedControl>
           {/if}
           {#if activeAuthentication === 'oauth' && editId === undefined}
             <!-- Signed in before it is saved (COR-2436): the page holds the host's reference only. -->
             <ConnectSignIn
+              bind:this={signInSection}
+              bind:notice={signInNotice}
               provider={name}
               target={'request' in built
                 ? { id: built.id, source: built.request.source }

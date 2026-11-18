@@ -19,6 +19,7 @@
   import { KeyRound } from '@lucide/svelte';
 
   import { CAPABILITIES_COPY } from '../../app/copy/capabilities.ts';
+  import type { SignInNotice } from './connect-sign-in-notice.ts';
   import {
     getToolSourceSignIn,
     signInMessageOf,
@@ -39,9 +40,15 @@
     disabled: boolean;
     /** The host's reference to the sign-in that succeeded, or `undefined`. */
     signIn: string | undefined;
+    /**
+     * What the sign-in has to say, for the page to draw under the Sign in choice (rows 34k, 34l,
+     * 34y): the waiting line as a description, a cancel or a blocked window as a note, and a
+     * refusal as an error, which the page gives its Try again. `undefined` when there is nothing.
+     */
+    notice?: SignInNotice | undefined;
   }
 
-  let { provider, target, disabled, signIn = $bindable() }: Props = $props();
+  let { provider, target, disabled, signIn = $bindable(), notice = $bindable() }: Props = $props();
 
   const copy = CAPABILITIES_COPY.source.connect.authentication.signIn;
   const named = $derived(provider.trim() === '' ? copy.provider : provider.trim());
@@ -56,6 +63,38 @@
     | { readonly kind: 'blocked' }
     | { readonly kind: 'not-needed' };
   let current = $state<State>({ kind: 'idle' });
+
+  // What the sign-in says goes to the page, which draws it under the Sign in choice.
+  $effect(() => {
+    switch (current.kind) {
+      case 'waiting':
+      case 'starting':
+        notice = { description: copy.approve(named) };
+        break;
+      case 'canceled':
+        notice = { note: current.declined ? copy.declined(named) : copy.canceled(named) };
+        break;
+      case 'blocked':
+        notice = { note: copy.blocked };
+        break;
+      case 'not-needed':
+        notice = { note: copy.notNeeded };
+        break;
+      case 'refused':
+        notice = { error: current.message };
+        break;
+      default:
+        notice = undefined;
+    }
+  });
+  $effect(() => () => {
+    notice = undefined;
+  });
+
+  /** Starts the sign-in again, as the refusal's Try again does. */
+  export function retry(): void {
+    void start();
+  }
 
   /** The description the sign-in was made for: a change to it drops the sign-in. */
   const signature = $derived(target === undefined ? '' : JSON.stringify(target));
@@ -180,8 +219,8 @@
         >
       {/if}
     </div>
-    <p class="ib-connect__help" role="status">{copy.approve(named)}</p>
   {:else}
+    <!-- The button keeps its label in every state (row 34k): Try again is the message's own action. -->
     <div class="ib-connect__sign-in-row">
       <Button
         data-changes
@@ -191,29 +230,21 @@
         data-testid="connect-sign-in-start"
       >
         {#snippet leadingIcon()}<KeyRound size={14} aria-hidden="true" />{/snippet}
-        {current.kind === 'canceled' || current.kind === 'refused' || current.kind === 'blocked'
-          ? copy.tryAgain
-          : copy.action(named)}
+        {copy.action(named)}
       </Button>
+      {#if current.kind === 'canceled' || current.kind === 'blocked'}
+        <Link
+          href="#try-again"
+          onclick={(event) => (event.preventDefault(), void start())}
+          data-testid="connect-sign-in-try-again">{copy.tryAgain}</Link
+        >
+      {/if}
       {#if current.kind === 'signed-in'}
         <span class="ib-connect__signed-in" role="status" data-testid="connect-signed-in"
           >{copy.signedIn}</span
         >
       {/if}
     </div>
-    {#if current.kind === 'canceled'}
-      <p class="ib-connect__help" role="status" data-testid="connect-sign-in-canceled">
-        {current.declined ? copy.declined(named) : copy.canceled(named)}
-      </p>
-    {:else if current.kind === 'refused'}
-      <p class="ib-connect__sign-in-refused" role="alert" data-testid="connect-sign-in-refused">
-        {current.message}
-      </p>
-    {:else if current.kind === 'blocked'}
-      <p class="ib-connect__help" role="status">{copy.blocked}</p>
-    {:else if current.kind === 'not-needed'}
-      <p class="ib-connect__help" role="status">{copy.notNeeded}</p>
-    {/if}
   {/if}
 </div>
 
@@ -233,10 +264,5 @@
   .ib-connect__signed-in {
     color: var(--cinder-status-success-text);
     font-weight: var(--cinder-font-medium);
-  }
-
-  .ib-connect__sign-in-refused {
-    margin: 0;
-    color: var(--cinder-status-danger-text);
   }
 </style>

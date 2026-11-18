@@ -183,10 +183,34 @@ describe('signing in before the source is saved', () => {
     await findByTestId('connect-sign-in-waiting');
 
     opened[0]!.closed = true;
-    const canceled = await findByTestId('connect-sign-in-canceled');
-    expect(canceled.textContent?.trim()).toBe(signInCopy.canceled('GitHub'));
-    expect(getByRole('button', { name: signInCopy.tryAgain })).not.toBeNull();
-    expect(document.body.querySelector('[data-testid="connect-sign-in-refused"]')).toBeNull();
+    // A neutral note under the Sign in choice, not an error (row 34k).
+    await waitFor(() =>
+      expect(document.body.querySelector('.cinder-form-field__note')?.textContent?.trim()).toBe(
+        signInCopy.canceled('GitHub'),
+      ),
+    );
+    expect(document.body.querySelector('[data-cinder-error]')).toBeNull();
+    // The button keeps its label; Try again is the message's own quiet link beside it.
+    expect(
+      document.body.querySelector('[data-testid="connect-sign-in-start"]')?.textContent?.trim(),
+    ).toBe(signInCopy.action('GitHub'));
+    expect(getByRole('link', { name: signInCopy.tryAgain })).not.toBeNull();
+  });
+
+  test('says the waiting line as the choice’s description, in the shared help style', async () => {
+    serve({ outcome: 'waiting' });
+    landAt('/capabilities/connect');
+    const { getByRole, findByTestId } = render(QueryPage, {
+      props: { page: ConnectTools },
+    } as never);
+    await signIn(getByRole);
+    await findByTestId('connect-sign-in-waiting');
+
+    const group = document.body.querySelector('#connect-authentication');
+    const describedBy = group?.getAttribute('aria-describedby') ?? '';
+    const description = document.getElementById(describedBy.split(' ')[0] ?? '');
+    expect(description?.className).toContain('cinder-form-field__description');
+    expect(description?.textContent?.trim()).toBe(signInCopy.approve('GitHub'));
   });
 
   test('says why the provider refused, from the host’s reason, with Try again, and keeps every field', async () => {
@@ -199,11 +223,18 @@ describe('signing in before the source is saved', () => {
     await findByTestId('connect-sign-in-waiting');
 
     await fireEvent.click(getByRole('link', { name: signInCopy.cancel }));
-    const refused = await findByTestId('connect-sign-in-refused');
-    expect(refused.textContent?.trim()).toBe(
+    // The choice's own error, with Try again as its action; the button keeps its label (rows 34k, 34l).
+    await findByTestId('connect-sign-in-try-again');
+    const refused = document.body.querySelector('[data-cinder-error]');
+    expect(refused?.textContent).toContain(
       signInCopy.refused('GitHub', signInCopy.reasons['invalid_request'] ?? ''),
     );
-    expect(refused.getAttribute('role')).toBe('alert');
+    expect(refused?.getAttribute('aria-live')).toBe('polite');
+    expect(
+      document.body.querySelector('[data-testid="connect-sign-in-start"]')?.textContent?.trim(),
+    ).toBe(signInCopy.action('GitHub'));
+    await fireEvent.click(getByRole('link', { name: signInCopy.tryAgain }));
+    await findByTestId('connect-sign-in-waiting');
     expect(field('connect-url').value).toBe('https://mcp.github.example/mcp');
     expect(field('connect-name').value).toBe('GitHub');
   });
