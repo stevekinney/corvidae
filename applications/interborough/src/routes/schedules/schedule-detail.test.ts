@@ -338,11 +338,15 @@ describe('ScheduleDetail', () => {
     }, 'current-run-probe has a current run');
 
     try {
-      const { getByText } = render(ScheduleDetailHarness, {
+      const { getByTestId } = render(ScheduleDetailHarness, {
         props: { client, id: 'current-run-probe' },
       });
 
-      const term = await waitFor(() => getByText('Running now'));
+      // The summary line leads with the same words once the run history holds the going run, so
+      // the term is looked up inside the details, where the link to the run sits.
+      const term = await waitFor(() =>
+        within(getByTestId('schedule-details')).getByText('Running now'),
+      );
       const link = await waitFor(() => {
         const found = term.parentElement?.querySelector('dd a');
         expect(found).not.toBeNull();

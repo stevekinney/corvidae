@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { rejectionOf } from '../../testing/testing/src/helpers/promise-outcome.ts';
 import type { Manifest } from '../affected-tests-manifest.ts';
 import {
+  broaderObligations,
   diffSize,
   directManifest,
   directTests,
@@ -65,6 +66,15 @@ describe('touchesRootTypecheck', () => {
   });
 });
 
+describe('broader obligations', () => {
+  test('keeps the provider audit pending and names excluded browser tests', () => {
+    expect(broaderObligations(['scripts/a.integration.test.ts'])).toEqual([
+      expect.stringContaining('Full CI remains required'),
+      expect.stringContaining('scripts/a.integration.test.ts require provider browser execution'),
+    ]);
+  });
+});
+
 describe('planSteps', () => {
   test('a scripts change adds the root type-check and no turbo step', () => {
     expect(names(['scripts/chef/a.ts'])).toEqual(['prettier', 'lint:root', 'typecheck:root']);
@@ -111,6 +121,7 @@ describe('planSteps', () => {
         command: [
           'env',
           'CORVIDAE_TEST_SELECTION=dig',
+          'CORVIDAE_TEST_POOL_WAIT_SECONDS=300',
           'bunx',
           'turbo',
           'run',
@@ -123,6 +134,7 @@ describe('planSteps', () => {
         command: [
           'env',
           'CORVIDAE_TEST_SELECTION=dig',
+          'CORVIDAE_TEST_POOL_WAIT_SECONDS=300',
           'bunx',
           'turbo',
           'run',
@@ -424,7 +436,28 @@ describe('runChecks', () => {
     const result = await runChecks('/repo', options, deps);
     expect(deps.executed).toHaveLength(4);
     expect(result.code).toBe(1);
-    expect(result.output).toBe('focused-checks: 2 passed, 2 failed (lint:root, typecheck:root)');
+    expect(result.output).toContain(
+      'focused-checks: 2 passed, 2 failed (lint:root, typecheck:root)',
+    );
+    expect(result.output).toContain('pending broader obligation');
+  });
+
+  test('keeps a pool-admission result pending and never calls it passed', async () => {
+    const { runner } = fakeRunner({ changed: ['scripts/chef/a.ts'] });
+    const deps = dependencies(runner, { 'lint:root': 75 });
+    const result = await runChecks('/repo', { ...options, json: true }, deps);
+    expect(result.code).toBe(1);
+    const output = JSON.parse(result.output) as { ok: boolean; steps: unknown[] };
+    expect(output.ok).toBe(false);
+    const pending = output.steps.find(
+      (step): step is { name: string; command: string; exitCode: number; pending?: boolean } =>
+        typeof step === 'object' &&
+        step !== null &&
+        (step as { name?: unknown }).name === 'lint:root',
+    );
+    expect(pending).toBeDefined();
+    expect(pending).toMatchObject({ name: 'lint:root', exitCode: 75, pending: true });
+    expect(pending?.command).toBe('bun run lint:root');
   });
 
   test('reports a step ended by a signal as killed, with exit code 3 and not as failed', async () => {
@@ -499,7 +532,7 @@ describe('runChecks', () => {
     const result = await runChecks('/repo', options, deps);
     expect(written[0]?.workspaces['testing/testing']?.files).toEqual(['src/c.slow.test.ts']);
     expect(deps.executed.at(-1)).toBe(
-      'env CORVIDAE_TEST_SELECTION=digest bunx turbo run test:slow --filter=@lostgradient/testing --concurrency=1',
+      'env CORVIDAE_TEST_SELECTION=digest CORVIDAE_TEST_POOL_WAIT_SECONDS=300 bunx turbo run test:slow --filter=@lostgradient/testing --concurrency=1',
     );
     expect(result.output).toContain(
       'testing/testing/src/probe.integration.test.ts launch a browser',
@@ -529,7 +562,9 @@ describe('runChecks', () => {
   test('exits 0 with a passed summary when every step passes', async () => {
     const { runner } = fakeRunner({ changed: ['packages/weft/a.ts'] });
     const result = await runChecks('/repo', options, dependencies(runner));
-    expect(result).toEqual({ code: 0, output: 'focused-checks: 4 passed, 0 failed' });
+    expect(result.code).toBe(0);
+    expect(result.output).toContain('focused-checks: 4 passed, 0 failed');
+    expect(result.output).toContain('pending broader obligation');
   });
 
   test('plans against the merge base, runs the direct tests and never the dependency graph', async () => {
@@ -539,7 +574,7 @@ describe('runChecks', () => {
     expect(calls[0]).toEqual(['git', 'merge-base', 'origin/main', 'HEAD']);
     expect(deps.executed.some((command) => command.includes('affected-tests'))).toBe(false);
     expect(deps.executed.at(-1)).toBe(
-      'env CORVIDAE_TEST_SELECTION=digest bunx turbo run test:slow --filter=@lostgradient/weft --concurrency=1',
+      'env CORVIDAE_TEST_SELECTION=digest CORVIDAE_TEST_POOL_WAIT_SECONDS=300 bunx turbo run test:slow --filter=@lostgradient/weft --concurrency=1',
     );
   });
 

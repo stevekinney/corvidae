@@ -130,7 +130,7 @@ test.describe('GroupedList layout', () => {
         ).toBe(basicSubtitle);
       }
       // The number's line is one title line, at the top of the title: the two share a first line.
-      const value = await row.locator('.cinder-grouped-list-item__lead-value').boundingBox();
+      const value = await row.locator('.cinder-grouped-list-item__lead-window').boundingBox();
       const titleTop = (await title.boundingBox())!.y;
       const titleLine = await title.evaluate((element) =>
         Number.parseFloat(getComputedStyle(element).lineHeight),

@@ -133,10 +133,6 @@
     text-decoration: none;
   }
 
-  .cinder-stacked-list-item__title-link:hover {
-    text-decoration: underline;
-  }
-
   /*
    * The whole row is one link: the anchor's pseudo-element covers the row, so a click anywhere
    * on it follows the link, hover tints the whole row, and the keyboard focus ring wraps the

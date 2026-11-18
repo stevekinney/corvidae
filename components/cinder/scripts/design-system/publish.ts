@@ -73,6 +73,44 @@ export function fillBrandBook(template: string, facts: BrandBookFacts): string {
   });
 }
 
+/** The components whose preview mode the published system names: they bundle an editor. */
+export const WATCHED_PREVIEWS = ['MarkdownEditor', 'ReviewEditor', 'DiffViewer'];
+
+/** How a component's card draws: a live preview, a static rendition, or no card at all. */
+export type PreviewMode = 'live' | 'static' | 'none';
+
+/** The preview report published as `previews.json`. */
+export type PreviewReport = {
+  live: number;
+  static: number;
+  none: number;
+  /** The mode of each of {@link WATCHED_PREVIEWS}; `missing` when the component is unknown. */
+  watched: Record<string, PreviewMode | 'missing'>;
+  /** Every component by its mode. */
+  modes: Record<string, PreviewMode>;
+};
+
+/** Lists, for every component, whether its card is live or static, and names the watched ones. */
+export function previewReport(
+  live: string[],
+  staticNames: string[],
+  withoutCard: string[],
+): PreviewReport {
+  const modes: Record<string, PreviewMode> = {};
+  for (const name of live) modes[name] = 'live';
+  for (const name of staticNames) modes[name] = 'static';
+  for (const name of withoutCard) modes[name] = 'none';
+  const watched: PreviewReport['watched'] = {};
+  for (const name of WATCHED_PREVIEWS) watched[name] = modes[name] ?? 'missing';
+  return {
+    live: live.length,
+    static: staticNames.length,
+    none: withoutCard.length,
+    watched,
+    modes,
+  };
+}
+
 /** The inputs to {@link designSystemIndex}. */
 export type IndexFacts = {
   sha: string;

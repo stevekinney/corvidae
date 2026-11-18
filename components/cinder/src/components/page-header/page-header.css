@@ -716,6 +716,13 @@
     --_cinder-button-ring: var(--_cinder-hero-ring);
   }
 
+  /* The segmented control's option ring reads its own private hook, so on a band it is the white
+     ring: the public ring token is indigo, about 2.3:1 on the accent band (COR-2445 AC6). */
+  :is(.cinder-page-header[data-cinder-tone='accent'], .cinder-page-header[data-cinder-tone='night'])
+    .cinder-segmented-control {
+    --_cinder-segmented-control-ring: var(--_cinder-hero-ring);
+  }
+
   :is(.cinder-page-header[data-cinder-tone='accent'], .cinder-page-header[data-cinder-tone='night'])
     .cinder-button[data-cinder-variant='primary']:not(:disabled, [aria-disabled='true']) {
     /* cinder-allow-raw-color: structural-pattern — the hero's white primary fill */

@@ -16,10 +16,20 @@ export const meta = {
 const PREPARE_SCHEMA = {
   type: 'object',
   properties: {
+    accepted: { type: 'boolean' },
     briefPath: { type: 'string' },
     blockers: { type: 'array', items: { type: 'string' } },
+    gate: {
+      type: 'object',
+      properties: {
+        status: { type: 'string' },
+        dispatchable: { type: 'boolean' },
+      },
+      required: ['status', 'dispatchable'],
+    },
+    error: { type: 'string' },
   },
-  required: ['briefPath', 'blockers'],
+  required: ['accepted', 'briefPath', 'blockers', 'gate'],
 };
 
 const IMPLEMENT_SCHEMA = {
@@ -69,14 +79,35 @@ function failure(issue, status, reason, extra) {
   };
 }
 
-function prepare(issue, run) {
+function shellArgument(value) {
+  return `'${value.replaceAll("'", "'\"'\"'")}'`;
+}
+
+function briefCommand(issue, run, context, classification) {
+  const arguments_ = [
+    'bun',
+    'scripts/chef/brief.ts',
+    shellArgument(issue),
+    '--repository',
+    'stevekinney/corvidae',
+    '--base',
+    '"$(git rev-parse HEAD)"',
+  ];
+  if (classification !== null) arguments_.push('--classification', shellArgument(classification));
+  if (context !== null) arguments_.push('--context', shellArgument(context));
+  if (run !== undefined) arguments_.push('--run', shellArgument(run));
+  arguments_.push('--json');
+  return arguments_.join(' ');
+}
+
+function prepare(issue, run, context, classification) {
   phase('prepare');
   log(`${issue}: preparing the brief`);
   return agent(
     [
       `Prepare chef delivery of ${issue}. Invoke no skills. Make no Linear or GitHub writes.`,
-      `Run \`bun scripts/chef/brief.ts ${issue}${run ? ` --run ${run}` : ''} --json\`. A non-zero exit means another run holds the issue: return no briefPath and list that holder as the only blocker. The brief path is \`path\` in its output (tmp/chef/briefs/${issue}.md). Read the brief's open-blockers section and list each open blocker identifier in "blockers" (empty when it says None).`,
-      'Return briefPath and blockers.',
+      `Resolve the immutable current revision with \`git rev-parse HEAD\`, then run \`${briefCommand(issue, run, context, classification)}\`. The coordinator supplied ${context ? 'the verified context file' : 'no design context file'} and ${classification ? `the ${classification} classification` : 'no exceptional classification'}; do not invent either from issue text. A non-zero exit means preparation refused: return accepted false, an empty briefPath, structured blockers, gate and error. On acceptance, return accepted true, the nonempty path, blockers and gate from the JSON output.`,
+      'Return accepted, briefPath, blockers, gate and error when present.',
     ].join('\n'),
     {
       label: `prepare ${issue}`,
@@ -101,10 +132,41 @@ function review(issue, pr, head) {
 }
 
 async function deliverOne(issue) {
-  const prepared = await prepare(issue, args && args.run);
+  const context =
+    args && args.verifiedContexts && typeof args.verifiedContexts[issue] === 'string'
+      ? args.verifiedContexts[issue]
+      : null;
+  const requestedClassification =
+    args && args.classifications && typeof args.classifications[issue] === 'string'
+      ? args.classifications[issue]
+      : null;
+  if (
+    requestedClassification !== null &&
+    requestedClassification !== 'behavior' &&
+    requestedClassification !== 'no-behavior'
+  )
+    return failure(issue, 'blocked', 'invalid coordinator classification', {});
+  const classification = requestedClassification;
+  const prepared = await prepare(issue, args && args.run, context, classification);
   if (prepared === null) {
     log(`${issue}: prepare failed`);
     return failure(issue, 'blocked', 'prepare failed', {});
+  }
+  if (
+    prepared.accepted !== true ||
+    prepared.gate.dispatchable !== true ||
+    prepared.gate.status !== 'accepted' ||
+    prepared.briefPath.trim() === ''
+  ) {
+    log(`${issue}: preparation refused: ${prepared.error ?? prepared.gate.status}`);
+    return failure(
+      issue,
+      'blocked',
+      prepared.error ?? `preparation refused: ${prepared.gate.status}`,
+      {
+        gate: prepared.gate,
+      },
+    );
   }
   if (prepared.blockers.length > 0) {
     log(`${issue}: blocked by open blockers ${prepared.blockers.join(', ')}`);
