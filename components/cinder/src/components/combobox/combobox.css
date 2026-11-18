@@ -328,8 +328,12 @@
     overflow-wrap: anywhere;
   }
 
+  /* A long identifier shrinks and wraps anywhere in a narrow panel rather than overflowing it; a
+     short one keeps its width, since it only shrinks once the row has no room left. */
   .cinder-combobox__option-code {
-    flex: none;
+    flex: 0 1 auto;
+    min-inline-size: 0;
+    overflow-wrap: anywhere;
     font-family: var(--cinder-font-mono);
     font-size: var(--cinder-text-xs);
     line-height: var(--cinder-leading-snug);

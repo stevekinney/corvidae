@@ -40,7 +40,12 @@
   import { queryKeys } from '../../lib/query.ts';
   import { router } from '../../lib/router.svelte.ts';
   import { HOOKS_COPY } from './hook-copy.ts';
-  import { eventOptionLabel, hookListFailure, hookMatches } from './hook-presentation.ts';
+  import {
+    eventChosenLabel,
+    eventKindOf,
+    hookListFailure,
+    hookMatches,
+  } from './hook-presentation.ts';
   import HookRows from './hook-rows.svelte';
   import HooksUnavailable from './hooks-unavailable.svelte';
 
@@ -104,7 +109,9 @@
     rows.filter(
       (hook) =>
         hookMatches(hook, search) &&
-        (eventFilter === undefined || hook.events.includes(eventFilter)) &&
+        // A plugin kind filters by its kind, whatever version a hook pinned it to (COR-2226).
+        (eventFilter === undefined ||
+          hook.events.some((entry) => eventKindOf(entry) === eventFilter)) &&
         (agentFilter === undefined ||
           (hook.scope?.kind === 'agent' && hook.scope.id === agentFilter)),
     ),
@@ -112,7 +119,10 @@
 
   const eventKinds = $derived(
     [
-      ...new Set([...rows.flatMap((hook) => hook.events), ...(eventFilter ? [eventFilter] : [])]),
+      ...new Set([
+        ...rows.flatMap((hook) => hook.events.map(eventKindOf)),
+        ...(eventFilter ? [eventFilter] : []),
+      ]),
     ].toSorted(),
   );
   const agentNames = $derived(
@@ -129,7 +139,7 @@
       key: 'event',
       label: HOOKS_COPY.eventFilter,
       placeholder: HOOKS_COPY.anyEvent,
-      options: eventKinds.map((kind) => ({ value: kind, label: eventOptionLabel(kind) })),
+      options: eventKinds.map((kind) => ({ value: kind, label: eventChosenLabel(kind) })),
     },
     {
       type: 'select' as const,

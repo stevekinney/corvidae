@@ -1719,3 +1719,200 @@ for (const width of [320, ...WIDTHS] as const) {
     await checkA11y(`hooks — a new hook that runs a plugin’s action at ${width}px`);
   });
 }
+
+// ─── Plugin event kinds (COR-2226, critique rows R1 to R10) ────────────────────────────────────────
+//
+// The Bureau's catalog is stubbed with a few of its own kinds and the kinds two plugins declare, one
+// name in both, so the picker's plugin groups, a chosen kind with its pin, and a saved hook whose
+// kind is missing are drawn without a plugin that publishes. The plugins' titles come from the host.
+
+/** A kind of the Bureau's catalog, or one a plugin declares when `source` and `version` are given. */
+function catalogKind(kind: string, source?: string, version?: string) {
+  return {
+    kind,
+    description: `What ${kind} means.`,
+    origin: source === undefined ? 'run' : 'unattributed',
+    payload: [],
+    scopes: [],
+    ...(source === undefined ? {} : { source, version }),
+  };
+}
+
+const PLUGIN_EVENT_CATALOG = () => ({
+  events: [
+    catalogKind('review.requested'),
+    catalogKind('run.settled'),
+    catalogKind('schedule.missed'),
+    catalogKind('reports:digest-ready', 'reports', '1.0.0'),
+    catalogKind('reports:summary-sent', 'reports', '1.0.0'),
+    catalogKind('archive:digest-ready', 'archive', '2.0.0'),
+  ],
+});
+
+/** Slack as every state has it, and the two plugins that declare the kinds, under their titles. */
+const EVENT_PLUGINS = () => [
+  ...PLUGINS(),
+  pluginStanding('reports', 'Weekly reports', 'running'),
+  pluginStanding('archive', 'Archive', 'running'),
+];
+
+const DIGEST_HOOK = hookRecord('owner-digest', {
+  name: 'Tell me when the digest is ready',
+  action: { type: 'notify', title: null },
+  events: ['reports:digest-ready@1.0.0', 'review.requested'],
+  declaredBy: null,
+});
+
+// R1, R2, R8, R9: the picker open on the plugins' groups, at the smallest phone and on a desktop.
+for (const width of [320, ...WIDTHS] as const) {
+  test(`[new-hook-plugin-event-picker] the event picker groups each plugin’s kinds under its title, after the Bureau’s areas, at ${width} pixels`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await openHooks(
+      page,
+      '/hooks/new',
+      [],
+      { 'bureau.events.catalog': PLUGIN_EVENT_CATALOG },
+      EVENT_PLUGINS,
+    );
+    const picker = page.getByRole('combobox', { name: copy.event.label });
+    await picker.click();
+    const reports = page.getByRole('group', { name: /^Weekly reports/ });
+    await expect(reports).toBeVisible();
+    await expect(reports.getByRole('option')).toHaveCount(2);
+    await expect(page.getByRole('group', { name: /^Archive/ }).getByRole('option')).toHaveCount(1);
+    // The raw kind wraps rather than pushing the page sideways (R9).
+    expect(
+      await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
+    ).toBe(true);
+    await captureForDesignReview(page, {
+      route: '/hooks/new',
+      state: 'new-hook-plugin-event-picker',
+      source: SOURCE,
+    });
+    // R8: typing the plugin's title finds its kinds alone.
+    await picker.fill('weekly');
+    await expect(page.locator('[role="option"]')).toHaveCount(2);
+    await captureForDesignReview(page, {
+      route: '/hooks/new',
+      state: 'new-hook-plugin-event-search',
+      source: SOURCE,
+    });
+    await page.keyboard.press('Escape');
+  });
+}
+
+// R3, R4: a chosen plugin kind reads with its plugin's title, and its raw kind carries its pin, muted.
+for (const width of WIDTHS) {
+  test(`[new-hook-plugin-event-chosen] two plugins’ kinds of one name, chosen, never read the same, at ${width} pixels`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await openHooks(
+      page,
+      '/hooks/new',
+      [],
+      { 'bureau.events.catalog': PLUGIN_EVENT_CATALOG },
+      EVENT_PLUGINS,
+    );
+    const picker = page.getByRole('combobox', { name: copy.event.label });
+    for (const group of ['Weekly reports', 'Archive']) {
+      await picker.click();
+      await page
+        .getByRole('group', { name: new RegExp(`^${group}`) })
+        .getByRole('option', { name: /^Digest ready/ })
+        .click();
+    }
+    const chosen = page.getByTestId('hook-events').locator('li.ib-hook-events__item');
+    await expect(chosen.locator('.ib-hook-events__name')).toHaveText([
+      'Digest ready, Weekly reports',
+      'Digest ready, Archive',
+    ]);
+    await expect(chosen.locator('.ib-hook-events__kind')).toHaveText([
+      'reports:digest-ready@1.0.0',
+      'archive:digest-ready@2.0.0',
+    ]);
+    await captureForDesignReview(page, {
+      route: '/hooks/new',
+      state: 'new-hook-plugin-event-chosen',
+      source: SOURCE,
+    });
+  });
+}
+
+// R4, R10: a saved hook on a plugin's kind, in its row and on its page.
+for (const width of WIDTHS) {
+  test(`[hook-plugin-event] a saved hook on a plugin’s kind names the plugin in its sentence and its pin on the locked When row, at ${width} pixels`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await openHooks(
+      page,
+      '/hooks',
+      [DIGEST_HOOK],
+      { 'bureau.events.catalog': PLUGIN_EVENT_CATALOG },
+      EVENT_PLUGINS,
+    );
+    const row = page.locator(`li[data-hook="${DIGEST_HOOK.id}"]`);
+    await expect(row).toContainText('When Reports: digest ready or a review is waiting, notify me');
+    await expect(row).not.toContainText('@1.0.0');
+    await captureForDesignReview(page, {
+      route: '/hooks',
+      state: 'hook-plugin-event',
+      source: SOURCE,
+    });
+
+    await page.goto(`/hooks/${DIGEST_HOOK.id}`);
+    const locked = page.getByTestId('hook-event-locked');
+    await expect(locked.locator('.ib-hook-events__kind')).toHaveText('reports:digest-ready@1.0.0');
+    await expect(page.getByTestId('hook-missing-events')).toHaveCount(0);
+    await captureForDesignReview(page, {
+      route: '/hooks/:hook',
+      state: 'hook-plugin-event',
+      source: SOURCE,
+    });
+  });
+}
+
+// R5, R6: a saved hook whose plugin kind is missing, its plugin gone or loaded at another version.
+for (const width of WIDTHS) {
+  for (const [state, loadedVersion, cause] of [
+    ['hook-event-missing', null, copy.event.missing.notLoaded],
+    ['hook-event-other-version', '1.1.0', copy.event.missing.otherVersion('1.0.0', '1.1.0')],
+  ] as const) {
+    test(`[${state}] a saved hook whose plugin kind is missing says Missing and why on its page, and why on line two of its row, at ${width} pixels`, async ({
+      page,
+    }) => {
+      await page.setViewportSize({ width, height: 900 });
+      const problem = { code: 'event-missing', kind: 'reports:digest-ready@1.0.0', loadedVersion };
+      await openHooks(
+        page,
+        '/hooks',
+        [DIGEST_HOOK],
+        {
+          'bureau.events.catalog': PLUGIN_EVENT_CATALOG,
+          'bureau.hooks.list': () => ({
+            hooks: [{ ...DIGEST_HOOK, lastDelivery: DELIVERED, problems: [problem] }],
+          }),
+        },
+        EVENT_PLUGINS,
+      );
+      const row = page.locator(`li[data-hook="${DIGEST_HOOK.id}"]`);
+      await expect(row.locator('.ib-hooks__line')).toContainText(cause);
+      // No badge on line one: the hook is on, and its word is its last delivery's.
+      await expect(row.locator('[data-status-word]')).toHaveAttribute(
+        'data-status-word',
+        'Delivered',
+      );
+      await captureForDesignReview(page, { route: '/hooks', state, source: SOURCE });
+
+      await page.goto(`/hooks/${DIGEST_HOOK.id}`);
+      const missing = page.getByTestId('hook-missing-events');
+      await expect(missing).toContainText('Digest ready, Weekly reports');
+      await expect(missing.locator('[data-status-word="Missing"]')).toBeVisible();
+      await expect(missing).toContainText(cause);
+      await captureForDesignReview(page, { route: '/hooks/:hook', state, source: SOURCE });
+    });
+  }
+}

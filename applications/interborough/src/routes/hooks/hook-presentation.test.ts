@@ -21,7 +21,9 @@ import {
   deliveryWord,
   eventArea,
   eventChoices,
+  eventChosenLabel,
   eventClause,
+  eventKindOf,
   eventMatches,
   eventOptionLabel,
   eventPhrase,
@@ -37,7 +39,9 @@ import {
   hookStatusWord,
   hookTime,
   kindsReadingAlike,
+  missingEventCause,
   onlyForWords,
+  pluginEventOf,
   scopeKindsFor,
   scopePath,
 } from './hook-presentation.ts';
@@ -619,5 +623,205 @@ describe('what a read of the list that failed says', () => {
   test('is found by the words a row says as well as the sentence of the editor', () => {
     expect(hookMatches(hook({ name: null }), 'a review is waiting')).toBe(true);
     expect(hookMatches(hook({ name: null }), 'signed message')).toBe(true);
+  });
+});
+
+describe('a plugin’s event kinds (COR-2226)', () => {
+  /** Two plugins that each declare `digest-ready`, and one more kind of the first. */
+  const PLUGIN_KINDS: HookEventKind[] = [
+    {
+      kind: 'reports:digest-ready',
+      origin: 'unattributed',
+      description: 'A digest is ready to read.',
+      scopes: [],
+      source: 'reports',
+      version: '1.0.0',
+    },
+    {
+      kind: 'zeta:digest-ready',
+      origin: 'unattributed',
+      description: 'Another digest.',
+      scopes: [],
+      source: 'zeta',
+      version: '2.0.0',
+    },
+    {
+      kind: 'reports:summary-sent',
+      origin: 'unattributed',
+      description: 'A summary went out.',
+      scopes: [],
+      source: 'reports',
+      version: '1.0.0',
+    },
+  ];
+  const TITLES: Readonly<Record<string, string>> = { reports: 'Weekly reports', zeta: 'Archive' };
+  const titleOf = (plugin: string) => TITLES[plugin] ?? plugin;
+
+  test('reads a plugin’s kind in its own words, without its plugin or its pin (AC8)', () => {
+    expect(eventWords('reports:digest-ready')).toBe('Digest ready');
+    expect(eventWords('reports:digest-ready@1.0.0')).toBe('Digest ready');
+    expect(eventKindOf('reports:digest-ready@1.0.0')).toBe('reports:digest-ready');
+    expect(eventKindOf('run.settled')).toBe('run.settled');
+    expect(pluginEventOf('reports:digest-ready@1.0.0')).toEqual({
+      plugin: 'reports',
+      name: 'digest-ready',
+      kind: 'reports:digest-ready',
+      version: '1.0.0',
+    });
+    expect(pluginEventOf('run.settled')).toBeUndefined();
+  });
+
+  test('groups each plugin’s kinds under its title, after the Bureau’s areas, the plugins in title order (AC7, R1)', () => {
+    const choices = eventChoices([...KINDS, ...PLUGIN_KINDS], 'webhook', titleOf);
+    const groups = [...new Set(choices.map((choice) => choice.group))];
+    expect(groups).toEqual([
+      'Chats',
+      'Notifications',
+      'Reviews',
+      'Schedules',
+      'Archive',
+      'Weekly reports',
+    ]);
+    expect(
+      choices.filter((choice) => choice.group === 'Weekly reports').map((choice) => choice.value),
+    ).toEqual(['reports:digest-ready', 'reports:summary-sent']);
+    // No plugin kind is under a Bureau area or Other.
+    for (const choice of choices.filter((candidate) => candidate.value.includes(':'))) {
+      expect(['Archive', 'Weekly reports']).toContain(choice.group);
+    }
+    // A plugin the page has no title for is grouped under its name in words.
+    expect(eventChoices(PLUGIN_KINDS, 'webhook').map((choice) => choice.group)).toEqual([
+      'Reports',
+      'Reports',
+      'Zeta',
+    ]);
+  });
+
+  test('names a plugin’s kind by its words, its raw kind as its code, and its plugin only in the heading (R2)', () => {
+    const choice = eventChoices(PLUGIN_KINDS, 'webhook', titleOf).find(
+      (candidate) => candidate.value === 'reports:digest-ready',
+    );
+    expect(choice).toEqual({
+      value: 'reports:digest-ready',
+      label: 'Digest ready',
+      code: 'reports:digest-ready',
+      description: '',
+      group: 'Weekly reports',
+      disabled: false,
+    });
+    expect(eventOptionLabel('reports:digest-ready')).toBe('Digest ready');
+    // A workflow hook cannot listen to one: nothing on it leads back to a run.
+    expect(
+      eventChoices(PLUGIN_KINDS, 'start-workflow', titleOf).every((option) => option.disabled),
+    ).toBe(true);
+  });
+
+  test('says two plugins’ kinds of one name apart by their titles once chosen, never as identical text (R3)', () => {
+    expect(eventChosenLabel('reports:digest-ready', titleOf)).toBe('Digest ready, Weekly reports');
+    expect(eventChosenLabel('zeta:digest-ready@2.0.0', titleOf)).toBe('Digest ready, Archive');
+    expect(eventChosenLabel('reports:digest-ready')).toBe('Digest ready, Reports');
+    expect(eventChosenLabel('review.requested')).toBe(eventOptionLabel('review.requested'));
+    const labels = ['reports:digest-ready', 'zeta:digest-ready'].map((kind) =>
+      eventChosenLabel(kind, titleOf),
+    );
+    expect(new Set(labels).size).toBe(2);
+  });
+
+  test('offers the Bureau’s own kinds exactly as before when no plugin declares one (R7)', () => {
+    expect(
+      eventChoices(KINDS, 'webhook').map(({ value, group, label, code }) => ({
+        value,
+        group,
+        label,
+        code,
+      })),
+    ).toEqual([
+      {
+        value: 'session.created',
+        group: 'Chats',
+        label: eventOptionLabel('session.created'),
+        code: undefined,
+      },
+      {
+        value: 'notification.created',
+        group: 'Notifications',
+        label: eventOptionLabel('notification.created'),
+        code: undefined,
+      },
+      {
+        value: 'review.requested',
+        group: 'Reviews',
+        label: eventOptionLabel('review.requested'),
+        code: undefined,
+      },
+      {
+        value: 'schedule.missed',
+        group: 'Schedules',
+        label: eventOptionLabel('schedule.missed'),
+        code: undefined,
+      },
+    ]);
+    // Plugin kinds beside them change none of the Bureau's choices.
+    expect(eventChoices([...KINDS, ...PLUGIN_KINDS], 'webhook').slice(0, KINDS.length)).toEqual(
+      eventChoices(KINDS, 'webhook'),
+    );
+  });
+
+  test('finds a plugin’s kinds by the plugin’s title or its namespace (R8)', () => {
+    const meanings = new Map(PLUGIN_KINDS.map((kind) => [kind.kind, kind.description]));
+    const choices = eventChoices(PLUGIN_KINDS, 'webhook', titleOf);
+    const found = (query: string) =>
+      choices.filter((choice) => eventMatches(choice, query, meanings)).map((c) => c.value);
+    expect(found('weekly')).toEqual(['reports:digest-ready', 'reports:summary-sent']);
+    expect(found('reports:')).toEqual(['reports:digest-ready', 'reports:summary-sent']);
+    expect(found('zeta')).toEqual(['zeta:digest-ready']);
+  });
+
+  test('names the plugin in a sentence, never the bare words and never the pin (R4, R10)', () => {
+    expect(eventClause('reports:digest-ready@1.0.0')).toBe('Reports: digest ready');
+    expect(
+      hookSentence({
+        events: ['reports:digest-ready@1.0.0'],
+        action: { type: 'notify', title: null },
+      }),
+    ).toBe('When Reports: digest ready, notify me');
+    const row = listed({
+      events: ['reports:digest-ready@1.0.0'],
+      action: { type: 'notify', title: null },
+    });
+    expect(hookRowSentence(row)).toBe('When Reports: digest ready, notify me');
+    expect(hookRowSentence(row)).not.toContain('@');
+  });
+
+  test('says why a kind is missing in one line: its plugin is not loaded, or another version is (R5)', () => {
+    expect(missingEventCause({ kind: 'reports:digest-ready@1.0.0', loadedVersion: null })).toBe(
+      'Plugin not loaded',
+    );
+    expect(missingEventCause({ kind: 'reports:digest-ready@1.0.0', loadedVersion: '1.1.0' })).toBe(
+      'Pinned to 1.0.0, 1.1.0 is loaded',
+    );
+  });
+
+  test('says a missing kind on line two of the row, and changes nothing on line one (R6)', () => {
+    const missing = listed({
+      name: 'Digest',
+      events: ['reports:digest-ready@1.0.0', 'run.settled'],
+      action: { type: 'notify', title: null },
+      problems: [
+        { code: 'event-missing', kind: 'reports:digest-ready@1.0.0', loadedVersion: null },
+      ],
+    });
+    const text = hookRowText(missing, 10);
+    expect(text.title).toBe('Digest');
+    expect(text.line.endsWith(', Plugin not loaded')).toBe(true);
+    // The hook stays on, so its word is what its last delivery says, as for any hook.
+    expect(hookStatusWord(missing)).toBeUndefined();
+    expect(hookRowText({ ...missing, problems: [] }, 10).line).not.toContain('Plugin not loaded');
+  });
+
+  test('shows the raw kind only of chosen kinds that read alike, read without their pins', () => {
+    expect([...kindsReadingAlike(['reports:digest-ready@1.0.0', 'reports:digest-ready-'])]).toEqual(
+      ['reports:digest-ready', 'reports:digest-ready-'],
+    );
   });
 });

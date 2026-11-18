@@ -56,6 +56,46 @@ const PLAIN_WORDS: Readonly<Record<string, string>> = { session: 'chat', bureau:
 /** The kind of the event that a notification hook writes, which it must not listen to. */
 const NOTIFICATION_CREATED = 'notification.created';
 
+/**
+ * A kind a plugin declares (COR-2226), `<plugin>:<name>`, read from a hook's entry, which may carry
+ * the version the hook pinned it to (`reports:digest-ready@1.0.0`).
+ */
+export type PluginEventKind = {
+  /** The declaring plugin's name. */
+  readonly plugin: string;
+  /** The kind's name within the plugin. */
+  readonly name: string;
+  /** The kind without its pin, `<plugin>:<name>`, as an event and the catalog name it. */
+  readonly kind: string;
+  /** The version a hook pinned it to; absent on a kind that is not pinned. */
+  readonly version?: string;
+};
+
+/** The plugin kind `entry` names, or `undefined` for one of the Bureau's own kinds. */
+export function pluginEventOf(entry: string): PluginEventKind | undefined {
+  const colon = entry.indexOf(':');
+  if (colon <= 0) return undefined;
+  const at = entry.lastIndexOf('@');
+  const pinned = at > colon && at < entry.length - 1;
+  const kind = pinned ? entry.slice(0, at) : entry;
+  return {
+    plugin: entry.slice(0, colon),
+    name: kind.slice(colon + 1),
+    kind,
+    ...(pinned ? { version: entry.slice(at + 1) } : {}),
+  };
+}
+
+/** The kind an entry of a hook's events names, without the version a plugin kind is pinned to. */
+export function eventKindOf(entry: string): string {
+  return pluginEventOf(entry)?.kind ?? entry;
+}
+
+/** A plugin as a sentence names it: its name in words (`reports` reads `Reports`). */
+function pluginWords(plugin: string): string {
+  return humanizeName(plugin);
+}
+
 /** The area an event kind is grouped under. A kind of a family the page has no name for is `Other`. */
 export function eventArea(kind: string): string {
   const family = kind.split('.')[0] ?? kind;
@@ -64,9 +104,12 @@ export function eventArea(kind: string): string {
     : COPY.event.areaOther;
 }
 
-/** An event kind in plain words: `goal.attempt.started` reads `Goal attempt started`. */
+/**
+ * An event kind in plain words: `goal.attempt.started` reads `Goal attempt started`. A plugin's kind
+ * reads as its own name, without the plugin or a pin: `reports:digest-ready` reads `Digest ready`.
+ */
 export function eventWords(kind: string): string {
-  const words = kind
+  const words = (pluginEventOf(kind)?.name ?? kind)
     .split(/[.\-_]/)
     .filter((word) => word !== '')
     .map((word) => (Object.hasOwn(PLAIN_WORDS, word) ? (PLAIN_WORDS[word] ?? word) : word));
@@ -101,13 +144,26 @@ export function eventRefusal(
   return undefined;
 }
 
-/** Every event kind as a choice, grouped by area, with the ones `action` cannot listen to disabled. */
+/** The plugin that declares `event`, or `undefined` for a kind the Bureau itself publishes. */
+function declaringPlugin(event: Pick<HookEventKind, 'kind' | 'source'>): string | undefined {
+  return event.source ?? pluginEventOf(event.kind)?.plugin;
+}
+
+/**
+ * Every event kind as a choice, grouped by area, with the ones `action` cannot listen to disabled.
+ * The Bureau's areas come first, as they always have; then each plugin that declares kinds is one
+ * group under its title (`titleOf`, its name in words when the page has no title for it), the
+ * groups in title order (COR-2226, rows R1 and R2). A plugin's kind is named by its own words, its
+ * raw kind beside them, and its plugin only in the group's heading.
+ */
 export function eventChoices(
   kinds: readonly HookEventKind[],
   action: HookActionType | 'plugin',
+  titleOf: (plugin: string) => string = pluginWords,
 ): EventChoice[] {
-  const ambiguous = kindsReadingAlike(kinds.map((event) => event.kind));
-  return kinds
+  const core = kinds.filter((event) => declaringPlugin(event) === undefined);
+  const ambiguous = kindsReadingAlike(core.map((event) => event.kind));
+  const coreChoices = core
     .map((event) => {
       const refusal = eventRefusal(action, event);
       return {
@@ -120,6 +176,24 @@ export function eventChoices(
       };
     })
     .toSorted((left, right) => left.group.localeCompare(right.group));
+  const pluginChoices = kinds
+    .flatMap((event): EventChoice[] => {
+      const plugin = declaringPlugin(event);
+      if (plugin === undefined) return [];
+      const refusal = eventRefusal(action, event);
+      return [
+        {
+          value: event.kind,
+          label: eventWords(event.kind),
+          code: event.kind,
+          description: refusal ?? '',
+          group: titleOf(plugin),
+          disabled: refusal !== undefined,
+        },
+      ];
+    })
+    .toSorted((left, right) => left.group.localeCompare(right.group));
+  return [...coreChoices, ...pluginChoices];
 }
 
 /**
@@ -148,9 +222,20 @@ export function eventMatches(
   return terms.every((term) => haystack.includes(term));
 }
 
+/**
+ * A plugin's kind as a sentence names it (COR-2226, row R10): its plugin, then its words,
+ * `Reports: digest ready`, never its words alone and never its pin; `undefined` for a Bureau kind.
+ */
+function pluginEventClause(kind: string): string | undefined {
+  const plugin = pluginEventOf(kind);
+  if (plugin === undefined) return undefined;
+  const words = eventWords(kind);
+  return `${pluginWords(plugin.plugin)}: ${words.charAt(0).toLowerCase()}${words.slice(1)}`;
+}
+
 /** The events of a hook as a phrase: one name, two joined by `or`, or the first and how many more. */
 export function eventPhrase(events: readonly string[]): string {
-  const names = events.map(eventWords);
+  const names = events.map((kind) => pluginEventClause(kind) ?? eventWords(kind));
   const [first, second] = names;
   if (first === undefined) return HOOKS_COPY.sentence.noEvent;
   if (second === undefined) return first;
@@ -312,26 +397,79 @@ export function hookMatches(hook: Hook, query: string): boolean {
   return terms.every((term) => haystack.includes(term));
 }
 
-/** An event kind as the clause a list row's sentence opens with: `schedule.missed` reads `a schedule misses a run`. */
+/**
+ * An event kind as the clause a list row's sentence opens with: `schedule.missed` reads `a schedule
+ * misses a run`. A plugin's kind names its plugin: `reports:digest-ready@1.0.0` reads `Reports:
+ * digest ready` (COR-2226, row R10).
+ */
 export function eventClause(kind: string): string {
+  const plugin = pluginEventClause(kind);
+  if (plugin !== undefined) return plugin;
   const clauses = HOOKS_COPY.row.events;
   return Object.hasOwn(clauses, kind) ? (clauses[kind] ?? eventWords(kind)) : eventWords(kind);
 }
 
-/** An event kind as a name for a filter option: the clause with its first letter raised, `A run fails`. */
+/**
+ * An event kind as a name for an option: the clause with its first letter raised, `A run fails`. A
+ * plugin's kind is its own words alone (`Digest ready`): where it is offered, its plugin heads it.
+ */
 export function eventOptionLabel(kind: string): string {
+  if (pluginEventOf(kind) !== undefined) return eventWords(kind);
   const clause = eventClause(kind);
   return `${clause.charAt(0).toUpperCase()}${clause.slice(1)}`;
 }
 
 /**
+ * An event kind as a list of chosen events names it, where no group heads it: a Bureau kind as an
+ * option is named, and a plugin's kind with its plugin's title after its words, `Digest ready,
+ * Reports`, so two plugins' kinds of one name never read the same (COR-2226, row R3). `titleOf`
+ * gives a plugin's title; its name in words when the page has none.
+ */
+export function eventChosenLabel(
+  kind: string,
+  titleOf: (plugin: string) => string = pluginWords,
+): string {
+  const plugin = pluginEventOf(kind);
+  return plugin === undefined
+    ? eventOptionLabel(kind)
+    : `${eventWords(kind)}, ${titleOf(plugin.plugin)}`;
+}
+
+/** Why a plugin kind a hook lists is missing (COR-2226, row R5): the one cause line. */
+export function missingEventCause(problem: {
+  readonly kind: string;
+  readonly loadedVersion: string | null;
+}): string {
+  const copy = COPY.event.missing;
+  if (problem.loadedVersion === null) return copy.notLoaded;
+  const pinned = pluginEventOf(problem.kind)?.version;
+  return pinned === undefined ? copy.notPinned : copy.otherVersion(pinned, problem.loadedVersion);
+}
+
+/** The plugin kinds a hook lists that are missing, from the problems the Bureau lists for it. */
+export function missingEventsOf(
+  problems: readonly ListedHook['problems'][number][] | undefined,
+): { readonly kind: string; readonly loadedVersion: string | null }[] {
+  return (problems ?? []).flatMap((problem) =>
+    problem.code === 'event-missing'
+      ? [{ kind: problem.kind, loadedVersion: problem.loadedVersion }]
+      : [],
+  );
+}
+
+/**
  * The kinds among `kinds` whose words another kind in the list shares, so only these show their raw
  * kind beside the words (R10-23): `trigger.started` and `trigger-started` both read "Trigger started".
+ * A pinned entry is read as its kind, and the kinds come back without their pins. `labelOf` names
+ * each; a chosen list passes {@link eventChosenLabel}.
  */
-export function kindsReadingAlike(kinds: readonly string[]): ReadonlySet<string> {
+export function kindsReadingAlike(
+  kinds: readonly string[],
+  labelOf: (kind: string) => string = eventOptionLabel,
+): ReadonlySet<string> {
   const byLabel = new Map<string, Set<string>>();
-  for (const kind of kinds) {
-    const label = eventOptionLabel(kind);
+  for (const kind of kinds.map(eventKindOf)) {
+    const label = labelOf(kind);
     const alike = byLabel.get(label) ?? new Set<string>();
     alike.add(kind);
     byLabel.set(label, alike);
@@ -415,7 +553,9 @@ export type HookRowText = {
  * commas. The row says the host of a webhook; `fullAddress` says all of it, for the tooltips.
  */
 export function hookRowText(
-  hook: Pick<ListedHook, 'name' | 'events' | 'action' | 'scope' | 'enabled' | 'lastDelivery'>,
+  hook: Pick<ListedHook, 'name' | 'events' | 'action' | 'scope' | 'enabled' | 'lastDelivery'> & {
+    readonly problems?: ListedHook['problems'];
+  },
   now: number,
   fullAddress = false,
 ): HookRowText {
@@ -424,6 +564,8 @@ export function hookRowText(
   if (hook.scope !== null && hook.scope.kind !== 'workflow') {
     parts.push(HOOKS_COPY.row.onlyFor(subjectName(hook.scope.id)));
   }
+  // A plugin kind that is missing is said here, on line two, and nowhere on line one (row R6).
+  parts.push(...new Set(missingEventsOf(hook.problems).map(missingEventCause)));
   if (!hook.enabled && hook.lastDelivery !== null) {
     parts.push(HOOKS_COPY.row.lastDelivery(activityTime(hook.lastDelivery.updatedAt, now)));
   }

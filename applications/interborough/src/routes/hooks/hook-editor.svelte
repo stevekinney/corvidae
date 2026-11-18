@@ -114,11 +114,14 @@
   } from './hook-form-state.svelte.ts';
   import HookOnlyFor from './hook-only-for.svelte';
   import { actionTitleOf, hookStanding, pluginTitleOf } from './hook-standing.ts';
+  import HookMissingEvents from './hook-missing-events.svelte';
   import {
-    eventOptionLabel,
+    eventChosenLabel,
     eventRefusal,
     eventWords,
     isScopeKind,
+    missingEventsOf,
+    pluginEventOf,
     scopeKindsFor,
   } from './hook-presentation.ts';
   import HookSecretField from './hook-secret-field.svelte';
@@ -189,6 +192,8 @@
   const listedProblems = $derived(
     availability.data?.find((listed) => listed.id === hookId)?.problems ?? [],
   );
+  /** The plugin kinds this hook lists that are missing, which its When step says (COR-2226, row R5). */
+  const missingEvents = $derived(isNew ? [] : missingEventsOf(listedProblems));
   /**
    * Whether the Bureau lists this hook's reaction as not registered (COR-2182, R10-17). Its header
    * says it can't run, so the page treats the action as not offered, whatever the contributions
@@ -224,17 +229,23 @@
    * The plugins the host loaded (COR-2181): the title of the plugin a saved plugin hook runs, whether
    * it is disabled, and which of its secrets are saved. A new hook reads it only for the titles its
    * action choices are grouped by. A host that cannot say leaves each of those unknown, and nothing
-   * is guessed from what is not known.
+   * is guessed from what is not known. A saved hook that lists a plugin's event kind reads it for
+   * that plugin's title too (COR-2226).
    */
   const plugins = createQuery(
     () => ({
       queryKey: queryKeys.hostPlugins(),
       queryFn: ({ signal }: { signal: AbortSignal }) => getPlugins({ signal }),
-      enabled: isNew || existing.data?.action.type === 'plugin',
+      enabled:
+        isNew ||
+        existing.data?.action.type === 'plugin' ||
+        (existing.data?.events.some((entry) => pluginEventOf(entry) !== undefined) ?? false),
       retry: false,
     }),
     undefined,
   );
+  /** A plugin's title by its name, its name in words until the plugins are read (COR-2226). */
+  const titleOfPlugin = (plugin: string): string => pluginTitleOf(plugin, plugins.data?.plugins);
   const workflows = createQuery(
     () => ({
       queryKey: queryKeys.hooks.workflows(),
@@ -997,10 +1008,12 @@
                   >{copy.steps.edit}</Button
                 >
               </p>
+              <HookMissingEvents missing={missingEvents} titleOf={titleOfPlugin} />
             {:else if isDefault && hook !== undefined}
               <p class="ib-hook-editor__plain" data-testid="hook-when-readonly">
                 {whenSummary(hook, anyScopeOf(savedScopes))}
               </p>
+              <HookMissingEvents missing={missingEvents} titleOf={titleOfPlugin} />
             {:else}
               <HookEventPicker
                 kinds={kinds.data ?? []}
@@ -1008,7 +1021,9 @@
                 bind:events={form.events}
                 locked={!isNew}
                 error={problemOf('event')}
+                titleOf={titleOfPlugin}
               />
+              <HookMissingEvents missing={missingEvents} titleOf={titleOfPlugin} />
               {#if kinds.isError}
                 <Alert variant="danger">{copy.event.loadFailed}</Alert>
               {/if}
@@ -1232,7 +1247,9 @@
                   <span class="ib-hook-editor__sentence-label">{copy.check.eventLine}</span>
                   <!-- Row R10-23: the events in words, never their identifiers. -->
                   <span data-testid="hook-check-events"
-                    >{form.events.map((kind) => eventOptionLabel(kind)).join(', ')}</span
+                    >{form.events
+                      .map((kind) => eventChosenLabel(kind, titleOfPlugin))
+                      .join(', ')}</span
                   >
                 </p>
                 <p class="ib-hook-editor__quiet-line">{copy.check.saveToStart}</p>
