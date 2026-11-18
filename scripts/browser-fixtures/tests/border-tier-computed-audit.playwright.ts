@@ -40,9 +40,9 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
+import { tokenFixtureRoute } from '@lostgradient/testing/playwright/token-fixture-route';
 import { expect, test, type Page } from '@playwright/test';
 import { environmentConfiguration } from '../environment-configuration.ts';
-import { tokenFixtureRoute } from './token-fixture-route.ts';
 
 import {
   effectiveOpacity,

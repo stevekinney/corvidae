@@ -6,7 +6,15 @@ const schema = z.object({
   browserFixtureManifest: z.string().optional().meta({ env: 'BROWSER_FIXTURE_MANIFEST' }),
   // The fixture host's origin, which a browser suite's Playwright configuration sets.
   browserFixtureUrl: z.string().optional().meta({ env: 'BROWSER_FIXTURE_URL' }),
+  // The slugs a package's browser suite owns, which its component sweep covers.
+  browserFixtureOwned: z.string().optional().meta({ env: 'BROWSER_FIXTURE_OWNED' }),
   cinderTestComponents: z.string().optional().meta({ env: 'CINDER_TEST_COMPONENTS' }),
+  // `1` rewrites the border-tier seam audit's record instead of comparing with it.
+  cinderUpdateSeamAudit: z
+    .string()
+    .optional()
+    .transform((value) => value === '1')
+    .meta({ env: 'CINDER_UPDATE_SEAM_AUDIT' }),
   cinderUpdateSnapshots: z
     .string()
     .optional()
@@ -31,7 +39,9 @@ function loadEnvironment() {
   const keyByEnvironmentName: Record<string, string> = {
     BROWSER_FIXTURE_MANIFEST: 'browserFixtureManifest',
     BROWSER_FIXTURE_URL: 'browserFixtureUrl',
+    BROWSER_FIXTURE_OWNED: 'browserFixtureOwned',
     CINDER_TEST_COMPONENTS: 'cinderTestComponents',
+    CINDER_UPDATE_SEAM_AUDIT: 'cinderUpdateSeamAudit',
     CINDER_UPDATE_SNAPSHOTS: 'cinderUpdateSnapshots',
     CINDER_VISUAL_DIFF: 'cinderVisualDiff',
     NODE_ENV: 'nodeEnv',

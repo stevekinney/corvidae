@@ -25,8 +25,8 @@
  *      default.
  */
 
+import { tokenFixtureRoute } from '@lostgradient/testing/playwright/token-fixture-route';
 import { expect, test } from '@playwright/test';
-import { tokenFixtureRoute } from './token-fixture-route.ts';
 
 const SPRING_CUBIC_BEZIER = 'cubic-bezier(0.22, 1, 0.36, 1)';
 

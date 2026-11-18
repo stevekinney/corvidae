@@ -176,7 +176,7 @@ describe('blockBaselineGuard — validating (updateSnapshots: none)', () => {
     expect(result.message).toContain('CINDER_VISUAL_DIFF=block');
     // Updated for COR-1512: baselines are authored and verified only in the Docker renderer.
     expect(result.message).toContain('bun run test:browser:update:docker');
-    expect(result.message).toContain('bun run test:browser:visual:docker');
+    expect(result.message).toContain('bun run --cwd testing/testing baselines:visual:docker');
     expect(result.message).toContain('visual-baselines.md');
   });
 });

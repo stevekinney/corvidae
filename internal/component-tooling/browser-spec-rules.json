@@ -1,0 +1,13 @@
+{
+  "$comment": "Placements place-browser-specs.ts cannot derive (COR-2092), by package name. components.playwright.ts and remaining-public-mounts.playwright.ts open Cinder, chat and editor fixtures alike; no package depends on both chat and editor, and every package's suite serves the same fixture page, so they stay with Cinder's core. `engines` lists the Firefox and WebKit projects a spec runs in outside every gate (the root suite's firefox-keyboard and webkit-keyboard).",
+  "specs": {
+    "components.playwright.ts": "@lostgradient/cinder",
+    "remaining-public-mounts.playwright.ts": "@lostgradient/cinder"
+  },
+  "engines": {
+    "keyboard-scroll.playwright.ts": [
+      { "name": "firefox-keyboard", "device": "Desktop Firefox" },
+      { "name": "webkit-keyboard", "device": "Desktop Safari" }
+    ]
+  }
+}

@@ -3,6 +3,11 @@
   "compilerOptions": {
     "types": ["bun"]
   },
-  "include": ["src", "scripts", "../../internal/component-tooling/src/test/jest-dom-matchers.d.ts"],
-  "exclude": ["node_modules", "coverage", "fixtures", "**/build/**"]
+  "include": [
+    "src",
+    "scripts",
+    "browser",
+    "../../internal/component-tooling/src/test/jest-dom-matchers.d.ts"
+  ],
+  "exclude": ["node_modules", "coverage", "fixtures", "**/build/**", "browser/.playwright"]
 }

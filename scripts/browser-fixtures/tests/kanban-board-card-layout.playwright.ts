@@ -1,5 +1,5 @@
+import { fixtureRoute } from '@lostgradient/testing/playwright/layout-fixture';
 import { expect, test, type Locator } from '@playwright/test';
-import { fixtureRoute } from './layout-fixture.ts';
 const KANBAN_ROUTE = fixtureRoute('kanban-board');
 
 async function box(locator: Locator) {

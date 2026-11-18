@@ -112,27 +112,21 @@ Bun also ignores source maps from plugin output, so LCOV lines for `.svelte` fil
 
 ## Browser fixtures
 
-`scripts/browser-fixtures` owns the Cinder, Chat, and Editor interaction fixtures. From the repository root, install Chromium and run the development and production-preview suites:
+Every component package owns its browser suite (COR-2080, COR-2092): its `browser/` directory holds its specs (`tests/`), its application fixtures (`fixtures/`, declared in `fixture-declarations.ts`), its baselines (`snapshots/`), `harness.ts` and `playwright.config.ts`. Every suite serves the same fixture page, every package's fixtures mounted by Cinder core's `browser/host.ts`, so a page renders as the root suite's did; each package's component sweep (`defineComponentSweep`) covers only the fixtures it owns. Install Chromium, then run a package's suite in its directory, or every package's from the repository root:
 
 ```bash
 bun --bun playwright install chromium
-bun run test:browser
-bun run test:browser:preview
+bun run --cwd components/button test:browser
+bun run --cwd components/button test:browser --grep 'assertion'
+bun run validate:batch
 ```
 
-Playwright starts the selected Bun server and uses separate development and preview ports. To run one test, pass its filename or a test-title filter:
-
-```bash
-bun run test:browser scripts/browser-fixtures/tests/components.playwright.ts
-bun run test:browser --grep 'CodeBlock'
-```
-
-The chat, editor and terminal packages own their browser suites (COR-2080): each `browser/` directory holds its specs, application fixtures and baselines, and the package's `test:browser` runs it in Chromium as a cached Turborepo task (`bunx turbo run test:browser --filter=@lostgradient/editor`; `bun run validate:batch` runs the `test:browser` task of every package `turbo.json` gives one). They share the harness in `src/browser` (`packageSuite` for the fixture host, `packageSuiteConfiguration` for Playwright) and the Playwright helpers in `src/playwright`, which the root suite imports too.
+The package's `test:browser` is a cached Turborepo task (`bunx turbo run test:browser --filter=@lostgradient/button`). The suites share the harness in `src/browser` (`repositoryPackageSuite` for the fixture host, `packageSuiteConfiguration` for Playwright) and the Playwright helpers in `src/playwright`.
 
 The host generates its fixture manifest and lazy-import catalog before starting. Its ignored test results contain failure traces. Accessibility and screenshot helpers write artifacts using the paths defined in `src/helpers/artifact-path.ts`; consuming tests decide which accessibility findings fail a case.
 
 ## Preserved visual evidence
 
-The browser suite owns baselines at `scripts/browser-fixtures/snapshots/{projectName}/{platform}/`. Playwright resolves both blocking comparisons and review reports through that configured path. The committed Linux Chromium baselines live under `snapshots/chromium/linux`, with their `provenance.json`; ordinary review screenshots are disposable output under `testing/testing/screenshots/`.
+The browser suite owns baselines at `components/<package>/browser/snapshots/{projectName}/{platform}/`. Playwright resolves both blocking comparisons and review reports through that configured path. The committed Linux Chromium baselines live under `snapshots/chromium/linux`, with their `provenance.json`; ordinary review screenshots are disposable output under `testing/testing/screenshots/`.
 
-The Linux baselines have one authoritative renderer: native `linux/arm64` inside the pinned Playwright jammy image. `bun run test:browser:visual:docker` checks a commit against them and `bun run test:browser:update:docker` regenerates them, each from an exact `git archive` of the commit. `bun run test:browser:update` refuses to run outside that image. [`scripts/browser-fixtures/visual-baselines.md`](../../scripts/browser-fixtures/visual-baselines.md) documents the workflow, the host load record, the review report, and how changed images are classified. `bun run test:browser:visual` on a development host still requires matching baselines, so a different operating system or architecture fails it by design; ordinary test runs never create missing baselines.
+The Linux baselines have one authoritative renderer: native `linux/arm64` inside the pinned Playwright jammy image. `bun run --cwd testing/testing baselines:visual:docker` checks a commit against them and `bun run --cwd testing/testing baselines:update:docker` regenerates them, each from an exact `git archive` of the commit. `bun run --cwd testing/testing baselines:update` refuses to run outside that image. [`testing/testing/visual-baselines/visual-baselines.md`](../../testing/testing/visual-baselines/visual-baselines.md) documents the workflow, the host load record, the review report, and how changed images are classified. A package's `test:browser` with `CINDER_VISUAL_DIFF=block` on a development host still requires matching baselines, so a different operating system or architecture fails it by design; ordinary test runs never create missing baselines.

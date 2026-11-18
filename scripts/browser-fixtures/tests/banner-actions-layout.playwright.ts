@@ -8,8 +8,8 @@
 
 import { loadManifest } from '@lostgradient/testing';
 import { test } from '@lostgradient/testing/playwright/component-page-fixture';
+import { ALIGNMENT_TOLERANCE, boxOf } from '@lostgradient/testing/playwright/first-line-alignment';
 import { expect, type Locator } from '@playwright/test';
-import { ALIGNMENT_TOLERANCE, boxOf } from './first-line-alignment.ts';
 
 const entry = loadManifest().find((candidate) => candidate.slug === 'banner');
 const fixture = entry?.fixtures?.find((candidate) => candidate.name === 'actions');

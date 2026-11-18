@@ -1,5 +1,5 @@
+import { fixtureRoute } from '@lostgradient/testing/playwright/layout-fixture';
 import { expect, test } from '@playwright/test';
-import { fixtureRoute } from './layout-fixture.ts';
 
 const CARD_ROUTE = fixtureRoute('card');
 

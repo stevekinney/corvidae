@@ -8,7 +8,7 @@
 # It runs in the image and with the setup of the Interborough end-to-end job in `browser-suites.yml`, so
 # the fonts, and with them the layout, are the ones its end-to-end layout checks measure: Linux, not
 # macOS. The ref checked out is the one the run was dispatched on. `workflow_call` takes the same inputs
-# so another workflow can run it; `scripts/browser-fixtures/scripts/browser-suites-workflow.test.ts`
+# so another workflow can run it; `testing/testing/visual-baselines/browser-suites-workflow.test.ts`
 # keeps the image tag equal to the Playwright that `bun.lock` resolves.
 #
 # The script exits 0 when it wrote at least one capture, 1 when it wrote none and 2 on bad usage or a

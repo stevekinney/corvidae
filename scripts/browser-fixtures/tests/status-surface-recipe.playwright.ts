@@ -17,7 +17,7 @@
 
 import { expect, test, type Page } from '@playwright/test';
 
-import { themeFixtureRoute } from './theme-fixture-route.ts';
+import { themeFixtureRoute } from '@lostgradient/testing/playwright/theme-fixture-route';
 
 /** Load any cinder page so the global styles + component sidecars are applied. */
 async function loadStyledPage(page: Page): Promise<void> {

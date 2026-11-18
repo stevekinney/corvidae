@@ -3,8 +3,8 @@ import { join } from 'node:path';
 
 /**
  * The directories whose children are corvidae's workspaces, in the order the root `package.json`
- * lists them. `scripts/browser-fixtures` is the one workspace outside them, and it is listed by
- * its own path there.
+ * lists them. `scripts/groom` is the one workspace outside them, and it is listed by its own path
+ * there.
  *
  * Every repository script that discovers or scans workspaces reads this list instead of spelling
  * its own, so a new workspace directory cannot fall outside one scan while the others see it.

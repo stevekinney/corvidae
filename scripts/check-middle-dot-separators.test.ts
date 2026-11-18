@@ -71,7 +71,7 @@ describe('middle-dot separators', () => {
 });
 
 describe('scanned file discovery', () => {
-  test('collects text files, skips binaries, dependencies, vendored builds and dot directories', () => {
+  test('collects text files, skips binaries, dependencies, vendored builds, dot directories and the browser suite', () => {
     const directory = mkdtempSync(join(tmpdir(), 'middle-dot-scan-'));
     try {
       for (const path of [
@@ -82,6 +82,9 @@ describe('scanned file discovery', () => {
         'node_modules/dependency/index.js',
         'scripts/vendor/react/react.production.min.js',
         '.svelte-kit/generated.ts',
+        'package.json',
+        'browser/fixtures/fixture.svelte',
+        'src/browser/copy.ts',
       ]) {
         mkdirSync(dirname(join(directory, path)), { recursive: true });
         writeFileSync(join(directory, path), 'x');
@@ -90,6 +93,8 @@ describe('scanned file discovery', () => {
       collectScannedFiles(directory, paths);
       expect(paths.map((path) => relative(directory, path)).toSorted()).toEqual([
         'README.md',
+        'package.json',
+        'src/browser/copy.ts',
         'src/component.svelte',
         'src/copy.ts',
       ]);

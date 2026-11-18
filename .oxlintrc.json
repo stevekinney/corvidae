@@ -65,6 +65,7 @@
     "typescript/consistent-return": "off"
   },
   "ignorePatterns": [
+    "scripts/browser-fixtures/**",
     "**/build/**",
     "**/.svelte-kit/**",
     "**/coverage/**",
@@ -277,7 +278,7 @@
       }
     },
     {
-      "files": ["scripts/**", "**/scripts/**"],
+      "files": ["scripts/**", "**/scripts/**", "testing/testing/visual-baselines/**"],
       "rules": {
         "complexity": [
           "error",
@@ -289,7 +290,11 @@
       }
     },
     {
-      "files": ["scripts/**/*.ts", "**/scripts/**/*.ts"],
+      "files": [
+        "scripts/**/*.ts",
+        "**/scripts/**/*.ts",
+        "testing/testing/visual-baselines/**/*.ts"
+      ],
       "rules": {
         "no-console": "off"
       }

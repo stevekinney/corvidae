@@ -128,7 +128,7 @@ function setupFailure(output: string): GuardsResult {
  * workspace link resolves through the source checkout's `packages/`, as it does in that checkout.
  */
 export function linkNodeModules(source: string, tree: string): string[] {
-  const directories = ['.', 'scripts/browser-fixtures'];
+  const directories = ['.'];
   for (const parent of workspaceParentDirectories) {
     if (!existsSync(join(source, parent))) continue;
     for (const child of readdirSync(join(source, parent))) directories.push(`${parent}/${child}`);

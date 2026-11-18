@@ -131,20 +131,21 @@
  * Scanned: every `*.test.ts` and `*.test-support.ts`, and every `.ts` module under a directory named
  * `test`, `tests`, `testing`, `__tests__` or `fixtures`, in every workspace and the root `scripts/`.
  * Not scanned by the rules above: the Playwright specs (`*.playwright.ts`, `*.spec.ts`, `e2e/`, and
- * the helpers in `scripts/browser-fixtures/tests/`), which `test:browser` runs outside `check` and
+ * the helpers in each package's `browser/tests/` and in `testing/testing/src/playwright`), which `test:browser` runs outside `check` and
  * `validate`. Interborough's own (`applications/interborough/tests/e2e` and `tests/panels`) follow
  * the hang guard all the same, and two rules read them: `playwright-configuration` (the lane's
- * `playwright.config.ts`, Interborough's and `scripts/browser-fixtures`', names
+ * `playwright.config.ts`, Interborough's and the package suites' shared one in
+ * `testing/testing/src/browser/playwright-configuration.ts`, names
  * `timeout: TEST_TIMEOUT_MILLISECONDS` and `expect: { timeout: HANG_GUARD_MILLISECONDS }`, and
  * gives each `webServer` a `timeout` no shorter than the hang guard, never a startup deadline) and
  * `playwright-timeout` (a spec names a shorter `timeout` on a matcher, poll, `toPass`, `waitFor*`,
  * action, `test.setTimeout`, `describe.configure` or `expect.configure`, or one it cannot resolve;
  * the exemptions are the two comments above, and a short per-attempt bound inside a `toPass` block
- * is the usual `// load-proof:` case). The specs and helpers of `scripts/browser-fixtures/tests`
+ * is the usual `// load-proof:` case). The package suites' specs and helpers
  * are read by `playwright-timeout` too (COR-2006). Also not scanned: the real-browser smoke tests
- * that read `WEFT_BROWSER_SMOKE` (they skip unless that opt-in flag is set, and no gate sets it). `test:browser-fixtures` is NOT a Playwright lane: it runs the Bun tests
- * in `scripts/browser-fixtures/scripts` and a build verification, so those are scanned like any
- * other test, including a file that imports Playwright for its types or version.
+ * that read `WEFT_BROWSER_SMOKE` (they skip unless that opt-in flag is set, and no gate sets it). A Bun test
+ * beside the browser suites (the harness's, the baseline tooling's) is scanned like any other
+ * test, including a file that imports Playwright for its types or version.
  *
  * Blind spots, documented rather than claimed as covered. The guard cannot see:
  *
@@ -173,7 +174,7 @@
  * under `scripts/benchmarks/` is a default-suite test and is scanned like any other.
  */
 
-import { readdirSync } from 'node:fs';
+import { existsSync, readdirSync } from 'node:fs';
 import { basename, join, relative, sep } from 'node:path';
 import ts from 'typescript';
 import { HANG_GUARD_MILLISECONDS } from '../testing/testing/src/hang-guard.ts';
@@ -196,16 +197,21 @@ const SKIPPED_DIRECTORIES = new Set([
   // Playwright end-to-end suites run through `test:browser`, outside `check` and `validate`.
   'e2e',
 ]);
-// `scripts/browser-fixtures/tests` and the packages' `browser/tests` (COR-2080) hold the Playwright
-// specs (`*.playwright.ts`) and their helpers, and `testing/testing/src/playwright` the helpers they
-// share; `test:browser` runs them, outside `check` and `validate`. The Bun tests that
-// `test:browser-fixtures` runs live in `scripts/browser-fixtures/scripts` and are scanned, as are
-// the harness's in `testing/testing/src/browser`.
-const PLAYWRIGHT_BROWSER_SUITE_PACKAGES = ['chat', 'editor', 'terminal'];
+// Every component package's `browser/tests` (COR-2080, COR-2092) holds Playwright specs
+// (`*.playwright.ts`) and their helpers, and `testing/testing/src/playwright` the helpers they
+// share; `test:browser` runs them, outside `check` and `validate`. The harness's Bun tests in
+// `testing/testing/src/browser` are scanned like any other.
+function browserSuiteDirectories(): string[] {
+  const components = join(root, 'components');
+  return readdirSync(components, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => join('components', entry.name, 'browser', 'tests'))
+    .filter((directory) => existsSync(join(root, directory)))
+    .toSorted();
+}
 const PLAYWRIGHT_LANE_DIRECTORIES = new Set([
-  join('scripts', 'browser-fixtures', 'tests'),
   join('testing', 'testing', 'src', 'playwright'),
-  ...PLAYWRIGHT_BROWSER_SUITE_PACKAGES.map((name) => join('components', name, 'browser', 'tests')),
+  ...browserSuiteDirectories(),
 ]);
 
 export type DeadlineRule =
@@ -2228,7 +2234,6 @@ export function findPlaywrightConfigurationViolations(
 // `validate`, but the deadline is the same, and so is the rule.
 const PLAYWRIGHT_CONFIGURATIONS = [
   join('applications', 'interborough', 'playwright.config.ts'),
-  join('scripts', 'browser-fixtures', 'playwright.config.ts'),
   // Every package browser suite's `playwright.config.ts` calls this one `defineConfig`.
   join('testing', 'testing', 'src', 'browser', 'playwright-configuration.ts'),
 ];
@@ -2429,7 +2434,6 @@ async function scan(): Promise<string[]> {
         return [];
       }
     }),
-    join(root, 'scripts', 'browser-fixtures', 'package.json'),
   ];
   for (const manifest of manifests) {
     const file = Bun.file(manifest);

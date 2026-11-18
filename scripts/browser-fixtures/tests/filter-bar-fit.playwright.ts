@@ -1,5 +1,5 @@
+import { fixtureRoute } from '@lostgradient/testing/playwright/layout-fixture';
 import { expect, type Locator, test } from '@playwright/test';
-import { fixtureRoute } from './layout-fixture.ts';
 
 const FILTER_BAR_ROUTE = fixtureRoute('filter-bar');
 

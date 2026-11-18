@@ -59,15 +59,7 @@ const ISOLATED_COMMAND = [
 ];
 
 /** The fast lanes, as `bun run test` runs them, but never from the cache. */
-const FAST_COMMAND = [
-  'bunx',
-  'turbo',
-  'run',
-  'test:self',
-  'test',
-  'test:browser-fixtures',
-  '--force',
-];
+const FAST_COMMAND = ['bunx', 'turbo', 'run', 'test:self', 'test', '--force'];
 
 /** The command a load generator runs: one busy loop that never yields. */
 export const LOAD_COMMAND = ['bun', '-e', 'for (;;) {}'];

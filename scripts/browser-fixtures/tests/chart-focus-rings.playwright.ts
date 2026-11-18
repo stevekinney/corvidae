@@ -1,4 +1,3 @@
-import { expect, test } from '@lostgradient/testing/playwright/review-editor-browser-errors';
 import {
   chartRoot,
   charts,
@@ -11,14 +10,15 @@ import {
   tabUntilChartTargetFocused,
   targetSelector,
   tooltipDescribedByTarget,
-} from './chart-focus-rings-support.ts';
+} from '@lostgradient/testing/playwright/chart-focus-rings-support';
 import {
   assertVisibleRing,
   changedPixelCount,
   clippedScreenshot,
   expectBoxInside,
   ringScreenshotClip,
-} from './chart-focus-rings-visual-support.ts';
+} from '@lostgradient/testing/playwright/chart-focus-rings-visual-support';
+import { expect, test } from '@lostgradient/testing/playwright/review-editor-browser-errors';
 
 test.describe('chart SVG focus rings', () => {
   for (const chart of charts) {

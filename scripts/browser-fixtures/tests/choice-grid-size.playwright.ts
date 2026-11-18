@@ -12,8 +12,8 @@
  * every item state at the same size.
  */
 
+import { fixtureRoute } from '@lostgradient/testing/playwright/layout-fixture';
 import { expect, test, type Page } from '@playwright/test';
-import { fixtureRoute } from './layout-fixture.ts';
 
 const CHOICE_GRID_ROUTE = fixtureRoute('choice-grid');
 

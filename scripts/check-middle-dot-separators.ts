@@ -16,14 +16,16 @@
  * character, such as a test asserting its absence, builds it with `String.fromCodePoint(0xb7)`.
  *
  * The scan roots are the code that writes copy for people: Cinder, Chat, the playground and
- * Interborough. A line with a genuine non-separator use carries a trailing or preceding
- * `middle-dot-allowed: <reason>` marker whose reason is at least twenty characters; none does
- * today, and an addition needs a reason a reviewer would accept.
+ * Interborough. A package's browser suite (`browser/` beside its `package.json`) is left out: its
+ * fixtures and specs are test data whose text the committed baselines hold, as the root suite's
+ * were before COR-2092 moved them into the packages. A line with a genuine non-separator use
+ * carries a trailing or preceding `middle-dot-allowed: <reason>` marker whose reason is at least
+ * twenty characters; none does today, and an addition needs a reason a reviewer would accept.
  *
  * Runs from the root `lint:root` script.
  */
 
-import { readdirSync } from 'node:fs';
+import { existsSync, readdirSync } from 'node:fs';
 import { join, relative } from 'node:path';
 
 const root = join(import.meta.dir, '..');
@@ -120,6 +122,7 @@ export function collectScannedFiles(directory: string, paths: string[]): void {
     const path = join(directory, entry.name);
     if (entry.isDirectory()) {
       if (entry.name.startsWith('.') || SKIPPED_DIRECTORIES.has(entry.name)) continue;
+      if (entry.name === 'browser' && existsSync(join(directory, 'package.json'))) continue;
       collectScannedFiles(path, paths);
     } else if (
       entry.isFile() &&

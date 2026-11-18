@@ -14,8 +14,8 @@ import {
   test,
   type ComponentPageFixture,
 } from '@lostgradient/testing/playwright/component-page-fixture';
+import { fixtureEntry } from '@lostgradient/testing/playwright/layout-fixture';
 import type { Locator, Page } from '@playwright/test';
-import { fixtureEntry } from './layout-fixture.ts';
 
 const phone = { name: 'mobile', width: 390, height: 844 } as const satisfies Viewport;
 const drawerEntry = fixtureEntry('drawer');

@@ -1,5 +1,5 @@
+import { fixtureRoute } from '@lostgradient/testing/playwright/layout-fixture';
 import { expect, test } from '@playwright/test';
-import { fixtureRoute } from './layout-fixture.ts';
 const SORTABLE_ROUTE = fixtureRoute('sortable-list');
 test.describe('SortableList resting layout', () => {
   test.beforeEach(async ({ page }) => {

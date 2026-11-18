@@ -108,12 +108,9 @@ function boundaryViolations(manifests: ReadonlyMap<string, Manifest>): string[] 
 
 function readWorkspaceManifests(): Map<string, Manifest> {
   const manifests = new Map<string, Manifest>();
-  const directories = [
-    ...workspaceParentDirectories.flatMap((parent) =>
-      workspaceChildDirectoryNames(root, parent).map((name) => join(root, parent, name)),
-    ),
-    join(root, 'scripts/browser-fixtures'),
-  ];
+  const directories = workspaceParentDirectories.flatMap((parent) =>
+    workspaceChildDirectoryNames(root, parent).map((name) => join(root, parent, name)),
+  );
   for (const directory of directories) {
     try {
       const manifest = JSON.parse(

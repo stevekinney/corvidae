@@ -321,12 +321,11 @@ describe('the on-demand check measures before it enforces', () => {
     const measure = scripts['measure:test-durations'] ?? '';
     expect(measure).toContain('--force');
     // Every root script that writes a JUnit report is a turbo task the measurement must run:
-    // `test:self` and `test:browser-fixtures` write the root reports, and the package `test`
-    // tasks write the rest.
+    // `test:self` writes the root report, and the package `test` tasks write the rest.
     const reportingRootTasks = Object.entries(scripts)
       .filter(([, command]) => command.includes('bun-test-junit.ts --report-name='))
       .map(([name]) => name);
-    expect(reportingRootTasks.toSorted()).toEqual(['test:browser-fixtures', 'test:self']);
+    expect(reportingRootTasks.toSorted()).toEqual(['test:self']);
     for (const task of [...reportingRootTasks, 'test']) {
       expect(measure, task).toMatch(new RegExp(`\\b${task}\\b(?!:)`));
     }

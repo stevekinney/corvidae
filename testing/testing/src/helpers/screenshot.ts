@@ -212,9 +212,9 @@ export function blockBaselineGuard(
     '',
     'Then verify the commit with the root visual regression command:',
     '',
-    '  bun run test:browser:visual:docker',
+    '  bun run --cwd testing/testing baselines:visual:docker',
     '',
-    'See scripts/browser-fixtures/visual-baselines.md.',
+    'See testing/testing/visual-baselines/visual-baselines.md.',
   ].join('\n');
 
   return { ok: false, message };

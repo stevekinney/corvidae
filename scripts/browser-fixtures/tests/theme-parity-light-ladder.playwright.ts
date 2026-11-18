@@ -1,5 +1,5 @@
+import { themeFixtureRoute } from '@lostgradient/testing/playwright/theme-fixture-route';
 import { expect, test, type Page } from '@playwright/test';
-import { themeFixtureRoute } from './theme-fixture-route.ts';
 async function paintedOklch(
   page: Page,
   selector: string,
