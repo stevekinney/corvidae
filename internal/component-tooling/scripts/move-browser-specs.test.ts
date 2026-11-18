@@ -7,6 +7,7 @@ import {
   rewriteBarrelImports,
   rewriteLocationPaths,
   rewriteRelativeImports,
+  stylesheetDifference,
   stylesheetImports,
   stylesheetOrderModule,
 } from './move-browser-specs.ts';
@@ -171,7 +172,7 @@ describe('stylesheetImports', () => {
       ? resolve(directory, specifier)
       : specifier.replace('@lostgradient/tokens/', '/r/components/tokens/src/styles/');
 
-  test('names each stylesheet once, in order, leaving out what a conditional @import reaches', () => {
+  test('names each stylesheet once, in order, leaving what a layer entry imports to it', () => {
     expect(
       stylesheetImports(
         [
@@ -189,7 +190,6 @@ describe('stylesheetImports', () => {
         resolveImport,
       ),
     ).toEqual([
-      "import '../../foundation/src/f.css';",
       "import '../src/styles/index.css';",
       "import '../../button/src/partial.css';",
       "import '@x/y/css/y.css';",
@@ -206,6 +206,18 @@ describe('stylesheetImports', () => {
         resolveImport,
       ),
     ).toThrow('/r/components/gone.css');
+  });
+});
+
+describe('stylesheetDifference', () => {
+  const page = { paths: ['/a.css', '/b.css'], text: 'a {} b {}' };
+
+  test('accepts the same page and names the first stylesheet out of place', () => {
+    expect(stylesheetDifference(page, { ...page })).toBeUndefined();
+    expect(stylesheetDifference(page, { ...page, paths: ['/a.css', '/c.css'] })).toBe(
+      'stylesheet 2 is /c.css, not /b.css',
+    );
+    expect(stylesheetDifference(page, { ...page, text: '@layer x; a {} b {}' })).toContain('text');
   });
 });
 
