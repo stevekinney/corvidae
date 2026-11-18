@@ -1775,3 +1775,175 @@ describe('MCP apps a plugin contributes', () => {
     ]);
   });
 });
+
+describe('the hooks a descriptor declares (COR-2180)', () => {
+  const greeted = {
+    name: 'greeted',
+    description: 'Someone was greeted.',
+    payload: z.object({ greetingId: z.string().meta({ identifier: true }) }),
+  };
+  const hookedPlugin = (
+    hooks: readonly unknown[],
+    result: PluginSetupResult = {},
+  ): BureauPluginEntry => {
+    const descriptor = definePlugin({
+      name: 'kit',
+      version: '1.0.0',
+      description: 'kit',
+      hooks: hooks as never,
+      setup: () => ({ reactions: [actionKind('page')], ...result }),
+    });
+    return { descriptor, source: 'package', location: '@example/kit' };
+  };
+  const valid = { name: 'Page on settle', events: ['run.settled'], reaction: 'page' };
+
+  it('keeps the hooks that hold, copied, and leaves the plugin running with every contribution', async () => {
+    const { records } = await composePlugins<ComposableOptions>({
+      plugins: [
+        hookedPlugin([{ ...valid, configuration: { a: 1 } }]),
+        pluginEntry('other', () => ({})),
+      ],
+      hooks: {},
+    });
+
+    expect(records.map(({ status }) => status)).toEqual(['running', 'running']);
+    expect(records[0]?.problems).toEqual([]);
+    expect(records[0]?.hooks).toEqual([{ ...valid, configuration: { a: 1 } }]);
+    expect(records[0]?.contributions.map(({ kind }) => kind)).toContain('reaction');
+    expect(records[1]?.hooks).toBeUndefined();
+  });
+
+  it('skips a hook that names a reaction the plugin does not contribute, alone', async () => {
+    const { records } = await composePlugins<ComposableOptions>({
+      plugins: [hookedPlugin([{ ...valid, name: 'Lost', reaction: 'absent' }, valid])],
+      hooks: {},
+    });
+
+    expect(records[0]?.status).toBe('running');
+    expect(records[0]?.problems).toEqual([
+      { code: 'hook-invalid', hook: 'Lost', path: 'reaction' },
+    ]);
+    expect(records[0]?.hooks?.map(({ name }) => name)).toEqual(['Page on settle']);
+    expect(records[0]?.contributions.map(({ kind }) => kind)).toContain('reaction');
+  });
+
+  it('skips a hook with an event kind that is not published, alone, and accepts a kind a plugin declares', async () => {
+    const { records } = await composePlugins<ComposableOptions>({
+      plugins: [
+        hookedPlugin(
+          [
+            { ...valid, name: 'Nothing', events: ['run.nonexistent'] },
+            { ...valid, name: 'Foreign', events: ['other:greeted'] },
+            { ...valid, name: 'Mixed', events: ['run.settled', 'kit:absent'] },
+            { ...valid, name: 'Empty', events: [] },
+            { ...valid, name: 'Own', events: ['kit:greeted'] },
+            valid,
+          ],
+          { events: [greeted] },
+        ),
+      ],
+      hooks: {},
+    });
+
+    expect(records[0]?.status).toBe('running');
+    expect(records[0]?.problems).toEqual(
+      ['Nothing', 'Foreign', 'Mixed', 'Empty'].map((hook) => ({
+        code: 'hook-invalid',
+        hook,
+        path: 'events',
+      })),
+    );
+    expect(records[0]?.hooks?.map(({ name }) => name)).toEqual(['Own', 'Page on settle']);
+  });
+
+  it.each([
+    ['before', 'after'],
+    ['after', 'before'],
+  ])(
+    'accepts a kind another running plugin declares when that plugin composes %s the hook’s (load order never refuses it)',
+    async (declaringPosition) => {
+      const hooked = hookedPlugin([{ ...valid, name: 'Greeted', events: ['greeter:greeted'] }]);
+      const greeter = pluginEntry('greeter', () => ({ events: [greeted] }));
+      const { records } = await composePlugins<ComposableOptions>({
+        plugins: declaringPosition === 'before' ? [greeter, hooked] : [hooked, greeter],
+        hooks: {},
+      });
+
+      const kit = records.find(({ entry }) => entry.descriptor.name === 'kit');
+      expect(records.map(({ status }) => status)).toEqual(['running', 'running']);
+      expect(kit?.problems).toEqual([]);
+      expect(kit?.hooks?.map(({ name }) => name)).toEqual(['Greeted']);
+    },
+  );
+
+  it('still refuses a kind only a plugin that is not running declares', async () => {
+    const hooked = hookedPlugin([{ ...valid, name: 'Greeted', events: ['greeter:greeted'] }]);
+    const greeter = pluginEntry('greeter', () => {
+      throw new Error('setup failed');
+    });
+    const { records } = await composePlugins<ComposableOptions>({
+      plugins: [hooked, greeter],
+      hooks: {},
+    });
+
+    const kit = records.find(({ entry }) => entry.descriptor.name === 'kit');
+    expect(kit?.problems).toEqual([{ code: 'hook-invalid', hook: 'Greeted', path: 'events' }]);
+    expect(kit?.hooks).toBeUndefined();
+  });
+
+  it('skips a repeated name alone and keeps the first', async () => {
+    const { records } = await composePlugins<ComposableOptions>({
+      plugins: [
+        hookedPlugin([valid, { ...valid, events: ['run.started'] }, { ...valid, name: 'Second' }]),
+      ],
+      hooks: {},
+    });
+
+    expect(records[0]?.status).toBe('running');
+    expect(records[0]?.problems).toEqual([
+      { code: 'hook-invalid', hook: 'Page on settle', path: 'name' },
+    ]);
+    expect(records[0]?.hooks).toEqual([valid, { ...valid, name: 'Second' }]);
+  });
+
+  it('skips a hook that is no object or has no name, and cuts a long name to 100 characters', async () => {
+    const { records } = await composePlugins<ComposableOptions>({
+      plugins: [
+        hookedPlugin([
+          null,
+          'text',
+          { ...valid, name: '' },
+          { ...valid, name: 'x'.repeat(300), reaction: 'absent' },
+        ]),
+      ],
+      hooks: {},
+    });
+
+    expect(records[0]?.problems).toEqual([
+      { code: 'hook-invalid', hook: '', path: 'name' },
+      { code: 'hook-invalid', hook: '', path: 'name' },
+      { code: 'hook-invalid', hook: '', path: 'name' },
+      { code: 'hook-invalid', hook: 'x'.repeat(100), path: 'reaction' },
+    ]);
+    expect(records[0]?.hooks).toBeUndefined();
+  });
+
+  it('lists a hook that reconcile refused as the plugin’s hook-invalid problem, replacing the last report', async () => {
+    const { records } = await composePlugins<ComposableOptions>({
+      plugins: [hookedPlugin([valid])],
+      hooks: {},
+    });
+    const registry = createPluginRegistry(records);
+    registry.reportHookProblems('kit', [{ hook: 'Page on settle', path: 'configuration' }]);
+    registry.reportHookProblems('absent', [{ hook: 'x', path: 'name' }]);
+    const withProblem = await registry.plugins.list();
+    expect(withProblem[0]?.problems).toEqual([
+      { code: 'hook-invalid', hook: 'Page on settle', path: 'configuration' },
+    ]);
+    registry.reportHookProblems('kit', []);
+    const cleared = await registry.plugins.list();
+    expect(cleared[0]?.problems).toEqual([]);
+    expect(registry.declaredHooks()).toEqual([{ plugin: 'kit', hooks: [valid] }]);
+    expect([...registry.knownPlugins()]).toEqual(['kit']);
+  });
+});

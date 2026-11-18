@@ -2,10 +2,10 @@ import { rejectionOf } from '@lostgradient/testing';
 import { HttpClientError } from '@lostgradient/weft';
 import { describe, expect, test } from 'bun:test';
 
+import { bureauClient } from './bureau-api.ts';
 import {
   archiveContext,
-  callBureau,
-  chatContextSchema,
+  chatContextOf,
   type ContextWindow,
   deleteContext,
   type Fetcher,
@@ -71,18 +71,17 @@ async function failureOf(pending: Promise<unknown>): Promise<unknown> {
   );
 }
 
-describe('callBureau', () => {
-  test('posts a JSON-RPC call to the Bureau’s own route and returns its result', async () => {
+describe('the Bureau client', () => {
+  test('posts a JSON-RPC call to the composed route and returns its result', async () => {
     const stub = answering(result({ ok: true }));
 
-    const value = await callBureau(
-      'bureau.contexts.get',
+    const value: unknown = await bureauClient['bureau.contexts.get'](
       { contextId: 'c1' },
       { fetch: stub.fetch },
     );
 
     expect(value).toEqual({ ok: true });
-    expect(stub.calls[0]?.url).toBe('/bureau/jsonrpc');
+    expect(stub.calls[0]?.url).toBe('/jsonrpc');
     expect(stub.calls[0]?.body).toMatchObject({
       method: 'bureau.contexts.get',
       params: { contextId: 'c1' },
@@ -92,7 +91,9 @@ describe('callBureau', () => {
   test('throws a fault as an HttpClientError with the status the fault carries and its code and data', async () => {
     const stub = answering(fault(409, 'Conflict', 'Used', { reason: 'session-terminal' }));
 
-    const error = await failureOf(callBureau('bureau.contexts.input', {}, { fetch: stub.fetch }));
+    const error = await failureOf(
+      bureauClient['bureau.contexts.input']({} as never, { fetch: stub.fetch }),
+    );
 
     expect(error).toBeInstanceOf(HttpClientError);
     expect(error).toMatchObject({
@@ -105,7 +106,9 @@ describe('callBureau', () => {
   test('a fault is classified by the console as the treatment its code names', async () => {
     const stub = answering(fault(404, 'NotFound', 'No context'));
 
-    const error = await failureOf(callBureau('bureau.contexts.get', {}, { fetch: stub.fetch }));
+    const error = await failureOf(
+      bureauClient['bureau.contexts.get']({} as never, { fetch: stub.fetch }),
+    );
 
     expect(classifyFault(error)?.kind).toBe('not-found');
   });
@@ -113,7 +116,9 @@ describe('callBureau', () => {
   test('a body that is not JSON-RPC is an error with the response’s status', async () => {
     const stub = answering(() => new Response('Forbidden', { status: 403 }));
 
-    const error = await failureOf(callBureau('bureau.contexts.get', {}, { fetch: stub.fetch }));
+    const error = await failureOf(
+      bureauClient['bureau.contexts.get']({} as never, { fetch: stub.fetch }),
+    );
 
     expect(error).toMatchObject({ status: 403 });
   });
@@ -121,7 +126,9 @@ describe('callBureau', () => {
   test('a JSON body with no result and no error is an error', async () => {
     const stub = answering(() => Response.json({ jsonrpc: '2.0', id: 1 }));
 
-    const error = await failureOf(callBureau('bureau.contexts.get', {}, { fetch: stub.fetch }));
+    const error = await failureOf(
+      bureauClient['bureau.contexts.get']({} as never, { fetch: stub.fetch }),
+    );
 
     expect(error).toBeInstanceOf(HttpClientError);
   });
@@ -129,7 +136,9 @@ describe('callBureau', () => {
   test('an error with no message or data still carries the status', async () => {
     const stub = answering(() => Response.json({ error: {} }, { status: 500 }));
 
-    const error = await failureOf(callBureau('bureau.contexts.get', {}, { fetch: stub.fetch }));
+    const error = await failureOf(
+      bureauClient['bureau.contexts.get']({} as never, { fetch: stub.fetch }),
+    );
 
     expect(error).toMatchObject({ status: 500, message: 'HTTP 500' });
   });
@@ -372,7 +381,7 @@ describe('switching a session’s model and branching it', () => {
       }),
     );
 
-    expect(outcome).toEqual({ outcome: 'rejected', failure: { reason: 'stale-revision' } });
+    expect(outcome).toMatchObject({ outcome: 'rejected', failure: { reason: 'stale-revision' } });
     expect(stub.calls[0]?.body).toMatchObject({
       method: 'bureau.contexts.steer',
       params: {
@@ -405,21 +414,6 @@ describe('switching a session’s model and branching it', () => {
     });
   });
 
-  test('getContextWindow refuses a report that names a category the page does not know', async () => {
-    const stub = answering(
-      result({
-        maxTokens: null,
-        usedEstimated: 1,
-        usedReported: null,
-        categories: [{ name: 'reasoning', tokens: 1 }],
-      }),
-    );
-
-    expect(await rejectionOf(withStub(stub.fetch, () => getContextWindow('c1')))).toBeInstanceOf(
-      Error,
-    );
-  });
-
   test('steerContext sends an effort without an override', async () => {
     const stub = answering(result({ outcome: 'accepted', command: {} }));
 
@@ -427,7 +421,7 @@ describe('switching a session’s model and branching it', () => {
       steerContext({ contextId: 'c1', commandId: 'command-2', effort: 'high' }),
     );
 
-    expect(outcome).toEqual({ outcome: 'accepted' });
+    expect(outcome).toMatchObject({ outcome: 'accepted' });
     expect(stub.calls[0]?.body.params).toEqual({
       contextId: 'c1',
       commandId: 'command-2',
@@ -442,7 +436,7 @@ describe('switching a session’s model and branching it', () => {
       steerContext({ contextId: 'c1', commandId: 'command-3', permissionMode: 'read-only' }),
     );
 
-    expect(outcome).toEqual({ outcome: 'accepted' });
+    expect(outcome).toMatchObject({ outcome: 'accepted' });
     expect(stub.calls[0]?.body.params).toEqual({
       contextId: 'c1',
       commandId: 'command-3',
@@ -737,24 +731,6 @@ describe('the lists and details the chat and agents views read', () => {
     ]);
   });
 
-  test.each(['search-web', [1], [null], null])('listAgents refuses tools of %j', async (tools) => {
-    const agent = {
-      name: 'busy',
-      displayName: 'Busy',
-      description: null,
-      definitionRevision: 1,
-      kind: 'code',
-      a2a: false,
-      tools,
-    };
-
-    const refusal = await rejectionOf(
-      withStub(answering(result({ agents: [agent] })).fetch, () => listAgents()),
-    );
-
-    expect(refusal).toBeInstanceOf(Error);
-  });
-
   test('getThreadMessages returns the messages the mount gives for a thread', async () => {
     const urls: string[] = [];
     const stub: Fetcher = async (input) => {
@@ -838,19 +814,48 @@ describe('archiving a session', () => {
   });
 
   test('a session reads when it was archived, null when it is not, and nothing from a Bureau that does not say', () => {
-    const archivedAt = chatContextSchema.shape.archivedAt;
-    expect(archivedAt.parse('2026-11-13T10:00:00.000Z')).toBe('2026-11-13T10:00:00.000Z');
-    expect(archivedAt.parse(null)).toBeNull();
-    expect(archivedAt.parse(undefined)).toBeUndefined();
+    const read = (archivedAt: string | null | undefined) =>
+      chatContextOf({ ...sessionOf(), archivedAt }).archivedAt;
+    expect(read('2026-11-13T10:00:00.000Z')).toBe('2026-11-13T10:00:00.000Z');
+    expect(read(null)).toBeNull();
+    expect(read(undefined)).toBeUndefined();
   });
 });
 
+/** A session as the Bureau lists it, with an origin and an end reason to read. */
+function sessionOf(fields: { origin?: unknown; endReason?: unknown } = {}) {
+  return {
+    id: 's',
+    owner: null,
+    agentName: 'a',
+    title: null,
+    lastMessagePreview: null,
+    parentContextId: null,
+    forkedFromMessageId: null,
+    messageCount: 0,
+    createdAt: '2026-11-13T10:00:00.000Z',
+    updatedAt: '2026-11-13T10:00:00.000Z',
+    activity: 'idle' as const,
+    ...fields,
+  };
+}
+
 describe('a chat’s end reason', () => {
   test('reads the one reason this client knows, null, and any other reason as other', () => {
-    const reason = chatContextSchema.shape.endReason;
-    expect(reason.parse('host-stopped')).toBe('host-stopped');
-    expect(reason.parse(null)).toBeNull();
-    expect(reason.parse(undefined)).toBeUndefined();
-    expect(reason.parse('quota-exhausted')).toBe('other');
+    const read = (endReason: unknown) => chatContextOf(sessionOf({ endReason })).endReason;
+    expect(read('host-stopped')).toBe('host-stopped');
+    expect(read(null)).toBeNull();
+    expect(read(undefined)).toBeUndefined();
+    expect(read('quota-exhausted')).toBe('other');
+  });
+});
+
+describe('a chat’s origin', () => {
+  test('reads a known origin as it is, none as a chat, and any other as other', () => {
+    const read = (origin: unknown) => chatContextOf(sessionOf({ origin })).origin;
+    expect(read('goal')).toBe('goal');
+    expect(read('try')).toBe('try');
+    expect(read(undefined)).toBe('chat');
+    expect(read('webhook')).toBe('other');
   });
 });

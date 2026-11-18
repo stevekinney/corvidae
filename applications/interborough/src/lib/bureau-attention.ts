@@ -5,25 +5,46 @@
  * person are never on it: they are Needs you, which the reviews count reads.
  *
  * The sidebar's Health dot reads only how many there are. The notification bell reads the rules
- * that are firing, so those are parsed here too; the Health page reads the items themselves, which
- * are the Bureau's own records and not restated here beyond that.
+ * that are firing; the Health page reads the items themselves, which are the Bureau's own records.
  */
-import { z } from 'zod';
+import { bureauClient, type BureauOutput } from './bureau-api.ts';
+import type { Fetcher } from './bureau-client.ts';
 
-import { callBureau, type Fetcher } from './bureau-client.ts';
+type Options = { readonly signal?: AbortSignal; readonly fetch?: Fetcher };
 
-const attentionCountSchema = z.object({ count: z.number().int().nonnegative() });
+/** One problem that needs attention, as `bureau.health.attention` lists it. */
+export type AttentionItem =
+  | Exclude<WireAttentionItem, { readonly kind: 'alert' }>
+  // The metric is a string: a rule a newer Bureau watches still reaches the bell.
+  | (Omit<Extract<WireAttentionItem, { readonly kind: 'alert' }>, 'metric'> & {
+      readonly metric: string;
+    });
+
+type WireAttentionItem = BureauOutput<'bureau.health.attention'>['items'][number];
+
+/** The kinds of item this build words. A Bureau newer than the browser may list one it does not know. */
+const KNOWN_ATTENTION_KINDS: ReadonlySet<string> = new Set([
+  'alert',
+  'missed-runs',
+  'hook-failed',
+  'plugin-not-loaded',
+  'no-provider',
+  'worker-disconnected',
+]);
+
+/** The items of a kind this build knows: a row has to say what to look at, so any other is left out. */
+export function knownAttentionItems(items: readonly AttentionItem[]): readonly AttentionItem[] {
+  return items.filter((item) => KNOWN_ATTENTION_KINDS.has(item.kind));
+}
 
 /**
  * How many problems need attention now. A caller without `bureau.diagnostics:read` is refused with
  * a fault, which the caller of this function lets through so the sidebar can leave its dot out
  * instead of showing a count it could not read.
  */
-export async function getAttentionCount(options?: {
-  readonly signal?: AbortSignal;
-  readonly fetch?: Fetcher;
-}): Promise<number> {
-  return attentionCountSchema.parse(await callBureau('bureau.health.attention', {}, options)).count;
+export async function getAttentionCount(options?: Options): Promise<number> {
+  const answer = await bureauClient['bureau.health.attention']({}, options);
+  return answer.count;
 }
 
 /** A rule of the host's that is firing, as `bureau.health.attention` lists it. */
@@ -36,41 +57,19 @@ export interface AttentionAlert {
   readonly currentValue: number;
 }
 
-const attentionAlertSchema = z.object({
-  kind: z.literal('alert'),
-  metric: z.string(),
-  at: z.number(),
-  currentValue: z.number(),
-});
-
-const attentionItemsSchema = z.object({ items: z.array(z.looseObject({ kind: z.string() })) });
-
 /**
  * The rules that are firing now (`bureau.health.attention`), newest first as the Bureau lists
  * them. Every other kind of problem is left out: the bell words only the alerts. A caller without
  * `bureau.diagnostics:read` is refused with a fault, which the caller lets through.
  */
-export async function listAttentionAlerts(options?: {
-  readonly signal?: AbortSignal;
-  readonly fetch?: Fetcher;
-}): Promise<readonly AttentionAlert[]> {
-  const { items } = attentionItemsSchema.parse(
-    await callBureau('bureau.health.attention', {}, options),
+export async function listAttentionAlerts(options?: Options): Promise<readonly AttentionAlert[]> {
+  const { items } = await bureauClient['bureau.health.attention']({}, options);
+  return items.flatMap((item) =>
+    item.kind === 'alert'
+      ? [{ metric: item.metric, at: item.at, currentValue: item.currentValue }]
+      : [],
   );
-  return items.flatMap((item) => {
-    const alert = attentionAlertSchema.safeParse(item);
-    return alert.success
-      ? [{ metric: alert.data.metric, at: alert.data.at, currentValue: alert.data.currentValue }]
-      : [];
-  });
 }
-
-const attentionMissedRunsSchema = z.object({
-  kind: z.literal('missed-runs'),
-  scheduleId: z.string(),
-  count: z.number().int(),
-  since: z.number(),
-});
 
 /** What the schedule rows need from the attention list: who missed runs, and whether a model can answer. */
 export interface ScheduleAttention {
@@ -93,23 +92,14 @@ export interface ScheduleAttention {
  * whether no model provider is connected. A caller without `bureau.diagnostics:read` is refused
  * with a fault, which the caller lets through so the rows can fall back to what the engine says.
  */
-export async function readScheduleAttention(options?: {
-  readonly signal?: AbortSignal;
-  readonly fetch?: Fetcher;
-}): Promise<ScheduleAttention> {
-  const { items } = attentionItemsSchema.parse(
-    await callBureau('bureau.health.attention', {}, options),
-  );
+export async function readScheduleAttention(options?: Options): Promise<ScheduleAttention> {
+  const { items } = await bureauClient['bureau.health.attention']({}, options);
   const missedRuns = new Map<string, { count: number; since: number }>();
   let noProvider = false;
   for (const item of items) {
     if (item.kind === 'no-provider') noProvider = true;
-    const missed = attentionMissedRunsSchema.safeParse(item);
-    if (missed.success) {
-      missedRuns.set(missed.data.scheduleId, {
-        count: missed.data.count,
-        since: missed.data.since,
-      });
+    if (item.kind === 'missed-runs') {
+      missedRuns.set(item.scheduleId, { count: item.count, since: item.since });
     }
   }
   return { missedRuns, noProvider };
@@ -129,67 +119,6 @@ export const ATTENTION_AREAS = [
 /** One of {@link ATTENTION_AREAS}. */
 export type AttentionArea = (typeof ATTENTION_AREAS)[number];
 
-const area = z.enum(ATTENTION_AREAS);
-
-const attentionItemSchema = z.discriminatedUnion('kind', [
-  z.object({
-    kind: z.literal('alert'),
-    area,
-    at: z.number(),
-    metric: z.string(),
-    currentValue: z.number(),
-    threshold: z.number(),
-  }),
-  z.object({
-    kind: z.literal('missed-runs'),
-    area,
-    at: z.number(),
-    scheduleId: z.string(),
-    scheduleName: z.string().nullable(),
-    count: z.number().int(),
-    since: z.number(),
-    occurrences: z.array(z.object({ occurrence: z.number(), count: z.number().int() })),
-  }),
-  z.object({
-    kind: z.literal('hook-failed'),
-    area,
-    at: z.number(),
-    hookId: z.string(),
-    hookName: z.string().nullable(),
-    gaveUp: z.boolean(),
-    status: z.number().int().nullable(),
-    host: z.string().nullable(),
-    attempts: z.number().int(),
-    error: z.string().nullable(),
-  }),
-  z.object({
-    kind: z.literal('plugin-not-loaded'),
-    area,
-    at: z.number().nullable(),
-    plugin: z.string(),
-    problems: z.array(z.string()),
-  }),
-  z.object({
-    kind: z.literal('no-provider'),
-    area,
-    at: z.number().nullable(),
-    provider: z.string().nullable(),
-  }),
-  z.object({
-    kind: z.literal('worker-disconnected'),
-    area,
-    at: z.number(),
-    workerId: z.string(),
-    workerName: z.string().nullable(),
-    queue: z.string(),
-    waiting: z.number().int().nonnegative(),
-    failedForGood: z.number().int().nonnegative(),
-  }),
-]);
-
-/** One problem that needs attention, as `bureau.health.attention` lists it. */
-export type AttentionItem = z.infer<typeof attentionItemSchema>;
-
 /** What `bureau.health.attention` answers: the problems, most recent first, and the same problems counted by area. */
 export interface Attention {
   /** Every problem, most recent first; one with no known time first. */
@@ -198,41 +127,24 @@ export interface Attention {
   readonly checks: readonly { readonly area: AttentionArea; readonly count: number }[];
 }
 
-const attentionSchema = z.object({
-  items: z.array(z.looseObject({ kind: z.string() })),
-  checks: z.array(z.object({ area, count: z.number().int().positive() })),
-});
-
 /**
  * Everything on the attention list, in the order the Bureau gives it, and the checks that count it
  * by area. An item of a kind this build does not know is left out of `items`. A caller without
  * `bureau.diagnostics:read` is refused with a fault, which the caller lets through.
  */
-export async function readAttention(options?: {
-  readonly signal?: AbortSignal;
-  readonly fetch?: Fetcher;
-}): Promise<Attention> {
-  const parsed = attentionSchema.parse(await callBureau('bureau.health.attention', {}, options));
-  return {
-    items: parsed.items.flatMap((item) => {
-      const known = attentionItemSchema.safeParse(item);
-      return known.success ? [known.data] : [];
-    }),
-    checks: parsed.checks,
-  };
+export async function readAttention(options?: Options): Promise<Attention> {
+  const attention = await bureauClient['bureau.health.attention']({}, options);
+  return { items: knownAttentionItems(attention.items), checks: attention.checks };
 }
 
 /**
  * Every problem that needs attention now, most recent first as the Bureau lists them, for Home's
- * Needs attention card. A kind this build has no schema for is left out, since a row has to say
+ * Needs attention card. A kind this build has no wording for is left out, since a row has to say
  * what to look at; the Health dot still counts it. A caller without `bureau.diagnostics:read` is
  * refused with a fault, which the caller lets through so a card can say it could not read them
  * instead of claiming that nothing needs attention.
  */
-export async function listAttentionItems(options?: {
-  readonly signal?: AbortSignal;
-  readonly fetch?: Fetcher;
-}): Promise<readonly AttentionItem[]> {
+export async function listAttentionItems(options?: Options): Promise<readonly AttentionItem[]> {
   const { items } = await readAttention(options);
   return items;
 }

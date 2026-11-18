@@ -13,7 +13,6 @@ const EXEMPT_CODES: ReadonlySet<string> = new Set([
   'reference-unresolved',
   'pinned-version-unavailable',
   'start-failed',
-  'hook-invalid',
 ]);
 
 /** The codes whose name does not start with their identity kind and are not exempt. */

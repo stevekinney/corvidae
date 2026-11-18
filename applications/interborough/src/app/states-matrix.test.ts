@@ -12,7 +12,7 @@ import type { QueryClient } from '@tanstack/svelte-query';
 import { render, waitFor } from '@testing-library/svelte';
 import { afterEach, describe, expect, jest, test } from 'bun:test';
 
-import { callBureau } from '../lib/bureau-client.ts';
+import { bureauClient } from '../lib/bureau-api.ts';
 import { goalFixture } from '../lib/bureau-fixtures.test-support.ts';
 import { settle } from '../lib/fake-timers.test-support.ts';
 import { ServerUnreachableError } from '../lib/faults.ts';
@@ -195,7 +195,7 @@ describe('the view frame and the connection monitor', () => {
     const client = new HttpClient({ baseUrl: 'http://localhost/api' });
     state.mode = 'answers';
     expect(await rejectionOf(client.cancel('run-1'))).toBeInstanceOf(ServerUnreachableError);
-    expect(await rejectionOf(callBureau('bureau.tasks.cancel', { taskId: 't' }))).toBeInstanceOf(
+    expect(await rejectionOf(bureauClient['bureau.tasks.cancel']({ taskId: 't' }))).toBeInstanceOf(
       ServerUnreachableError,
     );
     expect(state.writes).toBe(0);

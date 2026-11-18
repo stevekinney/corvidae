@@ -64,6 +64,19 @@
   );
 }
 
+/* The chat page is a list pane and a conversation that each carry their own inset (the list's
+ * header inset, Chat's reading column inset and composer dock), so the outlet pads neither: the
+ * list is flush to the navigation rail and to the top bar, and the composer's gap under it is
+ * Chat's own dock padding, equal to its side inset, not that plus the outlet's 24px (36px on a
+ * phone, 40px wide). The phone gutter below puts back what a conversation needs there. It is keyed
+ * on the outlet's own `data-width="panes"`, which the route's kind sets from the first frame
+ * (`views.ts`), not on a descendant that appears when the page's code has loaded: the panes measure
+ * their container once and keep a saved list width as a share of it, so an outlet that changed its
+ * padding after that first measure widened the list. */
+.weft-shell-outlet[data-width='panes'] {
+  padding: 0;
+}
+
 .weft-shell-outlet__skeleton {
   display: flex;
   flex-direction: column;
@@ -272,10 +285,14 @@
   min-width: 0;
   inline-size: 300px;
   flex: 0 1 auto;
-  /* One line always (design row 06l): the label ellipsizes, and the shortcut keeps its room. */
+  /* One line always (design row 06l): the label ellipsizes, and the shortcut keeps its room. The
+   * field clips sideways only: `hidden` clipped both axes and cut Button's hit area, which reaches
+   * above and below the face on a touch screen, down to the face. `clip`, unlike `hidden`, leaves
+   * the other axis visible. */
   flex-wrap: nowrap;
   white-space: nowrap;
-  overflow: hidden;
+  overflow-x: clip;
+  overflow-y: visible;
   justify-content: flex-start;
   color: var(--cinder-text-muted);
   /* The wide trigger is a field, so it keeps a resting fill and rule (the icon buttons beside it
@@ -310,25 +327,36 @@
  * and quick settings as icon buttons, and the search field with its ⌘K hint returns at 640px. The
  * menu button is drawn only while the navigation is a drawer (`topbar.svelte`), which is also the
  * case for a touch tablet, so it is not part of this width rule. No page scrolls sideways at 320px.
- * Each control is a 44px touch target in pixels, not in `rem`: at 200% text size five targets that
- * grew with the text would leave the title no room, and 44px is the target's size however large the
- * text is. */
+ * Each control is a Button with its own icon-only face, and reaches 44px through the Button's own
+ * hit area, a positioned pseudo-element that takes no layout space (COR-2445). The faces sit a
+ * `--cinder-space-1` gap apart, and neighbours' hit areas may overlap invisibly. */
 @media (max-width: 639.98px) {
   .weft-shell-topbar {
+    gap: var(--cinder-space-1);
     padding: 0 var(--cinder-space-2);
   }
 
-  /* One size for every control in the bar, and a touch target. The search trigger is icon-only at
-   * this width. */
+  /* One face for the bar's four icon controls, 32px in pixels: the face a medium Button draws at
+   * 100% text. In pixels, not `rem` and not a control-height token, for two reasons. At 200% text
+   * a face in `rem` doubles to 64px, and four of them leave the title room for one letter; larger
+   * text should grow the words, not the icons. And under a coarse pointer the control-height
+   * tokens rise to 44px, which made the search face wider than its neighbours. Each still takes a
+   * 44px tap through Button's own hit area, which is a pseudo-element and takes no layout. */
   .weft-shell-topbar .weft-shell-topbar-control {
-    block-size: 44px;
-    min-block-size: 44px;
-    min-inline-size: 44px;
+    flex: none;
+    inline-size: 32px;
+    min-inline-size: 32px;
+    block-size: 32px;
+    min-block-size: 32px;
+    padding: 0;
   }
 
+  /* The search trigger is icon-only at this width, like the icon buttons beside it. The wide
+   * rule above clips it (`overflow: hidden`, for the field's ellipsis); here nothing needs
+   * clipping (the label is visually hidden, the key hint is gone), and the clip cut Button's hit
+   * area down to the face. */
   .weft-shell-topbar .weft-shell-search-trigger {
-    min-width: 44px;
-    inline-size: 44px;
+    overflow: visible;
     margin-inline-start: 0;
     padding-inline: 0;
     justify-content: center;
@@ -369,11 +397,14 @@
 
   /* A conversation insets its own column (`chat.css`: the header, the transcript, the reminder and
    * the composer share Chat's narrow inset, --cinder-space-3, from its container query). On a phone
-   * the outlet gives it only what is left of the phone gutter, so the column's shared edge stands
-   * --cinder-space-4 from the screen, as on every other phone page, and the composer gains the
-   * width (COR-2327). */
-  .weft-shell-outlet:has(.weft-chat-route) {
-    --weft-outlet-gutter: calc(var(--cinder-space-4) - var(--cinder-space-3));
+   * the outlet gives it only what is left of the phone gutter, on the sides and under the
+   * composer alike, so the composer stands --cinder-space-4 from the screen's edges and from the
+   * tab bar, as on every other phone page (COR-2327). The composer's own bottom padding is the
+   * other part of that gap, so the outlet's bottom padding, the duplicate that made it 36px, is
+   * only the gutter's remainder. */
+  .weft-shell-outlet[data-width='panes']:has(.weft-chat-route) {
+    padding-inline: calc(var(--cinder-space-4) - var(--cinder-space-3));
+    padding-block-end: calc(var(--cinder-space-4) - var(--cinder-space-3));
   }
 }
 

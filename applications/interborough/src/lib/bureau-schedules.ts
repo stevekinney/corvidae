@@ -1,6 +1,6 @@
 /**
- * The browser's view of the Bureau's schedules: `bureau.schedules.*` (COR-1482), parsed at the
- * boundary. A Bureau schedule is a native Weft schedule that fires the built-in `agentRun`
+ * The browser's view of the Bureau's schedules: `bureau.schedules.*` (COR-1482), through the
+ * generated client. A Bureau schedule is a native Weft schedule that fires the built-in `agentRun`
  * workflow, so the engine lists it with the rest; this is how one is created, and how the agent it
  * runs is learned. Every write takes `expectedRevision`, the revision of the schedule the caller
  * read, which Weft compares inside its serialized write: a schedule that changed since is
@@ -12,85 +12,51 @@
  * input previews, last-fire timestamps, and private fire counters to `null`.
  */
 import { HttpClientError, type ScheduleSpec } from '@lostgradient/weft';
-import { z } from 'zod';
-
-import { callBureau, type Fetcher } from './bureau-client.ts';
+import { bureauClient, type BureauOutput } from './bureau-api.ts';
+import type { Fetcher } from './bureau-client.ts';
 
 type Options = { readonly signal?: AbortSignal; readonly fetch?: Fetcher };
 
-const statusSchema = z.enum(['active', 'paused', 'cancelled']);
+/**
+ * One schedule as `bureau.schedules.list`, `get`, and `create` show it. `continuesChat` says whether
+ * every fire continues one chat (the chat's own id is never served); `timeZone` is the IANA zone a
+ * cron cadence is read in, `UTC` for an interval; `skippedOccurrences` are the upcoming fires a
+ * person asked to skip, as ISO 8601 instants, soonest first; `blocker` is why the schedule will not
+ * start, or `null` when nothing blocks it: a workflow file's schedule whose file stopped parsing is
+ * kept from the file's last good version and starts nothing until the file parses again.
+ */
+export type BureauSchedule = BureauOutput<'bureau.schedules.get'>;
 
-const viewSchema = z.object({
-  id: z.string(),
-  owner: z.string(),
-  agentName: z.string().nullable(),
-  inputPreview: z.string().nullable(),
-  /** Whether every fire continues one chat; the chat's own id is never served. A Bureau that does not say reads as `false`. */
-  continuesChat: z.boolean().default(false),
-  workflowType: z.string(),
-  description: z.string().nullable(),
-  cronExpression: z.string().nullable(),
-  intervalMs: z.number().nullable(),
-  status: statusSchema,
-  overlap: z.enum(['skip', 'queue', 'cancel-running', 'allow']),
-  revision: z.number().int(),
-  /** The IANA zone a cron cadence is read in; `UTC` for an interval and for a schedule made without one. */
-  timeZone: z.string(),
-  nextFireAt: z.string().nullable(),
-  /** The upcoming fires a person asked to skip, as ISO 8601 instants, soonest first. */
-  skippedOccurrences: z.array(z.string()),
-  lastFireAt: z.string().nullable(),
-  missedFireCount: z.number().int().nullable(),
-  skippedCount: z.number().int().nullable(),
-  createdAt: z.string(),
-  updatedAt: z.string(),
-  /**
-   * Why the schedule will not start, or `null` when nothing blocks it: a workflow file's schedule
-   * whose file stopped parsing is kept from the file's last good version and starts nothing until
-   * the file parses again. `status` then reads as the schedule holds it (`active` when it was
-   * active, although the engine holds it paused).
-   */
-  blocker: z
-    .object({
-      kind: z.literal('workflow-cannot-load'),
-      /** The workflow whose file cannot load. */
-      workflow: z.string(),
-      /** What is wrong with the file. */
-      message: z.string(),
-    })
-    .nullable()
-    .default(null),
-});
-
-/** One schedule as `bureau.schedules.list`, `get`, and `create` show it. */
-export type BureauSchedule = z.infer<typeof viewSchema>;
-
-const receiptSchema = z.object({
-  id: z.string(),
-  status: statusSchema,
-  revision: z.number().int(),
-});
+/**
+ * A schedule as a Bureau that does not say has it: not continuing a chat, and with nothing blocking
+ * it. The server's schema always sends both, so these defaults belong to the browser, applied to the
+ * typed result.
+ */
+export function scheduleOf(
+  view: Omit<BureauSchedule, 'continuesChat' | 'blocker'> & {
+    readonly continuesChat?: boolean | undefined;
+    readonly blocker?: BureauSchedule['blocker'] | undefined;
+  },
+): BureauSchedule {
+  return { ...view, continuesChat: view.continuesChat ?? false, blocker: view.blocker ?? null };
+}
 
 /** What a write answers: the schedule's status and its revision after the change. */
-export type BureauScheduleReceipt = z.infer<typeof receiptSchema>;
+export type BureauScheduleReceipt = BureauOutput<'bureau.schedules.pause'>;
 
 /** The largest page `bureau.schedules.list` answers. */
 const LISTING_PAGE_SIZE = 100;
-
-const pageSchema = z.object({
-  schedules: z.array(viewSchema),
-  nextOffset: z.number().nullable(),
-});
 
 /** Every schedule the caller may see, following the pages to the end. */
 export async function listBureauSchedules(options?: Options): Promise<readonly BureauSchedule[]> {
   const schedules: BureauSchedule[] = [];
   let offset: number | null = 0;
   while (offset !== null) {
-    const page: z.infer<typeof pageSchema> = pageSchema.parse(
-      await callBureau('bureau.schedules.list', { limit: LISTING_PAGE_SIZE, offset }, options),
+    const page: BureauOutput<'bureau.schedules.list'> = await bureauClient['bureau.schedules.list'](
+      { limit: LISTING_PAGE_SIZE, offset },
+      options,
     );
-    schedules.push(...page.schedules);
+    schedules.push(...page.schedules.map(scheduleOf));
     offset = page.nextOffset;
   }
   return schedules;
@@ -157,21 +123,15 @@ export async function createAgentSchedule(
     ...(schedule.overlap === undefined ? {} : { overlap: schedule.overlap }),
     ...(schedule.timeZone === undefined ? {} : { timeZone: schedule.timeZone }),
   };
-  return viewSchema.parse(await callBureau('bureau.schedules.create', params, options));
+  return scheduleOf(await bureauClient['bureau.schedules.create'](params, options));
 }
 
-/** A write that names the revision it read. An absent revision is not sent, which compares nothing. */
-async function guardedWrite(
-  method: string,
+/** The params of a write that names the revision it read. An absent revision is not sent, which compares nothing. */
+function guardedParams(
   scheduleId: string,
   expectedRevision: number | undefined,
-  options?: Options,
-): Promise<BureauScheduleReceipt> {
-  const params = {
-    scheduleId,
-    ...(expectedRevision === undefined ? {} : { expectedRevision }),
-  };
-  return receiptSchema.parse(await callBureau(method, params, options));
+): { readonly scheduleId: string; readonly expectedRevision?: number } {
+  return { scheduleId, ...(expectedRevision === undefined ? {} : { expectedRevision }) };
 }
 
 /**
@@ -183,7 +143,10 @@ export function pauseAgentSchedule(
   expectedRevision: number | undefined,
   options?: Options,
 ): Promise<BureauScheduleReceipt> {
-  return guardedWrite('bureau.schedules.pause', scheduleId, expectedRevision, options);
+  return bureauClient['bureau.schedules.pause'](
+    guardedParams(scheduleId, expectedRevision),
+    options,
+  );
 }
 
 /**
@@ -194,7 +157,10 @@ export function resumeAgentSchedule(
   expectedRevision: number | undefined,
   options?: Options,
 ): Promise<BureauScheduleReceipt> {
-  return guardedWrite('bureau.schedules.resume', scheduleId, expectedRevision, options);
+  return bureauClient['bureau.schedules.resume'](
+    guardedParams(scheduleId, expectedRevision),
+    options,
+  );
 }
 
 /**
@@ -206,7 +172,10 @@ export function cancelAgentSchedule(
   expectedRevision: number | undefined,
   options?: Options,
 ): Promise<BureauScheduleReceipt> {
-  return guardedWrite('bureau.schedules.cancel', scheduleId, expectedRevision, options);
+  return bureauClient['bureau.schedules.cancel'](
+    guardedParams(scheduleId, expectedRevision),
+    options,
+  );
 }
 
 /**
@@ -252,7 +221,7 @@ export async function updateAgentSchedule(
     ...(update.continueChat === true ? { continueChat: true } : {}),
     ...(expectedRevision === undefined ? {} : { expectedRevision }),
   };
-  return receiptSchema.parse(await callBureau('bureau.schedules.update', params, options));
+  return bureauClient['bureau.schedules.update'](params, options);
 }
 
 /**
@@ -273,7 +242,7 @@ export async function skipNextAgentSchedule(
     occurrence: new Date(occurrence).toISOString(),
     ...(expectedRevision === undefined ? {} : { expectedRevision }),
   };
-  return receiptSchema.parse(await callBureau('bureau.schedules.skipnext', params, options));
+  return bureauClient['bureau.schedules.skipnext'](params, options);
 }
 
 /**
@@ -293,7 +262,7 @@ export async function unskipAgentSchedule(
     occurrence: new Date(occurrence).toISOString(),
     ...(expectedRevision === undefined ? {} : { expectedRevision }),
   };
-  return receiptSchema.parse(await callBureau('bureau.schedules.unskip', params, options));
+  return bureauClient['bureau.schedules.unskip'](params, options);
 }
 
 /** Whether `error` is the Bureau's answer to a skip or an unskip that named a fire that is no longer upcoming. */
@@ -304,12 +273,6 @@ export function isOccurrenceNotNext(error: unknown): boolean {
     error.data['reason'] === 'occurrence-not-next'
   );
 }
-
-const runNowSchema = z.discriminatedUnion('outcome', [
-  z.object({ outcome: z.literal('started'), taskId: z.string() }),
-  z.object({ outcome: z.literal('queued'), taskId: z.string() }),
-  z.object({ outcome: z.literal('skipped'), blockingTaskId: z.string().nullable() }),
-]);
 
 /** What a run now did under the schedule's overlap policy: it started, queued behind the running one, or was skipped. */
 export type RunNowOutcome =
@@ -325,20 +288,11 @@ export async function runNowAgentSchedule(
   scheduleId: string,
   options?: Options,
 ): Promise<RunNowOutcome> {
-  const answer = runNowSchema.parse(
-    await callBureau('bureau.schedules.runnow', { scheduleId }, options),
-  );
+  const answer = await bureauClient['bureau.schedules.runnow']({ scheduleId }, options);
   return answer.outcome === 'skipped'
     ? { outcome: 'skipped', blockingRunId: answer.blockingTaskId }
     : { outcome: answer.outcome, runId: answer.taskId };
 }
-
-const missedRowSchema = z.object({
-  occurrence: z.string(),
-  reason: z.enum(['late', 'dst-gap']),
-  count: z.number().int(),
-  recordedAt: z.string(),
-});
 
 /** One fire a schedule missed, as the schedule recorded it. `occurrence` is the instant it is recorded at. */
 export type MissedFire = {
@@ -357,9 +311,7 @@ export async function listAgentScheduleMissed(
   scheduleId: string,
   options?: Options,
 ): Promise<readonly MissedFire[]> {
-  const answer = z
-    .object({ missed: z.array(missedRowSchema) })
-    .parse(await callBureau('bureau.schedules.missed', { scheduleId }, options));
+  const answer = await bureauClient['bureau.schedules.missed']({ scheduleId }, options);
   return answer.missed.map((row) => ({
     occurrence: Date.parse(row.occurrence),
     reason: row.reason,

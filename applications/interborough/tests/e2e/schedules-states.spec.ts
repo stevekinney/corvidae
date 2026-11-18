@@ -22,7 +22,7 @@ const WIDTHS = [1280, 375] as const;
 const SCHEDULES_READ = /\/v1\/schedules(\?|$)/;
 /** How Chromium words a failed answer for the list in the console, which ends the address with a line number. */
 const SCHEDULES_LOGGED = /\/v1\/schedules/;
-const HOST_REQUESTS = /\/(v1|bureau|api)\//;
+const HOST_REQUESTS = /\/(v1|bureau|api)\/|\/jsonrpc$/;
 
 const NOTHING = { items: [], total: 0 };
 

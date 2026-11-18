@@ -44,7 +44,7 @@ export async function connectProvider(page: Page): Promise<void> {
  */
 export async function connectProviderWithModels(page: Page): Promise<void> {
   await connectProvider(page);
-  await page.route('**/bureau/jsonrpc', async (route) => {
+  await page.route('**/jsonrpc', async (route) => {
     const body = JSON.parse(route.request().postData() ?? '{}') as {
       method?: string;
       id?: unknown;
@@ -111,7 +111,7 @@ export async function openStatesChat(
   const kind = ((await read.json()) as { result: Record<string, unknown> }).result;
   const thread = threadOf(chat);
   const context = contextOf(chat, kind);
-  await page.route('**/bureau/jsonrpc', async (route) => {
+  await page.route('**/jsonrpc', async (route) => {
     const body = operationOf(route);
     // The chat list and the bell read the Bureau's recent runs of every chat; this chat's run is
     // among them, so its row says what became of the run (Failed, for a reply that stopped).

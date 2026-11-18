@@ -80,7 +80,7 @@ async function boxOf(locator: Locator) {
 
 /** Answers the Bureau's agent list as a host would whose agents have none of the Create workflow tool. */
 async function withoutWorkflowTool(page: Page): Promise<void> {
-  await page.route('**/bureau/jsonrpc', async (route) => {
+  await page.route('**/jsonrpc', async (route) => {
     const body = JSON.parse(route.request().postData() ?? '{}') as { method?: string };
     if (body.method !== 'bureau.agents.list') {
       await route.fallback();

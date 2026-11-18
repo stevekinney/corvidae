@@ -1,14 +1,58 @@
 <script lang="ts">
-  import { Button, Breadcrumbs, PageHeader } from '@lostgradient/cinder';
+  import { Button, Breadcrumbs, PageHeader, Segment, SegmentedControl } from '@lostgradient/cinder';
 
   // COR-2327 B2: a narrow header's actions beside the status (`narrowActions="beside-status"`),
   // next to the default, drawn only behind a query parameter so the default fixture, its
   // baselines and its axe sweep stay as they are.
   const narrowActions =
     new URLSearchParams(globalThis.location.search).get('narrow-actions') === '1';
+
+  // The collapsed large title (COR-2445): the header sets `collapsed` from an IntersectionObserver
+  // on its title, against the viewport, and a scroll container clips what the observer sees. So this
+  // case is a short scroll container, scrolled on mount until the title has left it; the header then
+  // reports itself collapsed and its sticky bar shows the title with Approve and Deny.
+  let collapsedScroller: HTMLDivElement | undefined = $state();
+  $effect(() => {
+    collapsedScroller?.scrollTo({ top: 200 });
+  });
 </script>
 
-<div>
+{#snippet decisionButtons()}
+  <Button variant="primary">Approve</Button>
+  <Button>Deny</Button>
+{/snippet}
+
+<!-- First on the page, so the header sits above the viewport's middle, where the observer counts a
+     title as scrolled away upward. -->
+<div
+  data-testid="large-title-collapsed"
+  bind:this={collapsedScroller}
+  style="block-size: 12rem; overflow: auto; border: 1px solid var(--cinder-border-muted);"
+>
+  <PageHeader
+    headingLevel={2}
+    variant="large"
+    title="Refund order 4471"
+    description="Waiting on your approval."
+    decisions={decisionButtons}
+  >
+    {#snippet actions()}
+      <SegmentedControl
+        id="large-collapsed-view"
+        selectionMode="single"
+        value="runs"
+        label="View"
+        labelVisible={false}
+      >
+        <Segment value="runs">Runs</Segment>
+        <Segment value="calls">Calls</Segment>
+      </SegmentedControl>
+    {/snippet}
+  </PageHeader>
+  <div style="block-size: 40rem;"></div>
+</div>
+
+<div style="margin-top: var(--cinder-space-4);">
   <PageHeader title="Approvals" description="3 pending, 12 resolved" />
 </div>
 
@@ -24,6 +68,60 @@
     {/snippet}
   </PageHeader>
 </div>
+
+<!-- COR-2445 AC7: the large title at rest, and the hero on the accent and night tones, each with
+     decision actions and a SegmentedControl, so the focus-ring hook of each is drawn. In a header's
+     actions the control carries its label as its accessible name, not a visible "View". -->
+<div data-testid="large-title-rest" style="margin-top: var(--cinder-space-4);">
+  <PageHeader
+    headingLevel={2}
+    variant="large"
+    title="Refund order 4471"
+    description="Waiting on your approval."
+    decisions={decisionButtons}
+  >
+    {#snippet actions()}
+      <SegmentedControl
+        id="large-rest-view"
+        selectionMode="single"
+        value="runs"
+        label="View"
+        labelVisible={false}
+      >
+        <Segment value="runs">Runs</Segment>
+        <Segment value="calls">Calls</Segment>
+      </SegmentedControl>
+    {/snippet}
+  </PageHeader>
+</div>
+
+{#each ['accent', 'night'] as const as tone (tone)}
+  <div data-testid={`hero-${tone}`} style="margin-top: var(--cinder-space-4);">
+    <PageHeader
+      headingLevel={2}
+      variant="hero"
+      {tone}
+      eyebrow="Denver"
+      title="Poor Decisions"
+      titleSoft=", made easier"
+      description="Happy hours near you, open right now."
+      decisions={decisionButtons}
+    >
+      {#snippet actions()}
+        <SegmentedControl
+          id={`hero-${tone}-view`}
+          selectionMode="single"
+          value="runs"
+          label="View"
+          labelVisible={false}
+        >
+          <Segment value="runs">Runs</Segment>
+          <Segment value="calls">Calls</Segment>
+        </SegmentedControl>
+      {/snippet}
+    </PageHeader>
+  </div>
+{/each}
 
 {#if narrowActions}
   {#each ['own-row', 'beside-status'] as const as placement (placement)}

@@ -132,7 +132,10 @@ describe('Chat focus-ring recipes', () => {
       expect(declarationValue(rule!, 'position')).toBe('sticky');
       expect(declarationValue(rule!, 'block-size')).toBe('0');
       expect(declarationValue(rule!, 'min-block-size')).toBe('0');
-      expect(declarationValue(rule!, 'inset-block-start')).toBe('var(--cinder-space-2)');
+      // Below any header laid over the transcript's top, where the label would otherwise hide.
+      expect(declarationValue(rule!, 'inset-block-start')).toBe(
+        'calc(var(--cinder-space-2) + var(--_cinder-chat-overlay-inset-start))',
+      );
       expect(findRules(style, `${labelSelector}::after`)).not.toEqual([]);
       expect(findRules(style, `${selector} .chat-timeline-focus-label`)).not.toEqual([]);
     }

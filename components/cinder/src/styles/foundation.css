@@ -280,6 +280,16 @@
   outline-offset: var(--cinder-ring-offset);
 }
 
+/* A script focus target (`tabindex="-1"`: the page moves focus to it, nobody tabs to it) draws the
+   ring only after keyboard input. The browser also matches `:focus-visible` on a script focus when
+   the element focused before showed a ring, or before any input, so a tap or a cold load saw a ring
+   round a card the page opened on. `data-cinder-input-modality` comes from `trackInputModality`;
+   without it the ring is not drawn on such a target (documentation/focus-ring-policy.md). */
+:root:not([data-cinder-input-modality='keyboard']) [tabindex='-1']:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+
 /* Under forced colors the system repaints the author's ring color, so the global default names the
    system focus color itself (`Highlight`, the color the browser's own focus ring uses) and the ring
    survives with the contrast the user chose. Components that paint a box-shadow ring keep their own

@@ -20,6 +20,7 @@
 import type {
   GuardrailFamily,
   PluginContributions,
+  PluginHook,
   PluginHost,
   PluginMemoryGate,
   PluginPanel,
@@ -90,6 +91,7 @@ import type {
   PluginContribution,
   PluginMemoryContributions,
   PluginModelContributions,
+  HookInvalidPath,
   PluginProblem,
   PluginProviderContribution,
 } from './plugin-types';
@@ -897,6 +899,71 @@ function providerEmptyProblems(
   );
 }
 
+/** The longest a hook's name is when a problem names it; the plugin chose it, so the wire never carries more. */
+const HOOK_PROBLEM_NAME_LIMIT = 100;
+
+/**
+ * COR-2180 — checks the hooks `descriptor` declares, one by one, and returns the ones that hold
+ * and a `hook-invalid` problem for each that does not, so a bad hook skips itself and never its
+ * plugin. A hook is refused when its name is not text or repeats one before it, when its `reaction`
+ * is not one of the plugin's own reactions, and when it lists no event kind or one that is not
+ * published: a kind of the core catalog, or one a running plugin declares (`declaredKinds`, every
+ * running plugin's, whatever the load order, plus this plugin's own). Everything else, the configuration and the scope, is checked as `hooks.create` checks it when
+ * the hook is reconciled, and a refusal there is the same problem.
+ */
+function declaredHooksOf(
+  descriptor: BureauPluginEntry['descriptor'],
+  result: PluginSetupResult,
+  declaredKinds: readonly string[],
+): { readonly hooks: PluginHook[]; readonly problems: PluginProblem[] } {
+  const hooks: PluginHook[] = [];
+  const problems: PluginProblem[] = [];
+  const declared = descriptor.hooks;
+  if (!Array.isArray(declared)) return { hooks, problems };
+  const reactions = new Set((result.reactions ?? []).map(({ name }) => name));
+  const published = [
+    ...declaredKinds,
+    ...(result.events ?? []).map(({ name }) => formatToolId({ namespace: descriptor.name, name })),
+  ];
+  const names = new Set<string>();
+  for (const hook of declared as readonly unknown[]) {
+    const candidate = (typeof hook === 'object' && hook !== null ? hook : {}) as Partial<
+      Record<keyof PluginHook, unknown>
+    >;
+    const { name, reaction, events } = candidate;
+    const named = typeof name === 'string' ? name.slice(0, HOOK_PROBLEM_NAME_LIMIT) : '';
+    const refuse = (path: HookInvalidPath): void => {
+      problems.push({ code: 'hook-invalid', hook: named, path });
+    };
+    if (typeof name !== 'string' || name === '' || names.has(name)) {
+      refuse('name');
+      continue;
+    }
+    names.add(name);
+    if (typeof reaction !== 'string' || !reactions.has(reaction)) {
+      refuse('reaction');
+      continue;
+    }
+    if (
+      !Array.isArray(events) ||
+      events.length === 0 ||
+      !events.every((kind) => typeof kind === 'string' && isPublishedEventKind(kind, published))
+    ) {
+      refuse('events');
+      continue;
+    }
+    const { configuration, scope } = candidate;
+    hooks.push({
+      name,
+      events: [...(events as string[])],
+      reaction,
+      ...(configuration === undefined ? {} : { configuration }),
+      ...(scope === undefined ? {} : { scope: scope as NonNullable<PluginHook['scope']> }),
+    });
+  }
+  return { hooks, problems };
+}
+
 function catalogWith(
   host: VersionedCatalog | undefined,
   contributed: Contributed['activities'],
@@ -1436,6 +1503,13 @@ export async function composePlugins<O extends ComposableOptions>(
   // Each kind a running plugin declares, to its plugin, so a later plugin's formatter is refused it.
   const declaredBy = new Map<string, string>();
   const storage = options.storage ?? new MemoryStorage();
+  // The hooks are checked once every plugin has composed, against every kind `declaredBy` then
+  // holds, so the load order never decides whether a hook may list another plugin's kind.
+  const hooksToCheck: Array<{
+    readonly index: number;
+    readonly entry: BureauPluginEntry;
+    readonly result: PluginSetupResult;
+  }> = [];
   for (const entry of pluginLoadOrder(options.plugins ?? [])) {
     const party: PluginClashParty = { source: entry.source, location: entry.location };
     const record = (
@@ -1509,6 +1583,7 @@ export async function composePlugins<O extends ComposableOptions>(
       plan.tools,
       outcome.gate,
     );
+    hooksToCheck.push({ index: records.length, entry, result: outcome.result });
     record('running', providerEmptyProblems(outcome.result, providers), {
       contributions: plan.listings.filter(({ kind }) => registersKind(kind, options)),
       setup: {
@@ -1519,6 +1594,17 @@ export async function composePlugins<O extends ComposableOptions>(
       },
       ...(outcome.gate === undefined ? {} : { gate: outcome.gate }),
     });
+  }
+  const declaredKinds = [...declaredBy.keys()];
+  for (const { index, entry, result } of hooksToCheck) {
+    const pluginHooks = declaredHooksOf(entry.descriptor, result, declaredKinds);
+    const running = records[index];
+    if (running === undefined) continue;
+    records[index] = {
+      ...running,
+      problems: [...running.problems, ...pluginHooks.problems],
+      ...(pluginHooks.hooks.length === 0 ? {} : { hooks: pluginHooks.hooks }),
+    };
   }
   // A plugin that loaded before the owner of a kind its formatter lists had no owner to name yet, so
   // it was skipped as `formatter-unknown-kind`; now every owner is known, name it (COR-2225).

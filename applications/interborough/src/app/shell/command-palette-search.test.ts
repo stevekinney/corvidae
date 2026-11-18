@@ -243,7 +243,12 @@ describe('searchConsole for chats and agents', () => {
               contexts: [ECHO_CHAT, chat({ id: 'other', title: 'Refund order' })],
               nextOffset: null,
             }
-          : { agents: [ECHO_AGENT, agent({ name: 'tool-runner' })] };
+          : {
+              agents: [ECHO_AGENT, agent({ name: 'tool-runner' })],
+              // The other reads of the search are answered with a well-formed page.
+              tasks: [],
+              nextPageToken: null,
+            };
       return Response.json({ jsonrpc: '2.0', id: call.id, result });
     });
     try {
@@ -569,7 +574,12 @@ describe('searchConsole by kind and scope', () => {
       const result =
         call.method === 'bureau.contexts.list'
           ? { contexts: [ECHO_CHAT], nextOffset: null }
-          : { agents: [ECHO_AGENT, agent({ name: 'tool-runner' })] };
+          : {
+              agents: [ECHO_AGENT, agent({ name: 'tool-runner' })],
+              // The other reads of the search are answered with a well-formed page.
+              tasks: [],
+              nextPageToken: null,
+            };
       return Response.json({ jsonrpc: '2.0', id: call.id, result });
     });
 

@@ -42,15 +42,13 @@ function finiteNumber(value: unknown): number | null {
   return typeof value === 'number' && Number.isFinite(value) ? value : null;
 }
 
-/** Whether a `ping` frame's data is the `replayComplete` marker that ends a replay. */
-export function isReplayCompletePing(data: string): boolean {
-  const parsed = parseJson(data);
-  return isRecord(parsed) && parsed['replayComplete'] === true;
-}
-
 /** Parses one frame's `data:` into an envelope, or `null` when it is not one. */
 export function parseBureauEventFrame(data: string): BureauEventFrame | null {
-  const parsed = parseJson(data);
+  return readBureauEventFrame(parseJson(data));
+}
+
+/** Reads one event's data, already parsed from JSON, as an envelope, or `null` when it is not one. */
+export function readBureauEventFrame(parsed: unknown): BureauEventFrame | null {
   if (!isRecord(parsed)) return null;
   const kind = parsed['kind'];
   const cursor = parsed['cursor'];

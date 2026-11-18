@@ -116,6 +116,43 @@ describe('Button icon size', () => {
   });
 });
 
+describe('Button link variant', () => {
+  test('renders data-cinder-variant="link" as a button', () => {
+    const { container } = render(Button, { props: { label: 'Add the key', variant: 'link' } });
+    const button = container.querySelector('button');
+    expect(button?.getAttribute('data-cinder-variant')).toBe('link');
+    expect(button?.getAttribute('type')).toBe('button');
+  });
+
+  test('is an underlined accent word in the sentence’s type, with no fill, border or padding', () => {
+    const source = readButtonSource();
+    const block = readCssRuleBlock(source, ".cinder-button[data-cinder-variant='link']");
+    expectDeclaration(block, 'background', 'transparent');
+    expectDeclaration(block, 'border-color', 'transparent');
+    expectDeclaration(block, 'color', 'var(--cinder-accent-text)');
+    expectDeclaration(block, 'text-decoration', 'underline');
+    expectDeclaration(block, 'padding', '0');
+    expectDeclaration(block, 'min-height', '0');
+    expectDeclaration(block, 'font-size', 'inherit');
+    expectDeclaration(block, 'line-height', 'inherit');
+    // The underline stays on hover (every other button drops it), and a coarse pointer's raised
+    // height never reaches the word: its 44px is the hit area's pseudo-element.
+    expectDeclaration(
+      readCssRuleBlock(source, ".cinder-button[data-cinder-variant='link']:hover"),
+      'text-decoration',
+      'underline',
+    );
+    expectDeclaration(
+      readCssRuleBlock(
+        source,
+        ".cinder-button[data-cinder-hit-target='44'][data-cinder-variant='link']",
+      ),
+      'min-height',
+      '0',
+    );
+  });
+});
+
 describe('Button icon-only ghost CSS contract', () => {
   test('non-icon ghost variants remain transparent at rest', () => {
     const source = readButtonSource();
