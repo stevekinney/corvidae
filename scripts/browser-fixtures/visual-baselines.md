@@ -100,7 +100,7 @@ When this host cannot start Docker, a baseline that changed can come from a `mai
 - Look at the images before `--write`. An actual is whatever the renderer drew, including a regression; classify each one as described in the review report below.
 - Run the same command with `--write` to copy the changed (and new) actuals over the baselines, then commit them.
 
-The script refuses, and copies nothing, when the run's head SHA is not the current `HEAD`. An actual whose path does not have the shape `<component>/<theme>-<viewport>-<fixture>-actual.png` is listed as unmatched and never copied; resolve it by hand.
+The script refuses, and copies nothing, when the run's head SHA is not the current `HEAD`. An actual whose path does not have the shape `<component>/<theme>-<viewport>-<fixture>-actual.png`, where the viewport is `mobile`, `tablet`, `desktop` or `touch` (the touch-pointer profile, `<slug>/<theme>-touch-assertion.png`), is listed as unmatched and never copied; resolve it by hand.
 
 A fixture with no baseline yet does not get an actual from this route. Block mode (`CINDER_VISUAL_DIFF=block`, which the job sets) throws the missing-baseline error in `captureBlockMode` before it calls `toHaveScreenshot`, so Playwright never writes an `-actual.png` for it. The first baseline for a new fixture needs the local Docker pass (`bun run test:browser:update:docker`). The script would map a `new` actual if one appeared, but the job does not upload one today.
 

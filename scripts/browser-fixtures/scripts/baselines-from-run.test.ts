@@ -53,6 +53,22 @@ describe('baselines from a run', () => {
     expect(describePlan(plan, false)).toContain('Dry run');
   });
 
+  // A run's touch-profile actuals came back unmatched, so its placeholders could not be replaced
+  // from the run (COR-2440).
+  it('maps an actual of the touch-pointer profile to its touch baseline', () => {
+    const exists = () => true;
+    for (const theme of ['light', 'dark']) {
+      expect(mapActual(`r/test/chat/${theme}-touch-assertion-actual.png`, exists)).toEqual({
+        kind: 'changed',
+        actual: `r/test/chat/${theme}-touch-assertion-actual.png`,
+        baseline: `${LINUX_BASELINE_DIRECTORY}/chat/${theme}-touch-assertion.png`,
+      });
+    }
+    expect(mapActual('r/test/chat/light-pocket-assertion-actual.png', exists).kind).toBe(
+      'unmatched',
+    );
+  });
+
   it('does not guess a baseline for a name outside the screenshot pattern', () => {
     const none = () => false;
     expect(mapActual('a/button/weird-actual.png', none).kind).toBe('unmatched');

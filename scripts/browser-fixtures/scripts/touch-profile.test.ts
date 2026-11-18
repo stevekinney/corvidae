@@ -3,12 +3,17 @@
  * `any-pointer: coarse` rule (COR-2440), and the spec draws it.
  */
 import { describe, expect, it } from 'bun:test';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { TOUCH_VIEWPORT, VIEWPORTS } from '@lostgradient/testing';
 
-import { coarsePointerSlugs, touchBaselineNames, touchBaselinePaths } from './touch-profile.ts';
+import {
+  BASELINE_ROOT,
+  coarsePointerSlugs,
+  touchBaselineNames,
+  touchBaselinePaths,
+} from './touch-profile.ts';
 
 describe('the touch-pointer profile', () => {
   it('is the phone width with a touch screen, apart from the three standard viewports', () => {
@@ -25,6 +30,23 @@ describe('the touch-pointer profile', () => {
   it('has a baseline for every one of them, in both themes', () => {
     const missing = touchBaselinePaths().filter((path) => !existsSync(path));
     expect(missing).toEqual([]);
+  });
+
+  // The baselines and the profile agree both ways: no touch baseline is left for a component the
+  // profile does not draw. A component whose coarse rule only widens an invisible hit area draws
+  // the same pixels as at the phone width, so its touch baseline equals its mobile one (CI run
+  // 44332908347 drew all 18 and compared nine of them clean against exactly that).
+  it('keeps no touch baseline for a component the profile does not draw', () => {
+    const drawn = new Set(touchBaselinePaths());
+    const stray = readdirSync(BASELINE_ROOT, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory())
+      .flatMap((entry) =>
+        readdirSync(join(BASELINE_ROOT, entry.name))
+          .filter((name) => /-touch-/.test(name))
+          .map((name) => join(BASELINE_ROOT, entry.name, name)),
+      )
+      .filter((path) => !drawn.has(path));
+    expect(stray).toEqual([]);
   });
 
   it('is drawn by the root spec with a touch screen', () => {

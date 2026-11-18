@@ -25,8 +25,12 @@ import { LINUX_BASELINE_DIRECTORY, REPOSITORY_ROOT } from './baseline-provenance
 
 export const ACTUAL_SUFFIX = '-actual.png';
 
-/** `<theme>-<viewport>-<fixture>`: the name the suite gives every screenshot. */
-const SCREENSHOT_NAME = /^(?:light|dark)-(?:desktop|tablet|mobile)-.+$/;
+/**
+ * `<theme>-<viewport>-<fixture>`: the name the suite gives every screenshot. The viewport is one
+ * of the three standard widths, or `touch`, the touch-pointer profile (`touch-profile.ts`), whose
+ * baselines are `<slug>/<theme>-touch-assertion.png` (COR-2440).
+ */
+const SCREENSHOT_NAME = /^(?:light|dark)-(?:desktop|tablet|mobile|touch)-.+$/;
 const COMPONENT_SLUG = /^[a-z0-9][a-z0-9-]*$/;
 
 export type PlannedCopy =
