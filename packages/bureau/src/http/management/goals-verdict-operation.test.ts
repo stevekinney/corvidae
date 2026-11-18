@@ -209,10 +209,8 @@ describe('the owner reads a verdict', () => {
       attempts: [{ attemptIndex: 0, status: 'passed', reason: REASON, feedback: null }],
     });
     // The verdict, which is content.
-    expect((await verdict(opened, 'alice-key', goalRunId)).result).toMatchObject({
-      outcome: 'pass',
-      reason: REASON,
-    });
+    const read = await verdict(opened, 'alice-key', goalRunId);
+    expect(read.result).toMatchObject({ outcome: 'pass', reason: REASON });
     // Owner-only on the goal's view, exactly like a missed check's feedback: no scope widens it.
     for (const key of ['operator-key', 'goals-reader-key', 'goals-content-key']) {
       const other = await rpc(opened.handler, 'bureau.goals.get', { goalRunId }, key);
@@ -235,10 +233,8 @@ describe('the owner reads a verdict', () => {
     expect(own.result).toMatchObject({
       attempts: [{ attemptIndex: 0, status: 'passed', reason: null }],
     });
-    expect((await verdict(opened, 'alice-key', goalRunId)).result).toMatchObject({
-      outcome: 'pass',
-      reason: null,
-    });
+    const read = await verdict(opened, 'alice-key', goalRunId);
+    expect(read.result).toMatchObject({ outcome: 'pass', reason: null });
   });
 });
 

@@ -716,7 +716,8 @@ describe('createGoalStore applyTransition', () => {
       evidence: passed.outcome.evidence,
       reason: 'Reply said hello',
     });
-    expect((await store.get(GOAL))?.attempts[0]?.validation?.outcome).toEqual(withReason.outcome);
+    const read = await store.get(GOAL);
+    expect(read?.attempts[0]?.validation?.outcome).toEqual(withReason.outcome);
     // A record stored before a pass could say why carries no `reason`, and still decodes.
     const stored = JSON.parse(JSON.stringify(done)) as GoalState;
     const before = {
