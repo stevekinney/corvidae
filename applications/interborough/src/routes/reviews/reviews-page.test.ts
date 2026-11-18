@@ -839,7 +839,8 @@ describe('an engine review', () => {
     expect(source.textContent?.replace(/\s+/g, ' ')).toContain(
       'Asked by the Release notes workflow, step Collect merged changes,',
     );
-    expect((await findByTestId('review-intro')).textContent).toBe(
+    const intro = await findByTestId('review-intro');
+    expect(intro.textContent).toBe(
       'Here is the draft. Approve it to publish, or send it back with a note.',
     );
   });

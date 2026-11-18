@@ -1388,10 +1388,10 @@ describe('workspace privacy for reviews', () => {
       if (typeof register !== 'function') throw new Error('Expected engine workflow registration');
       Reflect.apply(register, engine, [reviewWorkflow]);
       await engine.start('release-notes', null);
-      await waitForCondition(
-        async () => (await engine.listReviews()).length > 0,
-        'engine review is parked',
-      );
+      await waitForCondition(async () => {
+        const reviews = await engine.listReviews();
+        return reviews.length > 0;
+      }, 'engine review is parked');
       const control = createOperationHandler({
         operations: bureauReviewsOperations,
         host,

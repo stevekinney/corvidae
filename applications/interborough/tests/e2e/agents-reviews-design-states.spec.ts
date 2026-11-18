@@ -8,8 +8,9 @@
  * workflow's review with its step and its author's message, and a denied approval under Done.
  *
  * Everything runs on the real host. Where a state depends on what another client did first (an
- * approval decided elsewhere, a Done list longer than a page, a workflow review), the one Bureau
- * answer that says so is stood in for in the page, and everything else is real. Each case puts back
+ * approval decided elsewhere, a memory's chat deleted, a Done list longer than a page, a workflow
+ * review), the one Bureau answer that says so is stood in for in the page, and everything else is
+ * real. Each case puts back
  * what it changed: the agent it disabled is enabled, the memory it forgot is kept, and the agents
  * and chats it made are removed.
  */
@@ -83,6 +84,41 @@ async function changedAnswer(route: Route, change: (result: Record<string, unkno
   await route.fulfill({ response, json: body });
 }
 
+const ORDERS = ['4471', '4472', '4480', '4493', '4501'] as const;
+
+/** Twenty-five approvals decided over the last day, latest first, as `bureau.reviews.list` gives them. */
+function decidedApprovals(now: number): Record<string, unknown>[] {
+  return Array.from({ length: 25 }, (_, index) => {
+    const decidedAt = now - (index + 1) * 47 * 60_000;
+    const denied = index % 4 === 1;
+    const order = ORDERS[index % ORDERS.length] ?? '4471';
+    return {
+      source: 'bureau',
+      kind: 'tool-approval',
+      id: `design-decided-${String(index)}`,
+      runId: `design-run-${String(index)}`,
+      sessionId: `design-session-${String(index)}`,
+      agentName: 'demo:tool-runner',
+      requestedAt: decidedAt - 90_000,
+      ageMilliseconds: now - decidedAt + 90_000,
+      status: denied ? 'denied' : 'approved',
+      round: 0,
+      approval: {
+        callId: `design-call-${String(index)}`,
+        toolName: 'demo:issue-refund',
+        arguments: { orderId: `order-${order}`, cents: 4200 + index * 100 },
+        action: { type: 'approval', risk: 'medium', operation: { kind: 'other' } },
+      },
+      resolution: {
+        decision: denied ? 'deny' : 'approve',
+        decidedBy: 'anonymous:local',
+        decidedAt,
+        decisionSurface: 'reviews',
+      },
+    };
+  });
+}
+
 for (const width of WIDTHS) {
   test.describe(`/agents design states at ${width} pixels`, () => {
     test(`/agents/:agent/settings asks before Disable, offers Enable agent once disabled, and /chats/:chat of the agent is read-only, at ${width} pixels`, async ({
@@ -137,8 +173,26 @@ for (const width of WIDTHS) {
       await runToEnd(request, TEXT_ECHO_AGENT_NAME, forgotThread, forgotten);
       const orphan = uniqueLabel('Prefers refunds to store credit');
       const deletedThread = newThreadId('design-deleted-source');
+      threads.push(deletedThread);
       await runToEnd(request, TEXT_ECHO_AGENT_NAME, deletedThread, orphan);
-      await deleteChats([deletedThread]);
+      // The chat it came from was deleted: the Bureau answers it as one it does not hold.
+      await standIn(page, 'bureau.contexts.get', async (route, call) => {
+        if (call.params?.['contextId'] !== deletedThread) {
+          await route.fallback();
+          return;
+        }
+        await route.fulfill({
+          json: {
+            jsonrpc: '2.0',
+            id: call.id,
+            error: {
+              code: -32000,
+              message: `No context with id "${deletedThread}"`,
+              data: { httpStatus: 404, weftCode: 'NotFound', resource: 'session' },
+            },
+          },
+        });
+      });
 
       await page.goto(`/agents/${TEXT_ECHO_AGENT_NAME}/memory`);
       const detail = page.getByRole('region', { name: MEMORY_COPY.detail.heading });
@@ -164,9 +218,13 @@ for (const width of WIDTHS) {
         state: 'forgot, with Undo',
         source: SOURCE,
       });
-      // Undo keeps it, so the agent's memories are as they were.
-      await toast.getByRole('button', { name: 'Undo' }).click();
-      await expect(rowOf(forgotten)).toHaveCount(1);
+      // Undo keeps it, while the toast is still up; the captures can outlast it, and then the
+      // memory, which only this case stored, is simply forgotten.
+      const undo = toast.getByRole('button', { name: 'Undo' });
+      if (await undo.isVisible()) {
+        await undo.click();
+        await expect(rowOf(forgotten)).toHaveCount(1);
+      }
     });
 
     test(`/agents/:agent/settings asks before Restore, at ${width} pixels`, async ({
@@ -282,8 +340,14 @@ for (const width of WIDTHS) {
       threads.push(threadId);
       await runToEnd(request, 'demo:tool-runner', threadId, 'Refund order-1001');
       const review = await waitingReviewOf(request, threadId);
-      // Another client decided it first: the Bureau answers the page's decision as already resolved.
+      // Another client denies it first, for real, so the Bureau no longer lists it, and the page's
+      // decision is answered as one already resolved, as the Bureau answers it.
       await standIn(page, 'bureau.reviews.resolve', async (route, call) => {
+        await bureauCall(request, 'bureau.reviews.resolve', {
+          id: review.id,
+          decision: 'deny',
+          reason: 'Not this order',
+        });
         await route.fulfill({
           json: {
             jsonrpc: '2.0',
@@ -312,11 +376,6 @@ for (const width of WIDTHS) {
       });
       await page.unrouteAll({ behavior: 'wait' });
 
-      await bureauCall(request, 'bureau.reviews.resolve', {
-        id: review.id,
-        decision: 'deny',
-        reason: 'Not this order',
-      });
       await page.goto('/reviews?tab=done');
       await expect(page.locator(`[data-review-row="bureau:${review.id}"]`)).toContainText('Denied');
       await captureForDesignReview(page, {
@@ -355,6 +414,9 @@ for (const width of WIDTHS) {
         const resolved = call.params?.['status'] === 'resolved';
         await changedAnswer(route, (result) => {
           if (resolved) {
+            // A first page of 25 of the 40 decided, the real ones first.
+            const real = Array.isArray(result['reviews']) ? result['reviews'] : [];
+            result['reviews'] = [...real, ...decidedApprovals(now)].slice(0, 25);
             result['total'] = 40;
             result['nextPageToken'] = 'design-next-page';
             return;

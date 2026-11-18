@@ -887,10 +887,9 @@ export const reviewsListOperation = defineOperation<
         if (workflowNames.has(entry.workflowId)) continue;
         let name: string | undefined;
         try {
-          name =
-            typeof engine.get === 'function'
-              ? (await engine.get(entry.workflowId))?.type
-              : undefined;
+          const workflow =
+            typeof engine.get === 'function' ? await engine.get(entry.workflowId) : undefined;
+          name = workflow?.type;
         } catch {
           name = undefined;
         }

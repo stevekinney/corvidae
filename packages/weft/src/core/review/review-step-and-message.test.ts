@@ -128,9 +128,13 @@ describe('a review request’s step and message, from the stored record to the w
     const started = engine;
     const handle = await engine.start('publish-draft', null);
     const result = handle.result();
-    await waitForCondition(async () => (await started.listReviews()).length === 1, {
-      label: 'the review request to be stored',
-    });
+    await waitForCondition(
+      async () => {
+        const listed = await started.listReviews();
+        return listed.length === 1;
+      },
+      { label: 'the review request to be stored' },
+    );
 
     const [pending] = await engine.listReviews();
     expect(pending).toMatchObject({ status: 'pending', step: STEP, message: MESSAGE });

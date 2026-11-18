@@ -82,13 +82,16 @@ type Seen = {
   readonly resumed: string[];
 };
 
+const AGENT_SAID = 'Both environments are free; I will deploy wherever you say.';
+
 /** An agent that parks on `answer` for its first `parks` steps, then thanks the operator. */
 function askingAgent(seen: Seen, parks = 1) {
   const generate: GenerateFunction = async (context: GenerateContext) => {
     if (context.step > 0) seen.resumed.push(JSON.stringify(context.conversation.current));
     if (context.step < parks) {
       return {
-        content: '',
+        // What the agent says beside its question, which the park keeps (COR-2426).
+        content: AGENT_SAID,
         toolCalls: [
           {
             id: `call-${String(context.step)}`,
@@ -201,6 +204,10 @@ describe('the park of a bureau.run() run another process holds (COR-1579)', () =
 
     const listedReviews = (listed.result?.['reviews'] ?? []) as Array<{ id: string }>;
     expect(listedReviews.map(({ id }) => id)).toEqual([review.id]);
+    // B holds no live wait: it read the park from A's checkpoint, which kept what the agent said
+    // in the same write as the park (COR-2426).
+    expect(listedReviews[0]).toMatchObject({ said: AGENT_SAID });
+    expect(fetched.result).toMatchObject({ said: AGENT_SAID });
     expect(fetched.result).toMatchObject({ id: review.id, status: 'pending' });
     expect(resolved.result).toMatchObject({
       id: review.id,

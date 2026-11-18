@@ -254,7 +254,7 @@ describe('createRequestHumanInputTool', () => {
       const emitter = makeEmitter();
       const events: HumanWaitParkedEvent[] = [];
       emitter.addEventListener(HumanWaitParkedEvent.type, (event) => {
-        events.push(event as HumanWaitParkedEvent);
+        events.push(event);
       });
       const raw = createRequestHumanInputTool({ context, emitter });
       const tool = createTool({

@@ -4,8 +4,8 @@
  * `Instructions: added “Refunds over $25 need approval.”; Tools: added issue-refund`. It is read
  * from the version's own content and the version before it, so it says what changed, not only
  * which keys did: the lines the instructions gained or lost, the entries a list gained or lost, and
- * a value's old and new form. It is deterministic, never written by a model, and names tools and
- * models by their identifiers, which a client may word as it reads them.
+ * a value's old and new form. It is deterministic and never written by a model; it names a tool or
+ * a skill by its name in words ("Issue refund"), and a model by its identifier.
  *
  * @module agent-version-summary
  */

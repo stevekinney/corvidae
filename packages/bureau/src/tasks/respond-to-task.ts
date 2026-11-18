@@ -262,16 +262,16 @@ export function createTaskResponder(dependencies: TaskResponderDependencies): Ta
     const offered = isOwner
       ? task.openWaits
       : task.openWaits.filter((wait) => wait.kind === 'human-wait');
-    // A command that names the wait it answers was sent while that wait was open: when it is no
-    // longer, it was answered or stopped waiting first, and is refused as `bureau.reviews.resolve`
-    // refuses a review already resolved (COR-2426).
-    // A non-owner is told nothing of approvals, so only a question it names counts.
-    const named = input.signalName !== undefined || (isOwner && input.callId !== undefined);
+    // An answer that names the question it answers (`signalName`) was sent while that question was
+    // open: when no such question is open now, it was answered or stopped waiting first, and the
+    // refusal carries the token `bureau.reviews.resolve` gives a review already resolved (COR-2426).
+    // An approval addressed by `callId` keeps the plain conflict.
+    const namedQuestion = input.signalName !== undefined;
     if (offered.length === 0) {
       // A non-owner is never told an approval is open: for it the task has nothing to answer.
       if (!isOwner && task.openWaits.length > 0) throw notFound(task.id);
-      throw named
-        ? noLongerWaiting('The task is no longer waiting for this answer')
+      throw namedQuestion
+        ? noLongerWaiting('The task is not awaiting input')
         : conflict('The task is not awaiting input');
     }
     let matches: readonly OpenWait[] = offered;
@@ -290,10 +290,11 @@ export function createTaskResponder(dependencies: TaskResponderDependencies): Ta
       if (input.signalName !== undefined) {
         throw noLongerWaiting(`The task has no open wait for signal "${input.signalName}"`);
       }
-      if (input.callId !== undefined) {
-        throw noLongerWaiting(`The task has no open approval for call "${input.callId}"`);
-      }
-      throw conflict('The task is not awaiting input');
+      throw conflict(
+        input.callId !== undefined
+          ? `The task has no open approval for call "${input.callId}"`
+          : 'The task is not awaiting input',
+      );
     }
     if (rest.length > 0) {
       throw invalid(
