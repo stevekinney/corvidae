@@ -51,6 +51,8 @@ export const REVIEWS_COPY = {
     noteDescription:
       'Saved with your decision. If you send it back, the workflow reads it as what to change.',
     footer: 'The workflow continues as soon as you answer.',
+    /** The name of the docked bar that holds Send back and Approve. */
+    decisionLabel: 'Decision',
     draftLabel: 'Draft',
     copyDraft: 'Copy the draft',
     draftCopied: 'Draft copied',

@@ -161,8 +161,6 @@ export function installBureauStub(
       /** Whether the provider can be called; its `hasKey` when left out, `true` for a keyless provider. */
       readonly connected?: boolean;
     }[];
-    /** The models `/host/providers` reports, as the host lists them; none when left out. */
-    readonly hostModels?: readonly Record<string, unknown>[];
     /** `remote` makes `/host/paths` answer as a host that keeps its state in Postgres and a bucket. */
     readonly hostMode?: 'local' | 'remote';
     /** The size `/host/storage` reports (`null` for a backend that cannot say). Left out, the route answers `Not found`. */
@@ -223,7 +221,7 @@ export function installBureauStub(
           connected: provider.connected ?? provider.hasKey,
         })),
         catalog: [],
-        models: options.hostModels ?? [],
+        models: [],
       });
     }
     const subscription = url.pathname.startsWith(SUBSCRIPTION_PREFIX)

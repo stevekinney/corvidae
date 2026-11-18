@@ -334,10 +334,12 @@ for (const width of WIDTHS) {
         await route.fallback();
       });
       await page.goto('/reviews');
-      // The page says it is reading what waits before it draws the list.
+      // The page draws its own loading (row 26a): its heading and segments at once, and three
+      // placeholder rows in the list.
       await expect(
-        page.getByRole('main').getByRole('heading', { name: REVIEWS_COPY.loading, level: 1 }),
+        page.getByRole('main').getByRole('heading', { name: REVIEWS_COPY.heading, level: 1 }),
       ).toBeVisible();
+      await expect(page.locator('.cinder-list-detail__loading')).toBeVisible();
       await captureForDesignReview(page, {
         route: '/reviews',
         state: 'loading',
@@ -382,6 +384,14 @@ for (const width of WIDTHS) {
       await captureForDesignReview(page, {
         route: '/reviews',
         state: 'resolved elsewhere, row leaving',
+        source: SOURCE,
+      });
+      // After a moment the row leaves the list, and that is announced as a decision is (row 26h).
+      await expect(page.locator(`[data-review-row="bureau:${review.id}"]`)).toHaveCount(0);
+      await expect(page.getByTestId('reviews-announcement')).toContainText('Refund order');
+      await captureForDesignReview(page, {
+        route: '/reviews',
+        state: 'resolved elsewhere, row left',
         source: SOURCE,
       });
       await page.unrouteAll({ behavior: 'wait' });

@@ -192,8 +192,10 @@ export const VIEWS: Readonly<Record<ViewName, ViewDefinition>> = {
   },
   // What is waiting on the caller. It holds no console scope: the console drops the Bureau's, and
   // the Bureau answers the caller its own reviews. The page shows its own empty state, because
-  // the engine's reviews are listed beside the Bureau's and the probe asks only the Bureau.
-  reviews: { scopes: [], canBeEmpty: false },
+  // the engine's reviews are listed beside the Bureau's and the probe asks only the Bureau. It draws
+  // its own loading too: the header, the segments with a dash for each count, the J and K hint and
+  // three placeholder rows, at once (row 26a).
+  reviews: { scopes: [], canBeEmpty: false, pageOwnsLoadingOn: ['/reviews'] },
   // The Health tab keeps its heading, its tab bar and its Live indicator in every state, so the page
   // draws its own loading, empty and failed states under them (`routes/workers/workers-states.svelte`).
   workers: { scopes: ['system:read'], canBeEmpty: false, ownsStates: true },

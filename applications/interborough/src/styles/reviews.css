@@ -146,6 +146,12 @@
   overflow-wrap: anywhere;
 }
 
+/* The check keeps its size on a phone and sits centered on the first line (row 26g). */
+.ib-review-gone__message > svg {
+  flex: none;
+  margin-block-start: calc((1lh - 18px) / 2);
+}
+
 /* One line under the question: who asked, where, and since when, each part a link. */
 .ib-review-source {
   margin: 0;
@@ -217,9 +223,9 @@
 }
 
 /* A row's second line: the agent's name takes the ellipsis, and the risk always shows. */
+/* No gap: the risk span carries its own ", " so nothing sits before the comma (rows 07c, 07f). */
 .ib-review-row__kind {
   display: flex;
-  gap: 0.25em;
   min-inline-size: 0;
 }
 

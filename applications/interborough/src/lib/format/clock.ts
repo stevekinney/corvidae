@@ -153,7 +153,9 @@ export function waitedFor(at: number, now: number, zone: string = viewerTimeZone
  */
 export function waitingFor(at: number, now: number): string {
   const elapsed = Math.max(0, now - at);
-  if (elapsed < 3_600_000) return `${String(Math.max(1, Math.round(elapsed / 60_000)))} min`;
+  // Whole minutes, never rounded up, so 59.5 minutes is "59 min" as the list's "59 min ago" says,
+  // and the hour is "1 h", never "60 min" (row 25f).
+  if (elapsed < 3_600_000) return `${String(Math.max(1, Math.floor(elapsed / 60_000)))} min`;
   if (elapsed < 86_400_000) return `${String(Math.floor(elapsed / 3_600_000))} h`;
   const days = Math.floor(elapsed / 86_400_000);
   return days === 1 ? '1 day' : `${String(days)} days`;

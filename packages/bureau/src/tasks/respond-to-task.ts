@@ -175,8 +175,13 @@ export type TaskRespondRefusal = {
 export type TaskResponderDependencies = {
   /** The task registry a fresh command reads the task, its owner, and its open waits from. */
   readonly registry: Pick<TaskRegistry, 'get' | 'ownerOf'>;
-  /** The reviews a command reads and resolves. */
-  readonly reviews: Pick<BureauReviews, 'get' | 'resolve'>;
+  /**
+   * The reviews a command reads and resolves. `listResolved`, when given, tells a question a run
+   * asked and had answered from one it never asked (COR-2426); without it, an answer that names a
+   * question no longer open is taken as one that was answered.
+   */
+  readonly reviews: Pick<BureauReviews, 'get' | 'resolve'> &
+    Partial<Pick<BureauReviews, 'listResolved'>>;
   /** The ledger receipts are recorded in. */
   readonly ledger: TasksRespondLedger;
   /** The error a refusal is thrown as. */
@@ -244,9 +249,41 @@ export function createTaskResponder(dependencies: TaskResponderDependencies): Ta
   const notFound = (taskId: string): Error =>
     refuse({ code: 'NOT_FOUND', message: `Task "${taskId}" not found` });
   const conflict = (message: string): Error => refuse({ code: 'CONFLICT', message });
-  // COR-2426: the wait was resolved, or stopped waiting, before this command reached it.
-  const noLongerWaiting = (message: string): Error =>
-    refuse({ code: 'CONFLICT', message, alreadyResolved: true });
+  // COR-2426: the wait was resolved, or stopped waiting, before this command reached it. Each such
+  // refusal keeps its signal and message, so `confirmedRefusal` can make it a plain conflict when
+  // the run never asked that question.
+  const unconfirmed = new WeakMap<
+    Error,
+    { readonly signalName: string; readonly message: string }
+  >();
+  const noLongerWaiting = (signalName: string, message: string): Error => {
+    const error = refuse({ code: 'CONFLICT', message, alreadyResolved: true });
+    unconfirmed.set(error, { signalName, message });
+    return error;
+  };
+  /**
+   * `error` as the command is refused with: a "no longer waiting" refusal stays one only when the
+   * run `taskId` asked the question and it was decided; for a question it never asked it is the
+   * plain conflict. A Bureau that keeps no resolved reviews cannot tell, and keeps the refusal.
+   */
+  async function confirmedRefusal(error: unknown, taskId: string): Promise<unknown> {
+    const pending = error instanceof Error ? unconfirmed.get(error) : undefined;
+    if (pending === undefined || reviews.listResolved === undefined) return error;
+    let resolved: Awaited<ReturnType<NonNullable<typeof reviews.listResolved>>>;
+    try {
+      resolved = await reviews.listResolved();
+    } catch {
+      // A list that cannot be read cannot tell the two apart, so the refusal stands as it was.
+      return error;
+    }
+    const asked = resolved.some(
+      ({ review }) =>
+        review.kind === 'human-wait' &&
+        review.runId === taskId &&
+        review.signalName === pending.signalName,
+    );
+    return asked ? error : conflict(pending.message);
+  }
   const invalid = (field: string, message: string): Error =>
     refuse({ code: 'BAD_REQUEST', message, field });
   const answerInvalid = (field: string, issues: readonly ReviewAnswerIssue[]): Error =>
@@ -265,13 +302,13 @@ export function createTaskResponder(dependencies: TaskResponderDependencies): Ta
     // An answer that names the question it answers (`signalName`) was sent while that question was
     // open: when no such question is open now, it was answered or stopped waiting first, and the
     // refusal carries the token `bureau.reviews.resolve` gives a review already resolved (COR-2426).
-    // An approval addressed by `callId` keeps the plain conflict.
-    const namedQuestion = input.signalName !== undefined;
+    // An approval addressed by `callId` keeps the plain conflict, and so does a question the run
+    // never asked (`confirmedRefusal`).
     if (offered.length === 0) {
       // A non-owner is never told an approval is open: for it the task has nothing to answer.
       if (!isOwner && task.openWaits.length > 0) throw notFound(task.id);
-      throw namedQuestion
-        ? noLongerWaiting('The task is not awaiting input')
+      throw input.signalName !== undefined
+        ? noLongerWaiting(input.signalName, 'The task is not awaiting input')
         : conflict('The task is not awaiting input');
     }
     let matches: readonly OpenWait[] = offered;
@@ -288,7 +325,10 @@ export function createTaskResponder(dependencies: TaskResponderDependencies): Ta
     if (only === undefined) {
       if (!isOwner && input.callId !== undefined) throw notFound(task.id);
       if (input.signalName !== undefined) {
-        throw noLongerWaiting(`The task has no open wait for signal "${input.signalName}"`);
+        throw noLongerWaiting(
+          input.signalName,
+          `The task has no open wait for signal "${input.signalName}"`,
+        );
       }
       throw conflict(
         input.callId !== undefined
@@ -495,7 +535,9 @@ export function createTaskResponder(dependencies: TaskResponderDependencies): Ta
       }
     }
     if (addressedReviewId === undefined) {
-      throw notAwaiting ?? conflict('The task is not awaiting input');
+      throw notAwaiting === undefined
+        ? conflict('The task is not awaiting input')
+        : await confirmedRefusal(notAwaiting, input.taskId);
     }
     // A review that cannot be read is not guessed at: its error is the command's, and a review that
     // is not found is refused before anything is claimed.
@@ -573,7 +615,11 @@ export function createTaskResponder(dependencies: TaskResponderDependencies): Ta
       if (!replay && submissionRefusal !== undefined) return release(submissionRefusal);
       // Nothing was addressed and nothing was applied: leave no claim of ours behind.
       if (reviewId === '') {
-        return release(notAwaiting ?? conflict('The task is not awaiting input'));
+        return release(
+          notAwaiting === undefined
+            ? conflict('The task is not awaiting input')
+            : await confirmedRefusal(notAwaiting, input.taskId),
+        );
       }
       let result: TaskRespondResult;
       try {

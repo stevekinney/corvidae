@@ -196,7 +196,26 @@ describe('bureau.tasks.respond answering a human wait', () => {
       );
 
       expect(wrong.error?.data?.httpStatus).toBe(409);
+      // A question the run never asked was never answered either: the plain conflict (COR-2426).
+      expect(String(wrong.error?.data?.['reason'])).not.toStartWith(REVIEW_ALREADY_RESOLVED);
       expect(right.result).toMatchObject({ receipt: 'applied', kind: 'human-wait' });
+      // Once answered, the same question is refused as already resolved, and one never asked
+      // still is not.
+      const again = await rpc(
+        opened.handler,
+        'bureau.tasks.respond',
+        { taskId: run.id, messageId: 'm3', answer: 'y', signalName: 'ask-name' },
+        'alice-key',
+      );
+      const never = await rpc(
+        opened.handler,
+        'bureau.tasks.respond',
+        { taskId: run.id, messageId: 'm4', answer: 'y', signalName: 'never-asked' },
+        'alice-key',
+      );
+      expect(String(again.error?.data?.['reason'])).toStartWith(`${REVIEW_ALREADY_RESOLVED}: `);
+      expect(never.error?.data?.httpStatus).toBe(409);
+      expect(String(never.error?.data?.['reason'])).not.toStartWith(REVIEW_ALREADY_RESOLVED);
     });
   });
 

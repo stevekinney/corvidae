@@ -97,6 +97,26 @@ const RESPONDED = {
 };
 
 describe('the reviews page', () => {
+  test('draws its heading, the J and K hint and placeholder rows while its list is read (row 26a)', async () => {
+    stub = installBureauWorld(emptyBureauWorld());
+    // The list is still being read: the Bureau has not answered.
+    stub.on('bureau.reviews.list', () => new Promise(() => {}));
+    router.navigate('/reviews', { replace: true });
+    const { container } = render(Harness, {
+      props: {
+        client: new HttpClient({ baseUrl: 'http://localhost/api' }),
+        scopes: AUTHORIZATION_SCOPES,
+      },
+    } as never);
+
+    await waitFor(() => expect(container.querySelector('h1')?.textContent).toBe('Reviews'));
+    expect(container.textContent).toContain(REVIEWS_COPY.keysHint);
+    await waitFor(() =>
+      expect(container.querySelector('.cinder-list-detail__rows[aria-busy="true"]')).not.toBeNull(),
+    );
+    expect(rows(container)).toHaveLength(0);
+  });
+
   test('lists the Bureau’s reviews and the engine’s in one list, the longest waiting first', async () => {
     const { container, getByRole } = open({
       reviews: [QUESTION, APPROVAL],
@@ -827,14 +847,27 @@ describe('an engine review', () => {
     const pending = weftPending({
       step: 'Collect merged changes',
       message: 'Here is the draft. Approve it to publish, or send it back with a note.',
+      artifact: {
+        title: 'Release notes for 2.4',
+        summary: 'Refunds now ask for approval before money moves. Order lookups are faster.',
+      },
     });
-    const { container, findByTestId } = open({
+    const { container, findByTestId, getByRole } = open({
       weftReviews: [pending],
       workflowNames: { [pending.workflowId]: 'release-notes' },
     });
     await waitFor(() => expect(rows(container).length).toBe(1));
     await openRow(container, 0);
 
+    // The heading is the draft's own title, not its review type (row 25o).
+    await waitFor(() =>
+      expect(getByRole('heading', { level: 2, name: 'Release notes for 2.4' })).not.toBeNull(),
+    );
+    // The draft is said once, as flat rows in one Draft block with one copy button (row 25p).
+    const fields = await findByTestId('review-draft-fields');
+    expect(fields.textContent).toContain('Refunds now ask for approval before money moves.');
+    expect(container.querySelectorAll('.cinder-payload-inspector')).toHaveLength(0);
+    expect(container.querySelectorAll('.ib-review-draft button[aria-label]').length).toBe(1);
     const source = await findByTestId('review-source');
     expect(source.textContent?.replace(/\s+/g, ' ')).toContain(
       'Asked by the Release notes workflow, step Collect merged changes,',
