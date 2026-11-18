@@ -719,9 +719,9 @@ describe('run', () => {
     expect(text.indexOf('## COR-8: Second thing')).toBeGreaterThan(text.indexOf('## COR-7:'));
     expect(text.match(/### Acceptance criteria/g)).toHaveLength(2);
     expect(text.match(/^## Charter rules$/gm)).toHaveLength(1);
-    // COR-7 is in the batch, so COR-8's blocker on it is cleared; COR-5 stays open.
+    // Batch ordering is not completion evidence, so COR-8 retains both native blockers.
     expect(text).toContain('- COR-5 [Ready] Blocker COR-5');
-    expect(text).not.toContain('- COR-7 [Ready]');
+    expect(text).toContain('- COR-7 [Ready] Blocker COR-7');
     for (const rule of charterRules) expect(text).toContain(rule);
   });
 
@@ -742,6 +742,38 @@ describe('run', () => {
     });
     const parsed = JSON.parse(result.output) as { path: string };
     expect(readFileSync(parsed.path, 'utf8')).toContain('- COR-5 [Ready] Earlier');
+  });
+
+  test('returns the validated assignment, verification plan, and blocked dispatch gate in JSON', async () => {
+    const result = await run(
+      ['COR-7', '--stdout', '--json', '--repository', 'corvidae', '--base', 'base-7'],
+      {
+        ...dependencies,
+        fetch: answer(true),
+      },
+    );
+    const parsed = JSON.parse(result.output) as {
+      assignment: {
+        criteria: { id: string; text: string }[];
+        allowedConsequentialActions: string[];
+        sourceReferences: unknown[];
+      };
+      verificationPlan: { obligations: unknown[]; risks: Record<string, string> };
+      gate: { status: string; dispatchable: boolean; blockers: { identifier: string }[] };
+    };
+    expect(parsed.assignment.criteria).toEqual([
+      { id: 'AC1', text: 'It works.' },
+      { id: 'AC2', text: 'It is tested.' },
+    ]);
+    expect(parsed.assignment.allowedConsequentialActions).not.toContain('deploy');
+    expect(parsed.assignment.sourceReferences).toHaveLength(1);
+    expect(parsed.verificationPlan.obligations.length).toBeGreaterThan(0);
+    expect(Object.keys(parsed.verificationPlan.risks)).toHaveLength(9);
+    expect(parsed.gate).toMatchObject({
+      status: 'blocked',
+      dispatchable: false,
+      blockers: [{ identifier: 'COR-5' }],
+    });
   });
 
   test('reports a missing issue as exit 1 and bad usage as a UsageError', async () => {
