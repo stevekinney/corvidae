@@ -413,19 +413,24 @@ function validateLocalPath(cwd: string, candidate: string): string {
   return realPath;
 }
 
-function localProvenance(cwd: string, requestedBase: string, inputs: string[]): LocalProvenance {
-  const revision = output(['git', 'rev-parse', 'HEAD'], cwd);
-  const checkedTree = output(['git', 'rev-parse', 'HEAD^{tree}'], cwd);
-  const integrationTree = output(
+function localProvenance(
+  cwd: string,
+  requestedBase: string,
+  inputs: string[],
+  command = output,
+): LocalProvenance {
+  const revision = command(['git', 'rev-parse', 'HEAD'], cwd);
+  const checkedTree = command(['git', 'rev-parse', 'HEAD^{tree}'], cwd);
+  const integrationTree = command(
     ['git', 'merge-tree', '--write-tree', requestedBase, revision],
     cwd,
   );
-  const runtime = output(['bun', '--version'], cwd);
+  const runtime = command(['bun', '--version'], cwd);
   const entries = Object.fromEntries(
     inputs.map((path) => [path, sha256(readFileSync(validateLocalPath(cwd, path)))]),
   );
   const inputIdentity = sha256(JSON.stringify(entries));
-  const dirty = output(
+  const dirty = command(
     ['git', 'status', '--porcelain', '--untracked-files=all', '--', ...inputs],
     cwd,
   );
@@ -445,7 +450,7 @@ export function reuseLocalEvidence(
   evidence: CollectedEvidence,
   request: VerificationRequest,
   cwd: string,
-  runtime = () => output(['bun', '--version'], cwd),
+  command = output,
 ): CollectedEvidence {
   if (!issuedCollections.has(evidence) || evidence.source !== 'coordinator')
     throw new EvidenceRequestError('local evidence was not returned by a collector');
@@ -463,8 +468,7 @@ export function reuseLocalEvidence(
       throw new EvidenceRequestError('local evidence has no unique obligation');
     const inputs = obligation.relevantInputs;
     for (const path of inputs) validateLocalPath(safeCwd, path);
-    const current = localProvenance(safeCwd, request.base, inputs);
-    current.runtime = runtime();
+    const current = localProvenance(safeCwd, request.base, inputs, command);
     const prior = previous[0] as EvidenceRecord;
     const reportsIntact = (prior.reports ?? []).every(({ path, digest }) => {
       try {

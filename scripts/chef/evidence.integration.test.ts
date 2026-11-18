@@ -193,12 +193,17 @@ const values = await (async () => {
     defaultExpected,
   ).ok;
   writeFileSync(report, '<testsuite><testcase name="input.test.ts" /></testsuite>');
-  const runtimeReuse = reuseLocalEvidence(
-    defaultReceipt,
-    defaultRequest,
-    fixture,
-    () => 'other-bun',
-  );
+  let runtimeCommandCalled = false;
+  const runtimeReuse = reuseLocalEvidence(defaultReceipt, defaultRequest, fixture, (argv) => {
+    if (argv[0] === 'bun') {
+      runtimeCommandCalled = true;
+      return 'other-bun';
+    }
+    if (argv[1] === 'rev-parse' && argv[2] === 'HEAD') return defaultRequest.revision;
+    if (argv[1] === 'rev-parse') return defaultReceipt.records[0]!.checkedTree!;
+    if (argv[1] === 'merge-tree') return defaultRequest.integrationTree;
+    return '';
+  });
   writeFileSync(report, '<testsuite><testcase name="input.test.ts" /></testsuite>');
   const initial = collectLocalEvidence(await request(), passing, fixture);
   const traversalRequest = await request();
@@ -312,6 +317,7 @@ const values = await (async () => {
     intactReportValidation,
     tamperedReportValidation,
     runtimeReuse,
+    runtimeCommandCalled,
     reused,
     reportTamper,
     artifactTamper,
@@ -353,6 +359,7 @@ test('default local composition executes explicit argv without a shell', () => {
   expect(values.intactReportValidation).toBe(true);
   expect(values.tamperedReportValidation).toBe(false);
   expect(values.runtimeReuse.records[0]?.status).toBe('pending');
+  expect(values.runtimeCommandCalled).toBe(true);
 });
 test('reuses only unchanged relevant content', () => {
   expect(values.reused.records[0]?.status).toBe('reused-pass');
