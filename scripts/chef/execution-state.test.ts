@@ -4,7 +4,6 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { throwingRejectionOf } from '../../testing/testing/src/helpers/promise-outcome.ts';
-import { waitUntil } from '../../testing/testing/src/wait-until.ts';
 import {
   ExecutionStateError,
   acquireDispatch,
@@ -15,7 +14,6 @@ import {
   recordMutationResult,
   releaseDispatch,
   requireAuthority,
-  withProviderTransitionLock,
 } from './execution-state.ts';
 
 const directories: string[] = [];
@@ -76,47 +74,6 @@ describe('execution state', () => {
     if (!second.granted) throw new Error(second.reason);
     expect(() => requireAuthority(state, first.authority)).toThrow('generation');
     expect(await releaseDispatch(state, first.authority)).toBe(false);
-    expect(requireAuthority(state, second.authority)).toEqual(second.authority);
-  });
-
-  // spawn-free: the provider barrier is an injected transition boundary over disposable state.
-  test('holds cancellation and regrant behind an in-flight provider transition', async () => {
-    const state = store();
-    const first = await acquireDispatch(state, {
-      resource: 'issue:COR-1',
-      runId: 'run-a',
-      ownerId: 'owner-a',
-    });
-    if (!first.granted) throw new Error(first.reason);
-    let releaseProvider!: () => void;
-    const providerReleased = new Promise<void>((resolve) => {
-      releaseProvider = resolve;
-    });
-    let validated = false;
-    const transition = withProviderTransitionLock(state, first.authority.resource, async () => {
-      requireAuthority(state, first.authority);
-      validated = true;
-      await providerReleased;
-      expect(requireAuthority(state, first.authority)).toEqual(first.authority);
-    });
-    await waitUntil(() => validated, { message: 'generation one provider transition validation' });
-    let cancelled = false;
-    const cancellation = cancelDispatch(state, first.authority).then((result) => {
-      cancelled = result;
-      return result;
-    });
-    await Promise.resolve();
-    expect(cancelled).toBe(false);
-    releaseProvider();
-    await transition;
-    expect(await cancellation).toBe(true);
-    const second = await acquireDispatch(state, {
-      resource: 'issue:COR-1',
-      runId: 'run-b',
-      ownerId: 'owner-b',
-    });
-    if (!second.granted) throw new Error(second.reason);
-    expect(() => requireAuthority(state, first.authority)).toThrow('generation');
     expect(requireAuthority(state, second.authority)).toEqual(second.authority);
   });
 

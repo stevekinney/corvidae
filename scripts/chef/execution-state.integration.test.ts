@@ -4,6 +4,14 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { spawnWithHangGuard } from '../../testing/testing/src/hang-guard.ts';
+import { waitUntil } from '../../testing/testing/src/wait-until.ts';
+import {
+  acquireDispatch,
+  cancelDispatch,
+  createExecutionStateStore,
+  requireAuthority,
+  withProviderTransitionLock,
+} from './execution-state.ts';
 
 const directories: string[] = [];
 
@@ -30,7 +38,65 @@ async function runClaim(stateDirectory: string, resource: string, runId: string,
   return { exitCode, output: stdout.trim() };
 }
 
+// This runs at module scope because the host lock consults the process table. The test below only
+// asserts the completed coordinator transition, keeping process work out of Bun's per-test clock.
+const barrierState = createExecutionStateStore({ stateDirectory: directory(), hostId: 'host-a' });
+const barrierResult = await (async () => {
+  const first = await acquireDispatch(barrierState, {
+    resource: 'issue:COR-barrier',
+    runId: 'run-a',
+    ownerId: 'owner-a',
+  });
+  if (!first.granted) throw new Error(first.reason);
+  let releaseProvider!: () => void;
+  const providerReleased = new Promise<void>((resolve) => {
+    releaseProvider = resolve;
+  });
+  let validated = false;
+  const transition = withProviderTransitionLock(
+    barrierState,
+    first.authority.resource,
+    async () => {
+      requireAuthority(barrierState, first.authority);
+      validated = true;
+      await providerReleased;
+      return requireAuthority(barrierState, first.authority);
+    },
+  );
+  await waitUntil(() => validated, { message: 'generation one provider transition validation' });
+  let cancelled = false;
+  const cancellation = cancelDispatch(barrierState, first.authority).then((result) => {
+    cancelled = result;
+    return result;
+  });
+  await Promise.resolve();
+  const blockedBeforeProviderCloseout = !cancelled;
+  releaseProvider();
+  await transition;
+  const cancelledAfterProviderCloseout = await cancellation;
+  const second = await acquireDispatch(barrierState, {
+    resource: first.authority.resource,
+    runId: 'run-b',
+    ownerId: 'owner-b',
+  });
+  if (!second.granted) throw new Error(second.reason);
+  return {
+    blockedBeforeProviderCloseout,
+    cancelledAfterProviderCloseout,
+    first: first.authority,
+    second: second.authority,
+  };
+})();
+
 describe('execution state across coordinator processes', () => {
+  test('holds cancellation and regrant behind an in-flight provider transition', () => {
+    expect(barrierResult.blockedBeforeProviderCloseout).toBe(true);
+    expect(barrierResult.cancelledAfterProviderCloseout).toBe(true);
+    expect(barrierResult.second.generation).toBe(barrierResult.first.generation + 1);
+    expect(() => requireAuthority(barrierState, barrierResult.first)).toThrow('generation');
+    expect(requireAuthority(barrierState, barrierResult.second)).toEqual(barrierResult.second);
+  });
+
   // spawn-free: this isolated test starts two hang-guarded Bun coordinators at module behavior boundary.
   test('two subprocess coordinators race for one resource and one receives authority', async () => {
     const stateDirectory = directory();
