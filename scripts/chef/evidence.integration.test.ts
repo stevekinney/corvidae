@@ -1,6 +1,13 @@
 import { expect, test } from 'bun:test';
 import { createHash } from 'node:crypto';
-import { mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  symlinkSync,
+  unlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { join } from 'node:path';
 import { runWithHangGuard } from '../../testing/testing/src/hang-guard.ts';
 import {
@@ -172,6 +179,8 @@ const values = await (async () => {
   const outside = mkdtempSync(join(scratch, 'outside-'));
   const outsideFile = join(outside, 'evidence.xml');
   writeFileSync(outsideFile, '<testsuite><testcase name="input.test.ts" /></testsuite>');
+  const outsideInput = join(outside, 'input');
+  writeFileSync(outsideInput, 'outside input\n');
   symlinkSync(outsideFile, join(fixture, 'escape-report'));
   symlinkSync(outsideFile, join(fixture, 'escape-artifact'));
   const escapeRequest = await request();
@@ -193,6 +202,24 @@ const values = await (async () => {
       fixture,
     ),
   ).toThrow();
+  unlinkSync(join(fixture, 'input'));
+  symlinkSync(outsideInput, join(fixture, 'input'));
+  const inputEscapeRequest = await request();
+  let inputEscapeCalls = 0;
+  expect(() =>
+    collectLocalEvidence(
+      inputEscapeRequest,
+      {
+        run: () => {
+          inputEscapeCalls += 1;
+          return { exitCode: 0 };
+        },
+      },
+      fixture,
+    ),
+  ).toThrow();
+  unlinkSync(join(fixture, 'input'));
+  await git('checkout', '--', 'input');
   traversalRequest.localRuns![0] = {
     ...traversalRequest.localRuns![0]!,
     argv: ['true'],
@@ -261,6 +288,7 @@ const values = await (async () => {
     directTraversalCalls,
     requestTraversalCalls,
     escapeCalls,
+    inputEscapeCalls,
     invalidReuse,
     reportDigest: createHash('sha256').update(readFileSync(report)).digest('hex'),
   };
@@ -301,4 +329,7 @@ test('rejects traversal report and artifact mappings before either local runner 
 });
 test('rejects symlinked report and artifact escapes before the runner starts', () => {
   expect(values.escapeCalls).toBe(0);
+});
+test('rejects a symlinked relevant input before the runner starts', () => {
+  expect(values.inputEscapeCalls).toBe(0);
 });
