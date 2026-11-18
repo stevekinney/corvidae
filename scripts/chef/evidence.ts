@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
-import { existsSync, readFileSync, statSync } from 'node:fs';
-import { isAbsolute, resolve, sep } from 'node:path';
+import { existsSync, readFileSync, realpathSync, statSync } from 'node:fs';
+import { isAbsolute, relative, resolve, sep } from 'node:path';
 import { createGitHubEvidenceTransport, inspectArtifact, parseJUnit } from './evidence-provider.ts';
 import { EvidenceRequestError, type ProviderEvidenceTransport } from './evidence-transport.ts';
 import type { VerificationObligation, VerificationPlan } from './verification-plan.ts';
@@ -298,6 +298,7 @@ export function collectLocalEvidence(
         path.split(/[\\/]/).some((part) => part === '..')
       )
         throw new EvidenceRequestError('verification request has invalid local path');
+      else if (existsSync(resolve(safeCwd, path))) validateLocalPath(safeCwd, path);
     return { item, run };
   });
   const inputPaths = [...new Set(obligations.flatMap((item) => item.relevantInputs))];
@@ -315,11 +316,11 @@ export function collectLocalEvidence(
         const parsed = parseJUnit(bytes);
         inventory = [...inventory, ...parsed.inventory];
         assertionPassed = assertionPassed === false || !parsed.assertionPassed ? false : true;
-        return { path, digest: sha256(bytes) };
+        return { path: relative(safeCwd, path), digest: sha256(bytes) };
       });
       const artifacts = (run.artifactPaths ?? []).map((artifactPath) => {
         const path = validateLocalPath(safeCwd, artifactPath);
-        return { path, digest: sha256(readFileSync(path)) };
+        return { path: relative(safeCwd, path), digest: sha256(readFileSync(path)) };
       });
       const after = localProvenance(safeCwd, request.base, inputPaths);
       const stableInputs = before.inputIdentity === after.inputIdentity;
@@ -401,9 +402,13 @@ function validateLocalPath(cwd: string, candidate: string): string {
   )
     throw new EvidenceRequestError('local evidence path is invalid');
   const path = resolve(cwd, candidate);
-  if (!path.startsWith(`${cwd}${sep}`) || !existsSync(path) || !statSync(path).isFile())
+  if (!path.startsWith(`${cwd}${sep}`) || !existsSync(path))
     throw new EvidenceRequestError('local evidence path is not a readable regular file');
-  return path;
+  const realCwd = realpathSync(cwd);
+  const realPath = realpathSync(path);
+  if (!realPath.startsWith(`${realCwd}${sep}`) || !statSync(realPath).isFile())
+    throw new EvidenceRequestError('local evidence path escapes the checkout');
+  return realPath;
 }
 
 function localProvenance(cwd: string, requestedBase: string, inputs: string[]): LocalProvenance {
@@ -459,17 +464,20 @@ export function reuseLocalEvidence(
     const current = localProvenance(safeCwd, request.base, inputs);
     current.runtime = runtime();
     const prior = previous[0] as EvidenceRecord;
-    const reportsIntact = (prior.reports ?? []).every(
-      ({ path, digest }) =>
-        existsSync(path) && statSync(path).isFile() && sha256(readFileSync(path)) === digest,
-    );
+    const reportsIntact = (prior.reports ?? []).every(({ path, digest }) => {
+      try {
+        return sha256(readFileSync(validateLocalPath(safeCwd, path))) === digest;
+      } catch {
+        return false;
+      }
+    });
     const reusable =
       prior.status === 'pass' &&
       prior.command === obligation.commandOrProviderJob &&
       prior.inputIdentity === current.inputIdentity &&
       prior.environment === current.runtime &&
       reportsIntact &&
-      artifactIsIntact(prior) &&
+      artifactIsIntact(prior, safeCwd) &&
       current.dirtyContentIdentity === undefined &&
       current.revision === request.revision &&
       current.integrationTree === request.integrationTree &&
@@ -496,12 +504,19 @@ function obligationKey(obligation: VerificationObligation): string {
   return `${obligation.criterionId}:${obligation.commandOrProviderJob}`;
 }
 
-function artifactIsIntact(record: EvidenceRecord): boolean {
+function artifactIsIntact(record: EvidenceRecord, cwd?: string): boolean {
+  if (record.artifacts !== undefined && cwd === undefined) return true;
   if (record.artifacts !== undefined)
-    return record.artifacts.every(
-      ({ path, digest }) =>
-        existsSync(path) && statSync(path).isFile() && sha256(readFileSync(path)) === digest,
-    );
+    return record.artifacts.every(({ path, digest }) => {
+      try {
+        const target = cwd === undefined ? path : validateLocalPath(cwd, path);
+        return (
+          existsSync(target) && statSync(target).isFile() && sha256(readFileSync(target)) === digest
+        );
+      } catch {
+        return false;
+      }
+    });
   return (
     record.artifact === undefined ||
     (existsSync(record.artifact) && statSync(record.artifact).isFile())

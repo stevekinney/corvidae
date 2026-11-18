@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test';
 import { createHash } from 'node:crypto';
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { runWithHangGuard } from '../../testing/testing/src/hang-guard.ts';
 import {
@@ -169,6 +169,30 @@ const values = await (async () => {
   writeFileSync(report, '<testsuite><testcase name="input.test.ts" /></testsuite>');
   const initial = collectLocalEvidence(await request(), passing, fixture);
   const traversalRequest = await request();
+  const outside = mkdtempSync(join(scratch, 'outside-'));
+  const outsideFile = join(outside, 'evidence.xml');
+  writeFileSync(outsideFile, '<testsuite><testcase name="input.test.ts" /></testsuite>');
+  symlinkSync(outsideFile, join(fixture, 'escape-report'));
+  symlinkSync(outsideFile, join(fixture, 'escape-artifact'));
+  const escapeRequest = await request();
+  escapeRequest.localRuns![0] = {
+    ...escapeRequest.localRuns![0]!,
+    reportPaths: ['escape-report'],
+    artifactPaths: ['escape-artifact'],
+  };
+  let escapeCalls = 0;
+  expect(() =>
+    collectLocalEvidence(
+      escapeRequest,
+      {
+        run: () => {
+          escapeCalls += 1;
+          return { exitCode: 0 };
+        },
+      },
+      fixture,
+    ),
+  ).toThrow();
   traversalRequest.localRuns![0] = {
     ...traversalRequest.localRuns![0]!,
     argv: ['true'],
@@ -236,6 +260,7 @@ const values = await (async () => {
     artifactTamper,
     directTraversalCalls,
     requestTraversalCalls,
+    escapeCalls,
     invalidReuse,
     reportDigest: createHash('sha256').update(readFileSync(report)).digest('hex'),
   };
@@ -257,7 +282,7 @@ test('binds dirty and mutated content instead of clean head', () => {
 });
 test('requires structured results and retains report identity', () => {
   expect(values.missing.records[0]?.status).toBe('pending');
-  expect(values.reported.records[0]?.reports?.[0]?.path).toBe(values.report);
+  expect(values.reported.records[0]?.reports?.[0]?.path).toBe('report.xml');
   expect(values.failedReport.records[0]?.status).toBe('fail');
 });
 test('default local composition executes explicit argv without a shell', () => {
@@ -273,4 +298,7 @@ test('reuses only unchanged relevant content', () => {
 test('rejects traversal report and artifact mappings before either local runner starts', () => {
   expect(values.directTraversalCalls).toBe(0);
   expect(values.requestTraversalCalls).toBe(0);
+});
+test('rejects symlinked report and artifact escapes before the runner starts', () => {
+  expect(values.escapeCalls).toBe(0);
 });
