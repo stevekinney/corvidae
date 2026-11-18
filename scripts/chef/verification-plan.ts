@@ -99,17 +99,27 @@ export function digest(value: string): string {
 }
 
 export function criterionRecords(description: string): { id: string; text: string }[] {
-  const section = /## Acceptance criteria\s*\n([\s\S]*?)(?=\n## |$)/i.exec(description)?.[1] ?? '';
-  const criteria = section
-    .split('\n')
-    .map((line) => /^\s*[-*]\s+(?:\[[ xX]\]\s+)?(.+)$/.exec(line)?.[1]?.trim())
-    .filter((text): text is string => text !== undefined && text !== '');
-  return criteria.map((text) => {
-    const explicit = /^(AC[\w.-]+)\s*:\s*(.*)$/i.exec(text);
-    return explicit === null
-      ? { id: `AC-${digest(text).slice(0, 12)}`, text }
-      : { id: explicit[1] ?? '', text: explicit[2] ?? '' };
-  });
+  const sections = [...description.matchAll(/^##\s+([^\n]+)\n([\s\S]*?)(?=^##\s|(?![\s\S]))/gim)]
+    .map((match) => ({ heading: match[1] ?? '', body: match[2] ?? '' }))
+    .filter((section) => /acceptance\s+criteria|\brevision\b/i.test(section.heading));
+  const records: { id: string; text: string; revision: boolean }[] = [];
+  for (const section of sections) {
+    const revision = /\brevision\b/i.test(section.heading);
+    for (const line of section.body.split('\n')) {
+      const text = /^\s*[-*]\s+(?:\[[ xX]\]\s+)?(.+)$/.exec(line)?.[1]?.trim();
+      if (text === undefined || text === '') continue;
+      const explicit = /^(AC[\w.-]+)\s*:\s*(.*)$/i.exec(text);
+      const record =
+        explicit === null
+          ? { id: `AC-${digest(text).slice(0, 12)}`, text, revision }
+          : { id: explicit[1] ?? '', text: explicit[2] ?? '', revision };
+      const amended =
+        revision && explicit !== null ? records.findIndex(({ id }) => id === record.id) : -1;
+      if (amended < 0) records.push(record);
+      else records[amended] = record;
+    }
+  }
+  return records.map(({ id, text }) => ({ id, text }));
 }
 
 export function classifyRisks(
@@ -118,13 +128,18 @@ export function classifyRisks(
 ): Record<RiskArea, boolean> {
   const unknown = paths.length === 0;
   const has = (pattern: RegExp) => unknown || paths.some((path) => pattern.test(path));
+  const domain = (pattern: RegExp) => unknown || paths.some((path) => pattern.test(path));
   return {
     'root-scripts': has(/^scripts\//),
     'shared-configuration': has(/(?:^|\/)(?:package\.json|turbo\.json|.*\.(?:json|ya?ml|toml))$/),
     'transitive-consumers': has(/^packages\/|^components\//),
     'dynamic-entrypoints': has(/^applications\/|(?:^|\/)bin\//),
-    authorization: unknown,
-    'persistence-protocols': unknown,
+    authorization: domain(
+      /(?:^|\/)(?:auth(?:entication|orization)?|identity|session|access-control)(?:\/|\.|$)/i,
+    ),
+    'persistence-protocols': domain(
+      /(?:^|\/)(?:storage|persistence|protocol|database)(?:\/|\.|$)/i,
+    ),
     'installed-artifacts': has(/(?:package\.json|release|publish|payload)/),
     'shared-ui-design': hasDesign || has(/^components\/|^applications\/interborough\//),
     'automatic-deployment': has(/(?:^\.github\/|vercel\.json|wrangler\.|Dockerfile)/),
@@ -214,7 +229,11 @@ export function createVerificationPlan(input: {
       relevantInputs: input.assignment.ownedPaths,
       environmentToolchain: 'Bun workspace toolchain',
       executionBoundary:
-        risk === 'automatic-deployment' || risk === 'installed-artifacts' ? 'provider' : 'worker',
+        risk === 'automatic-deployment' || risk === 'installed-artifacts'
+          ? 'provider'
+          : risk === 'authorization' || risk === 'persistence-protocols'
+            ? 'coordinator'
+            : 'worker',
       producer: 'scripts/chef/brief.ts',
       selectionReason: `Risk map includes ${risk}.`,
     });

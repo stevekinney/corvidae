@@ -102,4 +102,73 @@ describe('assignment gate and verification plan', () => {
       dispatchable: false,
     });
   });
+
+  test('carries dated criterion additions and amendments into obligations', () => {
+    const criteria = criterionRecords(
+      [
+        '## Acceptance criteria',
+        '- AC1: Initial requirement.',
+        '',
+        '## Revision 2026-11-18',
+        '- AC1: Amended requirement.',
+        '- AC2: Added requirement.',
+      ].join('\n'),
+    );
+    expect(criteria).toEqual([
+      { id: 'AC1', text: 'Amended requirement.' },
+      { id: 'AC2', text: 'Added requirement.' },
+    ]);
+    expect(
+      createVerificationPlan({
+        assignment: assignment({ criteria }),
+        commands: ['bun test'],
+        policy: 'p',
+      }).obligations,
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ criterionId: 'AC1' }),
+        expect.objectContaining({ criterionId: 'AC2' }),
+      ]),
+    );
+  });
+
+  test('classifies sensitive path domains independently and requires coordinator evidence', () => {
+    const controls = createVerificationPlan({
+      assignment: assignment({
+        ownedPaths: [
+          'packages/a2a-authentication/src/session.ts',
+          'packages/storage-postgres/src/persistence.ts',
+        ],
+      }),
+      commands: [],
+      policy: 'p',
+    });
+    expect(controls.risks).toMatchObject({
+      authorization: 'covered',
+      'persistence-protocols': 'covered',
+    });
+    expect(controls.obligations).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ risk: 'authorization', executionBoundary: 'coordinator' }),
+        expect.objectContaining({
+          risk: 'persistence-protocols',
+          executionBoundary: 'coordinator',
+        }),
+      ]),
+    );
+    expect(
+      createVerificationPlan({
+        assignment: assignment({ ownedPaths: ['packages/markdown/src/parse.ts'] }),
+        commands: [],
+        policy: 'p',
+      }).risks,
+    ).toMatchObject({ authorization: 'not-applicable', 'persistence-protocols': 'not-applicable' });
+    expect(
+      createVerificationPlan({
+        assignment: assignment({ ownedPaths: [] }),
+        commands: [],
+        policy: 'p',
+      }).risks,
+    ).toMatchObject({ authorization: 'covered', 'persistence-protocols': 'covered' });
+  });
 });
