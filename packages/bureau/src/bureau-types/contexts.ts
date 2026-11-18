@@ -429,7 +429,8 @@ export interface BureauContexts {
    * normally (`turn-finished`), one a later run or row follows (`not-latest-turn`), one whose
    * process stopped before it recorded its end (`turn-outcome-unknown`), one a follow-up was
    * delivered into (`follow-up-delivered`), a context with a follow-up still queued
-   * (`follow-ups-queued`), and a run that wrote nothing (`nothing-to-discard`). The removal is one
+   * (`follow-ups-queued`), a run that wrote nothing (`nothing-to-discard`), and a run a goal's
+   * attempt or a schedule's fire owns (`turn-owned-elsewhere`). The removal is one
    * compare-and-swap fenced on the incarnation and revision the attempt read, judged again on what
    * it writes over, and its commit carries the discard's receipt and its audit entry
    * (`context.turn-discarded`) to the session outbox. The run's task record is kept as it is: it
@@ -459,7 +460,8 @@ export interface BureauContexts {
    * `turn-running`, `turn-awaiting-person`, `turn-recovering` (a run whose process stopped, which
    * the Bureau that next boots takes up), `turn-finished` (a reply cut at the token limit
    * included), `run-not-resumable` (a failure going on would meet again), `turn-interrupted-call`,
-   * `follow-up-delivered`, `follow-ups-queued` and `nothing-to-resume`. It does not authorize the
+   * `follow-up-delivered`, `follow-ups-queued`, `nothing-to-resume` and `turn-owned-elsewhere` (a
+   * goal's attempt or a schedule's fire owns the run). It does not authorize the
    * caller. Throws a `BureauError` `NOT_FOUND` for a context this Bureau does not hold, a
    * `ContextArchivedError` for an archived one, and a `BureauShuttingDownError` when Bureau is
    * shutting down.

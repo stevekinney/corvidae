@@ -23,6 +23,7 @@ import {
 } from '../session-resume';
 import { forEachOpenReceipt } from '../session-input-settlement';
 import { TASK_OWNER_LOST_FINISH_REASON } from '../task-registry';
+import { isRunOwnedElsewhere } from '../session-discard';
 import {
   type AgentSession,
   type SessionStore,
@@ -195,6 +196,12 @@ export function createSessionResume<D extends AgentDefinitions>(
       record.incarnation !== session.incarnation
     ) {
       return refuse('run-not-found', `The context has no run "${runId}".`);
+    }
+    if (isRunOwnedElsewhere(record)) {
+      return refuse(
+        'turn-owned-elsewhere',
+        'A goal’s attempt or a schedule’s fire owns the run, and accounts for how it ended.',
+      );
     }
     const newest = await core.tasks.enumerate({ contextId: session.id, limit: 1, offset: 0 });
     if (newest.tasks[0]?.id !== runId) {

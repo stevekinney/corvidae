@@ -83,6 +83,8 @@ export type SessionDiscardRefusalReason =
   | 'follow-ups-queued'
   /** The run ended before it wrote anything after the person's message. */
   | 'nothing-to-discard'
+  /** A goal's attempt or a schedule's fire owns the run, and accounts for how it ended. */
+  | 'turn-owned-elsewhere'
   /** The context changed, or was deleted or created again, after the attempt read it. */
   | 'history-changed'
   /** The command identifier was used to discard another run's turn. */
@@ -252,6 +254,23 @@ export type UndiscardableTurn = {
   readonly reason: SessionDiscardRefusalReason;
   readonly message: string;
 };
+
+/** The origins of a plain chat run: one a person or a client started in the chat. */
+const PLAIN_CHAT_ORIGINS: ReadonlySet<string> = new Set(['chat', 'person', 'api']);
+
+/**
+ * Whether a run's task record says something other than the chat owns the run (COR-2437): a
+ * schedule's fire, a goal's attempt, or a task another run, an agent, a trigger or the system
+ * started. Their owners account for how the run ended, so neither a discard nor a resume may
+ * change it. A record with no origin, written before origins were kept, is a plain chat run.
+ */
+export function isRunOwnedElsewhere(record: {
+  readonly kind?: string | undefined;
+  readonly origin?: { readonly kind: string } | undefined;
+}): boolean {
+  if (record.kind === 'schedule-fire') return true;
+  return record.origin !== undefined && !PLAIN_CHAT_ORIGINS.has(record.origin.kind);
+}
 
 /** Whether `id` is a row run `runId` wrote: a step's text, call or result, or an answer to its question. */
 function isRowOfRun(id: string, runId: string): boolean {

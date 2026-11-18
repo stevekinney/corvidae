@@ -67,6 +67,8 @@ export type SessionResumeRefusalReason =
   | 'follow-ups-queued'
   /** The run wrote nothing after the person's message, or its turn was discarded. */
   | 'nothing-to-resume'
+  /** A goal's attempt or a schedule's fire owns the run, and accounts for how it ended. */
+  | 'turn-owned-elsewhere'
   /** The command identifier was used to resume another run's turn. */
   | 'command-conflict';
 
@@ -198,7 +200,11 @@ export function judgeResumableTurn(session: AgentSession, runId: string): Resume
         : refuse('follow-up-delivered', 'A follow-up the person sent was delivered into the turn.');
     }
     if (row?.toolCall !== undefined) calls.add(row.toolCall.id);
-    if (row?.toolResult !== undefined) answered.add(row.toolResult.callId);
+    // An approval's `action_required` row is a placeholder, not the tool's result: the call has
+    // not finished, and going on would pass it or run it without the approval path.
+    if (row?.toolResult !== undefined && row.toolResult.outcome !== 'action_required') {
+      answered.add(row.toolResult.callId);
+    }
   }
   if ([...calls].some((call) => !answered.has(call))) {
     return refuse(

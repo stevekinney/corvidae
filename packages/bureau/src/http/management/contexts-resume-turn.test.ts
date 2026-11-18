@@ -144,6 +144,7 @@ describe('bureau.contexts.resumeturn refusals', () => {
     'follow-up-delivered',
     'follow-ups-queued',
     'nothing-to-resume',
+    'turn-owned-elsewhere',
     'command-conflict',
   ] satisfies SessionResumeRefusalReason[])(
     'answers %s as a Conflict with that reason',
