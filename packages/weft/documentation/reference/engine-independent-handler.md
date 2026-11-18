@@ -10,7 +10,7 @@ This document fixes how Bureau is exposed over HTTP by reusing Weft's transport 
 
 | Decision | Proposed answer |
 | --- | --- |
-| 1. Engine-independent handler | `createOperationHandler<Host>(options)` from `@lostgradient/weft`'s `.` entry point, returning `(request: Request) => Promise<Response>`. It owns the catalog, authentication, access policy, fault mapping, SSE cursor replay, and CORS, and it never reads an `Engine`. |
+| 1. Engine-independent handler | `createOperationHandler<Host>(options)` from `@lostgradient/backchannel`'s `.` entry point, returning `(request: Request) => Promise<Response>`. It owns the catalog, authentication, access policy, fault mapping, SSE cursor replay, and CORS, and it never reads an `Engine`. |
 | 2. Typed host context | `OperationContext<Input, Host = unknown>` and `DispatchContext<Host = unknown>` carry `readonly host: Host` in place of `readonly engine: unknown`. Weft's own operations keep `Host = unknown` and receive the `Engine` exactly as they do today. The rename is the one point that needs an owner ruling (see [Open questions](#open-questions-for-the-owner)). |
 | 3. Placement | `createBureauHandler` is exported from `@lostgradient/bureau`'s existing `"."` entry point. Bureau's `exports` map is unchanged. |
 | 4. Adapter mounts | An ordered `mounts` option: each adapter claims a path prefix and receives the resolved principal and a `dispatch` function into the catalog. Mounts are not catalog operations and do not appear in OpenAPI, OpenRPC, or AsyncAPI. |
@@ -134,7 +134,7 @@ import {
   unauthenticatedLocalAuthContext,
   type OperationHandler,
   type OperationHandlerOptions,
-} from '@lostgradient/weft';
+} from '@lostgradient/backchannel';
 
 // The fields this decision proposes, picked from the shipped options type:
 // - operations: the whole catalog this handler serves; Weft's own operations are not added.
@@ -202,7 +202,11 @@ The generic SSE route is the piece COR-1299 adds to Weft's transport plumbing. I
 
 ```ts
 // packages/weft/src/server/operation-catalog/types.ts (COR-1299)
-import type { OperationContext, OperationHandlerOptions, Principal } from '@lostgradient/weft';
+import type {
+  OperationContext,
+  OperationHandlerOptions,
+  Principal,
+} from '@lostgradient/backchannel';
 
 type TransportKind = OperationContext<unknown>['transport'];
 // `DispatchContext` is not exported; it is the context every registrable operation's `dispatch` receives.
@@ -236,7 +240,7 @@ Bureau's operation then reads the host without a cast:
 ```ts
 // packages/bureau/src/bureau-events-operation.ts (COR-1299), reduced to a unary
 // operation: the real one is a subscription, and it reads `host` the same way.
-import { defineOperation } from '@lostgradient/weft';
+import { defineOperation } from '@lostgradient/backchannel';
 import { z } from 'zod';
 
 // Stand-ins for Bureau's own types, covering only what the operation reads.
@@ -281,7 +285,7 @@ Settled at intake and recorded here: **`createBureauHandler` is exported from `@
 
 - Implementation: `packages/bureau/src/http/create-bureau-handler.ts` (COR-1300 names `packages/bureau/src/http/` as the directory).
 - Public export: a re-export from `packages/bureau/src/index.ts`.
-- Weft consumption: `import { createOperationHandler } from '@lostgradient/weft';` — the bare specifier, from Weft's `"."` entry point. Bureau already declares `"@lostgradient/weft": "workspace:*"` in `dependencies`, so no manifest change is needed.
+- Weft consumption: `import { createOperationHandler } from '@lostgradient/backchannel';` — the bare specifier, from Backchannel's `"."` entry point (the operation layer moved out of Weft). Bureau already declares `"@lostgradient/weft": "workspace:*"` in `dependencies`, so no manifest change is needed.
 
 What `scripts/workspace-imports.test.ts` checks, and why this placement passes it. The parameterized test `'%s source imports use declared dependencies and declared public entry points'` (`scripts/workspace-imports.test.ts:228-235`) runs once per workspace manifest. For each source import of an internal workspace it asserts three things:
 
@@ -308,7 +312,10 @@ On the Weft side, `operation-handler.ts` lives under `packages/weft/src/server/h
 This is the pattern `serve()` already uses for its non-catalog protocols: `/mcp` and `/jsonrpc` are claimed in `server/runtime/authentication-bridge.ts:184-196` and `:253-263`, before `handleRequest` and outside the REST table.
 
 ```ts
-import type { OperationHandlerMount, OperationHandlerMountContext } from '@lostgradient/weft';
+import type {
+  OperationHandlerMount,
+  OperationHandlerMountContext,
+} from '@lostgradient/backchannel';
 
 const a2aMount: OperationHandlerMount = {
   // Path prefix this adapter owns, for example `/a2a` or `/ag-ui`.

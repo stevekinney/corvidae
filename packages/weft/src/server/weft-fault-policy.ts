@@ -49,7 +49,8 @@ function classifyWeftError(error: unknown): OperationFault | undefined {
  *
  * @example
  * ```ts
- * import { createOperationHandler, weftFaultPolicy } from '@lostgradient/weft';
+ * import { createOperationHandler } from '@lostgradient/backchannel';
+ * import { weftFaultPolicy } from '@lostgradient/weft';
  *
  * const handler = createOperationHandler({ operations: [], host: {}, faultPolicy: weftFaultPolicy });
  * void handler;

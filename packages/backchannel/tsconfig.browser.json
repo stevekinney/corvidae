@@ -5,6 +5,7 @@
     "${configDir}/node_modules",
     "${configDir}/coverage",
     "${configDir}/src/testing.ts",
+    "${configDir}/src/generator.ts",
     "${configDir}/src/**/*.test.*",
     "${configDir}/src/**/*.test-d.ts",
     "${configDir}/src/**/*.test-support.ts",

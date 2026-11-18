@@ -56,13 +56,17 @@ export function createTestFeed() {
   };
 }
 
+/** The host the handler tests give their operations. */
 export type TestHost = {
+  /** The feed the test subscriptions read. */
   readonly feed: ReturnType<typeof createTestFeed>;
   /** Every input a subscription's `invoke` received, after the pipeline parsed it. */
   readonly seenInputs: unknown[];
+  /** How many subscriptions the host saw closed. */
   readonly closed: { count: number };
 };
 
+/** Creates a fresh {@link TestHost}. */
 export function createTestHost(): TestHost {
   return { feed: createTestFeed(), seenInputs: [], closed: { count: 0 } };
 }
@@ -73,6 +77,7 @@ const eventsInput = z.object({
   fromCursor: z.string().min(1).optional(),
 });
 
+/** The event schema the test subscriptions declare. */
 export const testEventSchema = z.object({
   kind: z.string(),
   cursor: z.string(),
@@ -186,6 +191,7 @@ export function createManualScheduler(): ManualScheduler {
   };
 }
 
+/** Reads the HTTP status of a handler response. */
 export async function statusOf(
   handler: (request: Request) => Promise<Response>,
   request: Request,
@@ -222,6 +228,7 @@ export function eventStreamRequest(path: string, headers: Record<string, string>
   });
 }
 
+/** Builds a JSON-RPC POST request for the handler under test. */
 export function jsonRpcRequest(
   method: string,
   params: unknown,

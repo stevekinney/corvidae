@@ -70,10 +70,13 @@ export type CheckPage = z.infer<typeof pageSchema>;
 
 /** What a read narrows the results to. A field that is absent narrows nothing. */
 export type CheckFilter = {
+  /** Only results of this kind of check. */
   readonly kind?: CheckKind;
   /** Exactly as a row names the check, `name@version`. */
   readonly checkId?: string;
+  /** Only results for this agent. */
   readonly agentName?: string;
+  /** Only results with this outcome. */
   readonly outcome?: CheckOutcome;
   /** Only results at or after this time, in epoch milliseconds. */
   readonly since?: number;
