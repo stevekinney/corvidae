@@ -677,17 +677,14 @@ describe('a discard racing a new message', () => {
     discardCommitted.resolve();
     const afterDiscard = (await bureau.contexts.get(run.contextId))!;
     const workflowId = await fired!;
-    let terminal:
-      | { status: string; result?: { finishReason?: string; errorMessage?: string } }
-      | null
-      | undefined;
+    let result: unknown;
     // A fire whose model was asked waits in its second step, so either ends the wait.
     await waitForCondition(async () => {
       if (askedOver.length > askedBefore) return true;
       const state = await bureau.durableEngine()!.get(workflowId);
       if (state === null || state === undefined) return false;
       if (state.status === 'pending' || state.status === 'running') return false;
-      terminal = state;
+      result = state.result;
       return true;
     }, 'the fire has ended or asked its model');
 
@@ -695,8 +692,11 @@ describe('a discard racing a new message', () => {
     // Its model was never asked, so never over the discarded reply.
     expect(askedOver.slice(askedBefore)).toEqual([]);
     // The fire's outcome, in the schedule's words: its run ended on the refusal.
-    expect(terminal?.result).toMatchObject({ finishReason: 'error', errorKind: 'policy' });
-    expect(terminal?.result?.errorMessage).toContain('history-changed');
+    expect(result).toMatchObject({
+      finishReason: 'error',
+      errorKind: 'policy',
+      errorMessage: expect.stringContaining('history-changed'),
+    });
     await waitForCondition(() => hasSettled(bureau, workflowId), 'the fire’s task has ended');
     expect(await statusOf(bureau, workflowId)).toBe('failed');
     // The refused fire wrote nothing to the chat.
