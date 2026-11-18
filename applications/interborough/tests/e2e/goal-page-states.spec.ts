@@ -12,7 +12,7 @@
  *
  * Not run on this host (the browser suites run on GitHub, `main.yml`).
  */
-import type { Page, Route } from '@playwright/test';
+import type { Page } from '@playwright/test';
 
 import {
   SAMPLE_NOW,
@@ -20,6 +20,7 @@ import {
   SAMPLE_TIME_ZONE,
 } from '../../fixtures/sample-now.ts';
 import { readSampleWorldRecords } from '../../fixtures/sample-world-records.ts';
+import { rewriteBureauAnswer } from './bureau-answer-support.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
 import { E2E_SHOWCASE_URL } from './e2e-constants.ts';
 import { expect, test } from './fixtures.ts';
@@ -46,36 +47,22 @@ async function openGoal(page: Page, path: string, width: number): Promise<void> 
  * canceled it.
  */
 async function answerAsWorkingGoal(page: Page): Promise<void> {
-  await page.route('**/bureau/jsonrpc', async (route: Route) => {
-    const body = JSON.parse(route.request().postData() ?? '{}') as { method?: string };
-    if (body.method !== 'bureau.goals.get') {
-      await route.fallback();
-      return;
-    }
-    const response = await route.fetch();
-    const answer = (await response.json()) as { result?: JsonRecord };
-    const goal = answer.result ?? {};
+  await rewriteBureauAnswer(page, 'bureau.goals.get', (goal: JsonRecord) => {
     const attempts = (goal['attempts'] as JsonRecord[] | undefined) ?? [];
     const newest = Math.max(...attempts.map((attempt) => Number(attempt['attemptIndex'])));
-    await route.fulfill({
-      response,
-      json: {
-        ...answer,
-        result: {
-          ...goal,
-          status: 'evaluating',
-          terminalReason: null,
-          closedAt: null,
-          cancellation: null,
-          updatedAt: new Date(SAMPLE_NOW_MILLISECONDS - 60_000).toISOString(),
-          attempts: attempts.map((attempt) =>
-            Number(attempt['attemptIndex']) === newest
-              ? { ...attempt, status: 'evaluating', completedAt: null, finishReason: null }
-              : attempt,
-          ),
-        },
-      },
-    });
+    return {
+      ...goal,
+      status: 'evaluating',
+      terminalReason: null,
+      closedAt: null,
+      cancellation: null,
+      updatedAt: new Date(SAMPLE_NOW_MILLISECONDS - 60_000).toISOString(),
+      attempts: attempts.map((attempt) =>
+        Number(attempt['attemptIndex']) === newest
+          ? { ...attempt, status: 'evaluating', completedAt: null, finishReason: null }
+          : attempt,
+      ),
+    };
   });
 }
 

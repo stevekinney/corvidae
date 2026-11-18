@@ -18,6 +18,7 @@ import {
   SAMPLE_NOW_MILLISECONDS,
   SAMPLE_TIME_ZONE,
 } from '../../fixtures/sample-now.ts';
+import { rewriteBureauAnswer } from './bureau-answer-support.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
 import { E2E_SHOWCASE_URL } from './e2e-constants.ts';
 import { expect, loggedFailedResponse, test } from './fixtures.ts';
@@ -418,24 +419,9 @@ for (const width of WIDTHS) {
       instance,
       stepTask(instance, instance.agentName),
     ]);
-    await page.route('**/bureau/jsonrpc', async (route) => {
-      const body = JSON.parse(route.request().postData() ?? '{}') as {
-        method?: string;
-        id?: unknown;
-      };
-      if (body.method !== 'bureau.tasks.list') {
-        await route.fallback();
-        return;
-      }
-      const response = await route.fetch();
-      const answer = (await response.json()) as {
-        result?: { tasks?: unknown[]; nextPageToken?: string | null };
-      };
-      const tasks = answer.result?.tasks ?? [];
-      await route.fulfill({
-        response,
-        json: { ...answer, result: { ...answer.result, tasks: [...tasks, ...extra] } },
-      });
+    await rewriteBureauAnswer(page, 'bureau.tasks.list', (listing) => {
+      const tasks = (listing['tasks'] as unknown[] | undefined) ?? [];
+      return { ...listing, tasks: [...tasks, ...extra] };
     });
     await page.clock.setFixedTime(SAMPLE_NOW);
     await page.setViewportSize({ width, height: 900 });
