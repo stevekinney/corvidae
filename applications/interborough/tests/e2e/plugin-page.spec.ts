@@ -37,6 +37,7 @@ const EXPECTED_ENTRIES = [
   VIEW_COPY.chat.label,
   VIEW_COPY.reviews.label,
   VIEW_COPY.runs.label,
+  VIEW_COPY.checks.label,
   'Fixture overview, plugin',
   'Fixture notes, plugin',
   'Fixture chores, plugin',

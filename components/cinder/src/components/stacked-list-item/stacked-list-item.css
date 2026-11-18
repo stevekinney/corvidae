@@ -133,10 +133,6 @@
     text-decoration: none;
   }
 
-  .cinder-stacked-list-item__title-link:hover {
-    text-decoration: underline;
-  }
-
   /*
    * The whole row is one link: the anchor's pseudo-element covers the row, so a click anywhere
    * on it follows the link, hover tints the whole row, and the keyboard focus ring wraps the
@@ -386,6 +382,54 @@
     overflow: visible;
     text-overflow: clip;
     white-space: normal;
+  }
+
+  /* The inline copy of the status a `wrapMeta` row draws in line two is for the phone form only. */
+  .cinder-stacked-list-item__status-inline {
+    display: none;
+  }
+
+  .cinder-stacked-list-item__status-inline .cinder-status-dot__indicator {
+    inline-size: 0.5rem; /* 8px, as in the status column */
+    block-size: 0.5rem;
+  }
+
+  /* On a phone a `wrapMeta` row's line two is one run of text: the dot, the word, then the meta,
+     across the status column and the text, so a wrapped line returns to the row's leading edge
+     instead of wrapping in a narrow column beside the word. Rows without `wrapMeta` keep the
+     status in its column. */
+  @container cinder-stacked-list-item (max-width: 639.98px) {
+    .cinder-stacked-list-item--lines:not(
+        .cinder-stacked-list-item--band
+      ).cinder-stacked-list-item--status-leading.cinder-stacked-list-item--wrap-meta.cinder-stacked-list-item--has-status
+      > .cinder-stacked-list-item__layout
+      > .cinder-stacked-list-item__status {
+      display: none;
+    }
+
+    .cinder-stacked-list-item--lines:not(
+        .cinder-stacked-list-item--band
+      ).cinder-stacked-list-item--status-leading.cinder-stacked-list-item--wrap-meta.cinder-stacked-list-item--has-status
+      .cinder-stacked-list-item__line-two {
+      grid-column: status / trailing;
+    }
+
+    .cinder-stacked-list-item--lines:not(
+        .cinder-stacked-list-item--band
+      ).cinder-stacked-list-item--status-leading.cinder-stacked-list-item--wrap-meta.cinder-stacked-list-item--has-status
+      .cinder-stacked-list-item__status-inline {
+      display: inline-flex;
+      vertical-align: baseline;
+      margin-inline-end: var(--cinder-space-2);
+      font-size: var(--cinder-text-xs);
+    }
+
+    .cinder-stacked-list-item--lines:not(
+        .cinder-stacked-list-item--band
+      ).cinder-stacked-list-item--status-leading.cinder-stacked-list-item--wrap-meta.cinder-stacked-list-item--has-status
+      :is(.cinder-stacked-list-item__meta, .cinder-stacked-list-item__description) {
+      display: inline;
+    }
   }
 
   /* A third line (a phone schedule's reason and cadence): muted like line two, but it wraps, so

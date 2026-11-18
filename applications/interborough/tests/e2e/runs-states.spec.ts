@@ -96,7 +96,8 @@ const headerCreate = (page: Page) => page.locator('main .cinder-page-header__cre
 const primaries = (page: Page) => page.locator('main [data-cinder-variant="primary"]');
 const filterBar = (page: Page) => page.getByRole('search', { name: 'Filter runs' });
 
-test.describe('the list on a phone, a tablet and in the dark', () => {
+// Every title names `/runs`, so a design review's route filter (`--grep '/runs'`) runs it.
+test.describe('/runs: the list on a phone, a tablet and in the dark', () => {
   test('on a phone is two-line rows under day bands, with a Status select and a Filter button beside a secondary "+" (05t, 05v)', async ({
     page,
     checkA11y,
@@ -156,7 +157,7 @@ test.describe('the list on a phone, a tablet and in the dark', () => {
 });
 
 for (const width of WIDTHS) {
-  test.describe(`the states of the list, at ${width} pixels`, () => {
+  test.describe(`/runs: the states of the list, at ${width} pixels`, () => {
     test('first use is "No runs yet" with the only primary Start run beside a secondary Chat with an agent (52v, 52w)', async ({
       page,
       checkA11y,
@@ -339,12 +340,14 @@ function instanceTask(
     readonly awaitingSignal?: string;
     readonly wakeAt?: string;
     readonly scheduleName?: string;
+    /** The agent its steps run as, which line two names after the kind (10h). */
+    readonly agentName: string;
   },
 ) {
   return {
     id,
     contextId: id,
-    agentName: null,
+    agentName: fields.agentName,
     owner: 'anonymous:local',
     actor: null,
     kind: 'catalog',
@@ -368,24 +371,38 @@ function instanceTask(
   };
 }
 
+/** The task of the step an instance is at, which names the agent the step runs as. */
+function stepTask(instance: ReturnType<typeof instanceTask>, agentName: string) {
+  return {
+    ...instance,
+    id: `${instance.id}-step`,
+    contextId: `${instance.id}-step`,
+    agentName,
+    origin: { kind: 'parent', parentRunId: instance.id },
+    workflow: undefined,
+  };
+}
+
 for (const width of WIDTHS) {
-  test(`the row states the sample world lacks, a Running, a Waiting for a signal and a Scheduled row, at ${width} pixels (10h)`, async ({
+  test(`/runs: the row states the sample world lacks, a Running, a Waiting for a signal and a Scheduled row, at ${width} pixels (10h)`, async ({
     page,
   }) => {
     // The sample world's own runs, with three more the Bureau would list in a busier world: a
     // workflow running at step 2 of 4, one parked on the signal notes-approved, and one asleep until
     // its due time (Monday, Nov 2, 11:00 AM Central, after the sample clock's 10:46 AM).
-    const extra = [
+    const instances = [
       instanceTask('row-states-running', 'release-notes', {
         createdAt: '2026-11-02T16:31:00.000Z',
         status: 'working',
         steps: { total: 4, at: 2 },
+        agentName: 'assistant',
       }),
       instanceTask('row-states-waiting', 'release-notes', {
         createdAt: '2026-11-02T16:20:00.000Z',
         status: 'working',
         steps: { total: 4, at: 2 },
         awaitingSignal: 'notes-approved',
+        agentName: 'assistant',
       }),
       instanceTask('row-states-scheduled', 'weekly-refund-audit', {
         createdAt: '2026-11-02T16:40:00.000Z',
@@ -393,8 +410,14 @@ for (const width of WIDTHS) {
         steps: { total: 3, at: 1 },
         wakeAt: '2026-11-02T17:00:00.000Z',
         scheduleName: 'Weekly refund audit',
+        agentName: 'tool-runner',
       }),
     ];
+    // Each instance with the task of the step it is at, which names the agent that step runs as.
+    const extra = instances.flatMap((instance) => [
+      instance,
+      stepTask(instance, instance.agentName),
+    ]);
     await page.route('**/bureau/jsonrpc', async (route) => {
       const body = JSON.parse(route.request().postData() ?? '{}') as {
         method?: string;
@@ -435,7 +458,7 @@ for (const width of WIDTHS) {
   });
 }
 
-test.describe('a read in progress (10k, 10l, 14m, 14n, 14p, 52z)', () => {
+test.describe('/runs: a read in progress (10k, 10l, 14m, 14n, 14p, 52z)', () => {
   /** Holds every read of the runs until `release`, with the page's clock paused at the sample instant. */
   async function openLoading(page: Page, width: number): Promise<() => void> {
     await page.clock.install({ time: SAMPLE_NOW_MILLISECONDS - 1_000 });
@@ -489,6 +512,23 @@ test.describe('a read in progress (10k, 10l, 14m, 14n, 14p, 52z)', () => {
     await expect(main.locator('.cinder-skeleton-row')).toHaveCount(0);
   });
 
+  test('in the narrow bar form is skeleton rows under the real day band, with a Status select and a Filter button (52z)', async ({
+    page,
+  }) => {
+    const release = await openLoading(page, 768);
+    const main = page.locator('main');
+    await page.clock.runFor(300);
+    await expect(main.locator('.cinder-skeleton-list')).toBeVisible();
+    await captureForDesignReview(page, {
+      route: '/runs',
+      state: 'loading, narrow bar',
+      source: SOURCE,
+    });
+    await page.clock.resume();
+    release();
+    await expect(main.locator('li[data-run]').first()).toBeVisible();
+  });
+
   test('says it is taking longer than usual after 10 s, and Cancel leaves Loading canceled with Try again', async ({
     page,
     checkA11y,
@@ -532,7 +572,25 @@ test.describe('a read in progress (10k, 10l, 14m, 14n, 14p, 52z)', () => {
   });
 });
 
-test('a server that stops answering over the list keeps it at full contrast and holds the header "+" with its reason (06w, 15d)', async ({
+test('/runs: filtered to nothing on a tablet keeps the bar with the Status select and both applied chips (52x)', async ({
+  page,
+}) => {
+  await page.clock.setFixedTime(SAMPLE_NOW);
+  await page.setViewportSize({ width: 768, height: 900 });
+  await page.goto('/runs?agent=model-switcher&startedBy=goal');
+  const main = page.locator('main');
+  await expect(main).toContainText(
+    'Model switcher has no runs started by a goal. Try another agent or origin.',
+  );
+  await expect(filterBar(page)).toBeVisible();
+  await captureForDesignReview(page, {
+    route: '/runs',
+    state: 'filtered to nothing, tablet',
+    source: SOURCE,
+  });
+});
+
+test('/runs: a server that stops answering over the list keeps it at full contrast and holds the header "+" with its reason (06w, 15d)', async ({
   page,
   pageErrors,
 }) => {

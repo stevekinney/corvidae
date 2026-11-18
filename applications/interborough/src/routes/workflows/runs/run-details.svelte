@@ -209,7 +209,7 @@
         definition: workflowLink,
         // A built-in workflow's identifier and "(built in)" under its name (row 54j).
         ...(isBuiltInWorkflow(workflowType)
-          ? { note: `${workflowType} ${RUN_DETAIL_COPY.builtIn}` }
+          ? { noteCode: workflowType, note: RUN_DETAIL_COPY.builtIn }
           : {}),
       });
     }
@@ -397,6 +397,7 @@
       extra={relatedExtra}
       hasExtra={relatedHasExtra}
       {over}
+      inChat={task?.kind === 'chat' && goal === undefined}
     />
     <RunLogs client={engine.client} workflowId={workflow.id} />
   {:else}

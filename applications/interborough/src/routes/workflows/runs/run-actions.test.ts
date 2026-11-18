@@ -93,6 +93,17 @@ describe('cancelling a run', () => {
     ]);
   });
 
+  test('a canceled run that is cleaned up says nothing under its header the status line says', async () => {
+    const view = open(
+      taskFixture({ id: 'run-1', agentName: 'echo', status: 'canceled', cleanup: 'cleaned-up' }),
+    );
+    await waitFor(() =>
+      expect(view.container.querySelector('[data-run-header]')?.textContent).toContain('Canceled'),
+    );
+    expect(view.container.querySelector('[data-cleanup]')).toBeNull();
+    expect(view.queryByText(TASK_COPY.cancel['cleaned-up'])).toBeNull();
+  });
+
   test('a cancel the Bureau answers with the task shows that task’s own cleanup', async () => {
     const view = open(WORKING);
     stub?.on('bureau.tasks.cancel', () => {

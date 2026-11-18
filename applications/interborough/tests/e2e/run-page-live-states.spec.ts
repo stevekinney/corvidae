@@ -105,7 +105,8 @@ async function openRun(page: Page, path: string, width: number): Promise<void> {
 }
 
 for (const width of WIDTHS) {
-  test.describe(`at ${String(width)} pixels`, () => {
+  // The route leads the title, so a design review's route filter (`--grep '/runs/:run'`) runs these.
+  test.describe(`/runs/:run at ${String(width)} pixels`, () => {
     test('a Release notes run still going says when it started and its step, and offers no Run again (54l)', async ({
       page,
     }) => {

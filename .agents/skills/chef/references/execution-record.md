@@ -1,10 +1,10 @@
 # Execution record
 
-A run keeps one note at `<main checkout>/tmp/chef/<YYYY-MM-DD-HHMMSS>-<work-name>.md` and a sibling `<note name>-log.md`. Take the main checkout from the parent of `git rev-parse --path-format=absolute --git-common-dir`, since a worktree's `tmp/` vanishes with it; write with Bash when the Write tool refuses a path outside the session's directories. Use the local timestamp and never overwrite another run's note. Persist the run identifier before dispatch, and reconcile a resumed note with live workers and Linear.
+A run keeps one note at `<main checkout>/tmp/chef/<YYYY-MM-DD-HHMMSS>-<work-name>.md` and sibling log. Derive the main checkout from `git rev-parse --path-format=absolute --git-common-dir`; worktree `tmp/` vanishes with it. Persist the run identifier before dispatch and reconcile resumes with workers and Linear.
 
 ## The note
 
-The note holds current state and stays under about 300 lines, because a resuming coordinator reads it whole. Rewrite a section in place with `bun scripts/chef/note.ts state <note> --section "<heading>" --file <content>` and a batch-table cell with `bun scripts/chef/note.ts row <note> --key <k> --column <c> --value <v>`, never `sed`. Timestamped events, evidence summaries, and correction narratives go to the log with `bun scripts/chef/note.ts log <note> --file <entry>`; the log is searched, never read whole, and the note cites it by timestamp.
+Keep the note under 300 lines. Rewrite sections with `bun scripts/chef/note.ts state <note> --section "<heading>" --file <content>` and table cells with `bun scripts/chef/note.ts row <note> --key <k> --column <c> --value <v>`. Put events in the log via `bun scripts/chef/note.ts log <note> --file <entry>`.
 
 - **Identity:** run identifier, start time and timezone, scope, source links, and status.
 - **Acceptance:** one row per requirement with its owning package, binary completion predicate, verification command, and result.
@@ -13,7 +13,8 @@ The note holds current state and stays under about 300 lines, because a resuming
 - **Evidence:** revision, command and directory, exit code, and evidence path; a result is reused only while all of these still hold.
 - **Decisions:** one timestamped line each, with what it invalidates.
 - **Corrections:** attempts per defect/acceptance criterion across workers and follow-ups, which no replacement resets, and the causal reassessment after two unsuccessful attempts.
-- **Resources:** spend from `bun scripts/chef/transcript-usage.ts <transcript>`, tokens per merged change from the `deliver.ts --usage-log` file, every Opus or Fable implementer with its reason, plan-window readings, and the connectors turned off at run start.
+- **Outcome accounting:** identify each accepted outcome and link all attempts. Record source/task; provider; model/effort (or `unknown`); policy revision; completed criteria; reviewer effort; human intervention; verification time; and dated prices. Use `bun scripts/chef/transcript-usage.ts <transcript>` and `bun scripts/chef/outcome-accounting.ts verify-task-bank <path>` to count linked paths once; missing or unpriced data stays unknown. Account-wide usage is not outcome spend.
+- **Resources:** record cumulative allowance, reservations, and actual spend across resumes; absent allowance is `unknown`, never zero. A soft limit stops dispatch or escalation; call a hard limit only when runtime enforcement is verified. Separately report throughput, outcome success, escaped seeded defects, cost, verification time, and intervention.
 - **Final state:** evidence per requirement, merge revisions, read-back issue and project states, worker disposition, and anything unresolved.
 
 ## Worker entries

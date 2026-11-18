@@ -233,7 +233,7 @@ async function expectOfflineBanner(page: Page, label: string) {
 }
 
 for (const width of [375, 1280] as const) {
-  test(`Shell, offline: the new chat keeps its typed text with Send off and the reason beside it, at ${width} pixels`, async ({
+  test(`Shell, offline (/chats/new): the new chat keeps its typed text with Send off and the reason beside it, at ${width} pixels`, async ({
     page,
     context,
     pageErrors,
@@ -283,7 +283,7 @@ for (const width of [375, 1280] as const) {
     await expect(page.getByText('Off until it’s back')).toHaveCount(0);
   });
 
-  test(`Shell, offline: Home shows the banner under the top bar at ${width} pixels`, async ({
+  test(`Shell, offline (/): Home shows the banner under the top bar at ${width} pixels`, async ({
     page,
     context,
     pageErrors,

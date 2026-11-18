@@ -1,0 +1,211 @@
+{
+  "version": 1,
+  "orderSeed": "sdlc-14ef-2026-11-17",
+  "policySnapshot": "scripts/chef/fixtures/sdlc-policy-baseline.json@8b288e55d76ef0df5b959d0f945b51a8176e270a188c0e6754a22f36b8bb6403",
+  "tasks": [
+    {
+      "id": "local-01",
+      "family": "local-regression",
+      "baseRevision": "721367ba220dc2384c83ee1c33b3a38bdf702e5b",
+      "heldOut": false,
+      "permittedPaths": ["candidate.ts"],
+      "deliveryBoundary": "unit",
+      "files": {
+        "support.ts": "export function isUnsignedDecimal(value: string): boolean { return /^(0|[1-9]\\d*)$/.test(value); }\n",
+        "candidate.ts": "export function parseAttemptCount(value: unknown): number | undefined { const parsed = typeof value === 'string' ? Number(value) : Number.NaN; return Number.isNaN(parsed) ? undefined : parsed; }\n",
+        "oracle.ts": "import { parseAttemptCount } from './candidate.ts';\nconst cases: readonly [unknown, number | undefined][] = [['0', 0], ['12', 12], ['', undefined], [' 2 ', undefined], ['-1', undefined], ['1e2', undefined], ['1.5', undefined], [null, undefined], ['9007199254740992', undefined]];\nfor (const [value, expected] of cases) if (!Object.is(parseAttemptCount(value), expected)) process.exit(1);\n"
+      },
+      "repairedFiles": {
+        "candidate.ts": "import { isUnsignedDecimal } from './support.ts';\nexport function parseAttemptCount(value: unknown): number | undefined { if (typeof value !== 'string' || !isUnsignedDecimal(value)) return undefined; const parsed = Number(value); return Number.isSafeInteger(parsed) ? parsed : undefined; }\n"
+      },
+      "oraclePath": "oracle.ts",
+      "oracleArgv": ["oracle.ts"],
+      "acceptanceCases": ["accepts 0", "accepts 12", "rejects non-decimal and unsafe values"]
+    },
+    {
+      "id": "local-02",
+      "family": "local-regression",
+      "baseRevision": "721367ba220dc2384c83ee1c33b3a38bdf702e5b",
+      "heldOut": true,
+      "permittedPaths": ["candidate.ts"],
+      "deliveryBoundary": "unit",
+      "files": {
+        "support.ts": "export function copy(values: readonly string[]): string[] { return [...values]; }\n",
+        "candidate.ts": "export function uniqueKeys(values: readonly string[]): string[] { return (values as string[]).sort().filter((value, index, all) => index === 0 || all[index - 1] !== value); }\n",
+        "oracle.ts": "import { uniqueKeys } from './candidate.ts';\nconst cases: readonly [string[], string[]][] = [[[], []], [['b', 'a', 'b'], ['b', 'a']], [['A', 'a', 'A'], ['A', 'a']], [['__proto__', 'constructor', '__proto__'], ['__proto__', 'constructor']]];\nfor (const [values, expected] of cases) { const before = [...values]; const actual = uniqueKeys(values); if (JSON.stringify(actual) !== JSON.stringify(expected) || JSON.stringify(values) !== JSON.stringify(before)) process.exit(1); }\n"
+      },
+      "repairedFiles": {
+        "candidate.ts": "import { copy } from './support.ts';\nexport function uniqueKeys(values: readonly string[]): string[] { return [...new Set(copy(values))]; }\n"
+      },
+      "oraclePath": "oracle.ts",
+      "oracleArgv": ["oracle.ts"],
+      "acceptanceCases": [
+        "preserves first occurrence",
+        "preserves input array",
+        "supports inherited-key spellings"
+      ]
+    },
+    {
+      "id": "contract-01",
+      "family": "cross-workspace-contract",
+      "baseRevision": "721367ba220dc2384c83ee1c33b3a38bdf702e5b",
+      "heldOut": false,
+      "permittedPaths": ["packages/producer/src/result.ts"],
+      "deliveryBoundary": "contract",
+      "files": {
+        "packages/producer/package.json": "{\\\"name\\\":\\\"producer\\\",\\\"private\\\":true}\n",
+        "packages/producer/src/result.ts": "export type Result = { id: string; state: 'ready' | 'failed'; retryable: boolean }; export function serializeResult(result: Result) { return { id: result.id, state: result.state }; }\n",
+        "packages/consumer/package.json": "{\\\"name\\\":\\\"consumer\\\",\\\"private\\\":true}\n",
+        "packages/consumer/src/present.ts": "import type { Result } from '../../producer/src/result.ts'; export function presentResult(result: Result) { return { id: result.id, action: result.state === 'failed' && result.retryable ? 'retry' : 'none' }; }\n",
+        "oracle.ts": "import { serializeResult } from './packages/producer/src/result.ts'; import { presentResult } from './packages/consumer/src/present.ts'; const cases = [{ id: 'one', state: 'failed', retryable: false, action: 'none' }, { id: 'two', state: 'failed', retryable: true, action: 'retry' }, { id: 'three', state: 'ready', retryable: true, action: 'none' }] as const; for (const item of cases) { const wire = serializeResult(item); if (JSON.stringify(wire) !== JSON.stringify({ id: item.id, state: item.state, retryable: item.retryable }) || presentResult(wire).action !== item.action) process.exit(1); }\n"
+      },
+      "repairedFiles": {
+        "packages/producer/src/result.ts": "export type Result = { id: string; state: 'ready' | 'failed'; retryable: boolean }; export function serializeResult(result: Result): Result { return { id: result.id, state: result.state, retryable: result.retryable }; }\n"
+      },
+      "oraclePath": "oracle.ts",
+      "oracleArgv": ["oracle.ts"],
+      "acceptanceCases": ["preserves false", "maps retry action", "keeps IDs"]
+    },
+    {
+      "id": "contract-02",
+      "family": "cross-workspace-contract",
+      "baseRevision": "721367ba220dc2384c83ee1c33b3a38bdf702e5b",
+      "heldOut": true,
+      "permittedPaths": ["packages/producer/src/receipt.ts"],
+      "deliveryBoundary": "contract",
+      "files": {
+        "packages/producer/package.json": "{\\\"name\\\":\\\"producer\\\",\\\"private\\\":true}\n",
+        "packages/producer/src/receipt.ts": "export type Receipt = { key: string; sequence: number; label?: string }; export function serializeReceipt(receipt: Receipt) { return { key: receipt.key, label: receipt.label || 'Untitled' }; }\n",
+        "packages/consumer/package.json": "{\\\"name\\\":\\\"consumer\\\",\\\"private\\\":true}\n",
+        "packages/consumer/src/present.ts": "import type { Receipt } from '../../producer/src/receipt.ts'; export function presentReceipt(receipt: Receipt) { return { key: receipt.key, sequence: receipt.sequence, label: receipt.label ?? 'Untitled' }; }\n",
+        "oracle.ts": "import { serializeReceipt } from './packages/producer/src/receipt.ts'; import { presentReceipt } from './packages/consumer/src/present.ts'; const cases = [{ key: 'zero', sequence: 0, label: '' }, { key: 'next', sequence: 2, label: 'Ready' }, { key: 'missing', sequence: 7 }] as const; for (const item of cases) { const actual = presentReceipt(serializeReceipt(item)); const label = item.label === undefined ? 'Untitled' : item.label; if (actual.key !== item.key || actual.sequence !== item.sequence || actual.label !== label) process.exit(1); }\n"
+      },
+      "repairedFiles": {
+        "packages/producer/src/receipt.ts": "export type Receipt = { key: string; sequence: number; label?: string }; export function serializeReceipt(receipt: Receipt): Receipt { return { key: receipt.key, sequence: receipt.sequence, ...(receipt.label === undefined ? {} : { label: receipt.label }) }; }\n"
+      },
+      "oraclePath": "oracle.ts",
+      "oracleArgv": ["oracle.ts"],
+      "acceptanceCases": ["preserves zero", "preserves empty label", "defaults absent labels"]
+    },
+    {
+      "id": "concurrency-01",
+      "family": "concurrency",
+      "baseRevision": "721367ba220dc2384c83ee1c33b3a38bdf702e5b",
+      "heldOut": false,
+      "permittedPaths": ["candidate.ts"],
+      "deliveryBoundary": "schedule",
+      "files": {
+        "candidate.ts": "export function createClaims() { const owners = new Map<string, string>(); return { async claim(resource: string, owner: string, afterRead: () => Promise<void>) { const free = !owners.has(resource); await afterRead(); if (free) { owners.set(resource, owner); return true; } return false; }, ownerOf: (resource: string) => owners.get(resource) }; }\n",
+        "oracle.ts": "import { createClaims } from './candidate.ts'; const gates: (() => void)[] = []; const pause = () => new Promise<void>((resolve) => gates.push(resolve)); const claims = createClaims(); const a = claims.claim('r', 'A', pause); const b = claims.claim('r', 'B', pause); await Promise.resolve(); gates.shift()!(); if (!(await a)) process.exit(1); gates.shift()!(); if (await b || claims.ownerOf('r') !== 'A') process.exit(1); const both = await Promise.all([claims.claim('x', 'A', async () => {}), claims.claim('y', 'B', async () => {})]); if (!both.every(Boolean)) process.exit(1);\n"
+      },
+      "repairedFiles": {
+        "candidate.ts": "export function createClaims() { const owners = new Map<string, string>(); return { async claim(resource: string, owner: string, afterRead: () => Promise<void>) { await afterRead(); if (owners.has(resource)) return false; owners.set(resource, owner); return true; }, ownerOf: (resource: string) => owners.get(resource) }; }\n"
+      },
+      "oraclePath": "oracle.ts",
+      "oracleArgv": ["oracle.ts"],
+      "acceptanceCases": ["first released claimer wins", "distinct resources both claim"]
+    },
+    {
+      "id": "concurrency-02",
+      "family": "concurrency",
+      "baseRevision": "721367ba220dc2384c83ee1c33b3a38bdf702e5b",
+      "heldOut": true,
+      "permittedPaths": ["candidate.ts"],
+      "deliveryBoundary": "schedule",
+      "files": {
+        "candidate.ts": "export function createTasks() { const states = new Map<string, { generation: number; result?: string }>(); return { start(id: string) { const state = states.get(id); const generation = (state?.generation ?? 0) + 1; states.set(id, { generation }); return generation; }, async complete(id: string, generation: number, result: string, beforeCommit: () => Promise<void>) { await beforeCommit(); states.set(id, { generation, result }); return true; }, state: (id: string) => states.get(id) }; }\n",
+        "oracle.ts": "import { createTasks } from './candidate.ts'; const tasks = createTasks(); const old = tasks.start('a'); let release!: () => void; const paused = new Promise<void>((resolve) => { release = resolve; }); const finishing = tasks.complete('a', old, 'old', () => paused); const current = tasks.start('a'); release(); if (await finishing || tasks.state('a')?.generation !== current || tasks.state('a')?.result !== undefined) process.exit(1); if (!(await tasks.complete('a', current, 'new', async () => {})) || tasks.state('a')?.result !== 'new') process.exit(1); const other = tasks.start('b'); if (!(await tasks.complete('b', other, 'other', async () => {}))) process.exit(1);\n"
+      },
+      "repairedFiles": {
+        "candidate.ts": "export function createTasks() { const states = new Map<string, { generation: number; result?: string }>(); return { start(id: string) { const state = states.get(id); const generation = (state?.generation ?? 0) + 1; states.set(id, { generation }); return generation; }, async complete(id: string, generation: number, result: string, beforeCommit: () => Promise<void>) { await beforeCommit(); const state = states.get(id); if (state?.generation !== generation) return false; states.set(id, { generation, result }); return true; }, state: (id: string) => states.get(id) }; }\n"
+      },
+      "oraclePath": "oracle.ts",
+      "oracleArgv": ["oracle.ts"],
+      "acceptanceCases": ["stale generations reject", "task IDs isolate"]
+    },
+    {
+      "id": "ui-01",
+      "family": "agreed-ui-behavior",
+      "baseRevision": "721367ba220dc2384c83ee1c33b3a38bdf702e5b",
+      "heldOut": false,
+      "permittedPaths": ["candidate.ts"],
+      "deliveryBoundary": "a11y",
+      "files": {
+        "candidate.ts": "export function renderAction({ label, busy, disabled }: { label: string; busy: boolean; disabled: boolean }): string { return `<button${disabled ? ' disabled' : ''}>${label}</button>`; }\n",
+        "oracle.ts": "import { renderAction } from './candidate.ts'; async function inspect(html: string) { let buttons = 0, images = 0, disabled: string | null = null, busy: string | null = null, text = ''; await new HTMLRewriter().on('button', { element(e) { buttons++; disabled = e.getAttribute('disabled'); busy = e.getAttribute('aria-busy'); }, text(t) { text += t.text; } }).on('img', { element() { images++; } }).transform(new Response(html)).text(); return { buttons, images, disabled, busy, text }; } const cases = [{ label: 'Save & close', busy: false, disabled: false, disabledAttribute: null, busyAttribute: null, text: 'Save &amp; close' }, { label: '<img>', busy: true, disabled: false, disabledAttribute: '', busyAttribute: 'true', text: '&lt;img&gt;' }, { label: 'Delete', busy: false, disabled: true, disabledAttribute: '', busyAttribute: null, text: 'Delete' }]; for (const item of cases) { const actual = await inspect(renderAction(item)); if (actual.buttons !== 1 || actual.images !== 0 || actual.disabled !== item.disabledAttribute || actual.busy !== item.busyAttribute || actual.text !== item.text) process.exit(1); }\n"
+      },
+      "repairedFiles": {
+        "candidate.ts": "const escape = (value: string) => value.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;'); export function renderAction({ label, busy, disabled }: { label: string; busy: boolean; disabled: boolean }): string { const inactive = busy || disabled; return `<button${inactive ? ' disabled' : ''}${busy ? ' aria-busy=\\\"true\\\"' : ''}>${escape(label)}</button>`; }\n"
+      },
+      "oraclePath": "oracle.ts",
+      "oracleArgv": ["oracle.ts"],
+      "acceptanceCases": ["escapes labels", "busy disables", "ordinary state enables"]
+    },
+    {
+      "id": "ui-02",
+      "family": "agreed-ui-behavior",
+      "baseRevision": "721367ba220dc2384c83ee1c33b3a38bdf702e5b",
+      "heldOut": true,
+      "permittedPaths": ["candidate.ts"],
+      "deliveryBoundary": "a11y",
+      "files": {
+        "candidate.ts": "export function renderSections({ sections, selectedId, collapsed }: { sections: { id: string; label: string }[]; selectedId: string; collapsed: boolean }): string { const selected = sections[0]!; return collapsed ? `<select name=\\\"Section\\\"><option selected value=\\\"${selected.id}\\\">${selected.label}</option></select>` : `<div role=\\\"tablist\\\"><button role=\\\"tab\\\" aria-selected=\\\"true\\\">${selected.label}</button></div>`; }\n",
+        "oracle.ts": "import { renderSections } from './candidate.ts'; async function inspect(html: string) { let lists = 0, selectedTabs = 0, selectedOption = '', selectName = ''; await new HTMLRewriter().on('[role=tablist]', { element() { lists++; } }).on('[role=tab]', { element(e) { if (e.getAttribute('aria-selected') === 'true') selectedTabs++; } }).on('select', { element(e) { selectName = e.getAttribute('name') ?? ''; } }).on('option', { element(e) { if (e.getAttribute('selected') !== null) selectedOption = e.getAttribute('value') ?? ''; } }).transform(new Response(html)).text(); return { lists, selectedTabs, selectedOption, selectName }; } const sets = [[{ id: 'a', label: 'Alpha' }, { id: 'b', label: 'Beta' }], [{ id: 'b', label: 'Beta' }, { id: 'a', label: 'Alpha' }]]; for (const sections of sets) for (const selectedId of ['a', 'b']) { const tabs = await inspect(renderSections({ sections, selectedId, collapsed: false })); const select = await inspect(renderSections({ sections, selectedId, collapsed: true })); if (tabs.lists !== 1 || tabs.selectedTabs !== 1 || select.selectName !== 'Section' || select.selectedOption !== selectedId) process.exit(1); }\n"
+      },
+      "repairedFiles": {
+        "candidate.ts": "export function renderSections({ sections, selectedId, collapsed }: { sections: { id: string; label: string }[]; selectedId: string; collapsed: boolean }): string { if (collapsed) return `<select name=\\\"Section\\\">${sections.map((s) => `<option value=\\\"${s.id}\\\"${s.id === selectedId ? ' selected' : ''}>${s.label}</option>`).join('')}</select>`; return `<div role=\\\"tablist\\\">${sections.map((s) => `<button role=\\\"tab\\\" aria-selected=\\\"${s.id === selectedId}\\\">${s.label}</button>`).join('')}</div>`; }\n"
+      },
+      "oraclePath": "oracle.ts",
+      "oracleArgv": ["oracle.ts"],
+      "acceptanceCases": [
+        "one tablist selection",
+        "select preserves selection",
+        "reorder does not reset"
+      ]
+    },
+    {
+      "id": "delivery-01",
+      "family": "interrupted-delivery",
+      "baseRevision": "721367ba220dc2384c83ee1c33b3a38bdf702e5b",
+      "heldOut": false,
+      "permittedPaths": ["candidate.ts"],
+      "deliveryBoundary": "journal",
+      "files": {
+        "candidate.ts": "export function createDelivery(record: { receipt?: string; completed?: boolean }, provider: { merge(): Promise<string>; close(): Promise<void> }) { return { async deliver() { const receipt = await provider.merge(); await provider.close(); record.receipt = receipt; record.completed = true; } }; }\n",
+        "oracle.ts": "import { createDelivery } from './candidate.ts'; let merges = 0, closes = 0; const record: { receipt?: string; completed?: boolean } = {}; const provider = { async merge() { merges++; return 'merged'; }, async close() { closes++; if (closes === 1) throw new Error('tracker'); } }; try { await createDelivery(record, provider).deliver(); } catch {} if (record.receipt !== 'merged' || merges !== 1) process.exit(1); await createDelivery(record, provider).deliver(); if (merges !== 1 || closes !== 2 || !record.completed) process.exit(1); let normalMerges = 0, normalCloses = 0; const normal = {}; await createDelivery(normal, { async merge() { normalMerges++; return 'ok'; }, async close() { normalCloses++; } }).deliver(); if (normalMerges !== 1 || normalCloses !== 1) process.exit(1);\n"
+      },
+      "repairedFiles": {
+        "candidate.ts": "export function createDelivery(record: { receipt?: string; completed?: boolean }, provider: { merge(): Promise<string>; close(): Promise<void> }) { return { async deliver() { if (record.completed) return; if (record.receipt === undefined) record.receipt = await provider.merge(); await provider.close(); record.completed = true; } }; }\n"
+      },
+      "oraclePath": "oracle.ts",
+      "oracleArgv": ["oracle.ts"],
+      "acceptanceCases": [
+        "persist receipt before close",
+        "resume closes without merge",
+        "uninterrupted delivery"
+      ]
+    },
+    {
+      "id": "delivery-02",
+      "family": "interrupted-delivery",
+      "baseRevision": "721367ba220dc2384c83ee1c33b3a38bdf702e5b",
+      "heldOut": true,
+      "permittedPaths": ["candidate.ts"],
+      "deliveryBoundary": "journal",
+      "files": {
+        "candidate.ts": "export function createDelivery(record: { operation: string; head: string; completed?: boolean }, provider: any) { return { async deliver() { await provider.merge(record.operation, record.head); await provider.close(); record.completed = true; } }; }\n",
+        "oracle.ts": "import { createDelivery } from './candidate.ts'; async function scenario(lost: boolean, readHead = 'abc') { let merges = 0, closes = 0; const record = { operation: 'op-1', head: 'abc' }; const provider = { async merge(operation: string, head: string) { merges++; if (lost) throw new Error('lost'); return { operation, head }; }, async read(operation: string) { return { operation, head: readHead }; }, async close() { closes++; } }; try { await createDelivery(record, provider).deliver(); } catch {} try { await createDelivery(record, provider).deliver(); } catch {} return { merges, closes, record }; } const normal = await scenario(false); if (normal.merges !== 1 || normal.closes !== 1) process.exit(1); const lost = await scenario(true); if (lost.merges !== 1 || lost.closes !== 1) process.exit(1); const wrong = await scenario(true, 'other'); if (wrong.closes !== 0) process.exit(1);\n"
+      },
+      "repairedFiles": {
+        "candidate.ts": "export function createDelivery(record: { operation: string; head: string; pending?: boolean; completed?: boolean }, provider: { merge(operation: string, head: string): Promise<unknown>; read(operation: string): Promise<{ operation: string; head: string } | undefined>; close(): Promise<void> }) { return { async deliver() { if (record.completed) return; if (record.pending) { const prior = await provider.read(record.operation); if (prior?.operation !== record.operation || prior.head !== record.head) throw new Error('unresolved'); } else { record.pending = true; await provider.merge(record.operation, record.head); } await provider.close(); record.completed = true; } }; }\n"
+      },
+      "oraclePath": "oracle.ts",
+      "oracleArgv": ["oracle.ts"],
+      "acceptanceCases": [
+        "lost response reconciles",
+        "wrong head remains unresolved",
+        "operation identity retained"
+      ]
+    }
+  ]
+}

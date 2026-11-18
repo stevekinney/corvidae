@@ -37,13 +37,33 @@ export interface TranscriptUsage {
   provider: Provider;
   label: string;
   calls: ModelCall[];
+  /** Input the transcript claimed was a call but whose usage could not be accounted for. */
+  problems: UsageProblem[];
+}
+
+/** A missing or malformed usage record. It is intentionally not represented as zero tokens. */
+export interface UsageProblem {
+  kind: 'malformed-line' | 'missing-usage' | 'malformed-usage';
+  line: number;
+  message: string;
 }
 
 export interface Price {
+  asOf: string;
   input: number;
   output: number;
   cacheRead: number;
   cacheWrite: number;
+}
+
+function validPrice(price: Price | undefined): price is Price {
+  return (
+    price !== undefined &&
+    !Number.isNaN(Date.parse(price.asOf)) &&
+    [price.input, price.output, price.cacheRead, price.cacheWrite].every(
+      (rate) => Number.isFinite(rate) && rate >= 0,
+    )
+  );
 }
 
 /** One model's share of a transcript's calls. */
@@ -73,7 +93,9 @@ export interface TranscriptReport {
   rewrites: number;
   rewriteTokens: number;
   rewriteGapsMinutes: number[];
-  cost: number | undefined;
+  complete: boolean;
+  problems: UsageProblem[];
+  cost: number | 'unknown';
 }
 
 export class UsageError extends Error {}
@@ -85,6 +107,58 @@ export function contextOf(call: ModelCall): number {
 
 function numberAt(value: unknown): number {
   return typeof value === 'number' && Number.isFinite(value) ? value : 0;
+}
+
+function hasNumber(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0;
+}
+
+type UsageIssue = Omit<UsageProblem, 'line'>;
+
+function recordAt(value: unknown): Record<string, unknown> | undefined {
+  return value !== null && typeof value === 'object'
+    ? (value as Record<string, unknown>)
+    : undefined;
+}
+
+/** The Codex call and its cumulative counter are one accounting record. */
+function codexUsageIssues(info: unknown): UsageIssue[] {
+  const infoRecord = recordAt(info);
+  const usage = recordAt(infoRecord?.['last_token_usage']);
+  if (usage === undefined) return [{ kind: 'missing-usage', message: 'Model call has no usage.' }];
+  const issues: UsageIssue[] = [];
+  const total = recordAt(infoRecord?.['total_token_usage'])?.['total_tokens'];
+  if (!hasNumber(total))
+    issues.push({
+      kind: total === undefined ? 'missing-usage' : 'malformed-usage',
+      message: 'Model call has no numeric total_tokens.',
+    });
+  for (const field of [
+    'input_tokens',
+    'output_tokens',
+    'cached_input_tokens',
+    'cache_write_input_tokens',
+  ]) {
+    const value = usage[field];
+    if (
+      ((field === 'input_tokens' || field === 'output_tokens') && !hasNumber(value)) ||
+      (value !== undefined && !hasNumber(value))
+    )
+      issues.push({
+        kind: value === undefined ? 'missing-usage' : 'malformed-usage',
+        message: `Model call has no numeric ${field}.`,
+      });
+  }
+  if (
+    hasNumber(usage['cached_input_tokens']) &&
+    hasNumber(usage['input_tokens']) &&
+    usage['cached_input_tokens'] > usage['input_tokens']
+  )
+    issues.push({
+      kind: 'malformed-usage',
+      message: 'Model call has cached_input_tokens greater than input_tokens.',
+    });
+  return issues;
 }
 
 function parseLines(text: string): Record<string, unknown>[] {
@@ -100,6 +174,89 @@ function parseLines(text: string): Record<string, unknown>[] {
     }
   }
   return entries;
+}
+
+/** Usage omissions are evidence of incomplete accounting, never a zero-token call. */
+export function usageProblems(text: string, provider: Provider): UsageProblem[] {
+  const problems: UsageProblem[] = [];
+  for (const [index, line] of text.split('\n').entries()) {
+    if (line.trim() === '') continue;
+    let entry: Record<string, unknown>;
+    try {
+      const parsed: unknown = JSON.parse(line);
+      if (parsed === null || typeof parsed !== 'object') {
+        problems.push({ kind: 'malformed-line', line: index + 1, message: 'Not a JSON object.' });
+        continue;
+      }
+      entry = parsed as Record<string, unknown>;
+    } catch {
+      problems.push({ kind: 'malformed-line', line: index + 1, message: 'Invalid JSON.' });
+      continue;
+    }
+    const message = recordAt(entry['message']);
+    const payload = entry['payload'] as Record<string, unknown> | undefined;
+    const claimsClaudeCall = provider === 'claude-code' && entry['type'] === 'assistant';
+    const claimsCodexCall =
+      provider === 'codex' && entry['type'] === 'event_msg' && payload?.['type'] === 'token_count';
+    if (!claimsClaudeCall && !claimsCodexCall) continue;
+    if (claimsCodexCall) {
+      for (const issue of codexUsageIssues(payload?.['info']))
+        problems.push({ ...issue, line: index + 1 });
+      continue;
+    }
+    if (message === undefined) {
+      problems.push({
+        kind: entry['message'] === undefined ? 'missing-usage' : 'malformed-usage',
+        line: index + 1,
+        message: 'Model call message is not an object.',
+      });
+      continue;
+    }
+    if (message['model'] === '<synthetic>') continue;
+    if (typeof message['model'] !== 'string') {
+      problems.push({
+        kind: message['model'] === undefined ? 'missing-usage' : 'malformed-usage',
+        line: index + 1,
+        message: 'Model call has no string model.',
+      });
+      continue;
+    }
+    const usage = message?.['usage'];
+    if (usage === undefined) {
+      problems.push({
+        kind: 'missing-usage',
+        line: index + 1,
+        message: 'Model call has no usage.',
+      });
+      continue;
+    }
+    if (usage === null || typeof usage !== 'object')
+      problems.push({
+        kind: 'malformed-usage',
+        line: index + 1,
+        message: 'Model call usage is not an object.',
+      });
+    else {
+      const required = ['input_tokens', 'output_tokens'];
+      const optional = claimsClaudeCall
+        ? ['cache_creation_input_tokens', 'cache_read_input_tokens']
+        : ['cached_input_tokens', 'cache_write_input_tokens'];
+      for (const field of [...required, ...optional]) {
+        const value = (usage as Record<string, unknown>)[field];
+        // Cache fields are optional in both transcript formats; supplied values must be numeric.
+        if (
+          (required.includes(field) && !hasNumber(value)) ||
+          (value !== undefined && !hasNumber(value))
+        )
+          problems.push({
+            kind: value === undefined ? 'missing-usage' : 'malformed-usage',
+            line: index + 1,
+            message: `Model call has no numeric ${field}.`,
+          });
+      }
+    }
+  }
+  return problems;
 }
 
 /** Which provider wrote `entries`, or `undefined` when neither format is recognized. */
@@ -129,13 +286,26 @@ export function claudeCodeCalls(entries: Record<string, unknown>[]): ModelCall[]
   const toolIds = new Map<string, Set<string>>();
   for (const entry of entries) {
     if (entry['type'] !== 'assistant') continue;
-    const message = entry['message'] as Record<string, unknown> | undefined;
+    const message = recordAt(entry['message']);
     const usage = message?.['usage'] as Record<string, unknown> | undefined;
     const id = message?.['id'];
     if (usage === undefined || typeof id !== 'string') continue;
     // Claude Code writes `<synthetic>` entries for messages no model produced (an interrupted
     // turn, for example); they carry no usage and are not calls.
-    if (message?.['model'] === '<synthetic>') continue;
+    if (
+      message === undefined ||
+      typeof message['model'] !== 'string' ||
+      message['model'] === '<synthetic>'
+    )
+      continue;
+    if (
+      !hasNumber(usage['input_tokens']) ||
+      !hasNumber(usage['output_tokens']) ||
+      ['cache_creation_input_tokens', 'cache_read_input_tokens'].some(
+        (field) => usage[field] !== undefined && !hasNumber(usage[field]),
+      )
+    )
+      continue;
     const tools = toolIds.get(id) ?? new Set<string>();
     for (const block of Array.isArray(message?.['content'])
       ? (message['content'] as unknown[])
@@ -172,12 +342,12 @@ export function codexCalls(entries: Record<string, unknown>[]): ModelCall[] {
     if (entry['type'] === 'turn_context' && typeof payload?.['model'] === 'string')
       model = payload['model'];
     if (entry['type'] !== 'event_msg' || payload?.['type'] !== 'token_count') continue;
-    const info = payload['info'] as Record<string, unknown> | null | undefined;
-    const last = info?.['last_token_usage'] as Record<string, unknown> | undefined;
-    const total = numberAt(
-      (info?.['total_token_usage'] as Record<string, unknown> | undefined)?.['total_tokens'],
-    );
-    if (last === undefined || total <= lastTotal) continue;
+    const info = payload['info'];
+    if (codexUsageIssues(info).length > 0) continue;
+    const infoRecord = recordAt(info)!;
+    const last = recordAt(infoRecord['last_token_usage'])!;
+    const total = recordAt(infoRecord['total_token_usage'])!['total_tokens'] as number;
+    if (total <= lastTotal) continue;
     lastTotal = total;
     const cached = numberAt(last['cached_input_tokens']);
     calls.push({
@@ -209,11 +379,12 @@ function labelFor(path: string): string {
 
 /** Read one transcript file, or `undefined` when it is neither provider's format. */
 export function readTranscript(path: string): TranscriptUsage | undefined {
-  const entries = parseLines(readFileSync(path, 'utf8'));
+  const text = readFileSync(path, 'utf8');
+  const entries = parseLines(text);
   const provider = detectProvider(entries);
   if (provider === undefined) return undefined;
   const calls = provider === 'codex' ? codexCalls(entries) : claudeCodeCalls(entries);
-  return { path, provider, label: labelFor(path), calls };
+  return { path, provider, label: labelFor(path), calls, problems: usageProblems(text, provider) };
 }
 
 /** Every `.jsonl` file under `path`, or `path` itself when it is a file. */
@@ -240,7 +411,7 @@ export function costOf(
   prices: Record<string, Price> | undefined,
 ): number | undefined {
   const price = prices?.[call.model];
-  if (price === undefined) return undefined;
+  if (!validPrice(price)) return undefined;
   return (
     (call.uncachedInput * price.input +
       call.cacheWrite * price.cacheWrite +
@@ -274,7 +445,8 @@ export function report(
     }
   });
   const costs = usage.calls.map((call) => costOf(call, prices));
-  const priced = prices !== undefined && costs.every((cost) => cost !== undefined);
+  const complete = usage.problems.length === 0;
+  const priced = complete && prices !== undefined && costs.every((cost) => cost !== undefined);
   const sum = (pick: (call: ModelCall) => number) =>
     usage.calls.reduce((total, call) => total + pick(call), 0);
   const byModel: Record<string, ModelTotals> = {};
@@ -311,7 +483,9 @@ export function report(
     rewrites,
     rewriteTokens,
     rewriteGapsMinutes: gaps,
-    cost: priced ? costs.reduce<number>((total, cost) => total + (cost ?? 0), 0) : undefined,
+    complete,
+    problems: usage.problems,
+    cost: priced ? costs.reduce<number>((total, cost) => total + (cost ?? 0), 0) : 'unknown',
   };
 }
 
@@ -331,7 +505,8 @@ export interface UsageTotals {
  */
 export function totalUsage(paths: string[]): UsageTotals {
   const totals: UsageTotals = { input: 0, cachedInput: 0, output: 0 };
-  for (const usage of paths.flatMap(transcriptFiles).map(readTranscript)) {
+  const files = [...new Set(paths.flatMap(transcriptFiles))];
+  for (const usage of files.map(readTranscript)) {
     if (usage === undefined) continue;
     const summary = report(usage, undefined);
     totals.input += summary.uncachedInput + summary.cacheWrite;
@@ -352,8 +527,14 @@ function readPrices(path: string): Record<string, Price> {
     throw new UsageError('A price table is a JSON object.');
   for (const [model, price] of Object.entries(parsed as Record<string, unknown>)) {
     const fields = price as Record<string, unknown>;
+    if (typeof fields?.['asOf'] !== 'string' || Number.isNaN(Date.parse(fields['asOf'])))
+      throw new UsageError(`Price for ${model} needs an ISO asOf date.`);
     for (const field of ['input', 'output', 'cacheRead', 'cacheWrite']) {
-      if (typeof fields?.[field] !== 'number')
+      if (
+        typeof fields?.[field] !== 'number' ||
+        !Number.isFinite(fields[field]) ||
+        fields[field] < 0
+      )
         throw new UsageError(`Price for ${model} needs a numeric ${field}.`);
     }
   }
@@ -398,11 +579,17 @@ function renderText(reports: TranscriptReport[]): string {
   lines.push(
     `Full-context rewrites: ${format(rewrites)} calls, ${format(reports.reduce((t, item) => t + item.rewriteTokens, 0))} tokens; median gap before one ${median(gaps).toFixed(1)} min.`,
   );
-  const costs = reports.map((item) => item.cost);
-  if (costs.some((cost) => cost !== undefined)) {
-    const unpriced = reports.filter((item) => item.cost === undefined).length;
+  if (reports.some((item) => item.problems.length > 0)) {
     lines.push(
-      `Cost from the supplied price table: $${costs.reduce<number>((t, c) => t + (c ?? 0), 0).toFixed(2)}${unpriced > 0 ? ` (${unpriced} transcripts had an unpriced model)` : ''}.`,
+      `Incomplete transcript usage: ${format(reports.filter((item) => !item.complete).length)} transcripts, ${format(reports.reduce((total, item) => total + item.problems.length, 0))} problems; cost is unknown.`,
+    );
+  } else if (reports.every((item) => item.cost !== 'unknown')) {
+    lines.push(
+      `Cost from the supplied price table: $${reports.reduce<number>((total, item) => total + (item.cost as number), 0).toFixed(2)}.`,
+    );
+  } else if (reports.some((item) => item.cost !== 'unknown')) {
+    lines.push(
+      'Cost from the supplied price table is unknown because at least one model is unpriced.',
     );
   }
   lines.push('Transcripts by tokens processed (input, cache write and cache read):');
@@ -436,7 +623,10 @@ export function run(argv: string[]): { code: number; output: string } {
   const reports = paths
     .flatMap(transcriptFiles)
     .map(readTranscript)
-    .filter((usage): usage is TranscriptUsage => usage !== undefined && usage.calls.length > 0)
+    .filter(
+      (usage): usage is TranscriptUsage =>
+        usage !== undefined && (usage.calls.length > 0 || usage.problems.length > 0),
+    )
     .map((usage) => report(usage, prices, rewriteFloor));
   if (reports.length === 0)
     return {

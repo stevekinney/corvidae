@@ -80,7 +80,8 @@ async function answerAsWorkingGoal(page: Page): Promise<void> {
 }
 
 for (const width of WIDTHS) {
-  test.describe(`at ${String(width)} pixels`, () => {
+  // The routes lead the title, so a design review's route filter (`--grep '/goals'`) runs these.
+  test.describe(`/goals/:goal and /goals/new at ${String(width)} pixels`, () => {
     test('a working goal says its newest attempt is checking the result (67x)', async ({
       page,
     }) => {
