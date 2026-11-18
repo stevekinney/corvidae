@@ -289,6 +289,15 @@ export function collectLocalEvidence(
       throw new EvidenceRequestError('verification request lacks a local run mapping');
     if (run.argv.some((part) => typeof part !== 'string' || part === '' || part.includes('\0')))
       throw new EvidenceRequestError('verification request has invalid local argv');
+    for (const path of [...run.reportPaths, ...(run.artifactPaths ?? [])])
+      if (
+        typeof path !== 'string' ||
+        path === '' ||
+        path.includes('\0') ||
+        isAbsolute(path) ||
+        path.split(/[\\/]/).some((part) => part === '..')
+      )
+        throw new EvidenceRequestError('verification request has invalid local path');
     return { item, run };
   });
   const inputPaths = [...new Set(obligations.flatMap((item) => item.relevantInputs))];
@@ -324,6 +333,7 @@ export function collectLocalEvidence(
           before.checkedTree === '' ||
           before.integrationTree === '' ||
           before.checkedTree !== before.integrationTree ||
+          after.dirtyContentIdentity !== undefined ||
           !stableInputs ||
           assertionPassed === null ||
           inventory.length === 0

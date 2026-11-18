@@ -132,14 +132,18 @@ const values = await (async () => {
       obligations: [
         {
           ...reportedRequest.plan.obligations[0]!,
-          commandOrProviderJob: 'touch actual-command-ran',
+          commandOrProviderJob: 'bun writes declared JUnit',
         },
       ],
     },
     localRuns: [
       {
-        obligation: 'AC1:touch actual-command-ran',
-        argv: ['touch', 'actual-command-ran'],
+        obligation: 'AC1:bun writes declared JUnit',
+        argv: [
+          'bun',
+          '-e',
+          'await Bun.write("report.xml", "<testsuite><testcase name=\\"input.test.ts\\" /></testsuite>")',
+        ],
         reportPaths: ['report.xml'],
       },
     ],
@@ -174,7 +178,6 @@ const values = await (async () => {
     reported,
     failedReport,
     defaultReceipt,
-    defaultCommandRan: readFileSync(join(fixture, 'actual-command-ran')).byteLength === 0,
     reused,
     invalidReuse,
     reportDigest: createHash('sha256').update(readFileSync(report)).digest('hex'),
@@ -201,8 +204,7 @@ test('requires structured results and retains report identity', () => {
   expect(values.failedReport.records[0]?.status).toBe('fail');
 });
 test('default local composition executes explicit argv without a shell', () => {
-  expect(values.defaultCommandRan).toBe(true);
-  expect(values.defaultReceipt.records[0]?.status).toBe('fail');
+  expect(values.defaultReceipt.records[0]?.status).toBe('pass');
 });
 test('reuses only unchanged relevant content', () => {
   expect(values.reused.records[0]?.status).toBe('reused-pass');
