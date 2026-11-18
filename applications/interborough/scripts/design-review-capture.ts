@@ -31,13 +31,15 @@
  *
  * `--grep` narrows to the tests whose titles match, for example `--grep '/agents'` for a sign-off on
  * the agent pages. The default output directory is `<repository>/tmp/design-review/<time stamp>`,
- * which Git ignores. Exit 0 when at least one capture was written, 1 when none was, 2 on bad usage
- * or when the end-to-end port is already taken.
+ * which Git ignores. Exit 0 when at least one capture was written, 1 when none was or when a listed
+ * specification that captures a route the filter matches ran no test (its titles do not name the
+ * route), 2 on bad usage or when the end-to-end port is already taken.
  *
  * Playwright reuses a server already listening on the end-to-end port outside CI, which on a shared
  * host can be another checkout's build, so the capture refuses to start when that port is taken
  * and asks for a free `INTERBOROUGH_E2E_PORT` instead of screenshotting someone else's tree.
  */
+import { readFileSync } from 'node:fs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -125,6 +127,9 @@ const SHOWCASE_SPECIFICATIONS = [
   'tests/e2e/run-page-live-states.spec.ts',
   // A working goal, Start again held, and Start again pressed (COR-2425).
   'tests/e2e/goal-page-states.spec.ts',
+  // Every view loading, empty, failed and forbidden, which a route filter (`--grep '/runs'`) reaches
+  // through each title's address, and the goal check's loading states.
+  'tests/e2e/15-view-states.spec.ts',
 ] as const;
 
 type Scheme = 'light' | 'dark';
@@ -185,11 +190,95 @@ export function parseArguments(argv: readonly string[], now = new Date()): Optio
   if (specsGiven && data === 'showcase') {
     return '--specs narrows the stress data, so it cannot be used with --data showcase';
   }
+  // A specification both lists hold (the view states) runs once, where it is first listed.
   const specifications = [
-    ...(data === 'stress' ? [] : SHOWCASE_SPECIFICATIONS),
-    ...(data === 'showcase' ? [] : stress),
+    ...new Set([
+      ...(data === 'stress' ? [] : SHOWCASE_SPECIFICATIONS),
+      ...(data === 'showcase' ? [] : stress),
+    ]),
   ];
   return { out, schemes, specifications, grep };
+}
+
+/** The showcase specifications, for the test that holds each one's titles to the routes it captures. */
+export const SHOWCASE_SPECIFICATION_PATHS: readonly string[] = SHOWCASE_SPECIFICATIONS;
+
+/** The routes a specification's source captures by a literal `route: '/…'`. */
+export function capturedRoutes(source: string): string[] {
+  return [...source.matchAll(/route:\s*'(\/[^']*)'/g)].map((match) => match[1]!);
+}
+
+/**
+ * The captures a filtered run could never reach: each literal route a test captures that is in
+ * neither the test's own title nor the title of the `test.describe` around it. Playwright's
+ * `--grep` matches the whole title path, so a route the path does not name is skipped by a route
+ * filter, and the capture silently runs nothing for it. Reads the source as text: each test is the
+ * text from its `test(` to the next, and its describe is the last `test.describe(` before it.
+ */
+export function routesMissingFromTitles(source: string): { title: string; route: string }[] {
+  const markers = [
+    ...source.matchAll(/\btest(\.describe)?\(\s*(`[^`]*`|'(?:[^'\\]|\\.)*'|"(?:[^"\\]|\\.)*")/g),
+  ].map((match) => ({
+    index: match.index,
+    describe: match[1] !== undefined,
+    title: match[2]!.slice(1, -1),
+  }));
+  const missing: { title: string; route: string }[] = [];
+  let describe = '';
+  markers.forEach((marker, position) => {
+    if (marker.describe) {
+      describe = marker.title;
+      return;
+    }
+    const end = markers[position + 1]?.index ?? source.length;
+    const body = source.slice(marker.index, end);
+    const path = `${describe} ${marker.title}`;
+    for (const route of capturedRoutes(body)) {
+      if (!path.includes(route)) missing.push({ title: marker.title, route });
+    }
+  });
+  return missing;
+}
+
+/** One file's suite in Playwright's JSON report, as far as counting its tests needs it. */
+type ReportSuite = {
+  readonly file?: string;
+  readonly specs?: readonly unknown[];
+  readonly suites?: readonly ReportSuite[];
+};
+
+function testsIn(suite: ReportSuite): number {
+  return (
+    (suite.specs?.length ?? 0) +
+    (suite.suites ?? []).reduce((sum, inner) => sum + testsIn(inner), 0)
+  );
+}
+
+/**
+ * The listed specifications that ran no test, from Playwright's JSON report. With `--grep`, a
+ * specification is expected to run only when one of the routes its source captures matches the
+ * filter; without it, every listed specification is. A capture with such a specification exits 1,
+ * so a title filter can never again silently run nothing for it.
+ */
+export function specificationsThatRanNothing(
+  report: { readonly suites?: readonly ReportSuite[] },
+  specifications: readonly string[],
+  grep: string | undefined,
+  sourceOf: (specification: string) => string,
+): string[] {
+  const ran = new Map<string, number>();
+  for (const suite of report.suites ?? []) {
+    if (suite.file !== undefined) ran.set(suite.file, (ran.get(suite.file) ?? 0) + testsIn(suite));
+  }
+  const filter = grep === undefined ? undefined : new RegExp(grep);
+  return specifications.filter((specification) => {
+    const expected =
+      filter === undefined ||
+      capturedRoutes(sourceOf(specification)).some((route) => filter.test(route));
+    if (!expected) return false;
+    const file = specification.replace(/^tests\/e2e\//, '');
+    return (ran.get(file) ?? ran.get(specification) ?? 0) === 0;
+  });
 }
 
 /** The probe accepts connections only to hold the port, so it ignores whatever a client sends. */
@@ -260,8 +349,10 @@ export async function captureDesignReview(
     return 2;
   }
   await mkdir(options.out, { recursive: true });
-  const runs: { scheme: Scheme; exitCode: number }[] = [];
+  const runs: { scheme: Scheme; exitCode: number; ranNothing: string[] }[] = [];
   for (const scheme of options.schemes) {
+    // The JSON report says how many tests each specification ran, so one that ran none is named.
+    const report = join(options.out, `playwright-${scheme}.json`);
     const command = [
       'bun',
       '--bun',
@@ -269,27 +360,41 @@ export async function captureDesignReview(
       'test',
       '--config',
       'playwright.config.ts',
+      '--reporter=list,json',
       ...options.specifications,
       ...(options.grep === undefined ? [] : ['--grep', options.grep]),
     ];
     environment.standardOutput(`design review: capturing in ${scheme}: ${command.join(' ')}\n`);
-    runs.push({
-      scheme,
-      exitCode: await environment.run(command, {
-        INTERBOROUGH_DESIGN_REVIEW_CAPTURE: options.out,
-        INTERBOROUGH_DESIGN_REVIEW_COLOR_SCHEME: scheme,
-      }),
+    const exitCode = await environment.run(command, {
+      INTERBOROUGH_DESIGN_REVIEW_CAPTURE: options.out,
+      INTERBOROUGH_DESIGN_REVIEW_COLOR_SCHEME: scheme,
+      PLAYWRIGHT_JSON_OUTPUT_NAME: report,
     });
+    // A run that wrote no report (it never started) is judged by its exit code alone.
+    const written = await readReport(report);
+    const ranNothing =
+      written === undefined
+        ? []
+        : specificationsThatRanNothing(written, options.specifications, options.grep, (path) =>
+            readSourceOf(path),
+          );
+    for (const specification of ranNothing) {
+      environment.standardError(
+        `design review: ${specification} ran no test in ${scheme}; its titles may not name the route the filter asks for\n`,
+      );
+    }
+    runs.push({ scheme, exitCode, ranNothing });
   }
   const captures = await captureCount(options.out);
   const geometry = await auditGeometry(options.out);
+  const ranNothing = runs.some((run) => run.ranNothing.length > 0);
   const summary = {
     out: options.out,
     captures,
     specifications: options.specifications,
     grep: options.grep ?? null,
     runs,
-    clean: runs.every((run) => run.exitCode === 0),
+    clean: runs.every((run) => run.exitCode === 0) && !ranNothing,
     geometry,
   };
   await writeFile(join(options.out, 'summary.json'), `${JSON.stringify(summary, null, 2)}\n`);
@@ -301,7 +406,25 @@ export async function captureDesignReview(
   environment.standardOutput(
     `design review: ${captures} captures in ${options.out}${summary.clean ? '' : ' (a specification failed; see summary.json)'}\n`,
   );
-  return captures > 0 ? 0 : 1;
+  return captures > 0 && !ranNothing ? 0 : 1;
+}
+
+/** Playwright's JSON report, or `undefined` when the run wrote none. */
+async function readReport(path: string): Promise<{ suites?: ReportSuite[] } | undefined> {
+  try {
+    return JSON.parse(await readFile(path, 'utf8')) as { suites?: ReportSuite[] };
+  } catch {
+    return undefined;
+  }
+}
+
+/** A listed specification's source, or nothing when it cannot be read. */
+function readSourceOf(specification: string): string {
+  try {
+    return readFileSync(join(applicationDirectory, specification), 'utf8');
+  } catch {
+    return '';
+  }
 }
 
 /**
