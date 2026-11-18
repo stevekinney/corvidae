@@ -147,6 +147,22 @@
   const phone = $derived(
     rowWidth !== undefined && rowWidth > 0 ? rowWidth < PHONE_ROW_WIDTH : phoneViewport.current,
   );
+  // Under `wrapMeta` a phone row reads line two as one run of text (the dot, the word, then the
+  // meta), so a wrapped line returns to the row's leading edge. The status is drawn once, either in
+  // its column or at the start of line two, never both: a second copy would be a second image with
+  // the same name to a screen reader and a second match to a text query. The script decides, from
+  // the same row width as the phone form, and the stylesheet keys line two's span on the class this
+  // sets, so the placement and its styles cannot disagree. A row with no text line two (none, or a
+  // failure) keeps its status in the column.
+  const statusInline = $derived(
+    isLines &&
+      wrapMeta &&
+      status !== undefined &&
+      statusPlacement === 'leading' &&
+      phone &&
+      error === undefined &&
+      (description !== undefined || meta !== undefined),
+  );
   const hasActions = $derived(actions !== undefined && actions.length > 0);
   // On a phone two or more actions are one menu button, unless the row asks to keep them as
   // buttons. One action stays its own compact secondary button: a menu holding one item is a
@@ -240,6 +256,7 @@
     details !== undefined && `cinder-stacked-list-item--tone-${tone}`,
     selected && 'cinder-stacked-list-item--selected',
     wrapMeta && 'cinder-stacked-list-item--wrap-meta',
+    statusInline && 'cinder-stacked-list-item--status-inline',
     isLines && `cinder-stacked-list-item--status-${statusPlacement}`,
     linkHref !== undefined && 'cinder-stacked-list-item--linked',
     actionsAsMenu && 'cinder-stacked-list-item--collapsed-actions',
@@ -294,7 +311,7 @@
     </div>
   {:else}
     <div class="cinder-stacked-list-item__layout">
-      {#if isLines && status}
+      {#if isLines && status && !statusInline}
         <div class="cinder-stacked-list-item__status">
           {@render status()}
         </div>
@@ -357,10 +374,8 @@
             </div>
           {:else if description || meta}
             <div class="cinder-stacked-list-item__line-two" title={lineMetaTooltip}>
-              {#if wrapMeta && status}
-                <!-- Under `wrapMeta` a phone row reads line two as one run of text (the dot, the
-                     word, then the meta), so a wrapped line returns to the row's leading edge.
-                     Drawn only in that form; the status column is hidden there (stylesheet). -->
+              {#if statusInline && status}
+                <!-- The row's only copy of its status in this form (see `statusInline`). -->
                 <span class="cinder-stacked-list-item__status-inline">{@render status()}</span>
               {/if}
               {#if description}
