@@ -560,12 +560,15 @@ export function hookRowText(
   fullAddress = false,
 ): HookRowText {
   const sentence = hookRowSentence(hook, fullAddress);
-  const parts = hook.name === null ? [] : [sentence];
+  // A plugin kind that is missing is said on line two, and nowhere on line one (row R6). It leads
+  // the line, so a line the row cuts at two lines never cuts it on a phone.
+  const causes = [...new Set(missingEventsOf(hook.problems).map(missingEventCause))];
+  const lead =
+    causes.length === 0 ? sentence : `${sentence.charAt(0).toLowerCase()}${sentence.slice(1)}`;
+  const parts = [...causes, ...(hook.name === null ? [] : [lead])];
   if (hook.scope !== null && hook.scope.kind !== 'workflow') {
     parts.push(HOOKS_COPY.row.onlyFor(subjectName(hook.scope.id)));
   }
-  // A plugin kind that is missing is said here, on line two, and nowhere on line one (row R6).
-  parts.push(...new Set(missingEventsOf(hook.problems).map(missingEventCause)));
   if (!hook.enabled && hook.lastDelivery !== null) {
     parts.push(HOOKS_COPY.row.lastDelivery(activityTime(hook.lastDelivery.updatedAt, now)));
   }

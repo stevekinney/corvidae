@@ -1864,6 +1864,13 @@ for (const width of WIDTHS) {
     });
 
     await page.goto(`/hooks/${DIGEST_HOOK.id}`);
+    // A phone folds a saved hook's When step to a summary; Edit opens it on the locked row.
+    if (width < 640) {
+      await page
+        .getByTestId('hook-step-summary-when')
+        .getByRole('button', { name: copy.steps.edit })
+        .click();
+    }
     const locked = page.getByTestId('hook-event-locked');
     await expect(locked.locator('.ib-hook-events__kind')).toHaveText('reports:digest-ready@1.0.0');
     await expect(page.getByTestId('hook-missing-events')).toHaveCount(0);

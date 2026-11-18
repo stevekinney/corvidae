@@ -224,7 +224,8 @@ describe('dispatch', () => {
     expect(await problemsOf(h, hook.id)).toEqual([{ code: 'event-missing', kind: PINNED }]);
     await fire(h, 'run.settled');
     expect(await h.statuses(hook.id)).toEqual(['delivered']);
-    expect((await h.hooks.get(hook.id))?.enabled).toBe(true);
+    const stillOn = await h.hooks.get(hook.id);
+    expect(stillOn?.enabled).toBe(true);
   });
 
   it('reads a pin to a version other than the one loaded as missing, with the loaded version, and fires nothing (AC6)', async () => {
@@ -262,6 +263,23 @@ describe('dispatch', () => {
     ]);
   });
 
+  it('lists no event-missing for a Bureau kind a record holds that this release does not publish', async () => {
+    const { h } = plugins([]);
+    const record: HookRecord = {
+      version: 1,
+      id: 'hook-retired',
+      owner: 'anonymous:local',
+      action: ACTION,
+      events: ['run.retired', `${REPORTS}@1.0.0`],
+      enabled: true,
+      createdAt: START,
+      updatedAt: START,
+      revision: 1,
+    };
+    expect(await createHookStore(h.kv).createHook(record)).toBe(true);
+    expect(await problemsOf(h, record.id)).toEqual([{ code: 'event-missing', kind: PINNED }]);
+  });
+
   it('never fires a hook on another plugin’s kind of the same name, though both plugins run (AC4)', async () => {
     const { h } = plugins();
     await h.open();
@@ -269,7 +287,8 @@ describe('dispatch', () => {
     await fire(h, OTHER, 'other');
     expect(await h.deliveries(hook.id)).toEqual([]);
     await fire(h, REPORTS, 'reports');
-    expect((await h.deliveries(hook.id)).map((delivery) => delivery.kind)).toEqual([REPORTS]);
+    const delivered = await h.deliveries(hook.id);
+    expect(delivered.map((delivery) => delivery.kind)).toEqual([REPORTS]);
   });
 
   it('never fires a pin whose plugin is gone on an event of the same name another plugin publishes', async () => {

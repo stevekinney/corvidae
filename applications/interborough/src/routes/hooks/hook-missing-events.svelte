@@ -27,7 +27,11 @@
       <li class="ib-hook-missing__item" data-event={entry.kind}>
         <span class="ib-hook-missing__line">
           <span class="ib-hook-missing__name">{eventChosenLabel(entry.kind, titleOf)}</span>
-          <StatusDot word={HOOKS_COPY.editor.event.missing.word} size="sm" />
+          <StatusDot
+            word={HOOKS_COPY.editor.event.missing.word}
+            size="sm"
+            data-status-word={HOOKS_COPY.editor.event.missing.word}
+          />
         </span>
         <span class="ib-hook-missing__cause">{missingEventCause(entry)}</span>
       </li>

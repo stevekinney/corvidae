@@ -174,6 +174,17 @@ describe('the event picker (COR-2226, rows R1, R2, R7)', () => {
       'reports:digest-ready@1.0.0',
     );
     expect(item.querySelector('.ib-hook-events__version')?.textContent).toBe('@1.0.0');
+
+    // The Bureau pins the kind as it writes the hook, so the page sends it as the catalog names it.
+    await fireEvent.click(
+      await view.findByRole('radio', { name: HOOKS_COPY.editor.action.notify }),
+    );
+    await fireEvent.click(view.getByRole('button', { name: HOOKS_COPY.editor.check.create }));
+    await waitFor(() => expect(stub?.callsTo('bureau.hooks.create').length).toBe(1));
+    expect(stub?.callsTo('bureau.hooks.create')[0]?.params).toMatchObject({
+      events: ['reports:digest-ready'],
+      action: { type: 'notify' },
+    });
   });
 });
 
@@ -218,7 +229,7 @@ describe('a saved hook whose plugin kind is missing (COR-2226, rows R4, R5, R6)'
       return found;
     });
     expect(row.querySelector('.ib-hooks__line')?.textContent).toBe(
-      'When Reports: digest ready or a review is waiting, notify me, Plugin not loaded',
+      'Plugin not loaded, when Reports: digest ready or a review is waiting, notify me',
     );
     expect(row.textContent).not.toContain('Missing');
   });

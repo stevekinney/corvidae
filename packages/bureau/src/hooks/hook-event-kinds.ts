@@ -40,7 +40,10 @@ export function declaredVersionsOf(
 
 /** How one entry of a hook's `events` reads now. */
 export type HookEventResolution =
-  /** A kind the Bureau itself publishes. */
+  /**
+   * A Bureau kind: one it publishes, or, on a record a later or earlier release wrote, one it does
+   * not publish now, which fires nothing and is no plugin's to be missing.
+   */
   | { readonly status: 'core' }
   /** A plugin's kind, pinned to the version that is loaded now. */
   | { readonly status: 'current'; readonly kind: string }
@@ -58,6 +61,8 @@ export function resolveHookEvent(
   if (CORE_KINDS.has(entry)) return { status: 'core' };
   const pinned = parseVersionedId(entry);
   const kind = pinned?.name ?? entry;
+  // Only a plugin's kind is namespaced, so only a plugin's kind can be missing.
+  if (!kind.includes(':')) return { status: 'core' };
   const loadedVersion = declared.get(kind);
   if (pinned !== undefined && loadedVersion === pinned.version) return { status: 'current', kind };
   return loadedVersion === undefined

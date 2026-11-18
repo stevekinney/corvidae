@@ -113,7 +113,9 @@ describe('a hook on a plugin’s declared kind, over a whole Bureau (COR-2226)',
       expect(hook.events).toEqual(['reports:digest-ready@1.0.0']);
 
       await hosts.get('other')!.publish('digest-ready', { digestId: 'd-0' });
-      await waitUntil(() => ran.length === 1, 'the default hook never ran on other:digest-ready');
+      await waitUntil(() => ran.length === 1, {
+        message: 'the default hook never ran on other:digest-ready',
+      });
       await hosts.get('reports')!.publish('digest-ready', { digestId: 'd-1' });
       const [delivery] = await waitForSettledDeliveries(bureau, hook.id, 1);
       expect(delivery?.kind).toBe('reports:digest-ready');

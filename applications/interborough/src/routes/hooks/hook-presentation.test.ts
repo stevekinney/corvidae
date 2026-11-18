@@ -813,7 +813,14 @@ describe('a plugin’s event kinds (COR-2226)', () => {
     });
     const text = hookRowText(missing, 10);
     expect(text.title).toBe('Digest');
-    expect(text.line.endsWith(', Plugin not loaded')).toBe(true);
+    // It leads the line, so the row's two-line cut never takes it.
+    expect(text.line).toBe(
+      'Plugin not loaded, when Reports: digest ready or a run finishes, notify me',
+    );
+    expect(hookRowText({ ...missing, name: null }, 10)).toEqual({
+      title: 'When Reports: digest ready or a run finishes, notify me',
+      line: 'Plugin not loaded',
+    });
     // The hook stays on, so its word is what its last delivery says, as for any hook.
     expect(hookStatusWord(missing)).toBeUndefined();
     expect(hookRowText({ ...missing, problems: [] }, 10).line).not.toContain('Plugin not loaded');
