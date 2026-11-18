@@ -59,6 +59,7 @@ export const CHAT_ATTACHMENT_FAILURE_KINDS: readonly ChatAttachmentFailureKind[]
  * otherwise.
  */
 export class ChatAttachmentUploadError extends Error {
+  /** Why the upload failed, so the composer can say what to do about it. */
   readonly failureKind: ChatAttachmentFailureKind;
   /** The limit in bytes, for `too-large`. */
   readonly maxFileSize: number | undefined;

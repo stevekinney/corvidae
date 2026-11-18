@@ -40,7 +40,7 @@ const schema = {
     suggested: {
       type: 'boolean',
       description:
-        "Marks the value as a suggestion that is not saved until the person confirms it: a quiet accent\ntext label under the row's label, with no tint, border or pill.",
+        "Marks the value as a suggestion that is not saved until the person confirms it: a quiet accent\ntext label above the row's label, with no tint, border or pill.",
       default: false,
     },
     suggestedLabel: {

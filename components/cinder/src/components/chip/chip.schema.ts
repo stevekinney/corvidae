@@ -51,7 +51,7 @@ const schema = {
     suggested: {
       type: 'boolean',
       description:
-        'Marks the chip as a suggestion that is not saved until the person confirms it. On a neutral\nchip the label reads in the accent text colour, and assistive technology hears "Suggested"\nbefore it. The chip gains no tint or border.',
+        'Marks the chip as a suggestion that is not saved until the person confirms it. On a neutral\nchip the label reads in the accent text colour, and assistive technology hears "Suggested"\nbefore it. A small sparkle glyph before the label tells a sighted person too, not colour alone. The chip gains no tint or border.',
     },
     class: {
       type: 'string',

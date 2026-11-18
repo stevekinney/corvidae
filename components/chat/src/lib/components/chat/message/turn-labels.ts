@@ -70,11 +70,17 @@ export type ChatTurnLabels = {
   copyError: string;
   /** What Copy error says once it has copied. Default `Copied`. */
   errorCopied: string;
+  /** Host-overridable text, built from its argument. */
   calls: (count: number) => string;
+  /** Host-overridable text. The default reads `Input`. */
   input: string;
+  /** Host-overridable text. The default reads `Output`. */
   output: string;
+  /** Host-overridable text. The default reads `Error`. */
   error: string;
+  /** Host-overridable text. The default reads `Yes`. */
   yes: string;
+  /** Host-overridable text. The default reads `No`. */
   no: string;
   /** The visible status of one tool step. */
   toolStatus: (status: ToolCallRowStatus) => string;
