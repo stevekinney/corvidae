@@ -43,7 +43,7 @@ This software is pre-1.0 and still being prototyped: spend review effort where a
 
 ## Release intent
 
-Per-change publishing is paused and there is no `.changeset/` directory: release intent is written in `stevekinney/corvidae-mirror` at backport time, and `scripts/published-exports.json` is updated by hand after it. Interborough releases build from a pinned revision and verify the installed artifact on each target before publishing.
+Per-change publishing is paused; there is no `.changeset/` directory: release intent is written in `stevekinney/corvidae-mirror` at backport time, and `scripts/published-exports.json` is updated by hand after it. Interborough releases build from a pinned revision and verify the installed artifact on each target before publishing.
 
 ## Turborepo
 
