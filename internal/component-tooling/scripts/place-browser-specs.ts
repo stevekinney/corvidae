@@ -496,7 +496,9 @@ export function place(
     appFixtureOwner.get(slug) ??
     declaredOwner(repository, slug);
 
-  for (const [fileName, path] of [...inventory.specs].toSorted()) {
+  for (const [fileName, path] of [...inventory.specs].toSorted(([left], [right]) =>
+    left.localeCompare(right),
+  )) {
     const ruled = rules.specs?.[fileName];
     if (ruled !== undefined) {
       map.specs[fileName] = directoryOf(repository, ruled);
@@ -547,7 +549,9 @@ export function place(
       writers.set(slug, list);
     }
   }
-  for (const [slug, path] of [...inventory.baselines].toSorted()) {
+  for (const [slug, path] of [...inventory.baselines].toSorted(([left], [right]) =>
+    left.localeCompare(right),
+  )) {
     const owner = slugOwner(slug);
     if (owner === undefined) {
       problems.push(`Baseline directory '${slug}' is no fixture's slug.`);
