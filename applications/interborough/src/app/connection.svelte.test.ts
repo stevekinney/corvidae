@@ -12,6 +12,7 @@ import {
   connectionBannerPreset,
   ConnectionMonitor,
   connectionProbeDelayMs,
+  shellDrawsConnectionBanner,
 } from './connection.svelte.ts';
 
 const monitors: ConnectionMonitor[] = [];
@@ -55,6 +56,23 @@ describe('a page that says the unreachable state itself', () => {
     expect(monitor.shownInPlace).toBe(true);
     monitor.setShownInPlace(false);
     expect(monitor.shownInPlace).toBe(false);
+  });
+
+  // The shell and the chat page read one rule, so the chat's composer drawer never says the outage
+  // a second time beside the shell's banner, nor goes quiet while the banner is out.
+  test('keeps the shell’s banner out, by the one rule the shell and a page read', () => {
+    const monitor = open(() => Promise.reject(new Error('down')));
+    expect(shellDrawsConnectionBanner(monitor, false)).toBe(false);
+    monitor.reportUnreachable();
+    expect(shellDrawsConnectionBanner(monitor, false)).toBe(true);
+    expect(shellDrawsConnectionBanner(monitor, true)).toBe(false);
+    monitor.setShownInPlace(true);
+    expect(shellDrawsConnectionBanner(monitor, false)).toBe(false);
+    monitor.setShownInPlace(false);
+    const release = monitor.claimBanner();
+    expect(shellDrawsConnectionBanner(monitor, false)).toBe(false);
+    release();
+    expect(shellDrawsConnectionBanner(monitor, false)).toBe(true);
   });
 
   test('does not make the server reachable: the changes stay held', () => {

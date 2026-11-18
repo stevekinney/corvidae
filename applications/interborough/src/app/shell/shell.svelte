@@ -42,6 +42,7 @@
     connectionBannerPreset,
     ConnectionMonitor,
     provideConnection,
+    shellDrawsConnectionBanner,
   } from '../connection.svelte.ts';
   import { EngineStatusController, provideFleetEventSource } from '../engine-status.svelte.ts';
   import { restartActivity } from '../restart/host-restart-flow.svelte.ts';
@@ -349,7 +350,7 @@
   <Sidebar />
   <div class="weft-shell-main">
     <Topbar {notifications} {theme} {layout} bind:paletteOpen />
-    {#if connection.unreachable && !connection.shownInPlace && !restartActivity.active && !connection.bannerDrawnByPage}
+    {#if shellDrawsConnectionBanner(connection, restartActivity.active)}
       <!-- While the host restarts the restart dialog is the one account of it, so this stays quiet,
            and so does a page that has nothing to show but the unreachable state, which says it in place.
            The preset writes the words (`bannerPresetCopy`): the browser offline, the server not

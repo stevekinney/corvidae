@@ -39,6 +39,24 @@ export function connectionBannerPreset(
   return monitor.stopped ? 'stopped' : 'unreachable';
 }
 
+/**
+ * Whether the shell draws its connection banner: while the server does not answer, unless the page
+ * in front says the unreachable state itself (`shownInPlace`), draws the banner under its own header
+ * (`bannerDrawnByPage`), or a host restart is under way (`restarting`), whose own account is the one.
+ * The shell decides by it, and a page that must not say the outage a second time reads it too.
+ */
+export function shellDrawsConnectionBanner(
+  connection: Pick<ConnectionMonitor, 'unreachable' | 'shownInPlace' | 'bannerDrawnByPage'>,
+  restarting: boolean,
+): boolean {
+  return (
+    connection.unreachable &&
+    !connection.shownInPlace &&
+    !connection.bannerDrawnByPage &&
+    !restarting
+  );
+}
+
 export interface ConnectionMonitorOptions {
   /** Resolves when the server answers in any way, and rejects when it does not. */
   readonly probe: () => Promise<unknown>;
@@ -272,6 +290,7 @@ export type Connection = Pick<
   | 'stopped'
   | 'attempt'
   | 'retryInSeconds'
+  | 'shownInPlace'
   | 'bannerDrawnByPage'
   | 'claimBanner'
   | 'setShownInPlace'
@@ -286,6 +305,7 @@ const REACHABLE = {
   stopped: false,
   attempt: 0,
   retryInSeconds: undefined,
+  shownInPlace: false,
   bannerDrawnByPage: false,
   claimBanner: () => () => {},
   setShownInPlace: () => undefined,
