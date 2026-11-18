@@ -157,4 +157,33 @@ describe('readRunSchedules', () => {
       { scheduleId: 'daily-summary' },
     ]);
   });
+
+  test('says what holds a schedule whose workflow file cannot load, by its workflow’s name (row 10h)', async () => {
+    stub = installBureauStub({
+      'bureau.schedules.list': () => ({
+        schedules: [
+          { ...DAILY_SUMMARY, missedFireCount: 0 },
+          {
+            ...DAILY_SUMMARY,
+            id: 'weekly-audit',
+            description: 'Weekly refund audit',
+            workflowType: 'order-refund',
+            missedFireCount: 0,
+            blocker: {
+              kind: 'workflow-cannot-load',
+              workflow: 'order-refund',
+              message: 'steps.0.agent is required',
+            },
+          },
+        ],
+        nextOffset: null,
+      }),
+    });
+
+    const read = await readRunSchedules({ now: NOW });
+
+    expect([...(read.blockers ?? new Map())]).toEqual([
+      ['weekly-audit', 'Order refund can’t load'],
+    ]);
+  });
 });
