@@ -499,9 +499,9 @@
     /* A quiet action that leads the wrapped row draws no face at rest, so its words are what the
        eye lines up: it is pulled back by its own inline padding and its 1px transparent border, so
        its text starts on the text edge above it rather than 13px inside it (COR-2489). An outlined
-       or filled action keeps its face on the edge. */
-    .cinder-steps[data-cinder-variant='checklist']
-      .cinder-steps__action
+       or filled action keeps its face on the edge. Only a checklist draws actions, so the rule
+       names the action row alone and no variant above the Button. */
+    .cinder-steps__action
       > .cinder-button:first-child:is(
         [data-cinder-variant='ghost'],
         [data-cinder-variant='ghost-accent'],
