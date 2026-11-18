@@ -76,12 +76,15 @@ const values = await (async () => {
           obligation: 'AC1:collector-test',
           argv: ['true'],
           reportPaths: ['report.xml'],
+          artifactPaths: ['artifact.bin'],
         },
       ],
     };
   };
   const report = join(fixture, 'report.xml');
+  const artifact = join(fixture, 'artifact.bin');
   writeFileSync(report, '<testsuite><testcase name="input.test.ts" /></testsuite>');
+  writeFileSync(artifact, 'artifact');
   const passing: LocalEvidenceProcess = { run: () => ({ exitCode: 0 }) };
   const cleanRequest = await request();
   const clean = collectLocalEvidence(cleanRequest, passing, fixture);
@@ -164,6 +167,12 @@ const values = await (async () => {
   await git('commit', '-m', 'unrelated');
   const unrelatedRequest = await request();
   const reused = reuseLocalEvidence(initial, unrelatedRequest, fixture);
+  writeFileSync(report, 'tampered');
+  const reportTamper = reuseLocalEvidence(initial, unrelatedRequest, fixture);
+  writeFileSync(report, '<testsuite><testcase name="input.test.ts" /></testsuite>');
+  writeFileSync(artifact, 'tampered');
+  const artifactTamper = reuseLocalEvidence(initial, unrelatedRequest, fixture);
+  writeFileSync(artifact, 'artifact');
   writeFileSync(join(fixture, 'input'), 'changed\n');
   const invalidReuse = reuseLocalEvidence(initial, await request(), fixture);
   await git('checkout', '--', 'input');
@@ -179,6 +188,8 @@ const values = await (async () => {
     failedReport,
     defaultReceipt,
     reused,
+    reportTamper,
+    artifactTamper,
     invalidReuse,
     reportDigest: createHash('sha256').update(readFileSync(report)).digest('hex'),
   };
@@ -208,5 +219,7 @@ test('default local composition executes explicit argv without a shell', () => {
 });
 test('reuses only unchanged relevant content', () => {
   expect(values.reused.records[0]?.status).toBe('reused-pass');
+  expect(values.reportTamper.records[0]?.status).toBe('pending');
+  expect(values.artifactTamper.records[0]?.status).toBe('pending');
   expect(values.invalidReuse.records[0]?.status).toBe('pending');
 });

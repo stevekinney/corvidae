@@ -468,6 +468,7 @@ export function reuseLocalEvidence(
       prior.environment === current.runtime &&
       reportsIntact &&
       artifactIsIntact(prior) &&
+      current.dirtyContentIdentity === undefined &&
       current.revision === request.revision &&
       current.integrationTree === request.integrationTree &&
       current.checkedTree === current.integrationTree;
