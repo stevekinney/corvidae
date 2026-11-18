@@ -62,6 +62,12 @@ describe('ApprovalGroup', () => {
     expect(group?.classList.contains('host-group')).toBe(true);
   });
 
+  test('loads its stylesheet with the component, as every component’s barrel does (CI run 44332908347)', () => {
+    // Without it the group draws no border wherever it is imported from the package root.
+    const barrel = readFileSync(join(import.meta.dir, 'index.ts'), 'utf8');
+    expect(barrel).toMatch(/^import '\.\/approval-group\.css';$/m);
+  });
+
   test('draws one border around the rows, and the rows give up their own (no box in a box)', () => {
     const css = readFileSync(join(import.meta.dir, 'approval-group.css'), 'utf8');
     expect(css).toMatch(/\.cinder-approval-group \{[^}]*border: 1px solid var\(--cinder-border\);/);

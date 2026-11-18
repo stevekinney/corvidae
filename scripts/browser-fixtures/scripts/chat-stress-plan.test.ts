@@ -66,7 +66,8 @@ describe('profiles', () => {
   it('draw every case at 375 pixels on a touch screen (COR-2440)', () => {
     const phone375 = STRESS_PROFILES.find((profile) => profile.width === 375);
     expect(phone375).toMatchObject({ name: '375-light', height: 667, coarse: true });
-    expect(profilesFor(false)).toContain(phone375);
+    expect(phone375).toBeDefined();
+    expect(profilesFor(false)).toContain(phone375!);
     expect(primaryImageName(phone375!, 33)).toBe('375-light-33.png');
   });
 

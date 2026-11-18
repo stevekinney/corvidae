@@ -2,6 +2,62 @@
   import { ApprovalCard } from '@lostgradient/cinder';
 </script>
 
+<!-- The decision layout's states come first, so the screenshot, which is one viewport tall, holds
+     them at every width. -->
+
+<!-- A decision card with a command and a far deadline (COR-2288, COR-2440 AC12): on a narrow card
+     its status sits above the title, and the command panel is inset to the card's text column. -->
+<ApprovalCard
+  id="approval-card-decision-command"
+  layout="decision"
+  headingLevel={4}
+  question="Run the release script?"
+  tool={{ name: 'release', label: 'Release', risk: 'high', irreversible: true }}
+  operation={{ kind: 'command', command: 'bun run release --channel stable --tag 2026.11.17' }}
+  expiresAt="2099-06-30T14:30:00.000Z"
+  policyVersion="policy-2026-06"
+  idempotencyKey="approval-decision-command-01"
+  state="pending"
+  onResolve={() => undefined}
+/>
+
+<!-- An approval that expired before a decision (COR-2280 A7): a quiet dashed neutral row with Ask
+     again. -->
+<ApprovalCard
+  id="approval-card-decision-expired"
+  layout="decision"
+  headingLevel={4}
+  question="Refund order 4398 for $18.50?"
+  tool={{ name: 'issue-refund', label: 'Issue refund', risk: 'high' }}
+  operation={{ kind: 'other', argsPreview: { orderId: 4398 } }}
+  expiresAt="2026-11-02T10:15:00.000Z"
+  policyVersion="policy-2026-06"
+  idempotencyKey="approval-decision-expired-01"
+  state="expired"
+  onAskAgain={() => undefined}
+/>
+
+<!-- A settled receipt (COR-2440 A4): one row at 30rem and wider, its note, result and command one
+     definition list a disclosure away. -->
+<ApprovalCard
+  id="approval-card-decision-receipt"
+  layout="decision"
+  headingLevel={4}
+  question="Refund order 4471 for $42.00?"
+  tool={{ name: 'issue-refund', label: 'Issue refund', risk: 'high' }}
+  approveLabel="Refund $42.00"
+  operation={{ kind: 'command', command: 'refund --order 4471 --amount 42.00' }}
+  policyVersion="policy-2026-06"
+  idempotencyKey="approval-decision-receipt-01"
+  state="approved"
+  decidedBy="Priya Raman"
+  decidedAt="2026-11-02T10:46:00.000Z"
+  decidedIn="Reviews"
+  decidedInHref="#reviews"
+  decisionNote="Checked the order first."
+  result="Refunded $42.00 to the original card."
+/>
+
 <ApprovalCard
   tool={{ name: 'deploy-cloud', risk: 'medium' }}
   sandbox={{
@@ -72,57 +128,4 @@
   idempotencyKey="approval-decision-long-01"
   state="pending"
   onResolve={() => undefined}
-/>
-
-<!-- A decision card with a command and a far deadline (COR-2288, COR-2440 AC12): on a narrow card
-     its status sits above the title, and the command panel is inset to the card's text column. -->
-<ApprovalCard
-  id="approval-card-decision-command"
-  layout="decision"
-  headingLevel={4}
-  question="Run the release script?"
-  tool={{ name: 'release', label: 'Release', risk: 'high', irreversible: true }}
-  operation={{ kind: 'command', command: 'bun run release --channel stable --tag 2026.11.17' }}
-  expiresAt="2099-06-30T14:30:00.000Z"
-  policyVersion="policy-2026-06"
-  idempotencyKey="approval-decision-command-01"
-  state="pending"
-  onResolve={() => undefined}
-/>
-
-<!-- An approval that expired before a decision (COR-2280 A7): a quiet dashed neutral row with Ask
-     again. -->
-<ApprovalCard
-  id="approval-card-decision-expired"
-  layout="decision"
-  headingLevel={4}
-  question="Refund order 4398 for $18.50?"
-  tool={{ name: 'issue-refund', label: 'Issue refund', risk: 'high' }}
-  operation={{ kind: 'other', argsPreview: { orderId: 4398 } }}
-  expiresAt="2026-11-02T10:15:00.000Z"
-  policyVersion="policy-2026-06"
-  idempotencyKey="approval-decision-expired-01"
-  state="expired"
-  onAskAgain={() => undefined}
-/>
-
-<!-- A settled receipt (COR-2440 A4): one row at 30rem and wider, its note, result and command one
-     definition list a disclosure away. -->
-<ApprovalCard
-  id="approval-card-decision-receipt"
-  layout="decision"
-  headingLevel={4}
-  question="Refund order 4471 for $42.00?"
-  tool={{ name: 'issue-refund', label: 'Issue refund', risk: 'high' }}
-  approveLabel="Refund $42.00"
-  operation={{ kind: 'command', command: 'refund --order 4471 --amount 42.00' }}
-  policyVersion="policy-2026-06"
-  idempotencyKey="approval-decision-receipt-01"
-  state="approved"
-  decidedBy="Priya Raman"
-  decidedAt="2026-11-02T10:46:00.000Z"
-  decidedIn="Reviews"
-  decidedInHref="#reviews"
-  decisionNote="Checked the order first."
-  result="Refunded $42.00 to the original card."
 />
