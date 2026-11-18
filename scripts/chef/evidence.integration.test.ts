@@ -126,6 +126,46 @@ const values = await (async () => {
   const missingRequest = await request();
   missingRequest.localRuns![0] = { ...missingRequest.localRuns![0]!, reportPaths: [] };
   const missing = collectLocalEvidence(missingRequest, { run: () => ({ exitCode: 0 }) }, fixture);
+  const processExitBaseRequest = await request();
+  const processExitRequest = {
+    ...processExitBaseRequest,
+    plan: {
+      ...processExitBaseRequest.plan,
+      obligations: [
+        {
+          ...processExitBaseRequest.plan.obligations[0]!,
+          evidenceKind: 'process-exit' as const,
+          expectedInventory: [],
+        },
+      ],
+    },
+    localRuns: [
+      {
+        obligation: 'AC1:collector-test',
+        argv: ['true'],
+        reportPaths: [],
+      },
+    ],
+  };
+  const processExitPass = collectLocalEvidence(
+    processExitRequest,
+    { run: () => ({ exitCode: 0 }) },
+    fixture,
+  );
+  const processExitFail = collectLocalEvidence(
+    processExitRequest,
+    { run: () => ({ exitCode: 1 }) },
+    fixture,
+  );
+  const processExitPath = join(fixture, 'process-exit-request.json');
+  const processExitText = JSON.stringify(processExitRequest);
+  writeFileSync(processExitPath, processExitText);
+  const processExitFromRequest = collectLocalEvidenceFromRequest(
+    processExitPath,
+    createHash('sha256').update(processExitText).digest('hex'),
+    { run: () => ({ exitCode: 0 }) },
+    fixture,
+  );
   const reportedRequest = await request();
   const reported = collectLocalEvidence(
     reportedRequest,
@@ -322,6 +362,9 @@ const values = await (async () => {
     dirty,
     mutating,
     missing,
+    processExitPass,
+    processExitFail,
+    processExitFromRequest,
     report,
     reportedRequest,
     reported,
@@ -434,6 +477,11 @@ test('requires structured results and retains report identity', () => {
   expect(values.missing.records[0]?.status).toBe('pending');
   expect(values.reported.records[0]?.reports?.[0]?.path).toBe('report.xml');
   expect(values.failedReport.records[0]?.status).toBe('fail');
+});
+test('process-exit local evidence needs only an actual successful exit', () => {
+  expect(values.processExitPass.records[0]?.status).toBe('pass');
+  expect(values.processExitFail.records[0]?.status).toBe('fail');
+  expect(values.processExitFromRequest.records[0]?.status).toBe('pass');
 });
 test('default local composition executes explicit argv without a shell', () => {
   expect(values.defaultReceipt.records[0]?.status).toBe('pass');

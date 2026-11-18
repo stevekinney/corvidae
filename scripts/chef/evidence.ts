@@ -294,6 +294,8 @@ export function collectProviderEvidence(
                 run.workflow !== entry.workflow ||
                 run.workflowPath !== entry.workflowPath ||
                 run.event !== entry.event ||
+                !Number.isSafeInteger(run.attempt) ||
+                run.attempt < 1 ||
                 job.name !== entry.job ||
                 job.runtime !== request.environment ||
                 run.status !== 'completed' ||
@@ -387,7 +389,7 @@ export function reuseProviderEvidence(
       sameArchive;
     return {
       ...record,
-      status: sameProvider && record.status === 'pass' ? 'reused-pass' : record.status,
+      status: record.status !== 'pass' ? record.status : sameProvider ? 'reused-pass' : 'pending',
     };
   });
   return collected('provider', records);
@@ -454,6 +456,8 @@ export function collectLocalEvidence(
       const stableInputs = before.inputIdentity === after.inputIdentity;
       const identityMatches =
         before.revision === request.revision && before.integrationTree === request.integrationTree;
+      const lacksRequiredTestProof =
+        item.evidenceKind === 'test-report' && (assertionPassed === null || inventory.length === 0);
       return {
         obligation: obligationKey(item),
         status:
@@ -464,10 +468,9 @@ export function collectLocalEvidence(
           before.checkedTree !== before.integrationTree ||
           after.dirtyContentIdentity !== undefined ||
           !stableInputs ||
-          assertionPassed === null ||
-          inventory.length === 0
+          lacksRequiredTestProof
             ? 'pending'
-            : result.exitCode === 0 && assertionPassed
+            : result.exitCode === 0 && assertionPassed !== false
               ? 'pass'
               : 'fail',
         revision: after.revision,
