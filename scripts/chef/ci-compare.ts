@@ -109,7 +109,7 @@ const BUN_TEST_FILE = /^([^\t]+)\t.*?##\[group\](.+?\.test\.ts):\s*$/;
 /** Bun's assertion header when a failed test is printed without a `(fail)` summary line. */
 const BUN_ASSERTION = /^([^\t]+)\t.*?error: (expect\(.+\))\s*$/;
 /** The assertion's specific expected value, which makes its file-qualified identity stable. */
-const BUN_EXPECTED = /^([^\t]+)\t.*?Expected (?:to contain|substring): (.+)\s*$/;
+const BUN_EXPECTED = /^([^\t]+)\t.*?Expected(?: (?:to contain|substring))?: (.+)\s*$/;
 const BUN_ERROR = /^([^\t]+)\t.*?error: /;
 const BUN_SCRIPT_EXIT = /^script ".+" exited with code \d+$/;
 /** Turbo's per-workspace task heading in a failed GitHub Actions log. */
