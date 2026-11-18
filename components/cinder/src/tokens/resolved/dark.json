@@ -509,7 +509,7 @@
   },
   "control.background": {
     "$type": "color",
-    "$value": { "colorSpace": "oklch", "components": [0.235, 0.014, 265] },
+    "$value": { "colorSpace": "oklch", "components": [0.235, 0.028, 265] },
     "$description": "Control fill.",
     "$extensions": {
       "com.lostgradient.cinder": {
@@ -1420,7 +1420,7 @@
     "$type": "number"
   },
   "surface.base": {
-    "$value": { "colorSpace": "oklch", "components": [0.185, 0.012, 265] },
+    "$value": { "colorSpace": "oklch", "components": [0.185, 0.024, 265] },
     "$description": "Default semantic surface. Theme modifiers provide its dark value.",
     "$extensions": {
       "com.lostgradient.cinder": {
@@ -1434,7 +1434,7 @@
     "$type": "color"
   },
   "surface.raised": {
-    "$value": { "colorSpace": "oklch", "components": [0.235, 0.014, 265] },
+    "$value": { "colorSpace": "oklch", "components": [0.235, 0.028, 265] },
     "$description": "Elevated semantic surface. Theme modifiers provide its dark value.",
     "$extensions": {
       "com.lostgradient.cinder": {
@@ -1448,7 +1448,7 @@
     "$type": "color"
   },
   "surface.raised.hover": {
-    "$value": { "colorSpace": "oklch", "components": [0.25413, 0.01365, 265] },
+    "$value": { "colorSpace": "oklch", "components": [0.25413, 0.0273, 265] },
     "$extensions": {
       "com.lostgradient.cinder": {
         "cssRecipe": "color-mix(in oklch, var(--cinder-surface-raised), oklch(100% 0 none) 2.5%)",
@@ -1461,7 +1461,7 @@
     "$type": "color"
   },
   "surface.raised.pressed": {
-    "$value": { "colorSpace": "oklch", "components": [0.2809, 0.01316, 265] },
+    "$value": { "colorSpace": "oklch", "components": [0.2809, 0.02632, 265] },
     "$extensions": {
       "com.lostgradient.cinder": {
         "cssRecipe": "color-mix(in oklch, var(--cinder-surface-raised), oklch(100% 0 none) 6%)",
@@ -1474,7 +1474,7 @@
     "$type": "color"
   },
   "surface.inset": {
-    "$value": { "colorSpace": "oklch", "components": [0.21, 0.012, 265] },
+    "$value": { "colorSpace": "oklch", "components": [0.21, 0.026, 265] },
     "$description": "Sunken region inside a card body (code blocks, wells, recessed sub-regions, header bands, day bands, tracks). The light arm is a neutral grey (chroma 0.002), so a well never reads blue. The dark arm sits at 21% lightness, between the surface (18.5%) and raised (23.5%), so a band or a code header steps up from the surface it sits on instead of reading as a hole.",
     "$extensions": {
       "com.lostgradient.cinder": {
@@ -1487,7 +1487,7 @@
     "$type": "color"
   },
   "surface.hover": {
-    "$value": { "colorSpace": "oklch", "components": [0.2502, 0.01104, 265] },
+    "$value": { "colorSpace": "oklch", "components": [0.2502, 0.02208, 265] },
     "$extensions": {
       "com.lostgradient.cinder": {
         "cssRecipe": "color-mix(in oklch, var(--cinder-surface), oklch(100% 0 none) 8%)",
@@ -1500,7 +1500,7 @@
     "$type": "color"
   },
   "surface.pressed": {
-    "$value": { "colorSpace": "oklch", "components": [0.2828, 0.01056, 265] },
+    "$value": { "colorSpace": "oklch", "components": [0.2828, 0.02112, 265] },
     "$extensions": {
       "com.lostgradient.cinder": {
         "cssRecipe": "color-mix(in oklch, var(--cinder-surface), oklch(100% 0 none) 12%)",
@@ -1525,7 +1525,7 @@
     "$type": "color"
   },
   "surface.upcoming-marker": {
-    "$value": { "colorSpace": "oklch", "components": [0.185, 0.012, 265] },
+    "$value": { "colorSpace": "oklch", "components": [0.185, 0.024, 265] },
     "$description": "Upcoming step marker background. Keeps the inset treatment in light mode (surface-inset is visibly recessed vs surface), and uses the surface in dark mode, which steps up from the 14.5% canvas a marker is drawn on (18.5%) and stays below the inset bands and raised cards around it.",
     "$extensions": {
       "com.lostgradient.cinder": {
@@ -1538,7 +1538,7 @@
   },
   "surface.canvas": {
     "$type": "color",
-    "$value": { "colorSpace": "oklch", "components": [0.145, 0.012, 265] },
+    "$value": { "colorSpace": "oklch", "components": [0.145, 0.022, 265] },
     "$description": "Page canvas background, distinct from `surface.base` (a card body). Light mode is a grey page under white panels (owner decision, 2026-11-15): the canvas (0.976) sits below the white surface and raised (1.000) and above the inset well (0.955), dark enough that the focus ring still reads 3.5:1 on it. Dark mode builds up from the canvas (0.145) through the surface (0.185) and the inset (0.210) to raised (0.235).",
     "$extensions": {
       "com.lostgradient.cinder": {
@@ -1551,7 +1551,7 @@
   },
   "surface.translucent": {
     "$type": "color",
-    "$value": { "colorSpace": "oklch", "components": [0.145, 0.012, 265], "alpha": 0.9 },
+    "$value": { "colorSpace": "oklch", "components": [0.145, 0.022, 265], "alpha": 0.9 },
     "$extensions": {
       "com.lostgradient.cinder": {
         "cssRecipe": "color-mix(in oklch, var(--cinder-surface-canvas) 90%, transparent)",
@@ -1746,7 +1746,7 @@
     "$type": "color"
   },
   "text.inverse": {
-    "$value": { "colorSpace": "oklch", "components": [0.185, 0.012, 265] },
+    "$value": { "colorSpace": "oklch", "components": [0.185, 0.024, 265] },
     "$description": "Text color for use on `surface.inverse` (Tooltip).",
     "$extensions": {
       "com.lostgradient.cinder": {
@@ -1875,7 +1875,7 @@
   },
   "accent.background": {
     "$type": "color",
-    "$value": { "colorSpace": "oklch", "components": [0.2492, 0.02736, 265.6] },
+    "$value": { "colorSpace": "oklch", "components": [0.2492, 0.03792, 265.6] },
     "$extensions": {
       "com.lostgradient.cinder": {
         "cssRecipe": "color-mix(in oklch, var(--cinder-accent-solid), var(--cinder-surface) 88%)",
@@ -1928,7 +1928,7 @@
   },
   "ring.offset-color": {
     "$type": "color",
-    "$value": { "colorSpace": "oklch", "components": [0.235, 0.014, 265] },
+    "$value": { "colorSpace": "oklch", "components": [0.235, 0.028, 265] },
     "$description": "Color of the gap band between a focus ring and the control. Filled controls (a solid accent, danger or status fill on the focused element) paint a 2px gap in this color before the ring, so the accent-hued ring sits on the page instead of on a same-hue fill. Unfilled controls use `ring.offset`, which is zero, so they paint no gap. box-shadow cannot paint a transparent gap, so the band needs a real color; it is pinned to `surface.raised`, where controls overwhelmingly live.",
     "$extensions": {
       "com.lostgradient.cinder": {
@@ -2263,7 +2263,7 @@
   },
   "selected.background": {
     "$type": "color",
-    "$value": { "colorSpace": "oklch", "components": [0.2492, 0.02736, 265.6] },
+    "$value": { "colorSpace": "oklch", "components": [0.2492, 0.03792, 265.6] },
     "$description": "Fill of the one selected row in a list or a navigation column: the current page in a vertical NavigationItem (the sidebar and the settings sub-navigation) and the selected StackedListItem (the row open in the detail beside it). The soft accent tint, so every selected row in the app reads as one recipe; its label stays the default text colour, because accent text is for actions and links.",
     "$extensions": {
       "com.lostgradient.cinder": {
@@ -2535,10 +2535,10 @@
   },
   "status.success.background": {
     "$type": "color",
-    "$value": { "colorSpace": "oklch", "components": [0.2683, 0.01698, 176.755] },
+    "$value": { "colorSpace": "oklch", "components": [0.304, 0.0248, 187.103] },
     "$extensions": {
       "com.lostgradient.cinder": {
-        "cssRecipe": "color-mix(in oklab, var(--cinder-status-success-solid) 14%, var(--cinder-surface))",
+        "cssRecipe": "color-mix(in oklab, var(--cinder-status-success-solid) 20%, var(--cinder-surface))",
         "cssProperty": "--cinder-status-success-background",
         "public": true,
         "category": "color",
@@ -2588,7 +2588,7 @@
   },
   "status.success.muted": {
     "$type": "color",
-    "$value": { "colorSpace": "oklch", "components": [0.5658, 0.05, 147.45] },
+    "$value": { "colorSpace": "oklch", "components": [0.5658, 0.05, 150.014] },
     "$extensions": {
       "com.lostgradient.cinder": {
         "cssRecipe": "oklch( from color-mix(in oklab, var(--cinder-status-success-solid), var(--cinder-surface) 36%) l min(c, 0.05) h )",
@@ -2665,10 +2665,10 @@
   },
   "status.warning.background": {
     "$type": "color",
-    "$value": { "colorSpace": "oklch", "components": [0.2739, 0.01181, 66.275] },
+    "$value": { "colorSpace": "oklch", "components": [0.312, 0.01274, 59.824] },
     "$extensions": {
       "com.lostgradient.cinder": {
-        "cssRecipe": "color-mix(in oklab, var(--cinder-status-warning-solid) 14%, var(--cinder-surface))",
+        "cssRecipe": "color-mix(in oklab, var(--cinder-status-warning-solid) 20%, var(--cinder-surface))",
         "cssProperty": "--cinder-status-warning-background",
         "public": true,
         "category": "color",
@@ -2718,7 +2718,7 @@
   },
   "status.warning.muted": {
     "$type": "color",
-    "$value": { "colorSpace": "oklch", "components": [0.5914, 0.05, 74.55] },
+    "$value": { "colorSpace": "oklch", "components": [0.5914, 0.05, 74.059] },
     "$extensions": {
       "com.lostgradient.cinder": {
         "cssRecipe": "oklch( from color-mix(in oklab, var(--cinder-status-warning-solid), var(--cinder-surface) 36%) l min(c, 0.05) h )",
@@ -2782,10 +2782,10 @@
   },
   "status.danger.background": {
     "$type": "color",
-    "$value": { "colorSpace": "oklch", "components": [0.2529, 0.02287, 4.502] },
+    "$value": { "colorSpace": "oklch", "components": [0.282, 0.03224, 356.665] },
     "$extensions": {
       "com.lostgradient.cinder": {
-        "cssRecipe": "color-mix(in oklab, var(--cinder-status-danger-solid) 14%, var(--cinder-surface))",
+        "cssRecipe": "color-mix(in oklab, var(--cinder-status-danger-solid) 20%, var(--cinder-surface))",
         "cssProperty": "--cinder-status-danger-background",
         "public": true,
         "category": "color",
@@ -2835,7 +2835,7 @@
   },
   "status.danger.muted": {
     "$type": "color",
-    "$value": { "colorSpace": "oklch", "components": [0.4954, 0.05, 25.241] },
+    "$value": { "colorSpace": "oklch", "components": [0.4954, 0.05, 23.417] },
     "$extensions": {
       "com.lostgradient.cinder": {
         "cssRecipe": "oklch( from color-mix(in oklab, var(--cinder-status-danger-solid), var(--cinder-surface) 36%) l min(c, 0.05) h )",
@@ -2899,10 +2899,10 @@
   },
   "status.info.background": {
     "$type": "color",
-    "$value": { "colorSpace": "oklch", "components": [0.2683, 0.0273, 242.521] },
+    "$value": { "colorSpace": "oklch", "components": [0.304, 0.04316, 244.784] },
     "$extensions": {
       "com.lostgradient.cinder": {
-        "cssRecipe": "color-mix(in oklab, var(--cinder-status-info-solid) 14%, var(--cinder-surface))",
+        "cssRecipe": "color-mix(in oklab, var(--cinder-status-info-solid) 20%, var(--cinder-surface))",
         "cssProperty": "--cinder-status-info-background",
         "public": true,
         "category": "color",
@@ -2952,7 +2952,7 @@
   },
   "status.info.muted": {
     "$type": "color",
-    "$value": { "colorSpace": "oklch", "components": [0.5658, 0.05, 231.636] },
+    "$value": { "colorSpace": "oklch", "components": [0.5658, 0.05, 233.142] },
     "$extensions": {
       "com.lostgradient.cinder": {
         "cssRecipe": "oklch( from color-mix(in oklab, var(--cinder-status-info-solid), var(--cinder-surface) 36%) l min(c, 0.05) h )",
@@ -3226,7 +3226,7 @@
   },
   "button.background": {
     "$type": "color",
-    "$value": { "colorSpace": "oklch", "components": [0.235, 0.014, 265] },
+    "$value": { "colorSpace": "oklch", "components": [0.235, 0.028, 265] },
     "$description": "Secondary (default) button fill.",
     "$extensions": {
       "com.lostgradient.cinder": {
@@ -3922,7 +3922,7 @@
   },
   "code-block.background": {
     "$type": "color",
-    "$value": { "colorSpace": "oklch", "components": [0.21, 0.012, 265] },
+    "$value": { "colorSpace": "oklch", "components": [0.21, 0.026, 265] },
     "$description": "Code surface background: the recessed inset well in both themes (owner, 2026-11-16), so a code block inside a white card or panel reads as sunk into it rather than as a second white box. Shiki's github-light colors that fall under AA on the light inset are lifted to Cinder text roles in code-block.css; see check-token-contrast-code-block.test.ts.",
     "$extensions": {
       "com.lostgradient.cinder": {
@@ -4046,7 +4046,7 @@
   },
   "file-upload.background": {
     "$type": "color",
-    "$value": { "colorSpace": "oklch", "components": [0.185, 0.012, 265] },
+    "$value": { "colorSpace": "oklch", "components": [0.185, 0.024, 265] },
     "$description": "Dropzone background.",
     "$extensions": {
       "com.lostgradient.cinder": {
@@ -4074,7 +4074,7 @@
   },
   "file-upload.progress.background": {
     "$type": "color",
-    "$value": { "colorSpace": "oklch", "components": [0.21, 0.012, 265] },
+    "$value": { "colorSpace": "oklch", "components": [0.21, 0.026, 265] },
     "$description": "Progress bar track background.",
     "$extensions": {
       "com.lostgradient.cinder": {
@@ -4130,7 +4130,7 @@
   },
   "kanban-board.column.background": {
     "$type": "color",
-    "$value": { "colorSpace": "oklch", "components": [0.235, 0.014, 265] },
+    "$value": { "colorSpace": "oklch", "components": [0.235, 0.028, 265] },
     "$description": "Column background.",
     "$extensions": {
       "com.lostgradient.cinder": {
@@ -4144,7 +4144,7 @@
   },
   "kanban-board.card.background": {
     "$type": "color",
-    "$value": { "colorSpace": "oklch", "components": [0.185, 0.012, 265] },
+    "$value": { "colorSpace": "oklch", "components": [0.185, 0.024, 265] },
     "$description": "Card background.",
     "$extensions": {
       "com.lostgradient.cinder": {
@@ -4171,7 +4171,7 @@
     "$description": "Horizontal scroll-edge fade gradient color -- `text-default` at 12% opacity, tracking whichever theme arm resolves."
   },
   "map-marker.fill": {
-    "$value": { "colorSpace": "oklch", "components": [0.235, 0.014, 265] },
+    "$value": { "colorSpace": "oklch", "components": [0.235, 0.028, 265] },
     "$description": "The marker's body and anchor fill: the raised surface, so a marker reads as a chip over the map.",
     "$extensions": {
       "com.lostgradient.cinder": {
@@ -4213,7 +4213,7 @@
     "$type": "color"
   },
   "map-marker.live.ink": {
-    "$value": { "colorSpace": "oklch", "components": [0.185, 0.012, 265] },
+    "$value": { "colorSpace": "oklch", "components": [0.185, 0.024, 265] },
     "$description": "A live marker's text color on its inverse fill.",
     "$extensions": {
       "com.lostgradient.cinder": {

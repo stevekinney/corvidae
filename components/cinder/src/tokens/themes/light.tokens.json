@@ -765,11 +765,11 @@
         "$type": "color",
         "$value": {
           "colorSpace": "oklch",
-          "components": [0.965, 0.035, 148]
+          "components": [0.965, 0.055, 148]
         },
         "$extensions": {
           "com.lostgradient.cinder": {
-            "cssRecipe": "oklch(96.5% 0.035 148)"
+            "cssRecipe": "oklch(96.5% 0.055 148)"
           }
         }
       },

@@ -65,7 +65,7 @@ describe('scoped theme tokens', () => {
 
     expectDeclarations(darkBlock, {
       'color-scheme': 'dark',
-      '--cinder-surface-canvas': 'oklch(14.5% 0.012 265)',
+      '--cinder-surface-canvas': 'oklch(14.5% 0.022 265)',
       '--cinder-accent-solid-hover': 'oklch(from var(--cinder-accent-solid) calc(l - 0.08) c h)',
       '--cinder-accent-solid-active': 'oklch(from var(--cinder-accent-solid) calc(l - 0.15) c h)',
       '--cinder-accent-solid-active-on-fill':

@@ -2,7 +2,7 @@
   "$schema": "https://www.designtokens.org/schemas/2025.10/format.json",
   "surface": {
     "$type": "color",
-    "$description": "Cinder layers surfaces in three tiers, each with one job: `surface.raised` is the outer background of a card/container, `surface.base` is a card body (primary content area), and `surface.inset` is a sunken region inside a card body. A card root sets one background; nested regions inherit it unless the component deliberately changes tiers. Light mode is a white sheet on a grey page (owner decision, 2026-11-15): `inset 0.955 -> canvas 0.976 -> surface 1.000 = raised 1.000`, so a white panel separates from the page by fill and a well recedes inside it, with elevation still carried by border + shadow. A `data-density=\"comfortable\"` subtree switches the light arm to the deeper consumer ladder (foundation.css). Dark mode is a neutral ladder (hue 265, chroma at most 0.014) built up from near-black: `canvas 0.145 -> surface 0.185 -> inset 0.210 -> raised 0.235`. Hover/pressed derivatives mix toward the accent in light mode (proportional lightness mixes have no room left once the ramp is anchored at white) and toward white in dark mode (which still has headroom).",
+    "$description": "Cinder layers surfaces in three tiers, each with one job: `surface.raised` is the outer background of a card/container, `surface.base` is a card body (primary content area), and `surface.inset` is a sunken region inside a card body. A card root sets one background; nested regions inherit it unless the component deliberately changes tiers. Light mode is a white sheet on a grey page (owner decision, 2026-11-15): `inset 0.955 -> canvas 0.976 -> surface 1.000 = raised 1.000`, so a white panel separates from the page by fill and a well recedes inside it, with elevation still carried by border + shadow. A `data-density=\"comfortable\"` subtree switches the light arm to the deeper consumer ladder (foundation.css). Dark mode is an indigo-tinted ladder (hue 265, chroma 0.022 to 0.028, so a dark page carries colour rather than reading grey, owner decision 2026-11-16, COR-2489) built up from near-black: `canvas 0.145 -> surface 0.185 -> inset 0.210 -> raised 0.235`. Hover/pressed derivatives mix toward the accent in light mode (proportional lightness mixes have no room left once the ramp is anchored at white) and toward white in dark mode (which still has headroom).",
     "base": {
       "$value": {
         "colorSpace": "oklch",
@@ -15,7 +15,7 @@
           "public": true,
           "category": "color",
           "contrastPairs": ["text.default"],
-          "cssRecipe": "light-dark(oklch(100% 0 255), oklch(18.5% 0.012 265))",
+          "cssRecipe": "light-dark(oklch(100% 0 255), oklch(18.5% 0.024 265))",
           "palette": {
             "family": "neutral",
             "role": "surface-base"
@@ -36,7 +36,7 @@
             "public": true,
             "category": "color",
             "contrastPairs": ["text.default"],
-            "cssRecipe": "light-dark(oklch(100% 0 255), oklch(23.5% 0.014 265))",
+            "cssRecipe": "light-dark(oklch(100% 0 255), oklch(23.5% 0.028 265))",
             "palette": {
               "family": "neutral",
               "role": "surface-raised"
@@ -86,7 +86,7 @@
           "cssProperty": "--cinder-surface-inset",
           "public": true,
           "category": "color",
-          "cssRecipe": "light-dark(oklch(95.5% 0.002 265), oklch(21% 0.012 265))",
+          "cssRecipe": "light-dark(oklch(95.5% 0.002 265), oklch(21% 0.026 265))",
           "palette": {
             "family": "neutral",
             "role": "surface-inset"
@@ -166,7 +166,7 @@
           "cssProperty": "--cinder-surface-canvas",
           "public": true,
           "category": "color",
-          "cssRecipe": "light-dark(oklch(97.6% 0.004 265), oklch(14.5% 0.012 265))",
+          "cssRecipe": "light-dark(oklch(97.6% 0.004 265), oklch(14.5% 0.022 265))",
           "palette": {
             "family": "neutral",
             "role": "surface-canvas"
