@@ -293,10 +293,14 @@
     margin-inline-end: calc(1rem + var(--cinder-space-3));
   }
 
+  /* The button's painted height, not its control height: a coarse pointer raises the control
+   * height to 44px while a Button is drawn 28px and reaches 44px through its hit area, so a 44px
+   * block made the placeholder taller than the row it stands for (COR-2489: Home moved 32px on a
+   * phone when its data arrived). */
   .cinder-skeleton-action-bar {
     flex: none;
     inline-size: 5.25rem;
-    block-size: var(--cinder-button-height-sm);
+    block-size: var(--_cinder-painted-height-sm);
     border-radius: var(--cinder-button-radius-sm);
   }
 
@@ -358,6 +362,18 @@
 
   .cinder-skeleton-group[data-cinder-variant='list'] > .cinder-skeleton-status {
     padding-inline: var(--cinder-space-3-5);
+  }
+
+  /* A list that leads with a day band keeps the band in view: the line lies over the first row,
+   * under the band (one xs line box, its block padding and its rule), never over the day's words
+   * (COR-2489: "Today, Monday, Nov 2" was painted over). */
+  .cinder-skeleton-group[data-cinder-variant='list']:has(
+      > .cinder-skeleton-list > .cinder-skeleton-day-band:first-child
+    )
+    > .cinder-skeleton-status {
+    margin-block-start: calc(
+      var(--cinder-text-xs) * var(--cinder-leading-normal) + 2 * var(--cinder-space-2) + 1px
+    );
   }
 
   .cinder-skeleton-group[data-cinder-variant='grouped']:has(> .cinder-skeleton-status:not(:empty))
@@ -437,6 +453,18 @@
     font-size: var(--cinder-text-sm);
     line-height: var(--cinder-leading-normal);
     color: var(--cinder-text-muted);
+  }
+
+  /* The words give way and wrap; Cancel, the one way out of a slow load, never shrinks, so it is
+   * never cut to "Ca..." on a phone (COR-2489). */
+  .cinder-skeleton-status-label {
+    flex: 1 1 0;
+    min-inline-size: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .cinder-skeleton-status > .cinder-button {
+    flex: none;
   }
 
   .cinder-skeleton-status:empty {
