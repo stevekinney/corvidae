@@ -19,7 +19,7 @@ See the [dialog preset boundary](https://github.com/stevekinney/cinder/blob/main
 - Two-action confirm/cancel prompts — use [`ConfirmDialog`](../confirm-dialog/README.md) instead. It handles autofocus on the cancel button, `aria-describedby`, and the destructive-variant button automatically.
 - Urgent blocking acknowledgements that must not be dismissed by Escape or backdrop click — use [`AlertDialog`](../alert-dialog/README.md) instead.
 - Navigation — use a page transition or router link instead. Modals break the browser's back-button mental model.
-- Persistent side content — use a [`Drawer`](../drawer/README.md) or [`Sidebar`](../sidebar/README.md) so the content stays visible while the user works.
+- Persistent side content — use a [`Drawer`](../../../../drawer/src/components/drawer/README.md) or [`Sidebar`](../sidebar/README.md) so the content stays visible while the user works.
 - Displaying information that does not require a decision — use a [`Popover`](../popover/README.md) or inline content instead.
 
 ## Dialog model
@@ -59,8 +59,8 @@ This conditional requirement is expressed in the generated JSON Schema below via
 
 - [`ConfirmDialog`](../confirm-dialog/README.md) — pre-wired confirm/cancel variant built on Modal. Use for binary decisions.
 - [`AlertDialog`](../alert-dialog/README.md) — sticky alert dialog that cannot be dismissed by Escape or backdrop click. Use for urgent acknowledgements.
-- [`Drawer`](../drawer/README.md) — side-anchored overlay for supplementary content.
-- [`Drawer`](../drawer/README.md) with `placement="bottom"` — bottom-anchored overlay for mobile-style interactions.
+- [`Drawer`](../../../../drawer/src/components/drawer/README.md) — side-anchored overlay for supplementary content.
+- [`Drawer`](../../../../drawer/src/components/drawer/README.md) with `placement="bottom"` — bottom-anchored overlay for mobile-style interactions.
 - [`Popover`](../popover/README.md) — non-blocking floating panel for contextual content.
 
 ## Usage

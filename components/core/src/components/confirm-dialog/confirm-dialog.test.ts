@@ -216,7 +216,7 @@ describe('ConfirmDialog', () => {
 
   test('typed confirmation styles include the composed Input sidecar', async () => {
     const css = await Bun.file(new URL('./confirm-dialog.css', import.meta.url)).text();
-    expect(css).toContain("@import '../input/input.css';");
+    expect(css).toContain("@import '@lostgradient/input/input.css';");
   });
 
   test('options carry a plain list as flat rows and a note as the muted description (COR-2232)', async () => {

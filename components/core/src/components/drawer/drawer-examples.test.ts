@@ -2,7 +2,9 @@ import { describe, expect, test } from 'bun:test';
 
 // COR-2443 AC2: the detent bottom sheet COR-2322 shipped has a documented example, and the
 // playground shows it from a file of the same name.
-const examples = (await Bun.file(new URL('./drawer.examples.json', import.meta.url)).json()) as {
+const examples = (await Bun.file(
+  new URL('../../../../drawer/src/components/drawer/drawer.examples.json', import.meta.url),
+).json()) as {
   examples: { id: string; code: string }[];
 };
 
@@ -18,10 +20,7 @@ describe('Drawer examples', () => {
 
   test('the playground shows it, with the same code as the example body', async () => {
     const file = await Bun.file(
-      new URL(
-        './examples/detents.example.svelte',
-        import.meta.url,
-      ),
+      new URL('./examples/detents.example.svelte', import.meta.url),
     ).text();
     const example = examples.examples.find((candidate) => candidate.id === 'detents')!;
     const script = file.slice(file.indexOf('<script lang="ts">\n'));

@@ -2,7 +2,7 @@
 @import '../chip/chip.css';
 @import '../combobox/combobox.css';
 @import '@lostgradient/form-field/form-field.css';
-@import '../input/input.css';
+@import '@lostgradient/input/input.css';
 @import '../number-input/number-input.css';
 @import '../select/select.css';
 

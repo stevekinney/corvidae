@@ -21,8 +21,8 @@
 </script>
 
 <script lang="ts">
-  import CheckboxGroup from '../../components/checkbox-group/checkbox-group.svelte';
-  import Checkbox from '../../components/checkbox/checkbox.svelte';
+  import CheckboxGroup from '@lostgradient/checkbox-group/components/checkbox-group/checkbox-group.svelte';
+  import Checkbox from '@lostgradient/checkbox/components/checkbox/checkbox.svelte';
 
   let {
     label,

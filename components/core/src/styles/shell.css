@@ -10,7 +10,7 @@
 @import '../components/button/button.css';
 @import '../components/color-picker/color-picker.css';
 @import '@lostgradient/color-swatch-picker/color-swatch-picker.css';
-@import '../components/input/input.css';
+@import '@lostgradient/input/input.css';
 @import '../components/number-input/number-input.css';
 @import '../components/popover/popover.css';
 @import '../components/segmented-control/segmented-control.css';

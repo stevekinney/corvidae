@@ -25,7 +25,7 @@ The `two-column` variant sets a muted term on the left and the value on the righ
 
 ### Metadata for a record
 
-`DescriptionList` is how a record shows its label and value metadata: an owner, a created date, a price. Do not draw those pairs as a row of `Badge` or `Chip` pills; pills are for a status or a short tag. The `two-column`, `fields` and `facts` variants set the label and the value side by side, so labels line up down the page and the values read as text. For a few typed facts that each take an icon and a value, such as a kind, a neighbourhood and a price band, use [`KeyFacts`](../key-facts/README.md).
+`DescriptionList` is how a record shows its label and value metadata: an owner, a created date, a price. Do not draw those pairs as a row of `Badge` or `Chip` pills; pills are for a status or a short tag. The `two-column`, `fields` and `facts` variants set the label and the value side by side, so labels line up down the page and the values read as text. For a few typed facts that each take an icon and a value, such as a kind, a neighbourhood and a price band, use [`KeyFacts`](../../../../key-facts/src/components/key-facts/README.md).
 
 ### Pairs that fit their space
 

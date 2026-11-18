@@ -2,7 +2,7 @@
 
 Compact token for issue labels, free-form tags, applied filters, selected entities, and removable or toggleable choices.
 
-Use `Chip mode="display"` for issue labels and short tags only. Use Badge for attached counts, statuses, and compact annotations. Label and value metadata for a record (an owner, a created date, a price) is not a row of chips: put it in a [`DescriptionList`](../description-list/README.md), or a [`KeyFacts`](../key-facts/README.md) row for a few typed facts, so the labels line up and the values read as text.
+Use `Chip mode="display"` for issue labels and short tags only. Use Badge for attached counts, statuses, and compact annotations. Label and value metadata for a record (an owner, a created date, a price) is not a row of chips: put it in a [`DescriptionList`](../description-list/README.md), or a [`KeyFacts`](../../../../key-facts/src/components/key-facts/README.md) row for a few typed facts, so the labels line up and the values read as text.
 
 ## Usage
 

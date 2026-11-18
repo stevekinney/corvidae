@@ -27,7 +27,7 @@
   import InlineLoading from '../inline-loading/inline-loading.svelte';
   import SourceDiffViewer from '@lostgradient/source-diff-viewer/components/source-diff-viewer/source-diff-viewer.svelte';
   import { countPatchChanges } from '@lostgradient/source-diff-viewer/components/source-diff-viewer/source-diff-viewer.utilities.ts';
-  import Tooltip from '../tooltip/tooltip.svelte';
+  import Tooltip from '@lostgradient/tooltip/components/tooltip/tooltip.svelte';
   import { humanizeIdentifier } from '@lostgradient/foundation/utilities/humanize-identifier.ts';
   import { readPayloadEntries, isUnifiedPatch } from './payload-inspector-fields.ts';
   import {

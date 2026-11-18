@@ -15,7 +15,7 @@
   import { createCutText } from '@lostgradient/foundation/_internal/cut-text.svelte.ts';
   import { getTooltipTriggerContext } from '@lostgradient/foundation/_internal/tooltip-trigger-context.ts';
   import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
-  import FullTextTooltip from '../../_internal/full-text-tooltip.svelte';
+  import FullTextTooltip from '@lostgradient/tooltip/_internal/full-text-tooltip.svelte';
 
   import type { BadgeProps, BadgeSubscriptionState, BadgeVariant } from './badge.types.ts';
 

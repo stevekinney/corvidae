@@ -1,5 +1,5 @@
 <script lang="ts">
-  import Tooltip from '../tooltip/tooltip.svelte';
+  import Tooltip from '@lostgradient/tooltip/components/tooltip/tooltip.svelte';
   import Text from './text.svelte';
 
   let { text }: { text: string } = $props();

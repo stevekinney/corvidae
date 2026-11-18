@@ -9,7 +9,7 @@
   import { tryGetTableContext } from '../table/table.context.ts';
   import type { TableCellProps } from './table-cell.types.ts';
   import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
-  import FullTextTooltip from '../../_internal/full-text-tooltip.svelte';
+  import FullTextTooltip from '@lostgradient/tooltip/_internal/full-text-tooltip.svelte';
 
   let {
     align = 'left',

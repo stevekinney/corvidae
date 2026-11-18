@@ -7,7 +7,8 @@ setupHappyDom();
 
 const { render } = await import('@testing-library/svelte');
 const { createRawSnippet } = await import('svelte');
-const { default: CheckboxGroup } = await import('./checkbox-group.svelte');
+const { default: CheckboxGroup } =
+  await import('@lostgradient/checkbox-group/components/checkbox-group/checkbox-group.svelte');
 const { default: Wrapper } = await import('../../test/fixtures/checkbox-group-fixture.svelte');
 
 const emptySnippet = createRawSnippet(() => ({ render: () => '<span></span>', setup: () => {} }));

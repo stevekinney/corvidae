@@ -78,7 +78,7 @@ describe('NumberInput basics', () => {
       Bun.file(new URL('./number-input.svelte', import.meta.url)).text(),
     ]);
 
-    expect(css).toContain("@import '../input/input.css';");
+    expect(css).toContain("@import '@lostgradient/input/input.css';");
     expect(css).toMatch(
       /\.cinder-input-group:has\(> \.cinder-number-input__input\)\s*> \.cinder-input-group__trailing\s*\{[^}]*max-inline-size:\s*none;/,
     );
@@ -91,8 +91,10 @@ describe('NumberInput basics', () => {
     expect(css).not.toMatch(
       /\.cinder-input-group:has\(> \.cinder-number-input__input\[aria-invalid='true'\]\)\s*\{/,
     );
-    expect(componentSource).toContain("from '../input/index.ts';");
-    expect(componentSource).not.toContain("from '../input/input.svelte'");
+    expect(componentSource).toContain("from '@lostgradient/input/components/input/index.ts';");
+    expect(componentSource).not.toContain(
+      "from '@lostgradient/input/components/input/input.svelte'",
+    );
   });
 
   test('caps the field width by default with a zero-specificity rule', async () => {

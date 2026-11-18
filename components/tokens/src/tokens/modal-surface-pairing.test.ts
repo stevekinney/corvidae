@@ -16,7 +16,7 @@ const modalCss = await Bun.file(
   new URL('../../../core/src/components/modal/modal.css', import.meta.url),
 ).text();
 const drawerCss = await Bun.file(
-  new URL('../../../core/src/components/drawer/drawer.css', import.meta.url),
+  new URL('../../../drawer/src/components/drawer/drawer.css', import.meta.url),
 ).text();
 const popoverCss = await Bun.file(
   new URL('../../../core/src/components/popover/popover.css', import.meta.url),

@@ -9,7 +9,10 @@ const FOUNDATION_CSS_PATH = new URL(
 );
 const CODE_BLOCK_CSS_PATH = new URL('../components/code-block/code-block.css', import.meta.url);
 const SIDEBAR_CSS_PATH = new URL('../components/sidebar/sidebar.css', import.meta.url);
-const DRAWER_CSS_PATH = new URL('../components/drawer/drawer.css', import.meta.url);
+const DRAWER_CSS_PATH = new URL(
+  '../../../drawer/src/components/drawer/drawer.css',
+  import.meta.url,
+);
 const BUTTON_CSS_PATH = new URL('../components/button/button.css', import.meta.url);
 const NAVIGATION_ITEM_CSS_PATH = new URL(
   '../../../navigation-item/src/components/navigation-item/navigation-item.css',

@@ -39,7 +39,7 @@ const REQUIRED_ARCHETYPES = [
  * selector for them. Each maps to the component source that renders it, which the test reads.
  */
 const UNSTYLED_HOOKS: Record<string, string> = {
-  'cinder-map-legend__label': 'src/components/map-legend/map-legend.svelte',
+  'cinder-map-legend__label': '../map-legend/src/components/map-legend/map-legend.svelte',
   'cinder-map-marker__label': '../map-marker/src/components/map-marker/map-marker.svelte',
   'cinder-search-field__input': 'src/components/search-field/search-field.svelte',
 };

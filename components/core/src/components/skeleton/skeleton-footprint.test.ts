@@ -21,7 +21,7 @@ const formField = await sheet('../../../../form-field/src/components/form-field/
 const formSection = await sheet(
   '../../../../form-section/src/components/form-section/form-section.css',
 );
-const input = await sheet('../input/input.css');
+const input = await sheet('../../../../input/src/components/input/input.css');
 const card = await sheet('../../../../card/src/components/card/card.css');
 const feed = await sheet('../feed/feed.css');
 const tokens = await sheet('../../../../tokens/src/styles/tokens-base.css');

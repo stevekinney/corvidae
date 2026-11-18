@@ -2,7 +2,10 @@ import { expect, test } from 'bun:test';
 import type { ComponentProps } from 'svelte';
 import type { HTMLAttributes } from 'svelte/elements';
 
-import type { AvatarShape, AvatarSize } from '../avatar/avatar.types.ts';
+import type {
+  AvatarShape,
+  AvatarSize,
+} from '@lostgradient/avatar/components/avatar/avatar.types.ts';
 import AvatarGroup from './avatar-group.svelte';
 import type { AvatarGroupItem, AvatarGroupProps, AvatarGroupZOrder } from './avatar-group.types.ts';
 import {

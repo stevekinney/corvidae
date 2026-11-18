@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Checkbox } from '../checkbox/index.ts';
+  import { Checkbox } from '@lostgradient/checkbox/components/checkbox/index.ts';
   import { DataList } from '../data-list/index.ts';
   import { StackedListItem } from './index.ts';
 

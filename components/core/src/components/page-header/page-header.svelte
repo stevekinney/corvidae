@@ -21,7 +21,7 @@
   import CompactActions from '@lostgradient/foundation/_internal/compact-actions.svelte';
   import Button from '../button/button.svelte';
   import { Dropdown } from '../dropdown/index.ts';
-  import Tooltip from '../tooltip/tooltip.svelte';
+  import Tooltip from '@lostgradient/tooltip/components/tooltip/tooltip.svelte';
   import type { PageHeaderOverflowAction, PageHeaderProps } from './page-header.types.ts';
 
   const headerId = $props.id();

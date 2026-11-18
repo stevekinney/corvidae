@@ -68,7 +68,7 @@ const accordionItemCss = loadCss(
   '../../../accordion/src/components/accordion-item/accordion-item.css',
 );
 const collapsibleCss = loadCss('../components/collapsible/collapsible.css');
-const drawerCss = loadCss('../components/drawer/drawer.css');
+const drawerCss = loadCss('../../../drawer/src/components/drawer/drawer.css');
 const jsonSchemaEditorCss = loadCss('../components/json-schema-editor/json-schema-editor.css');
 const jsonViewerCss = loadCss('../components/json-viewer/json-viewer.css');
 const modalCss = loadCss('../components/modal/modal.css');
@@ -939,13 +939,13 @@ describe('filled controls paint a gap before the ring (COR-1498)', () => {
     },
     {
       name: 'Checkbox checked',
-      source: css('../components/checkbox/checkbox.css'),
+      source: css('../../../checkbox/src/components/checkbox/checkbox.css'),
       selector: '.cinder-checkbox:checked:focus-visible',
       expected: gapRecipe('var(--_cinder-checkbox-ring, var(--cinder-ring-color))'),
     },
     {
       name: 'Checkbox indeterminate',
-      source: css('../components/checkbox/checkbox.css'),
+      source: css('../../../checkbox/src/components/checkbox/checkbox.css'),
       selector: '.cinder-checkbox:indeterminate:focus-visible',
       expected: gapRecipe('var(--_cinder-checkbox-ring, var(--cinder-ring-color))'),
     },

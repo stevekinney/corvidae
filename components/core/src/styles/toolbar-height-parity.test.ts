@@ -103,14 +103,14 @@ const button: ControlRow = {
   frame: 0,
 };
 const input: ControlRow = {
-  path: '../components/input/input.css',
+  path: '../../../input/src/components/input/input.css',
   base: '.cinder-input',
   property: 'min-height',
   frame: 0,
 };
 /** SearchField renders an Input with a leading icon, so its input sits in a 1px-bordered group. */
 const searchField: ControlRow = {
-  path: '../components/input/input.css',
+  path: '../../../input/src/components/input/input.css',
   base: '.cinder-input',
   part: '.cinder-input-group > .cinder-input',
   property: 'min-height',

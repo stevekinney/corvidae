@@ -1,0 +1,13 @@
+{
+  "$schema": "../../../../../internal/component-tooling/src/schemas/examples.schema.json",
+  "component": "terminal-frame",
+  "import": "@lostgradient/cinder",
+  "examples": [
+    {
+      "id": "basic",
+      "title": "Basic terminal frame",
+      "description": "Frame a connected terminal surface with status chrome.",
+      "code": "<script lang=\"ts\">\n  import { TerminalFrame } from '@lostgradient/terminal-frame';\n</script>\n\n<TerminalFrame title=\"Build shell\" status=\"connected\">\n  {#snippet children()}\n    <pre style=\"margin: 0; padding: var(--cinder-space-3);\">$ bun run build\nBuild complete.</pre>\n  {/snippet}\n</TerminalFrame>\n"
+    }
+  ]
+}

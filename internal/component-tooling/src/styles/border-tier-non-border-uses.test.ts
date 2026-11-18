@@ -275,7 +275,7 @@ export const CLASSIFIED: Record<string, readonly Classification[]> = {
   'components/core/src/components/modal/modal.css': [
     { declaration: 'background: var(--cinder-border-contrast);', category: 'area', audit: 'modal' },
   ],
-  'components/core/src/components/drawer/drawer.css': [
+  'components/drawer/src/components/drawer/drawer.css': [
     {
       declaration: 'background: var(--cinder-border-contrast);',
       category: 'area',

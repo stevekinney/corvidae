@@ -1,5 +1,6 @@
+// organize-imports-ignore
 import '../button/button.css';
-import '../input/input.css';
+import '@lostgradient/input/input.css';
 import './key-value-editor.css';
 import KeyValueEditor from './key-value-editor.svelte';
 export default KeyValueEditor;

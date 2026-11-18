@@ -137,7 +137,7 @@ Line two ends in an ellipsis when it is long. Pass `metaTooltip` with the same t
 
 ### A leading checkbox
 
-A row that leads with a [`Checkbox`](../checkbox/README.md) in `leading` aligns the box to the first line of the title, not the row's top edge or its middle: the box's centre meets the centre of that line, whether the title takes one line or two, and the same rule holds for the two-line row. Pass the checkbox without a `label`, so the title is the row's text, and give it an `aria-label` that names the row. A checkbox that leads a task list can take `variant="task"`.
+A row that leads with a [`Checkbox`](../../../../checkbox/src/components/checkbox/README.md) in `leading` aligns the box to the first line of the title, not the row's top edge or its middle: the box's centre meets the centre of that line, whether the title takes one line or two, and the same rule holds for the two-line row. Pass the checkbox without a `label`, so the title is the row's text, and give it an `aria-label` that names the row. A checkbox that leads a task list can take `variant="task"`.
 
 ```svelte
 <StackedListItem>
