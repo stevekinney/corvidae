@@ -738,6 +738,8 @@ describe('the run page’s sections are Cinder Sections', () => {
     './run-panels.svelte',
     './run-engine-panels.svelte',
     '../detail/lineage-panel.svelte',
+    // Not named by the criterion, but its block sits in the same rail.
+    './run-related-runs.svelte',
   ];
 
   test.each(files)('%s draws no ib-run heading or section class', (file) => {
@@ -754,6 +756,16 @@ describe('the run page’s sections are Cinder Sections', () => {
       expect(source).toMatch(/<Section\s/);
     },
   );
+
+  test('the rail spaces its Sections with one margin, never a gap added to Cinder’s own', () => {
+    const css = readFileSync(new URL('../../../styles/tasks.css', import.meta.url), 'utf8');
+    const rail = /\n\.ib-run__rail \{([^}]*)\}/.exec(css)?.[1] ?? '';
+    expect(rail).not.toContain('gap');
+    expect(css).toMatch(
+      /\.ib-run__rail > \* \+ \* \{\s*margin-block-start: var\(--cinder-space-6\);/,
+    );
+    expect(css).not.toMatch(/\.ib-run__(section|panels|heading-2) \{/);
+  });
 
   test('the engine panels carry their own headings, and the lineage under them is a Section', () => {
     const source = readFileSync(new URL('./run-engine-panels.svelte', import.meta.url), 'utf8');
