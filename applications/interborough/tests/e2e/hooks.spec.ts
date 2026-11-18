@@ -936,14 +936,15 @@ for (const width of WIDTHS) {
     await expect(action.locator('input[type="password"]')).toHaveCount(0);
     await expect(action.getByText(HOOKS_COPY.secrets.help)).toBeVisible();
     await token.click();
-    await expect(page.getByRole('option', { name: /^slack-bot-token/ })).toContainText('Set');
-    await expect(page.getByRole('option', { name: /^slack-signing-key/ })).toContainText('Missing');
+    // A key's option is found by its text: Text's middle cut draws the key as two boxes, which
+    // Chromium's accessible name joins with a space.
+    const keyOption = (key: string) => page.getByRole('option').filter({ hasText: key });
+    await expect(keyOption('slack-bot-token')).toContainText('Set');
+    await expect(keyOption('slack-signing-key')).toContainText('Missing');
     await expect(page.locator('.cinder-select__group').filter({ hasText: 'Slack' })).toBeVisible();
     // R10-13: each key row draws its key in the monospace face, cut only in its middle when long.
     for (const key of ['slack-bot-token', 'slack-signing-key']) {
-      const drawn = page
-        .getByRole('option', { name: new RegExp(`^${key}`) })
-        .locator('.cinder-select__option-label .cinder-text');
+      const drawn = keyOption(key).locator('.cinder-select__option-label .cinder-text');
       await expect(drawn).toHaveAttribute('data-cinder-truncate', 'middle');
       const [font, mono] = await drawn.evaluate((node) => {
         const probe = document.createElement('span');
