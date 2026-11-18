@@ -367,7 +367,7 @@ export async function recordMutationResult(
   store: ExecutionStateStore,
   authority: Authority,
   operationId: string,
-  input: { outcome: 'observed' | 'unknown'; observed?: unknown },
+  input: { outcome: 'observed' | 'unknown' | 'unresolved'; observed?: unknown },
 ): Promise<void> {
   await mutateOwnedSnapshot(store, authority, (snapshot) => {
     const operation = snapshot.operations[operationId];

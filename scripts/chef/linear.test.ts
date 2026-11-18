@@ -1,11 +1,19 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { hostname, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
   rejectionOf,
   throwingRejectionOf,
 } from '../../testing/testing/src/helpers/promise-outcome.ts';
+import {
+  acquireDispatch,
+  cancelDispatch,
+  createExecutionStateStore,
+  currentAuthority,
+  recordMutationIntent,
+  recordMutationResult,
+} from './execution-state.ts';
 import {
   blockIssue,
   commentPageLimit,
@@ -1634,6 +1642,80 @@ describe('claim', () => {
       observed: expect.any(Object),
       nextAction: 'closeout',
     });
+  });
+
+  // spawn-free: the stale authority is constructed in a disposable local state directory.
+  test('a stale durable claim release cannot release the newer generation marker', async () => {
+    const fake = fakeLinear();
+    const executionStateDirectory = join(sandbox, 'claim-stale-release');
+    await run(['claim', 'COR-1', '--run', 'run-a', '--branch', 'branch-a'], {
+      ...withClock(fake),
+      executionStateDirectory,
+      ownerId: 'owner-a',
+    });
+    const store = createExecutionStateStore({
+      stateDirectory: executionStateDirectory,
+      hostId: hostname(),
+    });
+    const first = await acquireDispatch(store, {
+      resource: 'issue:COR-1',
+      runId: 'run-a',
+      ownerId: 'owner-a',
+    });
+    if (!first.granted) throw new Error(first.reason);
+    expect(await cancelDispatch(store, first.authority)).toBe(true);
+    const second = await acquireDispatch(store, {
+      resource: 'issue:COR-1',
+      runId: 'run-a',
+      ownerId: 'owner-a',
+    });
+    if (!second.granted) throw new Error(second.reason);
+    const release = await run(
+      [
+        'claim',
+        'COR-1',
+        '--release',
+        '--run',
+        'run-a',
+        '--generation',
+        String(first.authority.generation),
+      ],
+      { ...withClock(fake), executionStateDirectory, ownerId: 'owner-a' },
+    );
+    expect(release.code).toBe(1);
+    expect(claimLines(fake)[0]?.body).toContain('status held');
+    expect(second.authority.generation).toBe(first.authority.generation + 1);
+  });
+
+  // spawn-free: a recorded response loss is reconciled against the injected provider, never replayed.
+  test('a durable claim with a lost response remains unresolved instead of repeating its mutation', async () => {
+    const fake = fakeLinear();
+    const executionStateDirectory = join(sandbox, 'claim-unknown');
+    await run(['claim', 'COR-1', '--run', 'run-a', '--branch', 'branch-a'], {
+      ...withClock(fake),
+      executionStateDirectory,
+      ownerId: 'owner-a',
+    });
+    const store = createExecutionStateStore({
+      stateDirectory: executionStateDirectory,
+      hostId: hostname(),
+    });
+    const authority = currentAuthority(store, {
+      resource: 'issue:COR-1',
+      runId: 'run-a',
+      ownerId: 'owner-a',
+    });
+    const operationId = `issue:COR-1:${authority.generation}:claim`;
+    await recordMutationIntent(store, authority, { operationId, action: 'claim' });
+    await recordMutationResult(store, authority, operationId, { outcome: 'unknown' });
+    const result = await run(['claim', 'COR-1', '--run', 'run-a', '--branch', 'branch-a'], {
+      ...withClock(fake),
+      executionStateDirectory,
+      ownerId: 'owner-a',
+    });
+    expect(result.code).toBe(1);
+    expect(result.output).toContain('remains unresolved after provider inspection');
+    expect(claimLines(fake)).toHaveLength(1);
   });
 
   test('refuses another run while the claim is live, naming the holder, and changes nothing', async () => {

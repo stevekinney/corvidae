@@ -1567,6 +1567,20 @@ async function withLocalAuthority(
       data: { claimed: false, leased: false, holder: null },
     };
   const operationId = `${request.resource}:${acquired.authority.generation}:${action}`;
+  const existing = stateModule.readExecutionSnapshot(store).operations[operationId];
+  if (existing?.outcome === 'unknown' || existing?.outcome === 'unresolved') {
+    // A response loss is not permission to replay an external mutation. Inspect the provider, retain
+    // the operation identity, and leave an unprovable outcome for the coordinator to resolve.
+    await inspectClaim();
+    await stateModule.recordMutationResult(store, acquired.authority, operationId, {
+      outcome: 'unresolved',
+    });
+    return {
+      ok: false,
+      summary: `Refused: ${request.resource} operation ${operationId} remains unresolved after provider inspection.`,
+      data: { operationId, unresolved: true },
+    };
+  }
   await stateModule.recordMutationIntent(store, acquired.authority, { operationId, action });
   try {
     const outcome = await perform();
@@ -1579,6 +1593,45 @@ async function withLocalAuthority(
     await stateModule.recordMutationResult(store, acquired.authority, operationId, {
       outcome: 'unknown',
     });
+    throw error;
+  }
+}
+
+async function withReleaseAuthority(
+  dependencies: LinearDependencies,
+  request: { resource: string; runId: string; ownerId: string; generation: number },
+  perform: () => Promise<Outcome>,
+): Promise<Outcome> {
+  if (dependencies.fetch !== undefined && dependencies.executionStateDirectory === undefined)
+    return perform();
+  const stateModule = await import('./execution-state.ts');
+  const store = stateModule.createExecutionStateStore({
+    stateDirectory:
+      dependencies.executionStateDirectory ??
+      join(resolveMainCheckout(), 'tmp', 'chef', 'execution-state'),
+    hostId: hostname(),
+  });
+  try {
+    stateModule.requireAuthority(store, request);
+  } catch (error) {
+    return {
+      ok: false,
+      summary: `Refused: ${request.resource} release lacks current authority (${describeError(error)}).`,
+      data: { released: false },
+    };
+  }
+  const operationId = `${request.resource}:${request.generation}:release`;
+  await stateModule.recordMutationIntent(store, request, { operationId, action: 'release' });
+  try {
+    const outcome = await perform();
+    await stateModule.recordMutationResult(store, request, operationId, {
+      outcome: outcome.ok ? 'observed' : 'unknown',
+      observed: outcome.data,
+    });
+    if (outcome.ok) await stateModule.releaseDispatch(store, request);
+    return outcome;
+  } catch (error) {
+    await stateModule.recordMutationResult(store, request, operationId, { outcome: 'unknown' });
     throw error;
   }
 }
@@ -1623,6 +1676,7 @@ export async function run(
     'run',
     'branch',
     'head',
+    'generation',
   ]);
   if (command !== 'comment' && parsed.options.has('update'))
     throw new UsageError('--update applies only to comment.');
@@ -1717,15 +1771,33 @@ export async function run(
     if (!/^[\w.-]+$/.test(runId))
       throw new UsageError(`--run needs a run id such as 2026-11-10-134500-name, not "${runId}".`);
     const release = parsed.flags.has('release');
+    const ownerId = dependencies.ownerId ?? `linear:${runId}`;
+    const generationText = parsed.options.get('generation');
+    if (
+      generationText !== undefined &&
+      (!/^\d+$/.test(generationText) || Number(generationText) < 1)
+    )
+      throw new UsageError(`--generation needs a positive integer, not "${generationText}".`);
+    const releaseGeneration = generationText === undefined ? undefined : Number(generationText);
     if (command === 'lease') {
       plan = (client) => {
-        if (release) return releaseLease(client, target as string, runId, now);
+        if (release) {
+          if (releaseGeneration === undefined && dependencies.executionStateDirectory !== undefined)
+            throw new UsageError('--generation is required to release durable local authority.');
+          return releaseGeneration === undefined
+            ? releaseLease(client, target as string, runId, now)
+            : withReleaseAuthority(
+                dependencies,
+                { resource: `project:${target}`, runId, ownerId, generation: releaseGeneration },
+                () => releaseLease(client, target as string, runId, now),
+              );
+        }
         return withLocalAuthority(
           dependencies,
           {
             resource: `project:${target}`,
             runId,
-            ownerId: dependencies.ownerId ?? `linear:${runId}`,
+            ownerId,
           },
           async () => {
             const project = await resolveProject(client, target as string);
@@ -1745,7 +1817,17 @@ export async function run(
     } else if (release) {
       if (parsed.options.has('branch') || parsed.options.has('head'))
         throw new UsageError('--release takes no --branch or --head.');
-      plan = (client) => releaseClaim(client, target as string, runId, now);
+      plan = (client) => {
+        if (releaseGeneration === undefined && dependencies.executionStateDirectory !== undefined)
+          throw new UsageError('--generation is required to release durable local authority.');
+        return releaseGeneration === undefined
+          ? releaseClaim(client, target as string, runId, now)
+          : withReleaseAuthority(
+              dependencies,
+              { resource: `issue:${target}`, runId, ownerId, generation: releaseGeneration },
+              () => releaseClaim(client, target as string, runId, now),
+            );
+      };
     } else {
       const branch = required(parsed, 'branch');
       if (!/^[^\s,]+$/.test(branch))
@@ -1759,7 +1841,7 @@ export async function run(
           {
             resource: `issue:${target}`,
             runId,
-            ownerId: dependencies.ownerId ?? `linear:${runId}`,
+            ownerId,
           },
           async () => {
             const current = latestClaim(await fetchComments(client, target as string));
