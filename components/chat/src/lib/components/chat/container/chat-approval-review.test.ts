@@ -370,11 +370,61 @@ describe('the box an arriving approval is placed against (COR-2327)', () => {
     stubBox(card, 357, 602);
 
     const shift = approvalPlacementShift(transcript, card);
-    // The unit's top lands on the header's bottom plus the padding (179), not 6px above it, and the
-    // plain rule (no header) would have scrolled 127px and left the row under the header.
-    expect(shift).toBe(121);
-    expect(300 - shift!).toBeGreaterThanOrEqual(179);
+    // The decision row wins: the card's bottom (602) rests 32px above the transcript's end (487),
+    // the end fade and its margin, so the shift is 602 - 455 = 147. The label row (300) then stands
+    // at 153, 26px above the 179 line, under the header and its top fade, and the card (357 - 147 =
+    // 210) stays clear of the header. Before the decision row ranked first the shift was 121.
+    expect(shift).toBe(147);
+    expect(602 - shift!).toBeLessThanOrEqual(487 - 32);
+    expect(357 - shift!).toBeGreaterThanOrEqual(179);
     container.remove();
+  });
+
+  test('at 320 by 640 the decision row rests whole above the end fade and the reminder is not shown, in the page’s real markup', () => {
+    // Interborough's shape: a rail item holding the row and, in `nested`, the card, no article.
+    // The transcript ends at 476, the header's bottom is 167 and the padding 12 (line 179); the unit
+    // is 300px (row 52, card 243 under a 5px gap), too tall for the 297px between the line and the end.
+    const timeline = document.createElement('div');
+    const rail = document.createElement('div');
+    rail.className = 'cinder-tool-call-rail';
+    const item = document.createElement('div');
+    item.className = 'cinder-tool-call-rail__item';
+    const label = document.createElement('button');
+    label.className = 'cinder-tool-call-rail__row';
+    const nested = document.createElement('div');
+    nested.className = 'cinder-tool-call-rail__nested';
+    const card = document.createElement('div');
+    const actionRow = document.createElement('div');
+    actionRow.className = 'cinder-approval-card__action-row';
+    card.append(actionRow);
+    nested.append(card);
+    item.append(label, nested);
+    rail.append(item);
+    timeline.append(rail);
+    document.body.append(timeline);
+    stubBox(timeline, 52, 476);
+    timeline.style.setProperty('--cinder-chat-overlay-inset-start', '115px');
+    timeline.style.paddingTop = '127px';
+    Object.defineProperty(timeline, 'scrollHeight', { value: 800, configurable: true });
+    Object.defineProperty(timeline, 'clientHeight', { value: 424, configurable: true });
+    // Placed before arrival at the bottom of the room: label 300, card 357 to 600.
+    stubBox(label, 300, 352);
+    stubBox(card, 357, 600);
+    stubBox(actionRow, 540, 600);
+
+    const shift = approvalPlacementShift(timeline, card);
+    // The card's bottom lands on 476 - 32 = 444: the shift is 600 - 444 = 156.
+    expect(shift).toBe(156);
+    const cardBottom = 600 - shift!;
+    expect(cardBottom).toBeLessThanOrEqual(476 - 24);
+    expect(357 - shift!).toBeGreaterThanOrEqual(179);
+    // The reminder shows only while the action row is not wholly inside the transcript's box; at the
+    // placed position the row (bottom 444) is whole with 32px to spare, in light and dark alike.
+    const row = { top: 540 - shift!, bottom: cardBottom, left: 0, right: 320 };
+    expect(approvalRowVisible(row, { top: 52, bottom: 476, left: 0, right: 320 }, false, 0)).toBe(
+      true,
+    );
+    timeline.remove();
   });
 
   test('the labelling row is found in the real Interborough shape: a rail item holding the row and the card, with no message article', () => {

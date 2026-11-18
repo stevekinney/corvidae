@@ -68,6 +68,13 @@ export function approvalRowVisible(
 export const APPROVAL_BOTTOM_CLEARANCE = 12;
 
 /**
+ * The room kept under the decision row at the transcript's end, in pixels, while the transcript
+ * can still scroll: the end edge's fade (24px, `--cinder-space-6`) and an 8px margin, so the row
+ * is neither washed out by the fade nor on the edge of where the reminder shows.
+ */
+export const APPROVAL_END_FADE_CLEARANCE = 32;
+
+/**
  * The box an approval must show inside the transcript: from the decision row's top down to the
  * card's bottom edge plus the clearance, so the buttons and their hit overhang clear the composer.
  * A card that draws no row, or one taller than the transcript box, is judged by the row alone.
@@ -142,11 +149,22 @@ export function approvalArrivalRestShift(
     // show, so it is whole there while its top is still in view.
     result = card.top - toEnd >= viewport.top - 0.5 ? toEnd : shift;
   }
-  // Under a header laid over the transcript (`viewport.top` is already below it) the unit's top is
-  // never scrolled above that line, whether it fits or not: a unit too tall for the room rests with
-  // its top on the line and its end under the composer or below the fold, because the row that
-  // labels the card is what names what is waiting.
-  return keepTopClear ? Math.min(result, card.top - viewport.top) : result;
+  if (!keepTopClear) return result;
+  // Under a header laid over the transcript (`viewport.top` is already below it), ranked:
+  //   1. The decision row, whose bottom is the card's, rests whole above the transcript's end fade
+  //      and so above where the reminder would stand (the transcript's end, which the reminder
+  //      shows below). This always wins, and it is a shift down only as far as the transcript can
+  //      still scroll (at its end the fade is off).
+  //   2. When the unit also fits there, its top rests on the header's line (the shift above,
+  //      limited so the top never passes it).
+  //   3. When it does not fit, it shifts by only the deficit: the label row passes under the header
+  //      and the top fade, and the card, below it, stays clear.
+  const decisionShift = Math.min(
+    Math.max(card.bottom - (viewport.bottom - APPROVAL_END_FADE_CLEARANCE), 0),
+    Math.max(toEnd, 0),
+  );
+  const placed = Math.min(result, card.top - viewport.top);
+  return decisionShift > 0 ? Math.max(placed, decisionShift) : placed;
 }
 
 /**
