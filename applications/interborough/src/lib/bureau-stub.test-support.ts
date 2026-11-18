@@ -1,6 +1,6 @@
 /**
  * A stand-in for the Bureau's management plane, for component tests. It installs a `fetch` that
- * answers `/bureau/jsonrpc` with the handler a test names for each method, in the JSON-RPC
+ * answers `/bureau/jsonrpc`, and a `bureau.` method on `/jsonrpc`, with the handler a test names for each method, in the JSON-RPC
  * envelope the real handler uses, and `/host/paths` with a fixed agent directory. It records every
  * call, so a test can say what was sent. The real Bureau is exercised end to end in the Playwright
  * suite; this is for the component's own branches.
@@ -138,6 +138,22 @@ export function urlOf(input: RequestInfo | URL): string {
   return typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
 }
 
+/**
+ * Whether a request is a call to a Bureau operation: any call to `/bureau/jsonrpc`, or a `bureau.`
+ * method posted to the composed `/jsonrpc`, which answers Bureau's operations beside Weft's. The
+ * stubs answer both while the browser's calls move from the first to the second.
+ */
+export function isBureauCall(pathname: string, body: BodyInit | null | undefined): boolean {
+  if (pathname === '/bureau/jsonrpc') return true;
+  if (pathname !== '/jsonrpc' || typeof body !== 'string') return false;
+  try {
+    const method: unknown = (JSON.parse(body) as { method?: unknown }).method;
+    return typeof method === 'string' && method.startsWith('bureau.');
+  } catch {
+    return false;
+  }
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
@@ -192,7 +208,7 @@ export function installBureauStub(
       options.passThrough === true &&
       url.pathname !== '/host/paths' &&
       url.pathname !== '/host/providers' &&
-      url.pathname !== '/bureau/jsonrpc'
+      !isBureauCall(url.pathname, init?.body)
     ) {
       return before(input, init);
     }
@@ -236,7 +252,7 @@ export function installBureauStub(
     if (url.pathname.startsWith('/bureau/ag-ui/') && options.agUi !== undefined) {
       return options.agUi(url.pathname, init);
     }
-    if (url.pathname !== '/bureau/jsonrpc' || typeof init?.body !== 'string') {
+    if (!isBureauCall(url.pathname, init?.body) || typeof init?.body !== 'string') {
       return new Response('Not found', { status: 404 });
     }
     const body: unknown = JSON.parse(init.body);
