@@ -162,25 +162,32 @@ describe('the cause of a failed delivery', () => {
 });
 
 describe('the facts of an open delivery', () => {
-  test('are the event in words, where it went, and the last answer with its time', () => {
+  test('are where it went and the last answer with its time; the row above already names the event', () => {
     const facts = deliveryFacts(gaveUp());
-    expect(facts.map((fact) => fact.label)).toEqual(['Event', 'Sent to', 'Last response']);
-    // R10-23: the raw kind is no visible word unless another of the hook's events reads the same.
-    expect(facts[0]).toEqual({ label: 'Event', value: 'A run fails' });
+    expect(facts.map((fact) => fact.label)).toEqual(['Sent to', 'Last response']);
+    expect(facts[0]?.value).toBe('events.pagerduty.com');
+    expect(facts[1]?.value).toBe(`410 Gone, ${deliveryStamp(START + 8 * 60_000 + 300)}`);
+    expect(facts.map((fact) => fact.value).join('')).not.toContain(String.fromCodePoint(0xb7));
+  });
+
+  test('draw the Event fact only for a kind whose words another of the hook’s events shares, with its raw kind (R10-23)', () => {
     expect(deliveryFacts(gaveUp(), new Set(['run.error', 'run-error']))[0]).toEqual({
       label: 'Event',
       value: 'A run fails',
       code: 'run.error',
     });
-    expect(facts[1]?.value).toBe('events.pagerduty.com');
-    expect(facts[2]?.value).toBe(`410 Gone, ${deliveryStamp(START + 8 * 60_000 + 300)}`);
-    expect(facts.map((fact) => fact.value).join('')).not.toContain(String.fromCodePoint(0xb7));
+    expect(deliveryFacts(gaveUp(), new Set(['run-error'])).map((fact) => fact.label)).toEqual([
+      'Sent to',
+      'Last response',
+    ]);
   });
 
-  test('call a test event a test event and leave out the last answer of a try still being sent', () => {
+  test('leave out the last answer of a try still being sent, and say nothing more of a test event than its row', () => {
     const sending = delivery('pending', [attempt(1, { outcome: 'sending' })], { test: true });
-    expect(deliveryFacts(sending).map((fact) => fact.label)).toEqual(['Event', 'Sent to']);
-    expect(deliveryFacts(sending)[0]?.value).toBe(COPY.testEvent);
+    expect(deliveryFacts(sending).map((fact) => fact.label)).toEqual(['Sent to']);
+    expect(deliveryFacts(sending, new Set([sending.kind])).map((fact) => fact.label)).toEqual([
+      'Sent to',
+    ]);
   });
 });
 

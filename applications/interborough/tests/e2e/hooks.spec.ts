@@ -1438,7 +1438,15 @@ for (const width of WIDTHS) {
       'href',
       'https://slack.example/archives/C0SAMPLE/p1730559600000100',
     );
-    await expect(facts.locator('code', { hasText: 'C0SAMPLE/1730559600.000100' })).toBeVisible();
+    // The reference is one line of monospace, cut only in its middle, never broken mid-token.
+    const reference = facts.locator('code.cinder-text[data-cinder-truncate="middle"]');
+    await expect(reference.locator('.cinder-text__head')).toHaveText(/^C0SAMPLE/);
+    await expect(reference.locator('.cinder-text__tail')).toHaveText(/100$/);
+    expect((await textLines(reference)).lines).toBe(1);
+    // The Event fact is not drawn: the row above already says the event in words.
+    await expect(
+      facts.locator('dt').filter({ hasText: new RegExp(`^${copy.deliveries.facts.event}$`) }),
+    ).toHaveCount(0);
     // R10-23: the event is its words; its raw kind is no visible word in the row or the facts.
     await expect(page.getByTestId('hook-deliveries')).not.toContainText('review.requested');
     await captureForDesignReview(page, {

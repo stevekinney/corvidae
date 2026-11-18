@@ -261,6 +261,12 @@ describe('a secret field', () => {
     expect(manage.getAttribute('href')).toBe('/settings/plugins');
     // The link sits in a sentence, so it is underlined: it is told apart without its color.
     expect(manage.getAttribute('data-underline')).toBe('always');
+    // The help is the size of every other field's help (FormField's), not the warning's.
+    const { readFileSync } = await import('node:fs');
+    const css = readFileSync(new URL('./schema-form.css', import.meta.url), 'utf8');
+    const own = /\.cinder-schema-form__secret-help\s*\{([^}]*)\}/.exec(css)?.[1] ?? '';
+    expect(own).toMatch(/font-size:\s*var\(--cinder-text-xs\);/);
+    expect(own).toMatch(/line-height:\s*var\(--cinder-leading-normal\);/);
   });
 
   test('when the keys cannot be read says so, offers Try again, and leaves the other fields usable', async () => {

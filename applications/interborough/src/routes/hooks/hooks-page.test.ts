@@ -1970,9 +1970,10 @@ describe('a hook’s delivery log', () => {
       'events.pagerduty.com answered 410 Gone on all 8 tries, so Interborough stopped. The webhook URL may have been removed. Check the URL, then retry.',
     );
     const facts = within(item).getByTestId('hook-delivery-facts');
-    expect(facts.textContent).toContain(copy.facts.event);
-    expect(facts.textContent).toContain('A run fails');
-    // R10-23: the event is its words; its raw kind shows only beside an event that reads alike.
+    // The row above names the event in words, so the facts do not say it again; its raw kind shows
+    // only beside an event that reads alike (R10-23).
+    expect(facts.textContent).not.toContain(copy.facts.event);
+    expect(item.textContent).toContain('A run fails');
     expect(facts.textContent).not.toContain('run.error');
     expect(facts.textContent).toContain('events.pagerduty.com');
     expect(facts.textContent).toContain('410 Gone');

@@ -308,6 +308,13 @@
     color: var(--cinder-text-muted);
   }
 
+  /* The help reads like every other field's help (FormField's): extra small, normal leading. The
+   * missing-key warning stays small, a status rather than help. */
+  .cinder-schema-form__secret-help {
+    font-size: var(--cinder-text-xs);
+    line-height: var(--cinder-leading-normal);
+  }
+
   .cinder-schema-form__secret-warning {
     color: var(--cinder-status-warning-text);
   }

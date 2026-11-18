@@ -144,6 +144,11 @@ export type DeliveryFact = {
   readonly value: string;
   /** The raw event kind, drawn small and monospaced after the value. */
   readonly code?: string;
+  /**
+   * An identifier that is the whole value (a receipt's reference): drawn monospaced on one line, cut
+   * in its middle when the line is too short, with the whole identifier in its tooltip.
+   */
+  readonly identifier?: string;
   /** Where the value links to: an `https:` address a reaction's receipt gave. */
   readonly href?: string;
 };
@@ -158,24 +163,20 @@ function receiptHost(address: string): string {
 }
 
 /**
- * What an open delivery's facts say: the event, where it was sent, and the last answer with its time.
- * The event is its words; its raw kind follows only when it is in `alike`, the kinds whose words
- * another of the hook's events shares (R10-23).
+ * What an open delivery's facts say: where it was sent, and the last answer with its time. The row
+ * above the facts already names the event in words, so the Event fact is drawn only for a kind in
+ * `alike`, the kinds whose words another of the hook's events shares, where its raw kind tells the
+ * two apart (R10-23).
  */
 export function deliveryFacts(
   delivery: HookDelivery,
   alike: ReadonlySet<string> = new Set(),
 ): DeliveryFact[] {
   const copy = COPY.facts;
-  const facts: DeliveryFact[] = [
-    delivery.test
-      ? { label: copy.event, value: COPY.testEvent }
-      : {
-          label: copy.event,
-          value: eventOptionLabel(delivery.kind),
-          ...(alike.has(delivery.kind) ? { code: delivery.kind } : {}),
-        },
-  ];
+  const facts: DeliveryFact[] =
+    !delivery.test && alike.has(delivery.kind)
+      ? [{ label: copy.event, value: eventOptionLabel(delivery.kind), code: delivery.kind }]
+      : [];
   if (delivery.request !== null) {
     facts.push({ label: copy.sentTo, value: webhookHost(delivery.request.url) });
   }
@@ -194,7 +195,9 @@ export function deliveryFacts(
     if (receipt.url !== null) {
       facts.push({ label: copy.link, value: receiptHost(receipt.url), href: receipt.url });
     }
-    if (receipt.id !== null) facts.push({ label: copy.reference, value: '', code: receipt.id });
+    if (receipt.id !== null) {
+      facts.push({ label: copy.reference, value: '', identifier: receipt.id });
+    }
   }
   return facts;
 }

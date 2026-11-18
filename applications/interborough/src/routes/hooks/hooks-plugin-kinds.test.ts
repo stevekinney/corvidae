@@ -604,8 +604,11 @@ describe('Send a test event on a saved plugin hook (COR-2183, reactions-2 matrix
     const link = within(facts).getByRole('link', { name: 'pager.example' });
     expect(link.getAttribute('href')).toBe('https://pager.example/incidents/1');
     expect(link.getAttribute('rel')).toContain('noopener');
-    const reference = within(facts).getByText('page-1');
-    expect(reference.tagName).toBe('CODE');
+    // The reference is an identifier: monospaced, cut only in its middle, whole in its tooltip.
+    const reference = facts.querySelector('code.cinder-text');
+    expect(reference?.getAttribute('data-cinder-variant')).toBe('code');
+    expect(reference?.getAttribute('data-cinder-truncate')).toBe('middle');
+    expect(reference?.textContent).toBe('page-1');
     expect(facts.textContent).toContain(facts_copy.made);
     expect(facts.textContent).toContain(facts_copy.link);
     expect(facts.textContent).toContain(facts_copy.reference);
