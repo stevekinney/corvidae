@@ -26,6 +26,9 @@
 .ib-reviews__frame:has(.cinder-list-detail[data-cinder-layout='stacked']) {
   block-size: auto;
   overflow: visible;
+  /* The bar sticks flush to the bottom of what the outlet shows, over the outlet's own bottom
+     padding, so no strip of the draft shows under it. */
+  --cinder-docked-action-bar-end-offset: var(--weft-outlet-padding-block-end, 0px);
 }
 
 /* The keys that move through the list, said once at its head. */

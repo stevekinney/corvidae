@@ -56,8 +56,8 @@
   overflow-y: auto;
   /* The end keeps room under a toast that stays until it is acted on (an Undo), so what the page
      holds can be scrolled clear of it on a phone (`--cinder-toast-reserve`, Cinder's ToastRegion). */
-  padding: var(--cinder-space-4) var(--weft-outlet-gutter)
-    calc(var(--cinder-space-6) + var(--cinder-toast-reserve, 0px));
+  --weft-outlet-padding-block-end: calc(var(--cinder-space-6) + var(--cinder-toast-reserve, 0px));
+  padding: var(--cinder-space-4) var(--weft-outlet-gutter) var(--weft-outlet-padding-block-end);
   scroll-padding-block-end: var(--cinder-toast-reserve, 0px);
 }
 
