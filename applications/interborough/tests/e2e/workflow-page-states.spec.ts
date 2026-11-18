@@ -312,7 +312,7 @@ for (const width of WIDTHS) {
           state: 'on a schedule, the When block',
           source: SOURCE,
         });
-        await openJsonTab(root);
+        await openJsonTab(builderTabs(root));
         const editor = await jsonEditor(root, WORKFLOW_COPY.creator.textLabel);
         await expect(editor).toContainText('"timezone"');
         await expect(editor).toContainText('"catchUp"');
@@ -328,7 +328,7 @@ for (const width of WIDTHS) {
         page,
       }) => {
         const root = await openBuilder(page, '/workflows/new', width);
-        await openJsonTab(root);
+        await openJsonTab(builderTabs(root));
         const editor = await jsonEditor(root, WORKFLOW_COPY.creator.textLabel);
         await replaceJsonEditorText(editor, MORNING_BRIEFING_TEXT.replace('"title": ', '"title" '));
         await expect(root.locator('.cinder-json-editor__status')).toContainText(
@@ -359,7 +359,7 @@ for (const width of WIDTHS) {
           });
         });
         const root = await openBuilder(page, '/workflows/new', width);
-        await openJsonTab(root);
+        await openJsonTab(builderTabs(root));
         const editor = await jsonEditor(root, WORKFLOW_COPY.creator.textLabel);
         await replaceJsonEditorText(editor, MORNING_BRIEFING_TEXT);
         await root.getByRole('button', { name: WORKFLOW_COPY.creator.saveAction }).click();
@@ -378,10 +378,10 @@ for (const width of WIDTHS) {
         page,
       }) => {
         const root = await openBuilder(page, '/workflows/new', width);
-        await openJsonTab(root);
+        await openJsonTab(builderTabs(root));
         const editor = await jsonEditor(root, WORKFLOW_COPY.creator.textLabel);
         await replaceJsonEditorText(editor, MORNING_BRIEFING_TEXT);
-        await openTab(root, BUILDER.builderTab);
+        await openTab(builderTabs(root), BUILDER.builderTab);
         await expect(root.getByTestId('workflow-step-other')).toContainText(BUILDER.otherStepLine);
         await expect(root.getByTestId('workflow-builder-summary')).toContainText(
           BUILDER.readBack.other,
@@ -398,7 +398,7 @@ for (const width of WIDTHS) {
       }) => {
         await answerUnwritable(page, 'bureau.workflows.create', 'morning-briefing.json');
         const root = await openBuilder(page, '/workflows/new', width);
-        await openJsonTab(root);
+        await openJsonTab(builderTabs(root));
         const editor = await jsonEditor(root, WORKFLOW_COPY.creator.textLabel);
         await replaceJsonEditorText(
           editor,
@@ -424,7 +424,7 @@ for (const width of WIDTHS) {
         await answerUnwritable(page, 'bureau.workflows.update', 'release-notes.json');
         const path = `/workflows/${encodeURIComponent(world.workflows.releaseNotes)}/edit`;
         const root = await openBuilder(page, `${path}?tab=json`, width);
-        await openJsonTab(root);
+        await openJsonTab(builderTabs(root));
         await captureForDesignReview(page, {
           route: '/workflows/:workflow/edit',
           tab: 'json',
@@ -432,7 +432,7 @@ for (const width of WIDTHS) {
           source: SOURCE,
         });
 
-        await openTab(root, BUILDER.builderTab);
+        await openTab(builderTabs(root), BUILDER.builderTab);
         const title = root.getByLabel(BUILDER.titleLabel, { exact: true });
         await title.fill('Release notes, weekly');
         await root.getByRole('button', { name: WORKFLOW_COPY.editor.saveAction }).click();
@@ -453,6 +453,14 @@ for (const width of WIDTHS) {
       });
     });
   });
+}
+
+/**
+ * The builder's own Builder and JSON tabs. A file with Input and Output schemas has each schema
+ * editor's Form and JSON tabs on the page too, so a tab is found by the builder's tab list.
+ */
+function builderTabs(root: Locator): Locator {
+  return root.getByRole('tablist', { name: BUILDER.tabsLabel });
 }
 
 /** Opens the builder at `path` on the sample clock at `width`, and returns its page. */

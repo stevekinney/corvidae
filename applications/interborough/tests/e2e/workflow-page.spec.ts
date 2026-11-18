@@ -235,7 +235,16 @@ test.describe('the Runs tab', () => {
     const runs = detail(page).getByTestId('workflow-recent-runs');
     const row = runs.locator(`[data-run="${runId}"]`);
     await expect(row).toBeVisible();
-    await expect(row).toContainText(TASK_COPY.list.kinds.person);
+    // On its own workflow's page, a run a person started reads "Workflow, You", then what it
+    // waits for and how far it got (row 63o).
+    await expect(row).toContainText(
+      [
+        TASK_COPY.list.kinds.parent,
+        TASK_COPY.list.you,
+        TASK_COPY.list.waitingForSignal('e2e-page-runs-row-wait'),
+        TASK_COPY.list.stepOf(1, 1),
+      ].join(TASK_COPY.list.separator),
+    );
     await expect(runs.getByRole('radio', { name: /^All\s*,\s*1$/ })).toBeVisible();
     await expect(row.getByRole('link').first()).toHaveAttribute(
       'href',
