@@ -539,7 +539,8 @@
        over its clock ("Yesterday," over "6:00 PM"), and its column is exactly its widest line
        (`min-content`), so the title takes all the rest. A time given as a snippet stays one line.
        A row with no trailing control, or whose actions drop under it, keeps its time on one line,
-       and a group row's time and disclosure are never narrowed. */
+       and a group row's time track is never capped (its Show drops under the time only when the
+       two cannot share a line; see the group row below). */
     .cinder-stacked-list-item--lines.cinder-stacked-list-item--has-trailing:not(
         .cinder-stacked-list-item--band,
         .cinder-stacked-list-item--group,
@@ -804,6 +805,17 @@
   .cinder-stacked-list-item--lines.cinder-stacked-list-item--has-leading-tile
     .cinder-stacked-list-item__leading {
     align-self: center;
+  }
+
+  /* A group row's time and its Show share one line while they fit, which at the normal text size
+     they do even at 320px: the time's track is `auto`, so it takes its whole width before the title
+     takes the rest. Where they cannot (200% text on a phone), Show drops whole to a line of its own
+     under the time rather than pushing the row past the page. Each keeps `nowrap`, so the only
+     break is between the two. */
+  .cinder-stacked-list-item--lines.cinder-stacked-list-item--group .cinder-stacked-list-item__time {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    row-gap: 0;
   }
 
   /* The control is one word and a chevron: it never shrinks or breaks, whatever its cell does. */

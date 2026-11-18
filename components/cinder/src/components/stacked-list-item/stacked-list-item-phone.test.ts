@@ -298,6 +298,58 @@ describe('StackedListItem on a phone', () => {
     setPhone(false);
   });
 
+  test('at 200% text in a 375px container a group row lets Show drop whole under its time, never past the row', () => {
+    setPhone(true);
+    // A phone-width container whose text is twice the size: the time and its Show no longer fit
+    // beside each other, so the row must give somewhere other than the page's edge.
+    const host = document.createElement('div');
+    host.style.inlineSize = '375px';
+    host.style.fontSize = '200%';
+    document.body.append(host);
+    const { container } = render(StackedListItem, {
+      target: host,
+      props: {
+        title: textSnippet('Daily summary'),
+        status: textSnippet('Missed runs'),
+        time: 'Oct 30',
+        meta: textSnippet('Schedule, Assistant, every day at 9:00 AM, missed 4 times since Oct 30'),
+        details: textSnippet('Mon, Nov 2, 3:00 AM'),
+      },
+    });
+    const row = container.querySelector('.cinder-stacked-list-item');
+    expect(row?.classList.contains('cinder-stacked-list-item--group')).toBe(true);
+    const cell = row?.querySelector('.cinder-stacked-list-item__time');
+    // The time and Show are the cell's own items, so the cell's wrapping falls between them.
+    expect(cell?.querySelector(':scope > .cinder-stacked-list-item__time-text')?.textContent).toBe(
+      'Oct 30',
+    );
+    expect(
+      cell?.querySelector(':scope > .cinder-stacked-list-item__disclosure')?.textContent,
+    ).toContain('Show');
+    // The group row's cell wraps, at its end, with no gap added between its lines.
+    const group =
+      /\.cinder-stacked-list-item--lines\.cinder-stacked-list-item--group\s+\.cinder-stacked-list-item__time\s*\{([^}]*)\}/.exec(
+        stylesheet,
+      )?.[1] ?? '';
+    expect(group).toMatch(/flex-wrap:\s*wrap;/);
+    expect(group).toMatch(/justify-content:\s*flex-end;/);
+    expect(group).toMatch(/row-gap:\s*0;/);
+    // Neither side breaks inside itself: the cell keeps the two-line layout's `nowrap`, so "Oct 30"
+    // stays one piece, and Show never shrinks or breaks.
+    expect(group).not.toContain('white-space');
+    const base =
+      /\.cinder-stacked-list-item--lines \.cinder-stacked-list-item__time\s*\{([^}]*)\}/.exec(
+        stylesheet,
+      )?.[1] ?? '';
+    expect(base).toMatch(/white-space:\s*nowrap;/);
+    const own = /\.cinder-stacked-list-item__disclosure\s*\{([^}]*)\}/.exec(stylesheet)?.[1] ?? '';
+    expect(own).toMatch(/flex:\s*none;/);
+    expect(own).toMatch(/white-space:\s*nowrap;/);
+    cleanup();
+    host.remove();
+    setPhone(false);
+  });
+
   test('at 375 a short title with a long time and no trailing control keeps the time on one line', () => {
     setPhone(true);
     const { container } = render(StackedListItem, {
