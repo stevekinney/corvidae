@@ -73,9 +73,9 @@
 //              `<main checkout>/tmp/chef/delivered-heads.log` (`delivery-ledger.ts`: time, `branch:<name>`
 //              or `pr:<n>`, head, merge commit), which `worktree.ts stale` reads to know a squashed
 //              worktree is delivered. Not behind a flag; a write failure is a warning line;
-//   sweep      last: `worktree.ts stale --remove`, keeping every branch, which removes the finished
-//              worktrees of earlier workers too and prints `swept: <n> removed, <m> kept`. A sweep
-//              failure prints `swept: failed (...)` and never fails the delivery.
+//   cleanup    ends with the one explicitly delivered worktree above. Broad stale-worktree cleanup
+//              is an explicit maintenance command (`worktree.ts stale --remove`), never an
+//              automatic side effect of delivering another worker's branch.
 //
 // Output: at most six lines, or with `--json` one object: pr, branch, merged, mergeCommit,
 // mergeable, mainHealthWarning, guardsAlreadyFailing, failedStep, detail, worktree (`removed` and
@@ -100,13 +100,7 @@ import { mergeGateExclusively, type MergeGateOptions, type MergeGateReport } fro
 import { emitResult, parseOptions, requireOption, UsageError } from './process-runner.ts';
 import { DEFAULT_CONFIGURATION_PATH, loadRepositoryConfig } from './repository-config.ts';
 import { resolveMainCheckout } from './repository-locations.ts';
-import {
-  Refusal,
-  removeWorktree,
-  staleWorktrees,
-  type RemoveOptions,
-  type RemoveResult,
-} from './worktree.ts';
+import { Refusal, removeWorktree, type RemoveOptions, type RemoveResult } from './worktree.ts';
 
 export { UsageError };
 
@@ -165,7 +159,7 @@ export interface DeliverReport {
   leftOpen: string[];
   /** What happened to the delivered worktree; `null` when the step did not run. */
   worktree: { removed: boolean; detail: string } | null;
-  /** The sweep after the delivery: the counts, or the failure (never a failed delivery); `null` when it did not run. */
+  /** Retained in the report shape while automatic sweeping is disabled. */
   swept: { removed: number; kept: number } | { failure: string } | null;
   /** Set when the delivered head could not be written to the ledger: a warning, never a failure. */
   ledgerWarning: string | null;
@@ -181,8 +175,6 @@ export interface DeliverDependencies {
   remove: (options: RemoveOptions) => RemoveResult;
   /** Appends a delivered head to the delivery ledger (`delivery-ledger.ts`). */
   record: (entry: LedgerEntry) => void;
-  /** The sweep of finished worktrees (`worktree.ts stale --remove`, keeping every branch). */
-  sweep: (configPath: string) => { removed: number; kept: number };
 }
 
 /**
@@ -441,14 +433,6 @@ export async function deliver(
     }
   }
 
-  // sweep: finished worktrees of earlier workers go too; a failure here never fails the delivery.
-  if (partial.sweep !== undefined) {
-    try {
-      report.swept = partial.sweep(options.configPath);
-    } catch (error) {
-      report.swept = { failure: error instanceof Error ? error.message : String(error) };
-    }
-  }
   return report;
 }
 
@@ -581,13 +565,6 @@ function productionDependencies(): Partial<DeliverDependencies> {
       ),
     remove: (options) => removeWorktree(options),
     record: (entry) => recordDelivery(resolveMainCheckout(), entry),
-    sweep: (configPath) => {
-      const result = staleWorktrees({ configPath, remove: true });
-      return {
-        removed: result.removed.length,
-        kept: result.entries.length - result.removed.length,
-      };
-    },
     client: createClient(),
   };
 }

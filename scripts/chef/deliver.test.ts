@@ -82,14 +82,12 @@ function seams(
     ended?: { pid: number; command: string; cwd: string }[];
     /** The identifier whose state change Linear rejects. */
     failState?: string;
-    /** The ledger write and the sweep throw this. */
+    /** The ledger write throws this. */
     ledgerFailure?: string;
-    sweepFailure?: string;
   } = {},
 ) {
   const record = {
     ledger: [] as LedgerEntry[],
-    sweeps: [] as string[],
     merges: [] as MergeGateOptions[],
     removals: [] as string[],
     removeCalls: [] as RemoveOptions[],
@@ -165,11 +163,6 @@ function seams(
         if (overrides.ledgerFailure !== undefined) throw new Error(overrides.ledgerFailure);
         record.ledger.push(entry);
       },
-      sweep: (configPath: string) => {
-        record.sweeps.push(configPath);
-        if (overrides.sweepFailure !== undefined) throw new Error(overrides.sweepFailure);
-        return { removed: 3, kept: 5 };
-      },
       client,
     },
   };
@@ -196,19 +189,13 @@ describe('deliver', () => {
       leftOpen: [],
       acceptedReverts: [],
       worktree: { removed: true, detail: '/c/alpha' },
-      swept: { removed: 3, kept: 5 },
+      swept: null,
       ledgerWarning: null,
     });
     expect(record.merges).toHaveLength(1);
     expect(record.merges[0]).toMatchObject({ pr: 12, dryRun: false, checkMainHealth: true });
     expect(record.merges[0]).not.toHaveProperty('gateLog');
-    expect(Object.keys(partial).toSorted()).toEqual([
-      'client',
-      'merge',
-      'record',
-      'remove',
-      'sweep',
-    ]);
+    expect(Object.keys(partial).toSorted()).toEqual(['client', 'merge', 'record', 'remove']);
   });
 
   test('a base that moved without a conflict is merged as it is', async () => {
@@ -505,11 +492,10 @@ describe('deliver', () => {
     expect(report.worktree).toBeNull();
     expect(record.removals).toEqual([]);
     expect(record.ledger).toEqual([]);
-    expect(record.sweeps).toEqual([]);
   });
 });
 
-describe('the delivery ledger and the sweep', () => {
+describe('the delivery ledger and owned cleanup', () => {
   test('a pull request delivery records its number, head and merge commit', async () => {
     const { partial, record } = seams();
     await deliver(options, partial);
@@ -545,23 +531,23 @@ describe('the delivery ledger and the sweep', () => {
     expect(renderDeliver(report)).toContain('WARNING delivery ledger: not written (disk full)');
   });
 
-  test('the sweep runs after a successful delivery and prints one line', async () => {
+  test('does not sweep other workers after a successful delivery', async () => {
     const { partial, record } = seams();
     const report = await deliver(options, partial);
-    expect(record.sweeps).toEqual([options.configPath]);
-    expect(report.swept).toEqual({ removed: 3, kept: 5 });
-    expect(renderDeliver(report).split('\n')).toContain('swept: 3 removed, 5 kept');
+    expect(report.swept).toBeNull();
+    expect(Object.keys(partial)).not.toContain('sweep');
+    expect(record.removals).toEqual([sandbox]);
   });
 
-  test('the sweep runs even when the worktree is kept, and its failure never fails the delivery', async () => {
-    const { partial } = seams({ sweepFailure: 'lsof is missing' });
+  test('--keep-worktree does not turn delivery into broad cleanup', async () => {
+    const { partial, record } = seams();
     const report = await deliver({ ...options, keepWorktree: true }, partial);
     expect(report).toMatchObject({ merged: true, failedStep: null });
-    expect(renderDeliver(report)).toContain('swept: failed (lsof is missing)');
-    expect(renderDeliver(report)).not.toContain('FAILED');
+    expect(report.swept).toBeNull();
+    expect(record.removals).toEqual([]);
   });
 
-  test('a failed step runs no sweep', async () => {
+  test('a failed step runs no cleanup', async () => {
     const { partial, record } = seams({ failState: 'COR-9' });
     const report = await deliver(
       {
@@ -574,7 +560,6 @@ describe('the delivery ledger and the sweep', () => {
     );
     expect(report.failedStep).toBe('issue');
     expect(record.ledger).toHaveLength(1);
-    expect(record.sweeps).toEqual([]);
   });
 });
 
