@@ -12,6 +12,7 @@ import { directMerge, type DirectMergeOptions } from './direct-merge.ts';
 import { cancelDispatch, readExecutionSnapshot } from './execution-state.ts';
 import { mergeGate, type MergeGateOptions } from './merge-gate.ts';
 import { type Runner } from './process-runner.ts';
+import { greenLanding } from './landing-evidence.test-support.ts';
 import { createScenarios } from './scenario.test-support.ts';
 
 const commit = 'd'.repeat(40);
@@ -20,7 +21,7 @@ function runner(
   request: { revision: string; base: string; integrationTree: string },
   calls: string[][],
 ): Runner {
-  return (command) => {
+  return greenLanding((command) => {
     calls.push(command);
     if (
       command[0] === 'git' &&
@@ -44,7 +45,7 @@ function runner(
         stderr: '',
       };
     return { code: 0, stdout: '', stderr: '' };
-  };
+  });
 }
 
 const scenarios = createScenarios({}, { test: bunTest, describe: bunDescribe });
@@ -53,7 +54,7 @@ scenarios.describe('delivery merge recovery', () => {
   scenarios.scenario(
     'inspects a lost PR response and never issues a second merge mutation',
     async () => {
-      const fixture = await createDeliveryVerificationFixture(undefined, { route: 'pull-request' });
+      const fixture = await createDeliveryVerificationFixture(undefined, { route: 'pull-request', landing: true });
       const directory = mkdtempSync(join(tmpdir(), 'delivery-recovery-'));
       const configPath = join(directory, 'config.json');
       const commentFile = join(directory, 'comment.md');
@@ -103,7 +104,7 @@ scenarios.describe('delivery merge recovery', () => {
   );
 
   scenarios.scenario('refuses recovery after the original authority is cancelled', async () => {
-    const fixture = await createDeliveryVerificationFixture(undefined, { route: 'pull-request' });
+    const fixture = await createDeliveryVerificationFixture(undefined, { route: 'pull-request', landing: true });
     const directory = mkdtempSync(join(tmpdir(), 'delivery-recovery-'));
     const configPath = join(directory, 'config.json');
     const commentFile = join(directory, 'comment.md');
@@ -156,7 +157,7 @@ scenarios.describe('delivery merge recovery', () => {
 });
 
 scenarios.scenario('resumes only branch deletion after a confirmed direct merge', async () => {
-  const fixture = await createDeliveryVerificationFixture(undefined, { route: 'branch' });
+  const fixture = await createDeliveryVerificationFixture(undefined, { route: 'branch', landing: true });
   const directory = mkdtempSync(join(tmpdir(), 'delivery-recovery-'));
   const configPath = join(directory, 'config.json');
   const messageFile = join(directory, 'message.txt');
@@ -237,7 +238,7 @@ scenarios.scenario('resumes only branch deletion after a confirmed direct merge'
 scenarios.scenario(
   'keeps failed deletion unresolved when its provider readback is unavailable',
   async () => {
-    const fixture = await createDeliveryVerificationFixture(undefined, { route: 'branch' });
+    const fixture = await createDeliveryVerificationFixture(undefined, { route: 'branch', landing: true });
     const directory = mkdtempSync(join(tmpdir(), 'delivery-recovery-'));
     const configPath = join(directory, 'config.json');
     const messageFile = join(directory, 'message.txt');
@@ -324,7 +325,7 @@ scenarios.scenario(
 scenarios.scenario(
   'leaves an absent direct merge outcome unresolved without a second push',
   async () => {
-    const fixture = await createDeliveryVerificationFixture(undefined, { route: 'branch' });
+    const fixture = await createDeliveryVerificationFixture(undefined, { route: 'branch', landing: true });
     const directory = mkdtempSync(join(tmpdir(), 'delivery-recovery-'));
     const configPath = join(directory, 'configuration.json');
     const messageFile = join(directory, 'message.txt');

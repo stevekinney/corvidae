@@ -23,6 +23,11 @@ import {
 import { LinearError, type LinearClient } from './linear.ts';
 import type { MergeGateOptions, MergeGateReport } from './merge-gate.ts';
 import { UsageError, type Runner, type RunnerResult } from './process-runner.ts';
+import {
+  greenLandingAnswers,
+  landingIdentity,
+  landingProvider,
+} from './landing-evidence.test-support.ts';
 import { createScenarios } from './scenario.test-support.ts';
 import type { GuardsResult } from './text-guards.ts';
 import type { UsageTotals } from './transcript-usage.ts';
@@ -136,11 +141,13 @@ async function deliveryVerification(
     ],
   };
   request.members[0]!.plan.invalidatedBy.assignment = assignment.identity.digest;
+  request.ciEvidence = [landingIdentity(request)];
   const text = JSON.stringify(request);
   const file = join(directory, 'verification.json');
   writeFileSync(file, text);
   verification = {
     state,
+    ciProvider: landingProvider(request),
     transport: {
       run: () => ({
         repository: 'acme/widgets',
@@ -251,6 +258,8 @@ async function setUp(): Promise<void> {
   options = {
     configPath,
     pr: 12,
+    run: 'run',
+    project: 'Widgets',
     worktree: sandbox,
     commentFile: join(sandbox, 'comment.md'),
     verification: await deliveryVerification(control, sandbox),
@@ -403,6 +412,7 @@ function seams(
         record.ledger.push(entry);
       },
       client,
+      readLease: async () => ({ run: 'run', live: true }),
       verification,
     },
   };
@@ -440,6 +450,7 @@ scenarios.describe('deliver', () => {
       expect(Object.keys(partial).toSorted()).toEqual([
         'client',
         'merge',
+        'readLease',
         'record',
         'remove',
         'verification',
@@ -499,7 +510,10 @@ scenarios.describe('deliver', () => {
   );
 
   scenarios.scenario('no merge runner is a named failure, never a silent skip', async () => {
-    const report = await deliver(options, { verification });
+    const report = await deliver(options, {
+      verification,
+      readLease: async () => ({ run: 'run', live: true }),
+    });
     expect(report).toMatchObject({ merged: false, failedStep: 'merge' });
   });
 
@@ -945,6 +959,10 @@ scenarios.describe('run', () => {
     options.verification.file,
     '--verification-digest',
     options.verification.digest,
+    '--run',
+    'run',
+    '--project',
+    'Widgets',
     ...extra,
   ];
 
@@ -1076,6 +1094,7 @@ function branchWorld(answers: Record<string, RunnerResult> = {}) {
     'rev-parse origin/main': reply(`${SQUASH}\n`),
     [`rev-parse ${SQUASH}^`]: reply(`${BASE}\n`),
     [`rev-parse ${SQUASH}^{tree}`]: reply(`${TREE}\n`),
+    ...greenLandingAnswers('acme/widgets', HEAD, BASE),
   };
   const runner: Runner = (command) => {
     const key = command.slice(1).join(' ');
@@ -1112,6 +1131,8 @@ async function deliverBranch(
       configPath: options.configPath,
       branch: BRANCH,
       expectedHead: HEAD,
+      run: 'run',
+      project: 'Widgets',
       messageFile: world.messageFile,
       worktree: sandbox,
       verification: branchApproval.verification,
@@ -1541,10 +1562,12 @@ scenarios.describe('deliver --branch', () => {
         branch: BRANCH,
         expectedHead: HEAD,
         messageFile: join(sandbox, 'comment.md'),
+        run: 'run',
+        project: 'Widgets',
         worktree: sandbox,
         verification: approved.verification,
       },
-      { verification },
+      { verification, readLease: async () => ({ run: 'run', live: true }) },
     );
     expect(report).toMatchObject({ merged: false, failedStep: 'merge' });
   });
@@ -1591,6 +1614,10 @@ scenarios.describe('deliver --branch', () => {
           options.verification.file,
           '--verification-digest',
           options.verification.digest,
+          '--run',
+          'run',
+          '--project',
+          'Widgets',
           '--json',
         ],
         {
@@ -1651,6 +1678,10 @@ scenarios.describe('deliver --branch', () => {
           options.verification.file,
           '--verification-digest',
           options.verification.digest,
+          '--run',
+          'run',
+          '--project',
+          'Widgets',
           '--json',
         ],
         {

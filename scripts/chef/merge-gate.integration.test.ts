@@ -26,6 +26,7 @@ import {
   type MergeGateOptions,
 } from './merge-gate.ts';
 import { UsageError, type Runner } from './process-runner.ts';
+import { greenLanding } from './landing-evidence.test-support.ts';
 import { createScenarios } from './scenario.test-support.ts';
 
 let HEAD = 'a'.repeat(40);
@@ -56,7 +57,7 @@ async function mergeGate(input: MergeGateOptions, partial: Partial<MergeGateDepe
         ),
         outputDirectory: mkdtempSync(join(tmpdir(), 'independent-merge-control-')),
       },
-      { route: 'pull-request' },
+      { route: 'pull-request', landing: true },
     );
     return mergeGateImplementation(
       { ...input, worktree: fresh.directory, verification: fresh.verification },
@@ -88,7 +89,7 @@ async function run(argv: string[], partial: Partial<MergeGateDependencies> = {})
         ),
         outputDirectory: mkdtempSync(join(tmpdir(), 'independent-merge-control-')),
       },
-      { route: 'pull-request' },
+      { route: 'pull-request', landing: true },
     );
     const replaced = [...argv];
     replaced[replaced.indexOf('--worktree') + 1] = fresh.directory;
@@ -135,7 +136,7 @@ function prepare(): { directory: string; prepared: Omit<MergeGateOptions, 'verif
 async function setUp(): Promise<void> {
   const made = prepare();
   sandbox = made.directory;
-  const fixture = await createDeliveryVerificationFixture(undefined, { route: 'pull-request' });
+  const fixture = await createDeliveryVerificationFixture(undefined, { route: 'pull-request', landing: true });
   HEAD = fixture.request.revision;
   BASE = fixture.request.base;
   EXPECTED_TREE = fixture.request.integrationTree;
@@ -188,7 +189,7 @@ function fake(world: World = {}) {
   let viewCall = 0;
   let mergeTreeCall = 0;
   const nodes = world.threadNodes ?? [{ id: 'T1', isResolved: true }];
-  const runner: Runner = (command) => {
+  const runner: Runner = greenLanding((command) => {
     calls.push(command);
     const [program, ...rest] = command;
     if (program === 'git') {
@@ -282,7 +283,7 @@ function fake(world: World = {}) {
     if (program === 'gh' && rest[0] === 'run' && rest[1] === 'list')
       return { code: 0, stdout: '[{"conclusion":"success"}]', stderr: '' };
     throw new Error(`unexpected command ${command.join(' ')}`);
-  };
+  });
   const posted = () => calls.some((call) => call[0] === 'gh' && call[2] === 'comment');
   const merged = () => calls.some((call) => call[0] === 'gh' && call[2] === 'merge');
   /** Anything that is not git or gh would be a test gate, an install or a build. */
@@ -947,7 +948,7 @@ scenarios.describe('run', () => {
  */
 async function lockScenarios() {
   const { directory, prepared } = prepare();
-  const fixture = await createDeliveryVerificationFixture(undefined, { route: 'pull-request' });
+  const fixture = await createDeliveryVerificationFixture(undefined, { route: 'pull-request', landing: true });
   const lockWorld = (
     bound: Awaited<ReturnType<typeof createDeliveryVerificationFixture>>,
     world: World = {},
@@ -1011,6 +1012,7 @@ async function lockScenarios() {
   plantHolder(child.pid);
   const reclaimedFixture = await createDeliveryVerificationFixture(undefined, {
     route: 'pull-request',
+    landing: true,
   });
   const reclaimWorld = lockWorld(reclaimedFixture);
   const reclaimed = {
@@ -1032,6 +1034,7 @@ async function lockScenarios() {
   // A failing step still releases the lock.
   const failedFixture = await createDeliveryVerificationFixture(undefined, {
     route: 'pull-request',
+    landing: true,
   });
   const failed = {
     report: await mergeGateImplementation(

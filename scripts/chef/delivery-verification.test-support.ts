@@ -15,6 +15,7 @@ import {
   createExecutionStateStore,
   recordMutationIntent,
 } from './execution-state.ts';
+import { landingIdentity, landingProvider } from './landing-evidence.test-support.ts';
 import { assignmentVersion, digest, type Assignment } from './verification-plan.ts';
 
 const response = (value: unknown): RawCommandResponse => ({
@@ -32,7 +33,14 @@ export async function createDeliveryVerificationFixture(
     relevantInputs?: string[];
     outputDirectory?: string;
   },
-  options: { route?: string; approved?: boolean; noBehavior?: boolean; hostId?: string } = {},
+  options: {
+    route?: string;
+    approved?: boolean;
+    noBehavior?: boolean;
+    hostId?: string;
+    /** Carry the CI evidence identity and provider a green landing (`landing-evidence.ts`) reads. */
+    landing?: boolean;
+  } = {},
 ): Promise<{
   verification: DeliveryVerification;
   dependencies: DeliveryVerificationDependencies;
@@ -159,6 +167,7 @@ export async function createDeliveryVerificationFixture(
   const { plan, providerRuns, ...common } = source;
   const request: DeliveryRequest = {
     ...common,
+    ...(options.landing === true ? { ciEvidence: [landingIdentity(common)] } : {}),
     worktree: directory,
     members: [
       {
@@ -232,7 +241,11 @@ export async function createDeliveryVerificationFixture(
     );
   return {
     verification,
-    dependencies: { state, transport },
+    dependencies: {
+      state,
+      transport,
+      ...(options.landing === true ? { ciProvider: landingProvider(request) } : {}),
+    },
     request,
     assignment,
     state,

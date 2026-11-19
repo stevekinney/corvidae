@@ -2,9 +2,12 @@
 //
 // Usage:
 //   bun scripts/chef/deliver.ts --branch <branch> --head <sha> --worktree <path> --message-file <file> --verification-file <file> --verification-digest <sha256>
-//       [--config <file>] [--keep-worktree] [--usage-log <file> --transcript <file> ...] [--json] [--intended <path> ...]
+//       --run <id> --project <linear-project> [--config <file>] [--keep-worktree] [--usage-log <file> --transcript <file> ...] [--json] [--intended <path> ...]
 //   bun scripts/chef/deliver.ts --pr <number> --head <sha> --worktree <path> --comment-file <file> --verification-file <file> --verification-digest <sha256>
-//       [--config <file>] [--keep-worktree] [--usage-log <file> --transcript <file> ...] [--json] [--fixes-main]
+//       --run <id> --project <linear-project> [--config <file>] [--keep-worktree] [--usage-log <file> --transcript <file> ...] [--json] [--fixes-main]
+//
+// Landing refuses (exit 1, failed step `lease` or `verification`) unless `--run` holds the Linear
+// lease of `--project` (`linear.ts lease`) and the head carries its evidence (`landing-evidence.ts`).
 //
 // The coordinator-approved verification request owns each member's assignment, plan, tracking
 // intent and requested close. Markdown is rendered from collected evidence, never accepted as proof.
@@ -27,7 +30,7 @@ import {
 } from './delivery-verification.ts';
 import { directMerge, type DirectMergeOptions, type DirectMergeReport } from './direct-merge.ts';
 import { readExecutionSnapshot } from './execution-state.ts';
-import { createClient, type LinearClient } from './linear.ts';
+import { createClient, readProject, type LinearClient } from './linear.ts';
 import { mergeGate, type MergeGateOptions, type MergeGateReport } from './merge-gate.ts';
 import { emitResult, parseOptions, requireOption, UsageError } from './process-runner.ts';
 import { DEFAULT_CONFIGURATION_PATH, loadRepositoryConfig } from './repository-config.ts';
@@ -57,7 +60,17 @@ export interface DeliverOptions {
   transcripts?: string[] | undefined;
   /** Declares this pull request a repair of a red `main`; forwarded to the merge gate. Refused with `branch`. */
   fixesMain?: boolean | undefined;
+  /** The chef run delivering; it must hold `project`'s Linear lease for a merge to start. */
+  run: string;
+  /** The Linear project (name, slug or id) whose lease `run` must hold. */
+  project: string;
   verification: DeliveryVerification;
+}
+
+/** The project's lease as `linear.ts lease` records it: `live` is held and renewed within 12 hours. */
+export interface LeaseReading {
+  run: string;
+  live: boolean;
 }
 
 export interface DeliverReport {
@@ -105,6 +118,8 @@ export interface DeliverDependencies {
   ) => Promise<DirectMergeReport>;
   /** The Linear client; the command line supplies `createClient()`, which reads the credentials. */
   client: LinearClient;
+  /** Reads a project's lease, or `null` when it has none; the command line wraps `readProject`. */
+  readLease: (project: string) => Promise<LeaseReading | null>;
   remove: (options: RemoveOptions) => RemoveResult;
   /** Appends a delivered head under closeout's existing provider-transition lock. */
   record: (entry: LedgerEntry) => void;
@@ -117,6 +132,25 @@ export interface DeliverDependencies {
  */
 function absolute(path: string | undefined): string | undefined {
   return path === undefined ? undefined : resolve(path);
+}
+
+/** Why `options.run` may not land for `options.project`, or `undefined` when it holds the lease. */
+async function leaseRefusal(
+  options: DeliverOptions,
+  partial: Partial<DeliverDependencies>,
+): Promise<string | undefined> {
+  if (partial.readLease === undefined) return 'no lease reader was provided.';
+  let lease: LeaseReading | null;
+  try {
+    lease = await partial.readLease(options.project);
+  } catch (error) {
+    return `the lease of ${options.project} could not be read: ${error instanceof Error ? error.message : String(error)}`;
+  }
+  if (lease === null) return `${options.project} has no lease; run ${options.run} does not hold it.`;
+  if (lease.run !== options.run)
+    return `${options.project} is leased to run ${lease.run}, not run ${options.run}.`;
+  if (!lease.live) return `run ${options.run}'s lease on ${options.project} is released or expired.`;
+  return undefined;
 }
 
 /** Run the lifecycle. Never throws for a failed step; the report names it. */
@@ -145,6 +179,8 @@ export async function deliver(
   }
   if (options.branch === undefined && (options.intended ?? []).length > 0)
     throw new UsageError('--intended applies only with --branch.');
+  if (!options.run) throw new UsageError('--run is required: the run that holds the lease.');
+  if (!options.project) throw new UsageError('--project is required: the leased Linear project.');
   const verification = loadDeliveryVerification(options.verification, partial.verification);
   if (resolve(options.worktree) !== resolve(verification.request.worktree))
     throw new UsageError('worktree differs from the coordinator-approved ownership');
@@ -215,6 +251,9 @@ export async function deliver(
     throw new UsageError(`No such message file: ${options.messageFile}`);
   if (!existsSync(options.worktree))
     return fail('worktree', 'delivery worktree is absent before closeout completed');
+  // lease: only the coordinator run that holds the project's lease lands through here.
+  const leaseProblem = await leaseRefusal(options, partial);
+  if (leaseProblem !== undefined) return fail('lease', leaseProblem);
   // merge
   const usageFields =
     options.usageLog === undefined
@@ -347,6 +386,8 @@ export async function run(
       'comment-file',
       'message-file',
       'head',
+      'run',
+      'project',
       'usage-log',
       'verification-file',
       'verification-digest',
@@ -379,6 +420,8 @@ export async function run(
       commentFile: absolute(parsed.values['comment-file']),
       messageFile: absolute(parsed.values['message-file']),
       expectedHead,
+      run: requireOption(parsed, 'run'),
+      project: requireOption(parsed, 'project'),
       intended: parsed.repeated['intended'] ?? [],
       usageLog: absolute(usageLog),
       transcripts: transcripts.map((path) => resolve(path)),
@@ -399,14 +442,20 @@ export async function run(
 
 /** The real collaborators, built only by the command line so that tests never reach a process. */
 function productionDependencies(): Partial<DeliverDependencies> {
+  const client = createClient();
   return {
+    readLease: async (project) => {
+      const { data } = await readProject(client, project);
+      const lease = data['lease'] as { run: string; live: boolean } | null;
+      return lease === null ? null : { run: lease.run, live: lease.live };
+    },
     merge: (options, verification) =>
       mergeGate(options, verification === undefined ? {} : { verification }),
     directMerge: (options, verification) =>
       directMerge(options, verification === undefined ? {} : { verification }),
     remove: (options) => removeWorktree(options),
     record: (entry) => recordDelivery(resolveMainCheckout(), entry),
-    client: createClient(),
+    client,
   };
 }
 
