@@ -7,8 +7,8 @@
  * options' unwrapped width, and so measured room it did not have and never stacked.)
  */
 
+import { fixtureRoute } from '@lostgradient/testing/playwright/overlay-fixture';
 import { expect, test } from '@playwright/test';
-import { fixtureRoute } from './overlay-fixture.ts';
 
 for (const fixtureName of ['described-narrow', 'error-narrow'] as const) {
   test(`${fixtureName}: the control stacks and the message stays inside a 280px container at 320px`, async ({

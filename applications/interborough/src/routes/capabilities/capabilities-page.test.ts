@@ -500,8 +500,10 @@ describe('a tool’s page', () => {
     const measure = Element.prototype.getBoundingClientRect;
     // A phone's width: ListDetail shows one pane at a time and its empty pane is never reached.
     Element.prototype.getBoundingClientRect = function (this: Element): DOMRect {
-      const width = this.classList.contains('ib-capabilities__frame') ? 400 : 0;
-      return { ...measure.call(this), width, right: width } as DOMRect;
+      const rect = measure.call(this);
+      return this.classList.contains('ib-capabilities__frame')
+        ? new DOMRect(rect.x, rect.y, 400, rect.height)
+        : rect;
     };
     try {
       landAt('/capabilities?tool=no-such-tool');
