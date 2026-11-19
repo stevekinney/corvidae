@@ -4,15 +4,19 @@
 
 import { describe, expect, it } from 'bun:test';
 
-import { type OperationFault, defineOperation, principalFromApiKey } from '@lostgradient/backchannel';
+import {
+  type OperationFault,
+  defineOperation,
+  principalFromApiKey,
+} from '@lostgradient/backchannel';
 import {
   createOperationRegistry,
   handleJsonRpcHttpRequest,
 } from '@lostgradient/backchannel/internals';
 import { MemoryStorage } from '@lostgradient/storage';
 import { Engine } from '../../core/engine.ts';
-import { KEYS } from '../../storage/keys.ts';
 import { type WorkflowContext, workflow } from '../../core/types.ts';
+import { KEYS } from '../../storage/keys.ts';
 import { startAndSettle } from '../../testing/run-observation.test-support.ts';
 import { handleRequestAsLocalUser as handleRequest } from '../local-user-request.test-support.ts';
 import { purgeWorkflowsOperation, purgeWorkflowsRestBinding } from './purge-workflows.ts';

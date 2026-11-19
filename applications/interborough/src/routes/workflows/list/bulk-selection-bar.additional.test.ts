@@ -82,7 +82,7 @@ describe('additional coverage', () => {
     }
   });
 
-  test('the real client turns the server\'s stale-token Conflict into the changed-workflows callout, and its partial-purge failure into a message that says what was deleted', async () => {
+  test("the real client turns the server's stale-token Conflict into the changed-workflows callout, and its partial-purge failure into a message that says what was deleted", async () => {
     // The envelopes are built by Weft's own fault mapper, so this follows the wire contract the
     // server tests pin: a stale token answers `Conflict`, a part-way failure answers
     // `EngineFailure` with the counts in the message.
