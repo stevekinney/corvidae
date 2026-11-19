@@ -1377,6 +1377,35 @@ describe('ApprovalCard card layout anatomy', () => {
 });
 
 describe('ApprovalCard row layout', () => {
+  // COR-2438: the owner's approval of a read-only tool with no arguments, from "Smoke tester",
+  // read "Discover agents bureau__discover-agents", then Reads, Approval from Smoke tester and
+  // 12 min ago with a middle dot between each, over "Input  Text Empty".
+  for (const argsPreview of [{}, '', undefined]) {
+    test(`a call with no arguments (${JSON.stringify(argsPreview) ?? 'undefined'}) draws no Input, no dot and no raw identifier`, () => {
+      const { container, queryByRole } = render(ApprovalCard, {
+        props: approvalCardProps({
+          layout: 'row',
+          question: 'Run Discover agents?',
+          tool: { name: 'bureau__discover-agents', label: 'Discover agents', risk: 'low' },
+          source: 'Smoke tester',
+          requestedAt: Date.now() - 12 * 60_000,
+          operation: { kind: 'other', argsPreview },
+        }),
+      });
+
+      expect(queryByRole('group', { name: 'Input' })).toBeNull();
+      expect(container.querySelector('.cinder-approval-card__input')).toBeNull();
+      const text = container.textContent ?? '';
+      expect(text).not.toContain(String.fromCodePoint(0xb7));
+      expect(text).not.toContain('Empty');
+      expect(text).not.toContain('bureau__discover-agents');
+      expect(container.querySelector('code')).toBeNull();
+      expect(squash(container.querySelector('.cinder-approval-card__line')?.textContent)).toBe(
+        'Discover agents Reads Approval from Smoke tester 12 min ago',
+      );
+    });
+  }
+
   test('mounts when two argument keys humanize to the same label', () => {
     const { container } = render(ApprovalCard, {
       props: refundRow({
