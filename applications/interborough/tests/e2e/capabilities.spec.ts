@@ -44,9 +44,10 @@ test.describe('the Tools tab', () => {
       // three chips are one treatment in the page's own words.
       await expect(row.getByTestId('tool-row-name')).not.toBeEmpty();
       await expect(row.getByTestId('tool-row-summary')).not.toBeEmpty();
-      const risk = (await row.getByTestId('tool-row-risk').innerText()).trim();
-      expect(['Reads', 'Changes things', 'Dangerous', 'Not classified']).toContain(risk);
-      expect((await row.getByTestId('tool-row-asks').innerText()).trim()).toMatch(/^Asks: \S/);
+      const risk = await row.getByTestId('tool-row-risk').innerText();
+      expect(['Reads', 'Changes things', 'Dangerous', 'Not classified']).toContain(risk.trim());
+      const asks = await row.getByTestId('tool-row-asks').innerText();
+      expect(asks.trim()).toMatch(/^Asks: \S/);
       await expect(row.getByTestId('tool-row-source')).not.toBeEmpty();
       const heights = await row
         .getByTestId('tool-row-badges')
