@@ -11,10 +11,6 @@ import { buildIndexOperations } from '../search-attributes.ts';
 import type { ListFilter, PurgeResult, SearchAttributeValue, WorkflowState } from '../types.ts';
 import { buildWorkflowTagIndexOperations, normalizeWorkflowTags } from '../workflow-tags.ts';
 import { asyncActivityWorkflowPrefix } from './async-activity-records.ts';
-import {
-  workflowStateToBulkSnapshot,
-  type BulkWorkflowSnapshot,
-} from './bulk-operations-shared.ts';
 import { releaseLaunchCheckpoint } from './checkpoint-commit-snapshots.ts';
 import { EngineDisposedError } from './errors.ts';
 import type { EngineInternals } from './internals.ts';
@@ -57,7 +53,7 @@ export async function purgeInternal(
   parameters: PurgeParameters,
   cleanupWaiters: CleanupWaiters,
 ): Promise<PurgeResult> {
-  const { effectiveLimit, manualOffset } = resolvePurgeWindow(internals, filter, parameters.limit);
+  const { effectiveLimit, manualOffset } = resolvePurgeWindow(filter, parameters.limit);
 
   if (effectiveLimit === 0) return { deleted: 0 };
 
@@ -91,35 +87,7 @@ export async function purgeInternal(
   return { deleted };
 }
 
-/**
- * The runs a purge of `filter` would remove right now, in the order it would remove them: terminal,
- * owing no finalizer, past the filter's `offset` and within its `limit`. It reads and writes
- * nothing else, so a preview and the token derived from it describe exactly what a commit with
- * that token deletes (a commit that finds a run changed skips it; see `purgeWorkflowById`).
- */
-export async function collectPurgeCandidates(
-  internals: EngineInternals,
-  filter: ListFilter | undefined,
-): Promise<BulkWorkflowSnapshot[]> {
-  const { effectiveLimit, manualOffset } = resolvePurgeWindow(internals, filter, undefined);
-  const candidates: BulkWorkflowSnapshot[] = [];
-  if (effectiveLimit === 0) return candidates;
-
-  let remainingOffset = manualOffset;
-  for await (const state of streamWorkflowStates(internals, filter)) {
-    if (!(await shouldPurgeWorkflowState(internals, state, false, 0))) continue;
-    if (remainingOffset > 0) {
-      remainingOffset -= 1;
-      continue;
-    }
-    candidates.push(workflowStateToBulkSnapshot(state));
-    if (effectiveLimit !== undefined && candidates.length >= effectiveLimit) break;
-  }
-  return candidates;
-}
-
-function resolvePurgeWindow(
-  _internals: EngineInternals,
+export function resolvePurgeWindow(
   filter: ListFilter | undefined,
   fallbackLimit: number | undefined,
 ): { effectiveLimit: number | undefined; manualOffset: number } {
@@ -152,7 +120,7 @@ function resolvePurgeLimit(
   return Math.min(manualLimit, fallbackLimit);
 }
 
-async function shouldPurgeWorkflowState(
+export async function shouldPurgeWorkflowState(
   internals: EngineInternals,
   state: WorkflowState,
   expiredOnly: boolean,
@@ -405,8 +373,7 @@ function buildBaseWorkflowDeleteKeys(state: WorkflowState): Set<string> {
     // explicitly, else a purge + id reuse leaves a stale marker that would make
     // recovery re-provision services for a run that never had them.
     KEYS.workflowHasServices(state.id),
-    // The retrying-activity record (`wf:{id}:retrying`, COR-2529) is not under a purge prefix below.
-    KEYS.activityRetrying(state.id),
+    KEYS.activityRetrying(state.id), // `wf:{id}:retrying` (COR-2529) is under no purge prefix below.
     // The finalizer payload (`wf-finalizer-state:`) and the teardown-owed marker
     // (`wf-teardown-needed:`) live under their own prefixes, not `wf:{id}:`, so the
     // prefix sweep below misses them — delete them explicitly. Purge only reaches a

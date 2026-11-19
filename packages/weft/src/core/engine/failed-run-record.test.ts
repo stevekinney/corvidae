@@ -28,6 +28,7 @@ import { MemoryStorage } from '@lostgradient/storage';
 import { waitForCondition } from '@lostgradient/testing/fake-timers';
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { KEYS } from '../../storage/keys.ts';
+import { isParkedOn, statusOf } from '../../testing/run-observation.test-support.ts';
 import { deserializeCheckpoint } from '../checkpoint.ts';
 import { ACTIVITY_RETRY_STATE_LOCAL_KEY } from '../context/activity-retry-state.ts';
 import {
@@ -82,14 +83,13 @@ async function waitForDurableRetryDecision(storage: MemoryStorage, id: string): 
 
 /** Wait until the run is parked on the `done` signal, the point every row's workflow reaches last. */
 async function waitForParkedOnDone(engine: Engine, id: string): Promise<void> {
-  await waitForCondition(
-    async () => (await engine.get(id))?.waitingForSignals?.includes('done') === true,
-    { label: `"${id}" to park on the done signal` },
-  );
+  await waitForCondition(() => isParkedOn(engine, id, 'done'), {
+    label: `"${id}" to park on the done signal`,
+  });
 }
 
 async function waitForStatus(engine: Engine, id: string, status: WorkflowState['status']) {
-  await waitForCondition(async () => (await engine.get(id))?.status === status, {
+  await waitForCondition(async () => (await statusOf(engine, id)) === status, {
     label: `"${id}" to be ${status}`,
   });
 }
@@ -570,7 +570,8 @@ describe('COR-2529 a record written before the failure record', () => {
     await using engine = new Engine({ storage });
 
     const state = await engine.get(fixture.workflowId);
-    const listed = (await engine.list({ type: 'failed-run' })).items[0];
+    const page = await engine.list({ type: 'failed-run' });
+    const listed = page.items[0];
 
     expect(state).toEqual(fixture.state);
     expect(listed).toEqual(fixture.summary);

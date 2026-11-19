@@ -274,7 +274,7 @@ describe('purge dry run and commit', () => {
     fetch.routeJsonRpcMethod('weft.workflows.purge', { deleted: 9 });
     const client = realClient();
 
-    await expect(dryRunPurge(client, { status: 'completed' })).rejects.toThrow(
+    expect(await throwingRejectionOf(dryRunPurge(client, { status: 'completed' }))).toThrow(
       'Bulk dry-run returned an unexpected shape',
     );
     fetch.restore();

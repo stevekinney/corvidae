@@ -3,8 +3,12 @@ import { describe, expect, it } from 'bun:test';
 import { MemoryStorage } from '@lostgradient/storage';
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { KEYS } from '../../storage/keys.ts';
-import type { BulkOperationDryRunResult, PurgeResult } from '../types.ts';
-import { workflow, type WorkflowContext } from '../types.ts';
+import {
+  workflow,
+  type BulkOperationDryRunResult,
+  type PurgeResult,
+  type WorkflowContext,
+} from '../types.ts';
 import { BulkOperationConfirmationError } from './errors.ts';
 import { Engine } from './index.ts';
 
@@ -25,7 +29,10 @@ async function engineWithCompletedRuns(ids: readonly string[]) {
       return input;
     }),
   );
-  for (const id of ids) await (await engine.start('echo', id, { id })).result();
+  for (const id of ids) {
+    const handle = await engine.start('echo', id, { id });
+    await handle.result();
+  }
   return { engine, storage };
 }
 
@@ -74,7 +81,8 @@ describe('engine.purge with options (COR-2521)', () => {
     const { engine, storage } = await engineWithCompletedRuns(['a', 'b']);
     await using _engine = engine;
     const preview = await engine.purge({ status: 'completed' }, { dryRun: true });
-    await (await engine.start('echo', 'late', { id: 'late' })).result();
+    const late = await engine.start('echo', 'late', { id: 'late' });
+    await late.result();
     const before = await storeContents(storage);
 
     const refusal = await rejectionOf(
@@ -120,12 +128,11 @@ describe('engine.purge with options (COR-2521)', () => {
     );
     expect(committed.deleted).toBe(2);
     // Not terminal, so no purge may take it: it is still starting or parked.
-    expect(['pending', 'running']).toContain((await engine.get('still-running'))?.status ?? 'gone');
+    const stillRunning = await engine.get('still-running');
+    expect(['pending', 'running']).toContain(stillRunning?.status ?? 'gone');
     // The two the window named are gone, and the two outside it remain.
-    const remaining = (await Promise.all(['a', 'b', 'c', 'd'].map((id) => engine.get(id)))).filter(
-      (state) => state !== null,
-    );
-    expect(remaining).toHaveLength(2);
+    const states = await Promise.all(['a', 'b', 'c', 'd'].map((id) => engine.get(id)));
+    expect(states.filter((state) => state !== null)).toHaveLength(2);
   });
 
   it('skips a run that owes a finalizer, as the immediate purge does', async () => {

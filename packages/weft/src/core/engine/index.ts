@@ -130,11 +130,11 @@ import {
   recoverPendingAsyncActivities,
 } from './async-activity-records.ts';
 import { broadcast as broadcastFromInternals, type BroadcastCallbacks } from './broadcast.ts';
+import { purge as purgeWorkflows } from './bulk-operations-purge-commit.ts';
 import { purgeWorkflowById } from './bulk-operations-purge.ts';
 import {
   cancelAll as cancelAllWorkflows,
   deleteAll as deleteAllWorkflows,
-  purge as purgeWorkflows,
   retryFailedAll as retryFailedAllWorkflows,
   signalAll as signalAllWorkflows,
   tagAll as tagAllWorkflows,

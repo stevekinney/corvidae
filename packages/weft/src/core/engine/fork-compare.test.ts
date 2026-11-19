@@ -7,6 +7,7 @@ import { describe, expect, it } from 'bun:test';
 import { MemoryStorage } from '@lostgradient/storage';
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { KEYS } from '../../storage/keys.ts';
+import { startAndSettle } from '../../testing/run-observation.test-support.ts';
 import { decode, encode } from '../codec.ts';
 import type { WorkflowContext, WorkflowTimelineEntry } from '../types.ts';
 import { activity, workflow } from '../types.ts';
@@ -61,7 +62,7 @@ async function engineWithFiveSteps() {
         return results.join('|');
       }),
   );
-  await (await engine.start('five', null, { id: 'five' })).result();
+  await startAndSettle(engine, 'five', null, 'five');
   executed.length = 0;
   return { engine, storage, executed };
 }
@@ -114,13 +115,14 @@ describe('engine.previewFork', () => {
     const { engine } = await engineWithFiveSteps();
     await using _engine = engine;
 
-    expect((await errorOf(engine.previewFork('nothing'))).message).toContain('not found');
-    expect((await errorOf(engine.previewFork('five', { fromStep: 99 }))).message).toContain(
-      'Checkpoint not found at step 99',
+    const unknownRun = await errorOf(engine.previewFork('nothing'));
+    expect(unknownRun.message).toContain('not found');
+    const unknownStep = await errorOf(engine.previewFork('five', { fromStep: 99 }));
+    expect(unknownStep.message).toContain('Checkpoint not found at step 99');
+    const uninstalled = await errorOf(
+      engine.previewFork('five', { revision: 'sha256:not-installed' }),
     );
-    expect(
-      (await errorOf(engine.previewFork('five', { revision: 'sha256:not-installed' }))).name,
-    ).toBe('WorkflowRevisionUnavailableError');
+    expect(uninstalled.name).toBe('WorkflowRevisionUnavailableError');
   });
 });
 
@@ -229,7 +231,7 @@ describe('engine.compare', () => {
         return 'done';
       }),
     );
-    await (await engine.start('long', null, { id: 'long' })).result();
+    await startAndSettle(engine, 'long', null, 'long');
     // Checkpoint history is pruned, so a long run can only be forked from its recent checkpoints:
     // the latest one, which keeps 249 of the 250 steps.
     const fork = await engine.fork('long');
@@ -294,7 +296,7 @@ describe('engine.compare', () => {
         return 'ok';
       }),
     );
-    await (await engine.start('login', null, { id: 'login' })).result();
+    await startAndSettle(engine, 'login', null, 'login');
     // A record written by an engine that stored the field unredacted: the timeline read redacts it
     // anyway, and compare reads the timeline.
     const key = KEYS.timeline('login', 1);
@@ -303,7 +305,8 @@ describe('engine.compare', () => {
       key,
       encode({ ...stored, inputSummary: '{"user":"ada","password":"hunter2"}' }),
     );
-    expect((await engine.getTimeline('login'))[0]?.inputSummary).not.toContain('hunter2');
+    const timeline = await engine.getTimeline('login');
+    expect(timeline[0]?.inputSummary).not.toContain('hunter2');
     const fork = await engine.fork('login', { fromStep: 2 });
     await fork.result();
 

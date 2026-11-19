@@ -242,13 +242,31 @@ export function readRetryingActivity(
 
   let retrying: { activity: string; attempt: number } | undefined;
   for (const slotKey of Object.keys(state.activityNames).toSorted()) {
-    const activity = state.activityNames[slotKey];
-    const attempt = readSlot(state.attempts, slotKey);
-    if (typeof activity !== 'string' || activity.length === 0) continue;
-    if (typeof attempt !== 'number' || !Number.isSafeInteger(attempt) || attempt < 2) continue;
-    if (retrying === undefined || attempt > retrying.attempt) retrying = { activity, attempt };
+    const candidate = retryingCandidate(state, slotKey);
+    if (
+      candidate !== undefined &&
+      (retrying === undefined || candidate.attempt > retrying.attempt)
+    ) {
+      retrying = candidate;
+    }
   }
   return retrying;
+}
+
+/** The named activity at `slotKey` when it is on attempt 2 or later, and `undefined` for a slot that is not. */
+function retryingCandidate(
+  state: ActivityRetryState,
+  slotKey: string,
+): { activity: string; attempt: number } | undefined {
+  const names = state.activityNames;
+  const activity =
+    names !== undefined && Object.hasOwn(names, slotKey) ? names[slotKey] : undefined;
+  const attempt = readSlot(state.attempts, slotKey);
+  if (typeof activity !== 'string' || activity.length === 0) return undefined;
+  if (typeof attempt !== 'number' || !Number.isSafeInteger(attempt) || attempt < 2) {
+    return undefined;
+  }
+  return { activity, attempt };
 }
 
 export function completeActivityRetryAttempt(

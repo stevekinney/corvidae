@@ -9,7 +9,6 @@ import {
   withoutRetryingActivityNames,
   writeActivityRetryAttempt,
 } from '../context/activity-retry-state.ts';
-import type { ContextInternals } from '../context/internals.ts';
 import { attachErrorCode, errorCodeOf } from '../error-code-of.ts';
 import type { WorkflowState, WorkflowTimelineEntry } from '../types.ts';
 import {
@@ -36,8 +35,11 @@ function entry(overrides: Partial<WorkflowTimelineEntry>): WorkflowTimelineEntry
   };
 }
 
-function internalsWith(locals: Record<string, unknown> = {}): ContextInternals {
-  return { checkpointLocals: locals } as unknown as ContextInternals;
+/** What the retry-state writers take: a holder of the run's checkpoint locals. */
+type LocalsHolder = Parameters<typeof writeActivityRetryAttempt>[0];
+
+function internalsWith(locals: Record<string, unknown> = {}): LocalsHolder {
+  return { checkpointLocals: locals } as unknown as LocalsHolder;
 }
 
 describe('errorCodeOf', () => {

@@ -3,6 +3,7 @@ import { describe, expect, it } from 'bun:test';
 import { MemoryStorage } from '@lostgradient/storage';
 import { waitForCondition } from '@lostgradient/testing/fake-timers';
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
+import { isParkedOn, statusOf } from '../../../testing/run-observation.test-support.ts';
 import { workflow, type WorkflowContext } from '../../types.ts';
 import { Engine } from '../index.ts';
 
@@ -28,10 +29,9 @@ describe('engine.previewCancel', () => {
       }),
     );
     await engine.start('parked', null, { id: 'wf-preview' });
-    await waitForCondition(
-      async () => (await engine.get('wf-preview'))?.waitingForSignals?.includes('go') === true,
-      { label: 'the workflow to park on the go signal' },
-    );
+    await waitForCondition(() => isParkedOn(engine, 'wf-preview', 'go'), {
+      label: 'the workflow to park on the go signal',
+    });
     const before = await storeContents(storage);
 
     const preview = await engine.previewCancel('wf-preview');
@@ -43,11 +43,11 @@ describe('engine.previewCancel', () => {
       cancellable: true,
     });
     expect(await storeContents(storage)).toEqual(before);
-    expect((await engine.get('wf-preview'))?.status).toBe('running');
+    expect(await statusOf(engine, 'wf-preview')).toBe('running');
     expect(cancelHandlerRuns).toBe(0);
     // The workflow still takes its signal, so the preview did not disturb it.
     await engine.signal('wf-preview', 'go', 'done');
-    await waitForCondition(async () => (await engine.get('wf-preview'))?.status === 'completed', {
+    await waitForCondition(async () => (await statusOf(engine, 'wf-preview')) === 'completed', {
       label: 'the previewed workflow to complete normally',
     });
   });
@@ -66,10 +66,9 @@ describe('engine.previewCancel', () => {
       );
       const handle = await engine.start('ends', null, { id: `wf-${status}` });
       if (status === 'cancelled') {
-        await waitForCondition(
-          async () => (await engine.get(handle.id))?.waitingForSignals?.includes('never') === true,
-          { label: 'the workflow to park' },
-        );
+        await waitForCondition(() => isParkedOn(engine, handle.id, 'never'), {
+          label: 'the workflow to park',
+        });
         const settled = handle.result().catch(() => undefined);
         await engine.cancel(handle.id);
         await settled;

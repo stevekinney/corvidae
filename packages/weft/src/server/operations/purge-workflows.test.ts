@@ -9,6 +9,7 @@ import { createOperationRegistry } from '@lostgradient/backchannel/internals';
 import { MemoryStorage } from '@lostgradient/storage';
 import { Engine } from '../../core/engine.ts';
 import { type WorkflowContext, workflow } from '../../core/types.ts';
+import { startAndSettle } from '../../testing/run-observation.test-support.ts';
 import { handleRequestAsLocalUser as handleRequest } from '../local-user-request.test-support.ts';
 import { purgeWorkflowsOperation, purgeWorkflowsRestBinding } from './purge-workflows.ts';
 
@@ -43,12 +44,11 @@ const bindings = [purgeWorkflowsRestBinding];
 
 /** Purge the way the server requires it: a dry run of `body`, then a commit with its token. */
 async function purgeWithPreview(engine: Engine, body: Record<string, unknown>): Promise<Response> {
-  const preview = (await (
-    await handleRequest(request({ ...body, dryRun: true }), engine, {
-      operationRegistry: registry,
-      restBindings: bindings,
-    })
-  ).json()) as { confirmationToken: string };
+  const previewResponse = await handleRequest(request({ ...body, dryRun: true }), engine, {
+    operationRegistry: registry,
+    restBindings: bindings,
+  });
+  const preview = (await previewResponse.json()) as { confirmationToken: string };
   return handleRequest(request({ ...body, confirmationToken: preview.confirmationToken }), engine, {
     operationRegistry: registry,
     restBindings: bindings,
@@ -105,7 +105,7 @@ describe('weft.workflows.purge', () => {
     await using engine = createEngine();
 
     for (const id of ['purge-named-a', 'purge-named-b']) {
-      await (await engine.start('echo', id, { id })).result();
+      await startAndSettle(engine, 'echo', id, id);
     }
     const stores = async () => [
       await engine.get('purge-named-a'),
@@ -136,7 +136,7 @@ describe('weft.workflows.purge', () => {
     expect(await stores()).toEqual(before);
 
     // A run that finishes after the preview was not named by it, so the token no longer matches.
-    await (await engine.start('echo', 'late', { id: 'purge-named-late' })).result();
+    await startAndSettle(engine, 'echo', 'late', 'purge-named-late');
     const stale = await handleRequest(
       request({
         filter: { status: 'completed' },
@@ -152,7 +152,7 @@ describe('weft.workflows.purge', () => {
 
   it('refuses a commit that carries no confirmation token', async () => {
     await using engine = createEngine();
-    await (await engine.start('echo', 'keep', { id: 'purge-no-token' })).result();
+    await startAndSettle(engine, 'echo', 'keep', 'purge-no-token');
 
     const response = await handleRequest(request({ filter: { status: 'completed' } }), engine, {
       operationRegistry: registry,

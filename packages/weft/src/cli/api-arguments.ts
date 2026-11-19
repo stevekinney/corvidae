@@ -23,6 +23,7 @@ export function parseApiArguments(args: string[]): CliCommand {
   });
 
   validateApiArguments(values, positionals);
+  validateDryRunArgument(values);
 
   return {
     command: 'api',
@@ -34,7 +35,7 @@ export function parseApiArguments(args: string[]): CliCommand {
     list: values.list ?? false,
     ...(values.describe !== undefined ? { describe: values.describe } : {}),
     yes: values.yes ?? false,
-    ...(values['dry-run'] === true ? { dryRun: true } : {}),
+    ...apiDryRunField(values),
     help: values.help ?? false,
     json: values.json ?? false,
   };
@@ -47,6 +48,11 @@ type ApiValues = {
   readonly describe?: string;
   readonly 'dry-run'?: boolean;
 };
+
+/** `dryRun: true` when `--dry-run` was given, and nothing otherwise. */
+function apiDryRunField(values: ApiValues) {
+  return values['dry-run'] ? { dryRun: true } : {};
+}
 
 function apiInputFields(values: ApiValues) {
   return {
@@ -66,7 +72,11 @@ function validateApiArguments(values: ApiValues, positionals: readonly string[])
   if (values.list === true && (values.describe !== undefined || positionals.length > 0)) {
     throw new Error('api: --list cannot be combined with --describe or an operation name');
   }
-  if (values['dry-run'] === true && (values.list === true || values.describe !== undefined)) {
+}
+
+/** `--dry-run` previews an invocation, so it has nothing to apply to when listing or describing. */
+function validateDryRunArgument(values: ApiValues): void {
+  if (values['dry-run'] && (values.list || values.describe !== undefined)) {
     throw new Error('api: --dry-run applies to invoking an operation, not --list or --describe');
   }
 }

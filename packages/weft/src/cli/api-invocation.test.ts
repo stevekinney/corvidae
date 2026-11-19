@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { waitForCondition } from '@lostgradient/testing/fake-timers';
 import type { WorkflowContext } from '../index.ts';
 import { createWeftClient, Engine, serve, workflow } from '../index.ts';
+import { isParkedOn, statusOf } from '../testing/run-observation.test-support.ts';
 import { executeApi, normalizeValidatedInput } from './api.ts';
 
 describe('api command', () => {
@@ -85,10 +86,9 @@ describe('api command', () => {
     const server = serve({ engine, port: 0 });
     try {
       await engine.start('parked', null, { id: 'wf-parked' });
-      await waitForCondition(
-        async () => (await engine.get('wf-parked'))?.waitingForSignals?.includes('go') === true,
-        { label: 'the workflow to park on the go signal' },
-      );
+      await waitForCondition(() => isParkedOn(engine, 'wf-parked', 'go'), {
+        label: 'the workflow to park on the go signal',
+      });
       const result = await executeApi({
         command: 'api',
         operationName: 'weft.workflows.cancel',
@@ -108,7 +108,7 @@ describe('api command', () => {
         status: 'running',
         cancellable: true,
       });
-      expect((await engine.get('wf-parked'))?.status).toBe('running');
+      expect(await statusOf(engine, 'wf-parked')).toBe('running');
     } finally {
       await server.stop();
       engine[Symbol.dispose]();

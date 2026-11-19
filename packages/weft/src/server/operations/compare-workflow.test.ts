@@ -7,6 +7,7 @@ import { createOperationRegistry } from '@lostgradient/backchannel/internals';
 import { MemoryStorage } from '@lostgradient/storage';
 import { Engine } from '../../core/engine.ts';
 import { type WorkflowContext, workflow } from '../../core/types.ts';
+import { startAndSettle } from '../../testing/run-observation.test-support.ts';
 import { handleRequestAsLocalUser as handleRequest } from '../local-user-request.test-support.ts';
 import { compareWorkflowOperation, compareWorkflowRestBinding } from './compare-workflow.ts';
 import { forkWorkflowOperation, forkWorkflowRestBinding } from './fork-workflow.ts';
@@ -28,7 +29,7 @@ const stepper = workflow({ name: 'stepper' }).execute(async function* (
 async function engineWithRun(steps: number, id = 'source') {
   const engine = new Engine({ storage: new MemoryStorage() });
   engine.register(stepper);
-  await (await engine.start('stepper', steps, { id })).result();
+  await startAndSettle(engine, 'stepper', steps, id);
   return engine;
 }
 
@@ -103,7 +104,8 @@ describe('weft.workflows.compare', () => {
 
   it('answers 404 for an unknown fork, and 404 naming the source when the source is gone', async () => {
     await using engine = await engineWithRun(3);
-    expect((await handleRequest(compareRequest('missing'), engine, options)).status).toBe(404);
+    const missing = await handleRequest(compareRequest('missing'), engine, options);
+    expect(missing.status).toBe(404);
 
     const fork = await engine.fork('source', { fromStep: 2 });
     await fork.result();
@@ -142,7 +144,8 @@ describe('weft.workflows.fork with dryRun', () => {
 
   it('answers what the fork would keep and run again, and starts no run', async () => {
     await using engine = await engineWithRun(5);
-    const before = (await engine.list()).items.length;
+    const listedBefore = await engine.list();
+    const before = listedBefore.items.length;
 
     const response = await handleRequest(
       forkRequest('source', { fromStep: 3, dryRun: true }),
@@ -162,7 +165,8 @@ describe('weft.workflows.fork with dryRun', () => {
     expect(body).toMatchObject({ dryRun: true, forkPoint: 3, revisionWouldChange: false });
     expect(body.keptSteps).toHaveLength(2);
     expect(body.rerunSteps).toHaveLength(3);
-    expect((await engine.list()).items).toHaveLength(before);
+    const listedAfter = await engine.list();
+    expect(listedAfter.items).toHaveLength(before);
   });
 
   it('still forks when dryRun is absent or false', async () => {

@@ -3,6 +3,7 @@ import { describe, expect, it } from 'bun:test';
 import { waitForCondition } from '@lostgradient/testing/fake-timers';
 import type { WorkflowContext } from '../index.ts';
 import { Engine, serve, workflow } from '../index.ts';
+import { isParkedOn, statusOf } from '../testing/run-observation.test-support.ts';
 import { NOT_FOUND_EXIT_CODE } from './server-client.ts';
 import type { WorkflowCommand } from './types.ts';
 import { executeWorkflow } from './workflow-commands.ts';
@@ -158,10 +159,9 @@ describe('weft workflow cancel (destructive gate)', () => {
 describe('weft workflow cancel --dry-run', () => {
   async function startParkedWorkflow(served: { engine: Engine; url: string }, id: string) {
     await served.engine.start('parked', null, { id });
-    await waitForCondition(
-      async () => (await served.engine.get(id))?.waitingForSignals?.includes('go') === true,
-      { label: `"${id}" to park on the go signal` },
-    );
+    await waitForCondition(() => isParkedOn(served.engine, id, 'go'), {
+      label: `"${id}" to park on the go signal`,
+    });
   }
 
   function createParkedServedEngine() {
@@ -190,7 +190,7 @@ describe('weft workflow cancel --dry-run', () => {
         stdout: 'Would cancel workflow wf-dry (status: running)',
         exitCode: 0,
       });
-      expect((await served.engine.get('wf-dry'))?.status).toBe('running');
+      expect(await statusOf(served.engine, 'wf-dry')).toBe('running');
     } finally {
       await served.stop();
     }

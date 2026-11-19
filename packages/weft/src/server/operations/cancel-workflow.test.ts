@@ -4,6 +4,7 @@ import { createOperationRegistry } from '@lostgradient/backchannel/internals';
 import { MemoryStorage } from '@lostgradient/storage';
 import { Engine } from '../../core/engine.ts';
 import { type WorkflowContext, workflow } from '../../core/types.ts';
+import { statusOf } from '../../testing/run-observation.test-support.ts';
 import { handleRequestAsLocalUser as handleRequest } from '../local-user-request.test-support.ts';
 import { cancelWorkflowOperation, cancelWorkflowRestBinding } from './cancel-workflow.ts';
 import { waitForWorkflowStatus } from './operation-test-helpers.test-support.ts';
@@ -65,7 +66,7 @@ describe('weft.workflows.cancel', () => {
       status: 'running',
       cancellable: true,
     });
-    expect((await engine.get(handle.id))?.status).toBe('running');
+    expect(await statusOf(engine, handle.id)).toBe('running');
   });
 
   it('a dry run of a finished workflow reports it cannot be cancelled', async () => {

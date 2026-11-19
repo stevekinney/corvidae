@@ -66,15 +66,16 @@ export function decodeActivityRetrying(
 ): WorkflowRetrying | undefined {
   if (bytes === null) return undefined;
   const value: unknown = decode(bytes);
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) return undefined;
-  const {
-    activity,
-    attempt,
-    workflowExecutionToken: recordToken,
-  } = value as Record<string, unknown>;
-  if (recordToken !== workflowExecutionToken) return undefined;
+  if (!isRecord(value)) return undefined;
+  if (value['workflowExecutionToken'] !== workflowExecutionToken) return undefined;
+  const { activity, attempt } = value;
   if (typeof activity !== 'string' || activity.length === 0) return undefined;
-  if (typeof attempt !== 'number' || !Number.isSafeInteger(attempt) || attempt < 2)
+  if (typeof attempt !== 'number' || !Number.isSafeInteger(attempt) || attempt < 2) {
     return undefined;
+  }
   return { activity, attempt };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
