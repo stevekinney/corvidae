@@ -469,6 +469,14 @@ export interface TaskRegistryHost {
   readonly engineRuns?: (() => Promise<readonly TaskView[]>) | undefined;
   /** COR-2423 — whether the engine still holds `runId` as one of those runs, so a page keeps it. */
   readonly holdsEngineRun?: ((runId: string) => Promise<boolean>) | undefined;
+  /**
+   * COR-2526 — whether another process now holds the live workflow claim of `taskId`'s run: this
+   * process was deposed and the run runs there. A live write of the run's usage, stall or loop is
+   * the holder's, so one asked for by a process that is no longer it is dropped. `false` when no
+   * claim record exists, the claim has lapsed, or the Bureau has no `workflow-lease` ownership;
+   * absent for a Bureau without a durable engine. A rejection propagates to the write's caller.
+   */
+  readonly claimedElsewhere?: ((taskId: string) => Promise<boolean>) | undefined;
 }
 
 /** The receipt `bureau.tasks.cancel` answers with. */
@@ -1154,6 +1162,23 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
     const chain: Promise<unknown> = queued.then(release, release);
     liveWrites.set(taskId, chain);
     return track(queued);
+  }
+
+  /**
+   * COR-2526 — queues a usage, stall or loop write that only the run's current holder may make.
+   * Under `workflow-lease` a process that loses its claim (its renewal failed after a pause) keeps
+   * driving the run until the run settles, so its liveness watchdog goes on writing; once another
+   * process holds the claim those writes would land on the successor's record. The claim is read
+   * inside the queued write, immediately before its compare-and-swap, and a write from a process
+   * that another live claim has replaced is dropped: `dropped` is the answer, and nothing is
+   * written or announced. The read is not atomic with the write: a deposition inside that window
+   * lets one stale write through, which the successor's next change overwrites.
+   */
+  function queueHolderWrite<T>(taskId: string, dropped: T, write: () => Promise<T>): Promise<T> {
+    return queueLiveWrite(taskId, async () => {
+      if ((await host.claimedElsewhere?.(taskId)) === true) return dropped;
+      return write();
+    });
   }
 
   /** The record with `attention` as given, left out of the record altogether when it holds nothing. */
@@ -1983,7 +2008,7 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
     },
 
     recordUsage(taskId, usage) {
-      return queueLiveWrite(taskId, async () => {
+      return queueHolderWrite(taskId, undefined, async () => {
         await update(
           taskId,
           (record) => {
@@ -1997,7 +2022,7 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
     },
 
     recordStall(taskId, stalledAt) {
-      return queueLiveWrite(taskId, async () => {
+      return queueHolderWrite(taskId, false, async () => {
         let changed = false;
         await update(
           taskId,
@@ -2020,7 +2045,7 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
     },
 
     recordLooping(taskId, at) {
-      return queueLiveWrite(taskId, async () => {
+      return queueHolderWrite(taskId, false, async () => {
         let changed = false;
         await update(
           taskId,

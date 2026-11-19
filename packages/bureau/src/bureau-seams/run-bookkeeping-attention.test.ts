@@ -40,7 +40,13 @@ let pendingWrites: Promise<unknown>[] = [];
 
 function bookkeeping(
   runs: Map<string, ReturnType<typeof fakeRun>['activeRun']>,
-  outcomes: { stall: boolean[]; looping: boolean[]; reject?: boolean } = {
+  outcomes: {
+    stall: boolean[];
+    looping: boolean[];
+    reject?: boolean;
+    /** How many of the first stall writes reject. */
+    rejectFirst?: number;
+  } = {
     stall: [],
     looping: [],
   },
@@ -57,7 +63,7 @@ function bookkeeping(
       recordStall: (runId: string, at: string | null) => {
         stalls.push([runId, at]);
         const write =
-          outcomes.reject === true
+          outcomes.reject === true || stalls.length <= (outcomes.rejectFirst ?? 0)
             ? Promise.reject(new Error('The write failed.'))
             : Promise.resolve(outcomes.stall.shift() ?? true);
         pendingWrites.push(write);
@@ -174,6 +180,49 @@ describe('watching a run’s liveness (COR-2526)', () => {
       'task-registry',
       'task-registry',
     ]);
+  });
+});
+
+describe('a write that did not land (COR-2526)', () => {
+  it('asks again on the next snapshot after a write rejects, since nothing recorded the value', async () => {
+    const run = fakeRun('healthy');
+    const { seam, stalls, diagnostics } = bookkeeping(new Map([['run-1', run.activeRun]]), {
+      stall: [],
+      looping: [],
+      rejectFirst: 1,
+    });
+    seam.watchRunAttention('run-1');
+    await settle();
+    expect(stalls).toHaveLength(1);
+    expect(diagnostics).toHaveLength(1);
+
+    // The same assessment arrives again: the first write never committed, so it is written now.
+    run.send('healthy');
+    await settle();
+    expect(stalls.map(([, at]) => at)).toEqual([null, null]);
+    expect(diagnostics).toHaveLength(1);
+
+    // And once it has committed, a repeat writes nothing.
+    run.send('healthy');
+    await settle();
+    expect(stalls).toHaveLength(2);
+  });
+
+  it('does not retry an answer of false, which the record, the settlement or a successor decided', async () => {
+    const run = fakeRun('healthy');
+    const { seam, stalls, dispatched } = bookkeeping(new Map([['run-1', run.activeRun]]), {
+      stall: [true, false],
+      looping: [],
+    });
+    seam.watchRunAttention('run-1');
+    run.send('alive-but-stalled');
+    run.send('alive-but-stalled');
+    await settle();
+    run.send('alive-but-stalled');
+    await settle();
+
+    expect(stalls).toHaveLength(2);
+    expect(dispatched).toEqual([]);
   });
 });
 

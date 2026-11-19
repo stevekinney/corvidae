@@ -59,6 +59,8 @@ type HostState = {
   childOutcome: 'requested' | 'already-terminal' | 'not-found';
   /** Every durable run the host was asked to cancel. */
   durableCancelled: string[];
+  /** The runs whose live workflow claim another process now holds. */
+  claimedElsewhere: Set<string>;
 };
 
 function build(
@@ -81,6 +83,7 @@ function build(
     childCancelled: [],
     childOutcome: 'requested',
     durableCancelled: [],
+    claimedElsewhere: new Set(),
     ...state,
   };
   const diagnostics: string[] = [];
@@ -113,6 +116,7 @@ function build(
       held.durableCancelled.push(taskId);
       return held.durable;
     },
+    claimedElsewhere: async (taskId) => held.claimedElsewhere.has(taskId),
     sleep: (milliseconds) =>
       new Promise<void>((resolve) => {
         runtime.timers.setTimeout(resolve, milliseconds);
@@ -2013,6 +2017,21 @@ describe('usage and cost (COR-2524)', () => {
     expect(await viewField(registry, 'run-1', 'usage')).toEqual(FIRST_STEP);
   });
 
+  it('(m) takes no figure from a process another live claim has replaced, and takes it again once the claim is gone', async () => {
+    const { registry, held } = build();
+    await admit(registry, 'run-1');
+    await registry.recordUsage('run-1', FIRST_STEP);
+
+    // This process was deposed: the run's figures are the successor's to write.
+    held.claimedElsewhere.add('run-1');
+    await registry.recordUsage('run-1', SECOND_STEP);
+    expect(await viewField(registry, 'run-1', 'usage')).toEqual(FIRST_STEP);
+
+    held.claimedElsewhere.delete('run-1');
+    await registry.recordUsage('run-1', SECOND_STEP);
+    expect(await viewField(registry, 'run-1', 'usage')).toEqual(SECOND_STEP);
+  });
+
   it('writes nothing for a task with no record', async () => {
     const { registry } = build();
     await registry.recordUsage('missing', FIRST_STEP);
@@ -2198,6 +2217,28 @@ describe('attention: stalled and looping (COR-2526)', () => {
     // A dead holder's snapshot, arriving late, writes nothing back.
     expect(await registry.recordStall('run-1', LATER)).toBe(false);
     expect(await recordField(registry, 'run-1', 'attention')).toBeUndefined();
+  });
+
+  it('(n) is not written, cleared or announced by a process another live claim has replaced', async () => {
+    const { registry, held } = build();
+    await admit(registry, 'run-1');
+    held.live.set('run-1', running);
+
+    // The successor holds the claim and has no stall: the deposed holder's stall and loop writes
+    // answer false, which is what keeps `run.stalled` and `run.looping` from being announced.
+    held.claimedElsewhere.add('run-1');
+    expect(await registry.recordStall('run-1', STALLED_AT)).toBe(false);
+    expect(await registry.recordLooping('run-1', STALLED_AT)).toBe(false);
+    expect(await recordField(registry, 'run-1', 'attention')).toBeUndefined();
+
+    // The successor's own stall and loop, written while it was the holder, stand against the
+    // deposed holder's late clear.
+    held.claimedElsewhere.delete('run-1');
+    expect(await registry.recordStall('run-1', STALLED_AT)).toBe(true);
+    expect(await registry.recordLooping('run-1', STALLED_AT)).toBe(true);
+    held.claimedElsewhere.add('run-1');
+    expect(await registry.recordStall('run-1', null)).toBe(false);
+    expect(await viewField(registry, 'run-1', 'attention')).toEqual(['stalled', 'looping']);
   });
 
   it('shows a stall only while no person is asked anything: a run waiting on a review is not stalled', async () => {

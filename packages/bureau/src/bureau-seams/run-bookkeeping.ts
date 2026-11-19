@@ -160,7 +160,12 @@ export function createRunBookkeeping<D extends AgentDefinitions>(
     // (a recovery's) is watched afresh, and the earlier run's snapshots are no longer heard.
     if (watching?.activeRun === activeRun) return;
     watching?.unsubscribe();
+    // `stalled` is what was last asked for, so a snapshot that repeats it writes nothing; a write
+    // that rejects puts it back to what `recorded` says, so the next snapshot asks again. An answer
+    // of `false` (the record already said so, the task settled, another process holds the run now)
+    // is a decision, not a failure, and is not retried.
     let stalled: boolean | undefined;
+    let recorded: boolean | undefined;
     const subscription = activeRun.subscribeSnapshot((snapshot) => {
       const nowStalled = snapshot.assessment === 'alive-but-stalled';
       if (nowStalled === stalled) return;
@@ -169,10 +174,12 @@ export function createRunBookkeeping<D extends AgentDefinitions>(
       core.tasks
         .recordStall(runId, nowStalled ? since : null)
         .then((changed) => {
+          recorded = nowStalled;
           if (changed && nowStalled) core.emitter.dispatch(new RunStalledEvent(runId, since));
           return changed;
         })
         .catch((error: unknown) => {
+          if (stalled === nowStalled) stalled = recorded;
           diagnose({
             level: 'error',
             scope: 'task-registry',

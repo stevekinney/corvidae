@@ -3759,6 +3759,12 @@ async function constructBureau<const D extends AgentDefinitions>(
       // COR-2423: the schedule tick and the instances of workflow files, which have no task record.
       engineRuns: () => engineRunTasks.list(),
       holdsEngineRun: (runId) => engineRunTasks.holds(runId),
+      // COR-2526: a live claim another process holds is the same read recovery makes of a run
+      // "preparing elsewhere"; a lapsed or absent claim leaves the writer the holder.
+      claimedElsewhere: async (runId) => {
+        const claim = await runtime.durable?.engine.claimHolder(runId);
+        return claim?.heldByAnyProcess === true && !claim.heldByThisProcess;
+      },
     },
   });
   taskRegistryHolder.current = tasks;
