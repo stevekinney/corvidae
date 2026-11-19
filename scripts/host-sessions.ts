@@ -47,6 +47,9 @@ import {
   type ProcessEntry,
   type ProcessTable,
 } from './bun-test-pool.ts';
+import { stateDirectoryOf } from './chef/report.ts';
+import { resolveMainCheckout } from './chef/repository-locations.ts';
+import { questionDecision, workerStopDecision, type FenceOutput } from './chef/session-fences.ts';
 import { rootScriptEnvironment } from './environment-configuration.ts';
 import {
   applySessionEvent,
@@ -843,10 +846,17 @@ export type HookInput = {
   readonly cwd?: unknown;
   /** `SessionStart`: startup, resume, clear or compact. */
   readonly source?: unknown;
+  /** The session's transcript, which the context fence measures. */
+  readonly transcript_path?: unknown;
+  /** `SubagentStop`: the stopping agent's own transcript. */
+  readonly agent_transcript_path?: unknown;
 };
 
 export type HookOutput = {
   readonly systemMessage?: string;
+  /** `SubagentStop`: `block` keeps the worker running and gives it `reason`. */
+  readonly decision?: 'block';
+  readonly reason?: string;
   readonly hookSpecificOutput?: {
     readonly hookEventName: 'PreToolUse';
     readonly permissionDecision?: 'deny';
@@ -872,6 +882,8 @@ export type HookContext = {
   /** The `tools:` an agent type's definition lists, which decide whether it is read-only. */
   readonly readAgentTools?: (agentType: string) => string | undefined;
   readonly readOnlyCap?: number;
+  /** The coordinator's execution state and briefs, in the main checkout; absent when not found. */
+  readonly chef?: { readonly stateDirectory: string; readonly briefsDirectory: string };
 };
 
 function text(value: unknown): string {
@@ -1117,6 +1129,53 @@ async function denyLeasedStartSession(
   };
 }
 
+/** The lease a session holds, if its marker is live; a session that holds none is unleased. */
+async function leasedSession(
+  sessionId: string,
+  context: HookContext,
+): Promise<{ project: string; run: string } | undefined> {
+  if (sessionId === '') return undefined;
+  const marker = await readLeaseMarker(context.directory, sessionId);
+  return marker !== undefined && leaseMarkerLive(marker, context.now())
+    ? { project: marker.project, run: marker.run }
+    : undefined;
+}
+
+/**
+ * The charter mechanisms of `scripts/chef/session-fences.ts`, decided before anything is admitted or
+ * recorded: a worker's stop without a valid report, and a question from a leased session. Only a
+ * refusal is returned; a decision that could not read its input is logged and the event goes on.
+ */
+async function sessionFences(
+  input: HookInput,
+  context: HookContext,
+): Promise<HookOutput | undefined> {
+  const event = text(input.hook_event_name);
+  const tool = text(input.tool_name);
+  const sessionId = text(input.session_id);
+  let decision: FenceOutput | undefined;
+  try {
+    if (event === 'SubagentStop') {
+      decision = workerStopDecision({
+        agentType: text(input.agent_type),
+        agentId: text(input.agent_id),
+        transcriptPath: text(input.agent_transcript_path),
+        stateDirectory: context.chef?.stateDirectory,
+        briefsDirectory: context.chef?.briefsDirectory,
+      });
+    } else if (event === 'PreToolUse' && tool === 'AskUserQuestion') {
+      decision = questionDecision(await leasedSession(sessionId, context));
+    }
+  } catch (error) {
+    context.report?.([`session-fences: not enforced, ${String(error)}`]);
+    return undefined;
+  }
+  if (decision?.systemMessage !== undefined) context.report?.([decision.systemMessage]);
+  if (decision?.decision === undefined && decision?.hookSpecificOutput === undefined)
+    return undefined;
+  return decision;
+}
+
 /** The hook's answer to one event, after recording it; undefined to print nothing. */
 export async function handleHookEvent(
   input: HookInput,
@@ -1127,6 +1186,8 @@ export async function handleHookEvent(
   const toolUseId = text(input.tool_use_id);
   const agentId = text(input.agent_id);
   const at = context.now();
+  const fenced = await sessionFences(input, context);
+  if (fenced !== undefined) return fenced;
   // Every Agent dispatch takes a place, whatever its type: reviewers, Explore and general-purpose
   // agents run models too.
   const isAgentCall = text(input.tool_name) === 'Agent';
@@ -1269,6 +1330,19 @@ function agentDefinitionReader(
   };
 }
 
+/** The coordinator's execution state and briefs; `undefined` when no main checkout is found. */
+function chefDirectories(cwd: string): HookContext['chef'] {
+  try {
+    const main = resolveMainCheckout(undefined, cwd);
+    return {
+      stateDirectory: stateDirectoryOf(main),
+      briefsDirectory: join(main, 'tmp', 'chef', 'briefs'),
+    };
+  } catch {
+    return undefined;
+  }
+}
+
 async function runHook(argumentsList: readonly string[]): Promise<void> {
   let output: HookOutput | undefined;
   try {
@@ -1286,6 +1360,7 @@ async function runHook(argumentsList: readonly string[]): Promise<void> {
       now: () => Date.now(),
       sleep: (milliseconds) => Bun.sleep(milliseconds),
       report: (lines) => process.stderr.write(`${lines.join('\n')}\n`),
+      chef: chefDirectories(typeof input.cwd === 'string' ? input.cwd : process.cwd()),
     });
   } catch (error) {
     // Loud, never silent: the dispatch goes ahead, and the session is told the cap was not checked.
