@@ -110,7 +110,12 @@ import {
 import { createFileAgentCompactor } from './file-agent-compaction';
 import { isNamespacedIdentifier } from './namespaced-identifier';
 import { createFileAgentGenerate, ModelPolicyDeniedError } from './file-agent-generate';
-import { costBudgetOptions, toolboxBudgetOf, usdPricingOfRow } from './file-agent-cost-budget';
+import {
+  costBudgetOptions,
+  costEstimationOptions,
+  toolboxBudgetOf,
+  usdPricingOfRow,
+} from './file-agent-cost-budget';
 import {
   type AgentContributions,
   guardrailAdditionsOf,
@@ -1332,8 +1337,13 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
       // added to it (COR-1877), and so are the plugin interceptors to the agent's hook tier.
       ...optionalGuardrailAdditions(definition, guardrails),
       ...optionalInterceptors(definition),
+      // COR-2524: every run is priced from the catalog, so it reports what it cost; only a
+      // declared `limits.cost` also gives it a budget to stop on.
       ...(definition.limits?.cost === undefined
-        ? {}
+        ? costEstimationOptions(
+            descriptor,
+            allowedDescriptorsOfFileAgent(definition.models, options.models.catalog().descriptors),
+          )
         : costBudgetOptions(
             definition.limits.cost,
             descriptor,

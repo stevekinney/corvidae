@@ -224,6 +224,7 @@ export function createEngineRunTasks(dependencies: EngineRunTasksDependencies): 
       openWaits: [],
       wakeAt: null,
       workflow,
+      usage: null,
     };
   }
 

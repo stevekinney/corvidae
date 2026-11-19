@@ -10,7 +10,7 @@ import { BureauError } from '../bureau-errors';
 import type { BureauToolbox } from '../runtime-composition-types';
 import { detachBestEffortPromise } from '../bureau-construction-support';
 import { serializeUnknownError } from '../serialization';
-import { settledTaskState } from '../task-registry';
+import { settledTaskState, type TaskUsage } from '../task-registry';
 
 /** The callables run bookkeeping reads from elsewhere in `constructBureau`. */
 export interface RunBookkeepingPeers {
@@ -105,6 +105,32 @@ export function createRunBookkeeping<D extends AgentDefinitions>(
     });
   }
 
+  /**
+   * COR-2524 — keeps what a run has used and cost so far on its task record, after each step: a
+   * `usage.accumulated` action carries the run's token total and, when a request has been priced,
+   * its cost so far. A run no request of which was priced records `costUsd: null`, never `0`. The
+   * write is skipped once the task has settled, so a figure from a step cannot replace the run's own
+   * total, which rides the settlement.
+   */
+  function recordTaskUsage(action: {
+    readonly runId: string;
+    readonly type: string;
+    readonly detail: unknown;
+  }): void {
+    if (action.type !== 'usage.accumulated') return;
+    const detail = recordOf(action.detail);
+    const usage = usageOfDetail(recordOf(detail['totalUsage']), detail['totalCost']);
+    if (usage === undefined) return;
+    core.tasks.recordUsage(action.runId, usage).catch((error: unknown) => {
+      diagnose({
+        level: 'error',
+        scope: 'task-registry',
+        message: `[bureau] Could not record the usage of task "${action.runId}": ${serializeUnknownError(error)}`,
+        cause: error,
+      });
+    });
+  }
+
   /** COR-1481 — records how a task ended, from the action that ended its run. */
   function recordTaskSettlement(action: {
     readonly runId: string;
@@ -134,6 +160,12 @@ export function createRunBookkeeping<D extends AgentDefinitions>(
       const activeRun = store.getRun(action.runId)?.activeRun;
       if (activeRun !== undefined) void core.tasks.watchCleanup(action.runId, activeRun.closed());
     }
+    // COR-2524 — the run's own total, written in the same compare-and-swap as the settlement. A
+    // run with no priced request says `null`: the run's `costEstimate` is absent, never `0`.
+    const usage = usageOfDetail(
+      recordOf(detail['usage']),
+      recordOf(detail['costEstimate'])['totalCost'],
+    );
     void core.tasks
       .recordSettled(action.runId, {
         at: new Date(action.timestamp).toISOString(),
@@ -143,6 +175,7 @@ export function createRunBookkeeping<D extends AgentDefinitions>(
           status === 'failed' && failure !== undefined && failure !== null
             ? serializeUnknownError(failure).slice(0, 1000)
             : null,
+        ...(usage === undefined ? {} : { usage }),
       })
       .catch((error: unknown) => {
         diagnose({
@@ -161,6 +194,33 @@ export function createRunBookkeeping<D extends AgentDefinitions>(
     interruptedFields,
     dropPendingApprovalOverride,
     recordTaskWakeup,
+    recordTaskUsage,
     recordTaskSettlement,
+  };
+}
+
+function recordOf(value: unknown): Record<string, unknown> {
+  return value !== null && typeof value === 'object' ? (value as Record<string, unknown>) : {};
+}
+
+/**
+ * A task's usage from a run's token total and its cost so far, or `undefined` when the tokens are
+ * not numbers. A cost that is not a finite number is `null`: unknown, never `0`.
+ */
+function usageOfDetail(tokens: Record<string, unknown>, cost: unknown): TaskUsage | undefined {
+  const { prompt, completion, total } = tokens;
+  if (
+    typeof prompt !== 'number' ||
+    typeof completion !== 'number' ||
+    typeof total !== 'number' ||
+    !Number.isFinite(prompt + completion + total)
+  ) {
+    return undefined;
+  }
+  return {
+    promptTokens: prompt,
+    completionTokens: completion,
+    totalTokens: total,
+    costUsd: typeof cost === 'number' && Number.isFinite(cost) ? cost : null,
   };
 }

@@ -12,7 +12,7 @@
  * windows: each window is its own record, built fresh, strictly after the key of the previous
  * window's last entry, and all windows of one listing share one expiry.
  *
- * Keys are `bureau-task-listing:v6:<principal>:<expiry>:<listing>:<window>`, so the sweep that
+ * Keys are `bureau-task-listing:v7:<principal>:<expiry>:<listing>:<window>`, so the sweep that
  * deletes expired records and the per-principal cap read keys alone, never a record.
  *
  * @module task-list-snapshots
@@ -25,11 +25,11 @@ import { type ConditionalTextValueStore, encodeStorageKeyComponent } from '@lost
  * moves with the view's shape: `v2` (COR-1689) added `kind`, `v3` (COR-1867) added `origin`, and `v4`
  * (COR-1868) widened the origin union and added the parent filters to the page token's binding, and
  * `v5` (COR-1987) added `wakeAt` and the `parentContextId` filter, and `v6` (COR-2423) added the
- * `workflow` view field and its filter; a snapshot of an earlier version
- * is never read as a view that lacks them. A record of an earlier
+ * `workflow` view field and its filter, and `v7` (COR-2524) added the `usage` view field; a snapshot
+ * of an earlier version is never read as a view that lacks them. A record of an earlier
  * version left in storage is not read, and is not swept.
  */
-export const TASK_LISTING_KEY_PREFIX = 'bureau-task-listing:v6:';
+export const TASK_LISTING_KEY_PREFIX = 'bureau-task-listing:v7:';
 
 /** How long a listing's tokens work, counted from the moment its first page was served. */
 export const TASK_LISTING_LIFETIME_MILLISECONDS = 15 * 60 * 1000;

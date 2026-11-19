@@ -2260,6 +2260,40 @@
                   "updatedAt": {
                     "type": "string"
                   },
+                  "usage": {
+                    "anyOf": [
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "completionTokens": {
+                            "type": "number"
+                          },
+                          "costUsd": {
+                            "type": [
+                              "number",
+                              "null"
+                            ]
+                          },
+                          "promptTokens": {
+                            "type": "number"
+                          },
+                          "totalTokens": {
+                            "type": "number"
+                          }
+                        },
+                        "required": [
+                          "promptTokens",
+                          "completionTokens",
+                          "totalTokens",
+                          "costUsd"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
                   "wakeAt": {
                     "type": [
                       "string",
@@ -2392,7 +2426,8 @@
                   "cleanup",
                   "openWaits",
                   "wakeAt",
-                  "workflow"
+                  "workflow",
+                  "usage"
                 ],
                 "type": "object"
               },
@@ -2890,6 +2925,40 @@
             "updatedAt": {
               "type": "string"
             },
+            "usage": {
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "completionTokens": {
+                      "type": "number"
+                    },
+                    "costUsd": {
+                      "type": [
+                        "number",
+                        "null"
+                      ]
+                    },
+                    "promptTokens": {
+                      "type": "number"
+                    },
+                    "totalTokens": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "promptTokens",
+                    "completionTokens",
+                    "totalTokens",
+                    "costUsd"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
             "wakeAt": {
               "type": [
                 "string",
@@ -3022,7 +3091,8 @@
             "cleanup",
             "openWaits",
             "wakeAt",
-            "workflow"
+            "workflow",
+            "usage"
           ],
           "type": "object"
         }
@@ -3944,6 +4014,40 @@
                 "updatedAt": {
                   "type": "string"
                 },
+                "usage": {
+                  "anyOf": [
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "completionTokens": {
+                          "type": "number"
+                        },
+                        "costUsd": {
+                          "type": [
+                            "number",
+                            "null"
+                          ]
+                        },
+                        "promptTokens": {
+                          "type": "number"
+                        },
+                        "totalTokens": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "promptTokens",
+                        "completionTokens",
+                        "totalTokens",
+                        "costUsd"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
                 "wakeAt": {
                   "type": [
                     "string",
@@ -4076,7 +4180,8 @@
                 "cleanup",
                 "openWaits",
                 "wakeAt",
-                "workflow"
+                "workflow",
+                "usage"
               ],
               "type": "object"
             },
@@ -4550,6 +4655,40 @@
                 "updatedAt": {
                   "type": "string"
                 },
+                "usage": {
+                  "anyOf": [
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "completionTokens": {
+                          "type": "number"
+                        },
+                        "costUsd": {
+                          "type": [
+                            "number",
+                            "null"
+                          ]
+                        },
+                        "promptTokens": {
+                          "type": "number"
+                        },
+                        "totalTokens": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "promptTokens",
+                        "completionTokens",
+                        "totalTokens",
+                        "costUsd"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
                 "wakeAt": {
                   "type": [
                     "string",
@@ -4682,7 +4821,8 @@
                 "cleanup",
                 "openWaits",
                 "wakeAt",
-                "workflow"
+                "workflow",
+                "usage"
               ],
               "type": "object"
             },

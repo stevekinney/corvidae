@@ -120,6 +120,7 @@ function hostOver(
     openWaits: options.openWaits,
     wakeAt: null,
     workflow: PLAIN_TASK_WORKFLOW,
+    usage: null,
   };
   const tasks = options.taskGone
     ? { get: async () => undefined, ownerOf: async () => undefined }

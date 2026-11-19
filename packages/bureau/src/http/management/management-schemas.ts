@@ -164,6 +164,20 @@ export const taskViewSchema = z.object({
   wakeAt: z.string().nullable(),
   /** The workflow the task ran on (COR-2423); see {@link taskWorkflowSchema}. */
   workflow: taskWorkflowSchema,
+  /**
+   * What the run has used and cost so far, or in total once it ended (COR-2524), or `null` for a
+   * task whose run has recorded none (it has not taken a step, or its record predates the field).
+   * `costUsd` is in US dollars, priced from the model catalog, and `null`, never `0`, when no
+   * request was priced: an unpriced model is unknown, not free.
+   */
+  usage: z
+    .object({
+      promptTokens: z.number(),
+      completionTokens: z.number(),
+      totalTokens: z.number(),
+      costUsd: z.number().nullable(),
+    })
+    .nullable(),
 });
 
 /** The paging fields the list operations share. */

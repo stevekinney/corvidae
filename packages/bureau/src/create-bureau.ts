@@ -2608,6 +2608,7 @@ async function constructBureau<const D extends AgentDefinitions>(
     interruptedFields,
     dropPendingApprovalOverride,
     recordTaskWakeup,
+    recordTaskUsage,
     recordTaskSettlement,
   } = createRunBookkeeping<D>(core, peers);
   const { scanApprovedToolResult, scannedApprovedOutcome } = createApprovedToolScan<D>(core, peers);
@@ -3913,6 +3914,7 @@ async function constructBureau<const D extends AgentDefinitions>(
           }
           break;
         }
+        recordTaskUsage(storeActionEvent.action);
         recordTaskSettlement(storeActionEvent.action);
         recordTaskWakeup(storeActionEvent.action);
         // COR-2096: a guardrail, a budget threshold and a tool's failure or refusal are published

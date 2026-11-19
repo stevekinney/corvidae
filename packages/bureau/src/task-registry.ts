@@ -162,6 +162,24 @@ export interface TaskSettlement {
    * its durable history; a catalog run records none, so its snapshot reads it from here.
    */
   readonly answer?: { readonly text: string; readonly truncated: boolean } | undefined;
+  /**
+   * COR-2524 — what the run used and cost in total, written in the same compare-and-swap as the
+   * settlement and kept on the record, not in `settled`. Left out by a settlement that does not know
+   * it (another process's cancellation), which keeps the last figure the record holds.
+   */
+  readonly usage?: TaskUsage | undefined;
+}
+
+/**
+ * COR-2524 — what a task's run has used and what it cost, as the record keeps it and the view
+ * shows it. `costUsd` is `null`, never `0`, until a request has been priced from the model catalog:
+ * a model with no price, or a run with nothing priced yet, is unknown, not free.
+ */
+export interface TaskUsage {
+  readonly promptTokens: number;
+  readonly completionTokens: number;
+  readonly totalTokens: number;
+  readonly costUsd: number | null;
 }
 
 /** The durable record of one task. */
@@ -248,6 +266,13 @@ export interface TaskRecord {
    * was kept; the view then reads the type from the origin ({@link workflowViewOf}).
    */
   readonly workflow?: StoredTaskWorkflow | undefined;
+  /**
+   * COR-2524 — what the run has used and cost: written after each step with the figure so far, then
+   * with the run's own total in the write that settles it. A settlement written by another process
+   * (a cancellation, an owner-lost sweep) leaves the last figure the run recorded. Absent before the
+   * run's first step, and in a record written before it was kept; the view then reads `null`.
+   */
+  readonly usage?: TaskUsage | undefined;
 }
 
 /**
@@ -346,6 +371,12 @@ export interface TaskView {
    * Always present; see {@link TaskWorkflow}.
    */
   readonly workflow: TaskWorkflow;
+  /**
+   * COR-2524 — what the run has used and cost so far, or in total once it ended; `null` for a task
+   * whose run has recorded none (it has not taken a step, or its record predates the field). Its
+   * `costUsd` is `null` when no request was priced from the model catalog, never `0`.
+   */
+  readonly usage: TaskUsage | null;
 }
 
 /** What a context is doing, from its latest live task. */
@@ -551,6 +582,13 @@ export interface TaskRegistry {
    * whether the recorded time still shows.
    */
   recordWakeup(taskId: string, wakeAt: number | null): Promise<void>;
+  /**
+   * COR-2524 — records what a run has used and cost so far, after one of its steps. It writes only
+   * a task that has a record and has not settled (the settlement carries the run's own total, and a
+   * later step figure must never replace it), applies in the order it was asked for the task, and
+   * does not count as a change of the record: it moves no `revision`.
+   */
+  recordUsage(taskId: string, usage: TaskUsage): Promise<void>;
   /** Removes a record whose task never started. */
   discard(taskId: string): Promise<void>;
   /**
@@ -945,6 +983,17 @@ function isPendingWakeup(value: unknown): boolean {
   return isRecord(value) && typeof value['wakeAt'] === 'number' && Number.isFinite(value['wakeAt']);
 }
 
+function isTaskUsage(value: unknown): boolean {
+  if (!isRecord(value)) return false;
+  const count = (field: unknown): boolean => typeof field === 'number' && Number.isFinite(field);
+  return (
+    count(value['promptTokens']) &&
+    count(value['completionTokens']) &&
+    count(value['totalTokens']) &&
+    (value['costUsd'] === null || count(value['costUsd']))
+  );
+}
+
 /** Whether a stored value is a task record in every field a reader depends on. */
 function isTaskRecord(value: unknown): value is TaskRecord {
   return (
@@ -959,6 +1008,7 @@ function isTaskRecord(value: unknown): value is TaskRecord {
     (value['kind'] === undefined || value['kind'] === 'schedule-fire') &&
     (value['ownerProcess'] === undefined || typeof value['ownerProcess'] === 'string') &&
     (value['pendingWakeup'] === undefined || isPendingWakeup(value['pendingWakeup'])) &&
+    (value['usage'] === undefined || isTaskUsage(value['usage'])) &&
     (value['workflow'] === undefined || isStoredTaskWorkflow(value['workflow'])) &&
     (value['origin'] === undefined || isStoredTaskOrigin(value['origin'])) &&
     isTimestamp(value['createdAt']) &&
@@ -1021,6 +1071,34 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
     const finished = () => void inFlight.delete(write);
     write.then(finished, finished);
     return write;
+  }
+
+  /**
+   * The latest usage, stall or loop write queued for each task (COR-2524, COR-2526), so a task's
+   * live writes apply in the order they were asked: two compare-and-swap loops racing would otherwise
+   * let the earlier figure commit last.
+   */
+  const liveWrites = new Map<string, Promise<unknown>>();
+
+  /** Runs `write` after the task's earlier live writes, tracked so a shutdown waits for it. */
+  function queueLiveWrite<T>(taskId: string, write: () => Promise<T>): Promise<T> {
+    const queued = (liveWrites.get(taskId) ?? Promise.resolve()).then(write);
+    const release = (): void => {
+      if (liveWrites.get(taskId) === chain) liveWrites.delete(taskId);
+    };
+    const chain: Promise<unknown> = queued.then(release, release);
+    liveWrites.set(taskId, chain);
+    return track(queued);
+  }
+
+  function sameUsage(left: TaskUsage | undefined, right: TaskUsage): boolean {
+    return (
+      left !== undefined &&
+      left.promptTokens === right.promptTokens &&
+      left.completionTokens === right.completionTokens &&
+      left.totalTokens === right.totalTokens &&
+      left.costUsd === right.costUsd
+    );
   }
 
   async function read(taskId: string): Promise<TaskRecord | undefined> {
@@ -1152,6 +1230,7 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
         record,
         status === 'completed' || status === 'failed' || status === 'canceled',
       ),
+      usage: record.usage ?? null,
     };
   }
 
@@ -1614,8 +1693,14 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
       record.incarnation === '' || record.kind === 'schedule-fire'
         ? (settlement.answer ?? record.settled?.answer)
         : undefined;
-    const { answer: _ignored, ...rest } = settlement;
-    return { ...record, settled: { ...rest, ...(answer === undefined ? {} : { answer }) } };
+    const { answer: _ignored, usage, ...rest } = settlement;
+    return {
+      ...record,
+      // COR-2524: the run's own total replaces the last per-step figure in the same write as the
+      // settlement; a settlement that carries none (another process's) leaves the figure standing.
+      ...(usage === undefined ? {} : { usage }),
+      settled: { ...rest, ...(answer === undefined ? {} : { answer }) },
+    };
   }
 
   /**
@@ -1800,6 +1885,20 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
       const settled: Promise<void> = write.then(release, release);
       wakeupWrites.set(taskId, settled);
       await track(write);
+    },
+
+    recordUsage(taskId, usage) {
+      return queueLiveWrite(taskId, async () => {
+        await update(
+          taskId,
+          (record) => {
+            // The settlement carries the run's own total: a step figure that lands after it is stale.
+            if (record.settled !== undefined) return undefined;
+            return sameUsage(record.usage, usage) ? undefined : { ...record, usage };
+          },
+          false,
+        );
+      });
     },
 
     async discard(taskId) {

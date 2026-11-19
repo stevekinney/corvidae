@@ -4,6 +4,7 @@ import type { ToolCall } from 'armorer/protocol';
 import { type AppendBatchOptions, Conversation } from 'conversationalist';
 import type { ZodType } from 'zod';
 
+import { totalAccumulatedCost } from './cost-budget';
 import {
   accumulateRequestCost,
   getModelPricing,
@@ -326,5 +327,13 @@ export function accumulateUsage(
         (runState.totalUsage.cacheReadTokens ?? 0) + usage.cacheReadTokens;
     }
   }
-  emitter?.dispatch(new UsageAccumulatedEvent(step, { ...runState.totalUsage }, usage));
+  emitter?.dispatch(
+    new UsageAccumulatedEvent(
+      step,
+      { ...runState.totalUsage },
+      usage,
+      // Absent, never `0`, until a request has been priced: an unpriced run is not a free one.
+      runState.cost === undefined ? undefined : totalAccumulatedCost(runState.cost),
+    ),
+  );
 }

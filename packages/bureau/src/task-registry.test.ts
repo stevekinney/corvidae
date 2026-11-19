@@ -1905,3 +1905,91 @@ describe('redactSettlement (COR-1934)', () => {
     expect(await registry.redactSettlement('child-1')).toBe(false);
   });
 });
+
+describe('usage and cost (COR-2524)', () => {
+  const FIRST_STEP = { promptTokens: 10, completionTokens: 5, totalTokens: 15, costUsd: 0.25 };
+  const SECOND_STEP = { promptTokens: 20, completionTokens: 10, totalTokens: 30, costUsd: 0.5 };
+  const TOTAL = { promptTokens: 21, completionTokens: 11, totalTokens: 32, costUsd: 0.52 };
+  const SETTLEMENT = {
+    at: '2026-10-18T01:00:00.000Z',
+    status: 'completed' as const,
+    finishReason: 'stop',
+    message: null,
+  };
+
+  it('reads a task with no recorded usage as null, and a record written before the field as it was', async () => {
+    const { registry, kv } = build();
+    await admit(registry, 'run-1');
+    expect((await registry.get('run-1'))?.usage).toBeNull();
+
+    // A record as the previous release wrote it: no `usage` key at all.
+    const stored = JSON.parse((await kv.get(`${TASK_RECORD_KEY_PREFIX}run-1`)) as string);
+    expect('usage' in stored).toBe(false);
+    expect((await registry.record('run-1'))?.usage).toBeUndefined();
+    expect((await registry.get('run-1'))?.usage).toBeNull();
+  });
+
+  it('keeps the latest step figure, moves no revision, and writes nothing for an unchanged figure', async () => {
+    const { registry, kv } = build();
+    await admit(registry, 'run-1');
+    const before = await kv.get(`${TASK_RECORD_KEY_PREFIX}run-1`);
+
+    await registry.recordUsage('run-1', FIRST_STEP);
+    await registry.recordUsage('run-1', SECOND_STEP);
+    expect((await registry.get('run-1'))?.usage).toEqual(SECOND_STEP);
+    expect((await registry.record('run-1'))?.revision).toBeUndefined();
+
+    const after = await kv.get(`${TASK_RECORD_KEY_PREFIX}run-1`);
+    await registry.recordUsage('run-1', SECOND_STEP);
+    expect(await kv.get(`${TASK_RECORD_KEY_PREFIX}run-1`)).toBe(after);
+    expect(after).not.toBe(before);
+  });
+
+  it('applies a task’s figures in the order they were asked', async () => {
+    const { registry } = build();
+    await admit(registry, 'run-1');
+    await Promise.all([
+      registry.recordUsage('run-1', FIRST_STEP),
+      registry.recordUsage('run-1', SECOND_STEP),
+    ]);
+    expect((await registry.get('run-1'))?.usage).toEqual(SECOND_STEP);
+  });
+
+  it('records a cost of null, never 0, for a run with nothing priced', async () => {
+    const { registry } = build();
+    await admit(registry, 'run-1');
+    await registry.recordUsage('run-1', { ...FIRST_STEP, costUsd: null });
+    expect((await registry.get('run-1'))?.usage?.costUsd).toBeNull();
+  });
+
+  it('replaces the step figure with the run’s total in the settlement’s own write, and refuses a later step', async () => {
+    const { registry } = build();
+    await admit(registry, 'run-1');
+    await registry.recordUsage('run-1', FIRST_STEP);
+    await registry.recordSettled('run-1', { ...SETTLEMENT, usage: TOTAL });
+    expect((await registry.get('run-1'))?.usage).toEqual(TOTAL);
+    expect((await registry.record('run-1'))?.settled).toEqual(SETTLEMENT);
+
+    // A step figure that lands after the settlement is stale and is never written.
+    await registry.recordUsage('run-1', SECOND_STEP);
+    expect((await registry.get('run-1'))?.usage).toEqual(TOTAL);
+  });
+
+  it('leaves the last step figure standing when another process settles the task without one', async () => {
+    const { registry } = build();
+    await admit(registry, 'run-1');
+    await registry.recordUsage('run-1', FIRST_STEP);
+    await registry.recordSettled('run-1', {
+      ...SETTLEMENT,
+      status: 'canceled',
+      finishReason: 'aborted',
+    });
+    expect((await registry.get('run-1'))?.usage).toEqual(FIRST_STEP);
+  });
+
+  it('writes nothing for a task with no record', async () => {
+    const { registry } = build();
+    await registry.recordUsage('missing', FIRST_STEP);
+    expect(await registry.get('missing')).toBeUndefined();
+  });
+});
