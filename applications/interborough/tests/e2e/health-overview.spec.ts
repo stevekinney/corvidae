@@ -19,6 +19,7 @@ import { answerRecentActivityAsDesigned } from './board-activity-world.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
 import { E2E_FIRST_RUN_URL, E2E_SHOWCASE_URL } from './e2e-constants.ts';
 import { expect, test } from './fixtures.ts';
+import { readBoxes } from './read-boxes.ts';
 import { expectTabOpen } from './workflow-support.ts';
 
 const SOURCE = 'health-overview.spec.ts';
@@ -35,7 +36,9 @@ async function settled(page: Page): Promise<void> {
   const main = page.locator('main');
   await expect(main.getByTestId('needs-attention').locator('li').first()).toBeVisible();
   await expect(main.locator('[data-activity]').first()).toBeVisible();
-  await expect(main.getByRole('link', { name: /^Open audit log \(\d/ })).toBeVisible();
+  await expect(
+    main.getByRole('link', { name: /^All [\d,]+ events? in the audit log/ }),
+  ).toBeVisible();
 }
 
 test.describe('the sample world', () => {
@@ -58,30 +61,34 @@ test.describe('the sample world', () => {
 
       // 76b, 76d: the heading, the storage line, the tabs.
       await expect(main.getByRole('heading', { level: 1, name: 'Health' })).toBeVisible();
-      await expect(main.getByTestId('storage-backend')).toContainText('Running on SQLite in');
+      // The storage in plain words, no path, and the button beside the words, never over them
+      // (owner, 2026-11-19).
+      await expect(
+        main.getByTestId('storage-backend').locator('.ib-storage-backend__line'),
+      ).toHaveText('Running on SQLite');
       await expect(main.getByRole('button', { name: 'Storage details' })).toBeVisible();
+      const { words, details } = await readBoxes(page, {
+        words: main.locator('.ib-storage-backend__line'),
+        details: main.getByRole('button', { name: 'Storage details' }),
+      });
+      expect(
+        details.x >= words.x + words.width - 1 || details.y >= words.y + words.height - 1,
+        'Storage details overlaps the storage line',
+      ).toBe(true);
       await expectTabOpen(main, 'Overview');
       await expect(
         main.getByRole('tab', { name: /Diagnostics|Metrics|Alerts|Checks/ }),
       ).toHaveCount(0);
 
-      // The four counts, as Home draws them: amber dots only on a non-zero bad count.
+      // The counts that are not zero, as Home draws them (owner, 2026-11-19: no tile reads zero),
+      // with amber dots on the bad ones and no label in parentheses.
       await expect(countCards(page).locator('.cinder-statistic__label')).toHaveText([
-        'Running now',
         'Needs you',
-        'Failed in 24 hours',
-        'Missed schedule runs (7 days)',
+        'Missed runs in 7 days',
       ]);
-      await expect(countCards(page).locator('.cinder-statistic__value')).toHaveText([
-        '0',
-        '2',
-        '0',
-        '4',
-      ]);
+      await expect(countCards(page).locator('.cinder-statistic__value')).toHaveText(['2', '4']);
       await expect(countCards(page).locator('.cinder-statistic__caption')).toHaveText([
-        'Nothing is running',
         'An approval and a question',
-        'No failed runs',
         'Daily summary',
       ]);
       await expect(page.locator('.cinder-statistic__attention')).toHaveCount(2);
@@ -152,8 +159,19 @@ test.describe('the sample world', () => {
       }
 
       // 76l, 76m: Recent activity, newest first, the time at the right.
-      await expect(main.getByRole('heading', { level: 2, name: /^Recent activity/ })).toContainText(
-        'Central time',
+      // The zone is said as every page says it, the viewer's own (owner, 2026-11-19: it said a fixed
+      // Central while Home said the viewer's Mountain), with no parentheses in the heading.
+      await expect(main.getByRole('heading', { level: 2, name: /^Recent activity/ })).toHaveText(
+        'Recent activity',
+      );
+      await expect(main.getByTestId('recent-activity-zone')).toContainText(
+        await page.evaluate(
+          () =>
+            `Times show in ${new Intl.DateTimeFormat('en-US', { timeZoneName: 'longGeneric' })
+              .formatToParts(Date.now())
+              .find((part) => part.type === 'timeZoneName')
+              ?.value.replace(/ Time$/, ' time')}`,
+        ),
       );
       const lines = main.locator('[data-activity] .ib-recent-activity__text');
       // Nine lines, the board's: the sample world's other chats (the Oct 30 order 4468 run, the
@@ -379,13 +397,12 @@ test.describe('a fresh installation', () => {
     await page.setViewportSize({ width: 1280, height: 900 });
     await page.goto('/health');
     const main = page.locator('main');
-    await expect(main.getByTestId('needs-attention')).toBeVisible();
-    await expect(main.getByTestId('needs-attention')).toContainText(
-      /No model provider connected|Nothing needs attention/,
-    );
-    await expect(main.getByTestId('needs-attention')).not.toContainText(
-      'Storage is over its warning level',
-    );
+    const attention = main
+      .getByTestId('needs-attention')
+      .or(main.getByTestId('needs-attention-clear'));
+    await expect(attention).toBeVisible();
+    await expect(attention).toContainText(/No model provider connected|Nothing needs attention/);
+    await expect(attention).not.toContainText('Storage is over its warning level');
     await captureForDesignReview(page, {
       route: '/health',
       state: 'fresh-install',

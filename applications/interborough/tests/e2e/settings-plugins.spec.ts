@@ -494,8 +494,9 @@ test.describe('Settings › Plugins', () => {
     expect(
       Math.abs(secretBox.x + secretBox.width - (addKeyBox.x + addKeyBox.width)),
     ).toBeLessThanOrEqual(2);
-    await expect(anthropic.getByTestId('plugin-secret-note')).toContainText(
-      'readable only by you. The models appear as soon as the key passes a test.',
+    // Where or how the key is stored never renders (owner, 2026-11-19).
+    await expect(anthropic.getByTestId('plugin-secret-note')).toHaveText(
+      'The models appear as soon as the key passes a test.',
     );
     await captureAtEveryWidth(page, 'needs-setup');
   });

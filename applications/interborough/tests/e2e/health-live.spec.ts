@@ -90,8 +90,18 @@ async function installFleetHarness(page: Page): Promise<void> {
   });
 }
 
+/**
+ * The Running now count as the page draws it: its number, or no tile at all at zero (owner,
+ * 2026-11-19: a count is a tile only when it is not zero).
+ */
 function runningValue(page: Page) {
-  return page.getByRole('group', { name: 'Health counts' }).locator(RUNNING_VALUE).first();
+  const tile = page.locator('[data-count="running"]');
+  return {
+    toHaveText: async (value: string) =>
+      value === '0'
+        ? await expect(tile).toHaveCount(0)
+        : await expect(tile.locator(RUNNING_VALUE)).toHaveText(value),
+  };
 }
 
 async function emit(page: Page, kind: string): Promise<void> {
@@ -172,24 +182,15 @@ test('Health running workflows update from the fleet feed', async ({ context, pa
 
   await Promise.all([page.goto('/health'), second.goto('/health')]);
   await Promise.all([waitForFleet(page), waitForFleet(second)]);
-  await Promise.all([
-    expect(runningValue(page)).toHaveText('0'),
-    expect(runningValue(second)).toHaveText('0'),
-  ]);
+  await Promise.all([runningValue(page).toHaveText('0'), runningValue(second).toHaveText('0')]);
 
   runningCount = 1;
   await Promise.all([emit(page, 'workflow:started'), emit(second, 'workflow:started')]);
-  await Promise.all([
-    expect(runningValue(page)).toHaveText('1'),
-    expect(runningValue(second)).toHaveText('1'),
-  ]);
+  await Promise.all([runningValue(page).toHaveText('1'), runningValue(second).toHaveText('1')]);
 
   runningCount = 0;
   await Promise.all([emit(page, 'workflow:completed'), emit(second, 'workflow:completed')]);
-  await Promise.all([
-    expect(runningValue(page)).toHaveText('0'),
-    expect(runningValue(second)).toHaveText('0'),
-  ]);
+  await Promise.all([runningValue(page).toHaveText('0'), runningValue(second).toHaveText('0')]);
 
   let runningRequests = 0;
   await holdReconnect(page);
@@ -203,10 +204,10 @@ test('Health running workflows update from the fleet feed', async ({ context, pa
   await sever(page);
   await page.clock.runFor(15_000);
   expect(runningRequests).toBeGreaterThan(requestsBeforeFallback);
-  await expect(runningValue(page)).toHaveText('1');
+  await runningValue(page).toHaveText('1');
 
   runningCount = 0;
   await releaseReconnect(page, 'workflow:completed');
-  await expect(runningValue(page)).toHaveText('0');
+  await runningValue(page).toHaveText('0');
   await second.close();
 });

@@ -2,13 +2,14 @@
   /**
    * The layout Home's overview sits in, shared by the page and by its loading placeholders so the
    * two are the same layout and nothing moves when data arrives: the date line, the Spotlight, then
-   * two columns. The wide one holds what needs you with the one count after it, what is running,
-   * what needs attention and the two activity bands; the narrow one holds the chat sections, the
-   * box that starts a chat over the chats you were last in (owner, 2026-11-19: with Recent chats
-   * across the full width under both columns, the shorter column left a dead band above it). No
-   * section spans both columns, so nothing waits under the shorter one. On a phone every section is
-   * a row of one column, in the order the Spotlight, Needs you, the count, Running now, the box that
-   * starts a chat, Needs attention, Recent chats, Workflow activity, Agent activity.
+   * two columns, then the two activity bands across the full width, the last region (COR-2227). The
+   * wide column holds what needs you with the one count after it, what is running and what needs
+   * attention; the narrow one holds the chat sections, the box that starts a chat over the chats
+   * you were last in (owner, 2026-11-19: with Recent chats across the full width under both
+   * columns, a short Start a chat left a dead band above it; with both chat sections in one column
+   * the two columns come out close in height). On a phone every section is a row of one column, in
+   * the order the Spotlight, Needs you, the count, Running now, the box that starts a chat, Needs
+   * attention, Recent chats, Workflow activity, Agent activity.
    *
    * The sections draw no box (Cinder's `Section`), so space alone separates them, and the space
    * between any two is one value, Cinder's own space between sections (`--cinder-space-8`). A
@@ -78,27 +79,27 @@
       {#if counts}<div class="ib-home__counts">{@render counts()}</div>{/if}
       {#if running}<div class="ib-home__running">{@render running()}</div>{/if}
       {#if attention}<div class="ib-home__needs-attention">{@render attention()}</div>{/if}
-      {#if workflowActivity || agentActivity}
-        <!-- Each band sits in its own wrapper, as every other region does: two adjacent Cinder
-             Sections take Cinder's space between sections as a margin, which this region's gap
-             already gives them. -->
-        <div class="ib-home__activity" data-testid="home-activity">
-          <div class="ib-home__activity-bands" {@attach activityRegion.attach}>
-            {#if workflowActivity}
-              <div class="ib-home__activity-band">{@render workflowActivity()}</div>
-            {/if}
-            {#if agentActivity}
-              <div class="ib-home__activity-band">{@render agentActivity()}</div>
-            {/if}
-          </div>
-        </div>
-      {/if}
     </div>
     <div class="ib-home__aside">
       {#if startChatAside}<div class="ib-home__start-chat">{@render startChatAside()}</div>{/if}
       <div class="ib-home__recent">{@render recent()}</div>
     </div>
   </div>
+  {#if workflowActivity || agentActivity}
+    <!-- Each band sits in its own wrapper, as every other region does: two adjacent Cinder
+         Sections take Cinder's space between sections as a margin, which this region's gap already
+         gives them. -->
+    <div class="ib-home__activity" data-testid="home-activity">
+      <div class="ib-home__activity-bands" {@attach activityRegion.attach}>
+        {#if workflowActivity}
+          <div class="ib-home__activity-band">{@render workflowActivity()}</div>
+        {/if}
+        {#if agentActivity}
+          <div class="ib-home__activity-band">{@render agentActivity()}</div>
+        {/if}
+      </div>
+    </div>
+  {/if}
 </div>
 
 <style>
@@ -172,7 +173,6 @@
    * switch follows the region's width, never the viewport's, so the sidebar opening or closing
    * never leaves two bands side by side in their narrow row shape. */
   .ib-home__activity {
-    order: 6;
     container: ib-home-activity / inline-size;
     min-inline-size: 0;
   }
@@ -197,8 +197,8 @@
     }
   }
 
-  /* Two columns on a tablet or desktop: what needs you, what is running, what needs attention and
-   * the activity in the wide one, the chat sections in the narrow one beside them. */
+  /* Two columns on a tablet or desktop: what needs you, what is running and what needs attention in
+   * the wide one, the chat sections in the narrow one beside them. */
   @media (min-width: 64rem) {
     .ib-home__columns {
       display: grid;

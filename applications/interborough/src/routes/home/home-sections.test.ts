@@ -119,14 +119,15 @@ describe('Home’s sections', () => {
 
   // Owner, 2026-11-19: the left column and Start a chat ended at different heights, with a dead
   // band before Recent chats, and the gaps between sections were two values.
-  test('spans no section under both columns, and spaces every section by one value', async () => {
+  test('puts Recent chats under Start a chat in the narrow column, and spaces every section by one value', async () => {
     const { container } = await open();
     await within(cardOf(container, 'Recent chats')).findByRole('list', { name: 'Recent chats' });
     const aside = container.querySelector('.ib-home__aside');
     expect(aside?.contains(cardOf(container, 'Start a chat'))).toBe(true);
     expect(aside?.contains(cardOf(container, 'Recent chats'))).toBe(true);
+    // Only the activity bands, the last region (COR-2227), sit under the two columns.
     const columns = container.querySelector('.ib-home__columns');
-    expect(columns?.nextElementSibling).toBeNull();
+    expect(columns?.nextElementSibling?.getAttribute('data-testid')).toBe('home-activity');
     const layout = readFileSync(new URL('./home-layout.svelte', import.meta.url), 'utf8');
     const gaps = new Set(
       [...layout.matchAll(/^\s+(?:column-|row-)?gap: ([^;]+);/gm)].map((match) => match[1]),

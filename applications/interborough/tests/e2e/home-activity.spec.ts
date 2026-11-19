@@ -430,22 +430,25 @@ test.describe('Home activity bands (COR-2227)', () => {
       await openHome(page, width);
       await bandsReady(page);
       await expect(page.locator('[data-home-card="Running now"]')).toHaveCount(0);
-      // The activity region is the page's last region, right under Recent chats, from its leading
-      // edge, with the region's 24px gap between them.
+      // The activity region is the page's last region, right under the two columns (Recent chats
+      // sits in the narrow one under Start a chat, owner 2026-11-19), across their whole width, with
+      // the page's one 32px gap above it.
       await expect(
         page.locator('[data-page="home"] > :last-child[data-testid="home-activity"]'),
       ).toHaveCount(1);
       const placed = await readBoxes(page, {
+        columns: page.locator('.ib-home__columns'),
         recent: page.locator('[data-home-card="Recent chats"]'),
         region: page.getByTestId('home-activity'),
         first: workflow(page),
       });
       expect(
-        Math.abs(placed.region.y - (placed.recent.y + placed.recent.height) - 24),
+        Math.abs(placed.region.y - (placed.columns.y + placed.columns.height) - 32),
       ).toBeLessThanOrEqual(1);
+      expect(placed.region.y).toBeGreaterThan(placed.recent.y + placed.recent.height);
       expect(Math.abs(placed.first.y - placed.region.y)).toBeLessThanOrEqual(1);
-      expect(Math.abs(placed.region.x - placed.recent.x)).toBeLessThanOrEqual(1);
-      expect(Math.abs(placed.region.width - placed.recent.width)).toBeLessThanOrEqual(1);
+      expect(Math.abs(placed.region.x - placed.columns.x)).toBeLessThanOrEqual(1);
+      expect(Math.abs(placed.region.width - placed.columns.width)).toBeLessThanOrEqual(1);
     }
   });
 

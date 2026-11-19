@@ -124,10 +124,10 @@ describe('Home while it loads (02c, 02d)', () => {
       [...container.querySelectorAll('h2')].map((heading) => heading.textContent?.trim()),
     ).toEqual([
       'Needs attention',
-      'Workflow activity',
-      'Agent activity',
       'Start a chat',
       'Recent chats',
+      'Workflow activity',
+      'Agent activity',
     ]);
     // The Needs you rows have no heading, as the loaded ones do: the Spotlight is their title.
     expect(cardOf(container, 'Needs you').querySelector('h2')).toBeNull();
@@ -137,8 +137,8 @@ describe('Home while it loads (02c, 02d)', () => {
       ...container.querySelectorAll('.cinder-skeleton-group[data-cinder-variant="grouped"]'),
     ];
     expect(placeholders).toHaveLength(5);
-    // In document order: Needs you, Needs attention and the two bands in the wide column, then
-    // Recent chats under the box that starts a chat in the narrow one.
+    // In document order: Needs you and Needs attention in the wide column, Recent chats under the
+    // box that starts a chat in the narrow one, then the two bands.
     expect(
       placeholders.map((group) => group.querySelectorAll('.cinder-skeleton-action-bar').length),
     ).toEqual([2, 3, 0, 0, 0]);
@@ -146,15 +146,15 @@ describe('Home while it loads (02c, 02d)', () => {
       placeholders.map(
         (group) => group.querySelectorAll('.cinder-skeleton-grouped-leading').length,
       ),
-    ).toEqual([0, 0, 3, 3, 0]);
+    ).toEqual([0, 0, 0, 3, 3]);
     expect(
       placeholders.map((group) => group.querySelectorAll('.cinder-skeleton-trailing-bar').length),
-    ).toEqual([0, 0, 3, 3, 0]);
+    ).toEqual([0, 0, 0, 3, 3]);
     expect(
       placeholders.map(
         (group) => group.querySelectorAll('.cinder-skeleton-trailing-bar--chevron-column').length,
       ),
-    ).toEqual([0, 0, 3, 3, 0]);
+    ).toEqual([0, 0, 0, 3, 3]);
     // Each band is its own wrapper's one Section: two adjacent Sections take Cinder's space
     // between sections as a margin on top of the region's gap (the design review's 32px misalignment).
     const region = container.querySelector('[data-testid="home-activity"]');
