@@ -108,6 +108,8 @@ describe('dispatch check', () => {
     expect(pathsOverlap('a/bc/', 'a/b/c.ts')).toBe(false);
     expect(pathsOverlap('a/**/*.ts', 'a/x/y.ts')).toBe(true);
     expect(pathsOverlap('a/*.ts', 'b/x.ts')).toBe(false);
+    expect(pathsOverlap('*.md', 'docs/guide.md')).toBe(true);
+    expect(pathsOverlap('**/*.css', 'components/a/a.css')).toBe(true);
   });
 
   test('invalid input is refused as a usage error', () => {

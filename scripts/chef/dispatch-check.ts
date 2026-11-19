@@ -68,8 +68,11 @@ interface Claim {
 function claimOf(path: string): Claim {
   const normalized = path.replace(/^\.\//, '');
   const glob = normalized.search(/[*?[{]/);
-  if (glob >= 0)
-    return { base: normalized.slice(0, normalized.lastIndexOf('/', glob)), subtree: true };
+  if (glob >= 0) {
+    // A glob claims the directory it starts in; a root-level glob (`*.md`) claims the root.
+    const slash = normalized.lastIndexOf('/', glob);
+    return { base: slash < 0 ? '' : normalized.slice(0, slash), subtree: true };
+  }
   if (normalized.endsWith('/')) return { base: normalized.replace(/\/+$/, ''), subtree: true };
   return { base: normalized, subtree: false };
 }

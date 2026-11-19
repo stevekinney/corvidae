@@ -17,9 +17,10 @@
 //                                  [--worktree <path>] [--lock-directory <path>] [--json]
 //
 // `--plan` is the JSON of `evidence-plan.ts --json` for the evidence's head. The command holds the
-// merge lock (`merge-gate.ts` `withMergeLock`) while it reads `main`, so the answer cannot go stale
-// between a merge by another session and this one. `deliver.ts` calls `landQueueVerdict` inside the
-// lock it already holds. Exit codes: 0 LAND, 3 REDISPATCH, 2 invalid input.
+// merge lock (`merge-gate.ts` `withMergeLock`) and fetches `main` inside it, so the answer cannot go
+// stale between a merge by another session and this one. `landQueueVerdict` is exported for
+// `deliver.ts` to call inside the lock it already holds, once the delivery records its evidence plan
+// (fix list item 4); nothing calls it there yet. Exit codes: 0 LAND, 3 REDISPATCH, 2 invalid input.
 
 import { readFileSync } from 'node:fs';
 
@@ -214,14 +215,21 @@ export async function run(
   const worktree = parsed.values['worktree'] ?? process.cwd();
   const result = await dependencies.withLock(
     { worktree, lockDirectory: parsed.values['lock-directory'] },
-    () =>
-      landQueueVerdict({
+    () => {
+      const base = parsed.values['base'] ?? 'origin/main';
+      // Fetch inside the lock: a commit another session landed a moment ago must be visible, or
+      // the verdict is a wrong LAND.
+      const remote = /^([\w.-]+)\/(.+)$/.exec(base);
+      if (remote !== null)
+        git(dependencies.runner, ['fetch', remote[1] ?? '', remote[2] ?? ''], worktree);
+      return landQueueVerdict({
         runner: dependencies.runner,
         evidence,
         plan,
-        base: parsed.values['base'] ?? 'origin/main',
+        base,
         cwd: worktree,
-      }),
+      });
+    },
   );
   return {
     code: result.verdict === 'LAND' ? 0 : 3,

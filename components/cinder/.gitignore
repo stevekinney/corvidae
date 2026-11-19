@@ -3,6 +3,7 @@
 # `scripts/tokens/generator-outputs.integration.test.ts` fails when one is tracked.
 src/styles/tokens-base.css
 src/tokens/resolved/
+src/tokens/index.json
 src/tokens/registry.generated.json
 src/tokens/registry.generated.ts
 src/tokens/runtime/*.generated.*

@@ -16,6 +16,16 @@ export const registryModulePath = join(tokenRoot, 'registry.generated.ts');
 export const authoringCataloguePath = join(runtimeDirectory, 'authoring-catalogue.generated.ts');
 export const tokenIndexPath = join(tokenRoot, 'index.json');
 export const tokensDocPath = join(packageRoot, 'documentation', 'tokens.md');
+/**
+ * The generator outputs that stay in version control, because a person edits them or the generator
+ * reads them back: the token sources it normalizes (`*.tokens.json`) and `documentation/tokens.md`,
+ * whose authored sections it preserves. Every other output is ignored by git (`.gitignore` beside
+ * this package's `package.json`), written by `tokens:prepare` at install and by the `metadata`
+ * task, and checked by `generator-outputs.integration.test.ts`.
+ */
+export function isVersionControlledOutput(path: string): boolean {
+  return path === tokensDocPath || path.endsWith('.tokens.json');
+}
 export const REGENERATE_COMMAND = 'bun run --filter=@lostgradient/cinder tokens:generate';
 export const PRETTIER_OPTIONS = {
   singleQuote: true,

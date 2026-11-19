@@ -30,6 +30,7 @@ function repository(commits: Record<string, string[]>): { runner: Runner; calls:
     calls.push(command);
     const [, verb, ...rest] = command;
     const out = (stdout: string) => ({ code: 0, stdout: `${stdout}\n`, stderr: '' });
+    if (verb === 'fetch') return out('');
     if (verb === 'rev-parse')
       return out(rest.includes(`${EVIDENCE}^{commit}`) ? EVIDENCE : MAIN_HEAD);
     if (verb === 'merge-base') return out(MERGE_BASE);
@@ -167,6 +168,24 @@ describe('land-queue command', () => {
     expect(order[0]).toBe('lock');
     expect(order.at(-1)).toBe('unlock');
     expect(order).toContain('git rev-list');
+  });
+
+  test('fetches main inside the lock before it reads it', async () => {
+    const order: string[] = [];
+    const base = dependencies({});
+    await run(['--evidence', EVIDENCE, '--plan', 'plan.json'], {
+      ...base,
+      runner: (command, options) => {
+        order.push(command.slice(1).join(' '));
+        return command[1] === 'fetch'
+          ? { code: 0, stdout: '', stderr: '' }
+          : base.runner(command, options);
+      },
+    });
+    expect(order[0]).toBe('fetch origin main');
+    expect(order.indexOf('fetch origin main')).toBeLessThan(
+      order.findIndex((entry) => entry.startsWith('rev-parse')),
+    );
   });
 
   test('requires --evidence and --plan', async () => {
