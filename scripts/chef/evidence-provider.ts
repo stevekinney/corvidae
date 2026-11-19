@@ -26,6 +26,7 @@ interface GitHubObject {
   runner_name?: unknown;
   status?: unknown;
   steps?: unknown;
+  size_in_bytes?: unknown;
   total_count?: unknown;
 }
 export interface RawCommandResponse {
@@ -157,6 +158,7 @@ export function createGitHubEvidenceTransport(
       if (matches.length === 0) return { present: false, expired: false, runId: id };
       const artifact = unique(matches, 'artifact mapping');
       const artifactId = integer(artifact.id);
+      const sizeBytes = integer(artifact.size_in_bytes);
       const digest = string(artifact.digest);
       const run = runs.get(id) ?? this.run(id);
       return {
@@ -164,6 +166,7 @@ export function createGitHubEvidenceTransport(
         expired: artifact.expired === true,
         ...(artifactId === undefined ? {} : { id: artifactId }),
         ...(digest === '' ? {} : { digest }),
+        ...(sizeBytes === undefined ? {} : { sizeBytes }),
         runId: id,
         revision: run.revision,
       };

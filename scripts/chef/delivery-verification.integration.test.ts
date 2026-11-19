@@ -3,11 +3,13 @@ import { createHash } from 'node:crypto';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { hostname } from 'node:os';
 import { throwingRejectionOf } from '../../testing/testing/src/helpers/promise-outcome.ts';
+import { ciEvidenceRequestKey, type CiEvidenceRequest } from './ci-evidence.ts';
 import type { DeliveryRequest } from './delivery-completion.ts';
 import { createDeliveryVerificationFixture } from './delivery-verification.test-support.ts';
 import {
   loadDeliveryVerification,
   prepareDeliveryVerification,
+  validateDeliveryCiEvidence,
   validateDeliveryVerification,
   type DeliveryVerification,
 } from './delivery-verification.ts';
@@ -172,6 +174,74 @@ scenarios.scenario(
       ),
     ).toContain('approval binding');
     expect(effects).toBe(0);
+  },
+);
+
+scenarios.scenario(
+  'recognized CI workflows require the approved successful aggregate',
+  async () => {
+    const fixture = await createDeliveryVerificationFixture(undefined, { approved: false });
+    const request = fixture.request;
+    const entry = request.members[0]!.providerRuns[0]!;
+    entry.workflowPath = '.github/workflows/main.yml';
+    entry.workflow = 'Main';
+    entry.event = 'workflow_dispatch';
+    const input = {
+      repository: request.repository,
+      resource: 'fixture',
+      base: request.base,
+      candidate: request.revision,
+      integrationTree: request.integrationTree,
+      verificationPlanDigest: '1'.repeat(64),
+      workflow: entry.workflow,
+      workflowPath: entry.workflowPath,
+      workflowRevision: request.revision,
+      event: 'workflow_dispatch',
+    } satisfies Omit<CiEvidenceRequest, 'requestKey'>;
+    const identity = { ...input, requestKey: ciEvidenceRequestKey(input) };
+    const missing = replaceRequest(fixture.verification, request);
+    expect(
+      await validateDeliveryCiEvidence(loadDeliveryVerification(missing, fixture.dependencies)),
+    ).toContain('missing the CI evidence contract');
+    request.ciEvidence = [identity];
+    const withEvidence = replaceRequest(fixture.verification, request);
+    const loaded = loadDeliveryVerification(withEvidence, fixture.dependencies);
+    const failed = await validateDeliveryCiEvidence(loaded, {
+      ciProvider: {
+        async findRuns() {
+          return [{ state: 'failed', id: entry.id, attempt: 2 }];
+        },
+      },
+    });
+    expect(failed).toContain('successful aggregate');
+    const run = {
+      id: entry.id,
+      attempt: 2,
+      repository: request.repository,
+      head: request.revision,
+      base: request.base,
+      integrationTree: request.integrationTree,
+      event: entry.event,
+      workflow: entry.workflow,
+      workflowPath: entry.workflowPath,
+      checkedRevision: request.revision,
+      checkedTree: request.integrationTree,
+      requestKey: identity.requestKey,
+      receiptRequestKey: identity.requestKey,
+      workflowRevision: identity.workflowRevision,
+      verificationPlanDigest: identity.verificationPlanDigest,
+      receiptJobs: {},
+      jobs: [entry.job],
+    };
+    expect(
+      await validateDeliveryCiEvidence(loaded, {
+        ciProvider: {
+          async findRuns() {
+            return [run];
+          },
+        },
+      }),
+    ).toBeUndefined();
   },
 );
 

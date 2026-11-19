@@ -1,9 +1,18 @@
+// Usage:
+//   bun scripts/chef/ci-evidence-github.ts --request <file> --state-directory <dir> [--ref <branch>]
+// Exit 0 for bound, 1 for pending/failed/ambiguous, 2 for invalid input or configuration.
 import { createHash } from 'node:crypto';
 
 import { unzipSync } from 'fflate';
+import { readFileSync } from 'node:fs';
+import { hostname } from 'node:os';
+import { resolve } from 'node:path';
 
 import {
   CiEvidenceError,
+  createCiEvidenceStore,
+  reconcileCiEvidenceRequest,
+  type CiEvidenceObservation,
   type CiEvidenceProvider,
   type CiEvidenceRequest,
   type CiEvidenceRun,
@@ -13,6 +22,8 @@ import {
   type RawCommandResponse,
   type RawCommandTransport,
 } from './evidence-provider.ts';
+import { createExecutionStateStore } from './execution-state.ts';
+import { parseOptions, requireOption, UsageError } from './process-runner.ts';
 
 interface GitHubObject {
   object?: unknown;
@@ -229,18 +240,37 @@ function parseReceipt(value: unknown): Receipt {
   return receipt as unknown as Receipt;
 }
 
+const MAX_RECEIPT_BYTES = 64 * 1024;
+
 function readReceipt(bytes: Uint8Array, artifactDigest: string | undefined): Receipt {
+  if (bytes.length === 0 || bytes.length > MAX_RECEIPT_BYTES)
+    throw new CiEvidenceError('CI receipt archive exceeds its size bound');
   const computed = `sha256:${createHash('sha256').update(bytes).digest('hex')}`;
   if (artifactDigest !== computed)
     throw new CiEvidenceError('CI receipt digest does not match authenticated artifact metadata');
   let files: Record<string, Uint8Array>;
   try {
-    files = unzipSync(bytes);
-  } catch {
+    let entries = 0;
+    files = unzipSync(bytes, {
+      filter(entry) {
+        entries++;
+        if (entries !== 1 || entry.name !== 'ci-evidence-receipt.json')
+          throw new CiEvidenceError('CI receipt artifact has an invalid inventory');
+        if (entry.originalSize < 1 || entry.originalSize > MAX_RECEIPT_BYTES)
+          throw new CiEvidenceError('CI receipt archive exceeds its expansion bound');
+        return true;
+      },
+    });
+  } catch (error) {
+    if (error instanceof CiEvidenceError) throw error;
     throw new CiEvidenceError('CI receipt artifact is not a ZIP archive');
   }
   const content = files['ci-evidence-receipt.json'];
-  if (content === undefined || Object.keys(files).length !== 1)
+  if (
+    content === undefined ||
+    content.length > MAX_RECEIPT_BYTES ||
+    Object.keys(files).length !== 1
+  )
     throw new CiEvidenceError('CI receipt artifact has an invalid inventory');
   try {
     return parseReceipt(JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(content)));
@@ -300,17 +330,33 @@ export function createGitHubCiEvidenceProvider(
               pullRequestIdentity(run)?.base === request.base
             : true),
       );
-      return candidates.map((run) => {
+      return candidates.map((run): CiEvidenceObservation => {
         const id = integer(run.id);
         const attempt = integer(run.run_attempt);
         if (id === undefined || id < 1 || attempt === undefined || attempt < 1)
           throw new CiEvidenceError('authenticated CI run has invalid identity');
         const runDetail = transport.run(id);
-        if (runDetail.status !== 'completed' || runDetail.conclusion !== 'success')
-          throw new CiEvidenceError('authenticated CI run did not complete successfully');
+        if (
+          runDetail.repository !== request.repository ||
+          runDetail.revision !== request.candidate ||
+          runDetail.workflow !== request.workflow ||
+          runDetail.workflowPath !== request.workflowPath ||
+          runDetail.event !== request.event ||
+          runDetail.attempt !== attempt
+        )
+          throw new CiEvidenceError('authenticated CI run details changed during collection');
+        if (runDetail.status !== 'completed') return { state: 'pending', id, attempt };
+        if (runDetail.conclusion === 'cancelled') return { state: 'canceled', id, attempt };
+        if (runDetail.conclusion !== 'success') return { state: 'failed', id, attempt };
         const metadata = transport.artifact(id, `ci-evidence-receipt-${attempt}`);
         if (!metadata.present || metadata.expired || metadata.id === undefined)
           throw new CiEvidenceError('authenticated CI run has no usable receipt artifact');
+        if (
+          metadata.sizeBytes === undefined ||
+          metadata.sizeBytes < 1 ||
+          metadata.sizeBytes > MAX_RECEIPT_BYTES
+        )
+          throw new CiEvidenceError('authenticated CI receipt exceeds its declared size bound');
         const archive = transport.downloadArtifact?.(metadata.id);
         if (archive === undefined) throw new CiEvidenceError('CI receipt download is unavailable');
         const receipt = readReceipt(archive, metadata.digest);
@@ -402,4 +448,43 @@ export function createGitHubCiEvidenceProvider(
       if (result.exitCode !== 0) throw new CiEvidenceError('CI evidence dispatch failed');
     },
   };
+}
+
+/** Reconcile one coordinator-pinned request and emit the run or compact pending state. */
+export async function runCiEvidence(
+  argv: string[],
+  provider?: CiEvidenceProvider,
+): Promise<{ code: number; output: string }> {
+  const parsed = parseOptions(argv, { values: ['request', 'state-directory', 'ref'] });
+  if (parsed.positionals.length > 0) throw new UsageError('Unexpected CI evidence argument');
+  const request: CiEvidenceRequest = JSON.parse(
+    readFileSync(requireOption(parsed, 'request'), 'utf8'),
+  );
+  const stateDirectory = resolve(requireOption(parsed, 'state-directory'));
+  const dispatchRef = parsed.values['ref'];
+  if (request.event === 'workflow_dispatch' && dispatchRef === undefined)
+    throw new UsageError('--ref is required for a manual CI evidence request');
+
+  const state = createExecutionStateStore({ stateDirectory, hostId: hostname() });
+  const result = await reconcileCiEvidenceRequest(
+    createCiEvidenceStore(state),
+    request,
+    provider ??
+      createGitHubCiEvidenceProvider({
+        repository: request.repository,
+        ...(dispatchRef === undefined ? {} : { dispatchRef }),
+      }),
+  );
+  return { code: result.state === 'bound' ? 0 : 1, output: JSON.stringify(result) };
+}
+
+if (import.meta.main) {
+  try {
+    const result = await runCiEvidence(Bun.argv.slice(2));
+    process.stdout.write(result.output + '\n');
+    process.exitCode = result.code;
+  } catch (error) {
+    process.stderr.write((error instanceof Error ? error.message : String(error)) + '\n');
+    process.exitCode = 2;
+  }
 }

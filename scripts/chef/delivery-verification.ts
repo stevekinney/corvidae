@@ -1,5 +1,7 @@
 import { hostname } from 'node:os';
 import { join } from 'node:path';
+import { createGitHubCiEvidenceProvider } from './ci-evidence-github.ts';
+import { ciEvidenceRequestKey, type CiEvidenceProvider } from './ci-evidence.ts';
 import {
   collectCompletionRecords,
   readDeliveryRequest,
@@ -35,6 +37,7 @@ export interface LoadedDeliveryVerification {
 export interface DeliveryVerificationDependencies {
   state: ExecutionStateStore;
   transport?: ProviderEvidenceTransport;
+  ciProvider?: Pick<CiEvidenceProvider, 'findRuns'>;
 }
 
 export interface DeliveryRoute {
@@ -246,4 +249,73 @@ export function validateDeliveryVerification(
     record.remainingGates.map((gate) => `${record.identifier}: ${gate}`),
   );
   return problems.length === 0 ? undefined : problems.join('; ');
+}
+
+const aggregatedWorkflows = new Set([
+  '.github/workflows/main.yml',
+  '.github/workflows/pull-request.yml',
+]);
+
+/** Require a current authenticated aggregate for the CI runs that carry pre-merge obligations. */
+export async function validateDeliveryCiEvidence(
+  verification: LoadedDeliveryVerification,
+  partial: Partial<DeliveryVerificationDependencies> = {},
+): Promise<string | undefined> {
+  const { request } = verification;
+  const mappings = request.members.flatMap((member) => {
+    const obligations = new Set(
+      member.plan.obligations
+        .filter((item) => item.phase === 'pre-integration')
+        .map((item) => `${item.criterionId}:${item.commandOrProviderJob}`),
+    );
+    return member.providerRuns.filter(
+      (run) => obligations.has(run.obligation) && aggregatedWorkflows.has(run.workflowPath),
+    );
+  });
+  if (mappings.length === 0) return undefined;
+  if (!Array.isArray(request.ciEvidence))
+    return 'verification request is missing the CI evidence contract';
+  const source =
+    partial.ciProvider ??
+    createGitHubCiEvidenceProvider({
+      repository: request.repository,
+      cwd: request.worktree,
+    });
+  const observed = new Map<string, Awaited<ReturnType<typeof source.findRuns>>>();
+  for (const mapping of mappings) {
+    const matches = request.ciEvidence.filter(
+      (identity) =>
+        identity?.repository === request.repository &&
+        identity.candidate === request.revision &&
+        identity.base === request.base &&
+        identity.integrationTree === request.integrationTree &&
+        identity.event === mapping.event &&
+        identity.workflow === mapping.workflow &&
+        identity.workflowPath === mapping.workflowPath &&
+        identity.requestKey === ciEvidenceRequestKey(identity),
+    );
+    const identity = matches[0];
+    if (identity === undefined || matches.length !== 1)
+      return 'verification request has missing or ambiguous CI evidence identity';
+    let runs = observed.get(identity.requestKey);
+    if (runs === undefined) {
+      try {
+        runs = await source.findRuns(identity);
+      } catch {
+        return `CI evidence for run ${mapping.id} is unavailable`;
+      }
+      observed.set(identity.requestKey, runs);
+    }
+    const run = runs[0];
+    if (
+      runs.length !== 1 ||
+      run === undefined ||
+      'state' in run ||
+      run.id !== mapping.id ||
+      run.requestKey !== identity.requestKey ||
+      !run.jobs.includes(mapping.job)
+    )
+      return `CI evidence for run ${mapping.id} is missing its successful aggregate or required job`;
+  }
+  return undefined;
 }

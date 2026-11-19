@@ -1,10 +1,10 @@
 import { readFileSync } from 'node:fs';
 import { isAbsolute } from 'node:path';
+import { aggregateCiEvidence, type CiEvidenceRequest } from './ci-evidence.ts';
 import {
   collectProviderEvidence,
   createGitHubEvidenceTransport,
   EvidenceRequestError,
-  validateEvidence,
   validateEvidenceObligations,
   validateVerificationRequest,
   type EvidenceRecord,
@@ -42,6 +42,7 @@ export interface DeliveryRequest extends Omit<
 > {
   worktree: string;
   members: DeliveryMember[];
+  ciEvidence?: CiEvidenceRequest[];
 }
 
 export interface CompletionRecord {
@@ -213,7 +214,7 @@ export function collectCompletionRecords(
       },
       transport,
     );
-    const validation = validateEvidence({ ...member.plan, obligations }, collection, request);
+    const validation = aggregateCiEvidence({ ...member.plan, obligations }, collection, request);
     const remainingGates = validation.problems;
     return {
       operationId: request.operationId,

@@ -1,10 +1,14 @@
 import { afterAll, expect } from 'bun:test';
 import { zipSync } from 'fflate';
 import { createHash } from 'node:crypto';
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { createGitHubCiEvidenceProvider, type GitReader } from './ci-evidence-github.ts';
+import {
+  createGitHubCiEvidenceProvider,
+  runCiEvidence,
+  type GitReader,
+} from './ci-evidence-github.ts';
 import { createCiEvidenceWorkflowReceipt } from './ci-evidence-workflow.ts';
 import {
   ciEvidenceRequestKey,
@@ -43,7 +47,14 @@ function request(overrides: Partial<CiEvidenceRequest> = {}): CiEvidenceRequest 
 
 function fixture(
   input: CiEvidenceRequest,
-  options: { pullRequest?: boolean; invalidParents?: boolean; failedJob?: boolean } = {},
+  options: {
+    pullRequest?: boolean;
+    invalidParents?: boolean;
+    failedJob?: boolean;
+    oversized?: boolean;
+    expands?: boolean;
+    runConclusion?: string;
+  } = {},
 ) {
   const checkedRevision = options.pullRequest ? 'f'.repeat(40) : input.candidate;
   const produced = createCiEvidenceWorkflowReceipt({
@@ -72,7 +83,9 @@ function fixture(
     },
   });
   const archive = zipSync({
-    'ci-evidence-receipt.json': new TextEncoder().encode(JSON.stringify(produced)),
+    'ci-evidence-receipt.json': options.expands
+      ? new Uint8Array(65 * 1024).fill(32)
+      : new TextEncoder().encode(JSON.stringify(produced)),
   });
   const digest = `sha256:${createHash('sha256').update(archive).digest('hex')}`;
   const commands: string[][] = [];
@@ -122,7 +135,7 @@ function fixture(
             repository: { full_name: input.repository },
             head_sha: input.candidate,
             status: 'completed',
-            conclusion: 'success',
+            conclusion: options.runConclusion ?? 'success',
             name: input.workflow,
             path: input.workflowPath,
             event: input.event,
@@ -139,6 +152,7 @@ function fixture(
                 name: 'ci-evidence-receipt-2',
                 digest,
                 expired: false,
+                size_in_bytes: options.oversized ? 65 * 1024 : archive.length,
               },
             ],
           });
@@ -231,7 +245,7 @@ scenarios.scenario(
     });
     const accepted = fixture(input, { pullRequest: true });
     const acceptedRuns = await accepted.provider.findRuns(input);
-    expect(acceptedRuns[0]?.checkedRevision).toBe('f'.repeat(40));
+    expect(acceptedRuns[0]).toHaveProperty('checkedRevision', 'f'.repeat(40));
     const rejected = fixture(input, { pullRequest: true, invalidParents: true });
     let error: unknown;
     try {
@@ -263,6 +277,68 @@ scenarios.scenario(
     expect(reconciliation.state).toBe('bound');
   },
 );
+
+scenarios.scenario('refuses oversized receipts before download or inflation', async () => {
+  const input = request();
+  for (const options of [{ oversized: true }, { expands: true }]) {
+    const { provider, commands } = fixture(input, options);
+    let error: unknown;
+    try {
+      await provider.findRuns(input);
+    } catch (reason) {
+      error = reason;
+    }
+    expect(error).toBeInstanceOf(Error);
+    expect((error as Error).message).toContain('bound');
+    expect(commands.some((command) => command.at(-1)?.endsWith('/artifacts/51/zip'))).toBe(
+      options.expands === true,
+    );
+  }
+});
+
+scenarios.scenario('keeps a canceled run distinct from an unavailable receipt', async () => {
+  const input = request();
+  const { provider, commands } = fixture(input, { runConclusion: 'cancelled' });
+  const stateDirectory = mkdtempSync(join(scratch, 'github-canceled-'));
+  directories.push(stateDirectory);
+  const state = createExecutionStateStore({ stateDirectory, hostId: 'p07-github-fixture' });
+  const store = { ...state, requestPath: join(state.stateDirectory, 'ci-evidence-requests.json') };
+  const result = await reconcileCiEvidenceRequest(store, input, provider);
+  expect(result).toEqual({
+    state: 'canceled',
+    requestKey: input.requestKey,
+    runs: [{ state: 'canceled', id: 17, attempt: 2 }],
+  });
+  expect(commands.some((command) => command.at(-1)?.includes('/artifacts'))).toBe(false);
+  const missing = await reconcileCiEvidenceRequest(store, input, {
+    async findRuns() {
+      return [];
+    },
+    async dispatch() {
+      throw new Error('must never redispatch');
+    },
+  });
+  expect(missing).toEqual(result);
+});
+
+scenarios.scenario('request CLI reports the exact authenticated run', async () => {
+  const input = request();
+  const { provider } = fixture(input);
+  const directory = mkdtempSync(join(scratch, 'github-cli-'));
+  directories.push(directory);
+  const requestFile = join(directory, 'request.json');
+  writeFileSync(requestFile, JSON.stringify(input));
+  const result = await runCiEvidence(
+    ['--request', requestFile, '--state-directory', directory, '--ref', 'candidate-branch'],
+    provider,
+  );
+  expect(result.code).toBe(0);
+  expect(JSON.parse(result.output)).toMatchObject({
+    state: 'bound',
+    requestKey: input.requestKey,
+    run: { id: 17, attempt: 2 },
+  });
+});
 
 await scenarios.settled();
 

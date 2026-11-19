@@ -49,16 +49,19 @@ export interface CiEvidenceRun {
   jobs: string[];
 }
 
+export type CiEvidenceObservation =
+  CiEvidenceRun | { state: 'pending' | 'failed' | 'canceled'; id: number; attempt: number };
+
 export interface CiEvidenceProvider {
-  findRuns(request: CiEvidenceRequest): Promise<CiEvidenceRun[]>;
+  findRuns(request: CiEvidenceRequest): Promise<CiEvidenceObservation[]>;
   dispatch(request: CiEvidenceRequest): Promise<void>;
 }
 
 interface StoredRequest {
   request: CiEvidenceRequest;
   dispatchAttempted: boolean;
-  state: 'intent' | 'unresolved' | 'bound' | 'ambiguous';
-  runs: CiEvidenceRun[];
+  state: 'intent' | 'unresolved' | 'bound' | 'ambiguous' | 'failed' | 'canceled';
+  runs: CiEvidenceObservation[];
 }
 
 const commit = (value: string) => /^[0-9a-f]{40}$/.test(value);
@@ -164,8 +167,11 @@ function matches(request: CiEvidenceRequest, run: CiEvidenceRun): boolean {
 
 export type CiEvidenceReconciliation =
   | { state: 'bound'; requestKey: string; run: CiEvidenceRun }
-  | { state: 'unresolved'; requestKey: string; runs: CiEvidenceRun[] }
-  | { state: 'ambiguous'; requestKey: string; runs: CiEvidenceRun[] };
+  | {
+      state: 'unresolved' | 'ambiguous' | 'failed' | 'canceled';
+      requestKey: string;
+      runs: CiEvidenceObservation[];
+    };
 
 /**
  * Persist intent before dispatch. Once a request has been attempted, an absent or malformed
@@ -186,21 +192,34 @@ export async function reconcileCiEvidenceRequest(
       throw new CiEvidenceError('CI evidence request key has conflicting durable intent');
     }
 
-    if (record.state === 'bound' && record.runs.length === 1 && matches(request, record.runs[0]!))
-      return { state: 'bound', requestKey: request.requestKey, run: record.runs[0]! };
+    const known = record.runs[0];
+    if (
+      record.state === 'bound' &&
+      record.runs.length === 1 &&
+      known !== undefined &&
+      !('state' in known) &&
+      matches(request, known)
+    )
+      return { state: 'bound', requestKey: request.requestKey, run: known };
+    const previouslyObserved = (): CiEvidenceReconciliation => ({
+      state: record.state === 'canceled' || record.state === 'failed' ? record.state : 'unresolved',
+      requestKey: request.requestKey,
+      runs: record.runs,
+    });
 
-    let observed: CiEvidenceRun[];
+    let observed: CiEvidenceObservation[];
     try {
       observed = await provider.findRuns(request);
     } catch {
-      record.state = 'unresolved';
-      writeRecord(store, request.requestKey, record);
-      return { state: 'unresolved', requestKey: request.requestKey, runs: record.runs };
+      return previouslyObserved();
     }
     if (!Array.isArray(observed))
       throw new CiEvidenceError('CI provider returned an invalid run list');
+    if (observed.length === 0 && record.runs.length > 0) return previouslyObserved();
     record.runs = observed;
-    const accepted = observed.filter((run) => matches(request, run));
+    const accepted = observed.filter(
+      (run): run is CiEvidenceRun => !('state' in run) && matches(request, run),
+    );
     if (accepted.length === 1 && observed.length === 1) {
       record.state = 'bound';
       writeRecord(store, request.requestKey, record);
@@ -210,6 +229,17 @@ export async function reconcileCiEvidenceRequest(
       record.state = 'ambiguous';
       writeRecord(store, request.requestKey, record);
       return { state: 'ambiguous', requestKey: request.requestKey, runs: observed };
+    }
+    const single = observed[0];
+    if (
+      observed.length === 1 &&
+      single !== undefined &&
+      'state' in single &&
+      (single.state === 'canceled' || single.state === 'failed')
+    ) {
+      record.state = single.state;
+      writeRecord(store, request.requestKey, record);
+      return { state: single.state, requestKey: request.requestKey, runs: observed };
     }
     if (observed.length === 1) {
       record.state = 'unresolved';
@@ -241,22 +271,12 @@ export function aggregateCiEvidence(
   expected: EvidenceExpectation,
 ) {
   const validation = validateEvidence(plan, evidence, expected);
-  const requiredJobs = plan.obligations
-    .filter((obligation) => obligation.executionBoundary === 'provider')
-    .map((obligation) => `${obligation.criterionId}:${obligation.commandOrProviderJob}`);
-  const missingJobs = requiredJobs.filter(
-    (key) => !validation.records.some((record) => record.obligation === key),
-  );
   const missingArtifacts = validation.records
     .filter((record) => record.provider?.artifactRequired && record.provider.artifact === undefined)
     .map((record) => `${record.obligation} has no required artifact`);
   return {
     ...validation,
-    problems: [
-      ...validation.problems,
-      ...missingJobs.map((key) => `${key} has no job record`),
-      ...missingArtifacts,
-    ],
-    ok: validation.ok && missingJobs.length === 0 && missingArtifacts.length === 0,
+    problems: [...validation.problems, ...missingArtifacts],
+    ok: validation.ok && missingArtifacts.length === 0,
   };
 }
