@@ -142,14 +142,15 @@ describe('a tool’s default asks level', () => {
 describe('a tool’s source chip and heading', () => {
   test('says Built in, From the server its name leads with, From the plugin, or From the skill', () => {
     expect(toolSourceChip({ ...TOOL, source: 'bureau' })).toBe('Built in');
-    expect(toolSourceChip({ ...TOOL, name: 'github__create_issue' })).toBe('From github');
+    // An identifier with no saved name reads as words, as the list's group label reads it.
+    expect(toolSourceChip({ ...TOOL, name: 'github__create_issue' })).toBe('From Github');
     // A source that has a name is called by it, as a plugin is by its title.
     const names = sourceNamesOf([
       { id: 'github', name: 'GitHub' },
       { id: 'files', name: null },
     ]);
     expect(toolSourceChip({ ...TOOL, name: 'github__create_issue' }, names)).toBe('From GitHub');
-    expect(toolSourceChip({ ...TOOL, name: 'files__read' }, names)).toBe('From files');
+    expect(toolSourceChip({ ...TOOL, name: 'files__read' }, names)).toBe('From Files');
     expect(
       toolSourceChip({
         ...TOOL,
@@ -159,10 +160,10 @@ describe('a tool’s source chip and heading', () => {
     ).toBe('From GitHub');
     expect(toolSourceChip(TOOL)).toBe('From an MCP server');
     expect(toolSourceChip({ ...TOOL, source: 'plugin', plugin: 'demo' })).toBe(
-      'From the demo plugin',
+      'From the Demo plugin',
     );
-    expect(toolSourceChip({ ...TOOL, source: 'skill', skill: 'lookup' })).toBe(
-      'From the lookup skill',
+    expect(toolSourceChip({ ...TOOL, source: 'skill', skill: 'customer-lookup' })).toBe(
+      'From the Customer lookup skill',
     );
     expect(toolSourceTooltip({ source: 'bureau' })).toBe(
       'Ships with Interborough, not from a plugin.',

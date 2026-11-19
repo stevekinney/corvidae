@@ -288,7 +288,7 @@ for (const width of WIDTHS) {
       });
     });
 
-    test('the blocked, dangerous tool: Delete branch with its required Branch input and its collapsed JSON schema (31w, 31x)', async ({
+    test('the blocked, dangerous tool: Delete branch with its required Branch input and its open JSON schema (31w, 31x)', async ({
       page,
     }) => {
       await amendOperation(page, 'bureau.agents.catalog', (result) => ({
@@ -309,6 +309,10 @@ for (const width of WIDTHS) {
       await expect(users).toContainText(copy.tool.userAsks.blocked);
       await expect(detail.getByTestId('tool-input-schema')).toContainText('Branch');
       await expect(detail.getByTestId('tool-input-schema')).toContainText('The branch to delete.');
+      // The schema is open, never a disclosure to expand (owner report, 2026-11-19).
+      await expect(
+        detail.getByTestId('tool-input-schema').locator('.cinder-schema-view__source code'),
+      ).toContainText('"branch"');
       await expect(page.getByTestId('tool-blocked-note')).toHaveText(
         copy.tool.blockedNote('An agent allowed Delete branch'),
       );
@@ -620,6 +624,89 @@ for (const width of WIDTHS) {
         state: 'sign in blocked',
         source: SOURCE,
       });
+    });
+  });
+}
+
+/**
+ * The owner's report of 2026-11-19, on the sample world's own built-in Read asset: one field, no
+ * agent. Read first at the widths the review leads with, 1920 and 1280, then 768 and 375.
+ */
+for (const width of [1920, 1280, 768, 375] as const) {
+  test(`a tool's page reads what it does, who can use it, then its fields beside the open schema, at ${width} pixels`, async ({
+    page,
+  }) => {
+    await open(page, width, '/capabilities');
+    const row = page.locator('[data-tool-row]', {
+      has: page.getByTestId('tool-row-name').getByText('Read asset', { exact: true }),
+    });
+    const name = await row.getAttribute('data-tool-row');
+    expect(name).not.toBeNull();
+    await page.goto(`/capabilities?tool=${encodeURIComponent(name ?? '')}`);
+    const detail = page.getByTestId('tool-detail');
+
+    // 1: the name and its one sentence, then Add to an agent as a button at the header's end.
+    await expect(detail.getByRole('heading', { level: 3 })).toHaveText('Read asset');
+    await expect(detail.getByTestId('tool-summary')).toHaveText('Read a managed asset.');
+    await expect(detail.locator('header').getByTestId('tool-add-to-agent')).toHaveText(
+      copy.tool.addToAgent.label,
+    );
+    // 3: no raw identifier by the name; Copy tool ID holds it.
+    await expect(detail.locator('header')).not.toContainText(name ?? '');
+    await expect(
+      detail.getByRole('button', { name: copy.tool.copyIdentifier.label }),
+    ).toBeVisible();
+    // 4: one set of badges, the same words as the list row, with one height and one top.
+    await expect(detail.getByTestId('tool-risk')).toHaveText('Reads');
+    await expect(detail.getByTestId('tool-approval')).toHaveText('Asks: Never');
+    await expect(detail.getByTestId('tool-source')).toHaveText('Built in');
+    const boxes = await Promise.all(
+      ['tool-risk', 'tool-approval', 'tool-source'].map(
+        async (testId) => (await detail.getByTestId(testId).boundingBox()) ?? undefined,
+      ),
+    );
+    const [first, ...rest] = boxes;
+    expect(first).toBeDefined();
+    for (const box of rest) {
+      expect(box).toBeDefined();
+      expect(Math.abs((box?.y ?? 0) - (first?.y ?? 0))).toBeLessThanOrEqual(0.5);
+      expect(Math.abs((box?.height ?? 0) - (first?.height ?? 0))).toBeLessThanOrEqual(0.5);
+    }
+    // 5: one line for nobody, with no link in it.
+    const empty = detail.getByTestId('capability-users-empty');
+    await expect(empty).toHaveText(copy.tool.noUsers.line);
+    await expect(empty.locator('a')).toHaveCount(0);
+    // 6: the field is a row with its name, Required, its type in words and its rule; no table.
+    const inputs = detail.getByTestId('tool-input-schema');
+    await expect(inputs.getByRole('table')).toHaveCount(0);
+    const field = inputs.locator('.cinder-schema-view__item').first();
+    await expect(field).toContainText('Asset ID');
+    await expect(field).toContainText('Required');
+    await expect(field).toContainText('text');
+    await expect(field).toContainText('At least 1 character');
+    // The field's name starts where the Inputs heading starts.
+    const headingBox = await detail.getByRole('heading', { name: copy.tool.inputs }).boundingBox();
+    const labelBox = await field.locator('.cinder-schema-view__label').boundingBox();
+    expect(Math.abs((labelBox?.x ?? 0) - (headingBox?.x ?? 0))).toBeLessThanOrEqual(1);
+    // 2: the schema is open; beside the fields from 1280, under them at 768 and below.
+    const source = inputs.locator('.cinder-schema-view__source');
+    await expect(source.locator('code')).toContainText('"assetId"');
+    const fieldsBox = await inputs.locator('.cinder-schema-view__fields').boundingBox();
+    const sourceBox = await source.boundingBox();
+    expect(fieldsBox).not.toBeNull();
+    expect(sourceBox).not.toBeNull();
+    if (fieldsBox !== null && sourceBox !== null) {
+      if (width >= 1280) {
+        expect(sourceBox.x).toBeGreaterThanOrEqual(fieldsBox.x + fieldsBox.width - 1);
+        expect(Math.abs(sourceBox.y - fieldsBox.y)).toBeLessThanOrEqual(1);
+      } else {
+        expect(sourceBox.y).toBeGreaterThanOrEqual(fieldsBox.y + fieldsBox.height - 1);
+      }
+    }
+    await captureForDesignReview(page, {
+      route: '/capabilities',
+      state: 'tool page, one field and no agent',
+      source: SOURCE,
     });
   });
 }

@@ -52,10 +52,10 @@
   white-space: nowrap;
 }
 
-/* A row's first line: the name at the left, the muted word for what it may do at the right (rows 31e, 31g). */
+/* A row's first line: the name at the left, the badge for what it may do at the right (rows 31e, 31g). */
 .ib-capabilities__row-title {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
   gap: var(--cinder-space-3);
   min-width: 0;
@@ -73,15 +73,17 @@
   font-weight: 400;
 }
 
-/* A row's second line: where it comes from, then a line about it that ends with an ellipsis, never wrapping. */
+/* A row's second line: the badge for where it comes from, then a line about it that ends with an
+ * ellipsis, never wrapping. The badges are chips on one centre line with the words. */
 .ib-capabilities__row-line {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: var(--cinder-space-2);
   min-width: 0;
 }
 
-.ib-capabilities__row-source {
+.ib-capabilities__row-badge {
+  display: flex;
   flex: none;
 }
 
@@ -234,6 +236,42 @@
   padding: 0;
   list-style: none;
   min-width: 0;
+}
+
+/* The badges sit on one centre line, so a chip's glyph never sets its baseline apart from the rest. */
+.ib-capability__chips {
+  align-items: center;
+}
+
+.ib-capability__chips > li,
+.ib-tool-badge {
+  display: flex;
+}
+
+/* The top of a tool's page: its name and its one sentence at the left, its actions at the inline
+ * end, as a source's page has them; on a narrow pane the actions wrap under the sentence. */
+.ib-capability__top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--cinder-space-2) var(--cinder-space-4);
+  min-width: 0;
+}
+
+.ib-capability__title {
+  display: flex;
+  flex: 1 1 16rem;
+  flex-direction: column;
+  gap: var(--cinder-space-1);
+  min-width: 0;
+}
+
+.ib-capability__actions {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: var(--cinder-space-2);
 }
 
 /* ── Sources: the tool sources the host saved ────────────────── */

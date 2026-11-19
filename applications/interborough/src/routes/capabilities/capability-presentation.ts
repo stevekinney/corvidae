@@ -90,7 +90,11 @@ function serverOf(tool: Pick<CatalogTool, 'name'>): string | undefined {
   return index > 0 ? tool.name.slice(0, index) : undefined;
 }
 
-/** The words of the source chip: "Built in", "From notes", "From the Demo plugin". */
+/**
+ * The words of the source badge, which the list row and the tool's page both show: "Built in",
+ * "From Notes", "From the Demo plugin". An identifier with no saved name reads as words, as the
+ * row's group label reads it.
+ */
 export function toolSourceChip(
   tool: ShownTool,
   sourceNames: ReadonlyMap<string, string> = new Map(),
@@ -99,12 +103,14 @@ export function toolSourceChip(
   if (tool.source === 'bureau') return chip.bureau;
   // A plugin that is off is named by its title, which its last listing kept (row 30p).
   if (tool.lost?.kind === 'plugin') return chip.plugin(tool.lost.title);
-  if (tool.source === 'plugin') return chip.plugin(tool.plugin ?? '');
-  if (tool.source === 'skill') return chip.skill(tool.skill ?? '');
+  if (tool.source === 'plugin') return chip.plugin(humanizeName(tool.plugin ?? ''));
+  if (tool.source === 'skill') return chip.skill(humanizeName(tool.skill ?? ''));
   // A source is named as a person calls it ("GitHub"), when it has a name, and by its id otherwise.
   if (tool.lost?.kind === 'source') return chip.host(tool.lost.name);
   const server = serverOf(tool);
-  return chip.host(server === undefined ? undefined : (sourceNames.get(server) ?? server));
+  return chip.host(
+    server === undefined ? undefined : (sourceNames.get(server) ?? humanizeName(server)),
+  );
 }
 
 /** The names people call the saved sources, by source id, for the chips that say where a tool comes from. */

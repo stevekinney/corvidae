@@ -2,8 +2,9 @@
   /**
    * The Tools tab: every tool in the catalog (`bureau.agents.catalog`) as a list with the open tool
    * beside it. A tool's row is two lines (board PageCapabilities, "Capabilities, Tools tab"): its
-   * name for a person at the left with the muted word for what it may do at the right, then where
-   * it comes from and a line about it, cut with an ellipsis. From 40 tools the rows are grouped by
+   * name for a person at the left with the badge for what it may do at the right, then the badge
+   * for where it comes from and a line about it, cut with an ellipsis. The badges are the tool
+   * page's own words and chips (owner report, 2026-11-19). From 40 tools the rows are grouped by
    * source. Its details show what it may do, how it is approved by default, where it comes from,
    * its inputs and its users.
    */
@@ -29,17 +30,15 @@
     groupToolsBySource,
     lostTools,
     matchesToolFilter,
-    riskLabel,
-    tierOf,
     toolGroup,
     toolHeading,
     sourceNamesOf,
-    toolRowSource,
     toolSummary,
     type ShownTool,
   } from './capability-presentation.ts';
   import { routerSelectionLocationFor } from '../../lib/router-selection-location.ts';
   import CapabilitiesLoading from './capabilities-loading.svelte';
+  import ToolBadge from './tool-badge.svelte';
   import ToolDetail from './tool-detail.svelte';
   import ToolPageState from './tool-page-state.svelte';
 
@@ -209,9 +208,9 @@
                   <span class="ib-capabilities__row-name" data-testid="tool-row-name"
                     >{toolHeading(tool)}</span
                   >
-                  <!-- A muted word, never a colour of its own: Dangerous is not red (row 31g). -->
-                  <span class="ib-capabilities__row-risk" data-testid="tool-row-risk"
-                    >{riskLabel(tierOf(tool))}</span
+                  <!-- The page's neutral badge, never a colour of its own: Dangerous is not red (row 31g). -->
+                  <span class="ib-capabilities__row-badge" data-testid="tool-row-risk"
+                    ><ToolBadge kind="risk" {tool} /></span
                   >
                   <!-- A tool that cannot run now says so on the first line, in the same muted word. -->
                   {#if tool.lost !== undefined}
@@ -223,8 +222,8 @@
               {/snippet}
               {#snippet description()}
                 <span class="ib-capabilities__row-line">
-                  <span class="ib-capabilities__row-source" data-testid="tool-row-source"
-                    >{toolRowSource(tool, sourceNames)}</span
+                  <span class="ib-capabilities__row-badge" data-testid="tool-row-source"
+                    ><ToolBadge kind="source" {tool} {sourceNames} /></span
                   >
                   <span class="ib-capabilities__row-summary" data-testid="tool-row-summary"
                     >{toolSummary(tool)}</span

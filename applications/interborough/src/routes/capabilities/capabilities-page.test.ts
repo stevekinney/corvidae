@@ -132,15 +132,16 @@ describe('the Tools tab', () => {
       container
         .querySelector(`[data-tool-row="${name}"] [data-testid="tool-row-source"]`)
         ?.textContent?.trim();
-    // The row says where a tool comes from by the name of its source: the plugin, Built in, or the server.
-    expect(sourceOf('gemini:search')).toBe('Gemini');
+    // The row says where a tool comes from in the page's own badge words: the plugin, Built in, or
+    // the server (owner report, 2026-11-19: one set, the same words in the row and the page).
+    expect(sourceOf('gemini:search')).toBe('From the Gemini plugin');
     expect(sourceOf('run-shell')).toBe('Built in');
-    expect(sourceOf('read-file')).toBe('MCP server');
+    expect(sourceOf('read-file')).toBe('From an MCP server');
 
     await fireEvent.click(container.querySelector('[data-tool-row="gemini:search"]')!);
     await waitFor(() =>
       expect(container.querySelector('[data-testid="tool-source"]')?.textContent?.trim()).toBe(
-        'From the gemini plugin',
+        'From the Gemini plugin',
       ),
     );
   });
@@ -156,10 +157,10 @@ describe('the Tools tab', () => {
     const row = (name: string) => container.querySelector(`[data-tool-row="${name}"]`);
     const part = (name: string, testId: string) =>
       row(name)?.querySelector(`[data-testid="${testId}"]`)?.textContent?.trim();
-    // Two lines: the name for a person and the muted risk word, then the source and the sentence.
+    // Two lines: the name for a person and the risk badge, then the source badge and the sentence.
     expect(part('read-file', 'tool-row-name')).toBe('Read file');
     expect(part('read-file', 'tool-row-risk')).toBe('Reads');
-    expect(part('read-file', 'tool-row-source')).toBe('MCP server');
+    expect(part('read-file', 'tool-row-source')).toBe('From an MCP server');
     expect(part('read-file', 'tool-row-summary')).toBe('Reads one file');
     // A tool that declares no tier is not classified, which is never read as read-only.
     expect(part('run-shell', 'tool-row-risk')).toBe('Not classified');
@@ -171,8 +172,13 @@ describe('the Tools tab', () => {
       'tool-row-source',
       'tool-row-summary',
     ]);
-    // The risk word is plain muted text: no badge, so Dangerous is never red.
-    expect(row('read-file')?.querySelector('[data-cinder-variant]')).toBeNull();
+    // The badges are the page's own neutral chips, so Dangerous is never red, and a row, which is
+    // itself the control, holds nothing focusable of its own.
+    const variants = [...(row('read-file')?.querySelectorAll('[data-cinder-variant]') ?? [])].map(
+      (chip) => chip.getAttribute('data-cinder-variant'),
+    );
+    expect(variants).toEqual(['neutral', 'neutral']);
+    expect(row('read-file')?.querySelector('[tabindex="0"]')).toBeNull();
 
     await fireEvent.click(row('read-file')!);
     await waitFor(() =>
@@ -262,7 +268,7 @@ describe('the Tools tab', () => {
     expect(detail.querySelector('[data-testid="tool-blocked-note"]')).toBeNull();
   });
 
-  test('says a tool no agent uses with the action that gives it a user, and a tool without a described input in words', async () => {
+  test('says a tool no agent uses in one line, with Add to an agent as the header’s button, and a tool without a described input in words', async () => {
     restore = serve().restore;
     landAt('/capabilities?tool=run-shell');
     const { container, findByText } = mount();
@@ -273,15 +279,23 @@ describe('the Tools tab', () => {
       return found;
     });
     await findByText(copy.tool.noUsers.line, { exact: false });
-    // One muted line with an inline link, never a centred empty state (rows 30e and 32j).
+    // One muted line, never a centred empty state (rows 30e and 32j), and no link in it: the
+    // action is the header's button (owner report, 2026-11-19).
     expect(detail.querySelector('[data-testid="capability-users"] [data-cinder-kind]')).toBeNull();
     const line = detail.querySelector('[data-testid="capability-users-empty"]');
-    expect(line?.textContent).toContain(copy.tool.noUsers.line);
-    expect(
-      line?.querySelector(`a[href="${copy.tool.noUsers.action.href}"]`)?.textContent,
-    ).toContain(copy.tool.noUsers.action.label);
+    expect(line?.textContent?.trim()).toBe('No agent uses this tool yet.');
+    expect(line?.querySelector('a')).toBeNull();
+    const add = detail.querySelector('header [data-testid="tool-add-to-agent"]');
+    expect(add?.tagName).toBe('A');
+    expect(add?.getAttribute('href')).toBe(copy.tool.addToAgent.href);
+    expect(add?.textContent?.trim()).toBe(copy.tool.addToAgent.label);
+    expect(add?.classList.contains('cinder-button')).toBe(true);
+    // Without a described input there are no fields and no document to show.
     expect(detail.querySelector('[data-testid="tool-input-schema"]')?.textContent).toContain(
       copy.tool.noSchema,
+    );
+    expect(detail.querySelector('[data-testid="tool-input-schema"]')?.textContent).not.toContain(
+      'JSON schema',
     );
     // A tool that declares no tier asks On changes by default, and its risk is not classified.
     expect(detail.querySelector('[data-testid="tool-risk"]')?.textContent?.trim()).toBe(
@@ -398,17 +412,21 @@ const openTool = async (path: string) => {
 };
 
 describe('a tool’s page', () => {
-  test('opens with its name for a person and its identifier beside it, then the sentence, the chips, Used by and Inputs', async () => {
+  test('opens with what it does, then who can use it and whether it asks, then its inputs beside the open schema', async () => {
     restore = serve([...TOOLS, DELETE_BRANCH]).restore;
     const { detail } = await openTool('/capabilities?tool=github__delete_branch');
 
     expect(detail.querySelector('h3')?.textContent).toBe('Delete branch');
-    expect(detail.querySelector('[data-testid="tool-identifier"]')?.textContent).toBe(
-      'github__delete_branch',
-    );
+    // No raw identifier beside the name: Copy tool ID holds it (owner report, 2026-11-19).
+    expect(detail.querySelector('header')?.textContent).not.toContain('github__delete_branch');
+    expect(detail.querySelector('[data-testid="tool-identifier"]')).toBeNull();
+    const copyIdentifier = detail.querySelector('header [data-testid="tool-copy-identifier"]');
+    expect(copyIdentifier?.getAttribute('aria-label')).toBe(copy.tool.copyIdentifier.label);
+    // The sentence is said once, under the name.
     expect(detail.querySelector('[data-testid="tool-summary"]')?.textContent).toBe(
       'Deletes a branch from a GitHub repository.',
     );
+    expect(detail.textContent?.split('Deletes a branch from a GitHub repository.').length).toBe(2);
     // A dangerous tool defaults to Always, and says so in words rather than in red.
     expect(detail.querySelector('[data-testid="tool-risk"]')?.textContent?.trim()).toBe(
       'Dangerous',
@@ -417,16 +435,22 @@ describe('a tool’s page', () => {
       'Asks: Always',
     );
     expect(detail.querySelector('[data-testid="tool-source"]')?.textContent?.trim()).toBe(
-      'From github',
+      'From Github',
     );
-    expect(
-      detail.querySelector('[data-testid="tool-risk"]')?.getAttribute('data-cinder-variant'),
-    ).toBe('neutral');
+    // One set: each badge the same neutral chip with a glyph, so all three share one baseline.
+    for (const testId of ['tool-risk', 'tool-approval', 'tool-source']) {
+      const chip = detail.querySelector(`[data-testid="${testId}"]`);
+      expect(chip?.getAttribute('data-cinder-variant')).toBe('neutral');
+      expect(chip?.getAttribute('data-cinder-size')).toBe('sm');
+      expect(chip?.querySelectorAll('svg')).toHaveLength(1);
+    }
     // Only the dangerous chip has a shield: the risk chip carries the one icon that means risk.
     expect(detail.querySelectorAll('.lucide-shield')).toHaveLength(1);
 
     const order = [
-      detail.querySelector('header'),
+      detail.querySelector('h3'),
+      detail.querySelector('[data-testid="tool-summary"]'),
+      detail.querySelector('header [data-testid="tool-copy-identifier"]'),
       detail.querySelector('ul[aria-label="About this tool"]'),
       detail.querySelector('[data-testid="capability-users"]'),
       detail.querySelector('[data-testid="tool-input-schema"]'),
@@ -440,10 +464,22 @@ describe('a tool’s page', () => {
         ).toBeTruthy();
       }
     }
-    // The raw schema is the quiet disclosure SchemaView ends with, closed until it is asked for.
-    expect(detail.querySelector('[data-testid="tool-input-schema"]')?.textContent).toContain(
+    // The inputs are unframed rows: the name, the word Required, the type in words, and the
+    // document is open in a code block beside them, never behind a disclosure.
+    const inputs = detail.querySelector('[data-testid="tool-input-schema"]')!;
+    expect(inputs.getAttribute('data-cinder-layout')).toBe('rows');
+    expect(inputs.getAttribute('data-cinder-raw')).toBe('beside');
+    expect(inputs.querySelector('[role="table"]')).toBeNull();
+    expect(inputs.querySelector('.cinder-schema-view__required-word')?.textContent).toBe(
+      'Required',
+    );
+    expect(inputs.querySelector('.cinder-schema-view__source')?.textContent).toContain(
       'JSON schema',
     );
+    expect(inputs.querySelector('.cinder-schema-view__source code')?.textContent).toContain(
+      '"branch"',
+    );
+    expect(inputs.querySelector('.cinder-schema-view__raw')).toBeNull();
   });
 
   test('reads a tool with no title of its own by its identifier as words, and ends the breadcrumb with it', async () => {
@@ -451,7 +487,6 @@ describe('a tool’s page', () => {
     const { detail } = await openTool('/capabilities?tool=read-file');
 
     expect(detail.querySelector('h3')?.textContent).toBe('Read file');
-    expect(detail.querySelector('[data-testid="tool-identifier"]')?.textContent).toBe('read-file');
     await waitFor(() =>
       expect(breadcrumbTrail('/capabilities')).toEqual([
         { label: 'Capabilities', href: '/capabilities' },
@@ -1294,7 +1329,7 @@ describe('a skill’s page', () => {
     );
     const row = container.querySelector('[data-tool-row="find_customer"]')!;
     expect(row.querySelector('[data-testid="tool-row-source"]')?.textContent?.trim()).toBe(
-      'Customer lookup',
+      'From the Customer lookup skill',
     );
     expect(row.querySelector('[data-testid="tool-row-name"]')?.textContent?.trim()).toBe(
       'Find customer',

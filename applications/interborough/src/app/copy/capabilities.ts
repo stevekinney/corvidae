@@ -61,11 +61,16 @@ export const CAPABILITIES_COPY = {
      */
     blockedNote: (agent: string): string =>
       `${agent} can’t run this tool, even in a chat that allows all. Change it on ${agent}’s Access tab.`,
-    /** Used by when no agent has the tool: one muted line with a link inline, never a centred empty state (rows 30e, 30h, 32j). */
-    noUsers: {
-      line: 'No agent has this tool yet.',
-      action: { label: 'Add to an agent', href: '/agents' },
-    },
+    /**
+     * Used by when no agent has the tool: one muted line, never a centred empty state (rows 30e, 30h,
+     * 32j). Add to an agent is the header's own button, so the line holds no link (owner report,
+     * 2026-11-19).
+     */
+    noUsers: { line: 'No agent uses this tool yet.' },
+    /** The header's action at its inline end: where a person gives the tool to an agent. */
+    addToAgent: { label: 'Add to an agent', href: '/agents' },
+    /** The icon button that copies the tool's identifier, which the page no longer prints by its name. */
+    copyIdentifier: { label: 'Copy tool ID', copied: 'Tool ID copied' },
     /**
      * A tool whose source is not connected or whose plugin is off (rows 30n to 30p, COR-2435): the
      * warning row under the chips, its one action, and Used by, which keeps the asks level.
