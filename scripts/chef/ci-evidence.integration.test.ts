@@ -139,6 +139,38 @@ test('keeps a PR event distinct from manual dispatch and requires head, base, an
   expect(source.dispatches).toBe(0);
 });
 
+test('keeps simultaneous different request keys durable across a forced provider interleaving', async () => {
+  const evidence = store();
+  const first = request({ candidate: '1'.repeat(40) });
+  const second = request({ candidate: '2'.repeat(40) });
+  let release!: () => void;
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let entered!: () => void;
+  const enteredFirst = new Promise<void>((resolve) => {
+    entered = resolve;
+  });
+  const slow: CiEvidenceProvider = {
+    async findRuns() {
+      entered();
+      await held;
+      return [];
+    },
+    async dispatch() {},
+  };
+  const fast = provider([]);
+  const pending = reconcileCiEvidenceRequest(evidence, first, slow);
+  await enteredFirst;
+  await reconcileCiEvidenceRequest(evidence, second, fast);
+  release();
+  await pending;
+  const replayFirst = await reconcileCiEvidenceRequest(evidence, first, provider([]));
+  const replaySecond = await reconcileCiEvidenceRequest(evidence, second, provider([]));
+  expect(replayFirst.state).toBe('unresolved');
+  expect(replaySecond.state).toBe('unresolved');
+});
+
 test('aggregates collector-issued evidence and rejects missing inventory, artifact proof, and failed jobs', () => {
   const archive = zipSync({
     'reports/root.xml': new TextEncoder().encode(
