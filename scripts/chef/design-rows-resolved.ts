@@ -125,7 +125,8 @@ function stateProblems(id: string, states: unknown): string[] {
     const label = `row ${id} state ${index + 1}`;
     if (state === undefined) problems.push(`${label} is not an object`);
     else {
-      if (!nonEmpty(state['route']) || !String(state['route']).startsWith('/'))
+      const route = state['route'];
+      if (!nonEmpty(route) || !route.startsWith('/'))
         problems.push(`${label} needs a route that starts with /`);
       if (!nonEmpty(state['state'])) problems.push(`${label} needs a state name`);
       if (!(STATE_KINDS as readonly unknown[]).includes(state['kind']))
@@ -197,9 +198,10 @@ function checkProblems(
 ): string[] {
   const checked = (Array.isArray(value) ? value : []).map(record);
   const problems: string[] = [];
-  const criteria = (Array.isArray(conflicts) ? conflicts : []).map((conflict) =>
-    String(record(conflict)?.['criterion'] ?? ''),
-  );
+  const criteria = (Array.isArray(conflicts) ? conflicts : []).map((conflict) => {
+    const criterion = record(conflict)?.['criterion'];
+    return typeof criterion === 'string' ? criterion : '';
+  });
   for (const literal of expected.literals) {
     const entry = checked.find((candidate) => candidate?.['literal'] === literal);
     if (entry === undefined) problems.push(`literal criterion ${literal} was not checked`);

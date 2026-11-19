@@ -562,7 +562,8 @@ describe('workflow scripts', () => {
         { brief: { exitCode: 1, briefPath: '', error: 'COR-1 blocks COR-7' } },
       );
       expect(refused.labels).toEqual(['brief']);
-      expect((await runDelivery()).labels).not.toContain('critique');
+      const clean = await runDelivery();
+      expect(clean.labels).not.toContain('critique');
     });
   });
 

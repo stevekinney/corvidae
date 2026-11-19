@@ -3,7 +3,9 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { ROUND_LIMIT, run } from './design-rounds.ts';
+import { rejectionOf } from '../../testing/testing/src/helpers/promise-outcome.ts';
+import { ROUND_LIMIT, runRounds } from './design-rounds.ts';
+import { UsageError } from './process-runner.ts';
 
 let sandbox: string;
 let stateDirectory: string;
@@ -32,19 +34,25 @@ function capture(
 
 const complete = { complete: true, missing: [] };
 
+/** The host lock stands in as a plain call: the lock only matters between concurrent processes. */
+const dependencies = {
+  withLock: <T>(_directory: string, operation: () => T) => Promise.resolve(operation()),
+};
+
 function dispatch(branch: string, directory: string) {
-  return run([
-    'dispatch',
-    '--branch',
-    branch,
-    '--capture',
-    directory,
-    '--state-directory',
-    stateDirectory,
-  ]);
+  return runRounds(
+    ['dispatch', '--branch', branch, '--capture', directory, '--state-directory', stateDirectory],
+    dependencies,
+  );
+}
+
+async function codeOf(branch: string, directory: string): Promise<number> {
+  const result = await dispatch(branch, directory);
+  return result.code;
 }
 
 describe('design-rounds dispatch', () => {
+  // spawn-free: the host lock is stood in by a plain call, so no process starts
   test('allows one full round and one narrow look, then returns NEEDS_JUDGMENT on the third dispatch', async () => {
     const first = await dispatch('chef/a', capture('one', complete));
     expect(first.code).toBe(0);
@@ -58,22 +66,25 @@ describe('design-rounds dispatch', () => {
     expect(ROUND_LIMIT).toBe(2);
   });
 
+  // spawn-free: the host lock is stood in by a plain call, so no process starts
   test('counts per branch, so another branch still has its rounds', async () => {
     await dispatch('chef/a', capture('one', complete));
     await dispatch('chef/a', capture('two', complete));
-    expect((await dispatch('chef/b', capture('three', complete))).code).toBe(0);
+    expect(await codeOf('chef/b', capture('three', complete))).toBe(0);
   });
 
+  // spawn-free: the host lock is stood in by a plain call, so no process starts
   test('treats a repeated capture as the same round, not a new one', async () => {
     const directory = capture('one', complete);
-    expect((await dispatch('chef/a', directory)).code).toBe(0);
+    expect(await codeOf('chef/a', directory)).toBe(0);
     const again = await dispatch('chef/a', directory);
     expect(again.code).toBe(0);
     expect(again.output).toContain('already counted');
-    expect((await dispatch('chef/a', capture('two', complete))).code).toBe(0);
-    expect((await dispatch('chef/a', capture('three', complete))).code).toBe(1);
+    expect(await codeOf('chef/a', capture('two', complete))).toBe(0);
+    expect(await codeOf('chef/a', capture('three', complete))).toBe(1);
   });
 
+  // spawn-free: the host lock is stood in by a plain call, so no process starts
   test('counts only a round whose capture manifest was complete: coverage before counting', async () => {
     const incomplete = capture('partial', { complete: false, missing: [{}, {}] });
     for (let attempt = 0; attempt < 3; attempt += 1) {
@@ -85,40 +96,53 @@ describe('design-rounds dispatch', () => {
     const unplanned = await dispatch('chef/a', capture('unplanned', null));
     expect(unplanned.code).toBe(1);
     expect(unplanned.output).toContain('captured without --expect');
-    expect((await dispatch('chef/a', join(sandbox, 'absent'))).code).toBe(1);
+    expect(await codeOf('chef/a', join(sandbox, 'absent'))).toBe(1);
     // None of the refusals spent a round: both rounds are still there.
-    expect((await dispatch('chef/a', capture('one', complete))).code).toBe(0);
-    expect((await dispatch('chef/a', capture('two', complete))).code).toBe(0);
-    expect((await dispatch('chef/a', capture('three', complete))).code).toBe(1);
+    expect(await codeOf('chef/a', capture('one', complete))).toBe(0);
+    expect(await codeOf('chef/a', capture('two', complete))).toBe(0);
+    expect(await codeOf('chef/a', capture('three', complete))).toBe(1);
   });
 
+  // spawn-free: the host lock is stood in by a plain call, so no process starts
   test('keeps the count in a durable file under the state directory, readable by a later run', async () => {
     await dispatch('chef/a', capture('one', complete));
     const file = JSON.parse(readFileSync(join(stateDirectory, 'design-rounds.json'), 'utf8')) as {
       branches: Record<string, { rounds: unknown[] }>;
     };
     expect(file.branches['chef/a']?.rounds).toHaveLength(1);
-    const status = await run(['status', '--branch', 'chef/a', '--state-directory', stateDirectory]);
+    const status = await runRounds(
+      ['status', '--branch', 'chef/a', '--state-directory', stateDirectory],
+      dependencies,
+    );
     expect(status.output).toBe('chef/a: 1 of 2 design-review rounds used.');
   });
 
+  // spawn-free: the host lock is stood in by a plain call, so no process starts
   test('counts a branch named like an inherited key as an ordinary branch, and answers JSON', async () => {
-    const result = await run([
-      'dispatch',
-      '--branch',
-      'constructor',
-      '--capture',
-      capture('one', complete),
-      '--state-directory',
-      stateDirectory,
-      '--json',
-    ]);
+    const result = await runRounds(
+      [
+        'dispatch',
+        '--branch',
+        'constructor',
+        '--capture',
+        capture('one', complete),
+        '--state-directory',
+        stateDirectory,
+        '--json',
+      ],
+      dependencies,
+    );
     expect(result.code).toBe(0);
     expect(JSON.parse(result.output)).toMatchObject({ ok: true, round: 1, counted: true });
   });
 
+  // spawn-free: the host lock is stood in by a plain call, so no process starts
   test('refuses bad usage', async () => {
-    await expect(run(['dispatch'])).rejects.toThrow('--branch is required');
-    await expect(run(['nonsense', '--branch', 'x'])).rejects.toThrow('Usage');
+    const noBranch = await rejectionOf(runRounds(['dispatch'], dependencies));
+    expect(noBranch).toBeInstanceOf(UsageError);
+    expect((noBranch as Error).message).toContain('--branch is required');
+    expect(
+      await rejectionOf(runRounds(['nonsense', '--branch', 'x'], dependencies)),
+    ).toBeInstanceOf(UsageError);
   });
 });

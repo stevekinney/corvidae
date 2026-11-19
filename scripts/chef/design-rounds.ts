@@ -47,6 +47,8 @@ interface RoundsFile {
 export interface RoundsDependencies {
   /** The directory that holds `design-rounds.json`; defaults to the main checkout's execution state. */
   stateDirectory?: string;
+  /** Serializes the read-count-write; defaults to the host lock. A test stands in a plain call. */
+  withLock?: <T>(stateDirectory: string, operation: () => T) => Promise<T>;
 }
 
 function stateDirectoryOf(
@@ -135,7 +137,7 @@ function report(
   return { code, output: json ? JSON.stringify({ ok: code === 0, ...fields }) : text };
 }
 
-export async function run(
+export async function runRounds(
   argv: string[],
   dependencies: RoundsDependencies = {},
 ): Promise<{ code: number; output: string }> {
@@ -174,7 +176,7 @@ export async function run(
       { branch, counted: false, reason: problem },
       `Design round not counted and not dispatchable: ${problem}.`,
     );
-  return underLock(stateDirectory, () => {
+  return (dependencies.withLock ?? underLock)(stateDirectory, () => {
     const file = readRounds(path);
     const rounds = roundsOf(file, branch);
     const seen = rounds.rounds.findIndex((round) => round.capture === capture);
@@ -206,7 +208,7 @@ export async function run(
 
 if (import.meta.main) {
   try {
-    const result = await run(Bun.argv.slice(2));
+    const result = await runRounds(Bun.argv.slice(2));
     emitResult(Bun.argv.slice(2), result);
     process.exitCode = result.code;
   } catch (error) {

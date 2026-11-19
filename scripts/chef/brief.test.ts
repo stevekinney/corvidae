@@ -1452,6 +1452,7 @@ describe('design rows need rows.resolved.json', () => {
 
   test('an issue without design rows needs no resolved file', async () => {
     const { argv, dependencies } = command(description);
-    expect((await run(argv, dependencies, runner)).code).toBe(0);
+    const result = await run(argv, dependencies, runner);
+    expect(result.code).toBe(0);
   });
 });

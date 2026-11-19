@@ -34,7 +34,7 @@ import { createClient, fetchIssue, type LinearDependencies, LinearError } from '
 import { emitResult, parseOptions, UsageError } from './process-runner.ts';
 import { resolveMainCheckout } from './repository-locations.ts';
 
-export async function run(
+export async function runCritique(
   argv: string[],
   dependencies: LinearDependencies = {},
 ): Promise<{ code: number; output: string }> {
@@ -106,7 +106,7 @@ export async function run(
 
 if (import.meta.main) {
   try {
-    const result = await run(Bun.argv.slice(2));
+    const result = await runCritique(Bun.argv.slice(2));
     emitResult(Bun.argv.slice(2), result);
     process.exitCode = result.code;
   } catch (error) {

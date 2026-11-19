@@ -3,8 +3,10 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'no
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { run } from './design-critique.ts';
+import { rejectionOf } from '../../testing/testing/src/helpers/promise-outcome.ts';
+import { runCritique } from './design-critique.ts';
 import type { FetchLike } from './linear.ts';
+import { UsageError } from './process-runner.ts';
 
 const description = [
   '## Acceptance criteria',
@@ -67,7 +69,7 @@ function input(value: unknown): string {
 
 describe('design-critique rows', () => {
   test('prints the design rows and literal criteria the critique checks', async () => {
-    const result = await run(['rows', 'COR-7'], dependencies);
+    const result = await runCritique(['rows', 'COR-7'], dependencies);
     expect(result.code).toBe(0);
     const parsed = JSON.parse(result.output) as { rowIds: string[]; literals: string[] };
     expect(parsed.rowIds).toEqual(['11a']);
@@ -77,7 +79,7 @@ describe('design-critique rows', () => {
 
 describe('design-critique write', () => {
   test('writes rows.resolved.json for a valid critique, which brief.ts then accepts', async () => {
-    const result = await run(
+    const result = await runCritique(
       ['write', 'COR-7', '--input', input(critique()), '--out-dir', sandbox],
       dependencies,
     );
@@ -88,7 +90,7 @@ describe('design-critique write', () => {
 
   test('refuses a critique with a row that declares no states, writing nothing', async () => {
     const bad = critique({ rows: [{ id: '11a', board: 'Runs', text: 'x', states: [] }] });
-    const result = await run(
+    const result = await runCritique(
       ['write', 'COR-7', '--input', input(bad), '--out-dir', sandbox],
       dependencies,
     );
@@ -98,7 +100,7 @@ describe('design-critique write', () => {
   });
 
   test('refuses a critique that skipped the 700px criterion', async () => {
-    const result = await run(
+    const result = await runCritique(
       ['write', 'COR-7', '--input', input(critique({ checked: [] })), '--out-dir', sandbox],
       dependencies,
     );
@@ -109,10 +111,14 @@ describe('design-critique write', () => {
   test('refuses a file that is not JSON and bad usage', async () => {
     const path = join(sandbox, 'bad.json');
     writeFileSync(path, '{');
-    expect(
-      (await run(['write', 'COR-7', '--input', path, '--out-dir', sandbox], dependencies)).code,
-    ).toBe(1);
-    await expect(run(['write', 'COR-7'], dependencies)).rejects.toThrow('--input is required');
-    await expect(run(['rows'], dependencies)).rejects.toThrow('Usage');
+    const unreadable = await runCritique(
+      ['write', 'COR-7', '--input', path, '--out-dir', sandbox],
+      dependencies,
+    );
+    expect(unreadable.code).toBe(1);
+    const noInput = await rejectionOf(runCritique(['write', 'COR-7'], dependencies));
+    expect(noInput).toBeInstanceOf(UsageError);
+    expect((noInput as Error).message).toContain('--input is required');
+    expect(await rejectionOf(runCritique(['rows'], dependencies))).toBeInstanceOf(UsageError);
   });
 });
