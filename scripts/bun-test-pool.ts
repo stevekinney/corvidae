@@ -7,8 +7,9 @@
  * or `scripts/bun-test-selected.ts` (or, for the few runners that start `bun test` themselves,
  * through {@link runPooledBunTest} directly), and each takes one slot per worker before it starts,
  * so the Bun test workers on the host never exceed the pool's size, whoever starts them. `tsc`,
- * `svelte-check` and oxlint start no Bun test worker and stay outside the pool; the host lock,
- * which serializes the heavy stages, and the turbo concurrency cap bound them. Browser suites,
+ * `svelte-check` and oxlint start no Bun test worker: the host lock, which serializes the heavy
+ * stages, and the turbo concurrency cap bound them, and the focused checks run their type-checks
+ * under `scripts/host-slots.ts` too, with the wait bound below. Browser suites,
  * captures, the Docker renderer and fan-outs of worker processes take slots from this pool too,
  * one per process they keep busy, through `scripts/host-slots.ts`
  * (`documentation/repository/host-admission.md`).
@@ -170,7 +171,8 @@ export function poolSize(
  * Bounds how long a run waits for its slots, in seconds; unset, it waits as long as the holders
  * run. The focused checks set it: a worker's handful of direct tests that wait hours behind other
  * sessions' suites cost more (a session resumed again and again) than the load they would add, so
- * past the bound the run goes ahead without a slot, as it does when the pool cannot be used.
+ * past the bound the run does not start and exits {@link poolBusyExitCode} with `not run locally:
+ * pool busy`. `scripts/host-slots.ts` honours it too, for any run whose environment carries it.
  */
 export const poolWaitVariable = 'CORVIDAE_TEST_POOL_WAIT_SECONDS';
 

@@ -10,7 +10,8 @@
 #     -f e2e_specs='tests/e2e/chat-responsive.spec.ts tests/e2e/chat-toast-clearance.spec.ts' \
 #     -f unit_workspace='components/cinder' -f unit_paths='src/components/approval-card'
 #
-# Every input is optional, and a job runs only when its inputs name something. The browser jobs copy
+# Every input is optional. The `checks` job always runs lint and type-check on the changed
+# workspaces; each other job runs only when its inputs name something. The browser jobs copy
 # the image and setup of `browser-suites.yml`, so the renderer and fonts are the baselines' own, and
 # the fixtures job uploads `playwright-fixtures-targeted` on failure, which
 # `scripts/browser-fixtures/scripts/baselines-from-run.ts <run id>` reads like a `main.yml` run's.
@@ -55,11 +56,36 @@ on:
 permissions:
   contents: read
 
+# A newer dispatch on a branch cancels the older one: a correction round supersedes the last.
+concurrency:
+  group: targeted-checks-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'workflow_dispatch' }}
+
 env:
   TURBO_TELEMETRY_DISABLED: '1'
   DO_NOT_TRACK: '1'
 
 jobs:
+  # Lint and type-check the workspaces the branch changed against `origin/main`, as
+  # `pull-request.yml` does, so a type error (a svelte-check error, a stale test expectation) never
+  # waits for the full run. It runs on every dispatch, whatever the inputs.
+  checks:
+    name: Changed workspaces lint and type-check
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      TURBO_SCM_BASE: origin/main
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version-file: package.json
+      - run: bun install --frozen-lockfile
+      - run: bunx turbo run lint typecheck --affected --continue --concurrency=4
+
   fixtures:
     name: Chromium fixtures (targeted)
     if: ${{ inputs.fixture_components != '' || inputs.fixture_specs != '' }}
@@ -167,5 +193,15 @@ jobs:
       - run: |
           cd "$UNIT_WORKSPACE"
           config=""
+          # Interborough runs every test outside src/host and fixtures under bunfig.ui.toml (its
+          # `test` script); a dispatch that leaves unit_config out gets that, not a DOM-less run.
+          if [ -z "$UNIT_CONFIG" ] && [ "$UNIT_WORKSPACE" = applications/interborough ]; then
+            host=0
+            for path in $UNIT_PATHS; do
+              case "$path" in src/host|src/host/*|fixtures|fixtures/*) host=1 ;; esac
+            done
+            if [ "$host" = 0 ]; then UNIT_CONFIG=./bunfig.ui.toml; fi
+            if [ "$host" = 1 ]; then echo "::notice::host-lane paths run under the default bunfig; dispatch UI tests separately with unit_config=./bunfig.ui.toml"; fi
+          fi
           if [ -n "$UNIT_CONFIG" ]; then config="--config=$UNIT_CONFIG"; fi
           bun test $config --conditions browser --conditions svelte $UNIT_PATHS
