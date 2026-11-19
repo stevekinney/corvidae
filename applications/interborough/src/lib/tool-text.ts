@@ -40,16 +40,46 @@ export function argumentLine(args: unknown): string {
 }
 
 /**
- * What a tool declared to say about one call, or `undefined`. Approvals carry a policy's reason
- * and a message that is the reason again unless the tool wrote its own, so a message equal to the
- * reason is not a summary.
+ * The sentence an approval policy writes as its reason (`armorer`'s `approvalStatusToDecision`):
+ * `Tool "bureau:discover-agents" (read-only tier) requires approval (mode: always).`, or the same
+ * tool "is denied by approval policy". It says why a person is asked, never what the call does.
+ */
+const POLICY_REASON =
+  /^Tool "[^"]+" \([\w-]+ tier\) (?:requires approval|is denied by approval policy) \(mode: [\w-]+\)[.?]?$/;
+
+/** Whether `text` is an approval policy's reason sentence rather than words a tool wrote. */
+export function isPolicyReason(text: string | undefined): boolean {
+  return text !== undefined && POLICY_REASON.test(text.trim());
+}
+
+/**
+ * What a tool declared to say about one call, or `undefined`. Approvals carry a policy's reason,
+ * and the Bureau sends that reason as the message when the tool wrote none (`ag-ui-interrupts.ts`),
+ * so a message that is one of the `reasons` again, or that is a policy's reason sentence at all,
+ * is not a summary. The second test is the one that holds when the row that would carry the reason
+ * says something else or has not been read (COR-2438: the reason is never the title).
  */
 export function declaredSummary(
   message: string | undefined,
-  reason: string | undefined,
+  ...reasons: readonly (string | undefined)[]
 ): string | undefined {
   if (message === undefined || message.trim() === '') return undefined;
-  return message === reason ? undefined : message.trim();
+  if (isPolicyReason(message)) return undefined;
+  const said = message.trim();
+  return reasons.some((reason) => reason?.trim() === said) ? undefined : said;
+}
+
+/**
+ * The policy's reason for an approval: the first of `candidates` that is a policy's reason
+ * sentence, else the first one given. The Bureau's review carries the reason itself; the row a
+ * parked call shows, and the approval's message for a tool that wrote no summary, carry it too, so
+ * whichever of them a page has read says the mode.
+ */
+export function policyReasonOf(...candidates: readonly (string | undefined)[]): string | undefined {
+  return (
+    candidates.find((candidate) => isPolicyReason(candidate)) ??
+    candidates.find((candidate) => candidate !== undefined && candidate.trim() !== '')
+  );
 }
 
 /**

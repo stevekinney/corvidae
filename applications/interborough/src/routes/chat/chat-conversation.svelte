@@ -116,7 +116,12 @@
     loadPluginApp,
     pluginToolCaller,
   } from '../../lib/host-panels.ts';
-  import { approvalQuestion, declaredSummary, reasonSaysAlways } from '../../lib/tool-text.ts';
+  import {
+    approvalQuestion,
+    declaredSummary,
+    policyReasonOf,
+    reasonSaysAlways,
+  } from '../../lib/tool-text.ts';
   import { getBureauReview, listBureauReviews } from '../../lib/bureau-reviews.ts';
   import InlineMarkdown from '../../lib/inline-markdown.svelte';
   import { invalidateReviewQueries } from '../../lib/review-queries.ts';
@@ -172,6 +177,7 @@
     formatCallDuration,
     railCall,
     toolGroups,
+    toolDisplayName,
     toolInfoByName,
     type ToolCallEntry,
   } from './tool-activity.ts';
@@ -1311,11 +1317,8 @@
       const call = Object.values(session.conversation.messages).find(
         (row) => row.toolCall?.id === result.callId,
       )?.toolCall;
-      const reason = typeof message.content === 'string' ? message.content : undefined;
-      const summary = declaredSummary(
-        result.action.type === 'approval' ? result.action.message : undefined,
-        reason,
-      );
+      const content = typeof message.content === 'string' ? message.content : undefined;
+      const declared = result.action.type === 'approval' ? result.action.message : undefined;
       // The name the approval reports the tool by (`plugin:tool` for a plugin's tool), not the
       // provider's `plugin__tool` the model called it by (COR-1879); the call's name until the
       // Bureau's pending reviews have been read.
@@ -1328,6 +1331,12 @@
           review.approval.callId === result.callId,
       );
       const toolName = reviewed?.kind === 'tool-approval' ? reviewed.approval.toolName : call?.name;
+      // The policy's reason, from the review when it has been read, else from the parked row or the
+      // message the Bureau fell back to it with (COR-2438): never the question, and it says the mode.
+      const reviewedReason =
+        reviewed?.kind === 'tool-approval' ? reviewed.approval.reason : undefined;
+      const reason = policyReasonOf(reviewedReason, content, declared);
+      const summary = declaredSummary(declared, content, reviewedReason);
       const approvalKey =
         approvalKeyForResult(result) ?? session.parkedApprovalKeys.get(result.callId);
       const observedExpiry =
@@ -1355,11 +1364,13 @@
         // moment for an approval that was parked on a call.
         requestedAt: reviewed?.requestedAt ?? askedAt(message.createdAt),
         // A tool set to Always asks on every call, so allowing it for the chat is not offered.
-        alwaysAsks: reasonSaysAlways(
-          reviewed?.kind === 'tool-approval' ? reviewed.approval.reason : reason,
-        ),
+        alwaysAsks: reasonSaysAlways(reason),
+        // Asked by the tool's name as a person reads it ("Run Discover agents?"), not its identifier.
         question: approvalQuestion({
-          toolName: toolName ?? 'a tool',
+          toolName:
+            call === undefined
+              ? (toolName ?? 'a tool')
+              : toolDisplayName(call.name, toolInfo.get(call.name)?.title),
           arguments: call?.arguments,
           summary,
         }),
@@ -1747,9 +1758,9 @@
           CHAT_COPY.tools.decided.elsewhere,
           questions.get(entry.callId) ??
             approvalQuestion({
-              toolName: entry.name,
+              toolName: entry.title ?? entry.name,
               arguments: entry.arguments,
-              summary: entry.decision?.asked,
+              summary: declaredSummary(entry.decision?.asked),
             }),
         ),
       )
