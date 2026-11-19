@@ -36,7 +36,15 @@
    * still reads the whole `invalid` bucket, because the other bulk operations
    * still answer a stale token as `InvalidParams`.
    */
-  import { Badge, Button, Callout, Input, Modal, Progress, Skeleton } from '@lostgradient/cinder';
+  import {
+    Badge,
+    Button,
+    Callout,
+    InlineLoading,
+    Input,
+    Modal,
+    Progress,
+  } from '@lostgradient/cinder';
   import { HttpClientError, type BulkOperationDryRunResult } from '@lostgradient/weft';
 
   import { BULK_PURGE_COPY } from '../../../app/copy/bulk-purge.ts';
@@ -54,6 +62,9 @@
   }
 
   let { runDryRun, runPurge, onClose, onSuccess }: BulkPurgeDialogProps = $props();
+
+  /** Names the sample list by the sentence that introduces it. */
+  const sampleIntroId = $props.id();
 
   type Phase = 'loading' | 'preview' | 'committing' | 'result' | 'fault';
 
@@ -133,36 +144,32 @@
 >
   {#snippet children()}
     {#if phase === 'loading'}
-      <div aria-busy="true" aria-label="Checking how many workflows a purge would remove">
-        <Skeleton height="1.25rem" width="60%" />
-        <Skeleton height="3rem" />
-      </div>
+      <!-- Its own status region announces the count in flight; the dialog is not busy-labelled. -->
+      <InlineLoading status="active" description={BULK_PURGE_COPY.loading} />
     {:else if phase === 'preview' && preview}
-      <p class="weft-bulk-dialog__lead">
-        Permanently deletes <strong>{matched} terminal workflow{matched === 1 ? '' : 's'}</strong>
-        matching the current filter — not just the visible page.
-      </p>
+      {#if matched === 0}
+        <p class="weft-bulk-dialog__lead">{BULK_PURGE_COPY.preview.nothing}</p>
+      {:else}
+        <p class="weft-bulk-dialog__lead">{BULK_PURGE_COPY.preview.lead(matched)}</p>
+      {/if}
       {#if chip.length > 0}
         <code class="weft-bulk-dialog__chip">{chip}</code>
       {/if}
-      {#if sample.length > 0}
-        <p class="weft-bulk-dialog__note">The server named these workflows to purge:</p>
-        <ul class="weft-bulk-dialog__sample" aria-label="Workflows the purge would remove">
-          {#each sample as workflowId (workflowId)}
-            <li><code>{workflowId}</code></li>
-          {/each}
-        </ul>
-        {#if notShown > 0}
-          <p class="weft-bulk-dialog__note">…and {notShown} more.</p>
+      {#if matched > 0}
+        {#if sample.length > 0}
+          <p class="weft-bulk-dialog__note" id={sampleIntroId}>
+            {BULK_PURGE_COPY.preview.sampleIntro}
+          </p>
+          <ul class="weft-bulk-dialog__sample" aria-labelledby={sampleIntroId}>
+            {#each sample as workflowId (workflowId)}
+              <li><code>{workflowId}</code></li>
+            {/each}
+          </ul>
+          {#if notShown > 0}
+            <p class="weft-bulk-dialog__note">{BULK_PURGE_COPY.preview.notShown(notShown)}</p>
+          {/if}
         {/if}
-      {/if}
-      <p class="weft-bulk-dialog__warning" role="alert">
-        Purge cannot be undone. Workflows that have not finished, and finished ones that still owe a
-        finalizer run, are not purged.
-      </p>
-      {#if matched === 0}
-        <p class="weft-bulk-dialog__note">No workflows match the current filter — nothing to do.</p>
-      {:else}
+        <p class="weft-bulk-dialog__note">{BULK_PURGE_COPY.preview.kept}</p>
         <Input
           id="bulk-purge-confirm-text"
           label={`Type "${phrase}" to confirm`}
@@ -223,14 +230,16 @@
 </Modal>
 
 <style>
+  /* The sentence that says what happens and that it cannot be undone, at the dialog's body size. */
   .weft-bulk-dialog__lead {
-    margin: 0 0 10px;
-    font-size: var(--cinder-text-sm);
+    margin: 0 0 var(--cinder-space-3);
+    font-size: var(--cinder-text-body);
+    font-weight: 600;
   }
 
   .weft-bulk-dialog__chip {
     display: block;
-    margin-bottom: 12px;
+    margin-bottom: var(--cinder-space-3);
     padding: var(--cinder-space-2) var(--cinder-space-2);
     background: var(--cinder-surface-inset);
     border-radius: var(--cinder-radius-sm);
@@ -240,22 +249,22 @@
   }
 
   .weft-bulk-dialog__sample {
-    margin: 6px 0 0;
+    margin: var(--cinder-space-2) 0 0;
     padding-inline-start: var(--cinder-space-4);
     font-size: var(--cinder-text-xs);
     color: var(--cinder-text-muted);
-    max-height: 160px;
+    max-height: 10rem;
     overflow-y: auto;
   }
 
-  .weft-bulk-dialog__warning {
-    margin: 12px 0;
-    font-size: var(--cinder-text-xs);
-    color: var(--cinder-status-danger-text);
+  /* A workflow id is one long unbroken token; it wraps at any character rather than widening the dialog. */
+  .weft-bulk-dialog__sample li,
+  .weft-bulk-dialog__sample code {
+    overflow-wrap: anywhere;
   }
 
   .weft-bulk-dialog__note {
-    margin: 8px 0 0;
+    margin: var(--cinder-space-2) 0 0;
     font-size: var(--cinder-text-xs);
     color: var(--cinder-text-subtle);
   }
@@ -266,7 +275,7 @@
     font-weight: 600;
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: var(--cinder-space-2);
   }
 
   .weft-bulk-dialog__fault {
@@ -278,6 +287,6 @@
   .weft-bulk-dialog__progress {
     display: flex;
     flex-direction: column;
-    gap: 10px;
+    gap: var(--cinder-space-3);
   }
 </style>

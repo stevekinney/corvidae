@@ -2,6 +2,7 @@ import { requireElement } from '../../../../tests/dom.test-support.ts';
 
 import { fireEvent, render, waitFor } from '@testing-library/svelte';
 import { describe, expect, test } from 'bun:test';
+import { readFileSync } from 'node:fs';
 
 import type { BulkOperationDryRunResult } from '@lostgradient/weft';
 import { HttpClientError } from '@lostgradient/weft';
@@ -44,12 +45,78 @@ describe('BulkPurgeDialog', () => {
     await waitFor(() => {
       expect(getByLabelText(PHRASE_LABEL)).not.toBeNull();
     });
-    expect(getByText('47 terminal workflows')).not.toBeNull();
-    const sample = getByRole('list', { name: 'Workflows the purge would remove' });
+    // Irreversibility is in the lead sentence, at body size, not in a footnote.
+    expect(
+      getByText(
+        "Permanently deletes 47 finished workflows matching this filter. This can't be undone.",
+      ),
+    ).not.toBeNull();
+    expect(
+      getByText('Workflows still running, or still running their cleanup step, are kept.'),
+    ).not.toBeNull();
+    expect(getByText('These workflows will be deleted:')).not.toBeNull();
+    const sample = getByRole('list', { name: 'These workflows will be deleted:' });
     expect(sample.textContent).toContain('wf-1');
     expect(sample.textContent).toContain('wf-2');
     // 47 matched and 2 named: the rest is said, not hidden.
     expect(getByText('…and 45 more.')).not.toBeNull();
+  });
+
+  test('the preview is static text: nothing in it is a live alert', async () => {
+    const { getByLabelText, queryByRole } = render(BulkPurgeDialog, {
+      props: {
+        runDryRun: async () => preview(),
+        runPurge: async () => ({ headline: 'unused', errors: [] }),
+        onClose: () => {},
+      },
+    });
+
+    await waitFor(() => {
+      expect(getByLabelText(PHRASE_LABEL)).not.toBeNull();
+    });
+    expect(queryByRole('alert')).toBeNull();
+  });
+
+  test('the count in the lead sentence is singular for one workflow', async () => {
+    const { getByText } = render(BulkPurgeDialog, {
+      props: {
+        runDryRun: async () => preview({ matched: 1, sampleWorkflowIds: ['wf-only'] }),
+        runPurge: async () => ({ headline: 'unused', errors: [] }),
+        onClose: () => {},
+      },
+    });
+
+    await waitFor(() => {
+      expect(
+        getByText(
+          "Permanently deletes 1 finished workflow matching this filter. This can't be undone.",
+        ),
+      ).not.toBeNull();
+    });
+  });
+
+  test('while the dry run is in flight the dialog says so in a status region', async () => {
+    const { getAllByRole, getAllByText } = render(BulkPurgeDialog, {
+      props: {
+        runDryRun: () => new Promise<BulkOperationDryRunResult>(() => {}),
+        runPurge: async () => ({ headline: 'unused', errors: [] }),
+        onClose: () => {},
+      },
+    });
+
+    expect(getAllByRole('status').length).toBeGreaterThan(0);
+    // The words show in the dialog and are announced by the status region, so two elements carry them.
+    await waitFor(() => {
+      expect(getAllByText('Counting the workflows a purge would delete').length).toBeGreaterThan(0);
+    });
+  });
+
+  test('the dialog styles let a long id wrap and use spacing tokens, not raw pixel margins', () => {
+    const source = readFileSync(new URL('./bulk-purge-dialog.svelte', import.meta.url), 'utf8');
+    const styles = source.slice(source.indexOf('<style>'));
+
+    expect(styles).toMatch(/overflow-wrap:\s*anywhere/);
+    expect(styles).not.toMatch(/margin[^;{}]*\d+px/);
   });
 
   test('the matched count is the dry run, not a count the caller already held', async () => {
@@ -64,7 +131,7 @@ describe('BulkPurgeDialog', () => {
     await waitFor(() => {
       expect(getByLabelText('Type "purge 3 workflows" to confirm')).not.toBeNull();
     });
-    expect(getByText('3 terminal workflows')).not.toBeNull();
+    expect(getByText(/Permanently deletes 3 finished workflows/)).not.toBeNull();
   });
 
   test('commits with the dry run confirmation token and the matched count, after the phrase is typed', async () => {
@@ -105,8 +172,8 @@ describe('BulkPurgeDialog', () => {
     expect(succeeded).toBe(1);
   });
 
-  test('a preview that matches nothing offers no purge button', async () => {
-    const { getByText, queryByRole } = render(BulkPurgeDialog, {
+  test('a preview that matches nothing says so, warns of nothing, and offers no purge button', async () => {
+    const { getByText, queryByText, queryByRole } = render(BulkPurgeDialog, {
       props: {
         runDryRun: async () => preview({ matched: 0, sampleWorkflowIds: [] }),
         runPurge: async () => ({ headline: 'unused', errors: [] }),
@@ -115,8 +182,15 @@ describe('BulkPurgeDialog', () => {
     });
 
     await waitFor(() => {
-      expect(getByText(/nothing to do/)).not.toBeNull();
+      expect(
+        getByText('None of the matching workflows have finished, so there is nothing to purge.'),
+      ).not.toBeNull();
     });
+    // Nothing will be deleted, so there is no irreversibility to warn about and nothing to confirm.
+    expect(queryByText(/can't be undone/)).toBeNull();
+    expect(queryByText(/Permanently deletes/)).toBeNull();
+    expect(queryByRole('alert')).toBeNull();
+    expect(queryByRole('textbox')).toBeNull();
     expect(queryByRole('button', { name: /^Purge / })).toBeNull();
   });
 
