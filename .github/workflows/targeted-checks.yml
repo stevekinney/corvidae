@@ -113,7 +113,7 @@ jobs:
       - run: |
           specs="$FIXTURE_SPECS"
           if [ -n "$CINDER_TEST_COMPONENTS" ]; then
-            specs="$specs scripts/browser-fixtures/tests/components.playwright.ts"
+            specs="$specs scripts/browser-fixtures/tests/components.playwright.ts scripts/browser-fixtures/tests/components-sweep.playwright.ts"
           fi
           PLAYWRIGHT_HTML_OUTPUT_DIR="$GITHUB_WORKSPACE/playwright-output/report" \
           PLAYWRIGHT_JSON_OUTPUT_FILE="$GITHUB_WORKSPACE/playwright-output/results.json" \
@@ -199,6 +199,14 @@ jobs:
           # hang-guarded runner, as `test:self` does.
           if [ "$UNIT_WORKSPACE" = . ]; then
             bun scripts/bun-test.ts $UNIT_PATHS
+            exit
+          fi
+          # The browser-fixtures workspace runs as the root `test:browser-fixtures` does: its tests
+          # read the generated, gitignored manifest, and the curated build is verified after them.
+          if [ "$UNIT_WORKSPACE" = scripts/browser-fixtures ]; then
+            bun scripts/browser-fixtures/scripts/prepare-manifest.ts
+            (cd "$UNIT_WORKSPACE" && bun test --conditions browser --conditions svelte $UNIT_PATHS)
+            bun scripts/browser-fixtures/scripts/verify-curated-build.ts
             exit
           fi
           cd "$UNIT_WORKSPACE"

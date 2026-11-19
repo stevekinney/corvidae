@@ -56,7 +56,7 @@ const cleanResponses: Responses = {
     url: 'https://github.com/stevekinney/corvidae/actions/runs/99',
     ref: 'chef/cor-7',
     inputs: { unitWorkspace: 'scripts' },
-    command: ['gh', 'workflow', 'run', 'targeted-checks.yml'],
+    command: ['bun', 'scripts/chef/targeted-run.ts'],
     requiresFullRun: false,
   },
   'override brief': { briefPath: '/main/tmp/chef/briefs/COR-7.md', bytes: 2048 },

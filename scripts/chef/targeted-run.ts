@@ -16,7 +16,7 @@
 //                       "plan exceeds one targeted dispatch" and dispatches `main.yml`: nothing is
 //                       dropped, and only a plan dispatched whole carries a `plan_digest`
 //
-// The valid slugs are the ones `components.playwright.ts` accepts: the generated manifest's, which
+// The valid slugs are the ones `components-sweep.playwright.ts` accepts: the generated manifest's, which
 // this script regenerates first with `prepare-manifest.ts`. The slug check is the workflow's own
 // `parseComponentFilter`.
 //
@@ -66,7 +66,13 @@ export { UsageError };
 
 const FIXTURE_SPEC = /^scripts\/browser-fixtures\/tests\/[\w.-]+\.playwright\.ts$/;
 const E2E_SPEC = /^tests\/e2e\/[\w.-]+\.spec\.ts$/;
-const WORKSPACE = /^(applications|components|packages|plugins|testing|internal)\/[\w.-]+$/;
+/**
+ * Every workspace the root `package.json` lists: the globbed folders and the two named ones under
+ * `scripts/`. The unit job enters any of them with `cd <workspace> && bun test`; a test keeps this
+ * equal to the manifest's `workspaces`.
+ */
+export const WORKSPACE =
+  /^(?:(?:applications|components|packages|plugins|testing|internal)\/[\w.-]+|scripts\/(?:browser-fixtures|groom))$/;
 const SAFE_PATH = /^[\w@./-]+$/;
 /**
  * The most characters the `unit_lanes` input takes in one dispatch. GitHub caps all of a dispatch's
@@ -74,6 +80,9 @@ const SAFE_PATH = /^[\w@./-]+$/;
  * 10,000.
  */
 const UNIT_PATH_BUDGET = 30_000;
+
+/** The most test files a workspace's whole suite may name and still run as a targeted lane. */
+export const WHOLE_SUITE_FILE_LIMIT = 40;
 
 /** The rule a plan carries when its unit lanes do not fit one targeted dispatch. */
 export const OVERSIZE_RULE = 'plan exceeds one targeted dispatch';
@@ -162,7 +171,11 @@ export function inputsFromPlan(plan: EvidencePlan): {
       undispatchable.push(`${workspace}: a workspace the targeted workflow cannot enter`);
       continue;
     }
-    if (lane.full) undispatchable.push(`${workspace}: its whole suite`);
+    // `full` means the selection is every test file of the workspace, named in `paths`. A small
+    // suite runs file by file inside a targeted job's 30 minutes; a large one (Cinder's takes 47)
+    // wants the sharded full run.
+    if (lane.full && (lane.paths.length === 0 || lane.paths.length > WHOLE_SUITE_FILE_LIMIT))
+      undispatchable.push(`${workspace}: its whole suite`);
     if (workspace !== 'applications/interborough') {
       if (lane.paths.length > 0) lanes.push({ workspace, config: '', paths: lane.paths });
       continue;
@@ -386,6 +399,9 @@ export function run(
     const result = runner(command);
     if (result.code !== 0)
       throw new UsageError(`gh workflow run failed: ${result.stderr.trim().split('\n')[0] ?? ''}`);
+    // What `gh` prints (the run's URL or id) is the receipt a worker records.
+    const printed = `${result.stdout}${result.stderr}`.trim();
+    if (printed !== '') notes.push(`dispatched: ${printed.split('\n')[0] ?? ''}`);
   }
   return {
     code: 0,

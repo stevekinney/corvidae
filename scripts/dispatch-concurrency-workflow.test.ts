@@ -29,6 +29,23 @@ describe('workflow_dispatch concurrency', () => {
     expect(block).toContain("cancel-in-progress: ${{ github.event_name == 'workflow_dispatch' }}");
   });
 
+  // `server.test.ts` reads the generated manifest, and the root `test:browser-fixtures` verifies the
+  // curated build after the tests: the targeted lane for that workspace does both.
+  test('targeted-checks.yml runs the browser-fixtures lane as test:browser-fixtures does', () => {
+    const text = workflow('targeted-checks.yml');
+    const start = text.indexOf('"$UNIT_WORKSPACE" = scripts/browser-fixtures');
+    expect(start).toBeGreaterThan(-1);
+    const lane = text.slice(start, text.indexOf('exit', start));
+    const prepare = lane.indexOf('scripts/browser-fixtures/scripts/prepare-manifest.ts');
+    const tests = lane.indexOf('bun test');
+    const verify = lane.indexOf('scripts/browser-fixtures/scripts/verify-curated-build.ts');
+    expect(prepare).toBeGreaterThan(-1);
+    expect(tests).toBeGreaterThan(prepare);
+    expect(verify).toBeGreaterThan(tests);
+    const rootScript = readFileSync(resolve(import.meta.dir, '..', 'package.json'), 'utf8');
+    expect(rootScript).toContain('verify-curated-build.ts');
+  });
+
   // Two faults reached main because a targeted run did no type-check.
   test('targeted-checks.yml lints and type-checks the workspaces changed against main', () => {
     const text = workflow('targeted-checks.yml');

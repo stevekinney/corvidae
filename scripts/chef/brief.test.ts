@@ -306,7 +306,7 @@ describe('charter rules', () => {
     expect(rule).toContain('never to `main`');
     expect(rule).toContain('do not wait for the focused checks before that push');
     expect(rule).toContain('still gate ready-for-review');
-    expect(rule).toContain('record its returned run ID in the ready-for-review receipt');
+    expect(rule).toContain('record the dispatch it prints in the ready-for-review receipt');
     for (const path of ['.claude/agents/chef-worker.md', '.codex/agents/chef-worker.toml']) {
       const text = readFileSync(join(import.meta.dir, '../..', path), 'utf8');
       expect(text).toContain(`${pushRule.charAt(0).toUpperCase()}${pushRule.slice(1)}`);
@@ -315,11 +315,11 @@ describe('charter rules', () => {
 
   test('requires every rendered brief to record one final branch CI receipt', () => {
     expect(pushRule).toContain(
-      'After the final push run `gh workflow run main.yml --ref <branch>` once per batch',
+      'After the final push run `bun scripts/chef/targeted-run.ts` once per batch',
     );
     expect(pushRule).not.toContain('When the brief requires branch CI');
     expect(renderBrief(issue(description), { paths: [], verify: [], model: 'Sonnet' })).toContain(
-      'record its returned run ID in the ready-for-review receipt',
+      'record the dispatch it prints in the ready-for-review receipt',
     );
   });
 
@@ -401,7 +401,7 @@ describe('charter rules', () => {
       'interborough end-to-end suite',
       'design-review capture',
       '`validate` or `harden` on this host',
-      '`gh workflow run main.yml --ref <branch>`',
+      '`bun scripts/chef/targeted-run.ts`',
       'do not wait on it',
       'read the failing test names',
       "download the failing shard's artifact",
@@ -435,7 +435,7 @@ describe('charter rules', () => {
       '.agents/skills/chef/references/execution-record.md',
     ]) {
       const text = read(path);
-      expect(text, path).toContain('gh workflow run main.yml --ref <branch>');
+      expect(text, path).toContain('bun scripts/chef/targeted-run.ts');
       expect(text, path).toContain('browser suite');
     }
   });
