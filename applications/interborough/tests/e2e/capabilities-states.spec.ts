@@ -31,6 +31,7 @@ import {
 import { captureForDesignReview } from './design-review-capture.ts';
 import { E2E_SHOWCASE_URL } from './e2e-constants.ts';
 import { expect, loggedFailedResponse, test } from './fixtures.ts';
+import { readBoxes } from './read-boxes.ts';
 
 test.use({ baseURL: E2E_SHOWCASE_URL });
 
@@ -660,18 +661,6 @@ for (const width of [1920, 1280, 768, 375] as const) {
     await expect(detail.getByTestId('tool-risk')).toHaveText('Reads');
     await expect(detail.getByTestId('tool-approval')).toHaveText('Asks: Never');
     await expect(detail.getByTestId('tool-source')).toHaveText('Built in');
-    const boxes = await Promise.all(
-      ['tool-risk', 'tool-approval', 'tool-source'].map(
-        async (testId) => (await detail.getByTestId(testId).boundingBox()) ?? undefined,
-      ),
-    );
-    const [first, ...rest] = boxes;
-    expect(first).toBeDefined();
-    for (const box of rest) {
-      expect(box).toBeDefined();
-      expect(Math.abs((box?.y ?? 0) - (first?.y ?? 0))).toBeLessThanOrEqual(0.5);
-      expect(Math.abs((box?.height ?? 0) - (first?.height ?? 0))).toBeLessThanOrEqual(0.5);
-    }
     // 5: one line for nobody, with no link in it.
     const empty = detail.getByTestId('capability-users-empty');
     await expect(empty).toHaveText(copy.tool.noUsers.line);
@@ -684,24 +673,33 @@ for (const width of [1920, 1280, 768, 375] as const) {
     await expect(field).toContainText('Required');
     await expect(field).toContainText('text');
     await expect(field).toContainText('At least 1 character');
-    // The field's name starts where the Inputs heading starts.
-    const headingBox = await detail.getByRole('heading', { name: copy.tool.inputs }).boundingBox();
-    const labelBox = await field.locator('.cinder-schema-view__label').boundingBox();
-    expect(Math.abs((labelBox?.x ?? 0) - (headingBox?.x ?? 0))).toBeLessThanOrEqual(1);
-    // 2: the schema is open; beside the fields from 1280, under them at 768 and below.
+    // 2: the schema is open, with nothing to expand.
     const source = inputs.locator('.cinder-schema-view__source');
     await expect(source.locator('code')).toContainText('"assetId"');
-    const fieldsBox = await inputs.locator('.cinder-schema-view__fields').boundingBox();
-    const sourceBox = await source.boundingBox();
-    expect(fieldsBox).not.toBeNull();
-    expect(sourceBox).not.toBeNull();
-    if (fieldsBox !== null && sourceBox !== null) {
-      if (width >= 1280) {
-        expect(sourceBox.x).toBeGreaterThanOrEqual(fieldsBox.x + fieldsBox.width - 1);
-        expect(Math.abs(sourceBox.y - fieldsBox.y)).toBeLessThanOrEqual(1);
-      } else {
-        expect(sourceBox.y).toBeGreaterThanOrEqual(fieldsBox.y + fieldsBox.height - 1);
-      }
+
+    // Settled: every part is drawn, so the boxes are read from one layout.
+    const box = await readBoxes(page, {
+      risk: detail.getByTestId('tool-risk'),
+      asks: detail.getByTestId('tool-approval'),
+      origin: detail.getByTestId('tool-source'),
+      heading: detail.getByRole('heading', { name: copy.tool.inputs }),
+      label: field.locator('.cinder-schema-view__label'),
+      fields: inputs.locator('.cinder-schema-view__fields'),
+      source,
+    });
+    // 4: the three badges share one top and one height.
+    for (const badge of [box.asks, box.origin]) {
+      expect(Math.abs(badge.y - box.risk.y)).toBeLessThanOrEqual(0.5);
+      expect(Math.abs(badge.height - box.risk.height)).toBeLessThanOrEqual(0.5);
+    }
+    // 6: the field's name starts where the Inputs heading starts.
+    expect(Math.abs(box.label.x - box.heading.x)).toBeLessThanOrEqual(1);
+    // 2: beside the fields from 1280, under them at 768 and below.
+    if (width >= 1280) {
+      expect(box.source.x).toBeGreaterThanOrEqual(box.fields.x + box.fields.width - 1);
+      expect(Math.abs(box.source.y - box.fields.y)).toBeLessThanOrEqual(1);
+    } else {
+      expect(box.source.y).toBeGreaterThanOrEqual(box.fields.y + box.fields.height - 1);
     }
     await captureForDesignReview(page, {
       route: '/capabilities',
