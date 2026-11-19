@@ -45,6 +45,7 @@
   import { TASK_COPY } from '../../../app/copy/tasks.ts';
   import { useBureauEventsLive } from '../../../app/live-polling.svelte.ts';
   import { agentLabel as agentLabelOf } from '../../../lib/agent-label.ts';
+  import { readScheduleAttention } from '../../../lib/bureau-attention.ts';
   import { listAgents, listAllContexts } from '../../../lib/bureau-client.ts';
   import { listAllGoals } from '../../../lib/bureau-goals.ts';
   import { listAllTasks } from '../../../lib/bureau-tasks.ts';
@@ -57,6 +58,7 @@
   import { getPrincipalStore } from '../../../lib/scopes.svelte.ts';
   import { HOME_CLOCK_MILLISECONDS } from '../../home/home-clock.svelte.ts';
   import { REVIEW_POLL_MILLISECONDS } from '../../reviews/reviews-data.ts';
+  import { loadModelAgents } from '../../schedules/schedule-row-context.ts';
   import MissedRunsRow from './missed-runs-row.svelte';
   import { readRunSchedules } from './missed-runs.ts';
   import RunListRow from './run-list-row.svelte';
@@ -73,6 +75,7 @@
     runListEntries,
     runListRows,
     runSegmentCounts,
+    runStatusWord,
     serializeRunFilter,
     visibleRunSegments,
     type RunFilter,
@@ -216,6 +219,50 @@
     return () => clearInterval(timer);
   });
 
+  // The agents of the schedules' runs that are due, which are the only rows that say whether a
+  // provider is connected for them (row 10h): only a list that has one asks, as the Schedules
+  // list does, whether no provider is connected and which of those agents needs a model.
+  const dueScheduleAgents = $derived(
+    [
+      ...new Set(
+        everyRun
+          .filter(
+            (row) =>
+              row.origin.kind === 'schedule' &&
+              row.agentName !== null &&
+              runStatusWord(row, now) === 'Scheduled',
+          )
+          .map((row) => row.agentName ?? ''),
+      ),
+    ].toSorted(),
+  );
+  const providerHold = createQuery(
+    () => ({
+      queryKey: ['runs', 'provider-hold', dueScheduleAgents.join(',')] as const,
+      queryFn: async ({ signal }: { signal: AbortSignal }) => {
+        const [attention, modelAgents] = await Promise.all([
+          readScheduleAttention({ signal }),
+          loadModelAgents(dueScheduleAgents, { signal }),
+        ]);
+        return { noProvider: attention.noProvider, modelAgents };
+      },
+      enabled: dueScheduleAgents.length > 0,
+      retry: false,
+    }),
+    undefined,
+  );
+  // What holds a schedule from starting its due run (row 10h): the workflow whose file cannot
+  // load, and no provider for an agent whose definition names a model.
+  function scheduleHolds(scheduleId: string, agentName: string | null): readonly string[] {
+    const blocked = schedules.data?.blockers?.get(scheduleId);
+    const provider = providerHold.data;
+    const needsModel = agentName !== null && provider?.modelAgents.has(agentName) === true;
+    return [
+      ...(blocked === undefined ? [] : [blocked]),
+      ...(provider?.noProvider === true && needsModel ? [TASK_COPY.list.holds.noProvider] : []),
+    ];
+  }
+
   const agentNames = $derived(
     [
       ...new Set([
@@ -271,6 +318,10 @@
       options: agentNames.map((name) => ({ value: name, label: filterLabelOf(agentLabel(name)) })),
     },
   ]);
+  // The chips that move into the Filter menu when the row cannot hold them, least used first: a
+  // chip with a filter applied never moves, so an applied filter stays visible and removable
+  // (row 52x).
+  const FOLD_ORDER = ['workflow', 'agent', 'startedBy'] as const;
   const appliedFilters = $derived<AppliedFilter[]>([
     ...(filter.startedBy === undefined
       ? []
@@ -366,6 +417,7 @@
     segmentsLabel={TASK_COPY.statusLabel}
     {facets}
     {appliedFilters}
+    foldOrder={FOLD_ORDER}
     searchQuery={typed}
     searchPlaceholder={TASK_COPY.list.searchPlaceholder}
     searchAriaLabel={TASK_COPY.list.searchLabel}
@@ -484,6 +536,8 @@
                   {agentLabel}
                   {pluginTitle}
                   {scheduleCadence}
+                  {scheduleHolds}
+                  phoneWidth="viewport"
                   readable={entry.row.engineRun !== true || engineReadable}
                 />
               {:else}

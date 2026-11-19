@@ -1,0 +1,39 @@
+# Persists Turborepo's local task cache (`.turbo/cache`) across runs, with no remote cache and no
+# secret. This half restores: a runner takes the newest cache saved under the same job name (a
+# branch run reads the default branch's caches). Its pair, `../save`, writes the cache under the
+# commit the job ran. A hit still needs Turborepo's own task hash to match, so a restored entry
+# never answers a task whose inputs changed.
+#
+# Put this step after `actions/checkout` and before the first Turborepo command, and `../save` last
+# with `if: ${{ !cancelled() }}`: Turborepo caches only a task that succeeded, so a job with one
+# failed task still saves the work that passed. `scripts/ci-turbo-cache-workflow.test.ts` fails a
+# job that runs Turborepo without both steps.
+name: Restore the Turborepo cache
+description: Restore Turborepo's local task cache for one job.
+
+inputs:
+  name:
+    description: Job name, with the matrix entry when the job has one. It keys the cache.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - id: key
+      shell: bash
+      env:
+        CACHE_NAME: ${{ inputs.name }}
+      run: |
+        # A cache key allows no comma, so the matrix names ("applications, plugins, testing") are
+        # folded to a slug.
+        slug="$(printf '%s' "$CACHE_NAME" | tr -cs 'A-Za-z0-9' '-' | tr 'A-Z' 'a-z')"
+        echo "prefix=turbo/${RUNNER_OS}/${RUNNER_ARCH}/${slug}/" >> "$GITHUB_OUTPUT"
+        echo "TURBO_CACHE_PREFIX=turbo/${RUNNER_OS}/${RUNNER_ARCH}/${slug}/" >> "$GITHUB_ENV"
+        # Turborepo's default, written out so a change of its default cannot move the cache away
+        # from the path this action saves.
+        echo "TURBO_CACHE_DIR=$GITHUB_WORKSPACE/.turbo/cache" >> "$GITHUB_ENV"
+    - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: .turbo/cache
+        key: ${{ steps.key.outputs.prefix }}${{ github.sha }}
+        restore-keys: ${{ steps.key.outputs.prefix }}

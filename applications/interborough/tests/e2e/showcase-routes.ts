@@ -130,7 +130,7 @@ export function showcaseVariants(world: SampleWorldRecords): Readonly<Record<str
 
 /** Sample world records holding no identifiers, for the parts that need only the names. */
 const BLANK_WORLD: SampleWorldRecords = {
-  chats: { refund: '', release: '', sayHello: '', lookUp4468: '', billing: '' },
+  chats: { refund: '', refund4472: '', release: '', sayHello: '', lookUp4468: '', billing: '' },
   agent: '',
   memory: '',
   workflows: { releaseNotes: '', triageInbox: '', orderRefund: '' },

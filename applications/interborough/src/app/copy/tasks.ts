@@ -1,4 +1,13 @@
+import type { StatusDotWord } from '@lostgradient/cinder';
+
 import { NOT_FOUND_COPY } from './views.ts';
+
+/**
+ * The one word for a run the engine parked on a signal (rows 56g, 10h): the run's status on its
+ * page, its row's status on the Runs list, and the label of the Runs list's segment that counts
+ * such runs. It is a word of Cinder's StatusDot, so its tone is StatusDot's (the hollow ring).
+ */
+export const SIGNAL_WAIT_WORD = 'Waiting for a signal' as const satisfies StatusDotWord;
 
 /** The words the Tasks view uses outside its states. */
 export const TASK_COPY = {
@@ -16,8 +25,11 @@ export const TASK_COPY = {
     segments: {
       all: 'All',
       waiting: 'Waiting on you',
-      /** A run parked on a signal: it needs nobody at the page, and is drawn only while one is. */
-      signal: 'Waiting for a signal',
+      /**
+       * Runs parked on a signal: they need nobody at the page, and the segment is drawn only while
+       * one is. It is called by the word each such run reads (row 56g).
+       */
+      signal: SIGNAL_WAIT_WORD,
       running: 'Running',
       done: 'Done',
       failed: 'Failed',
@@ -81,6 +93,11 @@ export const TASK_COPY = {
     attempt: (number: number, of: number): string => `attempt ${String(number)} of ${String(of)}`,
     /** When a canceled run stopped, and how long it had run. The event names no one who canceled it. */
     canceledAt: (time: string, duration: string): string => `canceled at ${time} after ${duration}`,
+    /** What holds a due run's schedule from starting it, said before its agent (row 10h). */
+    holds: {
+      cannotLoad: (workflow: string): string => `${workflow} can’t load`,
+      noProvider: 'no provider is connected',
+    },
     /** The collapsed row of the runs a schedule missed. */
     missed: {
       /** The title of a schedule with no name of its own. */
@@ -88,6 +105,8 @@ export const TASK_COPY = {
       /** Line two's last part: how many runs were missed, and since when. */
       since: (count: number, day: string): string =>
         `missed ${String(count)} ${count === 1 ? 'time' : 'times'} since ${day}`,
+      /** A phone's line two's last part: since when, the count being in the status (row 05w). */
+      sinceDay: (day: string): string => `since ${day}`,
       /** The accessible name of the list of missed occurrences under the expanded row. */
       occurrencesLabel: 'Missed occurrences',
       viewSchedule: 'View schedule',

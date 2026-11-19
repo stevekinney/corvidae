@@ -26957,7 +26957,7 @@
       }
     },
     {
-      "description": "Returns one of the caller’s own goals; a caller holding `bureau.goals:read` reads any owner’s. Another owner’s goal answers as a missing one does. The view carries the goal’s `revision`, to pass back as `expectedRevision`, its `validator`, and its attempts. For the goal’s owner, and no one else (`bureau.goals:read` and `bureau.goals:content` do not widen it), it also carries the goal’s `prompt` and each attempt’s validator `feedback`, which an edit form shows; every other caller reads the view without those two keys. It never carries the goal’s instructions.",
+      "description": "Returns one of the caller’s own goals; a caller holding `bureau.goals:read` reads any owner’s. Another owner’s goal answers as a missing one does. The view carries the goal’s `revision`, to pass back as `expectedRevision`, its `validator`, and its attempts. For the goal’s owner, and no one else (`bureau.goals:read` and `bureau.goals:content` do not widen it), it also carries the goal’s `prompt`, each attempt’s validator `feedback`, which an edit form shows, and each attempt’s `reason`, why a passing attempt met its check when the validator said; every other caller reads the view without those three keys. It never carries the goal’s instructions.",
       "errors": [
         {
           "$ref": "#/components/errors/Unauthorized"
@@ -27027,6 +27027,13 @@
                     ]
                   },
                   "finishReason": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "reason": {
+                    "description": "Why the attempt met its check, when the validator said (“Reply said hello”); `null` for an attempt that did not pass, one whose validator said nothing, and one checked before a pass could say. Present for the goal’s owner only.",
                     "type": [
                       "string",
                       "null"
@@ -27507,7 +27514,7 @@
               "type": "string"
             },
             "reason": {
-              "description": "Why the verdict is `unavailable` or `indeterminate`; `null` otherwise.",
+              "description": "Why the verdict is `unavailable` or `indeterminate`, or why a `pass` met the check when the validator said (absent from a verdict recorded before a pass could say); `null` otherwise.",
               "type": [
                 "string",
                 "null"

@@ -19,6 +19,7 @@ import {
 const SEED: SampleWorldRecords = {
   chats: {
     refund: 'chat-1',
+    refund4472: 'chat-6',
     release: 'chat-2',
     sayHello: 'chat-3',
     lookUp4468: 'chat-4',

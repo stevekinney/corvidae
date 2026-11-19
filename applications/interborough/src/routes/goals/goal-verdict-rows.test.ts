@@ -86,6 +86,18 @@ describe('the facts of a verdict', () => {
     expect(facts[0]?.definition).toBe('The validator is gone.');
     expect(facts[1]).toEqual({ term: 'Check', definition: 'Check', note: 'check, version 1' });
   });
+
+  test('never say a pass’s reason as a detail of what the check could not do (row 67v)', () => {
+    const facts = verdictFacts({
+      outcome: 'pass',
+      reason: 'Reply said hello',
+      error: null,
+      validator: { name: 'check', version: '1' },
+      configuration: null,
+      judgedBy: null,
+    });
+    expect(facts.map((fact) => fact.term)).toEqual(['Check']);
+  });
 });
 
 describe('the word a verdict opens with', () => {
