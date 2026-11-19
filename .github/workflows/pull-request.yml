@@ -130,3 +130,30 @@ jobs:
     with:
       fixtures: ${{ needs.browser-selection.outputs.fixtures == 'true' }}
       interborough: ${{ needs.browser-selection.outputs.interborough == 'true' }}
+
+  evidence:
+    name: Evidence aggregate
+    needs: [static, workspaces, tests, browser-selection, browser]
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version-file: package.json
+      # A pull-request receipt names the PR head and base from the authenticated event payload;
+      # the checked revision remains the merge checkout and is never presented as the PR head.
+      - name: Record pull-request checkout identity and planned job states
+        env:
+          CI_EVIDENCE_NEEDS: ${{ toJSON(needs) }}
+          CI_EVIDENCE_NOT_APPLICABLE: ${{ needs.browser-selection.outputs.fixtures != 'true' && needs.browser-selection.outputs.interborough != 'true' && '["browser"]' || '[]' }}
+        run: bun scripts/chef/ci-evidence-workflow.ts ci-evidence-receipt.json
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: ${{ always() }}
+        with:
+          name: ci-evidence-receipt-${{ github.run_attempt }}
+          path: ci-evidence-receipt.json
+          if-no-files-found: error
