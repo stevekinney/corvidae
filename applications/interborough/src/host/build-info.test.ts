@@ -75,6 +75,21 @@ describe('staleBuildProblem', () => {
   });
 
   // spawn-free: the git runner is a stand-in that answers from memory
+  test('refuses a build once an untracked file has been edited, though its name is unchanged', () => {
+    const source = mkdtempSync(join(scratch, 'source-'));
+    const file = join(source, 'new.txt');
+    writeFileSync(file, 'one');
+    const untracked = { ...clean, untracked: 'new.txt\n' };
+    const git = fakeGit(untracked);
+    const directory = mkdtempSync(join(scratch, 'build-'));
+    writeFileSync(join(directory, 'index.html'), 'page');
+    writeFileSync(join(directory, BUILD_INFO_FILE), JSON.stringify(readSourceInfo(source, git)));
+    expect(serveProblem(directory, source, git)).toBeUndefined();
+    writeFileSync(file, 'two');
+    expect(serveProblem(directory, source, git)).toContain('uncommitted changes');
+  });
+
+  // spawn-free: the git runner is a stand-in that answers from memory
   test('refuses a build that records nothing, and one whose record is not a record', () => {
     const directory = build();
     expect(staleBuildProblem(directory, '.', fakeGit(clean))).toContain('records no source commit');

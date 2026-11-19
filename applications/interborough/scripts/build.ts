@@ -547,9 +547,16 @@ export async function runBuildMain(
   if (exitWithParent) exit(0);
 }
 
+/**
+ * Build the application and record the checkout's current source in it. Every build made inside a
+ * checkout goes through this (the command line, the end-to-end server, the release build), so a
+ * server accepts it; {@link buildApplication} alone records an unknown commit, which a server
+ * inside a checkout refuses.
+ */
+export const buildCheckoutApplication: typeof buildApplication = (options) =>
+  buildApplication({ ...options, source: readSourceInfo(PACKAGE_DIRECTORY) });
+
 if (import.meta.main) {
-  // Only the command line reads the checkout's commit, so no test starts Git.
-  await runBuildMain(process.argv.slice(2), undefined, undefined, (options) =>
-    buildApplication({ ...options, source: readSourceInfo(PACKAGE_DIRECTORY) }),
-  );
+  // Only the command line reads the checkout's commit, so no unit test starts Git.
+  await runBuildMain(process.argv.slice(2), undefined, undefined, buildCheckoutApplication);
 }

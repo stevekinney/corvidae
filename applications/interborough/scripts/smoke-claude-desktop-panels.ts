@@ -23,7 +23,13 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import type { GitRunner } from '../src/host/build-info.ts';
+import {
+  processEnvironment,
+  resolveBuildDirectory,
+} from '../src/host/environment-configuration.ts';
 import { startHost } from '../src/host/host.ts';
+import { serveProblem } from '../src/host/supervisor.ts';
 
 const label = '[smoke:claude-desktop-panels]';
 
@@ -193,12 +199,29 @@ export async function waitForStop(options: {
   });
 }
 
+/** Why the smoke must not serve the build in `buildDirectory` (`serve`'s own message), or `undefined`. */
+export function staleBuildRefusal(
+  buildDirectory: string,
+  source?: string,
+  git?: GitRunner,
+): string | undefined {
+  const problem = serveProblem(buildDirectory, source, git);
+  return problem === undefined ? undefined : `${label} ${problem}`;
+}
+
 async function main(): Promise<number> {
   const home = await mkdtemp(join(tmpdir(), 'interborough-desktop-smoke-home-'));
   // The host leaves out a panel whose page does not build within 30 seconds (a loaded machine) and
   // still starts, so that panel's tools are advertised model-only. Name that cause, instead of
   // reporting a visibility mismatch that is only its consequence.
   const buildFailures: string[] = [];
+  // Refuse a build that is not the checkout's current source, with the message `serve` gives.
+  const stale = staleBuildRefusal(resolveBuildDirectory(processEnvironment()));
+  if (stale !== undefined) {
+    await rm(home, { recursive: true, force: true });
+    console.error(stale);
+    return 1;
+  }
   const host = await startHost({
     environment: { INTERBOROUGH_HOME: home },
     port: portFromArguments(),

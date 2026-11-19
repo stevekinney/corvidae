@@ -57,14 +57,33 @@ export const runGit: GitRunner = (directory, argumentsList) => {
   }
 };
 
+/** A digest of the file at `path`, or of its absence when it cannot be read (a file removed since the listing). */
+function contentDigest(path: string): string {
+  try {
+    return Bun.hash(readFileSync(path)).toString(16);
+  } catch {
+    return 'unreadable';
+  }
+}
+
 /** Read the checkout at `directory`: its `HEAD` commit and a digest of what is changed on top of it. */
 export function readSourceInfo(directory: string, git: GitRunner = runGit): BuildInfo {
   const commit = git(directory, ['rev-parse', 'HEAD'])?.trim();
   if (commit === undefined || commit === '') return { commit: UNKNOWN_COMMIT, changes: '' };
   const edits = git(directory, ['diff', 'HEAD', '--no-ext-diff']) ?? '';
   const untracked = git(directory, ['ls-files', '--others', '--exclude-standard']) ?? '';
+  // Each untracked, non-ignored file counts by path and by content, in sorted order, so editing
+  // one changes the digest and a build made before the edit is stale.
+  const untrackedDigest = untracked
+    .split('\n')
+    .filter((path) => path !== '')
+    .toSorted()
+    .map((path) => `${path}\0${contentDigest(join(directory, path))}`)
+    .join('\n');
   const changes =
-    edits === '' && untracked === '' ? '' : Bun.hash(`${edits}\n${untracked}`).toString(16);
+    edits === '' && untrackedDigest === ''
+      ? ''
+      : Bun.hash(`${edits}\n${untrackedDigest}`).toString(16);
   return { commit, changes };
 }
 
