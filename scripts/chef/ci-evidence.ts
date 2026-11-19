@@ -37,7 +37,14 @@ export interface CiEvidenceRun {
   workflowPath: string;
   workflowRevision: string;
   verificationPlanDigest: string;
+  /** Coordinator request identity; distinct from an event receipt's manual input. */
   requestKey: string;
+  receiptRequestKey: string;
+  /** Authenticated checkout identity from the receipt artifact. */
+  checkedRevision: string;
+  checkedTree: string;
+  receiptJobs: Record<string, 'success' | 'not-applicable'>;
+  receiptReports?: Record<string, { reports: number; testCases: number }>;
   attempt: number;
   jobs: string[];
 }
@@ -142,6 +149,11 @@ function matches(request: CiEvidenceRequest, run: CiEvidenceRun): boolean {
     run.workflowRevision === request.workflowRevision &&
     run.verificationPlanDigest === request.verificationPlanDigest &&
     run.requestKey === request.requestKey &&
+    (request.event === 'pull_request'
+      ? run.receiptRequestKey === ''
+      : run.receiptRequestKey === request.requestKey) &&
+    commit(run.checkedRevision) &&
+    commit(run.checkedTree) &&
     Number.isSafeInteger(run.attempt) &&
     run.attempt >= 1 &&
     Array.isArray(run.jobs) &&
