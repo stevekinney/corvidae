@@ -9,8 +9,11 @@
 //      the head whose plan digest is the one the coordinator pinned (the P07 digest: the batch
 //      digest for a manual dispatch, the identity's own for any other event);
 //   3. no run of a landing workflow is unfinished or red with a failure `main` does not already
-//      have (`ci-compare.ts`'s `compare`), and, when the evidence plan (`evidence-plan.ts`) sets
-//      `requires_full_run`, a `main.yml` run covers it;
+//      have (`ci-compare.ts`'s `compare`), a green `main.yml` or `pull-request.yml` run covers the
+//      head, and, when the evidence plan (`evidence-plan.ts`, run in the worktree, which must be at
+//      the head) sets `requires_full_run`, the covering run is `main.yml`'s. A `targeted-checks.yml`
+//      run is judged for failures but never covers: its dispatch inputs are not readable from the
+//      run, so they cannot be compared with the plan;
 //   4. an interface path (`applications/interborough/src/{app,routes,views,styles}`,
 //      `components/*/src`) has a design verdict with no failing row;
 //   5. a one-way door (a plan rule other than `whole-suite:`) goes through a pull request.
@@ -54,6 +57,11 @@ export const landingWorkflows: ReadonlySet<string> = new Set([
 ]);
 
 const FULL_WORKFLOW = '.github/workflows/main.yml';
+/** The workflows whose green run covers a head: the ones that write an authenticated receipt. */
+const COVERING_WORKFLOWS: ReadonlySet<string> = new Set([
+  FULL_WORKFLOW,
+  '.github/workflows/pull-request.yml',
+]);
 
 const INTERFACE_PATH =
   /^(?:applications\/interborough\/src\/(?:app|routes|views|styles)\/|components\/[^/]+\/src\/)/;
@@ -119,7 +127,12 @@ interface LandingPlan {
   oneWayDoors: { rule: string; path: string }[];
 }
 
-function readPlan(runner: Runner, cwd: string, base: string): LandingPlan | string {
+function readPlan(runner: Runner, cwd: string, base: string, head: string): LandingPlan | string {
+  // The plan diffs `base...HEAD` of the worktree, so it describes the head only when it is checked out.
+  const checkedOut = runner(['git', 'rev-parse', 'HEAD'], { cwd });
+  const at = checkedOut.stdout.trim();
+  if (checkedOut.code !== 0 || at !== head)
+    return `the worktree is at ${at || 'an unreadable revision'}, not the head ${head}, so its evidence plan would describe another change`;
   const answer = runner(['bun', 'scripts/chef/evidence-plan.ts', '--base', base, '--json'], {
     cwd,
   });
@@ -216,8 +229,10 @@ function checkRuns(
       return `run ${run.id} is red and could not be compared with main: ${error instanceof Error ? error.message : String(error)}`;
     }
   }
-  if (covering.length === 0) return 'no finished green run covers the head';
-  if (plan.requiresFullRun && !covering.some((run) => run.path === FULL_WORKFLOW))
+  const covered = covering.filter((run) => COVERING_WORKFLOWS.has(run.path));
+  if (covered.length === 0)
+    return 'no finished green main.yml or pull-request.yml run covers the head';
+  if (plan.requiresFullRun && !covered.some((run) => run.path === FULL_WORKFLOW))
     return 'the evidence plan requires a full main.yml run, and none is green on the head';
   return undefined;
 }
@@ -248,7 +263,7 @@ export async function validateLandingEvidence(
   );
   if (digestProblem !== undefined) return digestProblem;
 
-  const plan = readPlan(runner, request.worktree, request.base);
+  const plan = readPlan(runner, request.worktree, request.base, request.revision);
   if (typeof plan === 'string') return plan;
   const runProblem = checkRuns(runner, request.repository, route.defaultBranch, listed, plan);
   if (runProblem !== undefined) return runProblem;

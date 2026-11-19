@@ -17,6 +17,7 @@ export const LANDING_DIGEST = 'f'.repeat(64);
 /** The identity a request pins for its one `main.yml` run (a pull-request event keeps its own digest). */
 export function landingIdentity(
   request: Pick<DeliveryRequest, 'repository' | 'base' | 'revision' | 'integrationTree'>,
+  pinned: { event?: CiEvidenceRequest['event']; verificationPlanDigest?: string } = {},
 ): CiEvidenceRequest {
   const input = {
     repository: request.repository,
@@ -24,11 +25,11 @@ export function landingIdentity(
     base: request.base,
     candidate: request.revision,
     integrationTree: request.integrationTree,
-    verificationPlanDigest: LANDING_DIGEST,
+    verificationPlanDigest: pinned.verificationPlanDigest ?? LANDING_DIGEST,
     workflow: 'Main',
     workflowPath: '.github/workflows/main.yml',
     workflowRevision: request.revision,
-    event: 'pull_request',
+    event: pinned.event ?? 'pull_request',
   } satisfies Omit<CiEvidenceRequest, 'requestKey'>;
   return { ...input, requestKey: ciEvidenceRequestKey(input) };
 }
@@ -125,18 +126,21 @@ export function planAnswer(base: string, plan: PlanFixture = {}): Record<string,
 
 /**
  * `inner` with the two reads of a green landing answered: one finished green `main.yml` run on the
- * head the URL names, and an evidence plan with nothing special. Anything else goes to `inner`.
+ * head the URL names, the worktree at that head, and an evidence plan with nothing special.
+ * Anything else goes to `inner`.
  */
 export function greenLanding(inner: Runner): Runner {
+  let head = '';
   return (command, options) => {
     const url = command[0] === 'gh' && command[1] === 'api' ? (command[2] ?? '') : '';
     const runs = /^repos\/([^/]+\/[^/]+)\/actions\/runs\?head_sha=([0-9a-f]+)&per_page=100$/.exec(
       url,
     );
-    if (runs !== null)
-      return Object.values(
-        runsAnswer(runs[1] ?? '', runs[2] ?? '', [{ head_sha: runs[2] ?? '' }]),
-      )[0]!;
+    if (runs !== null) {
+      head = runs[2] ?? '';
+      return Object.values(runsAnswer(runs[1] ?? '', head, [{ head_sha: head }]))[0]!;
+    }
+    if (command.join(' ') === 'git rev-parse HEAD' && head !== '') return reply(`${head}\n`);
     if (command[0] === 'bun' && command[1] === 'scripts/chef/evidence-plan.ts')
       return Object.values(planAnswer(command[3] ?? ''))[0]!;
     return inner(command, options);
@@ -152,5 +156,7 @@ export function greenLandingAnswers(
   return {
     ...runsAnswer(repository, head, [{ head_sha: head }]),
     ...planAnswer(base),
+    // The worktree is at the head, so the plan describes it.
+    'rev-parse HEAD': reply(`${head}\n`),
   };
 }

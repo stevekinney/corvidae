@@ -5,7 +5,7 @@ import { createHash } from 'node:crypto';
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import type { DeliveryRequest } from './delivery-completion.ts';
+import { batchVerificationPlanDigest, type DeliveryRequest } from './delivery-completion.ts';
 import {
   prepareDeliveryVerification,
   type DeliveryVerification,
@@ -89,6 +89,8 @@ export async function createDeliveryFixture(
   directory: string,
   worktree: string,
   route = 'pull-request',
+  /** `dispatch`: a manual dispatch, whose pinned digest is the batch digest unless `stale`. */
+  identity: { dispatch?: boolean; stale?: boolean } = {},
 ): Promise<{ binding: DeliveryVerification; dependencies: DeliveryVerificationDependencies }> {
   const state = createExecutionStateStore({
     stateDirectory: join(directory, 'state'),
@@ -182,7 +184,16 @@ export async function createDeliveryFixture(
     ],
   };
   request.members[0]!.plan.invalidatedBy.assignment = assignment.identity.digest;
-  request.ciEvidence = [landingIdentity(request)];
+  request.ciEvidence = [
+    identity.dispatch === true
+      ? landingIdentity(request, {
+          event: 'workflow_dispatch',
+          ...(identity.stale === true
+            ? {}
+            : { verificationPlanDigest: batchVerificationPlanDigest(request.members) }),
+        })
+      : landingIdentity(request),
+  ];
   const text = JSON.stringify(request);
   const file = join(directory, 'verification.json');
   writeFileSync(file, text);

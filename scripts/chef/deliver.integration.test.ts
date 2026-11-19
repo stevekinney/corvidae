@@ -1599,6 +1599,8 @@ interface Landing {
   lease?: LeaseReading | null;
   /** Verdict file text, written beside the execution state for the head. */
   verdicts?: string;
+  /** How the request pins its CI evidence (a manual dispatch, whose pin may be stale). */
+  identity?: { dispatch?: boolean; stale?: boolean };
 }
 
 /** `deliver --branch` over a fake git, gh and Linear, with the green landing varied by `landing`. */
@@ -1622,7 +1624,12 @@ async function landBranch(landing: Landing = {}) {
     );
     const world = landingRunner(directory, landing.answers, landing.handler);
     writeFileSync(world.messageFile, 'COR-9: Add widgets\n');
-    const fixture = await createDeliveryFixture(controlDirectory, directory, 'branch');
+    const fixture = await createDeliveryFixture(
+      controlDirectory,
+      directory,
+      'branch',
+      landing.identity,
+    );
     if (landing.verdicts !== undefined) {
       const path = designVerdictPath(fixture.binding.stateDirectory ?? '', HEAD);
       mkdirSync(join(path, '..'), { recursive: true });
@@ -1801,18 +1808,48 @@ scenarios.describe('deliver --branch refuses to land without evidence', () => {
   });
 
   scenarios.scenario(
-    'a plan that needs the full run is not covered by a targeted run',
+    'a plan that needs the full run is not covered by a pull request run alone',
     async () => {
       const { report } = await landBranch({
         answers: {
           ...runsAnswer('acme/widgets', HEAD, [
-            { head_sha: HEAD, path: '.github/workflows/targeted-checks.yml' },
+            { head_sha: HEAD, path: '.github/workflows/pull-request.yml' },
           ]),
           ...planAnswer(BASE, { requires_full_run: true }),
         },
       });
       expect(report).toMatchObject({ merged: false, failedStep: 'verification' });
       expect(report.detail).toContain('requires a full main.yml run');
+    },
+  );
+
+  scenarios.scenario('a green targeted run never covers a head', async () => {
+    const { report } = await landBranch({
+      answers: runsAnswer('acme/widgets', HEAD, [
+        { head_sha: HEAD, path: '.github/workflows/targeted-checks.yml' },
+      ]),
+    });
+    expect(report).toMatchObject({ merged: false, failedStep: 'verification' });
+    expect(report.detail).toContain('no finished green main.yml or pull-request.yml run');
+  });
+
+  scenarios.scenario('a worktree that is not at the head is refused', async () => {
+    const other = '9'.repeat(40);
+    const { report } = await landBranch({
+      answers: { 'rev-parse HEAD': reply(`${other}\n`) },
+    });
+    expect(report).toMatchObject({ merged: false, failedStep: 'verification' });
+    expect(report.detail).toContain(`is at ${other}, not the head`);
+  });
+
+  scenarios.scenario(
+    'a manual dispatch is pinned to the batch digest: a stale pin is refused, the batch digest lands',
+    async () => {
+      const stale = await landBranch({ identity: { dispatch: true, stale: true } });
+      expect(stale.report).toMatchObject({ merged: false, failedStep: 'verification' });
+      expect(stale.report.detail).toContain('carries evidence digest');
+      const current = await landBranch({ identity: { dispatch: true } });
+      expect(current.report).toMatchObject({ failedStep: null, merged: true });
     },
   );
 
