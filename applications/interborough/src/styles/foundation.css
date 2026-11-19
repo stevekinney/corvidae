@@ -324,11 +324,17 @@
   }
 }
 
+/* The label clips for its ellipsis, so its line box must hold the font's ascent and descent: under
+ * the Button's `line-height: 1` the 13px box cut the descender of the "g" in "Search everything"
+ * (COR-2438). It takes the trail's own 20px line (Cinder Breadcrumbs' `1.25rem`), so the title's
+ * words and the search field's words are line boxes of one height, centred on one line, and round
+ * the same way. */
 .weft-shell-search-trigger__label {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  line-height: 1.25rem;
 }
 
 .weft-shell-search-trigger__kbd {

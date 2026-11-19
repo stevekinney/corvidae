@@ -301,9 +301,10 @@ test.describe('Chat on a phone (04y, 06l, 06m)', () => {
     expect(read.more).not.toBeNull();
     expect(read.more!.height).toBeLessThanOrEqual(32.5);
     expect(read.title).not.toBeNull();
-    expect(read.title!.height).toBeLessThanOrEqual(30.5);
-    // The title switcher sits a little above the top bar's centre, so the top bar's trail must not
-    // clip its hit area vertically (CI run 43635945611 found it cut at the top).
+    // A medium Button's painted height, as the search field beside it (COR-2438).
+    expect(read.title!.height).toBeLessThanOrEqual(32.5);
+    // The top bar's trail must not clip the title switcher's hit area vertically (CI run
+    // 43635945611 found it cut at the top).
     for (const [name, control] of [
       ['More', read.more!],
       ['title switcher', read.title!],

@@ -137,7 +137,10 @@
        to the whole untruncated title and squeeze the ancestors out of the trail. */
     max-inline-size: 18.75rem;
     min-inline-size: 0;
-    min-block-size: 1.875rem;
+    /* The painted height of a medium Button, so the switcher is as tall as a search field or an
+       icon button beside it in a bar and shares their centre line (it was 30px beside 32px). A
+       coarse pointer keeps this face and reaches 44px through the hit area below. */
+    min-block-size: var(--_cinder-painted-height-md, 2rem);
     padding-block: 0;
     padding-inline: var(--cinder-space-3) var(--cinder-space-2);
     border: 1px solid var(--cinder-border-control);
@@ -192,10 +195,10 @@
     }
   }
 
-  /* On a coarse pointer the current page's popover trigger paints 30px and its hit area reaches
-     44px through a positioned pseudo-element that takes no layout space. The trail's list clips
-     what overflows it, and the trigger clipped its own overflow too, so a hit area drawn past the
-     trigger's edge would be cut back to 30px: the trigger lets its overflow show (its label
+  /* On a coarse pointer the current page's popover trigger paints a medium Button's 32px and its
+     hit area reaches 44px through a positioned pseudo-element that takes no layout space. The
+     trail's list clips what overflows it, and the trigger clipped its own overflow too, so a hit
+     area drawn past the trigger's edge would be cut back to 32px: the trigger lets its overflow show (its label
      truncates itself), and the list gains room inside its clip with padding that a matching
      negative margin gives back, so the trail's layout does not move. */
   @media (any-pointer: coarse) {
@@ -214,7 +217,7 @@
     .cinder-breadcrumbs__list:has(> .cinder-breadcrumbs__item > .cinder-breadcrumbs__trigger) {
       --_cinder-breadcrumbs-hit-overhang: max(
         0px,
-        calc((var(--cinder-touch-target-min) - 1.875rem) / 2)
+        calc((var(--cinder-touch-target-min) - var(--_cinder-painted-height-md, 2rem)) / 2)
       );
 
       padding-block: var(--_cinder-breadcrumbs-hit-overhang);
