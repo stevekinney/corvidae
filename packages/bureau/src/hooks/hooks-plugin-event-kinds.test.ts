@@ -19,6 +19,7 @@ import type { DeclaredHookEventKind } from './hook-event-kinds.ts';
 import { createHookStore } from './hook-store.ts';
 import { HookError, type HookRecord } from './hook-types.ts';
 import { reconcilePluginHooks } from './reconcile-plugin-hooks.ts';
+import { workspaceHookEvents } from './workspace-hook-events.ts';
 import {
   ACTION,
   START,
@@ -394,6 +395,35 @@ describe('dispatch', () => {
     await fire(h, 'run.settled');
     await runStarted(h);
     expect(await h.statuses(record.id)).toEqual(['delivered']);
+  });
+
+  it('under a workspace authority accepts and pins a plugin kind, but delivers nothing for it and lists no problem', async () => {
+    const membership = (owner: string) => ({
+      version: 1 as const,
+      workspaceId: 'workspace-a',
+      actorId: owner,
+      actorKind: 'user' as const,
+      owner,
+      membershipRevision: 'membership-1',
+      capabilities: ['workspace:use' as const, 'workspace:manage' as const],
+    });
+    const workspace = {
+      workspaceId: 'workspace-a',
+      resolveMembership: async ({ subject }: { readonly subject?: string }) =>
+        membership(`api-key:${subject}`),
+      resolveOwnerMembership: async (owner: string) => membership(owner),
+    };
+    const h = harness({
+      declaredEvents: defaultDeclared,
+      // The run the event names is the owner's, so only the plugin kind keeps it out.
+      eventForHookOwner: workspaceHookEvents(workspace, async () => 'anonymous:local'),
+    });
+    await h.open();
+    const hook = await h.hooks.create({ events: [REPORTS], action: { type: 'notify' } });
+    expect(hook.events).toEqual([PINNED]);
+    await fire(h, REPORTS, 'reports');
+    expect(await h.deliveries(hook.id)).toEqual([]);
+    expect(await problemsOf(h, hook.id)).toEqual([]);
   });
 
   it('never fires a pin whose plugin is gone on an event of the same name another plugin publishes', async () => {
