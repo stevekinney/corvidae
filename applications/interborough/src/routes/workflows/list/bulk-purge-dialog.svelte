@@ -274,6 +274,8 @@
     font-family: var(--cinder-font-mono);
     font-size: var(--cinder-text-2xs);
     color: var(--cinder-text-muted);
+    /* A filter summary can hold one long unbroken value (an id prefix, a type name); it wraps. */
+    overflow-wrap: anywhere;
   }
 
   .weft-bulk-dialog__sample {

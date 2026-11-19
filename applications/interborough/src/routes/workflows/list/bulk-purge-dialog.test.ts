@@ -119,6 +119,9 @@ describe('BulkPurgeDialog', () => {
     const styles = source.slice(source.indexOf('<style>'));
 
     expect(styles).toMatch(/overflow-wrap:\s*anywhere/);
+    // The filter chip is one code block of unbroken text, so its own rule wraps too.
+    const chipRule = /\.weft-bulk-dialog__chip\s*\{([^}]*)\}/.exec(styles);
+    expect(chipRule?.[1]).toMatch(/overflow-wrap:\s*anywhere/);
     expect(styles).not.toMatch(/margin[^;{}]*\d+px/);
   });
 
