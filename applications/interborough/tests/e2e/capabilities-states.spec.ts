@@ -59,7 +59,8 @@ async function amendOperation(
   method: string,
   change: (result: Json) => Json,
 ): Promise<void> {
-  await page.route('**/bureau/jsonrpc', async (route) => {
+  // The page's generated client posts every Bureau call to the host's composed `/jsonrpc`.
+  await page.route('**/jsonrpc', async (route) => {
     const body = JSON.parse(route.request().postData() ?? '{}') as { method?: string };
     if (body.method !== method) {
       await route.fallback();
@@ -76,7 +77,7 @@ async function amendOperation(
 
 /** Answers the Bureau operation `method` with `result`, never reaching the host. */
 async function answerOperation(page: Page, method: string, result: Json): Promise<void> {
-  await page.route('**/bureau/jsonrpc', async (route) => {
+  await page.route('**/jsonrpc', async (route) => {
     const body = JSON.parse(route.request().postData() ?? '{}') as {
       method?: string;
       id?: unknown;
