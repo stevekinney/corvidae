@@ -2013,7 +2013,8 @@ const OWNED_STATES = [
     label: 'capabilities Skills tab (/capabilities)',
     method: 'bureau.skills.list',
     empty: { skills: [], sources: [] },
-    emptyTitle: CAPABILITIES_COPY.skill.emptySources.title,
+    // No source configured either (`sources: []`), which is the tab's first use, not "sources with no skills".
+    emptyTitle: CAPABILITIES_COPY.skill.empty.title,
     failedTitle: CAPABILITIES_COPY.skill.loadFailed.title,
   },
   {
