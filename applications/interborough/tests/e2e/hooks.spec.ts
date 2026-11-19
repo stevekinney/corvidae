@@ -690,8 +690,11 @@ for (const width of [320, 375] as const) {
       if ((await word.count()) > 0) {
         const { lines } = await textLines(word);
         expect(lines, `${id}: the status word is one line`).toBe(1);
+        // A narrow row draws a leading status inline on line two (`__status-inline`, an
+        // inline-flex box) instead of in the status column (`__status`).
         const clipped = await row
-          .locator('.cinder-stacked-list-item__status')
+          .locator('.cinder-stacked-list-item__status, .cinder-stacked-list-item__status-inline')
+          .first()
           .evaluate((cell) => cell.scrollWidth > cell.clientWidth + 0.5);
         expect(clipped, `${id}: the status word is not cut`).toBe(false);
       }

@@ -25,7 +25,7 @@ When the host is loaded (the capture times out waiting for its web server), disp
 ```sh
 gh workflow run design-review-capture.yml --ref <branch> -f grep='/agents' -f scheme=dark -f data=showcase
 gh run list --workflow design-review-capture.yml --branch <branch> --limit 1 --json databaseId,url
-gh run watch <run id> --exit-status
+bun scripts/chef/wait-run.ts <run id>
 gh run download <run id> --dir tmp/design-review/<run id>
 ```
 
