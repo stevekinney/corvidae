@@ -9,7 +9,7 @@
   "applications/interborough/src/routes/agents/agent-memory.svelte": 4,
   "applications/interborough/src/routes/agents/agent-versions.svelte": 1,
   "applications/interborough/src/routes/audit/index.svelte": 1,
-  "applications/interborough/src/routes/capabilities/agent-users.svelte": 2,
+  "applications/interborough/src/routes/capabilities/agent-users.svelte": 1,
   "applications/interborough/src/routes/capabilities/skills-panel.svelte": 1,
   "applications/interborough/src/routes/capabilities/source-detail.svelte": 1,
   "applications/interborough/src/routes/capabilities/sources-panel.svelte": 1,
