@@ -45,7 +45,7 @@
 // never run the Playwright suites (`test:browser`), and the real-browser smoke tests skip unless
 // `WEFT_BROWSER_SMOKE=1`, but a few `*.integration.test.ts` files launch Chromium unconditionally.
 // When the direct set holds one, no lane runs it, and a warning line names it and
-// `gh workflow run main.yml --ref <branch>`, to run after the push.
+// `bun scripts/chef/targeted-run.ts`, the one dispatcher of `main.yml`, to run after the push.
 //
 // Each step runs in a process group of its own. The hang guard, SIGTERM and SIGINT end the whole
 // group (SIGTERM, then SIGKILL after a grace), so no turbo or `bun test` worker outlives its step
@@ -249,7 +249,7 @@ export function directManifest(
 }
 
 /** The CI command a skipped browser lane points to, named in the line printed in its place. */
-export const BROWSER_CI_COMMAND = 'gh workflow run main.yml --ref <branch>';
+export const BROWSER_CI_COMMAND = 'bun scripts/chef/targeted-run.ts';
 
 /** Whether a test's source launches a browser itself, with no environment gate in front of it. */
 export function launchesBrowser(source: string): boolean {
