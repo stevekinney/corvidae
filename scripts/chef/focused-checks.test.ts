@@ -102,9 +102,9 @@ describe('planSteps', () => {
       'lint',
       'typecheck',
       '--concurrency=2',
-      '--filter=@lostgradient/browser-fixtures',
-      '--filter=@lostgradient/operative',
-      '--filter=@lostgradient/weft',
+      '--filter=...@lostgradient/browser-fixtures',
+      '--filter=...@lostgradient/operative',
+      '--filter=...@lostgradient/weft',
     ]);
   });
 

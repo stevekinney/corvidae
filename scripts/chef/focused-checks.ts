@@ -11,8 +11,8 @@
 //   prettier        bunx prettier --check on the changed files that still exist
 //   lint:root       bun run lint:root, always
 //   typecheck:root  bun run typecheck:root, when a changed file is at the root or under scripts/
-//   turbo           bunx turbo run lint typecheck, filtered to each changed workspace
-//                   (typecheck:root and turbo run under `scripts/host-slots.ts`, one and two pool
+//   turbo           bunx turbo run lint typecheck, filtered to each changed workspace and its
+//                   dependents (`--filter=...name`) (typecheck:root and turbo run under `scripts/host-slots.ts`, one and two pool
 //                   slots, waiting at most five minutes for them, then `not run locally: pool busy`)
 //   tests           the direct tests only (owner decision, 2026-11-16): each changed
 //                   `*.test.ts` file, and the test files beside each changed source file (same
@@ -82,6 +82,7 @@ import {
   UsageError,
   type Runner,
 } from './process-runner.ts';
+import { fileNames, sourceNames } from './verification-plan.ts';
 
 export { UsageError };
 
@@ -330,7 +331,8 @@ export function planSteps(input: PlanInput): PlannedStep[] {
         'lint',
         'typecheck',
         `--concurrency=${TURBO_SLOTS}`,
-        ...names.map((n) => `--filter=${n}`),
+        // `...name` adds the workspaces that depend on a changed one: a type error there is this change's.
+        ...names.map((n) => `--filter=...${n}`),
       ],
     });
   const direct = input.direct;
@@ -423,22 +425,6 @@ export const FIXTURE_SWEEP_SPEC = 'components.playwright.ts';
 const cinderSource = 'components/cinder/src/';
 const cinderComponent = /^components\/cinder\/src\/components\/([^/]+)\//;
 const editorComponent = /^components\/editor\/src\/lib\/components\/([^/]+)\//;
-
-const escaped = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-
-/** Whether a spec's file name carries `name` as whole hyphen-separated words. */
-function fileNames(spec: string, name: string): boolean {
-  return new RegExp(`(?:^|-)${escaped(name)}(?:-|\\.)`).test(spec);
-}
-
-/** Whether a spec's source names a Cinder component, as `citation` or `Citation`. */
-function sourceNames(source: string, name: string): boolean {
-  const pascal = name
-    .split('-')
-    .map((part) => part.slice(0, 1).toUpperCase() + part.slice(1))
-    .join('');
-  return new RegExp(`(?<![\\w-])(?:${escaped(name)}|${pascal})(?![\\w-])`).test(source);
-}
 
 /**
  * The warning that names the Chromium fixture specs covering a change to a Cinder, Chat or Editor
