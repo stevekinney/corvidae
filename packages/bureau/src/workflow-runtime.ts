@@ -615,9 +615,14 @@ export interface BureauWorkflows {
     readonly nextOffset: number | null;
   }>;
   readonly getRun: (runId: string) => Promise<WorkflowRunDetail | undefined>;
-  /** Request cancellation of one workflow-file run, returning once the request is recorded. */
+  /**
+   * Request cancellation of one workflow-file run, returning once the request is recorded. With
+   * `dryRun` it makes the check the cancel makes and refuses as it refuses (a run that is no
+   * instance of a workflow file is `NOT_FOUND`), then asks the engine for nothing.
+   */
   readonly cancel: (
     runId: string,
+    options?: { readonly dryRun?: boolean | undefined },
   ) => Promise<{ readonly runId: string; readonly status: 'cancel-requested' }>;
   /**
    * COR-2424 — run a failed instance again from the step it failed at, in place and on the version
@@ -3053,11 +3058,12 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
       };
     },
 
-    async cancel(runId) {
+    async cancel(runId, cancelOptions) {
       const state = await engine.get(runId);
       if (state === null || state === undefined || !(await isWorkflowType(state.type))) {
         throw options.createError(`Workflow run "${runId}" does not exist`, 'NOT_FOUND');
       }
+      if (cancelOptions?.dryRun === true) return { runId, status: 'cancel-requested' as const };
       const outcome = await engine.cancel(runId);
       if (outcome.status === 'already-terminal') {
         return { runId, status: 'cancel-requested' as const };

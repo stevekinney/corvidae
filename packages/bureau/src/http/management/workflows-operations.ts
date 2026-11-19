@@ -1265,14 +1265,16 @@ export const workflowsRunsCancelOperation = defineOperation<
     ) {
       throw resourceNotFound('run', input.runId);
     }
-    if (input.dryRun === true) {
-      const run = await workflows.getRun(input.runId);
-      if (run === undefined) throw resourceNotFound('run', input.runId);
-      return dryRunResult({ kind: 'workflow-run', id: input.runId }, [
-        effect('running-instances', UNFINISHED_RUN_STATUSES.has(run.status) ? 1 : 0),
-      ]);
-    }
     try {
+      if (input.dryRun === true) {
+        // The check the cancel makes before it asks the engine for anything, and nothing else.
+        await workflows.cancel(input.runId, { dryRun: true });
+        const run = await workflows.getRun(input.runId);
+        if (run === undefined) throw resourceNotFound('run', input.runId);
+        return dryRunResult({ kind: 'workflow-run', id: input.runId }, [
+          effect('running-instances', UNFINISHED_RUN_STATUSES.has(run.status) ? 1 : 0),
+        ]);
+      }
       return await workflows.cancel(input.runId);
     } catch (error) {
       if (error instanceof BureauError && error.code === 'NOT_FOUND')

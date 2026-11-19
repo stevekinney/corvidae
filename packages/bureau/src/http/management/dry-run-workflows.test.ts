@@ -1,11 +1,15 @@
 /**
  * COR-2522 — `bureau.workflows.delete` and `bureau.workflows.runs.cancel` with `dryRun: true`.
  */
+import { definePlugin, type PluginWorkflow } from '@lostgradient/interborough-plugin';
 import { createAgent } from '@lostgradient/operative';
 import { MemoryStorage } from '@lostgradient/storage';
+import { workflow } from '@lostgradient/weft';
 import { afterEach, describe, expect, it } from 'bun:test';
+import { z } from 'zod';
 
 import { waitForCondition } from '../../test';
+import { createSqliteStorageFixture } from '../../test/storage-fixtures';
 import { AGENT_STEP } from '../../testing/workflow-file-fixtures.test-support.ts';
 import {
   dryRunResultOf,
@@ -174,6 +178,47 @@ describe('bureau.workflows.runs.cancel with dryRun', () => {
       'bureau.workflows.runs.cancel',
       { runId: 'digest-run' },
       'alice-key',
+    );
+  });
+
+  it('answers the NotFound the real call answers for a run of a code workflow whose plugin is not loaded', async () => {
+    const database = createSqliteStorageFixture();
+    cleanups.push(() => database.dispose());
+    const kit = {
+      descriptor: definePlugin({
+        name: 'kit',
+        version: '1.0.0',
+        description: 'Contributes a code workflow.',
+        setup: () => ({
+          workflows: [
+            {
+              ...workflow({ name: 'wait' }).execute(async function* (context) {
+                yield* context.waitForSignal('go');
+                return 'went';
+              }),
+              title: 'Wait',
+              inputSchema: z.unknown(),
+            } satisfies PluginWorkflow,
+          ],
+        }),
+      }),
+      source: 'package' as const,
+      location: '@example/kit',
+    };
+    const loaded: Array<() => Promise<void>> = [];
+    const first = await serveWorkflows(loaded, { storage: database.open(), plugins: [kit] });
+    const started = await first.bureau.workflows!.start('kit:wait', { owner: 'anonymous:local' });
+    for (const cleanup of loaded.splice(0).toReversed()) await cleanup();
+
+    // The plugin is disabled: the run is still listed, waiting, but the real cancel does not find it.
+    const second = await serveWorkflows(cleanups, { storage: database.open() });
+    const run = await second.bureau.workflows!.getRun(started.runId);
+    expect(run?.unresumable).toMatchObject({ reason: 'missing' });
+    await expectSameFaultAsTheRealCall(
+      writerOf(second),
+      'bureau.workflows.runs.cancel',
+      { runId: started.runId },
+      'workflows-writer-key',
     );
   });
 });
