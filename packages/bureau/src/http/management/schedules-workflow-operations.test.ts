@@ -6,14 +6,19 @@
  * owner and scope rules an agent schedule follows.
  */
 import { definePlugin, type PluginWorkflow } from '@lostgradient/interborough-plugin';
-import { waitUntil } from '@lostgradient/testing/wait-until';
+import { quietFor, waitUntil } from '@lostgradient/testing/wait-until';
+import { MemoryStorage } from '@lostgradient/storage';
 import { decode, KEYS, workflow } from '@lostgradient/weft';
 import { afterEach, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 
 import { AGENT_STEP } from '../../testing/workflow-file-fixtures.test-support.ts';
 import { rpc, type RpcBody } from './management-fixtures.test-support.ts';
-import { serveWorkflows, type Served } from './workflows-fixtures.test-support.ts';
+import {
+  serveWorkflows,
+  type Served,
+  type ServeOptions,
+} from './workflows-fixtures.test-support.ts';
 
 const cleanups: Array<() => Promise<void>> = [];
 afterEach(async () => {
@@ -53,8 +58,8 @@ const kit = {
   location: '@example/kit',
 };
 
-async function serve(): Promise<Served> {
-  const served = await serveWorkflows(cleanups, { plugins: [kit] });
+async function serve(options: ServeOptions = {}): Promise<Served> {
+  const served = await serveWorkflows(cleanups, { plugins: [kit], ...options });
   // A workflow file, whose own schedule exists beside the ones these tests make.
   await served.bureau.workflows!.create('digest', {
     agent: 'writer',
@@ -269,6 +274,127 @@ describe('what a fire starts', () => {
 
     expect(status(await call(served, 'runnow', { scheduleId: id }))).toBe(404);
     expect(await runTotal(engine)).toBe(runsBefore);
+  });
+});
+
+/** Fires schedule `id` as its cadence does: the Bureau's maintenance runs at its next occurrence. */
+async function fireOnCadence(served: Served, id: string): Promise<void> {
+  const view = await served.bureau.schedules.get(id);
+  await served.bureau.maintain(view!.nextFireAt!);
+}
+
+/** How many runs of the workflow whose engine type is `type` the engine holds. */
+async function runsOf(engine: DurableEngine, type: string): Promise<number> {
+  const page = await engine.list({ type, limit: 100 });
+  return page.total;
+}
+
+/** How many runs of `type` schedule `id` fired, by Weft's own record of each fire. */
+async function firedBy(engine: DurableEngine, type: string, id: string): Promise<number> {
+  const page = await engine.list({ type, limit: 100 });
+  let fired = 0;
+  for (const run of page.items) {
+    if ((await engine.getScheduleProvenance(run.id))?.scheduleId === id) fired += 1;
+  }
+  return fired;
+}
+
+/** The status schedule `id` reads back with, as the Bureau reports it. */
+async function statusOf(served: Served, id: string): Promise<string | undefined> {
+  return (await served.bureau.schedules.get(id))?.status;
+}
+
+describe('a fire on cadence of a schedule whose workflow can no longer be started', () => {
+  it('starts a run when the workflow can be started', async () => {
+    const served = await serve({ maintenance: 'manual' });
+    const id = await created(served, { workflowType: 'kit:echo', workflowInput: { n: 1 } });
+    const engine = served.bureau.durableEngine()!;
+
+    await fireOnCadence(served, id);
+
+    await waitUntil(async () => (await runsOf(engine, 'kit__echo')) === 1);
+  });
+
+  it('starts nothing once the workflow file is paused, holds the schedule paused as it does the file’s own, and resumes it with the file', async () => {
+    const served = await serve({ maintenance: 'manual' });
+    const id = await created(served, { workflowType: 'digest', workflowInput: { n: 1 } });
+    const engine = served.bureau.durableEngine()!;
+    const runsBefore = await runsOf(engine, 'digest');
+
+    const detail = await served.bureau.workflows!.get('digest');
+    await served.bureau.workflows!.pause('digest', { expectedHash: detail!.hash! });
+
+    // What main does for the file's own schedule is what the caller's gets.
+    expect(await statusOf(served, 'bureau-workflow-schedule:digest:1')).toBe('paused');
+    expect(await statusOf(served, id)).toBe('paused');
+    await fireOnCadence(served, id);
+    await quietFor(200);
+    expect(await runsOf(engine, 'digest')).toBe(runsBefore);
+    expect(status(await call(served, 'runnow', { scheduleId: id }))).toBe(404);
+
+    // A resume of the schedule alone does not undo the hold.
+    expect(status(await call(served, 'resume', { scheduleId: id }))).toBe(404);
+    expect(await statusOf(served, id)).toBe('paused');
+
+    const paused = await served.bureau.workflows!.get('digest');
+    await served.bureau.workflows!.resume('digest', { expectedHash: paused!.hash! });
+    expect(await statusOf(served, id)).toBe('active');
+    await fireOnCadence(served, id);
+    await waitUntil(async () => (await firedBy(engine, 'digest', id)) === 1);
+  });
+
+  it('leaves a schedule its owner paused paused when its workflow is held and released', async () => {
+    const served = await serve({ maintenance: 'manual' });
+    const id = await created(served, { workflowType: 'digest' });
+    expect((await call(served, 'pause', { scheduleId: id })).error).toBeUndefined();
+
+    const detail = await served.bureau.workflows!.get('digest');
+    await served.bureau.workflows!.pause('digest', { expectedHash: detail!.hash! });
+    const paused = await served.bureau.workflows!.get('digest');
+    await served.bureau.workflows!.resume('digest', { expectedHash: paused!.hash! });
+
+    expect(await statusOf(served, id)).toBe('paused');
+  });
+
+  it('starts nothing once the workflow file is deleted, and holds the schedule paused', async () => {
+    const served = await serve({ maintenance: 'manual' });
+    const id = await created(served, { workflowType: 'digest', workflowInput: { n: 1 } });
+    const engine = served.bureau.durableEngine()!;
+    const runsBefore = await runsOf(engine, 'digest');
+
+    const detail = await served.bureau.workflows!.get('digest');
+    await served.bureau.workflows!.delete('digest', { expectedHash: detail!.hash! });
+
+    expect(await statusOf(served, id)).toBe('paused');
+    await fireOnCadence(served, id);
+    await quietFor(200);
+    expect(await runsOf(engine, 'digest')).toBe(runsBefore);
+  });
+
+  it('starts nothing once a restart no longer registers the code workflow, and holds the schedule paused', async () => {
+    const storage = new MemoryStorage();
+    const first = await serve({ maintenance: 'manual', storage });
+    const id = await created(first, { workflowType: 'kit:echo', workflowInput: { n: 1 } });
+    await first.bureau.dispose();
+
+    // The same storage, and a plugin set without `kit`.
+    const second = await serveWorkflows(cleanups, { maintenance: 'manual', storage });
+    const engine = second.bureau.durableEngine()!;
+
+    // Held at startup, before any fire reaches Weft's own refusal of an unregistered type.
+    expect(await statusOf(second, id)).toBe('paused');
+    await fireOnCadence(second, id);
+    await quietFor(200);
+    expect(await runsOf(engine, 'kit__echo')).toBe(0);
+    expect(await statusOf(second, id)).toBe('paused');
+    expect(status(await call(second, 'runnow', { scheduleId: id }))).toBe(404);
+    await second.bureau.dispose();
+
+    // The plugin is back: the hold is over, and the schedule fires again.
+    const third = await serve({ maintenance: 'manual', storage });
+    expect(await statusOf(third, id)).toBe('active');
+    await fireOnCadence(third, id);
+    await waitUntil(async () => (await runsOf(third.bureau.durableEngine()!, 'kit__echo')) === 1);
   });
 });
 

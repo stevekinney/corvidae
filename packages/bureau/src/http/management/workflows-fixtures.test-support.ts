@@ -67,6 +67,11 @@ export interface ServeOptions {
   readonly runtime?: BureauOptions<AgentDefinitions>['runtime'];
   /** `manual` leaves the engine's maintenance to the test, as a host that runs it on its own does. */
   readonly maintenance?: 'manual';
+  /**
+   * The storage the Bureau keeps its state in. A test that serves a second Bureau over the first's
+   * storage, as a restart does, passes the same one to both.
+   */
+  readonly storage?: MemoryStorage;
 }
 
 export async function serveWorkflows(
@@ -87,7 +92,7 @@ export async function serveWorkflows(
     ...(options.plugins === undefined ? {} : { plugins: options.plugins }),
     ...(options.runtime === undefined ? {} : { runtime: options.runtime }),
     ...(options.maintenance === undefined ? {} : { maintenance: options.maintenance }),
-    storage: new MemoryStorage(),
+    storage: options.storage ?? new MemoryStorage(),
     durable: true,
     ...(options.onDiagnostic === undefined ? {} : { onDiagnostic: options.onDiagnostic }),
   });

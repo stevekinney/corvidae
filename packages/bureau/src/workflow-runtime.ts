@@ -138,6 +138,7 @@ import {
   type DesiredWorkflowSchedule,
   parseWorkflowScheduleId,
   reconcileWorkflowSchedules,
+  workflowScheduleOwnerOf,
 } from './workflow-schedule';
 import {
   errorCodeOf,
@@ -1130,6 +1131,7 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
       holds: scheduleHolds,
       workspace: options.workspace,
     });
+    await holdCallerSchedules(unreadable);
     // One read of the catalog serves the reconcile and the sweep: a file that changes while the
     // reconcile awaits a stop is judged by the next reconcile, so state is never deleted under a
     // trigger this reconcile left running.
@@ -1137,6 +1139,76 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
     await triggers.reconcile(snapshot.desired, unreadable);
     await sweepOrphanedTriggerState(snapshot.files);
     await forgetVanishedHookOrigins();
+  }
+
+  /**
+   * Whether a schedule may start workflow `id` (COR-2546): the answer of
+   * {@link BureauWorkflows.assertStartable}, so a paused or deleted file, an unregistered code
+   * type, and a plugin that needs setup are each one that cannot be started.
+   */
+  function isStartable(id: string): boolean {
+    try {
+      workflows.assertStartable(id);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /** The key a caller's schedule is held under: no workflow identifier can spell a `#`. */
+  const callerHoldKey = (scheduleId: string): string => `caller#${scheduleId}`;
+
+  /**
+   * Hold every schedule a caller made for a workflow that cannot be started paused, and release the
+   * ones whose workflow can be started again (COR-2546). A paused file's own schedule is held paused
+   * the same way, so a schedule a caller made for that file starts nothing while the file is
+   * paused, deleted or its code type is no longer registered.
+   *
+   * A hold is recorded after the pause, with the revision the pause wrote: a crash between the two
+   * leaves a schedule paused with no record, which stays paused, never one resumed against its
+   * owner's wish. A schedule is resumed only while it is still at that revision, so a pause, a
+   * resume or an update by its owner since the hold is left as it is. The schedules of a workflow
+   * whose file this host cannot read are left alone, as the file's own is.
+   */
+  async function holdCallerSchedules(unreadable: ReadonlySet<string>): Promise<void> {
+    for (let offset = 0; ;) {
+      const page = await engine.listSchedules({ status: ['active', 'paused'], limit: 100, offset });
+      for (const summary of page.items) {
+        if (parseWorkflowScheduleId(summary.id) !== undefined) continue;
+        if (workflowScheduleOwnerOf(summary) === undefined) continue;
+        const id = bureauNameOf(summary.workflowType);
+        if (unreadable.has(id)) continue;
+        try {
+          await holdCallerSchedule(summary, isStartable(id));
+        } catch (error) {
+          // A schedule that changed under the reconcile is judged by the next one, and never fails
+          // the write that triggered this.
+          options.diagnose(`Could not hold or release the schedule "${summary.id}".`, error);
+        }
+      }
+      offset += page.items.length;
+      if (page.items.length === 0 || offset >= page.total) return;
+    }
+  }
+
+  async function holdCallerSchedule(
+    summary: { readonly id: string; readonly status: string; readonly revision: number },
+    startable: boolean,
+  ): Promise<void> {
+    const key = callerHoldKey(summary.id);
+    const held = await scheduleHolds.held(key);
+    if (!startable) {
+      if (summary.status !== 'active') return;
+      await engine.pauseSchedule(summary.id, { expectedRevision: summary.revision });
+      const paused = await engine.getSchedule(summary.id);
+      if (paused !== null) await scheduleHolds.hold(key, summary.id, paused.revision);
+      return;
+    }
+    if (held === undefined) return;
+    if (summary.status === 'paused' && held.revision === summary.revision) {
+      await engine.resumeSchedule(summary.id, { expectedRevision: summary.revision });
+    }
+    await scheduleHolds.release(key);
   }
 
   /**

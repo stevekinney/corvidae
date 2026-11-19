@@ -538,6 +538,8 @@ export function createScheduleOperations<D extends AgentDefinitions>(
     const durable = runtime.durable;
     if (!durable) return undefined;
     refuseWorkflowSchedule(scheduleId);
+    // A schedule held for a workflow that cannot be started stays held until it can.
+    await refuseUnstartableWorkflowSchedule(scheduleId);
     if (workspace === undefined) {
       await transitionSchedule('schedule.resumed', scheduleId, guard, (transition) =>
         durable.engine.resumeSchedule(scheduleId, transition),
@@ -777,17 +779,26 @@ export function createScheduleOperations<D extends AgentDefinitions>(
   ): Promise<import('@lostgradient/weft').ScheduleTriggerResult | undefined> {
     if (!runtime.durable) return undefined;
     refuseWorkflowSchedule(scheduleId);
-    // COR-2546: a schedule of a workflow whose workflow can no longer be started (its file was
-    // deleted or paused) is answered as a schedule that does not exist, and starts nothing.
-    const snapshot = await runtime.durable.engine.getSchedule(scheduleId);
+    await refuseUnstartableWorkflowSchedule(scheduleId);
+    return runtime.durable.engine.triggerSchedule(scheduleId);
+  }
+
+  /**
+   * COR-2546: a schedule a caller made for a workflow that can no longer be started (its file was
+   * deleted or paused, its code type is unregistered) is answered as a schedule that does not
+   * exist, and starts nothing: the answer `bureau.workflows.start` gives for that workflow. A
+   * cadence fire is held off by the workflow runtime, which holds such a schedule paused.
+   */
+  async function refuseUnstartableWorkflowSchedule(scheduleId: string): Promise<void> {
+    const snapshot = await runtime.durable?.engine.getSchedule(scheduleId);
     if (
       snapshot !== null &&
+      snapshot !== undefined &&
       workflowScheduleOwnerOf(snapshot) !== undefined &&
       startableWorkflowKind(bureauNameOf(snapshot.workflowType)) === undefined
     ) {
       throw new BureauError(`Schedule "${scheduleId}" does not exist`, 'NOT_FOUND');
     }
-    return runtime.durable.engine.triggerSchedule(scheduleId);
   }
 
   async function listScheduleMissed(
