@@ -28,7 +28,7 @@ export type BuildInfo = {
  * The expression the build replaces with the text the page shows (`src/lib/build-commit.ts` reads
  * it), so the commit is compiled into the bundle and no request fetches it.
  */
-export const BUILD_COMMIT_VARIABLE = '__INTERBOROUGH_BUILD_COMMIT__';
+export const BUILD_COMMIT_VARIABLE = 'INTERBOROUGH_BUILD_COMMIT';
 
 /**
  * What the page shows for `source`: the short commit, with "(edited)" after it when the tree

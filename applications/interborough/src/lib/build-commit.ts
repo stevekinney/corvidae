@@ -4,8 +4,8 @@
  * replacing the identifier below (`BUILD_COMMIT_VARIABLE` in `src/host/build-info.ts`), so a stale
  * build is visible at a glance. A source that was not built (a test, an editor) shows none.
  */
-declare const __INTERBOROUGH_BUILD_COMMIT__: string | undefined;
+declare const INTERBOROUGH_BUILD_COMMIT: string | undefined;
 
 export function buildCommit(): string {
-  return typeof __INTERBOROUGH_BUILD_COMMIT__ === 'string' ? __INTERBOROUGH_BUILD_COMMIT__ : '';
+  return typeof INTERBOROUGH_BUILD_COMMIT === 'string' ? INTERBOROUGH_BUILD_COMMIT : '';
 }

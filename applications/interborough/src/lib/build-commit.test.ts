@@ -3,12 +3,12 @@ import { afterEach, describe, expect, test } from 'bun:test';
 import { buildCommit } from './build-commit.ts';
 
 afterEach(() => {
-  Reflect.deleteProperty(globalThis, '__INTERBOROUGH_BUILD_COMMIT__');
+  Reflect.deleteProperty(globalThis, 'INTERBOROUGH_BUILD_COMMIT');
 });
 
 describe('buildCommit', () => {
   test('reads the text the build compiled in', () => {
-    Reflect.set(globalThis, '__INTERBOROUGH_BUILD_COMMIT__', 'abc1234');
+    Reflect.set(globalThis, 'INTERBOROUGH_BUILD_COMMIT', 'abc1234');
     expect(buildCommit()).toBe('abc1234');
   });
 
