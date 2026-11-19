@@ -690,6 +690,12 @@ for (const width of [320, 375] as const) {
       if ((await word.count()) > 0) {
         const { lines } = await textLines(word);
         expect(lines, `${id}: the status word is one line`).toBe(1);
+        await expect(
+          row.locator(
+            '.cinder-stacked-list-item__status, .cinder-stacked-list-item__status-inline',
+          ),
+          `${id}: the row renders one status`,
+        ).toHaveCount(1);
         // A phone draws the word inline at the start of line two (no column cell); it does not
         // clip, so its box must lie inside line two's box. A column cell must not clip it.
         const whole = await word.evaluate((element) => {
