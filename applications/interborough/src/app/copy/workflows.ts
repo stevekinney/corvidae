@@ -80,6 +80,8 @@ export const WORKFLOW_COPY = {
       hintBefore: 'Or add a file to',
       /** Where the files are when the host does not say. */
       hintDirectory: '~/.interborough/workflows',
+      /** The Copy button beside that directory, the one place it shows. */
+      copyDirectory: 'Copy workflow folder',
     },
   },
   /** The page of the workflows Interborough runs itself (`/internal-workflows`). */

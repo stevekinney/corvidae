@@ -265,24 +265,17 @@ export const SETTINGS_COPY = {
   refreshFailed: { title: 'Couldn’t refresh these settings.' },
   saveFailed: 'The settings were not saved',
   forbidden: 'You may read the settings but not change them.',
-  hostPaths: {
-    title: 'Where the host keeps its files',
-    description: 'These are set by the host and cannot be changed here.',
-    agents: 'Agent files',
-    workflows: 'Workflow files',
-    configuration: 'Configuration file',
-    providers: 'Provider key files',
-    unavailable: 'The host did not say where it keeps its files.',
-  },
-  /** The words that differ when the host keeps its state in a bucket (`mode: 'remote'`). */
-  remote: {
-    hostPaths: {
-      title: 'Where the host keeps its state',
-      agents: 'Agents',
-      workflows: 'Workflows',
-      configuration: 'Configuration',
-      providers: 'Provider key variables',
-    },
+  /**
+   * The one host fact Settings shows, for troubleshooting (owner, 2026-11-19): the folder the
+   * installation keeps its data in, with a Copy button. No other host path, and no secret reference,
+   * renders on the page.
+   */
+  about: {
+    title: 'About this installation',
+    dataFolder: 'Data folder',
+    dataFolderDescription: 'Where this installation keeps its data. Set by the host.',
+    copyDataFolder: 'Copy data folder',
+    dataFolderCopied: 'Data folder copied',
   },
 } as const;
 

@@ -399,20 +399,6 @@ export function restartBackWords(
 }
 
 /**
- * Where a secret is kept, as a person reads it: the folder of its file, written from the home
- * folder (`~/.interborough/secrets`) when it is under the state directory, and the location as
- * given when it is not a path at all (a remote host names an environment variable).
- */
-export function secretsDirectory(location: string): string {
-  const slash = location.lastIndexOf('/');
-  if (slash < 0) return location;
-  const directory = location.slice(0, slash);
-  const marker = '/.interborough/';
-  const at = `${directory}/`.indexOf(marker);
-  return at < 0 ? directory : `~${`${directory}/`.slice(at, -1)}`;
-}
-
-/**
  * The model provider a plugin contributes, or `undefined` for a plugin that is not one. A key a
  * provider plugin holds is connected through the Models flow, which tests it before it saves it.
  */

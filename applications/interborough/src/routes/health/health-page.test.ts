@@ -8,8 +8,9 @@
  */
 import { waitUntil } from '@lostgradient/testing/wait-until';
 import { HttpClient } from '@lostgradient/weft';
-import { cleanup, fireEvent, render, waitFor } from '@testing-library/svelte';
+import { cleanup, fireEvent, render, waitFor, within } from '@testing-library/svelte';
 import { afterEach, describe, expect, jest, test } from 'bun:test';
+import { readFileSync } from 'node:fs';
 import { flushSync } from 'svelte';
 
 import RouteOutletHarness from '../../app/shell/route-outlet.test-harness.svelte';
@@ -20,6 +21,11 @@ import {
 } from '../../lib/bureau-stub.test-support.ts';
 import { timesShowIn } from '../../lib/format/clock.ts';
 import { AUTHORIZATION_SCOPES } from '../../lib/scopes.svelte.ts';
+import {
+  forbiddenVisibleText,
+  PATH_ALLOWED_SELECTOR,
+  visibleTextOutsideCopyControls,
+} from '../../lib/visible-text-rules.ts';
 import {
   emptyWorld,
   installWorkflowWorld,
@@ -127,12 +133,13 @@ function open(
   } as never);
 }
 
-/** The storage line as drawn: the head and the tail of the middle-cut text, which read as one line. */
+/** The storage line as drawn: the storage in plain words, which holds no path. */
 function storageLineOf(view: { container: HTMLElement }): string {
-  const text = view.container.querySelector(
-    '[data-testid="storage-backend"] [data-cinder-truncate]',
+  return (
+    view.container
+      .querySelector('[data-testid="storage-backend"] .ib-storage-backend__line')
+      ?.textContent?.trim() ?? ''
   );
-  return `${text?.querySelector('.cinder-text__head')?.textContent ?? ''}${text?.querySelector('.cinder-text__tail')?.textContent ?? ''}`;
 }
 
 describe('the frame', () => {
@@ -140,8 +147,8 @@ describe('the frame', () => {
     const view = open();
     const heading = await view.findByRole('heading', { level: 1 });
     expect(heading.textContent).toBe('Health');
-    // The stub's host keeps its state in ~/.interborough, which the line writes the way a person does.
-    await waitFor(() => expect(storageLineOf(view)).toBe('Running on SQLite in ~/.interborough'));
+    // The storage in plain words: the line holds no path (owner, 2026-11-19).
+    await waitFor(() => expect(storageLineOf(view)).toBe('Running on SQLite'));
     expect(view.getByRole('button', { name: /Storage details/ })).not.toBeNull();
 
     const tabs = view.getAllByRole('tab');
@@ -293,6 +300,41 @@ describe('Needs attention', () => {
     await waitFor(() => expect(card.textContent).toContain('Couldn’t read what needs attention'));
     expect(card.textContent).not.toContain('Nothing needs attention');
     expect(view.getByRole('button', { name: 'Try again' })).not.toBeNull();
+  });
+});
+
+// Owner, 2026-11-19: the header read "Running on SQLite in /var/folders/…" with Storage details
+// laid over the cut-off path.
+describe('the header', () => {
+  test('says the storage in plain words with no path, beside Storage details, and the page shows no host path', async () => {
+    const view = open();
+    const line = await view.findByTestId('storage-backend');
+    await waitFor(() => expect(line.textContent).toContain('Running on SQLite'));
+    expect(line.querySelector('.ib-storage-backend__line')?.textContent?.trim()).toBe(
+      'Running on SQLite',
+    );
+    expect(line.textContent).not.toMatch(/\/|~/);
+    // No margin pulls the button back over the words.
+    const source = readFileSync(
+      new URL('../storage/storage-backend.svelte', import.meta.url),
+      'utf8',
+    );
+    expect(source).not.toMatch(/margin-inline-start: calc\([^)]*\* -1\)/);
+    await view.findByTestId('needs-attention');
+    expect(
+      forbiddenVisibleText(visibleTextOutsideCopyControls(view.container, PATH_ALLOWED_SELECTOR)),
+    ).toEqual([]);
+  });
+
+  test('keeps the full location in Storage details, selectable, with a Copy button', async () => {
+    const view = open();
+    await fireEvent.click(await view.findByRole('button', { name: 'Storage details' }));
+    const location = await view.findByTestId('storage-location');
+    expect(location.classList.contains('cinder-copyable-value')).toBe(true);
+    expect(location.textContent).toContain('/home/me/.interborough');
+    expect(
+      within(location).getByRole('button', { name: 'Copy location', hidden: true }),
+    ).not.toBeNull();
   });
 });
 

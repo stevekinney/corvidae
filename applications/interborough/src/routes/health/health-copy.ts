@@ -23,9 +23,8 @@ export type HealthTabValue = (typeof HEALTH_PAGE_TABS)[number]['value'];
 export const HEALTH_FRAME_COPY = {
   /** The tab bar's accessible name, and the prefix its select shows below 640 pixels ("Section: Storage"). */
   tabsLabel: 'Section',
-  /** The line under the heading, before the storage details: the backend, then where it is. */
-  runningOn: (backend: string, where: string | undefined): string =>
-    where === undefined ? `Running on ${backend}` : `Running on ${backend} in ${where}`,
+  /** The line under the heading, before the storage details: the backend in plain words, no path. */
+  runningOn: (backend: string): string => `Running on ${backend}`,
   /** The line when the host cannot say where it keeps its state. */
   runningUnknown: 'Running on this storage',
   sqlite: 'SQLite',
@@ -40,6 +39,9 @@ export const HEALTH_FRAME_COPY = {
   details: {
     backend: 'Backend',
     location: 'Location',
+    /** The Copy button beside the location, and what it announces. */
+    copyLocation: 'Copy location',
+    locationCopied: 'Location copied',
     size: 'Size',
     keys: 'Keys',
     writes: 'Writes',

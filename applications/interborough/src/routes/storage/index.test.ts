@@ -1054,18 +1054,19 @@ describe('Delete', () => {
   });
 });
 
-/** The storage line as drawn: the head and the tail of the middle-cut text, which read as one line. */
+/** The storage line as drawn: the storage in plain words, which holds no path. */
 function storageLineOf(view: { container: HTMLElement }): string {
-  const text = view.container.querySelector(
-    '[data-testid="storage-backend"] [data-cinder-truncate]',
+  return (
+    view.container
+      .querySelector('[data-testid="storage-backend"] .ib-storage-backend__line')
+      ?.textContent?.trim() ?? ''
   );
-  return `${text?.querySelector('.cinder-text__head')?.textContent ?? ''}${text?.querySelector('.cinder-text__tail')?.textContent ?? ''}`;
 }
 
 describe('the storage line', () => {
   test('names a local SQLite file, and opens the five facts, with the chevron turned up', async () => {
     const view = await open({ sizeBytes: 2_048 });
-    await waitFor(() => expect(storageLineOf(view)).toBe('Running on SQLite in ~/.interborough'));
+    await waitFor(() => expect(storageLineOf(view)).toBe('Running on SQLite'));
     const trigger = await view.findByRole('button', { name: 'Storage details' });
     expect(trigger.getAttribute('aria-expanded')).toBe('false');
     await fireEvent.click(trigger);
@@ -1084,9 +1085,11 @@ describe('the storage line', () => {
     const definitions = details
       .getAllByRole('definition')
       .map((value) => value.textContent?.trim());
+    // The full location, in a copy control, is the one place the page shows a path.
+    expect(details.getByTestId('storage-location').textContent).toContain('/home/me/.interborough');
     expect(definitions).toEqual([
       'SQLite',
-      '~/.interborough',
+      expect.stringContaining('/home/me/.interborough'),
       '2.0 KB',
       '6',
       'Per key; managed keys are locked',
@@ -1108,11 +1111,7 @@ describe('the storage line', () => {
 
   test('names Postgres and S3 for a remote installation', async () => {
     const view = await open({ mode: 'remote' });
-    await waitFor(() =>
-      expect(storageLineOf(view)).toBe(
-        'Running on Postgres and S3 in db.example.test:5432/interborough',
-      ),
-    );
+    await waitFor(() => expect(storageLineOf(view)).toBe('Running on Postgres and S3'));
   });
 });
 

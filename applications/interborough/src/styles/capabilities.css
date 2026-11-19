@@ -176,7 +176,6 @@
  * name read as words can still hold one long word, since a skill's identifier is up to 64 characters. */
 .ib-capability__name,
 .ib-capability__identifier,
-.ib-capability__location,
 .ib-capability__prose {
   overflow-wrap: anywhere;
 }

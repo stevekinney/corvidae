@@ -8,6 +8,8 @@ import { nameList } from './shared.ts';
 export const PLUGINS_COPY = {
   title: 'Plugins',
   intro: 'Code that adds tools, agents and workflows. Plugins load at startup.',
+  /** The Copy button beside a plugin's or a folder's location, the one place a path shows. */
+  copyLocation: 'Copy location',
   /** The loading rule every page shares: skeleton rows after 300 ms, then a status line with a Cancel (board PageSettingsSections, "Plugins loading"). */
   loading: {
     label: 'Loading plugins',
@@ -120,10 +122,11 @@ export const PLUGINS_COPY = {
     addLabel: (key: string): string => `Add the key for ${key}`,
     replaceLabel: (key: string): string => `Replace ${key}`,
     /** Under a missing key: where it is saved, and what happens once it is. */
-    note: (directory: string, title: string, provider: boolean): string =>
+    /** Where or how a key is stored is never said (owner, 2026-11-19): no secret reference renders. */
+    note: (title: string, provider: boolean): string =>
       provider
-        ? `Saved to ${directory}, readable only by you. The models appear as soon as the key passes a test.`
-        : `Saved to ${directory}, readable only by you. ${title} works as soon as the key is saved; no restart.`,
+        ? 'The models appear as soon as the key passes a test.'
+        : `${title} works as soon as the key is saved; no restart.`,
     dialog: {
       title: (key: string): string => `Save ${key}`,
       description: (plugin: string): string =>

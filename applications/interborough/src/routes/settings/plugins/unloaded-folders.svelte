@@ -4,7 +4,7 @@
    * ran, so they are listed by where they are, with what went wrong, apart from the plugins that
    * loaded.
    */
-  import { SectionHeading } from '@lostgradient/cinder';
+  import { CopyableValue, SectionHeading } from '@lostgradient/cinder';
 
   import { PLUGINS_COPY } from '../../../app/copy/plugins.ts';
   import type { UnloadedPlugin } from '../../../lib/host-plugins.ts';
@@ -27,7 +27,8 @@
     {#each keyedByOccurrence(folders, (candidate) => candidate.location) as { key, item: folder } (key)}
       <li class="ib-unloaded__item" data-unloaded={folder.location}>
         <div class="ib-unloaded__where">
-          <code class="ib-unloaded__location">{folder.location}</code>
+          <!-- A host path is shown only inside a copy control (owner, 2026-11-19). -->
+          <CopyableValue value={folder.location} label={PLUGINS_COPY.copyLocation} />
           <span class="ib-unloaded__source">{sourceWord(folder.source)}</span>
         </div>
         {#each folder.problems as problem, index (index)}
@@ -67,12 +68,6 @@
     flex-wrap: wrap;
     align-items: center;
     gap: var(--cinder-space-3);
-  }
-
-  .ib-unloaded__location {
-    flex: 1 1 12rem;
-    min-width: 0;
-    overflow-wrap: anywhere;
   }
 
   .ib-unloaded__source {

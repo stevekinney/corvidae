@@ -51,7 +51,7 @@
   import { agentsListQuery } from '../../lib/agent-queries.ts';
   import { listAllContexts } from '../../lib/bureau-client.ts';
   import { followLinks } from '../../lib/follow-links.ts';
-  import { agentFilePath, getHostPaths } from '../../lib/host-paths.ts';
+  import { agentRelativePath } from '../../lib/host-paths.ts';
   import { getPlugins } from '../../lib/host-plugins.ts';
   import { keyedByOccurrence } from '../../lib/list-keys.ts';
   import { phoneViewport } from '../../lib/phone-viewport.svelte.ts';
@@ -97,12 +97,8 @@
   );
   const invalid = $derived((definitions.data ?? []).filter((entry) => entry.state === 'invalid'));
 
-  // Where the files are. A host that does not say shows the path relative to the state directory.
-  const hostPaths = createQuery(
-    () => ({ queryKey: queryKeys.hostPaths(), queryFn: ({ signal }) => getHostPaths({ signal }) }),
-    undefined,
-  );
-  const directory = $derived(hostPaths.data?.agentDirectory ?? AGENT_EDITOR_COPY.fallbackDirectory);
+  // A broken file is named by its path relative to the Interborough home, as the editor names it:
+  // a host path never shows in a row (owner, 2026-11-19).
 
   // A model agent cannot answer while no provider is connected, so its New chat says so.
   const providers = useHostProviders();
@@ -509,7 +505,7 @@
                 {#snippet meta()}
                   <CodeLocation
                     class="weft-code-location"
-                    file={agentFilePath(directory, entry.id)}
+                    file={agentRelativePath(entry.id)}
                     data-testid="agent-file-path"
                   />
                 {/snippet}

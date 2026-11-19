@@ -10,6 +10,11 @@ import { breadcrumbTrail } from '../../app/breadcrumbs.svelte.ts';
 import { CAPABILITIES_COPY } from '../../app/copy/capabilities.ts';
 import { installFetchImplementation } from '../../lib/live-source/fetch.test-support.ts';
 import { router } from '../../lib/router.svelte.ts';
+import {
+  forbiddenVisibleText,
+  PATH_ALLOWED_SELECTOR,
+  visibleTextOutsideCopyControls,
+} from '../../lib/visible-text-rules.ts';
 import { AGENT, bureau, landAt } from '../chat/pages.test-support.ts';
 import QueryPage from '../chat/query-page.test-harness.svelte';
 import CapabilitiesPage from './index.svelte';
@@ -523,6 +528,14 @@ describe('the Skills tab', () => {
     expect(detail.querySelector('[data-testid="skill-source"]')?.textContent).toContain(
       '/skills/workspace',
     );
+    // The sweep (2026-11-19) found the skill's host path in the body: it sits only in a copy
+    // control, and the page says no host path, secret reference or ULID in its own words.
+    expect(
+      detail.querySelector('[data-testid="skill-source"] .cinder-copyable-value')?.textContent,
+    ).toContain('/skills/workspace');
+    expect(
+      forbiddenVisibleText(visibleTextOutsideCopyControls(container, PATH_ALLOWED_SELECTOR)),
+    ).toEqual([]);
     // A skill that asks to keep no tool has no such row.
     expect(detail.textContent).not.toContain(copy.skill.allowedTools);
   });

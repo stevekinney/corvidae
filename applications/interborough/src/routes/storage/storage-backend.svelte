@@ -1,13 +1,15 @@
 <script lang="ts">
   /**
    * The storage line under Health's heading, the same on every tab: which backend the installation
-   * keeps its state in and where ("Running on SQLite in ~/.interborough"), then "Storage details"
-   * as a link-styled button that opens the storage's five facts (`storage-details.svelte`), its
-   * chevron turned up while they are open. The backend comes from the host (`/host/paths`); when the
-   * host cannot say, the line says only that this is storage. The line does not count keys: the
-   * count is in the popover and the table's footer.
+   * keeps its state in, in plain words and nothing else ("Running on SQLite"), then "Storage details"
+   * as a link-styled button that opens the storage's facts (`storage-details.svelte`), its chevron
+   * turned up while they are open. Where the state lives is a path, and a path is never in a header
+   * (owner, 2026-11-19): the full location is in Storage details, selectable, with a Copy button.
+   * The words and the button sit side by side and wrap as two whole pieces; nothing overlays the
+   * words (the button was pulled back over a path cut short). The backend comes from the host
+   * (`/host/paths`); when the host cannot say, the line says only that this is storage.
    */
-  import { Button, Popover, Text } from '@lostgradient/cinder';
+  import { Button, Popover } from '@lostgradient/cinder';
   import { ChevronDown, ChevronUp } from '@lucide/svelte';
 
   import type { HostPaths } from '../../lib/host-paths.ts';
@@ -26,9 +28,7 @@
 </script>
 
 <span class="ib-storage-backend" data-testid="storage-backend">
-  <span class="ib-storage-backend__line"
-    ><Text truncate="middle" text={line} tailLength={24} /></span
-  >
+  <span class="ib-storage-backend__line">{line}</span>
   <span class="ib-storage-backend__details">
     <Popover bind:open label={HEALTH_FRAME_COPY.popoverLabel} placement="bottom-start">
       {#snippet trigger()}
@@ -57,7 +57,7 @@
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: 0 var(--cinder-space-2);
+    gap: var(--cinder-space-1) var(--cinder-space-2);
     min-width: 0;
     max-inline-size: 100%;
     margin: 0;
@@ -65,25 +65,16 @@
     font-size: var(--cinder-text-md);
   }
 
-  /* One line, cut from the middle when the path is long, so the title and the tabs stay in view. */
-  .ib-storage-backend__line {
-    flex: 0 1 auto;
-    min-width: 0;
-    max-inline-size: 100%;
-  }
-
-  .ib-storage-backend__line :global(p) {
-    margin: 0;
-  }
-
-  /* The button stays whole and wraps as one piece beside the path. */
+  /* The words and the button are two whole pieces in one wrapping row: neither shrinks under the
+     other, and no margin pulls one over the other. */
+  .ib-storage-backend__line,
   .ib-storage-backend__details {
-    /* The ghost button's own inline padding comes off, so its label starts where the line above it
-       does when it wraps under the path, and keeps the same gap when it sits beside it. */
-    margin-inline-start: calc(var(--cinder-button-padding-x-sm) * -1);
+    flex: none;
+  }
+
+  .ib-storage-backend__details {
     display: inline-flex;
     align-items: center;
-    gap: var(--cinder-space-2);
     white-space: nowrap;
   }
 </style>

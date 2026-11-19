@@ -470,8 +470,10 @@ describe('a plugin', () => {
     ).not.toBeNull();
     expect(secret.textContent).toContain(PLUGINS_COPY.secrets.add);
     expect(detail.querySelector('[data-testid="plugin-secret-note"]')?.textContent?.trim()).toBe(
-      PLUGINS_COPY.secrets.note('/home/.bungalow/secrets', 'TypeSafe', false),
+      PLUGINS_COPY.secrets.note('TypeSafe', false),
     );
+    // Where or how the key is stored never renders (owner, 2026-11-19).
+    expect(detail.textContent).not.toMatch(/workspace:|\/secrets|\.bungalow/);
     // Nothing to put in use while it cannot run.
     expect(container.querySelector('[data-testid="plugin-in-use"]')).toBeNull();
   });

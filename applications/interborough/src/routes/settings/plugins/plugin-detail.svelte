@@ -11,7 +11,7 @@
    * page's draft (`plugin-drafts.svelte.ts`). A secret is saved at once, because it needs no restart. A plugin
    * the host requires has no switch.
    */
-  import { Button, SectionHeading, StatusDot, Toggle } from '@lostgradient/cinder';
+  import { Button, CopyableValue, SectionHeading, StatusDot, Toggle } from '@lostgradient/cinder';
   import { createQuery } from '@tanstack/svelte-query';
 
   import { PLUGINS_COPY } from '../../../app/copy/plugins.ts';
@@ -28,7 +28,6 @@
     heldBackAgents,
     inUseSentence,
     providerOf,
-    secretsDirectory,
     sourceKind,
     statusOf,
   } from './plugin-presentation.ts';
@@ -124,7 +123,6 @@
    */
   const secrets = $derived(plugin.secrets.filter((secret) => secret.set || !secret.generated));
   const missingSecret = $derived(secrets.some((secret) => !secret.set));
-  const secretDirectory = $derived(secretsDirectory(secrets[0]?.location ?? ''));
   // The status line shows beside the title when it says more than the switch does.
   const showStatus = $derived(
     status.label !== copy.status.running && status.label !== copy.status.disabled,
@@ -202,8 +200,9 @@
 
   <p class="ib-plugin__source">
     <span class="ib-plugin__source-term">{copy.sections.source}</span>
-    <code class="ib-plugin__source-location">{plugin.location}</code>,
     {sourceKind(plugin.source)}
+    <!-- A host path is shown only inside a copy control (owner, 2026-11-19). -->
+    <CopyableValue value={plugin.location} label={copy.copyLocation} />
   </p>
 
   {#if groups.length > 0}
@@ -257,7 +256,7 @@
       </ul>
       {#if missingSecret}
         <p class="ib-plugin__note" data-testid="plugin-secret-note">
-          {copy.secrets.note(secretDirectory, title, provider !== undefined)}
+          {copy.secrets.note(title, provider !== undefined)}
         </p>
       {/if}
     </section>
@@ -360,7 +359,6 @@
     color: var(--cinder-text-muted);
   }
 
-  .ib-plugin__source-location,
   .ib-plugin__add-id,
   .ib-plugin__secret-key {
     font-family: var(--cinder-font-mono);
