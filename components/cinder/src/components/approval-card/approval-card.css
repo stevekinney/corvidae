@@ -1613,6 +1613,14 @@
       display: none;
     }
 
+    /* The gap stood for the name that is gone, so the risk word starts the line at the card's text
+       edge rather than 6px in (COR-2438). */
+    .cinder-approval-card--row
+      .cinder-approval-card__line-tool-name
+      + .cinder-approval-card__keep {
+      margin-inline-start: 0;
+    }
+
     /* A deadline more than a day out is written as its day ("Expires Nov 17"), so the expiry and
      * "Can't be undone" share one line. */
     .cinder-approval-card__facts-line-fact[data-cinder-shortened]

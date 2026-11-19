@@ -411,13 +411,14 @@
     }
   }
 
-  /* What sits under a row: the approval a waiting call is waiting on. It bleeds exactly as the row
-     does, back over the marker column and past the rail's end, so the row and the card under it
-     share one leading edge and one trailing edge at every width (COR-2438). */
+  /* What sits under a row: the approval a waiting call is waiting on. It reaches back over the
+     marker column, so it starts where the row's marker starts, the column's own edge, and ends
+     where the rail ends (COR-2438). It does not take the row's extra bleed, which only lets a
+     selected row's tint and ring wrap the marker: with it the card stood 6px outside the column at
+     each end, wider than the messages and the composer. */
   .cinder-tool-call-rail__nested {
-    margin: var(--cinder-space-1) calc(-1 * var(--_cinder-tool-call-rail-bleed))
-      var(--cinder-space-1)
-      calc(-1 * (var(--_cinder-tool-call-rail-indent) + var(--_cinder-tool-call-rail-bleed)));
+    margin: var(--cinder-space-1) 0 var(--cinder-space-1)
+      calc(-1 * var(--_cinder-tool-call-rail-indent));
     min-inline-size: 0;
   }
 

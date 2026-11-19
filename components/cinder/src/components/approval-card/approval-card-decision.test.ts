@@ -878,6 +878,11 @@ describe('ApprovalCard decision layout stylesheet', () => {
     expect(css).toContain(
       '@container (inline-size < 24rem) { .cinder-approval-card--row .cinder-approval-card__line-tool-name { display: none; }',
     );
+    // COR-2438: the gap that stood for the name goes with it, so the risk word starts at the card's
+    // text edge (it stood 6px in, on a line of its own, at 375).
+    expect(css).toContain(
+      '.cinder-approval-card--row .cinder-approval-card__line-tool-name + .cinder-approval-card__keep { margin-inline-start: 0; }',
+    );
     // "Approval from Tool runner 3 min ago" breaks only on a card narrower than 14rem.
     expect(css).toMatch(
       /@container \(inline-size < 14rem\) \{ \.cinder-approval-card__line time \{ display: block; margin-inline-start: 0; \}/,

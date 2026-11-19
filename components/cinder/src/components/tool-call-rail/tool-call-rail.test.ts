@@ -441,20 +441,22 @@ describe('ToolCallRail rows', () => {
     expect(document.activeElement).toBe(rows(container)[2] ?? null);
   });
 
-  // COR-2438: the row bled back over the marker column while the approval under it started at the
-  // content edge, so the two started at different inline edges.
-  test('nested content bleeds exactly as its row does, so the two share their edges', () => {
+  // COR-2438: the approval under a row first started at the content edge, then bled as the row's
+  // tint does, 6px outside the column at each end; it starts at the marker's edge and ends at the
+  // rail's, the column the messages and the composer keep.
+  test('nested content starts at the marker column and ends with the rail, without the row’s tint bleed', () => {
     const rule = (selector: string) =>
       cssText.match(new RegExp(`\\n  ${selector}\\s*\\{[^}]*\\}`))?.[0] ?? '';
-    const bleedStart =
-      'calc(-1 * (var(--_cinder-tool-call-rail-indent) + var(--_cinder-tool-call-rail-bleed)))';
-    const bleedEnd = 'calc(-1 * var(--_cinder-tool-call-rail-bleed))';
     const row = rule('\\.cinder-tool-call-rail__row').replaceAll(/\s+/g, ' ');
     const nested = rule('\\.cinder-tool-call-rail__nested').replaceAll(/\s+/g, ' ');
-    expect(row).toContain(`margin: 0 ${bleedEnd} 0 ${bleedStart}`);
-    expect(nested).toContain(
-      `margin: var(--cinder-space-1) ${bleedEnd} var(--cinder-space-1) ${bleedStart}`,
+    // The row's box bleeds for its tint and pads it back, so its marker sits at the column's edge.
+    expect(row).toContain(
+      'padding: 0 var(--_cinder-tool-call-rail-bleed) 0 calc(var(--_cinder-tool-call-rail-indent) + var(--_cinder-tool-call-rail-bleed))',
     );
+    expect(nested).toContain(
+      'margin: var(--cinder-space-1) 0 var(--cinder-space-1) calc(-1 * var(--_cinder-tool-call-rail-indent))',
+    );
+    expect(nested).not.toContain('--_cinder-tool-call-rail-bleed');
   });
 
   test('nested content draws under the rows that ask for it, whatever their status', () => {

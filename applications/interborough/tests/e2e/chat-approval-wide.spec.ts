@@ -78,20 +78,35 @@ test.describe('the approval on a chat (/chats/:chat)', () => {
           row: rowBox,
           name: nameBox,
           badge: badgeBox,
+          marker: markerBox,
+          composer: composerBox,
         } = await readBoxes(page, {
           card: approval,
           surface: page.locator('.weft-chat-surface'),
           row,
           name,
           badge,
+          marker: page
+            .locator('li')
+            .filter({ has: row })
+            .locator('.cinder-tool-call-rail__marker')
+            .first(),
+          composer: page.getByRole('form', { name: 'Chat message composer' }),
         });
 
-        // 1. The card keeps the messages' measure, never the whole pane.
+        // 1. The card keeps the messages' measure, never the whole pane: no wider than the
+        // composer's column, and inside it at both ends (it stood 6px outside at each).
         expect(cardBox.width).toBeLessThanOrEqual(MESSAGE_MEASURE + 0.5);
         expect(cardBox.x + cardBox.width).toBeLessThanOrEqual(surface.x + surface.width + 0.5);
+        expect(cardBox.x).toBeGreaterThanOrEqual(composerBox.x - 0.5);
+        expect(cardBox.x + cardBox.width).toBeLessThanOrEqual(
+          composerBox.x + composerBox.width + 0.5,
+        );
 
-        // 2. The row and the card start at one inline edge.
-        expect(Math.abs(rowBox.x - cardBox.x)).toBeLessThanOrEqual(1);
+        // 2. The row's marker, where its visible row starts, and the card start at one inline
+        // edge; the row's own box reaches 6px further for a selected row's tint.
+        expect(Math.abs(markerBox.x - cardBox.x)).toBeLessThanOrEqual(1);
+        expect(rowBox.x).toBeLessThanOrEqual(cardBox.x);
 
         // 3. Waiting on you is a warning Badge right after the tool's name.
         expect(badgeBox.x).toBeGreaterThanOrEqual(nameBox.x + nameBox.width - 1);
