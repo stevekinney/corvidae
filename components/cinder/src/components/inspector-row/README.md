@@ -2,7 +2,7 @@
 
 <!-- generated:a11y-record:required -->
 
-`InspectorRow` is one property row of an `Inspector`: a muted label in a fixed 140px column, the value in the default text colour, then a trailing affordance. Each row is at least 44px tall, and when its `Inspector` is narrower than 700px the label stacks above the value.
+`InspectorRow` is one property row of an `Inspector`: a muted label in a fixed 140px column, the value in the default text colour, then a trailing affordance. Each row is at least 44px tall, and when its `Inspector` is narrower than 23rem (368px) the label stacks above the value.
 
 A row is read-only unless it has a `kind` or an `editor`. An editable row draws a trailing chevron (a small switch for a toggle) and a hover tint, and activating it opens the editor:
 
