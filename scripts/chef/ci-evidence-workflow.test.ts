@@ -1,16 +1,28 @@
-import { describe, expect, test } from 'bun:test';
-import { readFileSync } from 'node:fs';
+import { afterAll, describe, expect, test } from 'bun:test';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import {
   CiEvidenceWorkflowError,
   createCiEvidenceWorkflowReceipt,
+  MAX_JUNIT_REPORT_BYTES,
+  MAX_JUNIT_REPORTS,
+  readJUnitArtifactReports,
   validateJUnitArtifacts,
   type CiEvidenceWorkflowEnvironment,
 } from './ci-evidence-workflow.ts';
 
 const sha = (character: string) => character.repeat(40);
 const digest = (character: string) => character.repeat(64);
+const scratch = join(process.cwd(), 'tmp/chef/p07-evidence');
+mkdirSync(scratch, { recursive: true });
+const fixtures: string[] = [];
+
+function artifactFixture(): string {
+  const directory = mkdtempSync(join(scratch, 'workflow-artifact-'));
+  fixtures.push(directory);
+  return directory;
+}
 
 function environment(
   overrides: Partial<CiEvidenceWorkflowEnvironment> = {},
@@ -236,4 +248,23 @@ describe('validateJUnitArtifacts', () => {
     for (const value of cases)
       expect(() => validateJUnitArtifacts(value, expected)).toThrow(CiEvidenceWorkflowError);
   });
+});
+
+describe('readJUnitArtifactReports', () => {
+  test('rejects oversized reports before reading their contents', () => {
+    const directory = artifactFixture();
+    writeFileSync(join(directory, 'oversized.xml'), Buffer.alloc(MAX_JUNIT_REPORT_BYTES + 1));
+    expect(() => readJUnitArtifactReports(directory)).toThrow('report exceeds maximum size');
+  });
+
+  test('rejects an excessive report count before parsing unbounded input', () => {
+    const directory = artifactFixture();
+    for (let index = 0; index <= MAX_JUNIT_REPORTS; index += 1)
+      writeFileSync(join(directory, `${index}.xml`), '<testsuite/>');
+    expect(() => readJUnitArtifactReports(directory)).toThrow('too many reports');
+  });
+});
+
+afterAll(() => {
+  for (const directory of fixtures) rmSync(directory, { recursive: true, force: true });
 });
