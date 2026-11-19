@@ -16,7 +16,7 @@
 //                       "plan exceeds one targeted dispatch" and dispatches `main.yml`: nothing is
 //                       dropped, and only a plan dispatched whole carries a `plan_digest`
 //
-// The valid slugs are the ones `components.playwright.ts` accepts: the generated manifest's, which
+// The valid slugs are the ones `components-sweep.playwright.ts` accepts: the generated manifest's, which
 // this script regenerates first with `prepare-manifest.ts`. The slug check is the workflow's own
 // `parseComponentFilter`.
 //

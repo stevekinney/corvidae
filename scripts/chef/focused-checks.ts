@@ -420,7 +420,7 @@ export const FIXTURE_SPECS_COMMAND =
  * The sweep that mounts every Cinder component from the manifest. It takes about 20 minutes on one
  * slot, so the named specs leave it out; the whole suite runs it.
  */
-export const FIXTURE_SWEEP_SPEC = 'components.playwright.ts';
+export const FIXTURE_SWEEP_SPEC = 'components-sweep.playwright.ts';
 
 const cinderSource = 'components/cinder/src/';
 const cinderComponent = /^components\/cinder\/src\/components\/([^/]+)\//;
@@ -456,7 +456,7 @@ export function fixtureSpecAdvice(
   const names = [...cinder, ...others].toSorted();
   const selected = new Set<string>();
   for (const [spec, source] of specs) {
-    if (spec === FIXTURE_SWEEP_SPEC) continue;
+    if (spec === FIXTURE_SWEEP_SPEC || spec === 'components.playwright.ts') continue;
     if (names.some((name) => fileNames(spec, name))) selected.add(spec);
     else if ([...cinder].some((name) => sourceNames(source, name))) selected.add(spec);
   }
