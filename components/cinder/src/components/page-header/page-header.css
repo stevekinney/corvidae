@@ -248,6 +248,24 @@
       .cinder-page-header__description {
       grid-row: 2;
     }
+
+    /* A one-line title (`titleLines={1}`) leaves room beside it, so the actions keep the title's
+       first line and centre on it at every width, and the status takes the line under both. The
+       actions on the status's line centred about 30px under the title's words (COR-2438). */
+    .cinder-page-header[data-cinder-narrow-actions='beside-status'][data-cinder-title-lines='1']
+      .cinder-page-header__title {
+      grid-column: 1;
+    }
+
+    .cinder-page-header[data-cinder-narrow-actions='beside-status'][data-cinder-title-lines='1']
+      .cinder-page-header__actions:not(.cinder-page-header__create-slot) {
+      grid-row: 1;
+    }
+
+    .cinder-page-header[data-cinder-narrow-actions='beside-status'][data-cinder-title-lines='1']
+      .cinder-page-header__status {
+      grid-column: 1 / -1;
+    }
   }
 
   .cinder-page-header__status[data-cinder-placement='below'] {

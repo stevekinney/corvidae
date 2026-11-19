@@ -240,8 +240,10 @@ async function headerCentres(page: Page) {
     const rects = [...range.getClientRects()].filter((rect) => rect.height > 0);
     const first = rects[0];
     if (first === undefined) throw new Error('The title has no line boxes.');
-    // A clamped title lays out its hidden lines too: only the lines inside the heading show.
-    const shown = rects.filter((rect) => rect.top < headingBox.bottom - 0.5);
+    // A clamped title lays out its hidden lines too: only the lines inside the heading show. A line
+    // is inside when its centre is: a glyph box is taller than the title's tight line (28px against
+    // 27.6px at 1280), so the first hidden line's top sits just above the heading's bottom edge.
+    const shown = rects.filter((rect) => rect.top + rect.height / 2 < headingBox.bottom);
     const more = [...root.querySelectorAll('button')].find(
       (button) => button.textContent?.trim() === moreLabel,
     );
@@ -250,7 +252,12 @@ async function headerCentres(page: Page) {
     const badge = root.querySelector('.cinder-page-header__status .cinder-badge');
     const badgeBox = badge?.getBoundingClientRect();
     const band = root.closest('.weft-chat-head');
-    const route = root.closest('.weft-chat-route');
+    // The conversation's pane: the route, except on a phone, where the outlet keeps a 4px gutter
+    // beside the route and the pane is the whole outlet.
+    const route =
+      window.innerWidth < 640
+        ? root.closest('.weft-shell-outlet')
+        : root.closest('.weft-chat-route');
     const bandBox = band?.getBoundingClientRect();
     const routeBox = route?.getBoundingClientRect();
     return {
@@ -285,7 +292,9 @@ async function headerCentres(page: Page) {
 // COR-2438: the title keeps one line and takes the free space first; the More menu shares the
 // centre of its line, and the status Badge does too while it fits beside the title, or else sits
 // under it. No box frames the header, and its rule runs edge to edge of the conversation pane.
-for (const width of [1280, 1920, 900]) {
+// 768 and 375 are the narrow header, where the status sits under the one-line title and the More
+// menu keeps the title's line (the review captured it on the status's line, 30px lower).
+for (const width of [1280, 1920, 900, 768, 375]) {
   test(`keeps the title to one line, the More menu and the status on its centre line or the status under it, at ${width} pixels`, async ({
     page,
     request,

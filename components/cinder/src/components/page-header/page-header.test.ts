@@ -620,6 +620,30 @@ describe('PageHeader narrowActions (COR-2327 B2)', () => {
     );
   });
 
+  // COR-2438: in a narrow chat header the More menu sat on the status's line, 30px under the title.
+  test('beside-status with a one-line title keeps the actions on the title line and the status under both', () => {
+    const { container } = render(PageHeader, {
+      props: { title: 'Hello', narrowActions: 'beside-status', titleLines: 1 },
+    });
+    expect(
+      container.querySelector('.cinder-page-header')?.getAttribute('data-cinder-title-lines'),
+    ).toBe('1');
+    const narrow = stylesheet.slice(
+      stylesheet.indexOf('@container cinder-page-header (max-width: 32rem)'),
+    );
+    const oneLine =
+      ".cinder-page-header[data-cinder-narrow-actions='beside-status'][data-cinder-title-lines='1']";
+    expect(narrow).toContain(
+      `${oneLine}\n      .cinder-page-header__title {\n      grid-column: 1;`,
+    );
+    expect(narrow).toContain(
+      `${oneLine}\n      .cinder-page-header__actions:not(.cinder-page-header__create-slot) {\n      grid-row: 1;`,
+    );
+    expect(narrow).toContain(
+      `${oneLine}\n      .cinder-page-header__status {\n      grid-column: 1 / -1;`,
+    );
+  });
+
   test('beside-status with no status puts the actions on the title line, not alone on a second row', () => {
     const { container } = render(PageHeader, {
       props: { title: 'Hello', narrowActions: 'beside-status', overflow: [{ label: 'Archive' }] },

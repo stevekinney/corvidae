@@ -63,6 +63,18 @@ describe('the chat page’s layout', () => {
     expect(source).toMatch(/owner\.style\.setProperty\(\s*CHAT_OVERLAY_INSET_START_PROPERTY,/);
   });
 
+  test('on a phone the header’s band reaches past the route by the outlet’s gutter, so its rule runs edge to edge', async () => {
+    const css = await read('./chat.css');
+    const phone = css.slice(css.indexOf('@media (max-width: 639.98px)'));
+    const rule = ruleOf(phone, '.weft-chat-head:not(.ib-chat-unavailable__heading)');
+    // The bleed is the outlet's phone padding (above), handed back as padding so the title keeps its edge.
+    expect(rule).toMatch(
+      /--_ib-chat-bleed:\s*calc\(var\(--cinder-space-4\) - var\(--cinder-space-3\)\)/,
+    );
+    expect(rule).toMatch(/inset-inline:\s*calc\(var\(--_ib-chat-bleed\) \* -1\)/);
+    expect(rule).toMatch(/\+\s*var\(--_ib-chat-bleed\)/);
+  });
+
   test('the conversation is one centred reading column of at most 760px', async () => {
     const rule = ruleOf(await read('./chat.css'), '.weft-chat-surface');
     expect(rule).toMatch(/max-inline-size:\s*47\.5rem/);
