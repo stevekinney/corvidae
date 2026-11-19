@@ -299,27 +299,19 @@ describe('charter rules', () => {
     expect(rules).toContain('you do not merge');
   });
 
-  test('tell a worker to push its own branch after every commit, never to main', () => {
+  test('tell a worker to push one stable candidate to its own branch, never to main', () => {
     const rule = charterRules.find((candidate) => candidate.startsWith('**Push:**')) ?? '';
-    expect(rule).toContain('after every commit, push your own branch to origin');
+    expect(rule).toContain('after the focused checks pass, push one stable candidate');
     expect(rule).toContain('never to `main`');
-    expect(rule).toContain('do not wait for the focused checks before that push');
-    expect(rule).toContain('still gate ready-for-review');
-    expect(rule).toContain('record its returned run ID in the ready-for-review receipt');
+    expect(rule).toContain('The coordinator owns CI dispatch and waits');
     for (const path of ['.claude/agents/chef-worker.md', '.codex/agents/chef-worker.toml']) {
       const text = readFileSync(join(import.meta.dir, '../..', path), 'utf8');
       expect(text).toContain(`${pushRule.charAt(0).toUpperCase()}${pushRule.slice(1)}`);
     }
   });
 
-  test('requires every rendered brief to record one final branch CI receipt', () => {
-    expect(pushRule).toContain(
-      'After the final push run `gh workflow run main.yml --ref <branch>` once per batch',
-    );
-    expect(pushRule).not.toContain('When the brief requires branch CI');
-    expect(renderBrief(issue(description), { paths: [], verify: [], model: 'Sonnet' })).toContain(
-      'record its returned run ID in the ready-for-review receipt',
-    );
+  test('leaves CI dispatch and waits to the coordinator', () => {
+    expect(pushRule).toContain('The coordinator owns CI dispatch and waits');
   });
 
   test('requires an owned-PID and worktree leftovers receipt before handoff', () => {

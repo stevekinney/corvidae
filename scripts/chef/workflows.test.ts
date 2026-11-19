@@ -26,8 +26,6 @@ interface DeliveryResult {
 
 /** What each step returns when the script ran clean: the stubs a test overrides by label word. */
 const cleanResponses: Responses = {
-  brief: { exitCode: 0, briefPath: 'tmp/chef/briefs/COR-7.md' },
-  'record override': { recorded: true, path: '/main/tmp/chef/events.jsonl' },
   implement: {
     status: 'ready-for-review',
     head: 'abc',
@@ -46,7 +44,6 @@ const cleanResponses: Responses = {
     command: ['gh', 'workflow', 'run', 'targeted-checks.yml'],
     requiresFullRun: false,
   },
-  'override brief': { briefPath: '/main/tmp/chef/briefs/COR-7.md', bytes: 2048 },
   wait: { run: '99', headSha: 'abc', conclusion: 'success', jobs: [] },
   compare: {
     run: '99',
@@ -87,7 +84,19 @@ async function runDelivery(arguments_: Record<string, unknown> = {}, stubs: Resp
   ) => (...arguments_: unknown[]) => Promise<unknown>;
   const run = new AsyncFunction('args', 'agent', 'phase', 'log', 'parallel', 'pipeline', source);
   const result = (await run(
-    { issues: ['COR-7'], run: 'run-1', ...arguments_ },
+    {
+      issues: ['COR-7'],
+      run: 'run-1',
+      preparedBriefs: {
+        'COR-7': {
+          validated: true,
+          exitCode: 0,
+          briefPath: '/main/tmp/chef/briefs/COR-7.md',
+          paths: [],
+        },
+      },
+      ...arguments_,
+    },
     async (prompt: string, options: Call['options']) => {
       calls.push({ prompt, label: options.label, options });
       const key = Object.keys(responses)
@@ -243,7 +252,6 @@ describe('workflow scripts', () => {
   test('deliver-issue.js drives check, dispatch, wait, compare and review to a recorded evidence request', async () => {
     const delivery = await runDelivery();
     expect(delivery.labels).toEqual([
-      'brief',
       'implement',
       'checks',
       'dispatch',
@@ -286,7 +294,7 @@ describe('workflow scripts', () => {
         },
       },
     );
-    expect(delivery.labels).toEqual(['brief', 'implement', 'checks', 'dispatch']);
+    expect(delivery.labels).toEqual(['implement', 'checks', 'dispatch']);
     expect(delivery.result[0]?.status).toBe('NEEDS_JUDGMENT');
     expect(delivery.result[0]?.evidenceRequest).toBeNull();
   });
@@ -296,9 +304,9 @@ describe('workflow scripts', () => {
       {},
       { checks: (count: number) => ({ exitCode: 1, line: 'lint failed', head: head(count) }) },
     );
-    expect(delivery.labels).toEqual(['brief', 'implement', 'checks', 'correct', 'checks']);
+    expect(delivery.labels).toEqual(['implement', 'checks', 'correct', 'checks']);
     expect(delivery.result[0]?.status).toBe('NEEDS_JUDGMENT');
-    expect(delivery.result[0]?.reason).toContain('after 2 rounds');
+    expect(delivery.result[0]?.reason).toContain('after 1 correction');
   });
 
   // Round 2 must not land the corrected head with round 1's run.
@@ -377,7 +385,7 @@ describe('workflow scripts', () => {
       expect(delivery.labels.filter((label) => label === 'correct')).toHaveLength(1);
       expect(delivery.labels.filter((label) => label === 'checks')).toHaveLength(2);
       expect(delivery.result[0]?.status).toBe('NEEDS_JUDGMENT');
-      expect(delivery.result[0]?.reason).toContain('after 2 rounds');
+      expect(delivery.result[0]?.reason).toContain('after 1 correction');
       expect(delivery.result[0]?.evidenceRequest).toBeNull();
     });
   }
@@ -426,16 +434,16 @@ describe('workflow scripts', () => {
         const delivery =
           where === 'args'
             ? await runWithCorrection({ paths: { 'COR-7': [path] } })
-            : await runWithCorrection(
-                {},
-                {
-                  brief: {
+            : await runWithCorrection({
+                preparedBriefs: {
+                  'COR-7': {
+                    validated: true,
                     exitCode: 0,
-                    briefPath: 'tmp/chef/briefs/COR-7.md',
+                    briefPath: '/main/tmp/chef/briefs/COR-7.md',
                     paths: [path],
                   },
                 },
-              );
+              });
         expect(modelOf(delivery.calls, 'implement')).toEqual(['opus']);
         expect(modelOf(delivery.calls, 'correct')).toEqual(['opus']);
         expect(delivery.result[0]?.evidenceRequest?.['workerModel']).toMatchObject({
@@ -450,6 +458,10 @@ describe('workflow scripts', () => {
     const delivery = await runDelivery({
       issues: ['COR-7', 'COR-8'],
       models: { 'COR-7': 'opus' },
+      preparedBriefs: {
+        'COR-7': { validated: true, exitCode: 0, briefPath: '/main/tmp/chef/briefs/COR-7.md' },
+        'COR-8': { validated: true, exitCode: 0, briefPath: '/main/tmp/chef/briefs/COR-8.md' },
+      },
     });
     const byIssue = (issue: string) =>
       delivery.calls.filter((call) => call.label === `implement ${issue}`);
@@ -473,120 +485,61 @@ describe('workflow scripts', () => {
       {},
       { dispatch: { ...(cleanResponses['dispatch'] as object), dispatched: false } },
     );
-    expect(delivery.labels).toEqual(['brief', 'implement', 'checks', 'dispatch']);
+    expect(delivery.labels).toEqual(['implement', 'checks', 'dispatch']);
     expect(delivery.result[0]?.status).toBe('NEEDS_JUDGMENT');
   });
 
-  test('deliver-issue.js passes only coordinator-supplied context and classification to brief preparation', () => {
+  test('deliver-issue.js accepts only a coordinator-validated brief and never delegates preparation', async () => {
     const source = readFileSync(join(workflowsDirectory, 'deliver-issue.js'), 'utf8');
-    expect(source).toContain('args.verifiedContexts');
-    expect(source).toContain('args.classifications');
-    expect(source).toContain("arguments_.push('--context', shellArgument(context))");
-    expect(source).toContain("arguments_.push('--classification', shellArgument(classification))");
-  });
-
-  test('deliver-issue.js never dispatches a worker for a brief that exits nonzero without an override', async () => {
-    for (const brief of [
-      { exitCode: 1, briefPath: '', error: 'repository pin does not match origin' },
-      { exitCode: 2, briefPath: '', error: 'required context is unreadable' },
-      { exitCode: 0, briefPath: '' },
+    expect(source).toContain('args.preparedBriefs');
+    expect(source).not.toContain('scripts/chef/brief.ts');
+    for (const preparedBriefs of [
+      undefined,
+      { 'COR-7': { validated: false, exitCode: 0, briefPath: '/brief.md' } },
+      { 'COR-7': { validated: true, exitCode: 1, briefPath: '', error: 'blocked' } },
+      { 'COR-7': { validated: true, exitCode: 0, briefPath: '' } },
     ]) {
-      const delivery = await runDelivery({}, { brief });
-      expect(delivery.labels).toEqual(['brief']);
+      const delivery = await runDelivery({ preparedBriefs });
+      expect(delivery.calls).toHaveLength(0);
       expect(delivery.result[0]?.status).toBe('NEEDS_JUDGMENT');
     }
   });
 
-  test('deliver-issue.js records an override as an event and then continues', async () => {
-    const override = { reason: 'the blocker closed in this batch', at: '2026-11-19T10:00:00Z' };
-    const delivery = await runDelivery(
-      { override: { 'COR-7': override } },
-      { brief: { exitCode: 1, briefPath: '', error: 'COR-1 blocks COR-7' } },
-    );
-    expect(delivery.labels.slice(0, 4)).toEqual(['brief', 'record', 'override', 'implement']);
-    const recording = delivery.calls[1]?.prompt ?? '';
-    expect(recording).toContain('tmp/chef/events.jsonl');
-    const line = /: (\{.*\})\n/.exec(recording)?.[1] ?? '';
-    expect(JSON.parse(line)).toEqual({
-      event: 'brief-override',
-      issue: 'COR-7',
-      run: 'run-1',
-      reason: override.reason,
-      at: override.at,
-    });
-    expect(delivery.calls[2]?.prompt).toContain('--stdout');
-    expect(delivery.calls[3]?.prompt).toContain('brief file /main/tmp/chef/briefs/COR-7.md ');
-    expect(delivery.result[0]?.status).toBe('READY_TO_LAND');
-    expect(delivery.result[0]?.evidenceRequest?.['override']).toEqual(override);
-  });
-
-  test('deliver-issue.js never starts a worker after an override that produced no brief', async () => {
-    const override = { 'COR-7': { reason: 'the blocker closed', at: '2026-11-19T10:00:00Z' } };
-    for (const written of [
-      { briefPath: '/main/tmp/chef/briefs/COR-7.md', bytes: 0 },
-      { briefPath: 'tmp/chef/briefs/COR-7.md', bytes: 2048 },
-      { briefPath: '', bytes: 2048 },
-    ]) {
-      const delivery = await runDelivery(
-        { override },
-        { brief: { exitCode: 1, briefPath: '' }, 'override brief': written },
-      );
-      expect(delivery.labels).toEqual(['brief', 'record', 'override']);
-      expect(delivery.result[0]?.status).toBe('NEEDS_JUDGMENT');
-    }
-  });
-
-  test('deliver-issue.js applies an override to its own issue only', async () => {
+  test('deliver-issue.js carries the validated contract and cumulative failures into its one correction', async () => {
     const delivery = await runDelivery(
       {
-        issues: ['COR-7', 'COR-8'],
-        override: { 'COR-7': { reason: 'closed in this batch', at: '2026-11-19T10:00:00Z' } },
+        cumulativeFailures: { 'COR-7': 3 },
+        preparedBriefs: {
+          'COR-7': {
+            validated: true,
+            exitCode: 0,
+            briefPath: '/main/tmp/chef/briefs/COR-7.md',
+            paths: [],
+            contract: { criterion: 'AC1' },
+          },
+        },
       },
-      {
-        brief: { exitCode: 1, briefPath: '', error: 'blocked' },
-        'override brief': (_count: number, label: string) => ({
-          briefPath: `/main/tmp/chef/briefs/${label.split(' ').at(-1)}.md`,
-          bytes: 10,
-        }),
-      },
+      { checks: (count: number) => ({ exitCode: 1, line: 'lint failed', head: head(count) }) },
     );
-    const byIssue = (issue: string) => delivery.calls.filter((call) => call.label.endsWith(issue));
-    expect(byIssue('COR-8').map((call) => call.label.split(' ')[0])).toEqual(['brief']);
-    expect(byIssue('COR-7').map((call) => call.label.split(' ')[0])).toContain('implement');
-    expect(delivery.result.map((entry) => entry.status)).toEqual([
-      'READY_TO_LAND',
-      'NEEDS_JUDGMENT',
-    ]);
+    const prompt = delivery.calls.find((call) => call.label === 'correct COR-7')?.prompt ?? '';
+    expect(prompt).toContain('"issue":"COR-7"');
+    expect(prompt).toContain('"criterion":"AC1"');
+    expect(prompt).toContain('"cumulativeFailures":4');
+    expect(delivery.result[0]?.reason).toContain('after 1 correction');
   });
 
-  test('deliver-issue.js refuses an override without a reason or a time', async () => {
-    const delivery = await runDelivery(
-      { override: { 'COR-7': { reason: ' ', at: '2026-11-19T10:00:00Z' } } },
-      { brief: { exitCode: 1, briefPath: '' } },
-    );
-    expect(delivery.calls).toHaveLength(0);
-    expect(delivery.result[0]?.status).toBe('NEEDS_JUDGMENT');
-  });
-
-  test('deliver-issue.js keeps verified context and classification as one shell argument each', async () => {
+  test('deliver-issue.js uses paths from the validated coordinator brief for routing', async () => {
     const delivery = await runDelivery({
-      verifiedContexts: { 'COR-7': "/coordinator/boards/with space/'quoted'; touch nope" },
-      classifications: { 'COR-7': 'no-behavior' },
+      preparedBriefs: {
+        'COR-7': {
+          validated: true,
+          exitCode: 0,
+          briefPath: '/main/tmp/chef/briefs/COR-7.md',
+          paths: ['components/cinder/src/components/button/button.svelte'],
+        },
+      },
     });
-    const prompt = delivery.calls[0]?.prompt ?? '';
-    expect(prompt).toContain('--base "$(git rev-parse HEAD)"');
-    expect(prompt).not.toContain('<that-40-character-sha>');
-    expect(prompt).toContain(
-      "--context '/coordinator/boards/with space/'\"'\"'quoted'\"'\"'; touch nope'",
-    );
-    expect(prompt).toContain("--classification 'no-behavior'");
-    expect(delivery.calls.filter((call) => call.options.phase === 'implement')).toHaveLength(1);
-  });
-
-  test('deliver-issue.js refuses an invalid coordinator classification before preparation', async () => {
-    const delivery = await runDelivery({ classifications: { 'COR-7': 'no-behavior; touch nope' } });
-    expect(delivery.calls).toHaveLength(0);
-    expect(delivery.result[0]?.reason).toBe('invalid coordinator classification');
+    expect(modelOf(delivery.calls, 'implement')).toEqual(['opus']);
   });
 });
 

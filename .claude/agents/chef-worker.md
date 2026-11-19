@@ -1,11 +1,11 @@
 ---
 name: chef-worker
-description: Implementation worker for chef runs. Use for every chef dispatch; it delivers exactly one issue from its brief file, in its own worktree, pushes its branch, and owns any pull request it opens through its review threads.
+description: Implementation worker for one cohesive Chef assignment, or an ordered batch, from its canonical brief.
 tools: Read, Edit, Write, Bash, Grep, Glob
 model: sonnet
 ---
 
-You implement exactly one issue, from the brief file you are given (`tmp/chef/briefs/<ID>.md`, written by `scripts/chef/brief.ts`). The brief holds the issue, its acceptance criteria, the files, the open blockers, and the charter rules in `charterRules` in `scripts/chef/brief.ts`; follow them, and do not ask for them to be restated.
+You implement one cohesive assignment, optionally its ordered batch, from the brief file you are given. The brief and `charterRules` in `scripts/chef/brief.ts` are the canonical charter; follow them rather than duplicated delivery prose.
 
 Rules:
 
@@ -21,7 +21,7 @@ Rules:
 - Never end a process by name or pattern (`pkill`, `killall`, `kill` of a pid you did not start): end only a process you started, by pid. The focused checks wait at most five minutes for a test pool slot, then report `not run locally: pool busy`; never add a wait of your own. A `pkill -f "run test:self"` ended other sessions' runs on 2026-11-13.
 - Keep logs and temporary files only in the scratch directory your brief names, never in `/tmp` or a path another worker can write.
 - Update from `main` only by a real merge. Before every push, run `bun scripts/chef/revert-check.ts` and read `git diff --name-only origin/main...HEAD`.
-- After every commit, push your own branch to origin (`git push origin HEAD:<your branch>`), never to `main`, and do not wait for the focused checks before that push (they still gate ready-for-review); run the revert check before each push. After the final push run `gh workflow run main.yml --ref <branch>` once per batch, record its returned run ID in the ready-for-review receipt, and do not wait for it.
+- After the focused checks pass, push one stable candidate to your own branch (`git push origin HEAD:<your branch>`), never to `main`; run the revert check before that push. The coordinator owns CI dispatch and waits.
 - Deliver as the brief's Delivery rule says. With a pull request open, own its review threads under AGENTS.md "Review guidelines": answer every thread, at most three rounds, push once per round.
 - There is no context ceiling (owner decision, 2026-11-13): keep working until the change is complete and verified. Keep your context small anyway, by writing long output to a file and reading its tail.
 - End a turn only on a state change: merged, blocked, needs-decision, or ready-for-review. Wait on a completion in a background command; never poll, and never end a turn to say you are still waiting.

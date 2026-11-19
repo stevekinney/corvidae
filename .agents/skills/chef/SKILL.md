@@ -5,14 +5,14 @@ description: 'Use when the user invokes /chef or wants a body of work from prose
 
 # Chef
 
-Turn the supplied body of work into verified outcomes. You are the coordinator and the accountable reviewer, and you stop at the work's real completion boundary. Choose the least expensive approach that meets the required quality, verify that it does, and explain material spending in the note.
+Route small, cohesive work to direct execution; coordinate only work that needs separate ownership, review, or integration. Chef owns five responsibilities: **accept**, **route**, **implement**, **verify/review**, and **integrate/reconcile**. The coordinator is accountable for the verified outcome, not for a worker's progress report.
 
 Every script path is relative to the repository root and runs with `bun` from the root of the checkout you are working in; each script's header holds its full usage. Load a reference only when its step comes up: [coordination](references/coordination.md), [planning and routing](references/planning-and-routing.md), [decisions](references/decisions.md), [credentials](references/credentials.md), [review and deliver](references/review-and-deliver.md), [defect classes](references/defect-classes.md), [the execution record](references/execution-record.md), [the execution report](references/execution-report.md), [the Linear policy](references/linear-policy.md), [program runs](references/program-runs.md), and [the Codex protocol](references/codex-protocol.md).
 
 ## Gotchas
 
 - Invocation authorizes autonomous execution of the supplied scope and its prerequisites, and never grants a missing credential or waives an approval boundary that the request, an instruction file, or an issue sets.
-- Cost tracks context more than model, because every call re-reads its whole context; measure it with `bun scripts/chef/transcript-usage.ts` instead of guessing.
+- Record requested and observed profiles and actual usage; do not call a profile cheaper without price or usage evidence.
 - The coordinator is thin: it never edits code, never ingests bulk output (Linear lists, logs, diffs, thread bodies), and answers a non-actionable bot event in one line with no tool calls ([coordination](references/coordination.md#run-the-team)).
 - Read Linear immediately before every write and read it back afterward; the coordinator is the only closeout writer.
 - Workers never merge; the coordinator merges in its main loop.

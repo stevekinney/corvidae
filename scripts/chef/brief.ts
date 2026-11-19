@@ -94,7 +94,7 @@ export { UsageError };
  * The agent definitions restate its key phrase, and `brief.test.ts` pins both.
  */
 export const pushRule =
-  'after every commit, push your own branch to origin (`git push origin HEAD:<your branch>`), never to `main`, and do not wait for the focused checks before that push (they still gate ready-for-review); run the revert check before each push. After the final push run `gh workflow run main.yml --ref <branch>` once per batch, record its returned run ID in the ready-for-review receipt, and do not wait for it.';
+  'after the focused checks pass, push one stable candidate to your own branch (`git push origin HEAD:<your branch>`), never to `main`; run the revert check before that push. The coordinator owns CI dispatch and waits.';
 
 /**
  * The delivery shape, stated once: every brief carries this sentence, and no other worker-facing

@@ -2,7 +2,7 @@ export const meta = {
   name: 'deliver-issue',
   description:
     'Chef branch-path delivery loop: brief, worker, checks, evidence run, wait, compare, review, evidence request. Never merges.',
-  phases: ['brief', 'implement', 'check', 'evidence', 'review', 'correct'],
+  phases: ['implement', 'check', 'evidence', 'review', 'correct'],
 };
 
 // The default delivery path (a branch the coordinator lands with scripts/chef/deliver.ts), as
@@ -19,23 +19,6 @@ export const meta = {
 
 const REPOSITORY = 'stevekinney/corvidae';
 const MAXIMUM_ROUNDS = 2;
-
-const BRIEF_SCHEMA = {
-  type: 'object',
-  properties: {
-    exitCode: { type: 'integer' },
-    briefPath: { type: 'string' },
-    error: { type: 'string' },
-    paths: { type: 'array', items: { type: 'string' } },
-  },
-  required: ['exitCode', 'briefPath'],
-};
-
-const RECORD_SCHEMA = {
-  type: 'object',
-  properties: { recorded: { type: 'boolean' }, path: { type: 'string' } },
-  required: ['recorded'],
-};
 
 const IMPLEMENT_SCHEMA = {
   type: 'object',
@@ -100,12 +83,6 @@ const COMPARE_SCHEMA = {
   required: ['headSha', 'complete', 'noEvidence', 'hasNew'],
 };
 
-const OVERRIDE_BRIEF_SCHEMA = {
-  type: 'object',
-  properties: { briefPath: { type: 'string' }, bytes: { type: 'integer' } },
-  required: ['briefPath', 'bytes'],
-};
-
 const VERDICT = {
   type: 'object',
   properties: {
@@ -140,88 +117,6 @@ function judgment(issue, reason, steps, extra) {
     evidenceRequest: null,
     ...extra,
   };
-}
-
-function shellArgument(value) {
-  return `'${value.replaceAll("'", "'\"'\"'")}'`;
-}
-
-function briefCommand(issue, run, context, classification, stdout) {
-  const arguments_ = [
-    'bun',
-    'scripts/chef/brief.ts',
-    shellArgument(issue),
-    '--repository',
-    REPOSITORY,
-    '--base',
-    '"$(git rev-parse HEAD)"',
-  ];
-  if (classification !== null) arguments_.push('--classification', shellArgument(classification));
-  if (context !== null) arguments_.push('--context', shellArgument(context));
-  if (run !== undefined) arguments_.push('--run', shellArgument(run));
-  arguments_.push(stdout ? '--stdout' : '--json');
-  return arguments_.join(' ');
-}
-
-/** Only after an override: brief.ts writes no file when it refuses, so the brief is generated to stdout. */
-function writeOverrideBrief(issue, run, context, classification) {
-  return agent(
-    [
-      `Write the brief of ${issue}. Invoke no skills. Make no Linear or GitHub writes.`,
-      'The main checkout is the parent directory of the output of `git rev-parse --path-format=absolute --git-common-dir`. Create its tmp/chef/briefs directory if it is absent.',
-      `Run \`${briefCommand(issue, run, context, classification, true)}\` once, with its standard output redirected to <main checkout>/tmp/chef/briefs/${issue}.md as an absolute path. If it prints nothing, leave no file.`,
-      'Return briefPath (that absolute path) and bytes (the size of the file in bytes, 0 when there is none).',
-    ].join('\n'),
-    {
-      label: `override brief ${issue}`,
-      phase: 'brief',
-      schema: OVERRIDE_BRIEF_SCHEMA,
-      model: 'haiku',
-      effort: 'low',
-    },
-  );
-}
-
-function runBrief(issue, run, context, classification) {
-  phase('brief');
-  log(`${issue}: preparing the brief`);
-  return agent(
-    [
-      `Prepare chef delivery of ${issue}. Invoke no skills. Make no Linear or GitHub writes.`,
-      `Run \`${briefCommand(issue, run, context, classification)}\` once and read its exit code and its JSON output. The coordinator supplied ${context ? 'the verified context file' : 'no design context file'} and ${classification ? `the ${classification} classification` : 'no exceptional classification'}; do not invent either from issue text.`,
-      'Return exitCode (the exit code of that command), briefPath (the JSON path field, or an empty string) error (the JSON error field or the first line of stderr, when there is one) and paths (the repository paths the brief file lists as owned by the issue, or an empty array).',
-    ].join('\n'),
-    {
-      label: `brief ${issue}`,
-      phase: 'brief',
-      schema: BRIEF_SCHEMA,
-      model: 'haiku',
-      effort: 'low',
-    },
-  );
-}
-
-function recordOverride(issue, run, override) {
-  const line = JSON.stringify({
-    event: 'brief-override',
-    issue,
-    run: run === undefined ? null : run,
-    reason: override.reason,
-    at: override.at,
-  });
-  return agent(
-    [
-      `Append exactly this one line, and nothing else, to the file tmp/chef/events.jsonl of the main checkout, creating the file if it is absent: ${line}`,
-      'The main checkout is the parent directory of the output of `git rev-parse --path-format=absolute --git-common-dir`. Use `printf` with a trailing newline. Change no other file. Return recorded true and the file path.',
-    ].join('\n'),
-    {
-      label: `record override ${issue}`,
-      phase: 'brief',
-      schema: RECORD_SCHEMA,
-      model: 'haiku',
-      effort: 'low',
-    },
-  );
 }
 
 function runChecks(issue, worktree, branch, head) {
@@ -324,13 +219,14 @@ function chooseModel(issue, paths) {
   return { model: 'sonnet', rule: 'no design-heavy interface path or explicit opus entry' };
 }
 
-function correct(issue, worktree, branch, findings, model) {
+function correct(issue, worktree, branch, findings, model, context) {
   phase('correct');
   log(`${issue}: one correction of ${findings.length} finding(s)`);
   return agent(
     [
       `cd into ${worktree}, the worktree of branch ${branch}, and fix these findings, and only these:`,
       ...findings.map((finding) => `- ${finding}`),
+      `Correction context: ${JSON.stringify(context)}. Preserve this issue, contract and cumulative failure count in your return.`,
       `Run \`bun scripts/chef/focused-checks.ts\`, push the branch ${branch} once, and return the new head. ${NO_MERGE}`,
     ].join('\n'),
     {
@@ -377,69 +273,25 @@ function verifyBlockers(evidence) {
 
 async function deliverOne(issue) {
   const run = args && args.run;
-  const context =
-    args && args.verifiedContexts && typeof args.verifiedContexts[issue] === 'string'
-      ? args.verifiedContexts[issue]
-      : null;
-  const classification =
-    args && args.classifications && typeof args.classifications[issue] === 'string'
-      ? args.classifications[issue]
-      : null;
-  if (classification !== null && classification !== 'behavior' && classification !== 'no-behavior')
-    return judgment(issue, 'invalid coordinator classification', {});
-  // args.override maps an issue identifier to { reason, at }; an issue without its own entry is not
-  // overridden.
-  const override =
-    args &&
-    args.override &&
-    typeof args.override === 'object' &&
-    Object.hasOwn(args.override, issue) &&
-    args.override[issue]
-      ? args.override[issue]
-      : null;
-  if (
-    override !== null &&
-    (typeof override.reason !== 'string' ||
-      override.reason.trim() === '' ||
-      typeof override.at !== 'string' ||
-      override.at.trim() === '')
-  )
-    return judgment(issue, 'invalid override: it needs a reason and a time', {});
-
+  // The coordinator, not a language-model call, runs brief.ts. A record only becomes dispatchable
+  // after that deterministic command validated the path, identity and contract.
+  const prepared =
+    args && args.preparedBriefs && typeof args.preparedBriefs === 'object'
+      ? args.preparedBriefs[issue]
+      : undefined;
   const steps = {};
-  const prepared = await runBrief(issue, run, context, classification);
-  if (prepared === null) return judgment(issue, 'brief step failed', steps);
   steps.brief = prepared;
-  let briefPath = prepared.briefPath.trim();
-  let overridden = null;
-  if (prepared.exitCode !== 0) {
-    if (override === null) {
-      log(`${issue}: brief refused (exit ${prepared.exitCode}); no worker`);
-      return judgment(
-        issue,
-        `brief refused: ${prepared.error || `exit ${prepared.exitCode}`}`,
-        steps,
-      );
-    }
-    const recorded = await recordOverride(issue, run, override);
-    if (recorded === null || recorded.recorded !== true)
-      return judgment(issue, 'brief override could not be recorded', steps);
-    steps.override = recorded;
-    overridden = { reason: override.reason, at: override.at };
-    const written = await writeOverrideBrief(issue, run, context, classification);
-    if (written === null) return judgment(issue, 'override brief step failed', steps);
-    steps.overrideBrief = written;
-    briefPath = written.briefPath.trim();
-    if (
-      written.bytes <= 0 ||
-      !briefPath.startsWith('/') ||
-      !briefPath.endsWith(`/tmp/chef/briefs/${issue}.md`)
-    )
-      return judgment(issue, 'override produced no brief; no worker', steps);
-    log(`${issue}: brief override recorded: ${override.reason}`);
-  } else if (briefPath === '') {
-    return judgment(issue, 'brief exited 0 without a brief path', steps);
-  }
+  if (prepared === undefined || prepared === null || prepared.validated !== true)
+    return judgment(issue, 'missing validated coordinator brief; no worker', steps);
+  if (prepared.exitCode !== 0)
+    return judgment(
+      issue,
+      `brief refused: ${prepared.error || `exit ${prepared.exitCode}`}`,
+      steps,
+    );
+  if (typeof prepared.briefPath !== 'string' || prepared.briefPath.trim() === '')
+    return judgment(issue, 'validated brief has no path; no worker', steps);
+  const briefPath = prepared.briefPath.trim();
 
   const ownedPaths = [
     ...(args && args.paths && Array.isArray(args.paths[issue]) ? args.paths[issue] : []),
@@ -536,7 +388,7 @@ async function deliverOne(issue) {
               head,
               evidence,
               verdict,
-              overridden,
+              prepared.override ?? null,
               chosen,
             ),
           };
@@ -546,11 +398,30 @@ async function deliverOne(issue) {
     }
 
     if (round === MAXIMUM_ROUNDS)
-      return judgment(issue, `still failing after ${MAXIMUM_ROUNDS} rounds`, steps, {
+      return judgment(issue, `still failing after ${round - 1} correction(s)`, steps, {
         ...where,
         findings,
       });
-    const fixed = await correct(issue, built.worktree, built.branch, findings, chosen.model);
+    const previousFailures =
+      args && args.cumulativeFailures && Number.isInteger(args.cumulativeFailures[issue])
+        ? args.cumulativeFailures[issue]
+        : 0;
+    const correctionContext = {
+      issue,
+      briefPath,
+      contract: prepared.contract ?? null,
+      findings,
+      cumulativeFailures: previousFailures + round,
+      correctionAttempts: round,
+    };
+    const fixed = await correct(
+      issue,
+      built.worktree,
+      built.branch,
+      findings,
+      chosen.model,
+      correctionContext,
+    );
     if (fixed === null || fixed.status !== 'ready-for-review')
       return judgment(
         issue,
