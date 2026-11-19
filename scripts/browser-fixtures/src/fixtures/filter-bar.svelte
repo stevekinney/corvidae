@@ -91,9 +91,11 @@
 </div>
 
 <!-- The tablet form of the Runs page (row 52x): three chips, two of them applied, in a column the
-     medium form cannot hold. The unapplied Workflow chip moves into the Filter menu (`foldOrder`,
-     least used first) and the applied Started by and Agent chips stay in the row, removable. -->
-<div data-testid="filter-bar-fold-order" style="inline-size: 640px; margin-block-start: 2rem;">
+     medium form cannot hold (its controls need about 640px with every chip in the row, and about
+     580px with Workflow folded). The unapplied Workflow chip moves into the Filter menu
+     (`foldOrder`, least used first) and the applied Started by and Agent chips stay in the row,
+     removable. -->
+<div data-testid="filter-bar-fold-order" style="inline-size: 600px; margin-block-start: 2rem;">
   <FilterBar
     aria-label="Run filters with chips folded in order"
     {segments}
