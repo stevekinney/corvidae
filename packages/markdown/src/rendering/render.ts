@@ -45,6 +45,7 @@ import { visit } from 'unist-util-visit';
 // correct visual rendering. Import the stylesheet in your app entry point:
 //   import 'katex/dist/katex.min.css';
 // In SvelteKit this typically goes in src/app.css or a layout component.
+import { analyzeDollarMath } from '../utilities/dollar-math.js';
 import { extractCodeBlocks } from './extract-code-blocks.js';
 import { getHighlighterSync } from './highlighter.js';
 import { wrapNodePlaceholders } from './node-placeholders.js';
@@ -62,29 +63,13 @@ import type { RenderOptions, RenderResult } from './types.js';
 /**
  * Cheap pre-check: does this markdown probably contain math?
  *
- * Strips fenced and inline code first (where `$` is not math), then
- * looks for a `$$` display block or a `$…$` inline-math pair. The
- * inline regex requires the body to start AND end with non-whitespace
- * — that lets us reject prose like "$5 today" while still accepting
- * single-character bodies like `$x$`.
- *
- * False positives (extra chunk load) are tolerable; false negatives
- * silently break math rendering, so the regex errs toward `true` when
- * in doubt.
+ * Applies Pandoc's dollar rule (see `dollar-math.ts`) outside fenced code,
+ * indented code and inline code spans: a `$$` run or a valid `$…$` pair
+ * counts, while currency such as `$25–$100` does not. The renderer parses
+ * the same analysis, so this probe and the parser cannot disagree.
  */
 export function probablyHasMath(markdown: string): boolean {
-  if (!markdown.includes('$')) return false;
-  const codeStripped = markdown
-    .replace(/```[\s\S]*?```/g, '')
-    .replace(/~~~[\s\S]*?~~~/g, '')
-    .replace(/`[^`\n]*`/g, '');
-  if (codeStripped.includes('$$')) return true;
-  // Neutralise escaped backslashes (\\) before testing for an escaped dollar
-  // (\$). Without this, `\\$x$` — a literal backslash followed by inline
-  // math — is incorrectly rejected: the lookbehind sees the second `\` of
-  // `\\` and treats the `$` as escaped, producing a false negative.
-  const escaped = codeStripped.replace(/\\\\/g, '');
-  return /(?<!\\)\$\S(?:[^$\n]*?\S)?\$/.test(escaped);
+  return analyzeDollarMath(markdown).hasMath;
 }
 
 /**
@@ -443,7 +428,8 @@ export async function renderMarkdownWithMath(
 
   // Fast path: no math → use the sync, no-math pipeline. The caller still
   // pays the await/microtask cost but no math chunk loads.
-  if (!probablyHasMath(markdown)) {
+  const analysis = analyzeDollarMath(markdown);
+  if (!analysis.hasMath) {
     return renderMarkdown(markdown, options);
   }
 
@@ -470,7 +456,8 @@ export async function renderMarkdownWithMath(
     return cloneResult(cached);
   }
 
-  const mdast = parseMarkdown(processor, markdown);
+  // Parse the escaped source; `rawMarkdown` stays the unchanged input.
+  const mdast = parseMarkdown(processor, analysis.source);
   const result = renderFromMdast(markdown, options, mdast, rehypeKatex);
 
   if (cache.size >= CACHE_SIZE) {

@@ -1333,6 +1333,15 @@
       "description": "Scrollbar thumb hover color."
     },
     {
+      "path": "scroll-shadow.color",
+      "cssProperty": "--cinder-scroll-shadow-color",
+      "category": "color",
+      "public": true,
+      "themeAware": true,
+      "deprecated": false,
+      "description": "The color of a scroll-edge or sticky-column shadow. Black in both themes, never text ink; the dark arm is denser, because a shadow has to be to read against a dark surface."
+    },
+    {
       "path": "overlay.backdrop",
       "cssProperty": "--cinder-overlay-backdrop",
       "category": "color",
@@ -2895,9 +2904,9 @@
       "category": "color",
       "component": "kanban-board",
       "public": true,
-      "themeAware": true,
+      "themeAware": false,
       "deprecated": false,
-      "description": "Horizontal scroll-edge fade gradient color -- `text-default` at 12% opacity, tracking whichever theme arm resolves."
+      "description": "Horizontal scroll-edge fade gradient color -- the scroll-shadow color, black in both themes, so the edge darkens what is under it instead of glowing."
     },
     {
       "path": "map-marker.fill",
@@ -3549,6 +3558,7 @@
     "scrollbar.track": "--cinder-scrollbar-track",
     "scrollbar.thumb": "--cinder-scrollbar-thumb",
     "scrollbar.thumb-hover": "--cinder-scrollbar-thumb-hover",
+    "scroll-shadow.color": "--cinder-scroll-shadow-color",
     "overlay.backdrop": "--cinder-overlay-backdrop",
     "overlay.blur": "--cinder-overlay-blur",
     "overlay.padding": "--cinder-overlay-padding",
@@ -3917,6 +3927,7 @@
     "--cinder-scrollbar-track": "scrollbar.track",
     "--cinder-scrollbar-thumb": "scrollbar.thumb",
     "--cinder-scrollbar-thumb-hover": "scrollbar.thumb-hover",
+    "--cinder-scroll-shadow-color": "scroll-shadow.color",
     "--cinder-overlay-backdrop": "overlay.backdrop",
     "--cinder-overlay-blur": "overlay.blur",
     "--cinder-overlay-padding": "overlay.padding",
@@ -4285,6 +4296,7 @@
     "--cinder-scrollbar-track": ["scrollbar.track"],
     "--cinder-scrollbar-thumb": ["scrollbar.thumb"],
     "--cinder-scrollbar-thumb-hover": ["scrollbar.thumb-hover"],
+    "--cinder-scroll-shadow-color": ["scroll-shadow.color"],
     "--cinder-overlay-backdrop": ["overlay.backdrop"],
     "--cinder-overlay-blur": ["overlay.blur"],
     "--cinder-overlay-padding": ["overlay.padding"],
@@ -4678,6 +4690,7 @@
       "scrollbar.track",
       "scrollbar.thumb",
       "scrollbar.thumb-hover",
+      "scroll-shadow.color",
       "overlay.backdrop",
       "chart.series.1",
       "chart.series.2",

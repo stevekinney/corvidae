@@ -7,7 +7,8 @@ import { authorizeWorkspaceOperation } from '../workspace-authorization.ts';
  * (a test holds that part to it), which are the kinds `bureau.events` serves and a hook may list.
  * After them come the kinds the running plugins declare (COR-2223), each `plugin:name` with its
  * `source`: a plugin publishes them through `host.publish` (COR-2224), `bureau.events` serves them
- * and accepts one in its `kinds` filter, and a hook may not list one yet.
+ * and accepts one in its `kinds` filter, and a hook may list one, which it pins to the `version`
+ * given here (COR-2226).
  *
  * It is read-only: it describes kinds, not events, and returns nothing a caller could not learn
  * from the operation catalog and the plugins that are running, so any authenticated caller may
@@ -68,6 +69,12 @@ const catalogOutput = z.object({
           .describe(
             'The plugin that declares the kind (its `plugin:name` kind belongs to it); absent for a kind the Bureau itself publishes.',
           ),
+        version: z
+          .string()
+          .optional()
+          .describe(
+            'The version of a kind a plugin declares: the declaration’s own, else its plugin’s. A hook that lists the kind is pinned to it (`plugin:name@version`). Absent for a kind the Bureau itself publishes.',
+          ),
       }),
     )
     .describe(
@@ -85,7 +92,7 @@ export const eventsCatalogOperation = defineOperation<
   mcpExposable: false,
   summary: 'List the published event kinds',
   description:
-    'Lists the Bureau’s published event kinds, which `bureau.events` serves and a hook may match, each with a description, its origin (`run`, `external` or `unattributed`, which decides whether a `start-workflow` hook may list it) the fields of its `payload`, and its `scopes`, the kinds of subject (`agent`, `workflow`, `schedule`) a hook that lists it may be scoped to. Every kind the Bureau publishes is described here, in that order. After them come the kinds the running plugins declare, each `plugin:name` with the plugin as its `source`, its payload fields, the origin `unattributed` and no scopes; a plugin publishes these through `host.publish`, `bureau.events` serves them and accepts one in its `kinds` filter, and a hook may not yet list one. Weft’s own events are not part of it: the feed carries Weft’s `ScheduleMissedFire` as `schedule.missed` and nothing else of Weft’s. Read-only; any authenticated caller may read it.',
+    'Lists the Bureau’s published event kinds, which `bureau.events` serves and a hook may match, each with a description, its origin (`run`, `external` or `unattributed`, which decides whether a `start-workflow` hook may list it) the fields of its `payload`, and its `scopes`, the kinds of subject (`agent`, `workflow`, `schedule`) a hook that lists it may be scoped to. Every kind the Bureau publishes is described here, in that order. After them come the kinds the running plugins declare, each `plugin:name` with the plugin as its `source`, its payload fields, the origin `unattributed` and no scopes; a plugin publishes these through `host.publish`, `bureau.events` serves them and accepts one in its `kinds` filter, and a hook may list one, which it stores pinned to the kind’s `version` (`plugin:name@version`). Weft’s own events are not part of it: the feed carries Weft’s `ScheduleMissedFire` as `schedule.missed` and nothing else of Weft’s. Read-only; any authenticated caller may read it.',
   destructive: false,
   tags: ['Events'],
   inputSchema: catalogInput,
@@ -114,6 +121,7 @@ export const eventsCatalogOperation = defineOperation<
           payload: declared.payload.map((field) => ({ ...field })),
           scopes: [],
           source: declared.plugin,
+          version: declared.version,
         })),
       ],
     }),

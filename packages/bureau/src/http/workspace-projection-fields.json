@@ -1012,7 +1012,8 @@
     "$.events[].payload[].optional",
     "$.events[].payload[].type",
     "$.events[].scopes",
-    "$.events[].source"
+    "$.events[].source",
+    "$.events[].version"
   ],
   "output:bureau.events.format": [
     "$.events",
@@ -1544,6 +1545,9 @@
     "$.hooks[].problems[]|oneOf[1].issues",
     "$.hooks[].problems[]|oneOf[1].issues[].code",
     "$.hooks[].problems[]|oneOf[1].issues[].path",
+    "$.hooks[].problems[]|oneOf[2].code",
+    "$.hooks[].problems[]|oneOf[2].kind",
+    "$.hooks[].problems[]|oneOf[2].loadedVersion",
     "$.hooks[].revision",
     "$.hooks[].scope",
     "$.hooks[].scope|anyOf[0].id",
