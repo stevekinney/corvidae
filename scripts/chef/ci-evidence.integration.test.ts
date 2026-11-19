@@ -1,7 +1,7 @@
 import { afterAll, expect, test } from 'bun:test';
+import { zipSync } from 'fflate';
 import { createHash } from 'node:crypto';
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
-import { zipSync } from 'fflate';
 import { join } from 'node:path';
 import {
   aggregateCiEvidence,
@@ -11,8 +11,8 @@ import {
   type CiEvidenceProvider,
   type CiEvidenceRequest,
 } from './ci-evidence.ts';
-import { createExecutionStateStore } from './execution-state.ts';
 import { collectProviderEvidence, type VerificationRequest } from './evidence.ts';
+import { createExecutionStateStore } from './execution-state.ts';
 
 const scratch = join(process.cwd(), 'tmp/chef/p07-evidence');
 mkdirSync(scratch, { recursive: true });
@@ -21,7 +21,9 @@ const directories: string[] = [];
 function store() {
   const directory = mkdtempSync(join(scratch, 'ci-evidence-'));
   directories.push(directory);
-  return createCiEvidenceStore(createExecutionStateStore({ stateDirectory: directory, hostId: 'p07-fixture' }));
+  return createCiEvidenceStore(
+    createExecutionStateStore({ stateDirectory: directory, hostId: 'p07-fixture' }),
+  );
 }
 
 function request(overrides: Partial<CiEvidenceRequest> = {}): CiEvidenceRequest {
@@ -81,7 +83,8 @@ test('pins provider request identity, persists intent before dispatch, and reuse
   const reused = await reconcileCiEvidenceRequest(evidence, input, reuseProvider);
   expect(reused).toMatchObject({ state: 'bound', run });
   expect(reuseProvider.dispatches).toBe(0);
-  expect((await reconcileCiEvidenceRequest(evidence, input, reuseProvider)).state).toBe('bound');
+  const repeated = await reconcileCiEvidenceRequest(evidence, input, reuseProvider);
+  expect(repeated.state).toBe('bound');
   expect(reuseProvider.dispatches).toBe(0);
 });
 
@@ -143,7 +146,9 @@ test('aggregates collector-issued evidence and rejects missing inventory, artifa
     ),
   });
   const missingInventoryArchive = zipSync({
-    'reports/root.xml': new TextEncoder().encode('<testsuite><testcase name="other.test.ts"/></testsuite>'),
+    'reports/root.xml': new TextEncoder().encode(
+      '<testsuite><testcase name="other.test.ts"/></testsuite>',
+    ),
   });
   const verification: VerificationRequest = {
     repository: 'acme/widgets',
@@ -168,29 +173,79 @@ test('aggregates collector-issued evidence and rejects missing inventory, artifa
       version: 1,
       obligations: [
         {
-          criterionId: 'AC1', risk: 'root-scripts', commandOrProviderJob: 'Root checks',
-          expectedInventory: ['ci-evidence.test.ts'], relevantInputs: ['scripts/chef/ci-evidence.ts'],
-          environmentToolchain: 'linux', executionBoundary: 'provider', producer: 'P07',
-          selectionReason: 'required evidence', evidenceKind: 'test-report',
+          criterionId: 'AC1',
+          risk: 'root-scripts',
+          commandOrProviderJob: 'Root checks',
+          expectedInventory: ['ci-evidence.test.ts'],
+          relevantInputs: ['scripts/chef/ci-evidence.ts'],
+          environmentToolchain: 'linux',
+          executionBoundary: 'provider',
+          producer: 'P07',
+          selectionReason: 'required evidence',
+          evidenceKind: 'test-report',
         },
       ],
-      risks: { 'root-scripts': 'covered', 'shared-configuration': 'not-applicable', 'transitive-consumers': 'not-applicable', 'dynamic-entrypoints': 'not-applicable', authorization: 'not-applicable', 'persistence-protocols': 'not-applicable', 'installed-artifacts': 'not-applicable', 'shared-ui-design': 'not-applicable', 'automatic-deployment': 'not-applicable' },
+      risks: {
+        'root-scripts': 'covered',
+        'shared-configuration': 'not-applicable',
+        'transitive-consumers': 'not-applicable',
+        'dynamic-entrypoints': 'not-applicable',
+        authorization: 'not-applicable',
+        'persistence-protocols': 'not-applicable',
+        'installed-artifacts': 'not-applicable',
+        'shared-ui-design': 'not-applicable',
+        'automatic-deployment': 'not-applicable',
+      },
       invalidatedBy: { assignment: 'a', context: 'b', policy: 'c' },
     },
   };
   const transport = (overrides: Record<string, unknown> = {}, report = archive) => ({
-    run: () => ({ repository: verification.repository, revision: verification.revision, status: 'completed', conclusion: 'success', workflow: 'Main', workflowPath: '.github/workflows/main.yml', event: 'pull_request', attempt: 1, ...overrides }),
-    job: () => ({ id: 1, name: 'Root checks', status: 'completed', conclusion: 'success', runtime: 'linux', inventory: ['ci-evidence.test.ts'], assertionPassed: true }),
-    artifact: () => ({ present: true, expired: false, id: 7, digest: `sha256:${createHash('sha256').update(report).digest('hex')}` }),
+    run: () => ({
+      repository: verification.repository,
+      revision: verification.revision,
+      status: 'completed',
+      conclusion: 'success',
+      workflow: 'Main',
+      workflowPath: '.github/workflows/main.yml',
+      event: 'pull_request',
+      attempt: 1,
+      ...overrides,
+    }),
+    job: () => ({
+      id: 1,
+      name: 'Root checks',
+      status: 'completed',
+      conclusion: 'success',
+      runtime: 'linux',
+      inventory: ['ci-evidence.test.ts'],
+      assertionPassed: true,
+    }),
+    artifact: () => ({
+      present: true,
+      expired: false,
+      id: 7,
+      digest: `sha256:${createHash('sha256').update(report).digest('hex')}`,
+    }),
     downloadArtifact: () => report,
-    content: () => ({ integrationTree: verification.integrationTree, relevantInputs: ['scripts/chef/ci-evidence.ts'] }),
+    content: () => ({
+      integrationTree: verification.integrationTree,
+      relevantInputs: ['scripts/chef/ci-evidence.ts'],
+    }),
   });
   const passed = collectProviderEvidence(verification, transport());
   expect(aggregateCiEvidence(verification.plan, passed, verification).ok).toBe(true);
-  const missingInventory = collectProviderEvidence(verification, transport({}, missingInventoryArchive));
+  const missingInventory = collectProviderEvidence(
+    verification,
+    transport({}, missingInventoryArchive),
+  );
   expect(aggregateCiEvidence(verification.plan, missingInventory, verification).ok).toBe(false);
-  const uploadFailure = collectProviderEvidence(verification, { ...transport(), artifact: () => ({ present: false, expired: false }) });
-  expect(aggregateCiEvidence(verification.plan, uploadFailure, verification).problems.join('\n')).toContain('artifact');
+  const uploadFailure = collectProviderEvidence(verification, {
+    ...transport(),
+    artifact: () => ({ present: false, expired: false }),
+  });
+  expect(
+    aggregateCiEvidence(verification.plan, uploadFailure, verification).problems.join('\n'),
+  ).toContain('artifact');
   const failed = collectProviderEvidence(verification, transport({ conclusion: 'failure' }));
   expect(aggregateCiEvidence(verification.plan, failed, verification).ok).toBe(false);
 });

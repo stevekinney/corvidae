@@ -2,8 +2,8 @@ import { createHash } from 'node:crypto';
 import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { withProviderTransitionLock, type ExecutionStateStore } from './execution-state.ts';
 import { validateEvidence, type CollectedEvidence, type EvidenceExpectation } from './evidence.ts';
+import { withProviderTransitionLock, type ExecutionStateStore } from './execution-state.ts';
 import type { VerificationPlan } from './verification-plan.ts';
 
 export class CiEvidenceError extends Error {}
@@ -73,6 +73,7 @@ function canonicalRequest(input: Omit<CiEvidenceRequest, 'requestKey'>): string 
     workflow: input.workflow,
     workflowPath: input.workflowPath,
     workflowRevision: input.workflowRevision,
+    event: input.event,
   });
 }
 
@@ -175,7 +176,7 @@ export async function reconcileCiEvidenceRequest(
   provider: CiEvidenceProvider,
 ): Promise<CiEvidenceReconciliation> {
   validateRequest(request);
-  return withProviderTransitionLock(store, request.resource, async () => {
+  return withProviderTransitionLock(store, `ci-evidence:${request.requestKey}`, async () => {
     const snapshot = readSnapshot(store);
     let record = snapshot.requests[request.requestKey];
     if (record === undefined) {
@@ -186,6 +187,9 @@ export async function reconcileCiEvidenceRequest(
       throw new CiEvidenceError('CI evidence request key has conflicting durable intent');
     }
 
+    if (record.state === 'bound' && record.runs.length === 1 && matches(request, record.runs[0]!))
+      return { state: 'bound', requestKey: request.requestKey, run: record.runs[0]! };
+
     let observed: CiEvidenceRun[];
     try {
       observed = await provider.findRuns(request);
@@ -194,7 +198,8 @@ export async function reconcileCiEvidenceRequest(
       writeSnapshot(store, snapshot);
       return { state: 'unresolved', requestKey: request.requestKey, runs: record.runs };
     }
-    if (!Array.isArray(observed)) throw new CiEvidenceError('CI provider returned an invalid run list');
+    if (!Array.isArray(observed))
+      throw new CiEvidenceError('CI provider returned an invalid run list');
     record.runs = observed;
     const accepted = observed.filter((run) => matches(request, run));
     if (accepted.length === 1 && observed.length === 1) {
@@ -212,7 +217,7 @@ export async function reconcileCiEvidenceRequest(
       writeSnapshot(store, snapshot);
       return { state: 'unresolved', requestKey: request.requestKey, runs: observed };
     }
-    if (!record.dispatchAttempted) {
+    if (!record.dispatchAttempted && request.event === 'workflow_dispatch') {
       record.dispatchAttempted = true;
       record.state = 'intent';
       writeSnapshot(store, snapshot);
@@ -248,7 +253,11 @@ export function aggregateCiEvidence(
     .map((record) => `${record.obligation} has no required artifact`);
   return {
     ...validation,
-    problems: [...validation.problems, ...missingJobs.map((key) => `${key} has no job record`), ...missingArtifacts],
+    problems: [
+      ...validation.problems,
+      ...missingJobs.map((key) => `${key} has no job record`),
+      ...missingArtifacts,
+    ],
     ok: validation.ok && missingJobs.length === 0 && missingArtifacts.length === 0,
   };
 }
