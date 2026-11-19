@@ -14,6 +14,7 @@ import type { Locator, Page, Route } from '@playwright/test';
 import { CAPABILITIES_COPY } from '../../src/app/copy/capabilities.ts';
 import { E2E_SHOWCASE_URL } from './e2e-constants.ts';
 import { expect, test } from './fixtures.ts';
+import { readBoxes } from './read-boxes.ts';
 
 test.use({ baseURL: E2E_SHOWCASE_URL });
 
@@ -235,7 +236,8 @@ test.describe('a deep link is never overridden', () => {
     const lastName = await rows.last().getAttribute('data-tool-row');
     expect(lastName).not.toBe(firstName);
     // The name a person reads, which the filter matches.
-    const lastHeading = (await rows.last().getByTestId('tool-row-name').innerText()).trim();
+    const lastText = await rows.last().getByTestId('tool-row-name').innerText();
+    const lastHeading = lastText.trim();
 
     const search = page.getByRole('searchbox', { name: CAPABILITIES_COPY.filterLabel.tools });
     await search.fill(lastHeading);
@@ -280,7 +282,7 @@ for (const flat of FLAT_PAGES) {
       const boxes = await listDetail.evaluate((element) => {
         const found: string[] = [];
         for (
-          let node: HTMLElement | null = element;
+          let node: Element | null = element;
           node !== null && node.tagName !== 'MAIN';
           node = node.parentElement
         ) {
@@ -305,9 +307,8 @@ for (const flat of FLAT_PAGES) {
         .locator('main [role="tablist"]:not(.cinder-list-detail [role="tablist"])')
         .first();
       if ((await tabs.count()) > 0) {
-        const tabsBox = await tabs.boundingBox();
-        const listBox = await listDetail.boundingBox();
-        expect(Math.abs((listBox?.x ?? 0) - (tabsBox?.x ?? 0))).toBeLessThanOrEqual(1);
+        const { tabsBox, listBox } = await readBoxes(page, { tabsBox: tabs, listBox: listDetail });
+        expect(Math.abs(listBox.x - tabsBox.x)).toBeLessThanOrEqual(1);
       }
     });
   }

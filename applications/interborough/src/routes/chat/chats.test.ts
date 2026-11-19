@@ -342,7 +342,8 @@ describe('the list of sessions', () => {
       expect(window.history.length).toBe(entries);
       expect(getByRole('searchbox', { name: 'Search chats' })).toBe(search);
 
-      (await findByRole('link', { name: /Chat 1/ })).click();
+      const second = await findByRole('link', { name: /Chat 1/ });
+      second.click();
       expect(router.pathname).toBe('/chats/session-1');
     } finally {
       HTMLElement.prototype.getBoundingClientRect = measure;
