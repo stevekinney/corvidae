@@ -157,6 +157,8 @@ export const SHORTCUT_COPY = {
   navigationGroup: 'Go to',
   chatGroup: 'Chat',
   newChat: 'New chat',
+  /** Enter in a chat's composer, listed on the map since no hint under the composer says so. */
+  sendMessage: 'Send the message',
   listGroup: 'Lists',
   goTo: (label: string): string => `Go to ${label}`,
 } as const;

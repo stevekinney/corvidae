@@ -503,6 +503,9 @@
       description={CHAT_COPY.list.failedDescription}
       onRetry={() => void shownList.refetch()}
     />
+  {:else if listState === 'first-use' && isNew}
+    <!-- The first chat is being started beside it: the new chat's pane is the one thing to say
+         (its greeting, or why a chat cannot work yet), never a second empty state here (COR-2438). -->
   {:else if listState === 'first-use'}
     <EmptyState
       kind="first-use"

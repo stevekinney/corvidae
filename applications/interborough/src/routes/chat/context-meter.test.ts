@@ -101,6 +101,19 @@ describe('the context meter', () => {
     expect(panel.textContent).toContain(COPY.reported('80,500'));
   });
 
+  test('draws its track with the contrast rule, so an empty window still reads as a meter in both themes (18c)', async () => {
+    const css = await Bun.file(new URL('../../styles/chat.css', import.meta.url)).text();
+    const start = css.indexOf('.weft-context-meter .cinder-meter__track {');
+    expect(start).toBeGreaterThanOrEqual(0);
+    expect(css.slice(start, css.indexOf('}', start))).toContain(
+      'box-shadow: inset 0 0 0 1px var(--cinder-border-contrast);',
+    );
+    const tokens = await Bun.file(
+      new URL('../../../../../components/cinder/src/styles/tokens-base.css', import.meta.url),
+    ).text();
+    expect(tokens).toContain('--cinder-border-contrast:');
+  });
+
   test('says the window is unavailable when the report could not be read, and shows nothing while it is being read', () => {
     const failed = render(ContextMeter, { props: { report: undefined, failed: true } });
     expect(failed.container.textContent).toContain(COPY.unavailable);

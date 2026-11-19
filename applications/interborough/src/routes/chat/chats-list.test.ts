@@ -316,6 +316,18 @@ describe('the states of the list', () => {
     expect(container.querySelector('a[href="/chats/new"]')).toBeNull();
   });
 
+  test('a new chat with no chat at all draws one empty state, the new chat’s, never the list’s beside it (COR-2438 21a)', async () => {
+    serveNoChats([], []);
+    landAt('/chats/new');
+
+    const { findByTestId, container } = mount();
+
+    const state = await findByTestId('new-chat-not-ready');
+    expect(state.textContent).toContain('Connect a provider first');
+    expect(container.querySelectorAll('.cinder-empty-state')).toHaveLength(1);
+    expect(container.textContent).not.toContain('No chats yet');
+  });
+
   test('loading is skeleton rows under the live header, after 300 milliseconds (17w)', async () => {
     restore = installFetchImplementation(() => new Promise<Response>(() => {}));
     landAt('/chats');

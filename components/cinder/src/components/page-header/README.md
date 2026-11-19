@@ -204,8 +204,8 @@ Below 720px of the hero's own width the focal value comes first and the copy fol
 | `overflowLabel` | `string` | no | `"More actions"` | The accessible name of the overflow menu button. |
 | `statusPlacement` | `"inline"` \| `"below"` | no | `"below"` | Where `status` sits: `inline` beside the title on its first line, or `below` the title. |
 | `title` | `string` | yes | — | Page-level heading text rendered inside the `headingLevel` heading; the runtime API also accepts a template-only snippet. |
-| `titleSoft` | `string` | no | — | A lighter phrase drawn straight after the title, in the same heading at the same size, such as ", made easier" after a brand name. Include any leading space or punctuation. |
 | `titleLines` | `1` \| `2` | no | `2` | How many lines the title may take before it ends in an ellipsis; with `1` an inline status that no longer fits beside the title moves under it. |
+| `titleSoft` | `string` | no | — | A lighter phrase drawn straight after the title, in the same heading at the same size, such as ", made easier" after a brand name. Include any leading space or punctuation. |
 | `titleText` | `string` | no | — | The title's plain text, for the full-title tooltip when `title` is a snippet. |
 | `tone` | `"plain"` \| `"tint"` \| `"accent"` \| `"night"` | no | `"plain"` | The band a `hero` header draws: `plain`, `tint`, `accent` or `night`. The other variants ignore it. |
 | `variant` | `"default"` \| `"large"` \| `"hero"` | no | `"default"` | The header's layout: `default`, `large` (a large title that collapses into a sticky bar on scroll) or `hero` (a full-bleed band). |

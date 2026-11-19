@@ -44,8 +44,11 @@ async function readTopbar(page: Page) {
     const clipped = [...bar.querySelectorAll<HTMLElement>('*')]
       .filter((element) => {
         const style = getComputedStyle(element);
+        const box = element.getBoundingClientRect();
+        // Words kept only for a screen reader are a 1px box by design, not clipped words.
         return (
-          element.getBoundingClientRect().height > 0 &&
+          box.height > 1 &&
+          box.width > 1 &&
           style.whiteSpace === 'nowrap' &&
           (style.overflowY === 'hidden' || style.overflowY === 'clip') &&
           [...element.childNodes].some(
