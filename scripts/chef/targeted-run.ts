@@ -66,7 +66,13 @@ export { UsageError };
 
 const FIXTURE_SPEC = /^scripts\/browser-fixtures\/tests\/[\w.-]+\.playwright\.ts$/;
 const E2E_SPEC = /^tests\/e2e\/[\w.-]+\.spec\.ts$/;
-const WORKSPACE = /^(applications|components|packages|plugins|testing|internal)\/[\w.-]+$/;
+/**
+ * Every workspace the root `package.json` lists: the globbed folders and the two named ones under
+ * `scripts/`. The unit job enters any of them with `cd <workspace> && bun test`; a test keeps this
+ * equal to the manifest's `workspaces`.
+ */
+export const WORKSPACE =
+  /^(?:(?:applications|components|packages|plugins|testing|internal)\/[\w.-]+|scripts\/(?:browser-fixtures|groom))$/;
 const SAFE_PATH = /^[\w@./-]+$/;
 /**
  * The most characters the `unit_lanes` input takes in one dispatch. GitHub caps all of a dispatch's

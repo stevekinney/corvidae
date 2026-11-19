@@ -1,5 +1,12 @@
 import { describe, expect, test } from 'bun:test';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -15,6 +22,7 @@ import {
   OVERSIZE_RULE,
   run,
   UsageError,
+  WORKSPACE,
   type TargetedDependencies,
 } from './targeted-run.ts';
 import {
@@ -208,9 +216,37 @@ describe('unit lanes', () => {
     expect(whole.undispatchable).toEqual(['components/cinder: its whole suite']);
     const outside = inputsFromPlan({
       ...planOf([]),
-      unit_tests: [{ workspace: 'scripts/browser-fixtures', paths: ['a.test.ts'], full: false }],
+      unit_tests: [{ workspace: 'tools/elsewhere', paths: ['a.test.ts'], full: false }],
     });
     expect(outside.undispatchable[0]).toContain('cannot enter');
+  });
+
+  test('a plan reaching scripts/groom stays targeted, and so does every workspace the manifest lists', () => {
+    const groom = inputsFromPlan({
+      ...planOf([]),
+      unit_tests: [{ workspace: 'scripts/groom', paths: ['groom.test.ts'], full: false }],
+    });
+    expect(groom.undispatchable).toEqual([]);
+    expect(groom.inputs.unitLanes).toEqual([
+      { workspace: 'scripts/groom', paths: ['groom.test.ts'], config: '' },
+    ]);
+    const root = join(import.meta.dir, '..', '..');
+    const manifest: { workspaces: string[] } = JSON.parse(
+      readFileSync(join(root, 'package.json'), 'utf8'),
+    );
+    const workspaces = manifest.workspaces.flatMap((pattern) =>
+      pattern.endsWith('/*')
+        ? readdirSync(join(root, pattern.slice(0, -2)), { withFileTypes: true })
+            .filter(
+              (entry) =>
+                entry.isDirectory() &&
+                existsSync(join(root, pattern.slice(0, -2), entry.name, 'package.json')),
+            )
+            .map((entry) => `${pattern.slice(0, -2)}/${entry.name}`)
+        : [pattern],
+    );
+    expect(workspaces).toContain('scripts/groom');
+    for (const workspace of workspaces) expect(WORKSPACE.test(workspace)).toBe(true);
   });
 
   test('lanes that fit one dispatch are named file by file', () => {
