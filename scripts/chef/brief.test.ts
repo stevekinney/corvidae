@@ -714,6 +714,78 @@ describe('run', () => {
     expect(scratches[0]).not.toBe(scratches[1]);
   });
 
+  const batchFetchWith =
+    (secondBlockers: string[]): FetchLike =>
+    async (_url, init) => {
+      const { query, variables } = JSON.parse(init.body as string) as {
+        query: string;
+        variables: { id: string };
+      };
+      const second = variables.id === 'COR-8';
+      const blocks = (identifier: string) => ({
+        type: 'blocks',
+        issue: {
+          identifier,
+          title: `Blocker ${identifier}`,
+          state: { name: 'Ready', type: 'unstarted' },
+        },
+      });
+      const data = query.includes('IssueRelations')
+        ? {
+            issue: {
+              id: `uuid-${variables.id}`,
+              identifier: variables.id,
+              relations: { nodes: [], pageInfo: { hasNextPage: false } },
+              inverseRelations: {
+                nodes: second ? secondBlockers.map(blocks) : [],
+                pageInfo: { hasNextPage: false },
+              },
+            },
+          }
+        : query.includes('IssueComments')
+          ? {
+              issue: { comments: { nodes: [], pageInfo: { hasNextPage: false, endCursor: null } } },
+            }
+          : {
+              issue: {
+                ...issue(description),
+                identifier: variables.id,
+                title: second ? 'Second thing' : 'Add the thing',
+              },
+            };
+      return new Response(JSON.stringify({ data }), { status: 200 });
+    };
+  // A function, because `sandbox` is assigned per test.
+  const batchArguments = () => [
+    'COR-7',
+    'COR-8',
+    '--out-dir',
+    sandbox,
+    '--repository',
+    'stevekinney/corvidae',
+    '--base',
+    pinnedBase,
+  ];
+
+  test('a batch issue blocked only by an earlier issue of the same batch is dispatchable', async () => {
+    const result = await run(batchArguments(), {
+      ...dependencies,
+      fetch: batchFetchWith(['COR-7']),
+    });
+    expect(result.code).toBe(0);
+    expect(readdirSync(sandbox)).toContain('COR-7_COR-8.md');
+  });
+
+  test('a refusal names each blocked issue and its outside blocker, without --json', async () => {
+    const result = await run(batchArguments(), {
+      ...dependencies,
+      fetch: batchFetchWith(['COR-7', 'COR-5']),
+    });
+    expect(result.code).toBe(1);
+    expect(result.output).toContain('- COR-8: blocked by COR-5');
+    expect(result.output).not.toContain('COR-7,');
+  });
+
   test('several IDs write one batch brief: each issue under its own heading, in order, charter once', async () => {
     const blocker = (identifier: string) => ({
       type: 'blocks',

@@ -11,7 +11,9 @@
 //   prettier        bunx prettier --check on the changed files that still exist
 //   lint:root       bun run lint:root, always
 //   typecheck:root  bun run typecheck:root, when a changed file is at the root or under scripts/
-//   turbo           bunx turbo run lint typecheck, filtered to each changed workspace
+//   turbo           bunx turbo run lint typecheck, filtered to each changed workspace and its
+//                   dependents (`--filter=...name`) (typecheck:root and turbo run under `scripts/host-slots.ts`, one and two pool
+//                   slots, waiting at most five minutes for them, then `not run locally: pool busy`)
 //   tests           the direct tests only (owner decision, 2026-11-16): each changed
 //                   `*.test.ts` file, and the test files beside each changed source file (same
 //                   directory, same stem). Never `affected-tests.ts`'s dependency graph, which
@@ -80,6 +82,7 @@ import {
   UsageError,
   type Runner,
 } from './process-runner.ts';
+import { fileNames, sourceNames } from './verification-plan.ts';
 
 export { UsageError };
 
@@ -275,6 +278,26 @@ export function touchesRootTypecheck(path: string): boolean {
   return !path.includes('/') || path.startsWith('scripts/');
 }
 
+/** The slots the turbo lint and type-check step holds: its task concurrency, one slot per task. */
+const TURBO_SLOTS = 2;
+
+/**
+ * The prefix that runs a type-check under host slots from the pool `bun test` uses, one slot per
+ * task kept busy, with the same bounded wait as the direct tests. Several sessions' `svelte-check`
+ * runs filled the host's swap, and one focused-checks run sat for over an hour on a 33-second
+ * type-check; past the bound the step reports `not run locally: pool busy`, as the tests do.
+ */
+function pooled(slots: number): string[] {
+  return [
+    'env',
+    `${poolWaitVariable}=300`,
+    'bun',
+    'scripts/host-slots.ts',
+    `--slots=${slots}`,
+    '--',
+  ];
+}
+
 /** The focused-check steps for a change, in order. Pure. */
 export function planSteps(input: PlanInput): PlannedStep[] {
   const steps: PlannedStep[] = [];
@@ -285,7 +308,10 @@ export function planSteps(input: PlanInput): PlannedStep[] {
     });
   steps.push({ name: 'lint:root', command: ['bun', 'run', 'lint:root'] });
   if (input.changed.some(touchesRootTypecheck))
-    steps.push({ name: 'typecheck:root', command: ['bun', 'run', 'typecheck:root'] });
+    steps.push({
+      name: 'typecheck:root',
+      command: [...pooled(1), 'bun', 'run', 'typecheck:root'],
+    });
   const names = [
     ...new Set(
       input.changed.flatMap((path) => {
@@ -297,7 +323,17 @@ export function planSteps(input: PlanInput): PlannedStep[] {
   if (names.length > 0)
     steps.push({
       name: 'turbo',
-      command: ['bunx', 'turbo', 'run', 'lint', 'typecheck', ...names.map((n) => `--filter=${n}`)],
+      command: [
+        ...pooled(TURBO_SLOTS),
+        'bunx',
+        'turbo',
+        'run',
+        'lint',
+        'typecheck',
+        `--concurrency=${TURBO_SLOTS}`,
+        // `...name` adds the workspaces that depend on a changed one: a type error there is this change's.
+        ...names.map((n) => `--filter=...${n}`),
+      ],
     });
   const direct = input.direct;
   if (direct === undefined) return steps;
@@ -389,22 +425,6 @@ export const FIXTURE_SWEEP_SPEC = 'components.playwright.ts';
 const cinderSource = 'components/cinder/src/';
 const cinderComponent = /^components\/cinder\/src\/components\/([^/]+)\//;
 const editorComponent = /^components\/editor\/src\/lib\/components\/([^/]+)\//;
-
-const escaped = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-
-/** Whether a spec's file name carries `name` as whole hyphen-separated words. */
-function fileNames(spec: string, name: string): boolean {
-  return new RegExp(`(?:^|-)${escaped(name)}(?:-|\\.)`).test(spec);
-}
-
-/** Whether a spec's source names a Cinder component, as `citation` or `Citation`. */
-function sourceNames(source: string, name: string): boolean {
-  const pascal = name
-    .split('-')
-    .map((part) => part.slice(0, 1).toUpperCase() + part.slice(1))
-    .join('');
-  return new RegExp(`(?<![\\w-])(?:${escaped(name)}|${pascal})(?![\\w-])`).test(source);
-}
 
 /**
  * The warning that names the Chromium fixture specs covering a change to a Cinder, Chat or Editor

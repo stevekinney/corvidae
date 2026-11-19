@@ -42,8 +42,11 @@ import { join } from 'node:path';
 import {
   acquireTestSlots,
   heldSlotsTokenVariable,
+  poolBusyExitCode,
   poolDirectoryName,
   poolSize,
+  poolWaitLimitMs,
+  poolWaitVariable,
   readProcessTable,
   slotsHeldUnderToken,
   type HeldTestSlots,
@@ -67,6 +70,15 @@ import {
  */
 export class MemoryRefusal extends Error {
   readonly exitCode = memoryRefusalExitCode;
+}
+
+/**
+ * Thrown by {@link withHostSlots} when `CORVIDAE_TEST_POOL_WAIT_SECONDS` is set and the slots stayed
+ * taken past it, as `bun test` reports it: the run does not start, and a command line exits with
+ * {@link poolBusyExitCode}. The focused checks set the variable for their type-checks.
+ */
+export class PoolBusy extends Error {
+  readonly exitCode = poolBusyExitCode;
 }
 
 export type HostSlotsOptions = {
@@ -120,6 +132,7 @@ export async function withHostSlots<T>(
   const size = options.size ?? poolSize(environment);
   const wanted = Number.isFinite(count) ? Math.max(1, Math.floor(count)) : 1;
   const read = options.readProcessTable ?? readProcessTable;
+  const waitLimit = poolWaitLimitMs(environment);
   let held: HeldTestSlots | undefined;
   let slots: HostSlots = {
     count: wanted,
@@ -151,6 +164,7 @@ export async function withHostSlots<T>(
         ...(options.sleep === undefined ? {} : { sleep: options.sleep }),
         ...(options.pollIntervalMs === undefined ? {} : { pollIntervalMs: options.pollIntervalMs }),
         onWait: (line) => report(`host-slots: ${line}`),
+        ...(waitLimit === undefined ? {} : { signal: AbortSignal.timeout(waitLimit) }),
       });
       slots = {
         count: held.slots.length,
@@ -171,6 +185,10 @@ export async function withHostSlots<T>(
       slots = { ...slots, count: Math.min(wanted, parentSlots), admission: 'nested' };
     }
   } catch (error) {
+    if ((error as Error).name === 'TimeoutError')
+      throw new PoolBusy(
+        `host-slots: not run locally: pool busy after ${(waitLimit ?? 0) / 1000}s (${poolWaitVariable})`,
+      );
     report(`host-slots: running without a host slot: ${(error as Error).message}`);
   }
   try {
@@ -205,18 +223,25 @@ export function runWithHostSlots(
   const command = [...argv];
   const report = options.report ?? ((line: string) => process.stderr.write(`${line}\n`));
   return withMemoryAdmission(
-    (environment) =>
-      withHostSlots(
-        count,
-        (slots) =>
-          runInProcessGroup(command, {
-            environment: slots.environment,
-            ...(options.cwd === undefined ? {} : { cwd: options.cwd }),
-            recordProcessGroup: slots.recordProcessGroup,
-            report: (line) => report(`host-slots: ${line}`),
-          }),
-        { command: command.join(' '), ...options, environment },
-      ),
+    async (environment) => {
+      try {
+        return await withHostSlots(
+          count,
+          (slots) =>
+            runInProcessGroup(command, {
+              environment: slots.environment,
+              ...(options.cwd === undefined ? {} : { cwd: options.cwd }),
+              recordProcessGroup: slots.recordProcessGroup,
+              report: (line) => report(`host-slots: ${line}`),
+            }),
+          { command: command.join(' '), ...options, environment },
+        );
+      } catch (error) {
+        if (!(error instanceof PoolBusy)) throw error;
+        report(error.message);
+        return error.exitCode;
+      }
+    },
     { ...options, report },
   );
 }
