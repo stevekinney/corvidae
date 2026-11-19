@@ -312,7 +312,7 @@ for (const width of WIDTHS) {
       await expect(detail.getByTestId('tool-input-schema')).toContainText('The branch to delete.');
       // The schema is open, never a disclosure to expand (owner report, 2026-11-19).
       await expect(
-        detail.getByTestId('tool-input-schema').locator('.cinder-schema-view__source code'),
+        detail.getByTestId('tool-input-schema').locator('.cinder-schema-view__source'),
       ).toContainText('"branch"');
       await expect(page.getByTestId('tool-blocked-note')).toHaveText(
         copy.tool.blockedNote('An agent allowed Delete branch'),
@@ -634,77 +634,79 @@ for (const width of WIDTHS) {
  * agent. Read first at the widths the review leads with, 1920 and 1280, then 768 and 375.
  */
 for (const width of [1920, 1280, 768, 375] as const) {
-  test(`a tool's page reads what it does, who can use it, then its fields beside the open schema, at ${width} pixels`, async ({
-    page,
-  }) => {
-    await open(page, width, '/capabilities');
-    const row = page.locator('[data-tool-row]', {
-      has: page.getByTestId('tool-row-name').getByText('Read asset', { exact: true }),
-    });
-    const name = await row.getAttribute('data-tool-row');
-    expect(name).not.toBeNull();
-    await page.goto(`/capabilities?tool=${encodeURIComponent(name ?? '')}`);
-    const detail = page.getByTestId('tool-detail');
+  test.describe(`/capabilities tool page, at ${width} pixels`, () => {
+    test(`a tool's page reads what it does, who can use it, then its fields beside the open schema, at ${width} pixels`, async ({
+      page,
+    }) => {
+      await open(page, width, '/capabilities');
+      const row = page.locator('[data-tool-row]', {
+        has: page.getByTestId('tool-row-name').getByText('Read asset', { exact: true }),
+      });
+      const name = await row.getAttribute('data-tool-row');
+      expect(name).not.toBeNull();
+      await page.goto(`/capabilities?tool=${encodeURIComponent(name ?? '')}`);
+      const detail = page.getByTestId('tool-detail');
 
-    // 1: the name and its one sentence, then Add to an agent as a button at the header's end.
-    await expect(detail.getByRole('heading', { level: 3 })).toHaveText('Read asset');
-    await expect(detail.getByTestId('tool-summary')).toHaveText('Read a managed asset.');
-    await expect(detail.locator('header').getByTestId('tool-add-to-agent')).toHaveText(
-      copy.tool.addToAgent.label,
-    );
-    // 3: no raw identifier by the name; Copy tool ID holds it.
-    await expect(detail.locator('header')).not.toContainText(name ?? '');
-    await expect(
-      detail.getByRole('button', { name: copy.tool.copyIdentifier.label }),
-    ).toBeVisible();
-    // 4: one set of badges, the same words as the list row, with one height and one top.
-    await expect(detail.getByTestId('tool-risk')).toHaveText('Reads');
-    await expect(detail.getByTestId('tool-approval')).toHaveText('Asks: Never');
-    await expect(detail.getByTestId('tool-source')).toHaveText('Built in');
-    // 5: one line for nobody, with no link in it.
-    const empty = detail.getByTestId('capability-users-empty');
-    await expect(empty).toHaveText(copy.tool.noUsers.line);
-    await expect(empty.locator('a')).toHaveCount(0);
-    // 6: the field is a row with its name, Required, its type in words and its rule; no table.
-    const inputs = detail.getByTestId('tool-input-schema');
-    await expect(inputs.getByRole('table')).toHaveCount(0);
-    const field = inputs.locator('.cinder-schema-view__item').first();
-    await expect(field).toContainText('Asset ID');
-    await expect(field).toContainText('Required');
-    await expect(field).toContainText('text');
-    await expect(field).toContainText('At least 1 character');
-    // 2: the schema is open, with nothing to expand.
-    const source = inputs.locator('.cinder-schema-view__source');
-    await expect(source.locator('code')).toContainText('"assetId"');
+      // 1: the name and its one sentence, then Add to an agent as a button at the header's end.
+      await expect(detail.getByRole('heading', { level: 3 })).toHaveText('Read asset');
+      await expect(detail.getByTestId('tool-summary')).toHaveText('Read a managed asset.');
+      const top = detail.getByTestId('tool-top');
+      await expect(top.getByTestId('tool-add-to-agent')).toHaveText(copy.tool.addToAgent.label);
+      // 3: no raw identifier by the name; Copy tool ID holds it.
+      await expect(top).not.toContainText(name ?? '');
+      await expect(
+        detail.getByRole('button', { name: copy.tool.copyIdentifier.label }),
+      ).toBeVisible();
+      // 4: one set of badges, the same words as the list row, with one height and one top.
+      await expect(detail.getByTestId('tool-risk')).toHaveText('Reads');
+      await expect(detail.getByTestId('tool-approval')).toHaveText('Asks: Never');
+      await expect(detail.getByTestId('tool-source')).toHaveText('Built in');
+      // 5: one line for nobody, with no link in it.
+      const empty = detail.getByTestId('capability-users-empty');
+      await expect(empty).toHaveText(copy.tool.noUsers.line);
+      await expect(empty.locator('a')).toHaveCount(0);
+      // 6: the field is a row with its name, Required, its type in words and its rule; no table.
+      const inputs = detail.getByTestId('tool-input-schema');
+      await expect(inputs.getByRole('table')).toHaveCount(0);
+      const field = inputs.locator('.cinder-schema-view__item').first();
+      await expect(field).toContainText('Asset ID');
+      await expect(field).toContainText('Required');
+      await expect(field).toContainText('text');
+      await expect(field).toContainText('At least 1 character');
+      // 2: the schema is open, with nothing to expand.
+      const source = inputs.locator('.cinder-schema-view__source');
+      await expect(source).toContainText('"assetId"');
+      // Captured once settled, before the geometry is judged, so a miss still leaves the screens.
+      await captureForDesignReview(page, {
+        route: '/capabilities',
+        state: 'tool page, one field and no agent',
+        source: SOURCE,
+      });
 
-    // Settled: every part is drawn, so the boxes are read from one layout.
-    const box = await readBoxes(page, {
-      risk: detail.getByTestId('tool-risk'),
-      asks: detail.getByTestId('tool-approval'),
-      origin: detail.getByTestId('tool-source'),
-      heading: detail.getByRole('heading', { name: copy.tool.inputs }),
-      label: field.locator('.cinder-schema-view__label'),
-      fields: inputs.locator('.cinder-schema-view__fields'),
-      source,
-    });
-    // 4: the three badges share one top and one height.
-    for (const badge of [box.asks, box.origin]) {
-      expect(Math.abs(badge.y - box.risk.y)).toBeLessThanOrEqual(0.5);
-      expect(Math.abs(badge.height - box.risk.height)).toBeLessThanOrEqual(0.5);
-    }
-    // 6: the field's name starts where the Inputs heading starts.
-    expect(Math.abs(box.label.x - box.heading.x)).toBeLessThanOrEqual(1);
-    // 2: beside the fields from 1280, under them at 768 and below.
-    if (width >= 1280) {
-      expect(box.source.x).toBeGreaterThanOrEqual(box.fields.x + box.fields.width - 1);
-      expect(Math.abs(box.source.y - box.fields.y)).toBeLessThanOrEqual(1);
-    } else {
-      expect(box.source.y).toBeGreaterThanOrEqual(box.fields.y + box.fields.height - 1);
-    }
-    await captureForDesignReview(page, {
-      route: '/capabilities',
-      state: 'tool page, one field and no agent',
-      source: SOURCE,
+      // Settled: every part is drawn, so the boxes are read from one layout.
+      const box = await readBoxes(page, {
+        risk: detail.getByTestId('tool-risk'),
+        asks: detail.getByTestId('tool-approval'),
+        origin: detail.getByTestId('tool-source'),
+        heading: detail.getByRole('heading', { name: copy.tool.inputs }),
+        label: field.locator('.cinder-schema-view__label'),
+        fields: inputs.locator('.cinder-schema-view__fields'),
+        source,
+      });
+      // 4: the three badges share one top and one height.
+      for (const badge of [box.asks, box.origin]) {
+        expect(Math.abs(badge.y - box.risk.y)).toBeLessThanOrEqual(0.5);
+        expect(Math.abs(badge.height - box.risk.height)).toBeLessThanOrEqual(0.5);
+      }
+      // 6: the field's name starts where the Inputs heading starts.
+      expect(Math.abs(box.label.x - box.heading.x)).toBeLessThanOrEqual(1);
+      // 2: beside the fields from 1280, under them at 768 and below.
+      if (width >= 1280) {
+        expect(box.source.x).toBeGreaterThanOrEqual(box.fields.x + box.fields.width - 1);
+        expect(Math.abs(box.source.y - box.fields.y)).toBeLessThanOrEqual(1);
+      } else {
+        expect(box.source.y).toBeGreaterThanOrEqual(box.fields.y + box.fields.height - 1);
+      }
     });
   });
 }

@@ -83,7 +83,7 @@
 </script>
 
 <article class="ib-capability" data-testid="tool-detail" data-tool={tool.name} data-tier={tier}>
-  <header class="ib-capability__top">
+  <header class="ib-capability__top" data-testid="tool-top">
     <div class="ib-capability__title">
       <h3 class="ib-capability__name">{heading}</h3>
       <p class="ib-capability__prose" data-testid="tool-summary">{toolSummary(tool)}</p>
