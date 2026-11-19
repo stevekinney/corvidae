@@ -58,17 +58,23 @@ jobs:
           bun-version-file: package.json
       - run: bun --version
       - run: bun install --frozen-lockfile
+      - uses: ./.github/actions/turbo-cache/restore
+        with:
+          name: main-root
       # Component packages' derived metadata (schemas, variables, manifests) is generated, not
       # committed: the steps below run tests and servers outside Turborepo, so make it first.
       - run: bunx turbo run metadata
       - run: bun run lint:root
       - run: bun run typecheck:root
         if: ${{ !cancelled() }}
-      - run: bun run test:self
+      # The two root tests go through their Turborepo tasks (`//#test:self`, `//#test:browser-fixtures`,
+      # which write `test-output/junit/{self,browser-fixtures}.xml` as outputs), so an unchanged
+      # run replays them from the cache and the JUnit upload below still finds the reports.
+      - run: bunx turbo run //#test:self
         if: ${{ !cancelled() }}
       - run: bunx playwright install --with-deps chromium
         if: ${{ !cancelled() }}
-      - run: bun run test:browser-fixtures
+      - run: bunx turbo run //#test:browser-fixtures
         if: ${{ !cancelled() }}
       - run: bun run format:check
         if: ${{ !cancelled() }}
@@ -90,6 +96,8 @@ jobs:
             plugins/*/test-output/junit/*.xml
             scripts/browser-fixtures/test-output/junit/*.xml
           if-no-files-found: error
+      - uses: ./.github/actions/turbo-cache/save
+        if: ${{ !cancelled() }}
 
   workspaces:
     name: Workspace lint and type-check
@@ -104,11 +112,16 @@ jobs:
           bun-version-file: package.json
       - run: bun --version
       - run: bun install --frozen-lockfile
+      - uses: ./.github/actions/turbo-cache/restore
+        with:
+          name: main-workspaces
       # Lint and type-check start no Bun test worker, so the test pool does not bound them; the
       # standard runner has 4 vCPUs and 16 GB (public repositories), so four tasks at a time. The
       # root `turbo.json` caps at 34%, which is one task here and is meant for the shared 12-core
       # development host.
       - run: bunx turbo run lint typecheck --continue --concurrency=4
+      - uses: ./.github/actions/turbo-cache/save
+        if: ${{ !cancelled() }}
 
   tests:
     name: Tests (${{ matrix.name }})
@@ -149,6 +162,9 @@ jobs:
           bun-version-file: package.json
       - run: bun --version
       - run: bun install --frozen-lockfile
+      - uses: ./.github/actions/turbo-cache/restore
+        with:
+          name: main-tests-${{ matrix.name }}
       # The Postgres suites start a disposable cluster with `initdb` and `pg_ctl` from PATH; the
       # runner image installs PostgreSQL but leaves its binaries off PATH.
       - run: printf '%s\n' /usr/lib/postgresql/*/bin | tail -n 1 >> "$GITHUB_PATH"
@@ -170,6 +186,8 @@ jobs:
             plugins/*/test-output/junit/*.xml
             scripts/browser-fixtures/test-output/junit/*.xml
           if-no-files-found: error
+      - uses: ./.github/actions/turbo-cache/save
+        if: ${{ !cancelled() }}
 
   tests-slow:
     name: Slow and integration tests
@@ -185,6 +203,9 @@ jobs:
           bun-version-file: package.json
       - run: bun --version
       - run: bun install --frozen-lockfile
+      - uses: ./.github/actions/turbo-cache/restore
+        with:
+          name: main-tests-slow
       - run: printf '%s\n' /usr/lib/postgresql/*/bin | tail -n 1 >> "$GITHUB_PATH"
       # Integration tests that measure real layout launch Chromium (the chat stress measurement and
       # the design-review geometry probe), as the isolated lane in `pull-request.yml` does.
@@ -193,6 +214,8 @@ jobs:
       # (COR-2379); it is not marked advisory here.
       - run: bun run test:slow --continue --filter=!@lostgradient/ventriloquist
       - run: bunx turbo run test:slow --concurrency=1 --filter=@lostgradient/ventriloquist
+        if: ${{ !cancelled() }}
+      - uses: ./.github/actions/turbo-cache/save
         if: ${{ !cancelled() }}
 
   browser:

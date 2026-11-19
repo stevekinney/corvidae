@@ -4,17 +4,11 @@
 //
 // Usage:
 //   bun scripts/chef/outcome-accounting.ts verify-task-bank <path>
-//   bun scripts/chef/outcome-accounting.ts initialize <record> <outcome> [<allowance> <provenance>]
-//   bun scripts/chef/outcome-accounting.ts reserve <record> <outcome> <operation> <tokens>
-//   bun scripts/chef/outcome-accounting.ts settle <record> <outcome> <operation> <tokens>
-//   bun scripts/chef/outcome-accounting.ts release <record> <outcome> <operation>
-//   bun scripts/chef/outcome-accounting.ts read <record> <outcome>
 //
 // Exit codes: 0 verified, 1 invalid task bank, 2 invalid CLI usage.
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { isAbsolute, normalize, relative, resolve, sep } from 'node:path';
-import { initialize, read, release, reserve, settle } from './outcome-budget.ts';
 import {
   costOf,
   readTranscript,
@@ -235,10 +229,6 @@ const SHA256 = /^[a-f0-9]{64}$/;
 const GIT_REVISION = /^[a-f0-9]{40}$/;
 const TASK_ID = /^[a-z]+-[0-9]{2}$/;
 
-function tokenArgument(value: string): number | 'unknown' {
-  return value === 'unknown' ? value : Number(value);
-}
-
 function normalizedTaskPath(path: string): string | undefined {
   if (!path || isAbsolute(path)) return undefined;
   const normalized = normalize(path);
@@ -440,32 +430,6 @@ export function materializeTask(
 }
 
 async function main(argv: string[]): Promise<number> {
-  if (argv[0] === 'initialize' && (argv.length === 3 || argv.length === 5)) {
-    const allowance =
-      argv.length === 5 ? { amount: Number(argv[3]), provenance: argv[4] ?? '' } : undefined;
-    process.stdout.write(`${JSON.stringify(await initialize(argv[1]!, argv[2]!, allowance))}\n`);
-    return 0;
-  }
-  if (argv[0] === 'read' && argv.length === 3) {
-    process.stdout.write(`${JSON.stringify(await read(argv[1]!, argv[2]!))}\n`);
-    return 0;
-  }
-  if (argv[0] === 'reserve' && argv.length === 5) {
-    process.stdout.write(
-      `${JSON.stringify(await reserve(argv[1]!, argv[2]!, argv[3]!, tokenArgument(argv[4]!)))}\n`,
-    );
-    return 0;
-  }
-  if (argv[0] === 'settle' && argv.length === 5) {
-    process.stdout.write(
-      `${JSON.stringify(await settle(argv[1]!, argv[2]!, argv[3]!, tokenArgument(argv[4]!)))}\n`,
-    );
-    return 0;
-  }
-  if (argv[0] === 'release' && argv.length === 4) {
-    process.stdout.write(`${JSON.stringify(await release(argv[1]!, argv[2]!, argv[3]!))}\n`);
-    return 0;
-  }
   if (argv[0] !== 'verify-task-bank' || argv.length !== 2) return 2;
   const path = argv[1] ?? '';
   if (!existsSync(path)) return 2;
