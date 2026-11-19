@@ -302,6 +302,24 @@
     margin-block-start: 0;
   }
 
+  /* Page: a list page's first use, under its page header. One layout on every page (owner report,
+   * 2026-11-19): the parts stacked and centred across, but top-aligned at one offset under the
+   * header rather than centred in the height, so it never floats in the middle of a tall window.
+   * It is never boxed (the svelte drops `bordered`) and the title and the sentence hold a reading
+   * measure of about 60 characters however wide the page is. */
+  .cinder-empty-state[data-cinder-layout='page'] {
+    justify-content: flex-start;
+    min-block-size: 0;
+    padding-block: var(--cinder-space-12);
+    padding-inline: 0;
+  }
+
+  .cinder-empty-state[data-cinder-layout='page'] .cinder-empty-state-title,
+  .cinder-empty-state[data-cinder-layout='page'] .cinder-empty-state-description,
+  .cinder-empty-state[data-cinder-layout='page'] .cinder-empty-state-details {
+    max-inline-size: 60ch;
+  }
+
   @media (forced-colors: active) {
     .cinder-empty-state-icon {
       border: 1px solid CanvasText;

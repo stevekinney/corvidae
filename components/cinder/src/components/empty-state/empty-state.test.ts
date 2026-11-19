@@ -520,6 +520,121 @@ describe('EmptyState layout', () => {
   });
 });
 
+describe('EmptyState page layout (one empty state for every list page, owner report 2026-11-19)', () => {
+  const plus = createRawSnippet(() => ({ render: () => '<svg data-testid="plus"></svg>' }));
+
+  test('marks the root, and is never boxed, start-aligned or compact whatever the page passes', () => {
+    const { container } = render(EmptyState, {
+      props: {
+        title: 'No goals yet',
+        layout: 'page',
+        bordered: true,
+        align: 'start',
+        size: 'compact',
+      },
+    });
+    const root = rootOf(container);
+    expect(root?.getAttribute('data-cinder-layout')).toBe('page');
+    expect(root?.hasAttribute('data-cinder-bordered')).toBe(false);
+    expect(root?.hasAttribute('data-cinder-align')).toBe(false);
+    expect(root?.getAttribute('data-cinder-size')).toBe('default');
+  });
+
+  test('is top-aligned at one offset under the header, not centred in the height', () => {
+    const page = declarationsFor(emptyStateCss, ".cinder-empty-state[data-cinder-layout='page']");
+    expect(page.get('justify-content')).toBe('flex-start');
+    expect(page.get('min-block-size')).toBe('0');
+    expect(page.get('padding-block')).toBe('var(--cinder-space-12)');
+    expect(page.get('padding-inline')).toBe('0');
+    expect(page.has('border')).toBe(false);
+    expect(page.has('background')).toBe(false);
+  });
+
+  test('holds the title and the sentence to a measure of about 60 characters', () => {
+    for (const part of ['title', 'description', 'details']) {
+      const words = declarationsFor(
+        emptyStateCss,
+        `.cinder-empty-state[data-cinder-layout='page'] .cinder-empty-state-${part}`,
+      );
+      expect(words.get('max-inline-size')).toBe('60ch');
+    }
+  });
+
+  test('draws its actions as buttons: the first primary, the rest secondary', async () => {
+    let pressed = 0;
+    const { container, getByRole } = render(EmptyState, {
+      props: {
+        title: 'No goals yet',
+        layout: 'page',
+        actions: [
+          { label: 'New goal', icon: plus, onclick: () => (pressed += 1) },
+          { label: 'Ask an agent', href: '/chats/new' },
+        ],
+      },
+    });
+    const buttons = [...container.querySelectorAll('.cinder-empty-state-action > *')];
+    expect(buttons.map((button) => button.textContent?.trim())).toEqual([
+      'New goal',
+      'Ask an agent',
+    ]);
+    expect(buttons.every((button) => button.classList.contains('cinder-button'))).toBe(true);
+    expect(buttons.map((button) => button.getAttribute('data-cinder-variant'))).toEqual([
+      'primary',
+      'secondary',
+    ]);
+    expect(buttons[0]?.querySelector('[data-testid="plus"]')).not.toBeNull();
+    expect(getByRole('link', { name: 'Ask an agent' }).getAttribute('href')).toBe('/chats/new');
+    await fireEvent.click(getByRole('button', { name: 'New goal' }));
+    expect(pressed).toBe(1);
+  });
+
+  test('an action can choose its variant, and an inert one says why and presses nothing', async () => {
+    let pressed = 0;
+    const { getByRole, container } = render(EmptyState, {
+      props: {
+        title: 'No schedules yet',
+        layout: 'page',
+        actions: [
+          {
+            label: 'New schedule',
+            variant: 'secondary',
+            inertReason: 'You can’t create schedules',
+            onclick: () => (pressed += 1),
+          },
+        ],
+      },
+    });
+    const button = getByRole('button', { name: 'New schedule' });
+    expect(button.getAttribute('data-cinder-variant')).toBe('secondary');
+    expect(button.getAttribute('aria-disabled')).toBe('true');
+    const reason = container.querySelector(`#${button.getAttribute('aria-describedby') ?? ''}`);
+    expect(reason?.textContent).toBe('You can’t create schedules');
+    await fireEvent.click(button);
+    expect(pressed).toBe(0);
+  });
+
+  test('puts the actions before the action snippet, and draws details under them', () => {
+    const action = createRawSnippet(() => ({ render: () => '<span data-testid="extra"></span>' }));
+    const children = createRawSnippet(() => ({ render: () => '<p data-testid="detail"></p>' }));
+    const { container } = render(EmptyState, {
+      props: {
+        title: 'No agents yet',
+        layout: 'page',
+        actions: [{ label: 'New agent' }],
+        action,
+        children,
+      },
+    });
+    const parts = [...(container.querySelector('.cinder-empty-state-action')?.children ?? [])];
+    expect(
+      parts.map((part) => part.textContent?.trim() || part.getAttribute('data-testid')),
+    ).toEqual(['New agent', 'extra']);
+    expect(
+      container.querySelector('.cinder-empty-state-details [data-testid="detail"]'),
+    ).not.toBeNull();
+  });
+});
+
 describe('EmptyState restyle', () => {
   test('disc is 48px, title is 16px semibold, the sentence holds 380px and the actions row is spaced', () => {
     const disc = declarationsFor(emptyStateCss, '.cinder-empty-state-icon');

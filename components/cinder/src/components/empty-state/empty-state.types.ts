@@ -27,9 +27,38 @@ export type EmptyStateSize = 'default' | 'compact';
  * under the other in the region; `'row'` puts them on one line, the disc and the words at the
  * start and the action at the end, for a state that sits inside a card or list in place of its rows;
  * `'inline'` puts a 32px disc beside one line of text, the title in bold followed by the sentence,
- * at the inline start, for a state that sits among rows (the runs of a schedule below the Now marker).
+ * at the inline start, for a state that sits among rows (the runs of a schedule below the Now marker);
+ * `'page'` is a list page's first use under its page header: stacked and centred across, but
+ * top-aligned at one offset on every page, never in a box, with a measure of about 60 characters.
  */
-export type EmptyStateLayout = 'stacked' | 'row' | 'inline';
+export type EmptyStateLayout = 'stacked' | 'row' | 'inline' | 'page';
+
+/** One button of an empty state's `actions`. */
+export type EmptyStateAction = {
+  /** The button's words, such as "New goal". Use the verb the page header's create action uses. */
+  label: string;
+  /** Opens this address: the button is drawn as a link that looks like a button. */
+  href?: string;
+  /** Called when the button is pressed. Not called while the button is inert. */
+  onclick?: (event: MouseEvent) => void;
+  /**
+   * The button's emphasis. The first action is the primary one and every later one is secondary
+   * unless this says otherwise.
+   */
+  variant?: 'primary' | 'secondary';
+  /** A leading icon, such as the "+" of a create action. Decorative: the label names the action. */
+  icon?: Snippet;
+  /**
+   * Makes the button inert and says why: it stays focusable, ignores the press, carries
+   * `aria-disabled`, and the reason describes it.
+   */
+  inertReason?: string;
+  /**
+   * Whether the action changes something, so it goes inert under a stale `<StaleRegion>`.
+   * @default false
+   */
+  mutating?: boolean;
+};
 
 export type EmptyStateProps = Omit<HTMLAttributes<HTMLDivElement>, 'class'> & {
   /** Primary heading text rendered as a heading element at the configured `headingLevel`. */
@@ -71,16 +100,26 @@ export type EmptyStateProps = Omit<HTMLAttributes<HTMLDivElement>, 'class'> & {
    * list, such as "Nothing is waiting on you" with its link to the page that holds the rest, so it
    * is the layout for a state inside a card; on a phone its action drops under the words. Inline
    * sits among rows at the inline start, without the vertical padding of a region; use it with
-   * `size="compact"`.
+   * `size="compact"`. `'page'` is a list page's first use under its page header: the parts stacked
+   * and centred across, top-aligned at the same offset on every page, never bordered, at the default
+   * size, with the title and the sentence held to about 60 characters; pass the page's own icon and
+   * its `actions`.
    * @default 'stacked'
    */
   layout?: EmptyStateLayout;
   /**
    * Draws the state inside a bordered, rounded box, for a list or page body that has no
-   * container of its own. Leave it off when a card or panel already surrounds the state.
+   * container of its own. Leave it off when a card or panel already surrounds the state. The
+   * `'page'` layout is never boxed and ignores it.
    * @default false
    */
   bordered?: boolean;
+  /**
+   * The state's buttons, drawn by the component so they are always buttons, never text links: the
+   * first is primary (the page's create action, with the header's verb) and any later one is
+   * secondary. They come before the `action` snippet when both are passed.
+   */
+  actions?: readonly EmptyStateAction[];
   /** Called when the "Clear filters" button of a `'filtered'` state is pressed. The button renders only when this is set. */
   onClearFilters?: () => void;
   /**

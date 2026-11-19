@@ -419,6 +419,7 @@ export type { DurationFieldProps, DurationUnit } from './components/duration-fie
 
 export { default as EmptyState } from './components/empty-state/index.ts';
 export type {
+  EmptyStateAction,
   EmptyStateAlign,
   EmptyStateKind,
   EmptyStateLayout,

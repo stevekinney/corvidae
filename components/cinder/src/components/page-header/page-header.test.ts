@@ -278,22 +278,23 @@ describe('PageHeader', () => {
   });
 
   describe('create action', () => {
-    test('is a secondary icon-only button named for the page', () => {
-      const { getByRole, container } = render(Harness);
-
-      const create = getByRole('button', { name: 'New agent' });
-      expect(create.getAttribute('data-cinder-variant')).toBe('secondary');
-      expect(create.hasAttribute('data-cinder-icon-only')).toBe(true);
-      expect(create.querySelector('svg')).not.toBeNull();
-      expect(container.querySelector('[role="tooltip"]')?.textContent).toBe('New agent');
-    });
-
-    test('names the tooltip without describing the button a second time', () => {
+    test('is a labelled primary button with a leading "+", never an icon alone (owner report, 2026-11-19)', () => {
       const { getByRole } = render(Harness);
 
-      expect(
-        getByRole('button', { name: 'New agent' }).getAttribute('aria-describedby'),
-      ).toBeNull();
+      const create = getByRole('button', { name: 'New agent' });
+      expect(create.getAttribute('data-cinder-variant')).toBe('primary');
+      expect(create.hasAttribute('data-cinder-icon-only')).toBe(false);
+      expect(create.textContent?.trim()).toBe('New agent');
+      expect(create.querySelector('svg')).not.toBeNull();
+      expect(create.getAttribute('aria-describedby')).toBeNull();
+    });
+
+    test('draws as secondary under a full-page error, so Try again is the one primary', () => {
+      const { getByRole } = render(Harness, { props: { error: true } });
+
+      expect(getByRole('button', { name: 'New agent' }).getAttribute('data-cinder-variant')).toBe(
+        'secondary',
+      );
     });
 
     test('is drawn last in the actions region, after custom actions', () => {
@@ -301,7 +302,7 @@ describe('PageHeader', () => {
 
       const labels = [
         ...container.querySelectorAll('.cinder-page-header__actions .cinder-button'),
-      ].map((button) => button.getAttribute('aria-label') ?? button.textContent?.trim());
+      ].map((button) => button.textContent?.trim());
       expect(labels).toEqual(['Add a memory', 'Delete', 'New agent']);
     });
 
@@ -322,7 +323,7 @@ describe('PageHeader', () => {
       const link = render(Harness, { props: { createHref: '/agents/new' } });
       const anchor = link.getByRole('link', { name: 'New agent' });
       expect(anchor.getAttribute('href')).toBe('/agents/new');
-      expect(anchor.getAttribute('data-cinder-variant')).toBe('secondary');
+      expect(anchor.getAttribute('data-cinder-variant')).toBe('primary');
     });
 
     test('is inert under a stale region, described by its reason, and presses nothing', async () => {

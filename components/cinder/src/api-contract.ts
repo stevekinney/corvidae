@@ -342,6 +342,7 @@ export const CONTRACT: Record<string, ComponentContract> = {
         type_kind: 'TSStringKeyword',
         default: L('Clear filters'),
       },
+      actions: { optional: true, type_kind: 'TSTypeOperator', default: L([]) },
       class: { optional: true, type_kind: 'TSStringKeyword', default: L(undefined) },
     },
     snippets: {

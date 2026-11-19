@@ -72,6 +72,28 @@ A title says what is missing or what happened, never an instruction ("No hooks y
 
 The state centres itself in the height it is given, with 8px of extra bottom padding for the optical centre, so give it the height left under the page header and filters. Add `bordered` when the list or page body has no container of its own and the state should draw one.
 
+A list page with nothing in it yet uses `layout="page"` under its `PageHeader`, so every list page's first use looks the same: the parts stacked and centred across, top-aligned at one offset under the header (never centred in a tall window), never in a box, with the title and the sentence held to about 60 characters. The page passes only its title, its sentence, its own icon (the one its navigation item shows) and its `actions`, which the component draws as buttons, the first primary and the rest secondary; use the header's verb ("New goal", never "Create a goal"). Leave out counts, search and filters until the first item exists.
+
+```svelte
+<script lang="ts">
+  import { EmptyState } from '@lostgradient/cinder';
+  import { Target } from '@lucide/svelte';
+</script>
+
+<EmptyState
+  layout="page"
+  headingLevel={2}
+  title="No goals yet"
+  description="A goal runs an agent on a prompt until a check passes."
+  actions={[
+    { label: 'New goal', href: '/goals/new' },
+    { label: 'Ask an agent', href: '/chats/new' },
+  ]}
+>
+  {#snippet icon()}<Target aria-hidden="true" />{/snippet}
+</EmptyState>
+```
+
 Use `size="compact"` inside a tab or a panel, where the default page-region padding and disc are too large:
 
 ```svelte
@@ -134,16 +156,17 @@ The `icon` snippet replaces the glyph in the disc. The `illustration` snippet dr
 | Prop | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
 | `align` | `"center"` \| `"start"` | no | `"center"` | Alignment of the content. `'center'` centres the icon, text, and action in the region; `'start'` aligns them to the inline start, for a state that reads as instructions rather than a placeholder. |
-| `bordered` | `boolean` | no | `false` | Draws the state inside a bordered, rounded box, for a list or page body that has no container of its own. Leave it off when a card or panel already surrounds the state. |
+| `bordered` | `boolean` | no | `false` | Draws the state inside a bordered, rounded box, for a list or page body that has no container of its own. Leave it off when a card or panel already surrounds the state. The `'page'` layout is never boxed and ignores it. |
 | `class` | `string` | no | — | Additional class merged onto the `.cinder-empty-state` root element. |
 | `clearFiltersLabel` | `string` | no | `"Clear filters"` | Label of the "Clear filters" button. |
 | `description` | `string` | no | — | Secondary descriptive text rendered as a paragraph below the title. |
 | `headingLevel` | `1` \| `2` \| `3` \| `4` \| `5` \| `6` | no | `3` | Heading level for the title element. |
 | `kind` | `"first-use"` \| `"filtered"` \| `"done"` \| `"blocked"` \| `"not-found"` \| `"disabled"` | no | `"first-use"` | Why the view is empty. It sets the disc tint and the default glyph (first use, filtered, done, blocked, not found or disabled). Every kind renders the `action` snippet; `'filtered'` also adds a secondary "Clear filters" button before it when `onClearFilters` is set. Give `'first-use'` a primary button, `'done'` a quiet `Link`, and `'filtered'` the Clear filters button alone. |
-| `layout` | `"stacked"` \| `"row"` \| `"inline"` | no | `"stacked"` | Whether the state stacks its parts and centres them (`'stacked'`), lays them on one row, with the disc and the words at the start and the action at the end (`'row'`), or draws a 32px disc beside the title and the sentence on one line (`'inline'`). A row reads as the line of a list, such as "Nothing is waiting on you" with its link to the page that holds the rest, so it is the layout for a state inside a card; on a phone its action drops under the words. Inline sits among rows at the inline start, without the vertical padding of a region; use it with `size="compact"`. |
+| `layout` | `"stacked"` \| `"row"` \| `"inline"` \| `"page"` | no | `"stacked"` | Whether the state stacks its parts and centres them (`'stacked'`), lays them on one row, with the disc and the words at the start and the action at the end (`'row'`), or draws a 32px disc beside the title and the sentence on one line (`'inline'`). A row reads as the line of a list, such as "Nothing is waiting on you" with its link to the page that holds the rest, so it is the layout for a state inside a card; on a phone its action drops under the words. Inline sits among rows at the inline start, without the vertical padding of a region; use it with `size="compact"`. `'page'` is a list page's first use under its page header: the parts stacked and centred across, top-aligned at the same offset on every page, never bordered, at the default size, with the title and the sentence held to about 60 characters; pass the page's own icon and its `actions`. |
 | `size` | `"default"` \| `"compact"` | no | `"default"` | Scale of the state. `'compact'` tightens the padding, disc, and type so the state fits a tab or a panel rather than a whole page region. |
 | `title` | `string` | yes | — | Primary heading text rendered as a heading element at the configured `headingLevel`. |
 | `action` | `(opaque)` | no | — | Call-to-action content rendered below the description, after the "Clear filters" button when both exist. A primary `Button` for first use, a `Link` (accent, underlined only on hover) for done, and a secondary button for a not-found or blocked state. Not expressible in JSON Schema; see the component types for the signature. |
+| `actions` | `(opaque)` | no | — | The state's buttons, drawn by the component so they are always buttons, never text links: the first is primary (the page's create action, with the header's verb) and any later one is secondary. They come before the `action` snippet when both are passed. Not expressible in JSON Schema; see the component types for the signature. |
 | `children` | `(opaque)` | no | — | Supporting content under the call to action, such as the steps of a manual set-up; the action stays buttons. It follows `align`, takes the full width of the state with no measure of its own, and draws no border or background. Drawn only in the `'stacked'` layout; a `'row'` or `'inline'` state ignores it. Not expressible in JSON Schema; see the component types for the signature. |
 | `icon` | `(opaque)` | no | — | Replaces the glyph in the disc. First use shows the view's own icon; every other kind has a default glyph. Decorative, so it is hidden from assistive technology. Not expressible in JSON Schema; see the component types for the signature. |
 | `illustration` | `(opaque)` | no | — | A larger picture drawn above the title in place of the disc, for a page-sized state that wants more than a glyph. Drawn only in the `'stacked'` layout; a `'row'` or `'inline'` state keeps its disc and ignores it. Decorative, so it is hidden from assistive technology; say what is missing in the title. Not expressible in JSON Schema; see the component types for the signature. |

@@ -3,6 +3,7 @@ import EmptyState from './empty-state.svelte';
 
 export default EmptyState;
 export type {
+  EmptyStateAction,
   EmptyStateAlign,
   EmptyStateKind,
   EmptyStateLayout,
