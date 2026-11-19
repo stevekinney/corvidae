@@ -516,7 +516,11 @@
   {#if gone}
     {@render goneDetail()}
   {:else}
-    <EmptyState title={REVIEWS_COPY.noReviewSelected} description={REVIEWS_COPY.chooseReview} />
+    <EmptyState
+      kind="first-use"
+      title={REVIEWS_COPY.noReviewSelected}
+      description={REVIEWS_COPY.chooseReview}
+    />
   {/if}
 {/snippet}
 
