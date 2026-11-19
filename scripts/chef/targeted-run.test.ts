@@ -5,18 +5,53 @@ import { join } from 'node:path';
 
 import { defaultManifestLayout } from '../browser-fixtures/scripts/prepare-manifest.ts';
 
+import { MANIFEST_PATH, manifestSlugs } from './evidence-plan.ts';
 import type { Runner } from './process-runner.ts';
 import {
   buildCommand,
-  deriveInputs,
-  MANIFEST_PATH,
-  manifestSlugs,
+  fitUnitPaths,
+  inputsFromPlan,
   run,
   UsageError,
   type TargetedDependencies,
 } from './targeted-run.ts';
+import {
+  computeEvidencePlan,
+  type EvidenceContext,
+  type EvidencePlan,
+  type UnitSelection,
+} from './verification-plan.ts';
 
 const known = new Set(['approval-card', 'description-list', 'terminal']);
+
+/** A context whose unit selection is each changed `*.test.ts` of a workspace folder, as git sees it. */
+function context(paths: string[] = []): EvidenceContext {
+  return {
+    knownSlugs: known,
+    paths: new Set(paths),
+    read: () => undefined,
+    selectUnitTests: (changed): UnitSelection[] => {
+      const byWorkspace = new Map<string, string[]>();
+      for (const file of changed) {
+        const match =
+          /^((?:applications|components|packages|plugins|testing|internal)\/[\w.-]+)\/.+\.test\.ts$/.exec(
+            file,
+          );
+        if (match?.[1] !== undefined)
+          byWorkspace.set(match[1], [...(byWorkspace.get(match[1]) ?? []), file]);
+      }
+      return [...byWorkspace].map(([directory, tests]) => ({ directory, mode: 'partial', tests }));
+    },
+  };
+}
+
+function planOf(changed: string[]): EvidencePlan {
+  return computeEvidencePlan(changed, context(changed));
+}
+
+function deriveInputs(changed: string[]) {
+  return inputsFromPlan(planOf(changed)).inputs;
+}
 
 function fake(
   changed: string[],
@@ -42,6 +77,7 @@ function fake(
       runner,
       exists: (path) => existing.includes(path),
       knownSlugs: () => known,
+      context: () => context(changed),
     },
     calls,
   };
@@ -49,20 +85,17 @@ function fake(
 
 describe('deriveInputs', () => {
   test('reads components, specs and the busiest workspace of unit files from the diff', () => {
-    const inputs = deriveInputs(
-      [
-        'components/cinder/src/components/approval-card/approval-card.svelte',
-        'components/cinder/src/components/not-fixtured/x.svelte',
-        'scripts/browser-fixtures/src/fixtures/terminal.svelte',
-        'scripts/browser-fixtures/tests/approval-card-input-rows.playwright.ts',
-        'applications/interborough/tests/e2e/chat-responsive.spec.ts',
-        'components/cinder/src/components/approval-card/approval-card.test.ts',
-        'components/cinder/src/components/table/table.test.ts',
-        'packages/armorer/src/a.test.ts',
-        'README.md',
-      ],
-      known,
-    );
+    const inputs = deriveInputs([
+      'components/cinder/src/components/approval-card/approval-card.svelte',
+      'components/cinder/src/components/not-fixtured/x.svelte',
+      'scripts/browser-fixtures/src/fixtures/terminal.svelte',
+      'scripts/browser-fixtures/tests/approval-card-input-rows.playwright.ts',
+      'applications/interborough/tests/e2e/chat-responsive.spec.ts',
+      'components/cinder/src/components/approval-card/approval-card.test.ts',
+      'components/cinder/src/components/table/table.test.ts',
+      'packages/armorer/src/a.test.ts',
+      'README.md',
+    ]);
     expect(inputs).toEqual({
       fixtureComponents: ['approval-card', 'terminal'],
       fixtureSpecs: ['scripts/browser-fixtures/tests/approval-card-input-rows.playwright.ts'],
@@ -80,32 +113,72 @@ describe('deriveInputs', () => {
 describe('unit lanes', () => {
   test('an Interborough UI test runs under bunfig.ui.toml, a host test under the default', () => {
     expect(
-      deriveInputs(['applications/interborough/src/views/standalone-view.test.ts'], known),
+      deriveInputs(['applications/interborough/src/views/standalone-view.test.ts']),
     ).toMatchObject({
       unitWorkspace: 'applications/interborough',
       unitPaths: ['src/views/standalone-view.test.ts'],
       unitConfig: './bunfig.ui.toml',
     });
     expect(
-      deriveInputs(['applications/interborough/src/host/panel-build-cache.test.ts'], known),
+      deriveInputs(['applications/interborough/src/host/panel-build-cache.test.ts']),
     ).toMatchObject({ unitPaths: ['src/host/panel-build-cache.test.ts'], unitConfig: '' });
   });
 
   test('host and UI tests in one diff never share a run: the busier lane is selected', () => {
-    const inputs = deriveInputs(
-      [
+    const { inputs, uncovered } = inputsFromPlan(
+      planOf([
         'applications/interborough/src/host/a.test.ts',
         'applications/interborough/src/views/b.test.ts',
         'applications/interborough/src/routes/c.test.ts',
-      ],
-      known,
+      ]),
     );
-    expect(inputs.unitPaths).toEqual(['src/views/b.test.ts', 'src/routes/c.test.ts']);
+    expect(inputs.unitPaths).toEqual(['src/routes/c.test.ts', 'src/views/b.test.ts']);
     expect(inputs.unitConfig).toBe('./bunfig.ui.toml');
+    expect(uncovered).toEqual(['applications/interborough: 1 test files']);
   });
 
   test('another workspace keeps its default bunfig', () => {
-    expect(deriveInputs(['packages/bureau/src/x.test.ts'], known).unitConfig).toBe('');
+    expect(deriveInputs(['packages/bureau/src/x.test.ts']).unitConfig).toBe('');
+  });
+
+  test('Cinder wins the one unit lane, and the unit tests no lane can carry are reported', () => {
+    const plan: EvidencePlan = {
+      ...planOf([]),
+      unit_tests: [
+        { workspace: '', paths: ['scripts/a.test.ts'], full: false },
+        {
+          workspace: 'applications/interborough',
+          paths: ['src/a.test.ts', 'src/b.test.ts'],
+          full: false,
+        },
+        { workspace: 'components/cinder', paths: ['src/api-contract.test.ts'], full: false },
+      ],
+    };
+    const { inputs, uncovered } = inputsFromPlan(plan);
+    expect(inputs.unitWorkspace).toBe('components/cinder');
+    expect(inputs.unitPaths).toEqual(['src/api-contract.test.ts']);
+    expect(uncovered).toEqual(['root: 1 test files', 'applications/interborough: 2 test files']);
+  });
+
+  test('unit paths that fit one dispatch are named file by file', () => {
+    expect(fitUnitPaths(['src/b.test.ts', 'test/a.test.ts'])).toEqual([
+      'src/b.test.ts',
+      'test/a.test.ts',
+    ]);
+  });
+
+  test('unit paths over the dispatch budget become the folders that hold them, never a drop', () => {
+    const paths = Array.from(
+      { length: 900 },
+      (_, index) => `src/components/component-${index % 150}/component-${index}.test.ts`,
+    );
+    const folders = fitUnitPaths(paths);
+    expect(folders.length).toBe(150);
+    for (const path of paths) expect(folders.some((folder) => path.startsWith(folder))).toBe(true);
+    // A file at the workspace root keeps its name, and a path outside src keeps its folder.
+    expect(fitUnitPaths([...paths, 'root.test.ts', 'test/a.test.ts'])).toEqual(
+      expect.arrayContaining(['root.test.ts', 'test/']),
+    );
   });
 });
 
@@ -138,13 +211,75 @@ describe('run', () => {
 
   test('builds the command from the diff and passes only inputs that name something', () => {
     const { dependencies, calls } = fake([
-      'components/cinder/src/components/description-list/description-list.svelte',
+      'scripts/browser-fixtures/src/fixtures/description-list.svelte',
     ]);
     const result = run(['--dry-run'], dependencies);
     expect(result.output).toBe(
-      "'gh' 'workflow' 'run' 'targeted-checks.yml' '--ref' 'chef/x' '-f' 'fixture_components=description-list'",
+      "'gh' 'workflow' 'run' 'targeted-checks.yml' '--ref' 'chef/x' '-f' 'fixture_components=description-list'\n# requires_full_run: false",
     );
     expect(calls.some((call) => call[0] === 'gh')).toBe(false);
+  });
+
+  test('--json with no inputs prints { ref, inputs, command, requiresFullRun } from the plan', () => {
+    const { dependencies } = fake([
+      'packages/bureau/src/http/__fixtures__/wire-golden/local.openrpc.json',
+      'components/cinder/src/components/description-list/description-list.svelte',
+    ]);
+    const parsed = JSON.parse(run(['--dry-run', '--json'], dependencies).output);
+    expect(Object.keys(parsed).toSorted()).toEqual(['command', 'inputs', 'ref', 'requiresFullRun']);
+    expect(parsed.ref).toBe('chef/x');
+    expect(parsed.requiresFullRun).toBe(true);
+  });
+
+  test('a plan that requires a full run dispatches main.yml, and says so in text and JSON', () => {
+    for (const changed of [
+      ['components/cinder/src/components/description-list/description-list.svelte'],
+      ['components/cinder/src/tokens/sets/colors.tokens.json'],
+      ['packages/weft/src/worker/protocol.ts'],
+    ]) {
+      const { dependencies, calls } = fake(changed);
+      const json = JSON.parse(run(['--dry-run', '--json'], dependencies).output);
+      expect(json.command).toEqual(['gh', 'workflow', 'run', 'main.yml', '--ref', 'chef/x']);
+      expect(json.requiresFullRun).toBe(true);
+      expect(json.inputs.fixtureComponents).toEqual([]);
+      const text = run(['--dry-run'], fake(changed).dependencies).output;
+      expect(text).toContain("'main.yml'");
+      expect(text).toContain('Dispatching main.yml');
+      expect(text).toContain('requires_full_run: true');
+      run(['--ref', 'b'], dependencies);
+      expect(calls.filter((call) => call[0] === 'gh')).toEqual([
+        ['gh', 'workflow', 'run', 'main.yml', '--ref', 'b'],
+      ]);
+    }
+  });
+
+  test('a plan without requires_full_run still dispatches targeted-checks.yml', () => {
+    const { dependencies } = fake([
+      'scripts/browser-fixtures/src/fixtures/description-list.svelte',
+    ]);
+    const json = JSON.parse(run(['--dry-run', '--json'], dependencies).output);
+    expect(json.requiresFullRun).toBe(false);
+    expect(json.command.slice(0, 4)).toEqual(['gh', 'workflow', 'run', 'targeted-checks.yml']);
+    expect(json.inputs.fixtureComponents).toEqual(['description-list']);
+  });
+
+  test('explicit inputs report the whole-suite flag too, yet still dispatch targeted-checks.yml', () => {
+    const { dependencies, calls } = fake([
+      'components/cinder/src/components/description-list/description-list.svelte',
+    ]);
+    const json = JSON.parse(
+      run(['--dry-run', '--json', '--fixture-components', 'terminal'], dependencies).output,
+    );
+    expect(json.requiresFullRun).toBe(true);
+    expect(json.command[3]).toBe('targeted-checks.yml');
+    expect(calls.some((call) => call[0] === 'gh')).toBe(false);
+  });
+
+  test('the one-way-door flag is computed for explicit inputs too, and names the rule', () => {
+    const { dependencies } = fake(['packages/operative/src/durable/types.ts']);
+    const result = run(['--dry-run', '--fixture-components', 'terminal'], dependencies);
+    expect(result.output).toContain('requires_full_run: true');
+    expect(result.output).toContain('packages/operative/src/durable/types.ts: persisted record');
   });
 
   test('dispatches once unless it is a dry run', () => {
@@ -212,9 +347,7 @@ describe('run', () => {
   });
 
   test('dispatches with no input when the diff reaches no browser or unit file, for the lint and type-check job', () => {
-    const { dependencies, calls } = fake([
-      'components/cinder/src/components/table/table-cell.svelte',
-    ]);
+    const { dependencies, calls } = fake(['packages/bureau/src/table-cell.ts']);
     const result = run(['--ref', 'b'], dependencies);
     expect(result.output).toContain('only lint and type-check');
     expect(calls.filter((call) => call[0] === 'gh')).toEqual([
