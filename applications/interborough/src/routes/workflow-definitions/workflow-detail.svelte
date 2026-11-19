@@ -52,7 +52,7 @@
   import { agentFaultOf, type AgentFault } from '../../lib/agent-definitions.ts';
   import { agentLabel } from '../../lib/agent-label.ts';
   import { getClient } from '../../lib/client.ts';
-  import { getHostPaths, workflowFilePath } from '../../lib/host-paths.ts';
+  import { getHostPaths, workflowRelativePath } from '../../lib/host-paths.ts';
   import { queryKeys, workflowViewInstance } from '../../lib/query.ts';
   import { router, scheduleDetailPath, workflowRunPath } from '../../lib/router.svelte.ts';
   import {
@@ -218,11 +218,9 @@
   const file = $derived(resolved?.kind === 'agent-authored' ? resolved.file : undefined);
   const document = $derived(file === undefined ? undefined : parseWorkflowText(file.text));
   const actions = $derived(file === undefined ? undefined : availableActions(file));
-  const path = $derived(
-    file === undefined
-      ? ''
-      : workflowFilePath(hostPaths.data?.workflowDirectory ?? copy.fallbackDirectory, file.id),
-  );
+  // The file's path relative to the Interborough home, as the agent editor names an agent's: a host
+  // path never shows in a sentence (owner, 2026-11-19).
+  const path = $derived(file === undefined ? '' : workflowRelativePath(file.id));
 
   /** A write was refused because the file changed on disk after the page loaded. */
   let stale = $state(false);
@@ -977,7 +975,7 @@
     bind:open={confirmingDelete}
     name={heading}
     fileName={`${type}.json`}
-    directory={hostPaths.data?.workflowDirectory ?? copy.fallbackDirectory}
+    directory={copy.fallbackDirectory}
     schedules={deleteSchedules}
     busy={removal.isPending}
     error={deleteError}

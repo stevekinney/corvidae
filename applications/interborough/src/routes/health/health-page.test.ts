@@ -400,7 +400,8 @@ describe('Recent activity', () => {
     );
     const link = await view.findByRole('link', { name: /audit log/ });
     await waitFor(() => expect(link.textContent).toContain('All 1,240 events in the audit log ›'));
-    expect(link.textContent).not.toMatch(/[()·]/);
+    expect(link.textContent).not.toMatch(/[()]/);
+    expect(link.textContent).not.toContain(String.fromCodePoint(0xb7));
     expect(link.getAttribute('href')).toBe('/health/audit');
 
     const lines = [...view.container.querySelectorAll('[data-activity]')];

@@ -52,7 +52,7 @@
   import { WORKFLOW_COPY } from '../../app/copy/workflows.ts';
   import { restartActivity } from '../../app/restart/host-restart-flow.svelte.ts';
   import { agentFaultOf, type AgentFault } from '../../lib/agent-definitions.ts';
-  import { getHostPaths, workflowFilePath } from '../../lib/host-paths.ts';
+  import { getHostPaths, workflowRelativePath } from '../../lib/host-paths.ts';
   import { keyedByOccurrence } from '../../lib/list-keys.ts';
   import { queryKeys, workflowViewInstance } from '../../lib/query.ts';
   import { router } from '../../lib/router.svelte.ts';
@@ -144,9 +144,9 @@
   });
 
   const editable = $derived(loaded !== undefined && loaded.hash !== null && loaded.text !== null);
-  const filePath = $derived(
-    workflowFilePath(hostPaths.data?.workflowDirectory ?? copy.fallbackDirectory, type),
-  );
+  // The file's path relative to the Interborough home: a host path never shows in a sentence
+  // (owner, 2026-11-19).
+  const filePath = $derived(workflowRelativePath(type));
 
   /** The workflow's name as the heading says it: its title, else its identifier. */
   const name = $derived.by(() => {
