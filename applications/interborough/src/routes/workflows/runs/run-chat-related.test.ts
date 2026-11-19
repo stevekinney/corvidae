@@ -29,19 +29,4 @@ describe('otherRunsOfChat', () => {
 
     expect(otherRunsOfChat('none', tasks)).toHaveLength(CHAT_RELATED_LIMIT);
   });
-
-  test('is never the run’s own continuation or the run it continues, which Runs lists as one row (COR-2423)', () => {
-    const tasks = [
-      taskFixture({ id: 'run-asked', createdAt: '2026-11-02T16:30:00.000Z' }),
-      taskFixture({
-        id: 'run-continued',
-        continues: 'run-asked',
-        createdAt: '2026-11-02T16:33:00.000Z',
-      }),
-      taskFixture({ id: 'run-later', createdAt: '2026-11-02T16:40:00.000Z' }),
-    ];
-
-    expect(otherRunsOfChat('run-asked', tasks).map((task) => task.id)).toEqual(['run-later']);
-    expect(otherRunsOfChat('run-continued', tasks).map((task) => task.id)).toEqual(['run-later']);
-  });
 });

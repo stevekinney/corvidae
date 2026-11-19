@@ -45,7 +45,6 @@ const VIEW: TaskView = {
   actor: null,
   kind: 'chat',
   origin: null,
-  continues: null,
   status: 'working',
   finishReason: null,
   statusMessage: null,

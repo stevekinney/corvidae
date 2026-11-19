@@ -112,7 +112,6 @@ export function createTaskStart<D extends AgentDefinitions>(
         ? {}
         : { withTraceContext: startOptions.withTraceContext }),
       ...(startOptions.origin === undefined ? {} : { origin: startOptions.origin }),
-      ...(startOptions.continues === undefined ? {} : { continues: startOptions.continues }),
       ...(startOptions.signal === undefined ? {} : { signal: startOptions.signal }),
       taskInput: input,
       onActiveRun(activeRun) {

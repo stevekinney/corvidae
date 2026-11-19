@@ -108,7 +108,6 @@ function hostOver(
     contextId: 'context-1',
     agentName: 'default',
     owner,
-    continues: null,
     status: 'input-required' as const,
     finishReason: null,
     statusMessage: null,

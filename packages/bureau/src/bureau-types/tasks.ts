@@ -93,13 +93,6 @@ export interface StartTaskOptions {
    * another surface replays the original task and its origin.
    */
   readonly origin?: StartTaskOrigin;
-  /**
-   * The run this task continues (COR-2423), recorded on its record and served as the task's
-   * `continues`: Bureau sets it on the run that answers a chat's decided tool approvals, naming the
-   * run that asked for them. A non-empty string; omitted, the task continues no run. Like `origin`,
-   * it is not part of the command a `commandId` identifies.
-   */
-  readonly continues?: string;
   /** Aborts the task when it fires, from the moment the task starts executing. */
   readonly signal?: AbortSignal;
   /** The caller's trace context, the parent of the task's spans. */

@@ -4,7 +4,7 @@
  * 10q, 10r, 12r to 12v, 14m, 14n, 14p, 14s, 15d, 52v to 52z, 53b, 05t to 05y, 06w and 07j): the list
  * on a phone, a tablet and in the dark, and each state of it that is not a list of rows (first use,
  * filtered to nothing, loading, still loading, canceled, failing, and a server that stopped
- * answering). The sample world's run list is All 19 = Waiting on you 2 + Done 14 + Failed 1 +
+ * answering). The sample world's run list is All 21 = Waiting on you 2 + Done 16 + Failed 1 +
  * Canceled 2, and a chat another spec runs on the shared showcase host adds a Done run (and one to
  * All), so the Done count is read from the page and All is checked against it. A state the sample world does not hold is made by answering the Bureau's own operation
  * with what a different world would answer, and each is captured for the design review under its own
@@ -35,15 +35,15 @@ const WIDTHS = [1280, 375] as const;
 const HOST_REQUESTS = /\/(v1|bureau|api)\/|\/jsonrpc$/;
 
 /**
- * The runs the sample world holds, as the segments count them (Nov 3 correction): All 20, with the
- * 4472 refund's run and the run that continued it after its approval one row (COR-2423), and the
- * billing chat's canceled run beside the goal attempt's.
+ * The runs the sample world holds, as the segments count them (Nov 3 correction): All 21, with the
+ * 4472 refund's run and the run that continued it after its approval each a row, and the billing
+ * chat's canceled run beside the goal attempt's.
  */
 const SEGMENTS = [
-  ['All', 20],
+  ['All', 21],
   ['Waiting on you', 2],
   ['Running', 0],
-  ['Done', 15],
+  ['Done', 16],
   ['Failed', 1],
   ['Canceled', 2],
 ] as const;
@@ -58,7 +58,7 @@ async function expectSegmentCounts(scope: Page | Locator): Promise<void> {
   await expect(done).toBeVisible();
   const doneText = (await done.textContent()) ?? '';
   const doneCount = Number(/(\d+)\s*$/.exec(doneText)?.[1]);
-  expect(doneCount).toBeGreaterThanOrEqual(15);
+  expect(doneCount).toBeGreaterThanOrEqual(16);
   let total = doneCount;
   for (const [word, count] of SEGMENTS) {
     if (word === 'All' || word === 'Done') continue;

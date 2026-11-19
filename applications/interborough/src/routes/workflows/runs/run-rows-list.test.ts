@@ -760,62 +760,6 @@ describe('the Bureau’s own runs (COR-2423)', () => {
     expect(visibleRunSegments(none, 'signal')).toContain('signal');
   });
 
-  test('a run that continues another after its approvals is folded into it: one row, its first run’s title, time and origin, the latest status, the summed time (COR-2423)', () => {
-    const chat = contextFixture('chat-4472', { title: 'Refund order 4472' });
-    const asked = taskFixture({
-      id: 'run-asked',
-      contextId: 'chat-4472',
-      agentName: 'tool-runner',
-      status: 'completed',
-      origin: { kind: 'chat', contextId: 'chat-4472' },
-      createdAt: '2026-11-02T10:30:00-06:00',
-      updatedAt: '2026-11-02T10:30:02-06:00',
-    });
-    const continued = taskFixture({
-      id: 'run-continued',
-      contextId: 'chat-4472',
-      agentName: 'tool-runner',
-      status: 'completed',
-      origin: { kind: 'chat', contextId: 'chat-4472' },
-      continues: 'run-asked',
-      createdAt: '2026-11-02T10:33:00-06:00',
-      updatedAt: '2026-11-02T10:33:10-06:00',
-    });
-    const rows = runListRows(buildRunRows({ tasks: [continued, asked], goals: [], chats: [chat] }));
-
-    expect(rows.map((row) => row.id)).toEqual(['run-asked']);
-    const [row] = rows;
-    expect(row).toMatchObject({
-      title: 'Refund order 4472',
-      status: 'completed',
-      startedAt: Date.parse('2026-11-02T10:30:00-06:00'),
-      durationMs: 12_000,
-      continuedBy: ['run-continued'],
-    });
-    expect(row === undefined ? '' : runLineTwo(row, context)).toBe('Chat, Tool runner, 12 s');
-    // Counted once in every segment.
-    expect(runSegmentCounts(rows)).toMatchObject({ all: 1, done: 1 });
-
-    // While the continuation waits on you, the one row does.
-    const waiting = runListRows(
-      buildRunRows({
-        tasks: [
-          { ...continued, status: 'input-required', updatedAt: '2026-11-02T10:33:05-06:00' },
-          asked,
-        ],
-        goals: [],
-        chats: [chat],
-      }),
-    );
-    expect(waiting.map((one) => [one.id, one.status])).toEqual([['run-asked', 'input-required']]);
-    // A continuation whose run is not listed stands on its own.
-    expect(
-      runListRows(buildRunRows({ tasks: [continued], goals: [], chats: [chat] })).map(
-        (one) => one.id,
-      ),
-    ).toEqual(['run-continued']);
-  });
-
   test('a run parked on a signal has one word: its row, its page and the segment that counts it say the same (rows 56g, 10h)', () => {
     const [row] = buildRunRows({
       tasks: [

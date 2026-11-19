@@ -24,7 +24,6 @@ const task = (change: Partial<TaskView> = {}): TaskView => ({
   actor: null,
   kind: 'chat',
   origin: { kind: 'chat', contextId: 'session-1', agentName: 'researcher', principal: 'alice' },
-  continues: null,
   status: 'failed',
   finishReason: 'error',
   statusMessage: 'boom\nmore',

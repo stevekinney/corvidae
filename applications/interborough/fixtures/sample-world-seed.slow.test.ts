@@ -289,12 +289,6 @@ describe('the sample world, part A', () => {
     expect(decided.reviews.map((review) => review.id)).toEqual([
       expect.stringMatching(new RegExp(`^approval:${world.runs.refund4472}:`)),
     ]);
-    // The run that carried on once it was approved records the run it continues (COR-2423).
-    const { tasks } = await call<{ tasks: TaskRow[] }>('bureau.tasks.list', {
-      contextId: SAMPLE_WORLD_CHATS.refund4472.threadId,
-    });
-    const continued = tasks.map((task) => task.continues ?? 'none').toSorted();
-    expect(continued).toEqual(['none', world.runs.refund4472].toSorted());
   });
 
   test('keeps Tool runner’s Versions 1 to 4, the last saved Oct 29 at 11:38 AM', async () => {
@@ -534,14 +528,7 @@ type EngineRunRow = {
 };
 
 /** A run as the Bureau's task list keeps it. */
-type TaskRow = {
-  id: string;
-  status: string;
-  createdAt: string;
-  updatedAt: string;
-  /** The run this one continues after its approvals were decided (COR-2423), or `null`. */
-  continues?: string | null;
-};
+type TaskRow = { id: string; status: string; createdAt: string; updatedAt: string };
 
 /** One row of the sample world's run list, as PageRuns' captioned table defines it. */
 type RunListRow = {
@@ -593,35 +580,31 @@ async function runList(): Promise<RunListRow[]> {
   });
   const { tasks } = await call<{ tasks: TaskRow[] }>('bureau.tasks.list', { limit: 100 });
   const taskOf = new Map(tasks.map((task) => [task.id, task]));
-  return (
-    items
-      .filter((run) => run.type !== 'goalRun' && !(run.tags ?? []).includes('origin:parent'))
-      // A run that continues another after its approvals is that run's own row (COR-2423).
-      .filter((run) => (taskOf.get(run.id)?.continues ?? null) === null)
-      .map((run) => {
-        const tags = run.tags ?? [];
-        const origin = tags.find((tag) => tag.startsWith('origin:'))?.slice('origin:'.length) ?? '';
-        const task = taskOf.get(run.id);
-        const status = STATUS_WORDS[task?.status ?? run.status] ?? run.status;
-        const started = task === undefined ? run.createdAt : Date.parse(task.createdAt);
-        const ended = task === undefined ? run.updatedAt : Date.parse(task.updatedAt);
-        const workflow =
-          run.type === 'agentRun'
-            ? origin === 'goal'
-              ? 'Goal attempts'
-              : 'Chat with an agent'
-            : run.type === 'scheduleTick'
-              ? 'Schedule tick'
-              : run.type;
-        return {
-          at: Math.floor(started / 60_000) * 60_000,
-          workflow,
-          startedBy: STARTED_BY_WORDS[origin] ?? origin,
-          status,
-          seconds: status === 'Waiting on you' ? null : (ended - started) / 1000,
-        };
-      })
-  );
+  return items
+    .filter((run) => run.type !== 'goalRun' && !(run.tags ?? []).includes('origin:parent'))
+    .map((run) => {
+      const tags = run.tags ?? [];
+      const origin = tags.find((tag) => tag.startsWith('origin:'))?.slice('origin:'.length) ?? '';
+      const task = taskOf.get(run.id);
+      const status = STATUS_WORDS[task?.status ?? run.status] ?? run.status;
+      const started = task === undefined ? run.createdAt : Date.parse(task.createdAt);
+      const ended = task === undefined ? run.updatedAt : Date.parse(task.updatedAt);
+      const workflow =
+        run.type === 'agentRun'
+          ? origin === 'goal'
+            ? 'Goal attempts'
+            : 'Chat with an agent'
+          : run.type === 'scheduleTick'
+            ? 'Schedule tick'
+            : run.type;
+      return {
+        at: Math.floor(started / 60_000) * 60_000,
+        workflow,
+        startedBy: STARTED_BY_WORDS[origin] ?? origin,
+        status,
+        seconds: status === 'Waiting on you' ? null : (ended - started) / 1000,
+      };
+    });
 }
 
 /** Counts `rows` by the value `key` reads. */
@@ -651,6 +634,14 @@ describe('the sample world, part B', () => {
       },
       {
         at: times.refund4472Asked,
+        workflow: chat,
+        startedBy: 'Chats',
+        status: 'Done',
+        seconds: 'any',
+      },
+      // The run that carried on once the 4472 refund was approved, which now says so.
+      {
+        at: times.refund4472Approved,
         workflow: chat,
         startedBy: 'Chats',
         status: 'Done',
@@ -773,22 +764,21 @@ describe('the sample world, part B', () => {
       expect(seconds).toBeLessThan(row.seconds + DURATION_SLACK_SECONDS);
     }
 
-    // All 20 = Waiting on you 2 + Done 15 + Failed 1 + Canceled 2 (the board's 19 and the billing
-    // chat, Nov 3); the run after the 4472 approval continues the 4472 run and is its row (COR-2423).
+    // All 21 = Waiting on you 2 + Done 16 + Failed 1 + Canceled 2 (the board's 19, the billing chat, and the run after the 4472 approval).
     expect(countBy(rows, (row) => row.status)).toEqual({
       'Waiting on you': 2,
-      Done: 15,
+      Done: 16,
       Failed: 1,
       Canceled: 2,
     });
     expect(countBy(rows, (row) => row.startedBy)).toEqual({
-      Chats: 6,
+      Chats: 7,
       Schedules: 4,
       Goals: 8,
       Interborough: 2,
     });
     expect(countBy(rows, (row) => row.workflow)).toEqual({
-      'Chat with an agent': 7,
+      'Chat with an agent': 8,
       'Goal attempts': 8,
       'Schedule tick': 2,
       'triage-inbox': 2,

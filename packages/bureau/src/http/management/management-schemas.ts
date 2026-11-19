@@ -141,12 +141,6 @@ export const taskViewSchema = z.object({
    * `parent`: a step of a workflow instance. The last three are subordinate tasks.
    */
   origin: taskOriginSchema.nullable(),
-  continues: z
-    .string()
-    .nullable()
-    .describe(
-      'The run this task continues (COR-2423): the run Bureau starts to answer a chat’s decided tool approvals names the run that asked for them, so a list can show the two as one piece of work. `null` for every other task, and for one recorded before it was kept.',
-    ),
   status: taskStateSchema,
   finishReason: z.string().nullable(),
   statusMessage: z.string().max(1000).nullable(),

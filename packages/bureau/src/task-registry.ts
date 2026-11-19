@@ -194,12 +194,6 @@ export interface TaskRecord {
    * know) stays readable and keeps the value as stored; the view shows `null`.
    */
   readonly origin?: StoredTaskOrigin | undefined;
-  /**
-   * The run this task continues (COR-2423): set on the run Bureau starts to answer a chat's decided
-   * tool approvals, which carries on from the run that asked for them. Absent on every other task,
-   * and on a record written before it was kept.
-   */
-  readonly continues?: string | undefined;
   readonly createdAt: string;
   readonly history: readonly TaskMessage[];
   readonly settled?: TaskSettlement | undefined;
@@ -297,8 +291,6 @@ export interface TaskAdmission {
    * this release does not know ({@link StoredTaskOrigin}); it is kept as written.
    */
   readonly origin: StoredTaskOrigin | undefined;
-  /** See {@link TaskRecord.continues}. */
-  readonly continues?: string | undefined;
   /** The originating user message's text, when the request had one. */
   readonly message: string | undefined;
   /** See {@link TaskRecord.tools}. */
@@ -333,11 +325,6 @@ export interface TaskView {
   readonly kind: TaskViewKind;
   /** Where the task came from, or `null` for a task recorded before origins were kept. */
   readonly origin: TaskOrigin | null;
-  /**
-   * The run this task continues, for the run that answers a chat's decided tool approvals; `null`
-   * for every other task and one recorded before it was kept. See {@link TaskRecord.continues}.
-   */
-  readonly continues: string | null;
   readonly status: TaskState;
   readonly finishReason: string | null;
   readonly statusMessage: string | null;
@@ -974,8 +961,6 @@ function isTaskRecord(value: unknown): value is TaskRecord {
     (value['pendingWakeup'] === undefined || isPendingWakeup(value['pendingWakeup'])) &&
     (value['workflow'] === undefined || isStoredTaskWorkflow(value['workflow'])) &&
     (value['origin'] === undefined || isStoredTaskOrigin(value['origin'])) &&
-    (value['continues'] === undefined ||
-      (typeof value['continues'] === 'string' && value['continues'] !== '')) &&
     isTimestamp(value['createdAt']) &&
     Array.isArray(value['history']) &&
     value['history'].every(isTaskMessage) &&
@@ -1155,7 +1140,6 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
       actor: record.actor ?? null,
       kind: taskViewKindOf(record),
       origin: taskOriginView(record.origin),
-      continues: record.continues ?? null,
       status,
       finishReason,
       statusMessage,
@@ -1735,12 +1719,6 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
       if (admission.origin !== undefined && !isStoredTaskOrigin(admission.origin)) {
         throw new TypeError('A task admission\'s "origin" must be an object with a "kind"');
       }
-      if (
-        admission.continues !== undefined &&
-        (typeof admission.continues !== 'string' || admission.continues === '')
-      ) {
-        throw new TypeError('A task admission\'s "continues" must be a run id');
-      }
       const createdAt = admission.createdAt ?? clock.nowISO();
       const history: TaskMessage[] =
         admission.message === undefined
@@ -1763,7 +1741,6 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
         ...(admission.actor === undefined ? {} : { actor: admission.actor }),
         ...(admission.kind === undefined ? {} : { kind: admission.kind }),
         ...(admission.origin === undefined ? {} : { origin: admission.origin }),
-        ...(admission.continues === undefined ? {} : { continues: admission.continues }),
         ...(options.processId === undefined ? {} : { ownerProcess: options.processId }),
         createdAt,
         history,
