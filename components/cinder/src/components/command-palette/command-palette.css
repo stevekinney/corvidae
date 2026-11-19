@@ -62,9 +62,7 @@
     border-radius: var(--cinder-radius-lg);
     overflow: hidden;
     max-height: 60vh;
-    box-shadow:
-      0 4px 6px -1px color-mix(in oklch, var(--cinder-text-default) 8%, transparent),
-      0 10px 15px -3px color-mix(in oklch, var(--cinder-text-default) 12%, transparent);
+    box-shadow: var(--cinder-shadow-overlay);
     /* Symmetric enter/exit motion — see "Reduced motion — panel enter/exit
        transition" below for the exit half and the OVERLAY-POLICY.md citation.
        No resting `translate` here (matching modal.css's panel): a non-`none`

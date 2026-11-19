@@ -618,6 +618,7 @@ Themed native scrollbars for components that opt in via `scrollbar-width` and `:
 | `--cinder-scrollbar-track` | `color-mix(in oklch, var(--cinder-polarity-ink), transparent 96%)` | Scrollbar track color. |
 | `--cinder-scrollbar-thumb` | `color-mix(in oklch, var(--cinder-polarity-ink), transparent 55%)` | Scrollbar thumb color. |
 | `--cinder-scrollbar-thumb-hover` | `color-mix(in oklch, var(--cinder-polarity-ink), transparent 35%)` | Scrollbar thumb hover color. |
+| `--cinder-scroll-shadow-color` | `light-dark(oklch(0% 0 0 / 0.14), oklch(0% 0 0 / 0.5))` | The color of a scroll-edge or sticky-column shadow. Black in both themes, never text ink; the dark arm is denser, because a shadow has to be to read against a dark surface. |
 
 <!-- END GENERATED TOKEN TABLE -->
 

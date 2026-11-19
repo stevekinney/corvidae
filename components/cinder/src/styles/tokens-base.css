@@ -349,6 +349,8 @@
   --cinder-scrollbar-thumb: color-mix(in oklch, var(--cinder-polarity-ink), transparent 55%);
   /* Scrollbar thumb hover color. */
   --cinder-scrollbar-thumb-hover: color-mix(in oklch, var(--cinder-polarity-ink), transparent 35%);
+  /* The color of a scroll-edge or sticky-column shadow. Black in both themes, never text ink; the dark arm is denser, because a shadow has to be to read against a dark surface. */
+  --cinder-scroll-shadow-color: light-dark(oklch(0% 0 0 / 0.14), oklch(0% 0 0 / 0.5));
   /* Overlay backdrop scrim color. The light arm dims the page by a quarter, so the page behind a modal stays readable and the scene stays bright. */
   --cinder-overlay-backdrop: light-dark(oklch(20% 0.03 245 / 0.25), oklch(8% 0.02 265 / 0.65));
   /* Overlay backdrop blur radius. */
@@ -1017,6 +1019,7 @@
   --cinder-alert-info: oklch(78% 0.15 245);
   --cinder-code-block-background: var(--cinder-surface-inset);
   --cinder-docked-action-bar-shadow-color: oklch(0% 0 0 / 0.4);
+  --cinder-scroll-shadow-color: oklch(0% 0 0 / 0.5);
   --cinder-kanban-board-scroll-edge: color-mix(
     in oklch,
     var(--cinder-text-default),
@@ -1190,6 +1193,7 @@
   --cinder-checker-tile: #ccc;
   --cinder-alert-info: oklch(45% 0.14 245);
   --cinder-docked-action-bar-shadow-color: oklch(0% 0 0 / 0.08);
+  --cinder-scroll-shadow-color: oklch(0% 0 0 / 0.14);
   --cinder-kanban-board-scroll-edge: color-mix(
     in oklch,
     var(--cinder-text-default),
