@@ -22,6 +22,14 @@ interface DeliveryResult {
   head?: string | null;
   steps: Record<string, unknown>;
   evidenceRequest: Record<string, unknown> | null;
+  correctionContext?: {
+    issue: string;
+    briefPath: string;
+    contract: Record<string, unknown> | null;
+    findings: string[];
+    cumulativeFailures: number;
+    correctionAttempts: number;
+  };
 }
 
 /** What each step returns when the script ran clean: the stubs a test overrides by label word. */
