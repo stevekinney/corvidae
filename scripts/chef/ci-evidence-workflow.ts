@@ -12,6 +12,7 @@ import {
 } from 'node:fs';
 import { dirname } from 'node:path';
 
+import { rootScriptEnvironment } from '../environment-configuration.ts';
 import { parseJUnit } from './evidence-provider.ts';
 
 export class CiEvidenceWorkflowError extends Error {}
@@ -420,27 +421,28 @@ export function writeCiEvidenceWorkflowReceipt(
 
 if (import.meta.main) {
   const output = process.argv[2] ?? 'ci-evidence-receipt.json';
+  const environment = rootScriptEnvironment();
   try {
     writeCiEvidenceWorkflowReceipt(
       output,
       createCiEvidenceWorkflowReceipt({
         environment: {
-          GITHUB_REPOSITORY: process.env['GITHUB_REPOSITORY'],
-          GITHUB_EVENT_NAME: process.env['GITHUB_EVENT_NAME'],
-          GITHUB_EVENT_PATH: process.env['GITHUB_EVENT_PATH'],
-          GITHUB_WORKFLOW_REF: process.env['GITHUB_WORKFLOW_REF'],
-          GITHUB_WORKFLOW_SHA: process.env['GITHUB_WORKFLOW_SHA'],
-          GITHUB_RUN_ID: process.env['GITHUB_RUN_ID'],
-          GITHUB_RUN_ATTEMPT: process.env['GITHUB_RUN_ATTEMPT'],
-          VERIFICATION_REQUEST: process.env['VERIFICATION_REQUEST'],
-          VERIFICATION_PLAN: process.env['VERIFICATION_PLAN'],
-          VERIFICATION_BASE: process.env['VERIFICATION_BASE'],
-          CI_EVIDENCE_NEEDS: process.env['CI_EVIDENCE_NEEDS'],
-          CI_EVIDENCE_NOT_APPLICABLE: process.env['CI_EVIDENCE_NOT_APPLICABLE'],
-          CI_EVIDENCE_EXPECTED_JOBS: process.env['CI_EVIDENCE_EXPECTED_JOBS'],
-          CI_EVIDENCE_ARTIFACT_DIRECTORY: process.env['CI_EVIDENCE_ARTIFACT_DIRECTORY'],
+          GITHUB_REPOSITORY: environment['GITHUB_REPOSITORY'],
+          GITHUB_EVENT_NAME: environment['GITHUB_EVENT_NAME'],
+          GITHUB_EVENT_PATH: environment['GITHUB_EVENT_PATH'],
+          GITHUB_WORKFLOW_REF: environment['GITHUB_WORKFLOW_REF'],
+          GITHUB_WORKFLOW_SHA: environment['GITHUB_WORKFLOW_SHA'],
+          GITHUB_RUN_ID: environment['GITHUB_RUN_ID'],
+          GITHUB_RUN_ATTEMPT: environment['GITHUB_RUN_ATTEMPT'],
+          VERIFICATION_REQUEST: environment['VERIFICATION_REQUEST'],
+          VERIFICATION_PLAN: environment['VERIFICATION_PLAN'],
+          VERIFICATION_BASE: environment['VERIFICATION_BASE'],
+          CI_EVIDENCE_NEEDS: environment['CI_EVIDENCE_NEEDS'],
+          CI_EVIDENCE_NOT_APPLICABLE: environment['CI_EVIDENCE_NOT_APPLICABLE'],
+          CI_EVIDENCE_EXPECTED_JOBS: environment['CI_EVIDENCE_EXPECTED_JOBS'],
+          CI_EVIDENCE_ARTIFACT_DIRECTORY: environment['CI_EVIDENCE_ARTIFACT_DIRECTORY'],
         },
-        eventPayload: readEventPayload(process.env['GITHUB_EVENT_PATH']),
+        eventPayload: readEventPayload(environment['GITHUB_EVENT_PATH']),
         git,
       }),
     );

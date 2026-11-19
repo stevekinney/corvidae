@@ -57,7 +57,7 @@ export interface GitReader {
 
 export interface GitHubCiEvidenceProviderOptions {
   repository: string;
-  /** A published branch or tag, never an arbitrary SHA, used for workflow dispatch. */
+  /** A published branch, never an arbitrary SHA, used for workflow dispatch. */
   dispatchRef?: string;
   raw?: RawCommandTransport;
   git?: GitReader;
@@ -516,7 +516,7 @@ export function createGitHubCiEvidenceProvider(
     },
     async dispatch(request) {
       if (dispatchRef === undefined || !/^[A-Za-z0-9._/-]+$/.test(dispatchRef))
-        throw new CiEvidenceError('CI evidence dispatch requires a named branch or tag ref');
+        throw new CiEvidenceError('CI evidence dispatch requires a named branch');
       const reference = query(raw, [
         'gh',
         'api',
