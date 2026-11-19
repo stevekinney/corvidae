@@ -23,8 +23,13 @@
  * carries `data` and the advice too; JSON-RPC carries all of them in
  * `error.data`. REST still carries no coarse `faultCode`, so a REST fault is
  * bucketed by its HTTP status. `classifyFault` reads `data.issues` into
- * `invalid.fieldErrors` and copies `retryable` and `remediation` onto the
- * treatment for both transports. `conflict`/`not-found` do not attach a
+ * `invalid.fieldErrors` and copies the error's `retryable` and `remediation`
+ * onto the treatment. The error carries them only if its transport put them
+ * there: Weft's own clients do, and a transport that builds its own
+ * `HttpClientError` (`postBureauCall` in `bureau-transport.ts`, the schedule
+ * occurrence controls in `schedule-queries.ts`) copies them from the body with
+ * `faultAdviceOf`; an error built without them classifies without them.
+ * `conflict`/`not-found` do not attach a
  * resource link beyond what `message` says in prose.
  *
  * `weftCode` (and therefore `isSpentIdempotencyKey` below) is REST-only: the
@@ -223,6 +228,21 @@ export function isNetworkFailure(error: unknown): boolean {
   if (error instanceof HttpClientError) return false;
   if (error instanceof DOMException) return error.name === 'NetworkError';
   return error instanceof TypeError && NETWORK_FAILURE_MESSAGE.test(error.message);
+}
+
+/**
+ * The `retryable` and `remediation` a fault's wire carried, for a transport that builds its own
+ * `HttpClientError`: `source` is the REST error body or the JSON-RPC `error.data`, both of which
+ * hold the two fields at their top level. Only a boolean and a string survive; anything else, and a
+ * response from an older server, leaves the field out.
+ */
+export function faultAdviceOf(source: unknown): FaultAdvice {
+  if (typeof source !== 'object' || source === null) return {};
+  const { retryable, remediation } = source as { retryable?: unknown; remediation?: unknown };
+  return {
+    ...(typeof retryable === 'boolean' ? { retryable } : {}),
+    ...(typeof remediation === 'string' ? { remediation } : {}),
+  };
 }
 
 const SPENT_IDEMPOTENCY_KEY_CODE: WeftErrorCode = 'IdempotencyKeyPurgedError';
