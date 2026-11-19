@@ -203,6 +203,20 @@ test.describe('/runs: the list on a phone, a tablet and in the dark', () => {
     await checkA11y('runs on a tablet');
   });
 
+  test('on a tablet with a Started by and an Agent filter applied, those chips stay in the row and the unapplied Workflow chip folds into the Filter menu (52x)', async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 768, height: 900 });
+    await page.goto('/runs?startedBy=goal&agent=assistant');
+    const bar = filterBar(page);
+    await expect(bar).toBeVisible();
+    await expect(bar.getByRole('button', { name: /^Remove filter: Started by/ })).toBeVisible();
+    await expect(bar.getByRole('button', { name: /^Remove filter: Agent/ })).toBeVisible();
+    await expect(bar.getByRole('button', { name: 'Workflow', exact: true })).toHaveCount(0);
+    await expect(bar.locator('.cinder-filter-bar__menu-button')).toBeVisible();
+    await captureForDesignReview(page, { route: '/runs', state: 'filtered, tablet', source: SOURCE });
+  });
+
   test('wide, the missed runs say the schedule’s cadence before how many runs it missed (09q)', async ({
     page,
   }) => {

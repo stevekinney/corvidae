@@ -6,13 +6,19 @@ import {
   appliedValues,
   type FilterBarContents,
   type FilterBarFitInput,
+  foldableFacetKeys,
   fromControlValue,
   isCollapsible,
+  layoutForm,
+  narrowerForm,
   nextFilterBarFit,
+  normalizeForm,
   optionLabel,
+  resolveFilterBarForm,
   segmentSelectLabel,
   toControlValue,
   viewportLayout,
+  widerForm,
 } from './filter-bar.utilities.ts';
 
 const SEGMENTS: FilterSegment[] = [

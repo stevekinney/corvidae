@@ -348,11 +348,21 @@
      line, and leave the mark stranded beside a short first line (R10-01). The row's one tooltip is
      the whole name. */
   @container cinder-stacked-list-item (max-width: 639.98px) {
-    .cinder-stacked-list-item__title-row > .cinder-stacked-list-item__title {
+    .cinder-stacked-list-item:not([data-cinder-phone-width='viewport'])
+      .cinder-stacked-list-item__title-row
+      > .cinder-stacked-list-item__title {
       display: block;
       text-overflow: ellipsis;
       white-space: nowrap;
     }
+  }
+
+  .cinder-stacked-list-item[data-cinder-phone-width='viewport'][data-cinder-phone]
+    .cinder-stacked-list-item__title-row
+    > .cinder-stacked-list-item__title {
+    display: block;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   /* The dot centres on the word's line box while the word's baseline is the flex baseline. */

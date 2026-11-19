@@ -89,3 +89,35 @@
     onFilterRemove={(key) => setFilter(key, [])}
   />
 </div>
+
+<!-- The tablet form of the Runs page (row 52x): three chips, two of them applied, in a column the
+     medium form cannot hold. The unapplied Workflow chip moves into the Filter menu (`foldOrder`,
+     least used first) and the applied Started by and Agent chips stay in the row, removable. -->
+<div data-testid="filter-bar-fold-order" style="inline-size: 640px; margin-block-start: 2rem;">
+  <FilterBar
+    aria-label="Run filters with chips folded in order"
+    {segments}
+    segmentValue="all"
+    facets={[
+      facets[0] as FacetDefinition,
+      {
+        type: 'choice',
+        key: 'workflow',
+        label: 'Workflow',
+        multiple: false,
+        options: [{ value: 'release-notes', label: 'Release notes' }],
+      },
+      facets[1] as FacetDefinition,
+    ]}
+    appliedFilters={[
+      { key: 'startedBy', value: 'chats', label: 'Started by' },
+      { key: 'agent', value: 'tool-runner', label: 'Agent' },
+    ]}
+    foldOrder={['workflow', 'agent', 'startedBy']}
+    searchPlaceholder="Search runs"
+    onSegmentChange={() => undefined}
+    onSearchChange={() => undefined}
+    onFacetChange={() => undefined}
+    onFilterRemove={() => undefined}
+  />
+</div>

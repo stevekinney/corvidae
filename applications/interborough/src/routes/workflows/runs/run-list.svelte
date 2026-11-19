@@ -318,6 +318,10 @@
       options: agentNames.map((name) => ({ value: name, label: filterLabelOf(agentLabel(name)) })),
     },
   ]);
+  // The chips that move into the Filter menu when the row cannot hold them, least used first: a
+  // chip with a filter applied never moves, so an applied filter stays visible and removable
+  // (row 52x).
+  const FOLD_ORDER = ['workflow', 'agent', 'startedBy'] as const;
   const appliedFilters = $derived<AppliedFilter[]>([
     ...(filter.startedBy === undefined
       ? []
@@ -413,6 +417,7 @@
     segmentsLabel={TASK_COPY.statusLabel}
     {facets}
     {appliedFilters}
+    foldOrder={FOLD_ORDER}
     searchQuery={typed}
     searchPlaceholder={TASK_COPY.list.searchPlaceholder}
     searchAriaLabel={TASK_COPY.list.searchLabel}
