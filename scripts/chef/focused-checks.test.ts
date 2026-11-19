@@ -90,14 +90,38 @@ describe('planSteps', () => {
       ]),
     ).find((step) => step.name === 'turbo');
     expect(turbo?.command).toEqual([
+      'env',
+      'CORVIDAE_TEST_POOL_WAIT_SECONDS=300',
+      'bun',
+      'scripts/host-slots.ts',
+      '--slots=2',
+      '--',
       'bunx',
       'turbo',
       'run',
       'lint',
       'typecheck',
+      '--concurrency=2',
       '--filter=@lostgradient/browser-fixtures',
       '--filter=@lostgradient/operative',
       '--filter=@lostgradient/weft',
+    ]);
+  });
+
+  test('the root type-check takes a host slot with the pool wait bound', () => {
+    const step = planSteps(planInput(['scripts/chef/a.ts'])).find(
+      (candidate) => candidate.name === 'typecheck:root',
+    );
+    expect(step?.command).toEqual([
+      'env',
+      'CORVIDAE_TEST_POOL_WAIT_SECONDS=300',
+      'bun',
+      'scripts/host-slots.ts',
+      '--slots=1',
+      '--',
+      'bun',
+      'run',
+      'typecheck:root',
     ]);
   });
 

@@ -8,7 +8,7 @@ This file holds the rules every session needs. Mechanics and history live in `do
 
 ## Workflow
 
-- Inspect the workspace and nearby conventions before changing code. Plan non-trivial work and add a regression test for every defect. Use official documentation for unfamiliar APIs.
+- Inspect the workspace and nearby conventions before changing code. Plan non-trivial work; add a regression test for every defect.
 - Run the focused command while working and the focused checks once the change is complete (see **Gate on local checks**). Treat warnings, console errors, and failed checks as defects.
 - Treat file length as review guidance. Enforce cyclomatic complexity of at most 100, or 300 under `scripts/`. Keep repository tooling in its owning workspace's `scripts/` directory. Restructure only for a concrete ownership, duplication, or correctness benefit, and prefer platform and Bun primitives over new abstractions or dependencies. Keep correctness, types, tests, and builds enforced.
 - Add no compatibility, migration, shim, adapter, or re-export layer while pre-release unless the requirement demands one.
@@ -31,7 +31,7 @@ This software is pre-1.0 and still being prototyped: spend review effort where a
 - Block on demonstrated correctness risks: a supported input or reachable interleaving, the wrong result, and its consequence. Touching a one-way door is not itself a blocker. Style, naming, optional refactoring, contrived edge cases, and speculative hardening do not block; omit nitpicks. A departure from an agreed design the issue names blocks like a defect.
 - Answer every thread before merge: fixed (name the commit), declined (one-line reason), or tracked (name the issue). An unanswered thread blocks the merge.
 - Cap review at three rounds. Fix every real finding in round one; in rounds two and three fix only regressions, one-way-door defects, and real defects in changed lines; after round three, collect what is open into one follow-up issue. Push once per round, after the focused checks: Codex reviews every push to an open pull request automatically. A comment the bot re-reports gets no new answer.
-- **Gate on local checks** ([mechanics](documentation/repository/test-lanes-and-checks.md#gate-tiers-and-main-ci)). The worker runs focused checks on what it changed, not `bun run check`: `bun scripts/chef/focused-checks.ts` runs prettier on the changed files, `bun run lint:root` (always), the root type-check when root or `scripts/` files changed, lint and type-check of each changed workspace, and the direct tests. Local checks run only direct tests (owner decision, 2026-11-16); CI on the pushed branch is the full evidence, never waited on. Per batch, `validate:batch` runs browser suites. A test file that starts a process is named `*.integration.test.ts`. Delivery runs no gate and never merges `main` into the branch; a real conflict goes back to the worker. GitHub Actions, the full tier with the browser suites, is `main`'s health source: a red latest `main.yml` run is `merge-gate.ts`'s warning (never a refusal; `--fixes-main` declares a repair). A change to a one-way door, the lock or concurrency infrastructure, or `turbo.json` and the root scripts runs `gh workflow run main.yml --ref <branch>`, not a local `bun run validate`.
+- **Gate on local checks** ([mechanics](documentation/repository/test-lanes-and-checks.md#gate-tiers-and-main-ci)). The worker runs focused checks on what it changed, not `bun run check`: `bun scripts/chef/focused-checks.ts` runs prettier on the changed files, `bun run lint:root` (always), the root type-check when root or `scripts/` files changed, lint and type-check of each changed workspace, and the direct tests. Local checks run only direct tests (owner decision, 2026-11-16); CI on the pushed branch is the full evidence, never waited on. Per batch, `validate:batch` runs browser suites; corrections use `targeted-run.ts`. A test file that starts a process is named `*.integration.test.ts`. Delivery runs no gate and never merges `main` into the branch; a real conflict goes back to the worker. GitHub Actions, the full tier with the browser suites, is `main`'s health source: a red latest `main.yml` run is `merge-gate.ts`'s warning (never a refusal; `--fixes-main` declares a repair). A change to a one-way door, the lock or concurrency infrastructure, or `turbo.json` and the root scripts runs `gh workflow run main.yml --ref <branch>`, not a local `bun run validate`.
 
 ## Workspace and dependencies
 
@@ -44,7 +44,7 @@ This software is pre-1.0 and still being prototyped: spend review effort where a
 
 ## Release intent
 
-Per-change publishing is paused and there is no `.changeset/` directory: release intent is written in `stevekinney/corvidae-mirror` at backport time, and `scripts/published-exports.json` is updated by hand after it. Interborough releases build from a pinned revision and verify the installed artifact on each target before publishing.
+Per-change publishing is paused; there is no `.changeset/` directory: release intent is written in `stevekinney/corvidae-mirror` at backport time, and `scripts/published-exports.json` is updated by hand after it. Interborough releases build from a pinned revision and verify the installed artifact on each target before publishing.
 
 ## Turborepo
 
