@@ -22,6 +22,7 @@ import {
   SAMPLE_NOW_MILLISECONDS,
   SAMPLE_TIME_ZONE,
 } from '../../fixtures/sample-now.ts';
+import { SAMPLE_WORLD_THREADS } from '../../fixtures/sample-world-records.ts';
 import {
   humanInputAnsweredReply,
   toolRunnerRefundedReply,
@@ -81,23 +82,30 @@ async function answerBureau(
 /**
  * What the host answers once every decision is made: no review waits, nothing needs attention, and
  * each chat is idle with the outcome its scripted agent says once the decision is made
- * (`showcase-sentences.ts`): the refund chat once the 4471 refund is approved, and the release chat
- * once it is answered. A chat that is not waiting on anything reads Done, as it does in a real
- * world where its review has been decided.
+ * (`showcase-sentences.ts`): each refund chat once its refund is approved, and the release chat once
+ * it is answered, each found by its thread. A chat that is not waiting on anything reads Done, as it
+ * does in a real world where its review has been decided.
  */
 const everythingDecided = {
   'bureau.reviews.list': (result: unknown) => ({ ...(result as object), reviews: [] }),
   'bureau.health.attention': () => ({ items: [], count: 0, checks: [] }),
   'bureau.contexts.list': (result: unknown) => {
     const answer = result as { contexts: Record<string, unknown>[] };
-    const outcomes = [toolRunnerRefundedReply(4200), humanInputAnsweredReply('Staging')];
+    const outcomes = new Map<unknown, string>([
+      [SAMPLE_WORLD_THREADS.refund, toolRunnerRefundedReply(4200)],
+      [SAMPLE_WORLD_THREADS.refund4472, toolRunnerRefundedReply(1850)],
+      [SAMPLE_WORLD_THREADS.release, humanInputAnsweredReply('Staging')],
+    ]);
     return {
       ...answer,
-      contexts: answer.contexts.map((context, index) => ({
-        ...context,
-        activity: 'idle',
-        ...(outcomes[index] === undefined ? {} : { lastMessagePreview: outcomes[index] }),
-      })),
+      contexts: answer.contexts.map((context) => {
+        const outcome = outcomes.get(context['id']);
+        return {
+          ...context,
+          activity: 'idle',
+          ...(outcome === undefined ? {} : { lastMessagePreview: outcome }),
+        };
+      }),
     };
   },
 };
@@ -358,8 +366,12 @@ test.describe('Home with nothing waiting and a provider connected', () => {
     await expect(rows.nth(0)).toContainText(
       'You approved it. Refunded $42.00 to the original payment method.',
     );
-    await expect(rows.nth(1)).toContainText('You answered Staging.');
-    await expect(rows.nth(2)).toContainText('Hello! How can I help?');
+    // The 4472 refund, approved at 10:33 AM, is a chat of its own, after the 4471 one.
+    await expect(rows.nth(1)).toContainText('Done');
+    await expect(rows.nth(1)).toContainText(
+      'You approved it. Refunded $18.50 to the original payment method.',
+    );
+    await expect(rows.nth(2)).toContainText('You answered Staging.');
     await expect(
       page.getByTestId('home-start-chat').getByRole('button', { name: 'Send' }),
     ).toBeEnabled();

@@ -14,6 +14,7 @@
 import type { Locator, Page } from '@playwright/test';
 
 import { SAMPLE_NOW, SAMPLE_TIME_ZONE } from '../../fixtures/sample-now.ts';
+import { rewriteBureauAnswer } from './bureau-answer-support.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
 import { E2E_SHOWCASE_URL } from './e2e-constants.ts';
 import { expect, test } from './fixtures.ts';
@@ -423,10 +424,17 @@ test.describe('on a phone', () => {
   test('on a tablet the current page gives way before the ancestor does, so Runs is never cut to nothing (03l)', async ({
     page,
   }) => {
+    // The run's page is named by its chat. The sample world's chat titles are short (rows 56k, 01l),
+    // so this one's chat answers with the long title a request can carry, and the leaf is the
+    // trail's longest.
+    await rewriteBureauAnswer(page, 'bureau.contexts.get', (context) => ({
+      ...context,
+      title: 'Please refund order 4471, it arrived damaged and the box was open',
+    }));
     await open(page, '/runs', 768);
-    // A run's identifier is long, so its page has the trail's longest leaf. The run is the sample
-    // world's own refund, never the newest row: a specification before this one may leave a run on
-    // the showcase host whose chat it has since deleted, and that run's page reads 404s.
+    // The run is the sample world's own refund, never the newest row: a specification before this
+    // one may leave a run on the showcase host whose chat it has since deleted, and that run's page
+    // reads 404s.
     const href = await page
       .locator('main a[href^="/runs/run-"]')
       .filter({ hasText: 'Refund order 4471' })

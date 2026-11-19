@@ -17,6 +17,7 @@ import type { Page, Route } from '@playwright/test';
 import { SAMPLE_NOW, SAMPLE_TIME_ZONE } from '../../fixtures/sample-now.ts';
 import { SAMPLE_WORLD_DURATIONS } from '../../fixtures/sample-world-history.ts';
 import { readSampleWorldRecords } from '../../fixtures/sample-world-records.ts';
+import { isBureauCall } from './bureau-answer-support.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
 import { E2E_SHOWCASE_URL } from './e2e-constants.ts';
 import { expect, test } from './fixtures.ts';
@@ -49,7 +50,7 @@ async function openGoal(page: Page, path: string, width: number): Promise<void> 
  * canceled it.
  */
 async function answerAsWorkingGoal(page: Page): Promise<void> {
-  await page.route('**/bureau/jsonrpc', async (route: Route) => {
+  await page.route(isBureauCall, async (route: Route) => {
     const body = JSON.parse(route.request().postData() ?? '{}') as { method?: string };
     if (body.method !== 'bureau.goals.get') {
       await route.fallback();

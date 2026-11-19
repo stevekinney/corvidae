@@ -4,8 +4,8 @@
  * 10q, 10r, 12r to 12v, 14m, 14n, 14p, 14s, 15d, 52v to 52z, 53b, 05t to 05y, 06w and 07j): the list
  * on a phone, a tablet and in the dark, and each state of it that is not a list of rows (first use,
  * filtered to nothing, loading, still loading, canceled, failing, and a server that stopped
- * answering). The sample world's run list is All 21 = Waiting on you 2 + Done 16 + Failed 1 +
- * Canceled 2, and a chat another spec runs on the shared showcase host adds a Done run (and one to
+ * answering). The sample world's run list is All 19 = Waiting on you 2 + Done 15 + Failed 1 +
+ * Canceled 1, and a chat another spec runs on the shared showcase host adds a Done run (and one to
  * All), so the Done count is read from the page and All is checked against it. A state the sample world does not hold is made by answering the Bureau's own operation
  * with what a different world would answer, and each is captured for the design review under its own
  * name. The timings the placeholders keep (nothing for 300 ms, a status line at 10 s) are driven with
@@ -35,17 +35,17 @@ const WIDTHS = [1280, 375] as const;
 const HOST_REQUESTS = /\/(v1|bureau|api)\/|\/jsonrpc$/;
 
 /**
- * The runs the sample world holds, as the segments count them (Nov 3 correction): All 21, with the
- * 4472 refund's run and the run that continued it after its approval each a row, and the billing
- * chat's canceled run beside the goal attempt's.
+ * The runs the sample world holds, as the segments count them and PageRuns draws them (owner
+ * decision, COR-2423, 2026-11-19): All 19, the 4472 refund one row (its approval starts no run), and
+ * the goal attempt's the one canceled run (the billing chat a restart ended has no run).
  */
 const SEGMENTS = [
-  ['All', 21],
+  ['All', 19],
   ['Waiting on you', 2],
   ['Running', 0],
-  ['Done', 16],
+  ['Done', 15],
   ['Failed', 1],
-  ['Canceled', 2],
+  ['Canceled', 1],
 ] as const;
 
 /**
@@ -58,7 +58,7 @@ async function expectSegmentCounts(scope: Page | Locator): Promise<void> {
   await expect(done).toBeVisible();
   const doneText = (await done.textContent()) ?? '';
   const doneCount = Number(/(\d+)\s*$/.exec(doneText)?.[1]);
-  expect(doneCount).toBeGreaterThanOrEqual(16);
+  expect(doneCount).toBeGreaterThanOrEqual(15);
   let total = doneCount;
   for (const [word, count] of SEGMENTS) {
     if (word === 'All' || word === 'Done') continue;
@@ -150,10 +150,11 @@ test.describe('/runs: the list on a phone, a tablet and in the dark', () => {
     );
     expect(scrolls, 'the page never scrolls sideways').toBe(false);
     // The missed runs read "Schedule, since Oct 30" on line two, led once by the status, with the
-    // date and Show on line one (05w).
+    // date and Show on line one (05w). Line two's parts are blocks with white space between them,
+    // which a regular expression reads as written (Playwright normalizes only a string).
     const missed = main.locator('li[data-missed-schedule]');
     await expect(missed.locator('.cinder-stacked-list-item__line-two')).toHaveText(
-      /^Missed runs,?\s*4\s*Schedule, since Oct 30$/,
+      /^\s*Missed runs,?\s*4\s*Schedule, since Oct 30\s*$/,
     );
     await expect(missed.locator('.cinder-stacked-list-item__status-inline')).toHaveCount(1);
     await expect(missed.locator('.cinder-stacked-list-item__time')).toContainText('Oct 30');
@@ -210,6 +211,27 @@ test.describe('/runs: the list on a phone, a tablet and in the dark', () => {
     await page.goto('/runs?startedBy=goal&agent=assistant');
     const bar = filterBar(page);
     await expect(bar).toBeVisible();
+    await expect(bar).toHaveAttribute('data-cinder-layout', 'medium');
+    await expect(bar.getByRole('button', { name: /^Remove filter: Started by/ })).toBeVisible();
+    await expect(bar.getByRole('button', { name: /^Remove filter: Agent/ })).toBeVisible();
+    // At 768 pixels the sample world's three chips fit the row. The row is narrowed until it cannot
+    // hold them, by 10 pixels less than its controls need, so the fold is what the page does when
+    // its labels are longer: the unapplied Workflow chip moves into the Filter menu first.
+    await expect(bar.getByRole('button', { name: 'Workflow', exact: true })).toBeVisible();
+    await bar.evaluate((element) => {
+      const row = element.querySelector<HTMLElement>('.cinder-filter-bar__row');
+      if (row === null) throw new Error('The bar drew no row');
+      const start = row.getBoundingClientRect().left;
+      const end = Math.max(
+        ...[...row.querySelectorAll<HTMLElement>(':scope > *')].map(
+          (item) => item.getBoundingClientRect().right,
+        ),
+      );
+      const padding = Number.parseFloat(getComputedStyle(row).paddingRight) || 0;
+      (element as HTMLElement).style.inlineSize = `${String(end - start + padding - 10)}px`;
+    });
+    await expect(bar).toHaveAttribute('data-cinder-layout', 'medium');
+    await expect(bar).toHaveAttribute('data-cinder-folded', '1');
     await expect(bar.getByRole('button', { name: /^Remove filter: Started by/ })).toBeVisible();
     await expect(bar.getByRole('button', { name: /^Remove filter: Agent/ })).toBeVisible();
     await expect(bar.getByRole('button', { name: 'Workflow', exact: true })).toHaveCount(0);
@@ -227,7 +249,7 @@ test.describe('/runs: the list on a phone, a tablet and in the dark', () => {
     await openRuns(page, 1280);
     await expect(
       page.locator('main li[data-missed-schedule] .cinder-stacked-list-item__line-two'),
-    ).toHaveText(/^Schedule, Assistant, every day at .+, missed 4 times since Oct 30$/);
+    ).toHaveText(/^\s*Schedule, Assistant, every day at .+, missed 4 times since Oct 30\s*$/);
   });
 
   test('in the dark keeps every segment with its count, the day bands and the rows legible (07j)', async ({

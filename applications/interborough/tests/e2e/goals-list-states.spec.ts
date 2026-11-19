@@ -12,6 +12,7 @@ import type { Page, Route } from '@playwright/test';
 
 import { SAMPLE_NOW, SAMPLE_TIME_ZONE } from '../../fixtures/sample-now.ts';
 import { GOALS_COPY } from '../../src/app/copy/goals.ts';
+import { isBureauCall } from './bureau-answer-support.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
 import { E2E_SHOWCASE_URL } from './e2e-constants.ts';
 import { expect, test } from './fixtures.ts';
@@ -27,7 +28,7 @@ async function holdGoalsList(page: Page): Promise<() => void> {
   const held = new Promise<void>((resolve) => {
     release = resolve;
   });
-  await page.route('**/bureau/jsonrpc', async (route: Route) => {
+  await page.route(isBureauCall, async (route: Route) => {
     if ((route.request().postData() ?? '').includes('"bureau.goals.list"')) await held;
     await route.fallback();
   });

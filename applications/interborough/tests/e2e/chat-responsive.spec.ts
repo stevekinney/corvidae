@@ -13,6 +13,7 @@ import { SAMPLE_NOW, SAMPLE_TIME_ZONE } from '../../fixtures/sample-now.ts';
 import { SAMPLE_WORLD_THREADS } from '../../fixtures/sample-world-records.ts';
 import { CHAT_COPY } from '../../src/app/copy/chat.ts';
 import { NAVIGATION_COPY } from '../../src/app/copy/shell.ts';
+import { rewriteBureauAnswer } from './bureau-answer-support.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
 import { E2E_SHOWCASE_URL } from './e2e-constants.ts';
 import { expect, test } from './fixtures.ts';
@@ -24,6 +25,8 @@ test.use({ baseURL: E2E_SHOWCASE_URL, timezoneId: SAMPLE_TIME_ZONE });
 const SOURCE = 'chat-responsive.spec.ts';
 /** The 4471 refund chat's title, as a generated title reads. */
 const REFUND = 'Refund order 4471';
+/** A title long enough to wrap on a phone's row, which the sample world's own titles are not. */
+const LONG_TITLE = 'Please refund order 4471, it arrived damaged.';
 /** Chat's blocked row with no model provider, beside a chat with messages (COR-2285 V4). */
 const REASON = 'Connect a model provider';
 const CONNECT = 'Connect provider';
@@ -189,13 +192,24 @@ test.describe('Chat on a phone (04y, 06l, 06m)', () => {
   test('lists the chats as a screen of its own: the status, a dot, then the latest message on line two (06l)', async ({
     page,
   }) => {
+    // The sample world's chat titles are short (rows 56k, 01l), so the 4471 chat answers with the
+    // long title a request can carry, which a phone's row wraps.
+    await rewriteBureauAnswer(page, 'bureau.contexts.list', (answer) => ({
+      ...answer,
+      contexts: ((answer['contexts'] as Array<Record<string, unknown>> | undefined) ?? []).map(
+        (context) =>
+          context['id'] === SAMPLE_WORLD_THREADS.refund
+            ? { ...context, title: LONG_TITLE }
+            : context,
+      ),
+    }));
     await open(page, 375, '/chats');
     await expect(page.locator('[data-chat]')).toHaveCount(6);
     // The list is the screen: no conversation beside it, no sideways scroll.
     await expect(openChat(page)).toHaveCount(0);
     expect(await scrollsSideways(page)).toBe(false);
 
-    const waiting = page.locator('[data-chat]').filter({ hasText: REFUND });
+    const waiting = page.locator('[data-chat]').filter({ hasText: LONG_TITLE });
     await expect(waiting.locator('.cinder-stacked-list-item__title')).toHaveAttribute(
       'data-cinder-title-lines',
       '2',
