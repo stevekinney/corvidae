@@ -20,6 +20,7 @@ import {
 } from './agent-override-store';
 import { type FileBureauHarness, startFileBureau } from './testing/agent-file-bureau.test-support';
 import { KNOWN_MODEL } from './testing/agent-file-fixtures.test-support';
+import { createVendorCatalog } from './testing/vendor-catalog.test-support';
 import { runTask } from './test';
 
 /** The built-in agent's own tools; a run's toolbox also holds the tools Bureau adds to every run. */
@@ -248,6 +249,33 @@ describe('a built-in agent with saved overrides', () => {
       provider: 'anthropic',
       model: 'claude-opus-5-5',
     });
+  });
+
+  it('prices the run of an overridden model from the catalog even with no cost limit (COR-2524)', async () => {
+    const usage = { prompt: 50_000, completion: 10_000, total: 60_000 };
+    const harness = await startFileBureau({
+      agents: { refunder: refunder() },
+      scripts: { 'claude-opus-5-5': () => ({ content: 'Done.', usage }) },
+      overrides: { storage: new MemoryStorage() },
+    });
+    harnesses.push(harness);
+    await save(harness, { model: KNOWN_MODEL });
+
+    const task = await harness.bureau.tasks.start('refunder', 'Refund order 4471.');
+    await task.result();
+    await harness.bureau.internals.whenTaskRecorded(task.id);
+    await harness.bureau.internals.taskRegistry.flush();
+
+    const price = createVendorCatalog().descriptors.find(
+      (row) => row.model === 'claude-opus-5-5',
+    )!.pricing!;
+    const view = await harness.bureau.tasks.get(task.id);
+    expect(view?.usage?.totalTokens).toBe(usage.total);
+    expect(view?.usage?.costUsd).toBeCloseTo(
+      (usage.prompt / 1_000_000) * price.inputPerMillionTokens +
+        (usage.completion / 1_000_000) * price.outputPerMillionTokens,
+      10,
+    );
   });
 
   it('puts the earlier settings back in force when an earlier version is restored', async () => {
