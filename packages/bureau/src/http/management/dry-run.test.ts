@@ -345,6 +345,33 @@ describe('bureau.contexts.delete with dryRun', () => {
     });
   });
 
+  it('counts no run once Bureau is shutting down, because the real call is rejected and cancels none', async () => {
+    await withBureau({}, async (opened) => {
+      const run = await startParkedRun(opened, 'chat-while-shutting-down');
+      const shutdown = opened.bureau.shutdown({ policy: 'drain' });
+      try {
+        await waitForCondition(() => opened.bureau.lifecycle !== 'ready', 'admission never closed');
+        const dry = await rpc(
+          opened.handler,
+          'bureau.contexts.delete',
+          { contextId: run.contextId, dryRun: true },
+          'alice-key',
+        );
+        const real = await rpc(
+          opened.handler,
+          'bureau.contexts.delete',
+          { contextId: run.contextId },
+          'alice-key',
+        );
+        expect(real.result).toMatchObject({ receipt: 'rejected', reason: 'shutting-down' });
+        expect(dryRunResultOf(dry).effects).toEqual([{ kind: 'runs-in-progress', count: 0 }]);
+      } finally {
+        await opened.bureau.tasks.cancel(run.id);
+        await shutdown;
+      }
+    });
+  });
+
   it('answers the fault the real call answers for a context that is missing or another owner’s', async () => {
     await withBureau({ generate: answering() }, async (opened) => {
       const run = await opened.bureau.tasks.start('default', 'done', { principal: OWNER.alice });
@@ -408,6 +435,35 @@ describe('bureau.contexts.forgetgrants with dryRun', () => {
         'issue_refund',
         'shop:lookup_order@1',
       ]);
+    });
+  });
+
+  it('answers the Unavailable fault the real call answers once Bureau is shutting down', async () => {
+    await withBureau({}, async (opened) => {
+      const run = await startParkedRun(opened, 'chat-while-shutting-down');
+      const shutdown = opened.bureau.shutdown({ policy: 'drain' });
+      try {
+        await waitForCondition(() => opened.bureau.lifecycle !== 'ready', 'admission never closed');
+        await expectSameFaultAsTheRealCall(
+          opened,
+          'bureau.contexts.forgetgrants',
+          { contextId: run.contextId, tools: ['issue_refund'] },
+          'alice-key',
+        );
+        const real = await rpc(
+          opened.handler,
+          'bureau.contexts.forgetgrants',
+          { contextId: run.contextId, tools: ['issue_refund'] },
+          'alice-key',
+        );
+        expect(real.error?.data).toMatchObject({
+          weftCode: 'Unavailable',
+          reason: 'shutting-down',
+        });
+      } finally {
+        await opened.bureau.tasks.cancel(run.id);
+        await shutdown;
+      }
     });
   });
 

@@ -19,7 +19,7 @@ import { z } from 'zod';
 
 import { BureauShuttingDownError } from '../../bureau-errors.ts';
 import type { BureauContexts } from '../../bureau-types/contexts.ts';
-import type { BureauInternals } from '../../bureau-types/facade.ts';
+import type { Bureau, BureauInternals } from '../../bureau-types/facade.ts';
 import { withoutGrantsFor } from '../../session-grants.ts';
 import { type BureauOwnershipHost } from '../owner-predicate.ts';
 import { authorizeWorkspaceOperation } from '../workspace-authorization.ts';
@@ -33,9 +33,10 @@ import {
 
 /** What `bureau.contexts.forgetgrants` reads from the handler's `host`. */
 export type BureauContextsForgetGrantsOperationHost = BureauOwnershipHost & {
-  readonly contexts: Pick<BureauContexts, 'get' | 'forgetGrants'> & {
-    readonly internals: Pick<BureauInternals, 'sessionStore'>;
-  };
+  readonly contexts: Pick<BureauContexts, 'get' | 'forgetGrants'> &
+    Pick<Bureau, 'lifecycle'> & {
+      readonly internals: Pick<BureauInternals, 'sessionStore'>;
+    };
 };
 
 const contextsForgetGrantsInput = z.object({
@@ -57,6 +58,11 @@ const contextsForgetGrantsOutput = z.object({
 
 const contextsForgetGrantsAnswer = orDryRun(contextsForgetGrantsOutput);
 
+/** The fault of a call refused because Bureau has closed admission, for the call and its dry run. */
+function shuttingDownFault(message: string): OperationFault {
+  return { code: 'Unavailable', message, data: { reason: 'shutting-down' } };
+}
+
 export const contextsForgetGrantsOperation = defineOperation<
   typeof contextsForgetGrantsInput,
   typeof contextsForgetGrantsAnswer,
@@ -68,7 +74,7 @@ export const contextsForgetGrantsOperation = defineOperation<
   supportsDryRun: true,
   summary: 'Forget a context’s remembered tool grants',
   description:
-    'Forgets the “Allow for the rest of this chat” grant of each tool named in `tools`, in one of the caller’s own contexts, so the next call of that tool asks for approval again; a caller holding `bureau.contexts:write` reaches any owner’s. A name is read as the name a provider calls the tool by, as a stored call carries it (`shop__issue-refund`) or as a result reports it (`shop:issue-refund`), and matches the grants of every version of that tool; a name no grant matches changes nothing, so a retry is safe. Nothing else of the context changes: no row of its conversation is removed, and its `updatedAt` does not move. Answers `{ forgotten }`, the grants forgotten as they were stored. Another owner’s context and a missing one answer `NotFound`. A Bureau that keeps no sessions is `UnsupportedCapability`, and one that is shutting down is `Unavailable` with reason `shutting-down`. With `dryRun: true` nothing is forgotten: the answer is `{ dryRun: true, target, effects }`, whose `tool-grants` effect counts the grants the call would forget, and a context that is missing or not the caller’s answers `NotFound` as well.',
+    'Forgets the “Allow for the rest of this chat” grant of each tool named in `tools`, in one of the caller’s own contexts, so the next call of that tool asks for approval again; a caller holding `bureau.contexts:write` reaches any owner’s. A name is read as the name a provider calls the tool by, as a stored call carries it (`shop__issue-refund`) or as a result reports it (`shop:issue-refund`), and matches the grants of every version of that tool; a name no grant matches changes nothing, so a retry is safe. Nothing else of the context changes: no row of its conversation is removed, and its `updatedAt` does not move. Answers `{ forgotten }`, the grants forgotten as they were stored. Another owner’s context and a missing one answer `NotFound`. A Bureau that keeps no sessions is `UnsupportedCapability`, and one that is shutting down is `Unavailable` with reason `shutting-down`. With `dryRun: true` nothing is forgotten: the answer is `{ dryRun: true, target, effects }`, whose `tool-grants` effect counts the grants the call would forget, and a context that is missing or not the caller’s, a Bureau that keeps no sessions, or one that is shutting down answers the fault the real call answers.',
   destructive: false,
   tags: ['Contexts'],
   inputSchema: contextsForgetGrantsInput,
@@ -94,6 +100,10 @@ export const contextsForgetGrantsOperation = defineOperation<
       throw resourceNotFound('context', contextId);
     }
     if (input.dryRun === true) {
+      // The refusal `forgetGrants` makes before it writes: a Bureau that has closed admission.
+      if (host.contexts.lifecycle !== 'ready') {
+        throw shuttingDownFault('Cannot forget grants: Bureau is shutting down.');
+      }
       // The same match the call makes on the session it just loaded, with nothing written.
       const { forgotten: wouldForget } = withoutGrantsFor(session.metadata, input.tools);
       return dryRunResult({ kind: 'context-grants', id: contextId }, [
@@ -106,13 +116,7 @@ export const contextsForgetGrantsOperation = defineOperation<
         incarnation: session.incarnation,
       });
     } catch (error) {
-      if (error instanceof BureauShuttingDownError) {
-        throw {
-          code: 'Unavailable',
-          message: error.message,
-          data: { reason: 'shutting-down' },
-        } satisfies OperationFault;
-      }
+      if (error instanceof BureauShuttingDownError) throw shuttingDownFault(error.message);
       throw error;
     }
     // The id holds another incarnation now (or none): the context authorized is gone.

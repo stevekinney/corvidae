@@ -1293,6 +1293,31 @@ describe('bureau.hooks.duplicate and declaredBy (COR-2181)', () => {
     expect(await opened.bureau.hooks!.list()).toHaveLength(before);
   });
 
+  it('refuses to delete a default hook, and a dry run of the delete answers the same fault and leaves the hook (COR-2522)', async () => {
+    const { opened } = await open({ actionKinds: [pagerKind()] });
+    const [declared] = await opened.bureau.hooks!.reconcileDeclared('pager', [DECLARATION]);
+    const params = { hookId: declared!.id };
+
+    const real = await call(opened, 'bureau.hooks.delete', params, 'hooks-writer-key');
+    const dry = await call(
+      opened,
+      'bureau.hooks.delete',
+      { ...params, dryRun: true },
+      'hooks-writer-key',
+    );
+
+    expect(real.result).toBeUndefined();
+    expect(real.error?.data).toMatchObject({
+      weftCode: 'InvalidParams',
+      httpStatus: 400,
+      issues: [{ path: ['declaredBy'] }],
+    });
+    expect(JSON.stringify(real.error)).toContain('A default hook cannot be deleted');
+    expect(dry.error).toEqual(real.error);
+    expect(dry.result).toBeUndefined();
+    expect(await opened.bureau.hooks!.get(declared!.id)).toBeDefined();
+  });
+
   it('answers another owner’s hook as a missing one, and reads any owner’s only with bureau.hooks:read', async () => {
     const { opened } = await open({ actionKinds: [pagerKind()] });
     const bobs = await wire(

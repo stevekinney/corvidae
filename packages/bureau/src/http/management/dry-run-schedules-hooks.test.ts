@@ -3,10 +3,11 @@
  */
 import { generateEncryptionKey } from '@lostgradient/cryptography';
 import { createAgent } from '@lostgradient/operative';
-import { MemoryStorage } from '@lostgradient/storage';
+import { MemoryStorage, textValueStore } from '@lostgradient/storage';
 import { describe, expect, it } from 'bun:test';
 
 import { createReceiver, SIGNING_SECRET } from '../../hooks/hooks.test-support.ts';
+import { HOOK_DELIVERY_KEY_PREFIX } from '../../hooks/hook-store.ts';
 import {
   dryRunResultOf,
   expectNothingWritten,
@@ -166,6 +167,57 @@ describe('bureau.hooks.delete with dryRun', () => {
         'alice-observer-key',
       );
       expect(real.result).toEqual({ hookId, deleted: true });
+    });
+  });
+
+  it('marks both counts as floors when one read of the deliveries is full, so a pending delivery past the page is not reported as none', async () => {
+    await open(async (opened, subject) => {
+      const hookId = await hookWithADelivery(opened);
+      const kv = textValueStore(subject.storage as MemoryStorage, {
+        disposeUnderlyingStorage: false,
+      });
+      const record = (id: string, status: 'failed' | 'pending', createdAt: number) => ({
+        version: 1,
+        id,
+        hookId,
+        owner: 'api-key:alice',
+        actionType: 'start-workflow',
+        kind: 'session.saved',
+        test: false,
+        status,
+        work: { type: 'start-workflow', workflowId: 'digest', input: {} },
+        attempts: [],
+        maxAttempts: 3,
+        createdAt,
+        updatedAt: createdAt,
+        // Held, so the Bureau's own delivery work leaves it alone.
+        leaseUntil: Date.now() + 3_600_000,
+        revision: 1,
+      });
+      // The pending delivery is the oldest: the 200 newest records, all failed, hide it.
+      await kv.set(
+        `${HOOK_DELIVERY_KEY_PREFIX}delivery-oldest`,
+        JSON.stringify(record('delivery-oldest', 'pending', 1)),
+      );
+      for (let index = 0; index < 200; index += 1) {
+        const id = `delivery-failed-${String(index).padStart(3, '0')}`;
+        await kv.set(
+          `${HOOK_DELIVERY_KEY_PREFIX}${id}`,
+          JSON.stringify(record(id, 'failed', Date.now() + 1000 + index)),
+        );
+      }
+
+      const body = await rpc(
+        opened.handler,
+        'bureau.hooks.delete',
+        { hookId, dryRun: true },
+        'alice-observer-key',
+      );
+
+      expect(dryRunResultOf(body).effects).toEqual([
+        { kind: 'delivery-records', count: 200, atLeast: true },
+        { kind: 'deliveries-in-flight', count: 0, atLeast: true },
+      ]);
     });
   });
 

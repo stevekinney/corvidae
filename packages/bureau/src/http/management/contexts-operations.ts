@@ -120,7 +120,7 @@ export const contextsDeleteOperation = defineOperation<
   supportsDryRun: true,
   summary: 'Delete a context',
   description:
-    'Deletes one of the caller’s own contexts; a caller holding `bureau.contexts:write` deletes any owner’s. The deletion fences the context first, so a new task or session input for it reads as a context that does not exist, then cancels and awaits every live task in it, then removes the context and empties its tasks’ message histories. Once the context is gone and its runs have ended, its content is purged: the event history of the context and of each run, the runs’ workflows and checkpoints, their interactive surfaces, the context’s session input and A2A history, the records of their reviews, and the runs they delegated to go, and their audit entries are redacted (the entries stay, as proof the runs happened). A purge that fails is finished by the next maintenance pass or boot, and a second pass ten minutes after it removes what a late writer added. The deletion also records the context’s id, its owner and when it was deleted, and nothing else, under the thread’s lease before anything is removed, so an AG-UI start or resume on that id is refused as `THREAD_DELETED` rather than creating the chat again. The `receipt` is `applied` (no task was live), or the aggregate of the cancelled tasks’ cleanup, the least settled winning: `cleanup-pending`, `cleanup-unresolved`, `unknown-outcome`, `cleanup-failed`, `cleaned-up`; `tasks` lists each. `rejected` (reason `shutting-down`) means admission is closed and nothing was applied. `waitMilliseconds` (default 0) waits that long for outstanding cleanup acknowledgements. With `dryRun: true` nothing is deleted, fenced, cancelled or recorded: the answer is `{ dryRun: true, target, effects }`, whose `runs-in-progress` effect counts the live tasks the delete would cancel, and a context that is missing, not the caller’s or on a Bureau that keeps no sessions answers the fault the real call answers.',
+    'Deletes one of the caller’s own contexts; a caller holding `bureau.contexts:write` deletes any owner’s. The deletion fences the context first, so a new task or session input for it reads as a context that does not exist, then cancels and awaits every live task in it, then removes the context and empties its tasks’ message histories. Once the context is gone and its runs have ended, its content is purged: the event history of the context and of each run, the runs’ workflows and checkpoints, their interactive surfaces, the context’s session input and A2A history, the records of their reviews, and the runs they delegated to go, and their audit entries are redacted (the entries stay, as proof the runs happened). A purge that fails is finished by the next maintenance pass or boot, and a second pass ten minutes after it removes what a late writer added. The deletion also records the context’s id, its owner and when it was deleted, and nothing else, under the thread’s lease before anything is removed, so an AG-UI start or resume on that id is refused as `THREAD_DELETED` rather than creating the chat again. The `receipt` is `applied` (no task was live), or the aggregate of the cancelled tasks’ cleanup, the least settled winning: `cleanup-pending`, `cleanup-unresolved`, `unknown-outcome`, `cleanup-failed`, `cleaned-up`; `tasks` lists each. `rejected` (reason `shutting-down`) means admission is closed and nothing was applied. `waitMilliseconds` (default 0) waits that long for outstanding cleanup acknowledgements. With `dryRun: true` nothing is deleted, fenced, cancelled or recorded: the answer is `{ dryRun: true, target, effects }`, whose `runs-in-progress` effect counts the live tasks the delete would cancel (none once Bureau is shutting down, when the real call is `rejected`), and a context that is missing, not the caller’s or on a Bureau that keeps no sessions answers the fault the real call answers.',
   destructive: true,
   tags: ['Contexts'],
   inputSchema: contextsDeleteInput,
@@ -156,11 +156,14 @@ export const contextsDeleteOperation = defineOperation<
     const named = (tasks: readonly { taskId: string; cleanup: TaskCleanupState }[]) =>
       mayNameTasks ? { tasks: tasks.map((task) => ({ ...task })) } : {};
     if (input.dryRun === true) {
-      // The live tasks of this incarnation of the context are the runs the delete cancels.
+      // The live tasks of this incarnation of the context are the runs the delete cancels. A Bureau
+      // that is shutting down rejects the real call and applies nothing, so it cancels none.
       let inProgress = 0;
-      for (const taskId of await host.tasks.taskIdsOfContext(contextId, session.incarnation)) {
-        const task = await host.tasks.get(taskId);
-        if (task !== undefined && LIVE_TASK_STATUSES.has(task.status)) inProgress += 1;
+      if (host.contexts.lifecycle === 'ready') {
+        for (const taskId of await host.tasks.taskIdsOfContext(contextId, session.incarnation)) {
+          const task = await host.tasks.get(taskId);
+          if (task !== undefined && LIVE_TASK_STATUSES.has(task.status)) inProgress += 1;
+        }
       }
       return dryRunResult({ kind: 'context', id: contextId }, [
         effect('runs-in-progress', inProgress),

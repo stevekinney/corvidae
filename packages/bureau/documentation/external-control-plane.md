@@ -409,10 +409,10 @@ With `dryRun: true` the server makes the checks the real call makes up to its fi
 | `bureau.workflows.runs.cancel` | `workflow-run` | `running-instances`: 1 while the instance has not finished |
 | `bureau.goals.cancel` | `goal` | `runs-in-progress`: the attempt runs the cancel would stop |
 | `bureau.schedules.cancel` | `schedule` | `queued-runs`: the occurrences waiting behind the fire in flight, which the cancel drops |
-| `bureau.contexts.delete` | `context` | `runs-in-progress`: the live tasks the delete would cancel |
+| `bureau.contexts.delete` | `context` | `runs-in-progress`: the live tasks the delete would cancel, none once Bureau is shutting down, when the real call is `rejected` |
 | `bureau.contexts.forgetgrants` | `context-grants` | `tool-grants`: the grants the named tools match |
 | `bureau.agents.definitions.delete`, `bureau.agents.disable` | `agent` | `schedules`, `goals` and `open-chats`: the schedules, unfinished goals and unarchived chats that name the agent |
-| `bureau.hooks.delete` | `hook` | `delivery-records` (a floor past 200) and `deliveries-in-flight` |
+| `bureau.hooks.delete` | `hook` | `delivery-records` and `deliveries-in-flight`, each a floor (`atLeast`) once the hook has 200 or more delivery records; a default hook (`declaredBy`) answers the `InvalidParams` fault the real call answers |
 | `bureau.workflows.delete` | `workflow` | `schedules` the delete would cancel, and `running-instances` that would finish on their own revision |
 | `bureau.memory.forget` | `memory` | `memories`: the record the deletion starts with, as a floor (`atLeast`): the summaries derived from it go with it and are not counted, and a legal hold keeps it stored |
 | `bureau.memory.embedding.cancel` | `memory-embedding-switch` | `running-switches`: 1 while a switch runs; the operation names no target, so `target.id` is the embedder the switch fills, or `none` |
