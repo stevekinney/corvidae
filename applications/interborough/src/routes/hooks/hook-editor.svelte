@@ -1011,13 +1011,18 @@
               {copy.steps.when.title}
             </h2>
             {#if compactWhen && hook !== undefined}
-              <p class="ib-hook-step__summary" data-testid="hook-step-summary-when">
-                <span>{whenSummary(hook, anyScopeOf(savedScopes), titleOfPlugin)}</span>
+              <!-- A missing kind is said directly under the summary it qualifies, before Edit (N1). -->
+              <div class="ib-hook-step__summary" data-testid="hook-step-summary-when">
+                <div class="ib-hook-step__summary-text">
+                  <p class="ib-hook-step__summary-line">
+                    {whenSummary(hook, anyScopeOf(savedScopes), titleOfPlugin)}
+                  </p>
+                  <HookMissingEvents missing={missingEvents} titleOf={titleOfPlugin} />
+                </div>
                 <Button variant="ghost" size="sm" onclick={() => (whenOpen = true)}
                   >{copy.steps.edit}</Button
                 >
-              </p>
-              <HookMissingEvents missing={missingEvents} titleOf={titleOfPlugin} />
+              </div>
             {:else if isDefault && hook !== undefined}
               <p class="ib-hook-editor__plain" data-testid="hook-when-readonly">
                 {whenSummary(hook, anyScopeOf(savedScopes), titleOfPlugin)}
@@ -1436,6 +1441,19 @@
     gap: var(--cinder-space-2);
     margin: 0;
     overflow-wrap: anywhere;
+  }
+
+  /* The When summary's text, with a missing kind's line directly under it and Edit after both. */
+  .ib-hook-step__summary-text {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    gap: var(--cinder-space-2);
+    min-inline-size: 0;
+  }
+
+  .ib-hook-step__summary-line {
+    margin: 0;
   }
 
   /* The hook as a sentence, in plain muted text with no box: Save hook and Send a test event sit directly under it. */

@@ -244,6 +244,45 @@ describe('a saved hook whose plugin kind is missing (COR-2226, rows R4, R5, R6)'
     expect(view.container.textContent).not.toContain('Digest ready, Weekly reports');
   });
 
+  test('on a phone says Missing directly under the When summary, before Edit (N1)', async () => {
+    const original = Object.getOwnPropertyDescriptor(window, 'matchMedia');
+    Object.defineProperty(window, 'matchMedia', {
+      configurable: true,
+      value: (query: string) => ({
+        media: query,
+        matches: query.includes('640'),
+        addEventListener: () => undefined,
+        removeEventListener: () => undefined,
+        addListener: () => undefined,
+        removeListener: () => undefined,
+      }),
+    });
+    try {
+      const view = open('/hooks/digest', [
+        { code: 'event-missing', kind: 'reports:digest-ready@1.0.0', loadedVersion: null },
+      ]);
+      const when = await view.findByTestId('hook-step-summary-when');
+      const missing = await waitFor(() => {
+        const found = within(when).getByTestId('hook-missing-events');
+        expect(found.textContent).toContain('Weekly reports: digest ready');
+        return found;
+      });
+      const edit = within(when).getByRole('button', { name: HOOKS_COPY.editor.steps.edit });
+      const summary = when.querySelector('.ib-hook-step__summary-line');
+      expect(summary?.textContent).toContain('Weekly reports: digest ready');
+      // In reading order: the summary, then Missing with its cause, then Edit.
+      expect(
+        summary!.compareDocumentPosition(missing) & Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+      expect(missing.compareDocumentPosition(edit) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      // Said once on the page while the step is folded.
+      expect(view.getAllByTestId('hook-missing-events')).toHaveLength(1);
+    } finally {
+      if (original === undefined) Reflect.deleteProperty(window, 'matchMedia');
+      else Object.defineProperty(window, 'matchMedia', original);
+    }
+  });
+
   test('names the version that is loaded when it is not the one pinned', async () => {
     const view = open('/hooks/digest', [
       { code: 'event-missing', kind: 'reports:digest-ready@1.0.0', loadedVersion: '1.1.0' },
