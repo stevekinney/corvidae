@@ -201,7 +201,8 @@
     "//#ci:browser-fixtures": {
       "dependsOn": [
         "@lostgradient/browser-fixtures#transit",
-        "@lostgradient/browser-fixtures#metadata"
+        "@lostgradient/browser-fixtures#metadata",
+        "@lostgradient/playground#transit"
       ],
       "env": [
         "PLAYWRIGHT_SHARD",

@@ -212,8 +212,13 @@ describe('Turborepo cache in the workflows', () => {
 
   test('the fixtures suite hashes its visual-diff mode and component selection', () => {
     const turbo = JSON.parse(readFileSync(resolve(root, 'turbo.json'), 'utf8')) as {
-      tasks: Record<string, { env?: string[] }>;
+      tasks: Record<string, { env?: string[]; dependsOn?: string[] }>;
     };
+    // `overview-pairs-featured-preview-and-code.playwright.ts` starts the playground's server, a
+    // workspace the fixtures package does not depend on.
+    expect(turbo.tasks['//#ci:browser-fixtures']?.dependsOn).toContain(
+      '@lostgradient/playground#transit',
+    );
     expect(turbo.tasks['//#ci:browser-fixtures']?.env).toEqual(
       expect.arrayContaining(['CINDER_VISUAL_DIFF', 'CINDER_TEST_COMPONENTS']),
     );
