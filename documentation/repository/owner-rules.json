@@ -36,9 +36,8 @@
       "date": "2026-11-19",
       "source": "Owner review of the live app, 2026-11-19 (COR-2441; chef-sdlc-architecture-review-2026-11-19-corrections.md, section 2)",
       "guard": {
-        "script": "scripts/check-shadow-tokens.ts",
-        "test": "scripts/check-shadow-tokens.test.ts",
-        "allowlist": "scripts/shadow-tokens-allowlist.json"
+        "script": "scripts/check-light-shadows.ts",
+        "test": "scripts/check-light-shadows.test.ts"
       },
       "scans": ["components", "applications", "packages", "plugins"]
     },
