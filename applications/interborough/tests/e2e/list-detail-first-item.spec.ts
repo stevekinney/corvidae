@@ -12,11 +12,15 @@
 import type { Locator, Page, Route } from '@playwright/test';
 
 import { CAPABILITIES_COPY } from '../../src/app/copy/capabilities.ts';
-import { E2E_SHOWCASE_URL } from './e2e-constants.ts';
+import { E2E_BASE_URL, E2E_SHOWCASE_URL } from './e2e-constants.ts';
 import { expect, test } from './fixtures.ts';
 import { readBoxes } from './read-boxes.ts';
 
 test.use({ baseURL: E2E_SHOWCASE_URL });
+
+/** `path` on `origin`, the host whose world has the page's rows: the showcase unless a case names another. */
+const at = (path: string, origin: string = E2E_SHOWCASE_URL): string =>
+  new URL(path, origin).toString();
 
 const WIDE = [1280, 1920] as const;
 const PHONE = 375;
@@ -44,6 +48,8 @@ interface Case {
   readonly rowKey: (row: Locator) => Promise<string | null>;
   /** Stands in for the server before the page is opened, when the showcase has no rows of its own. */
   readonly prepare?: (page: Page) => Promise<void>;
+  /** The host to open the page on, when the showcase does not hold its rows (it discovers no skills). */
+  readonly origin?: string;
 }
 
 /** The reviews the stand-in lists, waiting or decided, as `bureau.reviews.list` gives them. */
@@ -118,6 +124,7 @@ const CASES: readonly Case[] = [
     rows: (page) => page.locator('[data-skill-row]'),
     openKey: (url) => url.searchParams.get('skill'),
     rowKey: async () => null,
+    origin: E2E_BASE_URL,
   },
   {
     name: 'Reviews, Waiting',
@@ -155,9 +162,9 @@ for (const item of CASES) {
       }) => {
         await item.prepare?.(page);
         await page.setViewportSize({ width, height: 900 });
-        await page.goto(BEFORE);
+        await page.goto(at(BEFORE, item.origin));
         await expect(page.getByRole('heading', { level: 1 }).first()).toBeVisible();
-        await page.goto(item.path);
+        await page.goto(at(item.path, item.origin));
 
         const first = item.rows(page).first();
         await expect(first).toBeVisible();
@@ -193,7 +200,7 @@ for (const item of CASES) {
     }) => {
       await item.prepare?.(page);
       await page.setViewportSize({ width: PHONE, height: 800 });
-      await page.goto(item.path);
+      await page.goto(at(item.path, item.origin));
       const first = item.rows(page).first();
       await expect(first).toBeVisible();
       await expect(page.locator('.cinder-list-detail')).toHaveAttribute(
@@ -223,7 +230,9 @@ test.describe('a deep link is never overridden', () => {
 
     await page.goto('/capabilities?tool=no-such-tool');
     await expect(page.locator('[data-tool-row]').first()).toBeVisible();
-    await expect(page.locator('.cinder-list-detail__detail')).toContainText(/not/i);
+    await expect(page.locator('.cinder-list-detail__detail')).toContainText(
+      CAPABILITIES_COPY.tool.page.notFound.title,
+    );
     expect(new URL(page.url()).searchParams.get('tool')).toBe('no-such-tool');
   });
 
@@ -265,9 +274,15 @@ test.describe('a deep link is never overridden', () => {
 const FLAT_PAGES = [
   { name: 'Capabilities', path: '/capabilities', underTabs: true },
   { name: 'an agent’s Memory', path: '/agents/tool-runner/memory', underTabs: true },
-  { name: 'Health, Workers', path: '/health/workers', underTabs: true },
+  // The showcase runs its workflows in process, with no fleet to list: its own host has workers.
+  { name: 'Health, Workers', path: '/health/workers', underTabs: true, origin: E2E_BASE_URL },
   { name: 'Settings, Plugins', path: '/settings/plugins', underTabs: false },
-] as const;
+] as const satisfies readonly {
+  name: string;
+  path: string;
+  underTabs: boolean;
+  origin?: string;
+}[];
 
 for (const flat of FLAT_PAGES) {
   for (const width of WIDE) {
@@ -275,7 +290,7 @@ for (const flat of FLAT_PAGES) {
       page,
     }) => {
       await page.setViewportSize({ width, height: 900 });
-      await page.goto(flat.path);
+      await page.goto(at(flat.path, 'origin' in flat ? flat.origin : undefined));
       const listDetail = page.locator('.cinder-list-detail').first();
       await expect(listDetail).toBeVisible();
       await expect(listDetail).toHaveAttribute('data-cinder-layout', 'split');
