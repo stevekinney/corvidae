@@ -427,7 +427,7 @@ async function deliverOne(issue) {
         issue,
         fixed === null ? 'correction failed' : `correction ${fixed.status}: ${fixed.report}`,
         steps,
-        { ...where, findings },
+        { ...where, findings, correctionContext },
       );
     head = fixed.head;
   }

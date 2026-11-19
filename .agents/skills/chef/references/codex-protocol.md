@@ -1,6 +1,8 @@
 # Codex delivery protocol
 
-The Claude workflow's delivery sequence, run from Codex. Work one batch at a time, with at most two implementation workers (AGENTS.md "Parallel runs").
+The Claude workflow's delivery sequence, run from Codex. Work one batch at a time, with at most two implementation workers (AGENTS.md "Parallel runs"). This file records Codex-only mechanics; shared outcome rules live in the brief and shared Chef skill.
+
+Codex profile observation: auto-discovery may report `chef-worker` unknown in a disposable project. Use the explicit role fallback, `-c agents.chef-worker.description=... -c agents.chef-worker.config_file=<absolute .codex/agents/chef-worker.toml>`, then verify fresh-child metadata names `agent_role: chef-worker`, `gpt-5.6-terra`, and `medium`. Do not silently substitute a general-purpose role. The coordinator recorded the native witness in `integration/p08-codex-profile-observed.json`; Claude's native `--agent chef-worker` witness is `integration/p08-claude-profile-smoke.jsonl` and resolved `claude-sonnet-5-5`.
 
 1. Brief. Resolve `git rev-parse HEAD`, then run `bun scripts/chef/brief.ts <ID> --repository stevekinney/corvidae --base <resolved-40-character-sha> --run <run> --json`; add `--context <coordinator-verified-context.json>` for required design content. Stop on a canonical refusal or open blocker.
 2. Implement. Start the `chef-worker` agent from `.codex/agents/chef-worker.toml`, in its own worktree, pointed at the brief file only. It runs `bun scripts/chef/focused-checks.ts` once (direct tests only), never waits on CI, pushes its branch once, and returns ready-for-review, blocked, or needs-decision, with the head. It delivers as the brief's Delivery rule says; steps 3 to 6 are the pull request path.

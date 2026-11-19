@@ -528,6 +528,34 @@ describe('workflow scripts', () => {
     expect(delivery.result[0]?.reason).toContain('after 1 correction');
   });
 
+  test('deliver-issue.js retains correction context when a correction is cancelled or refused', async () => {
+    for (const correct of [null, { status: 'blocked', head: 'abc', report: 'cancelled' }]) {
+      const delivery = await runDelivery(
+        {
+          cumulativeFailures: { 'COR-7': 3 },
+          preparedBriefs: {
+            'COR-7': {
+              validated: true,
+              exitCode: 0,
+              briefPath: '/main/tmp/chef/briefs/COR-7.md',
+              contract: { criterion: 'AC1' },
+            },
+          },
+        },
+        {
+          checks: (count: number) => ({ exitCode: 1, line: 'lint failed', head: head(count) }),
+          correct,
+        },
+      );
+      expect(delivery.result[0]?.status).toBe('NEEDS_JUDGMENT');
+      expect(delivery.result[0]?.['correctionContext']).toMatchObject({
+        issue: 'COR-7',
+        contract: { criterion: 'AC1' },
+        cumulativeFailures: 4,
+      });
+    }
+  });
+
   test('deliver-issue.js uses paths from the validated coordinator brief for routing', async () => {
     const delivery = await runDelivery({
       preparedBriefs: {
