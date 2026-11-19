@@ -207,29 +207,13 @@ test.describe('/runs: the list on a phone, a tablet and in the dark', () => {
   test('on a tablet with a Started by and an Agent filter applied, those chips stay in the row and the unapplied Workflow chip folds into the Filter menu (52x)', async ({
     page,
   }) => {
+    // Filtered to nothing by Model switcher and a goal, as row 52x draws it: the row cannot hold
+    // the two applied chips beside the Workflow chip. (Shorter chips, Agent: Assistant, fit the
+    // row at 768 pixels, and then nothing folds.)
     await page.setViewportSize({ width: 768, height: 900 });
-    await page.goto('/runs?startedBy=goal&agent=assistant');
+    await page.goto('/runs?agent=model-switcher&startedBy=goal');
     const bar = filterBar(page);
     await expect(bar).toBeVisible();
-    await expect(bar).toHaveAttribute('data-cinder-layout', 'medium');
-    await expect(bar.getByRole('button', { name: /^Remove filter: Started by/ })).toBeVisible();
-    await expect(bar.getByRole('button', { name: /^Remove filter: Agent/ })).toBeVisible();
-    // At 768 pixels the sample world's three chips fit the row. The row is narrowed until it cannot
-    // hold them, by 10 pixels less than its controls need, so the fold is what the page does when
-    // its labels are longer: the unapplied Workflow chip moves into the Filter menu first.
-    await expect(bar.getByRole('button', { name: 'Workflow', exact: true })).toBeVisible();
-    await bar.evaluate((element) => {
-      const row = element.querySelector<HTMLElement>('.cinder-filter-bar__row');
-      if (row === null) throw new Error('The bar drew no row');
-      const start = row.getBoundingClientRect().left;
-      const end = Math.max(
-        ...[...row.querySelectorAll<HTMLElement>(':scope > *')].map(
-          (item) => item.getBoundingClientRect().right,
-        ),
-      );
-      const padding = Number.parseFloat(getComputedStyle(row).paddingRight) || 0;
-      (element as HTMLElement).style.inlineSize = `${String(end - start + padding - 10)}px`;
-    });
     await expect(bar).toHaveAttribute('data-cinder-layout', 'medium');
     await expect(bar).toHaveAttribute('data-cinder-folded', '1');
     await expect(bar.getByRole('button', { name: /^Remove filter: Started by/ })).toBeVisible();
