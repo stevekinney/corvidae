@@ -4,11 +4,8 @@ import { createHash } from 'node:crypto';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import {
-  createGitHubCiEvidenceProvider,
-  runCiEvidence,
-  type GitReader,
-} from './ci-evidence-github.ts';
+import { createGitHubCiEvidenceProvider, type GitReader } from './ci-evidence-github.ts';
+import { runCiEvidence } from './ci-evidence-run.ts';
 import { createCiEvidenceWorkflowReceipt } from './ci-evidence-workflow.ts';
 import {
   ciEvidenceRequestKey,
@@ -51,6 +48,7 @@ function fixture(
     pullRequest?: boolean;
     invalidParents?: boolean;
     failedJob?: boolean;
+    skippedRequired?: boolean;
     oversized?: boolean;
     expands?: boolean;
     runConclusion?: string;
@@ -158,9 +156,9 @@ function fixture(
           });
         if (path.endsWith('/artifacts/51/zip'))
           return { exitCode: 0, stdout: archive, stderr: new Uint8Array() };
-        if (path.endsWith('/runs/17/jobs?per_page=100&page=1'))
+        if (path.endsWith('/runs/17/attempts/2/jobs?per_page=100&page=1'))
           return encode({
-            total_count: 1,
+            total_count: options.skippedRequired ? 2 : 1,
             jobs: [
               {
                 id: 9,
@@ -168,6 +166,16 @@ function fixture(
                 status: 'completed',
                 conclusion: options.failedJob ? 'failure' : 'success',
               },
+              ...(options.skippedRequired
+                ? [
+                    {
+                      id: 10,
+                      name: 'Root checks, scripts tests, audit',
+                      status: 'completed',
+                      conclusion: 'skipped',
+                    },
+                  ]
+                : []),
             ],
           });
         throw new Error(`unexpected GitHub command: ${argv.join(' ')}`);
@@ -339,6 +347,21 @@ scenarios.scenario('request CLI reports the exact authenticated run', async () =
     run: { id: 17, attempt: 2 },
   });
 });
+
+scenarios.scenario(
+  'refuses a green aggregate when a required provider job was skipped',
+  async () => {
+    const input = request();
+    const { provider } = fixture(input, { skippedRequired: true });
+    let error: unknown;
+    try {
+      await provider.findRuns(input);
+    } catch (reason) {
+      error = reason;
+    }
+    expect((error as Error).message).toContain('required job');
+  },
+);
 
 await scenarios.settled();
 

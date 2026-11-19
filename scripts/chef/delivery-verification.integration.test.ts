@@ -192,7 +192,7 @@ scenarios.scenario(
       base: request.base,
       candidate: request.revision,
       integrationTree: request.integrationTree,
-      verificationPlanDigest: '1'.repeat(64),
+      verificationPlanDigest: digest(JSON.stringify(request.members[0]!.plan)),
       workflow: entry.workflow,
       workflowPath: entry.workflowPath,
       workflowRevision: request.revision,
@@ -203,6 +203,12 @@ scenarios.scenario(
     expect(
       await validateDeliveryCiEvidence(loadDeliveryVerification(missing, fixture.dependencies)),
     ).toContain('missing the CI evidence contract');
+    const wrongPlan = { ...identity, verificationPlanDigest: '1'.repeat(64) };
+    request.ciEvidence = [{ ...wrongPlan, requestKey: ciEvidenceRequestKey(wrongPlan) }];
+    const mismatch = replaceRequest(fixture.verification, request);
+    expect(
+      await validateDeliveryCiEvidence(loadDeliveryVerification(mismatch, fixture.dependencies)),
+    ).toContain('missing or ambiguous CI evidence identity');
     request.ciEvidence = [identity];
     const withEvidence = replaceRequest(fixture.verification, request);
     const loaded = loadDeliveryVerification(withEvidence, fixture.dependencies);

@@ -1,17 +1,9 @@
-// Usage:
-//   bun scripts/chef/ci-evidence-github.ts --request <file> --state-directory <dir> [--ref <branch>]
-// Exit 0 for bound, 1 for pending/failed/ambiguous, 2 for invalid input or configuration.
 import { createHash } from 'node:crypto';
 
 import { unzipSync } from 'fflate';
-import { readFileSync } from 'node:fs';
-import { hostname } from 'node:os';
-import { resolve } from 'node:path';
 
 import {
   CiEvidenceError,
-  createCiEvidenceStore,
-  reconcileCiEvidenceRequest,
   type CiEvidenceObservation,
   type CiEvidenceProvider,
   type CiEvidenceRequest,
@@ -22,8 +14,6 @@ import {
   type RawCommandResponse,
   type RawCommandTransport,
 } from './evidence-provider.ts';
-import { createExecutionStateStore } from './execution-state.ts';
-import { parseOptions, requireOption, UsageError } from './process-runner.ts';
 
 interface GitHubObject {
   object?: unknown;
@@ -365,9 +355,9 @@ export function createGitHubCiEvidenceProvider(
           receipt.event !== request.event ||
           receipt.workflowPath !== request.workflowPath ||
           receipt.workflowRevision !== request.workflowRevision ||
-          (request.event === 'pull_request'
-            ? receipt.requestKey !== ''
-            : receipt.requestKey !== request.requestKey) ||
+          (request.event === 'workflow_dispatch'
+            ? receipt.requestKey !== request.requestKey
+            : receipt.requestKey !== '') ||
           receipt.planDigest !== request.verificationPlanDigest ||
           receipt.base !== request.base ||
           receipt.candidate !== request.candidate ||
@@ -378,7 +368,12 @@ export function createGitHubCiEvidenceProvider(
           throw new CiEvidenceError(
             'authenticated CI receipt does not bind the requested candidate',
           );
-        const jobRecords = pages(raw, request.repository, `actions/runs/${id}/jobs`, 'jobs');
+        const jobRecords = pages(
+          raw,
+          request.repository,
+          `actions/runs/${id}/attempts/${attempt}/jobs`,
+          'jobs',
+        );
         const jobs = jobRecords.map((job) => text(job.name)).filter(Boolean);
         if (jobs.length === 0 || new Set(jobs).size !== jobs.length)
           throw new CiEvidenceError('authenticated CI run has invalid job inventory');
@@ -391,8 +386,36 @@ export function createGitHubCiEvidenceProvider(
           throw new CiEvidenceError(
             'authenticated CI Evidence aggregate did not complete successfully',
           );
-        if (Object.values(receipt.jobs).some((status) => status !== 'success'))
+        const maySkipBrowser = request.event === 'pull_request';
+        if (
+          jobRecords.some(
+            (job) =>
+              text(job.status) !== 'completed' ||
+              (text(job.conclusion) !== 'success' &&
+                !(
+                  maySkipBrowser &&
+                  text(job.name).startsWith('Browser suites / ') &&
+                  text(job.conclusion) === 'skipped'
+                )),
+          )
+        )
+          throw new CiEvidenceError(
+            'authenticated CI run contains a required job without a successful conclusion',
+          );
+        if (
+          Object.entries(receipt.jobs).some(
+            ([name, status]) => status !== 'success' && !(maySkipBrowser && name === 'browser'),
+          )
+        )
           throw new CiEvidenceError('CI receipt declares a required job not successful');
+        if (
+          receipt.jobs['browser'] === 'not-applicable' &&
+          jobRecords.some(
+            (job) =>
+              text(job.name).startsWith('Browser suites / ') && text(job.conclusion) !== 'skipped',
+          )
+        )
+          throw new CiEvidenceError('CI browser receipt disagrees with authenticated jobs');
         const evidenceRun: CiEvidenceRun = {
           id,
           repository: request.repository,
@@ -411,7 +434,9 @@ export function createGitHubCiEvidenceProvider(
           receiptJobs: receipt.jobs,
           ...(receipt.reports === undefined ? {} : { receiptReports: receipt.reports }),
           attempt,
-          jobs,
+          jobs: jobRecords
+            .filter((job) => text(job.conclusion) === 'success')
+            .map((job) => text(job.name)),
         };
         return evidenceRun;
       });
@@ -448,43 +473,4 @@ export function createGitHubCiEvidenceProvider(
       if (result.exitCode !== 0) throw new CiEvidenceError('CI evidence dispatch failed');
     },
   };
-}
-
-/** Reconcile one coordinator-pinned request and emit the run or compact pending state. */
-export async function runCiEvidence(
-  argv: string[],
-  provider?: CiEvidenceProvider,
-): Promise<{ code: number; output: string }> {
-  const parsed = parseOptions(argv, { values: ['request', 'state-directory', 'ref'] });
-  if (parsed.positionals.length > 0) throw new UsageError('Unexpected CI evidence argument');
-  const request: CiEvidenceRequest = JSON.parse(
-    readFileSync(requireOption(parsed, 'request'), 'utf8'),
-  );
-  const stateDirectory = resolve(requireOption(parsed, 'state-directory'));
-  const dispatchRef = parsed.values['ref'];
-  if (request.event === 'workflow_dispatch' && dispatchRef === undefined)
-    throw new UsageError('--ref is required for a manual CI evidence request');
-
-  const state = createExecutionStateStore({ stateDirectory, hostId: hostname() });
-  const result = await reconcileCiEvidenceRequest(
-    createCiEvidenceStore(state),
-    request,
-    provider ??
-      createGitHubCiEvidenceProvider({
-        repository: request.repository,
-        ...(dispatchRef === undefined ? {} : { dispatchRef }),
-      }),
-  );
-  return { code: result.state === 'bound' ? 0 : 1, output: JSON.stringify(result) };
-}
-
-if (import.meta.main) {
-  try {
-    const result = await runCiEvidence(Bun.argv.slice(2));
-    process.stdout.write(result.output + '\n');
-    process.exitCode = result.code;
-  } catch (error) {
-    process.stderr.write((error instanceof Error ? error.message : String(error)) + '\n');
-    process.exitCode = 2;
-  }
 }

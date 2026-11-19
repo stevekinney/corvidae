@@ -268,9 +268,10 @@ export async function validateDeliveryCiEvidence(
         .filter((item) => item.phase === 'pre-integration')
         .map((item) => `${item.criterionId}:${item.commandOrProviderJob}`),
     );
-    return member.providerRuns.filter(
-      (run) => obligations.has(run.obligation) && aggregatedWorkflows.has(run.workflowPath),
-    );
+    const planDigest = digest(JSON.stringify(member.plan));
+    return member.providerRuns
+      .filter((run) => obligations.has(run.obligation) && aggregatedWorkflows.has(run.workflowPath))
+      .map((run) => ({ ...run, planDigest }));
   });
   if (mappings.length === 0) return undefined;
   if (!Array.isArray(request.ciEvidence))
@@ -290,6 +291,8 @@ export async function validateDeliveryCiEvidence(
         identity.base === request.base &&
         identity.integrationTree === request.integrationTree &&
         identity.event === mapping.event &&
+        (mapping.event !== 'workflow_dispatch' ||
+          identity.verificationPlanDigest === mapping.planDigest) &&
         identity.workflow === mapping.workflow &&
         identity.workflowPath === mapping.workflowPath &&
         identity.requestKey === ciEvidenceRequestKey(identity),

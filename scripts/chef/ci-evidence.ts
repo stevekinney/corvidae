@@ -152,9 +152,9 @@ function matches(request: CiEvidenceRequest, run: CiEvidenceRun): boolean {
     run.workflowRevision === request.workflowRevision &&
     run.verificationPlanDigest === request.verificationPlanDigest &&
     run.requestKey === request.requestKey &&
-    (request.event === 'pull_request'
-      ? run.receiptRequestKey === ''
-      : run.receiptRequestKey === request.requestKey) &&
+    (request.event === 'workflow_dispatch'
+      ? run.receiptRequestKey === request.requestKey
+      : run.receiptRequestKey === '') &&
     commit(run.checkedRevision) &&
     commit(run.checkedTree) &&
     Number.isSafeInteger(run.attempt) &&
