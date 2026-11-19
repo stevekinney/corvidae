@@ -6,10 +6,16 @@ import { describe, expect, it } from 'bun:test';
 import { createOperationRegistry } from '@lostgradient/backchannel/internals';
 import { MemoryStorage } from '@lostgradient/storage';
 import { Engine } from '../../core/engine.ts';
-import { type WorkflowContext, workflow } from '../../core/types.ts';
+import { workflow, type WorkflowContext } from '../../core/types.ts';
 import { startAndSettle } from '../../testing/run-observation.test-support.ts';
 import { handleRequestAsLocalUser as handleRequest } from '../local-user-request.test-support.ts';
-import { compareWorkflowOperation, compareWorkflowRestBinding } from './compare-workflow.ts';
+import { createLiveOperationRegistry, createLiveRestBindings } from '../rest-bindings.ts';
+import {
+  compareWorkflowOperation,
+  compareWorkflowRestBinding,
+  createCompareWorkflowOperation,
+  type WorkflowReadAuthorizer,
+} from './compare-workflow.ts';
 import { forkWorkflowOperation, forkWorkflowRestBinding } from './fork-workflow.ts';
 
 const registry = createOperationRegistry([compareWorkflowOperation, forkWorkflowOperation]);
@@ -113,6 +119,117 @@ describe('weft.workflows.compare', () => {
     const response = await handleRequest(compareRequest(fork.id), engine, options);
     expect(response.status).toBe(404);
     expect(((await response.json()) as { error: string }).error).toContain('source');
+  });
+
+  describe('with an authorizeWorkflowRead hook', () => {
+    function optionsWithHook(authorizeWorkflowRead?: WorkflowReadAuthorizer) {
+      const operation = createCompareWorkflowOperation({ authorizeWorkflowRead });
+      return {
+        operationRegistry: createOperationRegistry([operation]),
+        restBindings: [compareWorkflowRestBinding],
+      };
+    }
+
+    async function forkOfSource(engine: Awaited<ReturnType<typeof engineWithRun>>) {
+      const fork = await engine.fork('source', { fromStep: 2 });
+      await fork.result();
+      return fork.id;
+    }
+
+    it('answers NotFound, naming only the fork, when the hook allows the fork but not its source', async () => {
+      await using engine = await engineWithRun(3);
+      const forkId = await forkOfSource(engine);
+      const asked: { workflowId: string; subject: string | undefined }[] = [];
+
+      const response = await handleRequest(
+        compareRequest(forkId),
+        engine,
+        optionsWithHook(({ principal, workflowId }) => {
+          asked.push({ workflowId, subject: principal.subject });
+          return workflowId === forkId;
+        }),
+      );
+
+      expect(response.status).toBe(404);
+      const body = (await response.json()) as { error: string };
+      expect(body.error).toBe(`Workflow "${forkId}" not found`);
+      expect(body.error).not.toContain('source');
+      expect(asked.map((entry) => entry.workflowId)).toEqual([forkId, 'source']);
+      expect(asked[0]?.subject).toBe('unauthenticated-local');
+    });
+
+    it('answers the same NotFound when the hook denies the fork, and never asks about the source', async () => {
+      await using engine = await engineWithRun(3);
+      const forkId = await forkOfSource(engine);
+      const asked: string[] = [];
+
+      const response = await handleRequest(
+        compareRequest(forkId),
+        engine,
+        optionsWithHook(({ workflowId }) => {
+          asked.push(workflowId);
+          return false;
+        }),
+      );
+
+      expect(response.status).toBe(404);
+      expect(((await response.json()) as { error: string }).error).toBe(
+        `Workflow "${forkId}" not found`,
+      );
+      expect(asked).toEqual([forkId]);
+    });
+
+    it('does not tell a denied caller that a run is not a fork', async () => {
+      await using engine = await engineWithRun(2);
+
+      const response = await handleRequest(
+        compareRequest('source'),
+        engine,
+        optionsWithHook(() => false),
+      );
+
+      expect(response.status).toBe(404);
+    });
+
+    it('compares when the hook allows the fork and its source', async () => {
+      await using engine = await engineWithRun(3);
+      const forkId = await forkOfSource(engine);
+
+      const response = await handleRequest(
+        compareRequest(forkId),
+        engine,
+        optionsWithHook(async () => true),
+      );
+
+      expect(response.status).toBe(200);
+      expect(await response.json()).toMatchObject({
+        workflowId: forkId,
+        sourceWorkflowId: 'source',
+      });
+    });
+
+    it('is wired from the live registry serve() builds, so the option reaches the operation', async () => {
+      await using engine = await engineWithRun(3);
+      const forkId = await forkOfSource(engine);
+
+      const response = await handleRequest(compareRequest(forkId), engine, {
+        operationRegistry: createLiveOperationRegistry({
+          authorizeWorkflowRead: ({ workflowId }) => workflowId === forkId,
+        }),
+        restBindings: createLiveRestBindings(),
+      });
+
+      expect(response.status).toBe(404);
+    });
+
+    it('stays scope-only, so a comparison succeeds, when no hook is configured', async () => {
+      await using engine = await engineWithRun(3);
+      const forkId = await forkOfSource(engine);
+
+      const response = await handleRequest(compareRequest(forkId), engine, optionsWithHook());
+
+      expect(response.status).toBe(200);
+    });
   });
 
   it('answers 400 for a limit or cursor it cannot use', async () => {

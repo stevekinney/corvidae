@@ -7,7 +7,7 @@
  */
 import { z } from 'zod';
 
-import { defineOperation, type OperationFault } from '@lostgradient/backchannel';
+import { defineOperation, type OperationFault, type Principal } from '@lostgradient/backchannel';
 import { invalidParamsFault, type UnknownRestBinding } from '@lostgradient/backchannel/internals';
 import { CompareRequiresForkError } from '../../core/engine/compare-fork.ts';
 import { WorkflowNotFoundError } from '../../core/engine/errors.ts';
@@ -75,39 +75,90 @@ function resolveCompareFault(error: unknown): never {
   throw error;
 }
 
-export const compareWorkflowOperation = defineOperation({
-  name: 'weft.workflows.compare',
-  mcpExposable: false,
-  summary: 'Compare a fork with its source, step by step',
-  description:
-    'Take the id of a workflow made by `weft.workflows.fork` and return its source run, the fork ' +
-    'point, and the two timelines aligned by durable step: for each step the operation type, ' +
-    'label, status, input and output on each side. A step before the fork point is `shared` and ' +
-    'carries the source entry on both sides. Payload fields are redacted as the timeline read ' +
-    'redacts them. Pages by step (`limit`, 100 by default) with `nextCursor`. Read-only. Faults ' +
-    'with NotFound when the fork or its source is not visible, and with Unprocessable, naming ' +
-    'what to do, when the workflow is not a fork.',
-  destructive: false,
-  tags: ['Workflows'],
-  inputSchema: compareWorkflowInput,
-  outputSchema: compareWorkflowOutput,
-  access: { kind: 'scoped', scopes: { kind: 'anyOf', scopes: ['workflows:read'] } },
-  discoverable: true,
-  producibleFaults: ['NotFound', 'Unprocessable'],
-  transports: { http: true, jsonRpcHttp: true, jsonRpcWebSocket: true, jsonRpcStdio: true },
-  unknownKeyPolicy: { http: 'strip', jsonRpc: 'reject' },
-  invoke: async ({ input, host: engine }): Promise<CompareWorkflowOutput> => {
-    assertOperationEngineMethods(engine, ['compare']);
-    try {
-      return await engine.compare(input.workflowId, {
-        ...(input.limit === undefined ? {} : { limit: input.limit }),
-        ...(input.cursor === undefined ? {} : { cursor: input.cursor }),
-      });
-    } catch (error) {
-      return resolveCompareFault(error);
-    }
-  },
-});
+/**
+ * Decides whether a caller may read one workflow, beyond the `workflows:read` scope the catalog
+ * already checks. `serve({ authorizeWorkflowRead })` supplies it; `weft.workflows.compare` asks it
+ * for the fork and for its source, so a caller cleared for a fork cannot read the source through it.
+ * Return `false` to deny; a throw is an internal error, never a denial.
+ */
+export type WorkflowReadAuthorizer = (context: {
+  principal: Principal;
+  workflowId: string;
+}) => boolean | Promise<boolean>;
+
+export type CompareWorkflowOperationOptions = Readonly<{
+  authorizeWorkflowRead?: WorkflowReadAuthorizer | undefined;
+}>;
+
+/**
+ * Build `weft.workflows.compare`. With `authorizeWorkflowRead`, the operation answers `NotFound`
+ * (the same fault a missing fork gets) when the hook denies the fork or its source; without it the
+ * `workflows:read` scope alone decides.
+ */
+export function createCompareWorkflowOperation(options: CompareWorkflowOperationOptions = {}) {
+  const authorizeWorkflowRead = options.authorizeWorkflowRead;
+  return defineOperation({
+    name: 'weft.workflows.compare',
+    mcpExposable: false,
+    summary: 'Compare a fork with its source, step by step',
+    description:
+      'Take the id of a workflow made by `weft.workflows.fork` and return its source run, the fork ' +
+      'point, and the two timelines aligned by durable step: for each step the operation type, ' +
+      'label, status, input and output on each side. A step before the fork point is `shared` and ' +
+      'carries the source entry on both sides. Payload fields are redacted as the timeline read ' +
+      'redacts them. Pages by step (`limit`, 100 by default) with `nextCursor`. Read-only. Faults ' +
+      'with NotFound when the fork or its source is not visible, and with Unprocessable, naming ' +
+      'what to do, when the workflow is not a fork.',
+    destructive: false,
+    tags: ['Workflows'],
+    inputSchema: compareWorkflowInput,
+    outputSchema: compareWorkflowOutput,
+    access: { kind: 'scoped', scopes: { kind: 'anyOf', scopes: ['workflows:read'] } },
+    discoverable: true,
+    producibleFaults: ['NotFound', 'Unprocessable'],
+    transports: { http: true, jsonRpcHttp: true, jsonRpcWebSocket: true, jsonRpcStdio: true },
+    unknownKeyPolicy: { http: 'strip', jsonRpc: 'reject' },
+    invoke: async ({ input, host: engine, principal }): Promise<CompareWorkflowOutput> => {
+      assertOperationEngineMethods(engine, ['compare']);
+      try {
+        if (authorizeWorkflowRead !== undefined) {
+          await requireReadableForkAndSource(authorizeWorkflowRead, engine, principal, input);
+        }
+        return await engine.compare(input.workflowId, {
+          ...(input.limit === undefined ? {} : { limit: input.limit }),
+          ...(input.cursor === undefined ? {} : { cursor: input.cursor }),
+        });
+      } catch (error) {
+        return resolveCompareFault(error);
+      }
+    },
+  });
+}
+
+/**
+ * Ask the hook about the fork, then about its source, before the engine reads either timeline. A
+ * denial of either throws the fork's own not-found error, so a refusal reads like a missing fork and
+ * says nothing about the source. A fork that does not exist falls through to the engine, which
+ * answers the same not-found.
+ */
+async function requireReadableForkAndSource(
+  authorizeWorkflowRead: WorkflowReadAuthorizer,
+  engine: unknown,
+  principal: Principal,
+  input: CompareWorkflowInput,
+): Promise<void> {
+  assertOperationEngineMethods(engine, ['get']);
+  if (!(await authorizeWorkflowRead({ principal, workflowId: input.workflowId }))) {
+    throw new WorkflowNotFoundError(input.workflowId);
+  }
+  const sourceWorkflowId = (await engine.get(input.workflowId))?.forkedFrom?.workflowId;
+  if (sourceWorkflowId === undefined) return;
+  if (!(await authorizeWorkflowRead({ principal, workflowId: sourceWorkflowId }))) {
+    throw new WorkflowNotFoundError(input.workflowId);
+  }
+}
+
+export const compareWorkflowOperation = createCompareWorkflowOperation();
 
 export const compareWorkflowRestBinding: UnknownRestBinding = {
   method: 'GET',

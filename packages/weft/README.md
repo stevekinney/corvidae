@@ -586,6 +586,8 @@ The scope each operation requires:
 
 Mutual TLS currently admits a principal that holds no scopes, so an mTLS caller reaches only `weft.system.principal`: every other operation in this table requires a scope, and the two workflow event feeds refuse a caller that holds neither `events:read` nor `streams:read`. Scopes are flat: `workflows:admin` does not imply `workflows:read`. Operations outside this table, such as the registry, storage, worker, and diagnostic operations, declare their own scopes through the same mechanism.
 
+`serve({ authorizeWorkflowRead })` narrows `weft.workflows.compare` beyond its scope. The hook receives `{ principal, workflowId }` and returns `true` to allow or `false` to deny; `compare` asks it for the fork and then for the fork's source, after the `workflows:read` check, and answers `NotFound` when either is denied. The fault names only the fork and reads exactly like a missing fork, so a caller cleared for a fork learns nothing about its source, and a denied caller is not told a run is not a fork. With no hook configured the scope alone decides. A hook that throws is an internal error, never a denial.
+
 ### MCP Over HTTP
 
 `/mcp` serves the Model Context Protocol through the official MCP SDK (`@modelcontextprotocol/server`), and it authenticates exactly as the rest of the server does. A client that negotiates protocol 2026-07-28 is served on the SDK's modern lane, where every request carries its own protocol envelope. A 2025-era client that opens with `initialize` is served on the SDK's stateless legacy lane, in `2025-11-25` or the older revision it asked for when the SDK still supports it. Both lanes answer one POST at a time from the same server factory, so they list the same tools and resources.
