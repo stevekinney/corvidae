@@ -10,3 +10,4 @@ Codex profile observation: auto-discovery may report `chef-worker` unknown in a 
 4. Correction. Return findings to the same worker and review its new head once.
 5. Pull-request rounds. Use `bun scripts/chef/review-threads.ts list --pr <n> --unresolved --json`, then `bun scripts/chef/review-threads.ts classes --pr <n>` before one push.
 6. Deliver. The coordinator runs `bun scripts/chef/deliver.ts --pr <n> --head <sha> --worktree <path> --comment-file <file>`; workers never merge.
+6. Deliver. The coordinator runs `bun scripts/chef/deliver.ts --pr <n> --head <sha> --worktree <path> --comment-file <file> --run <id> --project <name>`; workers never merge.
