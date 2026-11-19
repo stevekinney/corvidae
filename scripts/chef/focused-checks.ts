@@ -12,6 +12,8 @@
 //   lint:root       bun run lint:root, always
 //   typecheck:root  bun run typecheck:root, when a changed file is at the root or under scripts/
 //   turbo           bunx turbo run lint typecheck, filtered to each changed workspace
+//                   (typecheck:root and turbo run under `scripts/host-slots.ts`, one and two pool
+//                   slots, waiting at most five minutes for them, then `not run locally: pool busy`)
 //   tests           the direct tests only (owner decision, 2026-11-16): each changed
 //                   `*.test.ts` file, and the test files beside each changed source file (same
 //                   directory, same stem). Never `affected-tests.ts`'s dependency graph, which
@@ -275,6 +277,26 @@ export function touchesRootTypecheck(path: string): boolean {
   return !path.includes('/') || path.startsWith('scripts/');
 }
 
+/** The slots the turbo lint and type-check step holds: its task concurrency, one slot per task. */
+const TURBO_SLOTS = 2;
+
+/**
+ * The prefix that runs a type-check under host slots from the pool `bun test` uses, one slot per
+ * task kept busy, with the same bounded wait as the direct tests. Several sessions' `svelte-check`
+ * runs filled the host's swap, and one focused-checks run sat for over an hour on a 33-second
+ * type-check; past the bound the step reports `not run locally: pool busy`, as the tests do.
+ */
+function pooled(slots: number): string[] {
+  return [
+    'env',
+    `${poolWaitVariable}=300`,
+    'bun',
+    'scripts/host-slots.ts',
+    `--slots=${slots}`,
+    '--',
+  ];
+}
+
 /** The focused-check steps for a change, in order. Pure. */
 export function planSteps(input: PlanInput): PlannedStep[] {
   const steps: PlannedStep[] = [];
@@ -285,7 +307,10 @@ export function planSteps(input: PlanInput): PlannedStep[] {
     });
   steps.push({ name: 'lint:root', command: ['bun', 'run', 'lint:root'] });
   if (input.changed.some(touchesRootTypecheck))
-    steps.push({ name: 'typecheck:root', command: ['bun', 'run', 'typecheck:root'] });
+    steps.push({
+      name: 'typecheck:root',
+      command: [...pooled(1), 'bun', 'run', 'typecheck:root'],
+    });
   const names = [
     ...new Set(
       input.changed.flatMap((path) => {
@@ -297,7 +322,16 @@ export function planSteps(input: PlanInput): PlannedStep[] {
   if (names.length > 0)
     steps.push({
       name: 'turbo',
-      command: ['bunx', 'turbo', 'run', 'lint', 'typecheck', ...names.map((n) => `--filter=${n}`)],
+      command: [
+        ...pooled(TURBO_SLOTS),
+        'bunx',
+        'turbo',
+        'run',
+        'lint',
+        'typecheck',
+        `--concurrency=${TURBO_SLOTS}`,
+        ...names.map((n) => `--filter=${n}`),
+      ],
     });
   const direct = input.direct;
   if (direct === undefined) return steps;
