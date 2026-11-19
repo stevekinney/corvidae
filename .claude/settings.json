@@ -163,7 +163,7 @@
         ]
       },
       {
-        "matcher": "AskUserQuestion",
+        "matcher": "Workflow|AskUserQuestion",
         "hooks": [
           {
             "type": "command",
