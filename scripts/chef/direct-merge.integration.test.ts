@@ -16,6 +16,7 @@ import {
   readExecutionSnapshot,
   requireAuthority,
 } from './execution-state.ts';
+import { greenLanding } from './landing-evidence.test-support.ts';
 import { withMergeLock } from './merge-gate.ts';
 import { defaultRunner, type Runner } from './process-runner.ts';
 import type { GuardsResult } from './text-guards.ts';
@@ -29,7 +30,7 @@ import type { GuardsResult } from './text-guards.ts';
  */
 
 /** Real Git with no host configuration reaching in: identity and signing are set per repository. */
-const isolated: Runner = (command, options) =>
+const isolated: Runner = greenLanding((command, options) =>
   defaultRunner(command, {
     ...options,
     env: {
@@ -38,7 +39,8 @@ const isolated: Runner = (command, options) =>
       GIT_CONFIG_NOSYSTEM: '1',
       GIT_TERMINAL_PROMPT: '0',
     },
-  });
+  }),
+);
 
 const scratchDirectories: string[] = [];
 
@@ -135,7 +137,7 @@ async function world(conflicting = false, integrateMain = true): Promise<World> 
       relevantInputs: ['shared.txt', 'feature.txt'],
       outputDirectory: directory,
     },
-    { route: 'branch' },
+    { route: 'branch', landing: true },
   );
   git(clone, 'update-ref', 'refs/remotes/origin/main', staleBase);
   git(clone, 'update-ref', '-d', 'refs/remotes/origin/branch');
