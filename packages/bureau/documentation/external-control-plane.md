@@ -405,7 +405,7 @@ With `dryRun: true` the server makes the checks the real call makes up to its fi
 
 | Operation | `target.kind` | `effects` |
 | --- | --- | --- |
-| `bureau.tasks.cancel` | `task` | `runs-in-progress`: 1 while the task has a run, 0 once it has finished |
+| `bureau.tasks.cancel` | `task` | `runs-in-progress`: 1 while the task has a run, 0 once it has finished and for a task that belongs to a goal or a workflow instance, whose cancel is `rejected` and stops nothing |
 | `bureau.workflows.runs.cancel` | `workflow-run` | `running-instances`: 1 while the instance has not finished |
 | `bureau.goals.cancel` | `goal` | `runs-in-progress`: the attempt runs the cancel would stop |
 | `bureau.schedules.cancel` | `schedule` | `queued-runs`: the occurrences waiting behind the fire in flight, which the cancel drops |
