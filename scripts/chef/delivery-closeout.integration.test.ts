@@ -252,6 +252,7 @@ scenarios.scenario(
     const dependencies = {
       client: remote.client,
       record: context.record,
+      readLease: async () => ({ run: context.options.run, live: true }),
       verification: context.fixture.dependencies,
     };
     const failed = await closeDelivery(context.loaded, context.options, report(), dependencies);
