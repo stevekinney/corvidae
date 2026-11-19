@@ -17,7 +17,7 @@ export type BulkWorkflowsOperationTypes = {
           readonly failed: number;
         }
       | SharedActionConfirmationTokenC_7756c689;
-    readonly faults: never;
+    readonly faults: 'Conflict';
   };
   'weft.workflows.bulk.delete': {
     readonly input: SharedAttributesBulkConcurrenc_0f0d07d6;
@@ -28,7 +28,7 @@ export type BulkWorkflowsOperationTypes = {
           readonly skippedTeardownPending?: ReadonlyArray<string>;
         }
       | SharedActionConfirmationTokenC_7756c689;
-    readonly faults: 'Unprocessable';
+    readonly faults: 'Conflict' | 'Unprocessable';
   };
   'weft.workflows.bulk.retryfailed': {
     readonly input: SharedAttributesBulkConcurrenc_0f0d07d6;
@@ -40,7 +40,7 @@ export type BulkWorkflowsOperationTypes = {
           readonly retried: number;
         }
       | SharedActionConfirmationTokenC_7756c689;
-    readonly faults: never;
+    readonly faults: 'Conflict';
   };
   'weft.workflows.bulk.signal': {
     readonly input: {
@@ -88,7 +88,7 @@ export type BulkWorkflowsOperationTypes = {
           readonly signalled: number;
         }
       | SharedActionConfirmationTokenC_7756c689;
-    readonly faults: never;
+    readonly faults: 'Conflict';
   };
   'weft.workflows.bulk.tags': {
     readonly input: {
@@ -140,6 +140,6 @@ export type BulkWorkflowsOperationTypes = {
     readonly output:
       | { readonly auditEvent?: SharedActionAffectedCountConfi_6a0b3afc; readonly modified: number }
       | SharedActionConfirmationTokenC_7756c689;
-    readonly faults: never;
+    readonly faults: 'Conflict';
   };
 };
