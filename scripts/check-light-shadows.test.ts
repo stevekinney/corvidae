@@ -93,7 +93,7 @@ describe('light shadows', () => {
       'a white gradient that is not an edge',
       '.swatch { background: linear-gradient(90deg, white, black); }',
     ],
-    ['a longer property name','a { text-box-shadow-like: white; }'],
+    ['a longer property name', 'a { text-box-shadow-like: white; }'],
   ])('accepts %s', (_name, source) => {
     expect(findLightShadows(source)).toEqual([]);
   });

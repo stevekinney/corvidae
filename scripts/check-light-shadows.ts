@@ -64,7 +64,10 @@ function gradientContext(text: string, index: number): string {
     text.lastIndexOf('}', index),
   );
   const ruleStart = text.lastIndexOf('{', index);
-  const selectorStart = Math.max(text.lastIndexOf('}', ruleStart), text.lastIndexOf(';', ruleStart));
+  const selectorStart = Math.max(
+    text.lastIndexOf('}', ruleStart),
+    text.lastIndexOf(';', ruleStart),
+  );
   return `${text.slice(selectorStart + 1, ruleStart)} ${text.slice(declarationStart + 1, index)}`;
 }
 
