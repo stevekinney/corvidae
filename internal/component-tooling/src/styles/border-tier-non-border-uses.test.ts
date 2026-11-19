@@ -382,6 +382,11 @@ export const CLASSIFIED: Record<string, readonly Classification[]> = {
       declaration: 'box-shadow: inset 0 0 0 1px var(--cinder-border-muted);',
       category: 'hairline',
     },
+    // The 1px inset edge of a checklist's upcoming step marker, a circle's own border (COR-2489).
+    {
+      declaration: 'box-shadow: inset 0 0 0 1px var(--cinder-border-control);',
+      category: 'hairline',
+    },
   ],
   'components/cinder/src/components/timeline/timeline.css': [
     { declaration: 'background: var(--cinder-border-muted);', category: 'hairline' },
