@@ -14,15 +14,18 @@ import {
   type DeliveryVerification,
   type DeliveryVerificationDependencies,
 } from './delivery-verification.ts';
+import { designVerdictPath } from './design-verdict.ts';
 import { directMerge, type DirectMergeOptions } from './direct-merge.ts';
 import { recordMutationIntent } from './execution-state.ts';
 import {
+  changedAnswer,
   greenLandingAnswers,
+  jobsAnswer,
   landingProvider,
-  planAnswer,
   runsAnswer,
 } from './landing-evidence.test-support.ts';
-import { designVerdictPath } from './landing-evidence.ts';
+import { targetedRunName } from './landing-evidence.ts';
+import { landingPlan } from './landing-plan.ts';
 import { LinearError, type LinearClient } from './linear.ts';
 import type { MergeGateOptions, MergeGateReport } from './merge-gate.ts';
 import { UsageError, type Runner, type RunnerResult } from './process-runner.ts';
@@ -1600,7 +1603,7 @@ interface Landing {
   /** Verdict file text, written beside the execution state for the head. */
   verdicts?: string;
   /** How the request pins its CI evidence (a manual dispatch, whose pin may be stale). */
-  identity?: { dispatch?: boolean; stale?: boolean };
+  identity?: { dispatch?: boolean; stale?: boolean; none?: boolean };
 }
 
 /** `deliver --branch` over a fake git, gh and Linear, with the green landing varied by `landing`. */
@@ -1753,7 +1756,7 @@ scenarios.describe('deliver --branch refuses to land without evidence', () => {
 
   scenarios.scenario('an interface path with no design verdict', async () => {
     const { report, code } = await landBranch({
-      answers: planAnswer(BASE, { changed: [UI_PATH] }),
+      answers: changedAnswer(BASE, HEAD, [UI_PATH]),
     });
     expect(report).toMatchObject({ merged: false, failedStep: 'verification' });
     expect(report.detail).toContain('records no design verdict for the head');
@@ -1763,7 +1766,7 @@ scenarios.describe('deliver --branch refuses to land without evidence', () => {
   scenarios.scenario(
     'an interface path lands with a verdict whose rows all pass, and not with a failing row',
     async () => {
-      const answers = planAnswer(BASE, { changed: [UI_PATH] });
+      const answers = changedAnswer(BASE, HEAD, [UI_PATH]);
       const passing = await landBranch({
         answers,
         verdicts: '11a | matches |\n11b | deferred | the issue defers it to COR-9\n',
@@ -1783,11 +1786,7 @@ scenarios.describe('deliver --branch refuses to land without evidence', () => {
     'a one-way door through a branch merge, which has no pull request',
     async () => {
       const { report, code } = await landBranch({
-        answers: planAnswer(BASE, {
-          changed: [DOOR.path],
-          requires_full_run: true,
-          full_run_rules: [DOOR],
-        }),
+        answers: changedAnswer(BASE, HEAD, [DOOR.path]),
       });
       expect(report).toMatchObject({ merged: false, failedStep: 'verification' });
       expect(report.detail).toContain('one-way door');
@@ -1796,13 +1795,49 @@ scenarios.describe('deliver --branch refuses to land without evidence', () => {
     },
   );
 
-  scenarios.scenario('a whole-suite rule widens the run and is no one-way door', async () => {
+  scenarios.scenario(
+    'deleting a wire golden is a one-way door: the door check reads every status',
+    async () => {
+      const { report, code } = await landBranch({
+        // The deleted path appears only in the unfiltered diff; a `--diff-filter=d` read sees nothing.
+        handler: (command) =>
+          command.includes('--diff-filter=d') ||
+          command.some((word) => word.startsWith('--diff-filter'))
+            ? reply('')
+            : undefined,
+        answers: changedAnswer(BASE, HEAD, [DOOR.path]),
+      });
+      expect(report).toMatchObject({ merged: false, failedStep: 'verification' });
+      expect(report.detail).toContain('must go through a pull request');
+      expect(code).toBe(1);
+    },
+  );
+
+  scenarios.scenario(
+    'a head whose evidence-plan.ts prints an empty plan still refuses: nothing of the checkout runs',
+    async () => {
+      const { report, calls } = await landBranch({
+        answers: changedAnswer(BASE, HEAD, [DOOR.path]),
+        handler: (command) =>
+          command[0] === 'bun'
+            ? reply(JSON.stringify({ changed: [], requires_full_run: false, full_run_rules: [] }))
+            : undefined,
+      });
+      expect(report).toMatchObject({ merged: false, failedStep: 'verification' });
+      expect(report.detail).toContain('one-way door');
+      expect(
+        calls.some((call) => call.includes('evidence-plan') || call.startsWith('scripts/')),
+      ).toBe(false);
+    },
+  );
+
+  const TOKEN_PATH = 'components/cinder/src/tokens/sets/colors.tokens.json';
+  const passingVerdicts = '11a | matches |\n';
+
+  scenarios.scenario('a whole-suite change widens the run and is no one-way door', async () => {
     const { report } = await landBranch({
-      answers: planAnswer(BASE, {
-        changed: ['scripts/browser-fixtures/tests/density.playwright.ts'],
-        requires_full_run: true,
-        full_run_rules: [{ rule: 'whole-suite: token change', path: 'x' }],
-      }),
+      answers: changedAnswer(BASE, HEAD, [TOKEN_PATH]),
+      verdicts: passingVerdicts,
     });
     expect(report).toMatchObject({ failedStep: null, merged: true });
   });
@@ -1815,32 +1850,107 @@ scenarios.describe('deliver --branch refuses to land without evidence', () => {
           ...runsAnswer('acme/widgets', HEAD, [
             { head_sha: HEAD, path: '.github/workflows/pull-request.yml' },
           ]),
-          ...planAnswer(BASE, { requires_full_run: true }),
+          ...changedAnswer(BASE, HEAD, [TOKEN_PATH]),
         },
+        verdicts: passingVerdicts,
       });
       expect(report).toMatchObject({ merged: false, failedStep: 'verification' });
       expect(report.detail).toContain('requires a full main.yml run');
     },
   );
 
-  scenarios.scenario('a green targeted run never covers a head', async () => {
+  /** A red `main.yml` run (4242) whose one failed job `main` also fails, per `main`'s own run 99. */
+  const knownRed = (command: string[]): RunnerResult | undefined => {
+    if (command[1] !== 'run') return undefined;
+    if (command[2] === 'list') return reply('[{"databaseId":99,"conclusion":"failure"}]');
+    if (command.includes('--log-failed')) return reply('');
+    return reply(
+      JSON.stringify({
+        status: 'completed',
+        conclusion: 'failure',
+        jobs: [{ name: 'Root checks', conclusion: 'failure' }],
+      }),
+    );
+  };
+
+  scenarios.scenario(
+    'a red main.yml run with failures main has does not satisfy a plan that needs the full run',
+    async () => {
+      const { report, code } = await landBranch({
+        answers: {
+          ...runsAnswer('acme/widgets', HEAD, [{ head_sha: HEAD, conclusion: 'failure' }]),
+          ...changedAnswer(BASE, HEAD, [TOKEN_PATH]),
+        },
+        handler: knownRed,
+        verdicts: passingVerdicts,
+      });
+      expect(report).toMatchObject({ merged: false, failedStep: 'verification' });
+      expect(report.detail).toContain('requires a full main.yml run');
+      expect(code).toBe(1);
+    },
+  );
+
+  scenarios.scenario(
+    'a red run covers nothing alone, and may stand beside a green covering run',
+    async () => {
+      const alone = await landBranch({
+        answers: runsAnswer('acme/widgets', HEAD, [{ head_sha: HEAD, conclusion: 'failure' }]),
+        handler: knownRed,
+      });
+      expect(alone.report).toMatchObject({ merged: false, failedStep: 'verification' });
+      expect(alone.report.detail).toContain('no green run covers the head');
+      const beside = await landBranch({
+        answers: {
+          ...runsAnswer('acme/widgets', HEAD, [
+            { head_sha: HEAD, conclusion: 'failure' },
+            { head_sha: HEAD, id: 5, path: '.github/workflows/pull-request.yml' },
+          ]),
+          ...jobsAnswer('acme/widgets', 5),
+        },
+        handler: knownRed,
+      });
+      expect(beside.report).toMatchObject({ failedStep: null, merged: true });
+    },
+  );
+
+  scenarios.scenario('a green run with a failed job covers nothing', async () => {
     const { report } = await landBranch({
-      answers: runsAnswer('acme/widgets', HEAD, [
-        { head_sha: HEAD, path: '.github/workflows/targeted-checks.yml' },
-      ]),
+      answers: jobsAnswer('acme/widgets', 4242, 'failure'),
     });
     expect(report).toMatchObject({ merged: false, failedStep: 'verification' });
-    expect(report.detail).toContain('no finished green main.yml or pull-request.yml run');
+    expect(report.detail).toContain('concluded failure');
   });
 
-  scenarios.scenario('a worktree that is not at the head is refused', async () => {
-    const other = '9'.repeat(40);
-    const { report } = await landBranch({
-      answers: { 'rev-parse HEAD': reply(`${other}\n`) },
-    });
-    expect(report).toMatchObject({ merged: false, failedStep: 'verification' });
-    expect(report.detail).toContain(`is at ${other}, not the head`);
-  });
+  scenarios.scenario(
+    'a targeted run covers a head only when its run name carries the plan digest',
+    async () => {
+      const digest = landingPlan(['a.ts']).digest;
+      const targeted = (title: string) =>
+        runsAnswer('acme/widgets', HEAD, [
+          { head_sha: HEAD, path: '.github/workflows/targeted-checks.yml', display_title: title },
+        ]);
+      const matching = await landBranch({
+        identity: { none: true },
+        answers: targeted(targetedRunName(digest)),
+      });
+      expect(matching.report).toMatchObject({ failedStep: null, merged: true });
+      const mismatched = await landBranch({
+        identity: { none: true },
+        answers: targeted(targetedRunName('0'.repeat(64))),
+      });
+      expect(mismatched.report).toMatchObject({ merged: false, failedStep: 'verification' });
+      expect(mismatched.report.detail).toContain('no green run covers the head');
+      const full = await landBranch({
+        identity: { none: true },
+        answers: {
+          ...targeted(targetedRunName(landingPlan([TOKEN_PATH]).digest)),
+          ...changedAnswer(BASE, HEAD, [TOKEN_PATH]),
+        },
+        verdicts: passingVerdicts,
+      });
+      expect(full.report.detail).toContain('requires a full main.yml run');
+    },
+  );
 
   scenarios.scenario(
     'a manual dispatch is pinned to the batch digest: a stale pin is refused, the batch digest lands',

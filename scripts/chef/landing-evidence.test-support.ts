@@ -78,6 +78,7 @@ export interface ListedRunFixture {
   id?: number;
   head_sha: string;
   path?: string;
+  display_title?: string;
   status?: string;
   conclusion?: string;
 }
@@ -104,50 +105,58 @@ export function runsAnswer(
   };
 }
 
-export interface PlanFixture {
-  changed?: string[];
-  requires_full_run?: boolean;
-  full_run_rules?: { rule: string; path: string }[];
-}
-
-/** `bun scripts/chef/evidence-plan.ts --base <base> --json`: the key and answer for a plan. */
-export function planAnswer(base: string, plan: PlanFixture = {}): Record<string, RunnerResult> {
+/** The answer to `runs/<id>/jobs`: one job with `conclusion`. */
+export function jobsAnswer(
+  repository: string,
+  id = LANDING_RUN_ID,
+  conclusion = 'success',
+): Record<string, RunnerResult> {
   return {
-    [`scripts/chef/evidence-plan.ts --base ${base} --json`]: reply(
-      JSON.stringify({
-        changed: ['a.ts'],
-        requires_full_run: false,
-        full_run_rules: [],
-        ...plan,
-      }),
+    [`api repos/${repository}/actions/runs/${id}/jobs?per_page=100`]: reply(
+      JSON.stringify({ jobs: [{ name: 'Root checks', conclusion }] }),
     ),
   };
 }
 
 /**
- * `inner` with the two reads of a green landing answered: one finished green `main.yml` run on the
- * head the URL names, the worktree at that head, and an evidence plan with nothing special.
- * Anything else goes to `inner`.
+ * `git diff --name-only <base>...<head>` with every status: the changed files the landing plan
+ * reads. Only this exact form is answered, so a `--diff-filter` form gets no answer and a check
+ * that used one would refuse.
+ */
+export function changedAnswer(
+  base: string,
+  head: string,
+  paths: string[] = ['a.ts'],
+): Record<string, RunnerResult> {
+  return {
+    [`diff --name-only ${base}...${head}`]: reply(paths.map((path) => `${path}\n`).join('')),
+  };
+}
+
+/**
+ * `inner` with the reads of a green landing answered: one finished green `main.yml` run on the head
+ * the URL names, its jobs, and a diff that changes `a.ts`. Anything else goes to `inner`.
  */
 export function greenLanding(inner: Runner): Runner {
-  let head = '';
   return (command, options) => {
     const url = command[0] === 'gh' && command[1] === 'api' ? (command[2] ?? '') : '';
     const runs = /^repos\/([^/]+\/[^/]+)\/actions\/runs\?head_sha=([0-9a-f]+)&per_page=100$/.exec(
       url,
     );
-    if (runs !== null) {
-      head = runs[2] ?? '';
-      return Object.values(runsAnswer(runs[1] ?? '', head, [{ head_sha: head }]))[0]!;
-    }
-    // Once per landing: the check's own read of the worktree, never a fixture's.
-    if (command.join(' ') === 'git rev-parse HEAD' && head !== '') {
-      const at = head;
-      head = '';
-      return reply(`${at}\n`);
-    }
-    if (command[0] === 'bun' && command[1] === 'scripts/chef/evidence-plan.ts')
-      return Object.values(planAnswer(command[3] ?? ''))[0]!;
+    if (runs !== null)
+      return Object.values(
+        runsAnswer(runs[1] ?? '', runs[2] ?? '', [{ head_sha: runs[2] ?? '' }]),
+      )[0]!;
+    if (/^repos\/[^/]+\/[^/]+\/actions\/runs\/\d+\/jobs\?per_page=100$/.test(url))
+      return reply(JSON.stringify({ jobs: [{ name: 'Root checks', conclusion: 'success' }] }));
+    if (
+      command[0] === 'git' &&
+      command[1] === 'diff' &&
+      command[2] === '--name-only' &&
+      command.length === 4 &&
+      command[3]?.includes('...')
+    )
+      return reply('a.ts\n');
     return inner(command, options);
   };
 }
@@ -160,8 +169,7 @@ export function greenLandingAnswers(
 ): Record<string, RunnerResult> {
   return {
     ...runsAnswer(repository, head, [{ head_sha: head }]),
-    ...planAnswer(base),
-    // The worktree is at the head, so the plan describes it.
-    'rev-parse HEAD': reply(`${head}\n`),
+    ...jobsAnswer(repository),
+    ...changedAnswer(base, head),
   };
 }

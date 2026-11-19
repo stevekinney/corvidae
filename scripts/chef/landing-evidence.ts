@@ -8,37 +8,37 @@
 //   2. every CI evidence identity the request carries resolves to exactly one authenticated run on
 //      the head whose plan digest is the one the coordinator pinned (the P07 digest: the batch
 //      digest for a manual dispatch, the identity's own for any other event);
-//   3. no run of a landing workflow is unfinished or red with a failure `main` does not already
-//      have (`ci-compare.ts`'s `compare`), a green `main.yml` or `pull-request.yml` run covers the
-//      head, and, when the evidence plan (`evidence-plan.ts`, run in the worktree, which must be at
-//      the head) sets `requires_full_run`, the covering run is `main.yml`'s. A `targeted-checks.yml`
-//      run is judged for failures but never covers: its dispatch inputs are not readable from the
-//      run, so they cannot be compared with the plan;
+//   3. no run of a landing workflow is unfinished, or red with a failure `main` does not already
+//      have (`ci-compare.ts`'s `compare`), and a green run covers the head. A red run never
+//      covers, even when `main` has its failures. Green means conclusion `success` with no job
+//      failed, cancelled or timed out. Coverage is a `main.yml` or `pull-request.yml` run when an
+//      evidence identity binds it, or a `targeted-checks.yml` run whose run name carries the plan
+//      digest this check computes (`landing-plan.ts`); a plan that needs the full run (a one-way
+//      door or a whole-suite change) is covered only by a bound `main.yml` run;
 //   4. an interface path (`applications/interborough/src/{app,routes,views,styles}`,
-//      `components/*/src`) has a design verdict with no failing row;
-//   5. a one-way door (a plan rule other than `whole-suite:`) goes through a pull request.
+//      `components/*/src`) has a design verdict with no failing row (`design-verdict.ts`);
+//   5. a one-way door goes through a pull request.
 //
-// The design verdict is a file of the row-verdict format of `.agents/skills/design-review`
-// (`row-id | verdict | evidence`, one row per line), recorded beside the execution state as
-// `design-verdicts/<head>.verdicts`; a verdict recorded for another head is never read. Every row
-// must be `matches` or `deferred`.
+// The plan is computed here, from `git diff --name-only <base>...<head>` with every status and the
+// rules this code carries. Nothing from the worker's checkout is executed: a head cannot rewrite
+// the gate that judges it.
 //
-// Every read fails closed: a `gh` or plan failure, an unreadable answer or a missing dependency is
-// a refusal, never a pass.
+// Every read fails closed: a `gh` or git failure, an unreadable answer or a missing dependency is a
+// refusal, never a pass.
 
 import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
 
 import { compare, readFailures, recentMainRuns } from './ci-compare.ts';
 import { createGitHubCiEvidenceProvider } from './ci-evidence-github.ts';
 import { ciEvidenceRequestKey, type CiEvidenceProvider } from './ci-evidence.ts';
 import { batchVerificationPlanDigest } from './delivery-completion.ts';
 import type { LoadedDeliveryVerification } from './delivery-verification.ts';
+import { designVerdictPath, failingVerdictRows } from './design-verdict.ts';
+import { changedPaths, landingPlan, type LandingPlan } from './landing-plan.ts';
 import { defaultRunner, type Runner } from './process-runner.ts';
-import { oneWayDoorMatches } from './verification-plan.ts';
 
 export interface LandingDependencies {
-  /** Answers `gh` and `bun` commands; the merge's own runner, so one fake serves a test. */
+  /** Answers `gh` and `git` commands; the merge's own runner, so one fake serves a test. */
   runner: Runner;
   ciProvider?: Pick<CiEvidenceProvider, 'findRuns'>;
   /** The text of a verdicts file, or `undefined` when there is none. */
@@ -50,18 +50,15 @@ export interface LandingRoute {
   defaultBranch: string;
 }
 
-/** The workflows whose runs on a head count as its evidence. */
-export const landingWorkflows: ReadonlySet<string> = new Set([
-  '.github/workflows/main.yml',
-  '.github/workflows/pull-request.yml',
-  '.github/workflows/targeted-checks.yml',
-]);
-
 const FULL_WORKFLOW = '.github/workflows/main.yml';
-/** The workflows whose green run covers a head: the ones that write an authenticated receipt. */
-const COVERING_WORKFLOWS: ReadonlySet<string> = new Set([
+const PULL_REQUEST_WORKFLOW = '.github/workflows/pull-request.yml';
+const TARGETED_WORKFLOW = '.github/workflows/targeted-checks.yml';
+
+/** The workflows whose runs on a head are judged. */
+export const landingWorkflows: ReadonlySet<string> = new Set([
   FULL_WORKFLOW,
-  '.github/workflows/pull-request.yml',
+  PULL_REQUEST_WORKFLOW,
+  TARGETED_WORKFLOW,
 ]);
 
 const INTERFACE_PATH =
@@ -73,27 +70,14 @@ export function interfacePaths(changed: readonly string[]): string[] {
   return changed.filter((path) => INTERFACE_PATH.test(path) && !NOT_INTERFACE.test(path));
 }
 
-/** Where a head's design verdicts are recorded, beside the execution state. */
-export function designVerdictPath(stateDirectory: string, head: string): string {
-  return join(stateDirectory, 'design-verdicts', `${head}.verdicts`);
-}
-
-const PASSING_VERDICTS = new Set(['matches', 'deferred']);
-
-/** The rows of a verdicts file that are not a pass, or a problem when it has no rows. */
-export function failingVerdictRows(text: string): string[] {
-  const rows = text.split('\n').filter((line) => line.trim() !== '');
-  if (rows.length === 0) return ['the verdicts file has no rows'];
-  return rows.flatMap((line) => {
-    const [id = '', verdict = ''] = line.split('|').map((field) => field.trim());
-    return id !== '' && PASSING_VERDICTS.has(verdict) ? [] : [`${id || line}: ${verdict || '?'}`];
-  });
-}
+/** The run name `targeted-checks.yml` takes from its `plan_digest` input. */
+export const targetedRunName = (digest: string): string => `targeted ${digest}`;
 
 interface ListedRun {
   id: number;
   head: string;
   path: string;
+  title: string;
   status: string;
   conclusion: string;
 }
@@ -114,6 +98,7 @@ function listRuns(runner: Runner, repository: string, head: string): ListedRun[]
       id: Number(entry['id']),
       head: text(entry['head_sha']),
       path: text(entry['path']).split('@')[0] ?? '',
+      title: text(entry['display_title']),
       status: text(entry['status']),
       conclusion: text(entry['conclusion']),
     }));
@@ -122,44 +107,33 @@ function listRuns(runner: Runner, repository: string, head: string): ListedRun[]
   }
 }
 
-interface LandingPlan {
-  changed: string[];
-  requiresFullRun: boolean;
-  oneWayDoors: { rule: string; path: string }[];
-}
+const BAD_JOB = new Set([
+  'failure',
+  'cancelled',
+  'timed_out',
+  'startup_failure',
+  'action_required',
+]);
 
-function readPlan(runner: Runner, cwd: string, base: string, head: string): LandingPlan | string {
-  // The plan diffs `base...HEAD` of the worktree, so it describes the head only when it is checked out.
-  const checkedOut = runner(['git', 'rev-parse', 'HEAD'], { cwd });
-  const at = checkedOut.stdout.trim();
-  if (checkedOut.code !== 0 || at !== head)
-    return `the worktree is at ${at || 'an unreadable revision'}, not the head ${head}, so its evidence plan would describe another change`;
-  const answer = runner(['bun', 'scripts/chef/evidence-plan.ts', '--base', base, '--json'], {
-    cwd,
-  });
-  if (answer.code !== 0)
-    return `the evidence plan could not be computed (exit ${answer.code}): ${answer.stderr.trim().split('\n')[0] ?? ''}`;
+/** A problem when a run's jobs cannot be read or one of them did not go green. */
+function jobsProblem(runner: Runner, repository: string, run: ListedRun): string | undefined {
+  const answer = runner([
+    'gh',
+    'api',
+    `repos/${repository}/actions/runs/${run.id}/jobs?per_page=100`,
+  ]);
+  if (answer.code !== 0) return `the jobs of run ${run.id} could not be read`;
   try {
-    const plan = JSON.parse(answer.stdout) as {
-      changed?: unknown;
-      requires_full_run?: unknown;
-      full_run_rules?: unknown;
-    };
-    if (
-      !Array.isArray(plan.changed) ||
-      typeof plan.requires_full_run !== 'boolean' ||
-      !Array.isArray(plan.full_run_rules)
-    )
-      return 'the evidence plan answer is missing its changed files or full-run rules';
-    const changed = plan.changed.map(String);
-    return {
-      changed,
-      requiresFullRun: plan.requires_full_run,
-      // The plan's own one-way-door rules; its whole-suite rules widen the run and are no door.
-      oneWayDoors: oneWayDoorMatches(changed),
-    };
+    const jobs = (JSON.parse(answer.stdout) as { jobs?: unknown }).jobs;
+    if (!Array.isArray(jobs) || jobs.length === 0) return `run ${run.id} lists no jobs`;
+    const bad = (jobs as { name?: unknown; conclusion?: unknown }[]).find((job) =>
+      BAD_JOB.has(String(job.conclusion)),
+    );
+    return bad === undefined
+      ? undefined
+      : `job ${String(bad.name)} of run ${run.id} concluded ${String(bad.conclusion)}`;
   } catch {
-    return 'the evidence plan answer is not JSON';
+    return `the jobs of run ${run.id} are not JSON`;
   }
 }
 
@@ -169,11 +143,8 @@ async function checkDigests(
   source: Pick<CiEvidenceProvider, 'findRuns'>,
 ): Promise<string | undefined> {
   const { request } = verification;
-  const identities = request.ciEvidence;
-  if (!Array.isArray(identities) || identities.length === 0)
-    return 'the verification request carries no CI evidence identity for the head';
   const batch = batchVerificationPlanDigest(request.members);
-  for (const identity of identities) {
+  for (const identity of request.ciEvidence ?? []) {
     if (identity.requestKey !== ciEvidenceRequestKey(identity))
       return 'a CI evidence identity does not match its request key';
     const expected =
@@ -203,15 +174,24 @@ function checkRuns(
   defaultBranch: string,
   listed: readonly ListedRun[],
   plan: LandingPlan,
+  bound: boolean,
 ): string | undefined {
   const covering: ListedRun[] = [];
   for (const run of listed.filter((entry) => landingWorkflows.has(entry.path))) {
     if (run.status !== 'completed') return `run ${run.id} (${run.path}) has not finished`;
     if (run.conclusion === 'success') {
-      covering.push(run);
+      const problem = jobsProblem(runner, repository, run);
+      if (problem !== undefined) return problem;
+      const covers =
+        run.path === TARGETED_WORKFLOW
+          ? !plan.requiresFullRun && run.title === targetedRunName(plan.digest)
+          : bound;
+      if (covers) covering.push(run);
       continue;
     }
     if (run.conclusion !== 'failure' && run.conclusion !== 'timed_out') continue;
+    // A red run may stay beside a green covering run when `main` has all of its failures; it never
+    // covers a head itself.
     try {
       const id = String(run.id);
       const target = readFailures(runner, repository, id);
@@ -223,16 +203,15 @@ function checkRuns(
         const named = comparison.jobs.filter((job) => job.isNew).map((job) => job.name);
         return `run ${run.id} (${run.path}) is red with failures main does not have: ${named.join(', ') || run.conclusion}`;
       }
-      covering.push(run);
     } catch (error) {
       return `run ${run.id} is red and could not be compared with main: ${error instanceof Error ? error.message : String(error)}`;
     }
   }
-  const covered = covering.filter((run) => COVERING_WORKFLOWS.has(run.path));
-  if (covered.length === 0)
-    return 'no finished green main.yml or pull-request.yml run covers the head';
-  if (plan.requiresFullRun && !covered.some((run) => run.path === FULL_WORKFLOW))
-    return 'the evidence plan requires a full main.yml run, and none is green on the head';
+  if (plan.requiresFullRun) {
+    if (!covering.some((run) => run.path === FULL_WORKFLOW))
+      return 'the evidence plan requires a full main.yml run bound by a CI evidence identity, and none is green on the head';
+  } else if (covering.length === 0)
+    return 'no green run covers the head: a bound main.yml or pull-request.yml run, or a targeted-checks.yml run named for the plan digest';
   return undefined;
 }
 
@@ -251,27 +230,39 @@ export async function validateLandingEvidence(
   if (elsewhere !== undefined)
     return `run ${elsewhere.id} is on ${elsewhere.head}, not the head ${request.revision}`;
 
-  const digestProblem = await checkDigests(
-    verification,
-    listed,
-    dependencies.ciProvider ??
-      createGitHubCiEvidenceProvider({
-        repository: request.repository,
-        cwd: request.worktree,
-      }),
-  );
-  if (digestProblem !== undefined) return digestProblem;
+  const bound = (request.ciEvidence ?? []).length > 0;
+  if (bound) {
+    const digestProblem = await checkDigests(
+      verification,
+      listed,
+      dependencies.ciProvider ??
+        createGitHubCiEvidenceProvider({
+          repository: request.repository,
+          cwd: request.worktree,
+        }),
+    );
+    if (digestProblem !== undefined) return digestProblem;
+  }
 
-  const plan = readPlan(runner, request.worktree, request.base, request.revision);
-  if (typeof plan === 'string') return plan;
-  const runProblem = checkRuns(runner, request.repository, route.defaultBranch, listed, plan);
+  const changed = changedPaths(runner, request.worktree, request.base, request.revision);
+  if (typeof changed === 'string') return changed;
+  const plan = landingPlan(changed);
+  const runProblem = checkRuns(
+    runner,
+    request.repository,
+    route.defaultBranch,
+    listed,
+    plan,
+    bound,
+  );
   if (runProblem !== undefined) return runProblem;
 
-  const doors = plan.oneWayDoors;
-  if (doors.length > 0 && route.route !== 'pull-request')
-    return `${doors[0]?.path} is a one-way door (${doors[0]?.rule}) and must go through a pull request, not a branch merge`;
+  const door = plan.oneWayDoors[0];
+  if (door !== undefined && route.route !== 'pull-request')
+    return `${door.path} is a one-way door (${door.rule}) and must go through a pull request, not a branch merge`;
 
-  if (interfacePaths(plan.changed).length > 0) {
+  const interfaces = interfacePaths(plan.changed);
+  if (interfaces.length > 0) {
     const path = designVerdictPath(verification.state.stateDirectory, request.revision);
     let text: string | undefined;
     try {
@@ -280,7 +271,7 @@ export async function validateLandingEvidence(
       text = undefined;
     }
     if (text === undefined)
-      return `${interfacePaths(plan.changed)[0]} is an interface path and ${path} records no design verdict for the head`;
+      return `${interfaces[0]} is an interface path and ${path} records no design verdict for the head`;
     const failing = failingVerdictRows(text);
     if (failing.length > 0) return `the design verdict has failing rows: ${failing.join('; ')}`;
   }
