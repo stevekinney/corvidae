@@ -427,9 +427,10 @@ test.describe('on a phone', () => {
     // The run's page is named by its chat. The sample world's chat titles are short (rows 56k, 01l),
     // so this one's chat answers with the long title a request can carry, and the leaf is the
     // trail's longest.
+    const longTitle = 'Please refund order 4471, it arrived damaged and the box was open';
     await rewriteBureauAnswer(page, 'bureau.contexts.get', (context) => ({
       ...context,
-      title: 'Please refund order 4471, it arrived damaged and the box was open',
+      title: longTitle,
     }));
     await open(page, '/runs', 768);
     // The run is the sample world's own refund, never the newest row: a specification before this
@@ -444,9 +445,13 @@ test.describe('on a phone', () => {
     const trail = page.getByRole('banner').getByRole('navigation', { name: 'Breadcrumb' });
     const runs = trail.getByRole('link', { name: 'Runs' });
     await expect(runs).toBeVisible();
+    // The leaf reads the run's identifier until the chat's title arrives, and the trail keys each
+    // crumb by its label, so the leaf is a new element then: measure only once it holds the title,
+    // or the read can land on the identifier's crumb as it is removed.
+    const leaf = trail.locator('[aria-current="page"]');
+    await expect(leaf).toHaveText(longTitle);
     expect(await runs.evaluate((link) => link.scrollWidth <= link.clientWidth)).toBe(true);
     // The leaf is the one that ends in an ellipsis, and it starts inside the trail.
-    const leaf = trail.locator('[aria-current="page"]');
     expect(await leaf.evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(true);
     const leafBox = await boxOf(leaf);
     const trailBox = await boxOf(trail);
