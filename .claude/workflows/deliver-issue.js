@@ -2,7 +2,7 @@ export const meta = {
   name: 'deliver-issue',
   description:
     'Chef branch-path delivery loop: brief, worker, checks, evidence run, wait, compare, review, evidence request. Never merges.',
-  phases: ['brief', 'implement', 'check', 'evidence', 'review', 'correct'],
+  phases: ['brief', 'critique', 'implement', 'check', 'evidence', 'review', 'correct'],
 };
 
 // The default delivery path (a branch the coordinator lands with scripts/chef/deliver.ts), as
@@ -27,8 +27,77 @@ const BRIEF_SCHEMA = {
     briefPath: { type: 'string' },
     error: { type: 'string' },
     paths: { type: 'array', items: { type: 'string' } },
+    needsResolvedRows: { type: 'boolean' },
   },
   required: ['exitCode', 'briefPath'],
+};
+
+// What the pre-build design critique returns; scripts/chef/design-rows-resolved.ts defines the
+// file and design-critique.ts validates it before writing, so the schema only shapes the answer.
+const CRITIQUE_SCHEMA = {
+  type: 'object',
+  properties: {
+    rows: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          id: { type: 'string' },
+          board: { type: 'string' },
+          text: { type: 'string' },
+          states: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                route: { type: 'string' },
+                state: { type: 'string' },
+                kind: {
+                  type: 'string',
+                  enum: ['ready', 'loading', 'empty', 'first-run', 'error', 'forbidden', 'other'],
+                },
+              },
+              required: ['route', 'state', 'kind'],
+            },
+          },
+          widths: { type: 'array', items: { type: 'integer' } },
+          themes: { type: 'array', items: { type: 'string', enum: ['light', 'dark'] } },
+        },
+        required: ['id', 'board', 'text', 'states'],
+      },
+    },
+    checked: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          literal: { type: 'string' },
+          result: { type: 'string', enum: ['consistent', 'conflict'] },
+        },
+        required: ['literal', 'result'],
+      },
+    },
+    conflicts: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          criterion: { type: 'string' },
+          rows: { type: 'array', items: { type: 'string' } },
+          resolution: { type: 'string', enum: ['decision', 'deferral'] },
+          reason: { type: 'string' },
+        },
+        required: ['criterion', 'rows', 'resolution', 'reason'],
+      },
+    },
+  },
+  required: ['rows', 'checked', 'conflicts'],
+};
+
+const RESOLVE_SCHEMA = {
+  type: 'object',
+  properties: { exitCode: { type: 'integer' }, error: { type: 'string' } },
+  required: ['exitCode'],
 };
 
 const RECORD_SCHEMA = {
@@ -189,7 +258,7 @@ function runBrief(issue, run, context, classification) {
     [
       `Prepare chef delivery of ${issue}. Invoke no skills. Make no Linear or GitHub writes.`,
       `Run \`${briefCommand(issue, run, context, classification)}\` once and read its exit code and its JSON output. The coordinator supplied ${context ? 'the verified context file' : 'no design context file'} and ${classification ? `the ${classification} classification` : 'no exceptional classification'}; do not invent either from issue text.`,
-      'Return exitCode (the exit code of that command), briefPath (the JSON path field, or an empty string) error (the JSON error field or the first line of stderr, when there is one) and paths (the repository paths the brief file lists as owned by the issue, or an empty array).',
+      'Return exitCode (the exit code of that command), briefPath (the JSON path field, or an empty string) error (the JSON error field or the first line of stderr, when there is one), needsResolvedRows (true only when the error text contains "rows.resolved.json") and paths (the repository paths the brief file lists as owned by the issue, or an empty array).',
     ].join('\n'),
     {
       label: `brief ${issue}`,
@@ -199,6 +268,59 @@ function runBrief(issue, run, context, classification) {
       effort: 'low',
     },
   );
+}
+
+/**
+ * The pre-build critique of an issue's design rows, run only for an issue whose brief was refused
+ * for want of rows.resolved.json (brief.ts refuses an issue with design rows until the file is
+ * valid). An Opus design-reviewer declares each row's states and settles each conflict between a
+ * row and a literal criterion of the issue (COR-2444's 700px) as a decision or a deferral; a script
+ * validates and writes the file, because the reviewer is read-only and a model's file is not
+ * trusted. Returns a judgment when the critique or the file failed, otherwise null.
+ */
+async function resolveRows(issue, steps) {
+  phase('critique');
+  log(`${issue}: design rows need rows.resolved.json; running the pre-build critique`);
+  const critiqued = await agent(
+    [
+      `Critique the design rows of ${issue} before anything is built, in critique mode of the design-review skill's findings reference. You are read-only; write no file.`,
+      `Run \`bun scripts/chef/design-critique.ts rows ${issue}\` and read its JSON: rowIds, literals (every literal pixel criterion in the issue) and the description. Read the boards under tmp/chef/briefs/${issue}/boards/ of the main checkout when they exist (the main checkout is the parent directory of the output of \`git rev-parse --path-format=absolute --git-common-dir\`).`,
+      'For every row id: declare each state the row covers as a route (a route pattern from applications/interborough/src/app/routes.ts) and the exact state name a capture specification writes (grep the `state:` strings in applications/interborough/tests/e2e), with a kind. First-run and empty states are first-class: declare them whenever the row shows them. Leave widths and themes out unless the row narrows them; the default is 1920, 1280, 768 and 375 in light and dark.',
+      'For every literal criterion in `literals`: say whether the rows are consistent with it or conflict with it (`checked`). Record each conflict, and each pair of rows that contradict each other, as a decision or a deferral with a reason, in `conflicts`. Never leave one open; when you cannot choose, defer it with the reason "owner decision needed".',
+      'Return rows (id, board, text, states, optional widths and themes), checked and conflicts.',
+    ].join('\n'),
+    {
+      label: `critique ${issue}`,
+      phase: 'critique',
+      schema: CRITIQUE_SCHEMA,
+      agentType: 'design-reviewer',
+    },
+  );
+  if (critiqued === null) return judgment(issue, 'design critique failed', steps);
+  steps.critique = critiqued;
+  const written = await agent(
+    [
+      `Record the design critique of ${issue}. Invoke no skills. Change nothing else in the repository.`,
+      `Write exactly this JSON, and nothing else, to the file tmp/chef/scratch/${issue}-critique.json of the main checkout (the parent directory of the output of \`git rev-parse --path-format=absolute --git-common-dir\`), creating the directory if it is absent: ${JSON.stringify(critiqued)}`,
+      `Then run \`bun scripts/chef/design-critique.ts write ${issue} --input <that absolute path>\` once. Return exitCode (its exit code) and error (its output when the exit code is not 0).`,
+    ].join('\n'),
+    {
+      label: `resolve ${issue}`,
+      phase: 'critique',
+      schema: RESOLVE_SCHEMA,
+      model: 'haiku',
+      effort: 'low',
+    },
+  );
+  if (written === null) return judgment(issue, 'rows.resolved.json step failed', steps);
+  steps.resolve = written;
+  if (written.exitCode !== 0)
+    return judgment(
+      issue,
+      `rows.resolved.json refused: ${written.error || `exit ${written.exitCode}`}`,
+      steps,
+    );
+  return null;
 }
 
 function recordOverride(issue, run, override) {
@@ -407,9 +529,18 @@ async function deliverOne(issue) {
     return judgment(issue, 'invalid override: it needs a reason and a time', {});
 
   const steps = {};
-  const prepared = await runBrief(issue, run, context, classification);
+  let prepared = await runBrief(issue, run, context, classification);
   if (prepared === null) return judgment(issue, 'brief step failed', steps);
   steps.brief = prepared;
+  // An issue with design rows is briefed only after its critique: one critique, one re-brief. An
+  // issue without design rows adds no call here.
+  if (prepared.exitCode !== 0 && prepared.needsResolvedRows === true) {
+    const failure = await resolveRows(issue, steps);
+    if (failure !== null) return failure;
+    prepared = await runBrief(issue, run, context, classification);
+    if (prepared === null) return judgment(issue, 'brief step failed after the critique', steps);
+    steps.rebrief = prepared;
+  }
   let briefPath = prepared.briefPath.trim();
   let overridden = null;
   if (prepared.exitCode !== 0) {
