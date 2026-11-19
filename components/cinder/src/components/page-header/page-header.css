@@ -397,6 +397,14 @@
     padding-block: 0;
   }
 
+  /* A Dropdown is an inline block, whose trigger would sit on a baseline in a line box of the
+     title's size and so a little above the centre; as a flex box its trigger is centred like every
+     other control. */
+  .cinder-page-header__actions .cinder-dropdown {
+    display: inline-flex;
+    align-items: center;
+  }
+
   /* A lighter phrase after the title, in the same heading at the same size. */
   .cinder-page-header__title-soft {
     font-weight: 380;

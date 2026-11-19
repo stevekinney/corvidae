@@ -221,19 +221,39 @@ for (const viewport of VIEWPORTS) {
   });
 }
 
-/** The vertical centre of the first line box of the chat's title, measured on its words, not the h1. */
-async function titleFirstLine(page: Page): Promise<{ centre: number; lines: number }> {
-  return header(page)
-    .getByRole('heading', { level: 1 })
-    .evaluate((heading) => {
-      const range = document.createRange();
-      range.selectNodeContents(heading);
-      const rects = [...range.getClientRects()].filter((rect) => rect.height > 0);
-      const first = rects[0];
-      if (first === undefined) throw new Error('The title has no line boxes.');
-      const tops = new Set(rects.map((rect) => Math.round(rect.top)));
-      return { centre: first.top + first.height / 2, lines: tops.size };
-    });
+/**
+ * In one layout: the vertical centre of the first line box of the chat's title, measured on its
+ * words rather than the h1, how many lines it wraps to, and the centre of each header control.
+ */
+async function headerCentres(
+  page: Page,
+): Promise<{ title: number; lines: number; controls: Record<string, number> }> {
+  return header(page).evaluate((root, moreLabel) => {
+    const heading = root.querySelector('h1');
+    if (heading === null) throw new Error('The header has no title.');
+    const range = document.createRange();
+    range.selectNodeContents(heading);
+    const rects = [...range.getClientRects()].filter((rect) => rect.height > 0);
+    const first = rects[0];
+    if (first === undefined) throw new Error('The title has no line boxes.');
+    const centreOf = (element: Element | null): number => {
+      if (element === null) throw new Error('A header control is missing.');
+      const box = element.getBoundingClientRect();
+      return box.top + box.height / 2;
+    };
+    return {
+      title: first.top + first.height / 2,
+      lines: new Set(rects.map((rect) => Math.round(rect.top))).size,
+      controls: {
+        more: centreOf(
+          [...root.querySelectorAll('button')].find(
+            (button) => button.textContent?.trim() === moreLabel,
+          ) ?? null,
+        ),
+        ring: centreOf(root.querySelector('.weft-context-ring')),
+      },
+    };
+  }, MORE.label);
 }
 
 // COR-2438: the title's first line and the controls at the header's inline end share one centre
@@ -256,15 +276,16 @@ for (const width of [1280, 1920]) {
     await expect(moreButton(page)).toBeVisible();
     await expect(page.locator('.weft-context-ring')).toBeVisible();
 
-    const title = await titleFirstLine(page);
-    expect(title.lines, 'the title wraps, so the first line is what is measured').toBeGreaterThan(
-      1,
-    );
-    for (const control of [moreButton(page), page.locator('.weft-context-ring')]) {
-      const box = await control.boundingBox();
-      expect(box).not.toBeNull();
-      const centre = (box?.y ?? 0) + (box?.height ?? 0) / 2;
-      expect(Math.abs(centre - title.centre)).toBeLessThanOrEqual(2);
+    const measured = await headerCentres(page);
+    expect(
+      measured.lines,
+      'the title wraps, so the first line is what is measured',
+    ).toBeGreaterThan(1);
+    for (const [name, centre] of Object.entries(measured.controls)) {
+      expect(
+        Math.abs(centre - measured.title),
+        `${name} at ${centre}, the title's first line at ${measured.title}`,
+      ).toBeLessThanOrEqual(2);
     }
   });
 }

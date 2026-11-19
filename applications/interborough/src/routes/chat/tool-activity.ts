@@ -105,15 +105,22 @@ export type WaitingKnowledge = {
   readonly refused?: ReadonlySet<string> | undefined;
   /** Whether the Bureau says the chat's run is parked on input (`awaiting-input`). */
   readonly parked?: boolean | undefined;
+  /**
+   * The calls the Bureau's pending reviews of the chat hold, once they have been read: the same
+   * reviews the chat list reads for Waiting on you. `undefined` while they have not been read.
+   */
+  readonly reviewed?: ReadonlySet<string> | undefined;
   /** Whether nothing is reading or deciding the approvals now. */
   readonly settled: boolean;
 };
 
 /**
  * Whether `entry` is parked on an approval that no run waits on any more (COR-2438): a decision on
- * it was refused because nothing waits on it, or what the run waits on has been read, the call is
- * not among it, and the Bureau does not say the run is parked on input. Never while anything is
- * reading or deciding, so a call about to be waited on is not taken for one that lapsed.
+ * it was refused because nothing waits on it, or every Bureau fact the page has read agrees that
+ * nothing does: what the run waits on was read and the call is not among it, the pending reviews
+ * were read and hold none for it, and the Bureau does not say the run is parked on input. Never
+ * while anything is reading or deciding, so a call about to be waited on is not taken for one that
+ * lapsed.
  */
 export function approvalLapsed(
   entry: Pick<ToolCallEntry, 'state' | 'decision' | 'callId'>,
@@ -121,7 +128,13 @@ export function approvalLapsed(
 ): boolean {
   if (!known.settled || entry.state !== 'needs-you' || entry.decision !== undefined) return false;
   if (known.refused?.has(entry.callId) === true) return true;
-  return known.waiting !== undefined && !known.waiting.has(entry.callId) && known.parked !== true;
+  return (
+    known.waiting !== undefined &&
+    !known.waiting.has(entry.callId) &&
+    known.reviewed !== undefined &&
+    !known.reviewed.has(entry.callId) &&
+    known.parked !== true
+  );
 }
 
 /** Why a call failed: the tool's own error. */

@@ -1644,6 +1644,7 @@ describe('a decision on an approval that is no longer waiting', () => {
     const known = () => ({
       waiting: session.waitingApprovals,
       refused: session.refusedApprovals,
+      reviewed: new Set<string>(),
       settled: true,
     });
     expect(approvalLapsed(entry, known())).toBe(true);
@@ -1678,13 +1679,15 @@ describe('a decision on an approval that is no longer waiting', () => {
   test('is told apart from an approval still waiting, and from one that is being read', () => {
     const entry = { state: 'needs-you' as const, decision: undefined, callId: 'call-refund' };
     const none = new Set<string>();
-    expect(approvalLapsed(entry, { waiting: new Set(['call-refund']), settled: true })).toBe(false);
-    expect(approvalLapsed(entry, { waiting: undefined, settled: true })).toBe(false);
-    expect(approvalLapsed(entry, { waiting: none, settled: false })).toBe(false);
-    expect(approvalLapsed(entry, { waiting: none, settled: true, parked: true })).toBe(false);
-    expect(approvalLapsed({ ...entry, state: 'done' }, { waiting: none, settled: true })).toBe(
-      false,
-    );
-    expect(approvalLapsed(entry, { waiting: none, settled: true })).toBe(true);
+    const read = { waiting: none, reviewed: none, settled: true };
+    expect(approvalLapsed(entry, { ...read, waiting: new Set(['call-refund']) })).toBe(false);
+    expect(approvalLapsed(entry, { ...read, waiting: undefined })).toBe(false);
+    // The Bureau's pending reviews, which the chat list reads, still hold it, or are not read yet.
+    expect(approvalLapsed(entry, { ...read, reviewed: new Set(['call-refund']) })).toBe(false);
+    expect(approvalLapsed(entry, { ...read, reviewed: undefined })).toBe(false);
+    expect(approvalLapsed(entry, { ...read, settled: false })).toBe(false);
+    expect(approvalLapsed(entry, { ...read, parked: true })).toBe(false);
+    expect(approvalLapsed({ ...entry, state: 'done' }, read)).toBe(false);
+    expect(approvalLapsed(entry, read)).toBe(true);
   });
 });

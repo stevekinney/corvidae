@@ -385,7 +385,7 @@ describe('transcript presentation', () => {
     expect(toggle.textContent?.trim()).toBe('Instructions');
     const body = container.querySelector('.chat-message-body');
     expect(body?.textContent).toContain('You are a refund helper');
-    expect(toggle.getAttribute('aria-controls')).toBe(body?.closest('[role="region"]')?.id);
+    expect(toggle.getAttribute('aria-controls')).toBe(body?.closest('[role="region"]')?.id ?? null);
   });
 
   test('the default presentation is unchanged: no line, and notes stay in the bubble', () => {

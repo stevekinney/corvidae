@@ -434,6 +434,10 @@ describe('PageHeader', () => {
       expect(
         rule('\\.cinder-page-header__actions \\.cinder-dropdown-trigger:not\\(\\.cinder-button\\)'),
       ).toContain('min-block-size: var(--_cinder-compact-control-height)');
+      // A Dropdown's trigger is centred as a flex item, not set on a baseline in the line box.
+      expect(rule('\\.cinder-page-header__actions \\.cinder-dropdown')).toContain(
+        'display: inline-flex',
+      );
     });
 
     test('a narrow header lets the dropped actions row grow to its controls', () => {

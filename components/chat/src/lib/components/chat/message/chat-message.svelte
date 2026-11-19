@@ -2446,10 +2446,6 @@
     text-align: start;
   }
 
-  .chat-message-wrapper[data-presentation='transcript'] .chat-message-body[hidden] {
-    display: none;
-  }
-
   /* The instructions' disclosure is Cinder's flat Collapsible; in the transcript it reads as the
      muted line it opens, not a heading. */
   .chat-message-wrapper :global(.chat-message-system) {

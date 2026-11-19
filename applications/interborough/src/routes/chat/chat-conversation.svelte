@@ -1393,6 +1393,7 @@
     return approvalLapsed(entry, {
       waiting: session.waitingApprovals,
       refused: session.refusedApprovals,
+      reviewed: reviewedCalls,
       parked: context.data?.activity === 'awaiting-input',
       settled: approvalsSettled,
     });
@@ -1745,6 +1746,18 @@
     }),
     undefined,
   );
+  /** The calls the Bureau's pending reviews of this chat hold, once they have been read. */
+  const reviewedCalls = $derived(
+    pendingReviews.data === undefined
+      ? undefined
+      : new Set(
+          pendingReviews.data.flatMap((review) =>
+            review.kind === 'tool-approval' && review.sessionId === sessionId
+              ? [review.approval.callId]
+              : [],
+          ),
+        ),
+  );
   // A stream that gave up while Interborough could not be reached is joined again once it answers,
   // so the person is not left to press Reconnect for a drop the banner already explained.
   let wasUnreachable = false;
@@ -1986,8 +1999,11 @@
     try {
       await session.controller.adapter.resolveToolApproval?.(toolCallId, resolution);
     } catch {
-      // The controller reported it, and the approval is still pending for another try.
+      // The controller reported it, and the approval is still pending for another try, or nothing
+      // waits on it any more and the chat is read again: so is its record, whose activity says
+      // whether it still waits on its person (COR-2438).
       decidedHere.delete(toolCallId);
+      void queryClient.invalidateQueries({ queryKey: queryKeys.contexts.detail(sessionId) });
     } finally {
       deciding = false;
       // Whether it took effect or not, the approval is not what `/reviews` last listed, so the
