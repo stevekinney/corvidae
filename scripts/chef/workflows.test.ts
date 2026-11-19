@@ -27,6 +27,19 @@ interface DeliveryResult {
 /** What each step returns when the script ran clean: the stubs a test overrides by label word. */
 const cleanResponses: Responses = {
   brief: { exitCode: 0, briefPath: 'tmp/chef/briefs/COR-7.md' },
+  critique: {
+    rows: [
+      {
+        id: '11a',
+        board: 'Runs',
+        text: 'Runs as cards',
+        states: [{ route: '/runs', state: 'ready', kind: 'ready' }],
+      },
+    ],
+    checked: [{ literal: '700px', result: 'consistent' }],
+    conflicts: [],
+  },
+  resolve: { exitCode: 0 },
   'record override': { recorded: true, path: '/main/tmp/chef/events.jsonl' },
   implement: {
     status: 'ready-for-review',
@@ -194,7 +207,8 @@ describe('workflow scripts', () => {
           if (agentType === 'chef-worker' && file === 'deliver-issue.js')
             expect(options).toMatch(/\bmodel:\s*(chosen\.model|model),?\s*\}/);
           else if (agentType !== undefined) expect(options).not.toMatch(/\bmodel:/);
-          if (agentType === 'chef-reviewer') continue;
+          // The two read-only reviewers: the code reviewer and the pre-build design critique.
+          if (agentType === 'chef-reviewer' || agentType === 'design-reviewer') continue;
           if (agentType === undefined && /model:\s*'haiku'/.test(options)) {
             expect(prompt).not.toMatch(/\b(push|commit)\b/i);
             continue;
@@ -495,6 +509,74 @@ describe('workflow scripts', () => {
       expect(delivery.labels).toEqual(['brief']);
       expect(delivery.result[0]?.status).toBe('NEEDS_JUDGMENT');
     }
+  });
+
+  describe('the pre-build design critique', () => {
+    const needsRows = (count: number) =>
+      count === 1
+        ? {
+            exitCode: 1,
+            briefPath: '',
+            error: 'Refused: design rows are not resolved: no valid rows.resolved.json',
+            needsResolvedRows: true,
+          }
+        : { exitCode: 0, briefPath: 'tmp/chef/briefs/COR-7.md' };
+
+    test('runs an Opus design-reviewer before the build for an issue with design rows, then briefs again', async () => {
+      const delivery = await runDelivery({}, { brief: needsRows });
+      expect(delivery.labels.slice(0, 5)).toEqual([
+        'brief',
+        'critique',
+        'resolve',
+        'brief',
+        'implement',
+      ]);
+      const critique = delivery.calls[1];
+      expect(critique?.options.agentType).toBe('design-reviewer');
+      expect(critique?.options.model).toBeUndefined();
+      expect(critique?.prompt).toContain('bun scripts/chef/design-critique.ts rows COR-7');
+      const resolve = delivery.calls[2];
+      expect(resolve?.prompt).toContain('bun scripts/chef/design-critique.ts write COR-7 --input');
+      expect(resolve?.prompt).toContain(
+        '"states":[{"route":"/runs","state":"ready","kind":"ready"}]',
+      );
+      expect(delivery.result[0]?.status).toBe('READY_TO_LAND');
+    });
+
+    test('hands the critique the coordinator’s verified design context, or says there is none', async () => {
+      const withContext = await runDelivery(
+        { verifiedContexts: { 'COR-7': '/main/tmp/chef/context.json' } },
+        { brief: needsRows },
+      );
+      const critique = withContext.calls.find((call) => call.label.startsWith('critique'));
+      expect(critique?.prompt).toContain('/main/tmp/chef/context.json');
+      const without = await runDelivery({}, { brief: needsRows });
+      const bare = without.calls.find((call) => call.label.startsWith('critique'));
+      expect(bare?.prompt).toContain('supplied no design context file');
+    });
+
+    test('stops for judgment, building nothing, when the file was refused', async () => {
+      const delivery = await runDelivery(
+        {},
+        {
+          brief: needsRows,
+          resolve: { exitCode: 1, error: 'row 11a declares no states' },
+        },
+      );
+      expect(delivery.labels).toEqual(['brief', 'critique', 'resolve']);
+      expect(delivery.result[0]?.status).toBe('NEEDS_JUDGMENT');
+      expect(delivery.result[0]?.reason).toContain('row 11a declares no states');
+    });
+
+    test('adds no call for an issue without design rows, or for another refusal', async () => {
+      const refused = await runDelivery(
+        {},
+        { brief: { exitCode: 1, briefPath: '', error: 'COR-1 blocks COR-7' } },
+      );
+      expect(refused.labels).toEqual(['brief']);
+      const clean = await runDelivery();
+      expect(clean.labels).not.toContain('critique');
+    });
   });
 
   test('deliver-issue.js records an override as an event and then continues', async () => {

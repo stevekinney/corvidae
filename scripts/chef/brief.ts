@@ -27,7 +27,12 @@
 //     every dated revision, or the whole description when it has no brief heading;
 //   - when the issue names a design (a claude.ai artifact link or a "Design source" section): the
 //     design rows, the rows its acceptance criteria leave out, and the instruction to build against
-//     the saved boards and return a design-review verdict per row;
+//     the saved boards and return a design-review verdict per row. An issue with design rows is
+//     refused (exit 1, no brief written) until `tmp/chef/briefs/<ID>/rows.resolved.json` exists and
+//     is valid (`design-rows-resolved.ts`): the pre-build critique (`design-critique.ts`) declares
+//     each row's states and settles each conflict with the issue's literal criteria as a decision
+//     or a deferral, and the Design section renders both. `--stdout` writes nothing and is exempt,
+//     so the recorded override path of `deliver-issue.js` can still produce a brief;
 //   - the open blockers: every blocked-by issue whose state type is not `completed`, or "None", or
 //     why the relations could not be read;
 //   - the claim: the issue's newest claim comment (`linear.ts claim`) as one line, or "None". A
@@ -55,6 +60,12 @@
 
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import {
+  literalCriteria,
+  resolvedPath,
+  type ResolvedRows,
+  validateResolved,
+} from './design-rows-resolved.ts';
 import {
   type Blocker,
   claimIsLive,
@@ -267,11 +278,35 @@ export function rowCarriage(description: string, rows: string[]): RowCarriage {
   return { criteria, deferred, moved };
 }
 
+/**
+ * The decisions and deferrals the pre-build critique recorded, and the states each row is captured
+ * in, so the worker builds to what was settled and the capture can hold each row to its states.
+ */
+function resolvedLines(identifier: string, resolved: ResolvedRows | undefined): string[] {
+  if (resolved === undefined) return [];
+  return [
+    `Resolved before the build (\`tmp/chef/briefs/${identifier}/rows.resolved.json\`, written by the pre-build design critique); these settle any conflict between a row and the issue's literal criteria:`,
+    '',
+    ...resolved.conflicts.map((conflict) =>
+      conflict.resolution === 'deferral'
+        ? `- Deferred, do not build (rows ${conflict.rows.join(', ')}): ${conflict.criterion}. Reason: ${conflict.reason}`
+        : `- Decision (rows ${conflict.rows.join(', ')}): ${conflict.criterion}. Reason: ${conflict.reason}`,
+    ),
+    ...(resolved.conflicts.length === 0 ? ['- No row conflicts with a literal criterion.'] : []),
+    ...resolved.rows.map(
+      (row) =>
+        `- Row ${row.id} is captured in: ${row.states.map((state) => `${state.route} "${state.state}" (${state.kind})`).join('; ')}. Build every one of these states.`,
+    ),
+    '',
+  ];
+}
+
 function designLines(
   identifier: string,
   description: string,
   descriptionIncluded: boolean,
   depth = 0,
+  resolved?: ResolvedRows,
 ) {
   const source = sectionOf(description, /design\s+(?:source|rows?)/i);
   const links = designLinks(description);
@@ -303,6 +338,7 @@ function designLines(
           '',
         ]
       : []),
+    ...resolvedLines(identifier, resolved),
     `- Before changing code, read every board these rows name with the Artifact tool's read action (the board's \`project/<Board>.dc.html\` path) and save it under \`tmp/chef/briefs/${identifier}/boards/\` in the main checkout. Build to the boards.`,
     "- You run no design-review capture and no `design-reviewer` (a capture never runs on the host; see **Browser suites**). Push your branch and return `ready-for-review` naming each design row you implemented with its board (the file stem you saved under `boards/`) and the screens you changed. The coordinator runs `bun scripts/design-review-capture.ts` (in `applications/interborough`, one capture at a time, under host admission, or `gh workflow run design-review-capture.yml --ref <branch>` when the host is loaded), gets each row's verdict from the read-only `design-reviewer`, checks it with `bun scripts/design-review-rows.ts`, and returns an `unverified` or failing row to you as a correction. Only `matches`, or `deferred` with the reason recorded on the issue, passes; `drifted`, `partial`, `missing` and `unverified` block acceptance.",
     '',
@@ -418,6 +454,50 @@ export interface BriefOptions {
   scratch?: string | undefined;
   /** The parent of every brief's scratch directory; `readBrief` appends `<issue>-<short id>`. */
   scratchRoot?: string | undefined;
+  /**
+   * The briefs directory that holds each issue's `<ID>/rows.resolved.json`. When set, an issue with
+   * design rows is refused until its pre-build critique wrote a valid file there.
+   */
+  resolvedRoot?: string | undefined;
+  /** The issue's validated `rows.resolved.json`, which the Design section renders. */
+  resolved?: ResolvedRows | undefined;
+}
+
+/**
+ * The design rows an issue's description makes the worker build: the rows of its "Design source"
+ * section, or the rows named anywhere when a canvas is linked without one. Nothing when the issue
+ * names no design.
+ */
+export function designRowsOf(description: string): string[] {
+  const source = sectionOf(description, /design\s+(?:source|rows?)/i);
+  if (source === undefined && designLinks(description).length === 0) return [];
+  return designRowIds(source ?? description);
+}
+
+/** What `rows.resolved.json` holds for an issue, or why it cannot be used. */
+function loadResolved(
+  root: string,
+  issue: IssueSummary,
+): { resolved?: ResolvedRows; problems: string[] } {
+  const rowIds = designRowsOf((issue.description ?? '').trim());
+  if (rowIds.length === 0) return { problems: [] };
+  const path = resolvedPath(root, issue.identifier);
+  let value: unknown;
+  try {
+    value = JSON.parse(readFileSync(path, 'utf8'));
+  } catch {
+    return {
+      problems: [
+        `${issue.identifier} has design rows (${rowIds.join(', ')}) and no valid rows.resolved.json at ${path}: run the pre-build critique (\`bun scripts/chef/design-critique.ts\`) before the brief.`,
+      ],
+    };
+  }
+  const problems = validateResolved(value, {
+    issue: issue.identifier,
+    rowIds,
+    literals: literalCriteria(issue.description ?? ''),
+  }).map((problem) => `${issue.identifier} rows.resolved.json: ${problem}`);
+  return problems.length > 0 ? { problems } : { resolved: value as ResolvedRows, problems };
 }
 
 function sourceContext(path: string | undefined): ReadonlyMap<string, string> | undefined {
@@ -659,7 +739,15 @@ function issueLines(issue: IssueSummary, options: BriefOptions, depth: number): 
     );
   lines.push(...blockerLines(options.blockers, depth));
   if (options.claim !== undefined) lines.push(heading('Claim'), '', options.claim, '');
-  lines.push(...designLines(issue.identifier, fullDescription, execution === undefined, depth));
+  lines.push(
+    ...designLines(
+      issue.identifier,
+      fullDescription,
+      execution === undefined,
+      depth,
+      options.resolved,
+    ),
+  );
   return lines;
 }
 
@@ -798,6 +886,7 @@ async function readIssue(
   issue: IssueSummary;
   options: BriefOptions;
   foreignClaim?: string;
+  resolvedProblems: string[];
 }> {
   const client = createClient(dependencies);
   const now = (dependencies.now ?? (() => new Date()))();
@@ -821,9 +910,19 @@ async function readIssue(
     claim !== undefined && !foreign && claimIsLive(claim.marker, now)
       ? `\n\nCheckpoint after every push, with the pushed head: \`bun scripts/chef/linear.ts claim ${issue.identifier} --run ${claim.marker.run} --branch ${claim.marker.branch} --head <sha>\`.`
       : '';
+  const loaded =
+    options.resolvedRoot === undefined
+      ? { problems: [] as string[] }
+      : loadResolved(options.resolvedRoot, issue);
   return {
     issue,
-    options: { ...options, blockers, claim: `${claimLine}${checkpoint}` },
+    options: {
+      ...options,
+      blockers,
+      claim: `${claimLine}${checkpoint}`,
+      ...(loaded.resolved === undefined ? {} : { resolved: loaded.resolved }),
+    },
+    resolvedProblems: loaded.problems,
     ...(foreign ? { foreignClaim: claimLine } : {}),
   };
 }
@@ -845,11 +944,13 @@ export async function readBatchBrief(
   bytes: number;
   scratch?: string;
   foreignClaim?: string;
+  resolvedProblems: string[];
   assignments: Assignment[];
   verificationPlans: VerificationPlan[];
   gates: AssignmentGate[];
 }> {
   const entries: { issue: IssueSummary; options: BriefOptions }[] = [];
+  const resolvedProblems: string[] = [];
   let foreignClaim: string | undefined;
   for (const [index, identifier] of identifiers.entries()) {
     const read = await readIssue(
@@ -859,6 +960,7 @@ export async function readBatchBrief(
       new Set(identifiers.slice(0, index)),
     );
     entries.push(read);
+    resolvedProblems.push(...read.resolvedProblems);
     if (read.foreignClaim !== undefined && foreignClaim === undefined)
       foreignClaim = `${read.issue.identifier} is ${read.foreignClaim}`;
   }
@@ -874,6 +976,7 @@ export async function readBatchBrief(
     bytes: Buffer.byteLength(text),
     ...(scratch === undefined ? {} : { scratch }),
     ...(foreignClaim === undefined ? {} : { foreignClaim }),
+    resolvedProblems,
     assignments: contracts.map((contract) => contract.assignment),
     verificationPlans: contracts.map((contract) => contract.verificationPlan),
     gates: contracts.map((contract) => contract.gate),
@@ -891,11 +994,17 @@ export async function readBrief(
   bytes: number;
   scratch?: string;
   foreignClaim?: string;
+  resolvedProblems: string[];
   assignment: Assignment;
   verificationPlan: VerificationPlan;
   gate: AssignmentGate;
 }> {
-  const { issue, options: read, foreignClaim } = await readIssue(identifier, options, dependencies);
+  const {
+    issue,
+    options: read,
+    foreignClaim,
+    resolvedProblems,
+  } = await readIssue(identifier, options, dependencies);
   const scratch =
     options.scratchRoot === undefined
       ? undefined
@@ -908,8 +1017,16 @@ export async function readBrief(
     bytes: Buffer.byteLength(text),
     ...(scratch === undefined ? {} : { scratch }),
     ...(foreignClaim === undefined ? {} : { foreignClaim }),
+    resolvedProblems,
     ...contract,
   };
+}
+
+/** The refusal for design rows without a valid `rows.resolved.json`, or nothing when there is none. */
+function resolvedRefusal(problems: readonly string[]): string | undefined {
+  return problems.length === 0
+    ? undefined
+    : `Refused: design rows are not resolved; no brief was written.\n${problems.map((problem) => `- ${problem}`).join('\n')}`;
 }
 
 /** Why each refused assignment is not dispatchable, one line per issue, so a refusal needs no `--json`. */
@@ -956,7 +1073,13 @@ export async function writeBatchBrief(
   options: BriefOptions & { outDirectory: string },
   dependencies: LinearDependencies = {},
 ): Promise<BriefResult> {
-  const brief = await readBatchBrief(identifiers, options, dependencies);
+  const brief = await readBatchBrief(
+    identifiers,
+    { ...options, resolvedRoot: options.resolvedRoot ?? options.outDirectory },
+    dependencies,
+  );
+  const unresolved = resolvedRefusal(brief.resolvedProblems);
+  if (unresolved !== undefined) throw new LinearError(unresolved);
   if (brief.gates.some((gate) => !gate.dispatchable))
     throw new LinearError(
       `Refused: one or more assignments are not dispatchable; no brief was written.\n${refusalReasons(brief.assignments, brief.gates)}`,
@@ -986,7 +1109,13 @@ export async function writeBrief(
   options: BriefOptions & { outDirectory: string },
   dependencies: LinearDependencies = {},
 ): Promise<BriefResult> {
-  const brief = await readBrief(identifier, options, dependencies);
+  const brief = await readBrief(
+    identifier,
+    { ...options, resolvedRoot: options.resolvedRoot ?? options.outDirectory },
+    dependencies,
+  );
+  const unresolved = resolvedRefusal(brief.resolvedProblems);
+  if (unresolved !== undefined) throw new LinearError(unresolved);
   if (!brief.gate.dispatchable)
     throw new LinearError(
       `Refused: assignment is not dispatchable; no brief was written.\n${refusalReasons([brief.assignment], [brief.gate])}`,
@@ -1075,7 +1204,11 @@ export async function run(
       customDirectory === undefined
         ? join(checkout, 'tmp', 'chef', 'scratch')
         : join(customDirectory, 'scratch');
-    const pinnedOptions = { ...options, identityErrors: dispatchIdentityErrors(options, runner) };
+    const pinnedOptions = {
+      ...options,
+      identityErrors: dispatchIdentityErrors(options, runner),
+      resolvedRoot: outDirectory,
+    };
     const brief = batch
       ? await readBatchBrief(identifiers, { ...pinnedOptions, scratchRoot }, dependencies)
       : await readBrief(identifier, { ...pinnedOptions, scratchRoot }, dependencies);
@@ -1099,16 +1232,23 @@ export async function run(
             gate: brief.gate,
           }
         : undefined;
+    const unresolved = resolvedRefusal(brief.resolvedProblems);
     const rejected =
-      contracts.gates.some((gate) => !gate.dispatchable) || brief.foreignClaim !== undefined;
+      contracts.gates.some((gate) => !gate.dispatchable) ||
+      brief.foreignClaim !== undefined ||
+      unresolved !== undefined;
     if (rejected) {
       const error =
-        brief.foreignClaim === undefined
-          ? `Refused: one or more assignments are not dispatchable; no brief was written.\n${refusalReasons(contracts.assignments, contracts.gates)}`
-          : `Refused: ${brief.foreignClaim}; no brief was written${options.run === undefined ? " (pass --run <id> when the claim is this run's)" : ''}.`;
+        unresolved !== undefined
+          ? unresolved
+          : brief.foreignClaim === undefined
+            ? `Refused: one or more assignments are not dispatchable; no brief was written.\n${refusalReasons(contracts.assignments, contracts.gates)}`
+            : `Refused: ${brief.foreignClaim}; no brief was written${options.run === undefined ? " (pass --run <id> when the claim is this run's)" : ''}.`;
       const structured = {
         ok: false,
         error,
+        // The workflow reads this field, not the error text, to decide to run the critique.
+        needsResolvedRows: unresolved !== undefined,
         ...(singleContract ?? contracts),
         ...(brief.scratch === undefined ? {} : { scratch: brief.scratch }),
       };

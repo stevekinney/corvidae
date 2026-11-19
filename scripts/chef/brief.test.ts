@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import {
   existsSync,
+  mkdirSync,
   mkdtempSync,
   readdirSync,
   readFileSync,
@@ -1317,5 +1318,146 @@ describe('the delivery rule', () => {
       expect(text, path).toContain("brief's Delivery rule");
       expect(text, path).not.toMatch(/open no pull request unless/i);
     }
+  });
+});
+
+describe('design rows need rows.resolved.json', () => {
+  const designDescription = [
+    '## Execution brief',
+    'Build the Runs list.',
+    '',
+    '## Acceptance criteria',
+    '- [ ] 11a: Runs reads as cards below 700px (board Runs).',
+    '',
+    '## Design source',
+    'Prototypes: [canvas](https://claude.ai/artifact/GDeC387KnFkpSQoLz86jLw). Index rows:',
+    '* **11a** (Runs): Runs list as cards',
+  ].join('\n');
+  const fetcher =
+    (text: string): FetchLike =>
+    async (_url, init) => {
+      const { query } = JSON.parse(init.body as string) as { query: string };
+      const data = query.includes('IssueRelations')
+        ? {
+            issue: {
+              id: 'uuid-7',
+              identifier: 'COR-7',
+              relations: { nodes: [], pageInfo: { hasNextPage: false } },
+              inverseRelations: { nodes: [], pageInfo: { hasNextPage: false } },
+            },
+          }
+        : query.includes('IssueComments')
+          ? {
+              issue: { comments: { nodes: [], pageInfo: { hasNextPage: false, endCursor: null } } },
+            }
+          : { issue: issue(text) };
+      return new Response(JSON.stringify({ data }), { status: 200 });
+    };
+  const runner: Runner = (command) => {
+    if (command.join(' ') === 'git rev-parse --show-toplevel')
+      return { code: 0, stdout: '/checkout\n', stderr: '' };
+    if (command.join(' ') === 'git config --get remote.origin.url')
+      return { code: 0, stdout: 'git@github.com:stevekinney/corvidae.git\n', stderr: '' };
+    if (command.join(' ') === `git rev-parse --verify ${pinnedBase}^{commit}`)
+      return { code: 0, stdout: `${pinnedBase}\n`, stderr: '' };
+    return { code: 1, stdout: '', stderr: 'unknown git command' };
+  };
+  const command = (text: string) => ({
+    argv: [
+      'COR-7',
+      '--out-dir',
+      sandbox,
+      '--repository',
+      'stevekinney/corvidae',
+      '--base',
+      pinnedBase,
+      '--context',
+      (() => {
+        const context = join(sandbox, 'design-context.json');
+        writeFileSync(
+          context,
+          JSON.stringify([
+            {
+              locator: 'https://claude.ai/artifact/GDeC387KnFkpSQoLz86jLw',
+              content: 'verified design',
+            },
+          ]),
+        );
+        return context;
+      })(),
+      '--json',
+    ],
+    dependencies: {
+      fetch: fetcher(text),
+      environment: { LINEAR_API_KEY: 'lin_api_test_value' },
+    },
+  });
+  const resolvedFile = (overrides: Record<string, unknown> = {}) =>
+    JSON.stringify({
+      version: 1,
+      issue: 'COR-7',
+      rows: [
+        {
+          id: '11a',
+          board: 'Runs',
+          text: 'Runs as cards',
+          states: [
+            { route: '/runs', state: 'ready', kind: 'ready' },
+            { route: '/runs', state: 'empty', kind: 'empty' },
+          ],
+        },
+      ],
+      checked: [{ literal: '700px', result: 'conflict' }],
+      conflicts: [
+        {
+          criterion: 'Runs reads as cards below 700px',
+          rows: ['11a'],
+          resolution: 'decision',
+          reason: 'the board draws cards at 640px; the issue threshold of 700px wins',
+        },
+      ],
+      ...overrides,
+    });
+
+  test('an issue with rows and no resolved file exits 1 and writes no brief', async () => {
+    const { argv, dependencies } = command(designDescription);
+    const result = await run(argv, dependencies, runner);
+    expect(result.code).toBe(1);
+    const parsed = JSON.parse(result.output) as {
+      ok: boolean;
+      error: string;
+      needsResolvedRows: boolean;
+    };
+    expect(parsed.ok).toBe(false);
+    expect(parsed.needsResolvedRows).toBe(true);
+    expect(parsed.error).toContain('design rows are not resolved');
+    expect(parsed.error).toContain('rows.resolved.json');
+    expect(existsSync(join(sandbox, 'COR-7.md'))).toBe(false);
+  });
+
+  test('refuses a resolved file that leaves a literal criterion unchecked', async () => {
+    mkdirSync(join(sandbox, 'COR-7'), { recursive: true });
+    writeFileSync(join(sandbox, 'COR-7', 'rows.resolved.json'), resolvedFile({ checked: [] }));
+    const { argv, dependencies } = command(designDescription);
+    const result = await run(argv, dependencies, runner);
+    expect(result.code).toBe(1);
+    expect(result.output).toContain('literal criterion 700px was not checked');
+  });
+
+  test('writes the brief, and renders the decisions and declared states, once the file is valid', async () => {
+    mkdirSync(join(sandbox, 'COR-7'), { recursive: true });
+    writeFileSync(join(sandbox, 'COR-7', 'rows.resolved.json'), resolvedFile());
+    const { argv, dependencies } = command(designDescription);
+    const result = await run(argv, dependencies, runner);
+    expect(result.code).toBe(0);
+    const text = readFileSync(join(sandbox, 'COR-7.md'), 'utf8');
+    expect(text).toContain('Decision (rows 11a): Runs reads as cards below 700px.');
+    expect(text).toContain('Row 11a is captured in: /runs "ready" (ready); /runs "empty" (empty)');
+  });
+
+  test('an issue without design rows needs no resolved file', async () => {
+    const { argv, dependencies } = command(description);
+    const result = await run(argv, dependencies, runner);
+    expect(result.code).toBe(0);
   });
 });
