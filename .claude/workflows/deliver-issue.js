@@ -124,8 +124,10 @@ const CHECKS_SCHEMA = {
     exitCode: { type: 'integer' },
     line: { type: 'string' },
     head: { type: 'string' },
+    reportOk: { type: 'boolean' },
+    reportProblems: { type: 'array', items: { type: 'string' } },
   },
-  required: ['exitCode', 'line', 'head'],
+  required: ['exitCode', 'line', 'head', 'reportOk'],
 };
 
 const DISPATCH_SCHEMA = {
@@ -427,6 +429,7 @@ function runChecks(issue, worktree, branch, head) {
       `Run the focused checks of ${issue} on the branch head ${head}. Invoke no skills. Change nothing in the repository.`,
       `cd ${worktree}. Run \`git fetch origin ${branch}\`, then confirm \`git rev-parse HEAD\` and \`git rev-parse FETCH_HEAD\` both equal ${head}. If either differs, return exitCode 3, line "head mismatch" and the head you found.`,
       'Otherwise run `bun scripts/chef/focused-checks.ts` once, with its output redirected to a file under tmp/ in that worktree, in the background if it runs long, and wait for it to exit. Never rerun it. Return exitCode (its exit code), line (the last non-empty line of that file) and head.',
+      `Then, from the same worktree, run \`bun scripts/chef/report.ts check ${issue} --head ${head}\` once and read its JSON: return reportOk (its ok, false when it printed nothing) and reportProblems (its problems). It verifies that the worker's report exists, is valid, names the current brief version, lists every correction, was not recorded through the three-blocks escape, and is for this head.`,
     ].join('\n'),
     {
       label: `checks ${issue}`,
@@ -541,18 +544,22 @@ function classify(issue, branch, findings, pullRequest) {
 }
 
 /** Every correction, point fix or class fix, from the branch path or a coordinator, is this step. */
-function correct(issue, where, findings, model, kind, classes) {
+function correct(issue, where, findings, model, kind, classes, briefPath) {
   phase('correct');
   const classFix = kind === 'CLASS_FIX';
   log(`${issue}: ${kind} of ${findings.length} finding(s) at ${where.head}`);
+  const brief =
+    typeof briefPath === 'string' && briefPath !== ''
+      ? `The brief file is ${briefPath}`
+      : `The brief file is tmp/chef/briefs/${issue}.md in the main checkout`;
   return agent(
     [
-      `cd into ${where.worktree}, the worktree of branch ${where.branch}, at the pre-fix head ${where.head}, and fix these findings, and only these:`,
+      `cd into ${where.worktree}, the worktree of branch ${where.branch}, at the pre-fix head ${where.head}. ${brief}: read it again, and the unread corrections for ${issue} in the main checkout's tmp/chef/execution-state/corrections/${issue}.jsonl (an amendment recorded after the first worker stopped is delivered here). Fix these findings and the amendments, and only these:`,
       ...findings.map((finding) => `- ${finding}`),
       classFix
         ? `These findings repeat a defect class already seen on this branch (${classes.join(', ')}), so a point fix is refused. Your criterion is a test that enumerates every entry point of that class (every route, every exported boundary, every hook it can reach), not the one instance, and fails today. Return entryPoints: the entry points that test covers.`
         : 'Fix the instance the findings name.',
-      `Write the regression test first and run it on ${where.head}: it must fail there. Then fix, run \`bun scripts/chef/focused-checks.ts\`, push the branch ${where.branch} once, and return the new head and regressionTest: path (the test file), failsOn (${where.head}) and passesOn (the new head). Never edit a test to make it pass. ${NO_MERGE}`,
+      `Write the regression test first and run it on ${where.head}: it must fail there. Then fix, run \`bun scripts/chef/focused-checks.ts\`, write your report again with \`bun scripts/chef/report.ts write ${issue} --file <json in your scratch directory> --brief-version <the Brief version: line of the brief as you read it>\` (list every correction you read in correctionsRead), commit the ledger, push the branch ${where.branch} once, and return the new head and regressionTest: path (the test file), failsOn (${where.head}) and passesOn (the new head). Never edit a test to make it pass. A hook refuses your stop without a valid report. ${NO_MERGE}`,
     ].join('\n'),
     {
       label: `${classFix ? 'class-fix' : 'correct'} ${issue}`,
@@ -602,7 +609,15 @@ async function runCorrection(context, where, findings, key) {
   state.named = [];
   const record = { kind, classes, repeated };
   steps[key] = record;
-  const fixed = await correct(issue, where, findings, chosen.model, kind, repeated);
+  const fixed = await correct(
+    issue,
+    where,
+    findings,
+    chosen.model,
+    kind,
+    repeated,
+    context.briefPath,
+  );
   if (fixed === null) return stop('correction failed');
   record.fixed = fixed;
   if (fixed.status !== 'ready-for-review')
@@ -773,6 +788,7 @@ async function deliverOne(issue) {
     chosen,
     overridden,
     steps,
+    briefPath,
     state: correctionState(issue, null, []),
   };
   let head = built.head;
@@ -825,6 +841,14 @@ async function verifyRound(context, head, round, key) {
       return judgment(
         issue,
         `focused checks ran at ${checks.head}, not the pushed head ${head}`,
+        steps,
+        where,
+      );
+    // A report that does not stand for the pushed head never lands: no evidence is dispatched.
+    if (checks.reportOk !== true)
+      return judgment(
+        issue,
+        `the worker report does not stand: ${(checks.reportProblems || ['no report check result']).join('; ')}`,
         steps,
         where,
       );
@@ -929,6 +953,7 @@ async function correctOne(request) {
     chosen,
     overridden: null,
     steps,
+    briefPath: text(request.briefPath) ? request.briefPath : undefined,
     state: correctionState(
       issue,
       request.pr === undefined ? null : request.pr,

@@ -145,9 +145,14 @@ async function runWorkflow(
       const count = (counts.get(key) ?? 0) + 1;
       counts.set(key, count);
       const stub = responses[key];
-      return typeof stub === 'function'
-        ? (stub as (count: number, label: string) => unknown)(count, options.label)
-        : stub;
+      const answer =
+        typeof stub === 'function'
+          ? (stub as (count: number, label: string) => unknown)(count, options.label)
+          : stub;
+      // The checks step also reports whether the worker's report stands; a clean run says it does.
+      return key === 'checks' && typeof answer === 'object' && answer !== null
+        ? { reportOk: true, ...answer }
+        : answer;
     },
     () => undefined,
     () => undefined,
@@ -322,6 +327,49 @@ describe('workflow scripts', () => {
     expect(delivery.calls.find((call) => call.label.startsWith('review'))?.options.agentType).toBe(
       'chef-reviewer',
     );
+  });
+
+  // A worker's report gates landing, not only its stop: the checks step runs `report.ts check`, and
+  // a report that is missing, invalid, for another brief version, recorded through the three-blocks
+  // escape or for another head comes back as reportOk false.
+  test('deliver-issue.js asks for the report check at the pushed head and never lands without it', async () => {
+    const clean = await runDelivery();
+    const checkPrompt = clean.calls.find((call) => call.label.startsWith('checks'))?.prompt ?? '';
+    expect(checkPrompt).toContain('bun scripts/chef/report.ts check COR-7 --head abc');
+    for (const problem of [
+      'there is no readable report',
+      "the worker's stop was let through after the block limit",
+      'the report is for head old, not the pushed head abc',
+      'the brief was amended after you read it',
+    ]) {
+      const delivery = await runDelivery(
+        {},
+        {
+          checks: {
+            exitCode: 0,
+            line: 'ok',
+            head: 'abc',
+            reportOk: false,
+            reportProblems: [problem],
+          },
+        },
+      );
+      expect(delivery.labels).toEqual(['brief', 'implement', 'checks']);
+      expect(delivery.result[0]?.status).toBe('NEEDS_JUDGMENT');
+      expect(delivery.result[0]?.reason).toContain(problem);
+      expect(delivery.result[0]?.evidenceRequest).toBeNull();
+    }
+  });
+
+  test('deliver-issue.js sends the correction worker its brief path, the corrections and the report command', async () => {
+    const delivery = await runDelivery(
+      {},
+      { review: { verdict: 'blocked', findings: ['a defect'] } },
+    );
+    const prompt = delivery.calls.find((call) => call.label.startsWith('correct'))?.prompt ?? '';
+    expect(prompt).toContain('tmp/chef/briefs/COR-7.md');
+    expect(prompt).toContain('corrections/COR-7.jsonl');
+    expect(prompt).toContain('bun scripts/chef/report.ts write COR-7');
   });
 
   test('deliver-issue.js stops for judgment, with no evidence request, when the run needs a full run', async () => {

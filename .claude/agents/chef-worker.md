@@ -2,6 +2,7 @@
 name: chef-worker
 description: Implementation worker for chef runs. Use for every chef dispatch; it delivers exactly one issue from its brief file, in its own worktree, pushes its branch, and owns any pull request it opens through its review threads.
 tools: Read, Edit, Write, Bash, Grep, Glob
+disallowedTools: AskUserQuestion
 model: sonnet
 ---
 
@@ -25,4 +26,5 @@ Rules:
 - Deliver as the brief's Delivery rule says. With a pull request open, own its review threads under AGENTS.md "Review guidelines": answer every thread, at most three rounds, push once per round.
 - There is no context ceiling (owner decision, 2026-11-13): keep working until the change is complete and verified. Keep your context small anyway, by writing long output to a file and reading its tail.
 - End a turn only on a state change: merged, blocked, needs-decision, or ready-for-review. Wait on a completion in a background command; never poll, and never end a turn to say you are still waiting.
+- Before you stop, write your report file: put `{head, checks, status: "READY"|"BLOCKED", reason?, criteria: [{id, status, evidence}], correctionsRead: []}` in your scratch directory and run `bun scripts/chef/report.ts write <brief stem> --file <that file> --brief-version <the Brief version: line of your brief, as you read it>` (criterion status: met-on-main, met-on-branch, not-met or needs-decision); commit the ledger it writes. A hook refuses your stop without a valid report, and while the brief was amended or a correction is unread.
 - Your final message is the report the charter describes, at most 15 lines, with the head sha and the status of every acceptance criterion.

@@ -480,16 +480,33 @@ describe('charter rules', () => {
 describe('report rule', () => {
   const rule = charterRules.find((candidate) => candidate.startsWith('**Report:**'));
 
-  test('makes the final message the report and keeps files out of it', () => {
+  test('makes the final message the report, after the structured report file the stop hook checks', () => {
     expect(rule).toBeDefined();
     expect(rule).toContain('final message is the report');
     expect(rule).toContain('at most 15 lines');
-    expect(rule).toContain('do not create a `report.md`');
+    expect(rule).toContain('create no `report.md`');
+    expect(rule).toContain('bun scripts/chef/report.ts write <brief stem>');
     expect(rule).toContain('tmp/chef/<package>/round-<n>/');
   });
 
-  test('no charter rule requires writing a report file', () => {
-    expect(charterRules.join('\n')).not.toMatch(/write (?:the )?(?:full )?report/i);
+  test('no charter rule requires a prose report file', () => {
+    expect(charterRules.join('\n')).not.toMatch(/write (?:the )?(?:full )?report(?!\.ts)/i);
+  });
+
+  test('a brief carries a version that changes with the issue, and refuses a volatile image path', () => {
+    const first = renderBrief(issue(description), { paths: [], verify: [], model: 'Sonnet' });
+    const amended = renderBrief(issue(`${description}\n\n16. A new criterion.`), {
+      paths: [],
+      verify: [],
+      model: 'Sonnet',
+    });
+    const version = (text: string) => /^Brief version: ([0-9a-f]{12})$/m.exec(text)?.[1];
+    expect(version(first)).toBeDefined();
+    expect(version(amended)).toBeDefined();
+    expect(version(amended)).not.toBe(version(first));
+    expect(
+      version(renderBrief(issue(description), { paths: [], verify: [], model: 'Sonnet' })),
+    ).toBe(version(first));
   });
 
   test('the brief a worker receives carries the report rule', () => {
@@ -852,6 +869,31 @@ describe('run', () => {
   test('a batch of repeated or malformed IDs is a UsageError', async () => {
     expect(await rejectionOf(run(['COR-7', 'COR-7'], dependencies))).toBeInstanceOf(UsageError);
     expect(await rejectionOf(run(['COR-7', 'nope'], dependencies))).toBeInstanceOf(UsageError);
+  });
+
+  test('refuses a brief that points at an image in a temporary folder', async () => {
+    const volatile: FetchLike = async (url, init) => {
+      const { query } = JSON.parse(init.body as string) as { query: string };
+      if (query.includes('IssueRelations') || query.includes('IssueComments'))
+        return fetchIssue(url, init);
+      return new Response(
+        JSON.stringify({
+          data: {
+            issue: issue(
+              description.replace(
+                '- It works.',
+                '- It works, as /private/tmp/claude/images/shot.png shows.',
+              ),
+            ),
+          },
+        }),
+        { status: 200 },
+      );
+    };
+    const result = await run(['COR-7', '--stdout'], { ...dependencies, fetch: volatile });
+    expect(result.code).not.toBe(0);
+    expect(result.output).toContain('report.ts attach');
+    expect(result.output).toContain('/private/tmp/claude/images/shot.png');
   });
 
   test('a read-only --stdout brief creates and names no scratch directory', async () => {

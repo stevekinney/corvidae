@@ -86,6 +86,7 @@ import {
   type Runner,
   UsageError,
 } from './process-runner.ts';
+import { volatileImagePaths } from './report-schema.ts';
 import { resolveMainCheckout } from './repository-locations.ts';
 import {
   type Assignment,
@@ -131,7 +132,7 @@ export const charterRules = [
   '**Turn rule:** end a turn only on a state change: merged, blocked, needs-decision, or ready-for-review. Wait on a completion; never poll, and never end a turn to say you are still waiting.',
   '**Defect-class self-check:** before pushing, check the diff against every class in `.agents/skills/chef/references/defect-classes.md` and report each. With a pull request open, run `bun scripts/chef/review-threads.ts classes --pr <n>` before every fix push; on exit 1, push nothing more and return blocked.',
   '**Context:** there is no context ceiling; work until the change is complete and verified. Keep context small anyway: write long output to a file and read its tail.',
-  '**Report:** your final message is the report, at most 15 lines; do not create a `report.md` or any other report file. Lines: `status:`, `pr:` (or none), `head:`, `worktree:`, `checks:` (command and exit code), `revert check:`, `changed files:`, `not verified:`, `decisions:`, and each acceptance criterion with its status. Evidence for the coordinator goes under `tmp/chef/<package>/round-<n>/` in the main checkout. Keep the PIDs of every background process you start. Your final step runs `bun scripts/chef/leftovers.ts --worktree <owned-worktree> --pids <owned-pid,...>` and quotes its line; a live owned PID is a reported charter defect, never a clean handoff.',
+  '**Report:** before you stop, write your report file with `bun scripts/chef/report.ts write <brief stem> --file <json in your scratch directory> --brief-version <the "Brief version:" line at the end of this brief, copied as you read it>` (it refuses when the brief on disk has changed since; list the ids of every correction you read in `correctionsRead`) and commit the criteria ledger it writes under `documentation/criteria-ledger/`; a hook refuses your stop without a valid report. Your final message is the report, at most 15 lines; create no `report.md`. Lines: `status:`, `pr:` (or none), `head:`, `worktree:`, `checks:` (command and exit code), `revert check:`, `changed files:`, `not verified:`, `decisions:`, and each acceptance criterion with its status. Evidence for the coordinator goes under `tmp/chef/<package>/round-<n>/` in the main checkout. Keep the PIDs of every background process you start. Your final step runs `bun scripts/chef/leftovers.ts --worktree <owned-worktree> --pids <owned-pid,...>` and quotes its line; a live owned PID is a reported charter defect, never a clean handoff.',
   '**Corrections:** after two unsuccessful attempts at the same defect or acceptance criterion, stop patching and return evidence for causal reassessment.',
   '**Acceptance criteria:** give every criterion exactly one status in the return. Implemented: not yet checked. Verified: a named command passed or a manual check was done. Failed: a check failed. Blocked: an external dependency prevents checking. Not verified: not checked, with the reason. Criteria include dated revisions and amending comments; a conflict between them is needs-decision. Number unnumbered criteria AC1, AC2 in the return only.',
 ];
@@ -586,8 +587,39 @@ export function renderBrief(issue: IssueSummary, options: BriefOptions): string 
     ...issueLines(issue, options, 0),
     ...scratchLines(options),
     ...filesAndRules(options, [issue]),
+    ...versionLines([issue]),
   ];
   return withSize(lines.join('\n'));
+}
+
+/**
+ * The brief's version: a digest of what its content derives from, each issue's identifier, its
+ * `updatedAt` and its description, never of the rendered text, which holds a random scratch name.
+ * The worker's report records it, and the stop hook compares it with the brief on disk, so an
+ * amendment after dispatch is a different version.
+ */
+export function briefVersionOf(issues: readonly IssueSummary[]): string {
+  return digest(
+    JSON.stringify(
+      issues.map((issue) => [issue.identifier, issue.updatedAt, issue.description ?? '']),
+    ),
+  ).slice(0, 12);
+}
+
+function versionLines(issues: readonly IssueSummary[]): string[] {
+  return ['', `Brief version: ${briefVersionOf(issues)}`];
+}
+
+/**
+ * A brief that points at an image in a temporary folder is refused: a reboot clears it. The
+ * coordinator stores it with `scripts/chef/report.ts attach` and cites the path that prints.
+ */
+function refuseVolatileImages(text: string): void {
+  const volatile = volatileImagePaths(text);
+  if (volatile.length > 0)
+    throw new LinearError(
+      `Refused: the brief points at ${[...new Set(volatile)].join(', ')}, which a reboot clears; store each with \`bun scripts/chef/report.ts attach <issue> <file>\` and cite the path it prints. No brief was written.`,
+    );
 }
 
 function scratchLines(options: BriefOptions): string[] {
@@ -680,6 +712,7 @@ export function renderBatchBrief(
       options,
       issues.map(({ issue }) => issue),
     ),
+    ...versionLines(issues.map(({ issue }) => issue)),
   );
   return withSize(lines.join('\n'));
 }
@@ -968,6 +1001,7 @@ export async function readBatchBrief(
   const scratch =
     options.scratchRoot === undefined ? undefined : join(options.scratchRoot, scratchName(first));
   const text = renderBatchBrief(entries, { ...options, scratch });
+  refuseVolatileImages(text);
   const contracts = entries.map((entry) => contractOf(entry.issue, entry.options));
   return {
     identifier: entries.map(({ issue }) => issue.identifier).join('_'),
@@ -1010,6 +1044,7 @@ export async function readBrief(
       ? undefined
       : join(options.scratchRoot, scratchName(issue.identifier));
   const text = renderBrief(issue, { ...read, scratch });
+  refuseVolatileImages(text);
   const contract = contractOf(issue, read);
   return {
     identifier: issue.identifier,
