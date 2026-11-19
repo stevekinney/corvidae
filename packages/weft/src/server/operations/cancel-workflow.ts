@@ -73,9 +73,17 @@ export const cancelWorkflowRestBinding: UnknownRestBinding = {
     workflowId: { kind: 'path', pathParam: 'id' },
     dryRun: { kind: 'query', queryParam: 'dry_run' },
   },
-  extractInput: async (request, pathParams) => ({
-    ...extractWorkflowIdFromPath(pathParams),
-    ...(new URL(request.url).searchParams.get('dry_run') === 'true' ? { dryRun: true } : {}),
-  }),
+  extractInput: async (request, pathParams) => {
+    const dryRun = new URL(request.url).searchParams.get('dry_run');
+    return {
+      ...extractWorkflowIdFromPath(pathParams),
+      // This operation is irreversible, so a value that is not exactly `true` or `false` (`1`,
+      // `TRUE`, an empty string) is passed on as it came, for the schema to refuse, never read as
+      // false.
+      ...(dryRun === null
+        ? {}
+        : { dryRun: dryRun === 'true' ? true : dryRun === 'false' ? false : dryRun }),
+    };
+  },
   success: { kind: 'json', status: 200 },
 };
