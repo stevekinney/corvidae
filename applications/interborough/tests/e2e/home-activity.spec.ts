@@ -201,7 +201,8 @@ async function openHome(page: Page, width: number): Promise<void> {
   await page.clock.setFixedTime(SAMPLE_NOW);
   await page.setViewportSize({ width, height: 900 });
   await page.goto('/');
-  await expect(page.getByTestId('home-counts')).toBeVisible();
+  // The overview is drawn (a count is shown only when it is not zero, so it is no landmark).
+  await expect(page.locator('[data-page="home"][data-mode="overview"]')).toBeVisible();
 }
 
 /** Captures the page at each width the design review reads (375 brings 320 with it). */
@@ -839,7 +840,7 @@ test.describe('Home activity bands (COR-2227)', () => {
     await scriptFeeds(page, { fleet: { hold: true }, bureau: { hold: true } });
     await page.setViewportSize({ width: 1280, height: 900 });
     await page.goto('/');
-    await expect(page.getByTestId('home-counts')).toBeVisible();
+    await expect(page.locator('[data-page="home"][data-mode="overview"]')).toBeVisible();
     await expect(workflow(page).locator('.cinder-skeleton-grouped-row')).toHaveCount(3);
     await page.clock.runFor(10_000);
     const ready = async (current: Page) => {

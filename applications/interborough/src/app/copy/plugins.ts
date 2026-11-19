@@ -129,8 +129,7 @@ export const PLUGINS_COPY = {
         : `${title} works as soon as the key is saved; no restart.`,
     dialog: {
       title: (key: string): string => `Save ${key}`,
-      description: (plugin: string): string =>
-        `The value is stored on this machine, where only you can read it, and ${plugin} uses it at once. No restart is needed.`,
+      description: (plugin: string): string => `${plugin} uses it at once. No restart is needed.`,
       valueLabel: 'Value',
       valueDescription: 'It is sent once and is never shown again.',
       valueRequired: 'Enter a value to save.',
