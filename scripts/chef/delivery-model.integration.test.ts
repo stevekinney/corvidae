@@ -1,5 +1,6 @@
 import { expect, test } from 'bun:test';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
@@ -16,7 +17,7 @@ import {
   requireAuthority,
 } from './execution-state.ts';
 
-const scratchRoot = '/Users/stevekinney/Developer/corvidae/tmp/chef/2026-11-17-sdlc-14ef';
+const scratchRoot = tmpdir();
 const fixtures: string[] = [];
 
 function removeFixtures() {
