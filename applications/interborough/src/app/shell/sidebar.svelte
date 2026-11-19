@@ -260,6 +260,7 @@
             <SideNavigationGroup
               label={NAVIGATION_COPY.groups[group]}
               collapsible={false}
+              labelVisibility="hidden"
               class={group === 'system' ? 'weft-shell-nav-system' : ''}
             >
               {#each destinationsIn(group) as destination (destination.path)}

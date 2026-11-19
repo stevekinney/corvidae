@@ -26,6 +26,7 @@ export interface ProviderArtifact {
   expired: boolean;
   id?: number;
   digest?: string;
+  sizeBytes?: number;
   runId?: number;
   revision?: string;
 }

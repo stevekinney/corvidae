@@ -94,11 +94,11 @@ test('Home on a fresh installation shows the grouped sidebar with no Reviews cou
   await page.goto('/');
   const navigation = page.getByRole('navigation', { name: 'Views' });
   await expect(navigation.getByRole('link')).toHaveCount(13);
-  await expect(navigation.locator('.cinder-side-navigation-group__heading')).toHaveText([
-    'Work',
-    'Build',
-    'System',
-  ]);
+  await expect(navigation.locator('.cinder-side-navigation-group__heading')).toHaveCount(0);
+  for (const name of ['Work', 'Build', 'System']) {
+    await expect(navigation.getByRole('list', { name, exact: true })).toBeVisible();
+    await expect(navigation.getByText(name, { exact: true })).toHaveCount(0);
+  }
   await expect(page.locator('.weft-shell-sidebar__name')).toHaveText('Interborough');
   // Nothing is waiting on the person, so Reviews carries no count and its name is its label.
   await expect(navigation.getByRole('link', { name: 'Reviews', exact: true })).toBeVisible();
