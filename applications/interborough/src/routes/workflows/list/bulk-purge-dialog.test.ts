@@ -4,6 +4,8 @@ import { fireEvent, render, waitFor } from '@testing-library/svelte';
 import { describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 
+import { waitUntil } from '@lostgradient/testing/wait-until';
+
 import type { BulkOperationDryRunResult } from '@lostgradient/weft';
 import { HttpClientError } from '@lostgradient/weft';
 
@@ -237,6 +239,75 @@ describe('BulkPurgeDialog', () => {
     await waitFor(() => {
       expect(dryRunCalls).toBe(2);
     });
+  });
+
+  test('while the preview loads or refreshes the footer keeps a live Cancel and a disabled Purge, and focus stays inside the dialog', async () => {
+    let dryRunCalls = 0;
+    let closed = 0;
+    let release: (value: BulkOperationDryRunResult) => void = () => {};
+    const { getByRole, getByLabelText, queryByRole } = render(BulkPurgeDialog, {
+      props: {
+        runDryRun: () => {
+          dryRunCalls += 1;
+          if (dryRunCalls === 1) return Promise.resolve(preview());
+          return new Promise<BulkOperationDryRunResult>((resolve) => {
+            release = resolve;
+          });
+        },
+        runPurge: async () => {
+          throw new HttpClientError(409, 'Bulk confirmation token does not match', {
+            faultCode: 'Conflict',
+          });
+        },
+        onClose: () => {
+          closed += 1;
+        },
+      },
+    });
+
+    await waitFor(() => {
+      expect(getByLabelText(PHRASE_LABEL)).not.toBeNull();
+    });
+    await fireEvent.input(getByLabelText(PHRASE_LABEL), {
+      target: { value: 'purge 47 workflows' },
+    });
+    await fireEvent.click(getByRole('button', { name: 'Purge 47 workflows' }));
+    await waitFor(() => {
+      expect(getByRole('button', { name: 'Refresh preview' })).not.toBeNull();
+    });
+
+    // The operator presses Refresh preview with the keyboard: it holds focus, then unmounts.
+    const refresh = requireElement(
+      getByRole('button', { name: 'Refresh preview' }),
+      HTMLButtonElement,
+    );
+    refresh.focus();
+    await fireEvent.click(refresh);
+
+    await waitFor(() => {
+      expect(queryByRole('button', { name: 'Refresh preview' })).toBeNull();
+    });
+    // Loading again: the footer is still there, Cancel works and Purge cannot be pressed.
+    const purge = requireElement(getByRole('button', { name: 'Purge' }), HTMLButtonElement);
+    expect(purge.disabled).toBe(true);
+    const cancel = requireElement(getByRole('button', { name: 'Cancel' }), HTMLButtonElement);
+    expect(cancel.disabled).toBe(false);
+    // Focus did not fall to <body>: it is on a control or the dialog's body, inside the dialog.
+    const dialog = requireElement(document.querySelector('dialog'), HTMLDialogElement);
+    await waitUntil(
+      () => document.activeElement !== document.body && dialog.contains(document.activeElement),
+      { message: 'focus to stay inside the dialog after Refresh preview unmounted' },
+    );
+
+    await fireEvent.click(cancel);
+    expect(closed).toBe(1);
+
+    release(preview());
+    await waitFor(() => {
+      expect(getByLabelText(PHRASE_LABEL)).not.toBeNull();
+    });
+    // Purge is back to its counted label once the new preview is in.
+    expect(getByRole('button', { name: 'Purge 47 workflows' })).not.toBeNull();
   });
 
   test('invalid input (InvalidParams) is not read as a stale preview: it shows the fault, never the changed-workflows callout', async () => {

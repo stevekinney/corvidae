@@ -210,9 +210,16 @@
   {/snippet}
 
   {#snippet footer()}
-    {#if phase === 'preview' && preview}
+    {#if phase === 'loading' || (phase === 'preview' && preview)}
+      <!--
+        The footer stays while the preview loads or refreshes, with a live Cancel and a Purge that
+        cannot be pressed yet, so focus always has a stable target and the dialog does not change
+        height as the preview arrives.
+      -->
       <Button variant="ghost" size="sm" onclick={onClose}>Cancel</Button>
-      {#if matched > 0}
+      {#if phase === 'loading'}
+        <Button variant="danger" size="sm" disabled>Purge</Button>
+      {:else if matched > 0}
         <Button variant="danger" size="sm" disabled={!confirmMatches} onclick={commit}>
           Purge {matched} workflow{matched === 1 ? '' : 's'}
         </Button>

@@ -27,6 +27,10 @@ While active, the trap listens for `Tab` on the container. It recomputes the tab
 
 When the trap deactivates — whether the `active` prop flips to `false` while still mounted, or the component unmounts entirely — focus returns to the element that was focused at activation time. Restoration is captured at activation and replayed at teardown, so it is correct even if `active` was already `false` by the time the component unmounts. The restore helper refuses to focus a disconnected or cross-document element and never falls back to `document.body`, so a user is never dumped at the top of the page with no focus context.
 
+## When the focused element is removed
+
+A browser fires no `blur` when the focused element leaves the DOM; focus simply falls to `<body>`, outside the overlay. That reads as "the dialog closed" to a keyboard user and as nowhere to a screen reader. A host that passes the `recoveryFocus` option (an element or selector inside the trap, or a function returning one) gets recovery: the trap remembers the last element that took focus inside it, watches the subtree for removals, and when that element is gone and `document.activeElement` is `<body>`, moves focus to the `recoveryFocus` target, or to the container itself when the target resolves nothing. A removal while focus sits on another control, a focus move the host made itself, an inactive trap, and a trap that is not on top of the stack are all left alone. Modal passes its body container, the same element initial focus lands on. Recovery is opt-in, so a host that does not pass `recoveryFocus` keeps the browser's behavior.
+
 ## Edge cases
 
 - **No focusable children.** A Tab press in an empty trap is prevented and focus is routed to the `fallbackFocus` target, or to the container itself (made momentarily focusable). Focus cannot tab out into the page behind the overlay.
