@@ -9,6 +9,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { rejectionOf } from '@lostgradient/testing';
 import {
   captureForDesignReview,
   designReviewSlug,
@@ -16,11 +17,7 @@ import {
   nextFrame,
   withPointerCleanup,
 } from '../tests/e2e/design-review-capture.ts';
-import {
-  E2E_FIRST_RUN_PORT,
-  E2E_PORT,
-  E2E_SHOWCASE_PORT,
-} from '../tests/e2e/e2e-constants.ts';
+import { E2E_FIRST_RUN_PORT, E2E_PORT, E2E_SHOWCASE_PORT } from '../tests/e2e/e2e-constants.ts';
 import {
   captureCount,
   captureDesignReview,
@@ -512,7 +509,12 @@ describe('capture file names', () => {
   test('differ for two specifications, two worlds and two tabs of one route and state', () => {
     const names = [
       designReviewSlug(capture, 1280, 'light', 'sample-world'),
-      designReviewSlug({ ...capture, source: '00-showcase.spec.ts' }, 1280, 'light', 'sample-world'),
+      designReviewSlug(
+        { ...capture, source: '00-showcase.spec.ts' },
+        1280,
+        'light',
+        'sample-world',
+      ),
       designReviewSlug(capture, 1280, 'light', 'stress'),
       designReviewSlug({ ...capture, tab: 'skills' }, 1280, 'light', 'sample-world'),
     ];
@@ -557,14 +559,16 @@ describe('capture file names', () => {
     afterEach(async () => {
       if (previous.capture === undefined) delete process.env['INTERBOROUGH_DESIGN_REVIEW_CAPTURE'];
       else process.env['INTERBOROUGH_DESIGN_REVIEW_CAPTURE'] = previous.capture;
-      if (previous.scheme === undefined) delete process.env['INTERBOROUGH_DESIGN_REVIEW_COLOR_SCHEME'];
+      if (previous.scheme === undefined)
+        delete process.env['INTERBOROUGH_DESIGN_REVIEW_COLOR_SCHEME'];
       else process.env['INTERBOROUGH_DESIGN_REVIEW_COLOR_SCHEME'] = previous.scheme;
       await rm(directory, { recursive: true, force: true });
     });
 
     test('under one name, fails instead of overwriting the first screen', async () => {
       await captureForDesignReview(tablet as never, capture);
-      expect(captureForDesignReview(tablet as never, capture)).rejects.toThrow(
+      const rejection = await rejectionOf(captureForDesignReview(tablet as never, capture));
+      expect(String(rejection)).toContain(
         'Two design-review captures resolve to runs-states--e2e-host--runs--ready--768--light',
       );
     });
@@ -580,7 +584,8 @@ describe('capture file names', () => {
       await captureForDesignReview(desktop as never, capture);
       const wide = { ...tablet, viewportSize: () => ({ width: 1920, height: 1080 }) };
       await captureForDesignReview(wide as never, capture);
-      const widths = (await readFile(join(directory, 'manifest.jsonl'), 'utf8'))
+      const manifest = await readFile(join(directory, 'manifest.jsonl'), 'utf8');
+      const widths = manifest
         .trim()
         .split('\n')
         .map((line) => (JSON.parse(line) as { width: number }).width);

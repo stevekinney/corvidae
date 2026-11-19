@@ -136,7 +136,8 @@ export async function mergeShards(options: {
   readonly schemes: readonly string[];
   readonly shardCount: number;
 }): Promise<MergeResult> {
-  const directories = (await readdir(options.shardsDirectory, { withFileTypes: true }))
+  const listed = await readdir(options.shardsDirectory, { withFileTypes: true });
+  const directories = listed
     .filter((entry) => entry.isDirectory())
     .map((entry) => entry.name)
     .toSorted();
@@ -151,7 +152,8 @@ export async function mergeShards(options: {
     const directory = join(options.shardsDirectory, name);
     const summary = await readJson<ShardSummary>(join(directory, 'summary.json'));
     const shardEntries = await readEntries(join(directory, 'manifest.jsonl'));
-    if (summary === undefined) problems.push(`${name} wrote no summary.json: its run never finished`);
+    if (summary === undefined)
+      problems.push(`${name} wrote no summary.json: its run never finished`);
     shards.push({ name, captures: shardEntries.length, clean: summary?.clean ?? null });
     entries.push(...shardEntries);
     const text = await readFile(join(directory, 'manifest.jsonl'), 'utf8').catch(() => '');

@@ -57,8 +57,8 @@ import { fileURLToPath } from 'node:url';
 import { withHostSlots, withMemoryAdmission, type HostSlots } from '../../../scripts/host-slots.ts';
 import { runInProcessGroup } from '../../../scripts/run-exclusively.ts';
 import { auditGeometry } from './design-review-geometry.ts';
-import { endToEndPort } from './environment-configuration.ts';
 import { parseShard, planShards } from './design-review-shards.ts';
+import { endToEndPort } from './environment-configuration.ts';
 
 const applicationDirectory = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const repositoryDirectory = resolve(applicationDirectory, '..', '..');

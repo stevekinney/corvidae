@@ -24,13 +24,20 @@ const entry = (overrides: Partial<MergedEntry> = {}): MergedEntry => ({
 
 describe('duplicatePaths', () => {
   test('finds two captures that resolve to the same file, and nothing else', () => {
-    expect(duplicatePaths([entry(), entry({ state: 'other', viewport: 'screens/other.png' })]).size).toBe(0);
+    expect(
+      duplicatePaths([entry(), entry({ state: 'other', viewport: 'screens/other.png' })]).size,
+    ).toBe(0);
     const found = duplicatePaths([entry(), entry()]);
     expect([...found]).toEqual([['screens/home--sample-world--root--ready--1280--light.png', 2]]);
   });
 
   test('counts a whole-page file as a path too', () => {
-    expect(duplicatePaths([entry({ full: 'screens/a.full.png' }), entry({ viewport: 'screens/b.png', full: 'screens/a.full.png' })]).get('screens/a.full.png')).toBe(2);
+    expect(
+      duplicatePaths([
+        entry({ full: 'screens/a.full.png' }),
+        entry({ viewport: 'screens/b.png', full: 'screens/a.full.png' }),
+      ]).get('screens/a.full.png'),
+    ).toBe(2);
   });
 });
 
@@ -54,7 +61,11 @@ describe('schemeGaps', () => {
 describe('missingShards', () => {
   test('names each planned shard no directory is for', () => {
     expect(
-      missingShards(['capture-1-light-1', 'capture-1-light-2', 'capture-1-dark-1'], ['light', 'dark'], 2),
+      missingShards(
+        ['capture-1-light-1', 'capture-1-light-2', 'capture-1-dark-1'],
+        ['light', 'dark'],
+        2,
+      ),
     ).toEqual(['dark shard 2']);
   });
 
@@ -76,14 +87,28 @@ describe('mergeShards', () => {
     const directory = join(root, 'shards', name);
     await mkdir(join(directory, 'screens'), { recursive: true });
     for (const item of entries) await writeFile(join(directory, item.viewport), 'png');
-    await writeFile(join(directory, 'manifest.jsonl'), entries.map((item) => `${JSON.stringify(item)}\n`).join(''));
-    await writeFile(join(directory, 'summary.json'), JSON.stringify({ clean, captures: entries.length }));
+    await writeFile(
+      join(directory, 'manifest.jsonl'),
+      entries.map((item) => `${JSON.stringify(item)}\n`).join(''),
+    );
+    await writeFile(
+      join(directory, 'summary.json'),
+      JSON.stringify({ clean, captures: entries.length }),
+    );
   }
 
   const dark = (): MergedEntry =>
-    entry({ colorScheme: 'dark', viewport: 'screens/home--sample-world--root--ready--1280--dark.png' });
+    entry({
+      colorScheme: 'dark',
+      viewport: 'screens/home--sample-world--root--ready--1280--dark.png',
+    });
   const merge = () =>
-    mergeShards({ shardsDirectory: join(root, 'shards'), out: join(root, 'merged'), schemes: ['light', 'dark'], shardCount: 1 });
+    mergeShards({
+      shardsDirectory: join(root, 'shards'),
+      out: join(root, 'merged'),
+      schemes: ['light', 'dark'],
+      shardCount: 1,
+    });
 
   test('writes one manifest from every shard and finds nothing wrong with a whole run', async () => {
     await shard('c-light-1', [entry()]);
@@ -91,9 +116,15 @@ describe('mergeShards', () => {
     const result = await merge();
     expect(result.problems).toEqual([]);
     expect(result.captures).toBe(2);
-    const lines = (await readFile(join(root, 'merged', 'manifest.jsonl'), 'utf8')).trim().split('\n');
+    const manifest = await readFile(join(root, 'merged', 'manifest.jsonl'), 'utf8');
+    const lines = manifest.trim().split('\n');
     expect(lines).toHaveLength(2);
-    expect(await readFile(join(root, 'merged', 'screens', dark().viewport.slice('screens/'.length)), 'utf8')).toBe('png');
+    expect(
+      await readFile(
+        join(root, 'merged', 'screens', dark().viewport.slice('screens/'.length)),
+        'utf8',
+      ),
+    ).toBe('png');
   });
 
   test('fails when a planned shard never uploaded, which is how a cut-short dark half hid', async () => {

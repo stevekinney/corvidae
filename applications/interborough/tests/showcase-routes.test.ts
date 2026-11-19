@@ -81,7 +81,8 @@ describe('the showcase specification’s routes', () => {
  */
 const DIRECTORIES_WITH_NO_ROUTE: Readonly<Record<string, string>> = {
   'live-feeds': 'holds a test harness and test support for the feed hooks, and no page',
-  system: 'its Health, Alerts, Metrics and Realms tabs render inside the Health page (`routes/health`)',
+  system:
+    'its Health, Alerts, Metrics and Realms tabs render inside the Health page (`routes/health`)',
   placeholder: 'the stub the route outlet tests render, never reached from an address',
 };
 
@@ -95,8 +96,7 @@ describe('the route directories', () => {
       .map((entry) => entry.name);
     const unrecorded = directories.filter(
       (name) =>
-        !registry.includes(`../routes/${name}/`) &&
-        !Object.hasOwn(DIRECTORIES_WITH_NO_ROUTE, name),
+        !registry.includes(`../routes/${name}/`) && !Object.hasOwn(DIRECTORIES_WITH_NO_ROUTE, name),
     );
     expect(unrecorded).toEqual([]);
     for (const name of Object.keys(DIRECTORIES_WITH_NO_ROUTE)) {

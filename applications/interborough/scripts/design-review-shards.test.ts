@@ -32,13 +32,17 @@ describe('planShards', () => {
     const weights = shards.map((shard) => shard.weight);
     const heaviestFile = Math.max(...everySpecification().map((path) => weightOf(path)));
     // The heaviest shard is the heaviest file alone or close to the lightest shard's weight.
-    expect(Math.max(...weights)).toBeLessThanOrEqual(Math.max(heaviestFile, Math.min(...weights) * 1.35));
+    expect(Math.max(...weights)).toBeLessThanOrEqual(
+      Math.max(heaviestFile, Math.min(...weights) * 1.35),
+    );
     expect(Math.min(...weights)).toBeGreaterThan(0);
   });
 
   test('is the same plan every time, so each shard of each scheme agrees on it', () => {
     const specifications = everySpecification();
-    expect(planShards(specifications, SHARD_COUNT)).toEqual(planShards(specifications, SHARD_COUNT));
+    expect(planShards(specifications, SHARD_COUNT)).toEqual(
+      planShards(specifications, SHARD_COUNT),
+    );
   });
 
   test('weighs a specification the table does not list at the default', () => {
@@ -48,7 +52,8 @@ describe('planShards', () => {
 
   test('leaves a shard empty when there are fewer specifications than shards', () => {
     const shards = planShards(['tests/e2e/a.spec.ts', 'tests/e2e/b.spec.ts'], 3);
-    expect(shards.map((shard) => shard.specifications.length).toSorted()).toEqual([0, 1, 1]);
+    const sizes = shards.map((shard) => shard.specifications.length);
+    expect(sizes.toSorted((left, right) => left - right)).toEqual([0, 1, 1]);
   });
 });
 
@@ -86,7 +91,10 @@ describe('the workflow', () => {
   );
 
   test('runs exactly the shards the plan makes, for each scheme, and merges them', () => {
-    const listed = /shard:\s*\[([^\]]*)\]/.exec(workflow)?.[1]?.split(',').map((item) => Number(item.trim()));
+    const listed = /shard:\s*\[([^\]]*)\]/
+      .exec(workflow)?.[1]
+      ?.split(',')
+      .map((item) => Number(item.trim()));
     expect(listed).toEqual(Array.from({ length: SHARD_COUNT }, (_, position) => position + 1));
     expect(workflow).toContain(`--shards ${String(SHARD_COUNT)}`);
     expect(workflow).toContain('fail-fast: false');

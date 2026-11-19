@@ -2056,7 +2056,9 @@ for (const owned of OWNED_STATES) {
           if (outcome === 'error') {
             await route.fulfill({ status: 500, json: { error: 'The server broke.' } });
           } else {
-            await route.fulfill({ json: 'method' in owned ? jsonRpcBody(body, owned.empty) : owned.empty });
+            await route.fulfill({
+              json: 'method' in owned ? jsonRpcBody(body, owned.empty) : owned.empty,
+            });
           }
         });
         await page.goto(owned.address);
