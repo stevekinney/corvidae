@@ -8,6 +8,7 @@ import type { WorkerBuildIdentity } from '../../worker/deployment-records.ts';
 import { assertScopedBulkWorkflowFilter } from '../bulk-workflow-filter.ts';
 import { deserializeCheckpoint } from '../checkpoint.ts';
 import { decode, encode } from '../codec.ts';
+import { readRetryingActivity } from '../context/activity-retry-state.ts';
 import { buildTimerBatchOperations } from '../scheduler.ts';
 import { buildIndexOperations } from '../search-attributes.ts';
 import type {
@@ -21,6 +22,7 @@ import type {
   WorkflowState,
   WorkflowStatus,
 } from '../types.ts';
+import { activityRetryingOperation } from './activity-retrying-record.ts';
 import { buildTerminalWorkflowIndexOperations } from './attributes-tags.ts';
 import {
   buildActionableBulkWorkflowFilter,
@@ -421,8 +423,15 @@ function buildReactivationBatchOperations(
   return [
     ...buildTerminalWorkflowIndexOperations(currentState, reactivatedState),
     { type: 'put', key: KEYS.workflow(workflowId), value: encode(reactivatedState) },
-    // A reactivated run starts with nothing reported as retrying (COR-2529).
-    { type: 'delete', key: KEYS.activityRetrying(workflowId) },
+    // The re-run resumes from this checkpoint, whose retry state still names the activity that
+    // failed, so its first commit sees no change and would write no record (COR-2529). The re-run
+    // is an attempt 2 or later whenever that checkpoint names one, and says so from the moment
+    // the run is running again; a checkpoint that names none clears a record the failure left.
+    activityRetryingOperation(
+      workflowId,
+      readRetryingActivity(checkpoint.locals),
+      reactivatedState.workflowExecutionToken,
+    ),
     ...visibilityIndexOperations(internals, currentState, reactivatedState),
     ...buildRetrySearchAttributeOperations(
       workflowId,

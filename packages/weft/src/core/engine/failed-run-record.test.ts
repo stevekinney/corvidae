@@ -18,6 +18,7 @@
  * | weft-error-from-body | the body throws a `WeftError` after one step | no code | AC1 |
  * | long-label | the failing step's label is 300 characters | no step | AC1 |
  * | retry-failed | `engine.retryFailed` reactivates the failed run | failure fields cleared | AC5 |
+ * | retry-failed-rerun-attempt | `engine.retryFailed` on a run that failed on attempt 3 of an activity | no `retrying` until the attempt settles | AC3, AC5 |
  * | fork-of-failed | a failed run is forked | fork has no failure fields | AC5 |
  * | fork-mid-retry | a run is forked while its backoff is pending | no `retrying` | AC5 |
  * | recovery-during-backoff | the process stops in a backoff, a new one recovers the run | no `retrying` | AC3, AC5 |
@@ -391,6 +392,66 @@ const rows: MatrixRow[] = [
         stateAbsent: ['errorCode', 'failedStep', 'error'],
         summaryAbsent: ['failedStep', 'retrying'],
       },
+    },
+  },
+  {
+    name: 'retry-failed-rerun-attempt',
+    criterion: 'AC3, AC5',
+    run: async () => {
+      await using engine = new Engine();
+      let failing = true;
+      let calls = 0;
+      let release: (() => void) | undefined;
+      const gate = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const flaky = activity({
+        name: 'flaky',
+        retry: NO_BACKOFF,
+        execute: async () => {
+          calls += 1;
+          if (failing) throw new Error('always-fails');
+          await gate;
+          return 'fixed';
+        },
+      } as never);
+      engine.register(
+        workflow({ name: 'row-rerun-attempt' })
+          .activities({ flaky })
+          .execute(async function* (ctx: WorkflowContext) {
+            const value = yield* ctx.run(flaky);
+            yield* ctx.waitForSignal('done');
+            return value;
+          }),
+      );
+      const handle = await engine.start('row-rerun-attempt', null, { id: 'row-rerun-attempt-1' });
+      await throwingRejectionOf(handle.result());
+      await waitForStatus(engine, 'row-rerun-attempt-1', 'failed');
+      const failed = await snapshotOf(engine, 'row-rerun-attempt', 'row-rerun-attempt-1');
+      failing = false;
+      const callsBeforeRetry = calls;
+      expect(await engine.retryFailed('row-rerun-attempt-1')).toMatchObject({ status: 'retried' });
+      await waitForCondition(async () => calls === callsBeforeRetry + 1, {
+        label: 'the re-run attempt running',
+      });
+      const rerunning = await snapshotOf(engine, 'row-rerun-attempt', 'row-rerun-attempt-1');
+      release?.();
+      await waitForParkedOnDone(engine, 'row-rerun-attempt-1');
+      return {
+        failed,
+        rerunning,
+        settled: await snapshotOf(engine, 'row-rerun-attempt', 'row-rerun-attempt-1'),
+      };
+    },
+    expected: {
+      failed: { state: { status: 'failed', failedStep: { index: 0, label: 'flaky' } } },
+      // The failed run's last checkpoint named the activity on attempt 3, so the re-run is attempt 3.
+      rerunning: {
+        state: { status: 'running' },
+        summary: { retrying: { activity: 'flaky', attempt: 3 } },
+        summaryAbsent: ['failedStep'],
+      },
+      settled: { summaryAbsent: ['failedStep', 'retrying'] },
     },
   },
   {

@@ -39,18 +39,27 @@ export function buildActivityRetryingOperations(
   const previous = readRetryingActivity(internals.checkpoints.get(workflowId)?.locals);
   const next = readRetryingActivity(nextCheckpoint.locals);
   if (sameRetrying(previous, next)) return [];
+  return [activityRetryingOperation(workflowId, next, nextCheckpoint.workflowExecutionToken)];
+}
+
+/**
+ * The operation that makes the record say `retrying` for the run with `workflowExecutionToken`: a
+ * put, or a delete when nothing is retrying. The record names the run it belongs to: a run that
+ * ends while retrying leaves it behind (no checkpoint commits after the failure), and a
+ * `start-new` replacement under the same id must not read the run before it as its own.
+ */
+export function activityRetryingOperation(
+  workflowId: string,
+  retrying: WorkflowRetrying | undefined,
+  workflowExecutionToken: string | undefined,
+): BatchOperation {
   const key = KEYS.activityRetrying(workflowId);
-  if (next === undefined) return [{ type: 'delete', key }];
-  // The record names the run it belongs to: a run that ends while retrying leaves it behind (no
-  // checkpoint commits after the failure), and a `start-new` replacement under the same id must
-  // not read the run before it as its own.
+  if (retrying === undefined) return { type: 'delete', key };
   const record: ActivityRetryingRecord = {
-    ...next,
-    ...(nextCheckpoint.workflowExecutionToken === undefined
-      ? {}
-      : { workflowExecutionToken: nextCheckpoint.workflowExecutionToken }),
+    ...retrying,
+    ...(workflowExecutionToken === undefined ? {} : { workflowExecutionToken }),
   };
-  return [{ type: 'put', key, value: encode(record) }];
+  return { type: 'put', key, value: encode(record) };
 }
 
 /** What the `wf:{id}:retrying` record holds: the retrying activity and the run it belongs to. */
