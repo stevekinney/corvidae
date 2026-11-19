@@ -392,7 +392,7 @@ async function billingChatEndedByARestart({ host, runtime }: SessionContext): Pr
   // The message is dated on the story's clock: the chat says it was asked Oct 29, 11:04 AM.
   const conversation = new Conversation(undefined, { now: () => runtime.clock.nowISO() });
   conversation.appendUserMessage(chat.message);
-  const session = createAgentSession({
+  const record = createAgentSession({
     id: chat.threadId,
     agentName: chat.agent,
     conversationHistory: conversation.current,
@@ -405,7 +405,7 @@ async function billingChatEndedByARestart({ host, runtime }: SessionContext): Pr
   });
   runtime.setTime(SAMPLE_WORLD_TIMES.billingStopped);
   await store.save({
-    ...session,
+    ...record,
     updatedAt: new Date(SAMPLE_WORLD_TIMES.billingStopped).toISOString(),
   });
 }
