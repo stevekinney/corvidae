@@ -110,7 +110,7 @@ export const deliveryRule =
 export const charterRules = [
   '**Cost:** batch independent reads and searches into one message. Edit with Edit or Write, never a shell heredoc (a throwaway codemod for a mechanical multi-file rewrite is the exception).',
   '**Checks:** local checks run only direct tests (owner decision, 2026-11-16). Run the focused checks on what you changed once, when the change is complete, in the background and never polled, not `bun run check` and never the affected-test graph: `bun scripts/chef/focused-checks.ts`; fix every failed step, and never rerun it until green. It runs prettier on the changed files, `bun run lint:root`, the root type-check when root or `scripts/` files changed, lint and type-check of each changed workspace, and only the test files of what you changed: changed `*.test.ts` files, plus the test files beside each changed source file (same directory, same stem). A test file that starts a process is named `*.integration.test.ts`; it and `*.slow.test.ts` files in that set run the way the isolated lane does. The full test evidence is CI on the pushed branch, run once per batch with `gh workflow run main.yml --ref <branch>` and never waited on by you; the full suite only for a one-way door, the lock or concurrency infrastructure, or `turbo.json` and the root scripts, never a local `bun run validate`. Delivery runs no gate.',
-  "**Browser suites:** never run a Playwright fixture suite, the Interborough end-to-end suite, a design-review capture (the coordinator runs it for your design rows), `validate` or `harden` on this host (owner decision, 2026-11-13). When your change reaches a browser suite, push, run `gh workflow run main.yml --ref <branch>` once per batch and `targeted-checks.yml` for each correction round, and do not wait on it (owner decision, 2026-11-16). Before any re-run, read the failing test names and download the failing shard's artifact: a re-run makes the first attempt's artifact unreachable.",
+  "**Browser suites:** never run a Playwright fixture suite, the Interborough end-to-end suite, a design-review capture (the coordinator runs it for your design rows), `validate` or `harden` on this host (owner decision, 2026-11-13). When your change reaches a browser suite, push, run `gh workflow run main.yml --ref <branch>` once per branch, on its final head, and `bun scripts/chef/targeted-run.ts` (`targeted-checks.yml`, inputs derived from your diff) for each correction round, and do not wait on it (owner decision, 2026-11-16); a coordinator waits with `bun scripts/chef/wait-run.ts <run id>`, never `gh run watch`, which drained the API limit. Before any re-run, read the failing test names and download the failing shard's artifact: a re-run makes the first attempt's artifact unreachable.",
   '**Processes:** never end a process by name or pattern (`pkill`, `killall`, `kill` of a pid you did not start): a worker ends only a process it started, by pid.',
   '**Scratch:** keep your logs and temporary files only in the scratch directory this brief names under `## Scratch directory`, never in `/tmp` or any path another worker can write.',
   `**Push:** ${pushRule}`,
@@ -829,8 +829,10 @@ async function readIssue(
 }
 
 /**
- * Reads every issue of a batch and renders one brief, in the given order. Ordering is not
- * completion evidence, so every native dependency remains until Linear reports it complete.
+ * Reads every issue of a batch and renders one brief, in the given order. A blocker that is an
+ * earlier issue of the same batch counts as cleared for dispatch: the worker lands it first, in its
+ * own commit (owner decision, 2026-11-16, "one worker takes consecutive issues on one branch").
+ * Every other blocker stays open until Linear reports it complete.
  */
 export async function readBatchBrief(
   identifiers: readonly string[],
@@ -849,8 +851,13 @@ export async function readBatchBrief(
 }> {
   const entries: { issue: IssueSummary; options: BriefOptions }[] = [];
   let foreignClaim: string | undefined;
-  for (const identifier of identifiers) {
-    const read = await readIssue(identifier, options, dependencies);
+  for (const [index, identifier] of identifiers.entries()) {
+    const read = await readIssue(
+      identifier,
+      options,
+      dependencies,
+      new Set(identifiers.slice(0, index)),
+    );
     entries.push(read);
     if (read.foreignClaim !== undefined && foreignClaim === undefined)
       foreignClaim = `${read.issue.identifier} is ${read.foreignClaim}`;
@@ -905,6 +912,44 @@ export async function readBrief(
   };
 }
 
+/** Why each refused assignment is not dispatchable, one line per issue, so a refusal needs no `--json`. */
+export function refusalReasons(
+  assignments: readonly Assignment[],
+  gates: readonly AssignmentGate[],
+): string {
+  const lines: string[] = [];
+  gates.forEach((gate, index) => {
+    if (gate.dispatchable) return;
+    const assignment = assignments[index];
+    const reasons: string[] = [];
+    if (gate.blockers.length > 0)
+      reasons.push(`blocked by ${gate.blockers.map((b) => b.identifier).join(', ')}`);
+    if (gate.unreadableDependencies.length > 0)
+      reasons.push(
+        `blockers unreadable: ${gate.unreadableDependencies.map((b) => b.identifier).join(', ')}`,
+      );
+    if (gate.missingContext.length > 0)
+      reasons.push(
+        `required context unreadable: ${gate.missingContext.map((r) => r.locator).join(', ')}`,
+      );
+    reasons.push(...gate.identityErrors);
+    if (gate.claimStatus === 'foreign') reasons.push('claimed by another run');
+    if (assignment !== undefined && gate.status === 'invalid') {
+      if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(assignment.identity.repository))
+        reasons.push('no --repository <owner/name> pin');
+      if (!/^[0-9a-f]{40}$/i.test(assignment.identity.base))
+        reasons.push('no --base <40-character commit> pin');
+      if (assignment.criteria.length === 0 && assignment.classification !== 'no-behavior')
+        reasons.push('no acceptance criteria');
+    }
+    if (reasons.length === 0) reasons.push(`gate ${gate.status}`);
+    lines.push(
+      `- ${assignment?.identity.identifier ?? `assignment ${index + 1}`}: ${reasons.join('; ')}`,
+    );
+  });
+  return lines.join('\n');
+}
+
 /** Writes one batch brief for `identifiers`, in the given order, to `<out-dir>/<IDs joined by _>.md`. */
 export async function writeBatchBrief(
   identifiers: readonly string[],
@@ -914,7 +959,7 @@ export async function writeBatchBrief(
   const brief = await readBatchBrief(identifiers, options, dependencies);
   if (brief.gates.some((gate) => !gate.dispatchable))
     throw new LinearError(
-      'Refused: one or more assignments are not dispatchable; no brief was written.',
+      `Refused: one or more assignments are not dispatchable; no brief was written.\n${refusalReasons(brief.assignments, brief.gates)}`,
     );
   if (brief.foreignClaim !== undefined)
     throw new LinearError(
@@ -943,7 +988,9 @@ export async function writeBrief(
 ): Promise<BriefResult> {
   const brief = await readBrief(identifier, options, dependencies);
   if (!brief.gate.dispatchable)
-    throw new LinearError('Refused: assignment is not dispatchable; no brief was written.');
+    throw new LinearError(
+      `Refused: assignment is not dispatchable; no brief was written.\n${refusalReasons([brief.assignment], [brief.gate])}`,
+    );
   if (brief.foreignClaim !== undefined)
     throw new LinearError(
       `Refused: ${brief.identifier} is ${brief.foreignClaim}; no brief was written${options.run === undefined ? " (pass --run <id> when the claim is this run's)" : ''}.`,
@@ -1057,7 +1104,7 @@ export async function run(
     if (rejected) {
       const error =
         brief.foreignClaim === undefined
-          ? 'Refused: one or more assignments are not dispatchable; no brief was written.'
+          ? `Refused: one or more assignments are not dispatchable; no brief was written.\n${refusalReasons(contracts.assignments, contracts.gates)}`
           : `Refused: ${brief.foreignClaim}; no brief was written${options.run === undefined ? " (pass --run <id> when the claim is this run's)" : ''}.`;
       const structured = {
         ok: false,

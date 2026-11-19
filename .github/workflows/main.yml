@@ -18,10 +18,11 @@ permissions:
 
 # One group for every push: a running run finishes, and a newer pending run replaces the older pending one.
 # A manual dispatch (an exception validate on a branch, COR-2374) takes a group of its own per ref, so
-# it never replaces a pending run from a push to `main`.
+# it never replaces a pending run from a push to `main`, and a newer dispatch on the same branch
+# cancels the older one: a branch gets one full run, on its final head.
 concurrency:
   group: ${{ github.event_name == 'workflow_dispatch' && format('main-dispatch-{0}', github.ref) || 'main' }}
-  cancel-in-progress: false
+  cancel-in-progress: ${{ github.event_name == 'workflow_dispatch' }}
 
 env:
   TURBO_TELEMETRY_DISABLED: '1'

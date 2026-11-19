@@ -8,12 +8,14 @@ import { waitUntil } from '../testing/testing/src/wait-until.ts';
 import { CONTAINER_CPUS } from './browser-fixtures/scripts/docker-baseline-runner.ts';
 import {
   isHolderAlive,
+  poolBusyExitCode,
   slotDirectory,
   type ProcessTable,
   type SlotOwner,
 } from './bun-test-pool.ts';
 import {
   parseHostSlotsArguments,
+  runWithHostSlots,
   withHostSlots,
   type HostSlots,
   type HostSlotsOptions,
@@ -151,6 +153,34 @@ const secondHolderWaitsForTheFirst = await inScratchPool(async (pool) => {
   expect(outcome.slots.admission).toBe('held');
   expect(outcome.slots.count).toBe(1);
   expect(outcome.held).toBe(1);
+  expect(await heldSlots(pool)).toBe(0);
+});
+
+// The type-checks of the focused checks run under `host-slots.ts` with the pool's wait bound: past
+// it the command never starts, and the run exits as `bun test` does when the pool stays busy.
+const busyPoolPastTheWaitBoundDoesNotStartTheCommand = await inScratchPool(async (pool) => {
+  const started = join(pool, '..', 'started');
+  const { promise: holds, resolve: markHolds } = Promise.withResolvers<void>();
+  const { promise: mayFinish, resolve: finish } = Promise.withResolvers<void>();
+  const holder = withHostSlots(
+    2,
+    async () => {
+      markHolds();
+      await mayFinish;
+    },
+    poolOptions(pool, 2),
+  );
+  await holds;
+  const reports: string[] = [];
+  const code = await runWithHostSlots(1, ['sh', '-c', `touch '${started}'`], {
+    ...poolOptions(pool, 2, { report: (line) => reports.push(line) }),
+    environment: { CORVIDAE_TEST_POOL_WAIT_SECONDS: '1' },
+  });
+  finish();
+  await holder;
+  expect(code).toBe(poolBusyExitCode);
+  expect(await stat(started).catch(() => undefined)).toBeUndefined();
+  expect(reports.join('\n')).toContain('not run locally: pool busy after 1s');
   expect(await heldSlots(pool)).toBe(0);
 });
 
@@ -301,6 +331,8 @@ describe('host slots', () => {
     rethrow(inProcessHolderRecordsItsOwnGroup));
   test('a second concurrent holder waits, and proceeds once the first releases', () =>
     rethrow(secondHolderWaitsForTheFirst));
+  test('a busy pool past the wait bound does not start the command and exits 75', () =>
+    rethrow(busyPoolPastTheWaitBoundDoesNotStartTheCommand));
   test('a run nested in a holder runs inside its slots instead of acquiring more', () =>
     rethrow(nestedRunDoesNotDoubleAdmit));
   test('a token naming no live holder does not bypass the pool', () =>
