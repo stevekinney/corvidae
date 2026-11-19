@@ -113,6 +113,7 @@ describe('weft.workflows.purge', () => {
     expect(response.status).toBe(400);
     expect(await response.json()).toEqual({
       error: 'Field "filter.attributes[0].key" must be a non-empty string',
+      retryable: false,
     });
 
     response = await handleRequest(request(['not-an-object']), engine, {
@@ -123,6 +124,7 @@ describe('weft.workflows.purge', () => {
     expect(response.status).toBe(400);
     expect(await response.json()).toEqual({
       error: 'Field "filter" must be an object',
+      retryable: false,
     });
   });
 
@@ -148,6 +150,6 @@ describe('weft.workflows.purge', () => {
 
     expect(response.status).toBe(500);
     expect(response.headers.get('content-type')).toBe('application/json');
-    expect(await response.json()).toEqual({ error: 'Internal server error' });
+    expect(await response.json()).toEqual({ error: 'Internal server error', retryable: false });
   });
 });

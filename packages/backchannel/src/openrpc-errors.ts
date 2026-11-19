@@ -10,6 +10,7 @@ import type { FaultCode } from './fault-code.ts';
 import {
   FAULT_CODE_TO_HTTP_STATUS,
   FAULT_CODE_TO_JSON_RPC_CODE,
+  MAX_REMEDIATION_LENGTH,
   type TransportKind,
 } from './operation-fault.ts';
 
@@ -91,6 +92,32 @@ const FAULT_DATA_SCHEMAS: Record<FaultCode, z.ZodType> = {
   EngineFailure: EngineFailureDataSchema,
 };
 
+/**
+ * Add the two advice keys every JSON-RPC fault's `error.data` carries beside its payload:
+ * `retryable` always, `remediation` when the fault has one (see `faultWireAdvice`).
+ */
+function withFaultAdviceProperties(schema: Record<string, unknown>): Record<string, unknown> {
+  const properties = (schema['properties'] ?? {}) as Record<string, unknown>;
+  const required = Array.isArray(schema['required']) ? (schema['required'] as string[]) : [];
+  return {
+    ...schema,
+    properties: {
+      ...properties,
+      retryable: {
+        type: 'boolean',
+        description: 'Whether repeating the identical call later can succeed',
+      },
+      remediation: {
+        type: 'string',
+        minLength: 1,
+        maxLength: MAX_REMEDIATION_LENGTH,
+        description: 'One line of plain text saying what to do next',
+      },
+    },
+    required: [...required, 'retryable'],
+  };
+}
+
 type OpenRpcError = {
   code: number;
   message: string;
@@ -125,7 +152,7 @@ export function buildOpenRpcComponentsErrors(): Record<string, OpenRpcError> {
     result[faultCode] = {
       code: jsonRpcCode,
       message: faultCode,
-      data: dataJsonSchema,
+      data: withFaultAdviceProperties(dataJsonSchema),
       'x-http-status': httpStatus,
     };
   }

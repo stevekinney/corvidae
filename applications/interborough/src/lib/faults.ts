@@ -6,33 +6,26 @@
  * than the console's UI treatment vocabulary. The plan's "one FaultDisplay
  * treatment, six codes" (§10.4) is that coarser bucket, derived here from
  * `FaultCode` and its documented REST HTTP status
- * (`weft/src/server/operation-fault.ts` `FAULT_CODE_TO_HTTP_STATUS`) rather
- * than invented independently, so the mapping cannot silently drift from the
- * wire contract.
+ * (`packages/backchannel/src/operation-fault.ts` `FAULT_CODE_TO_HTTP_STATUS`)
+ * rather than invented independently, so the mapping cannot silently drift
+ * from the wire contract.
  *
- * ## What `HttpClientError` does and doesn't carry (verified against the
- * installed `@lostgradient/weft@0.12.0`, `dist/client/http-request.d.ts`)
+ * ## What `HttpClientError` carries
  *
  * `HttpClientError` exposes `status`, `message`, an optional coarse
  * `faultCode` (`FaultCode`), an optional fine-grained `weftCode`
- * (`WeftErrorCode`, e.g. `IdempotencyKeyPurgedError`), and — as of
- * `@lostgradient/weft@0.12.0` — an optional `data?: Readonly<Record<string,
- * unknown>>` carrying the wire fault's typed payload (field-level `issues`,
- * the conflicting `resource`/`identifier`, …). That closed the
- * JSON-RPC-over-HTTP half of https://github.com/stevekinney/weft/issues/711
- * (fixed upstream #721) — confirmed live: `POST /jsonrpc` with invalid
- * params now returns `error.data.issues` on the wire and `HttpClientError`
- * surfaces it. **REST did not move**: every production REST binding still
- * uses `shapeRestFault`, which emits a flat `{ error: string }` body with no
- * `data` for any fault code (confirmed live: the same invalid input over
- * REST returns only `{"error":"Missing required field: type"}`) — tracked
- * separately upstream as #720. This module's `invalid.fieldErrors` stays
- * `[]` regardless: `classifyFault` doesn't yet read the now-real
- * `error.data` for JSON-RPC-routed calls, so wiring it up (JSON-RPC-only,
- * still `[]` for REST) is a genuine, scoped follow-up now that the wire
- * data exists — not implemented here to keep this change to the import-path
- * fix. `conflict`/`not-found` still cannot attach a resource link beyond
- * what `message` says in prose, for the same REST-side reason.
+ * (`WeftErrorCode`, e.g. `IdempotencyKeyPurgedError`), an optional
+ * `data?: Readonly<Record<string, unknown>>` carrying the wire fault's typed
+ * payload (field-level `issues`, the conflicting `resource`/`identifier`, …),
+ * and the fault's `retryable` and `remediation`. A REST error body is
+ * `{ error, weftCode?, data?, retryable, remediation? }`
+ * (`shapeRestFaultBody` in Backchannel's `operation-fault.ts`), so REST
+ * carries `data` and the advice too; JSON-RPC carries all of them in
+ * `error.data`. REST still carries no coarse `faultCode`, so a REST fault is
+ * bucketed by its HTTP status. `classifyFault` reads `data.issues` into
+ * `invalid.fieldErrors` and copies `retryable` and `remediation` onto the
+ * treatment for both transports. `conflict`/`not-found` do not attach a
+ * resource link beyond what `message` says in prose.
  *
  * `weftCode` (and therefore `isSpentIdempotencyKey` below) is REST-only: the
  * JSON-RPC fault envelope writes its own coarse `weftCode: fault.code` (e.g.
@@ -63,10 +56,8 @@ export type FaultTreatmentKind =
   | 'unreachable';
 
 /**
- * A single field-level validation error. Currently unreachable in practice —
- * see the module doc's `HttpClientError` gap — kept as a real shape (rather
- * than dropped) so consuming UI is already built for the day the client
- * surfaces it.
+ * A single field-level validation error, read from the fault's `data.issues`:
+ * `path` joins the issue's path with dots (`''` for the root).
  */
 export interface FaultFieldError {
   readonly path: string;
@@ -74,11 +65,25 @@ export interface FaultFieldError {
 }
 
 /**
+ * What the server's fault said about the way on. Both are absent for a response that carried
+ * neither, as one from an older server or a network failure does.
+ */
+export interface FaultAdvice {
+  /** `true` when repeating the identical call later can succeed. */
+  readonly retryable?: boolean;
+  /** One line of plain text saying what to do next. */
+  readonly remediation?: string;
+}
+
+/**
  * A classified fault, ready for presentation. One variant per
  * `FaultTreatmentKind`, each carrying only the detail that treatment can
- * actually act on (plan §10.4's per-code list).
+ * actually act on (plan §10.4's per-code list), plus the fault's
+ * {@link FaultAdvice} when the wire carried it.
  */
-export type FaultTreatment =
+export type FaultTreatment = FaultTreatmentVariant & FaultAdvice;
+
+type FaultTreatmentVariant =
   | { readonly kind: 'not-found'; readonly message: string }
   | {
       readonly kind: 'conflict';
@@ -94,7 +99,7 @@ export type FaultTreatment =
   | {
       readonly kind: 'invalid';
       readonly message: string;
-      /** Always `[]` today — see the module doc. */
+      /** One per issue in the fault's `data.issues`; `[]` when the fault carried none. */
       readonly fieldErrors: readonly FaultFieldError[];
     }
   | {
@@ -233,7 +238,32 @@ const SPENT_IDEMPOTENCY_KEY_CODE: WeftErrorCode = 'IdempotencyKeyPurgedError';
 export function classifyFault(error: unknown): FaultTreatment | null {
   if (isNetworkFailure(error)) return { kind: 'unreachable', message: UNREACHABLE_MESSAGE };
   if (!(error instanceof HttpClientError)) return null;
+  const treatment = classifyHttpClientError(error);
+  if (treatment === null) return null;
+  return {
+    ...treatment,
+    ...(error.retryable === undefined ? {} : { retryable: error.retryable }),
+    ...(error.remediation === undefined ? {} : { remediation: error.remediation }),
+  };
+}
 
+/** The `data.issues` of a fault as field errors: an issue with no text message is skipped. */
+function fieldErrorsFromData(
+  data: Readonly<Record<string, unknown>> | undefined,
+): readonly FaultFieldError[] {
+  const issues = data?.['issues'];
+  if (!Array.isArray(issues)) return [];
+  const fieldErrors: FaultFieldError[] = [];
+  for (const issue of issues as unknown[]) {
+    if (typeof issue !== 'object' || issue === null) continue;
+    const { path, message } = issue as { path?: unknown; message?: unknown };
+    if (typeof message !== 'string') continue;
+    fieldErrors.push({ path: Array.isArray(path) ? path.join('.') : '', message });
+  }
+  return fieldErrors;
+}
+
+function classifyHttpClientError(error: HttpClientError): FaultTreatmentVariant | null {
   const kind = treatmentKindForError(error);
   switch (kind) {
     case 'not-found':
@@ -245,7 +275,7 @@ export function classifyFault(error: unknown): FaultTreatment | null {
         isSpentIdempotencyKey: isWeftFault(error, SPENT_IDEMPOTENCY_KEY_CODE),
       };
     case 'invalid':
-      return { kind, message: error.message, fieldErrors: [] };
+      return { kind, message: error.message, fieldErrors: fieldErrorsFromData(error.data) };
     case 'unauthorized':
       return { kind, message: error.message, mode: unauthorizedMode(error) };
     case 'not-supported':

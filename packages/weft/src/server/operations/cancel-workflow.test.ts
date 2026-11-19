@@ -91,6 +91,7 @@ describe('weft.workflows.cancel', () => {
       expect(await response.json()).toEqual({
         error: 'workflow not found',
         data: { resource: 'workflow', identifier: 'missing' },
+        retryable: false,
       });
     } finally {
       engine.cancel = originalCancel;
@@ -126,6 +127,7 @@ describe('weft.workflows.cancel', () => {
       expect(await response.json()).toEqual({
         error: 'Workflow "wf-1" was replaced before it was cancelled.',
         data: { reason: 'workflow-replaced' },
+        retryable: false,
       });
     } finally {
       engine.cancel = originalCancel;
@@ -150,7 +152,7 @@ describe('weft.workflows.cancel', () => {
       );
 
       expect(response.status).toBe(500);
-      expect(await response.json()).toEqual({ error: 'Internal server error' });
+      expect(await response.json()).toEqual({ error: 'Internal server error', retryable: false });
     } finally {
       engine.cancel = originalCancel;
     }

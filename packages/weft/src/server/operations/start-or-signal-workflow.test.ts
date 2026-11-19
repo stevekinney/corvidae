@@ -258,6 +258,7 @@ describe('weft.workflows.startorsignal', () => {
       expect(await response.json()).toEqual({
         error: expect.stringContaining('tearing down a resource'),
         weftCode: 'WorkflowTeardownPendingError',
+        retryable: false,
       });
     } finally {
       finalizer.release();
@@ -343,7 +344,10 @@ describe('weft.workflows.startorsignal', () => {
     );
 
     expect(response.status).toBe(400);
-    expect(await response.json()).toEqual({ error: 'Provide only one of startAt or startAfter' });
+    expect(await response.json()).toEqual({
+      error: 'Provide only one of startAt or startAfter',
+      retryable: false,
+    });
   });
 
   it('returns 400 when the request body is invalid JSON', async () => {
@@ -360,7 +364,7 @@ describe('weft.workflows.startorsignal', () => {
     );
 
     expect(response.status).toBe(400);
-    expect(await response.json()).toEqual({ error: 'Invalid JSON body' });
+    expect(await response.json()).toEqual({ error: 'Invalid JSON body', retryable: false });
   });
 
   it('returns 400 when the request body is JSON null (not an object)', async () => {
@@ -372,7 +376,10 @@ describe('weft.workflows.startorsignal', () => {
     });
 
     expect(response.status).toBe(400);
-    expect(await response.json()).toEqual({ error: 'Request body must be a JSON object' });
+    expect(await response.json()).toEqual({
+      error: 'Request body must be a JSON object',
+      retryable: false,
+    });
   });
 
   it('returns 400 InvalidParams when body is a JSON array', async () => {
@@ -395,6 +402,7 @@ describe('weft.workflows.startorsignal', () => {
           },
         ],
       },
+      retryable: false,
     });
   });
 
@@ -412,7 +420,10 @@ describe('weft.workflows.startorsignal', () => {
         { operationRegistry: registry, restBindings: bindings },
       );
       expect(response.status).toBe(400);
-      expect(await response.json()).toEqual({ error: 'Field "id" must be a string' });
+      expect(await response.json()).toEqual({
+        error: 'Field "id" must be a string',
+        retryable: false,
+      });
     } finally {
       engine.startOrSignal = original;
     }
@@ -541,7 +552,10 @@ describe('weft.workflows.startorsignal', () => {
     );
 
     expect(response.status).toBe(400);
-    expect(await response.json()).toEqual({ error: 'Missing required field: type' });
+    expect(await response.json()).toEqual({
+      error: 'Missing required field: type',
+      retryable: false,
+    });
   });
 
   it('returns 400 when the signalName is missing (rejected by the schema)', async () => {
@@ -567,6 +581,7 @@ describe('weft.workflows.startorsignal', () => {
           },
         ],
       },
+      retryable: false,
     });
   });
 
@@ -591,6 +606,7 @@ describe('weft.workflows.startorsignal', () => {
           },
         ],
       },
+      retryable: false,
     });
   });
 
@@ -698,7 +714,7 @@ describe('weft.workflows.startorsignal', () => {
         { operationRegistry: registry, restBindings: bindings },
       );
       expect(response.status).toBe(500);
-      expect(await response.json()).toEqual({ error: 'Internal server error' });
+      expect(await response.json()).toEqual({ error: 'Internal server error', retryable: false });
     } finally {
       engine.startOrSignal = original;
     }

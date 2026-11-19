@@ -8,10 +8,13 @@
  * everything else. This stable error-code allocation ensures cross-transport
  * parity.
  *
- * Every `data` object carries `{ weftCode, httpStatus }` plus the typed
- * fault-specific payload. The pair is a uniform machine-readable handle:
- * clients can route on `weftCode` when they want symbolic names, or on
- * `httpStatus` (number) when they want HTTP-equivalent semantics.
+ * Every `data` object carries `{ weftCode, httpStatus, retryable }` plus the typed
+ * fault-specific payload, and `remediation` when the fault carries one. The
+ * first two are a uniform machine-readable handle: clients can route on
+ * `weftCode` when they want symbolic names, or on `httpStatus` (number) when
+ * they want HTTP-equivalent semantics. `retryable` says whether repeating the
+ * identical call later can succeed, and `remediation` what to do next (see
+ * `faultWireAdvice` in `operation-fault.ts`).
  *
  * Here `weftCode` is the coarse `FaultCode` (`fault.code`, e.g. `NotFound`),
  * NOT the fine-grained `WeftErrorCode` (e.g. `WorkflowNotFoundError`) that
@@ -29,6 +32,7 @@
 import {
   FAULT_CODE_TO_HTTP_STATUS,
   FAULT_CODE_TO_JSON_RPC_CODE,
+  faultWireAdvice,
   usableRetryAfterSeconds,
   wireSafeFault,
   type OperationFault,
@@ -47,10 +51,13 @@ export function faultToJsonRpcError(unsafeFault: OperationFault): JsonRpcError {
   const httpStatus = FAULT_CODE_TO_HTTP_STATUS[fault.code];
   // Envelope keys are written LAST so a future payload field accidentally
   // named `weftCode` or `httpStatus` cannot overwrite the canonical metadata.
+  const { retryable, remediation } = faultWireAdvice(fault);
   const data: Record<string, unknown> = {
     ...extractFaultDataPayload(fault),
     weftCode: fault.code,
     httpStatus,
+    retryable,
+    ...(remediation === undefined ? {} : { remediation }),
   };
   return { code, message: fault.message, data };
 }

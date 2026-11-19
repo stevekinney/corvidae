@@ -6,7 +6,11 @@
 
 import type { ErasedOperation } from './operation-catalog.ts';
 import { UNIVERSAL_FAULT_DEFAULTS } from './operation-catalog/universal-faults.ts';
-import { FAULT_CODE_TO_HTTP_STATUS, type OperationFault } from './operation-fault.ts';
+import {
+  FAULT_CODE_TO_HTTP_STATUS,
+  MAX_REMEDIATION_LENGTH,
+  type OperationFault,
+} from './operation-fault.ts';
 
 type FaultCode = OperationFault['code'];
 
@@ -22,6 +26,17 @@ export const ERROR_SCHEMA: Record<string, unknown> = {
     weftCode: {
       type: 'string',
       description: 'Fine-grained public Weft error code when one is available',
+    },
+    retryable: {
+      type: 'boolean',
+      description:
+        'Whether repeating the identical call later can succeed; present on every operation fault',
+    },
+    remediation: {
+      type: 'string',
+      minLength: 1,
+      maxLength: MAX_REMEDIATION_LENGTH,
+      description: 'One line of plain text saying what to do next; omitted when none is known',
     },
     data: {
       type: 'object',

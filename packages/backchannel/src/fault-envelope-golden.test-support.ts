@@ -93,10 +93,16 @@ export const GOLDEN_FAULTS = {
   EngineFailure: { code: 'EngineFailure', message: 'golden', data: {} },
 } as const satisfies { readonly [Code in FaultCode]: Extract<OperationFault, { code: Code }> };
 
-/** Every golden fault's REST response and JSON-RPC error, keyed by fault code. */
+/**
+ * Every golden fault's REST response and JSON-RPC error, keyed by fault code. Each fault is built
+ * with `remediation: 'golden'`.
+ */
 export async function buildFaultEnvelopes(): Promise<Record<string, unknown>> {
   const envelopes: Record<string, unknown> = {};
-  for (const [code, fault] of Object.entries(GOLDEN_FAULTS)) {
+  for (const [code, goldenFault] of Object.entries(GOLDEN_FAULTS)) {
+    // Every fault carries a remediation, so the golden pins the field on each transport and the
+    // `EngineFailure` mask that drops it.
+    const fault: OperationFault = { ...goldenFault, remediation: 'golden' };
     const response = faultToHttpResponse(fault);
     envelopes[code] = {
       http: {

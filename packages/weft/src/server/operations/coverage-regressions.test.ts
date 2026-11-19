@@ -78,10 +78,15 @@ async function expectJsonError(
   status: number,
   error: string,
   data?: Readonly<Record<string, unknown>>,
+  // `null` for a route-level error that never passed through the fault model, so it has no `retryable`.
+  retryable: boolean | null = false,
 ): Promise<void> {
   expect(response.status).toBe(status);
   expect(response.headers.get('content-type')).toBe('application/json');
-  expect(await response.json()).toEqual(data === undefined ? { error } : { error, data });
+  const advice = retryable === null ? {} : { retryable };
+  expect(await response.json()).toEqual(
+    data === undefined ? { error, ...advice } : { error, data, ...advice },
+  );
 }
 
 describe('operation coverage regressions', () => {
@@ -393,7 +398,7 @@ describe('operation coverage regressions', () => {
       },
     );
 
-    await expectJsonError(response, 400, 'Invalid JSON body');
+    await expectJsonError(response, 400, 'Invalid JSON body', undefined, null);
     engine[Symbol.dispose]();
   });
 

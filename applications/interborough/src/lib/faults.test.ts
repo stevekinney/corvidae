@@ -207,9 +207,92 @@ describe('classifyFault — conflict: spent idempotency key (REST-only)', () => 
 });
 
 describe('classifyFault — invalid: field errors', () => {
-  test('fieldErrors is always [] today (HttpClientError does not surface OperationFault.data.issues)', () => {
+  test('fieldErrors is [] when the fault carried no data', () => {
     const treatment = classifyFault(jsonRpcFault('InvalidParams', 'invalid params'));
     expect(treatment).toMatchObject({ kind: 'invalid', fieldErrors: [] });
+  });
+
+  test('a REST error reads field errors from its data.issues', () => {
+    // The REST body `{ error, data: { issues }, retryable }` as `HttpClientError` parses it: no
+    // coarse `faultCode`, so the HTTP status picks the `invalid` bucket.
+    const error = new HttpClientError(400, 'name: Required; options.0.label: Too short', {
+      data: {
+        issues: [
+          { path: ['name'], message: 'Required', code: 'invalid_type' },
+          { path: ['options', 0, 'label'], message: 'Too short', code: 'too_small' },
+          { path: [], message: 'Unknown key', code: 'unrecognized_keys' },
+        ],
+      },
+      retryable: false,
+    });
+    expect(classifyFault(error)).toEqual({
+      kind: 'invalid',
+      message: 'name: Required; options.0.label: Too short',
+      fieldErrors: [
+        { path: 'name', message: 'Required' },
+        { path: 'options.0.label', message: 'Too short' },
+        { path: '', message: 'Unknown key' },
+      ],
+      retryable: false,
+    });
+  });
+
+  test('a JSON-RPC error reads field errors from the envelope data.issues', () => {
+    const error = new HttpClientError(400, 'invalid params', {
+      faultCode: 'InvalidParams',
+      data: {
+        issues: [{ path: ['type'], message: 'Required', code: 'invalid_type' }],
+        weftCode: 'InvalidParams',
+        httpStatus: 400,
+      },
+    });
+    expect(classifyFault(error)).toMatchObject({
+      kind: 'invalid',
+      fieldErrors: [{ path: 'type', message: 'Required' }],
+    });
+  });
+
+  test('skips an issue with no text message and ignores a data.issues that is not a list', () => {
+    const skipped = new HttpClientError(400, 'bad', {
+      data: { issues: [{ path: ['a'] }, 'text', null, { path: ['b'], message: 'Wrong' }] },
+    });
+    expect(classifyFault(skipped)).toMatchObject({
+      fieldErrors: [{ path: 'b', message: 'Wrong' }],
+    });
+    const notAList = new HttpClientError(400, 'bad', { data: { issues: 'oops' } });
+    expect(classifyFault(notAList)).toMatchObject({ kind: 'invalid', fieldErrors: [] });
+  });
+});
+
+describe('classifyFault — retryable and remediation', () => {
+  test('copies both from a REST error onto the treatment of any kind', () => {
+    const error = new HttpClientError(404, 'No such run', {
+      retryable: false,
+      remediation: 'List the runs, then pick one that exists.',
+    });
+    expect(classifyFault(error)).toEqual({
+      kind: 'not-found',
+      message: 'No such run',
+      retryable: false,
+      remediation: 'List the runs, then pick one that exists.',
+    });
+  });
+
+  test('copies retryable true from a transient fault', () => {
+    const error = new HttpClientError(503, 'Unavailable', { retryable: true });
+    expect(classifyFault(error)).toMatchObject({ kind: 'internal', retryable: true });
+  });
+
+  test('leaves both off a treatment whose error carried neither', () => {
+    const treatment = classifyFault(new HttpClientError(404, 'No such run'));
+    expect(treatment).toEqual({ kind: 'not-found', message: 'No such run' });
+  });
+
+  test('keeps the masked EngineFailure body not retryable with no remediation', () => {
+    const error = new HttpClientError(500, 'Internal server error', { retryable: false });
+    const treatment = classifyFault(error);
+    expect(treatment).toMatchObject({ kind: 'internal', retryable: false });
+    expect(treatment).not.toHaveProperty('remediation');
   });
 });
 

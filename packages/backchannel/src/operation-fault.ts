@@ -35,7 +35,7 @@
  * serialized consistently across REST and JSON-RPC transports.
  */
 
-import type { FaultCode } from './fault-code.ts';
+import { FAULT_CODE_RETRYABLE, type FaultCode } from './fault-code.ts';
 
 /** Transports `executeOperation` sees; `mcp` (a catalog MCP mount) admits `mcpExposable` ones. */
 export type TransportKind =
@@ -52,11 +52,10 @@ export type FlattenedZodIssue = {
 };
 
 /**
- * Transport-neutral fault returned by `executeOperation`. Each variant has a
- * typed `data` payload — transport adapters destructure on `code` to access
- * the shape they need.
+ * The faults `executeOperation` returns, each with its typed `data` payload.
+ * {@link OperationFault} adds the advice every fault may carry.
  */
-export type OperationFault =
+type OperationFaultVariant =
   | { code: 'Unauthorized'; message: string; data: { reason: string } }
   | { code: 'Forbidden'; message: string; data: { reason: string } }
   | {
@@ -160,6 +159,21 @@ export type OperationFault =
   | { code: 'EngineFailure'; message: string; data: Record<string, never> };
 
 /**
+ * Transport-neutral fault returned by `executeOperation`. Each variant has a
+ * typed `data` payload — transport adapters destructure on `code` to access
+ * the shape they need.
+ *
+ * Every fault may also carry `remediation`: one line of plain text saying what
+ * the caller can do next ({@link assertValidRemediation} states the limits).
+ * Whether repeating the identical call can help is not a field of the fault: it
+ * is a property of the code, in `FAULT_CODE_RETRYABLE`, and the wire projections
+ * add it as `retryable` ({@link faultWireAdvice}).
+ */
+export type OperationFault = OperationFaultVariant & {
+  remediation?: string | undefined;
+};
+
+/**
  * HTTP status code for each fault, used by `faultToHttpResponse`. Values
  * align with REST conventions; both `NotImplemented` and
  * `UnsupportedTransport` map to 501 because the caller asked for something
@@ -227,6 +241,10 @@ export type RestFaultBody = {
   readonly error: string;
   readonly weftCode?: string;
   readonly data?: Readonly<Record<string, unknown>>;
+  /** Whether repeating the identical call later can succeed; always present (see {@link faultWireAdvice}). */
+  readonly retryable: boolean;
+  /** One line saying what to do next, when the fault carries one. */
+  readonly remediation?: string;
 };
 
 type RestProjectableFault = Exclude<OperationFault, { code: 'EngineFailure' }>;
@@ -303,14 +321,14 @@ const REST_FAULT_DATA_EXTRACTORS: RestFaultDataExtractors = {
 
 /**
  * Map an `OperationFault` to the canonical additive REST body:
- * `{ error, weftCode?, data? }`. The existing string `error` and optional
+ * `{ error, weftCode?, data?, retryable, remediation? }`. The existing string `error` and optional
  * fine-grained `weftCode` (the host's error code, never a {@link FaultCode})
  * remain unchanged; `data` contains only fields from the audited allowlist
  * above. JSON-RPC uses its own broader projection, whose `data.weftCode` is the
  * coarse `FaultCode`.
  *
  * `EngineFailure` is a hard exception: its exact body remains
- * `{ "error": "Internal server error" }`, regardless of response overrides.
+ * `{ "error": "Internal server error", "retryable": false }`, regardless of response overrides.
  */
 export function shapeOperationFaultAsJson(
   fault: OperationFault,
@@ -427,12 +445,65 @@ export function usableRetryAfterSeconds(seconds: number | undefined): number | u
   return seconds;
 }
 
+/** The longest `remediation`, in characters (Unicode code points). */
+export const MAX_REMEDIATION_LENGTH = 500;
+
+const CONTROL_CHARACTER = /\p{Cc}/u;
+
+/**
+ * Why `value` cannot be a fault's `remediation`, or `undefined` when it can. A remediation is one
+ * line of plain text: 1 to {@link MAX_REMEDIATION_LENGTH} characters, containing no character in
+ * the Unicode control category (`Cc`), a newline or a tab included.
+ */
+export function remediationProblem(value: unknown): string | undefined {
+  if (typeof value !== 'string') return 'must be a string';
+  if (value.length === 0) return 'must not be empty';
+  if ([...value].length > MAX_REMEDIATION_LENGTH) {
+    return `must be at most ${MAX_REMEDIATION_LENGTH} characters`;
+  }
+  if (CONTROL_CHARACTER.test(value)) return 'must be one line with no control characters';
+  return undefined;
+}
+
+/** Throws a `TypeError` when `value` is not a valid `remediation` ({@link remediationProblem}). */
+export function assertValidRemediation(value: unknown): asserts value is string {
+  const problem = remediationProblem(value);
+  if (problem !== undefined) throw new TypeError(`A fault's remediation ${problem}`);
+}
+
+/** `fault` with `remediation` set; throws a `TypeError` when the text is not valid. */
+export function withRemediation<Fault extends OperationFault>(
+  fault: Fault,
+  remediation: string,
+): Fault {
+  assertValidRemediation(remediation);
+  return { ...fault, remediation };
+}
+
+/**
+ * The advice every wire projection (REST, JSON-RPC, MCP) puts on a fault, computed in one place so
+ * the transports cannot drift: `retryable` always, from the code's single table, and `remediation`
+ * only when the fault carries a valid one. An invalid value is dropped rather than thrown, as a
+ * projection must always answer. `EngineFailure` discloses nothing, so it never carries a
+ * remediation even when the fault object holds one.
+ */
+export function faultWireAdvice(fault: OperationFault): {
+  readonly retryable: boolean;
+  readonly remediation?: string;
+} {
+  const retryable = FAULT_CODE_RETRYABLE[fault.code];
+  const { remediation } = fault;
+  if (fault.code === 'EngineFailure' || remediation === undefined) return { retryable };
+  return remediationProblem(remediation) === undefined ? { retryable, remediation } : { retryable };
+}
+
 /** Build the audited canonical REST body. */
 function shapeRestFaultBody(
   fault: OperationFault,
   options: RestFaultResponseOptions,
 ): RestFaultBody {
-  if (fault.code === 'EngineFailure') return { error: 'Internal server error' };
+  const { retryable, remediation } = faultWireAdvice(fault);
+  if (fault.code === 'EngineFailure') return { error: 'Internal server error', retryable };
 
   const error = options.message ?? fault.message;
   const weftCode = weftCodeFromFaultData(fault.data, options.isKnownErrorCode);
@@ -441,6 +512,8 @@ function shapeRestFaultBody(
     error,
     ...(weftCode === undefined ? {} : { weftCode }),
     ...(Object.keys(data).length > 0 ? { data } : {}),
+    retryable,
+    ...(remediation === undefined ? {} : { remediation }),
   };
 }
 

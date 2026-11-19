@@ -112,6 +112,7 @@ describe('weft.workflows.checkpoints.get', () => {
           },
         ],
       },
+      retryable: false,
     });
   });
 
@@ -135,6 +136,7 @@ describe('weft.workflows.checkpoints.get', () => {
     expect(await response.json()).toEqual({
       error: `Checkpoint not found at step 99 for workflow ${handle.id}`,
       data: { resource: 'checkpoint', identifier: `${handle.id}:99` },
+      retryable: false,
     });
   });
 
@@ -165,6 +167,6 @@ describe('weft.workflows.checkpoints.get', () => {
     );
 
     expect(response.status).toBe(500);
-    expect(await response.json()).toEqual({ error: 'Internal server error' });
+    expect(await response.json()).toEqual({ error: 'Internal server error', retryable: false });
   });
 });

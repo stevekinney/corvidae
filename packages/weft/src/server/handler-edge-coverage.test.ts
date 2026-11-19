@@ -135,7 +135,7 @@ describe('handleRequest edge coverage', () => {
     for (const [body, message] of invalidBodies) {
       const response = await handleRequest(request('POST', '/v1/workflows/purge', body), engine);
       expect(response.status).toBe(400);
-      expect(await json(response)).toEqual({ error: message });
+      expect(await json(response)).toEqual({ error: message, retryable: false });
     }
 
     // Tag validation moved from `extractInput` (REST-only) into the
@@ -191,7 +191,7 @@ describe('handleRequest edge coverage', () => {
       );
 
       expect(response.status).toBe(400);
-      expect(await json(response)).toEqual({ error: 'Invalid JSON body' });
+      expect(await json(response)).toEqual({ error: 'Invalid JSON body', retryable: false });
     }
     expect(dispatchCount).toBe(0);
   });
@@ -218,7 +218,10 @@ describe('handleRequest edge coverage', () => {
       apiKeyAuth(),
     );
     expect(response.status).toBe(400);
-    expect(await json(response)).toEqual({ error: 'Request body must be a JSON object' });
+    expect(await json(response)).toEqual({
+      error: 'Request body must be a JSON object',
+      retryable: false,
+    });
 
     response = await handleRequest(
       request('POST', '/v1/workflows/bulk/signal', { filter: {}, name: 'continue' }),
@@ -229,6 +232,7 @@ describe('handleRequest edge coverage', () => {
     expect(await json(response)).toEqual({
       error:
         'Field "filter" must include at least one of status, type, scheduleId, tags, attributes, idPrefix (≥3 chars), or failureCategory paired with status',
+      retryable: false,
     });
 
     response = await handleRequest(
@@ -240,7 +244,10 @@ describe('handleRequest edge coverage', () => {
       apiKeyAuth(),
     );
     expect(response.status).toBe(400);
-    expect(await json(response)).toEqual({ error: 'Field "name" must be a non-empty string' });
+    expect(await json(response)).toEqual({
+      error: 'Field "name" must be a non-empty string',
+      retryable: false,
+    });
 
     response = await handleRequest(
       request('DELETE', '/v1/workflows/bulk', { filter: {} }),
@@ -251,6 +258,7 @@ describe('handleRequest edge coverage', () => {
     expect(await json(response)).toEqual({
       error:
         'Field "filter" must include at least one of status, type, scheduleId, tags, attributes, idPrefix (≥3 chars), or failureCategory paired with status',
+      retryable: false,
     });
 
     response = await handleRequest(
@@ -259,7 +267,10 @@ describe('handleRequest edge coverage', () => {
       apiKeyAuth(),
     );
     expect(response.status).toBe(400);
-    expect(await json(response)).toEqual({ error: 'Request body must be a JSON object' });
+    expect(await json(response)).toEqual({
+      error: 'Request body must be a JSON object',
+      retryable: false,
+    });
 
     response = await handleRequest(
       request('PATCH', '/v1/workflows/bulk/tags', {
@@ -274,6 +285,7 @@ describe('handleRequest edge coverage', () => {
     expect(await json(response)).toEqual({
       error:
         'Field "filter" must include at least one of status, type, scheduleId, tags, attributes, idPrefix (≥3 chars), or failureCategory paired with status',
+      retryable: false,
     });
 
     response = await handleRequest(
@@ -288,6 +300,7 @@ describe('handleRequest edge coverage', () => {
     expect(response.status).toBe(400);
     expect(await json(response)).toEqual({
       error: 'Field "tags" must contain only strings',
+      retryable: false,
     });
     expect(dispatchCount).toBe(0);
   });
@@ -456,7 +469,10 @@ describe('handleRequest edge coverage', () => {
       engine,
     );
     expect(response.status).toBe(400);
-    expect(await json(response)).toEqual({ error: 'Field "id" must be a non-empty string' });
+    expect(await json(response)).toEqual({
+      error: 'Field "id" must be a non-empty string',
+      retryable: false,
+    });
 
     response = await handleRequest(
       request('POST', '/v1/schedules', {
@@ -470,6 +486,7 @@ describe('handleRequest edge coverage', () => {
     expect(response.status).toBe(400);
     expect(await json(response)).toEqual({
       error: 'Field "overlap" must be one of skip, queue, cancel-running, allow',
+      retryable: false,
     });
 
     response = await handleRequest(
@@ -482,7 +499,10 @@ describe('handleRequest edge coverage', () => {
       engine,
     );
     expect(response.status).toBe(400);
-    expect(await json(response)).toEqual({ error: 'Field "backfill" must be a boolean' });
+    expect(await json(response)).toEqual({
+      error: 'Field "backfill" must be a boolean',
+      retryable: false,
+    });
 
     response = await handleRequest(
       request('POST', '/v1/schedules', {
@@ -494,6 +514,7 @@ describe('handleRequest edge coverage', () => {
     expect(response.status).toBe(400);
     expect(await json(response)).toEqual({
       error: 'Missing required field: cronExpression or every',
+      retryable: false,
     });
 
     response = await handleRequest(
@@ -505,7 +526,7 @@ describe('handleRequest edge coverage', () => {
       engine,
     );
     expect(response.status).toBe(400);
-    expect(await json(response)).toEqual({ error: 'Invalid JSON body' });
+    expect(await json(response)).toEqual({ error: 'Invalid JSON body', retryable: false });
 
     response = await handleRequest(
       new Request('http://localhost/v1/schedules', {
@@ -516,7 +537,10 @@ describe('handleRequest edge coverage', () => {
       engine,
     );
     expect(response.status).toBe(400);
-    expect(await json(response)).toEqual({ error: 'Request body must be a JSON object' });
+    expect(await json(response)).toEqual({
+      error: 'Request body must be a JSON object',
+      retryable: false,
+    });
 
     response = await handleRequest(
       request(
@@ -556,7 +580,7 @@ describe('handleRequest edge coverage', () => {
       engine,
     );
     expect(response.status).toBe(400);
-    expect(await json(response)).toEqual({ error: 'Invalid JSON body' });
+    expect(await json(response)).toEqual({ error: 'Invalid JSON body', retryable: false });
 
     response = await handleRequest(
       new Request('http://localhost/v1/schedules/schedule-1', {
@@ -567,12 +591,16 @@ describe('handleRequest edge coverage', () => {
       engine,
     );
     expect(response.status).toBe(400);
-    expect(await json(response)).toEqual({ error: 'Request body must be a JSON object' });
+    expect(await json(response)).toEqual({
+      error: 'Request body must be a JSON object',
+      retryable: false,
+    });
 
     response = await handleRequest(request('PATCH', '/v1/schedules/schedule-1', {}), engine);
     expect(response.status).toBe(400);
     expect(await json(response)).toEqual({
       error: 'Missing required field: cronExpression or every',
+      retryable: false,
     });
   });
 
