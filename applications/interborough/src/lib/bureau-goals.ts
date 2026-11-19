@@ -2,9 +2,10 @@
  * The browser's view of the Bureau's goals: `bureau.goals.*` (COR-1482), through the generated client.
  * A goal runs a catalog agent on a prompt until a validator the Bureau was configured with passes,
  * within bounds. A goal belongs to the principal that created it, and its view leaves out the
- * prompt and instructions: it is the goal's control-plane state, where it stands and what it has
- * used. It does name the goal (`identity`) and its check (`validator`), which a list titles a row
- * with and shows on line two.
+ * instructions, and a list leaves out its prompt too: it is the goal's control-plane state, where
+ * it stands and what it has used. `get` adds the prompt and each attempt's validator feedback for
+ * the goal's owner (COR-2425), which the edit form and the goal's page show. It does name the goal
+ * (`identity`) and its check (`validator`), which a list titles a row with and shows on line two.
  *
  * `cancel` names the revision of the goal the caller read. A goal's revision advances on every write
  * to its record, a controller transition included, so a goal that moved since is refused instead of
@@ -39,8 +40,19 @@ export function goalHasEnded(status: GoalStatus): boolean {
   return ENDED.has(status);
 }
 
+type GoalRecord = BureauOutput<'bureau.goals.get'>;
+
+/**
+ * One attempt of a goal. `agentName` is the agent the attempt ran as, which is not the goal's
+ * `agentName` once the goal's agent changed; a Bureau before it says none, which reads as the
+ * goal's own agent.
+ */
+export type GoalAttempt = Omit<GoalRecord['attempts'][number], 'agentName'> & {
+  readonly agentName?: string | undefined;
+};
+
 /** One goal as `bureau.goals.list`, `get`, and `create` show it. */
-export type Goal = BureauOutput<'bureau.goals.get'>;
+export type Goal = Omit<GoalRecord, 'attempts'> & { readonly attempts: readonly GoalAttempt[] };
 
 /** One page of the caller's goals, oldest first, ended ones included. */
 export type GoalPage = BureauOutput<'bureau.goals.list'>;
@@ -172,8 +184,9 @@ export type GoalChange = {
   /** The goal's new prompt; omitted when it is unchanged. */
   readonly prompt?: string;
   /**
-   * Accepted only as the goal's own agent, so the form may send every field it shows; the Bureau
-   * refuses another agent as a `Conflict` (`agent-fixed`).
+   * The agent the goal's next attempts run as; an attempt already made keeps the agent it ran as.
+   * The Bureau changes it only while an attempt is in flight, and refuses it between attempts as a
+   * `Conflict` (`agent-between-attempts`).
    */
   readonly agentName?: string;
   /** Named exactly as when the goal was created; sent only when its name, version or configuration changed. */

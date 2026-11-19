@@ -10,6 +10,7 @@ import { join } from 'node:path';
 
 import { afterEach, describe, expect, it, spyOn } from 'bun:test';
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
+import { createAgent } from '@lostgradient/operative';
 import type { WorkspaceMembershipOptions } from '../workspace-principal.ts';
 
 import { createBureau } from '../../create-bureau.ts';
@@ -34,6 +35,12 @@ afterEach(async () => {
   for (const cleanup of cleanups.splice(0).toReversed()) await cleanup();
 });
 
+/** While true, the `writer` agent fails, so an instance of `digest` started then fails at step 1. */
+let writerDown = false;
+afterEach(() => {
+  writerDown = false;
+});
+
 const serve = (
   onDiagnostic?: (event: { level: string; message: string }) => void,
   workspace?: WorkspaceMembershipOptions,
@@ -43,7 +50,28 @@ const serve = (
     ...(workspace === undefined ? {} : { workspace }),
     // Plugin `x`, whose trigger kind `x:watch` the retry operation acts on.
     plugins: [watchPlugin().entry],
+    agents: {
+      writer: createAgent({
+        name: 'writer',
+        generate: async () => {
+          if (writerDown) throw new Error('the writer is down');
+          return { content: 'written', toolCalls: [] };
+        },
+      }),
+    },
   });
+
+/** An instance of `digest` that failed at its one step, for `bureau.workflows.runs.retry`. */
+async function failedDigestRun(served: Served): Promise<string> {
+  writerDown = true;
+  await served.bureau.durableEngine()!.start('digest', null, { id: 'failed-digest-run' });
+  await waitForCondition(async () => {
+    const run = await served.bureau.workflows!.getRun('failed-digest-run');
+    return run?.status === 'failed';
+  }, 'the digest run fails');
+  writerDown = false;
+  return 'failed-digest-run';
+}
 
 /** The array an operation's result holds under `key`, empty when it holds none. */
 function listOf(response: RpcBody, key: string): Array<{ id: string }> {
@@ -54,7 +82,7 @@ function listOf(response: RpcBody, key: string): Array<{ id: string }> {
 const DEFINITION = { agent: 'writer', trigger: FAST_SCHEDULE, steps: [AGENT_STEP] };
 
 describe('the operations list', () => {
-  it('serves the twenty workflow operations, with their scopes registered', () => {
+  it('serves the twenty-one workflow operations, with their scopes registered', () => {
     expect(bureauWorkflowsOperations.map((operation) => operation.name)).toEqual([
       'bureau.workflows.create',
       'bureau.workflows.update',
@@ -72,6 +100,7 @@ describe('the operations list', () => {
       'bureau.workflows.runs.list',
       'bureau.workflows.runs.get',
       'bureau.workflows.runs.cancel',
+      'bureau.workflows.runs.retry',
       'bureau.workflows.runs.history',
       'bureau.workflows.start',
       'bureau.workflows.internal.get',
@@ -164,6 +193,8 @@ type Call = {
   readonly method: string;
   readonly params: (hash: string) => unknown;
   readonly scope: 'read' | 'write';
+  /** State the call needs beyond `seed`'s, made before it is sent. */
+  readonly prepare?: (served: Served) => Promise<unknown>;
 };
 
 const CALLS: readonly Call[] = [
@@ -183,6 +214,12 @@ const CALLS: readonly Call[] = [
     method: 'bureau.workflows.runs.cancel',
     params: () => ({ runId: 'digest-run' }),
     scope: 'write',
+  },
+  {
+    method: 'bureau.workflows.runs.retry',
+    params: () => ({ runId: 'failed-digest-run', step: 1 }),
+    scope: 'write',
+    prepare: failedDigestRun,
   },
   {
     method: 'bureau.workflows.runs.history',
@@ -250,6 +287,7 @@ describe('the owner predicate, with several principals', () => {
       it('answers a caller who owns nothing and holds no scope as if the workflow did not exist, and changes nothing', async () => {
         const served = await serve();
         const { hash } = await seed(served);
+        await call.prepare?.(served);
         const before = await readFile(join(served.directory, 'digest.json'), 'utf8');
         const response = await rpc(served.keyed, call.method, call.params(hash), 'alice-key');
         if (call.method === 'bureau.workflows.signal') {
@@ -276,11 +314,16 @@ describe('the owner predicate, with several principals', () => {
           'digest',
           'watcher',
         ]);
+        if (call.method === 'bureau.workflows.runs.retry') {
+          const run = await served.bureau.workflows!.getRun('failed-digest-run');
+          expect(run?.status).toBe('failed');
+        }
       });
 
       it(`is served to the operator scope for ${wire}, and not to the other scope`, async () => {
         const served = await serve();
         const { hash } = await seed(served);
+        await call.prepare?.(served);
         const allowedKey = wire === 'read' ? 'workflows-reader-key' : 'workflows-writer-key';
         const deniedKey = wire === 'read' ? 'workflows-writer-key' : 'workflows-reader-key';
         const denied = await rpc(served.keyed, call.method, call.params(hash), deniedKey);
@@ -299,6 +342,7 @@ describe('the owner predicate, with several principals', () => {
       it('is served to the owner of the deployment’s workflows with no scope at all', async () => {
         const served = await serve();
         const { hash } = await seed(served);
+        await call.prepare?.(served);
         const response = await ownerRpc(served.owner, call.method, call.params(hash));
         expect(response.error).toBeUndefined();
         expect(response.result).toBeDefined();
@@ -307,6 +351,7 @@ describe('the owner predicate, with several principals', () => {
       it('is served to an operator who holds every Bureau scope', async () => {
         const served = await serve();
         const { hash } = await seed(served);
+        await call.prepare?.(served);
         const response = await rpc(served.keyed, call.method, call.params(hash), 'operator-key');
         expect(response.error).toBeUndefined();
       });

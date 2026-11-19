@@ -156,6 +156,7 @@ import {
 } from './events';
 import { createGoalAttemptFenceHost } from './goal-attempt-fence';
 import { createGoalWorkflowHost } from './goal-ports';
+import { attemptAgentName } from './goal-state';
 import type { BureauGoals } from './goal-types';
 import { createGoalValidatorCatalog } from './goal-validator-catalog';
 import { createGuardrailFileCatalog, type GuardrailFileCatalog } from './guardrail-file-catalog';
@@ -236,6 +237,7 @@ import {
   type TaskToolGrant,
 } from './task-registry';
 import { createTaskResync, type TaskResync } from './task-resync';
+import { createEngineRunTasksOf } from './engine-run-tasks';
 import { ANONYMOUS_LOCAL_OWNER, ownerOrLocal, SCHEDULER_ACTOR } from './owner-of-record';
 import { storedScheduleInput, workflowScheduleBinding } from './workflow-schedule';
 import {
@@ -248,6 +250,7 @@ import { everySchedule, readAttention } from './attention-feed';
 import { createWorkflowTools } from './workflow-tools';
 import { createSettingsTools } from './settings/settings-tools';
 import { createWorkflowRevisionLedger } from './workflow-revision-ledger';
+import { createWorkflowRetryReceipts } from './workflow-retry-receipts';
 import { createWorkflowScheduleHolds } from './workflow-schedule-holds';
 import { createAgentOverrideStore } from './agent-override-store';
 import { type AgentDisabledStore, createAgentDisabledStore } from './agent-disabled-store';
@@ -3275,6 +3278,8 @@ async function constructBureau<const D extends AgentDefinitions>(
               store: runtime.kv,
               nowISO: runtimeServices.clock.nowISO,
             }),
+            // COR-2424: the store the `agent` step reads an instance's retry generation from.
+            retryReceipts: createWorkflowRetryReceipts({ store: runtime.kv }),
             scheduleHolds: createWorkflowScheduleHolds({
               store: runtime.kv,
               nowISO: runtimeServices.clock.nowISO,
@@ -3652,6 +3657,15 @@ async function constructBureau<const D extends AgentDefinitions>(
   // COR-1915: what each run of a chat spent, which a file agent's `limits.cost.chat` is
   // measured against. A Bureau with no key-value store keeps it in memory, as it does its tasks.
   const chatSpendLedger = createChatSpendLedger({ kv: runtime.kv, diagnose });
+  const engineRunTasks = createEngineRunTasksOf({
+    runtime: () => workflowRuntime,
+    engine: () => runtime.durable?.engine,
+    ownerOfInstance: runOwner,
+    ownerOfSchedule: scheduleOwner,
+    localOwner: ANONYMOUS_LOCAL_OWNER,
+    diagnose: (message, cause) =>
+      diagnose({ level: 'error', scope: 'task-registry', message: `[bureau] ${message}`, cause }),
+  });
   const tasks = createTaskRegistry({
     kv: runtime.kv,
     clock: runtimeServices.clock,
@@ -3738,6 +3752,9 @@ async function constructBureau<const D extends AgentDefinitions>(
         new Promise<void>((resolve) => {
           runtimeServices.timers.setTimeout(resolve, milliseconds);
         }),
+      // COR-2423: the schedule tick and the instances of workflow files, which have no task record.
+      engineRuns: () => engineRunTasks.list(),
+      holdsEngineRun: (runId) => engineRunTasks.holds(runId),
     },
   });
   taskRegistryHolder.current = tasks;
@@ -5184,9 +5201,12 @@ async function constructBureau<const D extends AgentDefinitions>(
     subjects: {
       run: subjectsOfRun,
       agentOfSchedule: (scheduleId) => schedules.agentName(scheduleId),
-      agentOfGoal: async (goalRunId) => {
+      agentOfGoal: async (goalRunId, attemptIndex) => {
         const goal = await goalsComposition.goals.get(goalRunId);
-        return goal?.objective.agentName;
+        if (goal === undefined) return undefined;
+        return attemptIndex === undefined
+          ? goal.objective.agentName
+          : attemptAgentName(goal, attemptIndex);
       },
     },
   });

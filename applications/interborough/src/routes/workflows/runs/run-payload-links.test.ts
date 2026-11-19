@@ -8,7 +8,9 @@ import { agentPath } from '../../../lib/agent-paths.ts';
 import { chatSessionPath } from '../../../lib/identifier-paths.ts';
 import { workflowDetailPath } from '../../../lib/router.svelte.ts';
 import {
+  inputEnvelopeView,
   NO_LOOKUPS,
+  ownRunIdKeys,
   payloadLinkFor,
   payloadReferences,
   payloadValueText,
@@ -17,6 +19,43 @@ import {
 } from './run-payload-links.ts';
 
 const field = (key: string, value: unknown, path: string[] = [key]) => ({ path, key, value });
+
+describe('inputEnvelopeView (rows 55c, S38, 28e)', () => {
+  test('shows an instance’s own input, and the envelope around it in JSON only', () => {
+    const envelope = {
+      kind: 'schedule',
+      scheduleId: 'release-notes-digest',
+      input: { branch: 'main' },
+      workspaceAuthority: { workspaceId: 'w', actorId: 'a' },
+    };
+    const view = inputEnvelopeView(envelope);
+    // The Fields view's object: the input's keys with the envelope's beside them, JSON only.
+    expect(view.fields).toEqual({
+      branch: 'main',
+      kind: 'schedule',
+      scheduleId: 'release-notes-digest',
+      workspaceAuthority: { workspaceId: 'w', actorId: 'a' },
+    });
+    expect(view.jsonOnly).toEqual(['kind', 'scheduleId', 'workspaceAuthority']);
+    // The JSON view and Copy get the payload as the engine stored it: `input` still nested.
+    expect(view.stored).toBe(envelope);
+  });
+
+  test('a key of the input wins in the Fields view, and the stored payload keeps both', () => {
+    const colliding = { kind: 'manual', input: { kind: 'refund' } };
+    const view = inputEnvelopeView(colliding);
+    expect(view.fields).toEqual({ kind: 'refund' });
+    expect(view.jsonOnly).toEqual([]);
+    // The envelope's own `kind` is not lost from what the JSON view and Copy show.
+    expect(view.stored).toEqual({ kind: 'manual', input: { kind: 'refund' } });
+  });
+
+  test('a value that is no envelope is left as it is, for both views', () => {
+    for (const value of [{ branch: 'main' }, { kind: 'schedule', input: 'text' }, null, [1]]) {
+      expect(inputEnvelopeView(value)).toEqual({ stored: value, fields: value, jsonOnly: [] });
+    }
+  });
+});
 
 const known: PayloadLookups = {
   chats: new Map([['chat-1', 'Please refund order 4471…']]),
@@ -76,6 +115,27 @@ describe('payloadLinkFor and payloadValueText', () => {
     const untitled: PayloadLookups = { ...known, chats: new Map([['chat-1', '']]) };
     expect(payloadLinkFor(field('chatId', 'chat-1'), untitled)).toBe(chatSessionPath('chat-1'));
     expect(payloadValueText(field('chatId', 'chat-1'), untitled)).toBeUndefined();
+  });
+});
+
+describe('ownRunIdKeys (row 28e)', () => {
+  test('names the properties that hold the run’s own identifier, which only the JSON view shows', () => {
+    const input = { question: 'Where is order 4472?', maximumSteps: 8, runId: 'run-71c9d0' };
+    expect(ownRunIdKeys(input, 'run-71c9d0')).toEqual(['runId']);
+    expect(ownRunIdKeys({ ...input, taskId: 'run-71c9d0' }, 'run-71c9d0')).toEqual([
+      'runId',
+      'taskId',
+    ]);
+  });
+
+  test('leaves a property that names another run, which is a link, in the Fields view', () => {
+    expect(ownRunIdKeys({ runId: 'run-8f2c0d71' }, 'run-71c9d0')).toEqual([]);
+  });
+
+  test('names nothing for a payload that is not an object, or a run with no identifier', () => {
+    expect(ownRunIdKeys('text', 'run-71c9d0')).toEqual([]);
+    expect(ownRunIdKeys([{ runId: 'run-71c9d0' }], 'run-71c9d0')).toEqual([]);
+    expect(ownRunIdKeys({ runId: 'run-71c9d0' }, undefined)).toEqual([]);
   });
 });
 

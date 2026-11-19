@@ -402,6 +402,40 @@ describe('Skeleton list variant', () => {
     expect(band?.nextElementSibling?.classList.contains('cinder-skeleton-row')).toBe(true);
   });
 
+  test('dayBandLabel and dayBandDetail draw the real day band text in place of the bar (row 52z)', () => {
+    const { container } = render(Skeleton, {
+      props: {
+        variant: 'list',
+        dayBand: true,
+        dayBandLabel: 'Today, Monday, Nov 2',
+        dayBandDetail: 'Central time',
+      },
+    });
+    const band = container.querySelector('.cinder-skeleton-day-band');
+    expect(band?.querySelector('.cinder-skeleton-day-label')?.textContent).toBe(
+      'Today, Monday, Nov 2',
+    );
+    expect(band?.querySelector('.cinder-skeleton-day-detail')?.textContent).toBe('Central time');
+    // The text stands for itself: no bar is drawn beside it.
+    expect(band?.querySelectorAll('.cinder-skeleton')).toHaveLength(0);
+    expect(band?.nextElementSibling?.classList.contains('cinder-skeleton-row')).toBe(true);
+  });
+
+  test('a day band label alone draws the band, and a band with no label keeps its bar', () => {
+    const labelled = render(Skeleton, {
+      props: { variant: 'list', dayBandLabel: 'Friday, Oct 30' },
+    });
+    const band = labelled.container.querySelector('.cinder-skeleton-day-band');
+    expect(band?.querySelector('.cinder-skeleton-day-label')?.textContent).toBe('Friday, Oct 30');
+    expect(band?.querySelector('.cinder-skeleton-day-detail')).toBeNull();
+    cleanup();
+    const bare = render(Skeleton, { props: { variant: 'list', dayBand: true } });
+    expect(bare.container.querySelector('.cinder-skeleton-day-label')).toBeNull();
+    expect(
+      bare.container.querySelectorAll('.cinder-skeleton-day-band .cinder-skeleton'),
+    ).toHaveLength(1);
+  });
+
   test('statusColumn keeps the shared status column by default, and drops it for rows with no status', () => {
     const kept = render(Skeleton, { props: { variant: 'list', rows: 2 } });
     expect(

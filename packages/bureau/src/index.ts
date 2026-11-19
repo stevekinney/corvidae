@@ -13,6 +13,7 @@ export {
   type ReservedKeyFamily,
   SHARED_KEY_FAMILIES_OF_A_CHAT,
 } from './reserved-key-prefixes';
+export { isReservedRunTag, RESERVED_RUN_TAG_PREFIXES } from './reserved-tag-prefixes';
 export {
   BUILT_IN_NOTIFICATION_KINDS,
   NOTIFICATION_KIND_PATTERN,
@@ -173,6 +174,12 @@ export type {
 export type { WorkflowFinishReason, WorkflowSchemaIssue } from './workflow-schema';
 export type { WorkflowRunPinProblem } from './workflow-snapshot-store';
 export { WorkflowInputInvalidError } from './workflow-schema';
+export { WorkflowRetryRefusedError } from './workflow-run-retry';
+export type {
+  WorkflowRetryOptions,
+  WorkflowRetryRefusal,
+  WorkflowRetryResult,
+} from './workflow-run-retry';
 export type {
   WorkflowFileDefinition,
   WorkflowFileStep,

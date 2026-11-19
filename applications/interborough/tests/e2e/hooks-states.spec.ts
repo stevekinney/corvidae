@@ -23,7 +23,7 @@ import { captureForDesignReview } from './design-review-capture.ts';
 import { E2E_SHOWCASE_URL } from './e2e-constants.ts';
 import { expect, loggedFailedResponse, pressRecorder, test } from './fixtures.ts';
 
-test.describe('the hooks list states', () => {
+test.describe('/hooks: the hooks list states', () => {
   test.use({ baseURL: E2E_SHOWCASE_URL, timezoneId: SAMPLE_TIME_ZONE });
 
   const SOURCE = 'hooks-states.spec.ts';

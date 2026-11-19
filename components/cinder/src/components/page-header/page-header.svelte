@@ -37,6 +37,8 @@
     description,
     breadcrumbs,
     actions,
+    actionsNote,
+    actionsNoteId,
     decisions,
     overflow,
     overflowLabel = 'More actions',
@@ -92,6 +94,9 @@
     hasDecisions || actions !== undefined || menuOverflow.length > 0,
   );
   const hasActions = $derived(hasOtherActions || createAction !== undefined);
+  // The caption under the actions is drawn only with actions to explain, and describes their group.
+  const hasActionsNote = $derived(hasActions && actionsNote !== undefined && actionsNote !== '');
+  const resolvedActionsNoteId = $derived(actionsNoteId ?? `${headerId}-actions-note`);
 
   // The title keeps two lines and then ends in an ellipsis. Only a title that is actually cut
   // off gets the Cinder tooltip with all of it, and a stop of its own so the keyboard reaches it:
@@ -229,6 +234,18 @@
   {/if}
 {/snippet}
 
+{#snippet actionsCaption()}
+  {#if hasActionsNote}
+    <p id={resolvedActionsNoteId} class="cinder-page-header__actions-note">
+      {#if typeof actionsNote === 'string'}
+        {actionsNote}
+      {:else if actionsNote}
+        {@render actionsNote()}
+      {/if}
+    </p>
+  {/if}
+{/snippet}
+
 {#snippet decisionButton(action: PageHeaderOverflowAction)}
   {#if action.href !== undefined}
     <Button
@@ -345,9 +362,14 @@
           <div class="cinder-page-header__facts">{@render facts()}</div>
         {/if}
         {#if hasActions}
-          <div class="cinder-page-header__hero-actions">
+          <div
+            class="cinder-page-header__hero-actions"
+            role={hasActionsNote ? 'group' : undefined}
+            aria-describedby={hasActionsNote ? resolvedActionsNoteId : undefined}
+          >
             {@render actionGroups()}{@render createActionButton()}
           </div>
+          {@render actionsCaption()}
         {/if}
       </div>
       {#if focal}
@@ -369,7 +391,11 @@
       </div>
 
       {#if hasOtherActions}
-        <div class="cinder-page-header__actions">
+        <div
+          class="cinder-page-header__actions"
+          role={hasActionsNote ? 'group' : undefined}
+          aria-describedby={hasActionsNote ? resolvedActionsNoteId : undefined}
+        >
           <CompactActions>
             {@render actionGroups()}
           </CompactActions>
@@ -382,6 +408,7 @@
           </CompactActions>
         </div>
       {/if}
+      {@render actionsCaption()}
     </div>
   {/if}
 </div>

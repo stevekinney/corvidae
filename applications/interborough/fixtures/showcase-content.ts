@@ -30,7 +30,7 @@ export interface ShowcaseWorkflowFile {
  * Assistant, which is scripted. The text is the workflow page's Code tab (PageWorkflow, "Code tab"),
  * which the builder's Edit and JSON frames show too. The board's `input` and `output` are written as
  * Weft's `inputSchema` and `outputSchema`, which the file format keeps (decisions.md, "Coordinator
- * calls during B01").
+ * calls during B01"), and the output's name, `notes`, is its `outputName` (COR-2424, rows 54p, 55c).
  */
 export const SHOWCASE_RELEASE_NOTES_FILE: ShowcaseWorkflowFile = {
   id: 'release-notes',
@@ -65,6 +65,7 @@ export const SHOWCASE_RELEASE_NOTES_FILE: ShowcaseWorkflowFile = {
         "description": "The approved release notes." }
     }
   },
+  "outputName": "notes",
   "steps": [
     { "title": "Find the last release",
       "kind": "activity", "handler": "agent",

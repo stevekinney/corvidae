@@ -56,6 +56,12 @@ const ESCAPED_IDENTIFIERS: Readonly<
     queryKey: '__weft_goal_id',
     escapes: isDotOnlyOrNew,
   },
+  // The goal's edit page carries its identifier as the goal's own page does.
+  '/goals/:goal/edit': {
+    parameter: 'goal',
+    queryKey: '__weft_goal_id',
+    escapes: isDotOnlyOrNew,
+  },
   // A hook named `new` would be the new hook page's.
   '/hooks/:hook': {
     parameter: 'hook',

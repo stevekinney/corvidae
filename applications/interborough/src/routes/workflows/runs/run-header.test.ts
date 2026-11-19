@@ -70,6 +70,18 @@ describe('the run page header', () => {
     ).toContain('notes-approved');
   });
 
+  test('leaves out the day and time when the phrases say how long ago the run started (row 54l)', () => {
+    const view = renderHeader({
+      startedAt: Date.parse('2026-11-02T10:45:00-06:00'),
+      showStamp: false,
+      phrases: ['Started 40 s ago', 'step 2 of 4'],
+    });
+
+    expect(view.container.querySelector('time')).toBeNull();
+    // The clause after the comma starts in lower case (`reasonClause`).
+    expect(view.container.textContent).toMatch(/Running\s*, started 40 s ago, step 2 of 4/);
+  });
+
   test('a status word with a qualifier is one status, drawn once', () => {
     const view = renderHeader({ status: 'Running, checking the result' });
 
@@ -91,7 +103,7 @@ describe('the run page header', () => {
     const view = renderHeader({
       chat: { href: '/chats/session-1', label: 'Open chat' },
       owner: { href: '/goals/goal-1', label: 'Open goal' },
-      runAgain: '/workflows/release-notes/run',
+      runAgain: { href: '/workflows/release-notes/run' },
     });
 
     expect(view.getByRole('link', { name: 'Open goal' }).getAttribute('href')).toBe(
@@ -102,6 +114,37 @@ describe('the run page header', () => {
     expect(await fireEvent.click(again, { button: 0, metaKey: true })).toBe(true);
     expect(await fireEvent.click(again, { button: 0 })).toBe(false);
     expect(router.pathname).toContain('/workflows/release-notes/run');
+  });
+
+  test('holds Run again with aria-disabled while no provider is connected, and says where to connect one (row 54f)', async () => {
+    let started = 0;
+    const view = renderHeader({
+      runAgain: {
+        href: '/chats/new?agent=tool-runner',
+        blocked: true,
+        onRun: () => (started += 1),
+      },
+    });
+
+    const again = view.getByRole('button', { name: 'Run again' });
+    expect(again.getAttribute('aria-disabled')).toBe('true');
+    const connect = view.getByRole('link', { name: 'Connect a provider' });
+    expect(connect.getAttribute('href')).toBe('/settings/models');
+    expect(again.getAttribute('aria-describedby')).toBe(connect.id);
+    // It goes nowhere and starts nothing while it is held.
+    await fireEvent.click(again);
+    expect(started).toBe(0);
+    expect(view.queryByRole('link', { name: 'Run again' })).toBeNull();
+  });
+
+  test('starts the schedule’s run from Run again when it has no page to open (row 55j)', async () => {
+    let started = 0;
+    const view = renderHeader({ runAgain: { onRun: () => (started += 1) } });
+
+    await fireEvent.click(view.getByRole('button', { name: 'Run again' }));
+
+    expect(started).toBe(1);
+    expect(view.queryByRole('link', { name: 'Connect a provider' })).toBeNull();
   });
 
   test('offers neither Run again nor a second link to a run that has none', () => {
@@ -126,6 +169,57 @@ describe('the run page header', () => {
     expect(await fireEvent.click(link, { button: 0, metaKey: true })).toBe(true);
     expect(await fireEvent.click(link, { button: 0 })).toBe(false);
     expect(router.pathname).toContain('session-1');
+  });
+
+  test('a failed run of a workflow file offers Retry from this step first, with the words beside the buttons (COR-2424, row 54z)', async () => {
+    let retried = 0;
+    const view = renderHeader({
+      status: 'Failed',
+      retry: { onRetry: () => (retried += 1) },
+      runAgain: { href: '/workflows/release-notes/start' },
+      besideButtons:
+        'Retry from this step runs on 1.2.0, like this run. Run again runs on 1.3.0, the current version.',
+    });
+
+    // Retry from this step comes before Run again, which is a link to set up another run.
+    const retry = view.getByRole('button', { name: 'Retry from this step' });
+    const again = view.getByRole('link', { name: 'Run again' });
+    expect(retry.compareDocumentPosition(again) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(view.container.querySelector('[data-run-beside]')?.textContent).toBe(
+      'Retry from this step runs on 1.2.0, like this run. Run again runs on 1.3.0, the current version.',
+    );
+    // The words are the header's caption under the actions, not a line among them (row 54z), and
+    // they describe the actions' group.
+    const note = view.container.querySelector('.cinder-page-header__actions-note');
+    expect(note?.contains(view.container.querySelector('[data-run-beside]'))).toBe(true);
+    expect(view.container.querySelector('.ib-run__actions [data-run-beside]')).toBeNull();
+    expect(
+      view.container
+        .querySelector('.cinder-page-header__actions')
+        ?.getAttribute('aria-describedby'),
+    ).toBe(note?.id);
+    await fireEvent.click(view.getByRole('button', { name: 'Retry from this step' }));
+    expect(retried).toBe(1);
+  });
+
+  test('holds Retry from this step for a caller the scope gate refuses', () => {
+    const view = renderHeader({
+      status: 'Failed',
+      retry: { onRetry: () => {}, gate: { disabled: true, title: 'Requires workflows:write' } },
+    });
+    const retry = view.getByRole('button', { name: 'Retry from this step' });
+    expect(retry.hasAttribute('disabled') || retry.getAttribute('aria-disabled') === 'true').toBe(
+      true,
+    );
+  });
+
+  test('leaves Cancel run out of the header while the docked message bar holds it (rows 06b, 54l)', () => {
+    const view = renderHeader({
+      task: taskFixture({ id: 'run-1', status: 'working' }),
+      cancelInHeader: false,
+    });
+    expect(view.queryByRole('button', { name: 'Cancel run' })).toBeNull();
+    expect(view.getByRole('button', { name: 'More actions' })).not.toBeNull();
   });
 
   test('a task offers Cancel run beside More, and the engine’s own cancel is not offered twice', async () => {

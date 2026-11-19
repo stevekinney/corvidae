@@ -79,7 +79,13 @@ import {
   createConversationHistory,
 } from 'conversationalist';
 
-import { attemptSessionId, goalAttemptRunId, goalSessionId, type GoalState } from './goal-state';
+import {
+  attemptAgentName,
+  attemptSessionId,
+  goalAttemptRunId,
+  goalSessionId,
+  type GoalState,
+} from './goal-state';
 import { ownerOrLocal } from './owner-of-record';
 import { resolveSessionOwner } from './session-authority';
 
@@ -149,34 +155,59 @@ export function foreignSessionReason(record: GoalState, session: AgentSession): 
   if (resolveSessionOwner(session.metadata) !== ownerOrLocal(record.principal)) {
     return refuse('belongs to a different principal');
   }
-  // A goal runs one agent, and its session carries that agent's name. A session
-  // under the goal's id for any other agent is not the goal's conversation.
-  if (session.agentName !== record.objective.agentName) {
+  // A session carries the name of the agent of the attempt that created it: the
+  // first attempt to run in it (the trunk under `continue`, the one attempt of a
+  // fork or a fresh conversation). A session under the goal's id for any other
+  // agent is not the goal's conversation. An attempt's agent is the one its own
+  // record carries, so a goal whose agent changed still owns the sessions of the
+  // attempts it opened before.
+  if (session.agentName !== sessionAgentName(record, session.id)) {
     return refuse('belongs to a different agent');
   }
   // The exact id the goal derives for an attempt it can have, never a pattern
   // that merely resembles one: `goal-g1-a00` and an index past `maximumAttempts`
   // are ids the goal never mints.
   const runPrefix = goalAttemptRunId(record.goalRunId, 0).slice(0, -1);
-  const isAttemptRun = (runId: string): boolean => {
-    if (!runId.startsWith(runPrefix)) return false;
+  const attemptOfRun = (runId: string): number | undefined => {
+    if (!runId.startsWith(runPrefix)) return undefined;
     const suffix = runId.slice(runPrefix.length);
-    if (!/^\d+$/.test(suffix)) return false;
+    if (!/^\d+$/.test(suffix)) return undefined;
     const attemptIndex = Number(suffix);
-    return (
-      attemptIndex < record.bounds.maximumAttempts &&
+    return attemptIndex < record.bounds.maximumAttempts &&
       goalAttemptRunId(record.goalRunId, attemptIndex) === runId
-    );
+      ? attemptIndex
+      : undefined;
   };
-  if (!session.runs.every((ref) => isAttemptRun(ref.runId))) {
+  const attempts = session.runs.map((ref) => attemptOfRun(ref.runId));
+  if (attempts.some((attemptIndex) => attemptIndex === undefined)) {
     return refuse("holds a run that is not one of this goal's attempts");
   }
-  // Each of those runs is the goal's own agent's too: a ref the goal's start
-  // wrote carries the agent it ran, and one for any other agent is not its.
-  if (!session.runs.every((ref) => ref.agentName === record.objective.agentName)) {
+  // Each of those runs is its attempt's agent's too: a ref the goal's start wrote
+  // carries the agent the attempt ran as, and one for any other agent is not its.
+  if (
+    !session.runs.every(
+      (ref, position) => ref.agentName === attemptAgentName(record, attempts[position]!),
+    )
+  ) {
     return refuse('holds a run of a different agent');
   }
   return undefined;
+}
+
+/**
+ * The agent a session of the goal carries: the agent of the first attempt that runs in it. A session
+ * id no attempt of the goal maps to is read as the goal's current agent, so one the goal never
+ * derived is refused by the checks around it, not by this one.
+ */
+function sessionAgentName(record: GoalState, sessionId: string): string {
+  for (let attemptIndex = 0; attemptIndex < record.bounds.maximumAttempts; attemptIndex += 1) {
+    if (
+      attemptSessionId(record.goalRunId, record.conversationPolicy.kind, attemptIndex) === sessionId
+    ) {
+      return attemptAgentName(record, attemptIndex);
+    }
+  }
+  return record.objective.agentName;
 }
 
 /**
@@ -184,7 +215,10 @@ export function foreignSessionReason(record: GoalState, session: AgentSession): 
  * is what lets the goal recognize it again, the owner that keeps the transcript
  * with the goal's principal, and the authority its runs execute tools under.
  */
-export function goalSessionMetadata(record: GoalState): Record<string, JSONValue> {
+export function goalSessionMetadata(
+  record: GoalState,
+  agentName: string = record.objective.agentName,
+): Record<string, JSONValue> {
   return {
     goalRunId: record.goalRunId,
     // COR-1645: a goal's session is not a chat a person started, so a chat list leaves it out.
@@ -196,7 +230,7 @@ export function goalSessionMetadata(record: GoalState): Record<string, JSONValue
           lastRequestAuthority: {
             principalId: record.principal,
             tenantId: 'bureau',
-            ownerId: record.objective.agentName,
+            ownerId: agentName,
             capabilities: ['tools:execute'],
             authorizationRevision: 'bureau:1',
           },
@@ -209,12 +243,14 @@ export function createGoalConversations(
 ): GoalConversations {
   const { sessionStore, runtime, getDurable, resolveFreshAttemptSource } = dependencies;
 
-  function emptySession(record: GoalState, sessionId: string): AgentSession {
+  /** The session `attemptIndex` is the first to run in, under the agent that attempt runs as. */
+  function emptySession(record: GoalState, sessionId: string, attemptIndex: number): AgentSession {
+    const agentName = attemptAgentName(record, attemptIndex);
     return createAgentSession({
-      agentName: record.objective.agentName,
+      agentName,
       conversationHistory: createConversationHistory(undefined, { runtime }),
       id: sessionId,
-      metadata: goalSessionMetadata(record),
+      metadata: goalSessionMetadata(record, agentName),
       runtime,
     });
   }
@@ -342,28 +378,32 @@ export function createGoalConversations(
     if (policy.kind === 'fork-from-baseline') {
       // The baseline is a run of the trunk, which is committed once attempt 0 ends.
       const trunk = await committedTrunk(record, 0);
+      // A fork carries the agent of the attempt that runs in it, which is the trunk's agent
+      // until the goal's agent changes.
+      const forkAgentName = attemptAgentName(record, request.attemptIndex);
       const forked = createAgentSession({
-        agentName: trunk.agentName,
+        agentName: forkAgentName,
         conversationHistory: conversationThroughRun(trunk, policy.throughRun),
         id: sessionId,
         runs: [],
-        metadata: goalSessionMetadata(record),
+        metadata: goalSessionMetadata(record, forkAgentName),
         runtime,
       });
       const stored = await createOnce(record, forked);
       return stored.conversationHistory;
     }
+    const freshAgentName = attemptAgentName(record, request.attemptIndex);
     const fresh = await createFreshAttemptSession({
       artifact: policy.artifact,
       instructions: record.objective.instructions ?? '',
-      agentName: record.objective.agentName,
+      agentName: freshAgentName,
       runtime,
       resolveSource: resolveFreshAttemptSource ?? (() => undefined),
     });
     const session: AgentSession = {
       ...fresh,
       id: sessionId,
-      metadata: { ...fresh.metadata, ...goalSessionMetadata(record) },
+      metadata: { ...fresh.metadata, ...goalSessionMetadata(record, freshAgentName) },
     };
     const stored = await createOnce(record, session);
     return stored.conversationHistory;
@@ -387,6 +427,9 @@ export function createGoalConversations(
       record.objective.prompt,
       request.attemptIndex,
       request.feedback,
+      // The first attempt opened after the prompt was edited is the one the edit is meant for; a
+      // seat retried after a crash is the same attempt, so it is turned the same way.
+      record.objective.promptRevisedAtAttempt === request.attemptIndex,
     );
     // The first attempt runs the prompt as written, so the agent's own
     // instructions frame its conversation, exactly as in memory.
@@ -428,7 +471,7 @@ export function createGoalConversations(
     );
     await sessionStore.update(sessionId, (existing) => {
       if (existing !== undefined) owned(record, existing);
-      const session = existing ?? emptySession(record, sessionId);
+      const session = existing ?? emptySession(record, sessionId, request.attemptIndex);
       if (session.runs.some((ref) => ref.runId === request.runId)) {
         return existing === undefined ? session : undefined;
       }
@@ -437,7 +480,7 @@ export function createGoalConversations(
         sequence: session.runs.length,
         status: 'running',
         startedAt: runtime.clock.nowISO(),
-        agentName: record.objective.agentName,
+        agentName: attemptAgentName(record, request.attemptIndex),
       };
       return { ...session, runs: [...session.runs, ref] };
     });

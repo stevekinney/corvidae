@@ -32,6 +32,18 @@ import {
 const WIDTHS = [375, 768, 1280] as const;
 const HEIGHT = 900;
 
+/**
+ * The routes `responsive.spec.ts` also captures with the stress seed under the state `ready`: the
+ * sample world's captures of them are named `sample world`, so neither overwrites the other.
+ */
+const SAMPLE_WORLD_STATE_ROUTES: ReadonlySet<string> = new Set([
+  '/runs',
+  '/runs/:run',
+  '/goals',
+  '/goals/:goal',
+  '/goals/new',
+]);
+
 let addresses: Readonly<Record<string, string>>;
 
 /** Waits until the outlet's text and busy state have stopped changing for three reads in a row. */
@@ -85,7 +97,9 @@ for (const name of NAMES) {
       );
       await captureForDesignReview(page, {
         route: name,
-        state: 'ready',
+        // `responsive.spec.ts` writes `<route>--ready--…` for the stress seed's pages, so a route it
+        // also captures has its own state name here and the two captures never overwrite each other.
+        state: SAMPLE_WORLD_STATE_ROUTES.has(name) ? 'sample world' : 'ready',
         source: '00-showcase.spec.ts',
       });
 
@@ -119,6 +133,53 @@ for (const name of NAMES) {
         await expect(staging).toHaveAttribute('aria-checked', 'false');
       }
     }
+  });
+}
+
+/** The Runs list's open Workflow menu and its full list after Load more, on the sample world (COR-2423, rows 10h, 53l, S68). */
+for (const width of WIDTHS) {
+  test(`/runs shows the Workflow menu open and the whole list after Load more, at ${width} pixels`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width, height: HEIGHT });
+    await page.goto(`${E2E_SHOWCASE_URL}${addresses['/runs']}`);
+    const frame = page.locator('main.weft-shell-outlet [data-view]').first();
+    await expect(frame).toHaveAttribute('data-state', 'ready');
+    await untilQuiet(page);
+
+    const more = page.getByRole('button', { name: 'Load more' });
+    while ((await more.count()) > 0) {
+      const before = await page.locator('main li[data-run]').count();
+      await more.first().click();
+      await expect(async () => {
+        expect(await page.locator('main li[data-run]').count()).toBeGreaterThan(before);
+      }).toPass();
+    }
+    await untilQuiet(page);
+    await captureForDesignReview(page, {
+      route: '/runs',
+      state: 'load more pressed',
+      source: '00-showcase.spec.ts',
+    });
+
+    // On a phone the chips fold into the Filter menu (05t), where Workflow is a row that opens its
+    // options; on a wider screen Workflow is a chip of its own.
+    const filterMenu = page.getByRole('button', { name: /^Filter/ });
+    if (width === 375) {
+      await filterMenu.click();
+      await page
+        .locator('.cinder-filter-bar__menu')
+        .getByRole('button', { name: /^Workflow/ })
+        .click();
+    } else {
+      await page.getByRole('button', { name: 'Workflow', exact: true }).click();
+    }
+    await expect(page.locator('.cinder-filter-bar__options')).toBeVisible();
+    await captureForDesignReview(page, {
+      route: '/runs',
+      state: 'workflow menu open',
+      source: '00-showcase.spec.ts',
+    });
   });
 }
 
@@ -171,7 +232,7 @@ async function expectOfflineBanner(page: Page, label: string) {
 }
 
 for (const width of [375, 1280] as const) {
-  test(`Shell, offline: the new chat keeps its typed text with Send off and the reason beside it, at ${width} pixels`, async ({
+  test(`Shell, offline (/chats/new): the new chat keeps its typed text with Send off and the reason beside it, at ${width} pixels`, async ({
     page,
     context,
     pageErrors,
@@ -221,7 +282,7 @@ for (const width of [375, 1280] as const) {
     await expect(page.getByText('Off until it’s back')).toHaveCount(0);
   });
 
-  test(`Shell, offline: Home shows the banner under the top bar at ${width} pixels`, async ({
+  test(`Shell, offline (/): Home shows the banner under the top bar at ${width} pixels`, async ({
     page,
     context,
     pageErrors,

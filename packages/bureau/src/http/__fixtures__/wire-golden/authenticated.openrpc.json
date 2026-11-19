@@ -1747,7 +1747,7 @@
       }
     },
     {
-      "description": "Lists the caller’s own tasks, most recently changed first (by status timestamp, then task id ascending); a caller holding `bureau.tasks:read` lists every owner’s. `contextId` returns only that context’s tasks in its current incarnation, `origin` only the tasks recorded with an origin of that kind (`chat`, `person`, `schedule`, `api`, `agent`, `goal`, or `parent`), `parentRunId` only the subordinate tasks of that run (the children it started, the attempts of a goal, the steps of a workflow instance), `parentContextId` only the child runs started from any run in that context (a reloaded chat lists the children of every run in its thread this way), `siblingsOf` only the tasks that share a parent run with the named task, that task excluded, and `statusTimestampAfter` (ISO 8601) only tasks whose status timestamp is strictly later. Pages with `limit` (1 to 100, default 50, free to change between pages) and `pageToken`; `nextPageToken` is `null` when no entries remain. The first page of a listing with a next page records the listing, and every later page returns the tasks exactly as they matched then, so a task that changes mid-enumeration keeps its place and appears once; a task removed since is skipped, so a page can hold fewer than `limit` tasks. A token is opaque, valid for 15 minutes from the first page, and only with the principal, reach, wire projection (never the one of A2A `ListTasks`), and filters (`contextId`, `agentName`, `status`, `origin`, `parentRunId`, `parentContextId`, `siblingsOf`, `statusTimestampAfter`) it was issued for, and only while the context is the incarnation it was issued for; any other token is `InvalidParams`. A principal holds at most 16 live listings, and starting another ends its oldest.",
+      "description": "Lists the caller’s own tasks, most recently changed first (by status timestamp, then task id ascending); a caller holding `bureau.tasks:read` lists every owner’s. `contextId` returns only that context’s tasks in its current incarnation, `origin` only the tasks recorded with an origin of that kind (`chat`, `person`, `schedule`, `api`, `agent`, `goal`, or `parent`), `parentRunId` only the subordinate tasks of that run (the children it started, the attempts of a goal, the steps of a workflow instance), `parentContextId` only the child runs started from any run in that context (a reloaded chat lists the children of every run in its thread this way), `siblingsOf` only the tasks that share a parent run with the named task, that task excluded, `workflow` only the tasks that ran on that workflow type (`workflow.type` on each task says which), and `statusTimestampAfter` (ISO 8601) only tasks whose status timestamp is strictly later. Pages with `limit` (1 to 100, default 50, free to change between pages) and `pageToken`; `nextPageToken` is `null` when no entries remain. The first page of a listing with a next page records the listing, and every later page returns the tasks exactly as they matched then, so a task that changes mid-enumeration keeps its place and appears once; a task removed since is skipped, so a page can hold fewer than `limit` tasks. A token is opaque, valid for 15 minutes from the first page, and only with the principal, reach, wire projection (never the one of A2A `ListTasks`), and filters (`contextId`, `agentName`, `status`, `origin`, `parentRunId`, `parentContextId`, `siblingsOf`, `workflow`, `engineRuns`, `statusTimestampAfter`) it was issued for, and only while the context is the incarnation it was issued for; any other token is `InvalidParams`. The schedule tick’s runs and the instances of workflow files are listed too, read from the engine, for a caller that may read the deployment’s workflows. A principal holds at most 16 live listings, and starting another ends its oldest.",
       "errors": [
         {
           "$ref": "#/components/errors/Unauthorized"
@@ -1781,6 +1781,14 @@
             "description": "Only the tasks in this context’s current incarnation.",
             "minLength": 1,
             "type": "string"
+          }
+        },
+        {
+          "name": "engineRuns",
+          "required": false,
+          "schema": {
+            "description": "Whether the schedule tick’s runs and the instances of workflow files, which the engine holds and no task record describes, are listed beside the tasks. Defaults to true for a caller that may read the deployment’s workflows; `false` lists only the tasks that have records, so a reader that wants an agent’s or a goal’s runs is not given its page slots to the engine’s. It never lists them for a caller that may not read them.",
+            "type": "boolean"
           }
         },
         {
@@ -1872,6 +1880,15 @@
             "description": "Only tasks whose status timestamp is strictly after this instant, as an ISO 8601 date-time with an offset.",
             "format": "date-time",
             "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$",
+            "type": "string"
+          }
+        },
+        {
+          "name": "workflow",
+          "required": false,
+          "schema": {
+            "description": "Only the tasks that ran on this workflow type: `agentRun`, `goalRun`, `scheduleTick`, or the identifier of a workflow file for its instances. A task’s `workflow.type` says which.",
+            "minLength": 1,
             "type": "string"
           }
         }
@@ -2248,6 +2265,115 @@
                       "string",
                       "null"
                     ]
+                  },
+                  "workflow": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "awaitingSignal": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "scheduleId": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "scheduleName": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "steps": {
+                        "anyOf": [
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "at": {
+                                "anyOf": [
+                                  {
+                                    "maximum": 9007199254740991,
+                                    "minimum": -9007199254740991,
+                                    "type": "integer"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "total": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              }
+                            },
+                            "required": [
+                              "total",
+                              "at"
+                            ],
+                            "type": "object"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "tick": {
+                        "anyOf": [
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "event": {
+                                "enum": [
+                                  "came-due",
+                                  "missed-runs"
+                                ],
+                                "type": "string"
+                              },
+                              "missedRuns": {
+                                "anyOf": [
+                                  {
+                                    "maximum": 9007199254740991,
+                                    "minimum": -9007199254740991,
+                                    "type": "integer"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "whileStopped": {
+                                "type": "boolean"
+                              }
+                            },
+                            "required": [
+                              "event",
+                              "missedRuns",
+                              "whileStopped"
+                            ],
+                            "type": "object"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "type": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "type",
+                      "scheduleId",
+                      "scheduleName",
+                      "tick",
+                      "steps",
+                      "awaitingSignal"
+                    ],
+                    "type": "object"
                   }
                 },
                 "required": [
@@ -2265,7 +2391,8 @@
                   "updatedAt",
                   "cleanup",
                   "openWaits",
-                  "wakeAt"
+                  "wakeAt",
+                  "workflow"
                 ],
                 "type": "object"
               },
@@ -2300,6 +2427,10 @@
             "description": "Only the tasks in this context’s current incarnation.",
             "minLength": 1,
             "type": "string"
+          },
+          "engineRuns": {
+            "description": "Whether the schedule tick’s runs and the instances of workflow files, which the engine holds and no task record describes, are listed beside the tasks. Defaults to true for a caller that may read the deployment’s workflows; `false` lists only the tasks that have records, so a reader that wants an agent’s or a goal’s runs is not given its page slots to the engine’s. It never lists them for a caller that may not read them.",
+            "type": "boolean"
           },
           "limit": {
             "description": "The most tasks to return in one page, from 1 to 100. Defaults to 50.",
@@ -2359,6 +2490,11 @@
             "description": "Only tasks whose status timestamp is strictly after this instant, as an ISO 8601 date-time with an offset.",
             "format": "date-time",
             "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$",
+            "type": "string"
+          },
+          "workflow": {
+            "description": "Only the tasks that ran on this workflow type: `agentRun`, `goalRun`, `scheduleTick`, or the identifier of a workflow file for its instances. A task’s `workflow.type` says which.",
+            "minLength": 1,
             "type": "string"
           }
         },
@@ -2759,6 +2895,115 @@
                 "string",
                 "null"
               ]
+            },
+            "workflow": {
+              "additionalProperties": false,
+              "properties": {
+                "awaitingSignal": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "scheduleId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "scheduleName": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "steps": {
+                  "anyOf": [
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "at": {
+                          "anyOf": [
+                            {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "total": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "total",
+                        "at"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "tick": {
+                  "anyOf": [
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "event": {
+                          "enum": [
+                            "came-due",
+                            "missed-runs"
+                          ],
+                          "type": "string"
+                        },
+                        "missedRuns": {
+                          "anyOf": [
+                            {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "whileStopped": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "event",
+                        "missedRuns",
+                        "whileStopped"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "type": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "type",
+                "scheduleId",
+                "scheduleName",
+                "tick",
+                "steps",
+                "awaitingSignal"
+              ],
+              "type": "object"
             }
           },
           "required": [
@@ -2776,7 +3021,8 @@
             "updatedAt",
             "cleanup",
             "openWaits",
-            "wakeAt"
+            "wakeAt",
+            "workflow"
           ],
           "type": "object"
         }
@@ -3703,6 +3949,115 @@
                     "string",
                     "null"
                   ]
+                },
+                "workflow": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "awaitingSignal": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "scheduleId": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "scheduleName": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "steps": {
+                      "anyOf": [
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "at": {
+                              "anyOf": [
+                                {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "total": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            }
+                          },
+                          "required": [
+                            "total",
+                            "at"
+                          ],
+                          "type": "object"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "tick": {
+                      "anyOf": [
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "event": {
+                              "enum": [
+                                "came-due",
+                                "missed-runs"
+                              ],
+                              "type": "string"
+                            },
+                            "missedRuns": {
+                              "anyOf": [
+                                {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "whileStopped": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "event",
+                            "missedRuns",
+                            "whileStopped"
+                          ],
+                          "type": "object"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "type": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "scheduleId",
+                    "scheduleName",
+                    "tick",
+                    "steps",
+                    "awaitingSignal"
+                  ],
+                  "type": "object"
                 }
               },
               "required": [
@@ -3720,7 +4075,8 @@
                 "updatedAt",
                 "cleanup",
                 "openWaits",
-                "wakeAt"
+                "wakeAt",
+                "workflow"
               ],
               "type": "object"
             },
@@ -4199,6 +4555,115 @@
                     "string",
                     "null"
                   ]
+                },
+                "workflow": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "awaitingSignal": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "scheduleId": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "scheduleName": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "steps": {
+                      "anyOf": [
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "at": {
+                              "anyOf": [
+                                {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "total": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            }
+                          },
+                          "required": [
+                            "total",
+                            "at"
+                          ],
+                          "type": "object"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "tick": {
+                      "anyOf": [
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "event": {
+                              "enum": [
+                                "came-due",
+                                "missed-runs"
+                              ],
+                              "type": "string"
+                            },
+                            "missedRuns": {
+                              "anyOf": [
+                                {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "whileStopped": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "event",
+                            "missedRuns",
+                            "whileStopped"
+                          ],
+                          "type": "object"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "type": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "scheduleId",
+                    "scheduleName",
+                    "tick",
+                    "steps",
+                    "awaitingSignal"
+                  ],
+                  "type": "object"
                 }
               },
               "required": [
@@ -4216,7 +4681,8 @@
                 "updatedAt",
                 "cleanup",
                 "openWaits",
-                "wakeAt"
+                "wakeAt",
+                "workflow"
               ],
               "type": "object"
             },
@@ -15496,7 +15962,7 @@
           "required": true,
           "schema": {
             "additionalProperties": false,
-            "description": "The workflow file’s contents: an optional `title`, `description`, `agent` and `paused`, the `trigger` (an object with a `kind`), optional `inputSchema` and `outputSchema`, and the `steps`.",
+            "description": "The workflow file’s contents: an optional `title`, `description`, `agent` and `paused`, the `trigger` (an object with a `kind`), optional `inputSchema`, `outputSchema` and `outputName`, and the `steps`.",
             "properties": {
               "agent": {
                 "type": "string"
@@ -15511,6 +15977,10 @@
                   "type": "string"
                 },
                 "type": "object"
+              },
+              "outputName": {
+                "description": "The name of what an instance produces, such as `notes`, shown on the run page’s Output card: at most 64 characters, a letter or underscore first, then letters, digits, underscores and hyphens. Bureau strips it before Weft sees the document, so it is no part of a revision.",
+                "type": "string"
               },
               "outputSchema": {
                 "additionalProperties": {},
@@ -15617,7 +16087,7 @@
         "properties": {
           "definition": {
             "additionalProperties": false,
-            "description": "The workflow file’s contents: an optional `title`, `description`, `agent` and `paused`, the `trigger` (an object with a `kind`), optional `inputSchema` and `outputSchema`, and the `steps`.",
+            "description": "The workflow file’s contents: an optional `title`, `description`, `agent` and `paused`, the `trigger` (an object with a `kind`), optional `inputSchema`, `outputSchema` and `outputName`, and the `steps`.",
             "properties": {
               "agent": {
                 "type": "string"
@@ -15632,6 +16102,10 @@
                   "type": "string"
                 },
                 "type": "object"
+              },
+              "outputName": {
+                "description": "The name of what an instance produces, such as `notes`, shown on the run page’s Output card: at most 64 characters, a letter or underscore first, then letters, digits, underscores and hyphens. Bureau strips it before Weft sees the document, so it is no part of a revision.",
+                "type": "string"
               },
               "outputSchema": {
                 "additionalProperties": {},
@@ -15741,7 +16215,7 @@
           "required": true,
           "schema": {
             "additionalProperties": false,
-            "description": "The workflow file’s contents: an optional `title`, `description`, `agent` and `paused`, the `trigger` (an object with a `kind`), optional `inputSchema` and `outputSchema`, and the `steps`.",
+            "description": "The workflow file’s contents: an optional `title`, `description`, `agent` and `paused`, the `trigger` (an object with a `kind`), optional `inputSchema`, `outputSchema` and `outputName`, and the `steps`.",
             "properties": {
               "agent": {
                 "type": "string"
@@ -15756,6 +16230,10 @@
                   "type": "string"
                 },
                 "type": "object"
+              },
+              "outputName": {
+                "description": "The name of what an instance produces, such as `notes`, shown on the run page’s Output card: at most 64 characters, a letter or underscore first, then letters, digits, underscores and hyphens. Bureau strips it before Weft sees the document, so it is no part of a revision.",
+                "type": "string"
               },
               "outputSchema": {
                 "additionalProperties": {},
@@ -15871,7 +16349,7 @@
         "properties": {
           "definition": {
             "additionalProperties": false,
-            "description": "The workflow file’s contents: an optional `title`, `description`, `agent` and `paused`, the `trigger` (an object with a `kind`), optional `inputSchema` and `outputSchema`, and the `steps`.",
+            "description": "The workflow file’s contents: an optional `title`, `description`, `agent` and `paused`, the `trigger` (an object with a `kind`), optional `inputSchema`, `outputSchema` and `outputName`, and the `steps`.",
             "properties": {
               "agent": {
                 "type": "string"
@@ -15886,6 +16364,10 @@
                   "type": "string"
                 },
                 "type": "object"
+              },
+              "outputName": {
+                "description": "The name of what an instance produces, such as `notes`, shown on the run page’s Output card: at most 64 characters, a letter or underscore first, then letters, digits, underscores and hyphens. Bureau strips it before Weft sees the document, so it is no part of a revision.",
+                "type": "string"
               },
               "outputSchema": {
                 "additionalProperties": {},
@@ -16013,6 +16495,10 @@
                   "type": "string"
                 },
                 "type": "object"
+              },
+              "outputName": {
+                "description": "The name of what an instance produces, such as `notes`, shown on the run page’s Output card: at most 64 characters, a letter or underscore first, then letters, digits, underscores and hyphens. Bureau strips it before Weft sees the document, so it is no part of a revision.",
+                "type": "string"
               },
               "outputSchema": {
                 "additionalProperties": {},
@@ -16217,6 +16703,10 @@
                   "type": "string"
                 },
                 "type": "object"
+              },
+              "outputName": {
+                "description": "The name of what an instance produces, such as `notes`, shown on the run page’s Output card: at most 64 characters, a letter or underscore first, then letters, digits, underscores and hyphens. Bureau strips it before Weft sees the document, so it is no part of a revision.",
+                "type": "string"
               },
               "outputSchema": {
                 "additionalProperties": {},
@@ -16891,6 +17381,12 @@
                 }
               ]
             },
+            "outputName": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
             "outputSchema": {
               "anyOf": [
                 {
@@ -17063,6 +17559,7 @@
             "paused",
             "inputSchema",
             "outputSchema",
+            "outputName",
             "version",
             "trigger",
             "listener",
@@ -17312,6 +17809,12 @@
                           }
                         ]
                       },
+                      "outputName": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
                       "outputSchema": {
                         "anyOf": [
                           {
@@ -17478,6 +17981,7 @@
                       "paused",
                       "inputSchema",
                       "outputSchema",
+                      "outputName",
                       "version",
                       "trigger",
                       "listener",
@@ -18126,6 +18630,38 @@
                               "const": false,
                               "type": "boolean"
                             },
+                            "from": {
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            },
+                            "kind": {
+                              "const": "output-name",
+                              "type": "string"
+                            },
+                            "to": {
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "from",
+                            "to",
+                            "breaking"
+                          ],
+                          "type": "object"
+                        },
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "breaking": {
+                              "const": false,
+                              "type": "boolean"
+                            },
                             "kind": {
                               "const": "step-added",
                               "type": "string"
@@ -18451,6 +18987,13 @@
                     ],
                     "type": "string"
                   },
+                  "outputName": {
+                    "description": "The name of what an instance produces, or `null` when the version gives none.",
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
                   "outputSchema": {
                     "anyOf": [
                       {
@@ -18570,6 +19113,7 @@
                   "steps",
                   "inputSchema",
                   "outputSchema",
+                  "outputName",
                   "previousVersion",
                   "changes",
                   "compatibility",
@@ -18644,7 +19188,7 @@
           "required": true,
           "schema": {
             "additionalProperties": false,
-            "description": "The workflow file’s contents: an optional `title`, `description`, `agent` and `paused`, the `trigger` (an object with a `kind`), optional `inputSchema` and `outputSchema`, and the `steps`.",
+            "description": "The workflow file’s contents: an optional `title`, `description`, `agent` and `paused`, the `trigger` (an object with a `kind`), optional `inputSchema`, `outputSchema` and `outputName`, and the `steps`.",
             "properties": {
               "agent": {
                 "type": "string"
@@ -18659,6 +19203,10 @@
                   "type": "string"
                 },
                 "type": "object"
+              },
+              "outputName": {
+                "description": "The name of what an instance produces, such as `notes`, shown on the run page’s Output card: at most 64 characters, a letter or underscore first, then letters, digits, underscores and hyphens. Bureau strips it before Weft sees the document, so it is no part of a revision.",
+                "type": "string"
               },
               "outputSchema": {
                 "additionalProperties": {},
@@ -18843,6 +19391,38 @@
                     },
                     "required": [
                       "kind",
+                      "breaking"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "breaking": {
+                        "const": false,
+                        "type": "boolean"
+                      },
+                      "from": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "kind": {
+                        "const": "output-name",
+                        "type": "string"
+                      },
+                      "to": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "from",
+                      "to",
                       "breaking"
                     ],
                     "type": "object"
@@ -19196,7 +19776,7 @@
         "properties": {
           "definition": {
             "additionalProperties": false,
-            "description": "The workflow file’s contents: an optional `title`, `description`, `agent` and `paused`, the `trigger` (an object with a `kind`), optional `inputSchema` and `outputSchema`, and the `steps`.",
+            "description": "The workflow file’s contents: an optional `title`, `description`, `agent` and `paused`, the `trigger` (an object with a `kind`), optional `inputSchema`, `outputSchema` and `outputName`, and the `steps`.",
             "properties": {
               "agent": {
                 "type": "string"
@@ -19211,6 +19791,10 @@
                   "type": "string"
                 },
                 "type": "object"
+              },
+              "outputName": {
+                "description": "The name of what an instance produces, such as `notes`, shown on the run page’s Output card: at most 64 characters, a letter or underscore first, then letters, digits, underscores and hyphens. Bureau strips it before Weft sees the document, so it is no part of a revision.",
+                "type": "string"
               },
               "outputSchema": {
                 "additionalProperties": {},
@@ -19695,7 +20279,7 @@
       }
     },
     {
-      "description": "Returns one instance: its workflow and revision, its status, what started it (`trigger`), its `result`, and, for an instance that failed, its `error`, including a failed `agent` step’s. `finishReason` is `input-invalid` or `output-invalid` for an instance that failed because its input or its result broke the workflow’s schema, and `null` for any other; the failed instance’s `error` lists the issues. Only an instance of a workflow file is readable here; any other run is answered `NotFound`, as is a caller who does not own the deployment’s workflows and lacks `bureau.workflows:read`.",
+      "description": "Returns one instance: its workflow and revision, its status, what started it (`trigger`), its `result`, and, for an instance that failed, its `error`, including a failed `agent` step’s. `finishReason` is `input-invalid` or `output-invalid` for an instance that failed because its input or its result broke the workflow’s schema, and `null` for any other; the failed instance’s `error` lists the issues. `outputName` is the name the version it ran gives what it produces, or `null`. Only an instance of a workflow file is readable here; any other run is answered `NotFound`, as is a caller who does not own the deployment’s workflows and lacks `bureau.workflows:read`.",
       "errors": [
         {
           "$ref": "#/components/errors/Unauthorized"
@@ -20045,6 +20629,12 @@
                 }
               ]
             },
+            "outputName": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
             "result": {
               "anyOf": [
                 {
@@ -20098,7 +20688,8 @@
             "trigger",
             "result",
             "error",
-            "finishReason"
+            "finishReason",
+            "outputName"
           ],
           "type": "object"
         }
@@ -20203,6 +20794,136 @@
         },
         "required": [
           "runId"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "description": "Runs a failed instance of a workflow file again from the step it failed at, in place: the instance keeps its id and the version it ran, the step runs again, and every step before it keeps its result and is never run again. `step` must be the step the instance failed at. Returns once the instance is running again; read `bureau.workflows.runs.get` for how it ends. A refusal changes nothing and is `Unprocessable` with `data.reason`: `run-not-failed` (the instance is not failed, a retry already running it again included), `step-not-found` (the version it ran has no such step), `earlier-steps-incomplete` (the step comes after the one it failed at), `step-completed` (the step comes before it), `step-not-retryable` (it failed outside a step, at a review a person rejected, at a `workflow` step, or inside a `parallel` step), `no-checkpoint` (nothing was kept to resume from) or `version-unavailable` (the version it ran is no longer stored, or pins an activity or code workflow that is not loaded). Requires `bureau.workflows:write` unless the caller owns the deployment’s workflows; anyone else, and any run that is no instance of a workflow file, is answered `NotFound`.",
+      "errors": [
+        {
+          "$ref": "#/components/errors/Unauthorized"
+        },
+        {
+          "$ref": "#/components/errors/Forbidden"
+        },
+        {
+          "$ref": "#/components/errors/InvalidParams"
+        },
+        {
+          "$ref": "#/components/errors/EngineFailure"
+        },
+        {
+          "$ref": "#/components/errors/NotFound"
+        },
+        {
+          "$ref": "#/components/errors/Unprocessable"
+        },
+        {
+          "$ref": "#/components/errors/UnsupportedCapability"
+        }
+      ],
+      "name": "bureau.workflows.runs.retry",
+      "paramStructure": "by-name",
+      "params": [
+        {
+          "name": "retryId",
+          "required": false,
+          "schema": {
+            "description": "The caller’s identifier of this request. The same request repeated with it answers what the first did, and finishes it when the first stopped partway; without it, a repeat finds the instance running and is refused `run-not-failed`.",
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        {
+          "name": "runId",
+          "required": true,
+          "schema": {
+            "description": "The identifier of the failed workflow instance to run again.",
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        {
+          "name": "step",
+          "required": true,
+          "schema": {
+            "description": "The step to run again, counted from 1 in the order `bureau.workflows.runs.history` numbers steps: it must be the step the instance failed at.",
+            "maximum": 9007199254740991,
+            "minimum": 1,
+            "type": "integer"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "required": true,
+        "schema": {
+          "additionalProperties": false,
+          "properties": {
+            "retryId": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "runId": {
+              "type": "string"
+            },
+            "step": {
+              "description": "The step that runs again, counted from 1.",
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "workflowVersion": {
+              "description": "The revision the instance runs on: the one it began on.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "runId",
+            "step",
+            "workflowVersion",
+            "retryId"
+          ],
+          "type": "object"
+        }
+      },
+      "summary": "Run a failed workflow run again from the step it failed at",
+      "tags": [
+        {
+          "name": "Workflows"
+        }
+      ],
+      "x-weft-access": {
+        "kind": "authenticated"
+      },
+      "x-weft-paramsSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "retryId": {
+            "description": "The caller’s identifier of this request. The same request repeated with it answers what the first did, and finishes it when the first stopped partway; without it, a repeat finds the instance running and is refused `run-not-failed`.",
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          },
+          "runId": {
+            "description": "The identifier of the failed workflow instance to run again.",
+            "minLength": 1,
+            "type": "string"
+          },
+          "step": {
+            "description": "The step to run again, counted from 1 in the order `bureau.workflows.runs.history` numbers steps: it must be the step the instance failed at.",
+            "maximum": 9007199254740991,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "runId",
+          "step"
         ],
         "type": "object"
       }
@@ -25896,6 +26617,9 @@
                     "items": {
                       "additionalProperties": false,
                       "properties": {
+                        "agentName": {
+                          "type": "string"
+                        },
                         "attemptId": {
                           "type": "string"
                         },
@@ -25960,6 +26684,7 @@
                         }
                       },
                       "required": [
+                        "agentName",
                         "attemptId",
                         "attemptIndex",
                         "runId",
@@ -26232,7 +26957,7 @@
       }
     },
     {
-      "description": "Returns one of the caller’s own goals; a caller holding `bureau.goals:read` reads any owner’s. Another owner’s goal answers as a missing one does. The view carries the goal’s `revision`, to pass back as `expectedRevision`, and its attempts, and never its prompt or instructions.",
+      "description": "Returns one of the caller’s own goals; a caller holding `bureau.goals:read` reads any owner’s. Another owner’s goal answers as a missing one does. The view carries the goal’s `revision`, to pass back as `expectedRevision`, its `validator`, and its attempts. For the goal’s owner, and no one else (`bureau.goals:read` and `bureau.goals:content` do not widen it), it also carries the goal’s `prompt` and each attempt’s validator `feedback`, which an edit form shows; every other caller reads the view without those two keys. It never carries the goal’s instructions.",
       "errors": [
         {
           "$ref": "#/components/errors/Unauthorized"
@@ -26277,6 +27002,9 @@
               "items": {
                 "additionalProperties": false,
                 "properties": {
+                  "agentName": {
+                    "type": "string"
+                  },
                   "attemptId": {
                     "type": "string"
                   },
@@ -26286,6 +27014,13 @@
                     "type": "integer"
                   },
                   "completedAt": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "feedback": {
+                    "description": "What the validator said was wrong with the attempt, `null` when it said nothing. Present for the goal’s owner only.",
                     "type": [
                       "string",
                       "null"
@@ -26341,6 +27076,7 @@
                   }
                 },
                 "required": [
+                  "agentName",
                   "attemptId",
                   "attemptIndex",
                   "runId",
@@ -26450,6 +27186,10 @@
               "type": "object"
             },
             "owner": {
+              "type": "string"
+            },
+            "prompt": {
+              "description": "The goal’s prompt, as the owner last set it. Present for the goal’s owner only.",
               "type": "string"
             },
             "revision": {
@@ -27143,6 +27883,9 @@
                   "items": {
                     "additionalProperties": false,
                     "properties": {
+                      "agentName": {
+                        "type": "string"
+                      },
                       "attemptId": {
                         "type": "string"
                       },
@@ -27207,6 +27950,7 @@
                       }
                     },
                     "required": [
+                      "agentName",
                       "attemptId",
                       "attemptIndex",
                       "runId",
@@ -27759,7 +28503,7 @@
       }
     },
     {
-      "description": "Changes one of the caller’s own goals for the attempts it has not yet made (COR-2017); a caller holding `bureau.goals:write` changes any owner’s, and anyone else is answered `NotFound`. It names at least one of `prompt`, `agentName`, `validator`, and `maximumAttempts`, and `expectedRevision`, which is compared inside the store’s compare-and-swap that writes the change: a goal that has changed since is a `StaleRevision` fault whose `currentRevision` is the revision now current, and nothing is written. An attempt already made keeps the validator it was checked against, an attempt in flight keeps the prompt it started with, and no attempt is started. Under the default `continue` conversation a retry’s turn is the validator’s feedback when there is some, so a new prompt reaches a retry only when the feedback is absent. `agentName` is accepted only as the goal’s own agent, which cannot change: the goal’s sessions and runs belong to it. A goal that has ended, or whose cancellation is recorded, is a `Conflict`; so is another agent, a limit that leaves no room for another attempt, and a new limit while the goal’s last allowed attempt is in flight (`data.reason` says which). An agent the caller may not name is `NotFound`; a validator the Bureau lacks, or one that cannot supply the determinism the goal requires, is `Unprocessable`. The write scope does not imply the read scope, so the receipt carries the status and revision and nothing else of the goal.",
+      "description": "Changes one of the caller’s own goals for the attempts it has not yet made (COR-2017); a caller holding `bureau.goals:write` changes any owner’s, and anyone else is answered `NotFound`. It names at least one of `prompt`, `agentName`, `validator`, and `maximumAttempts`, and `expectedRevision`, which is compared inside the store’s compare-and-swap that writes the change: a goal that has changed since is a `StaleRevision` fault whose `currentRevision` is the revision now current, and nothing is written. An attempt already made keeps the validator it was checked against, an attempt in flight keeps the prompt it started with, and no attempt is started. Under the default `continue` conversation the first retry opened after a prompt change is turned with the new prompt and then the validator’s feedback, and every later retry is the feedback alone, because the transcript then holds the prompt. `agentName` is the agent the attempts opened from now on run as: an attempt already opened keeps the agent it was opened under, which its record carries, and the ownership, fence and session checks read that agent. It changes only while an attempt is in flight, because a controller starting an attempt reads the agent and claims its run before the record says the attempt exists. A goal that has ended, or whose cancellation is recorded, is a `Conflict`; so is another agent while no attempt is in flight (`agent-between-attempts`), a limit that leaves no room for another attempt, and a new limit while the goal’s last allowed attempt is in flight (`data.reason` says which). An agent the caller may not name, or the catalog lacks, is `NotFound`; an agent that cannot run durably, a validator the Bureau lacks, or one that cannot supply the determinism the goal requires, is `Unprocessable`. The write scope does not imply the read scope, so the receipt carries the status and revision and nothing else of the goal.",
       "errors": [
         {
           "$ref": "#/components/errors/Unauthorized"
@@ -27796,7 +28540,7 @@
           "name": "agentName",
           "required": false,
           "schema": {
-            "description": "The catalog agent that runs the goal’s attempts. Accepted only when it names the agent the goal already has; another agent is a `Conflict`.",
+            "description": "The catalog agent that runs the attempts the goal opens from now on; an attempt already opened keeps the agent it ran as. It must be in the catalog and able to run durably, and it changes only while an attempt is in flight.",
             "maxLength": 256,
             "minLength": 1,
             "type": "string"
@@ -27926,7 +28670,7 @@
         "additionalProperties": false,
         "properties": {
           "agentName": {
-            "description": "The catalog agent that runs the goal’s attempts. Accepted only when it names the agent the goal already has; another agent is a `Conflict`.",
+            "description": "The catalog agent that runs the attempts the goal opens from now on; an attempt already opened keeps the agent it ran as. It must be in the catalog and able to run durably, and it changes only while an attempt is in flight.",
             "maxLength": 256,
             "minLength": 1,
             "type": "string"

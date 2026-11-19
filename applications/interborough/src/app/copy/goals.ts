@@ -92,6 +92,8 @@ export const GOALS_COPY = {
     /** The qualifier on Running while the goal is about to make its next attempt (sweep S73). */
     retryingQualifier: (next: number, most: number): string =>
       `attempt ${String(next)} of ${String(most)}`,
+    /** The heading over the prompt the goal was asked, which only its owner reads (rows 67j, 67o, 67t). */
+    askedHeading: 'Asked',
     attemptsHeading: 'Attempts',
     /** The accessible name of the list of attempts. */
     attemptsLabel: 'Attempts of this goal, newest first',
@@ -109,6 +111,8 @@ export const GOALS_COPY = {
       canceledAt: (clock: string, duration: string): string =>
         `canceled at ${clock} after ${duration}`,
       canceled: 'canceled',
+      /** Why the check was not met, in the validator's own words (rows 67i, 67l, 67r, 67v, 67x). */
+      checkSaid: (why: string): string => `the check said: ${why}`,
       runningFor: (duration: string): string => `running for ${duration}`,
       waitingApproval: (tool: string): string => `${tool} is waiting for your approval`,
       waitingQuestion: 'A question is waiting for your answer',
@@ -324,13 +328,16 @@ export const GOALS_COPY = {
       saving: 'Saving the goal…',
       saveAction: 'Save',
       savingAction: 'Saving…',
-      /** The goal's view carries only the first line of its prompt, so the field starts empty, says how the current one begins and keeps it. */
+      /**
+       * The goal's owner reads its prompt, which fills the field. Read without one, the field starts
+       * empty, says how the current prompt begins and keeps it.
+       */
       promptPlaceholder: (name: string): string =>
         name === ''
           ? 'Leave this empty to keep the current prompt.'
           : `Leave this empty to keep the current prompt, which begins “${name}”.`,
-      /** Why the agent cannot change on a goal that already has attempts. */
-      agentLocked: 'Attempts keep the agent they started with.',
+      /** What changing the agent does on a goal that already has attempts. */
+      agentLocked: 'Attempts already made keep the agent they ran as.',
       failedTitle: 'Couldn’t save the goal.',
       kept: 'Nothing was changed.',
       changed: 'The goal changed while you were editing it. Look at it again, then try once more.',

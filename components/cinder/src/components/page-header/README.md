@@ -189,6 +189,8 @@ Below 720px of the hero's own width the focal value comes first and the copy fol
 
 | Prop | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
+| `actionsNote` | `string` | no | — | A short caption under the actions' row; the runtime API also accepts a template-only snippet. |
+| `actionsNoteId` | `string` | no | — | The id of the `actionsNote` element, for a button that points its `aria-describedby` at it. |
 | `class` | `string` | no | — | Additional class names merged with `.cinder-page-header`. |
 | `collapsed` | `boolean` | no | `false` | Whether a `large` title has scrolled away. Bind it to pair the header with an AppBar's `titleVisible`. |
 | `collapsedBar` | `boolean` | no | `true` | Whether a `large` header draws its own sticky bar with the title once the title scrolls away. Turn it off when an AppBar shows the title instead. |

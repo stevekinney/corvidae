@@ -44,15 +44,15 @@
   import { HOME_CLOCK_MILLISECONDS } from '../home/home-clock.svelte.ts';
   import {
     filterRunRows,
-    RUN_SEGMENTS,
     RUN_STATUS_SEGMENTS,
     runDayGroup,
     runSegmentCounts,
+    visibleRunSegments,
     type RunFilter,
     type RunRow,
   } from '../workflows/runs/run-rows.ts';
   import RunListRow from '../workflows/runs/run-list-row.svelte';
-  import { STARTED_BY_KINDS, STARTED_BY_LABELS } from '../workflows/runs/started-by.ts';
+  import { STARTED_BY_FILTER_LABELS, STARTED_BY_KINDS } from '../workflows/runs/started-by.ts';
   import { workflowRunRows, type WorkflowRunSummary } from './workflow-run-rows.ts';
 
   interface Props {
@@ -130,7 +130,7 @@
   );
 
   const segments = $derived<FilterSegment[]>(
-    RUN_SEGMENTS.map((value) => ({
+    visibleRunSegments(counts, filter.status).map((value) => ({
       value,
       label: TASK_COPY.list.segments[value],
       // The counts wait for the read: a segment is not 0 because the read has not arrived.
@@ -143,7 +143,10 @@
       key: 'startedBy',
       label: TASK_COPY.startedByLabel,
       multiple: false,
-      options: STARTED_BY_KINDS.map((value) => ({ value, label: STARTED_BY_LABELS[value] })),
+      options: STARTED_BY_KINDS.map((value) => ({
+        value,
+        label: STARTED_BY_FILTER_LABELS[value],
+      })),
     },
   ];
   const appliedFilters = $derived<AppliedFilter[]>(

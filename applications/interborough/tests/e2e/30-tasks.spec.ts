@@ -347,8 +347,9 @@ test.describe('cancelling a run', () => {
       await page.getByRole('button', { name: 'Cancel run' }).click();
       await page.getByRole('dialog').getByRole('button', { name: 'Cancel run' }).click();
 
-      await expect(page.getByText(TASK_COPY.cancel['cleaned-up'])).toBeVisible();
+      // The status line says it is canceled; the note under it does not say it again.
       await expect(heading(page).getByText('Canceled', { exact: true })).toBeVisible();
+      await expect(page.getByText(TASK_COPY.cancel['cleaned-up'])).toHaveCount(0);
       await expect(page.getByRole('button', { name: 'Cancel run' })).toHaveCount(0);
       await checkA11y('a run that was cleaned up');
     } finally {

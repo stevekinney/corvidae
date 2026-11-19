@@ -7,6 +7,7 @@ import { HttpClientError } from '@lostgradient/weft';
 
 import { TASK_COPY } from '../../../app/copy/tasks.ts';
 import { isNetworkFailure } from '../../../lib/faults.ts';
+import { workflowTypeName } from '../../../lib/workflow-type-name.ts';
 import type { RunFilter } from './run-rows.ts';
 import { STARTED_BY_LABELS, type StartedBy } from './started-by.ts';
 
@@ -33,12 +34,14 @@ export function runNoMatchDescription(filter: RunFilter, agent: string | undefin
   const clauses = [
     copy.none(agent, filter.status === undefined ? undefined : copy.statusWords[filter.status]),
     ...(filter.startedBy === undefined ? [] : [copy.startedBy(startedByPhrase(filter.startedBy))]),
+    ...(filter.workflow === undefined ? [] : [copy.workflow(workflowTypeName(filter.workflow))]),
     ...(filter.search === undefined ? [] : [copy.matching(filter.search)]),
   ];
   const changeable = [
     ...(filter.status === undefined ? [] : [copy.filters.status]),
     ...(filter.agent === undefined ? [] : [copy.filters.agent]),
     ...(filter.startedBy === undefined ? [] : [copy.filters.origin]),
+    ...(filter.workflow === undefined ? [] : [copy.filters.workflow]),
     ...(filter.search === undefined ? [] : [copy.filters.search]),
   ];
   return `${clauses.join(' ')}. ${copy.tryAnother(changeable)}`;

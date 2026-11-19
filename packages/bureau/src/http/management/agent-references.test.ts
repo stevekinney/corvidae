@@ -153,6 +153,7 @@ describe('findAgentReferences', () => {
     paused: false,
     inputSchema: null,
     outputSchema: null,
+    outputName: null,
     triggerKind: 'signal',
     trigger: null,
     steps: [],

@@ -195,6 +195,50 @@ async function existingFileWorkflowEvents(
   return keys;
 }
 
+const RESTARTED_EVENT_PREFIXES = [
+  'file-workflow:step-started:',
+  'file-workflow:activity-started:',
+  'file-workflow:signal-waiting:',
+] as const;
+const COMPLETED_EVENT_PREFIX = 'file-workflow:step-completed:';
+
+/**
+ * The deletes that let a failed run reactivated from its checkpoint record what it does again.
+ * A history event is written once per receipt, so without these the step the run failed at would
+ * start again with nothing recorded, and its second end would be dropped as a repeat of the first.
+ * A step that completed keeps its receipts (it never runs again); the receipts of every step that
+ * started and did not complete, and of the run's end, are removed, so the events of the retry
+ * follow the failure in the history: the step starts again, completes, and the run ends again.
+ */
+export async function fileWorkflowRetryReceiptResets(
+  internals: EngineInternals,
+  workflowId: string,
+): Promise<BatchOperation[]> {
+  const receipts: { key: string; eventKey: string }[] = [];
+  for await (const [key, bytes] of internals.storage.scan(
+    KEYS.fileWorkflowEventReceiptPrefix(workflowId),
+  )) {
+    const receipt = decode(bytes) as { eventKey?: string };
+    if (receipt.eventKey !== undefined) receipts.push({ key, eventKey: receipt.eventKey });
+  }
+  const completed = new Set(
+    receipts
+      .filter((receipt) => receipt.eventKey.startsWith(COMPLETED_EVENT_PREFIX))
+      .map((receipt) => receipt.eventKey.slice(COMPLETED_EVENT_PREFIX.length)),
+  );
+  return receipts
+    .filter(
+      (receipt) =>
+        receipt.eventKey === 'file-workflow:run-terminal' ||
+        RESTARTED_EVENT_PREFIXES.some(
+          (prefix) =>
+            receipt.eventKey.startsWith(prefix) &&
+            !completed.has(receipt.eventKey.slice(prefix.length)),
+        ),
+    )
+    .map((receipt): BatchOperation => ({ type: 'delete', key: receipt.key }));
+}
+
 function appendEvents(
   internals: EngineInternals,
   workflowId: string,

@@ -8,13 +8,20 @@
    */
   import { TASK_COPY } from '../../../app/copy/tasks.ts';
   import { router } from '../../../lib/router.svelte.ts';
-  import { goalTitle, type RunAttempt, type RunOrigin } from './run-rows.ts';
-  import { STARTED_BY_LABELS } from './started-by.ts';
+  import type { RunAttempt, RunOrigin } from './run-rows.ts';
+  import { STARTED_BY_FILTER_LABELS, STARTED_BY_LABELS } from './started-by.ts';
 
   interface RunOriginProps {
     origin: RunOrigin;
     /** Which attempt of its goal the run is, when it is one. */
     attempt?: RunAttempt | null | undefined;
+    /**
+     * A schedule's name and when it runs, which a schedule's run says in place of the schedule's
+     * identifier: "Schedule Daily summary, every day at 3:00 AM (9:00 AM UTC)" (COR-2424).
+     */
+    scheduleLine?: { readonly name: string; readonly cadence: string } | undefined;
+    /** Who is viewing the page: a run this principal started by hand reads "You" (COR-2424). */
+    viewer?: string | null | undefined;
     /**
      * The title of a plugin, for a run its trigger started ("GitHub"); the identifier is said when
      * none is loaded.
@@ -22,7 +29,20 @@
     pluginTitle?: ((plugin: string) => string | undefined) | undefined;
   }
 
-  let { origin, attempt = null, pluginTitle = undefined }: RunOriginProps = $props();
+  let {
+    origin,
+    attempt = null,
+    scheduleLine = undefined,
+    viewer = undefined,
+    pluginTitle = undefined,
+  }: RunOriginProps = $props();
+
+  /** Whether `who`, the principal a person origin records, is the one viewing the page. */
+  function isViewer(who: string | null | undefined): boolean {
+    return (
+      who !== null && who !== undefined && viewer !== null && viewer !== undefined && who === viewer
+    );
+  }
 
   /** Opens a link in place, and leaves a modified click to the browser. */
   function open(event: MouseEvent, path: string): void {
@@ -43,7 +63,7 @@
         >{origin.agentName === '' ? origin.parentRunId : origin.agentName}</code
       >
     {:else if origin.kind === 'goal'}
-      {goalTitle(origin.name)}
+      {origin.title}
     {:else if origin.kind === 'parent'}
       <code class="ib-identifier">{origin.parentRunId}</code>
     {/if}
@@ -54,21 +74,36 @@
   {#if origin.kind === 'chat'}
     <span class="ib-run-origin__kind">{TASK_COPY.list.kinds.chat}</span>
     {@render link(origin.href)}
+  {:else if origin.kind === 'person' && isViewer(origin.principal)}
+    <!-- The viewer's own run reads "You" (COR-2424, row 54l). -->
+    {STARTED_BY_FILTER_LABELS.person}
   {:else if origin.kind === 'person'}
     {origin.surface === null
       ? STARTED_BY_LABELS.person
       : `${STARTED_BY_LABELS.person} ${TASK_COPY.personSurface[origin.surface]}`}
+  {:else if origin.kind === 'schedule' && scheduleLine !== undefined && origin.schedulePath !== null}
+    {@const schedulePath = origin.schedulePath}
+    <span class="ib-run-origin__kind">{TASK_COPY.list.kinds.schedule}</span>
+    <a href={router.href(schedulePath)} onclick={(event) => open(event, schedulePath)}
+      >{scheduleLine.name}</a
+    >, {scheduleLine.cadence}{#if origin.manual}, {TASK_COPY.firedByHand}{/if}
   {:else if origin.kind === 'schedule'}
     {#if origin.scheduleId !== null && origin.schedulePath !== null}
       {@const schedulePath = origin.schedulePath}
       <a href={router.href(schedulePath)} onclick={(event) => open(event, schedulePath)}
         ><code class="ib-identifier">{origin.scheduleId}</code></a
       >
-      ({origin.manual ? `${TASK_COPY.schedule}, ${TASK_COPY.firedByHand}` : TASK_COPY.schedule}),
+      ({origin.manual
+        ? `${TASK_COPY.schedule}, ${TASK_COPY.firedByHand}`
+        : TASK_COPY.schedule}){#if origin.href !== null},{/if}
     {/if}
-    <a href={router.href(origin.href)} onclick={(event) => open(event, origin.href)}
-      >{origin.title === '' ? TASK_COPY.untitledChat : origin.title}</a
-    >
+    <!-- A run only the engine holds ran in no session, so there is nothing to link to. -->
+    {#if origin.href !== null}
+      {@const sessionPath = origin.href}
+      <a href={router.href(sessionPath)} onclick={(event) => open(event, sessionPath)}
+        >{origin.title === '' ? TASK_COPY.untitledChat : origin.title}</a
+      >
+    {/if}
     {#if origin.scheduleId === null}({TASK_COPY.schedule}){/if}
   {:else if origin.kind === 'api'}
     {STARTED_BY_LABELS.api}
@@ -78,14 +113,16 @@
     An agent's tool call, {origin.agentName},
     <a href={router.href(origin.href)} onclick={(event) => open(event, origin.href)}>Calling run</a>
   {:else if origin.kind === 'goal'}
+    <!-- A goal's session is named only when it has a title: the chain is the goal, the attempt and
+         this run (row 55f), and an untitled session adds nothing to it. -->
     <span class="ib-run-origin__kind">{TASK_COPY.list.kinds.goal}</span>
     {@render link(origin.href)}{#if attempt !== null}, {TASK_COPY.list.attempt(
         attempt.number,
         attempt.of,
-      )}{/if}{#if origin.session}
+      )}{/if}{#if origin.session && origin.session.title !== ''}
       {@const session = origin.session},
       <a href={router.href(session.href)} onclick={(event) => open(event, session.href)}
-        >{session.title === '' ? TASK_COPY.untitledChat : session.title}</a
+        >{session.title}</a
       >{/if}
   {:else if origin.kind === 'parent'}
     {@render link(origin.href)} ({TASK_COPY.workflow})

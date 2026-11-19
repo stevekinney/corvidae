@@ -152,8 +152,10 @@ test('fully composed host captures its routes and its engine discovery catalog',
     expect(keys).toContain('* /bureau/*');
     const bureauRoute = host.routeInventory.find((entry) => entry.key === '* /bureau/*');
     expect(bureauRoute?.resourceClass).toBeNull();
-    // 133, and `bureau.agents.disable` and `bureau.agents.enable` (COR-2429).
-    expect(bureauRoute?.children?.filter((entry) => entry.kind === 'operation')).toHaveLength(135);
+    // One child per operation the Bureau handler serves, which is exactly its operation map: 133,
+    // `bureau.agents.disable` and `bureau.agents.enable` (COR-2429), and
+    // `bureau.workflows.runs.retry` (COR-2424).
+    expect(bureauRoute?.children?.filter((entry) => entry.kind === 'operation')).toHaveLength(136);
     expect(bureauRoute?.children?.every((entry) => entry.workspaceClass !== undefined)).toBe(true);
     expect(bureauRoute?.children?.some((entry) => entry.key === '/ag-ui')).toBe(true);
     expect(host.routeInventory.find((entry) => entry.key === '* /bureau/*')?.transports).toContain(

@@ -223,17 +223,20 @@ const responseTo = (id: number) =>
   framePayloads.find((message) => message.id === id && !('method' in message));
 
 /**
- * The panels sit under How it ran, which a finished run's page gives closed, so a person opens it
- * to reach them.
+ * The panels sit in the Inspector tab of How it ran (row 54i), which a finished run's page gives
+ * closed, so a person opens it and then chooses the tab to reach them.
  */
-async function openHowItRan(view: ReturnType<typeof openRun>): Promise<void> {
+async function openInspector(view: ReturnType<typeof openRun>): Promise<void> {
   const trigger = await view.findByRole('button', { name: RUN_DETAIL_COPY.howItRan.heading });
   if (trigger.getAttribute('aria-expanded') !== 'true') await fireEvent.click(trigger);
   await waitFor(() => expect(trigger.getAttribute('aria-expanded')).toBe('true'));
+  const tab = await view.findByRole('tab', { name: RUN_DETAIL_COPY.howItRan.tabs.inspector });
+  if (tab.getAttribute('aria-selected') !== 'true') await fireEvent.click(tab);
+  await waitFor(() => expect(tab.getAttribute('aria-selected')).toBe('true'));
 }
 
 async function panelFrame(view: ReturnType<typeof openRun>): Promise<HTMLIFrameElement> {
-  await openHowItRan(view);
+  await openInspector(view);
   await waitFor(() =>
     expect(view.container.querySelector('[data-section="plugin-panel"] iframe')).not.toBeNull(),
   );
@@ -340,7 +343,7 @@ describe('a run on a host with no panels', () => {
   test('shows no panel when the host cannot list them', async () => {
     panelsListed = false;
     const view = openRun();
-    await openHowItRan(view);
+    await openInspector(view);
     await waitUntil(() => hostRequests.includes('/host/panels'));
     await waitFor(() => expect(view.container.querySelector('article')).not.toBeNull());
     // Nothing is going to appear, so the check is that the page stays as it was.

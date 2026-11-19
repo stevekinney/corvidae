@@ -13,6 +13,7 @@ import { readFileSync } from 'node:fs';
 import { QueryClient } from '@tanstack/svelte-query';
 import { cleanup, fireEvent, render, waitFor, within } from '@testing-library/svelte';
 
+import { RUN_DETAIL_COPY } from '../../../app/copy/runs.ts';
 import { TASK_COPY } from '../../../app/copy/tasks.ts';
 import { contextDetailFixture, taskFixture } from '../../../lib/bureau-fixtures.test-support.ts';
 import { queryKeys } from '../../../lib/query.ts';
@@ -110,6 +111,49 @@ function routeRun(id: string, overrides: Record<string, unknown> = {}): void {
  * header of its own with a More menu that holds only Copy run ID, and the loaded page replaces it,
  * so the menu is opened only after the run's status is there.
  */
+/**
+ * Opens one of How it ran's tabs (COR-2424, row 54i), opening How it ran first: it is closed for a
+ * run that is over (row 54a).
+ */
+async function openTab(view: ReturnType<typeof mount>, name: string): Promise<void> {
+  await openHowItRan(view);
+  await fireEvent.click(await view.findByRole('tab', { name }));
+}
+
+/** Opens How it ran, as a person does, when the page gives it closed. */
+async function openHowItRan(view: ReturnType<typeof mount>): Promise<void> {
+  const trigger = await view.findByRole('button', { name: RUN_DETAIL_COPY.howItRan.heading });
+  if (trigger.getAttribute('aria-expanded') !== 'true') await fireEvent.click(trigger);
+}
+
+describe('the Tags row of a run the engine holds (rows 54j, 55d)', () => {
+  test('lists a person’s tags, counts the system’s, and Add a tag opens the editor', async () => {
+    const id = 'wf-detail-tags-1';
+    routeRun(id, { tags: ['origin:goal', 'origin-parent:run-1', 'prod'] });
+
+    const view = mount(id, principalWith('workflows:read', 'workflows:write', 'tags:write'));
+
+    await waitFor(() => expect(fact(view, 'Tags')).toContain('prod'));
+    const tags = fact(view, 'Tags') ?? '';
+    expect(tags).toContain('2 system tags');
+    expect(tags).not.toContain('origin');
+    // No editor box until a person asks for one.
+    expect(view.container.querySelector('.ib-run-tags')).toBeNull();
+    await fireEvent.click(view.getByRole('button', { name: 'Add a tag' }));
+    await waitFor(() => expect(view.container.querySelector('.ib-run-tags')).not.toBeNull());
+  });
+
+  test('offers no Add a tag to a caller without tags:write', async () => {
+    const id = 'wf-detail-tags-2';
+    routeRun(id, { tags: [] });
+
+    const view = mount(id);
+
+    await waitFor(() => expect(fact(view, 'Tags')).toBeDefined());
+    expect(view.queryByRole('button', { name: 'Add a tag' })).toBeNull();
+  });
+});
+
 async function openMoreActions(view: ReturnType<typeof mount>): Promise<void> {
   await waitFor(() =>
     expect(
@@ -168,7 +212,8 @@ describe('a run of a workflow file the engine does not hold', () => {
 
     const view = mount(id);
 
-    expect(await view.findByRole('heading', { level: 1, name: 'e2e-approval' })).not.toBeNull();
+    // Headed by its type in words, as the rail names it (row S68).
+    expect(await view.findByRole('heading', { level: 1, name: 'E2e approval' })).not.toBeNull();
     expect(view.container.querySelectorAll('[data-status-word]').length).toBe(1);
     expect(view.container.querySelector('[data-status-word]')?.textContent).toContain('Running');
     expect(view.queryAllByRole('tab').length).toBe(0);
@@ -200,6 +245,36 @@ describe('a run of a workflow file the engine does not hold', () => {
     expect(lineage.querySelector('a')?.getAttribute('href')).toBe(
       router.href('/runs/calling-run-1'),
     );
+  });
+
+  test('names the run a person started between the person and "This run", with its day and time (row 54l)', async () => {
+    const id = 'f3a9c0de-0000-4000-8000-000000000009';
+    fetchScript.routeUrlStatus(`/workflows/${id}`, 404);
+    fetchScript.routeJsonRpcMethod('bureau.workflows.runs.get', {
+      id,
+      workflow: 'e2e-approval',
+      workflowVersion: 'sha256:abc',
+      status: 'running',
+      createdAt: '2026-10-31T11:26:19.437Z',
+      updatedAt: '2026-10-31T11:26:20.437Z',
+      trigger: { kind: 'signal', name: 'e2e-begin', payload: null },
+      result: null,
+      error: null,
+      finishReason: null,
+      origin: { kind: 'person', principal: 'someone', surface: 'web' },
+    });
+
+    const view = mount(id);
+
+    const lineage = await view.findByTestId('run-lineage');
+    await waitFor(() => expect(lineage.innerHTML).toContain('data-started-run'));
+    const rows = [...lineage.querySelectorAll('li')].map((row) =>
+      (row.textContent ?? '').replaceAll(/\s+/g, ' ').trim(),
+    );
+    expect(rows).toHaveLength(3);
+    expect(rows[1]).toMatch(/^Run .+, [A-Z][a-z]{2}, [A-Z][a-z]{2} \d{1,2}, \d{1,2}:\d{2} [AP]M$/);
+    expect(rows[1]).toContain(workflowTypeName('e2e-approval'));
+    expect(rows[2]).toBe(`Run ${RUN_DETAIL_COPY.lineage.thisRun}`);
   });
 
   test('says the run could not be loaded when the Bureau fails, rather than that it is missing', async () => {
@@ -253,7 +328,7 @@ describe('a run the engine holds', () => {
     expect(lineage.textContent).not.toContain('agent-run:');
   });
 
-  test('is one header with one status and no tabs, whatever sections it has', async () => {
+  test('is one header with one status, and only How it ran holds tabs, Steps first (row 54i)', async () => {
     const id = 'wf-detail-loaded-1';
     fetchScript.routeUrl(`/workflows/${id}/events`, { events: [] });
     routeRun(id, { id });
@@ -261,15 +336,22 @@ describe('a run the engine holds', () => {
     const view = mount(id);
 
     expect(
-      await view.findByRole('heading', { level: 1, name: 'order-fulfillment' }),
+      await view.findByRole('heading', { level: 1, name: 'Order fulfillment' }),
     ).not.toBeNull();
     expect(view.getAllByRole('heading', { level: 1 }).length).toBe(1);
     expect(view.container.querySelectorAll('[data-status-word]').length).toBe(1);
-    expect(view.queryAllByRole('tab').length).toBe(0);
-    for (const name of ['Input and output', 'Change or ask this run', 'Details', 'Related runs']) {
+    const found = await view.findAllByRole('tab');
+    const tabs = found.map((tab) => tab.textContent?.trim());
+    expect(tabs.slice(0, 1)).toEqual(['Steps']);
+    expect(tabs).toContain('Events and logs');
+    for (const name of ['Input and output', 'Run details', 'Related runs']) {
       expect(view.getByRole('heading', { level: 2, name })).not.toBeNull();
     }
     expect(view.getByRole('heading', { level: 3, name: 'Activity' })).not.toBeNull();
+    await openTab(view, 'Inspector');
+    expect(
+      await view.findByRole('heading', { level: 2, name: 'Change or ask this run' }),
+    ).not.toBeNull();
   });
 
   test('opens its events from the Events disclosure, with no address change', async () => {
@@ -278,6 +360,7 @@ describe('a run the engine holds', () => {
     routeRun(id, { id });
 
     const view = mount(id);
+    await openTab(view, 'Events and logs');
     const trigger = await view.findByRole('button', { name: 'Events' });
     expect(trigger.getAttribute('aria-expanded')).toBe('false');
     await fireEvent.click(trigger);
@@ -431,8 +514,12 @@ describe('the Details rail of a run the engine holds', () => {
 
     const view = mount(id);
 
-    await waitFor(() => expect(fact(view, 'Took')).toBeDefined());
+    await waitFor(() => expect(fact(view, 'Version')).toBeDefined());
     expect(fact(view, 'Deadline')).toBeUndefined();
+    // The header says when it started and how long it took; the rail does not say it again.
+    expect(fact(view, 'Took')).toBeUndefined();
+    expect(fact(view, 'Started')).toBeUndefined();
+    expect(fact(view, 'Last changed')).toBeUndefined();
   });
 });
 
@@ -453,6 +540,7 @@ describe('a run the Bureau describes', () => {
     const view = mount('task-1');
 
     expect(await view.findByRole('heading', { level: 1, name: 'echo' })).not.toBeNull();
+    await openTab(view, 'Inspector');
     expect(
       await view.findByRole('heading', { level: 2, name: 'Change or ask this run' }),
     ).not.toBeNull();
@@ -546,6 +634,7 @@ describe('the sections a caller sees', () => {
     routeRun(id, { id });
 
     const view = mount(id, ALL_BUT('events:read'));
+    await openTab(view, 'Events and logs');
     await fireEvent.click(await view.findByRole('button', { name: 'Events' }));
 
     expect(await view.findByText(/Requires events:read/)).not.toBeNull();
@@ -560,6 +649,7 @@ describe('the sections a caller sees', () => {
     fetchScript.routeUrl(`/workflows/${id}/timeline`, []);
 
     const view = mount(id, ALL_BUT('queries:read', 'signals:write'));
+    await openTab(view, 'Inspector');
     await fireEvent.click(await view.findByRole('button', { name: 'Ask a question' }));
     await fireEvent.click(await view.findByRole('button', { name: 'Send a signal' }));
 
@@ -575,6 +665,7 @@ describe('the sections a caller sees', () => {
     routeRun(id, { id });
 
     const view = mount(id, ALL_BUT());
+    await openTab(view, 'Inspector');
     await fireEvent.click(await view.findByRole('button', { name: 'Ask a question' }));
     await fireEvent.input(await view.findByLabelText('Query name'), {
       target: { value: 'getTotal' },
@@ -596,6 +687,8 @@ describe('the sections a caller sees', () => {
     routeRun(id, { id });
 
     const view = mount(id, ALL_BUT());
+    // The run has search attributes, so How it ran has their tab (row 54i).
+    await openTab(view, 'Search attributes');
 
     expect(await view.findByText('us-east')).not.toBeNull();
     expect(view.getByRole('button', { name: 'Edit region' })).not.toBeNull();
@@ -607,6 +700,7 @@ describe('the sections a caller sees', () => {
     routeRun(id, { id });
 
     const view = mount(id, ALL_BUT('attributes:write'));
+    await openTab(view, 'Search attributes');
 
     expect(await view.findByText('us-east')).not.toBeNull();
     expect(view.queryByRole('button', { name: /^Edit/ })).toBeNull();
@@ -617,7 +711,7 @@ describe('the sections a caller sees', () => {
     routeRun(id, { id });
 
     const view = mount(id, ALL_BUT('attributes:read', 'attributes:write'));
-    await view.findByRole('heading', { level: 1, name: 'order-fulfillment' });
+    await view.findByRole('heading', { level: 1, name: 'Order fulfillment' });
 
     expect(jsonRpcMethodsCalled()).not.toContain('weft.workflows.attributes.get');
   });
@@ -643,6 +737,7 @@ describe('the sections a caller sees', () => {
     routeUpdates(id);
 
     const view = mount(id, ALL_BUT());
+    await openTab(view, 'Inspector');
     await fireEvent.click(await view.findByRole('button', { name: 'Send an update' }));
 
     expect(await view.findByText('insufficient balance')).not.toBeNull();
@@ -654,6 +749,7 @@ describe('the sections a caller sees', () => {
     routeUpdates(id);
 
     const view = mount(id, ALL_BUT('updates:write'));
+    await openTab(view, 'Inspector');
     await fireEvent.click(await view.findByRole('button', { name: 'Send an update' }));
 
     expect(await view.findByText('insufficient balance')).not.toBeNull();

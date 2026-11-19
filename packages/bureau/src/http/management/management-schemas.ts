@@ -81,6 +81,39 @@ export const taskOriginSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('trigger'), plugin: z.string(), workflowId: z.string() }),
 ]);
 
+/**
+ * The workflow a task ran on (COR-2423). Mirrors `TaskWorkflow` (`task-workflow.ts`): the type
+ * `bureau.tasks.list` filters by, the schedule the run belongs to, what a schedule tick recorded,
+ * and how far an instance of a workflow file got.
+ */
+export const taskWorkflowSchema = z.object({
+  /**
+   * The engine workflow type: `agentRun` (a chat's, a fire's or a child's run, and a step of a
+   * workflow instance), `goalRun` (an attempt of a goal), `scheduleTick` (the Bureau's own record
+   * of what its scheduler did), or the identifier of a workflow file for one of its instances.
+   */
+  type: z.string(),
+  /** The schedule the run belongs to: a fire's, an instance a schedule started, or the one a tick records. */
+  scheduleId: z.string().nullable(),
+  /** The schedule's name as a tick recorded it, or `null`. */
+  scheduleName: z.string().nullable(),
+  /** What a `scheduleTick` recorded, or `null` for any other run. */
+  tick: z
+    .object({
+      event: z.enum(['came-due', 'missed-runs']),
+      missedRuns: z.number().int().nullable(),
+      whileStopped: z.boolean(),
+    })
+    .nullable(),
+  /**
+   * How far an instance of a workflow file got, or `null` for any other run: how many steps the
+   * workflow has, and the step (counted from one) the instance is at, failed at or finished on.
+   */
+  steps: z.object({ total: z.number().int(), at: z.number().int().nullable() }).nullable(),
+  /** The signal an instance waits for at an `await-signal` step that is not a review, or `null`. */
+  awaitingSignal: z.string().nullable(),
+});
+
 /** One task, as the management plane shows it. Message text is never part of it. */
 export const taskViewSchema = z.object({
   id: z.string(),
@@ -129,6 +162,8 @@ export const taskViewSchema = z.object({
    * run left for itself: a task view holds no message text.
    */
   wakeAt: z.string().nullable(),
+  /** The workflow the task ran on (COR-2423); see {@link taskWorkflowSchema}. */
+  workflow: taskWorkflowSchema,
 });
 
 /** The paging fields the list operations share. */

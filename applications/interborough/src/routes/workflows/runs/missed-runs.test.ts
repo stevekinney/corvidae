@@ -104,8 +104,10 @@ describe('the words of the missed row', () => {
     ]);
     expect(missedDay(missed.since, ZONE)).toBe('Oct 30');
     const line = missedLineTwo(missed, ZONE, (name) => (name === 'assistant' ? 'Assistant' : name));
-    expect(line.startsWith('Schedule, Assistant, every day at ')).toBe(true);
-    expect(line.endsWith(', missed 4 times since Oct 30')).toBe(true);
+    // The point of the row leads, so a line cut short drops the cadence first.
+    expect(line.startsWith('Schedule, missed 4 times since Oct 30, Assistant, every day at ')).toBe(
+      true,
+    );
     expect(line).not.toContain(String.fromCodePoint(0xb7));
   });
 });

@@ -52,6 +52,20 @@ describe('the run’s tags', () => {
     expect(queryByText('origin:agent-run')).toBeNull();
   });
 
+  test('says None above the field while the run has no tags, and not once it has one (54j, 55d)', () => {
+    const empty = render(RunTagsHarness, {
+      props: { client: baseClient(), workflow: workflow({ tags: [] }) },
+    });
+    expect(empty.container.querySelector('[data-run-tags-none]')?.textContent).toBe('None');
+    expect(empty.getByPlaceholderText('Add a tag')).not.toBeNull();
+    empty.unmount();
+
+    const tagged = render(RunTagsHarness, {
+      props: { client: baseClient(), workflow: workflow({ tags: ['prod'] }) },
+    });
+    expect(tagged.container.querySelector('[data-run-tags-none]')).toBeNull();
+  });
+
   test('adding a tag calls client.addTags with the trimmed value', async () => {
     const added: { tag: string | null } = { tag: null };
     const client = {
@@ -65,7 +79,7 @@ describe('the run’s tags', () => {
       props: { client, workflow: workflow() },
     });
 
-    const input = getByPlaceholderText('Add tag');
+    const input = getByPlaceholderText('Add a tag');
     await fireEvent.input(input, { target: { value: '  urgent  ' } });
     await fireEvent.keyDown(input, { key: 'Enter' });
 
@@ -87,7 +101,7 @@ describe('the run’s tags', () => {
       props: { client, workflow: workflow() },
     });
 
-    const input = getByPlaceholderText('Add tag');
+    const input = getByPlaceholderText('Add a tag');
     await fireEvent.input(input, { target: { value: 'one' } });
     await fireEvent.keyDown(input, { key: 'Enter' });
     await fireEvent.input(input, { target: { value: 'two' } });
@@ -122,7 +136,7 @@ describe('the run’s tags', () => {
       props: { client, workflow: workflow() },
     });
 
-    const input = getByPlaceholderText('Add tag');
+    const input = getByPlaceholderText('Add a tag');
     await fireEvent.input(input, { target: { value: 'one' } });
     await fireEvent.keyDown(input, { key: 'Enter' });
     await fireEvent.click(getByRole('button', { name: 'Remove one' }));
@@ -151,7 +165,7 @@ describe('the run’s tags', () => {
       props: { client, workflow: workflow({ tags: ['old'] }) },
     });
 
-    const input = getByPlaceholderText('Add tag');
+    const input = getByPlaceholderText('Add a tag');
     await fireEvent.input(input, { target: { value: 'new' } });
     await fireEvent.keyDown(input, { key: 'Enter' });
     await fireEvent.click(getByRole('button', { name: 'Remove old' }));
@@ -190,7 +204,7 @@ describe('the run’s tags', () => {
       props: { client, workflow: workflow() },
     });
 
-    const input = getByPlaceholderText('Add tag');
+    const input = getByPlaceholderText('Add a tag');
     await fireEvent.input(input, { target: { value: '   ' } });
     await fireEvent.keyDown(input, { key: 'Enter' });
     expect(added).toEqual([]);
@@ -212,6 +226,6 @@ describe('the run’s tags', () => {
     // The tag is still shown, but it cannot be removed and nothing can be added.
     expect(getByText('vip')).not.toBeNull();
     expect(queryByRole('button', { name: 'Remove vip' })).toBeNull();
-    expect(getByPlaceholderText('Add tag').hasAttribute('disabled')).toBe(true);
+    expect(getByPlaceholderText('Add a tag').hasAttribute('disabled')).toBe(true);
   });
 });

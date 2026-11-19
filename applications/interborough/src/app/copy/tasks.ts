@@ -16,6 +16,8 @@ export const TASK_COPY = {
     segments: {
       all: 'All',
       waiting: 'Waiting on you',
+      /** A run parked on a signal: it needs nobody at the page, and is drawn only while one is. */
+      signal: 'Waiting for a signal',
       running: 'Running',
       done: 'Done',
       failed: 'Failed',
@@ -44,8 +46,33 @@ export const TASK_COPY = {
     },
     /** Line two's agent for a run Interborough started for its own bookkeeping. */
     interboroughStarted: 'Interborough started',
+    /** The title of a schedule tick, the run that records what the scheduler did (COR-2009). */
+    scheduleTickTitle: 'Schedule tick',
+    /** What a schedule tick recorded, on line two: missed runs it noticed, or a schedule that came due. */
+    tick: {
+      missed: (count: number): string =>
+        `logged ${String(count)} missed ${count === 1 ? 'run' : 'runs'}`,
+      cameDue: (schedule: string | null): string =>
+        schedule === null ? 'a schedule came due' : `${schedule} came due`,
+    },
+    /** How far an instance of a workflow file got: the step it is at, or failed at, of its steps. */
+    stepOf: (at: number, total: number): string => `step ${String(at)} of ${String(total)}`,
+    failedAtStep: (at: number, total: number): string =>
+      `failed at step ${String(at)} of ${String(total)}`,
+    /** What an instance parked at an `await-signal` step waits for, and how long it has. */
+    waitingForSignal: (signal: string): string => `waiting for signal ${signal}`,
+    /** When a run that asked to be woken is due, at the end of line two: "due today at 11:00 AM". */
+    dueAt: (when: string): string => `due ${when}`,
+    due: { today: 'today', tomorrow: 'tomorrow' },
+    /** The word "at" between a day and a time in a due time ("today at 11:00 AM"). */
+    dueAtTime: (day: string, time: string): string => `${day} at ${time}`,
     /** The title of one instance of a workflow file, which only its steps are tasks of. */
     workflowRunTitle: 'Workflow run',
+    /**
+     * Said on the row of a run only the workflow engine holds, for a caller who may not read the
+     * engine: the row does not open, because its page is the engine's (COR-2424).
+     */
+    engineRunLocked: 'Only someone who can see workflow runs can open this',
     /** How long a run has waited on a person, at the end of line two. */
     waitingFor: (duration: string): string => `waiting ${duration}`,
     /** How long a run has been going, at the end of line two. */
@@ -96,6 +123,7 @@ export const TASK_COPY = {
       /** The adjective a status segment puts before "runs": "No failed runs". */
       statusWords: {
         waiting: 'waiting',
+        signal: 'waiting for a signal',
         running: 'running',
         done: 'finished',
         failed: 'failed',
@@ -111,7 +139,15 @@ export const TASK_COPY = {
       /** After "runs": the words typed in Search runs. */
       matching: (words: string): string => `matching “${words}”`,
       /** The filters a person can change, as they read in "Try another agent or origin." */
-      filters: { status: 'status', agent: 'agent', origin: 'origin', search: 'search' },
+      filters: {
+        status: 'status',
+        agent: 'agent',
+        origin: 'origin',
+        workflow: 'workflow',
+        search: 'search',
+      },
+      /** After "runs": the workflow they ran, from its name ("Release notes"). */
+      workflow: (name: string): string => `of the workflow ${name}`,
       /** The last sentence, naming each filter that is on: "Try another status, agent or origin." */
       tryAnother: (filters: readonly string[]): string => {
         const last = filters.at(-1);
@@ -125,6 +161,7 @@ export const TASK_COPY = {
   agentLabel: 'Agent',
   statusLabel: 'Status',
   startedByLabel: 'Started by',
+  workflowLabel: 'Workflow',
   loading: 'Loading runs',
   loadFailed: {
     title: 'The runs could not be loaded',

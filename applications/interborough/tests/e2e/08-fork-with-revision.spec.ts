@@ -27,6 +27,7 @@
  * schedule — safe anywhere in the run order relative to the other flows.
  */
 import { expect, loggedFailedResponse, test } from './fixtures.ts';
+import { openHowItRan } from './workflow-support.ts';
 
 test('operator inspects revision bindings, attempts a rejected explicit-revision fork, and pins a schedule', async ({
   page,
@@ -51,7 +52,8 @@ test('operator inspects revision bindings, attempts a rejected explicit-revision
   await checkA11y('workflow list — filtered to order-processing, Revision column visible');
 
   await orderRow.getByRole('link').click();
-  await expect(page.getByRole('heading', { level: 1, name: 'order-processing' })).toBeVisible();
+  // The run's type heads its page in words (row S68).
+  await expect(page.getByRole('heading', { level: 1, name: 'Order processing' })).toBeVisible();
 
   // The Details rail's Revision row, with the active comparison beside it (WFT-117). The seeded
   // server never activates the candidate fixture, so the original,
@@ -62,6 +64,9 @@ test('operator inspects revision bindings, attempts a rejected explicit-revision
   ).toBeVisible();
   await checkA11y('run — Details rail (revision + active comparison)');
 
+  // Checkpoints are in How it ran's Events and logs tab (COR-2424).
+  await openHowItRan(page);
+  await page.getByRole('tab', { name: 'Events and logs' }).click();
   await page.getByRole('button', { name: 'Checkpoints' }).click();
   const checkpointList = page.locator('.weft-checkpoints-tab__list');
   await expect(checkpointList).toBeVisible();

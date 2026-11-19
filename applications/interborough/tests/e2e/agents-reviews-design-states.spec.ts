@@ -276,7 +276,7 @@ for (const width of WIDTHS) {
       }
     });
 
-    test(`/agents/:agent shows the agent’s own skills in its header and on Access, and its reference documents, at ${width} pixels`, async ({
+    test(`/agents/:agent, /agents/:agent/access and /agents/:agent/instructions show the agent’s own skills in its header and on Access, and its reference documents, at ${width} pixels`, async ({
       page,
       request,
     }) => {

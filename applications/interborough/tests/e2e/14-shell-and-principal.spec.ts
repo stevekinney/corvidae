@@ -380,8 +380,9 @@ test('runs live at /runs and /runs/:run, and /workflows is the catalog of defini
   await expect(page.locator('[data-view="runs"]')).toHaveAttribute('data-state', 'ready');
 
   await page.goto('/runs/nightly-reconciliation-demo');
+  // The run's type heads its page in words (row S68).
   await expect(
-    page.getByRole('heading', { level: 1, name: 'nightly-reconciliation' }),
+    page.getByRole('heading', { level: 1, name: 'Nightly reconciliation' }),
   ).toBeVisible();
 
   await page.goto('/workflows');

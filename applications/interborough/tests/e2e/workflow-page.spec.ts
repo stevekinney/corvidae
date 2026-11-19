@@ -391,9 +391,10 @@ test.describe('Start run', () => {
     });
     await page.goto(`/runs/${runId}`);
 
-    // The Bureau's record of the instance fills the page: the workflow leads it, and the Details
-    // rail names it in words ("e2e-page-record" reads "E2e page record") and links to its page.
-    await expect(page.getByRole('heading', { level: 1, name: id })).toBeVisible();
+    // The Bureau's record of the instance fills the page: the workflow leads it in words, as the
+    // Details rail names it ("e2e-page-record" reads "E2e page record", row S68), and the rail links
+    // to its page.
+    await expect(page.getByRole('heading', { level: 1, name: 'E2e page record' })).toBeVisible();
     await expect(
       page
         .getByRole('complementary', { name: 'Details' })

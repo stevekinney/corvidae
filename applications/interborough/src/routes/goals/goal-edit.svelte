@@ -7,8 +7,9 @@
    * against. Edit is offered on every goal's page, and a goal that has ended or been asked to stop is
    * refused by the Bureau, which the page says above the buttons.
    *
-   * The goal's view never carries its prompt, so the prompt starts empty and an empty prompt keeps
-   * the one the goal has. Save names only what changed, against the revision the form was opened on:
+   * The goal's owner reads its prompt, which fills the field (a goal read without one starts the
+   * prompt empty, and an empty prompt keeps the one it has). Save names only what changed, against
+   * the revision the form was opened on:
    * a goal that moved since is refused and nothing is written. A save with nothing changed sends
    * nothing and goes back to the goal.
    *
@@ -31,6 +32,7 @@
   import { configurationIssuesOf, saveFailure } from './goal-form-failure.ts';
   import { GOAL_FIELD_IDS, GoalFormState, type GoalField } from './goal-form-state.svelte.ts';
   import GoalForm from './goal-form.svelte';
+  import { goalName } from '../workflows/runs/run-rows.ts';
 
   const copy = GOALS_COPY.form;
   /** How long a read is let to finish before its placeholders are drawn (Cinder's loading rule). */
@@ -76,8 +78,8 @@
   const name = $derived.by(() => {
     const found = goal.data;
     if (found === undefined) return undefined;
-    const trimmed = found.identity.name.trim();
-    return trimmed === '' ? found.goalRunId : trimmed;
+    // The one helper every page names a goal with (rows 55f, 55h).
+    return goalName(found);
   });
   // The crumb between Goals and Edit is the goal's name.
   usePageLabel(() => ({ path: goalPath(goalRunId), label: name }));

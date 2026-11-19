@@ -87,7 +87,11 @@ describe('PayloadInspector', () => {
       expect(root?.getAttribute('aria-label')).toBe('Input');
       const label = container.querySelector('.cinder-payload-inspector__label');
       expect(label?.textContent).toBe('Input');
-      expect(label?.nextElementSibling?.querySelector('[role="radiogroup"]')).not.toBeNull();
+      // The label and its count share the title block; the switch follows it.
+      const title = label?.parentElement;
+      expect(title?.classList.contains('cinder-payload-inspector__title')).toBe(true);
+      expect(title?.querySelector('.cinder-payload-inspector__size')?.textContent).toBe('1 field');
+      expect(title?.nextElementSibling?.querySelector('[role="radiogroup"]')).not.toBeNull();
       expect(
         renderInspector({ value: { key: 'value' } }).container.querySelector(
           '.cinder-payload-inspector__label',

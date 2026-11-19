@@ -13,7 +13,10 @@ import type { Page } from '@playwright/test';
 import { TASK_COPY } from '../../src/app/copy/tasks.ts';
 import { WORKFLOW_COPY } from '../../src/app/copy/workflows.ts';
 import { STATUS_WORDS } from '../../src/lib/status.ts';
-import { STARTED_BY_KINDS, STARTED_BY_LABELS } from '../../src/routes/workflows/runs/started-by.ts';
+import {
+  STARTED_BY_FILTER_LABELS,
+  STARTED_BY_KINDS,
+} from '../../src/routes/workflows/runs/started-by.ts';
 import { deleteChats, newThreadId, runToEnd } from './chat-support.ts';
 import { E2E_BUREAU_URL } from './e2e-constants.ts';
 import { expect, test } from './fixtures.ts';
@@ -120,12 +123,12 @@ test.describe('the records pages', () => {
 
     await page
       .locator('.cinder-filter-bar__options')
-      .getByText(STARTED_BY_LABELS.schedule, { exact: true })
+      .getByText(STARTED_BY_FILTER_LABELS.schedule, { exact: true })
       .click();
     await expect(page).toHaveURL(/startedBy=schedule/);
     await expect(
       page.getByRole('button', {
-        name: `Remove filter: ${TASK_COPY.startedByLabel}: ${STARTED_BY_LABELS.schedule}`,
+        name: `Remove filter: ${TASK_COPY.startedByLabel}: ${STARTED_BY_FILTER_LABELS.schedule}`,
       }),
     ).toBeVisible();
   });

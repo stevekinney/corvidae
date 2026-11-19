@@ -57,7 +57,7 @@ export type TaskCancelReceipt = z.infer<typeof taskCancelReceiptSchema>;
 export type TaskOpenWait = TaskView['openWaits'][number];
 
 /** One task as the task list and `bureau.tasks.get` show it. Message text is never part of it. */
-export type TaskView = Omit<BureauOutput<'bureau.tasks.get'>, 'origin' | 'wakeAt'> & {
+export type TaskView = Omit<BureauOutput<'bureau.tasks.get'>, 'origin' | 'wakeAt' | 'workflow'> & {
   /**
    * Where the task came from (COR-1867), when the Bureau recorded it. Only its `kind` is read, to
    * tell a run a person or a schedule started from one a parent run, a goal or an agent tool call
@@ -70,6 +70,15 @@ export type TaskView = Omit<BureauOutput<'bureau.tasks.get'>, 'origin' | 'wakeAt
    * with no wakeup pending. Absent from a Bureau that does not report it, which reads as `null`.
    */
   readonly wakeAt?: string | null | undefined;
+  /**
+   * The workflow the task ran on (COR-2423). Absent from a Bureau that does not report it, which
+   * reads as an ordinary run. `type` is `agentRun`, `goalRun`, `durableHeartbeatTick`,
+   * `scheduleTick`, or the identifier of a workflow file for one of its instances; `scheduleId` is
+   * the schedule the run belongs to; `tick` is what a schedule tick recorded; `steps` is how many
+   * steps an instance's workflow has and the one it is at, failed at or finished on (from one); and
+   * `awaitingSignal` is the signal an unfinished instance waits for.
+   */
+  readonly workflow?: BureauOutput<'bureau.tasks.get'>['workflow'] | undefined;
 };
 
 /** The service principal the Bureau records as the `actor` of a run a schedule's fire started. */
@@ -111,6 +120,14 @@ export type TaskFilter = {
    * the children of every run in its thread in one read.
    */
   readonly parentContextId?: string;
+  /** Only the tasks that ran on this workflow type (COR-2423); a task's `workflow.type` says which. */
+  readonly workflow?: string;
+  /**
+   * `false` lists only the tasks that have records (COR-2424): the schedule tick's runs and the
+   * instances of workflow files, which the engine holds, are left out so a reader of the newest
+   * tasks (the chat list, the command palette) is not given its slots to them.
+   */
+  readonly engineRuns?: boolean;
 };
 
 type Options = { readonly signal?: AbortSignal; readonly fetch?: Fetcher };
@@ -165,7 +182,9 @@ const RUNNING_STATES = ['working', 'submitted'] as const satisfies readonly Task
  * different count. Home's count and its Running now card both go through this, so they cannot
  * disagree.
  */
-export function isRunning(task: Pick<TaskView, 'status'>): boolean {
+export function isRunning(task: Pick<TaskView, 'status' | 'workflow'>): boolean {
+  // An instance parked at an `await-signal` step is waiting, not running (row 10h).
+  if (task.workflow?.awaitingSignal != null) return false;
   return RUNNING_STATES.some((state) => state === task.status);
 }
 
