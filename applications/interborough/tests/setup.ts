@@ -25,7 +25,7 @@
 import type { TestingLibraryMatchers } from '@testing-library/jest-dom/matchers';
 import * as jestDomMatchers from '@testing-library/jest-dom/matchers';
 import { plugin } from 'bun';
-import { afterAll, afterEach, beforeEach, expect } from 'bun:test';
+import { afterAll, afterEach, beforeEach, expect, jest } from 'bun:test';
 import { Window } from 'happy-dom';
 
 import { configureAsyncUtilityDeadline, sveltePlugin } from '@lostgradient/testing';
@@ -159,6 +159,12 @@ await configureAsyncUtilityDeadline();
 // test about something else that picks an answer should not wait them out, so the window is off
 // here; a test about the count itself sets the real one (`setAnswerUndoMilliseconds`).
 setAnswerUndoMilliseconds(0);
+
+// `@testing-library/dom`'s `waitFor` sees Bun's fake timers (`setTimeout.clock`) and then advances
+// them through a global `jest`, which Bun does not define: under `jest.useFakeTimers()` a wait whose
+// first check failed threw `ReferenceError: jest is not defined` instead of waiting (Health's quick
+// read, the run setup's slow line, the updates tab). Bun's own `jest` object is that global.
+(globalThis as Global)['jest'] ??= jest;
 
 // The router is a module-scope singleton over `window.location`, so a test that navigates (the
 // route tests' `landAt('/runs/run-1')`) would leave that address for every later test file in the

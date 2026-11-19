@@ -464,7 +464,7 @@
           openRowId={body.selectedKey}
           onRowOpen={(row) => body.open(row.key)}
           onReachEnd={listing.hasNextPage ? loadMore : undefined}
-          footer={loadMoreFailed ? retryFooter : undefined}
+          {...loadMoreFailed ? { footer: retryFooter } : {}}
         >
           {#snippet cell({ row, column, value })}
             {#if column.key === 'key'}

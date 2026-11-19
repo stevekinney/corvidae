@@ -67,10 +67,10 @@
   data-testid="home-first-run"
   data-chat-waits-on={chatWaitsOn}
 >
-  <header class="ib-home-first-run__header">
+  <div class="ib-home-first-run__intro">
     <h1 id={headingId} class="ib-home-first-run__title">{copy.title}</h1>
     <p class="ib-home-first-run__lead">{copy.lead}</p>
-  </header>
+  </div>
   <Steps variant="checklist" label={copy.title} steps={items} />
 </section>
 
@@ -136,7 +136,7 @@
     min-inline-size: 0;
   }
 
-  .ib-home-first-run__header {
+  .ib-home-first-run__intro {
     display: flex;
     flex-direction: column;
     align-items: center;

@@ -622,7 +622,7 @@ describe('Home on a new installation (01y, 01z, 13c, 13d, 13f, 14c, 14d)', () =>
     expect(rule).toContain('max-inline-size: var(--cinder-content-width-reading);');
     expect(rule).toContain('margin-inline: auto;');
     expect(rule).not.toMatch(/border|background|box-shadow/);
-    expect(source).toMatch(/\.ib-home-first-run__header \{[^}]*text-align: center;/);
+    expect(source).toMatch(/\.ib-home-first-run__intro \{[^}]*text-align: center;/);
     expect(source).toMatch(
       /\.ib-home-first-run__title \{[^}]*font-size: var\(--cinder-text-page-title\);/,
     );
@@ -703,9 +703,8 @@ describe('Home on a new installation (01y, 01z, 13c, 13d, 13f, 14c, 14d)', () =>
     expect(queryByText(/Connect a model provider/)).toBeNull();
     const page = container.querySelector('[data-page="home"]');
     expect(page?.getAttribute('data-mode')).toBe('checklist');
-    expect([...(page?.children ?? [])]).toEqual([
-      container.querySelector('[data-testid="home-first-run"]'),
-    ]);
+    expect(page?.children).toHaveLength(1);
+    expect(page?.firstElementChild?.getAttribute('data-testid')).toBe('home-first-run');
   });
 
   test('shows only the steps even while another problem is listed (13d)', async () => {

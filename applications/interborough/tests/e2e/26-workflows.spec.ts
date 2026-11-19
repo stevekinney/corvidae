@@ -456,7 +456,6 @@ test.describe('an agent-authored type', () => {
   for (const width of WIDTHS) {
     test(`leads with its agent, description, cadence and state, and its steps, and keeps its runs and the versions on tabs, at ${width} pixels`, async ({
       page,
-      request,
       checkA11y,
     }) => {
       await page.setViewportSize({ width, height: 900 });
@@ -557,7 +556,6 @@ test.describe('an invalid file', () => {
   for (const width of WIDTHS) {
     test(`shows its problem, its path, and delete and edit, with no definition, at ${width} pixels`, async ({
       page,
-      request,
       checkA11y,
     }) => {
       await page.setViewportSize({ width, height: 900 });
