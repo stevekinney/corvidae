@@ -57,7 +57,21 @@ const cleanResponses: Responses = {
     hasNew: false,
   },
   review: { verdict: 'approve', findings: [], evidencePath: 'tmp/chef/review.md' },
-  correct: { status: 'ready-for-review', head: 'def', report: '' },
+  classify: { classes: [], seenOnBranch: [] },
+  correct: {
+    status: 'ready-for-review',
+    head: 'def',
+    report: '',
+    regressionTest: { path: 'scripts/chef/x.test.ts', failsOn: 'abc', passesOn: 'def' },
+  },
+  'class-fix': {
+    status: 'ready-for-review',
+    head: 'def',
+    report: '',
+    regressionTest: { path: 'scripts/chef/x.test.ts', failsOn: 'abc', passesOn: 'def' },
+    entryPoints: ['entry point a', 'entry point b'],
+  },
+  pin: { priorExitCode: 1, priorHead: 'abc', newExitCode: 0, newHead: 'def' },
 };
 
 /** The head of round `count`: the worker pushes `abc`, and its one correction pushes `def`. */
@@ -296,7 +310,15 @@ describe('workflow scripts', () => {
       {},
       { checks: (count: number) => ({ exitCode: 1, line: 'lint failed', head: head(count) }) },
     );
-    expect(delivery.labels).toEqual(['brief', 'implement', 'checks', 'correct', 'checks']);
+    expect(delivery.labels).toEqual([
+      'brief',
+      'implement',
+      'checks',
+      'classify',
+      'correct',
+      'pin',
+      'checks',
+    ]);
     expect(delivery.result[0]?.status).toBe('NEEDS_JUDGMENT');
     expect(delivery.result[0]?.reason).toContain('after 2 rounds');
   });
@@ -587,6 +609,151 @@ describe('workflow scripts', () => {
     const delivery = await runDelivery({ classifications: { 'COR-7': 'no-behavior; touch nope' } });
     expect(delivery.calls).toHaveLength(0);
     expect(delivery.result[0]?.reason).toBe('invalid coordinator classification');
+  });
+
+  // One correction path: a coordinator-requested correction skips the brief and the build, and
+  // runs classify, correction, pin, checks, evidence, compare and review at the new head.
+  const regression = { path: 'scripts/chef/x.test.ts', failsOn: 'abc', passesOn: 'def' };
+  const pinned = { priorExitCode: 1, priorHead: 'abc', newExitCode: 0, newHead: 'def' };
+  const afterFix = {
+    checks: { exitCode: 0, line: 'focused checks: ok', head: 'def' },
+    dispatch: { ...(cleanResponses['dispatch'] as object), headSha: 'def' },
+    wait: { ...(cleanResponses['wait'] as object), headSha: 'def' },
+    compare: { ...(cleanResponses['compare'] as object), headSha: 'def' },
+    classify: { classes: [], seenOnBranch: [] },
+    correct: { status: 'ready-for-review', head: 'def', report: '', regressionTest: regression },
+    'class-fix': {
+      status: 'ready-for-review',
+      head: 'def',
+      report: '',
+      regressionTest: regression,
+      entryPoints: ['route a', 'route b'],
+    },
+    pin: pinned,
+  };
+  const requested = (correction: Record<string, unknown> = {}) => ({
+    issues: [],
+    correction: {
+      issue: 'COR-7',
+      head: 'abc',
+      branch: 'chef/cor-7',
+      worktree: '/worktree',
+      finding: 'the route accepts a negative timeout',
+      ...correction,
+    },
+  });
+
+  test('a coordinator-requested correction runs through the workflow, with no hand-written fix', async () => {
+    const delivery = await runDelivery(requested(), afterFix);
+    expect(delivery.labels).toEqual([
+      'classify',
+      'correct',
+      'pin',
+      'checks',
+      'dispatch',
+      'wait',
+      'compare',
+      'review',
+    ]);
+    const fix = delivery.calls.find((call) => call.label.startsWith('correct'));
+    expect(fix?.options.agentType).toBe('chef-worker');
+    expect(fix?.prompt).toContain('the route accepts a negative timeout');
+    expect(delivery.result[0]).toMatchObject({ status: 'READY_TO_LAND', head: 'def' });
+    expect(delivery.result[0]?.evidenceRequest).toMatchObject({ revision: 'def' });
+  });
+
+  test('a second finding of one class produces a CLASS_FIX step', async () => {
+    const delivery = await runDelivery(requested({ class: 'boundary-validation' }), {
+      ...afterFix,
+      classify: { classes: ['boundary-validation'], seenOnBranch: ['boundary-validation'] },
+    });
+    expect(delivery.labels.slice(0, 3)).toEqual(['classify', 'class-fix', 'pin']);
+    expect(delivery.labels).not.toContain('correct');
+    const prompt = delivery.calls.find((call) => call.label.startsWith('class-fix'))?.prompt;
+    expect(prompt).toContain('every entry point');
+    expect(delivery.result[0]?.steps['correction1']).toMatchObject({
+      kind: 'CLASS_FIX',
+      repeated: ['boundary-validation'],
+    });
+    expect(delivery.result[0]?.status).toBe('READY_TO_LAND');
+  });
+
+  test('a class the coordinator names as already seen produces a CLASS_FIX step', async () => {
+    const delivery = await runDelivery(requested({ seenClasses: ['state-machine'] }), {
+      ...afterFix,
+      classify: { classes: ['state-machine'], seenOnBranch: [] },
+    });
+    expect(delivery.labels[1]).toBe('class-fix');
+  });
+
+  test('a first finding of a class gets a point fix, and the branch path classifies too', async () => {
+    const delivery = await runWithCorrection(
+      {},
+      { classify: { classes: ['boundary-validation'], seenOnBranch: [] }, pin: pinned },
+    );
+    expect(delivery.labels).toContain('classify');
+    expect(delivery.labels).toContain('correct');
+    expect(delivery.labels).not.toContain('class-fix');
+    expect(delivery.labels.indexOf('pin')).toBeGreaterThan(delivery.labels.indexOf('correct'));
+  });
+
+  test('a class fix without every entry point listed is refused', async () => {
+    const delivery = await runDelivery(requested(), {
+      ...afterFix,
+      classify: { classes: ['boundary-validation'], seenOnBranch: ['boundary-validation'] },
+      'class-fix': { ...afterFix['class-fix'], entryPoints: [] },
+    });
+    expect(delivery.labels).toEqual(['classify', 'class-fix']);
+    expect(delivery.result[0]?.status).toBe('NEEDS_JUDGMENT');
+    expect(delivery.result[0]?.reason).toContain('entry point');
+  });
+
+  for (const [name, stubs] of [
+    ['reports none', { correct: { ...afterFix.correct, regressionTest: undefined } }],
+    [
+      'names a different pre-fix head',
+      { correct: { ...afterFix.correct, regressionTest: { ...regression, failsOn: 'zzz' } } },
+    ],
+    [
+      'is not a test file',
+      { correct: { ...afterFix.correct, regressionTest: { ...regression, path: 'a.ts' } } },
+    ],
+    ['passes on the pre-fix head', { pin: { ...pinned, priorExitCode: 0 } }],
+    ['fails on the new head', { pin: { ...pinned, newExitCode: 1 } }],
+    ['ran at another commit', { pin: { ...pinned, newHead: 'zzz' } }],
+  ] as [string, Responses][]) {
+    test(`a correction whose failing-first test ${name} is refused`, async () => {
+      const delivery = await runDelivery(requested(), { ...afterFix, ...stubs });
+      expect(delivery.labels).not.toContain('checks');
+      expect(delivery.labels).not.toContain('dispatch');
+      expect(delivery.result[0]?.status).toBe('NEEDS_JUDGMENT');
+      expect(delivery.result[0]?.reason).toContain('regression test');
+      expect(delivery.result[0]?.evidenceRequest).toBeNull();
+    });
+  }
+
+  test('the branch path refuses its own correction when the test passes before the fix', async () => {
+    const delivery = await runWithCorrection({}, { pin: { ...pinned, priorExitCode: 0 } });
+    expect(delivery.labels.filter((label) => label === 'checks')).toHaveLength(1);
+    expect(delivery.result[0]?.status).toBe('NEEDS_JUDGMENT');
+    expect(delivery.result[0]?.reason).toContain('regression test');
+  });
+
+  test('a correction request with missing fields is refused before any agent runs', async () => {
+    const delivery = await runDelivery(requested({ worktree: '' }), afterFix);
+    expect(delivery.calls).toHaveLength(0);
+    expect(delivery.result[0]?.status).toBe('NEEDS_JUDGMENT');
+  });
+
+  test('the script names exactly the defect classes review-threads tags', () => {
+    const source = readFileSync(join(workflowsDirectory, 'deliver-issue.js'), 'utf8');
+    const names = (
+      JSON.parse(readFileSync(join(root, 'scripts', 'chef', 'defect-classes.json'), 'utf8')) as {
+        classes: { name: string }[];
+      }
+    ).classes.map((entry) => entry.name);
+    const listed = /const CLASS_NAMES = \[([^\]]*)\]/.exec(source)?.[1] ?? '';
+    expect([...listed.matchAll(/'([^']+)'/g)].map((match) => match[1])).toEqual(names);
   });
 });
 

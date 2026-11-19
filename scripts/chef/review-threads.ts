@@ -15,6 +15,10 @@
 //                                      [--classes <json>] [--json]
 //   bun scripts/chef/review-threads.ts classes <owner/repo> <pr> [--config <json>] [--classes <json>]
 //                                      [--json]
+//   bun scripts/chef/review-threads.ts tag --text <finding> [--classes <json>]
+//
+// `tag` prints `{"classes":[...]}`: the defect classes a finding's text carries, by the same
+// patterns `classes` uses, so a workflow classifies a reviewer finding the way a thread is.
 //
 // Every subcommand names its pull request either positionally (`<owner/repo> <pr>`) or with `--pr
 // <n>`. With `--pr`, the repository is the one positional, else `--repository`, else the
@@ -618,7 +622,14 @@ export function run(
 ): { code: number; output: string } {
   const runner = dependencies.runner ?? defaultRunner;
   const command = argv[0];
-  if (command === undefined) throw new UsageError('Name a command: list, resolve or classes.');
+  if (command === undefined) throw new UsageError('Name a command: list, resolve, classes or tag.');
+  if (command === 'tag') {
+    const parsed = parseOptions(argv.slice(1), { values: ['text', 'classes'], flags: [] });
+    const text = parsed.values['text'];
+    if (text === undefined || text === '') throw new UsageError('--text is required.');
+    const classes = dependencies.classes ?? loadDefectClasses(parsed.values['classes']);
+    return { code: 0, output: JSON.stringify({ classes: tagText(text, classes) }) };
+  }
   if (command === 'classes') return runClasses(argv.slice(1), runner, dependencies.classes);
   if (command !== 'list' && command !== 'resolve')
     throw new UsageError(`Unknown command ${command}.`);
