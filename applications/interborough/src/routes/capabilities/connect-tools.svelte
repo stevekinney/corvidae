@@ -37,9 +37,10 @@
    * never put in a message: the host words a refusal in terms of the field, and a probe answers in
    * words that hold no address, command or value.
    *
-   * Signing in with OAuth before the source is saved needs a host operation that does not exist yet
-   * (the host signs in to a saved source only), so an OAuth source is connected first and opened on
-   * its page in Capabilities › Sources to sign in, as the line under the choice says.
+   * An OAuth source is signed in to before it is saved (COR-2436, `connect-sign-in.svelte`): the
+   * host keeps the sign-in and hands this page a reference, which Test connection and Connect name,
+   * so no token reaches the page. One connected without signing in is opened on its page in
+   * Capabilities › Sources to sign in there.
    */
   import {
     Alert,
@@ -51,6 +52,7 @@
     FormSection,
     InlineLoading,
     Input,
+    Link,
     PageHeader,
     RadioGroup,
     Segment,
@@ -61,12 +63,14 @@
   import { createMutation, createQuery, useQueryClient } from '@tanstack/svelte-query';
   import { untrack } from 'svelte';
 
+  import { usePageLabel } from '../../app/breadcrumbs.svelte.ts';
   import { getConnection } from '../../app/connection.svelte.ts';
   import { AGENT_PAGE_COPY } from '../../app/copy/agents.ts';
   import { CAPABILITIES_COPY } from '../../app/copy/capabilities.ts';
   import { agentTabPath } from '../../lib/agent-paths.ts';
   import {
     connectToolSource,
+    getToolSourceEditing,
     getToolSources,
     HostToolSourceError,
     inspectOpenApi,
@@ -79,8 +83,12 @@
   import { queryKeys } from '../../lib/query.ts';
   import { LeaveGuard, router } from '../../lib/router.svelte.ts';
   import {
+    API_KEY_CREDENTIAL,
     authenticationChoices,
+    BEARER_CREDENTIAL,
     buildToolSourceRequest,
+    descriptionOfInstructions,
+    editingForm,
     chosenToolCount,
     connectedTools,
     effectiveAuthentication,
@@ -99,6 +107,8 @@
     type ChooseToolsMode,
   } from './connect-choose-tools.svelte';
   import ConnectGiveToAgent from './connect-give-to-agent.svelte';
+  import ConnectSignIn from './connect-sign-in.svelte';
+  import type { SignInNotice } from './connect-sign-in-notice.ts';
   import {
     ConnectFlow,
     connectFooterLine,
@@ -122,7 +132,30 @@
     }),
     undefined,
   );
-  const existing = $derived((sources.data?.sources ?? []).map((source) => source.id));
+  /**
+   * Edit connection (row 32m, COR-2436): `?source=<id>` opens the page on a saved source, filled
+   * in from what the host holds (`GET /host/tool-sources/<id>/editing`) with the token or key left
+   * blank, which keeps the stored one. Saving replaces the same source id, keeps its per-tool
+   * settings (no `tools` is sent), and is fenced on the revision the page read, so a change
+   * another tab saved meanwhile is refused instead of overwritten.
+   */
+  const editId = untrack(() => {
+    const named = router.search.get('source');
+    return named === null || named === '' ? undefined : named;
+  });
+  const editing = createQuery(
+    () => ({
+      queryKey: queryKeys.toolSources.editing(editId ?? ''),
+      queryFn: ({ signal }) => getToolSourceEditing(editId ?? '', { signal }),
+      enabled: editId !== undefined,
+      retry: false,
+      gcTime: 0,
+    }),
+    undefined,
+  );
+  const existing = $derived(
+    (sources.data?.sources ?? []).map((source) => source.id).filter((id) => id !== editId),
+  );
   const locked = $derived(sources.data?.lockReason !== undefined);
 
   // The radio groups and the segmented control hold plain strings; `form` narrows them.
@@ -147,6 +180,24 @@
   let submitted = $state(false);
   /** A field the host refused, with its words. Cleared by the next change to the form. */
   let hostError = $state<{ readonly field: ToolSourceFormField; readonly message: string }>();
+  /** The Sign in section, whose Try again the refusal under the choice calls. */
+  let signInSection = $state<ConnectSignIn>();
+  /** What the sign-in says under the Sign in choice (rows 34k, 34l, 34y). */
+  let signInNotice = $state<SignInNotice>();
+  /** Whether the host refused a save because the source changed after it was read (an edit). */
+  let stale = $state(false);
+  // The breadcrumb names the page as the person came to it: "Edit connection" for a saved source.
+  usePageLabel(() => ({
+    path: '/capabilities/connect',
+    label: editId === undefined ? undefined : copy.edit.title,
+  }));
+  /** Reads the saved source again and fills the form from it, dropping the edit that was refused. */
+  async function reloadSaved(): Promise<void> {
+    const reread = await editing.refetch();
+    if (reread.isError) return;
+    stale = false;
+    filledFromSaved = false;
+  }
   /** Whether the "Give to an agent" picker is open (row 35c). */
   let giving = $state(false);
 
@@ -166,6 +217,27 @@
   let prefilledName = '';
   let prefilledBaseUrl = '';
 
+  /**
+   * The sentence the server's instructions give, which the source is saved with (row 31o): their
+   * first line, cut to what a saved description may hold. Empty until a test has listed it.
+   */
+  let serverDescription = $state('');
+  /** The name a test filled Name in with from what the server said of itself, or empty. */
+  let serverName = $state('');
+  /** The host's reference to an OAuth sign-in made before the source is saved (COR-2436). */
+  let signIn = $state<string | undefined>();
+
+  /** The name an address's host reads as, before the source is named: `mcp.github.example` is `github`. */
+  function serverLabelOf(address: string): string {
+    try {
+      const labels = new URL(address.trim()).hostname.split('.');
+      const named = labels.find((label) => !['mcp', 'api', 'www'].includes(label));
+      return named ?? labels[0] ?? '';
+    } catch {
+      return '';
+    }
+  }
+
   function authenticationOf(value: string): ToolSourceForm['authentication'] {
     return value === 'bearer' || value === 'oauth' || value === 'api-key' ? value : 'none';
   }
@@ -173,8 +245,20 @@
   const form: ToolSourceForm = $derived({
     ...EMPTY_TOOL_SOURCE_FORM,
     kind: kind === 'openapi' ? 'openapi' : 'mcp',
-    id: toolSourceIdentifier(name),
+    // An edit replaces the source it opened on, whatever it is now called. An MCP server tested
+    // before it is named is tested under its address's name, and the server's own name then fills
+    // in Name (row 33f); Connect still asks for a name.
+    id:
+      editId ??
+      // While Name is empty, or still holds what the server said of itself, the source keeps the
+      // name its address gave it: a test that fills Name in never moves the id a sign-in is for.
+      ((name.trim() === '' || (serverName !== '' && name === serverName)) &&
+      kind !== 'openapi' &&
+      transport !== 'stdio'
+        ? toolSourceIdentifier(serverLabelOf(url))
+        : toolSourceIdentifier(name)),
     name,
+    description: serverDescription,
     transport: transport === 'stdio' ? 'stdio' : 'http',
     url,
     command,
@@ -186,12 +270,59 @@
     secret,
     header,
   });
-  /** The form before anything is filled in: a form that still reads so leaves without asking (row 35b). */
-  const pristine = untrack(() => JSON.stringify(form));
+  /**
+   * The form before anything is filled in, or as an edit filled it: a form that still reads so
+   * leaves without asking (row 35b).
+   */
+  let pristine = $state(untrack(() => JSON.stringify(form)));
+  /** Whether the saved source has filled the form in, which happens once. */
+  let filledFromSaved = $state(false);
+  $effect(() => {
+    const saved = editing.data;
+    if (saved === undefined || filledFromSaved) return;
+    untrack(() => {
+      const filled = editingForm(saved);
+      kind = filled.kind;
+      name = filled.name;
+      transport = filled.transport;
+      url = filled.url;
+      specification = filled.specification;
+      specificationUrl = filled.specificationUrl;
+      documentText = filled.document;
+      baseUrl = filled.baseUrl;
+      header = filled.header;
+      if (filled.kind === 'openapi') openApiAuthentication = filled.authentication;
+      else authentication = filled.authentication;
+      secret = '';
+      filledFromSaved = true;
+      pristine = JSON.stringify(form);
+      // A spec the host holds is read again, so Choose tools and the summary show it.
+      if (filled.kind === 'openapi') {
+        void readSpec(
+          filled.specification === 'url'
+            ? { url: filled.specificationUrl }
+            : { text: filled.document, fileName: '' },
+        );
+      }
+    });
+  });
   const choices = $derived(authenticationChoices(form));
   const activeAuthentication = $derived(effectiveAuthentication(form));
-  const built = $derived(buildToolSourceRequest(form));
-  const signature = $derived('request' in built ? JSON.stringify(built.request) : '');
+  /** Whether the token or key may be left blank: an edit, and the host holds one for this sign-in. */
+  const keepsStoredSecret = $derived(
+    (editing.data?.credentials ?? []).includes(
+      activeAuthentication === 'api-key' ? API_KEY_CREDENTIAL : BEARER_CREDENTIAL,
+    ),
+  );
+  const built = $derived(buildToolSourceRequest(form, editing.data?.credentials ?? []));
+  // What a test is good for: where the source is and how it signs in. Its labels are left out, so
+  // the name and sentence a test fills in do not make that test stale (row 33f).
+  const signature = $derived.by(() => {
+    if (!('request' in built)) return '';
+    const { name: _name, description: _description, ...contacted } = built.request;
+    // A sign-in made since the last test is a new test: it may list what the server hid before.
+    return JSON.stringify({ ...contacted, signIn: signIn ?? null });
+  });
   const taken = $derived(form.id !== '' && existing.includes(form.id));
   const fileTooLarge = $derived(fileError !== '');
   const shownName = $derived(form.name.trim() === '' ? form.id : form.name.trim());
@@ -201,7 +332,9 @@
     if (form.kind !== 'mcp' || form.transport !== 'http') return undefined;
     const address = sourceAddressOf(url);
     if (address === undefined) return undefined;
-    return (sources.data?.sources ?? []).find((source) => source.address === address);
+    return (sources.data?.sources ?? []).find(
+      (source) => source.address === address && source.id !== editId,
+    );
   });
 
   const flow = new ConnectFlow(describe);
@@ -257,6 +390,22 @@
     }),
   );
 
+  // What the server said of itself fills in Name, unless a person typed one, and the sentence the
+  // source is saved with (rows 33f, 31o). The server's words are text; a person may change Name.
+  $effect(() => {
+    const server = listedProbe?.server;
+    if (server === undefined || editId !== undefined) return;
+    untrack(() => {
+      if (server.name !== null && (name.trim() === '' || name === prefilledName)) {
+        // Named after the test only when no name made the id: the id a sign-in is for stays.
+        if (name.trim() === '') serverName = server.name;
+        name = server.name;
+        prefilledName = server.name;
+      }
+      serverDescription = descriptionOfInstructions(server.instructions);
+    });
+  });
+
   // A spec's operations are its tools: seed their starting choices once it is read (row 33w).
   $effect(() => {
     const rows = form.kind === 'openapi' && validSpec !== undefined ? chooseRows : undefined;
@@ -290,9 +439,11 @@
   );
   $effect(() => leaveGuard.attach());
 
-  // A source that asks for a sign-in is signed in to from its own page, so it opens there.
+  // A source that asks for a sign-in is signed in to from its own page, so it opens there, and so
+  // does a source an edit saved: its tools are its own, kept as they were.
   $effect(() => {
-    if (phase.kind !== 'connected' || phase.probe.outcome !== 'needs-authorization') return;
+    if (phase.kind !== 'connected') return;
+    if (phase.probe.outcome !== 'needs-authorization' && editId === undefined) return;
     const id = phase.change.id;
     untrack(() => {
       leaveGuard.release();
@@ -335,6 +486,10 @@
       void queryClient.invalidateQueries({ queryKey: queryKeys.toolSources.list() });
       return '';
     }
+    if (error instanceof HostToolSourceError && error.kind === 'stale') {
+      stale = true;
+      return '';
+    }
     const treatment = toolSourceFaultTreatment(error);
     const field =
       error instanceof HostToolSourceError && error.kind === 'invalid' && error.field !== undefined
@@ -358,16 +513,30 @@
     readonly signal: AbortSignal;
   };
 
+  // `onError` on both: the page places every refusal itself (`describe` of the flow puts it under a
+  // field, in the stale notice, in the test result or in the connect failure), so the query
+  // client's default toast would be a second, generic notice for the same refusal.
   const test = createMutation(() => ({
     gcTime: 0,
+    onError: () => undefined,
     mutationFn: ({ name: id, request, signal }: Ready) => probeToolSource(id, request, { signal }),
   }));
 
   const connect = createMutation(() => ({
     gcTime: 0,
+    onError: () => undefined,
     // `create`: the host refuses a name another tab saved since this page listed the sources.
     mutationFn: ({ name: id, request, signal }: Ready) =>
-      connectToolSource(id, { ...request, create: true }, { signal }),
+      editing.data === undefined
+        ? connectToolSource(id, { ...request, create: true }, { signal })
+        : // An edit replaces the source it read, fenced on the revision it read it at.
+          connectToolSource(id, request, {
+            signal,
+            mutation: {
+              operationId: crypto.randomUUID(),
+              expectedRevision: editing.data.configurationRevision,
+            },
+          }),
     onSuccess: async () => {
       // Its tools join the catalog an agent's Access tab lists (row 35d).
       await Promise.all([
@@ -382,7 +551,11 @@
     submitted = true;
     if (!('request' in built) || taken || locked) return undefined;
     const id = built.id;
-    const request = built.request;
+    // An OAuth source signed in to before it is saved is tested and saved with that sign-in.
+    const request =
+      signIn !== undefined && activeAuthentication === 'oauth'
+        ? { ...built.request, signIn }
+        : built.request;
     return {
       signature,
       kind: form.kind,
@@ -393,7 +566,11 @@
         const tools = toolSettingsOf(picked, tiers);
         return connect.mutateAsync({
           name: id,
-          request: Object.keys(tools).length === 0 ? request : { ...request, tools },
+          // An edit keeps the per-tool settings the source holds, so it sends none.
+          request:
+            editId !== undefined || Object.keys(tools).length === 0
+              ? request
+              : { ...request, tools },
           signal,
         });
       },
@@ -421,6 +598,12 @@
     if (connection.unreachable) return;
     if (duplicate !== undefined) {
       showDuplicate();
+      return;
+    }
+    // A source is saved under a name: a test may run before one is typed, and fills it in.
+    if (name.trim() === '' && editId === undefined) {
+      submitted = true;
+      hostError = { field: 'id', message: copy.errors.idRequired };
       return;
     }
     const request = requestToSend();
@@ -570,9 +753,25 @@
 </script>
 
 <section class="ib-connect" data-page="connect-tools" data-phase={phase.kind}>
-  <PageHeader title={copy.title} description={copy.intro} headingLevel={1} />
+  <PageHeader
+    title={editId === undefined ? copy.title : copy.edit.title}
+    description={editId === undefined ? copy.intro : copy.edit.intro}
+    headingLevel={1}
+  />
 
-  {#if phase.kind === 'connected' && phase.probe.outcome !== 'needs-authorization'}
+  {#if editId !== undefined && editing.isError}
+    <!-- The host refused the edit before anything was filled in: why, and the way back. -->
+    <Callout variant="warning" semantic="note" data-testid="connect-edit-refused">
+      {toolSourceFaultTreatment(editing.error).message}
+      {#snippet action()}
+        <Button variant="secondary" size="sm" onclick={() => router.navigate(SOURCES_PATH)}
+          >{copy.edit.back}</Button
+        >
+      {/snippet}
+    </Callout>
+  {:else if editId !== undefined && !filledFromSaved}
+    <InlineLoading status="active" description={copy.edit.loading} />
+  {:else if phase.kind === 'connected' && phase.probe.outcome !== 'needs-authorization' && editId === undefined}
     <div class="ib-connect__success" data-testid="connect-success">
       <EmptyState
         kind="done"
@@ -824,23 +1023,49 @@
               {/each}
             </RadioGroup>
           {:else}
-            <RadioGroup
-              name="connect-authentication"
+            <!-- A segmented control, with OAuth's note beside its label (rows 33g, 34q). -->
+            <SegmentedControl
+              id="connect-authentication"
               label={copy.authentication.label}
-              bind:value={authentication}
+              selectionMode="single"
+              value={authentication}
               disabled={connecting}
+              description={signInNotice?.description}
+              note={signInNotice?.note}
+              error={signInNotice?.error}
+              onValueChange={(next: string) => (authentication = next)}
             >
               {#each choices as choice (choice)}
-                <RadioGroup.Option
-                  id={`connect-authentication-${choice}`}
-                  value={choice}
-                  label={copy.authentication[choice]}
-                  {...choice === 'oauth' ? { description: copy.authentication.oauthNote } : {}}
-                />
+                <Segment value={choice}>
+                  {copy.authentication[choice]}
+                  {#if choice === 'oauth'}
+                    <span class="ib-connect__segment-note">{copy.authentication.oauthNote}</span>
+                  {/if}
+                </Segment>
               {/each}
-            </RadioGroup>
+              {#snippet errorAction()}
+                <Link
+                  href="#try-again"
+                  onclick={(event) => (event.preventDefault(), signInSection?.retry())}
+                  data-testid="connect-sign-in-try-again"
+                  >{copy.authentication.signIn.tryAgain}</Link
+                >
+              {/snippet}
+            </SegmentedControl>
           {/if}
-          {#if activeAuthentication === 'oauth'}
+          {#if activeAuthentication === 'oauth' && editId === undefined}
+            <!-- Signed in before it is saved (COR-2436): the page holds the host's reference only. -->
+            <ConnectSignIn
+              bind:this={signInSection}
+              bind:notice={signInNotice}
+              provider={name}
+              target={'request' in built
+                ? { id: built.id, source: built.request.source }
+                : undefined}
+              disabled={connecting || locked}
+              bind:signIn
+            />
+          {:else if activeAuthentication === 'oauth'}
             <p class="ib-connect__help" data-testid="connect-oauth-help">
               {copy.authentication.oauthHelp}
             </p>
@@ -864,11 +1089,13 @@
               id="connect-secret"
               type="password"
               label={copy.secret[activeAuthentication].label}
-              description={copy.secret.description}
+              description={keepsStoredSecret
+                ? `${copy.secret.description} ${copy.edit.secretKept}`
+                : copy.secret.description}
               autocomplete="off"
               spellcheck={false}
               variant="code"
-              required
+              required={!keepsStoredSecret}
               bind:value={secret}
               error={errorOf('secret')}
               disabled={connecting}
@@ -946,6 +1173,17 @@
         />
       </FormSection>
 
+      {#if stale}
+        <Callout variant="warning" semantic="note" data-testid="connect-edit-stale">
+          {copy.edit.stale}
+          {#snippet action()}
+            <Button variant="secondary" size="sm" onclick={() => void reloadSaved()}
+              >{copy.edit.reload}</Button
+            >
+          {/snippet}
+        </Callout>
+      {/if}
+
       {#if phase.kind === 'failed-connect'}
         <div class="ib-connect__connect-failed" role="alert" data-testid="connect-failed">
           <CircleAlert size={16} aria-hidden="true" class="ib-connect__glyph" />
@@ -993,9 +1231,11 @@
             onclick={runConnect}
             >{connecting
               ? copy.actions.connecting
-              : listed && chosen > 0
-                ? copy.actions.connectCount(chosen)
-                : copy.actions.connect}</Button
+              : editId !== undefined
+                ? copy.edit.save
+                : listed && chosen > 0
+                  ? copy.actions.connectCount(chosen)
+                  : copy.actions.connect}</Button
           >
         {/snippet}
       </FormActions>
@@ -1030,6 +1270,12 @@
   }
 
   .ib-connect__help {
+    color: var(--cinder-text-muted);
+    font-size: var(--cinder-text-sm);
+  }
+
+  .ib-connect__segment-note {
+    margin-inline-start: var(--cinder-space-1);
     color: var(--cinder-text-muted);
     font-size: var(--cinder-text-sm);
   }

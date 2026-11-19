@@ -1,30 +1,20 @@
 #!/usr/bin/env bun
-// Chef gate run: runs, reads and controls a repository's quality gate, so a coordinator launches
-// the gate once in the background and reads a few compact lines back instead of paging through
-// its log.
+// Chef gate run: reads and controls a repository's quality gate log, so a coordinator reads a few
+// compact lines back instead of paging through it.
 //
 // Usage:
-//   bun scripts/chef/gate-run.ts run [--config <json>] --worktree <dir> --log <file> [--command <shell>]
 //   bun scripts/chef/gate-run.ts read <log> [--json]
 //   bun scripts/chef/gate-run.ts triage <log> --base <sha> [--repository <dir>] [--json]
 //   bun scripts/chef/gate-run.ts control --candidate <dir> --base <dir> --command <shell>
 //                                   --iterations <n> --log <tsv> [--json]
 //
-// `run` waits while any process matches the configuration's `lockPattern` (checked every 15
-// seconds, each wait written to the log), unless the command is the `affectedCheckCommand`, which
-// runs shared beside the lock, records `HEAD <sha> LOAD <load>` as the log's first line
-// and `TREE_START clean=<true|false|unknown> head=<sha>` before the gate, runs the wrapped gate
-// command in the worktree with all output going to the log, appends `TREE_END clean=... head=...`
-// and `GATE_RC=<n>`, and exits with the gate's code. `clean` is whether `git status --porcelain`
-// printed nothing, so ignored files (logs under `tmp/`, `test-output/`) are not dirt.
-//
 // `read` summarizes a log: its head, the tree state at the start and end, the exit code, failed
 // tasks, the first failing tests and the over-budget count. It also reads older logs that end in
-// `VALIDATE_RC=<n>` or `validate exit=<n>`. A log fails closed: it has no exit code unless the
-// recognized exit-code line is the last non-empty line, and it has no head or exit code at all when
-// it holds more than one `HEAD` line (two runs appended to one file), so a failing head is never
-// paired with another run's passing code. A log with no exit code is reported as such and never
-// inferred to have passed.
+// `GATE_RC=<n>`, `VALIDATE_RC=<n>` or `validate exit=<n>`. A log fails closed: it has no exit code
+// unless the recognized exit-code line is the last non-empty line, and it has no head or exit code
+// at all when it holds more than one `HEAD` line (two runs appended to one file), so a failing head
+// is never paired with another run's passing code. A log with no exit code is reported as such and
+// never inferred to have passed.
 //
 // `triage` takes the failed turbo tasks (`<package>#<task>`) that `read` finds in a log and says
 // which pull requests could have broken each. It resolves the package's workspace directory from
@@ -33,14 +23,6 @@
 // suffix on each subject. It prints `<task>: PR #a, #b` or `<task>: no change since base
 // (pre-existing or flaky)`; a task whose package is not a workspace is reported and not mapped,
 // and a commit with no `(#123)` suffix is named by its short hash.
-//
-// The gate runs as an asynchronous child in its own process group, so a signal to `run` (or to
-// `deliver.ts`, which calls it) is handled instead of orphaning the gate's
-// turbo and test workers. On SIGTERM, SIGINT or SIGHUP it collects the descendant tree by parent pid
-// (`run-exclusively.ts` starts turbo in a session of its own, outside the group), sends SIGTERM to the
-// group, then SIGKILL to the group and every collected process after a short grace (or at once on a
-// second signal), waits until every collected process is gone, writes `GATE_INTERRUPTED <signal>`,
-// and records `GATE_RC=128+signal`, never 0.
 //
 // `control` runs a command alternately in a candidate and a base tree and compares how often each
 // fails, which tells a shared or pre-existing failure from one the candidate introduced.
@@ -51,40 +33,25 @@
 // quiet (`bun scripts/bun-test-pool.ts status` shows its memory). A pass there is decisive; a
 // second full run or `control` repeats the starvation and proves nothing (COR-2404).
 //
-// Exit codes: `run` the gate's own code, or 128 plus the signal number when it was interrupted; `read` 0 only when the log holds exit code 0; `triage` 1
-// when any failed task maps to a commit since the base (so to a pull request), else 0; `control`
-// 0 when the base fails at least as often as the candidate, else 1; 2 invalid CLI usage.
+// Exit codes: `read` 0 only when the log holds exit code 0; `triage` 1 when any failed task maps
+// to a commit since the base (so to a pull request), else 0; `control` 0 when the base fails at
+// least as often as the candidate, else 1; 2 invalid CLI usage.
 
-import {
-  appendFileSync,
-  closeSync,
-  existsSync,
-  mkdirSync,
-  openSync,
-  readdirSync,
-  readFileSync,
-  readSync,
-  statSync,
-  writeFileSync,
-} from 'node:fs';
-import { loadavg, constants as signalConstants } from 'node:os';
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { loadavg } from 'node:os';
 import { dirname, join } from 'node:path';
 import { workspaceParentDirectories } from '../workspace-directories.ts';
-import { findLockProcesses } from './leftovers.ts';
 import {
   defaultRunner,
   emitResult,
   parseOptions,
   requireOption,
   type Runner,
-  shellQuote,
   UsageError,
 } from './process-runner.ts';
-import { DEFAULT_CONFIGURATION_PATH, loadRepositoryConfig } from './repository-config.ts';
 
 export { UsageError };
 
-export const lockPollMilliseconds = 15_000;
 const failedTestLimit = 10;
 
 /** `clean` is `undefined` when the status could not be read: unknown is never clean. */
@@ -244,356 +211,17 @@ export function renderGateSummary(summary: GateLogSummary): string {
   return lines.join('\n');
 }
 
-/** The signals that stop a gate: the group is killed and the run records an interrupted exit. */
-export const gateSignals = ['SIGTERM', 'SIGINT', 'SIGHUP'] as const;
-export type GateSignal = (typeof gateSignals)[number];
-
-/** How long the gate's group has to exit after SIGTERM before it is sent SIGKILL. */
-export const gateGraceMilliseconds = 10_000;
-
-/** A started gate: its process id (the process group's id) and its eventual exit code. */
-export interface GateChild {
-  /** `undefined` when the process could not start; there is then no group to signal. */
-  pid: number | undefined;
-  /** The exit code, which is `128 + signal` for a child a signal killed. */
-  exited: Promise<number>;
-}
-
-/** Where signals come from: `process` in production, a fake in tests. */
-export interface SignalSource {
-  on: (signal: GateSignal, handler: () => void) => unknown;
-  off: (signal: GateSignal, handler: () => void) => unknown;
-}
-
+/** What `control` reads from the host: the command runner and the one-minute load average. */
 export interface GateDependencies {
   runner: Runner;
-  /** Wait for `milliseconds` between lock checks. */
-  sleep: (milliseconds: number) => void | Promise<void>;
   /** The one-minute load average. */
   load: () => number;
-  now: () => Date;
-  pollMilliseconds: number;
-  /** Starts the gate's shell script in `cwd` as the leader of its own process group. */
-  spawnGate: (script: string, cwd: string) => GateChild;
-  /** Sends `signal` to the whole process group led by `pid`. */
-  killGroup: (pid: number, signal: 'SIGTERM' | 'SIGKILL') => void;
-  signals: SignalSource;
-  /**
-   * Every live descendant of `roots` (and the roots themselves), found by parent pid, so a process
-   * that started its own session or group, as `run-exclusively.ts` does for turbo, is included.
-   */
-  descendantsOf: (roots: number[]) => number[];
-  /** Sends `signal` to one process. */
-  signalProcess: (pid: number, signal: 'SIGTERM' | 'SIGKILL') => void;
-  /** Whether a process still exists. */
-  isAlive: (pid: number) => boolean;
-  /** Waits `milliseconds` while the interrupted tree drains. */
-  pause: (milliseconds: number) => Promise<void>;
-  /** Runs `callback` after `milliseconds` and returns a function that cancels it. */
-  schedule: (callback: () => void, milliseconds: number) => () => void;
-  graceMilliseconds: number;
 }
-
-/** `ps -A -o pid=,ppid=`'s table, walked down from `roots`; the roots are included. */
-export const processTreeOf: GateDependencies['descendantsOf'] = (roots) => {
-  const result = Bun.spawnSync(['ps', '-A', '-o', 'pid=,ppid='], {
-    stdout: 'pipe',
-    stderr: 'ignore',
-  });
-  const children = new Map<number, number[]>();
-  for (const line of result.stdout.toString().split('\n')) {
-    const [pid, parent] = line.trim().split(/\s+/).map(Number);
-    if (pid === undefined || parent === undefined || !Number.isInteger(pid)) continue;
-    children.set(parent, [...(children.get(parent) ?? []), pid]);
-  }
-  const seen = new Set<number>(roots);
-  const queue = [...roots];
-  for (let next = queue.shift(); next !== undefined; next = queue.shift()) {
-    for (const child of children.get(next) ?? []) {
-      if (seen.has(child)) continue;
-      seen.add(child);
-      queue.push(child);
-    }
-  }
-  return [...seen];
-};
-
-/** Send a signal to one process; one that has already gone is not an error. */
-export const signalOneProcess: GateDependencies['signalProcess'] = (pid, signal) => {
-  try {
-    process.kill(pid, signal);
-  } catch {
-    // ESRCH: already gone.
-  }
-};
-
-/** `ps -o stat=` for one process: its state letters, or `''` when no such process exists. */
-export function readProcessState(pid: number): string {
-  const result = Bun.spawnSync(['ps', '-o', 'stat=', '-p', String(pid)], {
-    stdout: 'pipe',
-    stderr: 'ignore',
-  });
-  return result.stdout.toString().trim();
-}
-
-/**
- * Whether `pid` is a running process. A zombie (state `Z`) has exited and only waits to be reaped,
- * so it counts as gone; so does a pid `ps` does not list. `readState` is injectable for tests.
- */
-export function isProcessLive(
-  pid: number,
-  readState: (pid: number) => string = readProcessState,
-): boolean {
-  const state = readState(pid);
-  return state !== '' && !state.startsWith('Z');
-}
-
-/** Whether `pid` is a live, non-zombie process. */
-export const processExists: GateDependencies['isAlive'] = (pid) => isProcessLive(pid);
-
-function signalExitCode(signal: string | number | null | undefined): number {
-  if (typeof signal === 'number') return 128 + signal;
-  const number = (signalConstants.signals as Record<string, number | undefined>)[signal ?? ''];
-  return 128 + (number ?? 0);
-}
-
-/** Start `script` with `sh -c` in its own process group, with its output left to the script. */
-export const spawnGateProcess: GateDependencies['spawnGate'] = (script, cwd) => {
-  try {
-    const child = Bun.spawn(['sh', '-c', script], {
-      cwd,
-      detached: true,
-      stdin: 'ignore',
-      stdout: 'ignore',
-      stderr: 'ignore',
-    });
-    return {
-      pid: child.pid,
-      exited: child.exited.then(() => child.exitCode ?? signalExitCode(child.signalCode)),
-    };
-  } catch {
-    return { pid: undefined, exited: Promise.resolve(127) };
-  }
-};
-
-/** Signal a whole process group; a group that has already gone is not an error. */
-export const killProcessGroup: GateDependencies['killGroup'] = (pid, signal) => {
-  try {
-    process.kill(-pid, signal);
-  } catch {
-    // ESRCH: every process in the group has already exited.
-  }
-};
 
 function resolveDependencies(partial: Partial<GateDependencies>): GateDependencies {
   return {
     runner: partial.runner ?? defaultRunner,
-    sleep: partial.sleep ?? ((milliseconds) => Bun.sleep(milliseconds)),
     load: partial.load ?? (() => loadavg()[0] ?? 0),
-    now: partial.now ?? (() => new Date()),
-    pollMilliseconds: partial.pollMilliseconds ?? lockPollMilliseconds,
-    spawnGate: partial.spawnGate ?? spawnGateProcess,
-    killGroup: partial.killGroup ?? killProcessGroup,
-    signals: partial.signals ?? process,
-    descendantsOf: partial.descendantsOf ?? processTreeOf,
-    signalProcess: partial.signalProcess ?? signalOneProcess,
-    isAlive: partial.isAlive ?? processExists,
-    pause: partial.pause ?? ((milliseconds) => Bun.sleep(milliseconds)),
-    schedule:
-      partial.schedule ??
-      ((callback, milliseconds) => {
-        const timer = setTimeout(callback, milliseconds);
-        return () => clearTimeout(timer);
-      }),
-    graceMilliseconds: partial.graceMilliseconds ?? gateGraceMilliseconds,
-  };
-}
-
-/** How often the interrupted tree is checked, and how many checks follow the final SIGKILL. */
-const drainPollMilliseconds = 50;
-const drainPollsAfterKill = 100;
-
-/**
- * Run the gate child and wait for it, stopping its whole process tree on SIGTERM, SIGINT or SIGHUP.
- * The gate's wrapper (`run-exclusively.ts`) starts turbo in a session of its own, so the process
- * group alone does not reach it; the tree is collected by parent pid, before the first signal and
- * again before the SIGKILL, and every member is waited for. The first signal sends SIGTERM to the
- * group and arms a SIGKILL of the group and of every collected process after the grace period; a
- * second signal sends that SIGKILL at once. The run does not end while any collected process
- * lives, and an interrupted gate never reports 0.
- */
-async function runGateChild(
-  script: string,
-  cwd: string,
-  dependencies: GateDependencies,
-): Promise<{ code: number; interrupted: GateSignal | undefined }> {
-  const child = dependencies.spawnGate(script, cwd);
-  let interrupted: GateSignal | undefined;
-  let cancelKill: (() => void) | undefined;
-  let killed = false;
-  const tracked = new Set<number>();
-  /** Add every live descendant of the child and of anything already collected. */
-  const collect = (): void => {
-    if (child.pid === undefined) return;
-    for (const pid of dependencies.descendantsOf([child.pid, ...tracked])) tracked.add(pid);
-  };
-  const escalate = (): void => {
-    if (child.pid === undefined) return;
-    killed = true;
-    collect();
-    dependencies.killGroup(child.pid, 'SIGKILL');
-    for (const pid of tracked) dependencies.signalProcess(pid, 'SIGKILL');
-  };
-  const handlers = gateSignals.map((signal) => {
-    const handler = () => {
-      if (child.pid === undefined) return;
-      if (interrupted === undefined) {
-        interrupted = signal;
-        collect();
-        dependencies.killGroup(child.pid, 'SIGTERM');
-        cancelKill = dependencies.schedule(escalate, dependencies.graceMilliseconds);
-      } else {
-        escalate();
-      }
-    };
-    dependencies.signals.on(signal, handler);
-    return { signal, handler };
-  });
-  try {
-    const code = await child.exited;
-    if (interrupted !== undefined) {
-      // The wrapper can exit while its turbo and workers are still draining; wait for all of them.
-      let pollsAfterKill = 0;
-      for (;;) {
-        collect();
-        if (![...tracked].some((pid) => dependencies.isAlive(pid))) break;
-        if (killed) {
-          pollsAfterKill += 1;
-          if (pollsAfterKill > drainPollsAfterKill) break;
-          escalate();
-        }
-        await dependencies.pause(drainPollMilliseconds);
-      }
-    }
-    return {
-      code: interrupted === undefined ? code : signalExitCode(interrupted),
-      interrupted,
-    };
-  } finally {
-    cancelKill?.();
-    for (const { signal, handler } of handlers) dependencies.signals.off(signal, handler);
-  }
-}
-
-function endsWithNewline(path: string): boolean {
-  const size = statSync(path).size;
-  if (size === 0) return true;
-  const descriptor = openSync(path, 'r');
-  try {
-    const buffer = Buffer.alloc(1);
-    readSync(descriptor, buffer, 0, 1, size - 1);
-    return buffer[0] === 0x0a;
-  } finally {
-    closeSync(descriptor);
-  }
-}
-
-export interface GateRunOptions {
-  configPath: string;
-  worktree: string;
-  log: string;
-  command?: string | undefined;
-}
-
-export interface GateRunResult {
-  code: number;
-  head: string;
-  waits: number;
-  /** Whether the worktree had no uncommitted or untracked (non-ignored) path before the gate. */
-  startClean: boolean | undefined;
-  /** The same after the gate. */
-  endClean: boolean | undefined;
-  /** HEAD after the gate; it differs from `head` when the gate moved it. */
-  endHead: string;
-  /** The signal that stopped the gate, when one did; `code` is then never 0. */
-  interrupted?: GateSignal | undefined;
-}
-
-/** `git status --porcelain` emptiness and HEAD; an unreadable status is `undefined`, never clean. */
-function snapshotTree(
-  runner: Runner,
-  worktree: string,
-): { clean: boolean | undefined; head: string } {
-  const status = runner(['git', 'status', '--porcelain'], { cwd: worktree });
-  const head = runner(['git', 'rev-parse', 'HEAD'], { cwd: worktree });
-  return {
-    clean: status.code === 0 ? status.stdout.trim() === '' : undefined,
-    head: head.code === 0 && head.stdout.trim() !== '' ? head.stdout.trim() : 'unknown',
-  };
-}
-
-function treeLine(which: 'START' | 'END', tree: { clean: boolean | undefined; head: string }) {
-  return `TREE_${which} clean=${tree.clean === undefined ? 'unknown' : tree.clean} head=${tree.head}\n`;
-}
-
-/** Wait out the lock, record the head and load, run the gate into the log, append its exit code. */
-export async function runGate(
-  options: GateRunOptions,
-  partial: Partial<GateDependencies> = {},
-): Promise<GateRunResult> {
-  const dependencies = resolveDependencies(partial);
-  const { runner } = dependencies;
-  const config = loadRepositoryConfig(options.configPath);
-  if (!existsSync(options.worktree)) throw new UsageError(`No such worktree: ${options.worktree}`);
-  mkdirSync(dirname(options.log), { recursive: true });
-  writeFileSync(options.log, '');
-  let waits = 0;
-  const command = options.command ?? config.gateCommand;
-  // The affected-only check runs shared, beside any lock holder, so waiting for one would only
-  // queue it behind a full validate it does not compete with.
-  if (config.lockPattern !== undefined && command !== config.affectedCheckCommand) {
-    for (;;) {
-      const holders = findLockProcesses(config.lockPattern, runner);
-      if (holders.length === 0) break;
-      waits += 1;
-      appendFileSync(
-        options.log,
-        `WAIT ${dependencies.now().toISOString()} lock held by ${holders.map((item) => item.pid).join(',')}\n`,
-      );
-      await dependencies.sleep(dependencies.pollMilliseconds);
-    }
-  }
-  const headResult = runner(['git', 'rev-parse', 'HEAD'], { cwd: options.worktree });
-  if (headResult.code !== 0)
-    throw new UsageError(`${options.worktree} is not a Git worktree: ${headResult.stderr.trim()}`);
-  const head = headResult.stdout.trim();
-  // The head line goes first, after the wait, so it names the commit the gate actually ran at.
-  const waitLines = readFileSync(options.log, 'utf8');
-  const start = snapshotTree(runner, options.worktree);
-  writeFileSync(
-    options.log,
-    `HEAD ${head} LOAD ${dependencies.load().toFixed(2)}\n${waitLines}${treeLine('START', start)}`,
-  );
-  const gate = `sh -c ${shellQuote(command)}`;
-  const wrapped = config.gateWrapper === undefined ? gate : `${config.gateWrapper} ${gate}`;
-  const result = await runGateChild(
-    `${wrapped} >> ${shellQuote(options.log)} 2>&1`,
-    options.worktree,
-    dependencies,
-  );
-  if (!endsWithNewline(options.log)) appendFileSync(options.log, '\n');
-  if (result.interrupted !== undefined)
-    appendFileSync(options.log, `GATE_INTERRUPTED ${result.interrupted}\n`);
-  const end = snapshotTree(runner, options.worktree);
-  appendFileSync(options.log, `${treeLine('END', end)}GATE_RC=${result.code}\n`);
-  return {
-    code: result.code,
-    head,
-    waits,
-    startClean: start.clean,
-    endClean: end.clean,
-    endHead: end.head,
-    ...(result.interrupted === undefined ? {} : { interrupted: result.interrupted }),
   };
 }
 
@@ -806,7 +434,6 @@ export function run(
   dependencies: Partial<GateDependencies> = {},
 ): { code: number; output: string } {
   const [command, ...rest] = argv;
-  if (command === 'run') throw new UsageError('`run` is asynchronous; call runCommand.');
   if (command === 'read') {
     const parsed = parseOptions(rest, { flags: ['json'] });
     const [path, ...extra] = parsed.positionals;
@@ -862,41 +489,12 @@ export function run(
       output: parsed.flags.has('json') ? JSON.stringify(result) : renderControl(result),
     };
   }
-  throw new UsageError('Usage: gate-run.ts run|read|triage|control ...');
-}
-
-/** Every command; `run` waits for the gate, so this one is asynchronous. */
-export async function runCommand(
-  argv: string[],
-  dependencies: Partial<GateDependencies> = {},
-): Promise<{ code: number; output: string }> {
-  const [command, ...rest] = argv;
-  if (command !== 'run') return run(argv, dependencies);
-  const parsed = parseOptions(rest, {
-    values: ['config', 'worktree', 'log', 'command'],
-  });
-  if (parsed.positionals.length > 0)
-    throw new UsageError(`Unexpected argument ${parsed.positionals[0]}.`);
-  const options: GateRunOptions = {
-    configPath: parsed.values['config'] ?? DEFAULT_CONFIGURATION_PATH,
-    worktree: requireOption(parsed, 'worktree'),
-    log: requireOption(parsed, 'log'),
-    command: parsed.values['command'],
-  };
-  const result = await runGate(options, dependencies);
-  const outcome =
-    result.interrupted === undefined
-      ? `${result.code === 0 ? 'passed' : 'failed'} (exit ${result.code})`
-      : `was interrupted by ${result.interrupted} (exit ${result.code})`;
-  return {
-    code: result.code,
-    output: `Gate ${outcome} at ${result.head}; log ${options.log}.`,
-  };
+  throw new UsageError('Usage: gate-run.ts read|triage|control ...');
 }
 
 if (import.meta.main) {
   try {
-    const { code, output } = await runCommand(Bun.argv.slice(2));
+    const { code, output } = run(Bun.argv.slice(2));
     emitResult(Bun.argv.slice(2), { code, output });
     process.exitCode = code;
   } catch (error) {

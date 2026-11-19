@@ -123,7 +123,7 @@ bun run test:browser:preview
 Playwright starts the selected Bun server and uses separate development and preview ports. To run one test, pass its filename or a test-title filter:
 
 ```bash
-bun run test:browser scripts/browser-fixtures/tests/components.playwright.ts
+bun run test:browser scripts/browser-fixtures/tests/components-sweep.playwright.ts
 bun run test:browser --grep 'CodeBlock'
 ```
 

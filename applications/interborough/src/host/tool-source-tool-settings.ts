@@ -34,6 +34,25 @@ export function withAcceptsSecrets(tool: Tool): Tool {
 }
 
 /**
+ * A copy of `tool` whose metadata carries the owner's Default asks level for it (`never`,
+ * `on-changes` or `always`, COR-2436), rebuilt as {@link withAcceptsSecrets} rebuilds one. Bureau
+ * reads it where it reads a tool's tier: its catalog reports it as the tool's default approval,
+ * and an agent's approval hook enforces it for an agent whose own file states nothing for the tool.
+ */
+export function withDefaultApproval(tool: Tool, approval: 'never' | 'on-changes' | 'always'): Tool {
+  const [rebuilt] = createToolbox([
+    {
+      ...tool.configuration,
+      metadata: { ...tool.configuration.metadata, defaultApproval: approval },
+    },
+  ]).tools();
+  if (rebuilt === undefined) {
+    throw new Error(`Tool "${tool.name}" could not be given a default approval.`);
+  }
+  return rebuilt;
+}
+
+/**
  * A copy of `tool` that refuses to run once `refusal` returns a message, rebuilt the way
  * {@link withAcceptsSecrets} rebuilds one (COR-1931). A saved source's tools are connected to their
  * server with whatever the loader captured when it loaded (a key or token read once, a child

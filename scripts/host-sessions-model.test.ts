@@ -13,6 +13,8 @@ import {
   foldSession,
   neverStarted,
   neverStartedLimitMilliseconds,
+  opusPlaces,
+  readOnlyAgents,
   runsWithoutAdmission,
   sessionPlaces,
   workerPlaces,
@@ -217,5 +219,61 @@ describe('every interleaving', () => {
         event.kind === kind ? state : applySessionEvent(state, event);
     expect(exploreReclaims(without('expire')).failures).not.toEqual([]);
     expect(exploreReclaims(without('release')).failures).not.toEqual([]);
+  });
+});
+
+describe('Opus places', () => {
+  const typed = (toolUseId: string, agentType: string, opus: boolean): SessionEvent => ({
+    kind: 'admit',
+    toolUseId,
+    at: 0,
+    description: `Deliver ${toolUseId}`,
+    dispatcher: '',
+    agentType,
+    ...(opus ? { opus } : {}),
+  });
+  const startTyped = (agentId: string, agentType: string): SessionEvent => ({
+    kind: 'start',
+    agentId,
+    at: 0,
+    agentType,
+  });
+
+  test('an Opus agent that started second keeps its own place when the Sonnet agent stops first', () => {
+    const state = foldSession([
+      typed('t-opus', 'chef-reviewer', true),
+      typed('t-sonnet', 'chef-worker', false),
+      // Sonnet starts first, though its dispatch is the younger one.
+      startTyped('a-sonnet', 'chef-worker'),
+      startTyped('a-opus', 'chef-reviewer'),
+      stop('a-sonnet'),
+    ]);
+    expect(workerPlaces(state)).toBe(1);
+    expect(opusPlaces(state)).toBe(1);
+    expect(opusPlaces(applySessionEvent(state, stop('a-opus')))).toBe(0);
+  });
+
+  test('a read-only agent holds no worker place, pending or running, and no coordinator place', () => {
+    const readOnly: SessionEvent = {
+      kind: 'admit',
+      toolUseId: 't-ro',
+      at: 0,
+      description: 'Scout',
+      dispatcher: '',
+      agentType: 'Explore',
+      readOnly: true,
+    };
+    const pending = foldSession([readOnly]);
+    expect(workerPlaces(pending)).toBe(0);
+    expect(sessionPlaces(pending)).toBe(0);
+    expect(readOnlyAgents(pending)).toBe(1);
+    const running = applySessionEvent(pending, startTyped('a-ro', 'Explore'));
+    expect([workerPlaces(running), readOnlyAgents(running)]).toEqual([0, 1]);
+    expect(readOnlyAgents(applySessionEvent(running, stop('a-ro')))).toBe(0);
+  });
+
+  test('a pending Opus dispatch counts, and a dispatch with no model on record counts none', () => {
+    expect(opusPlaces(foldSession([typed('t-1', 'general-purpose', true)]))).toBe(1);
+    expect(opusPlaces(foldSession([admit('t-1')]))).toBe(0);
   });
 });

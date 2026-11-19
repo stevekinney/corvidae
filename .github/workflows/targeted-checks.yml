@@ -83,7 +83,12 @@ jobs:
         with:
           bun-version-file: package.json
       - run: bun install --frozen-lockfile
+      - uses: ./.github/actions/turbo-cache/restore
+        with:
+          name: targeted-checks
       - run: bunx turbo run lint typecheck --affected --continue --concurrency=4
+      - uses: ./.github/actions/turbo-cache/save
+        if: ${{ !cancelled() }}
 
   fixtures:
     name: Chromium fixtures (targeted)
@@ -105,6 +110,9 @@ jobs:
         with:
           bun-version-file: package.json
       - run: bun install --frozen-lockfile
+      - uses: ./.github/actions/turbo-cache/restore
+        with:
+          name: targeted-fixtures
       # Component packages' derived metadata (schemas, variables, manifests) is generated, not
       # committed: the steps below run tests and servers outside Turborepo, so make it first.
       - run: bunx turbo run metadata
@@ -113,7 +121,7 @@ jobs:
       - run: |
           specs="$FIXTURE_SPECS"
           if [ -n "$CINDER_TEST_COMPONENTS" ]; then
-            specs="$specs scripts/browser-fixtures/tests/components.playwright.ts"
+            specs="$specs scripts/browser-fixtures/tests/components.playwright.ts scripts/browser-fixtures/tests/components-sweep.playwright.ts"
           fi
           PLAYWRIGHT_HTML_OUTPUT_DIR="$GITHUB_WORKSPACE/playwright-output/report" \
           PLAYWRIGHT_JSON_OUTPUT_FILE="$GITHUB_WORKSPACE/playwright-output/results.json" \
@@ -129,6 +137,8 @@ jobs:
             scripts/browser-fixtures/test-results/
           retention-days: 14
           if-no-files-found: ignore
+      - uses: ./.github/actions/turbo-cache/save
+        if: ${{ !cancelled() }}
 
   interborough:
     name: Interborough end-to-end (targeted)
@@ -148,6 +158,9 @@ jobs:
         with:
           bun-version-file: package.json
       - run: bun install --frozen-lockfile
+      - uses: ./.github/actions/turbo-cache/restore
+        with:
+          name: targeted-interborough
       # Component packages' derived metadata (schemas, variables, manifests) is generated, not
       # committed: the steps below run tests and servers outside Turborepo, so make it first.
       - run: bunx turbo run metadata
@@ -166,6 +179,8 @@ jobs:
             applications/interborough/test-results/
           retention-days: 14
           if-no-files-found: ignore
+      - uses: ./.github/actions/turbo-cache/save
+        if: ${{ !cancelled() }}
 
   unit:
     name: Unit test files (${{ matrix.lane.workspace }})
@@ -191,6 +206,9 @@ jobs:
         with:
           bun-version-file: package.json
       - run: bun install --frozen-lockfile
+      - uses: ./.github/actions/turbo-cache/restore
+        with:
+          name: targeted-unit-${{ matrix.lane.workspace }}
       # Component packages' derived metadata (schemas, variables, manifests) is generated, not
       # committed: the steps below run tests and servers outside Turborepo, so make it first.
       - run: bunx turbo run metadata
@@ -199,6 +217,14 @@ jobs:
           # hang-guarded runner, as `test:self` does.
           if [ "$UNIT_WORKSPACE" = . ]; then
             bun scripts/bun-test.ts $UNIT_PATHS
+            exit
+          fi
+          # The browser-fixtures workspace runs as the root `test:browser-fixtures` does: its tests
+          # read the generated, gitignored manifest, and the curated build is verified after them.
+          if [ "$UNIT_WORKSPACE" = scripts/browser-fixtures ]; then
+            bun scripts/browser-fixtures/scripts/prepare-manifest.ts
+            (cd "$UNIT_WORKSPACE" && bun test --conditions browser --conditions svelte $UNIT_PATHS)
+            bun scripts/browser-fixtures/scripts/verify-curated-build.ts
             exit
           fi
           cd "$UNIT_WORKSPACE"
@@ -215,3 +241,5 @@ jobs:
           fi
           if [ -n "$UNIT_CONFIG" ]; then config="--config=$UNIT_CONFIG"; fi
           bun test $config --conditions browser --conditions svelte $UNIT_PATHS
+      - uses: ./.github/actions/turbo-cache/save
+        if: ${{ !cancelled() }}

@@ -1303,3 +1303,88 @@ describe('SegmentedControl — the selected segment is a raised surface pill', (
     expect(rules).not.toContain('--_cinder-focus-ring-filled-shadow');
   });
 });
+
+// ── Messages under the control ──────────────────────────────────────────────
+
+describe('SegmentedControl — description, note and error', () => {
+  const choices: readonly Option[] = [
+    { value: 'oauth', label: 'OAuth' },
+    { value: 'bearer', label: 'Bearer token' },
+  ];
+
+  test('draws a description, a note and an error under the group and names them in aria-describedby', async () => {
+    const { createRawSnippet } = await import('svelte');
+    render(Fixture, {
+      props: {
+        id: 'sign-in',
+        value: 'oauth',
+        label: 'How it signs in',
+        options: choices,
+        rest: {
+          description: 'Approve in the window.',
+          note: 'Nothing was saved.',
+          error: 'Could not sign in.',
+          errorAction: createRawSnippet(() => ({
+            render: () => '<button type="button">Try again</button>',
+          })),
+        },
+      },
+    });
+
+    const group = screen.getByRole('radiogroup', { name: 'How it signs in' });
+    expect(group.getAttribute('aria-invalid')).toBe('true');
+    const described = (group.getAttribute('aria-describedby') ?? '').split(' ');
+    expect(described).toHaveLength(3);
+    const texts = described.map((id) => document.getElementById(id)?.textContent?.trim());
+    expect(texts[0]).toBe('Approve in the window.');
+    expect(texts[1]).toBe('Nothing was saved.');
+    expect(texts[2]).toContain('Could not sign in.');
+    expect(texts[2]).toContain('Try again');
+    expect(screen.getByRole('button', { name: 'Try again' })).not.toBeNull();
+  });
+
+  test('draws nothing extra, and no aria-describedby, without them', () => {
+    render(Fixture, { props: { id: 'plain', value: 'oauth', label: 'Plain', options: choices } });
+    const group = screen.getByRole('radiogroup', { name: 'Plain' });
+    expect(group.hasAttribute('aria-describedby')).toBe(false);
+    expect(group.hasAttribute('aria-invalid')).toBe(false);
+    expect(document.querySelector('.cinder-form-field')).toBeNull();
+  });
+});
+
+describe('SegmentedControl — a framed control keeps to the room it has', () => {
+  test('the frame around a control with a message has no minimum width, so a grid cell cannot grow it past the room', () => {
+    const { container } = render(Fixture, {
+      props: {
+        id: 'framed',
+        value: 'oauth',
+        label: 'How it signs in',
+        options: [{ value: 'oauth', label: 'OAuth' }],
+        rest: { description: 'Approve in the window.' },
+      },
+    });
+    const frame = container.querySelector<HTMLElement>('.cinder-form-field');
+    expect(frame?.classList.contains('cinder-segmented-control-field')).toBe(true);
+    // The control measures its room from the frame, which is its direct parent.
+    expect(container.querySelector('.cinder-segmented-control-container')?.parentElement).toBe(
+      frame,
+    );
+    const css = readFileSync(new URL('./segmented-control.css', import.meta.url), 'utf8');
+    const rule = css.slice(css.indexOf('.cinder-segmented-control-field {'));
+    expect(rule.slice(0, rule.indexOf('}'))).toContain('min-inline-size: 0;');
+  });
+});
+
+describe('SegmentedControl — the stacked rows keep RadioGroup’s rhythm', () => {
+  const css = readFileSync(new URL('./segmented-control.css', import.meta.url), 'utf8');
+
+  test('a stacked row is as tall as its label line, with RadioGroup’s gap, and a 44px hit area on a coarse pointer', () => {
+    const block = css.slice(css.indexOf('A stacked row is drawn at RadioGroup'));
+    expect(block).toContain('gap: var(--cinder-space-2);');
+    expect(block).toContain(
+      'min-block-size: calc(var(--cinder-text-sm) * var(--cinder-leading-normal));',
+    );
+    expect(block).toContain('@media (pointer: coarse)');
+    expect(block).toContain('block-size: max(100%, 44px);');
+  });
+});

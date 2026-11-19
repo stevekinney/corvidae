@@ -1,0 +1,13 @@
+# The save half of `../restore`, which names the key. Run it as the job's last step with
+# `if: ${{ !cancelled() }}`. A cache already saved for this commit (a re-run of the same sha) is
+# kept: the cache action skips the upload when the key exists.
+name: Save the Turborepo cache
+description: Save Turborepo's local task cache under the commit this job ran.
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: .turbo/cache
+        key: ${{ env.TURBO_CACHE_PREFIX }}${{ github.sha }}
