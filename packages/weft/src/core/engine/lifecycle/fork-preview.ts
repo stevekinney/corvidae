@@ -25,9 +25,12 @@ import type { LifecycleCallbacks } from './shared.ts';
 export async function previewFork(
   internals: EngineInternals,
   sourceWorkflowId: string,
-  options: ForkOptions | undefined,
+  callerOptions: ForkOptions | undefined,
   callbacks: LifecycleCallbacks,
 ): Promise<ForkPreview> {
+  // The caller owns the options object and this function awaits: read it once, before the first await.
+  const options: ForkOptions | undefined =
+    callerOptions === undefined ? undefined : { ...callerOptions };
   const sourceState = await loadWorkflowState(internals, sourceWorkflowId);
   if (!sourceState) {
     throw new Error(`Workflow "${sourceWorkflowId}" not found`);

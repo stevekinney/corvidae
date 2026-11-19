@@ -9,7 +9,6 @@ import {
 import { ForkSourceReplacedError } from '../../core/engine/errors.ts';
 import type { ForkOptions } from '../../core/types.ts';
 import { VersionMismatchError } from '../../core/versioning.ts';
-import { negotiatedResponse } from '../handler/response-helpers.ts';
 import { assertOperationEngineMethods, workerVersionRemovedFault } from './operation-helpers.ts';
 import { mapRevisionUnavailableToFault } from './revision-unavailable-fault.ts';
 
@@ -220,13 +219,15 @@ export const forkWorkflowOperation = defineOperation({
   transports: { http: true, jsonRpcHttp: true, jsonRpcWebSocket: true, jsonRpcStdio: true },
   unknownKeyPolicy: { http: 'strip', jsonRpc: 'reject' },
   invoke: async ({ input, host: engine }): Promise<ForkWorkflowOutput> => {
-    assertOperationEngineMethods(engine, ['fork', 'previewFork']);
-    const typedEngine = engine;
     const options = validateForkInput(input);
 
     try {
-      if (input.dryRun === true) return await typedEngine.previewFork(input.workflowId, options);
-      const handle = await typedEngine.fork(input.workflowId, options);
+      if (input.dryRun === true) {
+        assertOperationEngineMethods(engine, ['previewFork']);
+        return await engine.previewFork(input.workflowId, options);
+      }
+      assertOperationEngineMethods(engine, ['fork']);
+      const handle = await engine.fork(input.workflowId, options);
       return { id: handle.id };
     } catch (error) {
       return resolveForkAccess(error);
@@ -273,8 +274,7 @@ export const forkWorkflowRestBinding: UnknownRestBinding = {
       dryRun: record['dryRun'],
     };
   },
+  // One status for both answers, because the published spec lists one: a dry run answers 201 too,
+  // and a caller tells the two apart by `dryRun: true`.
   success: { kind: 'json', status: 201 },
-  // A fork is created (201); a dry run creates nothing, so it answers 200.
-  shapeSuccess: (output: ForkWorkflowOutput, request: Request) =>
-    negotiatedResponse(request, output, 'dryRun' in output ? 200 : 201),
 };

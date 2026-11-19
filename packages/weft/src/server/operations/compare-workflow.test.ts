@@ -150,8 +150,8 @@ describe('weft.workflows.fork with dryRun', () => {
       options,
     );
 
-    // Nothing is created, so it is a 200 and not the 201 a fork answers.
-    expect(response.status).toBe(200);
+    // The published spec lists one status for the operation, so a dry run answers the fork's 201.
+    expect(response.status).toBe(201);
     const body = (await response.json()) as {
       dryRun: boolean;
       forkPoint: number;
