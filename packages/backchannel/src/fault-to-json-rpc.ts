@@ -30,12 +30,11 @@
  */
 
 import { FAULT_CODE_RETRYABLE, type FaultCode } from './fault-code.ts';
+import { faultWireAdvice } from './fault-remediation.ts';
+import { usableRetryAfterSeconds, wireSafeFault } from './fault-wire-safety.ts';
 import {
   FAULT_CODE_TO_HTTP_STATUS,
   FAULT_CODE_TO_JSON_RPC_CODE,
-  faultWireAdvice,
-  usableRetryAfterSeconds,
-  wireSafeFault,
   type OperationFault,
 } from './operation-fault.ts';
 

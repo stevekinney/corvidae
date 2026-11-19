@@ -133,7 +133,7 @@ export function httpClientCatalogTransport(
         faultCode,
         data: isRecord(data) ? data : undefined,
         // `retryable` and `remediation` ride in the envelope `data` beside `weftCode`.
-        ...(isRecord(data) ? parseFaultAdvice(data) : {}),
+        ...parseFaultAdvice(data),
       });
     }
 

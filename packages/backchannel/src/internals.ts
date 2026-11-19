@@ -31,8 +31,16 @@ export type { ConnectionLease } from './connection-lease.ts';
 export { isDiscoverable } from './discovery-filter.ts';
 export type { EventSelector } from './event-selector.ts';
 export { FAULT_CODE_RETRYABLE, isFaultRetryable } from './fault-code.ts';
+export {
+  MAX_REMEDIATION_LENGTH,
+  assertValidRemediation,
+  faultWireAdvice,
+  remediationProblem,
+  withRemediation,
+} from './fault-remediation.ts';
 export { faultToHttpResponse } from './fault-to-http.ts';
 export { faultErrorData, faultToJsonRpcError } from './fault-to-json-rpc.ts';
+export { assertFiniteFaultData } from './fault-wire-safety.ts';
 export {
   authContextFromAuthResult,
   unauthorizedResponse,
@@ -92,14 +100,8 @@ export { invalidParamsFault, isOperationFault } from './operation-fault-helpers.
 export {
   FAULT_CODE_TO_HTTP_STATUS,
   FAULT_CODE_TO_JSON_RPC_CODE,
-  MAX_REMEDIATION_LENGTH,
-  assertFiniteFaultData,
-  assertValidRemediation,
-  faultWireAdvice,
-  remediationProblem,
   shapeOperationFaultAsJson,
   shapeRestFaultAsJson,
-  withRemediation,
   type RestFaultResponseOptions,
   type TransportKind,
 } from './operation-fault.ts';

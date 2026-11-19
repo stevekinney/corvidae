@@ -100,9 +100,10 @@ describe('bureauScopeRefusal', () => {
       jsonRpc(call('bureau.checks.list', 4)),
       lacking('runs:read'),
     );
-    const { error } = (await refused?.json()) as { error: { code: number; data: object } };
-    expect(error.code).toBe(forbidden.code);
-    expect(error.data).toEqual({
+    expect(refused).toBeDefined();
+    const body: { error: { code: number; data: object } } = await refused!.json();
+    expect(body.error.code).toBe(forbidden.code);
+    expect(body.error.data).toEqual({
       ...forbidden.data,
       reason: expect.any(String),
       scope: 'runs:read',

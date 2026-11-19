@@ -10,13 +10,15 @@ import { describe, expect, it } from 'bun:test';
 
 import type { FaultCode } from './fault-code.ts';
 import {
-  FAULT_CODE_TO_HTTP_STATUS,
-  FAULT_CODE_TO_JSON_RPC_CODE,
   MAX_REMEDIATION_LENGTH,
   assertValidRemediation,
   faultWireAdvice,
   remediationProblem,
   withRemediation,
+} from './fault-remediation.ts';
+import {
+  FAULT_CODE_TO_HTTP_STATUS,
+  FAULT_CODE_TO_JSON_RPC_CODE,
   type OperationFault,
 } from './operation-fault.ts';
 

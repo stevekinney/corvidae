@@ -20,7 +20,7 @@
       "reason": "the keys are Object.keys(rawRecord), and `parsed` is given a null prototype by Object.setPrototypeOf(parsed, null) before the membership test"
     },
     {
-      "file": "src/operation-fault.ts",
+      "file": "src/fault-wire-safety.ts",
       "expression": "(fault.data as Record<string, unknown>)[field]",
       "count": 1,
       "reason": "the field is a key from Object.entries(fault.data), so it is an own key of the same object"

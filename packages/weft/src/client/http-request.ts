@@ -232,10 +232,11 @@ function isFlatErrorBody(value: unknown): value is FlatErrorBody {
 }
 
 /** What a fault's `retryable` and `remediation` wire values become: only a boolean and a string survive. */
-export function parseFaultAdvice(source: Readonly<Record<string, unknown>>): {
+export function parseFaultAdvice(source: unknown): {
   retryable?: boolean;
   remediation?: string;
 } {
+  if (!isRecord(source)) return {};
   const retryable = source['retryable'];
   const remediation = source['remediation'];
   return {
