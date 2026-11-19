@@ -30,6 +30,7 @@ import {
   eventOptionLabel,
   eventPhrase,
   eventRefusal,
+  eventsChosenLine,
   eventWords,
   failingFirst,
   hookFailing,
@@ -729,6 +730,19 @@ describe('a plugin’s event kinds (COR-2226)', () => {
       eventChosenLabel(kind, titleOf),
     );
     expect(new Set(labels).size).toBe(2);
+  });
+
+  test('joins chosen events in one line, a Bureau event lower-cased after the first, a plugin’s title kept (N6)', () => {
+    expect(eventsChosenLine(['reports:digest-ready@1.0.0', 'review.requested'], titleOf)).toBe(
+      'Weekly reports: digest ready, a review is waiting',
+    );
+    expect(eventsChosenLine(['review.requested', 'reports:digest-ready'], titleOf)).toBe(
+      'A review is waiting, Weekly reports: digest ready',
+    );
+    expect(eventsChosenLine(['reports:digest-ready', 'zeta:digest-ready'], titleOf)).toBe(
+      'Weekly reports: digest ready, Archive: digest ready',
+    );
+    expect(eventsChosenLine([], titleOf)).toBe('');
   });
 
   test('offers the Bureau’s own kinds exactly as before when no plugin declares one (R7)', () => {

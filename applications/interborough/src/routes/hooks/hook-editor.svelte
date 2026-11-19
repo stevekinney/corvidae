@@ -116,8 +116,8 @@
   import { actionTitleOf, hookStanding, pluginTitleOf } from './hook-standing.ts';
   import HookMissingEvents from './hook-missing-events.svelte';
   import {
-    eventChosenLabel,
     eventRefusal,
+    eventsChosenLine,
     eventWords,
     isScopeKind,
     missingEventsOf,
@@ -1261,9 +1261,7 @@
                   <span class="ib-hook-editor__sentence-label">{copy.check.eventLine}</span>
                   <!-- Row R10-23: the events in words, never their identifiers. -->
                   <span data-testid="hook-check-events"
-                    >{form.events
-                      .map((kind) => eventChosenLabel(kind, titleOfPlugin))
-                      .join(', ')}</span
+                    >{eventsChosenLine(form.events, titleOfPlugin)}</span
                   >
                 </p>
                 <p class="ib-hook-editor__quiet-line">{copy.check.saveToStart}</p>

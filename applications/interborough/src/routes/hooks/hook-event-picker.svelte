@@ -30,6 +30,7 @@
     eventChosenLabel,
     eventKindOf,
     eventMatches,
+    eventsChosenLine,
     kindsReadingAlike,
     pluginEventOf,
   } from './hook-presentation.ts';
@@ -68,7 +69,7 @@
   const labelOf = (kind: string): string => eventChosenLabel(kind, titleOf);
   /** The events of a saved hook as one value and one line of words, for the read-only field. */
   const lockedValue = $derived(events.join(','));
-  const lockedLabel = $derived(events.map(labelOf).join(', '));
+  const lockedLabel = $derived(eventsChosenLine(events, titleOf));
   const meanings = $derived(new Map(kinds.map((kind) => [kind.kind, kind.description])));
   /** The events chosen whose words another chosen event shares: these show their raw kind. */
   const alike = $derived(kindsReadingAlike(events, labelOf));

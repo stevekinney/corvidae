@@ -454,6 +454,25 @@ export function eventChosenLabel(kind: string, titleOf: PluginTitleOf = pluginWo
   return pluginEventClause(kind, titleOf) ?? eventOptionLabel(kind);
 }
 
+/**
+ * Events named in one line, a comma between two (the locked When row, the Check line). The first
+ * reads as {@link eventChosenLabel} does; after it a Bureau event's name is lower-cased, so the
+ * line reads as one list ("Weekly reports: digest ready, a review is waiting", N6), and a plugin's
+ * kind keeps its title's capital, since the title is a name.
+ */
+export function eventsChosenLine(
+  events: readonly string[],
+  titleOf: PluginTitleOf = pluginWords,
+): string {
+  return events
+    .map((kind, index) => {
+      const label = eventChosenLabel(kind, titleOf);
+      if (index === 0 || pluginEventOf(kind) !== undefined) return label;
+      return `${label.charAt(0).toLowerCase()}${label.slice(1)}`;
+    })
+    .join(', ');
+}
+
 /** Why a plugin kind a hook lists is missing (COR-2226, row R5): the one cause line. */
 export function missingEventCause(problem: {
   readonly kind: string;

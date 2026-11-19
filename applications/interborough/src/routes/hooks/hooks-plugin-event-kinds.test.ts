@@ -261,9 +261,10 @@ describe('a saved hook whose plugin kind is missing (COR-2226, rows R4, R5, R6)'
   test('names the plugin by its title in the header, the locked row’s one line and the title, never by its namespace (B1, B2)', async () => {
     const view = open('/hooks/digest');
     const locked = await view.findByTestId('hook-event-locked');
-    // Two events read as two: the plugin's title leads its kind, and a comma falls between events.
+    // Two events read as two: the plugin's title leads its kind, and a comma falls between events;
+    // a Bureau event after the first is lower-cased, so the line reads as one list (N6).
     await waitFor(() =>
-      expect(locked.textContent).toContain('Weekly reports: digest ready, A review is waiting'),
+      expect(locked.textContent).toContain('Weekly reports: digest ready, a review is waiting'),
     );
     expect(view.container.textContent).not.toContain('Reports: digest ready');
     expect(view.container.textContent).not.toContain('Digest ready, Weekly reports');

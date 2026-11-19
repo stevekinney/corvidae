@@ -1976,8 +1976,9 @@ for (const width of WIDTHS) {
     }
     const locked = page.getByTestId('hook-event-locked');
     await expect(locked.locator('.ib-hook-events__kind')).toHaveText('reports:digest-ready@1.0.0');
-    // Two events read as two: the plugin's title leads its kind (B2).
-    await expect(locked).toContainText('Weekly reports: digest ready, A review is waiting');
+    // Two events read as two: the plugin's title leads its kind (B2), and a Bureau event after the
+    // first is lower-cased (N6).
+    await expect(locked).toContainText('Weekly reports: digest ready, a review is waiting');
     await expect(page.getByTestId('hook-missing-events')).toHaveCount(0);
     await captureForDesignReview(page, {
       route: '/hooks/:hook',
