@@ -7,6 +7,7 @@ import {
   readFileSync,
   renameSync,
   rmSync,
+  statSync,
   writeFileSync,
 } from 'node:fs';
 import { dirname } from 'node:path';
@@ -14,6 +15,14 @@ import { dirname } from 'node:path';
 import { parseJUnit } from './evidence-provider.ts';
 
 export class CiEvidenceWorkflowError extends Error {}
+
+// The authenticated P07 reference inventory has 73 reports totaling 24.5 MB; the largest is 4.5 MB
+// and reports are five directories below their artifact root. These bounds leave headroom without
+// allowing one downloaded artifact to consume the aggregate runner's memory unboundedly.
+export const MAX_JUNIT_REPORTS = 128;
+export const MAX_JUNIT_REPORT_BYTES = 8 * 1024 * 1024;
+export const MAX_JUNIT_TOTAL_BYTES = 64 * 1024 * 1024;
+export const MAX_JUNIT_DIRECTORY_DEPTH = 8;
 
 export interface CiEvidenceWorkflowEnvironment {
   GITHUB_REPOSITORY?: string | undefined;
@@ -256,20 +265,33 @@ export function validateJUnitArtifacts(
   return summaries;
 }
 
-function reportFiles(directory: string): Uint8Array[] {
+export function readJUnitArtifactReports(directory: string): Uint8Array[] {
   const files: Uint8Array[] = [];
-  const visit = (path: string): void => {
+  let totalBytes = 0;
+  const visit = (path: string, depth: number): void => {
+    if (depth > MAX_JUNIT_DIRECTORY_DEPTH)
+      throw new CiEvidenceWorkflowError('JUnit artifact exceeds maximum directory depth');
     for (const entry of readdirSync(path, { withFileTypes: true })) {
       const child = `${path}/${entry.name}`;
-      const status = lstatSync(child);
-      if (status.isSymbolicLink())
+      const link = lstatSync(child);
+      if (link.isSymbolicLink())
         throw new CiEvidenceWorkflowError('JUnit artifact contains a symbolic link');
-      if (status.isDirectory()) visit(child);
-      else if (status.isFile() && entry.name.endsWith('.xml')) files.push(readFileSync(child));
+      if (link.isDirectory()) visit(child, depth + 1);
+      else if (link.isFile() && entry.name.endsWith('.xml')) {
+        if (files.length >= MAX_JUNIT_REPORTS)
+          throw new CiEvidenceWorkflowError('JUnit artifact has too many reports');
+        const status = statSync(child);
+        if (status.size > MAX_JUNIT_REPORT_BYTES)
+          throw new CiEvidenceWorkflowError('JUnit artifact report exceeds maximum size');
+        totalBytes += status.size;
+        if (totalBytes > MAX_JUNIT_TOTAL_BYTES)
+          throw new CiEvidenceWorkflowError('JUnit artifact reports exceed total size limit');
+        files.push(readFileSync(child));
+      }
     }
   };
   try {
-    visit(directory);
+    visit(directory, 0);
   } catch (error) {
     if (error instanceof CiEvidenceWorkflowError) throw error;
     throw new CiEvidenceWorkflowError(
@@ -291,7 +313,10 @@ function downloadedJUnitArtifacts(
   attempt: number,
 ): Record<string, Uint8Array[]> {
   return Object.fromEntries(
-    expectedArtifacts(attempt).map((name) => [name, reportFiles(`${directory}/${name}`)]),
+    expectedArtifacts(attempt).map((name) => [
+      name,
+      readJUnitArtifactReports(`${directory}/${name}`),
+    ]),
   );
 }
 
