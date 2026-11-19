@@ -967,6 +967,7 @@ test("Interborough's coverage gate measures both environments without a duplicat
   const configuration = await Bun.file(join(root, 'turbo.json')).json();
   expect(configuration.tasks['@lostgradient/interborough#test:coverage'].dependsOn).toEqual([
     'transit',
+    '^metadata',
   ]);
   expect(configuration.tasks['@lostgradient/interborough#test:coverage'].inputs).toContain(
     '$TURBO_ROOT$/scripts/test-deadlines.ts',

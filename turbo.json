@@ -8,18 +8,36 @@
     },
     "dev": {
       "persistent": true,
-      "cache": false
+      "cache": false,
+      "dependsOn": ["^metadata"]
     },
     "metadata": {
       "dependsOn": ["transit", "^metadata"],
-      "outputs": [".metadata/**"],
+      "outputs": [
+        ".metadata/**",
+        "src/styles/tokens-base.css",
+        "src/tokens/resolved/**",
+        "src/tokens/index.json",
+        "src/tokens/registry.generated.*",
+        "src/tokens/runtime/*.generated.*"
+      ],
       "inputs": [
         "$TURBO_DEFAULT$",
         "!**/*.test.ts",
+        "!src/styles/tokens-base.css",
+        "!src/tokens/resolved/**",
+        "!src/tokens/index.json",
+        "!src/tokens/registry.generated.*",
+        "!src/tokens/runtime/*.generated.*",
         "$TURBO_ROOT$/components/cinder/scripts/**",
         "!$TURBO_ROOT$/components/cinder/scripts/**/*.test.ts",
         "$TURBO_ROOT$/components/cinder/src/**",
         "!$TURBO_ROOT$/components/cinder/src/**/*.test.ts",
+        "!$TURBO_ROOT$/components/cinder/src/styles/tokens-base.css",
+        "!$TURBO_ROOT$/components/cinder/src/tokens/resolved/**",
+        "!$TURBO_ROOT$/components/cinder/src/tokens/index.json",
+        "!$TURBO_ROOT$/components/cinder/src/tokens/registry.generated.*",
+        "!$TURBO_ROOT$/components/cinder/src/tokens/runtime/*.generated.*",
         "$TURBO_ROOT$/internal/component-tooling/scripts/**",
         "!$TURBO_ROOT$/internal/component-tooling/scripts/**/*.test.ts",
         "$TURBO_ROOT$/internal/component-tooling/src/**",
@@ -43,6 +61,15 @@
       "outputs": [],
       "dependsOn": ["transit", "^types"],
       "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/scripts/typecheck-contracts.ts"]
+    },
+    "@lostgradient/cinder#types": {
+      "outputs": [".types/**"],
+      "dependsOn": ["transit", "^types", "metadata"]
+    },
+    "@lostgradient/cinder#typecheck": {
+      "outputs": [],
+      "dependsOn": ["transit", "^types", "metadata"],
+      "inputs": ["$TURBO_DEFAULT$"]
     },
     "release:check": {
       "outputs": [],
@@ -110,6 +137,7 @@
       "dependsOn": ["^transit"]
     },
     "//#test:self": {
+      "dependsOn": ["@lostgradient/cinder#metadata"],
       "env": ["CODEX_CI", "NODE_ENV", "CORVIDAE_TEST_SELECTION"],
       "outputs": ["test-output/junit/self.xml"],
       "inputs": [
@@ -127,6 +155,7 @@
       ]
     },
     "//#test:self:slow": {
+      "dependsOn": ["@lostgradient/cinder#metadata"],
       "env": ["CODEX_CI", "NODE_ENV", "CORVIDAE_TEST_SELECTION"],
       "outputs": [],
       "inputs": [
@@ -175,7 +204,7 @@
       "dependsOn": ["@lostgradient/browser-fixtures#metadata"]
     },
     "@lostgradient/chat#test:browser": {
-      "dependsOn": ["transit"],
+      "dependsOn": ["transit", "^metadata"],
       "env": ["CINDER_TEST_COMPONENTS", "CINDER_UPDATE_SNAPSHOTS", "CINDER_VISUAL_DIFF"],
       "passThroughEnv": [
         "CI",
@@ -197,7 +226,7 @@
       "outputs": []
     },
     "@lostgradient/editor#test:browser": {
-      "dependsOn": ["transit"],
+      "dependsOn": ["transit", "^metadata"],
       "env": ["CINDER_TEST_COMPONENTS", "CINDER_UPDATE_SNAPSHOTS", "CINDER_VISUAL_DIFF"],
       "passThroughEnv": [
         "CI",
@@ -219,7 +248,7 @@
       "outputs": []
     },
     "@lostgradient/terminal#test:browser": {
-      "dependsOn": ["transit"],
+      "dependsOn": ["transit", "^metadata"],
       "env": ["CINDER_TEST_COMPONENTS", "CINDER_UPDATE_SNAPSHOTS", "CINDER_VISUAL_DIFF"],
       "passThroughEnv": [
         "CI",
@@ -241,13 +270,15 @@
       "outputs": []
     },
     "@lostgradient/interborough#build": {
-      "dependsOn": ["transit"],
+      "dependsOn": ["transit", "^metadata"],
+      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/scripts/ensure-cinder-generated.ts"],
       "outputs": ["build/**"],
       "env": ["NODE_ENV"]
     },
     "@lostgradient/interborough#dev": {
       "persistent": true,
       "cache": false,
+      "dependsOn": ["^metadata"],
       "passThroughEnv": [
         "INTERBOROUGH_HOME",
         "INTERBOROUGH_PORT",
@@ -851,7 +882,7 @@
       ]
     },
     "@lostgradient/chat#test:coverage": {
-      "dependsOn": ["transit"],
+      "dependsOn": ["transit", "^metadata"],
       "outputs": ["coverage/**"],
       "env": ["CODEX_CI", "NODE_ENV"],
       "inputs": [
@@ -867,7 +898,7 @@
       ]
     },
     "@lostgradient/interborough#test:coverage": {
-      "dependsOn": ["transit"],
+      "dependsOn": ["transit", "^metadata"],
       "inputs": [
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/scripts/test-watchdog.ts",
@@ -882,7 +913,7 @@
       "env": ["CODEX_CI", "NODE_ENV"]
     },
     "@lostgradient/terminal#test:coverage": {
-      "dependsOn": ["transit"],
+      "dependsOn": ["transit", "^metadata"],
       "outputs": ["coverage/**"],
       "env": ["CODEX_CI", "NODE_ENV"],
       "inputs": [

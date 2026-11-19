@@ -43,9 +43,10 @@ import {
   JSON_PLUGINS,
   PRETTIER_OPTIONS,
   resolvedDirectory,
+  tokenRoot,
   tokensBaseCssPath,
 } from './generator-configuration.ts';
-import { loadRawTokenDocuments, loadResolverDocument, tokenRoot } from './load.ts';
+import { loadRawTokenDocuments, loadResolverDocument } from './load.ts';
 import { buildResolvedContexts } from './resolved-contexts.ts';
 
 // Entry point.
