@@ -1432,21 +1432,23 @@
     font-size: var(--cinder-text-xs);
   }
 
-  /* A phone's summary of a step: one line that opens to the step's fields. */
+  /* A phone's summary of a step: one line that opens to the step's fields. The text wraps in its
+     own column and Edit never wraps under it, so every step's Edit sits at the top inline end (B6). */
   .ib-hook-step__summary {
     display: flex;
-    flex-wrap: wrap;
-    align-items: center;
+    flex-wrap: nowrap;
+    align-items: flex-start;
     justify-content: space-between;
     gap: var(--cinder-space-2);
     margin: 0;
     overflow-wrap: anywhere;
   }
 
-  /* The When summary's text, with a missing kind's line directly under it and Edit after both. */
+  /* The When summary's text, with a missing kind's line directly under it and Edit after both. Its
+     basis is 0, not its longest line, so a long title or a missing kind never pushes Edit down. */
   .ib-hook-step__summary-text {
     display: flex;
-    flex: 1 1 auto;
+    flex: 1 1 0;
     flex-direction: column;
     gap: var(--cinder-space-2);
     min-inline-size: 0;

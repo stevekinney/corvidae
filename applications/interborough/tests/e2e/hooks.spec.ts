@@ -2005,3 +2005,52 @@ for (const width of WIDTHS) {
     });
   }
 }
+
+// B6: on a phone the When step's Edit stays at the top inline end beside its summary and the
+// Missing line, where the Then step's Edit sits, however long the text it sits beside.
+test('[hook-event-missing-edit] /hooks/:hook: at 320 pixels the When step’s Edit sits at the top inline end, beside Missing, where the Then step’s Edit sits', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 320, height: 900 });
+  const problem = {
+    code: 'event-missing',
+    kind: 'reports:digest-ready@1.0.0',
+    loadedVersion: null,
+  };
+  await openHooks(
+    page,
+    `/hooks/${DIGEST_HOOK.id}`,
+    [DIGEST_HOOK],
+    {
+      'bureau.events.catalog': PLUGIN_EVENT_CATALOG,
+      'bureau.hooks.list': () => ({
+        hooks: [{ ...DIGEST_HOOK, lastDelivery: DELIVERED, problems: [problem] }],
+      }),
+    },
+    EVENT_PLUGINS,
+  );
+  const when = page.getByTestId('hook-step-summary-when');
+  const then = page.getByTestId('hook-step-summary-then');
+  await expect(when.getByTestId('hook-missing-events')).toContainText(
+    copy.event.missing.notLoaded,
+  );
+  const whenEdit = when.getByRole('button', { name: copy.steps.edit });
+  const thenEdit = then.getByRole('button', { name: copy.steps.edit });
+  await expect(whenEdit).toBeVisible();
+  await expect(thenEdit).toBeVisible();
+
+  // Read together, from one layout.
+  const boxes = await readBoxes(page, {
+    summary: when,
+    text: when.locator('.ib-hook-step__summary-text'),
+    whenEdit,
+    thenEdit,
+  });
+  const end = (box: { x: number; width: number }): number => box.x + box.width;
+  // At the summary's inline end, and at the same edge as the Then step's Edit.
+  expect(Math.abs(end(boxes.whenEdit) - end(boxes.summary))).toBeLessThanOrEqual(1);
+  expect(Math.abs(end(boxes.whenEdit) - end(boxes.thenEdit))).toBeLessThanOrEqual(1);
+  // At the top, beside the first line, never on a line of its own under the text.
+  expect(Math.abs(boxes.whenEdit.y - boxes.summary.y)).toBeLessThanOrEqual(1);
+  expect(end(boxes.text)).toBeLessThanOrEqual(boxes.whenEdit.x);
+});
