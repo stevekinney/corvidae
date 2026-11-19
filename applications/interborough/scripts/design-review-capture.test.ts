@@ -537,11 +537,24 @@ describe('capture file names', () => {
   });
 
   describe('when a specification captures twice', () => {
-    let directory = '';
-    const previous = {
-      capture: process.env['INTERBOROUGH_DESIGN_REVIEW_CAPTURE'],
-      scheme: process.env['INTERBOROUGH_DESIGN_REVIEW_COLOR_SCHEME'],
-    };
+    /** Runs `run` with the capture directory and light scheme set, and restores both afterwards. */
+    async function withCapture(run: (directory: string) => Promise<void>): Promise<void> {
+      const directory = await mkdtemp(join(tmpdir(), 'design-review-names-'));
+      const previousCapture = process.env['INTERBOROUGH_DESIGN_REVIEW_CAPTURE'];
+      const previousScheme = process.env['INTERBOROUGH_DESIGN_REVIEW_COLOR_SCHEME'];
+      process.env['INTERBOROUGH_DESIGN_REVIEW_CAPTURE'] = directory;
+      process.env['INTERBOROUGH_DESIGN_REVIEW_COLOR_SCHEME'] = 'light';
+      try {
+        await run(directory);
+      } finally {
+        if (previousCapture === undefined) delete process.env['INTERBOROUGH_DESIGN_REVIEW_CAPTURE'];
+        else process.env['INTERBOROUGH_DESIGN_REVIEW_CAPTURE'] = previousCapture;
+        if (previousScheme === undefined)
+          delete process.env['INTERBOROUGH_DESIGN_REVIEW_COLOR_SCHEME'];
+        else process.env['INTERBOROUGH_DESIGN_REVIEW_COLOR_SCHEME'] = previousScheme;
+        await rm(directory, { recursive: true, force: true });
+      }
+    }
     const tablet = {
       viewportSize: () => ({ width: 768, height: 900 }),
       async setViewportSize() {},
@@ -551,45 +564,37 @@ describe('capture file names', () => {
       locator: () => ({ evaluate: async () => 0 }),
     };
 
-    beforeEach(async () => {
-      directory = await mkdtemp(join(tmpdir(), 'design-review-names-'));
-      process.env['INTERBOROUGH_DESIGN_REVIEW_CAPTURE'] = directory;
-      process.env['INTERBOROUGH_DESIGN_REVIEW_COLOR_SCHEME'] = 'light';
-    });
-    afterEach(async () => {
-      if (previous.capture === undefined) delete process.env['INTERBOROUGH_DESIGN_REVIEW_CAPTURE'];
-      else process.env['INTERBOROUGH_DESIGN_REVIEW_CAPTURE'] = previous.capture;
-      if (previous.scheme === undefined)
-        delete process.env['INTERBOROUGH_DESIGN_REVIEW_COLOR_SCHEME'];
-      else process.env['INTERBOROUGH_DESIGN_REVIEW_COLOR_SCHEME'] = previous.scheme;
-      await rm(directory, { recursive: true, force: true });
-    });
-
     test('under one name, fails instead of overwriting the first screen', async () => {
-      await captureForDesignReview(tablet as never, capture);
-      const rejection = await rejectionOf(captureForDesignReview(tablet as never, capture));
-      expect(String(rejection)).toContain(
-        'Two design-review captures resolve to runs-states--e2e-host--runs--ready--768--light',
-      );
+      await withCapture(async () => {
+        await captureForDesignReview(tablet as never, capture);
+        const rejection = await rejectionOf(captureForDesignReview(tablet as never, capture));
+        expect(String(rejection)).toContain(
+          'Two design-review captures resolve to runs-states--e2e-host--runs--ready--768--light',
+        );
+      });
     });
 
     test('under two states, keeps both', async () => {
-      await captureForDesignReview(tablet as never, capture);
-      await captureForDesignReview(tablet as never, { ...capture, state: 'empty' });
-      expect(await captureCount(directory)).toBe(2);
+      await withCapture(async (directory) => {
+        await captureForDesignReview(tablet as never, capture);
+        await captureForDesignReview(tablet as never, { ...capture, state: 'empty' });
+        expect(await captureCount(directory)).toBe(2);
+      });
     });
 
     test('at 1280, also writes the 1920 capture, and takes the specification’s own 1920 as the same screen', async () => {
-      const desktop = { ...tablet, viewportSize: () => ({ width: 1280, height: 900 }) };
-      await captureForDesignReview(desktop as never, capture);
-      const wide = { ...tablet, viewportSize: () => ({ width: 1920, height: 1080 }) };
-      await captureForDesignReview(wide as never, capture);
-      const manifest = await readFile(join(directory, 'manifest.jsonl'), 'utf8');
-      const widths = manifest
-        .trim()
-        .split('\n')
-        .map((line) => (JSON.parse(line) as { width: number }).width);
-      expect(widths).toEqual([1280, 1920]);
+      await withCapture(async (directory) => {
+        const desktop = { ...tablet, viewportSize: () => ({ width: 1280, height: 900 }) };
+        await captureForDesignReview(desktop as never, capture);
+        const wide = { ...tablet, viewportSize: () => ({ width: 1920, height: 1080 }) };
+        await captureForDesignReview(wide as never, capture);
+        const manifest = await readFile(join(directory, 'manifest.jsonl'), 'utf8');
+        const widths = manifest
+          .trim()
+          .split('\n')
+          .map((line) => (JSON.parse(line) as { width: number }).width);
+        expect(widths).toEqual([1280, 1920]);
+      });
     });
   });
 });
