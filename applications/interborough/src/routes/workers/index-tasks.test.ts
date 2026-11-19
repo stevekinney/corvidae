@@ -193,9 +193,9 @@ describe('the list', () => {
       const { findByTestId, findByRole, queryByTestId } = renderRoute();
       await findByTestId('workers-summary');
       await waitFor(() =>
-        expect((queryByTestId('worker-detail')?.textContent ?? '').includes('Payments worker 1')).toBe(
-          true,
-        ),
+        expect(
+          (queryByTestId('worker-detail')?.textContent ?? '').includes('Payments worker 1'),
+        ).toBe(true),
       );
       const field = await findByRole('searchbox', { name: 'Filter workers' });
 
