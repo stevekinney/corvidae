@@ -91,7 +91,14 @@ export function eventKindOf(entry: string): string {
   return pluginEventOf(entry)?.kind ?? entry;
 }
 
-/** A plugin as a sentence names it: its name in words (`reports` reads `Reports`). */
+/**
+ * A plugin's title by its name, as the page knows it from the host (`pluginTitleOf`): `reports`
+ * reads `Weekly reports`. A person reads the title wherever the plugin is named; its name appears
+ * only inside a raw kind's code (COR-2226, rows R3 and R10).
+ */
+export type PluginTitleOf = (plugin: string) => string;
+
+/** A plugin's name in words (`reports` reads `Reports`), only while the host has not said its title. */
 function pluginWords(plugin: string): string {
   return humanizeName(plugin);
 }
@@ -223,19 +230,23 @@ export function eventMatches(
 }
 
 /**
- * A plugin's kind as a sentence names it (COR-2226, row R10): its plugin, then its words,
- * `Reports: digest ready`, never its words alone and never its pin; `undefined` for a Bureau kind.
+ * A plugin's kind as a sentence or a list names it (COR-2226, row R10): its plugin's title, then
+ * its words, `Weekly reports: digest ready`, never its words alone and never its pin; `undefined`
+ * for a Bureau kind.
  */
-function pluginEventClause(kind: string): string | undefined {
+function pluginEventClause(kind: string, titleOf: PluginTitleOf): string | undefined {
   const plugin = pluginEventOf(kind);
   if (plugin === undefined) return undefined;
   const words = eventWords(kind);
-  return `${pluginWords(plugin.plugin)}: ${words.charAt(0).toLowerCase()}${words.slice(1)}`;
+  return `${titleOf(plugin.plugin)}: ${words.charAt(0).toLowerCase()}${words.slice(1)}`;
 }
 
 /** The events of a hook as a phrase: one name, two joined by `or`, or the first and how many more. */
-export function eventPhrase(events: readonly string[]): string {
-  const names = events.map((kind) => pluginEventClause(kind) ?? eventWords(kind));
+export function eventPhrase(
+  events: readonly string[],
+  titleOf: PluginTitleOf = pluginWords,
+): string {
+  const names = events.map((kind) => pluginEventClause(kind, titleOf) ?? eventWords(kind));
   const [first, second] = names;
   if (first === undefined) return HOOKS_COPY.sentence.noEvent;
   if (second === undefined) return first;
@@ -283,14 +294,17 @@ function scopePhrase(scope: HookScope): string {
  * A hook as a sentence: `When Review requested, send a signed message to https://example.com`, with
  * what it is limited to after the events: `When Review requested for the agent scout, notify me`.
  */
-export function hookSentence(hook: {
-  readonly events: readonly string[];
-  readonly action: Hook['action'] | DraftAction;
-  readonly scope?: HookScope | null | undefined;
-}): string {
+export function hookSentence(
+  hook: {
+    readonly events: readonly string[];
+    readonly action: Hook['action'] | DraftAction;
+    readonly scope?: HookScope | null | undefined;
+  },
+  titleOf: PluginTitleOf = pluginWords,
+): string {
   const scope =
     hook.scope === null || hook.scope === undefined ? '' : ` ${scopePhrase(hook.scope)}`;
-  return `${HOOKS_COPY.sentence.when} ${eventPhrase(hook.events)}${scope}, ${actionPhrase(hook.action)}`;
+  return `${HOOKS_COPY.sentence.when} ${eventPhrase(hook.events, titleOf)}${scope}, ${actionPhrase(hook.action)}`;
 }
 
 /** A hook's Only for cell: what it is limited to, or that it runs for everything. */
@@ -385,13 +399,22 @@ export function failingFirst<T>(items: readonly T[], failing: (item: T) => boole
 }
 
 /** Whether a hook matches the words typed into the search: its sentence, name, or action's address. */
-export function hookMatches(hook: Hook, query: string): boolean {
+export function hookMatches(
+  hook: Hook,
+  query: string,
+  titleOf: PluginTitleOf = pluginWords,
+): boolean {
   const terms = query
     .toLowerCase()
     .split(/\s+/)
     .filter((term) => term !== '');
   if (terms.length === 0) return true;
-  const haystack = [hookSentence(hook), hookRowSentence(hook), hook.name ?? '', ...hook.events]
+  const haystack = [
+    hookSentence(hook, titleOf),
+    hookRowSentence(hook, false, titleOf),
+    hook.name ?? '',
+    ...hook.events,
+  ]
     .join(' ')
     .toLowerCase();
   return terms.every((term) => haystack.includes(term));
@@ -399,11 +422,11 @@ export function hookMatches(hook: Hook, query: string): boolean {
 
 /**
  * An event kind as the clause a list row's sentence opens with: `schedule.missed` reads `a schedule
- * misses a run`. A plugin's kind names its plugin: `reports:digest-ready@1.0.0` reads `Reports:
- * digest ready` (COR-2226, row R10).
+ * misses a run`. A plugin's kind names its plugin by its title: `reports:digest-ready@1.0.0` reads
+ * `Weekly reports: digest ready` (COR-2226, row R10).
  */
-export function eventClause(kind: string): string {
-  const plugin = pluginEventClause(kind);
+export function eventClause(kind: string, titleOf: PluginTitleOf = pluginWords): string {
+  const plugin = pluginEventClause(kind, titleOf);
   if (plugin !== undefined) return plugin;
   const clauses = HOOKS_COPY.row.events;
   return Object.hasOwn(clauses, kind) ? (clauses[kind] ?? eventWords(kind)) : eventWords(kind);
@@ -420,19 +443,15 @@ export function eventOptionLabel(kind: string): string {
 }
 
 /**
- * An event kind as a list of chosen events names it, where no group heads it: a Bureau kind as an
- * option is named, and a plugin's kind with its plugin's title after its words, `Digest ready,
- * Reports`, so two plugins' kinds of one name never read the same (COR-2226, row R3). `titleOf`
- * gives a plugin's title; its name in words when the page has none.
+ * An event kind as it is named where no group heads it (a list of chosen or missing events, a line
+ * that joins them, the list's event filter): a Bureau kind as an option is named, and a plugin's
+ * kind as a sentence names it, its plugin's title first, `Weekly reports: digest ready`. So two
+ * plugins' kinds of one name never read the same (COR-2226, row R3), and a comma only ever falls
+ * between two events (R10's shape). `titleOf` gives a plugin's title; its name in words when the
+ * page has none.
  */
-export function eventChosenLabel(
-  kind: string,
-  titleOf: (plugin: string) => string = pluginWords,
-): string {
-  const plugin = pluginEventOf(kind);
-  return plugin === undefined
-    ? eventOptionLabel(kind)
-    : `${eventWords(kind)}, ${titleOf(plugin.plugin)}`;
+export function eventChosenLabel(kind: string, titleOf: PluginTitleOf = pluginWords): string {
+  return pluginEventClause(kind, titleOf) ?? eventOptionLabel(kind);
 }
 
 /** Why a plugin kind a hook lists is missing (COR-2226, row R5): the one cause line. */
@@ -480,8 +499,11 @@ export function kindsReadingAlike(
 }
 
 /** The events of a hook as a clause: one, two joined by `or`, or the first and how many more. */
-export function eventClauses(events: readonly string[]): string {
-  const clauses = events.map(eventClause);
+export function eventClauses(
+  events: readonly string[],
+  titleOf: PluginTitleOf = pluginWords,
+): string {
+  const clauses = events.map((kind) => eventClause(kind, titleOf));
   const [first, second] = clauses;
   if (first === undefined) return HOOKS_COPY.sentence.noEvent;
   if (second === undefined) return first;
@@ -531,12 +553,16 @@ function rowActionPhrase(action: Hook['action'], fullAddress: boolean): string {
  * events.pagerduty.com`. A hook limited to a workflow reads it inside the sentence (`When a run
  * finishes in Triage inbox, notify me`). The row says the host of a webhook; `fullAddress` says all of it.
  */
-export function hookRowSentence(hook: RowHook, fullAddress = false): string {
+export function hookRowSentence(
+  hook: RowHook,
+  fullAddress = false,
+  titleOf: PluginTitleOf = pluginWords,
+): string {
   const workflow =
     hook.scope?.kind === 'workflow'
       ? ` ${HOOKS_COPY.row.inWorkflow(subjectName(hook.scope.id))}`
       : '';
-  return `${HOOKS_COPY.sentence.when} ${eventClauses(hook.events)}${workflow}, ${rowActionPhrase(hook.action, fullAddress)}`;
+  return `${HOOKS_COPY.sentence.when} ${eventClauses(hook.events, titleOf)}${workflow}, ${rowActionPhrase(hook.action, fullAddress)}`;
 }
 
 /** The two texts of a hook's list row: the bold title on line one and the muted line two. */
@@ -558,8 +584,9 @@ export function hookRowText(
   },
   now: number,
   fullAddress = false,
+  titleOf: PluginTitleOf = pluginWords,
 ): HookRowText {
-  const sentence = hookRowSentence(hook, fullAddress);
+  const sentence = hookRowSentence(hook, fullAddress, titleOf);
   // A plugin kind that is missing is said on line two, and nowhere on line one (row R6). It leads
   // the line, so a line the row cuts at two lines never cuts it on a phone.
   const causes = [...new Set(missingEventsOf(hook.problems).map(missingEventCause))];

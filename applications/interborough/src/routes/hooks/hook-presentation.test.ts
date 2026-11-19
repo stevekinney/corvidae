@@ -15,6 +15,7 @@ import type {
 import { ServerUnreachableError } from '../../lib/faults.ts';
 import { activityTime } from '../health/health-times.ts';
 import { HOOKS_COPY } from './hook-copy.ts';
+import { editorSentence, whenSummary } from './hook-editor-presentation.ts';
 import {
   deliveryFailed,
   deliveryLine,
@@ -23,6 +24,7 @@ import {
   eventChoices,
   eventChosenLabel,
   eventClause,
+  eventClauses,
   eventKindOf,
   eventMatches,
   eventOptionLabel,
@@ -717,9 +719,11 @@ describe('a plugin’s event kinds (COR-2226)', () => {
   });
 
   test('says two plugins’ kinds of one name apart by their titles once chosen, never as identical text (R3)', () => {
-    expect(eventChosenLabel('reports:digest-ready', titleOf)).toBe('Digest ready, Weekly reports');
-    expect(eventChosenLabel('zeta:digest-ready@2.0.0', titleOf)).toBe('Digest ready, Archive');
-    expect(eventChosenLabel('reports:digest-ready')).toBe('Digest ready, Reports');
+    // The title leads, so a comma only ever falls between two events (R10's shape).
+    expect(eventChosenLabel('reports:digest-ready', titleOf)).toBe('Weekly reports: digest ready');
+    expect(eventChosenLabel('zeta:digest-ready@2.0.0', titleOf)).toBe('Archive: digest ready');
+    // Only while the host has not said a title, the plugin's name in words.
+    expect(eventChosenLabel('reports:digest-ready')).toBe('Reports: digest ready');
     expect(eventChosenLabel('review.requested')).toBe(eventOptionLabel('review.requested'));
     const labels = ['reports:digest-ready', 'zeta:digest-ready'].map((kind) =>
       eventChosenLabel(kind, titleOf),
@@ -777,20 +781,38 @@ describe('a plugin’s event kinds (COR-2226)', () => {
     expect(found('zeta')).toEqual(['zeta:digest-ready']);
   });
 
-  test('names the plugin in a sentence, never the bare words and never the pin (R4, R10)', () => {
-    expect(eventClause('reports:digest-ready@1.0.0')).toBe('Reports: digest ready');
+  test('names the plugin by its title in a sentence, never the bare words, its namespace or the pin (R3, R4, R10)', () => {
+    expect(eventClause('reports:digest-ready@1.0.0', titleOf)).toBe('Weekly reports: digest ready');
     expect(
-      hookSentence({
-        events: ['reports:digest-ready@1.0.0'],
-        action: { type: 'notify', title: null },
-      }),
-    ).toBe('When Reports: digest ready, notify me');
+      hookSentence(
+        {
+          events: ['reports:digest-ready@1.0.0'],
+          action: { type: 'notify', title: null },
+        },
+        titleOf,
+      ),
+    ).toBe('When Weekly reports: digest ready, notify me');
     const row = listed({
-      events: ['reports:digest-ready@1.0.0'],
+      events: ['reports:digest-ready@1.0.0', 'run.settled'],
       action: { type: 'notify', title: null },
     });
-    expect(hookRowSentence(row)).toBe('When Reports: digest ready, notify me');
-    expect(hookRowSentence(row)).not.toContain('@');
+    expect(hookRowSentence(row, false, titleOf)).toBe(
+      'When Weekly reports: digest ready or a run finishes, notify me',
+    );
+    expect(hookRowSentence(row, false, titleOf)).not.toContain('@');
+    expect(eventClauses(row.events, titleOf)).toBe(
+      'Weekly reports: digest ready or a run finishes',
+    );
+    expect(
+      whenSummary({ events: row.events, action: row.action }, undefined, titleOf),
+    ).toStartWith('Weekly reports: digest ready or a run finishes');
+    expect(editorSentence({ events: row.events, action: row.action }, undefined, titleOf)).toBe(
+      'When Weekly reports: digest ready or a run finishes, notify me.',
+    );
+    // The list's search finds the hook by the plugin's title its row says.
+    expect(hookMatches(row, 'weekly', titleOf)).toBe(true);
+    // Only while the host has not said a title, the plugin's name in words.
+    expect(eventClause('reports:digest-ready@1.0.0')).toBe('Reports: digest ready');
   });
 
   test('says why a kind is missing in one line: its plugin is not loaded, or another version is (R5)', () => {
@@ -811,14 +833,14 @@ describe('a plugin’s event kinds (COR-2226)', () => {
         { code: 'event-missing', kind: 'reports:digest-ready@1.0.0', loadedVersion: null },
       ],
     });
-    const text = hookRowText(missing, 10);
+    const text = hookRowText(missing, 10, false, titleOf);
     expect(text.title).toBe('Digest');
     // It leads the line, so the row's two-line cut never takes it.
     expect(text.line).toBe(
-      'Plugin not loaded, when Reports: digest ready or a run finishes, notify me',
+      'Plugin not loaded, when Weekly reports: digest ready or a run finishes, notify me',
     );
-    expect(hookRowText({ ...missing, name: null }, 10)).toEqual({
-      title: 'When Reports: digest ready or a run finishes, notify me',
+    expect(hookRowText({ ...missing, name: null }, 10, false, titleOf)).toEqual({
+      title: 'When Weekly reports: digest ready or a run finishes, notify me',
       line: 'Plugin not loaded',
     });
     // The hook stays on, so its word is what its last delivery says, as for any hook.

@@ -1868,8 +1868,9 @@ test('[new-hook-plugin-event-long] a raw kind too long for the phone’s panel d
   await page.keyboard.press('Escape');
 });
 
-// R3, R4: a chosen plugin kind reads with its plugin's title, and its raw kind carries its pin, muted.
-for (const width of WIDTHS) {
+// R3, R4: a chosen plugin kind reads with its plugin's title first, and its raw kind carries its pin,
+// muted; the Check line joins the chosen events, a comma only between two (B2).
+for (const width of [320, ...WIDTHS] as const) {
   test(`[new-hook-plugin-event-chosen] two plugins’ kinds of one name, chosen, never read the same, at ${width} pixels`, async ({
     page,
   }) => {
@@ -1891,8 +1892,8 @@ for (const width of WIDTHS) {
     }
     const chosen = page.getByTestId('hook-events').locator('li.ib-hook-events__item');
     await expect(chosen.locator('.ib-hook-events__name')).toHaveText([
-      'Digest ready, Weekly reports',
-      'Digest ready, Archive',
+      'Weekly reports: digest ready',
+      'Archive: digest ready',
     ]);
     await expect(chosen.locator('.ib-hook-events__kind')).toHaveText([
       'reports:digest-ready@1.0.0',
@@ -1901,6 +1902,14 @@ for (const width of WIDTHS) {
     await captureForDesignReview(page, {
       route: '/hooks/new',
       state: 'new-hook-plugin-event-chosen',
+      source: SOURCE,
+    });
+    const check = page.getByTestId('hook-check-events');
+    await expect(check).toHaveText('Weekly reports: digest ready, Archive: digest ready');
+    await check.scrollIntoViewIfNeeded();
+    await captureForDesignReview(page, {
+      route: '/hooks/new',
+      state: 'new-hook-plugin-event-check',
       source: SOURCE,
     });
   });
@@ -1920,7 +1929,9 @@ for (const width of WIDTHS) {
       EVENT_PLUGINS,
     );
     const row = page.locator(`li[data-hook="${DIGEST_HOOK.id}"]`);
-    await expect(row).toContainText('When Reports: digest ready or a review is waiting, notify me');
+    await expect(row).toContainText(
+      'When Weekly reports: digest ready or a review is waiting, notify me',
+    );
     await expect(row).not.toContainText('@1.0.0');
     await captureForDesignReview(page, {
       route: '/hooks',
@@ -1938,6 +1949,8 @@ for (const width of WIDTHS) {
     }
     const locked = page.getByTestId('hook-event-locked');
     await expect(locked.locator('.ib-hook-events__kind')).toHaveText('reports:digest-ready@1.0.0');
+    // Two events read as two: the plugin's title leads its kind (B2).
+    await expect(locked).toContainText('Weekly reports: digest ready, A review is waiting');
     await expect(page.getByTestId('hook-missing-events')).toHaveCount(0);
     await captureForDesignReview(page, {
       route: '/hooks/:hook',
@@ -1981,7 +1994,7 @@ for (const width of WIDTHS) {
 
       await page.goto(`/hooks/${DIGEST_HOOK.id}`);
       const missing = page.getByTestId('hook-missing-events');
-      await expect(missing).toContainText('Digest ready, Weekly reports');
+      await expect(missing).toContainText('Weekly reports: digest ready');
       await expect(missing.locator('[data-status-word="Missing"]')).toBeVisible();
       await expect(missing).toContainText(cause);
       await captureForDesignReview(page, { route: '/hooks/:hook', state, source: SOURCE });

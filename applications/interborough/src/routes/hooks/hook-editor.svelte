@@ -390,15 +390,20 @@
         ? { events: form.events, action: hook.action, scope: form.draftScope }
         : { events: form.events, action: form.draftAction, scope: form.draftScope },
       anyScopeOf(allowedScopes),
+      titleOfPlugin,
     ),
   );
   /** The hook as it is saved, which the header says: it is not what is typed and not yet saved. */
   const savedScopes = $derived(scopeKindsFor(hook?.events ?? [], kinds.data ?? []));
   const savedSentence = $derived(
-    hook === undefined ? '' : editorSentence(hook, anyScopeOf(savedScopes)),
+    hook === undefined ? '' : editorSentence(hook, anyScopeOf(savedScopes), titleOfPlugin),
   );
   const title = $derived(
-    isNew ? copy.newTitle : hook === undefined ? '' : editorTitle(hook, anyScopeOf(savedScopes)),
+    isNew
+      ? copy.newTitle
+      : hook === undefined
+        ? ''
+        : editorTitle(hook, anyScopeOf(savedScopes), titleOfPlugin),
   );
   usePageLabel(() => ({
     path: hookPath(hookId),
@@ -691,7 +696,11 @@
     onSuccess: (saved, input) => {
       adopt(input.hook, saved);
       if (input.undoing) return;
-      const name = editorTitle(saved, anyScopeOf(scopeKindsFor(saved.events, kinds.data ?? [])));
+      const name = editorTitle(
+        saved,
+        anyScopeOf(scopeKindsFor(saved.events, kinds.data ?? [])),
+        titleOfPlugin,
+      );
       showToast(saved.enabled ? copy.toggled.on(name) : copy.toggled.off(name), {
         undo: () => switching.mutate({ hook: saved, enabled: input.hook.enabled, undoing: true }),
       });
@@ -1003,7 +1012,7 @@
             </h2>
             {#if compactWhen && hook !== undefined}
               <p class="ib-hook-step__summary" data-testid="hook-step-summary-when">
-                <span>{whenSummary(hook, anyScopeOf(savedScopes))}</span>
+                <span>{whenSummary(hook, anyScopeOf(savedScopes), titleOfPlugin)}</span>
                 <Button variant="ghost" size="sm" onclick={() => (whenOpen = true)}
                   >{copy.steps.edit}</Button
                 >
@@ -1011,7 +1020,7 @@
               <HookMissingEvents missing={missingEvents} titleOf={titleOfPlugin} />
             {:else if isDefault && hook !== undefined}
               <p class="ib-hook-editor__plain" data-testid="hook-when-readonly">
-                {whenSummary(hook, anyScopeOf(savedScopes))}
+                {whenSummary(hook, anyScopeOf(savedScopes), titleOfPlugin)}
               </p>
               <HookMissingEvents missing={missingEvents} titleOf={titleOfPlugin} />
             {:else}

@@ -9,6 +9,7 @@ import { HttpClient } from '@lostgradient/weft';
 import { cleanup, fireEvent, render, waitFor, within } from '@testing-library/svelte';
 import { afterEach, describe, expect, test } from 'bun:test';
 
+import { chooseFilterOption } from '../../../tests/dom.test-support.ts';
 import RouteOutletHarness from '../../app/shell/route-outlet.test-harness.svelte';
 import { installBureauStub, type BureauStub } from '../../lib/bureau-stub.test-support.ts';
 import { AUTHORIZATION_SCOPES } from '../../lib/scopes.svelte.ts';
@@ -168,12 +169,39 @@ describe('the event picker (COR-2226, rows R1, R2, R7)', () => {
       return found;
     });
     expect(item.querySelector('.ib-hook-events__name')?.textContent).toBe(
-      'Digest ready, Weekly reports',
+      'Weekly reports: digest ready',
     );
     expect(item.querySelector('.ib-hook-events__kind')?.textContent).toBe(
       'reports:digest-ready@1.0.0',
     );
     expect(item.querySelector('.ib-hook-events__version')?.textContent).toBe('@1.0.0');
+
+    // Another plugin's kind of the same name, chosen too: the Check line joins two events, each
+    // named with its plugin's title first, so a comma falls only between them (B2, row R10).
+    const input = view.getByRole('combobox', { name: HOOKS_COPY.editor.event.label });
+    await fireEvent.click(input);
+    const archive = await waitFor(() => {
+      const found = [...document.body.querySelectorAll<HTMLElement>('[role="option"]')].find(
+        (element) =>
+          element.querySelector('.cinder-combobox__option-code')?.textContent?.trim() ===
+          'archive:digest-ready',
+      );
+      if (found === undefined) throw new Error('the list did not open again on a click');
+      return found;
+    });
+    await fireEvent.mouseDown(archive);
+    await waitFor(() =>
+      expect(view.getByTestId('hook-check-events').textContent).toBe(
+        'Weekly reports: digest ready, Archive: digest ready',
+      ),
+    );
+    await fireEvent.click(
+      within(
+        view.container.querySelector<HTMLElement>(
+          '.ib-hook-events__item[data-event="archive:digest-ready"]',
+        )!,
+      ).getByRole('button'),
+    );
 
     // The Bureau pins the kind as it writes the hook, so the page sends it as the catalog names it.
     await fireEvent.click(
@@ -195,7 +223,7 @@ describe('a saved hook whose plugin kind is missing (COR-2226, rows R4, R5, R6)'
     ]);
     const missing = await view.findByTestId('hook-missing-events');
     const item = within(missing).getByRole('listitem');
-    expect(item.textContent).toContain('Digest ready, Weekly reports');
+    await waitFor(() => expect(item.textContent).toContain('Weekly reports: digest ready'));
     expect(item.textContent).toContain('Missing');
     expect(item.textContent).toContain('Plugin not loaded');
     const locked = await view.findByTestId('hook-event-locked');
@@ -203,6 +231,17 @@ describe('a saved hook whose plugin kind is missing (COR-2226, rows R4, R5, R6)'
       'reports:digest-ready@1.0.0',
     );
     expect(locked.querySelector('.ib-hook-events__version')?.textContent).toBe('@1.0.0');
+  });
+
+  test('names the plugin by its title in the header, the locked row’s one line and the title, never by its namespace (B1, B2)', async () => {
+    const view = open('/hooks/digest');
+    const locked = await view.findByTestId('hook-event-locked');
+    // Two events read as two: the plugin's title leads its kind, and a comma falls between events.
+    await waitFor(() =>
+      expect(locked.textContent).toContain('Weekly reports: digest ready, A review is waiting'),
+    );
+    expect(view.container.textContent).not.toContain('Reports: digest ready');
+    expect(view.container.textContent).not.toContain('Digest ready, Weekly reports');
   });
 
   test('names the version that is loaded when it is not the one pinned', async () => {
@@ -228,9 +267,42 @@ describe('a saved hook whose plugin kind is missing (COR-2226, rows R4, R5, R6)'
       if (found === null) throw new Error('the row is not drawn');
       return found;
     });
-    expect(row.querySelector('.ib-hooks__line')?.textContent).toBe(
-      'Plugin not loaded, when Reports: digest ready or a review is waiting, notify me',
+    // The row names the plugin by its title, once the host has said it.
+    await waitFor(() =>
+      expect(row.querySelector('.ib-hooks__line')?.textContent).toBe(
+        'Plugin not loaded, when Weekly reports: digest ready or a review is waiting, notify me',
+      ),
     );
     expect(row.textContent).not.toContain('Missing');
+  });
+});
+
+describe('the list of hooks names a plugin by its title (COR-2226, rows R3, R10)', () => {
+  test('offers the plugin’s kind in the event filter by its title, and filters by it', async () => {
+    const view = open('/hooks');
+    await waitFor(() =>
+      expect(view.container.querySelector('li[data-hook="digest"]')?.textContent).toContain(
+        'Weekly reports: digest ready',
+      ),
+    );
+    await chooseFilterOption(view, HOOKS_COPY.eventFilter, 'Weekly reports: digest ready');
+    await waitFor(() =>
+      expect(view.container.querySelector('li[data-hook="digest"]')).not.toBeNull(),
+    );
+  });
+
+  test('finds a hook by its plugin’s title in the search', async () => {
+    const view = open('/hooks');
+    await waitFor(() =>
+      expect(view.container.querySelector('li[data-hook="digest"]')?.textContent).toContain(
+        'Weekly reports',
+      ),
+    );
+    await fireEvent.input(view.getByRole('searchbox', { name: HOOKS_COPY.searchLabel }), {
+      target: { value: 'weekly' },
+    });
+    await waitFor(() =>
+      expect(view.container.querySelector('li[data-hook="digest"]')).not.toBeNull(),
+    );
   });
 });

@@ -12,8 +12,9 @@
    * hook.
    *
    * A kind a plugin declares (COR-2226) is offered in its plugin's group, under the plugin's title,
-   * by its own words with its raw kind beside them (rows R1 and R2). Chosen, it reads with its
-   * plugin's title after its words (row R3), and its raw kind carries, muted, the version the hook
+   * by its own words with its raw kind beside them (rows R1 and R2). Chosen, and in the saved
+   * hook's one line of events, it reads with its plugin's title first, "Weekly reports: digest
+   * ready" (rows R3 and R10), so a comma only falls between two events; its raw kind carries, muted, the version the hook
    * is pinned to: the version the Bureau lists while the hook is new, and the pin once it is saved
    * (row R4). Without a plugin kind the field is what it always was (row R7).
    */
