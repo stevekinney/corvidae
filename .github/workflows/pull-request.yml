@@ -150,6 +150,7 @@ jobs:
         env:
           CI_EVIDENCE_NEEDS: ${{ toJSON(needs) }}
           CI_EVIDENCE_NOT_APPLICABLE: ${{ needs.browser-selection.outputs.fixtures != 'true' && needs.browser-selection.outputs.interborough != 'true' && '["browser"]' || '[]' }}
+          CI_EVIDENCE_EXPECTED_JOBS: '["static","workspaces","tests","browser-selection","browser"]'
         run: bun scripts/chef/ci-evidence-workflow.ts ci-evidence-receipt.json
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: ${{ always() }}

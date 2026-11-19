@@ -27,12 +27,14 @@ function environment(
     VERIFICATION_PLAN: digest('e'),
     VERIFICATION_BASE: sha('b'),
     CI_EVIDENCE_NEEDS: '{"root":{"result":"success"}}',
+    CI_EVIDENCE_EXPECTED_JOBS: '["root"]',
     ...overrides,
   };
 }
 
 const git = (command: readonly string[]) => {
   if (command.join(' ') === 'git rev-parse HEAD') return { code: 0, stdout: `${sha('c')}\n` };
+  if (command.join(' ') === 'git rev-parse HEAD^') return { code: 0, stdout: `${sha('b')}\n` };
   if (command.join(' ') === 'git rev-parse HEAD^{tree}')
     return { code: 0, stdout: `${sha('f')}\n` };
   throw new Error(`unexpected command: ${command.join(' ')}`);
@@ -82,8 +84,7 @@ describe('createCiEvidenceWorkflowReceipt', () => {
       checkedTree: sha('f'),
     });
     expect(receipt.planDigest).toMatch(/^[0-9a-f]{64}$/);
-    expect(receipt.requestKey).toMatch(/^[0-9a-f]{64}$/);
-    expect(receipt.requestKey).not.toBe(digest('d'));
+    expect(receipt.requestKey).toBe('');
   });
 
   test('uses the push payload instead of manual dispatch values', () => {
@@ -99,7 +100,26 @@ describe('createCiEvidenceWorkflowReceipt', () => {
     });
     expect(receipt).toMatchObject({ event: 'push', base: sha('b'), candidate: sha('c') });
     expect(receipt.planDigest).toMatch(/^[0-9a-f]{64}$/);
-    expect(receipt.requestKey).toMatch(/^[0-9a-f]{64}$/);
+    expect(receipt.requestKey).toBe('');
+  });
+
+  test('records an unbound manual run with checkout-derived identity when no verification fields are supplied', () => {
+    const receipt = createCiEvidenceWorkflowReceipt({
+      environment: environment({
+        VERIFICATION_REQUEST: '',
+        VERIFICATION_PLAN: '',
+        VERIFICATION_BASE: '',
+      }),
+      eventPayload: {},
+      git,
+    });
+    expect(receipt).toMatchObject({
+      event: 'workflow_dispatch',
+      requestKey: '',
+      base: sha('b'),
+      candidate: sha('c'),
+    });
+    expect(receipt.planDigest).toMatch(/^[0-9a-f]{64}$/);
   });
 
   test('rejects a manual receipt with a missing digest, malformed workflow reference, or skipped dependency', () => {
@@ -116,6 +136,26 @@ describe('createCiEvidenceWorkflowReceipt', () => {
         }),
       ).toThrow(CiEvidenceWorkflowError);
     }
+  });
+
+  test('rejects a needs inventory that omits an expected job', () => {
+    expect(() =>
+      createCiEvidenceWorkflowReceipt({
+        environment: environment({ CI_EVIDENCE_EXPECTED_JOBS: '["root","tests"]' }),
+        eventPayload: {},
+        git,
+      }),
+    ).toThrow('expected prerequisite tests is missing');
+  });
+
+  test('rejects partially supplied manual verification identity fields', () => {
+    expect(() =>
+      createCiEvidenceWorkflowReceipt({
+        environment: environment({ VERIFICATION_PLAN: '', VERIFICATION_BASE: '' }),
+        eventPayload: {},
+        git,
+      }),
+    ).toThrow('manual verification inputs must be all supplied or all empty');
   });
 
   test('rejects a pull request payload without exact head and base commit identities', () => {
@@ -148,12 +188,18 @@ describe('CI evidence workflow producers', () => {
     expect(main).toContain('name: junit-tests-${{ strategy.job-index }}-${{ github.run_attempt }}');
     expect(main).toContain('pattern: junit-*-${{ github.run_attempt }}');
     expect(main).toContain('CI_EVIDENCE_ARTIFACT_DIRECTORY: ci-evidence-artifacts');
+    expect(main).toContain(
+      'CI_EVIDENCE_EXPECTED_JOBS: \'["root","workspaces","tests","tests-slow","browser","test-durations"]\'',
+    );
   });
 
   test('produces independent pull-request evidence with explicit browser non-applicability', () => {
     expect(pullRequest).toContain('name: Evidence aggregate');
     expect(pullRequest).toContain('CI_EVIDENCE_NEEDS: ${{ toJSON(needs) }}');
     expect(pullRequest).toContain('CI_EVIDENCE_NOT_APPLICABLE:');
+    expect(pullRequest).toContain(
+      'CI_EVIDENCE_EXPECTED_JOBS: \'["static","workspaces","tests","browser-selection","browser"]\'',
+    );
     expect(pullRequest).toContain('name: ci-evidence-receipt-${{ github.run_attempt }}');
   });
 });
