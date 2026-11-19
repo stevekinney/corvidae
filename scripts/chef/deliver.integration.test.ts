@@ -1940,6 +1940,14 @@ scenarios.describe('deliver --branch refuses to land without evidence', () => {
       });
       expect(mismatched.report).toMatchObject({ merged: false, failedStep: 'verification' });
       expect(mismatched.report.detail).toContain('no green run covers the head');
+      // A plan that did not fit one dispatch goes to main.yml, or an explicit selection is
+      // dispatched: neither passes `plan_digest`, so the run keeps its default name and covers nothing.
+      const undigested = await landBranch({
+        identity: { none: true },
+        answers: targeted('Targeted checks'),
+      });
+      expect(undigested.report).toMatchObject({ merged: false, failedStep: 'verification' });
+      expect(undigested.report.detail).toContain('no green run covers the head');
       const full = await landBranch({
         identity: { none: true },
         answers: {

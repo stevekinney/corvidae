@@ -8,7 +8,7 @@
 #     -f fixture_components='approval-card,description-list' \
 #     -f fixture_specs='scripts/browser-fixtures/tests/approval-card-input-rows.playwright.ts' \
 #     -f e2e_specs='tests/e2e/chat-responsive.spec.ts tests/e2e/chat-toast-clearance.spec.ts' \
-#     -f unit_workspace='components/cinder' -f unit_paths='src/components/approval-card'
+#     -f unit_lanes='[{"workspace":"components/cinder","paths":["src/components/approval-card"],"config":""}]'
 #
 # Every input is optional. The `checks` job always runs lint and type-check on the changed
 # workspaces; each other job runs only when its inputs name something. The browser jobs copy
@@ -37,18 +37,8 @@ on:
         type: string
         required: false
         default: ''
-      unit_workspace:
-        description: The workspace folder whose unit test files to run, for example components/cinder.
-        type: string
-        required: false
-        default: ''
-      unit_paths:
-        description: Test files or folders inside that workspace, space-separated.
-        type: string
-        required: false
-        default: ''
-      unit_config:
-        description: A bunfig for the unit run, for example ./bunfig.ui.toml in applications/interborough.
+      unit_lanes:
+        description: 'Every unit lane, as a JSON list of {workspace, paths, config}. Workspace "." is the repository root, run through scripts/bun-test.ts; paths are files or folders inside the workspace; config is a bunfig such as ./bunfig.ui.toml.'
         type: string
         required: false
         default: ''
@@ -178,14 +168,19 @@ jobs:
           if-no-files-found: ignore
 
   unit:
-    name: Unit test files (targeted)
-    if: ${{ inputs.unit_workspace != '' && inputs.unit_paths != '' }}
+    name: Unit test files (${{ matrix.lane.workspace }})
+    if: ${{ inputs.unit_lanes != '' && inputs.unit_lanes != '[]' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    # One job per lane of the plan, so no lane is dropped: a failed lane never hides another.
+    strategy:
+      fail-fast: false
+      matrix:
+        lane: ${{ fromJSON(inputs.unit_lanes) }}
     env:
-      UNIT_WORKSPACE: ${{ inputs.unit_workspace }}
-      UNIT_PATHS: ${{ inputs.unit_paths }}
-      UNIT_CONFIG: ${{ inputs.unit_config }}
+      UNIT_WORKSPACE: ${{ matrix.lane.workspace }}
+      UNIT_PATHS: ${{ join(matrix.lane.paths, ' ') }}
+      UNIT_CONFIG: ${{ matrix.lane.config }}
       TZ: UTC
       LANG: en_US.UTF-8
     steps:
@@ -200,6 +195,12 @@ jobs:
       # committed: the steps below run tests and servers outside Turborepo, so make it first.
       - run: bunx turbo run metadata
       - run: |
+          # The root lane runs the repository's own `scripts/` test files through the pooled,
+          # hang-guarded runner, as `test:self` does.
+          if [ "$UNIT_WORKSPACE" = . ]; then
+            bun scripts/bun-test.ts $UNIT_PATHS
+            exit
+          fi
           cd "$UNIT_WORKSPACE"
           config=""
           # Interborough runs every test outside src/host and fixtures under bunfig.ui.toml (its

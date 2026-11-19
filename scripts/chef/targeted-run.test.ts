@@ -10,8 +10,9 @@ import { landingPlan } from './landing-plan.ts';
 import type { Runner } from './process-runner.ts';
 import {
   buildCommand,
-  fitUnitPaths,
+  fitUnitLanes,
   inputsFromPlan,
+  OVERSIZE_RULE,
   run,
   UsageError,
   type TargetedDependencies,
@@ -41,7 +42,16 @@ function context(paths: string[] = []): EvidenceContext {
         if (match?.[1] !== undefined)
           byWorkspace.set(match[1], [...(byWorkspace.get(match[1]) ?? []), file]);
       }
-      return [...byWorkspace].map(([directory, tests]) => ({ directory, mode: 'partial', tests }));
+      // The repository root's own `scripts/` tests are a lane of directory ''.
+      const root = changed.filter((file) => /^scripts\/.+\.test\.ts$/.test(file));
+      return [
+        ...(root.length === 0 ? [] : [{ directory: '', mode: 'partial' as const, tests: root }]),
+        ...[...byWorkspace].map(([directory, tests]) => ({
+          directory,
+          mode: 'partial' as const,
+          tests,
+        })),
+      ];
     },
   };
 }
@@ -101,12 +111,17 @@ describe('deriveInputs', () => {
       fixtureComponents: ['approval-card', 'terminal'],
       fixtureSpecs: ['scripts/browser-fixtures/tests/approval-card-input-rows.playwright.ts'],
       e2eSpecs: ['tests/e2e/chat-responsive.spec.ts'],
-      unitWorkspace: 'components/cinder',
-      unitPaths: [
-        'src/components/approval-card/approval-card.test.ts',
-        'src/components/table/table.test.ts',
+      unitLanes: [
+        {
+          workspace: 'components/cinder',
+          paths: [
+            'src/components/approval-card/approval-card.test.ts',
+            'src/components/table/table.test.ts',
+          ],
+          config: '',
+        },
+        { workspace: 'packages/armorer', paths: ['src/a.test.ts'], config: '' },
       ],
-      unitConfig: '',
     });
   });
 });
@@ -114,39 +129,53 @@ describe('deriveInputs', () => {
 describe('unit lanes', () => {
   test('an Interborough UI test runs under bunfig.ui.toml, a host test under the default', () => {
     expect(
-      deriveInputs(['applications/interborough/src/views/standalone-view.test.ts']),
-    ).toMatchObject({
-      unitWorkspace: 'applications/interborough',
-      unitPaths: ['src/views/standalone-view.test.ts'],
-      unitConfig: './bunfig.ui.toml',
-    });
+      deriveInputs(['applications/interborough/src/views/standalone-view.test.ts']).unitLanes,
+    ).toEqual([
+      {
+        workspace: 'applications/interborough',
+        paths: ['src/views/standalone-view.test.ts'],
+        config: './bunfig.ui.toml',
+      },
+    ]);
     expect(
-      deriveInputs(['applications/interborough/src/host/panel-build-cache.test.ts']),
-    ).toMatchObject({ unitPaths: ['src/host/panel-build-cache.test.ts'], unitConfig: '' });
+      deriveInputs(['applications/interborough/src/host/panel-build-cache.test.ts']).unitLanes,
+    ).toEqual([
+      {
+        workspace: 'applications/interborough',
+        paths: ['src/host/panel-build-cache.test.ts'],
+        config: '',
+      },
+    ]);
   });
 
-  test('host and UI tests in one diff never share a run: the busier lane is selected', () => {
-    const { inputs, uncovered } = inputsFromPlan(
+  test('host and UI tests in one diff become two lanes, none dropped', () => {
+    const { inputs, undispatchable } = inputsFromPlan(
       planOf([
         'applications/interborough/src/host/a.test.ts',
         'applications/interborough/src/views/b.test.ts',
         'applications/interborough/src/routes/c.test.ts',
       ]),
     );
-    expect(inputs.unitPaths).toEqual(['src/routes/c.test.ts', 'src/views/b.test.ts']);
-    expect(inputs.unitConfig).toBe('./bunfig.ui.toml');
-    expect(uncovered).toEqual(['applications/interborough: 1 test files']);
+    expect(inputs.unitLanes).toEqual([
+      {
+        workspace: 'applications/interborough',
+        paths: ['src/routes/c.test.ts', 'src/views/b.test.ts'],
+        config: './bunfig.ui.toml',
+      },
+      { workspace: 'applications/interborough', paths: ['src/host/a.test.ts'], config: '' },
+    ]);
+    expect(undispatchable).toEqual([]);
   });
 
   test('another workspace keeps its default bunfig', () => {
-    expect(deriveInputs(['packages/bureau/src/x.test.ts']).unitConfig).toBe('');
+    expect(deriveInputs(['packages/bureau/src/x.test.ts']).unitLanes[0]?.config).toBe('');
   });
 
-  test('Cinder wins the one unit lane, and the unit tests no lane can carry are reported', () => {
+  test('every lane is dispatched: the root, Interborough and Cinder together, none left on stderr', () => {
     const plan: EvidencePlan = {
       ...planOf([]),
       unit_tests: [
-        { workspace: '', paths: ['scripts/a.test.ts'], full: false },
+        { workspace: '', paths: ['scripts/a.test.ts', 'scripts/groom/b.test.ts'], full: false },
         {
           workspace: 'applications/interborough',
           paths: ['src/a.test.ts', 'src/b.test.ts'],
@@ -155,31 +184,66 @@ describe('unit lanes', () => {
         { workspace: 'components/cinder', paths: ['src/api-contract.test.ts'], full: false },
       ],
     };
-    const { inputs, uncovered } = inputsFromPlan(plan);
-    expect(inputs.unitWorkspace).toBe('components/cinder');
-    expect(inputs.unitPaths).toEqual(['src/api-contract.test.ts']);
-    expect(uncovered).toEqual(['root: 1 test files', 'applications/interborough: 2 test files']);
-  });
-
-  test('unit paths that fit one dispatch are named file by file', () => {
-    expect(fitUnitPaths(['src/b.test.ts', 'test/a.test.ts'])).toEqual([
-      'src/b.test.ts',
-      'test/a.test.ts',
+    const { inputs, undispatchable } = inputsFromPlan(plan);
+    expect(undispatchable).toEqual([]);
+    expect(inputs.unitLanes).toEqual([
+      { workspace: '.', paths: ['scripts/a.test.ts', 'scripts/groom/b.test.ts'], config: '' },
+      {
+        workspace: 'applications/interborough',
+        paths: ['src/a.test.ts', 'src/b.test.ts'],
+        config: './bunfig.ui.toml',
+      },
+      { workspace: 'components/cinder', paths: ['src/api-contract.test.ts'], config: '' },
     ]);
+    const command = buildCommand('b', inputs);
+    const sent = command.find((value) => value.startsWith('unit_lanes='));
+    expect(JSON.parse(sent?.slice('unit_lanes='.length) ?? '[]')).toEqual(inputs.unitLanes);
   });
 
-  test('unit paths over the dispatch budget become the folders that hold them, never a drop', () => {
+  test('a lane that wants its whole suite, or a workspace the workflow cannot enter, is undispatchable', () => {
+    const whole = inputsFromPlan({
+      ...planOf([]),
+      unit_tests: [{ workspace: 'components/cinder', paths: [], full: true }],
+    });
+    expect(whole.undispatchable).toEqual(['components/cinder: its whole suite']);
+    const outside = inputsFromPlan({
+      ...planOf([]),
+      unit_tests: [{ workspace: 'scripts/browser-fixtures', paths: ['a.test.ts'], full: false }],
+    });
+    expect(outside.undispatchable[0]).toContain('cannot enter');
+  });
+
+  test('lanes that fit one dispatch are named file by file', () => {
+    const lanes = [
+      { workspace: 'packages/a', paths: ['src/b.test.ts', 'test/a.test.ts'], config: '' },
+    ];
+    expect(fitUnitLanes(lanes)).toEqual(lanes);
+  });
+
+  test('lanes over the dispatch budget become the folders that hold them, never a drop', () => {
     const paths = Array.from(
       { length: 900 },
       (_, index) => `src/components/component-${index % 150}/component-${index}.test.ts`,
     );
-    const folders = fitUnitPaths(paths);
-    expect(folders.length).toBe(150);
+    const fitted = fitUnitLanes([
+      {
+        workspace: 'components/cinder',
+        paths: [...paths, 'root.test.ts', 'test/a.test.ts'],
+        config: '',
+      },
+    ]);
+    const folders = fitted?.[0]?.paths ?? [];
     for (const path of paths) expect(folders.some((folder) => path.startsWith(folder))).toBe(true);
     // A file at the workspace root keeps its name, and a path outside src keeps its folder.
-    expect(fitUnitPaths([...paths, 'root.test.ts', 'test/a.test.ts'])).toEqual(
-      expect.arrayContaining(['root.test.ts', 'test/']),
+    expect(folders).toEqual(expect.arrayContaining(['root.test.ts', 'test/']));
+  });
+
+  test('lanes that do not fit even as folders fit nothing: undefined, never a truncation', () => {
+    const paths = Array.from(
+      { length: 4000 },
+      (_, index) => `src/area-${index}/deeper-${index}/file-${index}.test.ts`,
     );
+    expect(fitUnitLanes([{ workspace: 'packages/a', paths, config: '' }])).toBeUndefined();
   });
 });
 
@@ -207,7 +271,9 @@ describe('run', () => {
       ['packages/bureau/src/removed.test.ts'],
     );
     const result = run(['--dry-run', '--json'], dependencies);
-    expect(JSON.parse(result.output).inputs.unitPaths).toEqual(['src/kept.test.ts']);
+    expect(JSON.parse(result.output).inputs.unitLanes).toEqual([
+      { workspace: 'packages/bureau', paths: ['src/kept.test.ts'], config: '' },
+    ]);
   });
 
   test('builds the command from the diff and passes only inputs that name something', () => {
@@ -219,6 +285,68 @@ describe('run', () => {
       `'gh' 'workflow' 'run' 'targeted-checks.yml' '--ref' 'chef/x' '-f' 'plan_digest=${landingPlan(['scripts/browser-fixtures/src/fixtures/description-list.svelte']).digest}' '-f' 'fixture_components=description-list'\n# requires_full_run: false`,
     );
     expect(calls.some((call) => call[0] === 'gh')).toBe(false);
+  });
+
+  test('a plan with root, Interborough and Cinder lanes dispatches all of them whole, with a digest', () => {
+    const changed = [
+      'scripts/chef/a.test.ts',
+      'applications/interborough/src/views/b.test.ts',
+      'components/cinder/src/components/table/table.test.ts',
+    ];
+    const { dependencies } = fake(changed, [
+      'scripts/chef/a.test.ts',
+      'applications/interborough/package.json',
+      'applications/interborough/./bunfig.ui.toml',
+      'applications/interborough/src/views/b.test.ts',
+      'components/cinder/package.json',
+      'components/cinder/src/components/table/table.test.ts',
+    ]);
+    const parsed = JSON.parse(run(['--dry-run', '--json'], dependencies).output);
+    expect(parsed.requiresFullRun).toBe(false);
+    expect(parsed.inputs.unitLanes.map((lane: { workspace: string }) => lane.workspace)).toEqual([
+      '.',
+      'applications/interborough',
+      'components/cinder',
+    ]);
+    const sent = parsed.command.find((value: string) => value.startsWith('unit_lanes='));
+    expect(JSON.parse(sent.slice('unit_lanes='.length))).toEqual(parsed.inputs.unitLanes);
+    expect(parsed.command).toContain(`plan_digest=${landingPlan(changed).digest}`);
+  });
+
+  test('a plan the dispatch would have to truncate dispatches main.yml, names the rule, and carries no digest', () => {
+    const changed = Array.from(
+      { length: 4000 },
+      (_, index) => `packages/big/src/area-${index}/deeper-${index}/file-${index}.test.ts`,
+    );
+    const { dependencies, calls } = fake(changed, ['packages/big/package.json']);
+    const result = run(['--dry-run', '--json'], dependencies);
+    const parsed = JSON.parse(result.output);
+    expect(parsed.requiresFullRun).toBe(true);
+    expect(parsed.command.slice(0, 5)).toEqual(['gh', 'workflow', 'run', 'main.yml', '--ref']);
+    expect(parsed.command.join(' ')).not.toContain('plan_digest');
+    expect(run(['--dry-run'], dependencies).output).toContain(OVERSIZE_RULE);
+    expect(calls.some((call) => call[0] === 'gh')).toBe(false);
+  });
+
+  test('an explicit selection names no plan: it carries no digest, so landing never counts it', () => {
+    const { dependencies } = fake(
+      [],
+      ['components/cinder/package.json', 'components/cinder/src/a.test.ts'],
+    );
+    const parsed = JSON.parse(
+      run(
+        [
+          '--dry-run',
+          '--json',
+          '--unit-workspace',
+          'components/cinder',
+          '--unit-path',
+          'src/a.test.ts',
+        ],
+        dependencies,
+      ).output,
+    );
+    expect(parsed.command.join(' ')).not.toContain('plan_digest');
   });
 
   test('passes the digest of the plan over the diff with every status, deletions included', () => {
@@ -307,8 +435,6 @@ describe('run', () => {
         '--ref',
         'b',
         '-f',
-        `plan_digest=${landingPlan([]).digest}`,
-        '-f',
         'fixture_components=approval-card',
       ],
     ]);
@@ -358,7 +484,9 @@ describe('run', () => {
       dependencies,
     );
     expect(result.output).toContain('e2e_specs=tests/e2e/a.spec.ts');
-    expect(result.output).toContain('unit_workspace=components/cinder');
+    expect(result.output).toContain(
+      `unit_lanes=[{"workspace":"components/cinder","paths":["src/a.test.ts"],"config":""}]`,
+    );
   });
 
   test('dispatches with no input when the diff reaches no browser or unit file, for the lint and type-check job', () => {
@@ -385,16 +513,30 @@ describe('the workflow and the manifest', () => {
     const workflow = await Bun.file(
       new URL('../../.github/workflows/targeted-checks.yml', import.meta.url),
     ).text();
-    const command = buildCommand('b', {
-      fixtureComponents: ['a'],
-      fixtureSpecs: ['b'],
-      e2eSpecs: ['c'],
-      unitWorkspace: 'd',
-      unitPaths: ['e'],
-      unitConfig: 'f',
-    });
+    const command = buildCommand(
+      'b',
+      {
+        fixtureComponents: ['a'],
+        fixtureSpecs: ['b'],
+        e2eSpecs: ['c'],
+        unitLanes: [{ workspace: '.', paths: ['e'], config: '' }],
+      },
+      'f'.repeat(64),
+    );
     for (const argument of command.filter((value) => value.includes('=')))
       expect(workflow).toContain(`      ${argument.split('=')[0]}:`);
+  });
+
+  test('the unit job runs every lane as a matrix, the root through bun-test.ts, with no single-lane input left', async () => {
+    const workflow = await Bun.file(
+      new URL('../../.github/workflows/targeted-checks.yml', import.meta.url),
+    ).text();
+    const job = workflow.slice(workflow.indexOf('\n  unit:\n'));
+    expect(job).toContain('lane: ${{ fromJSON(inputs.unit_lanes) }}');
+    expect(job).toContain('fail-fast: false');
+    expect(job).toContain('bun scripts/bun-test.ts $UNIT_PATHS');
+    for (const retired of ['unit_workspace', 'unit_paths', 'unit_config'])
+      expect(workflow).not.toContain(`      ${retired}:`);
   });
 
   // The slugs come from the generated manifest the suite reads, not a copy of its fixture roots:
