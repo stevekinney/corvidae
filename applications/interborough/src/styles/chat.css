@@ -211,7 +211,7 @@
   --_ib-chat-inset: var(--cinder-space-4);
 
   position: absolute;
-  inset-block-start: var(--cinder-chat-overlay-inset-start, 0px);
+  inset-block-start: var(--weft-chat-head-block-size, 0px);
   inset-inline: 0;
   z-index: 2;
   display: flex;

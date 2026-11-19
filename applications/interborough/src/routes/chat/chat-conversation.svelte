@@ -801,6 +801,8 @@
 
   let route = $state<HTMLElement | undefined>();
   let head = $state<HTMLElement | undefined>();
+  /** The header band's height on the route, for `.weft-chat-alerts` in `chat.css`. */
+  const HEAD_BLOCK_SIZE_PROPERTY = '--weft-chat-head-block-size';
   // The header is laid over the top of the conversation on a translucent ground, so the transcript
   // scrolls under it. Its height is the transcript's top inset (Chat's overlay inset property,
   // read by Chat for the first row, for scrolling to a row and for placing an approval), kept as
@@ -811,10 +813,10 @@
     if (element === undefined || owner === undefined || typeof ResizeObserver === 'undefined')
       return;
     const write = (): void => {
-      owner.style.setProperty(
-        CHAT_OVERLAY_INSET_START_PROPERTY,
-        `${element.getBoundingClientRect().height}px`,
-      );
+      const height = `${element.getBoundingClientRect().height}px`;
+      owner.style.setProperty(CHAT_OVERLAY_INSET_START_PROPERTY, height);
+      // The page's own copy, which the errors laid over the conversation sit under (COR-2438).
+      owner.style.setProperty(HEAD_BLOCK_SIZE_PROPERTY, height);
       approvalPlacement.headerChanged();
     };
     write();
@@ -823,6 +825,7 @@
     return () => {
       observer.disconnect();
       owner.style.removeProperty(CHAT_OVERLAY_INSET_START_PROPERTY);
+      owner.style.removeProperty(HEAD_BLOCK_SIZE_PROPERTY);
     };
   });
   /** The frames to wait for the approval's row to be drawn before giving up on bringing the person to it. */
