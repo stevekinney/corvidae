@@ -342,8 +342,7 @@
   .cinder-data-grid__header-cell[data-cinder-pin='left'],
   .cinder-data-grid__cell[data-cinder-pin='left'] {
     --_cinder-data-grid-pin-shadow:
-      inset -1px 0 0 var(--cinder-border),
-      2px 0 6px var(--cinder-scroll-shadow-color);
+      inset -1px 0 0 var(--cinder-border), 2px 0 6px var(--cinder-scroll-shadow-color);
 
     inset-inline-start: var(--_cinder-data-grid-pin-left-offset, 0px);
   }
@@ -351,8 +350,7 @@
   .cinder-data-grid__header-cell[data-cinder-pin='right'],
   .cinder-data-grid__cell[data-cinder-pin='right'] {
     --_cinder-data-grid-pin-shadow:
-      inset 1px 0 0 var(--cinder-border),
-      -2px 0 6px var(--cinder-scroll-shadow-color);
+      inset 1px 0 0 var(--cinder-border), -2px 0 6px var(--cinder-scroll-shadow-color);
 
     inset-inline-end: var(--_cinder-data-grid-pin-right-offset, 0px);
   }
