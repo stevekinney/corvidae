@@ -358,7 +358,6 @@
     {:else if onlyHeld}
       <!-- Nothing can run: the list page's empty state too, in its one layout with the Agents icon. -->
       <EmptyState
-        layout="page"
         kind="disabled"
         title={AGENTS_COPY.onlyUnavailable.title}
         description={AGENTS_COPY.onlyUnavailable.description(
@@ -388,7 +387,6 @@
 
       {#if nothingShown}
         <EmptyState
-          bordered
           kind="filtered"
           title={AGENTS_COPY.noMatch.title}
           description={AGENTS_COPY.noMatch.description}
@@ -425,15 +423,13 @@
 
       {#if noneOfYours}
         <EmptyState
-          bordered
-          layout="row"
-          size="compact"
           kind="first-use"
           title={AGENTS_COPY.noneOfYours.title}
           description={AGENTS_COPY.noneOfYours.description}
           headingLevel={2}
           data-testid="agents-none-of-yours"
         >
+          {#snippet icon()}<Bot aria-hidden="true" />{/snippet}
           {#snippet action()}
             {@render newAgentAction('primary')}
           {/snippet}

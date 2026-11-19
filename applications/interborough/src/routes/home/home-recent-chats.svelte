@@ -53,6 +53,7 @@
 
 <HomeCard
   title={copy.title}
+  bare={chats.data !== undefined && rows.length === 0}
   link={chats.data === undefined || rows.length === 0
     ? undefined
     : { label: copy.link, href: '/chats' }}
@@ -67,8 +68,7 @@
   {:else if rows.length === 0}
     <EmptyState
       kind="first-use"
-      size="compact"
-      headingLevel={3}
+      headingLevel={2}
       title={copy.empty.title}
       description={copy.empty.description}
     >

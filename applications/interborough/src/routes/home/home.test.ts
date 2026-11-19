@@ -413,21 +413,29 @@ describe('Home with nothing waiting on you and a provider connected', () => {
     expect(container.textContent).not.toContain('Nothing is waiting on you');
   });
 
-  test('keeps the Needs attention heading over one line with the link to Health (01u)', async () => {
+  test('shows Needs attention as its empty state alone, with the button to Health (01u, superseded by the owner report of 2026-11-19)', async () => {
     const { container, getByTestId } = await open(calm());
     const line = await waitFor(() => getByTestId('attention-clear'));
-    // Cinder's empty state in its row layout: no line drawn by the page.
+    // Cinder's one empty state: no line drawn by the page, and its link a button.
     const empty = within(line).getByRole('group', { name: 'Nothing needs attention' });
-    expect(empty.getAttribute('data-cinder-layout')).toBe('row');
+    expect(empty.classList.contains('cinder-empty-state')).toBe(true);
+    expect(within(line).getByRole('link', { name: 'Open Health' }).classList).toContain(
+      'cinder-button',
+    );
     expect(empty.textContent).toContain('Storage, schedules, providers and hooks are fine.');
     expect(within(line).getByRole('link', { name: 'Open Health' }).getAttribute('href')).toBe(
       '/health',
     );
-    // The section's heading stays over it (COR-2329: without it the line read as part of the
-    // section above), and the link is in the line, not also beside the heading.
+    // Every empty section shows only its empty state (owner report, 2026-11-19, which supersedes
+    // COR-2329's heading over the line): the section is named by its region, the state's own
+    // title is its heading, and the link is the state's one button.
     const card = cardOf(container, 'Needs attention');
     expect(card.contains(line)).toBe(true);
-    expect(within(card).getByRole('heading', { level: 2, name: 'Needs attention' })).toBeDefined();
+    expect(card.getAttribute('aria-label')).toBe('Needs attention');
+    expect(within(card).queryByRole('heading', { name: 'Needs attention' })).toBeNull();
+    expect(
+      within(card).getByRole('heading', { level: 2, name: 'Nothing needs attention' }),
+    ).toBeDefined();
     expect(within(card).getAllByRole('link', { name: 'Open Health' })).toHaveLength(1);
   });
 

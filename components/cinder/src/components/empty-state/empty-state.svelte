@@ -1,12 +1,5 @@
 <script lang="ts" module>
-  export type {
-    EmptyStateAction,
-    EmptyStateAlign,
-    EmptyStateKind,
-    EmptyStateLayout,
-    EmptyStateProps,
-    EmptyStateSize,
-  } from './empty-state.types.ts';
+  export type { EmptyStateAction, EmptyStateKind, EmptyStateProps } from './empty-state.types.ts';
 </script>
 
 <script lang="ts">
@@ -16,16 +9,14 @@
   import Button from '../button/button.svelte';
   import { classNames } from '../../utilities/class-names.ts';
 
+  // One layout wherever the state sits (owner report, 2026-11-19): there is no size, alignment,
+  // border or row prop to pick, so a page, a tab and a panel all draw the same state.
   let {
     title,
     description,
     class: className,
     headingLevel = 3,
-    align = 'center',
     kind = 'first-use',
-    size = 'default',
-    layout = 'stacked',
-    bordered = false,
     onClearFilters,
     clearFiltersLabel = 'Clear filters',
     icon,
@@ -51,8 +42,8 @@
   );
   const tag = $derived(`h${safeLevel}`);
 
-  // Normalise at runtime: an unknown kind or size behaves as the default rather than
-  // producing a root attribute no stylesheet rule matches.
+  // Normalise at runtime: an unknown kind behaves as the default rather than producing a root
+  // attribute no stylesheet rule matches.
   const safeKind = $derived(
     kind === 'filtered' ||
       kind === 'done' ||
@@ -62,41 +53,24 @@
       ? kind
       : 'first-use',
   );
-  const safeLayout = $derived(
-    layout === 'row' || layout === 'inline' || layout === 'page' ? layout : 'stacked',
-  );
-  const isPage = $derived(safeLayout === 'page');
-  // A list page's first use has one layout on every page: the default size, centred across, and
-  // never boxed, whatever the page passes.
-  const safeSize = $derived(size === 'compact' && !isPage ? 'compact' : 'default');
-  const isInline = $derived(safeLayout === 'inline');
   const showClearFilters = $derived(safeKind === 'filtered' && onClearFilters !== undefined);
   const showAction = $derived(action !== undefined || actions.length > 0);
   // First use shows the view's own icon, so it has no default glyph; every other kind is a state
-  // with a glyph of its own, used when the consumer does not pass one.
-  // An illustration is a larger picture that stands in for the disc, so it is drawn only in the
-  // stacked layout, where the state has the room; a row or an inline state keeps its disc.
-  const hasIllustration = $derived(
-    illustration !== undefined && (safeLayout === 'stacked' || isPage),
+  // with a glyph of its own, used when the consumer does not pass one. An illustration is a larger
+  // picture that stands in for the disc.
+  const hasDisc = $derived(
+    illustration === undefined && (icon !== undefined || safeKind !== 'first-use'),
   );
-  const hasDisc = $derived(!hasIllustration && (icon !== undefined || safeKind !== 'first-use'));
-  // Supporting content under the action, such as steps, in the stacked and page layouts only: a row
-  // or an inline state is one line and has no room under its action.
-  const showDetails = $derived(children !== undefined && (safeLayout === 'stacked' || isPage));
 </script>
 
 <div
   {...rest}
   class={classNames('cinder-empty-state', className)}
   role="group"
-  data-cinder-align={align === 'start' && !isPage ? 'start' : undefined}
   data-cinder-kind={safeKind}
-  data-cinder-size={safeSize}
-  data-cinder-layout={safeLayout === 'stacked' ? undefined : safeLayout}
-  data-cinder-bordered={bordered && !isPage ? '' : undefined}
   aria-labelledby={titleId}
 >
-  {#if hasIllustration && illustration}
+  {#if illustration}
     <div class="cinder-empty-state-illustration" aria-hidden="true">
       {@render illustration()}
     </div>
@@ -118,32 +92,16 @@
       {/if}
     </div>
   {/if}
-  {#if isInline}
-    <div class="cinder-empty-state-text">
-      <svelte:element this={tag} id={titleId} class="cinder-empty-state-title">
-        {title}
-      </svelte:element>
-      {#if description}
-        <p class="cinder-empty-state-description">{description}</p>
-      {/if}
-    </div>
-  {:else}
-    <svelte:element this={tag} id={titleId} class="cinder-empty-state-title">
-      {title}
-    </svelte:element>
-    {#if description}
-      <p class="cinder-empty-state-description">{description}</p>
-    {/if}
+  <svelte:element this={tag} id={titleId} class="cinder-empty-state-title">
+    {title}
+  </svelte:element>
+  {#if description}
+    <p class="cinder-empty-state-description">{description}</p>
   {/if}
   {#if showClearFilters || showAction}
     <div class="cinder-empty-state-action">
       {#if showClearFilters}
-        <Button
-          variant="secondary"
-          size={safeSize === 'compact' ? 'sm' : 'md'}
-          label={clearFiltersLabel}
-          onclick={() => onClearFilters?.()}
-        />
+        <Button variant="secondary" label={clearFiltersLabel} onclick={() => onClearFilters?.()} />
       {/if}
       {#each actions as item, index (index)}
         {@const variant = item.variant ?? (index === 0 ? 'primary' : 'secondary')}
@@ -157,6 +115,8 @@
             {...icon}
             {variant}
             href={item.href}
+            target={item.external ? '_blank' : undefined}
+            rel={item.external ? 'noopener noreferrer' : undefined}
             onclick={item.onclick}
             mutating={item.mutating ?? false}
             aria-disabled={item.inertReason ? 'true' : undefined}
@@ -182,7 +142,7 @@
       {/if}
     </div>
   {/if}
-  {#if showDetails && children}
+  {#if children}
     <div class="cinder-empty-state-details">
       {@render children()}
     </div>

@@ -323,8 +323,8 @@ describe('nothing yet', () => {
     const stateButton = view.container.querySelector<HTMLElement>(
       '[data-cinder-kind="first-use"] button',
     );
-    expect(stateButton?.closest('[data-cinder-layout="page"]')).not.toBeNull();
-    expect(stateButton?.closest('[data-cinder-bordered]')).toBeNull();
+    expect(stateButton?.closest('.cinder-empty-state')).not.toBeNull();
+    expect(stateButton?.closest('[data-cinder-bordered], .cinder-card')).toBeNull();
     await fireEvent.click(stateButton as HTMLElement);
     expect(router.pathname).toBe('/goals/new');
   });

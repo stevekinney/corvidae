@@ -322,7 +322,6 @@
 
       {#if rows.length === 0}
         <EmptyState
-          bordered
           kind="filtered"
           title={CHECKS_COPY.noMatch.title}
           description={CHECKS_COPY.noMatch.description}

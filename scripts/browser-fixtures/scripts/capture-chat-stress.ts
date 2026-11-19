@@ -2558,10 +2558,8 @@ export const ACTION_ROW_SELECTORS: readonly string[] = [
   '.chat-question-stack > button[type="submit"]',
   '.chat-question-row > button[type="submit"]',
   '.chat-question-receipt > .cinder-button',
-  // A centred empty or error state keeps its centred action; the start-aligned, flat and row
-  // layouts end at the trailing edge.
-  '.cinder-empty-state[data-cinder-align="start"] .cinder-empty-state-action',
-  '.cinder-empty-state[data-cinder-layout="row"] .cinder-empty-state-action',
+  // A centred empty or error state keeps its centred action (an empty state has only that one
+  // layout); the flat and row error layouts end at the trailing edge.
   '.cinder-error-state[data-cinder-variant="flat"] .cinder-error-state-action',
   '.cinder-error-state[data-cinder-variant="row"] .cinder-error-state-action',
 ];

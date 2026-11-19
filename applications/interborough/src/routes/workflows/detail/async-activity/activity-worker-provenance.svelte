@@ -57,13 +57,12 @@
   {:else if error && isForbidden(error)}
     <EmptyState
       kind="first-use"
-      size="compact"
       headingLevel={4}
       title="Worker provenance is locked"
       description={`${scopeReason('system:read')} to read which worker ran each attempt.`}
     >
       {#snippet icon()}
-        <Lock size={24} aria-hidden="true" />
+        <Lock aria-hidden="true" />
       {/snippet}
     </EmptyState>
   {:else if error instanceof MalformedTaskLedgerError}
@@ -76,7 +75,6 @@
   {:else if notRecorded}
     <EmptyState
       kind="first-use"
-      size="compact"
       headingLevel={4}
       title="No worker task recorded"
       description="The task ledger holds no record for this activity. It may never have run on a worker, or its record may have aged out of the retention window."

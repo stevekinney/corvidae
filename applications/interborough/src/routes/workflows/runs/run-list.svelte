@@ -449,7 +449,6 @@
 
       {#if rows.length === 0}
         <EmptyState
-          bordered
           kind="filtered"
           title={TASK_COPY.noMatch.title}
           description={noMatch}

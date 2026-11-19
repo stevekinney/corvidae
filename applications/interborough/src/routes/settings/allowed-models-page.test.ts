@@ -101,14 +101,15 @@ const saveButton = (view: ReturnType<typeof open>) =>
   view.getByRole('button', { name: ALLOWED_MODELS_COPY.save });
 
 describe('the page', () => {
-  test('is titled Allowed models, with Models and Preferences in sentence case and nothing beside the title', async () => {
+  test('is titled Allowed models, with the models’ empty state and Preferences in sentence case and nothing beside the title', async () => {
     const view = await ready(open());
     expect(view.getByRole('heading', { level: 1 }).textContent).toBe('Allowed models');
     expect(view.container.textContent).toContain(ALLOWED_MODELS_COPY.intro);
+    // With no model, the empty state stands for the Models section under no heading of its own.
     expect(
       [...view.container.querySelectorAll('h2')].map((heading) => heading.textContent?.trim()),
-    ).toEqual(['Models', 'Preferences']);
-    expect(view.container.textContent).toContain(ALLOWED_MODELS_COPY.models.description);
+    ).toEqual([ALLOWED_MODELS_COPY.models.empty.title, 'Preferences']);
+    expect(view.container.textContent).not.toContain(ALLOWED_MODELS_COPY.models.description);
     expect(view.container.textContent).toContain(ALLOWED_MODELS_COPY.preferences.description);
     // Nothing is pending, so there is no actions bar and no count.
     expect(view.queryByRole('group', { name: 'Form actions' })).toBeNull();
@@ -116,14 +117,19 @@ describe('the page', () => {
     expect(view.container.textContent).toContain(ALLOWED_MODELS_COPY.note);
   });
 
-  test('with no provider connected says so in one muted line with a link to Providers, and draws no checkboxes', async () => {
+  test('with no provider connected is the one empty state with a button to Providers, and draws no checkboxes', async () => {
     const view = await ready(open());
     const empty = await view.findByTestId('allowed-models-empty');
-    expect(empty.textContent).toContain(ALLOWED_MODELS_COPY.models.empty);
+    expect(empty.classList.contains('cinder-empty-state')).toBe(true);
+    expect(empty.textContent).toContain(ALLOWED_MODELS_COPY.models.empty.title);
+    expect(empty.textContent).toContain(ALLOWED_MODELS_COPY.models.empty.description);
     const link = within(empty).getByRole('link', {
       name: ALLOWED_MODELS_COPY.models.goToProviders,
     });
     expect(link.getAttribute('href')).toBe('/settings/models');
+    expect(link.classList.contains('cinder-button')).toBe(true);
+    // The state alone, in no box, with no "Models" section heading above it.
+    expect(empty.closest('.cinder-form-section')).toBeNull();
     expect(view.queryAllByRole('checkbox')).toHaveLength(0);
     // No warning box: the line is all there is to say.
     expect(view.container.querySelectorAll('.cinder-alert')).toHaveLength(0);

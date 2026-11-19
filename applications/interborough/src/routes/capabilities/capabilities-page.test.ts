@@ -218,14 +218,16 @@ describe('the Tools tab', () => {
       if (found === null) throw new Error('the tool is not open yet');
       return found;
     });
-    await findByText(copy.tool.noUsers.line, { exact: false });
-    // One muted line with an inline link, never a centred empty state (rows 30e and 32j).
-    expect(detail.querySelector('[data-testid="capability-users"] [data-cinder-kind]')).toBeNull();
-    const line = detail.querySelector('[data-testid="capability-users-empty"]');
-    expect(line?.textContent).toContain(copy.tool.noUsers.line);
-    expect(
-      line?.querySelector(`a[href="${copy.tool.noUsers.action.href}"]`)?.textContent,
-    ).toContain(copy.tool.noUsers.action.label);
+    await findByText(copy.tool.noUsers.title);
+    // Cinder's one empty state, alone: no "Used by" heading over it (owner report, 2026-11-19).
+    const state = detail.querySelector('[data-testid="capability-users-empty"]');
+    expect(state?.classList.contains('cinder-empty-state')).toBe(true);
+    expect(detail.querySelector('[data-testid="capability-users"] h4')?.textContent?.trim()).toBe(
+      copy.tool.noUsers.title,
+    );
+    const action = state?.querySelector(`a[href="${copy.tool.noUsers.action.href}"]`);
+    expect(action?.textContent).toContain(copy.tool.noUsers.action.label);
+    expect(action?.classList.contains('cinder-button')).toBe(true);
     expect(detail.querySelector('[data-testid="tool-input-schema"]')?.textContent).toContain(
       copy.tool.noSchema,
     );

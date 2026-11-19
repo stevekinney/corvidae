@@ -2,7 +2,6 @@
   import {
     Avatar,
     Button,
-    EmptyState,
     ErrorState,
     GroupedList,
     GroupedListItem,
@@ -201,12 +200,8 @@
     </GroupedListItem>
   </GroupedList>
 
-  <!-- A list's empty and failed rows (COR-2329): their actions end on the list buttons' edge. -->
-  <div data-testid="grouped-list-empty-row">
-    <EmptyState kind="done" layout="row" title="Nothing needs attention">
-      {#snippet action()}<Button variant="secondary" size="sm" label="Open Health" />{/snippet}
-    </EmptyState>
-  </div>
+  <!-- A list's failed row (COR-2329): its action ends on the list buttons' edge. An empty list
+  draws Cinder's one EmptyState layout instead of a row (owner report, 2026-11-19). -->
   <div data-testid="grouped-list-error-row">
     <ErrorState
       variant="row"

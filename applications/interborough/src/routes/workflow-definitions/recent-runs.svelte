@@ -226,22 +226,18 @@
     {:else if everyRun.length === 0}
       <EmptyState
         kind="first-use"
-        size="compact"
         headingLevel={3}
         title={copy.emptyTitle}
         description={empty.description}
       >
         {#snippet icon()}<Play aria-hidden="true" />{/snippet}
-        {#snippet action()}
-          {#if empty.hint !== undefined}
-            <p class="ib-workflow-runs__hint" data-testid="workflow-runs-hint">{empty.hint}</p>
-          {/if}
-        {/snippet}
+        {#if empty.hint !== undefined}
+          <p class="ib-workflow-runs__hint" data-testid="workflow-runs-hint">{empty.hint}</p>
+        {/if}
       </EmptyState>
     {:else if rows.length === 0}
       <EmptyState
         kind="filtered"
-        size="compact"
         headingLevel={3}
         title={copy.noMatchTitle}
         description={copy.noMatchDescription}

@@ -446,7 +446,6 @@
         {#snippet listEmpty()}
           <EmptyState
             kind="filtered"
-            size="compact"
             headingLevel={4}
             title={RUN_STEPS_COPY.filteredTitle}
             description={RUN_STEPS_COPY.filteredDescription}

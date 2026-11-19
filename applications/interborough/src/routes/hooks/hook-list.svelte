@@ -257,7 +257,6 @@
 
         {#if visible.length === 0}
           <EmptyState
-            bordered
             kind="filtered"
             title={copy.noMatch.title}
             description={copy.noMatch.description(eventFilter !== undefined, search)}

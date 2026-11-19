@@ -35,7 +35,7 @@
     Toggle,
     VisuallyHidden,
   } from '@lostgradient/cinder';
-  import { Ellipsis } from '@lucide/svelte';
+  import { Ellipsis, Wrench } from '@lucide/svelte';
   import { createMutation, useQueryClient } from '@tanstack/svelte-query';
 
   import { AGENT_PAGE_COPY } from '../../app/copy/agents.ts';
@@ -364,16 +364,18 @@
   {/if}
 
   <section class="ib-capability__section" data-testid="source-tools">
-    <SectionHeading level={4} title={copy.tools.heading} />
     {#if source.tools.length === 0}
+      <!-- The state alone: no "Tools" heading above it saying the same thing (owner report, 2026-11-19). -->
       <EmptyState
         kind="first-use"
-        size="compact"
-        headingLevel={5}
+        headingLevel={4}
         title={copy.tools.empty.title}
         description={copy.tools.empty.description}
-      />
+      >
+        {#snippet icon()}<Wrench aria-hidden="true" />{/snippet}
+      </EmptyState>
     {:else}
+      <SectionHeading level={4} title={copy.tools.heading} />
       <div
         class="ib-source__table"
         data-paused={paused ? '' : undefined}

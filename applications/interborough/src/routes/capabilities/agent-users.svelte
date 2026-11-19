@@ -1,10 +1,11 @@
 <script lang="ts">
   /**
-   * The agents that use a capability, each a link to its page. An empty list says so in one of two
-   * ways: a compact empty state with the one action that fills it (a skill), or one muted line with
-   * the action as an inline link (a tool, design rows 30e and 32j), never a centred empty state.
+   * The agents that use a capability, each a link to its page. An empty list is Cinder's one empty
+   * state with the one action that fills it, alone: no "Used by" heading above it saying the same
+   * thing (owner report, 2026-11-19).
    */
-  import { Button, EmptyState, Link, SectionHeading } from '@lostgradient/cinder';
+  import { EmptyState, SectionHeading } from '@lostgradient/cinder';
+  import { Bot } from '@lucide/svelte';
 
   import { agentPath } from '../../lib/agent-paths.ts';
   import { router } from '../../lib/router.svelte.ts';
@@ -17,17 +18,12 @@
     heading: string;
     /** The identifiers of the agents that use the capability. */
     users: readonly string[];
-    /**
-     * What an empty list says, and the action that fills it: a `title` and `description` draw a
-     * compact empty state, and a `line` draws one muted line with the action inline.
-     */
-    empty:
-      | {
-          readonly title: string;
-          readonly description: string;
-          readonly action: EmptyAction;
-        }
-      | { readonly line: string; readonly action: EmptyAction };
+    /** What an empty list says, and the action that fills it. */
+    empty: {
+      readonly title: string;
+      readonly description: string;
+      readonly action: EmptyAction;
+    };
   }
 
   let { heading, users, empty }: Props = $props();
@@ -42,37 +38,25 @@
 </script>
 
 <section class="ib-capability__section" data-testid="capability-users">
-  <SectionHeading level={4} title={heading} />
   {#if users.length === 0}
-    {#if 'line' in empty}
-      <p class="ib-capability__line" data-testid="capability-users-empty">
-        {empty.line}
-        <!-- In a line of text, so underlined: colour alone does not mark it (axe link-in-text-block). -->
-        <Link
-          underline="always"
-          href={router.href(empty.action.href)}
-          onclick={(event) => go(event, empty.action.href)}>{empty.action.label}</Link
-        >
-      </p>
-    {:else}
-      <EmptyState
-        kind="first-use"
-        size="compact"
-        headingLevel={5}
-        title={empty.title}
-        description={empty.description}
-      >
-        {#snippet action()}
-          <Button
-            href={router.href(empty.action.href)}
-            variant="secondary"
-            size="sm"
-            onclick={(event) => go(event, empty.action.href)}>{empty.action.label}</Button
-          >
-        {/snippet}
-      </EmptyState>
-    {/if}
+    <EmptyState
+      kind="first-use"
+      headingLevel={4}
+      title={empty.title}
+      description={empty.description}
+      actions={[
+        {
+          label: empty.action.label,
+          href: router.href(empty.action.href),
+          onclick: (event) => go(event, empty.action.href),
+        },
+      ]}
+      data-testid="capability-users-empty"
+    >
+      {#snippet icon()}<Bot aria-hidden="true" />{/snippet}
+    </EmptyState>
   {:else}
+    <SectionHeading level={4} title={heading} />
     <ul class="ib-capability__users">
       {#each users as user (user)}
         <li>

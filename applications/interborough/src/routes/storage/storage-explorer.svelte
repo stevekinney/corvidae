@@ -492,7 +492,6 @@
       {#snippet empty()}
         <EmptyState
           kind="first-use"
-          size="compact"
           headingLevel={2}
           title={copy.detail.emptyTitle}
           description={copy.detail.emptyDescription}

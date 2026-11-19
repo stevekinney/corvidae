@@ -76,13 +76,12 @@
     {:else if error && isForbidden(error)}
       <EmptyState
         kind="first-use"
-        size="compact"
         headingLevel={4}
         title="Result delivery history is locked"
         description={`${scopeReason('system:read')} to read how the server answered each result.`}
       >
         {#snippet icon()}
-          <Lock size={24} aria-hidden="true" />
+          <Lock aria-hidden="true" />
         {/snippet}
       </EmptyState>
     {:else if error}
@@ -98,7 +97,6 @@
       {#if history.deliveries.length === 0}
         <EmptyState
           kind="first-use"
-          size="compact"
           headingLevel={4}
           title="No results submitted"
           description="No worker has submitted a result for this task, so the server has nothing to report."

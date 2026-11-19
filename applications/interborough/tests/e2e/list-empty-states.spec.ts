@@ -166,9 +166,9 @@ for (const list of LIST_PAGES) {
           await expect(create).not.toHaveAttribute('data-cinder-icon-only', /.*/);
         }
 
-        // One state in the page layout, with nothing around it drawing a border.
+        // One state in Cinder's one layout, with nothing around it drawing a border.
         await expect(main.locator('.cinder-empty-state')).toHaveCount(1);
-        await expect(state).toHaveAttribute('data-cinder-layout', 'page');
+        await expect(state).not.toHaveAttribute('data-cinder-layout', /.*/);
         await expect(state).not.toHaveAttribute('data-cinder-bordered', /.*/);
         const bordered = await state.evaluate((element) => {
           for (let node: Element | null = element; node !== null; node = node.parentElement) {

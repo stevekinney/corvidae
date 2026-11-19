@@ -234,11 +234,9 @@ describe('the activity region', () => {
       'Chats, reviews, goals, schedules and hooks appear here as they happen.',
     );
     expect(container.querySelectorAll('button')).toHaveLength(0);
-    // The one-line form, with EmptyState's own tinted disc around the band's glyph.
+    // Cinder's one empty state, with its own tinted disc around the band's glyph.
     for (const element of [workflow(container), agents(container)]) {
-      expect(element.querySelector('.cinder-empty-state')?.getAttribute('data-cinder-layout')).toBe(
-        'row',
-      );
+      expect(element.querySelector('.cinder-empty-state')).not.toBeNull();
       expect(element.querySelector('.cinder-empty-state-icon svg')).not.toBeNull();
     }
   });

@@ -17,7 +17,7 @@
    * only opens a page, so it stays live while the server does not answer, as the link to Health
    * does.
    */
-  import { EmptyState, GroupedList, GroupedListItem, Link, Skeleton } from '@lostgradient/cinder';
+  import { EmptyState, GroupedList, GroupedListItem, Skeleton } from '@lostgradient/cinder';
   import { createQuery } from '@tanstack/svelte-query';
 
   import { HOME_COPY } from '../../app/copy/home.ts';
@@ -70,6 +70,7 @@
      the section never says it twice. -->
 <HomeCard
   title={copy.title}
+  bare={items.data !== undefined && rows.length === 0}
   link={items.data === undefined || rows.length === 0
     ? undefined
     : { label: copy.link, href: '/health' }}
@@ -85,19 +86,18 @@
     <div data-testid="attention-clear">
       <EmptyState
         kind="done"
-        layout="row"
-        headingLevel={3}
+        headingLevel={2}
         title={copy.clear.title}
         description={copy.clear.description}
-      >
-        {#snippet action()}
-          <Link
-            variant="more"
-            href={router.href('/health')}
-            onclick={(event: MouseEvent) => openInApplication(event, '/health')}>{copy.link}</Link
-          >
-        {/snippet}
-      </EmptyState>
+        actions={[
+          {
+            label: copy.link,
+            href: router.href('/health'),
+            variant: 'secondary',
+            onclick: (event: MouseEvent) => openInApplication(event, '/health'),
+          },
+        ]}
+      />
     </div>
   {:else}
     <GroupedList aria-label={copy.listLabel}>

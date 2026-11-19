@@ -148,7 +148,6 @@
         {#snippet listEmpty()}
           <EmptyState
             kind="filtered"
-            size="compact"
             headingLevel={3}
             title={copy.source.filtered.title}
             description={copy.source.filtered.description}

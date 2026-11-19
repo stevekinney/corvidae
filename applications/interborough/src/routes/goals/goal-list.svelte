@@ -333,7 +333,6 @@
 
       {#if visibleRows.length === 0}
         <EmptyState
-          bordered
           kind="filtered"
           title={GOALS_COPY.noMatch.title}
           description={noMatchSentence}

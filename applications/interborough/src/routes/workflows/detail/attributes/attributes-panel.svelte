@@ -8,7 +8,7 @@
    * (`readAttributes`). A rejected `set` shows its fault in the page's fault banner and leaves what
    * the page displays as it was: the displayed values only ever come from a read.
    */
-  import { Skeleton } from '@lostgradient/cinder';
+  import { EmptyState, Skeleton } from '@lostgradient/cinder';
   import { createQuery, useQueryClient } from '@tanstack/svelte-query';
 
   import { RUN_DETAIL_COPY } from '../../../../app/copy/runs.ts';
@@ -71,8 +71,16 @@
 </script>
 
 {#if canRead}
-  <section class="weft-attributes" aria-labelledby={headingId} data-state={viewState}>
-    <h3 id={headingId} class="weft-attributes__heading">{copy.heading}</h3>
+  <section
+    class="weft-attributes"
+    aria-labelledby={viewState === 'empty' ? undefined : headingId}
+    aria-label={viewState === 'empty' ? copy.heading : undefined}
+    data-state={viewState}
+  >
+    <!-- With none, the empty state stands alone, under no heading saying the same thing (owner report, 2026-11-19). -->
+    {#if viewState !== 'empty'}
+      <h3 id={headingId} class="weft-attributes__heading">{copy.heading}</h3>
+    {/if}
 
     {#if query.isError}
       <RunFaultBanner treatment={faultTreatment(query.error)} />
@@ -88,7 +96,7 @@
         {/each}
       </ul>
     {:else}
-      <p class="weft-attributes__empty">{copy.empty}</p>
+      <EmptyState kind="first-use" headingLevel={3} title={copy.empty} />
     {/if}
   </section>
 {/if}
@@ -118,11 +126,5 @@
     padding: 0;
     display: flex;
     flex-direction: column;
-  }
-
-  .weft-attributes__empty {
-    margin: 0;
-    font-size: var(--cinder-text-sm);
-    color: var(--cinder-text-subtle);
   }
 </style>

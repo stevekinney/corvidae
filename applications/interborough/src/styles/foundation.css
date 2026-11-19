@@ -826,12 +826,6 @@
   color: var(--cinder-text-muted);
 }
 
-/* The frame's empty, not-found and forbidden states are Cinder's EmptyState, which pads itself
- * 48px by 32px. The shell's outlet already pads the page (COR-1647), so the state adds none. */
-.weft-view__empty {
-  padding: 0;
-}
-
 /* While the server does not answer, a control that changes something reads as off. The shell sets
  * `data-connection` and holds the activation (`app/shell/changing-actions.ts`); this rule is only
  * the look, and it must name the same controls as `CHANGING_ACTION_SELECTOR`. It reads the shell

@@ -43,9 +43,10 @@ export const CAPABILITIES_COPY = {
     noInputs: 'This tool takes no inputs.',
     noSchema: 'This tool does not describe its inputs.',
     users: 'Used by',
-    /** Used by when no agent has the tool: one muted line with a link inline, never a centred empty state (rows 30e, 30h, 32j). */
+    /** Used by when no agent has the tool: Cinder's one empty state, as every empty section is (owner report, 2026-11-19). */
     noUsers: {
-      line: 'No agent has this tool yet.',
+      title: 'No agent has this tool yet',
+      description: 'Give it to an agent on the agent’s Access tab.',
       action: { label: 'Add to an agent', href: '/agents' },
     },
     tier: {

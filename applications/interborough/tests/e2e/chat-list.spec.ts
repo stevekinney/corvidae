@@ -432,7 +432,7 @@ test.describe('the states of the chat list', () => {
     await page.goto('/chats');
     const state = list(page).locator('.cinder-empty-state');
     await expect(state.getByRole('heading', { level: 2, name: 'No chats yet' })).toBeVisible();
-    await expect(state).toHaveAttribute('data-cinder-layout', 'page');
+    await expect(state).not.toHaveAttribute('data-cinder-layout', /.*/);
     await expect(state).toContainText('Start one with an agent.');
     await expect(state.getByRole('link', { name: 'New chat' })).toHaveAttribute(
       'data-cinder-variant',

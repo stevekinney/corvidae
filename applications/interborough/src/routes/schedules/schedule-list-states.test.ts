@@ -146,8 +146,7 @@ describe('nothing scheduled yet (row 70p)', () => {
     // A first use in the page layout, in no box, with the Schedules icon of the sidebar.
     const state = container.querySelector('.cinder-empty-state');
     expect(state?.getAttribute('data-cinder-kind')).toBe('first-use');
-    expect(state?.getAttribute('data-cinder-layout')).toBe('page');
-    expect(state?.hasAttribute('data-cinder-bordered')).toBe(false);
+    expect(state?.closest('[data-cinder-bordered], .cinder-card')).toBeNull();
     expect(
       state?.querySelector('.cinder-empty-state-icon svg.lucide-calendar-clock'),
     ).not.toBeNull();

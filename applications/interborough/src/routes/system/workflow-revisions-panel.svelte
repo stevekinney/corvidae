@@ -299,7 +299,6 @@
   {#if !canRead}
     <EmptyState
       kind="first-use"
-      size="compact"
       headingLevel={4}
       title="Revisions are not available to you"
       description="Requires workflows:read to view installed revisions."
@@ -323,7 +322,6 @@
   {:else if rows.length === 0}
     <EmptyState
       kind="first-use"
-      size="compact"
       headingLevel={4}
       title="No revisions installed"
       description="Installing a revision of this workflow lists it here."

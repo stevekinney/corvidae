@@ -249,7 +249,7 @@ describe('the states of the list', () => {
 
     const title = await findByRole('heading', { level: 2, name: 'No chats yet' });
     const state = title.closest('.cinder-empty-state') as HTMLElement;
-    expect(state.getAttribute('data-cinder-layout')).toBe('page');
+    expect(state.closest('[data-cinder-bordered], .cinder-card')).toBeNull();
     expect(
       state.querySelector('.cinder-empty-state-icon svg.lucide-message-square'),
     ).not.toBeNull();

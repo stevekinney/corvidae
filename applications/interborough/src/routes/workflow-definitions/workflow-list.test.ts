@@ -490,7 +490,7 @@ describe('a host with no workflow of its own', () => {
     expect(rowCount(container)).toBe(0);
     const state = testId(container, 'workflows-empty');
     expect(state?.getAttribute('data-cinder-kind')).toBe('first-use');
-    expect(state?.getAttribute('data-cinder-layout')).toBe('page');
+    expect(state?.classList.contains('cinder-empty-state')).toBe(true);
     expect(state?.textContent).toContain(WORKFLOW_COPY.list.empty.description);
 
     // The header's and the state's New workflow, both buttons with the same words.

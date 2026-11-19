@@ -101,13 +101,14 @@ test.describe('Settings › Models, no provider connected', () => {
     await expect(page.locator('[data-provider] .cinder-avatar')).toHaveCount(0);
     await expect(page.getByText(/no model provider connected/i)).toHaveCount(0);
 
-    // The empty catalog, with a quiet link up to Providers.
-    await expect(page.getByText(MODELS_COPY.models.emptyDescription)).toBeVisible();
+    // The empty catalog: the one empty state alone, under no heading, with a button up to Providers.
+    await expect(page.getByText(MODELS_COPY.models.emptyDescription)).toHaveCount(0);
     const empty = page.getByTestId('models-empty');
     await expect(empty).toContainText(MODELS_COPY.models.empty.title);
     await expect(empty).toContainText(MODELS_COPY.models.empty.description);
-    await expect(empty.getByRole('button')).toHaveCount(0);
-    await expect(empty.getByRole('link', { name: MODELS_COPY.models.empty.action })).toBeVisible();
+    await expect(empty.getByRole('link', { name: MODELS_COPY.models.empty.action })).toHaveClass(
+      /cinder-button/,
+    );
 
     // Decisions: with no provider connected nothing can answer until TypeSafe is, yet every row stays editable.
     await expect(page.getByText(MODELS_COPY.decisions.description)).toBeVisible();

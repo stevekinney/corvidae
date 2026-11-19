@@ -508,7 +508,6 @@
     {@const empty = CHAT_COPY.list.allArchived}
     <EmptyState
       kind="filtered"
-      size="compact"
       headingLevel={3}
       title={empty.title}
       description={empty.description}
@@ -519,7 +518,6 @@
           data-changes
           href={router.href('/chats/new')}
           variant="secondary"
-          size="sm"
           onclick={openNewChat}
         >
           {CHAT_COPY.newChat}
@@ -529,13 +527,12 @@
   {:else if listState === 'no-match'}
     <EmptyState
       kind="not-found"
-      size="compact"
       headingLevel={3}
       title={CHAT_COPY.list.noMatchTitle(search.trim())}
       description={CHAT_COPY.list.noMatchDescription}
     >
       {#snippet action()}
-        <Button variant="secondary" size="sm" onclick={clearFilters}>
+        <Button variant="secondary" onclick={clearFilters}>
           {CHAT_COPY.list.clearSearch}
         </Button>
       {/snippet}
@@ -544,7 +541,6 @@
     {@const empty = CHAT_COPY.list.archivedEmpty}
     <EmptyState
       kind="filtered"
-      size="compact"
       headingLevel={3}
       title={empty.title}
       description={empty.description}
@@ -552,7 +548,6 @@
       {#snippet action()}
         <Button
           variant="secondary"
-          size="sm"
           href={router.href(viewPath(false))}
           onclick={(event: MouseEvent) => void switchView(event, false)}
         >
@@ -564,13 +559,12 @@
     {@const empty = CHAT_COPY.list.segmentEmpty[segment === 'done' ? 'done' : 'waiting']}
     <EmptyState
       kind="filtered"
-      size="compact"
       headingLevel={3}
       title={empty.title}
       description={empty.description}
     >
       {#snippet action()}
-        <Button variant="secondary" size="sm" onclick={clearFilters}>
+        <Button variant="secondary" onclick={clearFilters}>
           {CHAT_COPY.list.showAll}
         </Button>
       {/snippet}
@@ -728,7 +722,6 @@
               data-changes
               href={router.href('/chats/new')}
               variant="primary"
-              size="sm"
               onclick={openNewChat}
             >
               {CHAT_COPY.newChat}

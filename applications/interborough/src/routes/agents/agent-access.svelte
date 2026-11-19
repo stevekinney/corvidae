@@ -389,7 +389,6 @@
   {#if state.rows.length === 0}
     <EmptyState
       kind="first-use"
-      size="compact"
       headingLevel={3}
       title={copy.noToolsTitle}
       description={copy.noToolsDescription}
@@ -397,7 +396,6 @@
   {:else if shown.length === 0}
     <EmptyState
       kind="filtered"
-      size="compact"
       headingLevel={3}
       title={copy.noMatchTitle}
       description={copy.noMatchDescription}

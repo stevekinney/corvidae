@@ -168,9 +168,10 @@ for (const width of [375, 1280] as const) {
     await expect(page.getByTestId('home-start-chat')).toHaveCount(0);
     await expect(page.locator('[data-home-card="Needs attention"]')).toHaveCount(0);
     await expect(page.locator('main').getByRole('alert')).toHaveCount(0);
-    // Below the checklist, Recent chats is a compact empty state with a chat disc.
+    // Below the checklist, Recent chats is Cinder's one empty state alone, with a chat disc.
     const recent = page.locator('[data-home-card="Recent chats"]');
-    await expect(recent.getByRole('heading', { level: 3, name: 'No chats yet' })).toBeVisible();
+    await expect(recent.getByRole('heading', { level: 2, name: 'No chats yet' })).toBeVisible();
+    await expect(recent.getByRole('heading', { name: 'Recent chats' })).toHaveCount(0);
     await expect(recent).toContainText('Your chats appear here once you send a first message.');
     await expect(recent.locator('.cinder-empty-state-icon svg')).toBeVisible();
     await expect(recent.getByRole('link', { name: 'All chats' })).toHaveCount(0);

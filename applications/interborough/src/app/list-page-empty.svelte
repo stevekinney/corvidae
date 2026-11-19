@@ -1,8 +1,8 @@
 <script lang="ts">
   /**
    * A list page's empty state: the one layout every list page uses when it has nothing in it yet
-   * (owner report, 2026-11-19). It is Cinder's `EmptyState` with `layout="page"`, which owns the
-   * layout, the alignment, the measure and the buttons; this adds the two things Interborough
+   * (owner report, 2026-11-19). It is Cinder's `EmptyState`, whose one layout owns the
+   * alignment, the measure and the buttons; this adds the two things Interborough
    * decides: the icon is the one the page's sidebar item shows (`destinationIcon`), and the create
    * action is the primary, with a leading "+", in the header's verb ("New goal", never "Create a
    * goal"). A page passes only its view, its words and its actions.
@@ -64,7 +64,6 @@
 {/snippet}
 
 <EmptyState
-  layout="page"
   {kind}
   {headingLevel}
   {title}

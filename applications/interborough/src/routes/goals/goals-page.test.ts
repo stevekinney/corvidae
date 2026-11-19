@@ -665,8 +665,10 @@ describe('a goal’s page', () => {
         path: '/goals/goal-1',
       },
     );
-    await view.findByRole('heading', { level: 3, name: GOALS_COPY.detail.noAttempts.title });
+    await view.findByRole('heading', { level: 2, name: GOALS_COPY.detail.noAttempts.title });
     expect(view.container.querySelector('[data-cinder-kind="first-use"]')).not.toBeNull();
+    // The state alone, with no "Attempts" heading over it.
+    expect(view.queryByTestId('goal-attempts-heading')).toBeNull();
   });
 
   test('offers Start again on a goal that gave up, which opens New goal from it', async () => {

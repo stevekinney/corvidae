@@ -184,7 +184,11 @@ export const HEALTH_ACTIVITY_COPY = {
       : `Open audit log (${total.toLocaleString('en-US')} ${total === 1 ? 'event' : 'events'})`,
   /** The list's accessible name. */
   listLabel: 'Recent activity',
-  empty: 'Nothing has happened yet.',
+  /** Cinder's one empty state, alone: no heading above it saying the same thing (owner report, 2026-11-19). */
+  empty: {
+    title: 'Nothing has happened yet',
+    description: 'Runs, schedules, provider keys and chats show up here as they happen.',
+  },
   unavailable: 'Couldn’t read recent activity.',
   retry: 'Try again',
   serverStarted: 'Server started',

@@ -403,7 +403,6 @@
 
       {#if visibleRows.length === 0}
         <EmptyState
-          bordered
           kind="filtered"
           title={SCHEDULE_COPY.noMatch.title}
           description={noMatchSentence}

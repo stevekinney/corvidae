@@ -82,20 +82,27 @@
     <DescriptionList items={strategyItems} />
   </div>
 
-  <section class="weft-workers-panel weft-dead-letter-panel" aria-labelledby="dead-letters-heading">
-    <h3 id="dead-letters-heading" class="weft-workers-panel__title weft-dead-letter-panel__title">
-      <span>Dead letters</span>
-      <Badge variant="danger">{deadLetteredItems.length} tasks</Badge>
-    </h3>
-    <p class="weft-dead-letter-panel__description">
-      Tasks that failed for good. Retry queues one again under the same ID; Clear removes its
-      retained record, is irreversible, and does not retry it.
-    </p>
+  <section
+    class="weft-workers-panel weft-dead-letter-panel"
+    aria-labelledby={deadLetteredItems.length === 0 ? undefined : 'dead-letters-heading'}
+    aria-label={deadLetteredItems.length === 0 ? 'Dead letters' : undefined}
+  >
+    <!-- With none, the empty state stands alone: no heading and sentence above it saying the same
+    thing (owner report, 2026-11-19). -->
+    {#if deadLetteredItems.length > 0}
+      <h3 id="dead-letters-heading" class="weft-workers-panel__title weft-dead-letter-panel__title">
+        <span>Dead letters</span>
+        <Badge variant="danger">{deadLetteredItems.length} tasks</Badge>
+      </h3>
+      <p class="weft-dead-letter-panel__description">
+        Tasks that failed for good. Retry queues one again under the same ID; Clear removes its
+        retained record, is irreversible, and does not retry it.
+      </p>
+    {/if}
     {#if deadLetteredItems.length === 0}
       <EmptyState
         kind="done"
-        size="compact"
-        headingLevel={4}
+        headingLevel={3}
         title="No dead letters"
         description="Nothing on this queue has failed for good."
       />
@@ -166,16 +173,15 @@
   </section>
 
   <div class="weft-workers-panel">
-    <div class="weft-workers-panel__title">Recovery diagnostics</div>
     {#if diagnosticItems.length === 0}
       <EmptyState
         kind="done"
-        size="compact"
-        headingLevel={4}
+        headingLevel={3}
         title="No recovery diagnostics"
         description="Nothing on this queue is delayed, stuck, stale, retrying, or waiting to be adopted."
       />
     {:else}
+      <div class="weft-workers-panel__title">Recovery diagnostics</div>
       <ul class="weft-dead-letter-panel__list">
         {#each keyedByOccurrence(diagnosticItems, (candidate) => candidate.kind + (candidate.operationId ?? candidate.queue)) as { key, item } (key)}
           {@const guidance = DIAGNOSTIC_GUIDANCE[item.kind]}
@@ -197,16 +203,15 @@
   </div>
 
   <div class="weft-workers-panel">
-    <div class="weft-workers-panel__title">Workers on this queue</div>
     {#if workersOnQueue.length === 0}
       <EmptyState
         kind="first-use"
-        size="compact"
-        headingLevel={4}
+        headingLevel={3}
         title="No workers on this queue"
         description="No connected worker is polling this queue, so its tasks wait until one connects."
       />
     {:else}
+      <div class="weft-workers-panel__title">Workers on this queue</div>
       <ul class="weft-queue-workers-list">
         {#each workersOnQueue as worker (worker.id)}
           {@const presentation = workerHealthPresentation(worker)}
