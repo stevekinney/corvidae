@@ -341,6 +341,20 @@ describe('a call the run ended on', () => {
     });
   });
 
+  // COR-2438: a parked call no run waits on any more kept its Waiting on you badge.
+  test('renders an approval no run waits on without the Waiting badge, and keeps it in view', () => {
+    const entry = {
+      ...toolGroups(ended, { runActive: false, tools }).groups.get('s0')!.entries[0]!,
+      state: 'needs-you' as const,
+    };
+    expect(railCall(entry, false).status).toBe('waiting');
+    expect(railCall({ ...entry, lapsed: true }, false)).toMatchObject({
+      status: 'expired',
+      result: 'No longer waiting',
+      pinned: true,
+    });
+  });
+
   test('renders an expired approval as terminal neutral status, never as failed or waiting', () => {
     const entry = {
       ...toolGroups(ended, { runActive: false, tools }).groups.get('s0')!.entries[0]!,

@@ -177,6 +177,7 @@
     formatCallDuration,
     railCall,
     toolGroups,
+    approvalLapsed,
     toolDisplayName,
     toolInfoByName,
     type ToolCallEntry,
@@ -1380,7 +1381,25 @@
   const approvalsByCall = $derived(
     new Map(approvals.map((entry) => [entry.toolCallId, entry] as const)),
   );
-  function displayEntry(entry: ToolCallEntry): ToolCallEntry {
+  /**
+   * Whether what the run waits on is known and nothing is reading or deciding it now, so a call
+   * parked on an approval the run does not wait on can be told apart from one about to be.
+   */
+  const approvalsSettled = $derived(
+    session.historySettled && !session.streaming && !session.attaching && !deciding,
+  );
+  /** Whether `entry` waits on an approval no run waits on any more (COR-2438). */
+  function lapsed(entry: ToolCallEntry): boolean {
+    return approvalLapsed(entry, {
+      waiting: session.waitingApprovals,
+      refused: session.refusedApprovals,
+      parked: context.data?.activity === 'awaiting-input',
+      settled: approvalsSettled,
+    });
+  }
+  function displayEntry(original: ToolCallEntry): ToolCallEntry {
+    // A parked call no run waits on is shown as what it is: no Waiting badge, no Deny or Approve.
+    const entry = lapsed(original) ? { ...original, lapsed: true } : original;
     if (entry.railId !== undefined) return entry;
     // The rail keys its rows by this id, so an id that changed under a drawn row would remount it
     // and drop what the approver had ticked or typed: the first id a call is shown with stays.
@@ -1483,7 +1502,9 @@
   // Whether an approval holds the chat on its person, for the status and for what holds Archive.
   const approvalWaits = $derived(
     approvalHoldsChat(
-      [...activity.groups.values()].flatMap((group) => group.entries),
+      [...activity.groups.values()]
+        .flatMap((group) => group.entries)
+        .filter((entry) => !lapsed(entry)),
       context.data?.activity,
     ),
   );
@@ -2114,8 +2135,18 @@
           headerSaysWaiting={chatStatus === CHAT_COPY.status.waiting}
         />
       {/if}
+    </div>
 
-      {#if session.failure !== undefined && !failureShownInTranscript && !choosing}
+    <!-- What went wrong is laid over the top of the conversation, under the header, and is not part
+         of the header band whose height is the transcript's top inset: an error never moves a
+         message, the scroll position or the composer (COR-2438). Each error is one Alert that says
+         one thing, and a refused decision replaces the failure that was showing. -->
+    <div class="weft-chat-alerts" data-testid="chat-alerts">
+      {#if session.approvalNotice !== undefined && !choosing}
+        <Alert variant="warning" dismissible onDismiss={() => session.dismissFailure()}>
+          <p class="weft-chat-approval__message">{session.approvalNotice}</p>
+        </Alert>
+      {:else if session.failure !== undefined && !failureShownInTranscript && !choosing}
         <Alert variant="danger" dismissible onDismiss={() => session.dismissFailure()}>
           <p class="weft-chat-approval__title">{CHAT_COPY.failureTitle}</p>
           <p class="weft-chat-approval__message">{session.failure}</p>
@@ -2362,7 +2393,9 @@
                       source={agentShown}
                       unavailableReason={agentUnavailable
                         ? CHAT_COPY.approval.unavailable(unavailableName, pluginTitle)
-                        : undefined}
+                        : entry.lapsed === true
+                          ? CHAT_COPY.approval.lapsed
+                          : undefined}
                       providerNote={noProvider && availability?.kind !== 'unconfigured'
                         ? CHAT_COPY.approval.continuesOnProvider(agentShown)
                         : undefined}

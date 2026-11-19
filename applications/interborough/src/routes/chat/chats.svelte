@@ -202,12 +202,14 @@
   const phone = new MediaQuery('(max-width: 639.98px)', false);
 
   const questions = $derived(pendingQuestions(reviews.data ?? []));
+  // The chats a pending review waits on: Waiting on you, as the chat's own page says it (COR-2438).
+  const waitingChats = $derived(new Set(waitingChatIds(reviews.data ?? [])));
   const failedChats = $derived(chatsWithFailedRun(tasks.data?.tasks ?? []));
   /** The open chat as a row, when it is on no loaded page: an old chat, or an archived one. */
   const openChatRow = $derived(
     open.data === undefined || openIsListed
       ? undefined
-      : sessionRow(open.data, questions, failedChats),
+      : sessionRow(open.data, questions, failedChats, waitingChats),
   );
   /**
    * Every chat the list holds that is not archived, whatever the search and the segments leave. An
@@ -223,7 +225,7 @@
         ],
         (contexts) => contexts,
         (context) => context.id,
-      ).map((context) => sessionRow(context, questions, failedChats)),
+      ).map((context) => sessionRow(context, questions, failedChats, waitingChats)),
     ),
   );
   const agentName = (row: SessionRow): string => agentLabel(row.agentName, catalog.data);
@@ -285,7 +287,7 @@
         archived.data?.pages,
         (page) => page.contexts,
         (context) => context.id,
-      ).map((context) => sessionRow(context, questions, failedChats)),
+      ).map((context) => sessionRow(context, questions, failedChats, waitingChats)),
     ),
   );
   /** The list the view reads: the archived chats, or the rest. */

@@ -170,11 +170,32 @@ describe('a chat the server ended when it restarted (19b, 19c)', () => {
   });
 });
 
+// COR-2438: a chat whose run stopped with a call still parked on its approval offered Approve and
+// Deny, and Approve did nothing but say "No approval is waiting for this tool call."
+describe('a chat whose approval nothing waits on any more', () => {
+  test('never shows it waiting: no Approve or Deny, the reason, and no Waiting badge', async () => {
+    serve(heldByPluginMessages(), { hasKey: true, connected: true, context: { activity: 'idle' } });
+    const { container, findByText, queryByRole } = mount();
+
+    expect(await findByText(CHAT_COPY.approval.lapsed)).not.toBeNull();
+    expect(queryByRole('button', { name: 'Approve' })).toBeNull();
+    expect(queryByRole('button', { name: 'Deny' })).toBeNull();
+    const rows = [...container.querySelectorAll('[data-cinder-tool-call-row]')];
+    expect(rows.some((row) => row.textContent?.includes(CHAT_COPY.tools.noLongerWaiting))).toBe(
+      true,
+    );
+    expect(container.querySelector('.cinder-tool-call-rail__name > .cinder-badge')).toBeNull();
+  });
+});
+
 describe('a chat waiting on an approval with no provider connected (19h)', () => {
   const messages = heldByPluginMessages();
+  // The Bureau says the chat waits on its person, as it does for a chat whose run has no live
+  // stream to attach to and an approval pending: the approval is still waiting (COR-2438).
+  const waiting = { activity: 'awaiting-input' };
 
   test('keeps Approve and Deny enabled, and leaves the Connect prompt to the blocked row alone (COR-2327 N4)', async () => {
-    serve(messages, { hasKey: false, connected: false });
+    serve(messages, { hasKey: false, connected: false, context: waiting });
     const { container, findByRole } = mount();
 
     const approve = await findByRole('button', { name: 'Approve' });
@@ -194,7 +215,7 @@ describe('a chat waiting on an approval with no provider connected (19h)', () =>
   });
 
   test('says nothing about a provider when one is connected', async () => {
-    serve(messages, { hasKey: true, connected: true });
+    serve(messages, { hasKey: true, connected: true, context: waiting });
     const { container, findByRole } = mount();
 
     await findByRole('button', { name: 'Approve' });
@@ -349,7 +370,13 @@ describe('a chat whose history has not arrived yet (COR-2327 B3)', () => {
       {
         'bureau.agents.list': withExamples['bureau.agents.list'],
         'bureau.agents.models': () => ({ selectable: true, models: [SONNET], default: SONNET }),
-        'bureau.contexts.get': () => ({ ...CONTEXT, agentName: 'tool-runner', configVersion: 1 }),
+        // Waiting on its person, so the approval the history holds is still waiting (COR-2438).
+        'bureau.contexts.get': () => ({
+          ...CONTEXT,
+          agentName: 'tool-runner',
+          configVersion: 1,
+          activity: 'awaiting-input',
+        }),
         'bureau.contexts.window': () => ({
           maxTokens: 200_000,
           usedEstimated: 76_000,

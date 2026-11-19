@@ -169,6 +169,14 @@ export const CHAT_COPY = {
      */
     continuesOnProvider: (agent: string): string =>
       `${agent} continues once a provider is connected.`,
+    /**
+     * Said once, in place of any earlier error, when a decision is refused because the approval is
+     * no longer waiting (decided on another page, expired, or its run stopped). The page reads the
+     * chat again and the card shows which (COR-2438).
+     */
+    notWaiting: 'That approval was no longer waiting, so your decision was not sent.',
+    /** Written in an approval no run waits on any more and that nobody decided: its run stopped. */
+    lapsed: 'No longer waiting. The run stopped before anyone decided.',
   },
   /** The tool calls of a turn. */
   tools: {
@@ -189,6 +197,8 @@ export const CHAT_COPY = {
     interruptedChanges: 'Interrupted, may have run',
     /** The terminal rail result for an approval whose durable deadline elapsed. */
     expiredBeforeDecision: 'Expired before a decision was made.',
+    /** The row of a call whose approval no run waits on any more, though nobody decided it. */
+    noLongerWaiting: 'No longer waiting',
     /** The rail's end state for a turn that ended on a tool call, so it does not look hung. */
     runFinishedNoReply: 'Run finished, no reply',
     /**

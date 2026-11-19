@@ -352,14 +352,15 @@ export function recentChatRows(
   failedChats: ReadonlySet<string>,
   now: number,
   zone: string = viewerTimeZone(),
+  waitingChats: ReadonlySet<string> = new Set(),
 ): RecentChatRow[] {
   return contexts.slice(0, RECENT_CHAT_LIMIT).map((context): RecentChatRow => {
-    const row = sessionRow(context, questions, failedChats);
+    const row = sessionRow(context, questions, failedChats, waitingChats);
     return {
       id: context.id,
       title: row.title,
       latest: row.snippet,
-      status: chatStatusWord(context, failedChats),
+      status: chatStatusWord(context, failedChats, waitingChats),
       time: row.updatedAt === null ? '' : rowTime(row.updatedAt, now, zone),
       timestamp: row.updatedAt,
     };

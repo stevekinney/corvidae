@@ -24,12 +24,22 @@ export type SessionRow = {
   readonly status: ChatStatusWord;
 };
 
-/** The status word of a chat: waiting on you, running, failed, ended by the host, or done. */
+/**
+ * The status word of a chat: waiting on you, running, failed, ended by the host, or done. A chat
+ * waits on its person while its run is parked on input, and while the Bureau holds a pending review
+ * of it (`waitingChats`, from `waitingChatIds`): a tool approval does not park its run, so the
+ * chat's activity alone said Done beside an approval the chat itself showed waiting (COR-2438). The
+ * pending reviews are the one source the list and the chat's own page both read, so they agree, and
+ * once an approval is settled and read again they agree on that.
+ */
 export function chatStatusWord(
   context: Pick<ChatContext, 'id' | 'activity' | 'endReason'>,
   failedChats: ReadonlySet<string>,
+  waitingChats: ReadonlySet<string> = new Set(),
 ): ChatStatusWord {
-  if (context.activity === 'awaiting-input') return 'Waiting on you';
+  if (context.activity === 'awaiting-input' || waitingChats.has(context.id)) {
+    return 'Waiting on you';
+  }
   if (context.activity === 'running') return 'Running';
   if (failedChats.has(context.id)) return 'Failed';
   if (context.endReason === 'host-stopped') return 'Ended';
@@ -89,8 +99,9 @@ export function sessionRow(
   context: ChatContext,
   questions: ReadonlyMap<string, string>,
   failedChats: ReadonlySet<string> = new Set(),
+  waitingChats: ReadonlySet<string> = new Set(),
 ): SessionRow {
-  const status = chatStatusWord(context, failedChats);
+  const status = chatStatusWord(context, failedChats, waitingChats);
   const preview = context.lastMessagePreview?.trim();
   const snippet =
     (status === 'Waiting on you' ? questions.get(context.id) : undefined) ??

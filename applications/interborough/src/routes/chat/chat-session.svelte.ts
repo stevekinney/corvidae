@@ -55,6 +55,7 @@ import {
   type HeldStopLine,
 } from './event-notes.ts';
 import {
+  ApprovalNotWaitingError,
   createChatRunWiring,
   withAnnouncements,
   type ApprovalDeadline,
@@ -183,6 +184,23 @@ export class ChatSessionState {
    * again is told again.
    */
   failure = $state<string | undefined>(undefined);
+  /**
+   * Said when a decision was refused because its approval is no longer waiting (COR-2438): one
+   * sentence of its own, in place of whatever failure was showing, while the chat is read again.
+   * Cleared when the next turn begins, when another failure is told, and when it is dismissed.
+   */
+  approvalNotice = $state<string | undefined>(undefined);
+  /**
+   * The calls whose tool approval the run waits on, as the last read of what it waits on said, or
+   * `undefined` before anything was read. A call parked on an approval that is not among them is
+   * waiting on no one: it was decided elsewhere, it expired, or its run stopped (COR-2438).
+   */
+  waitingApprovals = $state.raw<ReadonlySet<string> | undefined>(undefined);
+  /**
+   * The calls a decision was refused for because no approval waits on them, until a read of what
+   * the run waits on lists them again. They offer no decision whatever else the page has read.
+   */
+  refusedApprovals = $state.raw<ReadonlySet<string>>(new Set());
 
   /**
    * Whether the last send failed because the request never got an answer (the network, or a server
@@ -347,6 +365,14 @@ export class ChatSessionState {
         this.#approvalDeadlines = deadlines;
         this.#reconcileApprovalDeadlines();
       },
+      onWaitingApprovals: (toolCallIds) => {
+        this.waitingApprovals = toolCallIds;
+        if ([...this.refusedApprovals].some((id) => toolCallIds.has(id))) {
+          this.refusedApprovals = new Set(
+            [...this.refusedApprovals].filter((id) => !toolCallIds.has(id)),
+          );
+        }
+      },
       agentName: options.agentName,
       ...(options.fetch === undefined ? {} : { fetch: options.fetch }),
       onHumanRequests: (requests) => {
@@ -400,7 +426,10 @@ export class ChatSessionState {
           // what to say next, and must not wipe what the refusal before it said.
           if (streaming) {
             this.#turnsBegun += 1;
-            if (!this.attaching) this.failure = undefined;
+            if (!this.attaching) {
+              this.failure = undefined;
+              this.approvalNotice = undefined;
+            }
           }
           // A turn that ended in an error or a stop has no history to carry the assets it
           // announced, so they are put on their rows here, as a completed turn's are.
@@ -416,6 +445,17 @@ export class ChatSessionState {
           }
         },
         onError: (error) => {
+          // A decision on an approval nothing waits on any more: one plain sentence replaces the
+          // failure that was showing, and the chat is read again, so the card and the row show
+          // what became of the approval and offer nothing to press (COR-2438).
+          if (error instanceof ApprovalNotWaitingError) {
+            this.failure = undefined;
+            this.approvalNotice = CHAT_COPY.approval.notWaiting;
+            this.refusedApprovals = new Set([...this.refusedApprovals, error.toolCallId]);
+            void this.#readAfterRefusedDecision();
+            return;
+          }
+          this.approvalNotice = undefined;
           if (isNotFound(error)) options.onNotFound?.();
           const failure =
             runFailureMessage(error, { hadAttachments: this.#turnHadAttachments }) ??
@@ -609,6 +649,16 @@ export class ChatSessionState {
     void this.#readAgain();
   }
 
+  /**
+   * After a decision refused because nothing waits on the approval, reads the thread the Bureau
+   * holds and what its run waits on, once the refused decision has let go of the controller.
+   */
+  async #readAfterRefusedDecision(): Promise<void> {
+    await Promise.resolve();
+    if (this.#abort.signal.aborted) return;
+    await this.refresh();
+  }
+
   async #readAgain(): Promise<boolean> {
     const reconnected = await this.attach({ rereading: true });
     this.#dropSettledAnswerRows();
@@ -698,6 +748,7 @@ export class ChatSessionState {
   /** Stops telling the person of the last failure. */
   dismissFailure(): void {
     this.failure = undefined;
+    this.approvalNotice = undefined;
   }
 
   /**

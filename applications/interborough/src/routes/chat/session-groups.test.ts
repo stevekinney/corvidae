@@ -197,6 +197,18 @@ describe('the status word of a chat', () => {
     expect(word({ activity: 'idle', endReason: 'host-stopped' })).toBe('Ended');
     expect(word({ activity: 'idle' })).toBe('Done');
   });
+
+  // COR-2438: an approval does not park its run, so the list said Done (and counted the chat under
+  // Done) beside a chat whose own page said Waiting on you.
+  test('is Waiting on you while the Bureau holds a pending review of the chat, as the chat says', () => {
+    const idle = contextFixture('c', { activity: 'idle' });
+    expect(chatStatusWord(idle, new Set(), new Set(['c']))).toBe('Waiting on you');
+    expect(chatStatusWord(idle, new Set(['c']), new Set(['c']))).toBe('Waiting on you');
+    expect(chatStatusWord(idle, new Set(), new Set(['other']))).toBe('Done');
+    expect(sessionRow(idle, new Map(), new Set(), new Set(['c'])).status).toBe('Waiting on you');
+    // Once the approval is settled the review is no longer pending, and both say what it became.
+    expect(sessionRow(idle, new Map(), new Set(), new Set()).status).toBe('Done');
+  });
 });
 
 describe('the chats as the list orders them', () => {

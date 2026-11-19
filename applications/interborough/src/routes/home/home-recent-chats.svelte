@@ -27,7 +27,7 @@
   import { chatSessionPath } from '../../lib/identifier-paths.ts';
   import { chatsWithFailedRun, recentTasksQuery } from '../../lib/recent-tasks.ts';
   import { router } from '../../lib/router.svelte.ts';
-  import { pendingQuestions } from '../chat/session-groups.ts';
+  import { pendingQuestions, waitingChatIds } from '../chat/session-groups.ts';
   import { bureauReviewsQuery } from '../reviews/reviews-data.ts';
   import { useMinuteClock } from './home-clock.svelte.ts';
   import HomeCard from './home-card.svelte';
@@ -47,6 +47,9 @@
       pendingQuestions(reviews.data ?? []),
       chatsWithFailedRun(tasks.data?.tasks ?? []),
       clock(),
+      undefined,
+      // Waiting on you as the chat list and the chat itself say it (COR-2438).
+      new Set(waitingChatIds(reviews.data ?? [])),
     ),
   );
 </script>

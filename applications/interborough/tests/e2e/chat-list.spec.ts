@@ -242,7 +242,7 @@ test.describe('one left edge for the open chat (COR-2327 B4)', () => {
         composer: left(region.querySelector('.chat-input-area'), true),
       };
       region
-        .querySelectorAll('.weft-chat-head > .cinder-alert, .weft-chat-head > [role="alert"]')
+        .querySelectorAll('.weft-chat-alerts > .cinder-alert, .weft-chat-alerts > [role="alert"]')
         .forEach((alert, index) => (edges[`alert ${index}`] = left(alert)));
       return edges;
     });
@@ -258,7 +258,7 @@ test.describe('one left edge for the open chat (COR-2327 B4)', () => {
     await expect(page.locator('.chat-timeline').first()).toBeVisible();
     if (expected.includes('runs')) await expect(open.locator('.weft-chat-strip')).toBeVisible();
     if (expected.includes('alert 0')) {
-      await expect(open.locator('.weft-chat-head > .cinder-alert').first()).toBeVisible();
+      await expect(open.locator('.weft-chat-alerts > .cinder-alert').first()).toBeVisible();
     }
     const edges = await leftEdges(page);
     const drawn = Object.entries(edges).filter(
