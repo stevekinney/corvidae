@@ -31,7 +31,13 @@ export type CatalogCallResult<Output> =
   | { readonly ok: true; readonly value: Output }
   | { readonly ok: false; readonly kind: 'connection'; readonly message: string }
   | { readonly ok: false; readonly kind: 'compat'; readonly message: string }
-  | { readonly ok: false; readonly kind: 'operation'; readonly message: string };
+  | {
+      readonly ok: false;
+      readonly kind: 'operation';
+      readonly message: string;
+      /** Present and `true` when the server answered with its `NotFound` fault. */
+      readonly notFound?: true;
+    };
 
 /**
  * Invoke a single catalog operation through the generated typed client and
@@ -60,10 +66,27 @@ export async function callCatalogOperation<Name extends CatalogOperationName>(
           message: `operation ${operationName} is not available on this server; the server is older than this CLI. Run 'weft server info' to compare versions, or upgrade the server`,
         };
       }
-      return { ok: false, kind: 'operation', message: error.message };
+      return {
+        ok: false,
+        kind: 'operation',
+        message: error.message,
+        ...(isNotFoundFaultData(error.data) ? { notFound: true as const } : {}),
+      };
     }
     return { ok: false, kind: 'connection', message: messageOf(error) };
   }
+}
+
+/**
+ * Exit code of a command whose target does not exist: the server answered with its `NotFound`
+ * fault. Apart from the other failures (1) so a script can tell "no such workflow" from "the
+ * operation failed".
+ */
+export const NOT_FOUND_EXIT_CODE = 5;
+
+/** Whether a fault's `data` is the server's `NotFound` fault, whose `weftCode` is the coarse fault code. */
+function isNotFoundFaultData(data: unknown): boolean {
+  return typeof data === 'object' && data !== null && Reflect.get(data, 'weftCode') === 'NotFound';
 }
 
 /** Exit code for a {@link CatalogCallResult} failure, by failure kind. */

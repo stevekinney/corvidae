@@ -90,6 +90,19 @@ export type CancelWorkflowResult =
     };
 
 /**
+ * What `engine.previewCancel(workflowId)` reports, and `weft.workflows.cancel` with `dryRun: true`
+ * answers: the run's current `status` and whether a cancel would take effect (`cancellable`: the
+ * run is `pending`, `running` or `suspended`). Nothing was written; a run that is already terminal
+ * reports `cancellable: false` with its terminal status.
+ */
+export type CancelWorkflowDryRunResult = {
+  readonly dryRun: true;
+  readonly workflowId: string;
+  readonly status: WorkflowStatus;
+  readonly cancellable: boolean;
+};
+
+/**
  * Outcome of `engine.retryFailed(workflowId)`: one failed run resumed in place from its checkpoint,
  * or why it was not. `retried` means the run is `running` again on the revision it is pinned to,
  * with every operation its checkpoint holds replayed from that checkpoint and never run again.

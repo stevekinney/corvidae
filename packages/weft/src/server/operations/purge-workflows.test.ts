@@ -41,6 +41,20 @@ function request(body?: unknown): Request {
 const registry = createOperationRegistry([purgeWorkflowsOperation]);
 const bindings = [purgeWorkflowsRestBinding];
 
+/** Purge the way the server requires it: a dry run of `body`, then a commit with its token. */
+async function purgeWithPreview(engine: Engine, body: Record<string, unknown>): Promise<Response> {
+  const preview = (await (
+    await handleRequest(request({ ...body, dryRun: true }), engine, {
+      operationRegistry: registry,
+      restBindings: bindings,
+    })
+  ).json()) as { confirmationToken: string };
+  return handleRequest(request({ ...body, confirmationToken: preview.confirmationToken }), engine, {
+    operationRegistry: registry,
+    restBindings: bindings,
+  });
+}
+
 describe('weft.workflows.purge', () => {
   it('purges terminal workflows that match the provided filter', async () => {
     await using engine = createEngine();
@@ -56,22 +70,18 @@ describe('weft.workflows.purge', () => {
     await engine.setAttributes('purge-selected-b', { bucket: 'target' });
     await engine.setAttributes('purge-other', { bucket: 'other' });
 
-    const response = await handleRequest(
-      request({
-        filter: {
-          status: 'completed',
-          attributes: [{ key: 'bucket', value: 'target' }],
-          offset: 1,
-          limit: 1,
-        },
-      }),
-      engine,
-      { operationRegistry: registry, restBindings: bindings },
-    );
+    const response = await purgeWithPreview(engine, {
+      filter: {
+        status: 'completed',
+        attributes: [{ key: 'bucket', value: 'target' }],
+        offset: 1,
+        limit: 1,
+      },
+    });
 
     expect(response.status).toBe(200);
     expect(response.headers.get('content-type')).toBe('application/json');
-    expect(await response.json()).toEqual({ deleted: 1 });
+    expect(await response.json()).toEqual(expect.objectContaining({ deleted: 1 }));
     expect(await engine.get('purge-selected-a')).not.toBeNull();
     expect(await engine.get('purge-selected-b')).toBeNull();
     expect(await engine.get('purge-other')).not.toBeNull();
@@ -83,15 +93,74 @@ describe('weft.workflows.purge', () => {
     const handle = await engine.start('echo', 'delete-me', { id: 'purge-unfiltered' });
     await handle.result();
 
-    const response = await handleRequest(request({ note: 'ignored' }), engine, {
+    const response = await purgeWithPreview(engine, { note: 'ignored' });
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('content-type')).toBe('application/json');
+    expect(await response.json()).toEqual(expect.objectContaining({ deleted: 1 }));
+    expect(await engine.get('purge-unfiltered')).toBeNull();
+  });
+
+  it('previews without deleting, and the commit deletes only what the preview named', async () => {
+    await using engine = createEngine();
+
+    for (const id of ['purge-named-a', 'purge-named-b']) {
+      await (await engine.start('echo', id, { id })).result();
+    }
+    const stores = async () => [
+      await engine.get('purge-named-a'),
+      await engine.get('purge-named-b'),
+    ];
+    const before = await stores();
+
+    const preview = await handleRequest(
+      request({ filter: { status: 'completed' }, dryRun: true }),
+      engine,
+      { operationRegistry: registry, restBindings: bindings },
+    );
+    const previewBody = (await preview.json()) as {
+      dryRun: boolean;
+      action: string;
+      matched: number;
+      sampleWorkflowIds: string[];
+      confirmationToken: string;
+    };
+
+    expect(previewBody).toMatchObject({
+      dryRun: true,
+      action: 'purge',
+      matched: 2,
+      sampleWorkflowIds: ['purge-named-a', 'purge-named-b'],
+    });
+    // A dry run writes nothing: both runs read back exactly as before.
+    expect(await stores()).toEqual(before);
+
+    // A run that finishes after the preview was not named by it, so the token no longer matches.
+    await (await engine.start('echo', 'late', { id: 'purge-named-late' })).result();
+    const stale = await handleRequest(
+      request({
+        filter: { status: 'completed' },
+        confirmationToken: previewBody.confirmationToken,
+      }),
+      engine,
+      { operationRegistry: registry, restBindings: bindings },
+    );
+    expect(stale.status).toBe(400);
+    expect(await stores()).toEqual(before);
+    expect(await engine.get('purge-named-late')).not.toBeNull();
+  });
+
+  it('refuses a commit that carries no confirmation token', async () => {
+    await using engine = createEngine();
+    await (await engine.start('echo', 'keep', { id: 'purge-no-token' })).result();
+
+    const response = await handleRequest(request({ filter: { status: 'completed' } }), engine, {
       operationRegistry: registry,
       restBindings: bindings,
     });
 
-    expect(response.status).toBe(200);
-    expect(response.headers.get('content-type')).toBe('application/json');
-    expect(await response.json()).toEqual({ deleted: 1 });
-    expect(await engine.get('purge-unfiltered')).toBeNull();
+    expect(response.status).toBe(400);
+    expect(await engine.get('purge-no-token')).not.toBeNull();
   });
 
   it('returns 400 for invalid filter bodies', async () => {
@@ -141,7 +210,7 @@ describe('weft.workflows.purge', () => {
     });
     const failingRegistry = createOperationRegistry([failingOperation]);
 
-    const response = await handleRequest(request({}), engine, {
+    const response = await handleRequest(request({ dryRun: true }), engine, {
       operationRegistry: failingRegistry,
       restBindings: bindings,
     });

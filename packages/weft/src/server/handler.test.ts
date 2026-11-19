@@ -167,6 +167,23 @@ async function json(response: Response): Promise<unknown> {
   return response.json();
 }
 
+/**
+ * Purge the way the server requires it: a dry run of `body` first, then the commit with that
+ * preview's confirmation token. Resolves the commit's response.
+ */
+async function purgeWithPreview(engine: Engine, body: Record<string, unknown> | undefined) {
+  const preview = await json(
+    await handleRequest(request('POST', '/v1/workflows/purge', { ...body, dryRun: true }), engine),
+  );
+  return handleRequest(
+    request('POST', '/v1/workflows/purge', {
+      ...body,
+      confirmationToken: confirmationTokenFromPreview(preview),
+    }),
+    engine,
+  );
+}
+
 function confirmationTokenFromPreview(preview: unknown): string {
   const token = (preview as { confirmationToken?: unknown }).confirmationToken;
   if (typeof token !== 'string') {
@@ -796,20 +813,90 @@ describe('handleRequest', () => {
     );
     await waitForStartedWorkflowsToComplete(engine);
 
+    const response = await purgeWithPreview(engine, {
+      filter: {
+        status: 'completed',
+        type: 'echo',
+      },
+    });
+
+    expect(response.status).toBe(200);
+    expect(await json(response)).toEqual(expect.objectContaining({ deleted: 2 }));
+    expect(await engine.get('purge-keep')).toBeNull();
+    expect(await engine.get('purge-delete')).toBeNull();
+  });
+
+  it('POST /v1/workflows/purge with dryRun previews the matches and deletes nothing', async () => {
+    engine = createEngine();
+    await handleRequest(
+      request('POST', '/v1/workflows', { type: 'echo', input: 'keep', id: 'purge-preview-a' }),
+      engine,
+    );
+    await handleRequest(
+      request('POST', '/v1/workflows', { type: 'echo', input: 'keep', id: 'purge-preview-b' }),
+      engine,
+    );
+    await waitForStartedWorkflowsToComplete(engine);
+
     const response = await handleRequest(
       request('POST', '/v1/workflows/purge', {
-        filter: {
-          status: 'completed',
-          type: 'echo',
-        },
+        filter: { status: 'completed' },
+        dryRun: true,
+        requestId: 'purge-preview',
       }),
       engine,
     );
 
     expect(response.status).toBe(200);
-    expect(await json(response)).toEqual({ deleted: 2 });
-    expect(await engine.get('purge-keep')).toBeNull();
-    expect(await engine.get('purge-delete')).toBeNull();
+    expect(await json(response)).toEqual(
+      expect.objectContaining({
+        dryRun: true,
+        action: 'purge',
+        matched: 2,
+        requestId: 'purge-preview',
+        sampleWorkflowIds: ['purge-preview-a', 'purge-preview-b'],
+        confirmationToken: expect.any(String),
+      }),
+    );
+    expect(await engine.get('purge-preview-a')).not.toBeNull();
+    expect(await engine.get('purge-preview-b')).not.toBeNull();
+  });
+
+  it('POST /v1/workflows/purge refuses a commit with no token, and with a token for another filter', async () => {
+    engine = createEngine();
+    await handleRequest(
+      request('POST', '/v1/workflows', { type: 'echo', input: 'keep', id: 'purge-token-a' }),
+      engine,
+    );
+    await waitForStartedWorkflowsToComplete(engine);
+
+    const withoutToken = await handleRequest(
+      request('POST', '/v1/workflows/purge', { filter: { status: 'completed' } }),
+      engine,
+    );
+    expect(withoutToken.status).toBe(400);
+    expect(await json(withoutToken)).toEqual({
+      error: 'Field "confirmationToken" is required after a dry run',
+    });
+
+    const preview = await json(
+      await handleRequest(
+        request('POST', '/v1/workflows/purge', {
+          filter: { type: 'echo' },
+          dryRun: true,
+        }),
+        engine,
+      ),
+    );
+    const otherFilter = await handleRequest(
+      request('POST', '/v1/workflows/purge', {
+        filter: { type: 'other' },
+        confirmationToken: confirmationTokenFromPreview(preview),
+      }),
+      engine,
+    );
+    expect(otherFilter.status).toBe(400);
+    expect(await engine.get('purge-token-a')).not.toBeNull();
   });
 
   it('POST /v1/workflows/purge accepts an empty request body', async () => {
@@ -820,10 +907,10 @@ describe('handleRequest', () => {
     );
     await waitForStartedWorkflowsToComplete(engine);
 
-    const response = await handleRequest(request('POST', '/v1/workflows/purge'), engine);
+    const response = await purgeWithPreview(engine, undefined);
 
     expect(response.status).toBe(200);
-    expect(await json(response)).toEqual({ deleted: 1 });
+    expect(await json(response)).toEqual(expect.objectContaining({ deleted: 1 }));
     expect(await engine.get('purge-empty-body')).toBeNull();
   });
 
@@ -849,13 +936,10 @@ describe('handleRequest', () => {
       error: 'Request body must be a JSON object',
     });
 
-    const omittedFilterResponse = await handleRequest(
-      request('POST', '/v1/workflows/purge', { note: 'ignored' }),
-      engine,
-    );
+    const omittedFilterResponse = await purgeWithPreview(engine, { note: 'ignored' });
 
     expect(omittedFilterResponse.status).toBe(200);
-    expect(await json(omittedFilterResponse)).toEqual({ deleted: 1 });
+    expect(await json(omittedFilterResponse)).toEqual(expect.objectContaining({ deleted: 1 }));
     expect(await engine.get('purge-no-filter')).toBeNull();
   });
 
@@ -878,20 +962,17 @@ describe('handleRequest', () => {
     await engine.setAttributes('purge-filter-2', { bucket: 'target' });
     await engine.setAttributes('purge-filter-3', { bucket: 'other' });
 
-    const response = await handleRequest(
-      request('POST', '/v1/workflows/purge', {
-        filter: {
-          status: 'completed',
-          attributes: [{ key: 'bucket', value: 'target' }],
-          offset: 1,
-          limit: 1,
-        },
-      }),
-      engine,
-    );
+    const response = await purgeWithPreview(engine, {
+      filter: {
+        status: 'completed',
+        attributes: [{ key: 'bucket', value: 'target' }],
+        offset: 1,
+        limit: 1,
+      },
+    });
 
     expect(response.status).toBe(200);
-    expect(await json(response)).toEqual({ deleted: 1 });
+    expect(await json(response)).toEqual(expect.objectContaining({ deleted: 1 }));
     expect(await engine.get('purge-filter-1')).not.toBeNull();
     expect(await engine.get('purge-filter-2')).toBeNull();
     expect(await engine.get('purge-filter-3')).not.toBeNull();
@@ -936,12 +1017,9 @@ describe('handleRequest', () => {
       error: 'Field "filter.status" must be a string or an array of strings',
     });
 
-    const missingFilterResponse = await handleRequest(
-      request('POST', '/v1/workflows/purge', { note: 'no filter here' }),
-      engine,
-    );
+    const missingFilterResponse = await purgeWithPreview(engine, { note: 'no filter here' });
     expect(missingFilterResponse.status).toBe(200);
-    expect(await json(missingFilterResponse)).toEqual({ deleted: 0 });
+    expect(await json(missingFilterResponse)).toEqual(expect.objectContaining({ deleted: 0 }));
 
     const nonObjectBodyResponse = await handleRequest(
       request('POST', '/v1/workflows/purge', ['not-an-object']),

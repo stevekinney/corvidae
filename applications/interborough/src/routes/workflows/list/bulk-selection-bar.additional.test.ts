@@ -6,7 +6,7 @@ import { describe, expect, test } from 'bun:test';
 import type { WorkflowListQuery } from '../../../lib/filters.ts';
 import type { ScopeGate } from '../../../lib/scopes.svelte.ts';
 import BulkSelectionBar from './bulk-selection-bar.svelte';
-import { realClient, ScriptedFetch } from './workflow-test-support.test-support.ts';
+import { realClient, ScriptedFetch, type FetchCall } from './workflow-test-support.test-support.ts';
 
 const GRANTED: ScopeGate = { disabled: false, title: undefined };
 
@@ -23,22 +23,61 @@ function baseProps(overrides: Partial<Record<string, unknown>> = {}) {
   };
 }
 
+const PURGE_PREVIEW = {
+  dryRun: true,
+  action: 'purge',
+  matched: 12,
+  requestId: 'bulk:req-purge',
+  scope: {
+    matched: 12,
+    filter: { status: 'failed' },
+    statuses: ['failed'],
+    workflowTypes: ['checkout'],
+    sampleWorkflowIds: ['wf-1', 'wf-2'],
+    sampleLimit: 20,
+  },
+  sampleWorkflowIds: ['wf-1', 'wf-2'],
+  confirmationToken: 'bulk:token-purge',
+  confirmationTokenVersion: 1,
+};
+
+function requestParams(call: FetchCall | undefined): Record<string, unknown> {
+  const body = call?.init?.body;
+  if (typeof body !== 'string') throw new Error('JSON-RPC request body missing');
+  const parsed: unknown = JSON.parse(body);
+  if (parsed === null || typeof parsed !== 'object') throw new Error('JSON-RPC body malformed');
+  const params = Reflect.get(parsed, 'params');
+  if (params === null || typeof params !== 'object') throw new Error('JSON-RPC params missing');
+  return params;
+}
+
 describe('additional coverage', () => {
-  test('clicking Purge (once enabled) opens the purge dialog using the already-known total, no dry run', async () => {
-    const { getByRole, getAllByRole, getByText } = render(BulkSelectionBar, {
-      props: baseProps(),
-    });
+  test('clicking Purge (once enabled) opens the purge dialog with the server dry run count, not the list total', async () => {
+    const fetch = new ScriptedFetch();
+    // The list says 47; the server's dry run says 12 would be purged (the rest are not terminal).
+    fetch.routeJsonRpcMethod('weft.workflows.purge', PURGE_PREVIEW);
 
-    await fireEvent.click(getByRole('checkbox', { name: /Select all 47 matching the filter/ }));
-    const purgeButton = requireElement(
-      getAllByRole('button').find((button) => button.textContent?.trim() === 'Purge'),
-      HTMLButtonElement,
-    );
-    await fireEvent.click(purgeButton);
+    try {
+      const { getByRole, getAllByRole, getByText } = render(BulkSelectionBar, {
+        props: baseProps(),
+      });
 
-    await waitFor(() => {
-      expect(getByText('47 terminal workflows')).not.toBeNull();
-    });
+      await fireEvent.click(getByRole('checkbox', { name: /Select all 47 matching the filter/ }));
+      const purgeButton = requireElement(
+        getAllByRole('button').find((button) => button.textContent?.trim() === 'Purge'),
+        HTMLButtonElement,
+      );
+      await fireEvent.click(purgeButton);
+
+      await waitFor(() => {
+        expect(getByText('12 terminal workflows')).not.toBeNull();
+      });
+      const params = requestParams(fetch.calls[0]);
+      expect(params['dryRun']).toBe(true);
+      expect(params['status']).toBe('failed');
+    } finally {
+      fetch.restore();
+    }
   });
 
   test('a completed purge calls onActionComplete — the wiring behind "selection clears after a real commit"', async () => {
@@ -49,7 +88,9 @@ describe('additional coverage', () => {
     // `onActionComplete` was only wired to dialog dismissal, not to the
     // commit actually succeeding.
     const fetch = new ScriptedFetch();
-    fetch.routeJsonRpcMethod('weft.workflows.purge', { deleted: 47 });
+    // The dry run answers first, then the commit.
+    fetch.enqueueJson({ jsonrpc: '2.0', id: 1, result: PURGE_PREVIEW });
+    fetch.enqueueJson({ jsonrpc: '2.0', id: 1, result: { deleted: 12 } });
 
     try {
       let completed = 0;
@@ -70,19 +111,23 @@ describe('additional coverage', () => {
       await fireEvent.click(purgeButton);
 
       await waitFor(() => {
-        expect(getByLabelText('Type "purge 47 workflows" to confirm')).not.toBeNull();
+        expect(getByLabelText('Type "purge 12 workflows" to confirm')).not.toBeNull();
       });
       expect(completed).toBe(0);
 
-      await fireEvent.input(getByLabelText('Type "purge 47 workflows" to confirm'), {
-        target: { value: 'purge 47 workflows' },
+      await fireEvent.input(getByLabelText('Type "purge 12 workflows" to confirm'), {
+        target: { value: 'purge 12 workflows' },
       });
-      await fireEvent.click(getByRole('button', { name: 'Purge 47 workflows' }));
+      await fireEvent.click(getByRole('button', { name: 'Purge 12 workflows' }));
 
       await waitFor(() => {
-        expect(getByText('Purged 47 workflows')).not.toBeNull();
+        expect(getByText('Purged 12 workflows')).not.toBeNull();
       });
       expect(completed).toBe(1);
+      // The commit carried the dry run's token and no dryRun.
+      const commitParams = requestParams(fetch.calls[1]);
+      expect(commitParams['confirmationToken']).toBe('bulk:token-purge');
+      expect(commitParams).not.toHaveProperty('dryRun');
     } finally {
       fetch.restore();
     }

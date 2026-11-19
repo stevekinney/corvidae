@@ -3,8 +3,9 @@
    * Shared Tier-3 type-to-confirm dialog for the five filter-scoped bulk
    * workflow operations (cancel, signal, retry-failed, delete, mutate tags —
    * plan §9.2/§10.6 T8.1; design `Weft Patterns.dc.html` Tier-3 mock).
-   * `bulk-purge-dialog.svelte` is separate — purge has no dry-run/
-   * confirmation-token protocol at all (see that file's module doc).
+   * `bulk-purge-dialog.svelte` is separate — purge follows the same dry-run/
+   * confirmation-token protocol but previews what it would remove, with a
+   * sample of the ids (see that file's module doc).
    *
    * ## Why this composes `Modal` directly rather than `ConfirmDialog`
    *
@@ -75,8 +76,8 @@
      * the params/preview phase's "Cancel"), where invalidating queries is
      * harmless but clearing the caller's row selection would not be — the
      * caller might want to retry a DIFFERENT action against the same
-     * selection. Optional so `bulk-purge-dialog.svelte`'s equivalent single-
-     * phase flow isn't forced to declare an unused prop.
+     * selection. Optional so a caller with nothing to do on success isn't forced
+     * to declare an unused prop.
      */
     readonly onSuccess?: () => void;
   }

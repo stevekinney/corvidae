@@ -17,7 +17,7 @@ export const MAX_BULK_CONFIRMATION_TOKEN_LENGTH = 256;
  * ```
  */
 export type BulkOperationAction =
-  'cancel' | 'signal' | 'delete' | 'tag:add' | 'tag:remove' | 'retry-failed';
+  'cancel' | 'signal' | 'delete' | 'tag:add' | 'tag:remove' | 'retry-failed' | 'purge';
 
 /**
  * Credential-safe caller summary recorded on bulk audit events. Claims,
@@ -370,8 +370,11 @@ export type BulkTagResult = {
 
 /**
  * Result of a purge operation (`engine.purge`). Reports how many workflow
- * records were permanently removed from storage.
+ * records were permanently removed from storage. `auditEvent` is present
+ * when the purge was committed with a confirmation token, request id, or
+ * principal, as for the other bulk operations.
  */
-export interface PurgeResult {
+export type PurgeResult = {
   deleted: number;
-}
+  auditEvent?: BulkOperationAuditEvent;
+};

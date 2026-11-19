@@ -7,12 +7,13 @@ import {
   commitBulkRetryFailed,
   commitBulkSignal,
   commitBulkTags,
+  commitPurge,
   dryRunBulkCancel,
   dryRunBulkDelete,
   dryRunBulkRetryFailed,
   dryRunBulkSignal,
   dryRunBulkTags,
-  purgeWorkflows,
+  dryRunPurge,
 } from './bulk-operations-client.ts';
 import { realClient, ScriptedFetch, type FetchCall } from './workflow-test-support.test-support.ts';
 
@@ -218,19 +219,64 @@ describe('dryRunBulkTags / commitBulkTags', () => {
   });
 });
 
-describe('purgeWorkflows', () => {
-  test('sends only the filter — no dryRun/confirmationToken field exists for purge', async () => {
+describe('purge dry run and commit', () => {
+  test('the dry run sends the filter with dryRun: true and returns the server preview', async () => {
+    const fetch = new ScriptedFetch();
+    fetch.routeJsonRpcMethod('weft.workflows.purge', {
+      dryRun: true,
+      action: 'purge',
+      matched: 9,
+      requestId: 'bulk:req-purge',
+      scope: {
+        matched: 9,
+        filter: { status: 'completed' },
+        statuses: ['completed'],
+        workflowTypes: ['checkout'],
+        sampleWorkflowIds: ['wf-1', 'wf-2'],
+        sampleLimit: 20,
+      },
+      sampleWorkflowIds: ['wf-1', 'wf-2'],
+      confirmationToken: 'bulk:token-purge',
+      confirmationTokenVersion: 1,
+    });
+    const client = realClient();
+
+    const preview = await dryRunPurge(client, { status: 'completed' });
+
+    expect(preview.matched).toBe(9);
+    expect(preview.sampleWorkflowIds).toEqual(['wf-1', 'wf-2']);
+    expect(preview.confirmationToken).toBe('bulk:token-purge');
+    const [call] = fetch.calls;
+    const params = requestParams(call);
+    expect(params['status']).toBe('completed');
+    expect(params['dryRun']).toBe(true);
+    expect(params).not.toHaveProperty('confirmationToken');
+    fetch.restore();
+  });
+
+  test('the commit sends the filter with the token and no dryRun', async () => {
     const fetch = new ScriptedFetch();
     fetch.routeJsonRpcMethod('weft.workflows.purge', { deleted: 9 });
     const client = realClient();
 
-    const result = await purgeWorkflows(client, { status: 'completed' });
+    const result = await commitPurge(client, { status: 'completed' }, 'bulk:token-purge');
 
     expect(result.deleted).toBe(9);
     const [call] = fetch.calls;
     const params = requestParams(call);
+    expect(params['confirmationToken']).toBe('bulk:token-purge');
     expect(params).not.toHaveProperty('dryRun');
-    expect(params).not.toHaveProperty('confirmationToken');
+    fetch.restore();
+  });
+
+  test('a dry run answer that is not a preview is refused', async () => {
+    const fetch = new ScriptedFetch();
+    fetch.routeJsonRpcMethod('weft.workflows.purge', { deleted: 9 });
+    const client = realClient();
+
+    await expect(dryRunPurge(client, { status: 'completed' })).rejects.toThrow(
+      'Bulk dry-run returned an unexpected shape',
+    );
     fetch.restore();
   });
 });

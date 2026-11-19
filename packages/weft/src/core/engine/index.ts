@@ -45,6 +45,7 @@ import {
   type BulkSignalAllDryRunOptions,
   type BulkSignalResult,
   type BulkTagResult,
+  type CancelWorkflowDryRunResult,
   type CancelWorkflowResult,
   type CheckpointState,
   type CheckpointSummary,
@@ -366,6 +367,7 @@ import {
   timeoutWorkflow as timeoutWorkflowFromTermination,
   type TerminationCallbacks,
 } from './termination.ts';
+import { previewCancelWorkflow } from './termination/cancel-preview.ts';
 import {
   deliverCoordinatedUpdateToWaiterIfAvailable as deliverCoordinatedUpdateToWaiterIfAvailableFromInternals,
   getUpdateResult as getUpdateResultFromInternals,
@@ -2293,13 +2295,35 @@ export class Engine<
   runConcurrency(): RunConcurrencySnapshot | null {
     return runConcurrencySnapshot(getInternals(this));
   }
-  async purge(filter?: ListFilter): Promise<PurgeResult> {
-    return purgeWorkflows(getInternals(this), filter, (workflowId) =>
-      cleanupWaitersFromTermination(
-        getInternals(this),
-        workflowId,
-        this.#createTerminationCallbacks(),
-      ),
+  /**
+   * Permanently delete the terminal workflows that match `filter` (every terminal workflow when
+   * it is omitted) and report how many were removed. Called with no `options` it deletes at once.
+   *
+   * With `options` it follows the confirmation-token protocol of the other bulk operations:
+   * `{ dryRun: true }` returns the bulk dry-run result (`matched`, `scope`, a sample of ids, a
+   * `confirmationToken`) and writes nothing, and `{ confirmationToken }` deletes exactly the runs
+   * that preview named, throwing `BulkOperationConfirmationError` when the filter no longer
+   * produces the token.
+   */
+  async purge(
+    filter: ListFilter | undefined,
+    options: BulkOperationDryRunOptions,
+  ): Promise<BulkOperationDryRunResult>;
+  async purge(filter?: ListFilter, options?: BulkOperationCommitOptions): Promise<PurgeResult>;
+  async purge(
+    filter?: ListFilter,
+    options?: BulkOperationDryRunOptions | BulkOperationCommitOptions,
+  ): Promise<PurgeResult | BulkOperationDryRunResult> {
+    return purgeWorkflows(
+      getInternals(this),
+      filter,
+      (workflowId) =>
+        cleanupWaitersFromTermination(
+          getInternals(this),
+          workflowId,
+          this.#createTerminationCallbacks(),
+        ),
+      options,
     );
   }
   /**
@@ -3146,6 +3170,15 @@ export class Engine<
       workflowId,
       this.#createTerminationCallbacks(),
     );
+  }
+  /**
+   * What {@link Engine.cancel} would do for a workflow, without doing it: the run's current status
+   * and whether a cancel would take effect (it is `pending`, `running` or `suspended`). Nothing is
+   * written, no cancel handler runs and the run is not disturbed. Throws, as a cancel does, when
+   * no workflow has the id.
+   */
+  async previewCancel(workflowId: string): Promise<CancelWorkflowDryRunResult> {
+    return await previewCancelWorkflow(getInternals(this), workflowId);
   }
   /**
    * Suspend a running workflow without terminating it. The workflow transitions

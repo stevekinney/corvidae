@@ -14,6 +14,7 @@ export function parseApiArguments(args: string[]): CliCommand {
       list: { type: 'boolean', default: false },
       describe: { type: 'string' },
       yes: { type: 'boolean', default: false },
+      'dry-run': { type: 'boolean', default: false },
       help: { type: 'boolean', short: 'h', default: false },
       json: { type: 'boolean', short: 'j', default: false },
     },
@@ -33,6 +34,7 @@ export function parseApiArguments(args: string[]): CliCommand {
     list: values.list ?? false,
     ...(values.describe !== undefined ? { describe: values.describe } : {}),
     yes: values.yes ?? false,
+    ...(values['dry-run'] === true ? { dryRun: true } : {}),
     help: values.help ?? false,
     json: values.json ?? false,
   };
@@ -43,6 +45,7 @@ type ApiValues = {
   readonly 'input-file'?: string;
   readonly list?: boolean;
   readonly describe?: string;
+  readonly 'dry-run'?: boolean;
 };
 
 function apiInputFields(values: ApiValues) {
@@ -62,5 +65,8 @@ function validateApiArguments(values: ApiValues, positionals: readonly string[])
   }
   if (values.list === true && (values.describe !== undefined || positionals.length > 0)) {
     throw new Error('api: --list cannot be combined with --describe or an operation name');
+  }
+  if (values['dry-run'] === true && (values.list === true || values.describe !== undefined)) {
+    throw new Error('api: --dry-run applies to invoking an operation, not --list or --describe');
   }
 }

@@ -17,7 +17,7 @@
    * **"select all N matching the filter" escalation** — every action button
    * stays disabled-with-reason until that's explicitly checked, at which
    * point the action truly does operate on the full filtered set the
-   * dry-run/purge count describes, matching the design mock's own copy
+   * dry-run count describes, matching the design mock's own copy
    * ("Operates on all 47 workflows matching the filter — not just the
    * visible page").
    *
@@ -54,14 +54,14 @@
     commitBulkRetryFailed,
     commitBulkSignal,
     commitBulkTags,
+    commitPurge,
     dryRunBulkCancel,
     dryRunBulkDelete,
     dryRunBulkRetryFailed,
     dryRunBulkSignal,
     dryRunBulkTags,
-    purgeWorkflows,
+    dryRunPurge,
   } from './bulk-operations-client.ts';
-  import { filterSummaryChip } from './bulk-preview-format.ts';
   import BulkPurgeDialog from './bulk-purge-dialog.svelte';
   import {
     cancelResultSummary,
@@ -103,7 +103,6 @@
 
   const filterScoped = $derived(isBulkOperationScoped(filter));
   const bulkFilter = $derived(toBulkListFilterInput(filter));
-  const chip = $derived(filterSummaryChip(bulkFilter));
 
   const actionsDisabledReason = $derived(
     adminGate.disabled
@@ -349,9 +348,8 @@
   />
 {:else if activeAction === 'purge'}
   <BulkPurgeDialog
-    matchedCount={totalMatchingFilter}
-    filterChip={chip}
-    runPurge={async () => purgeResultSummary(await purgeWorkflows(client, bulkFilter))}
+    runDryRun={() => dryRunPurge(client, bulkFilter)}
+    runPurge={async (token) => purgeResultSummary(await commitPurge(client, bulkFilter, token))}
     onClose={closeDialog}
     onSuccess={onActionComplete}
   />
