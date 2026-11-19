@@ -170,7 +170,10 @@ async function readRetryingActivity(
   state: WorkflowState,
 ): Promise<WorkflowRetrying | undefined> {
   if (state.status !== 'running') return undefined;
-  return decodeActivityRetrying(await internals.storage.get(KEYS.activityRetrying(state.id)));
+  return decodeActivityRetrying(
+    await internals.storage.get(KEYS.activityRetrying(state.id)),
+    state.workflowExecutionToken,
+  );
 }
 
 export function assertWorkflowListScanWithinCap(scannedRows: number): void {

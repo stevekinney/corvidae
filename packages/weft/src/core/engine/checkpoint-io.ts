@@ -443,7 +443,7 @@ async function commitCheckpoint(
   dispatchCheckpointSizeWarning(internals, workflowId, commit, callbacks);
   // The record behind `WorkflowSummary.retrying` moves in this same batch, only when it changes.
   commit.operations.push(
-    ...buildActivityRetryingOperations(internals, workflowId, commit.checkpoint.locals),
+    ...buildActivityRetryingOperations(internals, workflowId, commit.checkpoint),
   );
   const nextPendingTimelineEntry =
     options.timeline === 'preserve-pending'

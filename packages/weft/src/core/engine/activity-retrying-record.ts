@@ -16,7 +16,7 @@ import type { BatchOperation } from '@lostgradient/storage';
 import { KEYS } from '../../storage/keys.ts';
 import { decode, encode } from '../codec.ts';
 import { readRetryingActivity } from '../context/activity-retry-state.ts';
-import type { WorkflowRetrying } from '../types.ts';
+import type { Checkpoint, WorkflowRetrying } from '../types.ts';
 import type { EngineInternals } from './internals.ts';
 
 function sameRetrying(
@@ -34,23 +34,45 @@ function sameRetrying(
 export function buildActivityRetryingOperations(
   internals: EngineInternals,
   workflowId: string,
-  nextLocals: Record<string, unknown> | undefined,
+  nextCheckpoint: Pick<Checkpoint, 'locals' | 'workflowExecutionToken'>,
 ): BatchOperation[] {
   const previous = readRetryingActivity(internals.checkpoints.get(workflowId)?.locals);
-  const next = readRetryingActivity(nextLocals);
+  const next = readRetryingActivity(nextCheckpoint.locals);
   if (sameRetrying(previous, next)) return [];
   const key = KEYS.activityRetrying(workflowId);
-  return next === undefined
-    ? [{ type: 'delete', key }]
-    : [{ type: 'put', key, value: encode(next) }];
+  if (next === undefined) return [{ type: 'delete', key }];
+  // The record names the run it belongs to: a run that ends while retrying leaves it behind (no
+  // checkpoint commits after the failure), and a `start-new` replacement under the same id must
+  // not read the run before it as its own.
+  const record: ActivityRetryingRecord = {
+    ...next,
+    ...(nextCheckpoint.workflowExecutionToken === undefined
+      ? {}
+      : { workflowExecutionToken: nextCheckpoint.workflowExecutionToken }),
+  };
+  return [{ type: 'put', key, value: encode(record) }];
 }
 
-/** The decoded record, or `undefined` when it is absent or not the shape the engine writes. */
-export function decodeActivityRetrying(bytes: Uint8Array | null): WorkflowRetrying | undefined {
+/** What the `wf:{id}:retrying` record holds: the retrying activity and the run it belongs to. */
+type ActivityRetryingRecord = WorkflowRetrying & { workflowExecutionToken?: string };
+
+/**
+ * The decoded record when it belongs to the run with `workflowExecutionToken`, and `undefined` when
+ * it is absent, not the shape the engine writes, or left by another run under the same id.
+ */
+export function decodeActivityRetrying(
+  bytes: Uint8Array | null,
+  workflowExecutionToken: string | undefined,
+): WorkflowRetrying | undefined {
   if (bytes === null) return undefined;
   const value: unknown = decode(bytes);
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return undefined;
-  const { activity, attempt } = value as Record<string, unknown>;
+  const {
+    activity,
+    attempt,
+    workflowExecutionToken: recordToken,
+  } = value as Record<string, unknown>;
+  if (recordToken !== workflowExecutionToken) return undefined;
   if (typeof activity !== 'string' || activity.length === 0) return undefined;
   if (typeof attempt !== 'number' || !Number.isSafeInteger(attempt) || attempt < 2)
     return undefined;

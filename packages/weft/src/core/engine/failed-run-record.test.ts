@@ -448,6 +448,44 @@ const rows: MatrixRow[] = [
     },
   },
   {
+    name: 'replaced-run',
+    criterion: 'AC3',
+    run: async () => {
+      // A run that ends while retrying leaves its `retrying` record behind (no checkpoint commits
+      // after the failure). A `start-new` replacement under the same id is another run and must not
+      // read it as its own.
+      await using engine = new Engine();
+      let firstRun = true;
+      const flaky = alwaysFails('flaky', NO_BACKOFF);
+      engine.register(
+        workflow({ name: 'row-replaced' })
+          .activities({ flaky })
+          .execute(async function* (ctx: WorkflowContext) {
+            if (firstRun) return yield* ctx.run(flaky);
+            yield* ctx.waitForSignal('done');
+            return 'second run';
+          }),
+      );
+      const first = await engine.start('row-replaced', null, { id: 'row-replaced-1' });
+      await throwingRejectionOf(first.result());
+      await waitForStatus(engine, 'row-replaced-1', 'failed');
+      firstRun = false;
+      await engine.start('row-replaced', null, {
+        id: 'row-replaced-1',
+        onTerminalConflict: 'start-new',
+      });
+      await waitForParkedOnDone(engine, 'row-replaced-1');
+      return { replacement: await snapshotOf(engine, 'row-replaced', 'row-replaced-1') };
+    },
+    expected: {
+      replacement: {
+        state: { status: 'running' },
+        stateAbsent: ['errorCode', 'failedStep'],
+        summaryAbsent: ['retrying', 'failedStep'],
+      },
+    },
+  },
+  {
     name: 'recovery-during-backoff',
     criterion: 'AC3, AC5',
     run: async () => {

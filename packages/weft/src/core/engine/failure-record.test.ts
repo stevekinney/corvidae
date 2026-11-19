@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 
+import { KEYS } from '../../storage/keys.ts';
+import { encode } from '../codec.ts';
 import {
   ACTIVITY_RETRY_STATE_LOCAL_KEY,
   forgetActivityRetryName,
@@ -10,12 +12,17 @@ import {
 import type { ContextInternals } from '../context/internals.ts';
 import { attachErrorCode, errorCodeOf } from '../error-code-of.ts';
 import type { WorkflowState, WorkflowTimelineEntry } from '../types.ts';
+import {
+  buildActivityRetryingOperations,
+  decodeActivityRetrying,
+} from './activity-retrying-record.ts';
 import { WorkflowNotFoundError } from './errors.ts';
 import {
   FAILED_STEP_LABEL_MAX_LENGTH,
   failedStepOf,
   sanitizeDecodedFailureRecord,
 } from './failure-record.ts';
+import type { EngineInternals } from './internals.ts';
 
 function entry(overrides: Partial<WorkflowTimelineEntry>): WorkflowTimelineEntry {
   return {
@@ -171,5 +178,88 @@ describe('retrying activity in the retry-state slot', () => {
 
     const plain = { other: 1 };
     expect(withoutRetryingActivityNames(plain)).toBe(plain);
+  });
+});
+
+describe('the retrying record', () => {
+  const retrying = { activity: 'fetch', attempt: 2 };
+
+  function engineHolding(locals: Record<string, unknown> | undefined) {
+    return {
+      checkpoints: new Map(locals === undefined ? [] : [['wf', { locals }]]),
+    } as unknown as EngineInternals;
+  }
+
+  function retryingLocals(name: string, attempt: number): Record<string, unknown> {
+    const internals = internalsWith();
+    writeActivityRetryAttempt(internals, 1, attempt, name);
+    return internals.checkpointLocals;
+  }
+
+  it('puts the activity with its run token when a checkpoint first shows a retry', () => {
+    const operations = buildActivityRetryingOperations(engineHolding(undefined), 'wf', {
+      locals: retryingLocals('fetch', 2),
+      workflowExecutionToken: 'run-1',
+    });
+
+    expect(operations).toEqual([
+      {
+        type: 'put',
+        key: KEYS.activityRetrying('wf'),
+        value: encode({ ...retrying, workflowExecutionToken: 'run-1' }),
+      },
+    ]);
+  });
+
+  it('adds nothing while the checkpoint shows what the previous one showed, and deletes once it shows none', () => {
+    const locals = retryingLocals('fetch', 2);
+    expect(
+      buildActivityRetryingOperations(engineHolding(locals), 'wf', {
+        locals,
+        workflowExecutionToken: 'run-1',
+      }),
+    ).toEqual([]);
+    expect(buildActivityRetryingOperations(engineHolding(undefined), 'wf', { locals: {} })).toEqual(
+      [],
+    );
+    expect(buildActivityRetryingOperations(engineHolding(locals), 'wf', { locals: {} })).toEqual([
+      { type: 'delete', key: KEYS.activityRetrying('wf') },
+    ]);
+  });
+
+  it('replaces the record when the attempt advances', () => {
+    const operations = buildActivityRetryingOperations(
+      engineHolding(retryingLocals('fetch', 2)),
+      'wf',
+      { locals: retryingLocals('fetch', 3), workflowExecutionToken: 'run-1' },
+    );
+    expect(operations).toHaveLength(1);
+    expect(operations[0]).toMatchObject({ type: 'put' });
+  });
+
+  it('is read only by the run it belongs to', () => {
+    const bytes = encode({ ...retrying, workflowExecutionToken: 'run-1' });
+
+    expect(decodeActivityRetrying(bytes, 'run-1')).toEqual(retrying);
+    // A run replaced under the same id (`start-new`) must not read the run before it as its own.
+    expect(decodeActivityRetrying(bytes, 'run-2')).toBeUndefined();
+    expect(decodeActivityRetrying(bytes, undefined)).toBeUndefined();
+    // A record written for a run with no token belongs to a run with none.
+    expect(decodeActivityRetrying(encode(retrying), undefined)).toEqual(retrying);
+    expect(decodeActivityRetrying(encode(retrying), 'run-1')).toBeUndefined();
+  });
+
+  it('reads nothing from an absent or malformed record', () => {
+    expect(decodeActivityRetrying(null, undefined)).toBeUndefined();
+    for (const malformed of [
+      'text',
+      [],
+      { activity: '', attempt: 2 },
+      { activity: 'fetch', attempt: 1 },
+      { activity: 'fetch', attempt: 2.5 },
+      { activity: 7, attempt: 2 },
+    ]) {
+      expect(decodeActivityRetrying(encode(malformed), undefined)).toBeUndefined();
+    }
   });
 });
