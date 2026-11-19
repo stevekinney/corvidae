@@ -15,6 +15,9 @@ concurrency:
   cancel-in-progress: true
 
 env:
+  # Vercel's Turborepo remote cache, shared with every developer machine; `turbo.json` names the
+  # team. Without the secret (a fork's pull request) Turborepo keeps to its local cache.
+  TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
   # `--affected` and the test selection compare against the pull request's base branch.
   TURBO_SCM_BASE: origin/${{ github.base_ref }}
   TURBO_TELEMETRY_DISABLED: '1'

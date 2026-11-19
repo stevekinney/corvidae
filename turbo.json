@@ -1221,6 +1221,9 @@
       ]
     }
   },
+  "remoteCache": {
+    "teamSlug": "kinney"
+  },
   "globalDependencies": [".oxlintrc.json", ".prettierrc.json", ".prettierignore", "tsconfig.json"],
   "globalPassThroughEnv": [
     "CORVIDAE_TEST_SLOTS",

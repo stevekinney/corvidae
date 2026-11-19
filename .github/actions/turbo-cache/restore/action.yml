@@ -1,5 +1,6 @@
-# Persists Turborepo's local task cache (`.turbo/cache`) across runs, with no remote cache and no
-# secret. This half restores: a runner takes the newest cache saved under the same job name (a
+# Persists Turborepo's local task cache (`.turbo/cache`) across runs. It is the fallback beside
+# Vercel's remote cache, which the workflows reach through their own token secret and which a
+# fork's pull request cannot read, so this action itself takes no secret. This half restores: a runner takes the newest cache saved under the same job name (a
 # branch run reads the default branch's caches). Its pair, `../save`, writes the cache under the
 # commit the job ran. A hit still needs Turborepo's own task hash to match, so a restored entry
 # never answers a task whose inputs changed.

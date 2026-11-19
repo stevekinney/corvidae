@@ -35,6 +35,9 @@ permissions:
   contents: read
 
 env:
+  # Vercel's Turborepo remote cache, shared with every developer machine; `turbo.json` names the
+  # team. Without the secret (a fork's pull request) Turborepo keeps to its local cache.
+  TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
   TURBO_TELEMETRY_DISABLED: '1'
   DO_NOT_TRACK: '1'
 

@@ -128,10 +128,45 @@ describe('Turborepo cache in the workflows', () => {
     expect(restore).toContain('RUNNER_OS');
     expect(save).toContain('path: .turbo/cache');
     expect(save).toContain('key: ${{ env.TURBO_CACHE_PREFIX }}${{ github.sha }}');
-    // Pinned by full commit SHA, as every action is, and with no remote cache or token.
+    // Pinned by full commit SHA, as every action is. The remote cache token belongs to the
+    // workflow (below), never to the action, which a fork's pull request runs without secrets.
     for (const text of [restore, save]) {
       expect(text).toMatch(/uses: actions\/cache\/(restore|save)@[0-9a-f]{40} # v\d/u);
       expect(text).not.toMatch(/TURBO_TOKEN|TURBO_TEAM|TURBO_API/u);
+    }
+  });
+
+  test('every workflow that runs Turborepo shares the remote cache with developer machines', () => {
+    const turbo = JSON.parse(readFileSync(resolve(root, 'turbo.json'), 'utf8')) as {
+      remoteCache?: { teamSlug?: string };
+    };
+    // The team lives in `turbo.json`, so a machine that ran `turbo login` reaches the same cache
+    // as CI and as `with-turborepo-cache`, with no environment of its own.
+    expect(turbo.remoteCache?.teamSlug).toBe('kinney');
+    const workflows = new Set(
+      jobs()
+        .filter(runsTurbo)
+        .map((job) => job.workflow),
+    );
+    expect(workflows.size).toBeGreaterThan(0);
+    for (const workflow of workflows) {
+      const text = readFileSync(resolve(workflowDirectory, workflow), 'utf8');
+      const environment = /\nenv:\n((?: {2}.*\n)+)/u.exec(text)?.[1] ?? '';
+      expect({
+        workflow,
+        token: environment.includes('  TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}\n'),
+      }).toEqual({
+        workflow,
+        token: true,
+      });
+      // A run-scoped override would split CI's entries away from every other machine's.
+      expect({
+        workflow,
+        override: /TURBO_(TEAM|TEAMID|API|CACHE|REMOTE_ONLY)\b/u.test(text),
+      }).toEqual({
+        workflow,
+        override: false,
+      });
     }
   });
 
