@@ -685,8 +685,8 @@ test.describe('Keyboard hints on a phone', () => {
 
       await open(page, 375, `/chats/${SAMPLE_WORLD_THREADS.refund}`);
       await expect(page.getByRole('textbox', { name: 'Message' })).toBeVisible();
-      await expect(page.locator('.chat-input-hint')).toHaveCount(1);
-      await expect(page.locator('.chat-input-hint')).toBeHidden();
+      // No hint under the composer at all, on any device (COR-2438).
+      await expect(page.locator('.chat-input-hint')).toHaveCount(0);
     });
   });
 });
