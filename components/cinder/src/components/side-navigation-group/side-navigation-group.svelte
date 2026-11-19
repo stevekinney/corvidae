@@ -16,6 +16,7 @@
     label,
     id: idProp,
     collapsible = true,
+    labelVisibility = 'visible',
     expanded = $bindable(true),
     disabled = false,
     icon,
@@ -35,6 +36,8 @@
     }
     return label;
   });
+  // Only a static group can go without a header: a collapsible one needs its trigger.
+  const labelHidden = $derived(!collapsible && labelVisibility === 'hidden');
   const headerId = $derived(`${id}-trigger`);
   const panelId = $derived(`${id}-panel`);
 
@@ -90,6 +93,7 @@
   class={classNames('cinder-side-navigation-group', className)}
   data-cinder-expanded={collapsible && expanded ? '' : undefined}
   data-cinder-static={collapsible ? undefined : ''}
+  data-cinder-label-hidden={labelHidden ? '' : undefined}
   data-cinder-contains-active={containsActive ? '' : undefined}
 >
   {#if collapsible}
@@ -124,14 +128,15 @@
         />
       </svg>
     </button>
-  {:else}
+  {:else if !labelHidden}
     <!-- A static section names its list; the label is not a control, so it is plain text. -->
     <span id={headerId} class="cinder-side-navigation-group__heading">{validatedLabel}</span>
   {/if}
   <ul
     id={panelId}
     class="cinder-side-navigation-group__panel"
-    aria-labelledby={headerId}
+    aria-labelledby={labelHidden ? undefined : headerId}
+    aria-label={labelHidden ? validatedLabel : undefined}
     hidden={collapsible && !expanded}
   >
     {@render children()}
