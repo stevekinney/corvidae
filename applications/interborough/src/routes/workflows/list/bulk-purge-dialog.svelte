@@ -49,7 +49,7 @@
     Progress,
   } from '@lostgradient/cinder';
   import { HttpClientError, type BulkOperationDryRunResult } from '@lostgradient/weft';
-  import { onMount } from 'svelte';
+  import { onMount, tick } from 'svelte';
 
   import { BULK_PURGE_COPY } from '../../../app/copy/bulk-purge.ts';
   import { faultTreatment } from '../../../lib/faults.ts';
@@ -81,6 +81,10 @@
   let faultOrigin = $state<'loading' | 'committing'>('loading');
   /** `true` when the server refused the commit because the matching workflows changed after the preview. */
   let faultMeansStalePreview = $state(false);
+  /** The preview's lead sentence, where focus goes after a refresh. */
+  let leadElement = $state<HTMLElement>();
+  /** Set by "Refresh preview" and "Retry", so only a reload (never the first open) moves focus to the lead. */
+  let focusLeadOnPreview = false;
 
   // Once, when the dialog opens, never from an effect: an effect would track `runDryRun`, and the
   // selection bar builds it as a closure over its filter, so every list refresh that handed the bar
@@ -97,6 +101,12 @@
     try {
       preview = await runDryRun();
       phase = 'preview';
+      if (focusLeadOnPreview) {
+        focusLeadOnPreview = false;
+        // The lead renders with the preview phase; focus it once it exists.
+        await tick();
+        leadElement?.focus();
+      }
     } catch (error) {
       faultMessage = faultTreatment(error).message;
       faultOrigin = 'loading';
@@ -138,6 +148,10 @@
    * preview counts what is left, and a new phrase confirms it.
    */
   function refreshPreview(): void {
+    // The button that was pressed unmounts while the count reloads, so when the new preview lands
+    // focus goes to its lead sentence and the new count is read. The first open keeps Cinder's
+    // initial focus.
+    focusLeadOnPreview = true;
     void loadPreview();
   }
 
@@ -160,11 +174,10 @@
       <!-- Its own status region announces the count in flight; the dialog is not busy-labelled. -->
       <InlineLoading status="active" description={BULK_PURGE_COPY.loading} />
     {:else if phase === 'preview' && preview}
-      {#if matched === 0}
-        <p class="weft-bulk-dialog__lead">{BULK_PURGE_COPY.preview.nothing}</p>
-      {:else}
-        <p class="weft-bulk-dialog__lead">{BULK_PURGE_COPY.preview.lead(matched)}</p>
-      {/if}
+      <!-- Focusable by script only: after a refresh, focus lands here so the new count is read. -->
+      <p class="weft-bulk-dialog__lead" tabindex="-1" bind:this={leadElement}>
+        {matched === 0 ? BULK_PURGE_COPY.preview.nothing : BULK_PURGE_COPY.preview.lead(matched)}
+      </p>
       {#if chip.length > 0}
         <code class="weft-bulk-dialog__chip">{chip}</code>
       {/if}
@@ -263,6 +276,11 @@
     margin: 0 0 var(--cinder-space-3);
     font-size: var(--cinder-text-body);
     font-weight: 600;
+  }
+
+  /* Reached only by script, after a refresh: the sentence is read, not a control, so no ring. */
+  .weft-bulk-dialog__lead:focus {
+    outline: none;
   }
 
   .weft-bulk-dialog__chip {

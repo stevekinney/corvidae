@@ -289,6 +289,50 @@ describe('BulkPurgeDialog', () => {
     });
   });
 
+  test('after Refresh preview the new preview moves focus to its lead sentence so the new count is read, and the first open does not', async () => {
+    let dryRunCalls = 0;
+    const { getByRole, getByLabelText, getByText } = render(BulkPurgeDialog, {
+      props: {
+        runDryRun: async () => {
+          dryRunCalls += 1;
+          return dryRunCalls === 1 ? preview() : preview({ matched: 3, sampleWorkflowIds: [] });
+        },
+        runPurge: async () => {
+          throw new HttpClientError(409, 'Bulk confirmation token does not match', {
+            faultCode: 'Conflict',
+          });
+        },
+        onClose: () => {},
+      },
+    });
+
+    await waitFor(() => {
+      expect(getByLabelText(PHRASE_LABEL)).not.toBeNull();
+    });
+    // First open: focus is Cinder's initial focus, not the lead sentence.
+    const firstLead = requireElement(getByText(/Permanently deletes 47 finished/), HTMLElement);
+    expect(firstLead.getAttribute('tabindex')).toBe('-1');
+    expect(document.activeElement).not.toBe(firstLead);
+
+    await fireEvent.input(getByLabelText(PHRASE_LABEL), {
+      target: { value: 'purge 47 workflows' },
+    });
+    await fireEvent.click(getByRole('button', { name: 'Purge 47 workflows' }));
+    await waitFor(() => {
+      expect(getByRole('button', { name: 'Refresh preview' })).not.toBeNull();
+    });
+    requireElement(getByRole('button', { name: 'Refresh preview' }), HTMLButtonElement).focus();
+    await fireEvent.click(getByRole('button', { name: 'Refresh preview' }));
+
+    await waitFor(() => {
+      expect(getByLabelText('Type "purge 3 workflows" to confirm')).not.toBeNull();
+    });
+    const newLead = requireElement(getByText(/Permanently deletes 3 finished/), HTMLElement);
+    await waitUntil(() => document.activeElement === newLead, {
+      message: 'focus to land on the refreshed preview lead sentence',
+    });
+  });
+
   test('while the preview loads or refreshes the footer keeps a live Cancel and a disabled Purge, and focus stays inside the dialog', async () => {
     let dryRunCalls = 0;
     let closed = 0;
