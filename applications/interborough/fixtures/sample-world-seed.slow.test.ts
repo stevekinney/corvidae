@@ -317,7 +317,7 @@ describe('the sample world, part A', () => {
     );
   });
 
-  test('lists the six memories the Memory page shows, the correction with its history', async () => {
+  test('lists the five memories the Memory page shows, the correction with its history', async () => {
     const { memories } = await call<{
       memories: Array<{
         id: string;
@@ -335,12 +335,8 @@ describe('the sample world, part A', () => {
         kind: 'fact',
         writer: 'agent',
       },
-      // And what it says once the 4472 refund was approved at 10:33 AM, and as it asked at 10:30 AM.
-      {
-        content: 'You approved it. Refunded $18.50 to the original payment method.',
-        kind: 'fact',
-        writer: 'agent',
-      },
+      // And what it says as it asked for the 4472 refund at 10:30 AM. The approval at 10:33 AM starts
+      // no run, so nothing answers it (owner decision, COR-2423, 2026-11-19).
       { content: TOOL_RUNNER_CORRECTION.corrected, kind: 'fact', writer: 'agent' },
       {
         content: 'I found order 4472 ($18.50). I need your approval to refund it.',
@@ -350,7 +346,7 @@ describe('the sample world, part A', () => {
       { content: TOOL_RUNNER_HOW_TOS.lookUpBeforeAnswering, kind: 'how-to', writer: 'person' },
       { content: TOOL_RUNNER_HOW_TOS.neverShareEmails, kind: 'how-to', writer: 'person' },
     ]);
-    const [asked4471, , corrected, , lookUp, emails] = memories;
+    const [asked4471, corrected, , lookUp, emails] = memories;
     expectAt(
       asked4471?.createdAt,
       SAMPLE_WORLD_TIMES.refund4471Started + REFUND_4471_ASK_DELAY_MILLISECONDS,
@@ -639,14 +635,6 @@ describe('the sample world, part B', () => {
         status: 'Done',
         seconds: 'any',
       },
-      // The run that carried on once the 4472 refund was approved, which now says so.
-      {
-        at: times.refund4472Approved,
-        workflow: chat,
-        startedBy: 'Chats',
-        status: 'Done',
-        seconds: 'any',
-      },
       {
         at: times.releaseAsked,
         workflow: chat,
@@ -706,14 +694,6 @@ describe('the sample world, part B', () => {
         status: 'Done',
         seconds: durations.sayHelloGoal,
       },
-      // Not on PageRuns' list: the run the Oct 29 restart stopped, which the chat list reads as Ended.
-      {
-        at: times.billingAsked,
-        workflow: chat,
-        startedBy: 'Chats',
-        status: 'Canceled',
-        seconds: 60,
-      },
       {
         at: times.dailySummaryRan,
         workflow: chat,
@@ -764,21 +744,23 @@ describe('the sample world, part B', () => {
       expect(seconds).toBeLessThan(row.seconds + DURATION_SLACK_SECONDS);
     }
 
-    // All 21 = Waiting on you 2 + Done 16 + Failed 1 + Canceled 2 (the board's 19, the billing chat, and the run after the 4472 approval).
+    // All 19 = Waiting on you 2 + Done 15 + Failed 1 + Canceled 1, as PageRuns draws it (owner
+    // decision, COR-2423, 2026-11-19): the billing chat a restart ended has no run, and the 4472
+    // approval starts none.
     expect(countBy(rows, (row) => row.status)).toEqual({
       'Waiting on you': 2,
-      Done: 16,
+      Done: 15,
       Failed: 1,
-      Canceled: 2,
+      Canceled: 1,
     });
     expect(countBy(rows, (row) => row.startedBy)).toEqual({
-      Chats: 7,
+      Chats: 5,
       Schedules: 4,
       Goals: 8,
       Interborough: 2,
     });
     expect(countBy(rows, (row) => row.workflow)).toEqual({
-      'Chat with an agent': 8,
+      'Chat with an agent': 6,
       'Goal attempts': 8,
       'Schedule tick': 2,
       'triage-inbox': 2,

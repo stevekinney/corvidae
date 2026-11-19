@@ -12,8 +12,8 @@
  *
  * - Oct 12, 20 and 27, and Oct 29 at 11:38 AM: Tool runner's Versions 1 to 4, saved by you.
  * - Oct 20 and 21: your two How-to memories for Tool runner.
- * - Oct 29, 11:04 AM: "Rename the billing tables", which the server stops mid-reply at 11:05 AM, so
- *   the chat reads Ended with the reason `host-stopped`.
+ * - Oct 29, 11:04 AM: "Rename the billing tables", which the server stopped mid-reply at 11:05 AM,
+ *   so the chat reads Ended with the reason `host-stopped` (written to the store, with no run).
  * - Nov 1, 4:12 PM: "Say hello" with Assistant, Done.
  * - Nov 2: the server starts at 9:00 AM; the release question is asked at 9:46 AM and waits; you ask
  *   to refund order 4472 at 10:30 AM in a chat of its own, Tool runner corrects its memory at 10:31
@@ -312,25 +312,15 @@ async function correctToolRunnerMemory(
   return { original: written.recordId, corrected: correctedId };
 }
 
-/** Tool runner's answers wait here while the server stops it mid-reply. */
-interface Holding {
-  /** Resolved once Tool runner is answering the billing chat. */
-  readonly answering: PromiseWithResolvers<void>;
-}
-
 /** How long Assistant takes to say hello on Nov 1 (8 s). */
 const SAY_HELLO_MILLISECONDS = 8000;
 
 /**
  * How the driver paces the scripted agents and checks: the scene the director is playing first
  * (`sample-world-history.ts`), then the chats': Issue refund asks for order 4471 twenty seconds
- * after its run starts, and the billing chat's answer waits until the run is stopped.
+ * after its run starts.
  */
-function samplePacing(
-  runtime: OffsetRuntime,
-  holding: Holding,
-  director: Director,
-): ShowcasePacing {
+function samplePacing(runtime: OffsetRuntime, director: Director): ShowcasePacing {
   return {
     // The story leaves the 4471 refund waiting on you. Its approval's deadline is the binding's, five
     // minutes by default, and a browser suite or a capture outlasts that (COR-2280 draws it Expired).
@@ -345,25 +335,15 @@ function samplePacing(
       await director.scene.toolRunner?.(moment);
       if (moment.step === 'refund-ask' && moment.orderId === '4471') {
         runtime.advance(REFUND_4471_ASK_DELAY_MILLISECONDS - LOOKUP_4471_MILLISECONDS);
-        return;
       }
-      if (moment.step !== 'answer' || moment.request !== SAMPLE_WORLD_CHATS.billing.message) return;
-      holding.answering.resolve();
-      const { signal } = moment;
-      await new Promise<never>((_resolve, reject) => {
-        if (signal === undefined) return;
-        if (signal.aborted) reject(signal.reason);
-        signal.addEventListener('abort', () => reject(signal.reason), { once: true });
-      });
     },
   };
 }
 
-/** The story's home, clock, holding and director, which every session of it shares. */
+/** The story's home, clock and director, which every session of it shares. */
 interface Story {
   readonly home: string;
   readonly runtime: OffsetRuntime;
-  readonly holding: Holding;
   readonly director: Director;
 }
 
@@ -372,13 +352,13 @@ interface Story {
  * `options`, as they say (a port they leave out is the environment's).
  */
 async function startAt(story: Story, at: number, options?: SampleWorldHostOptions): Promise<Host> {
-  const { home, runtime, holding, director } = story;
+  const { home, runtime, director } = story;
   runtime.setTime(at);
   return startHost({
     ...(options ?? { port: 0 }),
     environment: { ...options?.environment, INTERBOROUGH_HOME: home },
     runtime,
-    ...showcaseHostOptions(samplePacing(runtime, holding, director)),
+    ...showcaseHostOptions(samplePacing(runtime, director)),
   });
 }
 
@@ -398,21 +378,35 @@ async function session(
 }
 
 /**
- * Oct 29, 11:04 AM: "Rename the billing tables" with Tool runner, which the server stops at 11:05 AM
- * while Tool runner is still answering. The server aborts the run it stops, so the chat ends with
- * the reason `host-stopped`.
+ * Oct 29, 11:04 AM: "Rename the billing tables" with Tool runner, which the server stopped at
+ * 11:05 AM while Tool runner was still answering, so the chat ends with the reason `host-stopped`.
+ * The chat is saved to the store directly, with the marker an aborted run leaves on its session
+ * (`lastRunStatus` aborted, `lastRunEndReason` host-stopped), and no run: the Runs list counts
+ * Canceled 1, the goal attempt's, as PageRuns draws it (owner decision, COR-2423, 2026-11-19).
  */
-async function billingChatEndedByARestart({ host, runtime }: SessionContext, holding: Holding) {
+async function billingChatEndedByARestart({ host, runtime }: SessionContext): Promise<void> {
   const chat = SAMPLE_WORLD_CHATS.billing;
+  const store = host.bureau.internals.sessionStore;
+  if (store === undefined) throw new Error('The host has no session store.');
   runtime.setTime(SAMPLE_WORLD_TIMES.billingAsked);
-  const answer = sendChatMessage(host, chat.agent, chat.threadId, chat.message).then(
-    () => undefined,
-    () => undefined,
-  );
-  await holding.answering.promise;
+  const conversation = new Conversation();
+  conversation.appendUserMessage(chat.message);
+  const session = createAgentSession({
+    id: chat.threadId,
+    agentName: chat.agent,
+    conversationHistory: conversation.current,
+    metadata: {
+      [SESSION_OWNER_METADATA_KEY]: ANONYMOUS_LOCAL_OWNER,
+      lastRunStatus: 'aborted',
+      lastRunEndReason: 'host-stopped',
+    },
+    runtime,
+  });
   runtime.setTime(SAMPLE_WORLD_TIMES.billingStopped);
-  await host.bureau.shutdown({ policy: 'abort' });
-  await answer;
+  await store.save({
+    ...session,
+    updatedAt: new Date(SAMPLE_WORLD_TIMES.billingStopped).toISOString(),
+  });
 }
 
 /** Nov 1, 4:12 PM: "Say hello" with Assistant, which answers in 8 s. */
@@ -510,10 +504,14 @@ async function monday(
   const refund4472 = await pendingReviewOf(host, refundEarlier.threadId);
   const memories = await correctToolRunnerMemory(host, runtime, refund4472.runId);
 
+  // Decided in process, as you: the Bureau writes the refund's outcome into the chat and starts no
+  // run, so the 4472 refund is one row on Runs (owner decision, COR-2423, 2026-11-19: All 19, Done
+  // 15). `bureau.reviews.resolve` would also start the run that answers the outcome.
   runtime.setTime(SAMPLE_WORLD_TIMES.refund4472Approved);
-  await bureauCall(host, 'bureau.reviews.resolve', {
+  await host.bureau.reviews.resolve({
     id: refund4472.id,
     decision: 'approve',
+    principal: ANONYMOUS_LOCAL_OWNER,
     round: refund4472.round ?? 0,
   });
   await waitForIdle(host, refundEarlier.threadId);
@@ -599,10 +597,9 @@ export async function seedSampleWorld(
   const story: Story = {
     home,
     runtime: createOffsetRuntime(SAMPLE_WORLD_TIMES.toolRunnerVersion1),
-    holding: { answering: Promise.withResolvers<void>() },
     director: { scene: {} },
   };
-  const { runtime, holding } = story;
+  const { runtime } = story;
   const times = SAMPLE_WORLD_TIMES;
   const history = SAMPLE_WORLD_HISTORY_TIMES;
   const [version1, version2, version3, version4] = TOOL_RUNNER_VERSIONS;
@@ -631,9 +628,7 @@ export async function seedSampleWorld(
   );
   await session(story, history.releaseNotesVersion3 - 60_000, october29Morning);
   // The server was started a minute before the chat, so its start comes first in the audit log.
-  await session(story, times.billingAsked - 60_000, (context) =>
-    billingChatEndedByARestart(context, holding),
-  );
+  await session(story, times.billingAsked - 60_000, billingChatEndedByARestart);
   await session(story, times.toolRunnerVersion4, async ({ host }) =>
     saveToolRunnerVersion(host, version4),
   );
