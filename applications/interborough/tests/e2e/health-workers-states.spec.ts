@@ -523,7 +523,7 @@ test('Retry all needs no confirmation: the tasks wait again at once and a toast 
   expect(fleet.retried.toSorted()).toEqual(['collect-merged-changes', 'notify-on-failure']);
 });
 
-test('a filter that matches nothing keeps the text and the open worker', async ({
+test('a filter that matches nothing keeps the text and closes the worker it hides', async ({
   page,
   checkA11y,
 }) => {
@@ -541,7 +541,9 @@ test('a filter that matches nothing keeps the text and the open worker', async (
   await expect(page.getByTestId('workers-summary')).toHaveText(
     '3 of 4 connected, 7 running, 12 waiting, 2 failed for good',
   );
-  await expect(detail(page).getByRole('heading', { level: 2 })).toHaveText('Reports worker');
+  // "First" follows the filter (COR-2445): with no worker left in the list, none stays open.
+  await expect.poll(() => new URL(page.url()).searchParams.get('worker')).toBeNull();
+  await expect(detail(page)).toHaveCount(0);
   await captureForDesignReview(page, {
     route: '/health/workers',
     state: 'filter-no-match',

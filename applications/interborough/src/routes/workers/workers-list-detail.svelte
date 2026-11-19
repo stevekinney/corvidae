@@ -78,7 +78,8 @@
   });
 
   let filter = $state('');
-  // The detail finds the open worker among every worker, so a filter that hides its row leaves it open.
+  // The list is handed the filtered workers, so "first" follows the filter: a filter that hides the
+  // open worker opens the new first one, and one that hides every worker closes it (COR-2445).
   const ordered = $derived(orderWorkers(workers));
   const shown = $derived(ordered.filter((worker) => matchesWorkerFilter(worker, filter)));
 
@@ -96,7 +97,7 @@
 
 <div class="weft-workers-frame" data-shortcut-region="list-detail">
   <ListDetail
-    items={ordered}
+    items={shown}
     key={(worker: WorkerSummary) => worker.id}
     label={copy.list.title}
     detailLabel={copy.list.detailLabel}
