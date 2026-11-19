@@ -184,11 +184,11 @@ describe('PageHeader large title (COR-2320)', () => {
     expect(
       container.querySelector('.cinder-page-header')?.getAttribute('data-cinder-variant'),
     ).toBe('large');
+    // The title, its inline status and its actions all read the one size.
     expect(
-      declarationsFor(
-        stylesheet,
-        ".cinder-page-header[data-cinder-variant='large'] .cinder-page-header__title",
-      ).get('font-size'),
+      declarationsFor(stylesheet, ".cinder-page-header[data-cinder-variant='large']").get(
+        '--_cinder-page-header-title-size',
+      ),
     ).toBe('var(--cinder-text-page-title-large)');
     expect(tokens).toContain('--cinder-text-page-title-large: 1.75rem;');
   });

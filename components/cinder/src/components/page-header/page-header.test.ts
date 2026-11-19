@@ -233,7 +233,10 @@ describe('PageHeader', () => {
     const declared = (name: string) =>
       tokens.match(new RegExp(`${name}:\\s*([^;]+);`))?.[1]?.trim() ?? '';
     const titleRule = stylesheet.match(/__title\s*\{[^}]*\}/)?.[0] ?? '';
-    expect(titleRule).toContain('font-size: var(--cinder-text-page-title)');
+    expect(titleRule).toContain('font-size: var(--_cinder-page-header-title-size)');
+    expect(stylesheet).toMatch(
+      /\.cinder-page-header\s*\{[^}]*--_cinder-page-header-title-size:\s*var\(--cinder-text-page-title\);/,
+    );
     expect(titleRule).toContain('letter-spacing: var(--cinder-tracking-display)');
     expect(declared('--cinder-text-page-title')).toBe('var(--cinder-text-3xl)');
     expect(declared('--cinder-text-3xl')).toBe('1.5rem');
@@ -407,6 +410,35 @@ describe('PageHeader', () => {
       expect(stylesheet).toMatch(/__title-line\s*\{[^}]*align-items:\s*flex-start/);
       expect(stylesheet).toMatch(
         /__status\[data-cinder-placement='inline'\]\s*\{[^}]*min-block-size:/,
+      );
+    });
+
+    // COR-2438: the actions were centred on a 1.125rem line box under a 1.5rem title, and by a
+    // margin that assumed every control was the compact height, so a taller control (a page's own
+    // Dropdown menu, at the trigger's md height) sat lower than the title's first line.
+    test('centres the status and the actions on the title first line, whatever their height', () => {
+      const rule = (selector: string) =>
+        stylesheet.match(new RegExp(`${selector}\\s*\\{[^}]*\\}`))?.[0] ?? '';
+      const actions = rule('\\n  \\.cinder-page-header__actions');
+      expect(actions).toContain('font-size: var(--_cinder-page-header-title-size)');
+      expect(actions).toContain('line-height: var(--cinder-leading-tight)');
+      expect(actions).toContain('block-size: 1lh');
+      expect(actions).toContain('align-items: center');
+      expect(actions).toContain('margin-block: 0');
+      expect(actions).not.toContain('--cinder-text-xl');
+      const status = rule("__status\\[data-cinder-placement='inline'\\]");
+      expect(status).toContain(
+        'min-block-size: calc(var(--_cinder-page-header-title-size) * var(--cinder-leading-tight))',
+      );
+      expect(stylesheet).not.toMatch(/__status\[data-cinder-placement='inline'\][^}]*text-xl/);
+      expect(
+        rule('\\.cinder-page-header__actions \\.cinder-dropdown-trigger:not\\(\\.cinder-button\\)'),
+      ).toContain('min-block-size: var(--_cinder-compact-control-height)');
+    });
+
+    test('a narrow header lets the dropped actions row grow to its controls', () => {
+      expect(stylesheet).toMatch(
+        /@container cinder-page-header \(max-width: 32rem\)\s*\{[^@]*__actions:not\(\.cinder-page-header__create-slot\)\s*\{[^}]*block-size:\s*auto/,
       );
     });
   });

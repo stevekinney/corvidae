@@ -140,7 +140,8 @@ describe('coarse pointers get a real touch box without enlarging the painted con
     });
   }
 
-  for (const name of ['card', 'section-heading', 'page-header']) {
+  // PageHeader centres its actions in a box of the title's line box instead (page-header.test.ts).
+  for (const name of ['card', 'section-heading']) {
     test(`${name}: the actions margin uses the fine xs height on a coarse pointer, so it never goes negative`, () => {
       const rule = component(name).match(
         /margin-block:\s*calc\(\(1lh - var\((--[\w-]+)\)\) \/ 2\);/,

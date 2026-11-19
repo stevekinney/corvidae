@@ -1,6 +1,10 @@
 @layer cinder.tokens, cinder.foundation, cinder.components, cinder.utilities;
 @layer cinder.components {
   .cinder-page-header {
+    /* The size the title is set at. The inline status and the actions read it too: each is one line
+       box of this size and centres its content in it, so they share the title's first line's centre
+       whatever the variant, the density or the height of a control (COR-2438). */
+    --_cinder-page-header-title-size: var(--cinder-text-page-title);
     /* The heading answers to the room it has, not the viewport's, so the title of a header in a
        narrow pane truncates sooner. */
     container-type: inline-size;
@@ -63,7 +67,7 @@
     min-width: 0;
     margin: 0;
     color: var(--cinder-text-default);
-    font-size: var(--cinder-text-page-title);
+    font-size: var(--_cinder-page-header-title-size);
     font-weight: var(--cinder-font-semibold);
     letter-spacing: var(--cinder-tracking-display);
     line-height: var(--cinder-leading-tight);
@@ -86,12 +90,12 @@
     line-height: var(--cinder-leading-snug);
   }
 
-  /* Beside the title: one line tall as the title's first line, so a title that wraps leaves the
-     status on its first line. */
+  /* Beside the title: one line box of the title's own size, with the status centred in it, so the
+     status shares the centre of the title's first line however the title wraps. */
   .cinder-page-header__status[data-cinder-placement='inline'] {
     flex: none;
     flex-wrap: nowrap;
-    min-block-size: calc(var(--cinder-text-xl) * var(--cinder-leading-tight));
+    min-block-size: calc(var(--_cinder-page-header-title-size) * var(--cinder-leading-tight));
     white-space: nowrap;
   }
 
@@ -112,8 +116,8 @@
       order: 1;
       flex-basis: 100%;
       flex-wrap: wrap;
+      block-size: auto;
       margin-inline-start: 0;
-      margin-block: 0;
     }
 
     /* Beside the title, once the other actions have moved to their own row. */
@@ -251,12 +255,16 @@
     flex-shrink: 0;
     align-items: center;
     gap: var(--cinder-space-2);
-    /* Actions are xs controls centered on the title's first line box, so they never make the
-       header taller than its title. Beside the title the title shrinks and truncates; in a narrow
-       header all but the create "+" drop to a row of their own (below). */
-    font-size: var(--cinder-text-xl);
+    /* The actions box is exactly the title's first line box (`1lh` at the title's size), and its
+       controls are centred in it, so each control's centre is the first line's centre whatever its
+       own height: a control taller than the line overflows it evenly above and below rather than
+       pushing the others down (COR-2438). The controls are compact, so they never make the header
+       taller than its title. Beside the title the title shrinks and truncates; in a narrow header
+       all but the create "+" drop to a row of their own (below). */
+    font-size: var(--_cinder-page-header-title-size);
     line-height: var(--cinder-leading-tight);
-    margin-block: calc((1lh - var(--_cinder-compact-control-height)) / 2);
+    block-size: 1lh;
+    margin-block: 0;
   }
 
   /* The create "+" sits after the other actions, at their gap rather than the row's. */
@@ -329,7 +337,7 @@
       grid-row: 2;
       justify-self: start;
       flex-wrap: wrap;
-      margin-block: 0;
+      block-size: auto;
     }
 
     /* The create "+" stays beside the title. */
@@ -382,6 +390,13 @@
     padding: 0;
   }
 
+  /* A page's own menu among the actions (a Dropdown trigger not drawn as a Button) is compact too,
+     like every other header control, rather than the trigger's `md` height. */
+  .cinder-page-header__actions .cinder-dropdown-trigger:not(.cinder-button) {
+    min-block-size: var(--_cinder-compact-control-height);
+    padding-block: 0;
+  }
+
   /* A lighter phrase after the title, in the same heading at the same size. */
   .cinder-page-header__title-soft {
     font-weight: 380;
@@ -391,12 +406,8 @@
      The title at the large page-title step. Once it scrolls away, the sticky bar before the header
      shows it at the default page-title size. The actions keep centring on the title's first line
      box. */
-  .cinder-page-header[data-cinder-variant='large'] .cinder-page-header__title {
-    font-size: var(--cinder-text-page-title-large);
-  }
-
-  .cinder-page-header[data-cinder-variant='large'] .cinder-page-header__actions {
-    font-size: var(--cinder-text-page-title-large);
+  .cinder-page-header[data-cinder-variant='large'] {
+    --_cinder-page-header-title-size: var(--cinder-text-page-title-large);
   }
 
   /* A sticky bar of no height in the page's flow; its surface hangs below it, over the content,

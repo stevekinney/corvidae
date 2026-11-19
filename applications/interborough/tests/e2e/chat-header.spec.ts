@@ -221,6 +221,54 @@ for (const viewport of VIEWPORTS) {
   });
 }
 
+/** The vertical centre of the first line box of the chat's title, measured on its words, not the h1. */
+async function titleFirstLine(page: Page): Promise<{ centre: number; lines: number }> {
+  return header(page)
+    .getByRole('heading', { level: 1 })
+    .evaluate((heading) => {
+      const range = document.createRange();
+      range.selectNodeContents(heading);
+      const rects = [...range.getClientRects()].filter((rect) => rect.height > 0);
+      const first = rects[0];
+      if (first === undefined) throw new Error('The title has no line boxes.');
+      const tops = new Set(rects.map((rect) => Math.round(rect.top)));
+      return { centre: first.top + first.height / 2, lines: tops.size };
+    });
+}
+
+// COR-2438: the title's first line and the controls at the header's inline end share one centre
+// line, and keep it when the title wraps.
+for (const width of [1280, 1920]) {
+  test(`centres the More menu and the context ring on the title's first line, at ${width} pixels`, async ({
+    page,
+    request,
+  }) => {
+    await page.setViewportSize({ width, height: 900 });
+    const threadId = newThreadId('header-align');
+    await runToEnd(
+      request,
+      'demo:model-switcher',
+      threadId,
+      'Which agents are on this Bureau? Use your discover-agents tool to find out, then list each of them with what it does and who may run it.',
+    );
+    await page.goto(`/chats/${threadId}`);
+    await expect(page.locator('[data-view="chat"]')).toHaveAttribute('data-state', 'ready');
+    await expect(moreButton(page)).toBeVisible();
+    await expect(page.locator('.weft-context-ring')).toBeVisible();
+
+    const title = await titleFirstLine(page);
+    expect(title.lines, 'the title wraps, so the first line is what is measured').toBeGreaterThan(
+      1,
+    );
+    for (const control of [moreButton(page), page.locator('.weft-context-ring')]) {
+      const box = await control.boundingBox();
+      expect(box).not.toBeNull();
+      const centre = (box?.y ?? 0) + (box?.height ?? 0) / 2;
+      expect(Math.abs(centre - title.centre)).toBeLessThanOrEqual(2);
+    }
+  });
+}
+
 test('branches from the last reply with the More menu', async ({ page, request }) => {
   const parentId = await openTwoTurns(page, request, 'more-branch');
 
