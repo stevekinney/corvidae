@@ -9,9 +9,16 @@ import type { Locator } from '@playwright/test';
  */
 export async function touchHeight(control: Locator): Promise<number> {
   return control.evaluate((element) => {
-    const hitArea = getComputedStyle(element, '::before');
-    const hitAreaHeight =
-      hitArea.position === 'absolute' ? Number.parseFloat(hitArea.height) || 0 : 0;
-    return Math.max(element.getBoundingClientRect().height, hitAreaHeight);
+    // A Button draws its hit area as `::before`; a SegmentedControl option, whose `::before` is the
+    // separator between options, draws it as `::after`.
+    const heightOf = (pseudo: '::before' | '::after') => {
+      const hitArea = getComputedStyle(element, pseudo);
+      return hitArea.position === 'absolute' ? Number.parseFloat(hitArea.height) || 0 : 0;
+    };
+    return Math.max(
+      element.getBoundingClientRect().height,
+      heightOf('::before'),
+      heightOf('::after'),
+    );
   });
 }

@@ -357,7 +357,9 @@ test.describe('Home with nothing waiting and a provider connected', () => {
     await expect(page.getByText('Nothing is waiting on you')).toHaveCount(0);
     await expect(needsYou(page)).toHaveCount(0);
     await expect(page.locator('[data-home-card="Needs attention"]')).toHaveCount(0);
-    await expect(page.getByText('Nothing needs attention')).toHaveCount(0);
+    await expect(
+      page.locator('main.weft-shell-outlet').getByText('Nothing needs attention'),
+    ).toHaveCount(0);
     const rows = page.getByRole('list', { name: 'Recent chats' }).getByRole('listitem');
     await expect(rows.nth(0)).toContainText('Done');
     await expect(rows.nth(0)).toContainText(

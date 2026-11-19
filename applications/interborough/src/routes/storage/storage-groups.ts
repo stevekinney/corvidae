@@ -75,10 +75,12 @@ export function lockedPrefix(key: string, managedPrefix: string): string {
 }
 
 const UUID = /\b([0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi;
+/** A Crockford ULID, such as a workspace's id: no ULID is read in full in a row (owner, 2026-11-19). */
+const ULID = /(?<![0-9A-Za-z])([0-7][0-9A-HJKMNP-TV-Z]{7})[0-9A-HJKMNP-TV-Z]{18}(?![0-9A-Za-z])/g;
 
-/** `key` with each UUID in it cut to its first eight characters and an ellipsis. */
+/** `key` with each UUID and ULID in it cut to its first eight characters and an ellipsis. */
 export function abbreviateKey(key: string): string {
-  return key.replace(UUID, '$1…');
+  return key.replace(UUID, '$1…').replace(ULID, '$1…');
 }
 
 /**

@@ -296,7 +296,12 @@ test.describe('the sample world', () => {
       // 44px to a finger: a compact control (the switch, COR-2489 AC5) paints at a Button's height
       // and reaches 44px through its hit area.
       for (const control of controls) {
-        const parts = [control, ...(await control.locator('button, input, select').all())];
+        const parts = [
+          control,
+          ...(await control
+            .locator('button, input, select, .cinder-segmented-control-option')
+            .all()),
+        ];
         const heights = await Promise.all(parts.map(async (part) => touchHeight(part)));
         expect(Math.max(...heights)).toBeGreaterThanOrEqual(44);
       }
