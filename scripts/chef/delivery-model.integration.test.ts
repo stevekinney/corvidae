@@ -221,6 +221,7 @@ const trackerRecoveryMutation = await outcomeOf(async () => {
   );
   expect(mutant.exitCode, mutant.output).toBe(1);
   expect(mutant.output).toContain('Expected');
+  expect(mutant.output).toContain('expect(mergeCalls).toBe(0)');
 });
 
 removeFixtures();
