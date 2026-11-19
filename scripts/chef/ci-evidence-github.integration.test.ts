@@ -49,6 +49,7 @@ function fixture(
     invalidParents?: boolean;
     failedJob?: boolean;
     skippedRequired?: boolean;
+    browserMismatch?: boolean;
     oversized?: boolean;
     expands?: boolean;
     runConclusion?: string;
@@ -66,8 +67,16 @@ function fixture(
       VERIFICATION_REQUEST: input.requestKey,
       VERIFICATION_PLAN: input.verificationPlanDigest,
       VERIFICATION_BASE: input.base,
-      CI_EVIDENCE_NEEDS: '{"aggregate":{"result":"success"}}',
-      CI_EVIDENCE_EXPECTED_JOBS: '["aggregate"]',
+      CI_EVIDENCE_NEEDS: options.pullRequest
+        ? JSON.stringify({
+            aggregate: { result: 'success' },
+            browser: { result: options.browserMismatch ? 'success' : 'skipped' },
+          })
+        : '{"aggregate":{"result":"success"}}',
+      CI_EVIDENCE_EXPECTED_JOBS: options.pullRequest ? '["aggregate","browser"]' : '["aggregate"]',
+      ...(options.pullRequest && !options.browserMismatch
+        ? { CI_EVIDENCE_NOT_APPLICABLE: '["browser"]' }
+        : {}),
     },
     eventPayload: options.pullRequest
       ? { pull_request: { base: { sha: input.base }, head: { sha: input.candidate } } }
@@ -158,7 +167,7 @@ function fixture(
           return { exitCode: 0, stdout: archive, stderr: new Uint8Array() };
         if (path.endsWith('/runs/17/attempts/2/jobs?per_page=100&page=1'))
           return encode({
-            total_count: options.skippedRequired ? 2 : 1,
+            total_count: options.skippedRequired || options.pullRequest ? 2 : 1,
             jobs: [
               {
                 id: 9,
@@ -166,6 +175,16 @@ function fixture(
                 status: 'completed',
                 conclusion: options.failedJob ? 'failure' : 'success',
               },
+              ...(options.pullRequest
+                ? [
+                    {
+                      id: 11,
+                      name: 'Browser suites / Chromium fixtures (1/4)',
+                      status: 'completed',
+                      conclusion: 'skipped',
+                    },
+                  ]
+                : []),
               ...(options.skippedRequired
                 ? [
                     {
@@ -246,7 +265,7 @@ scenarios.scenario(
             event: 'pull_request',
             workflowPath: '.github/workflows/main.yml',
             workflowRevision: 'a'.repeat(40),
-            jobs: ['aggregate'],
+            jobs: ['aggregate', 'browser'],
           }),
         )
         .digest('hex'),
@@ -254,6 +273,15 @@ scenarios.scenario(
     const accepted = fixture(input, { pullRequest: true });
     const acceptedRuns = await accepted.provider.findRuns(input);
     expect(acceptedRuns[0]).toHaveProperty('checkedRevision', 'f'.repeat(40));
+    const wrongBrowser = fixture(input, { pullRequest: true, browserMismatch: true });
+    let browserError: unknown;
+    try {
+      await wrongBrowser.provider.findRuns(input);
+    } catch (reason) {
+      browserError = reason;
+    }
+    expect((browserError as Error).message).toContain('browser receipt disagrees');
+
     const rejected = fixture(input, { pullRequest: true, invalidParents: true });
     let error: unknown;
     try {

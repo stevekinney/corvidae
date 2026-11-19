@@ -408,14 +408,19 @@ export function createGitHubCiEvidenceProvider(
           )
         )
           throw new CiEvidenceError('CI receipt declares a required job not successful');
-        if (
-          receipt.jobs['browser'] === 'not-applicable' &&
-          jobRecords.some(
-            (job) =>
-              text(job.name).startsWith('Browser suites / ') && text(job.conclusion) !== 'skipped',
+        if (maySkipBrowser) {
+          const browserJobs = jobRecords.filter((job) =>
+            text(job.name).startsWith('Browser suites / '),
+          );
+          const browser = receipt.jobs['browser'];
+          const actualSuccess = browserJobs.some((job) => text(job.conclusion) === 'success');
+          if (
+            browserJobs.length === 0 ||
+            (browser !== 'success' && browser !== 'not-applicable') ||
+            (browser === 'success') !== actualSuccess
           )
-        )
-          throw new CiEvidenceError('CI browser receipt disagrees with authenticated jobs');
+            throw new CiEvidenceError('CI browser receipt disagrees with authenticated jobs');
+        }
         const evidenceRun: CiEvidenceRun = {
           id,
           repository: request.repository,
