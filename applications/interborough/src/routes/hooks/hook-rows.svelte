@@ -41,6 +41,7 @@
     hookRowSentence,
     hookRowText,
     hookTime,
+    pluginEventOf,
   } from './hook-presentation.ts';
   import { hookStanding, pluginTitleOf } from './hook-standing.ts';
 
@@ -59,11 +60,15 @@
   // word (Off, Unavailable, Needs setup, then its latest delivery), and a plugin's hooks can be
   // told from the rest. A host that cannot say leaves it unknown, and no state is guessed.
   const runsPlugin = $derived(hooks.some((hook) => hook.action.type === 'plugin'));
+  /** Whether a hook listed names a plugin's event kind, whose plugin its sentence names by title (COR-2226). */
+  const listsPluginEvent = $derived(
+    hooks.some((hook) => hook.events.some((entry) => pluginEventOf(entry) !== undefined)),
+  );
   const plugins = createQuery(
     () => ({
       queryKey: queryKeys.hostPlugins(),
       queryFn: ({ signal }: { signal: AbortSignal }) => getPlugins({ signal }),
-      enabled: runsPlugin,
+      enabled: runsPlugin || listsPluginEvent,
       retry: false,
     }),
     undefined,
@@ -81,6 +86,8 @@
     plugins: plugins.data?.plugins,
     reactions: contributed.isSuccess ? contributed.data.reactions : undefined,
   });
+  /** A plugin's title, its name in words until the host says (COR-2226, rows R3 and R10). */
+  const titleOf = (plugin: string): string => pluginTitleOf(plugin, context.plugins);
   // The clock the times are counted from, read again whenever the hooks are.
   const now = $derived.by(() => {
     void hooks;
@@ -134,8 +141,8 @@
       {@const word = standing.word}
       {@const withdrawn = hook.declaredBy?.withdrawn === true}
       {@const delivered = hookTime(hook, now)}
-      {@const text = hookRowText(hook, now)}
-      {@const whole = hookRowText(hook, now, true)}
+      {@const text = hookRowText(hook, now, false, titleOf)}
+      {@const whole = hookRowText(hook, now, true, titleOf)}
       <StackedListItem
         href={router.href(hookPath(hook.id))}
         tooltip={whole.title}
@@ -163,7 +170,7 @@
               {...{ 'data-changes': true }}
               id={`hook-${hook.id}-on`}
               label={hook.enabled ? HOOKS_COPY.row.on : HOOKS_COPY.row.off}
-              nameDetail={hookRowSentence(hook)}
+              nameDetail={hookRowSentence(hook, false, titleOf)}
               mutating
               checked={hook.enabled}
               disabled={switching.isPending || withdrawn}

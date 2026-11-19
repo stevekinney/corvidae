@@ -406,6 +406,15 @@
     if (interactive) open = true;
   }
 
+  /**
+   * A click on the field opens a closed list: after a pick the field keeps focus, so a second
+   * pick (a multi-pick field that clears itself) never gets the focus that opens it. It only opens,
+   * never toggles: on a first click focus has already opened the list.
+   */
+  function handleInputClick() {
+    if (interactive && !open) open = true;
+  }
+
   /** Opens a picker's panel with the search cleared and the cursor on the chosen option. */
   function openPicker(): void {
     if (!interactive) return;
@@ -962,6 +971,7 @@
         aria-describedby={composeDescribedBy(describedBy, emptyVisible ? emptyStatusId : undefined)}
         oninput={handleInput}
         onfocus={handleFocus}
+        onclick={handleInputClick}
         onblur={handleBlur}
         onkeydown={handleKeydown}
       />

@@ -7,6 +7,8 @@
  *
  * It does what needs no Claude Desktop, then guides the by-hand steps:
  *
+ *   0. Builds the production browser bundle (the same as `bun run build`), because the host serves
+ *      `build/` and never rebuilds it; it stops with a message if the build fails.
  *   1. Starts Interborough on a loopback port with a scratch home (no OAuth: every caller is
  *      `anonymous:local`).
  *   2. Checks over `/bureau/mcp` that the two panel resources are served as MCP App pages, that
@@ -121,8 +123,9 @@ async function runAutomatedChecks(endpoint: string): Promise<string[]> {
   return problems;
 }
 
-function printGuide(endpoint: string): void {
-  console.log(`
+/** The by-hand steps and the record template, as printed once the automated checks pass. */
+export function guideText(endpoint: string): string {
+  return `
 ${label} Automated checks passed. These steps remain BY HAND in Claude Desktop:
 
   Prerequisite: this server runs on a scratch home with no model credentials, so no run exists on
@@ -146,7 +149,7 @@ ${label} Automated checks passed. These steps remain BY HAND in Claude Desktop:
      if it cannot be done, write "not observable" in the record, never "refused". The refusal on
      the server side (the host's panel route) is checked above and is not a Claude Desktop result.
 
-Paste this record into the pull request for COR-2220 and fill every field from what you saw.
+Paste this record as a comment on COR-2220 and fill every field from what you saw.
 Leave a field "not observed" rather than guessing:
 
   Claude Desktop host record (COR-2220)
@@ -159,7 +162,40 @@ Leave a field "not observed" rather than guessing:
   - Call outside PL4 visibility (${probe.tool}) refused (yes/no, how it appeared):
   - Then change the Claude Desktop row of the panels capability table in
     packages/bureau/README.md to match.
-`);
+`;
+}
+
+/**
+ * Builds the production browser bundle the host serves, the same as `bun run build`. The host serves
+ * whatever is in `build/` and never rebuilds it, so without this the smoke can show a stale UI.
+ */
+export async function buildBrowserApplication(): Promise<void> {
+  console.log(`${label} Building the production browser bundle (bun run build)...`);
+  const child = Bun.spawn(['bun', 'scripts/build.ts'], {
+    cwd: join(import.meta.dir, '..'),
+    env: { ...process.env, NODE_ENV: 'production' },
+    stdout: 'inherit',
+    stderr: 'inherit',
+  });
+  const code = await child.exited;
+  if (code !== 0) throw new Error(`the production build exited with code ${code}`);
+}
+
+/** Builds the browser bundle, then starts the host: the build never runs after the host is up. */
+export async function buildThenStart<Host>(steps: {
+  build: () => Promise<void>;
+  start: () => Promise<Host>;
+}): Promise<Host> {
+  try {
+    await steps.build();
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    throw new Error(
+      `${label} The browser build failed, so the smoke would serve a stale UI and did not start: ${reason}`,
+      { cause: error },
+    );
+  }
+  return steps.start();
 }
 
 type StopSignals = {
@@ -199,14 +235,25 @@ async function main(): Promise<number> {
   // still starts, so that panel's tools are advertised model-only. Name that cause, instead of
   // reporting a visibility mismatch that is only its consequence.
   const buildFailures: string[] = [];
-  const host = await startHost({
-    environment: { INTERBOROUGH_HOME: home },
-    port: portFromArguments(),
-    log: (message) => {
-      console.log(message);
-      if (/its panel .* did not build/.test(message)) buildFailures.push(message);
-    },
-  });
+  let host: Awaited<ReturnType<typeof startHost>>;
+  try {
+    host = await buildThenStart({
+      build: buildBrowserApplication,
+      start: () =>
+        startHost({
+          environment: { INTERBOROUGH_HOME: home },
+          port: portFromArguments(),
+          log: (message) => {
+            console.log(message);
+            if (/its panel .* did not build/.test(message)) buildFailures.push(message);
+          },
+        }),
+    });
+  } catch (error) {
+    await rm(home, { recursive: true, force: true });
+    console.error(error instanceof Error ? error.message : String(error));
+    return 1;
+  }
   const endpoint = new URL('/bureau/mcp', host.url).href;
   try {
     const problems = await runAutomatedChecks(endpoint);
@@ -219,7 +266,7 @@ async function main(): Promise<number> {
       for (const problem of problems) console.error(`${label} FAILED: ${problem}`);
       return 1;
     }
-    printGuide(endpoint);
+    console.log(guideText(endpoint));
     await waitForStop({ isTTY: process.stdin.isTTY, signals: process });
   } finally {
     await host.close();

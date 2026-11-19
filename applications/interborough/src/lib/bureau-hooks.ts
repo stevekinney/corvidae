@@ -20,7 +20,7 @@
  * `update` names the revision of the hook the caller read, so a hook that changed since is refused
  * (`StaleRevision`) instead of being overwritten.
  */
-import { bureauClient, type BureauInput, type BureauOutput } from './bureau-api.ts';
+import { bureauClient, type BureauOutput } from './bureau-api.ts';
 import type { Fetcher } from './bureau-client.ts';
 
 type Options = { readonly signal?: AbortSignal; readonly fetch?: Fetcher };
@@ -315,23 +315,12 @@ export type HookInput = {
 };
 
 /**
- * The event kinds as the operations name them. The page reads them from the event catalog as
- * strings, and the Bureau refuses a kind it does not know, so the names are passed on as they are.
- */
-function eventNames(events: readonly string[]): BureauInput<'bureau.hooks.create'>['events'] {
-  // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-  return events as BureauInput<'bureau.hooks.create'>['events'];
-}
-
-/**
  * Creates a hook the caller owns. A webhook created without a signing secret answers with the one
  * the Bureau made, as `signingSecret`, this once; nothing reads it back afterwards.
  */
 export async function createHook(input: HookInput, options?: Options): Promise<CreatedHook> {
-  const created = await bureauClient['bureau.hooks.create'](
-    { ...input, events: eventNames(input.events) },
-    options,
-  );
+  // The Bureau checks each kind, a plugin's included (COR-2226), so the names go as they are.
+  const created = await bureauClient['bureau.hooks.create']({ ...input }, options);
   return createdHookOf(created);
 }
 
@@ -378,7 +367,7 @@ export async function updateHook(
       hookId,
       expectedRevision,
       ...rest,
-      ...(events === undefined ? {} : { events: eventNames(events) }),
+      ...(events === undefined ? {} : { events }),
     },
     options,
   );
@@ -463,17 +452,24 @@ export async function listHookDeliveries(
 /** One event kind a hook can listen to, with what the Bureau says about it. */
 export type HookEventKind = Pick<
   BureauOutput<'bureau.events.catalog'>['events'][number],
-  'kind' | 'description' | 'origin' | 'scopes'
+  'kind' | 'description' | 'origin' | 'scopes' | 'source' | 'version'
 >;
 
-/** Every event kind a hook can listen to, in the order the Bureau documents them. */
+/**
+ * Every event kind a hook can listen to, in the order the Bureau documents them: Bureau's own, then
+ * the kinds running plugins declare, each with its plugin (`source`) and the `version` a hook that
+ * lists it is pinned to (COR-2226).
+ */
 export async function listHookEventKinds(options?: Options): Promise<HookEventKind[]> {
   const catalog = await bureauClient['bureau.events.catalog']({}, options);
-  // The page reads the kind, what it is, where it comes from and what it can be scoped to.
-  return catalog.events.map(({ kind, description, origin, scopes }) => ({
+  // The page reads the kind, what it is, where it comes from, what it can be scoped to, and for a
+  // plugin's kind the plugin and the version a hook pins.
+  return catalog.events.map(({ kind, description, origin, scopes, source, version }) => ({
     kind,
     description,
     origin,
     scopes,
+    ...(source === undefined ? {} : { source }),
+    ...(version === undefined ? {} : { version }),
   }));
 }

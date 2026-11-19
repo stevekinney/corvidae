@@ -2,7 +2,7 @@ import type { Snippet } from 'svelte';
 import type { HTMLLiAttributes } from 'svelte/elements';
 /** Props for the SideNavigationGroup component. */
 export type SideNavigationGroupProps = Omit<HTMLLiAttributes, 'id' | 'class'> & {
-  /** Visible section header label. */
+  /** The section's name: its visible header, or with `labelVisibility: 'hidden'` the list's accessible name. */
   label: string;
   /** Optional stable id for the root <li>. Trigger uses `${id}-trigger`, panel uses `${id}-panel`. If omitted, generated via useId. */
   id?: string;
@@ -12,6 +12,13 @@ export type SideNavigationGroupProps = Omit<HTMLLiAttributes, 'id' | 'class'> & 
    * a hairline between sections. `expanded` and `disabled` do nothing on a static group.
    */
   collapsible?: boolean;
+  /**
+   * Whether a static group draws its label. Default: `'visible'`. `'hidden'` renders no header at
+   * all: the label becomes the list's `aria-label`, so a screen reader still hears the section's
+   * name, and sighted users see the sections apart by one gap. It does nothing on a collapsible
+   * group, whose trigger is its label.
+   */
+  labelVisibility?: 'visible' | 'hidden';
   /** Whether the group is expanded. Bindable. Default: true. */
   expanded?: boolean;
   /** When true, the disclosure button is disabled. Default: false. */
