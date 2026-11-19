@@ -23,6 +23,16 @@
  *
  *   bun scripts/design-review-capture.ts [--out <dir>] [--scheme light|dark|both]
  *     [--data showcase|stress|both] [--specs all|responsive|states] [--grep <pattern>]
+ *     [--shard <index>/<count>]
+ *
+ * `--shard` captures one shard of the specifications the other flags chose (`design-review-shards.ts`
+ * plans them by weight, whole files each), so a runner takes a sixth of a sweep; the workflow runs
+ * each scheme's shards in parallel and merges them (`design-review-merge.ts`). A shard the filter
+ * does not reach exits 0 with nothing captured, since only the merge sees the whole run.
+ *
+ * Every capture at 1280 pixels is repeated at 1920, and every phone capture at 320 by 640; each
+ * file is named for its specification, its world (sample world, stress, first run), its route,
+ * tab and state, its width and its scheme, and the capture fails when two screens resolve to one name.
  *
  * `--data` chooses the content: `showcase` runs only the showcase specifications, `stress` runs the
  * responsive and view-states specifications, and `both` (the default) runs every one of them. `--specs`
@@ -48,6 +58,7 @@ import { withHostSlots, withMemoryAdmission, type HostSlots } from '../../../scr
 import { runInProcessGroup } from '../../../scripts/run-exclusively.ts';
 import { auditGeometry } from './design-review-geometry.ts';
 import { endToEndPort } from './environment-configuration.ts';
+import { parseShard, planShards } from './design-review-shards.ts';
 
 const applicationDirectory = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const repositoryDirectory = resolve(applicationDirectory, '..', '..');
@@ -132,6 +143,9 @@ const SHOWCASE_SPECIFICATIONS = [
   'tests/e2e/run-page-live-states.spec.ts',
   // A working goal, Start again held, and Start again pressed (COR-2425).
   'tests/e2e/goal-page-states.spec.ts',
+  // The Checks page in each state of its design rows: first use, filtered to nothing, loading,
+  // failing and a Load more that failed (COR-2114).
+  'tests/e2e/checks-states.spec.ts',
   // Every view loading, empty, failed and forbidden, which a route filter (`--grep '/runs'`) reaches
   // through each title's address, and the goal check's loading states.
   'tests/e2e/15-view-states.spec.ts',
@@ -151,6 +165,8 @@ interface Options {
   readonly schemes: readonly Scheme[];
   readonly specifications: readonly string[];
   readonly grep: string | undefined;
+  /** The shard this run captures, of the specifications the other flags chose, or `undefined` for all of them. */
+  readonly shard: { readonly index: number; readonly count: number } | undefined;
 }
 
 /** Reads the command line, or answers the usage error to print. */
@@ -166,6 +182,7 @@ export function parseArguments(argv: readonly string[], now = new Date()): Optio
   let data: 'showcase' | 'stress' | 'both' | undefined;
   let specsGiven = false;
   let grep: string | undefined;
+  let shard: Options['shard'];
   for (let index = 0; index < argv.length; index += 1) {
     const flag = argv[index];
     const value = argv[index + 1];
@@ -193,6 +210,12 @@ export function parseArguments(argv: readonly string[], now = new Date()): Optio
       case '--grep':
         grep = value;
         break;
+      case '--shard': {
+        const parsed = parseShard(value);
+        if (typeof parsed === 'string') return parsed;
+        shard = parsed;
+        break;
+      }
       default:
         return `unknown flag ${flag ?? ''}`;
     }
@@ -208,7 +231,16 @@ export function parseArguments(argv: readonly string[], now = new Date()): Optio
       ...(data === 'showcase' ? [] : stress),
     ]),
   ];
-  return { out, schemes, specifications, grep };
+  return {
+    out,
+    schemes,
+    specifications:
+      shard === undefined
+        ? specifications
+        : (planShards(specifications, shard.count)[shard.index - 1]?.specifications ?? []),
+    grep,
+    shard,
+  };
 }
 
 /** The showcase specifications, for the test that holds each one's titles to the routes it captures. */
@@ -382,6 +414,18 @@ export async function captureDesignReview(
     return 2;
   }
   await mkdir(options.out, { recursive: true });
+  // A shard the filter does not reach has nothing to capture, which is not a failure: the merge
+  // judges the whole run, and Playwright would exit 1 with "No tests found" for it.
+  if (options.shard !== undefined && !shardHasTests(options)) {
+    environment.standardOutput(
+      `design review: shard ${options.shard.index}/${options.shard.count} holds no test the filter reaches\n`,
+    );
+    await writeFile(
+      join(options.out, 'summary.json'),
+      `${JSON.stringify({ out: options.out, captures: 0, shard: options.shard, specifications: options.specifications, grep: options.grep ?? null, runs: [], clean: true }, null, 2)}\n`,
+    );
+    return 0;
+  }
   const runs: { scheme: Scheme; exitCode: number; ranNothing: string[] }[] = [];
   for (const scheme of options.schemes) {
     // The JSON report says how many tests each specification ran, so one that ran none is named.
@@ -424,6 +468,7 @@ export async function captureDesignReview(
   const summary = {
     out: options.out,
     captures,
+    shard: options.shard ?? null,
     specifications: options.specifications,
     grep: options.grep ?? null,
     runs,
@@ -440,6 +485,15 @@ export async function captureDesignReview(
     `design review: ${captures} captures in ${options.out}${summary.clean ? '' : ' (a specification failed; see summary.json)'}\n`,
   );
   return captures > 0 && !ranNothing ? 0 : 1;
+}
+
+/** Whether any listed specification has a test whose title path the filter matches (all do without one). */
+function shardHasTests(options: Options): boolean {
+  if (options.grep === undefined) return options.specifications.length > 0;
+  const filter = new RegExp(options.grep);
+  return options.specifications.some((specification) =>
+    testsOf(readSourceOf(specification)).some((test) => filter.test(test.path)),
+  );
 }
 
 /** Playwright's JSON report, or `undefined` when the run wrote none. */

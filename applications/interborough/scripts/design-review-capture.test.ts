@@ -11,9 +11,16 @@ import { join } from 'node:path';
 
 import {
   captureForDesignReview,
+  designReviewSlug,
+  designReviewWorld,
   nextFrame,
   withPointerCleanup,
 } from '../tests/e2e/design-review-capture.ts';
+import {
+  E2E_FIRST_RUN_PORT,
+  E2E_PORT,
+  E2E_SHOWCASE_PORT,
+} from '../tests/e2e/e2e-constants.ts';
 import {
   captureCount,
   captureDesignReview,
@@ -80,6 +87,7 @@ describe('parseArguments', () => {
       'tests/e2e/run-page-states.spec.ts',
       'tests/e2e/run-page-live-states.spec.ts',
       'tests/e2e/goal-page-states.spec.ts',
+      'tests/e2e/checks-states.spec.ts',
       // The view states are a showcase specification too, run once where first listed.
       'tests/e2e/15-view-states.spec.ts',
       'tests/e2e/agents-reviews-design-states.spec.ts',
@@ -153,6 +161,7 @@ describe('parseArguments', () => {
       'tests/e2e/run-page-states.spec.ts',
       'tests/e2e/run-page-live-states.spec.ts',
       'tests/e2e/goal-page-states.spec.ts',
+      'tests/e2e/checks-states.spec.ts',
       'tests/e2e/15-view-states.spec.ts',
       'tests/e2e/agents-reviews-design-states.spec.ts',
       'tests/e2e/hooks.spec.ts',
@@ -210,6 +219,7 @@ describe('parseArguments', () => {
       'tests/e2e/run-page-states.spec.ts',
       'tests/e2e/run-page-live-states.spec.ts',
       'tests/e2e/goal-page-states.spec.ts',
+      'tests/e2e/checks-states.spec.ts',
       'tests/e2e/15-view-states.spec.ts',
       'tests/e2e/agents-reviews-design-states.spec.ts',
       'tests/e2e/hooks.spec.ts',
@@ -467,6 +477,17 @@ describe('captureForDesignReview readiness', () => {
         'screenshot',
         'viewport:1280x900',
         'ready',
+        // The 1280 capture is repeated at 1920 by 1080, with its own stretch for the whole page.
+        'viewport:1920x1080',
+        'ready',
+        'screenshot',
+        'viewport:1920x1081',
+        'ready',
+        'screenshot',
+        'viewport:1920x1080',
+        'ready',
+        'viewport:1280x900',
+        'ready',
       ]);
     } finally {
       if (previousCapture === undefined) delete process.env['INTERBOROUGH_DESIGN_REVIEW_CAPTURE'];
@@ -476,6 +497,95 @@ describe('captureForDesignReview readiness', () => {
       else process.env['INTERBOROUGH_DESIGN_REVIEW_COLOR_SCHEME'] = previousScheme;
       await rm(directory, { recursive: true, force: true });
     }
+  });
+});
+
+describe('capture file names', () => {
+  const capture = { route: '/runs', state: 'ready', source: 'runs-states.spec.ts' };
+
+  test('say which specification and which world a screen is from', () => {
+    expect(designReviewSlug(capture, 1920, 'dark', 'sample-world')).toBe(
+      'runs-states--sample-world--runs--ready--1920--dark',
+    );
+  });
+
+  test('differ for two specifications, two worlds and two tabs of one route and state', () => {
+    const names = [
+      designReviewSlug(capture, 1280, 'light', 'sample-world'),
+      designReviewSlug({ ...capture, source: '00-showcase.spec.ts' }, 1280, 'light', 'sample-world'),
+      designReviewSlug(capture, 1280, 'light', 'stress'),
+      designReviewSlug({ ...capture, tab: 'skills' }, 1280, 'light', 'sample-world'),
+    ];
+    expect(new Set(names).size).toBe(names.length);
+  });
+
+  test('read the world from the host that served the page', () => {
+    expect(designReviewWorld(`http://127.0.0.1:${E2E_SHOWCASE_PORT}/runs`, 'x.spec.ts')).toBe(
+      'sample-world',
+    );
+    expect(designReviewWorld(`http://127.0.0.1:${E2E_FIRST_RUN_PORT}/`, 'x.spec.ts')).toBe(
+      'first-run',
+    );
+    expect(designReviewWorld(`http://127.0.0.1:${E2E_PORT}/runs`, 'responsive.spec.ts')).toBe(
+      'stress',
+    );
+    expect(designReviewWorld(`http://127.0.0.1:${E2E_PORT}/runs`, '15-view-states.spec.ts')).toBe(
+      'e2e-host',
+    );
+  });
+
+  describe('when a specification captures twice', () => {
+    let directory = '';
+    const previous = {
+      capture: process.env['INTERBOROUGH_DESIGN_REVIEW_CAPTURE'],
+      scheme: process.env['INTERBOROUGH_DESIGN_REVIEW_COLOR_SCHEME'],
+    };
+    const tablet = {
+      viewportSize: () => ({ width: 768, height: 900 }),
+      async setViewportSize() {},
+      async screenshot() {},
+      url: () => `http://127.0.0.1:${E2E_PORT}/runs`,
+      evaluate: async () => ({ viewport: { width: 768, height: 900 } }),
+      locator: () => ({ evaluate: async () => 0 }),
+    };
+
+    beforeEach(async () => {
+      directory = await mkdtemp(join(tmpdir(), 'design-review-names-'));
+      process.env['INTERBOROUGH_DESIGN_REVIEW_CAPTURE'] = directory;
+      process.env['INTERBOROUGH_DESIGN_REVIEW_COLOR_SCHEME'] = 'light';
+    });
+    afterEach(async () => {
+      if (previous.capture === undefined) delete process.env['INTERBOROUGH_DESIGN_REVIEW_CAPTURE'];
+      else process.env['INTERBOROUGH_DESIGN_REVIEW_CAPTURE'] = previous.capture;
+      if (previous.scheme === undefined) delete process.env['INTERBOROUGH_DESIGN_REVIEW_COLOR_SCHEME'];
+      else process.env['INTERBOROUGH_DESIGN_REVIEW_COLOR_SCHEME'] = previous.scheme;
+      await rm(directory, { recursive: true, force: true });
+    });
+
+    test('under one name, fails instead of overwriting the first screen', async () => {
+      await captureForDesignReview(tablet as never, capture);
+      expect(captureForDesignReview(tablet as never, capture)).rejects.toThrow(
+        'Two design-review captures resolve to runs-states--e2e-host--runs--ready--768--light',
+      );
+    });
+
+    test('under two states, keeps both', async () => {
+      await captureForDesignReview(tablet as never, capture);
+      await captureForDesignReview(tablet as never, { ...capture, state: 'empty' });
+      expect(await captureCount(directory)).toBe(2);
+    });
+
+    test('at 1280, also writes the 1920 capture, and takes the specification’s own 1920 as the same screen', async () => {
+      const desktop = { ...tablet, viewportSize: () => ({ width: 1280, height: 900 }) };
+      await captureForDesignReview(desktop as never, capture);
+      const wide = { ...tablet, viewportSize: () => ({ width: 1920, height: 1080 }) };
+      await captureForDesignReview(wide as never, capture);
+      const widths = (await readFile(join(directory, 'manifest.jsonl'), 'utf8'))
+        .trim()
+        .split('\n')
+        .map((line) => (JSON.parse(line) as { width: number }).width);
+      expect(widths).toEqual([1280, 1920]);
+    });
   });
 });
 
@@ -675,6 +785,7 @@ describe('captureDesignReview', () => {
     expect(summary).toEqual({
       out,
       captures: 3,
+      shard: null,
       specifications: ['tests/e2e/15-view-states.spec.ts'],
       grep: 'agents',
       runs: [

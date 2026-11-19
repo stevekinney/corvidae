@@ -5,6 +5,8 @@
  * characters that no line can break at (the stress seed, `responsive.spec.ts`, is where those are).
  */
 import { describe, expect, test } from 'bun:test';
+import { readdirSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
 
 import type { SampleWorldRecords } from '../fixtures/sample-world-records.ts';
 import * as content from '../fixtures/showcase-content.ts';
@@ -69,6 +71,37 @@ describe('the showcase specification’s routes', () => {
 
   test('names the same variants whatever the seed holds', () => {
     expect(showcaseVariantNames()).toEqual(Object.keys(showcaseVariants(SEED)));
+  });
+});
+
+/**
+ * The directories of `src/routes` that no route of `src/app/routes.ts` imports a page from, and why
+ * the design review has no screen of their own for them. A new directory is either a route (so the
+ * showcase and the responsive specifications open it) or an entry here with its reason.
+ */
+const DIRECTORIES_WITH_NO_ROUTE: Readonly<Record<string, string>> = {
+  'live-feeds': 'holds a test harness and test support for the feed hooks, and no page',
+  system: 'its Health, Alerts, Metrics and Realms tabs render inside the Health page (`routes/health`)',
+  placeholder: 'the stub the route outlet tests render, never reached from an address',
+};
+
+describe('the route directories', () => {
+  test('are each a route’s page or recorded as having none', () => {
+    const registry = readFileSync(join(import.meta.dir, '..', 'src', 'app', 'routes.ts'), 'utf8');
+    const directories = readdirSync(join(import.meta.dir, '..', 'src', 'routes'), {
+      withFileTypes: true,
+    })
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => entry.name);
+    const unrecorded = directories.filter(
+      (name) =>
+        !registry.includes(`../routes/${name}/`) &&
+        !Object.hasOwn(DIRECTORIES_WITH_NO_ROUTE, name),
+    );
+    expect(unrecorded).toEqual([]);
+    for (const name of Object.keys(DIRECTORIES_WITH_NO_ROUTE)) {
+      expect(registry.includes(`../routes/${name}/`), `${name} now has a route`).toBe(false);
+    }
   });
 });
 

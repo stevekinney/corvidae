@@ -29,7 +29,7 @@ import {
   showcaseVariants,
 } from './showcase-routes.ts';
 
-const WIDTHS = [375, 768, 1280, 1920] as const;
+const WIDTHS = [375, 768, 1280] as const;
 const HEIGHT = 900;
 
 /**

@@ -88,7 +88,7 @@ async function answerWith(page: Page, checks: readonly Record<string, unknown>[]
   );
 }
 
-test.describe('the list on a phone, a tablet, with scorers, a menu open and in the dark', () => {
+test.describe('the list (/checks) on a phone, a tablet, with scorers, a menu open and in the dark', () => {
   test('on a phone is two-line rows under day bands, with a Kind select and a Filter button on one row (C2-04, C2-15)', async ({
     page,
     checkA11y,
@@ -234,7 +234,7 @@ test.describe('the list on a phone, a tablet, with scorers, a menu open and in t
   });
 });
 
-test.describe('Load more', () => {
+test.describe('Load more (/checks)', () => {
   test('lists fifty results, then the next fifty under their bands, with no count and no repeated band (C2-17)', async ({
     page,
     checkA11y,
@@ -304,7 +304,7 @@ test.describe('Load more', () => {
 });
 
 for (const width of WIDTHS) {
-  test.describe(`the states of the list, at ${width} pixels`, () => {
+  test.describe(`the states of the list (/checks), at ${width} pixels`, () => {
     test('first use is "No checks yet" with the only primary New goal, and no filter bar (C2-18)', async ({
       page,
       checkA11y,
@@ -417,7 +417,7 @@ for (const width of WIDTHS) {
   });
 }
 
-test.describe('a read in progress (C2-20)', () => {
+test.describe('a read in progress (/checks) (C2-20)', () => {
   /** Holds every read of the checks until `release`, with the page's clock paused at the sample instant. */
   async function openLoading(page: Page, width: number): Promise<() => void> {
     await page.clock.install({ time: SAMPLE_NOW_MILLISECONDS - 1_000 });
