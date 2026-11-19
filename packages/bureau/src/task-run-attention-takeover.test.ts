@@ -27,8 +27,6 @@ const ORIGIN = '2026-11-19T12:00:00.000Z';
 const OWNER_KEY = 'tasks-operator-key';
 /** Under every claim's time-to-live and the renewal interval, so a claim is renewed before it lapses. */
 const STEP_MILLISECONDS = 4_000;
-/** Enough steps for a tool call that never returns to be assessed stalled, and for a claim to lapse. */
-const STEP_LIMIT = 200;
 
 const opened: OpenedBureau[] = [];
 const releases: Array<() => void> = [];
@@ -104,14 +102,13 @@ async function openTakeover() {
     await runtime.advance(STEP_MILLISECONDS);
     await successor.bureau.maintain();
   };
-  /** Steps until `reached` holds, or fails the test. */
-  const stepUntil = async (reached: () => Promise<boolean>): Promise<void> => {
-    for (let count = 0; count < STEP_LIMIT; count += 1) {
-      if (await reached()) return;
+  /** Steps until `reached` holds; the shared hang guard ends a condition that never does. */
+  const stepUntil = (reached: () => Promise<boolean>): Promise<void> =>
+    waitUntil(async () => {
+      if (await reached()) return true;
       await step();
-    }
-    throw new Error('The condition was not reached within the step limit.');
-  };
+      return false;
+    });
   /** Operative's assessment of the run in `world`, from `bureau.tasks.inspect`. */
   const assessmentIn = async (world: OpenedBureau, taskId: string): Promise<string | undefined> => {
     const body = await rpc(world.handler, 'bureau.tasks.inspect', { taskId }, OWNER_KEY);
@@ -119,9 +116,16 @@ async function openTakeover() {
     return liveness?.assessment;
   };
   /** Whether `world`'s engine holds the run's live claim itself. */
-  const holdsClaim = async (world: OpenedBureau, taskId: string): Promise<boolean> =>
-    (await world.bureau.durableEngine()?.claimHolder(taskId))?.heldByThisProcess === true;
-  const recordOf = (taskId: string) => successor.bureau.internals.taskRegistry.record(taskId);
+  const holdsClaim = async (world: OpenedBureau, taskId: string): Promise<boolean> => {
+    const claim = await world.bureau.durableEngine()?.claimHolder(taskId);
+    return claim?.heldByThisProcess === true;
+  };
+  /** What the shared record holds of the task, read through B's registry after its writes settle. */
+  const storedOf = async (taskId: string) => {
+    await successor.bureau.internals.taskRegistry.flush();
+    await holder.bureau.internals.taskRegistry.flush();
+    return successor.bureau.internals.taskRegistry.record(taskId);
+  };
   return {
     holder,
     successor,
@@ -133,7 +137,7 @@ async function openTakeover() {
     stepUntil,
     assessmentIn,
     holdsClaim,
-    recordOf,
+    storedOf,
   };
 }
 
@@ -153,9 +157,9 @@ async function takenOver() {
   expect(await world.holdsClaim(world.holder, task.id)).toBe(false);
   expect(world.holder.bureau.tasks.detail(task.id)?.status).toBe('running');
   expect(world.successor.bureau.tasks.detail(task.id)?.status).toBe('running');
-  expect((await world.recordOf(task.id))?.settled).toBeUndefined();
-  await world.successor.bureau.internals.taskRegistry.flush();
-  expect((await world.recordOf(task.id))?.attention).toBeUndefined();
+  const stored = await world.storedOf(task.id);
+  expect(stored?.settled).toBeUndefined();
+  expect(stored?.attention).toBeUndefined();
   return { world, task };
 }
 
@@ -163,34 +167,37 @@ describe('a stall written by a process that lost the run (COR-2526)', () => {
   it('(a) is not recorded on the successor’s record, and announces nothing', async () => {
     const { world, task } = await takenOver();
 
-    // A's own watchdog reaches `alive-but-stalled` and writes: the successor has not stalled yet.
-    await world.stepUntil(async () => (await world.assessmentIn(world.holder, task.id)) === 'alive-but-stalled');
-    expect(await world.assessmentIn(world.successor, task.id)).not.toBe('alive-but-stalled');
-    await world.holder.bureau.internals.taskRegistry.flush();
+    // A's own watchdog reaches `alive-but-stalled` and writes through its snapshot subscription.
+    await world.stepUntil(
+      async () => (await world.assessmentIn(world.holder, task.id)) === 'alive-but-stalled',
+    );
+    const stored = await world.storedOf(task.id);
 
-    const record = await world.recordOf(task.id);
-    expect(record?.attention).toBeUndefined();
     expect(world.holderStalled).toEqual([]);
     expect(world.successorStalled).toEqual([]);
+    expect(stored?.attention).toBeUndefined();
   });
 
   it('(b) is not cleared by that process’s late clear, which leaves the successor’s real stall', async () => {
     const { world, task } = await takenOver();
 
-    // The successor's run has a stall, written as its holder (a recovered run's liveness is read on
-    // the real monotonic clock, which this manual-clock test does not move, so the stall is its own
-    // registry's write rather than its watchdog's).
+    // The successor's run has a stall, written as its holder. The stall is the successor's own
+    // registry write, not its watchdog's: a recovered run takes its liveness clock only from a test
+    // seam that nothing outside tests sets (`livenessClock` in `active-run-reattach.ts`), so under
+    // this manual clock its assessment stays `healthy` however long the tool call is held.
     const stalledAt = '2026-11-19T12:30:00.000Z';
-    expect(await world.successor.bureau.internals.taskRegistry.recordStall(task.id, stalledAt)).toBe(
-      true,
+    const wrote = await world.successor.bureau.internals.taskRegistry.recordStall(
+      task.id,
+      stalledAt,
     );
+    expect(wrote).toBe(true);
 
     // A's own watchdog reaches the stall, and its write is dropped: the stall is already there.
     await world.stepUntil(
       async () => (await world.assessmentIn(world.holder, task.id)) === 'alive-but-stalled',
     );
-    await world.holder.bureau.internals.taskRegistry.flush();
-    expect((await world.recordOf(task.id))?.attention?.stalledSince).toBe(stalledAt);
+    const whileStalled = await world.storedOf(task.id);
+    expect(whileStalled?.attention?.stalledSince).toBe(stalledAt);
 
     // A's tool call returns and its run ends: its assessment leaves the stall, and it writes the
     // clear, which would take the successor's stall off the record if A were still its holder.
@@ -198,9 +205,9 @@ describe('a stall written by a process that lost the run (COR-2526)', () => {
     await waitUntil(
       async () => (await world.assessmentIn(world.holder, task.id)) !== 'alive-but-stalled',
     );
-    await world.holder.bureau.internals.taskRegistry.flush();
+    const afterClear = await world.storedOf(task.id);
 
-    expect((await world.recordOf(task.id))?.attention?.stalledSince).toBe(stalledAt);
+    expect(afterClear?.attention?.stalledSince).toBe(stalledAt);
     expect(world.holderStalled).toEqual([]);
   });
 });
