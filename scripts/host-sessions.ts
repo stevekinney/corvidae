@@ -884,7 +884,7 @@ export type HookContext = {
   readonly readAgentTools?: (agentType: string) => string | undefined;
   readonly readOnlyCap?: number;
   /** The coordinator's execution state and briefs, in the main checkout; absent when not found. */
-  readonly chef?: { readonly stateDirectory: string; readonly briefsDirectory: string };
+  readonly chef?: { readonly stateDirectory: string; readonly briefsDirectory: string } | undefined;
 };
 
 function text(value: unknown): string {
@@ -1346,6 +1346,8 @@ function chefDirectories(cwd: string): HookContext['chef'] {
       briefsDirectory: join(main, 'tmp', 'chef', 'briefs'),
     };
   } catch {
+    // Every failure is safe: with no main checkout there is no state to read, and the hooks that
+    // need it fail open with a logged reason.
     return undefined;
   }
 }

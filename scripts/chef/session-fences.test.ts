@@ -160,7 +160,8 @@ describe('a chef-worker stop', () => {
     const setting = await world();
     const path = await worker(setting);
     for (let attempt = 0; attempt < stopBlockLimit; attempt += 1) {
-      expect((await handleHookEvent(stop(path), context(setting)))?.decision).toBe('block');
+      const blocked = await handleHookEvent(stop(path), context(setting));
+      expect(blocked?.decision).toBe('block');
     }
     const logged: string[] = [];
     const last = await handleHookEvent(
