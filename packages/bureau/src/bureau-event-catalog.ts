@@ -258,7 +258,7 @@ export const BUREAU_EVENT_CATALOG: Readonly<
   'run.stalled': entry(
     'run.stalled',
     'run',
-    'A run that is alive stopped making progress outside a declared wait: Operative’s own `alive-but-stalled` assessment of it, which the Bureau recorded on the task (`attention` holds `stalled`). It is published once each time a run enters the state, so a stall that clears and begins again is announced again. `since` is the instant, on the Bureau’s clock, the stall was seen. A run waiting on a person, a signal or a wakeup is never stalled.',
+    'A run that is alive stopped making progress outside a declared wait: Operative’s own `alive-but-stalled` assessment of it, which the Bureau recorded on the task (`attention` holds `stalled`). It is published once each time a run enters the state, so a stall that clears and begins again is announced again. `since` is the instant, on the Bureau’s clock, the stall was seen. A run waiting on a person, a signal, a wakeup or a child run it dispatched is never stalled.',
     [
       ['runId', 'string'],
       ['since', 'string'],

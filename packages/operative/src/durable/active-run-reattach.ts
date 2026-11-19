@@ -13,7 +13,7 @@ import { type CleanupAcknowledgement, type RunResult, toRedactedRunResultSummary
 import type { DurableActiveRunContext } from './active-run-adapter';
 import { isTerminalWorkflowStatus } from './active-run-constants';
 import type { RecoveredRunHandle } from './active-run-event-surface';
-import { wireHumanWaitLiveness } from './active-run-event-surface';
+import { wireChildWaitLiveness, wireHumanWaitLiveness } from './active-run-event-surface';
 import { driveReattachedRun } from './active-run-reattach-driver';
 
 function cancelSucceeded(): boolean {
@@ -136,6 +136,7 @@ export function reattachDurableActiveRun(
   // a wait from the checkpoint — but this still covers a reattached run
   // that calls `requestHumanInput` again during its own remaining lifetime.
   const stopHumanWaitLiveness = wireHumanWaitLiveness(emitter, liveness);
+  const stopChildWaitLiveness = wireChildWaitLiveness(emitter, liveness);
 
   // The awaited recovery hook already forwards toolbox actions into `emitter`.
   // Reattach owns the teardown so the subscription stops on completion, plus
@@ -150,6 +151,7 @@ export function reattachDurableActiveRun(
     emitter.removeEventListener(ToolStartedBubbleEvent.type, onToolStartedBubble);
     emitter.removeEventListener(ToolSettledBubbleEvent.type, onToolSettledBubble);
     stopHumanWaitLiveness();
+    stopChildWaitLiveness();
   }
 
   // Resolves `true` only when an adapter-initiated `engine.cancel` SUCCEEDS for

@@ -72,11 +72,11 @@ function stallingAgent(holds: number, toolbox: Toolbox) {
   });
 }
 
-async function open(holds: number) {
+async function open(holds: number, durable = false) {
   const runtime = createManualRuntimeServices({ origin: ORIGIN });
   const storage = new MemoryStorage();
   const tool = holdingTool(holds);
-  const bureauOptions = { runtime, durable: false, maintenance: 'manual' } as const;
+  const bureauOptions = { runtime, durable, maintenance: 'manual' } as const;
   const holder = await openBureau({
     agents: {
       stalling: stallingAgent(holds, tool.toolbox),
@@ -132,6 +132,23 @@ describe('a stalled run (COR-2526)', () => {
 
     world.tool.release(0);
     await task.result();
+  });
+
+  it('(g) on the durable engine too: recorded once, and cleared when the call returns', async () => {
+    const world = await open(1, true);
+    const task = await world.holder.bureau.tasks.start('stalling', 'Go.');
+    await world.tool.entered(0);
+    await world.advanceChecks(3);
+    await waitUntil(async () => (await world.attentionOf(task.id)).includes('stalled'));
+    await world.advanceChecks(2);
+    expect(world.stalled).toHaveLength(1);
+
+    world.tool.release(0);
+    await task.result();
+    await world.holder.bureau.internals.whenTaskRecorded(task.id);
+    await world.holder.bureau.internals.taskRegistry.flush();
+    expect((await world.peer.bureau.tasks.get(task.id))?.attention).toEqual([]);
+    expect(world.stalled).toHaveLength(1);
   });
 
   it('(h) clears when progress resumes, and a second stall is a new episode', async () => {
@@ -273,6 +290,37 @@ describe('a run parked on a review (COR-2526)', () => {
       OWNER_KEY,
     );
     expect(listed.result?.['tasks']).toEqual([]);
+  });
+});
+
+describe('a run parked on a wakeup (COR-2526)', () => {
+  it('(i) is never stalled while it sleeps past every stall policy', async () => {
+    const runtime = createManualRuntimeServices({ origin: ORIGIN });
+    const world = await openBureau({
+      agents: {
+        sleeper: createAgent({
+          generate: async () => ({
+            content: '',
+            toolCalls: [{ id: 'call-1', name: 'scheduleWakeup', arguments: { in: '6h' } }],
+          }),
+          toolbox: createToolbox([]) as unknown as Toolbox,
+          stopWhen: stopWhen.some(stopWhen.toolCalled('scheduleWakeup'), stopWhen.noToolCalls()),
+        }),
+      },
+      bureauOptions: { runtime, maintenance: 'manual' },
+    });
+    opened.push(world);
+
+    const task = await world.bureau.tasks.start('sleeper', 'Sleep.');
+    await waitUntil(async () => (await world.bureau.tasks.get(task.id))?.wakeAt !== null);
+    for (let check = 0; check < 12; check += 1) await runtime.advance(CHECK_MILLISECONDS);
+    await world.bureau.internals.taskRegistry.flush();
+
+    const sleeping = await world.bureau.tasks.get(task.id);
+    expect(sleeping?.status).toBe('working');
+    expect(sleeping?.wakeAt).not.toBeNull();
+    expect(sleeping?.attention).toEqual([]);
+    expect(sleeping?.stalledSince).toBeNull();
   });
 });
 

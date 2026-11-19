@@ -1,7 +1,19 @@
-import { createManualRuntimeServices, type Subscription } from '@lostgradient/lifecycle';
+import {
+  CompletableEventTarget,
+  createManualRuntimeServices,
+  type Subscription,
+} from '@lostgradient/lifecycle';
 import { describe, expect, it } from 'bun:test';
 
 import type { ChildRunDescriptor, ChildRunRegistry } from '../child-run';
+import { wireChildWaitLiveness } from '../durable/active-run-event-surface';
+import {
+  ChildWorkflowAbortedEvent,
+  ChildWorkflowCompletedEvent,
+  ChildWorkflowFailedEvent,
+  ChildWorkflowStartedEvent,
+  type CombinedOperativeEventMap,
+} from '../events';
 import { createActiveRunLiveness } from './active-run-liveness';
 import { LIVENESS_POLICY_VERSION, TOOL_CALL_POLICY } from './policies';
 import type { LivenessAssessment } from './types';
@@ -723,6 +735,102 @@ describe('createActiveRunLiveness', () => {
     // Progress resumes: the stall clears.
     liveness.recordToolProgressPulse({ toolCallId: 'call-1' });
     expect(liveness.snapshot().assessment).toBe('healthy');
+
+    liveness.dispose();
+  });
+
+  it('declares a wait on outstanding child runs, so a tool call awaiting one is not a stall (COR-2526)', () => {
+    const clock = createManualClock();
+    const liveness = createActiveRunLiveness({ id: 'run-1', durability: 'process-local', clock });
+
+    liveness.beginToolCall();
+    liveness.beginChildWait('child-1');
+    liveness.beginChildWait('child-2');
+    expect(liveness.snapshot().declaredWait).toMatchObject({ reason: 'child', owner: 'child-1' });
+    for (let tick = 0; tick < 6; tick += 1) clock.advance(TOOL_CHECK_INTERVAL_MS);
+    expect(liveness.snapshot().assessment).toBe('legitimately-waiting');
+
+    // One child is still outstanding: the wait stands.
+    liveness.endChildWait('child-1');
+    expect(liveness.snapshot().assessment).toBe('legitimately-waiting');
+    // The last one settles and the tool call is still silent: the silence is a stall.
+    liveness.endChildWait('child-2');
+    expect(liveness.snapshot().declaredWait).toBeUndefined();
+    expect(liveness.snapshot().assessment).toBe('alive-but-stalled');
+    // A child nobody started changes nothing.
+    liveness.endChildWait('child-3');
+    expect(liveness.snapshot().assessment).toBe('alive-but-stalled');
+
+    liveness.dispose();
+  });
+
+  it('wires the child events of the run’s emitter into the child wait (COR-2526)', () => {
+    const clock = createManualClock();
+    const liveness = createActiveRunLiveness({ id: 'run-1', durability: 'process-local', clock });
+    const emitter = new CompletableEventTarget<CombinedOperativeEventMap>();
+    const stop = wireChildWaitLiveness(emitter, liveness);
+    const correlation = {
+      parentAgentName: 'parent',
+      parentRunId: 'run-1',
+      childAgentName: 'child',
+      childRunId: 'child-1',
+    };
+
+    emitter.dispatchEvent(
+      new ChildWorkflowStartedEvent({ ...correlation, input: 'go', durable: false }),
+    );
+    expect(liveness.snapshot().declaredWait?.reason).toBe('child');
+    // Each way a child ends ends the wait.
+    for (const End of [ChildWorkflowCompletedEvent]) {
+      emitter.dispatchEvent(new End(correlation));
+      expect(liveness.snapshot().declaredWait).toBeUndefined();
+    }
+    emitter.dispatchEvent(
+      new ChildWorkflowStartedEvent({ ...correlation, input: 'go', durable: false }),
+    );
+    emitter.dispatchEvent(new ChildWorkflowFailedEvent({ ...correlation, reason: 'error' }));
+    expect(liveness.snapshot().declaredWait).toBeUndefined();
+    emitter.dispatchEvent(
+      new ChildWorkflowStartedEvent({ ...correlation, input: 'go', durable: false }),
+    );
+    emitter.dispatchEvent(new ChildWorkflowAbortedEvent({ ...correlation, reason: undefined }));
+    expect(liveness.snapshot().declaredWait).toBeUndefined();
+
+    // A start that names no child is not tracked, and a stopped wiring hears nothing.
+    emitter.dispatchEvent(
+      new ChildWorkflowStartedEvent({
+        ...correlation,
+        childRunId: undefined,
+        input: 'go',
+        durable: false,
+      }),
+    );
+    expect(liveness.snapshot().declaredWait).toBeUndefined();
+    stop();
+    emitter.dispatchEvent(
+      new ChildWorkflowStartedEvent({ ...correlation, input: 'go', durable: false }),
+    );
+    expect(liveness.snapshot().declaredWait).toBeUndefined();
+
+    liveness.dispose();
+  });
+
+  it('never replaces a declared wait with a child wait, and an abort drops the child wait', () => {
+    const clock = createManualClock();
+    const liveness = createActiveRunLiveness({ id: 'run-1', durability: 'process-local', clock });
+
+    liveness.beginWait({ reason: 'review', wakeCondition: 'review:r-1' });
+    liveness.beginChildWait('child-1');
+    expect(liveness.snapshot().declaredWait?.reason).toBe('review');
+    liveness.endWait();
+    expect(liveness.snapshot().status).toBe('running');
+
+    liveness.beginChildWait('child-2');
+    expect(liveness.snapshot().status).toBe('waiting');
+    liveness.setStatus('aborting');
+    expect(liveness.snapshot().declaredWait).toBeUndefined();
+    liveness.endChildWait('child-2');
+    expect(liveness.snapshot().status).toBe('aborting');
 
     liveness.dispose();
   });

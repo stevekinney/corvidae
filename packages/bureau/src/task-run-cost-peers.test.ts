@@ -11,7 +11,11 @@ import { EventType } from '@ag-ui/core';
 import { waitUntil } from '@lostgradient/testing/wait-until';
 import { afterEach, describe, expect, it, spyOn } from 'bun:test';
 
-import { runAgentInput, startRequest } from './http/ag-ui-fixtures.test-support.ts';
+import {
+  attachRunRequest,
+  runAgentInput,
+  startRequest,
+} from './http/ag-ui-fixtures.test-support.ts';
 import { FrameReader } from './http/ag-ui-stream.test-support.ts';
 import { createBureauHandler } from './http/create-bureau-handler.ts';
 import { createSqliteStorageFixture } from './test/storage-fixtures.ts';
@@ -115,6 +119,57 @@ describe('the cost of a run cancelled from another process (COR-2524)', () => {
     }
     for (const warning of warnings) {
       expect((warning as Error).name).toBe('WeftWorkflowClaimLostWarning');
+    }
+  });
+});
+
+describe('a stream another process serves for a run it does not hold (COR-2524)', () => {
+  it('ends with the run’s cost in RUN_FINISHED', async () => {
+    const fixture = createSqliteStorageFixture({});
+    try {
+      const model = heldSecondStep();
+      const holder = await startFileBureau({
+        scripts: { 'claude-opus-5-5': model.script as never },
+        overrides: {
+          id: 'cost-peer-stream',
+          storage: fixture.storage,
+          durableOwnership: OWNERSHIP,
+        },
+      });
+      harnesses.push(holder);
+      const peer = await startFileBureau({
+        directory: holder.directory,
+        overrides: { id: 'cost-peer-stream', storage: fixture.open(), durableOwnership: OWNERSHIP },
+      });
+      harnesses.push(peer);
+      await holder.put('helper.md', AGENT);
+      await holder.bureau.agents.refresh();
+
+      const task = await holder.bureau.tasks.start('helper', 'Go.');
+      await model.reached;
+      const handler = createBureauHandler(peer.bureau, {
+        unauthenticatedAccess: 'allow',
+        agUi: {},
+      });
+      const reader = new FrameReader(await handler(attachRunRequest(task.id)));
+      model.release();
+      const frames = await reader.rest();
+
+      const finished = frames
+        .map((frame) => frame.event)
+        .find((event) => event.type === EventType.RUN_FINISHED) as unknown as
+        { usage: Array<Record<string, unknown>> } | undefined;
+      expect(finished).toBeDefined();
+      expect(finished!.usage[0]!['totalTokens']).toBe(STEP.total * 2);
+      expect(finished!.usage[0]!['costUsd']).toBeCloseTo(STEP_COST * 2, 10);
+    } finally {
+      await Promise.all(
+        harnesses
+          .splice(0)
+          .toReversed()
+          .map((harness) => harness.dispose()),
+      );
+      await fixture.dispose();
     }
   });
 });
