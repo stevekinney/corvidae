@@ -1,7 +1,18 @@
 <script lang="ts">
   import Combobox from './combobox.svelte';
 
-  const options = [
+  /** An option whose raw identifier is longer than a 320-pixel panel is wide (62 characters). */
+  const longCodeOption = {
+    value: 'reports:weekly-digest-ready-for-every-workspace-member-to-read',
+    label: 'Weekly digest ready',
+    code: 'reports:weekly-digest-ready-for-every-workspace-member-to-read',
+    group: 'Weekly reports',
+  };
+  let {
+    presentation = 'input',
+    longCode = false,
+  }: { presentation?: 'input' | 'picker'; longCode?: boolean } = $props();
+  const options = $derived([
     {
       value: 'run.error',
       label: 'A run fails',
@@ -22,8 +33,8 @@
       code: 'schedule.missed',
       group: 'Schedules',
     },
-  ];
-  let { presentation = 'input' }: { presentation?: 'input' | 'picker' } = $props();
+    ...(longCode ? [longCodeOption] : []),
+  ]);
 </script>
 
 <Combobox

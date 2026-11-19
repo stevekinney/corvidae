@@ -312,6 +312,26 @@ describe('Combobox rows and states', () => {
     expect(row?.firstElementChild?.classList.contains('cinder-combobox__option-check')).toBe(true);
   });
 
+  test('an identifier longer than a phone panel is drawn whole in the heading, after the label, where it can drop under it', async () => {
+    render(Fixture, { longCode: true });
+    await fireEvent.focus(
+      requiredInstance(document.body.querySelector('#event'), HTMLInputElement),
+    );
+    await waitFor(() => expect(document.body.querySelectorAll('[role="option"]').length).toBe(4));
+
+    const row = Array.from(document.body.querySelectorAll('[role="option"]')).find((option) =>
+      option.textContent?.includes('Weekly digest ready'),
+    );
+    const heading = row?.querySelector('.cinder-combobox__option-heading');
+    const code = heading?.querySelector('code.cinder-combobox__option-code');
+    expect(code?.textContent?.length).toBeGreaterThanOrEqual(60);
+    // The label comes first, so a code that wraps drops under it at the inline start.
+    expect(heading?.firstElementChild?.classList.contains('cinder-combobox__option-label')).toBe(
+      true,
+    );
+    expect(heading?.lastElementChild).toBe(code ?? null);
+  });
+
   test('the optionMeta snippet replaces the meta text', async () => {
     const optionMeta = createRawSnippet<[{ label: string }]>((option) => ({
       render: () => `<em>${option().label}!</em>`,
