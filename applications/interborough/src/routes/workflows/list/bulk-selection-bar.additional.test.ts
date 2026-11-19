@@ -474,6 +474,44 @@ describe('additional coverage', () => {
     }
   });
 
+  test('a list refresh that hands the bar an equal filter object does not re-run a bulk action dry run or clear the typed phrase', async () => {
+    // The bar passes `runDryRun={() => dryRunBulkDelete(client, bulkFilter)}`, a closure over a
+    // derived value, so every new `filter` object (every list refresh) used to read as a new
+    // `runDryRun`, and the dialog's effect ran the preview again, which clears the phrase.
+    const fetch = new ScriptedFetch();
+    fetch.routeJsonRpcMethod('weft.workflows.bulk.delete', DELETE_PREVIEW);
+
+    try {
+      const { getByRole, getAllByRole, getByLabelText, rerender } = render(BulkSelectionBar, {
+        props: baseProps({ client: realClient() }),
+      });
+
+      await fireEvent.click(getByRole('checkbox', { name: /Select all 47 matching the filter/ }));
+      const deleteButton = requireElement(
+        getAllByRole('button').find((button) => button.textContent?.trim() === 'Delete'),
+        HTMLButtonElement,
+      );
+      await fireEvent.click(deleteButton);
+      const phraseLabel = 'Type "delete 6 workflows" to confirm';
+      await waitFor(() => {
+        expect(getByLabelText(phraseLabel)).not.toBeNull();
+      });
+      await fireEvent.input(getByLabelText(phraseLabel), { target: { value: 'delete 6 wor' } });
+      expect(fetch.calls).toHaveLength(1);
+
+      // The live list refreshed: the same filter, as a new object.
+      await rerender({ filter: { status: 'failed' } as WorkflowListQuery, selectedCount: 4 });
+      await tick();
+      await tick();
+
+      expect(fetch.calls).toHaveLength(1);
+      const input = requireElement(getByLabelText(phraseLabel), HTMLInputElement);
+      expect(input.value).toBe('delete 6 wor');
+    } finally {
+      fetch.restore();
+    }
+  });
+
   test('clicking Delete (once enabled) opens the delete dialog and fires its dry run', async () => {
     const fetch = new ScriptedFetch();
     fetch.routeJsonRpcMethod('weft.workflows.bulk.delete', {

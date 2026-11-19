@@ -47,7 +47,7 @@
    * same-token retry instead, since the token itself is still valid.
    */
   import { Badge, Button, Input, Modal, Progress, Skeleton } from '@lostgradient/cinder';
-  import type { Snippet } from 'svelte';
+  import { onMount, type Snippet } from 'svelte';
   import { HttpClientError, type BulkOperationDryRunResult } from '@lostgradient/weft';
 
   import { faultTreatment } from '../../../lib/faults.ts';
@@ -130,7 +130,12 @@
   /** `true` when the commit fault means "re-run the preview", not "retry the same token" (module doc). Only meaningful when `faultOrigin === 'committing'`. */
   let faultMeansStalePreview = $state(false);
 
-  $effect(() => {
+  // Once, when the dialog opens, never from an effect: an effect would track `runDryRun`, and the
+  // selection bar builds it as a closure over its filter, so every list refresh that handed the bar
+  // a new filter object would run the preview again and clear the phrase being typed. A change of
+  // filter does not change what this open dialog was asked to act on; "Refresh preview" is the one
+  // way to count again. A dialog with a `parameters` form runs its dry run from "Continue" instead.
+  onMount(() => {
     if (!parameters) void loadPreview();
   });
 
