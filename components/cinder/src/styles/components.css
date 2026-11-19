@@ -7,6 +7,7 @@
 @import './components/_control-item.css';
 @import './components/_field-label.css';
 @import './components/_floating-surface.css';
+@import './components/_translucent-surface.css';
 @import './components/_form-field-error.css';
 @import './components/_label-value.css';
 @import './components/_option-group.css';
@@ -14,6 +15,11 @@
 @import './components/_input-frame.css';
 @import './components/_field-chevron.css';
 
+/* <generated:component-imports>
+ * `bun scripts/generate-component-artifacts.ts` writes this region: every stylesheet directly
+ * inside a component directory that no other component stylesheet imports, in path order, with
+ * the cascade-order pins of `scripts/generate-root-registries.ts`. Its `--check` fails when the
+ * region is stale. Do not edit it by hand. */
 @import '../components/access-gate/access-gate.css';
 @import '../components/accordion-item/accordion-item.css';
 @import '../components/accordion/accordion.css';
@@ -222,6 +228,7 @@
 @import '../components/virtual-list/virtual-list.css';
 @import '../components/waveform/waveform.css';
 @import '../components/zoom-pan-viewer/zoom-pan-viewer.css';
+/* </generated:component-imports> */
 
 /* Shared internal partial — base chrome for Alert/Banner dismiss buttons.
  * Imported last to preserve the original source order of the inline rule it

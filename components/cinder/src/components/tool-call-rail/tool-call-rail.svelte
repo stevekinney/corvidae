@@ -1,19 +1,4 @@
 <script lang="ts" module>
-  /**
-   * @cinder
-   * @category data-display
-   * @status beta
-   * @purpose One turn's tool calls on a rail: a one-line row per call, the first and last few with the middle folded, failures and calls that need a person always in view, and the run's end state.
-   * @tag timeline
-   * @tag tool-call
-   * @tag agent
-   * @useWhen Showing an agent's tool calls for one chat turn, where a failure or an approval must never fold away.
-   * @useWhen Opening a call's details in a side panel from a selectable row, with a failed call's next steps on the rail.
-   * @avoidWhen Showing the steps of a run with their own timing, retries and branches — use run-step-timeline.
-   * @avoidWhen Listing dated events — use timeline.
-   * @rationale Nearest alternative: Timeline — the rail is built on its `rows` variant, which keeps the marker column and connector and leaves each row's content (name, key input, result and duration, with no timestamp to lead with) to the rail.
-   * @related timeline, run-step-timeline, approval-card, status-dot
-   */
   export type {
     ToolCallRailCall,
     ToolCallRailLabels,
@@ -431,35 +416,22 @@
           {/if}
         </span>
         <span class="cinder-tool-call-rail__summary-text">{words.used(calls.length, false)}</span
-        >{#if failedCount > 0}<span
-            class="cinder-tool-call-rail__summary-separator"
-            aria-hidden="true">,</span
-          >
+        >{#if failedCount > 0}
           <span class="cinder-tool-call-rail__count" data-cinder-count="failed">
             <span class="cinder-tool-call-rail__count-dot" aria-hidden="true"></span>
             {words.failed(failedCount)}
           </span>
-        {/if}{#if waitingCount > 0}<span
-            class="cinder-tool-call-rail__summary-separator"
-            aria-hidden="true">,</span
-          >
+        {/if}{#if waitingCount > 0}
           <span class="cinder-tool-call-rail__count" data-cinder-count="waiting">
             <span class="cinder-tool-call-rail__count-dot" aria-hidden="true"></span>
             {words.waiting(waitingCount)}
           </span>
-        {/if}{#if expiredCount > 0}<span
-            class="cinder-tool-call-rail__summary-separator"
-            aria-hidden="true">,</span
-          >
+        {/if}{#if expiredCount > 0}
           <span class="cinder-tool-call-rail__count" data-cinder-count="expired">
             <span class="cinder-tool-call-rail__count-dot" aria-hidden="true"></span>
             {words.expired(expiredCount)}
           </span>
-        {/if}{#if duration !== undefined && duration !== ''}<span
-            class="cinder-tool-call-rail__summary-separator"
-            data-cinder-duration=""
-            aria-hidden="true">,</span
-          >
+        {/if}{#if duration !== undefined && duration !== ''}{' '}
           <span class="cinder-tool-call-rail__summary-duration">{duration}</span>
         {/if}
       </button>

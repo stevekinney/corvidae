@@ -1,19 +1,4 @@
 <script lang="ts" module>
-  /**
-   * @cinder
-   * @category data-display
-   * @status stable
-   * @purpose Chronological stream of feed-event entries: a plain ordered list for user-facing activity, or an operator-facing append-only log region with follow-latest scrolling.
-   * @tag timeline
-   * @tag activity
-   * @tag log
-   * @useWhen Rendering a user-facing activity stream or notification timeline.
-   * @useWhen Announcing newly appended entries to assistive technology via the live prop.
-   * @useWhen Displaying an operator-facing append-only stream with follow-latest scrolling — use the log arm (`kind="log"`).
-   * @avoidWhen Displaying a one-off transient notice — use toast-region or banner instead.
-   * @avoidWhen Displaying static temporal history or execution state — use timeline or run-step-timeline.
-   * @related timeline, run-step-timeline, feed-event, feed-boundary
-   */
   export type {
     FeedConnectionState,
     FeedListProps,

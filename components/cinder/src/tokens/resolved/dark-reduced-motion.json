@@ -1003,6 +1003,19 @@
       }
     }
   },
+  "toast.reserve-padding": {
+    "$type": "dimension",
+    "$value": { "value": 0, "unit": "px" },
+    "$description": "Room a page's scrolling area keeps at its end for a toast that stays until it is acted on (an Undo, a failure): ToastRegion sets it on the document element, to how far up from the viewport's bottom edge a bottom-anchored region reaches, while such a toast is shown, and 0 otherwise.",
+    "$extensions": {
+      "com.lostgradient.cinder": {
+        "cssProperty": "--cinder-toast-reserve-padding",
+        "public": true,
+        "category": "spacing",
+        "cssRecipe": null
+      }
+    }
+  },
   "content.width": {
     "$value": { "value": 72, "unit": "rem" },
     "$description": "Maximum inline size for primary page content. Caps line length and keeps content readable on wide viewports. Used by page layout styles; consumers can override per scope.",
@@ -1525,6 +1538,19 @@
         "palette": { "family": "neutral", "role": "surface-canvas" }
       }
     }
+  },
+  "surface.translucent": {
+    "$type": "color",
+    "$value": { "colorSpace": "oklch", "components": [0.145, 0.012, 265], "alpha": 0.9 },
+    "$extensions": {
+      "com.lostgradient.cinder": {
+        "cssRecipe": "color-mix(in oklch, var(--cinder-surface-canvas) 90%, transparent)",
+        "cssProperty": "--cinder-surface-translucent",
+        "public": true,
+        "category": "color"
+      }
+    },
+    "$description": "The canvas at 90%, for a header or bar that content scrolls under, drawn with a backdrop blur (`.cinder-translucent-surface`; AppBar keeps its own 82% mix), and opaque canvas where the platform cannot blur or `prefers-reduced-transparency` is set. The 90% is the least the canvas can keep so that the body and status text on it hold 4.5:1 over the worst backdrop, pure black or pure white, in both themes (`translucent-surface-contrast.test.ts`)."
   },
   "polarity.ink": {
     "$value": { "colorSpace": "oklch", "components": [1, 0, 0] },
@@ -3953,6 +3979,20 @@
       }
     }
   },
+  "code-block.number": {
+    "$type": "color",
+    "$value": { "colorSpace": "oklch", "components": [0.82, 0.14, 75] },
+    "$description": "The amber a numeric literal is drawn in on the dark theme, where Shiki's `github-dark` paints a number in the same blue as a key. Read only by the dark swap, so the light theme keeps the highlighter's own color. Close to the dark warning fill, but its own token, because the fill must not be consumed as text.",
+    "$extensions": {
+      "com.lostgradient.cinder": {
+        "cssProperty": "--cinder-code-block-number",
+        "public": true,
+        "category": "color",
+        "component": "code-block",
+        "cssRecipe": "oklch(82% 0.14 75)"
+      }
+    }
+  },
   "data-table.height": {
     "$type": "dimension",
     "$value": { "value": 24, "unit": "rem" },
@@ -3964,6 +4004,19 @@
         "category": "size",
         "component": "data-table",
         "cssRecipe": null
+      }
+    }
+  },
+  "docked-action-bar.shadow-color": {
+    "$type": "color",
+    "$value": { "colorSpace": "oklch", "components": [0, 0, 0], "alpha": 0.4 },
+    "$description": "The color of the card variant's upward shadow. Black in both themes; the dark arm is denser, because a shadow has to be to read against a dark surface.",
+    "$extensions": {
+      "com.lostgradient.cinder": {
+        "cssProperty": "--cinder-docked-action-bar-shadow-color",
+        "public": true,
+        "category": "color",
+        "component": "docked-action-bar"
       }
     }
   },
@@ -4106,6 +4159,62 @@
       }
     },
     "$description": "Horizontal scroll-edge fade gradient color -- `text-default` at 12% opacity, tracking whichever theme arm resolves."
+  },
+  "map-marker.fill": {
+    "$value": { "colorSpace": "oklch", "components": [0.235, 0.014, 265] },
+    "$description": "The marker's body and anchor fill: the raised surface, so a marker reads as a chip over the map.",
+    "$extensions": {
+      "com.lostgradient.cinder": {
+        "cssProperty": "--cinder-map-marker-fill",
+        "public": true,
+        "category": "color",
+        "component": "map-marker",
+        "cssRecipe": null
+      }
+    },
+    "$type": "color"
+  },
+  "map-marker.ink": {
+    "$value": { "colorSpace": "oklch", "components": [0.95, 0.01, 265] },
+    "$description": "The marker's text color on its fill.",
+    "$extensions": {
+      "com.lostgradient.cinder": {
+        "cssProperty": "--cinder-map-marker-ink",
+        "public": true,
+        "category": "color",
+        "component": "map-marker",
+        "cssRecipe": null
+      }
+    },
+    "$type": "color"
+  },
+  "map-marker.live.fill": {
+    "$value": { "colorSpace": "oklch", "components": [0.95, 0.01, 265] },
+    "$description": "A live marker's fill: the inverse surface, so the one that is happening now stands out from the rest.",
+    "$extensions": {
+      "com.lostgradient.cinder": {
+        "cssProperty": "--cinder-map-marker-live-fill",
+        "public": true,
+        "category": "color",
+        "component": "map-marker",
+        "cssRecipe": null
+      }
+    },
+    "$type": "color"
+  },
+  "map-marker.live.ink": {
+    "$value": { "colorSpace": "oklch", "components": [0.185, 0.012, 265] },
+    "$description": "A live marker's text color on its inverse fill.",
+    "$extensions": {
+      "com.lostgradient.cinder": {
+        "cssProperty": "--cinder-map-marker-live-ink",
+        "public": true,
+        "category": "color",
+        "component": "map-marker",
+        "cssRecipe": null
+      }
+    },
+    "$type": "color"
   },
   "marquee.duration": {
     "$type": "duration",
@@ -4484,6 +4593,188 @@
         "cssRecipe": null
       }
     }
+  },
+  "theme-switch.sky.track": {
+    "$value": { "colorSpace": "oklch", "components": [0.93, 0.04, 235] },
+    "$description": "The track while Light is selected: a pale sky.",
+    "$extensions": {
+      "com.lostgradient.cinder": {
+        "cssProperty": "--cinder-theme-switch-sky-track",
+        "public": true,
+        "category": "color",
+        "component": "theme-switch",
+        "cssRecipe": "oklch(93% 0.04 235)"
+      }
+    },
+    "$type": "color"
+  },
+  "theme-switch.sky.border": {
+    "$value": { "colorSpace": "oklch", "components": [0.84, 0.05, 235] },
+    "$description": "The track's edge while Light is selected.",
+    "$extensions": {
+      "com.lostgradient.cinder": {
+        "cssProperty": "--cinder-theme-switch-sky-border",
+        "public": true,
+        "category": "color",
+        "component": "theme-switch",
+        "cssRecipe": "oklch(84% 0.05 235)"
+      }
+    },
+    "$type": "color"
+  },
+  "theme-switch.sky.icon": {
+    "$value": { "colorSpace": "oklch", "components": [0.32, 0.014, 245] },
+    "$description": "An unselected icon on the sky track.",
+    "$extensions": {
+      "com.lostgradient.cinder": {
+        "cssProperty": "--cinder-theme-switch-sky-icon",
+        "public": true,
+        "category": "color",
+        "component": "theme-switch",
+        "cssRecipe": "oklch(32% 0.014 245)"
+      }
+    },
+    "$type": "color"
+  },
+  "theme-switch.sky.icon-hover": {
+    "$value": { "colorSpace": "oklch", "components": [0.2, 0.018, 245] },
+    "$description": "A hovered icon on the sky track.",
+    "$extensions": {
+      "com.lostgradient.cinder": {
+        "cssProperty": "--cinder-theme-switch-sky-icon-hover",
+        "public": true,
+        "category": "color",
+        "component": "theme-switch",
+        "cssRecipe": "oklch(20% 0.018 245)"
+      }
+    },
+    "$type": "color"
+  },
+  "theme-switch.sky.icon-selected": {
+    "$value": { "colorSpace": "oklch", "components": [0.2, 0.018, 245] },
+    "$description": "The selected icon on the sky track, over the thumb.",
+    "$extensions": {
+      "com.lostgradient.cinder": {
+        "cssProperty": "--cinder-theme-switch-sky-icon-selected",
+        "public": true,
+        "category": "color",
+        "component": "theme-switch",
+        "cssRecipe": "oklch(20% 0.018 245)"
+      }
+    },
+    "$type": "color"
+  },
+  "theme-switch.sky.thumb": {
+    "$value": { "colorSpace": "oklch", "components": [1, 0, 255] },
+    "$description": "The thumb behind the selected icon on the sky track.",
+    "$extensions": {
+      "com.lostgradient.cinder": {
+        "cssProperty": "--cinder-theme-switch-sky-thumb",
+        "public": true,
+        "category": "color",
+        "component": "theme-switch",
+        "cssRecipe": "oklch(100% 0 255)"
+      }
+    },
+    "$type": "color"
+  },
+  "theme-switch.night.track": {
+    "$value": { "colorSpace": "oklch", "components": [0.25, 0.05, 265] },
+    "$description": "The track while Dark is selected: a deep night.",
+    "$extensions": {
+      "com.lostgradient.cinder": {
+        "cssProperty": "--cinder-theme-switch-night-track",
+        "public": true,
+        "category": "color",
+        "component": "theme-switch",
+        "cssRecipe": "oklch(25% 0.05 265)"
+      }
+    },
+    "$type": "color"
+  },
+  "theme-switch.night.border": {
+    "$value": { "colorSpace": "oklch", "components": [0.38, 0.05, 265] },
+    "$description": "The track's edge while Dark is selected.",
+    "$extensions": {
+      "com.lostgradient.cinder": {
+        "cssProperty": "--cinder-theme-switch-night-border",
+        "public": true,
+        "category": "color",
+        "component": "theme-switch",
+        "cssRecipe": "oklch(38% 0.05 265)"
+      }
+    },
+    "$type": "color"
+  },
+  "theme-switch.night.icon": {
+    "$value": { "colorSpace": "oklch", "components": [0.8, 0.03, 265] },
+    "$description": "An unselected icon on the night track.",
+    "$extensions": {
+      "com.lostgradient.cinder": {
+        "cssProperty": "--cinder-theme-switch-night-icon",
+        "public": true,
+        "category": "color",
+        "component": "theme-switch",
+        "cssRecipe": "oklch(80% 0.03 265)"
+      }
+    },
+    "$type": "color"
+  },
+  "theme-switch.night.icon-hover": {
+    "$value": { "colorSpace": "oklch", "components": [0.97, 0.01, 265] },
+    "$description": "A hovered icon on the night track.",
+    "$extensions": {
+      "com.lostgradient.cinder": {
+        "cssProperty": "--cinder-theme-switch-night-icon-hover",
+        "public": true,
+        "category": "color",
+        "component": "theme-switch",
+        "cssRecipe": "oklch(97% 0.01 265)"
+      }
+    },
+    "$type": "color"
+  },
+  "theme-switch.night.icon-selected": {
+    "$value": { "colorSpace": "oklch", "components": [0.97, 0.01, 265] },
+    "$description": "The selected icon on the night track, over the thumb.",
+    "$extensions": {
+      "com.lostgradient.cinder": {
+        "cssProperty": "--cinder-theme-switch-night-icon-selected",
+        "public": true,
+        "category": "color",
+        "component": "theme-switch",
+        "cssRecipe": "oklch(97% 0.01 265)"
+      }
+    },
+    "$type": "color"
+  },
+  "theme-switch.night.thumb": {
+    "$value": { "colorSpace": "oklch", "components": [0.42, 0.06, 265] },
+    "$description": "The thumb behind the selected icon on the night track.",
+    "$extensions": {
+      "com.lostgradient.cinder": {
+        "cssProperty": "--cinder-theme-switch-night-thumb",
+        "public": true,
+        "category": "color",
+        "component": "theme-switch",
+        "cssRecipe": "oklch(42% 0.06 265)"
+      }
+    },
+    "$type": "color"
+  },
+  "theme-switch.thumb-shadow-color": {
+    "$value": { "colorSpace": "oklch", "components": [0, 0, 0], "alpha": 0.25 },
+    "$description": "The color of the thumb's small drop shadow, in every track and theme.",
+    "$extensions": {
+      "com.lostgradient.cinder": {
+        "cssProperty": "--cinder-theme-switch-thumb-shadow-color",
+        "public": true,
+        "category": "color",
+        "component": "theme-switch",
+        "cssRecipe": "oklch(0% 0 0 / 0.25)"
+      }
+    },
+    "$type": "color"
   },
   "tree.drop-line-color": {
     "$type": "color",

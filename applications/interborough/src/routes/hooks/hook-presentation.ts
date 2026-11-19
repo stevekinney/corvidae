@@ -23,6 +23,7 @@ import { isNetworkFailure } from '../../lib/faults.ts';
 import { scheduleDetailPath, workflowDetailPath } from '../../lib/router.svelte.ts';
 import type { StatusWord } from '../../lib/status.ts';
 import { activityTime } from '../health/health-times.ts';
+import { humanizeName } from '../settings/plugins/plugin-presentation.ts';
 import { HOOKS_COPY } from './hook-copy.ts';
 
 const COPY = HOOKS_COPY.editor;
@@ -73,12 +74,15 @@ export function eventWords(kind: string): string {
   return sentence === '' ? kind : `${sentence.charAt(0).toUpperCase()}${sentence.slice(1)}`;
 }
 
-/** One event the picker offers: the clause that names it, its raw kind small beside it, and its area. */
+/**
+ * One event the picker offers: the clause that names it, its area, and its raw kind only when
+ * another event reads the same (R10-23: an event kind is not a visible word where its words name it).
+ */
 export type EventChoice = {
   readonly value: string;
   readonly label: string;
-  /** The raw kind, drawn small and monospaced beside the label. */
-  readonly code: string;
+  /** The raw kind, drawn small and monospaced beside the label, present only when the label is shared. */
+  readonly code?: string;
   /** Why the action cannot listen to this event, or empty when it can. */
   readonly description: string;
   readonly group: string;
@@ -102,13 +106,14 @@ export function eventChoices(
   kinds: readonly HookEventKind[],
   action: HookActionType | 'plugin',
 ): EventChoice[] {
+  const ambiguous = kindsReadingAlike(kinds.map((event) => event.kind));
   return kinds
     .map((event) => {
       const refusal = eventRefusal(action, event);
       return {
         value: event.kind,
         label: eventOptionLabel(event.kind),
-        code: event.kind,
+        ...(ambiguous.has(event.kind) ? { code: event.kind } : {}),
         description: refusal ?? '',
         group: eventArea(event.kind),
         disabled: refusal !== undefined,
@@ -166,7 +171,8 @@ export function actionPhrase(action: Hook['action'] | DraftAction): string {
     case 'notify':
       return words.notify;
     case 'plugin':
-      return words.plugin(action.plugin, action.kind);
+      // The plugin and its action in words, never as identifiers (COR-2181, row R10-23).
+      return words.plugin(humanizeName(action.plugin), humanizeName(action.kind));
   }
 }
 
@@ -318,6 +324,23 @@ export function eventOptionLabel(kind: string): string {
   return `${clause.charAt(0).toUpperCase()}${clause.slice(1)}`;
 }
 
+/**
+ * The kinds among `kinds` whose words another kind in the list shares, so only these show their raw
+ * kind beside the words (R10-23): `trigger.started` and `trigger-started` both read "Trigger started".
+ */
+export function kindsReadingAlike(kinds: readonly string[]): ReadonlySet<string> {
+  const byLabel = new Map<string, Set<string>>();
+  for (const kind of kinds) {
+    const label = eventOptionLabel(kind);
+    const alike = byLabel.get(label) ?? new Set<string>();
+    alike.add(kind);
+    byLabel.set(label, alike);
+  }
+  return new Set(
+    [...byLabel.values()].filter((alike) => alike.size > 1).flatMap((alike) => [...alike]),
+  );
+}
+
 /** The events of a hook as a clause: one, two joined by `or`, or the first and how many more. */
 export function eventClauses(events: readonly string[]): string {
   const clauses = events.map(eventClause);
@@ -361,7 +384,7 @@ function rowActionPhrase(action: Hook['action'], fullAddress: boolean): string {
     case 'notify':
       return HOOKS_COPY.sentence.notify;
     case 'plugin':
-      return HOOKS_COPY.sentence.plugin(action.plugin, action.kind);
+      return HOOKS_COPY.sentence.plugin(humanizeName(action.plugin), humanizeName(action.kind));
   }
 }
 

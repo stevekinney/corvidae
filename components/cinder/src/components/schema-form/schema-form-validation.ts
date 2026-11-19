@@ -42,7 +42,92 @@ export async function validateSchemaValue(
     return validationFailure(value, 'SchemaForm only accepts JSON Schema objects.');
   }
 
-  return validateJsonSchemaValue(schema, value);
+  return validateJsonSchemaValue(withSecretReferences(schema), value);
+}
+
+/** The keywords whose values are data, not schemas, so a `secret: true` inside one is no marker. */
+const VALUE_KEYWORDS: ReadonlySet<string> = new Set(['default', 'examples', 'const', 'enum']);
+
+/** The keywords whose value maps a name to a schema, so a name there is a field, never a keyword. */
+const SCHEMA_MAPS: ReadonlySet<string> = new Set([
+  'properties',
+  'patternProperties',
+  '$defs',
+  'definitions',
+  'dependentSchemas',
+]);
+
+/** What a secret field holds in place of a string: a reference to a saved secret, and nothing else. */
+const SECRET_REFERENCE_SCHEMA = {
+  type: 'object',
+  properties: { $secret: { type: 'string', minLength: 1 } },
+  required: ['$secret'],
+  additionalProperties: false,
+} as const;
+
+const referenceSchemas = new WeakMap<JsonSchemaObject, JsonSchemaObject>();
+
+/**
+ * `schema` with each string marked `secret: true` replaced by the reference it holds,
+ * `{ "$secret": key }` (the form never holds the text of a secret). The same schema object answers
+ * the same result, so the validator cache keeps working.
+ */
+export function withSecretReferences(schema: JsonSchemaObject): JsonSchemaObject {
+  const known = referenceSchemas.get(schema);
+  if (known !== undefined) return known;
+  const rewritten = rewriteSecrets(schema, 0);
+  const result = isRecord(rewritten) ? rewritten : schema;
+  referenceSchemas.set(schema, result);
+  return result;
+}
+
+function rewriteSecrets(node: unknown, depth: number): unknown {
+  if (depth > 64) return node;
+  if (Array.isArray(node)) {
+    const items = node.map((entry) => rewriteSecrets(entry, depth + 1));
+    return items.some((entry, index) => entry !== node[index]) ? items : node;
+  }
+  if (!isRecord(node)) return node;
+  if (node['secret'] === true && node['type'] === 'string') {
+    // What bounds a string's text does not bound a reference.
+    const {
+      secret: _marker,
+      type: _type,
+      minLength: _minimum,
+      maxLength: _maximum,
+      pattern: _pattern,
+      format: _format,
+      ...rest
+    } = node;
+    return { ...rest, ...SECRET_REFERENCE_SCHEMA };
+  }
+  let changed = false;
+  const next: Record<string, unknown> = {};
+  for (const [member, child] of Object.entries(node)) {
+    // A schema map is read by its values first: a property named `default` or `enum` is a field,
+    // not the keyword, so its secret is rewritten like any other.
+    const rewritten = SCHEMA_MAPS.has(member)
+      ? rewriteSchemaMap(child, depth + 1)
+      : VALUE_KEYWORDS.has(member)
+        ? child
+        : rewriteSecrets(child, depth + 1);
+    if (rewritten !== child) changed = true;
+    next[member] = rewritten;
+  }
+  return changed ? next : node;
+}
+
+/** A map of names to schemas (`properties` and the like) with each schema's secrets rewritten. */
+function rewriteSchemaMap(map: unknown, depth: number): unknown {
+  if (!isRecord(map)) return rewriteSecrets(map, depth);
+  let changed = false;
+  const next: Record<string, unknown> = {};
+  for (const [name, schema] of Object.entries(map)) {
+    const rewritten = rewriteSecrets(schema, depth + 1);
+    if (rewritten !== schema) changed = true;
+    next[name] = rewritten;
+  }
+  return changed ? next : map;
 }
 
 async function validateJsonSchemaValue(

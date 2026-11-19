@@ -1,17 +1,4 @@
 <script lang="ts" module>
-  /**
-   * @cinder
-   * @category form
-   * @status stable
-   * @purpose Free-form token entry field that turns committed text into removable tags while keeping native input, form, and accessibility wiring intact.
-   * @tag form
-   * @tag tags
-   * @useWhen Collecting zero or more short free-form values such as labels, emails, or technologies.
-   * @useWhen Letting users review and remove committed values inline before submitting a form.
-   * @avoidWhen Users must choose from a fixed option list — use combobox instead.
-   * @avoidWhen The value is a single free-form string rather than a list — use input instead.
-   * @related combobox, chip, form-field, input
-   */
   export type { TagInputProps } from './tag-input.types.ts';
 </script>
 

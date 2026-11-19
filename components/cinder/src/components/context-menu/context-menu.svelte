@@ -1,17 +1,4 @@
 <script lang="ts" module>
-  /**
-   * @cinder
-   * @category overlay
-   * @status stable
-   * @purpose Right-click and long-press menu positioned at the user's pointer while reusing dropdown menu parts.
-   * @tag overlay
-   * @tag menu
-   * @useWhen Providing contextual actions for a canvas, list row, file, or selected item.
-   * @useWhen Opening a menu from a pointer location instead of a visible dropdown trigger.
-   * @avoidWhen The menu should open from a button — use dropdown.
-   * @avoidWhen Showing arbitrary rich content rather than menu actions — use popover.
-   * @related dropdown, dropdown-menu, dropdown-item
-   */
   export type { ContextMenuProps } from './context-menu.types.ts';
 </script>
 

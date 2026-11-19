@@ -22,6 +22,23 @@ A SegmentedControl is as wide as its options and no wider: it never stretches to
 
 The selected (or pressed) segment is a raised pill with a 1px ring in the control tier (`--cinder-border-control`), so the selection clears 3:1 against the track in both themes; the `segmented-control:selected-indicator:*` contrast pairings hold it there. The control's height is the `--cinder-control-height-*` step for its size, which a coarse pointer raises to the 44px touch target.
 
+## Overflow to a Select
+
+`overflow="select"` keeps every option on screen when the segments are wider than the room the control has, such as four long choices on a phone. The control then draws the same options as a `Select` with the same accessible name, the same value and the same change callback, and returns to the strip when the room is there again. The strip stays in the document, out of sight and out of reach (`aria-hidden`, `inert`), so the control knows how wide the segments are by themselves and the choice never flips back and forth on its own: it measures the strip against the room its parent gives it, and showing the Select changes neither. It applies to a single-choice `radiogroup`; a tab list, a navigation and a multiple selection ignore it, because each is something a Select does not hold. Without the prop (`scroll`, the default) a control that does not fit scrolls sideways, as before.
+
+```svelte
+<script lang="ts">
+  import { Segment, SegmentedControl } from '@lostgradient/cinder';
+</script>
+
+<SegmentedControl id="then" label="Then" value="webhook" overflow="select">
+  <Segment value="webhook">Send a webhook</Segment>
+  <Segment value="workflow">Start a workflow</Segment>
+  <Segment value="notify">Notify me</Segment>
+  <Segment value="plugin">Run an action from a plugin</Segment>
+</SegmentedControl>
+```
+
 ## Counts
 
 A `Segment` takes a `count`, drawn after its label in a muted, tabular figure ("Waiting on you 2"). The count is part of the segment's accessible name ("Waiting on you, 2"), and zero still shows ("Running 0"). Only `undefined` hides it.
@@ -56,6 +73,7 @@ A `Segment` takes a `count`, drawn after its label in a muted, tabular figure ("
 | `name` | `string` | no | — | Native form field name. Renders hidden input(s) carrying the selected value(s). |
 | `note` | `string` | no | — | Neutral explanation under the helper text, wired into `aria-describedby`. Not an error and not a warning. |
 | `orientation` | `"horizontal"` \| `"vertical"` | no | — | Layout orientation. |
+| `overflow` | `"scroll"` \| `"select"` | no | `"scroll"` | What the control does when its segments are wider than the room it has (COR-2181). `scroll` (the default) keeps the strip and lets it scroll sideways, as it always has. `select` draws the same options as a Select with the same accessible name, so every option stays on screen on a phone; the segments stay in the document, hidden, so the control knows how much room they need and returns to the strip when the room is there. It applies to a single-choice `radiogroup` only. |
 | `selectionMode` | `"single"` \| `"multiple"` | no | — | Selection mode. `"single"` allows exactly one segment to be selected at a time; `"multiple"` allows any number of segments to be selected simultaneously. Default `"single"`. |
 | `selectionRequired` | `boolean` | no | `true` | When true, clicking the already-selected option is a no-op. When false, clicking the selected option clears value to undefined. |
 | `size` | `"sm"` \| `"md"` \| `"lg"` | no | — | Requested visual size of the control. Defaults to `"md"`. The control's outer height is the shared `--cinder-control-height-*` step for the size (`sm` 28px, `md` 32px, `lg` 40px), the same as a Button or Input of that size. The resolved size is reflected as `data-cinder-size` on the root; when `density="toolbar"` is set, the resolved size is forced to `"sm"` and any explicit `size` value is ignored. `size="md"` option text uses `--cinder-text-sm`; `size="sm"` and `density="toolbar"` use `--cinder-text-xs`; `size="lg"` uses `--cinder-text-sm`. |

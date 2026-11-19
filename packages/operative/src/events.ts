@@ -1454,13 +1454,25 @@ export class HumanWaitParkedEvent extends Event {
    * of the answer the wait expects.
    */
   readonly inputSchema: HumanInputSchema | undefined;
+  /**
+   * COR-2426 — what the agent wrote beside the call in the step that parked, when it wrote
+   * anything: a review shows it as what the agent said.
+   */
+  readonly said: string | undefined;
 
-  constructor(signalName: string, runId: string, prompt?: string, inputSchema?: HumanInputSchema) {
+  constructor(
+    signalName: string,
+    runId: string,
+    prompt?: string,
+    inputSchema?: HumanInputSchema,
+    said?: string,
+  ) {
     super(HumanWaitParkedEvent.type);
     this.signalName = signalName;
     this.runId = runId;
     this.prompt = prompt;
     this.inputSchema = inputSchema;
+    this.said = said;
   }
 }
 

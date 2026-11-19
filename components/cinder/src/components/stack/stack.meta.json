@@ -1,0 +1,13 @@
+{
+  "$schema": "../../../../../internal/component-tooling/src/schemas/component-meta.schema.json",
+  "category": "layout",
+  "status": "alpha",
+  "purpose": "One-dimensional flex layout primitive for arranging direct children with controlled direction, spacing, alignment, and wrapping.",
+  "tags": ["layout", "stack", "flex"],
+  "useWhen": [
+    "Arranging related controls, form rows, or panel sections along one axis.",
+    "You need lightweight spacing and alignment without two-dimensional grid placement."
+  ],
+  "avoidWhen": [{ "reason": "You need explicit rows and columns — use grid." }],
+  "related": ["grid"]
+}

@@ -165,9 +165,12 @@ export function wireDurableOptInTools(
         // require-await and await-thenable satisfied.
         //
         // COR-1947: it only asks a person, so no permission mode stands in front of it.
+        // COR-2426: the call's context goes with it, so the park keeps what the step said.
         execute: withChatPermissionStanding(
-          async (input: RequestHumanInputInput) =>
-            await Promise.resolve(rawHumanInputTool.execute(input)),
+          async (
+            input: RequestHumanInputInput,
+            toolContext?: Parameters<typeof rawHumanInputTool.execute>[1],
+          ) => await Promise.resolve(rawHumanInputTool.execute(input, toolContext)),
           'outside-the-mode',
         ),
       }),

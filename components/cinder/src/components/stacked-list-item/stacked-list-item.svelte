@@ -1,19 +1,4 @@
 <script lang="ts" module>
-  /**
-   * @cinder
-   * @category data-display
-   * @status stable
-   * @purpose Dense list row with leading, status, title, time, description, meta, and trailing slots; the status-first two-line row has a fixed 128px status column, a two-line title clamp and a whole-row link.
-   * @tag list
-   * @tag row
-   * @tag status
-   * @useWhen Listing entities vertically with consistent leading icons or avatars and trailing actions.
-   * @useWhen Linking each row to a detail view by passing href, which makes the whole row one link.
-   * @useWhen Listing runs, goals, schedules or agents with a status word, bold title and time on line one and muted meta on line two.
-   * @avoidWhen Comparing tabular data across columns — use table instead.
-   * @avoidWhen Rendering cards in a responsive grid — use grid-list instead.
-   * @related grid-list-item, table-row, avatar
-   */
   export type {
     StackedListItemAction,
     StackedListItemDensity,
@@ -54,6 +39,7 @@
     statusColumn,
     statusPlacement = 'leading',
     title,
+    badge,
     titleLines = 2,
     tooltip,
     time,
@@ -130,6 +116,14 @@
       : [tooltip, metaTooltip].filter((part) => part !== undefined && part !== '').join('\n') ||
           undefined,
   );
+  // A time given as text is drawn as its parts, each kept whole: the day with its comma, then the
+  // clock after the last comma ("Yesterday," and "6:00 PM"; "Mon, Nov 2," and "3:00 AM"). Where
+  // the row lets its time wrap, it breaks only there.
+  const timeParts = $derived.by(() => {
+    if (typeof time !== 'string') return undefined;
+    const comma = time.lastIndexOf(', ');
+    return comma < 0 ? [time] : [time.slice(0, comma + 1), time.slice(comma + 2)];
+  });
   const lineTooltip = $derived(linkHref === undefined ? tooltip : undefined);
   const lineMetaTooltip = $derived(linkHref === undefined ? metaTooltip : undefined);
   // The phone form is the row's own width below 640px, not the viewport's (COR-2448), so a row in
@@ -213,6 +207,18 @@
 </script>
 
 {#snippet titleRegion()}
+  {#if badge}
+    <!-- The mark sits after the title, outside its clamp: the title gives way, the mark is never cut. -->
+    <div class="cinder-stacked-list-item__title-row">
+      {@render titleText()}
+      <span class="cinder-stacked-list-item__badge">{@render badge()}</span>
+    </div>
+  {:else}
+    {@render titleText()}
+  {/if}
+{/snippet}
+
+{#snippet titleText()}
   <div
     class="cinder-stacked-list-item__title"
     data-cinder-title-lines={titleLines}
@@ -336,7 +342,11 @@
         {#if isLines}
           {#if time || details}
             <div class="cinder-stacked-list-item__time">
-              {#if time}{@render time()}{/if}
+              {#if timeParts !== undefined}<span class="cinder-stacked-list-item__time-text"
+                  >{#each timeParts as part, index (index)}{#if index > 0}{' '}{/if}<span
+                      class="cinder-stacked-list-item__time-part">{part}</span
+                    >{/each}</span
+                >{:else if typeof time === 'function'}{@render time()}{/if}
               {#if details}
                 <button
                   type="button"

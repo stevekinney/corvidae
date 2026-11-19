@@ -1,15 +1,4 @@
 <script lang="ts" module>
-  /**
-   * @cinder
-   * @category data-display
-   * @status beta
-   * @purpose Inline citation marker opening one list of source references.
-   * @tag citation
-   * @useWhen Attaching sources to an inline claim or generated answer.
-   * @avoidWhen Building a full bibliography page.
-   * @related popover
-   * @rationale Nearest alternative: Popover — Citation adds the source list, its URL policy and an inline marker.
-   */
   export type { CitationLabels, CitationProps, CitationSource } from './citation.types.ts';
 </script>
 

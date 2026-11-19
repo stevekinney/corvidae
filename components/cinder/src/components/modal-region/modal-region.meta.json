@@ -1,0 +1,13 @@
+{
+  "$schema": "../../../../../internal/component-tooling/src/schemas/component-meta.schema.json",
+  "category": "overlay",
+  "status": "beta",
+  "purpose": "Context-scoped host for imperative Modal registration and promise-returning confirmations.",
+  "tags": [],
+  "useWhen": [
+    "Application code must open deduplicated modals or await a confirmation result imperatively."
+  ],
+  "avoidWhen": [{ "reason": "A single declarative modal is sufficient; use Modal directly." }],
+  "related": ["modal", "confirm-dialog"],
+  "rationale": "Nearest alternative: Modal owns one declarative surface; this owns an imperative modal registry."
+}

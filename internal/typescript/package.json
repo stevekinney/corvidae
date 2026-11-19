@@ -3,7 +3,8 @@
   "private": true,
   "exports": {
     "./library.json": "./library.json",
-    "./browser.json": "./browser.json"
+    "./browser.json": "./browser.json",
+    "./component.json": "./component.json"
   },
   "type": "module"
 }

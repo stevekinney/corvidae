@@ -1,0 +1,14 @@
+{
+  "$schema": "../../../../../internal/component-tooling/src/schemas/component-meta.schema.json",
+  "category": "form",
+  "status": "stable",
+  "purpose": "Button-shaped trigger that opens a dropdown menu, optionally rendering a trailing disclosure caret.",
+  "tags": ["form", "trigger"],
+  "useWhen": [
+    "Opening a dropdown-menu from a button styled to match cinder's form controls.",
+    "Pairing with dropdown to expose a custom menu from a labelled affordance."
+  ],
+  "avoidWhen": [{ "reason": "Triggering a discrete action with no menu — use button instead." }],
+  "related": ["dropdown", "dropdown-menu"],
+  "composeOnly": true
+}

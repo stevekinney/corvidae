@@ -21,7 +21,7 @@ import { readFileSync } from 'node:fs';
 
 import { describe, expect, test } from 'bun:test';
 
-import { checkBuildFlagHydrationSafety } from '../../test/hydration-safety.ts';
+import { checkBuildFlagHydrationSafety } from '@lostgradient/component-tooling/test/hydration-safety.ts';
 
 const shareCardPath = new URL('./share-card.svelte', import.meta.url).pathname;
 // The build-flag check runs Bun.build passes and server renders in child processes, so it runs

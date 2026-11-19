@@ -1,17 +1,4 @@
 <script lang="ts" module>
-  /**
-   * @cinder
-   * @category overlay
-   * @status stable
-   * @purpose Inline caret-anchored slash-command list for textareas and single-line text inputs.
-   * @tag overlay
-   * @tag command
-   * @useWhen Showing a contextual command list at the caret while a user types in a textarea or input.
-   * @useWhen Building slash-command insertion flows where the host owns text replacement.
-   * @avoidWhen Exposing a global app launcher — use command-palette instead.
-   * @avoidWhen Selecting from a static form option list — use combobox instead.
-   * @related command-palette, command-item, popover, combobox
-   */
   export type {
     CommandMenuCompletion,
     CommandMenuProps,

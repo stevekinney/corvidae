@@ -28,6 +28,7 @@ import {
   OWNER,
   rpc,
 } from './management-fixtures.test-support.ts';
+import { REVIEW_ALREADY_RESOLVED } from '../bureau-reviews-operations.ts';
 import { respondToTask } from './tasks-respond-operation.ts';
 import {
   TASKS_RESPOND_LEDGER_KEY_PREFIX,
@@ -195,7 +196,93 @@ describe('bureau.tasks.respond answering a human wait', () => {
       );
 
       expect(wrong.error?.data?.httpStatus).toBe(409);
+      // A question the run never asked was never answered either: the plain conflict (COR-2426).
+      expect(String(wrong.error?.data?.['reason'])).not.toStartWith(REVIEW_ALREADY_RESOLVED);
       expect(right.result).toMatchObject({ receipt: 'applied', kind: 'human-wait' });
+      // Once answered, the same question is refused as already resolved, and one never asked
+      // still is not.
+      const again = await rpc(
+        opened.handler,
+        'bureau.tasks.respond',
+        { taskId: run.id, messageId: 'm3', answer: 'y', signalName: 'ask-name' },
+        'alice-key',
+      );
+      const never = await rpc(
+        opened.handler,
+        'bureau.tasks.respond',
+        { taskId: run.id, messageId: 'm4', answer: 'y', signalName: 'never-asked' },
+        'alice-key',
+      );
+      expect(String(again.error?.data?.['reason'])).toStartWith(`${REVIEW_ALREADY_RESOLVED}: `);
+      expect(never.error?.data?.httpStatus).toBe(409);
+      expect(String(never.error?.data?.['reason'])).not.toStartWith(REVIEW_ALREADY_RESOLVED);
+    });
+  });
+
+  it('refuses a second answer to a question already answered as the conflict an approval gets, already resolved (COR-2426)', async () => {
+    await withBureau({ generate: parksThenAnswers('ask-name') }, async (opened) => {
+      const run = await parkedRun(opened);
+      const first = await rpc(
+        opened.handler,
+        'bureau.tasks.respond',
+        { taskId: run.id, messageId: 'm1', answer: 'Ada', signalName: 'ask-name' },
+        'alice-key',
+      );
+      expect(first.result).toMatchObject({ receipt: 'applied', kind: 'human-wait' });
+      await waitForCondition(
+        () => !opened.bureau.reviews.list().some((review) => review.runId === run.id),
+        'the question to close',
+      );
+
+      const again = await rpc(
+        opened.handler,
+        'bureau.tasks.respond',
+        { taskId: run.id, messageId: 'm2', answer: 'Grace', signalName: 'ask-name' },
+        'alice-key',
+      );
+      const unnamed = await rpc(
+        opened.handler,
+        'bureau.tasks.respond',
+        { taskId: run.id, messageId: 'm3', answer: 'Grace' },
+        'alice-key',
+      );
+
+      expect(again.error?.data?.httpStatus).toBe(409);
+      expect(String(again.error?.data?.['reason'])).toStartWith(`${REVIEW_ALREADY_RESOLVED}: `);
+      // A command that names no wait was never sent to one, so it keeps the plain conflict.
+      expect(unnamed.error?.data?.httpStatus).toBe(409);
+      expect(String(unnamed.error?.data?.['reason'])).not.toStartWith(REVIEW_ALREADY_RESOLVED);
+    });
+  });
+
+  it('lists a question with what the agent said beside it in the step that asked (COR-2426)', async () => {
+    let calls = 0;
+    const generate: GenerateFunction = async () => {
+      calls += 1;
+      return calls === 1
+        ? {
+            content: '  I found two release branches and need your pick before I tag one.  ',
+            toolCalls: [
+              {
+                id: 'wait-1',
+                name: 'requestHumanInput',
+                arguments: { signalName: 'pick-branch', prompt: 'Which branch?' },
+              },
+            ],
+          }
+        : { content: 'tagged', toolCalls: [] };
+    };
+    await withBureau({ generate }, async (opened) => {
+      const run = await parkedRun(opened);
+
+      const listed = await rpc(opened.handler, 'bureau.reviews.list', {}, 'alice-key');
+
+      const reviews = (listed.result?.['reviews'] ?? []) as Record<string, unknown>[];
+      expect(reviews.find((review) => review['runId'] === run.id)).toMatchObject({
+        kind: 'human-wait',
+        prompt: 'Which branch?',
+        said: 'I found two release branches and need your pick before I tag one.',
+      });
     });
   });
 

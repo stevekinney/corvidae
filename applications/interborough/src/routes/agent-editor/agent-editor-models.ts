@@ -237,6 +237,17 @@ export type ModelAbilities = {
   readonly has: readonly ('tools' | 'images' | 'structuredOutput' | 'streaming')[];
 };
 
+/**
+ * A model's abilities said as one line of text: the first part as written, every later part in
+ * lower case after its first letter, as a sentence reads ("Tools, images, structured output, 1M
+ * context window"). The parts are the same words the chips use one by one, capitalized there.
+ */
+export function abilitiesSentence(parts: readonly string[]): string {
+  return parts
+    .map((part, index) => (index === 0 ? part : part.charAt(0).toLowerCase() + part.slice(1)))
+    .join(', ');
+}
+
 /** The abilities the catalog declares for `row`. */
 export function abilitiesOf(row: CatalogModel): ModelAbilities {
   return {

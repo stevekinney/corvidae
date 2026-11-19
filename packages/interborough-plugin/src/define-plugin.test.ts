@@ -96,6 +96,38 @@ describe('definePlugin', () => {
     expect(() => definePlugin({ ...valid, description: '' })).toThrow(/description/);
   });
 
+  test('returns a descriptor with hooks as it was given (COR-2180)', () => {
+    const descriptor = {
+      ...valid,
+      hooks: [
+        {
+          name: 'Post settled runs',
+          events: ['run.settled'],
+          reaction: 'post-message',
+          configuration: { channel: 'ops' },
+          scope: { kind: 'agent' as const, id: 'writer' },
+        },
+        { name: 'Post started runs', events: ['run.started'], reaction: 'post-message' },
+      ],
+      setup: () => ({
+        reactions: [
+          {
+            name: 'post-message',
+            description: 'Posts the event.',
+            configuration: z.object({ channel: z.string() }),
+            run: async () => undefined,
+          },
+        ],
+      }),
+    };
+    const plugin = definePlugin(descriptor);
+    expect(plugin).toBe(descriptor);
+    expect(plugin.hooks?.map(({ name }) => name)).toEqual([
+      'Post settled runs',
+      'Post started runs',
+    ]);
+  });
+
   test('refuses an empty or repeated secret key', () => {
     expect(() => definePlugin({ ...valid, secrets: [''] })).toThrow(/empty key/);
     expect(() => definePlugin({ ...valid, secrets: ['k', { key: 'k' }] })).toThrow(/twice/);

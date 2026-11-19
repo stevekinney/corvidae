@@ -1,0 +1,18 @@
+{
+  "$schema": "../../../../../internal/component-tooling/src/schemas/component-meta.schema.json",
+  "category": "form",
+  "status": "stable",
+  "purpose": "Text input that validates and normalizes hex, rgb(), hsl(), hwb(), and oklch() color strings into a canonical value (hex by default, or another CSS Color 4 format via `format`) emitted on blur.",
+  "tags": ["form", "color"],
+  "useWhen": [
+    "Accepting an exact color value via keyboard entry, including pasted hex, rgb(), or hsl() strings.",
+    "Pairing with color-picker for combined visual selection and text-based entry."
+  ],
+  "avoidWhen": [
+    { "reason": "Letting users graze visually across a color space — use color-picker instead." },
+    {
+      "reason": "Constraining selection to a fixed brand palette — use color-swatch-picker instead."
+    }
+  ],
+  "related": ["color-picker", "color-swatch-picker", "input", "form-field"]
+}

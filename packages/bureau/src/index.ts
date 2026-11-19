@@ -997,6 +997,7 @@ export {
   createBureauHandler,
   A2A_AGENT_NAME_PATTERN,
 } from './http/create-bureau-handler';
+export { createBureauCatalogSnapshot } from './http/bureau-catalog-snapshot';
 export { BUREAU_SCOPES, type BureauScope } from './http/bureau-scopes';
 export { HOST_PANEL_OPERATIONS } from './http/host-panel-operations';
 export { startIdleTurn } from './http/ag-ui-thread-admission';

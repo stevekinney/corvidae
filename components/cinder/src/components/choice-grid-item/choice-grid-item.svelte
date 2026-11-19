@@ -1,16 +1,4 @@
 <script lang="ts" module>
-  /**
-   * @cinder
-   * @category form
-   * @status alpha
-   * @purpose Selectable answer tile used inside a ChoiceGrid; carries selected, disabled, correct, incorrect, and pending states without shifting cell dimensions.
-   * @tag form
-   * @tag selection
-   * @tag quiz
-   * @useWhen Composing individual answer choices inside a ChoiceGrid parent.
-   * @avoidWhen Used outside a ChoiceGrid — this leaf requires the parent context.
-   * @related choice-grid
-   */
   export type { ChoiceGridItemProps, ChoiceGridItemState } from './choice-grid-item.types.ts';
 </script>
 

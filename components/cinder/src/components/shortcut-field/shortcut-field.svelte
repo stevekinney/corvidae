@@ -1,15 +1,4 @@
 <script lang="ts" module>
-  /**
-   * @cinder
-   * @category form
-   * @status beta
-   * @purpose Keyboard shortcut recorder that captures normalized modifier combinations and announces validation results.
-   * @tag form
-   * @tag keyboard
-   * @useWhen Letting a user assign or replace an application keyboard shortcut.
-   * @avoidWhen Displaying a shortcut without editing it—use kbd or shortcut-hint.
-   * @related kbd, shortcut-hint
-   */
   export type { ShortcutFieldProps } from './shortcut-field.types.ts';
 </script>
 

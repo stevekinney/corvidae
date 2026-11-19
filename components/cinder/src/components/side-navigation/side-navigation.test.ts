@@ -2,13 +2,14 @@
 import { describe, expect, test } from 'bun:test';
 import { createRawSnippet } from 'svelte';
 
+import { readComponentVariables } from '@lostgradient/component-tooling/scripts/lib/metadata-files.ts';
 import { setupHappyDom } from '@lostgradient/testing';
 
 setupHappyDom();
 
 const { render } = await import('@testing-library/svelte');
 const { default: SideNavigation } = await import('./side-navigation.svelte');
-const { default: sideNavigationVariables } = await import('./side-navigation.variables.ts');
+const sideNavigationVariables = readComponentVariables('side-navigation');
 
 function emptySnippet() {
   return createRawSnippet(() => ({
@@ -184,6 +185,17 @@ describe('SideNavigation brand and primaryAction slots (COR-2315)', () => {
     // A key cap would draw a border and a fill around the glyph.
     expect(shortcut).toContain('background: none;');
     expect(shortcut).toContain('border: none;');
+  });
+
+  test('on a touch screen the primary action stays 2rem and reaches 44px through a hit area (COR-2445)', async () => {
+    const css = await Bun.file(new URL('./side-navigation.css', import.meta.url)).text();
+    const coarse = css.match(/@media \(pointer: coarse\)\s*\{[\s\S]*?\n {2}\}\n/)?.[0] ?? '';
+    expect(coarse).toContain('min-block-size: 2rem;');
+    expect(coarse).toMatch(/::after\s*\{[^}]*position:\s*absolute;/);
+    expect(coarse).toContain('var(--cinder-touch-target-min)');
+    const hint = css.match(/@media \(hover: none\)\s*\{[\s\S]*?\n {2}\}\n/)?.[0] ?? '';
+    expect(hint).toContain('[data-cinder-shortcut]');
+    expect(hint).toContain('display: none;');
   });
 
   test('the slots never reach the nav as attributes', () => {

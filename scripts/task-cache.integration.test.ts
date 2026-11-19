@@ -644,6 +644,61 @@ test('the playground build uses the generic build definition', async () => {
   expect(playgroundManifest.scripts.build).toStartWith('NODE_ENV=production ');
 });
 
+test('a test task whose files read generated .metadata waits for a metadata task that writes it', async () => {
+  // A component library's `metadata` task writes its ignored `.metadata/` directory. A test that
+  // reads it in a fresh checkout fails with ENOENT unless its task waits for that `metadata` task:
+  // its own, a dependency's through `^metadata`, or a named `<library>#metadata` for a workspace
+  // that cannot depend on the library (the component tooling, which Cinder itself depends on).
+  const configuration = await Bun.file(join(root, 'turbo.json')).json();
+  const tasks: Record<string, { dependsOn?: string[] }> = configuration.tasks;
+  const { listTree } = await import('./affected-tests.ts');
+  const files = [...listTree(root).paths].filter((file) => /\.test(?:-support)?\.ts$/.test(file));
+  const readers = files.filter((file) =>
+    /\.metadata\/|metadata-files|readMetadata|metadataDirectory/.test(
+      readFileSync(join(root, file), 'utf8'),
+    ),
+  );
+  const manifestOf = (directory: string) =>
+    JSON.parse(readFileSync(join(root, directory, 'package.json'), 'utf8')) as {
+      name: string;
+      scripts?: Record<string, string>;
+      dependencies?: Record<string, string>;
+      devDependencies?: Record<string, string>;
+    };
+  const workspaceOf = (file: string) => file.split('/').slice(0, 2).join('/');
+  const directories = [...new Set(readers.map(workspaceOf))].filter(
+    (directory) => directory.split('/').length === 2 && !directory.startsWith('scripts/'),
+  );
+  const libraries = new Set(
+    ['components/cinder', 'components/chat', 'components/editor', 'components/terminal']
+      .map(manifestOf)
+      .filter((manifest) => manifest.scripts?.['metadata'] !== undefined)
+      .map((manifest) => manifest.name),
+  );
+  expect(libraries.size).toBeGreaterThan(0);
+  const missing: string[] = [];
+  for (const directory of directories) {
+    const manifest = manifestOf(directory);
+    const dependsOnLibrary = Object.keys({
+      ...manifest.dependencies,
+      ...manifest.devDependencies,
+    }).some((name) => libraries.has(name));
+    for (const name of ['test', 'test:slow']) {
+      if (manifest.scripts?.[name] === undefined) continue;
+      const dependsOn = (tasks[`${manifest.name}#${name}`] ?? tasks[name])?.dependsOn ?? [];
+      const waits = dependsOn.some(
+        (entry) =>
+          (entry === 'metadata' && manifest.scripts?.['metadata'] !== undefined) ||
+          (entry === '^metadata' && dependsOnLibrary) ||
+          libraries.has(entry.replace(/#metadata$/, '')),
+      );
+      if (!waits) missing.push(`${manifest.name}#${name}`);
+    }
+  }
+  expect(directories).toContain('internal/component-tooling');
+  expect(missing.toSorted()).toEqual([]);
+});
+
 test('the bureau tests hash the runtime contracts guide they compare a fixture with', async () => {
   const configuration = await Bun.file(join(root, 'turbo.json')).json();
   const task = configuration.tasks['@lostgradient/bureau#test'];
@@ -882,6 +937,10 @@ test('a package task keys on every root script it runs and every root script tho
   // deleted here and a new one cannot be added without review.
   const knownOverDeclarations = [
     '@lostgradient/ventriloquist#typecheck declares scripts/typecheck-contracts.ts, which no script it runs reaches',
+    // Interborough's `test` runs the tests of `run-gated-browser-suite.ts` and the design-review
+    // scripts, which import it (COR-2398); this scan does not follow test files. It shows here only
+    // since the package `test:browser` tasks (COR-2080) reach the script directly.
+    'test declares scripts/host-slots.ts, which no script it runs reaches',
     'test:slow declares scripts/bun-test.ts, which no script it runs reaches',
   ];
   expect(unreachable.toSorted()).toEqual(knownOverDeclarations);

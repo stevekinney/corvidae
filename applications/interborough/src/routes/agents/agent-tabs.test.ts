@@ -546,6 +546,109 @@ describe('the Settings tab', () => {
     ).toEqual({ id: 'researcher', revision: 1, expectedHash: 'hash-1' });
   });
 
+  test('shows what each version changed in the Bureau’s words, and the restore question names them (rows 38x, 38z, COR-2429)', async () => {
+    landAt('/agents/researcher/settings');
+    const versions = [
+      {
+        ...version(4, 'identity-4', ['instructions', 'tools']),
+        summary: 'Instructions: added “Refunds over $25 need approval.”; Tools: added issue-refund',
+      },
+      { ...version(3, 'identity-3', ['description']), summary: 'Description: changed' },
+      { ...version(2, 'identity-2', ['instructions']), summary: 'Instructions: rewrote' },
+      { ...version(1, 'identity-1', ALL_KEYS), summary: 'Created' },
+    ];
+    // The tools of version 4 hold the one it added, so the page names it in its own words.
+    const v3 = versions[1]?.definition;
+    if (v3 === undefined) throw new Error('expected a definition');
+    versions[0] = {
+      ...(versions[0] as (typeof versions)[number]),
+      definition: { ...v3, tools: [...v3.tools, 'issue-refund'] },
+    };
+    serve({ 'bureau.agents.versions.list': () => ({ versions }) }, withSettings());
+    const { findByRole, findByTestId } = mount();
+
+    const list = await findByTestId('agent-versions');
+    await waitFor(() =>
+      expect(list.textContent).toContain(
+        'Instructions: added “Refunds over $25 need approval.”; Tools: added Issue refund',
+      ),
+    );
+    expect(list.textContent).toContain('Instructions: rewrote');
+    expect(list.textContent).toContain('Created');
+
+    await fireEvent.click(await findByRole('button', { name: 'Restore Version 3' }));
+    const dialog = await findByRole('dialog', { name: 'Restore Version 3?' });
+    expect(dialog.textContent).toContain(
+      // One colon each, and no period doubled after the quoted line (design review 2).
+      'Restoring Version 3 removes Version 4’s changes (Instructions: added “Refunds over $25 need approval.”; Tools: added Issue refund). This makes Version 5',
+    );
+  });
+
+  test('restores a built-in agent’s version over the hash of its overrides (row 38z, COR-2429)', async () => {
+    landAt('/agents/assistant/settings');
+    const overrideVersion = (revision: number, instructions: string) => ({
+      revision,
+      hash: `overrides-${String(revision)}`,
+      savedAt: '2026-10-19T09:00:00.000Z',
+      savedBy: 'anonymous:local',
+      owner: 'anonymous:local',
+      definition: null,
+      overrides: { instructions },
+      referenceDigests: null,
+      changedKeys: ['instructions'],
+      summary: `Instructions: added “${instructions}”`,
+    });
+    const served = bureau({
+      'bureau.agents.list': () => ({ agents: [AGENT] }),
+      'bureau.agents.definitions.get': () => ({
+        ...readyAgent({ id: 'assistant' }),
+        source: 'code',
+        hash: null,
+        definition: null,
+        codeDefinition: {
+          name: 'assistant',
+          description: null,
+          model: 'anthropic/sonnet',
+          models: [],
+          tools: [],
+          skills: [],
+          card: [],
+          instructions: 'Ask before refunds.',
+        },
+      }),
+      // The hash of the overrides in force, which a restore names: never a version's own hash.
+      'bureau.agents.overrides.get': () => ({
+        id: 'assistant',
+        hash: 'hash-in-force',
+        version: 2,
+        overrides: { instructions: 'Ask before refunds.' },
+        ownTools: [],
+      }),
+      'bureau.agents.versions.list': () => ({
+        versions: [
+          overrideVersion(2, 'Ask before refunds.'),
+          overrideVersion(1, 'Answer briefly.'),
+        ],
+      }),
+      'bureau.agents.versions.restore': () => ({ id: 'assistant', hash: 'hash-3', revision: 3 }),
+      'bureau.agents.catalog': () => ({ models: [], tools: [] }),
+      'bureau.contexts.list': () => ({ contexts: [], nextOffset: null }),
+      'bureau.memory.list': () => ({ memories: [], nextOffset: null }),
+    });
+    restore = served.restore;
+    const { findByRole } = mount();
+
+    await fireEvent.click(await findByRole('button', { name: 'Restore Version 1' }));
+    const dialog = await findByRole('dialog', { name: 'Restore Version 1?' });
+    await fireEvent.click(within(dialog).getByRole('button', { name: 'Restore Version 1' }));
+
+    await waitFor(() =>
+      expect(
+        served.calls.find((call) => call.method === 'bureau.agents.versions.restore')?.params,
+      ).toEqual({ id: 'assistant', revision: 1, expectedHash: 'hash-in-force' }),
+    );
+  });
+
   test('says why a restore was refused', async () => {
     landAt('/agents/researcher/settings');
     serve(

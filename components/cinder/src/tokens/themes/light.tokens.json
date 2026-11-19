@@ -78,6 +78,19 @@
         "colorSpace": "oklch",
         "components": [0.976, 0.004, 265]
       }
+    },
+    "translucent": {
+      "$type": "color",
+      "$value": {
+        "colorSpace": "oklch",
+        "components": [0.976, 0.004, 265],
+        "alpha": 0.9
+      },
+      "$extensions": {
+        "com.lostgradient.cinder": {
+          "cssRecipe": "color-mix(in oklch, var(--cinder-surface-canvas) 90%, transparent)"
+        }
+      }
     }
   },
   "polarity": {
@@ -714,11 +727,36 @@
     },
     "ramp": {
       "$type": "color",
-      "low": { "$value": { "colorSpace": "oklch", "components": [0.965, 0.016, 265] } },
-      "high": { "$value": { "colorSpace": "oklch", "components": [0.48, 0.24, 265] } },
-      "negative": { "$value": { "colorSpace": "oklch", "components": [0.5, 0.22, 265] } },
-      "neutral": { "$value": { "colorSpace": "oklch", "components": [0.975, 0.008, 265] } },
-      "positive": { "$value": { "colorSpace": "oklch", "components": [0.6, 0.18, 40] } }
+      "low": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [0.965, 0.016, 265]
+        }
+      },
+      "high": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [0.48, 0.24, 265]
+        }
+      },
+      "negative": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [0.5, 0.22, 265]
+        }
+      },
+      "neutral": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [0.975, 0.008, 265]
+        }
+      },
+      "positive": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [0.6, 0.18, 40]
+        }
+      }
     }
   },
   "status": {
@@ -1096,6 +1134,16 @@
       "$value": {
         "colorSpace": "oklch",
         "components": [0.45, 0.14, 245]
+      }
+    }
+  },
+  "docked-action-bar": {
+    "shadow-color": {
+      "$type": "color",
+      "$value": {
+        "colorSpace": "oklch",
+        "components": [0, 0, 0],
+        "alpha": 0.08
       }
     }
   },

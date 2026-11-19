@@ -12,8 +12,9 @@ import { join } from 'node:path';
 import { rejectionOf } from '@lostgradient/testing';
 import { HttpClientError } from '@lostgradient/weft';
 
+import { bureauClient } from '../lib/bureau-api.ts';
 import { UPLOAD_CHUNK_BYTES, uploadAsset } from '../lib/bureau-assets.ts';
-import { callBureau, type Fetcher } from '../lib/bureau-client.ts';
+import { type Fetcher } from '../lib/bureau-client.ts';
 import { startHost, type Host } from './host.ts';
 
 const directories: string[] = [];
@@ -44,8 +45,7 @@ const CHUNK = btoa('x');
 /** The fault an append to `uploadId` raises, or `undefined` when the Bureau took the chunk. */
 async function appendFault(host: Host, uploadId: string): Promise<string | undefined> {
   try {
-    await callBureau(
-      'bureau.assets.uploads.append',
+    await bureauClient['bureau.assets.uploads.append'](
       { uploadId, chunk: CHUNK },
       { fetch: fetcherFor(host) },
     );
@@ -93,17 +93,16 @@ describe('a cancelled upload', () => {
     expect(uploadId).not.toBe('');
     expect(await appendFault(host, uploadId)).toBe('NotFound');
     // The session is already gone, which the Bureau answers as `aborted: false`.
-    const again = await callBureau('bureau.assets.uploads.abort', { uploadId }, { fetch: send });
+    const again = await bureauClient['bureau.assets.uploads.abort']({ uploadId }, { fetch: send });
     expect(again).toEqual({ uploadId, aborted: false });
   });
 
   test('control: an upload that was not aborted is still open and takes a chunk', async () => {
     const host = await start();
-    const created = (await callBureau(
-      'bureau.assets.uploads.create',
+    const created = await bureauClient['bureau.assets.uploads.create'](
       { declaredByteLength: 4 },
       { fetch: fetcherFor(host) },
-    )) as { uploadId: string };
+    );
 
     expect(await appendFault(host, created.uploadId)).toBeUndefined();
   });

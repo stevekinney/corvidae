@@ -138,7 +138,16 @@ describe('the heading of a schedule', () => {
     const toggle = await findByRole('switch', { name: 'Active, Daily summary schedule' });
     expect(toggle.getAttribute('aria-checked')).toBe('true');
     expect(toggle.hasAttribute('data-changes')).toBe(true);
-    await waitFor(() => expect(headerStatus()).toBe('Missed runs, 4'));
+    await waitFor(() => expect(headerStatus()).toBe('Missed runs'));
+    // The count is its own muted piece after the word, with no comma in the visible text.
+    const missed = document.querySelector('.cinder-page-header .cinder-status-dot__qualifier');
+    expect(missed?.textContent).toBe('4');
+    expect(
+      document
+        .querySelector('.cinder-page-header [data-status-word]')
+        ?.textContent?.replace(/\s+/g, ' ')
+        .trim(),
+    ).toBe('Missed runs 4');
     // The sentence: the workflow and the agent are links, and the schedule's own time is in parentheses.
     const sentence = await findByTestId('schedule-status-line');
     expect(sentence.textContent?.replace(/\s+/g, ' ').trim()).toMatch(
@@ -213,7 +222,7 @@ describe('Run now', () => {
 
     const button = await findByRole('button', { name: 'Run now' });
     // Let the agents and their models be read, which is when a provider would hold it.
-    await waitFor(() => expect(headerStatus()).toBe('Missed runs, 4'));
+    await waitFor(() => expect(headerStatus()).toBe('Missed runs'));
     expect(button.hasAttribute('aria-disabled')).toBe(false);
     expect((button as HTMLButtonElement).disabled).toBe(false);
   });

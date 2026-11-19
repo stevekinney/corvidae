@@ -292,7 +292,7 @@ test('aborts the upload on the server when the person cancels an attachment', as
   let held: (() => void) | undefined;
   const secondChunkReached = new Promise<void>((resolve) => (held = resolve));
   let appends = 0;
-  await page.route('**/bureau/jsonrpc', async (route) => {
+  await page.route('**/jsonrpc', async (route) => {
     const body = route.request().postDataJSON() as {
       method: string;
       params?: { uploadId?: string };

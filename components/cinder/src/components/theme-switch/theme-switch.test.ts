@@ -12,6 +12,10 @@ const { render, fireEvent, cleanup, screen } = await import('@testing-library/sv
 const { default: ThemeSwitch } = await import('./theme-switch.svelte');
 
 const themeSwitchCss = readFileSync(new URL('./theme-switch.css', import.meta.url), 'utf8');
+const tokensBaseCss = readFileSync(
+  new URL('../../styles/tokens-base.css', import.meta.url),
+  'utf8',
+);
 
 afterEach(() => {
   cleanup();
@@ -184,23 +188,55 @@ describe('ThemeSwitch — quiet sky and night track', () => {
     ).exec(themeSwitchCss)?.[1];
   }
 
+  /**
+   * The value the shared token stylesheet gives a token, which must be its only declaration: the
+   * sky and night swatches are the same in both page themes, so no theme block overrides them
+   * (COR-2394 moved the literals into the corpus without changing a color).
+   */
+  function tokenValue(token: string): string | undefined {
+    const declarations = [
+      ...tokensBaseCss.matchAll(new RegExp(`^\\s*${token}:\\s*([^;]+);`, 'gm')),
+    ];
+    expect(declarations).toHaveLength(1);
+    return declarations[0]?.[1];
+  }
+
+  /** A position's declaration, resolved through the token it reads. */
+  function painted(value: string, property: string): string | undefined {
+    const reference = /^var\((--cinder-[a-z-]+)\)$/.exec(declaration(value, property) ?? '');
+    expect(reference).not.toBeNull();
+    return tokenValue(reference?.[1] ?? '');
+  }
+
+  test('the swatches are tokens, never literal colors (COR-2394)', () => {
+    expect(themeSwitchCss).not.toMatch(/\boklch\(|\blight-dark\(/);
+  });
+
   test('each position paints the agreed track and border: pale sky, neutral, deep night', () => {
     const track = '--_cinder-theme-switch-track';
     const border = 'border-color';
-    expect(declaration('light', track)).toBe('oklch(93% 0.04 235)');
-    expect(declaration('light', border)).toBe('oklch(84% 0.05 235)');
-    expect(declaration('dark', track)).toBe('oklch(25% 0.05 265)');
-    expect(declaration('dark', border)).toBe('oklch(38% 0.05 265)');
+    expect(painted('light', track)).toBe('oklch(93% 0.04 235)');
+    expect(painted('light', border)).toBe('oklch(84% 0.05 235)');
+    expect(painted('dark', track)).toBe('oklch(25% 0.05 265)');
+    expect(painted('dark', border)).toBe('oklch(38% 0.05 265)');
     expect(declaration('system', track)).toBeUndefined();
     expect(themeSwitchCss).toContain('--_cinder-theme-switch-track: var(--cinder-surface-inset);');
     expect(themeSwitchCss).toContain('border: 1px solid var(--cinder-border);');
   });
 
   test('the raised thumb is white behind Light and a lifted night blue behind Dark', () => {
-    expect(declaration('light', '--_cinder-theme-switch-thumb')).toBe('oklch(100% 0 255)');
-    expect(declaration('dark', '--_cinder-theme-switch-thumb')).toBe('oklch(42% 0.06 265)');
-    expect(declaration('dark', '--_cinder-theme-switch-icon-selected')).toBe('oklch(97% 0.01 265)');
-    expect(declaration('dark', '--_cinder-theme-switch-icon')).toBe('oklch(80% 0.03 265)');
+    expect(painted('light', '--_cinder-theme-switch-thumb')).toBe('oklch(100% 0 255)');
+    expect(painted('light', '--_cinder-theme-switch-icon')).toBe('oklch(32% 0.014 245)');
+    expect(painted('light', '--_cinder-theme-switch-icon-hover')).toBe('oklch(20% 0.018 245)');
+    expect(painted('light', '--_cinder-theme-switch-icon-selected')).toBe('oklch(20% 0.018 245)');
+    expect(painted('dark', '--_cinder-theme-switch-thumb')).toBe('oklch(42% 0.06 265)');
+    expect(painted('dark', '--_cinder-theme-switch-icon-selected')).toBe('oklch(97% 0.01 265)');
+    expect(painted('dark', '--_cinder-theme-switch-icon-hover')).toBe('oklch(97% 0.01 265)');
+    expect(painted('dark', '--_cinder-theme-switch-icon')).toBe('oklch(80% 0.03 265)');
+    expect(themeSwitchCss).toContain(
+      'box-shadow: 0 1px 2px var(--cinder-theme-switch-thumb-shadow-color);',
+    );
+    expect(tokenValue('--cinder-theme-switch-thumb-shadow-color')).toBe('oklch(0% 0 0 / 0.25)');
   });
 
   test('each position is 34px by 26px with a 15px icon, in a 32px track', () => {

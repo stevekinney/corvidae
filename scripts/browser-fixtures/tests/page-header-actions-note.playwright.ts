@@ -6,8 +6,8 @@
  * which adds the two headers without touching the default fixture's baselines.
  */
 
+import { fixtureRoute } from '@lostgradient/testing/playwright/overlay-fixture';
 import { expect, test } from '@playwright/test';
-import { fixtureRoute } from './overlay-fixture.ts';
 
 test('the caption sits under the actions, at the inline end when wide and at the start when narrow', async ({
   page,

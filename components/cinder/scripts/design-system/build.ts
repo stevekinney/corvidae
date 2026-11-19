@@ -159,7 +159,7 @@ async function main(): Promise<number> {
   mkdirSync(componentsDirectory, { recursive: true });
   mkdirSync(previewsDirectory, { recursive: true });
 
-  const manifestSources = readManifestSources();
+  const manifestSources = await readManifestSources();
   const [cinderSource] = manifestSources;
   if (cinderSource === undefined) throw new Error('no Cinder manifest');
   // Cinder's components and the editor's, in that order; each keeps its own folder and module.

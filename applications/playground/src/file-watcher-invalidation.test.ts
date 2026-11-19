@@ -241,7 +241,11 @@ describe('startWatcher and the metadata files that change what every page shows'
       const onPackageRootChange = callbackByPath.get(source.packageRoot);
       expect(onPackageRootChange, `${source.id}'s package root is not watched`).toBeDefined();
       expect(await invalidates(onPackageRootChange!, 'rename', 'package.json')).toBe(true);
-      expect(await invalidates(onPackageRootChange!, 'rename', basename(source.manifestPath))).toBe(
+      // The manifest is the `metadata` task's `.metadata/components.json`, watched through its
+      // own directory.
+      const onManifestChange = callbackByPath.get(dirname(source.manifestPath));
+      expect(onManifestChange, `${source.id}'s manifest directory is not watched`).toBeDefined();
+      expect(await invalidates(onManifestChange!, 'rename', basename(source.manifestPath))).toBe(
         true,
       );
     }

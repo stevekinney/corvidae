@@ -1,18 +1,4 @@
 <script lang="ts" module>
-  /**
-   * @cinder
-   * @category form
-   * @status stable
-   * @purpose Compact segmented selector that surfaces a small fixed set of options as a connected bar, including bindable selections and route-backed links.
-   * @tag form
-   * @tag selection
-   * @useWhen Choosing one of two to five mutually exclusive options that all fit on screen at once.
-   * @useWhen Picking a view filter where seeing every option beats hiding them inside a toggle or tabs control.
-   * @useWhen Rendering route-backed filters as real links with `variant="navigation"` and `Segment href`.
-   * @avoidWhen Toggling a single binary on or off — use toggle or checkbox instead.
-   * @avoidWhen Switching between panels of associated content — use tabs instead.
-   * @related toggle, checkbox, tabs, button-group
-   */
   export type { SegmentedControlProps } from './segmented-control.types.ts';
 </script>
 
@@ -29,6 +15,7 @@
   } from '../../_internal/field-control.ts';
   import FormFieldFrame from '../../_internal/form-field-frame.svelte';
   import { classNames } from '../../utilities/class-names.ts';
+  import Select from '../select/select.svelte';
 
   import {
     SegmentedControlController,
@@ -56,6 +43,7 @@
     variant = 'radiogroup',
     selectionMode = 'single',
     selectionRequired = true,
+    overflow = 'scroll',
     class: customClassName,
     onValueChange,
     children,
@@ -72,11 +60,47 @@
   );
   const rendersNavigation = $derived(effectiveVariant === 'navigation');
 
+  // `overflow="select"` applies to a single-choice radio group: a tab list and a navigation are
+  // places, and a multiple selection is many values, which a Select does not hold. Such a control
+  // shows a Select when its segments do not fit, and never stacks.
+  const overflowsToSelect = $derived(
+    overflow === 'select' && selectionMode === 'single' && effectiveVariant === 'radiogroup',
+  );
+  let containerElement: HTMLDivElement | undefined = $state();
+  let stripElement = $state<HTMLElement | null>(null);
+  /**
+   * Whether the segments are wider than the room the control has, so a Select stands in for them.
+   * It is measured from the strip's own width, which does not change with what is shown (the strip
+   * stays in the document, hidden, while the Select shows), against the room of the container's
+   * parent, so showing the Select cannot make the strip fit again and flip the control back.
+   */
+  let overflowing = $state(false);
+
+  $effect(() => {
+    const container = containerElement;
+    const strip = stripElement;
+    if (!overflowsToSelect || container === undefined || strip === null) {
+      overflowing = false;
+      return;
+    }
+    const parent = container.parentElement;
+    const measure = () => {
+      const available = parent?.clientWidth ?? 0;
+      const natural = strip.offsetWidth;
+      overflowing = available > 0 && natural > available;
+    };
+    measure();
+    if (typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(strip);
+    if (parent) observer.observe(parent);
+    return () => observer.disconnect();
+  });
+
   // A horizontal control whose options do not fit the room it has falls back to a stacked radio
   // list, one option per row, instead of clipping the last one (COR-2448 AC3). While stacked the
   // options' sideways extent cannot be measured, so the width they needed is remembered from the
   // moment they overflowed and compared with the room as it changes.
-  let containerElement: HTMLDivElement | undefined = $state();
   let stacked = $state(false);
   let stackedNeed = 0;
   // What the parent's width exceeded the control's own by when it overflowed.
@@ -89,8 +113,14 @@
     const wasStacked = stacked;
     const container = containerElement;
     // A toolbar is one row and owns its own overflow, so a toolbar-density control never stacks:
-    // three radio rows would make the bar three rows tall.
-    if (container === undefined || orientation !== 'horizontal' || density === 'toolbar') {
+    // three radio rows would make the bar three rows tall. A control that overflows to a Select
+    // shows the Select instead.
+    if (
+      container === undefined ||
+      orientation !== 'horizontal' ||
+      density === 'toolbar' ||
+      overflowsToSelect
+    ) {
       if (wasStacked) stacked = false;
       return;
     }
@@ -173,6 +203,16 @@
 
   setSegmentedControlContext(contextValue);
 
+  // What the Select shows when the segments do not fit: the same options, read from the segments.
+  const selectOptions = $derived(
+    controller.segments.map((segment) => ({
+      value: segment.value,
+      label: segment.node.textContent?.trim() || segment.value,
+      disabled: segment.disabled,
+    })),
+  );
+  const selectedValue = $derived(typeof value === 'string' ? value : undefined);
+
   // See documentation/decisions/segmented-control-tablist-variant.md for why tablist remains a SegmentedControl variant.
   const groupRole = $derived(
     selectionMode === 'multiple'
@@ -247,15 +287,28 @@
 {#snippet body()}
   <div
     class="cinder-segmented-control-container"
+    data-cinder-overflowing={overflowing ? '' : undefined}
     data-cinder-stacked={stacked ? '' : undefined}
     {@attach measureRoom}
   >
-    <span
-      id={`${id}-label`}
-      class={classNames('cinder-segmented-control-label', !labelVisible && 'cinder-sr-only')}
-    >
-      {label}
-    </span>
+    {#if overflowing}
+      <Select
+        id={`${id}-select`}
+        {label}
+        {labelVisible}
+        {disabled}
+        options={selectOptions}
+        {...selectedValue === undefined ? {} : { value: selectedValue }}
+        onValueChange={(next) => controller.toggle(next)}
+      />
+    {:else}
+      <span
+        id={`${id}-label`}
+        class={classNames('cinder-segmented-control-label', !labelVisible && 'cinder-sr-only')}
+      >
+        {label}
+      </span>
+    {/if}
     {#if rendersNavigation}
       <nav
         {...rest}
@@ -277,7 +330,11 @@
       <div
         {...rest}
         {id}
+        bind:this={stripElement}
         role={groupRole}
+        aria-hidden={overflowing ? 'true' : undefined}
+        inert={overflowing ? true : undefined}
+        data-cinder-measuring={overflowing ? '' : undefined}
         aria-labelledby={`${id}-label`}
         aria-disabled={disabled ? 'true' : undefined}
         {...describedBy === undefined ? {} : { 'aria-describedby': describedBy }}

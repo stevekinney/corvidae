@@ -19,11 +19,28 @@ describe('DescriptionList record-details anatomy (fields variant)', () => {
     const flat = /\[data-cinder-variant='fields'\]\s*\{([^}]*)\}/s.exec(css)?.[1] ?? '';
     expect(flat).not.toContain('background');
     expect(flat).not.toContain('border-radius');
+    // The group's fill is the list's `::before`, so a container query on the list can switch it.
     expect(css).toMatch(
-      /\[data-cinder-variant='fields'\]\[data-cinder-framed\]\s*\{[^}]*background: var\(--cinder-surface-inset\)/s,
+      /\[data-cinder-variant='fields'\]\[data-cinder-framed\]::before\s*\{[^}]*background: var\(--cinder-surface-inset\)/s,
     );
     expect(css).toMatch(
       /\[data-cinder-variant='fields'\]\[data-cinder-framed\]\s*\{[^}]*border-radius: var\(--cinder-radius-surface\)/s,
+    );
+  });
+
+  test("the value starts where an InspectorRow's does: no column gap, the label's own end padding", () => {
+    // A subgrid's larger column gap is split half to each side of the gutter, so a 12px gap on the
+    // row over the list's gapless grid set the value 6px past an InspectorRow's (COR-2394).
+    const row =
+      /\[data-cinder-variant='fields'\] \.cinder-description-list__row\s*\{([^}]*)\}/s.exec(
+        css,
+      )?.[1];
+    expect(row).toContain('grid-template-columns: subgrid;');
+    expect(row).toContain('column-gap: 0;');
+    expect(row).not.toMatch(/^\s*gap:/m);
+    expect(css).not.toMatch(/\[data-cinder-variant='fields'\]\s*\{[^}]*(column-)?gap:/s);
+    expect(css).toMatch(
+      /\.cinder-description-list\[data-cinder-variant='fields'\] dt\s*\{[^}]*padding-inline-end: var\(--cinder-space-3\)/s,
     );
   });
 

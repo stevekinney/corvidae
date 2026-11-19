@@ -1,0 +1,16 @@
+{
+  "$schema": "../../../../../internal/component-tooling/src/schemas/component-meta.schema.json",
+  "category": "layout",
+  "status": "stable",
+  "purpose": "Bounded scrolling container that constrains overflowing content within a max height or width while remaining keyboard-focusable.",
+  "tags": ["layout", "overflow"],
+  "useWhen": [
+    "Containing a long list or large block of content inside a fixed-size region.",
+    "Preserving keyboard scrollability for overflow content in a card or surface."
+  ],
+  "avoidWhen": [
+    { "reason": "Wrapping the entire page — let the document scroll natively." },
+    { "reason": "Hiding overflow without scrollbars — use plain CSS overflow utilities instead." }
+  ],
+  "related": ["surface"]
+}

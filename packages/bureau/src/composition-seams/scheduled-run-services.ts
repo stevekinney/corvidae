@@ -685,6 +685,14 @@ export function createScheduledRunServices(
                 // COR-2230 — what this fire's first attempt pinned, when it got as far as writing
                 // it: a fire recovered after its code agent moved is refused.
                 ...sessionRecordedPin(taintSession?.metadata ?? {}, runId),
+                // COR-2429 — what this fire's first attempt left once it got going: the reference
+                // recorded under its run, or its run in its session. A first attempt has neither.
+                startedEvidence: {
+                  kind: 'scheduled-fire',
+                  runId,
+                  referenceRunId: firePriorReference === undefined ? undefined : runId,
+                  sessionFireRunId: taintSession?.metadata['lastScheduledFireRunId'],
+                },
               },
               { sessionId, metadata: taintSession?.metadata },
             );

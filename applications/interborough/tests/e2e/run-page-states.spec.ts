@@ -184,8 +184,12 @@ for (const width of WIDTHS) {
       await openRun(page, `/runs/${encodeURIComponent(world.runs.canceled)}`, width);
 
       await expect(page.getByRole('link', { name: 'Open goal' })).toBeVisible();
-      // Open goal and the menu only: the goal owns its session too (55f).
-      await expect(page.getByRole('link', { name: 'Open the session' })).toHaveCount(0);
+      // The header has Open goal and the menu only (55f); the attempt's session, which no Chats
+      // list holds, is opened from the Details rail's Session row.
+      const header = page.locator('[data-run-header]');
+      await expect(header.getByRole('link', { name: 'Open the session' })).toHaveCount(0);
+      const rail = page.getByRole('complementary', { name: 'Details' });
+      await expect(rail.getByRole('link', { name: 'Open the session' })).toBeVisible();
       await expect(page.getByRole('link', { name: 'Run again' })).toHaveCount(0);
       await expect(page.getByRole('button', { name: 'Run again' })).toHaveCount(0);
       await captureForDesignReview(page, {

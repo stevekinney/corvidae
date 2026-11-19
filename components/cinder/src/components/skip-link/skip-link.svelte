@@ -1,18 +1,4 @@
 <script lang="ts" module>
-  /**
-   * @cinder
-   * @category navigation
-   * @status stable
-   * @purpose Visually hidden skip link that moves keyboard focus to a landmark element, letting keyboard and screen reader users bypass repeated navigation.
-   * @tag navigation
-   * @tag accessibility
-   * @tag skip-link
-   * @useWhen Providing a keyboard shortcut to jump past site-wide navigation directly to the main content area.
-   * @useWhen Meeting WCAG 2.4.1 (Bypass Blocks) without adding visible chrome to the layout.
-   * @avoidWhen The page has no repeated navigation block — a skip link adds no value on single-panel layouts.
-   * @avoidWhen The target region already receives focus naturally without intervention.
-   * @related visually-hidden
-   */
   export type { SkipLinkProps } from './skip-link.types.ts';
 </script>
 

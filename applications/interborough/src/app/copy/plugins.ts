@@ -324,6 +324,21 @@ export const PLUGINS_COPY = {
       body: (panel: string, message: string): string =>
         `The panel ${panel} is not served. ${message}`,
     },
+    /** A default hook the plugin declares was skipped alone; the plugin and its other hooks run (COR-2180). */
+    hookInvalid: {
+      status: 'Loaded, a hook was skipped',
+      title: 'A hook the plugin adds was skipped',
+      body: (hook: string, field: string): string =>
+        `The hook ${hook === '' ? 'with no name' : `“${hook}”`} was skipped because its ${field} is not valid. The plugin’s other hooks run.`,
+      fields: {
+        name: 'name',
+        reaction: 'action',
+        events: 'events',
+        configuration: 'configuration',
+        scope: 'scope',
+        declaration: 'declaration',
+      } as Readonly<Record<string, string>>,
+    },
     /** A panel is served under a URI an earlier start served different bytes under (COR-2210). */
     panelChanged: {
       status: 'Loaded, a panel changed',

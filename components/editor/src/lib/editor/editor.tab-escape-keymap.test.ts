@@ -155,7 +155,7 @@ describe('createEditor: Tab-escape latch vs. the commonmark list keymap (cinder#
   // custom binding from a page's first editor while this test still passed.
   // The authority is the browser test "plain Tab indents a non-first list
   // item in a real browser" in
-  // scripts/browser-fixtures/tests/markdown-editor-keyboard.playwright.ts.
+  // components/editor/browser/tests/markdown-editor-keyboard.playwright.ts.
   test('plain Tab in a non-first list item still indents (the legitimate affordance is preserved)', async () => {
     editorState = await mountListEditor();
     const { view } = editorState;
@@ -293,7 +293,7 @@ describe('createEditor: Tab-escape latch vs. the GFM table keymap (cinder#1302, 
   // custom binding from a page's first editor while this test still passed.
   // The authority is the browser test "plain Tab moves to the next table cell
   // in a real browser" in
-  // scripts/browser-fixtures/tests/markdown-editor-keyboard.playwright.ts.
+  // components/editor/browser/tests/markdown-editor-keyboard.playwright.ts.
   test('plain Tab in a non-last table cell still moves to the next cell (the legitimate affordance is preserved)', async () => {
     editorState = await mountTableEditor();
     const { view } = editorState;

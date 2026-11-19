@@ -1,7 +1,7 @@
 import { captureScreenshot, THEME_STORAGE_KEY, type Theme } from '@lostgradient/testing';
 import { expect, test, type Page } from '@playwright/test';
 
-import { fixtureRoute } from './overlay-fixture.ts';
+import { fixtureRoute } from '@lostgradient/testing/playwright/overlay-fixture';
 
 const desktopViewport = { width: 1280, height: 720 };
 

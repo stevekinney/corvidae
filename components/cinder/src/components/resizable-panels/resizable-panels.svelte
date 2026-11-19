@@ -1,19 +1,4 @@
 <script lang="ts" module>
-  /**
-   * @cinder
-   * @category layout
-   * @status stable
-   * @purpose Measured splitter layout that renders adjacent resize handles between panes and emits persisted layout state after pointer, keyboard, and collapse interactions.
-   * @tag layout
-   * @tag splitter
-   * @tag panels
-   * @useWhen Building editor, inspector, or dashboard layouts where neighboring panes must be resized directly by dragging a separator.
-   * @useWhen Persisting a multi-pane workspace layout without coupling the component to localStorage.
-   * @avoidWhen You only need a static two-column or stack layout with no interactive resizing.
-   * @avoidWhen Content should wrap naturally instead of claiming a fixed share of a measured container.
-   * @related divider
-   * @related scroll-area
-   */
   export type {
     ResizablePanelDefinition,
     ResizablePanelRenderContext,

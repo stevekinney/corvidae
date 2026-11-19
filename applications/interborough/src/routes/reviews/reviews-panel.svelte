@@ -13,7 +13,7 @@
    * to its row; a review that leaves the queue while it is open (the agent moved on) is said so in
    * its place, with one button to the next. Both are announced politely.
    */
-  import { onMount, tick, untrack } from 'svelte';
+  import { onDestroy, onMount, tick, untrack } from 'svelte';
   import { SvelteMap, SvelteSet } from 'svelte/reactivity';
 
   import {
@@ -53,10 +53,11 @@
   import QuestionPane from './question-pane.svelte';
   import type { ReviewDecisionSubmission } from './review-decision-form.svelte';
   import {
+    NO_LONGER_WAITING_LINGER_MILLISECONDS,
     neighbourKey,
     resolutionTone,
     resolutionWord,
-    reviewKindLabel,
+    reviewLineTwo,
     reviewTitle,
     type InboxItem,
   } from './review-items.ts';
@@ -87,6 +88,11 @@
     readonly outcome: ReviewOutcome | undefined;
     /** Who the caller is (the principal's subject), so a review they decided reads "by you". */
     readonly viewer?: string | undefined;
+    /**
+     * The key of the review whose decision the Bureau refused because it was already resolved
+     * (COR-2426): it is no longer waiting, and its place says so (row 26g). Set again for each refusal.
+     */
+    readonly refusedKey?: string | null;
     readonly hasMore?: boolean;
     readonly loadingMore?: boolean;
     readonly onLoadMore?: () => Promise<void>;
@@ -109,6 +115,7 @@
     submitGate,
     outcome,
     viewer,
+    refusedKey = null,
     hasMore = false,
     loadingMore = false,
     onLoadMore,
@@ -141,13 +148,31 @@
    * and decided again). A key is forgotten once the list stops listing it.
    */
   const decided = new SvelteSet<string>();
-  const visible = $derived(items.filter((item) => !decided.has(item.key)));
+  /**
+   * COR-2426, rows 26g and 26h: the open review that is no longer waiting stays in the list for a
+   * moment ({@link NO_LONGER_WAITING_LINGER_MILLISECONDS}) with "No longer waiting" in its place,
+   * then leaves it (`departed`) and is announced. `lingering` holds it, as last listed, by key.
+   */
+  const lingering = new SvelteMap<string, { readonly item: InboxItem; readonly index: number }>();
+  const departed = new SvelteSet<string>();
+  const lingerTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  const visible = $derived.by(() => {
+    const listed = items.filter((item) => !decided.has(item.key) && !departed.has(item.key));
+    const keys = new Set(listed.map((item) => item.key));
+    for (const [key, held] of lingering) {
+      if (!keys.has(key)) listed.splice(Math.min(held.index, listed.length), 0, held.item);
+    }
+    return listed;
+  });
   $effect(() => {
     const listed = new Set(items.map((item) => item.key));
     untrack(() => {
       for (const key of decided) if (!listed.has(key)) decided.delete(key);
+      for (const key of departed) if (!listed.has(key)) departed.delete(key);
     });
   });
+  /** The waiting list as last read, with each review's place, so one that leaves can stay a moment. */
+  let lastListed: readonly InboxItem[] = [];
 
   const selected = $derived(visible.find((item) => item.key === selectedKey));
   const lastKey = $derived(visible.at(-1)?.key);
@@ -179,10 +204,67 @@
     mode === 'waiting' &&
       phase === 'ready' &&
       selectedKey !== null &&
-      selected === undefined &&
-      advancingKey !== selectedKey &&
-      !decided.has(selectedKey),
+      (lingering.has(selectedKey) ||
+        (selected === undefined && advancingKey !== selectedKey && !decided.has(selectedKey))),
   );
+
+  /**
+   * The open review at `key` is no longer waiting: it stays in the list a moment, its place saying
+   * so, then leaves it, and that is announced as a decision is (rows 26g, 26h).
+   */
+  function linger(key: string): void {
+    if (lingering.has(key) || departed.has(key)) return;
+    const index = lastListed.findIndex((item) => item.key === key);
+    const item = lastListed[index] ?? visible.find((candidate) => candidate.key === key);
+    if (item === undefined) return;
+    if (advancingKey === key) advancingKey = null;
+    lingering.set(key, { item, index: Math.max(0, index) });
+    lingerTimers.set(
+      key,
+      // poll-reason: timer
+      setTimeout(() => {
+        lingerTimers.delete(key);
+        lingering.delete(key);
+        // Still listed by the Bureau: it is waiting after all, and stays.
+        if (items.some((candidate) => candidate.key === key)) return;
+        departed.add(key);
+        announcement = REVIEWS_COPY.announce(REVIEWS_COPY.announced.gone, titles.get(key) ?? '');
+      }, NO_LONGER_WAITING_LINGER_MILLISECONDS),
+    );
+  }
+  onDestroy(() => {
+    for (const timer of lingerTimers.values()) clearTimeout(timer);
+    lingerTimers.clear();
+  });
+
+  // The open review left the list without this page deciding it: it lingers before it goes.
+  $effect(() => {
+    const listed = items;
+    untrack(() => {
+      const key = selectedKey;
+      if (
+        mode === 'waiting' &&
+        phase === 'ready' &&
+        key !== null &&
+        advancingKey !== key &&
+        !decided.has(key) &&
+        lastListed.some((item) => item.key === key) &&
+        !listed.some((item) => item.key === key)
+      ) {
+        linger(key);
+      }
+      lastListed = listed;
+    });
+  });
+
+  // A decision the Bureau refused because the review was already resolved (row 26g).
+  $effect(() => {
+    const key = refusedKey;
+    if (key === null) return;
+    untrack(() => {
+      if (key === selectedKey) linger(key);
+    });
+  });
   // With nothing left to list the panes give way to the empty state, which cannot clear an address
   // that still names a review.
   $effect(() => {
@@ -195,6 +277,8 @@
   $effect(() => {
     if (!gone || selectedKey === null) return;
     const key = selectedKey;
+    // One that lingers is announced as it leaves the list.
+    if (lingering.has(key) || departed.has(key)) return;
     untrack(() => {
       announcement = REVIEWS_COPY.announce(REVIEWS_COPY.announced.gone, titles.get(key) ?? '');
     });
@@ -445,129 +529,156 @@
     />
   {/if}
 {:else if phase !== 'failed'}
-  <!-- svelte-ignore a11y_no_static_element_interactions -->
-  <div
-    class="ib-reviews__frame"
-    data-shortcut-region="list-detail"
-    data-mode={mode}
-    bind:this={frameElement}
-    onkeydown={handleFrameKeydown}
-  >
-    <ListDetail
-      items={visible}
-      key={(item: InboxItem) => item.key}
-      label={REVIEWS_COPY.listLabel[mode]}
-      detailLabel={REVIEWS_COPY.detailLabel}
-      backLabel={REVIEWS_COPY.heading}
-      emptyTitle={REVIEWS_COPY.noReviewSelected}
-      emptyDescription={REVIEWS_COPY.chooseReview}
-      loading={phase === 'loading'}
-      loadingLabel={REVIEWS_COPY.loading}
-      openFirst={mode === 'waiting'}
-      defaultListWidth={listWidth}
-      bind:selectedKey
-      selectionParameter="review"
-      selectionLocation={selection}
-      storageKey="interborough-reviews"
-      {...gone ? { empty: goneDetail } : {}}
-      {...mode === 'done' ? { groupBy: dayGroup } : {}}
+  <!-- The host is measured, so the frame below can follow the page once ListDetail shows one pane
+       at a time (below its `pushBelow`, 600px of its own width, the frame's width): reviews.css. -->
+  <div class="ib-reviews__frame-host">
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <div
+      class="ib-reviews__frame"
+      data-shortcut-region="list-detail"
+      data-mode={mode}
+      bind:this={frameElement}
+      onkeydown={handleFrameKeydown}
     >
-      {#snippet header()}
-        <p class="ib-reviews__hint">{REVIEWS_COPY.keysHint}</p>
-      {/snippet}
-      {#snippet list(item, row)}
-        <SelectableRow
-          selected={row.selected}
-          selectedState="current"
-          onclick={row.open}
-          data-review-row={item.key}
-          data-kind={item.review.kind}
-        >
-          {#snippet title()}<span class="ib-review-row__title">{reviewTitle(item.review)}</span
-            >{/snippet}
-          {#snippet description()}
-            <span class="ib-review-row__kind">
-              {reviewKindLabel(item.review)}{agentOf(item.review) === undefined
-                ? ''
-                : ` ${REVIEWS_COPY.fromAgent(agentLabel(displayName(agentOf(item.review) ?? ''), undefined))}`}
-            </span>
-          {/snippet}
-          {#snippet meta()}
-            {#if mode === 'done'}
-              {@const decidedAt = item.review.resolution?.decidedAt ?? item.review.requestedAt}
-              <StatusDot
-                status={resolutionTone(item.review)}
-                label={resolutionWord(item.review, viewer)}
-              />
-              <time datetime={new Date(decidedAt).toISOString()}>{clockTime(decidedAt, zone)}</time>
-            {:else}
-              <RelativeTime date={item.review.requestedAt} />
-            {/if}
-          {/snippet}
-        </SelectableRow>
-        {#if mode === 'done' && item.key === lastKey && onLoadMore !== undefined}
-          <LoadMore
-            {hasMore}
-            loading={loadingMore}
-            {onLoadMore}
-            buttonLabel={REVIEWS_COPY.loadMore}
-            endOfListMessage=""
-          />
-        {/if}
-      {/snippet}
-      {#snippet detail(item)}
-        <div class="ib-reviews__detail" bind:this={detailElement}>
-          <!-- One pane per review: a draft, a note or a section decision made on one never carries to
+      <ListDetail
+        pushBelow={600}
+        items={visible}
+        key={(item: InboxItem) => item.key}
+        label={REVIEWS_COPY.listLabel[mode]}
+        detailLabel={REVIEWS_COPY.detailLabel}
+        backLabel={REVIEWS_COPY.heading}
+        emptyTitle={REVIEWS_COPY.noReviewSelected}
+        emptyDescription={REVIEWS_COPY.chooseReview}
+        loading={phase === 'loading'}
+        loadingRows={3}
+        loadingLabel={REVIEWS_COPY.loading}
+        openFirst={mode === 'waiting'}
+        defaultListWidth={listWidth}
+        bind:selectedKey
+        selectionParameter="review"
+        selectionLocation={selection}
+        storageKey="interborough-reviews"
+        {...gone ? { empty: goneDetail } : {}}
+        {...mode === 'done' ? { groupBy: dayGroup } : {}}
+      >
+        {#snippet header()}
+          <p class="ib-reviews__hint">{REVIEWS_COPY.keysHint}</p>
+        {/snippet}
+        {#snippet list(item, row)}
+          <SelectableRow
+            selected={row.selected}
+            selectedState="current"
+            onclick={row.open}
+            data-review-row={item.key}
+            data-kind={item.review.kind}
+          >
+            {#snippet title()}<span class="ib-review-row__title">{reviewTitle(item.review)}</span
+              >{/snippet}
+            {#snippet description()}
+              {@const agent = agentOf(item.review)}
+              {@const line = reviewLineTwo(
+                item.review,
+                agent === undefined ? undefined : agentLabel(displayName(agent), undefined),
+              )}
+              <!-- The agent's name takes the ellipsis; the risk follows the time, never a cut name. -->
+              <span class="ib-review-row__kind">
+                <span class="ib-review-row__from"
+                  >{line.kind}{line.from === undefined ? '' : ` ${line.from}`}</span
+                >
+              </span>
+            {/snippet}
+            {#snippet meta()}
+              {#if mode === 'done'}
+                {@const decidedAt = item.review.resolution?.decidedAt ?? item.review.requestedAt}
+                <StatusDot
+                  status={resolutionTone(item.review)}
+                  label={resolutionWord(item.review, viewer)}
+                />
+                <time datetime={new Date(decidedAt).toISOString()}
+                  >{clockTime(decidedAt, zone)}</time
+                >
+              {:else}
+                {@const risk = reviewLineTwo(item.review, undefined).risk}
+                <!-- "3 min ago, can't be undone" (rows 07c, 07f): on the line of the time, which is
+                   never cut short, so nothing sits between a cut name and the comma. -->
+                <span class="ib-review-row__when"
+                  ><RelativeTime date={item.review.requestedAt} />{#if risk !== undefined}<span
+                      class="ib-review-row__risk"
+                      data-testid="review-row-risk">, {risk}</span
+                    >{/if}</span
+                >
+              {/if}
+            {/snippet}
+          </SelectableRow>
+          {#if mode === 'done' && item.key === lastKey && onLoadMore !== undefined}
+            <LoadMore
+              {hasMore}
+              loading={loadingMore}
+              {onLoadMore}
+              buttonLabel={REVIEWS_COPY.loadMore}
+              endOfListMessage=""
+            />
+          {/if}
+        {/snippet}
+        {#snippet detail(item)}
+          <div class="ib-reviews__detail" bind:this={detailElement}>
+            <!-- One pane per review: a draft, a note or a section decision made on one never carries to
                the next, so the answer posted always belongs to the review shown. -->
-          {#key item.key}
-            {#if item.review.kind === 'tool-approval'}
-              {@const review = item.review}
-              <ApprovalPane
-                {review}
-                bind:note={() => notes.get(review.id) ?? '', (value) => notes.set(review.id, value)}
-                deciding={resolving}
-                outcome={outcome?.reviewId === review.id ? outcome : undefined}
-                onDecide={(action) => decide(review, action)}
-              />
-            {:else if item.review.kind === 'human-wait'}
-              {@const review = item.review}
-              <QuestionPane
-                {review}
-                answering={resolving}
-                outcome={outcome?.reviewId === review.id ? outcome : undefined}
-                onAnswer={(answer) =>
-                  onAnswer(
-                    review,
-                    answer,
-                    advancer(
-                      item.key,
-                      REVIEWS_COPY.announce(REVIEWS_COPY.announced.answered, reviewTitle(review)),
-                    ),
-                  )}
-              />
-            {:else}
-              <EngineReviewPane
-                review={item.review}
-                {submitting}
-                {submitGate}
-                {viewer}
-                onSubmit={(reviewId, submission) =>
-                  onSubmit(
-                    reviewId,
-                    submission,
-                    advancer(
-                      item.key,
-                      REVIEWS_COPY.announce(
-                        engineDecisionWord(submission.decision),
-                        reviewTitle(item.review),
+            {#key item.key}
+              {#if lingering.has(item.key)}
+                <!-- No longer waiting, while its row stays a moment (rows 26g, 26h). -->
+                {@render goneDetail()}
+              {:else if item.review.kind === 'tool-approval'}
+                {@const review = item.review}
+                <ApprovalPane
+                  {review}
+                  bind:note={
+                    () => notes.get(review.id) ?? '', (value) => notes.set(review.id, value)
+                  }
+                  deciding={resolving}
+                  outcome={outcome?.reviewId === review.id ? outcome : undefined}
+                  onDecide={(action) => decide(review, action)}
+                />
+              {:else if item.review.kind === 'human-wait'}
+                {@const review = item.review}
+                <QuestionPane
+                  {review}
+                  answering={resolving}
+                  outcome={outcome?.reviewId === review.id ? outcome : undefined}
+                  onAnswer={(answer) =>
+                    onAnswer(
+                      review,
+                      answer,
+                      advancer(
+                        item.key,
+                        REVIEWS_COPY.announce(REVIEWS_COPY.announced.answered, reviewTitle(review)),
                       ),
-                    ),
-                  )}
-              />
-            {/if}
-          {/key}
-        </div>
-      {/snippet}
-    </ListDetail>
+                    )}
+                />
+              {:else}
+                <EngineReviewPane
+                  review={item.review}
+                  {submitting}
+                  {submitGate}
+                  {viewer}
+                  onSubmit={(reviewId, submission) =>
+                    onSubmit(
+                      reviewId,
+                      submission,
+                      advancer(
+                        item.key,
+                        REVIEWS_COPY.announce(
+                          engineDecisionWord(submission.decision),
+                          reviewTitle(item.review),
+                        ),
+                      ),
+                    )}
+                />
+              {/if}
+            {/key}
+          </div>
+        {/snippet}
+      </ListDetail>
+    </div>
   </div>
 {/if}

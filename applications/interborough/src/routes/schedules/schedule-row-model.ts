@@ -11,7 +11,7 @@
  * workflow's file cannot load, its workflow was deleted, or no model provider is connected and an
  * agent it runs needs a model. Assistant and Echo are scripted and need none, so a schedule that
  * runs only them is never blocked by a provider. A schedule's status is one word: Can't find
- * workflow (it cannot run at all), Paused, Missed runs, N (it missed occurrences and has not fired
+ * workflow (it cannot run at all), Paused, Missed runs with a count N (it missed occurrences and has not fired
  * since), or Active.
  */
 import {
@@ -73,7 +73,10 @@ export type ScheduleRow = {
   readonly status: 'active' | 'paused' | 'cancelled';
   readonly kind: ScheduleKind;
   readonly title: string;
-  /** The status word as the row shows it: `Missed runs, 4`, `Active`, `Paused`, `Can't find workflow`. */
+  /**
+   * The status word as the row shows it: `Missed runs`, `Active`, `Paused`, `Can't find workflow`.
+   * `Missed runs` is drawn with `missedCount` as the StatusDot's `qualifier` (no comma between them).
+   */
   readonly statusWord: StatusDotWordLabel;
   readonly statusKey: RowStatusKey;
   /** How many occurrences it missed and has not caught up on: 0 for a schedule that did not. */
@@ -287,7 +290,7 @@ export function scheduleRowOf(schedule: ScheduleSummary, context: ScheduleRowCon
       : statusKey === 'paused'
         ? 'Paused'
         : statusKey === 'missed'
-          ? `Missed runs, ${String(missed.count)}`
+          ? 'Missed runs'
           : 'Active';
 
   const cadence = cadenceText(schedule, context.now);

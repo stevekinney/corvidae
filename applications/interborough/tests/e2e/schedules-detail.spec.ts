@@ -59,7 +59,7 @@ for (const width of WIDTHS) {
     const toggle = main.getByRole('switch', { name: 'Active, Daily summary schedule' });
     await expect(toggle).toBeVisible();
     await expect(toggle).toHaveAttribute('aria-checked', 'true');
-    await expect(main.locator('.cinder-page-header')).toContainText('Missed runs, 4');
+    await expect(main.locator('.cinder-page-header')).toContainText(/Missed runs\s*4/);
     // The actions: secondary Edit and Run now, and the menu.
     for (const name of ['Edit', 'Run now']) {
       await expect(main.getByRole('button', { name })).toHaveAttribute(
@@ -294,7 +294,7 @@ test('the menu holds Delete schedule only, below its button, and deleting asks f
 
 /** Answers the Bureau's start of a workflow with a run, so Run now makes none in the world. */
 async function answerStart(page: Page): Promise<void> {
-  await page.route('**/bureau/jsonrpc', async (route: Route) => {
+  await page.route('**/jsonrpc', async (route: Route) => {
     const body = route.request().postDataJSON() as { id?: unknown; method?: string };
     if (body.method !== 'bureau.workflows.start') {
       await route.fallback();
@@ -517,7 +517,7 @@ for (const width of WIDTHS) {
       await expect(
         page.getByRole('switch', { name: 'Active, Daily summary schedule' }),
       ).toBeChecked();
-      await expect(page.locator('main')).toContainText('Missed runs, 4');
+      await expect(page.locator('main')).toContainText(/Missed runs\s*4/);
       await expect(list.locator('li[data-cinder-kind="now"]')).toContainText('Mon Nov 2, 10:46 AM');
       // The pointer leaves the row, so the capture shows Undo at rest rather than hovered.
       await page.mouse.move(0, 0);
@@ -577,7 +577,7 @@ test('Run once now starts one run, not one per miss', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 1000 });
   // The Bureau's run now is answered by the specification, so no run is made in the world.
   const starts: string[] = [];
-  await page.route('**/bureau/jsonrpc', async (route: Route) => {
+  await page.route('**/jsonrpc', async (route: Route) => {
     const body = route.request().postDataJSON() as { id?: unknown; method?: string };
     if (body.method !== 'bureau.schedules.runnow') {
       await route.fallback();
@@ -951,7 +951,7 @@ test('Daily summary shown stale: the summary drops "in 16 hours", the runs are a
   const skip = main.getByRole('button', { name: /^Skip Tue Nov 3, 3:00 AM/ });
   await expect(skip).toBeEnabled();
 
-  await page.route(/\/(v1|bureau|api)\//, (route) => route.abort('connectionrefused'));
+  await page.route(/\/(v1|bureau|api)\/|\/jsonrpc$/, (route) => route.abort('connectionrefused'));
   await page.evaluate(() => window.dispatchEvent(new Event('visibilitychange')));
   const banner = page.getByRole('region', { name: 'Connection problem' });
   await expect(banner).toBeVisible();

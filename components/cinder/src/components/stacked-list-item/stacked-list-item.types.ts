@@ -104,6 +104,12 @@ type StackedListItemBase = ForwardedLiAttributes & {
   /** Primary label. Required. */
   title: Snippet;
   /**
+   * A short mark after the title, such as a neutral extra-small `Badge` reading "Plugin". It sits
+   * 6px after the title, outside the title's line clamp: the title gives up its room and ends in
+   * an ellipsis first, and the mark is never cut and never takes a line of its own.
+   */
+  badge?: Snippet;
+  /**
    * How many lines the title may take before an ellipsis. Default `2`; the status and the time
    * stay beside the first line, and the full title is the row's `tooltip`. A title never grows a
    * row without bound, and an unbroken value (an identifier) wraps anywhere.
@@ -116,9 +122,10 @@ type StackedListItemBase = ForwardedLiAttributes & {
   tooltip?: string;
   /**
    * The time, or the next run, at the right edge of line one, aligned to its top. Pass a
-   * `RelativeTime` or a plain string.
+   * `RelativeTime` or a plain string. A string keeps its day and its clock each whole: on a phone
+   * row with a control at its end, "Yesterday, 6:00 PM" breaks only after the comma.
    */
-  time?: Snippet;
+  time?: Snippet | string;
   /** Secondary description below the title. */
   description?: Snippet;
   /**

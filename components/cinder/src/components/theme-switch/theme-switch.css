@@ -19,7 +19,8 @@
 
     /* The sky and night tracks keep their own lightness in both themes: a sky is pale and a
      * night is dark whichever theme the page is in, so the icons and the thumb on them use fixed
-     * ramps too. System uses the page's own tokens. */
+     * ramps too: the `--cinder-theme-switch-sky-*` and `--cinder-theme-switch-night-*` tokens,
+     * which have no dark arm. System uses the page's own tokens. */
     --_cinder-theme-switch-track: var(--cinder-surface-inset);
     --_cinder-theme-switch-icon: var(--cinder-text-muted);
     --_cinder-theme-switch-icon-hover: var(--cinder-text-default);
@@ -44,12 +45,12 @@
 
   .cinder-theme-switch[data-cinder-value='light'] {
     --_cinder-theme-switch-position: 0;
-    --_cinder-theme-switch-track: oklch(93% 0.04 235);
-    border-color: oklch(84% 0.05 235);
-    --_cinder-theme-switch-icon: oklch(32% 0.014 245);
-    --_cinder-theme-switch-icon-hover: oklch(20% 0.018 245);
-    --_cinder-theme-switch-icon-selected: oklch(20% 0.018 245);
-    --_cinder-theme-switch-thumb: oklch(100% 0 255);
+    --_cinder-theme-switch-track: var(--cinder-theme-switch-sky-track);
+    border-color: var(--cinder-theme-switch-sky-border);
+    --_cinder-theme-switch-icon: var(--cinder-theme-switch-sky-icon);
+    --_cinder-theme-switch-icon-hover: var(--cinder-theme-switch-sky-icon-hover);
+    --_cinder-theme-switch-icon-selected: var(--cinder-theme-switch-sky-icon-selected);
+    --_cinder-theme-switch-thumb: var(--cinder-theme-switch-sky-thumb);
   }
 
   .cinder-theme-switch[data-cinder-value='system'] {
@@ -58,12 +59,12 @@
 
   .cinder-theme-switch[data-cinder-value='dark'] {
     --_cinder-theme-switch-position: 2;
-    --_cinder-theme-switch-track: oklch(25% 0.05 265);
-    border-color: oklch(38% 0.05 265);
-    --_cinder-theme-switch-icon: oklch(80% 0.03 265);
-    --_cinder-theme-switch-icon-hover: oklch(97% 0.01 265);
-    --_cinder-theme-switch-icon-selected: oklch(97% 0.01 265);
-    --_cinder-theme-switch-thumb: oklch(42% 0.06 265);
+    --_cinder-theme-switch-track: var(--cinder-theme-switch-night-track);
+    border-color: var(--cinder-theme-switch-night-border);
+    --_cinder-theme-switch-icon: var(--cinder-theme-switch-night-icon);
+    --_cinder-theme-switch-icon-hover: var(--cinder-theme-switch-night-icon-hover);
+    --_cinder-theme-switch-icon-selected: var(--cinder-theme-switch-night-icon-selected);
+    --_cinder-theme-switch-thumb: var(--cinder-theme-switch-night-thumb);
   }
 
   /* ----------------------------------------
@@ -82,7 +83,7 @@
     inline-size: var(--_cinder-theme-switch-segment-inline);
     border-radius: var(--cinder-radius-full);
     background-color: var(--_cinder-theme-switch-thumb);
-    box-shadow: 0 1px 2px oklch(0% 0 0 / 0.25);
+    box-shadow: 0 1px 2px var(--cinder-theme-switch-thumb-shadow-color);
     pointer-events: none;
     transition: inset-inline-start var(--cinder-duration-fast, 150ms)
       var(--cinder-ease-standard, ease);

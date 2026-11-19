@@ -19,6 +19,8 @@ export const FINGERPRINT_SOURCE_DIRECTORIES = [
   // which is the safe direction: a spurious rebuild costs seconds, while a
   // stale reuse silently tests the wrong bytes.
   'components/cinder/scripts',
+  // Cinder's generators and the stylesheet fingerprint the server imports (COR-2079).
+  'internal/component-tooling/scripts',
   'applications/playground/scripts',
   // The playground bundles these upstream workspaces alongside the public
   // Cinder and Chat packages. The public packages already have source
@@ -32,11 +34,11 @@ export const FINGERPRINT_SOURCE_DIRECTORIES = [
 export const FINGERPRINT_SOURCE_FILES = [
   'applications/playground/package.json',
   'components/cinder/package.json',
-  'components/cinder/components.json',
+  'components/cinder/.metadata/components.json',
   'components/chat/package.json',
-  'components/chat/components.json',
+  'components/chat/.metadata/components.json',
   'components/editor/package.json',
-  'components/editor/components.json',
+  'components/editor/.metadata/components.json',
   // The documentation's displayed package versions.
 ] as const;
 

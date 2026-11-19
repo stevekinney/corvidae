@@ -27,7 +27,7 @@
   import Sun from '@lucide/svelte/icons/sun';
   import X from '@lucide/svelte/icons/x';
   import GithubMark from './github-mark.svelte';
-  import { COMPOUND_COMPONENT_PARENTS } from './shell-app/compound-families.ts';
+  import { COMPOUND_COMPONENT_PARENTS } from './shell-app/compound-families.generated.ts';
   import ComponentSearch from './shell-app/component-search.svelte';
   import { humanizeComponentName } from './shell-app/humanize.ts';
   import {

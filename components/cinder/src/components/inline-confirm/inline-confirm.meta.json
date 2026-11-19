@@ -1,0 +1,15 @@
+{
+  "$schema": "../../../../../internal/component-tooling/src/schemas/component-meta.schema.json",
+  "category": "feedback",
+  "status": "stable",
+  "purpose": "In-flow confirmation for reversible actions without modal interruption.",
+  "tags": [],
+  "useWhen": ["Confirming a reversible action in the same flow as its trigger."],
+  "avoidWhen": [
+    {
+      "reason": "The action requires modal interruption or extensive consequences; use ConfirmDialog."
+    }
+  ],
+  "related": ["confirm-dialog"],
+  "rationale": "Nearest alternative: ConfirmDialog interrupts with a modal; this keeps confirmation in flow."
+}

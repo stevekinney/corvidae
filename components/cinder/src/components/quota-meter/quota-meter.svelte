@@ -1,14 +1,4 @@
 <script lang="ts" module>
-  /**
-   * @cinder
-   * @category data-display
-   * @status beta
-   * @purpose Meter composition for quota usage with reset and unlimited states.
-   * @tag quota-meter
-   * @useWhen Showing usage against a plan or account limit.
-   * @avoidWhen Showing task completion.
-   * @rationale Nearest alternative: Meter — QuotaMeter adds quota-specific accessible value text.
-   */
   export type { QuotaMeterProps } from './quota-meter.types.ts';
 </script>
 

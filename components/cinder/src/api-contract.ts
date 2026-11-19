@@ -552,6 +552,8 @@ export const CONTRACT: Record<string, ComponentContract> = {
       expandListLabel: { optional: true, type_kind: 'TSStringKeyword', default: L('Show list') },
       groupBy: { optional: true, type_kind: 'TSFunctionType', default: NO_DEFAULT },
       loading: { optional: true, type_kind: 'TSBooleanKeyword', default: B(false) },
+      // COR-2426: how many placeholder rows the list pane shows while `loading`.
+      loadingRows: { optional: true, type_kind: 'TSNumberKeyword', default: L(5) },
       loadingLabel: { optional: true, type_kind: 'TSStringKeyword', default: L('Loading') },
       onLoadingCancel: { optional: true, type_kind: 'TSFunctionType', default: NO_DEFAULT },
       backLabel: { optional: true, type_kind: 'TSStringKeyword', default: L('Back') },
@@ -572,7 +574,7 @@ export const CONTRACT: Record<string, ComponentContract> = {
       empty: s0(true),
       listEmpty: s0(true),
       listFooter: s0(true),
-      header: sp(1, true),
+      header: s0(true),
     },
   },
 

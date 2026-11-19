@@ -546,7 +546,7 @@ describe('createBureauHandler authentication matrix', () => {
       const list = await handler(jsonRpc('bureau.reviews.list', {}, credentials));
       const body = (await list.json()) as { result?: unknown };
 
-      expect(body.result).toEqual({ reviews: [], nextPageToken: null });
+      expect(body.result).toEqual({ reviews: [], nextPageToken: null, total: 0 });
     });
   });
 });
@@ -570,6 +570,8 @@ describe('createBureauHandler catalog', () => {
         'bureau.agents.definitions.list',
         'bureau.agents.definitions.revisions',
         'bureau.agents.definitions.update',
+        'bureau.agents.disable',
+        'bureau.agents.enable',
         'bureau.agents.list',
         'bureau.agents.models',
         'bureau.agents.overrides.get',
@@ -622,6 +624,7 @@ describe('createBureauHandler catalog', () => {
         'bureau.hooks.deliveries',
         'bureau.hooks.deliveries.retry',
         'bureau.hooks.draft.test',
+        'bureau.hooks.duplicate',
         'bureau.hooks.get',
         'bureau.hooks.list',
         'bureau.hooks.secret.replace',

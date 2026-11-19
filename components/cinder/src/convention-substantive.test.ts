@@ -7,7 +7,7 @@ import { join } from 'node:path';
 import { describe, expect, test } from 'bun:test';
 import { parse } from 'svelte/compiler';
 
-import { hasSubstantiveTest } from '../scripts/component-conventions-tests.ts';
+import { hasSubstantiveTest } from '@lostgradient/component-tooling/scripts/component-conventions-tests.ts';
 import { getPublicComponentSvelteFiles } from './convention-structural-test-helpers.ts';
 
 const NO_TEST_REQUIRED_ALLOW_LIST = new Set<string>();

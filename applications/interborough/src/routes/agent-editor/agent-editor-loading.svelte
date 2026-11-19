@@ -52,7 +52,7 @@
   /* The form's sticky bar (`agent-editor-form.svelte`), drawn the same way. */
   .weft-agent-loading__footer {
     position: sticky;
-    bottom: calc(-1 * var(--cinder-space-6));
+    bottom: 0;
     z-index: 1;
     margin-block-end: calc(-1 * var(--cinder-space-6));
     padding-block: var(--cinder-space-3);

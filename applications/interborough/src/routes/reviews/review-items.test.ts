@@ -11,11 +11,13 @@ import type { EngineReview, ListedReview } from '../../lib/bureau-reviews.ts';
 import {
   doneItems,
   inboxKey,
+  inputLine,
   neighbourKey,
   resolutionLabel,
   resolutionTone,
   resolutionWord,
   reviewKindLabel,
+  reviewLineTwo,
   reviewTitle,
   waitingItems,
 } from './review-items.ts';
@@ -161,5 +163,43 @@ describe('the dot a decided review carries', () => {
 
   test('keeps the plain word for a review the Bureau closed, even under the viewer’s name', () => {
     expect(resolutionWord(decided({ status: 'expired' }), 'steve')).toBe('Closed');
+  });
+});
+
+describe('a row’s second line (rows 25x, 07c, COR-2426)', () => {
+  test('names the agent by the display name it is given, and says when the call cannot be undone', () => {
+    const approval = toolApprovalFixture();
+    expect(reviewLineTwo(approval, 'Tool runner')).toEqual({
+      kind: REVIEWS_COPY.toolApproval,
+      from: 'from Tool runner',
+      risk: 'can’t be undone',
+    });
+  });
+
+  test('says nothing of undoing for a call that is not high risk, a decided one, or a question', () => {
+    const fixture = toolApprovalFixture();
+    const medium = toolApprovalFixture({
+      approval: {
+        ...fixture.approval,
+        action: { type: 'approval', risk: 'medium', operation: { kind: 'other' } },
+      },
+    });
+    expect(reviewLineTwo(medium, 'Tool runner').risk).toBeUndefined();
+    // A Done row has nothing left to undo (row 25x).
+    expect(
+      reviewLineTwo(toolApprovalFixture({ status: 'approved' }), 'Tool runner').risk,
+    ).toBeUndefined();
+    expect(reviewLineTwo(humanWaitFixture(), 'Request human input')).toEqual({
+      kind: REVIEWS_COPY.humanWait,
+      from: 'from Request human input',
+    });
+    expect(reviewLineTwo(engine(), undefined)).toEqual({ kind: REVIEWS_COPY.workflowReview });
+  });
+});
+
+describe('an approval’s input line (row 26o, COR-2426)', () => {
+  test('puts each argument on one line, its name in words, in the order the tool took them', () => {
+    expect(inputLine({ orderId: '4471', amount: '$42.00' })).toBe('Order ID 4471, Amount $42.00');
+    expect(inputLine({})).toBe('');
   });
 });

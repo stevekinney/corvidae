@@ -1,0 +1,225 @@
+import { describe, expect, test } from 'bun:test';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+
+import Ajv2020 from 'ajv/dist/2020';
+
+import { generateSchemaForComponent, parseDefaultValue } from './generate-component-schema.ts';
+
+describe('parseDefaultValue', () => {
+  test('a single-quoted @default value resolves to the plain string, not the doubled-quote form', () => {
+    expect(parseDefaultValue("'auto'")).toBe('auto');
+  });
+
+  test('a double-quoted @default value still resolves via JSON.parse (regression guard)', () => {
+    expect(parseDefaultValue('"md"')).toBe('md');
+  });
+
+  test('a numeric @default value resolves to a number', () => {
+    expect(parseDefaultValue('3')).toBe(3);
+  });
+
+  test('a single-quoted value with an internal unescaped quote is left untouched', () => {
+    // The balanced-quote regex does not match (the inner `'` isn't
+    // backslash-escaped), so this bails to the pre-fix raw-text fallback
+    // rather than guessing at a stripped result that could corrupt the value.
+    expect(parseDefaultValue("'won't fit'")).toBe("'won't fit'");
+  });
+});
+
+describe('run-step-timeline generated schema', () => {
+  const schema = generateSchemaForComponent({
+    typesFilePath: join(
+      import.meta.dir,
+      '../../../components/cinder/src/components/run-step-timeline/run-step-timeline.types.ts',
+    ),
+    componentName: 'run-step-timeline',
+  }).schema;
+  const validate = new Ajv2020({ strict: false }).compile(schema);
+
+  function expectValid(value: unknown): void {
+    expect(validate(value)).toBe(true);
+  }
+
+  function expectInvalid(value: unknown): void {
+    expect(validate(value)).toBe(false);
+  }
+
+  test('accepts text and code details on top-level and nested run steps', () => {
+    expectValid({
+      steps: [
+        {
+          id: 'top-level',
+          label: 'Top level',
+          status: 'succeeded',
+          details: [
+            {
+              id: 'top-text',
+              label: 'Text log',
+              open: true,
+              type: 'text',
+              content: 'plain execution log',
+            },
+            {
+              id: 'top-code',
+              label: 'Payload',
+              open: false,
+              type: 'code',
+              code: '{"ok":true}',
+              language: 'json',
+              languageLabelVisible: false,
+            },
+          ],
+          children: [
+            {
+              id: 'nested',
+              label: 'Nested',
+              status: 'running',
+              details: [
+                {
+                  id: 'nested-text',
+                  label: 'Nested log',
+                  type: 'text',
+                  content: 'nested execution log',
+                },
+                {
+                  id: 'nested-code',
+                  label: 'Nested payload',
+                  type: 'code',
+                  code: '[1,2,3]',
+                  language: 'json',
+                  languageLabelVisible: false,
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    });
+  });
+
+  test('accepts the narrative statuses, description, time and note a step can carry', () => {
+    expectValid({
+      steps: [
+        { id: 'started', label: 'Started', status: 'recorded', time: '10:45:20 AM' },
+        {
+          id: 'collect',
+          label: 'Step 2, Collect merged changes',
+          status: 'running',
+          description: 'Reading merged pull requests from GitHub.',
+          time: 'now',
+          note: {
+            title: 'Merged since Oct 23, so far',
+            lines: ['#412 Fix the sync', '#413 Add retries'],
+            tone: 'neutral',
+            label: 'Your note',
+            streaming: true,
+          },
+        },
+        { id: 'wait', label: 'Wait for approval', status: 'waiting' },
+      ],
+    });
+    expectInvalid({
+      steps: [{ id: 'bad', label: 'Bad', status: 'recorded', note: { title: 'No lines' } }],
+    });
+    expectInvalid({
+      steps: [{ id: 'bad', label: 'Bad', status: 'recorded', note: { lines: [], tone: 'loud' } }],
+    });
+  });
+
+  test('describes every property a run step declares', () => {
+    const declared = [
+      ...readFileSync(
+        join(
+          import.meta.dir,
+          '../../../components/cinder/src/components/run-step-timeline/run-step-timeline.types.ts',
+        ),
+        'utf8',
+      ).matchAll(/^export type RunStep = \{([\s\S]*?)^\};/gm),
+    ]
+      .flatMap((match) => [...(match[1] ?? '').matchAll(/^ {2}(\w+)\??:/gm)])
+      .map((match) => match[1]);
+    const stepSchema = (
+      schema as unknown as {
+        properties: { steps: { items: { anyOf: { properties: object }[] } } };
+      }
+    ).properties.steps.items.anyOf[0];
+    const properties = Object.keys(stepSchema?.properties ?? {});
+
+    // `icon` is a snippet, which JSON cannot carry; every other property must be in the schema.
+    expect(declared.filter((name) => name !== 'icon' && !properties.includes(name!))).toEqual([]);
+  });
+
+  test('rejects malformed detail variants before they reach the renderer', () => {
+    const baseStep = {
+      id: 'step',
+      label: 'Step',
+      status: 'succeeded',
+    };
+
+    expectInvalid({
+      steps: [
+        {
+          ...baseStep,
+          details: [{ id: 'missing-type', label: 'Missing type', content: 'legacy shape' }],
+        },
+      ],
+    });
+    expectInvalid({
+      steps: [
+        {
+          ...baseStep,
+          details: [{ id: 'text-with-code', label: 'Wrong field', type: 'text', code: '{}' }],
+        },
+      ],
+    });
+    expectInvalid({
+      steps: [
+        {
+          ...baseStep,
+          details: [{ id: 'code-with-content', label: 'Wrong field', type: 'code', content: '{}' }],
+        },
+      ],
+    });
+    expectInvalid({
+      steps: [
+        {
+          ...baseStep,
+          details: [{ id: 'code-missing-payload', label: 'Missing payload', type: 'code' }],
+        },
+      ],
+    });
+    expectInvalid({
+      steps: [
+        {
+          ...baseStep,
+          details: [{ id: 'text-missing-payload', label: 'Missing payload', type: 'text' }],
+        },
+      ],
+    });
+  });
+});
+
+describe('schedule-builder generated schema', () => {
+  const schema = generateSchemaForComponent({
+    typesFilePath: join(
+      import.meta.dir,
+      '../../../components/cinder/src/components/schedule-builder/schedule-builder.types.ts',
+    ),
+    componentName: 'schedule-builder',
+  }).schema;
+  const validate = new Ajv2020({ strict: false }).compile(schema);
+
+  test('accepts a cron value and an interval counted in whole positive units', () => {
+    expect(validate({ value: { cron: '0 9 * * 1-5', timeZone: 'America/Los_Angeles' } })).toBe(
+      true,
+    );
+    expect(validate({ value: { every: { unit: 'hours', count: 7 }, timeZone: 'UTC' } })).toBe(true);
+  });
+
+  test('rejects an interval count that is not a positive integer', () => {
+    for (const count of [0, -1, 1.5]) {
+      expect(validate({ value: { every: { unit: 'hours', count }, timeZone: 'UTC' } })).toBe(false);
+    }
+  });
+});

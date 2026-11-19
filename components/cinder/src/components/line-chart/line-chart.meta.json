@@ -1,0 +1,16 @@
+{
+  "$schema": "../../../../../internal/component-tooling/src/schemas/component-meta.schema.json",
+  "category": "data-display",
+  "status": "stable",
+  "purpose": "Responsive SVG line chart for comparing one or more numeric series over an ordered x domain.",
+  "tags": ["chart", "line", "analytics"],
+  "useWhen": [
+    "Showing trends over time or another ordered domain.",
+    "Comparing several metric series on the same numeric axis."
+  ],
+  "avoidWhen": [
+    { "reason": "Comparing discrete category totals — use bar-chart instead." },
+    { "reason": "Showing cumulative filled trends — use area-chart instead." }
+  ],
+  "related": ["area-chart", "bar-chart", "table", "statistic"]
+}

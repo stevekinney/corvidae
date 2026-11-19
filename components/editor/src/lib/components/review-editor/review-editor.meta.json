@@ -1,0 +1,20 @@
+{
+  "$schema": "../../../../../../internal/component-tooling/src/schemas/component-meta.schema.json",
+  "category": "domain",
+  "status": "domain-suite",
+  "purpose": "Markdown editor extended with inline review threads, anchored comments, and collaborative annotation state.",
+  "tags": ["markdown", "review", "domain-suite"],
+  "useWhen": [
+    "Building a document review experience that needs both a Markdown editor and anchored comment threads in one bundled surface.",
+    "Threading reviewer commentary against specific selections inside a long-form document."
+  ],
+  "avoidWhen": [
+    {
+      "reason": "Plain authoring with no review threads — markdown-editor is the lighter primitive."
+    },
+    {
+      "reason": "Reviewing diffs between two documents rather than annotating one — use diff-viewer instead."
+    }
+  ],
+  "related": ["markdown-editor"]
+}

@@ -241,7 +241,7 @@ for (const width of WIDTHS) {
       // alone, one with a short display name beside the long identifier, one defined in code with
       // the long tool listed twice (a toolbox may hold two tools under one name), and one file
       // agent with the long tool and the long skill.
-      await page.route('**/bureau/jsonrpc', async (route) => {
+      await page.route('**/jsonrpc', async (route) => {
         const posted = route.request().postData() ?? '';
         if (posted.includes('"bureau.agents.definitions.get"') && posted.includes(withSkills)) {
           const { id } = JSON.parse(posted) as { id: unknown };

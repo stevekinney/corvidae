@@ -243,7 +243,7 @@ test.describe('the list', () => {
         // A fresh host: the Bureau has no file. The engine holds the types the Bureau registers for
         // itself and the code workflows plugins contributed, which the Bureau's list still names
         // (`kind: 'code'`) and the page leaves out of its rows, so only the files are taken away.
-        await page.route(/\/bureau\/jsonrpc/, async (route) => {
+        await page.route(/\/jsonrpc/, async (route) => {
           const body = route.request().postData() ?? '';
           if (!body.includes('"bureau.workflows.list"')) {
             await route.fallback();

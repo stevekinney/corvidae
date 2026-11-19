@@ -17,6 +17,7 @@ import {
   SAMPLE_TIME_ZONE,
 } from '../../fixtures/sample-now.ts';
 import { readSampleWorldRecords } from '../../fixtures/sample-world-records.ts';
+import { rewriteBureauAnswer } from './bureau-answer-support.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
 import { E2E_SHOWCASE_URL } from './e2e-constants.ts';
 import { expect, test } from './fixtures.ts';
@@ -28,27 +29,6 @@ const SOURCE = 'run-page-live-states.spec.ts';
 const WIDTHS = [1280, 375] as const;
 
 type JsonRecord = Record<string, unknown>;
-
-/** Answers the Bureau operation `method` with its own answer rewritten by `rewrite`; others pass through. */
-async function rewriteOperation(
-  page: Page,
-  method: string,
-  rewrite: (result: JsonRecord) => JsonRecord,
-): Promise<void> {
-  await page.route('**/bureau/jsonrpc', async (route: Route) => {
-    const body = JSON.parse(route.request().postData() ?? '{}') as { method?: string };
-    if (body.method !== method) {
-      await route.fallback();
-      return;
-    }
-    const response = await route.fetch();
-    const answer = (await response.json()) as { result?: JsonRecord };
-    await route.fulfill({
-      response,
-      json: { ...answer, result: rewrite(answer.result ?? {}) },
-    });
-  });
-}
 
 /**
  * Makes the sample world's failed Release notes run answer as a run still going: the engine says
@@ -80,7 +60,7 @@ async function answerAsRunningInstance(
       },
     });
   });
-  await rewriteOperation(page, 'bureau.workflows.runs.get', (record) => ({
+  await rewriteBureauAnswer(page, 'bureau.workflows.runs.get', (record) => ({
     ...record,
     status: 'running',
     error: null,
@@ -88,7 +68,7 @@ async function answerAsRunningInstance(
     createdAt: new Date(startedAt).toISOString(),
     updatedAt: new Date(SAMPLE_NOW_MILLISECONDS - 1000).toISOString(),
   }));
-  await rewriteOperation(page, 'bureau.workflows.runs.history', (history) => ({
+  await rewriteBureauAnswer(page, 'bureau.workflows.runs.history', (history) => ({
     ...history,
     events: ((history['events'] as JsonRecord[] | undefined) ?? []).filter(
       (event) => event['type'] !== 'file-workflow:run-terminal',
@@ -151,7 +131,7 @@ for (const width of WIDTHS) {
       page,
     }) => {
       const world = await readSampleWorldRecords(E2E_SHOWCASE_URL);
-      await rewriteOperation(page, 'bureau.tasks.get', (task) => ({
+      await rewriteBureauAnswer(page, 'bureau.tasks.get', (task) => ({
         ...task,
         status: 'working',
         createdAt: new Date(SAMPLE_NOW_MILLISECONDS - 12_000).toISOString(),

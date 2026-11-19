@@ -403,6 +403,7 @@ scenarios.describe('stale: the delivery ledger and merged pull requests', () => 
         branch: 'work/pushed',
         head: git(path, 'rev-parse', 'HEAD'),
         mergeCommit: git(checkout, 'rev-parse', 'HEAD'),
+        operationId: 'pushed',
       });
       expect(entryFor(path)).toMatchObject({ delivered: true, deliveredBy: 'delivered-head' });
     },
@@ -419,6 +420,7 @@ scenarios.describe('stale: the delivery ledger and merged pull requests', () => 
       branch: 'work/detached',
       head: git(path, 'rev-parse', 'HEAD'),
       mergeCommit: null,
+      operationId: 'detached',
     });
     expect(entryFor(path)).toMatchObject({
       delivered: true,
@@ -440,14 +442,24 @@ scenarios.describe('stale: the delivery ledger and merged pull requests', () => 
     git(checkout, 'branch', '-f', 'work/two', second);
     git(path, 'checkout', '-q', '--detach', 'HEAD~1');
     expect(entryFor(path).delivered).toBe(false);
-    recordDelivery(checkout, { branch: 'work/two', head: second, mergeCommit: null });
+    recordDelivery(checkout, {
+      branch: 'work/two',
+      head: second,
+      mergeCommit: null,
+      operationId: 'two',
+    });
     expect(entryFor(path)).toMatchObject({ delivered: true, deliveredBy: 'delivered-head' });
   });
 
   scenarios.scenario('a tip with a commit that is in no delivered head stays undelivered', () => {
     const path = addWorktree('extra');
     const delivered = git(path, 'rev-parse', 'HEAD');
-    recordDelivery(checkout, { branch: 'work/extra', head: delivered, mergeCommit: null });
+    recordDelivery(checkout, {
+      branch: 'work/extra',
+      head: delivered,
+      mergeCommit: null,
+      operationId: 'extra',
+    });
     writeFileSync(join(path, 'more.txt'), 'more\n');
     git(path, 'add', '.');
     git(path, 'commit', '-q', '-m', 'work after the delivery');
@@ -480,6 +492,7 @@ scenarios.describe('stale: the delivery ledger and merged pull requests', () => 
       branch: 'work/ledgered',
       head: git(path, 'rev-parse', 'HEAD'),
       mergeCommit: null,
+      operationId: 'ledgered',
     });
     const result = staleWith(ghAnswering([], true));
     expect(byPath(result, path).delivered).toBe(true);
@@ -503,6 +516,7 @@ scenarios.describe('stale --remove: a lock that only names a finished Agent sess
       branch: `work/${path.split('/').pop()}`,
       head: git(path, 'rev-parse', 'HEAD'),
       mergeCommit: null,
+      operationId: `ledger-${path.split('/').pop()}`,
     });
 
   scenarios.scenario(

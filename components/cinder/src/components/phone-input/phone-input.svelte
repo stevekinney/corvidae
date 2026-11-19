@@ -1,17 +1,4 @@
 <script lang="ts" module>
-  /**
-   * @cinder
-   * @category form
-   * @status stable
-   * @purpose International phone-number input pairing a country-code dropdown with an as-you-type national number input and emitting E.164 values.
-   * @tag form
-   * @tag phone
-   * @useWhen Collecting an international phone number that must be stored in a canonical E.164 form.
-   * @useWhen Letting the user pick a calling country and a national number side-by-side.
-   * @avoidWhen Collecting a free-form local number with no country context — use input type="tel" instead.
-   * @avoidWhen Collecting an SMS verification code — use pin-input instead.
-   * @related input, pin-input, form-field
-   */
   export type {
     PhoneInputChange,
     PhoneInputCountryCode,

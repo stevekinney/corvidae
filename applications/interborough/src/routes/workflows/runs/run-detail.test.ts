@@ -73,6 +73,14 @@ function open(
 const BUREAU_ONLY: readonly AuthorizationScope[] = [];
 const origin = (container: HTMLElement) => container.querySelector('[data-testid="run-lineage"]');
 const header = (container: HTMLElement) => container.querySelector('[data-run-header]');
+/** The words of the header's links, which rows 55f and 55j keep free of a session. */
+const headerLinks = (container: HTMLElement): string[] =>
+  [...(header(container)?.querySelectorAll('a') ?? [])].map((link) => link.textContent.trim());
+/** The rail's Open the session link, which opens a goal's or a schedule's session. */
+const railSession = (view: { getByRole: (role: string) => HTMLElement }) =>
+  [...view.getByRole('complementary').querySelectorAll('a')].find(
+    (link) => link.textContent.trim() === TASK_COPY.openSession,
+  );
 
 describe('where a run came from', () => {
   test('a run started from a chat links to the chat, and opens it in place', async () => {
@@ -88,6 +96,16 @@ describe('where a run came from', () => {
 
     expect(await fireEvent.click(openChat, { button: 0 })).toBe(false);
     expect(router.pathname).toContain('session-1');
+  });
+
+  test('a chat’s run opens its chat from the header, so its rail has no Session fact', async () => {
+    const view = open('/runs/run-1', {
+      tasks: [taskFixture({ id: 'run-1', contextId: 'session-1', agentName: 'echo' })],
+    });
+
+    await view.findByRole('link', { name: TASK_COPY.openChat });
+    expect(railSession(view)).toBeUndefined();
+    expect(view.getByRole('complementary').textContent).not.toContain(RUN_PAGE_COPY.facts.session);
   });
 
   test('a chat’s run names the chat that started it, then itself as This run (row 06d)', async () => {
@@ -143,7 +161,7 @@ describe('where a run came from', () => {
     expect(router.pathname).toContain('session-1');
   });
 
-  test('a run a schedule’s fire started is said so, its header offers no session or chat (55j), and Started by opens the session', async () => {
+  test('a run a schedule’s fire started is said so, its header offers no session or chat (55j), and Started by and the rail open the session', async () => {
     const view = open('/runs/run-1', {
       tasks: [
         taskFixture({
@@ -161,7 +179,9 @@ describe('where a run came from', () => {
 
     await waitFor(() => expect(origin(view.container)?.textContent).toContain(TASK_COPY.schedule));
     await waitFor(() => expect(stub?.callsTo('bureau.contexts.get').length).toBeGreaterThan(0));
-    expect(view.queryByRole('link', { name: TASK_COPY.openSession })).toBeNull();
+    // The rail's Session opens the session the fire ran in; the header links neither it nor a chat.
+    await waitFor(() => expect(railSession(view)?.getAttribute('href')).toContain('fire-1'));
+    expect(headerLinks(view.container)).not.toContain(TASK_COPY.openSession);
     expect(view.queryByRole('link', { name: TASK_COPY.openChat })).toBeNull();
     // The session is reached from Started by, which names it.
     const sessionLink = await waitFor(() => {
@@ -526,7 +546,7 @@ describe('a goal’s attempt', () => {
     expect(await view.findByText(TASK_COPY.goalAttemptNoteBureauOnly)).not.toBeNull();
   });
 
-  test('a goal’s attempt offers Open goal and no Open the session in its header (row 55f)', async () => {
+  test('a goal’s attempt offers Open goal and no Open the session in its header (row 55f), and its rail opens the session', async () => {
     const view = open('/runs/goal-1-a0', { goals: [attempt('passed')], scopes: BUREAU_ONLY });
     stub?.on('bureau.contexts.get', (params) => ({
       ...contextDetailFixture(String(params['contextId'])),
@@ -538,7 +558,17 @@ describe('a goal’s attempt', () => {
     expect(stub?.callsTo('bureau.contexts.get')[0]?.params).toEqual({
       contextId: 'goal-session-goal-1-a0',
     });
-    expect(view.queryByRole('link', { name: TASK_COPY.openSession })).toBeNull();
+    // A goal's session is listed under no Chats: the attempt's rail is where it is reached.
+    const sessionLink = await waitFor(() => {
+      const found = railSession(view);
+      if (found === undefined) throw new Error('No Open the session in the rail yet.');
+      return found;
+    });
+    expect(sessionLink.getAttribute('href')).toContain('goal-session-goal-1-a0');
+    expect(view.getByRole('complementary').textContent).toContain(RUN_PAGE_COPY.facts.session);
+    expect(headerLinks(view.container)).not.toContain(TASK_COPY.openSession);
+    expect(await fireEvent.click(sessionLink, { button: 0 })).toBe(false);
+    expect(router.pathname).toContain('goal-session-goal-1-a0');
   });
 
   test('offers no session when the Bureau no longer has it', async () => {
@@ -550,6 +580,7 @@ describe('a goal’s attempt', () => {
     await view.findByRole('heading', { level: 1, name: 'Goal goal-1' });
     await waitFor(() => expect(stub?.callsTo('bureau.contexts.get').length).toBeGreaterThan(0));
     expect(view.queryByRole('link', { name: TASK_COPY.openSession })).toBeNull();
+    expect(view.getByRole('complementary').textContent).not.toContain(RUN_PAGE_COPY.facts.session);
   });
 
   test('a goal’s attempt the Bureau also lists as a task reads the attempt’s session, never the run handle as a chat, and links neither from its header', async () => {
@@ -579,7 +610,11 @@ describe('a goal’s attempt', () => {
         { contextId: 'goal-session-goal-1-a0' },
       ]),
     );
-    expect(view.queryByRole('link', { name: TASK_COPY.openSession })).toBeNull();
+    // The rail opens the attempt's own session, never the run handle.
+    await waitFor(() =>
+      expect(railSession(view)?.getAttribute('href')).toContain('goal-session-goal-1-a0'),
+    );
+    expect(headerLinks(view.container)).not.toContain(TASK_COPY.openSession);
     expect(view.queryByRole('link', { name: TASK_COPY.openChat })).toBeNull();
   });
 

@@ -65,6 +65,13 @@ export type ToastOptions = {
    * and no timer. Other toasts dismiss themselves. Ignored when `action` is also given.
    */
   undo?: () => void;
+  /**
+   * Called once when the toast starts to close, however it closes: its timer, its close button,
+   * Escape, a swipe, its action (Undo included, after the action runs), `dismiss`, `dismissAll`,
+   * `dismissUndo`, a newer toast pushing it out of the stack, or the region unmounting. A caller
+   * that holds a change back until its Undo toast is gone sends the change here.
+   */
+  onClose?: () => void;
 };
 
 /** A single toast as tracked by the region. */
@@ -80,6 +87,8 @@ export type ToastItem = {
   action?: { label: string; onAction: () => void; keepOpen?: boolean };
   /** Whether this is an Undo toast, which `dismissUndo` removes. */
   undo?: boolean;
+  /** Called once when the toast starts to close; see {@link ToastOptions.onClose}. */
+  onClose?: () => void;
 };
 
 /** Imperative API exposed via Svelte context. */

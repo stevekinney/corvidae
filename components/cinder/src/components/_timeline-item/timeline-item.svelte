@@ -1,16 +1,4 @@
 <script lang="ts" module>
-  /**
-   * @cinder
-   * @category data-display
-   * @status stable
-   * @purpose Single event inside a timeline rail with a decorative tone marker, timestamp-first header, optional group header, and body content.
-   * @tag timeline
-   * @tag event
-   * @useWhen Rendering one event along a timeline rail with consistent marker, header, connector, and body structure.
-   * @useWhen Coloring decorative markers by tone (info, success, warning, error, or a hollow pending ring) while keeping the meaningful status in title or content.
-   * @avoidWhen The entry lives in a social activity stream rather than a workflow rail — feed-event fits better.
-   * @related timeline, feed-event
-   */
   export type { TimelineItemProps } from './timeline-item.types.ts';
 </script>
 

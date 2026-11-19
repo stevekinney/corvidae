@@ -1,5 +1,6 @@
 import type { EventMap } from '@lostgradient/lifecycle';
 import type { AgentDefinitionDrift, AgentDefinitionPin } from './agent-definition-pin';
+import type { StartedRunEvidence } from './disabled-agent-admission';
 import type { SecretAnswerStore } from './secret-answers';
 import { TypedEventTarget, HookRegistry } from '@lostgradient/lifecycle';
 import type { RunHookTiers } from './run-hook-tiers';
@@ -243,6 +244,13 @@ export type SessionAgentRunResolution =
 export interface CatalogRunRecordedDefinition extends AgentDefinitionPin {
   readonly agentDefinitionHash: string | undefined;
   readonly definitionRevision?: number | undefined;
+  /**
+   * COR-2429 — the durable record that says this run was admitted while its agent was enabled, as
+   * the path that resolves it has it. The resolver hands it to `admitsRunOnDisabledAgent`, which
+   * alone decides whether the run may proceed on an agent a person disabled; without it, it may
+   * not. Every place that gives it is listed in `agent-disabled-start-paths.test.ts`.
+   */
+  readonly startedEvidence?: StartedRunEvidence | undefined;
 }
 /**
  * Who keeps the managed assets a run's rows reference (COR-1581): the session the run writes into,

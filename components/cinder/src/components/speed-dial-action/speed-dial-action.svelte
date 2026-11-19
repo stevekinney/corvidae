@@ -1,15 +1,4 @@
 <script lang="ts" module>
-  /**
-   * @cinder
-   * @category action
-   * @status beta
-   * @purpose Quick-action leaf for SpeedDial that closes the owning dial after activation.
-   * @tag action
-   * @tag floating
-   * @useWhen Rendering a secondary quick action inside SpeedDial.
-   * @avoidWhen Rendering an action outside SpeedDial - use floating-action directly. | floating-action
-   * @related speed-dial, floating-action
-   */
   export type {
     SpeedDialActionLabelPlacement,
     SpeedDialActionProps,

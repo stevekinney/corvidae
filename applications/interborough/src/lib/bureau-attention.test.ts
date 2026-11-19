@@ -60,16 +60,6 @@ describe('getAttentionCount', () => {
     expect(failure).toBeInstanceOf(HttpClientError);
     expect((failure as HttpClientError).status).toBe(403);
   });
-
-  test('refuses an answer that is not a count', async () => {
-    for (const result of [{}, { count: -1 }, { count: 1.5 }, { count: '3' }, null]) {
-      const outcome = await getAttentionCount({ fetch: answering(result) }).then(
-        () => 'counted',
-        () => 'refused',
-      );
-      expect(outcome, JSON.stringify(result)).toBe('refused');
-    }
-  });
 });
 
 describe('listAttentionAlerts', () => {

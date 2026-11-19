@@ -341,6 +341,9 @@ function createReviewOptions(options: HumanReviewOptions): ReviewOptions {
   setReviewOption(reviewOptions, 'timeout', options.timeout);
   setReviewOption(reviewOptions, 'escalation', options.escalation);
   setReviewOption(reviewOptions, 'webhookUrl', options.webhookUrl);
+  // COR-2426: the step that asks and what its author says, kept on the request.
+  setReviewOption(reviewOptions, 'step', options.step);
+  setReviewOption(reviewOptions, 'message', options.message);
   return reviewOptions;
 }
 

@@ -2,20 +2,23 @@ import { describe, expect, test } from 'bun:test';
 
 import { encodeUtf8, utf8ByteLength } from './utf8.ts';
 
-const samples = [
-  '',
-  'plain ASCII',
-  '\u0000\u007f\u0080߿ࠀ￿',
-  'café αβγ',
-  '日本語 한글',
-  '\u{1f600}\u{1f468}‍\u{1f469}‍\u{1f467}',
-  'é مرحبا',
-  '\u{10000}\u{10ffff}',
-  'lone high \ud800 lone low \udc00 swapped \udc00\ud800 trailing high \ud83d',
+const samples: [description: string, sample: string][] = [
+  ['an empty string', ''],
+  ['plain ASCII text', 'plain ASCII'],
+  ['control and boundary scalar values', '\u0000\u007f\u0080߿ࠀ￿'],
+  ['accented Latin and Greek text', 'café αβγ'],
+  ['Japanese and Korean text', '日本語 한글'],
+  ['an emoji ZWJ sequence', '\u{1f600}\u{1f468}‍\u{1f469}‍\u{1f467}'],
+  ['a combining mark and Arabic text', 'é مرحبا'],
+  ['supplementary plane scalar values', '\u{10000}\u{10ffff}'],
+  [
+    'lone and swapped surrogates',
+    'lone high \ud800 lone low \udc00 swapped \udc00\ud800 trailing high \ud83d',
+  ],
 ];
 
 describe('UTF-8 encoding', () => {
-  test.each(samples)('matches the platform encoder for %j', (sample) => {
+  test.each(samples)('matches the platform encoder for %s', (_description, sample) => {
     expect(encodeUtf8(sample)).toEqual(new TextEncoder().encode(sample));
     expect(utf8ByteLength(sample)).toBe(new TextEncoder().encode(sample).length);
   });

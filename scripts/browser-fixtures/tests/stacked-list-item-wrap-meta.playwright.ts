@@ -6,8 +6,8 @@
  * pass.
  */
 
+import { fixtureRoute } from '@lostgradient/testing/playwright/overlay-fixture';
 import { expect, test } from '@playwright/test';
-import { fixtureRoute } from './overlay-fixture.ts';
 
 test('a wrapped line two starts at the row’s text edge, not beside the status word', async ({
   page,

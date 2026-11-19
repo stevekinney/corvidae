@@ -44,7 +44,7 @@
   import { keyedByOccurrence } from '../../lib/list-keys.ts';
   import { queryKeys } from '../../lib/query.ts';
   import { humanizeName } from '../settings/plugins/plugin-presentation.ts';
-  import { restoredChanges, versionChanges } from './agent-settings.ts';
+  import { restoredSummary, versionSummary } from './agent-settings.ts';
 
   interface Props {
     /** The agent's identifier. */
@@ -155,7 +155,7 @@
       : copy.restoreDialog.description(
           restoring,
           newest,
-          restoredChanges(versions.data ?? [], restoring),
+          restoredSummary(versions.data ?? [], restoring),
         ),
   );
 
@@ -220,7 +220,7 @@
       </header>
       {#if shown.revision > 1}
         <p data-testid="agent-version-changed-from">
-          {copy.view.changedFrom(shown.revision - 1, versionChanges(shown, previousOf(shown)))}
+          {copy.view.changedFrom(shown.revision - 1, versionSummary(shown, previousOf(shown)))}
         </p>
       {/if}
       {#if newest !== undefined}
@@ -320,7 +320,7 @@
                 >
               </span>
               <span class="ib-agent-version__changed">
-                {versionChanges(version, versions.data[index + 1])}
+                {versionSummary(version, versions.data[index + 1])}
               </span>
             </div>
             {#if index > 0}

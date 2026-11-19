@@ -1,5 +1,5 @@
 /**
- * The browser's view of the Bureau's goals: `bureau.goals.*` (COR-1482), parsed at the boundary.
+ * The browser's view of the Bureau's goals: `bureau.goals.*` (COR-1482), through the generated client.
  * A goal runs a catalog agent on a prompt until a validator the Bureau was configured with passes,
  * within bounds. A goal belongs to the principal that created it, and its view leaves out the
  * instructions, and a list leaves out its prompt too: it is the goal's control-plane state, where
@@ -12,9 +12,8 @@
  * being cancelled against a state the caller did not see. `update` always names it, for the same
  * reason.
  */
-import { z } from 'zod';
-
-import { callBureau, type Fetcher } from './bureau-client.ts';
+import { bureauClient, type BureauOutput } from './bureau-api.ts';
+import type { Fetcher } from './bureau-client.ts';
 
 type Options = { readonly signal?: AbortSignal; readonly fetch?: Fetcher };
 
@@ -41,122 +40,38 @@ export function goalHasEnded(status: GoalStatus): boolean {
   return ENDED.has(status);
 }
 
-const usageSchema = z.object({
-  steps: z.number(),
-  tokens: z.number(),
-  costUsd: z.number().nullable(),
-});
+type GoalRecord = BureauOutput<'bureau.goals.get'>;
 
-const goalSchema = z.object({
-  goalRunId: z.string(),
-  owner: z.string(),
-  agentName: z.string(),
-  /** The goal's name and version, as it was created: what titles it in a list. */
-  identity: z.object({ name: z.string(), version: z.string() }),
-  /** The check the goal runs, by the exact name and version it holds now. */
-  validator: z.object({ name: z.string(), version: z.string() }),
-  /**
-   * What the check was configured with (COR-2117): the JSON its schema parsed, or `null` when the
-   * goal named none. It is the check's own text, which `checkText` reads beside the name.
-   */
-  validatorConfiguration: z.unknown(),
-  status: z.enum(GOAL_STATUSES),
-  terminalReason: z.string().nullable(),
-  revision: z.number().int(),
-  createdAt: z.string(),
-  updatedAt: z.string(),
-  closedAt: z.string().nullable(),
-  cancellation: z.object({ requestedAt: z.string(), reason: z.string().nullable() }).nullable(),
-  bounds: z.object({
-    maximumAttempts: z.number(),
-    maximumTotalDurationMs: z.number().nullable(),
-    maximumTotalSteps: z.number().nullable(),
-    maximumTotalTokens: z.number().nullable(),
-    maximumTotalCostUsd: z.number().nullable(),
-  }),
-  usage: usageSchema.extend({ attempts: z.number(), durationMs: z.number() }),
-  attempts: z.array(
-    z.object({
-      /** The agent the attempt ran as, which is not the goal's `agentName` once the goal's agent changed. */
-      agentName: z.string().optional(),
-      attemptId: z.string(),
-      attemptIndex: z.number().int(),
-      runId: z.string(),
-      /** The session the attempt ran in, which `bureau.contexts.get` reads. */
-      sessionId: z.string(),
-      status: z.enum(['running', 'evaluating', 'passed', 'failed', 'aborted']),
-      startedAt: z.string(),
-      completedAt: z.string().nullable(),
-      finishReason: z.string().nullable(),
-      usage: usageSchema,
-      /**
-       * What the validator said was wrong with the attempt (`null` when it said nothing). Only
-       * `bureau.goals.get` for the goal's owner carries it; a list, and any other caller's read,
-       * leave it out.
-       */
-      feedback: z.string().nullable().optional(),
-    }),
-  ),
-  /**
-   * The goal's prompt, as it was last set. Only `bureau.goals.get` for the goal's owner carries it;
-   * a list and any other caller's read leave it out, so a page treats its absence as unknown and
-   * never as an empty prompt.
-   */
-  prompt: z.string().optional(),
-});
+/**
+ * One attempt of a goal. `agentName` is the agent the attempt ran as, which is not the goal's
+ * `agentName` once the goal's agent changed; a Bureau before it says none, which reads as the
+ * goal's own agent.
+ */
+export type GoalAttempt = Omit<GoalRecord['attempts'][number], 'agentName'> & {
+  readonly agentName?: string | undefined;
+};
 
 /** One goal as `bureau.goals.list`, `get`, and `create` show it. */
-export type Goal = z.infer<typeof goalSchema>;
-
-const pageSchema = z.object({ goals: z.array(goalSchema), nextOffset: z.number().nullable() });
+export type Goal = Omit<GoalRecord, 'attempts'> & { readonly attempts: readonly GoalAttempt[] };
 
 /** One page of the caller's goals, oldest first, ended ones included. */
-export type GoalPage = z.infer<typeof pageSchema>;
+export type GoalPage = BureauOutput<'bureau.goals.list'>;
 
 /** One page of goals, from `offset`. */
 export async function listGoals(
   input: { readonly limit?: number; readonly offset?: number } = {},
   options?: Options,
 ): Promise<GoalPage> {
-  return pageSchema.parse(await callBureau('bureau.goals.list', input, options));
+  return bureauClient['bureau.goals.list'](input, options);
 }
 
 /** One goal by its identifier (`bureau.goals.get`); a goal that is not the caller's is `NotFound`. */
 export async function getGoal(goalRunId: string, options?: Options): Promise<Goal> {
-  return goalSchema.parse(await callBureau('bureau.goals.get', { goalRunId }, options));
+  return bureauClient['bureau.goals.get']({ goalRunId }, options);
 }
 
-const verdictSchema = z.object({
-  goalRunId: z.string(),
-  attemptId: z.string(),
-  attemptIndex: z.number().int(),
-  outcome: z.enum(['pass', 'fail', 'error', 'unavailable', 'canceled', 'indeterminate']),
-  feedback: z.string().nullable(),
-  retryable: z.boolean().nullable(),
-  evidence: z.array(z.object({ source: z.string(), detail: z.unknown() })),
-  reason: z.string().nullable(),
-  error: z.object({ kind: z.string(), code: z.string(), message: z.string() }).nullable(),
-  validator: z.object({ name: z.string(), version: z.string() }),
-  /** What the validator was passed: JSON, or `null` when it was passed none. */
-  configuration: z.unknown(),
-  /** What judged the attempt, captured when the validator ran; `null` on a record written before it. */
-  judgedBy: z
-    .object({
-      validator: z.object({ name: z.string(), version: z.string() }),
-      source: z.object({
-        kind: z.enum(['bureau', 'plugin', 'bungalow']),
-        name: z.string(),
-        version: z.string(),
-      }),
-      configuration: z.unknown(),
-    })
-    .nullable(),
-  startedAt: z.string(),
-  completedAt: z.string(),
-});
-
 /** What the check said about one attempt (`bureau.goals.verdict`, COR-2112). */
-export type GoalVerdict = z.infer<typeof verdictSchema>;
+export type GoalVerdict = BureauOutput<'bureau.goals.verdict'>;
 
 /**
  * One attempt's verdict: its outcome, feedback, evidence, the configuration it was given and what
@@ -168,9 +83,7 @@ export async function getGoalVerdict(
   attemptIndex: number,
   options?: Options,
 ): Promise<GoalVerdict> {
-  return verdictSchema.parse(
-    await callBureau('bureau.goals.verdict', { goalRunId, attemptIndex }, options),
-  );
+  return bureauClient['bureau.goals.verdict']({ goalRunId, attemptIndex }, options);
 }
 
 /** How many goals one request of {@link listAllGoals} asks for. */
@@ -227,19 +140,8 @@ export type GoalInput = {
   readonly idempotencyKey: string;
 };
 
-const createdSchema = z.object({
-  outcome: z.enum(['created', 'existing']),
-  goal: goalSchema,
-  controller: z
-    .object({
-      status: z.enum(['started', 'not-needed', 'start-failed']),
-      reason: z.string().nullable(),
-    })
-    .nullable(),
-});
-
 /** What creating a goal answers: the goal, and how its controller stood once the call returned. */
-export type GoalCreated = z.infer<typeof createdSchema>;
+export type GoalCreated = BureauOutput<'bureau.goals.create'>;
 
 /**
  * Creates a goal the caller owns. A validator the Bureau lacks is an `Unprocessable` fault, and an
@@ -254,18 +156,11 @@ export async function createGoal(goal: GoalInput, options?: Options): Promise<Go
     validator: goal.validator,
     bounds: { maximumAttempts: goal.maximumAttempts, maximumTotalSteps: goal.maximumTotalSteps },
   };
-  return createdSchema.parse(await callBureau('bureau.goals.create', params, options));
+  return bureauClient['bureau.goals.create'](params, options);
 }
 
-const cancelSchema = z.object({
-  goalRunId: z.string(),
-  outcome: z.enum(['canceled', 'cancellation-pending', 'already-terminal', 'contended']),
-  status: z.enum(GOAL_STATUSES),
-  revision: z.number().int(),
-});
-
 /** What cancelling answers: how far it has got, and the goal's status and revision. */
-export type GoalCancelled = z.infer<typeof cancelSchema>;
+export type GoalCancelled = BureauOutput<'bureau.goals.cancel'>;
 
 /** Cancels a goal, if it is still at `expectedRevision`. */
 export async function cancelGoal(
@@ -277,7 +172,7 @@ export async function cancelGoal(
     goalRunId,
     ...(expectedRevision === undefined ? {} : { expectedRevision }),
   };
-  return cancelSchema.parse(await callBureau('bureau.goals.cancel', params, options));
+  return bureauClient['bureau.goals.cancel'](params, options);
 }
 
 /**
@@ -300,15 +195,8 @@ export type GoalChange = {
   readonly maximumAttempts?: number;
 };
 
-const updateSchema = z.object({
-  goalRunId: z.string(),
-  outcome: z.enum(['updated', 'unchanged']),
-  status: z.enum(GOAL_STATUSES),
-  revision: z.number().int(),
-});
-
 /** What changing a goal answers: whether anything changed, and the goal's status and revision. */
-export type GoalUpdated = z.infer<typeof updateSchema>;
+export type GoalUpdated = BureauOutput<'bureau.goals.update'>;
 
 /**
  * Changes a goal, if it is still at `expectedRevision` (`bureau.goals.update`). A goal that moved
@@ -328,5 +216,5 @@ export async function updateGoal(
     ...(change.validator === undefined ? {} : { validator: change.validator }),
     ...(change.maximumAttempts === undefined ? {} : { maximumAttempts: change.maximumAttempts }),
   };
-  return updateSchema.parse(await callBureau('bureau.goals.update', params, options));
+  return bureauClient['bureau.goals.update'](params, options);
 }

@@ -128,6 +128,27 @@
     line-clamp: 1;
   }
 
+  /* A mark after the title ("Plugin"): it sits 6px after the title on the first line's baseline,
+   * outside the title's clamp. The title shrinks and clamps first; the mark is never cut and never
+   * wraps onto a line of its own, because the two share one line that does not wrap. */
+  .cinder-stacked-list-item__title-row {
+    display: flex;
+    flex-wrap: nowrap;
+    align-items: baseline;
+    gap: var(--cinder-space-1-5);
+    min-inline-size: 0;
+  }
+
+  .cinder-stacked-list-item__title-row > .cinder-stacked-list-item__title {
+    flex: 0 1 auto;
+  }
+
+  .cinder-stacked-list-item__badge {
+    display: inline-flex;
+    flex: none;
+    white-space: nowrap;
+  }
+
   .cinder-stacked-list-item__title-link {
     color: inherit;
     text-decoration: none;
@@ -316,6 +337,18 @@
     }
   }
 
+  /* On a phone a title with a mark takes one line and ends in an ellipsis, so the mark sits 6px after
+     the last character drawn. A title that wrapped would keep the width of its box, not of its last
+     line, and leave the mark stranded beside a short first line (R10-01). The row's one tooltip is
+     the whole name. */
+  @container cinder-stacked-list-item (max-width: 639.98px) {
+    .cinder-stacked-list-item__title-row > .cinder-stacked-list-item__title {
+      display: block;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+  }
+
   /* The dot centres on the word's line box while the word's baseline is the flex baseline. */
   .cinder-stacked-list-item__status .cinder-status-dot {
     align-items: center;
@@ -346,6 +379,11 @@
     font-weight: var(--cinder-font-semibold);
   }
 
+  /* With a mark, the title and the mark share the title's cell. */
+  .cinder-stacked-list-item--lines .cinder-stacked-list-item__title-row {
+    grid-area: title;
+  }
+
   .cinder-stacked-list-item--lines .cinder-stacked-list-item__time {
     grid-area: time;
     display: flex;
@@ -357,6 +395,11 @@
     font-size: var(--cinder-text-xs);
     font-variant-numeric: tabular-nums;
     color: var(--cinder-text-subtle);
+    white-space: nowrap;
+  }
+
+  /* A time given as text: the day and the clock are each whole, wherever the time may wrap. */
+  .cinder-stacked-list-item__time-part {
     white-space: nowrap;
   }
 
@@ -488,8 +531,8 @@
       ).cinder-stacked-list-item--status-leading
       > .cinder-stacked-list-item__layout {
       grid-template-columns:
-        [leading] auto [status] var(--_cinder-status-track) [title] minmax(0, 1fr) [time] auto
-        [trailing] auto;
+        [leading] auto [status] var(--_cinder-status-track) [title] minmax(0, 1fr)
+        [time] var(--_cinder-time-track, auto) [trailing] auto;
       grid-template-areas:
         'leading title title time trailing'
         'leading status line line trailing'
@@ -510,22 +553,61 @@
     padding-inline-end: var(--cinder-space-2);
   }
 
-  /* A narrow row puts a leading status on line two with no fixed column. */
+  /* A narrow row puts a leading status on line two with no fixed column. The word is never cut: its
+     track is the word's own width and the cell does not shrink below it, so the line's text and the
+     time give way instead (R10-02). */
   @container cinder-stacked-list-item (max-width: 639.98px) {
     .cinder-stacked-list-item--lines:not(
         .cinder-stacked-list-item--band
       ).cinder-stacked-list-item--status-leading
       > .cinder-stacked-list-item__layout {
-      --_cinder-status-track: auto;
+      --_cinder-status-track: max-content;
+    }
+
+    /* A row with a trailing control (a hook's switch) shares line one between the title, the time
+       and the control, so the time gives way before the title: a time given as text draws its day
+       over its clock ("Yesterday," over "6:00 PM"), and its column is exactly its widest line
+       (`min-content`), so the title takes all the rest. A time given as a snippet stays one line.
+       A row with no trailing control, or whose actions drop under it, keeps its time on one line,
+       and a group row's time track is never capped (its Show drops under the time only when the
+       two cannot share a line; see the group row below). */
+    .cinder-stacked-list-item--lines.cinder-stacked-list-item--has-trailing:not(
+        .cinder-stacked-list-item--band,
+        .cinder-stacked-list-item--group,
+        .cinder-stacked-list-item--phone-buttons
+      ).cinder-stacked-list-item--status-leading
+      > .cinder-stacked-list-item__layout {
+      --_cinder-time-track: min-content;
     }
 
     .cinder-stacked-list-item--lines:not(
         .cinder-stacked-list-item--band
       ).cinder-stacked-list-item--status-leading
       .cinder-stacked-list-item__status {
+      flex: none;
       align-items: center;
+      min-inline-size: max-content;
       min-block-size: calc(var(--cinder-text-xs) * var(--cinder-leading-normal));
       padding-inline-end: 0;
+    }
+
+    .cinder-stacked-list-item--lines.cinder-stacked-list-item--has-trailing:not(
+        .cinder-stacked-list-item--band,
+        .cinder-stacked-list-item--group,
+        .cinder-stacked-list-item--phone-buttons
+      ).cinder-stacked-list-item--status-leading
+      .cinder-stacked-list-item__time {
+      text-align: end;
+    }
+
+    /* Only a time given as text wraps, and only between its parts. */
+    .cinder-stacked-list-item--lines.cinder-stacked-list-item--has-trailing:not(
+        .cinder-stacked-list-item--band,
+        .cinder-stacked-list-item--group,
+        .cinder-stacked-list-item--phone-buttons
+      ).cinder-stacked-list-item--status-leading
+      .cinder-stacked-list-item__time-text {
+      white-space: normal;
     }
 
     /* On a phone the status moves to line two beside the kind and agent: "Waiting on you Chat".
@@ -755,9 +837,23 @@
     align-self: center;
   }
 
+  /* A group row's time and its Show share one line while they fit, which at the normal text size
+     they do even at 320px: the time's track is `auto`, so it takes its whole width before the title
+     takes the rest. Where they cannot (200% text on a phone), Show drops whole to a line of its own
+     under the time rather than pushing the row past the page. Each keeps `nowrap`, so the only
+     break is between the two. */
+  .cinder-stacked-list-item--lines.cinder-stacked-list-item--group .cinder-stacked-list-item__time {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    row-gap: 0;
+  }
+
+  /* The control is one word and a chevron: it never shrinks or breaks, whatever its cell does. */
   .cinder-stacked-list-item__disclosure {
     position: relative;
     z-index: 1;
+    flex: none;
+    white-space: nowrap;
     display: inline-flex;
     align-items: center;
     gap: var(--cinder-space-1-5);
@@ -832,7 +928,7 @@
     > .cinder-stacked-list-item__layout {
     grid-template-columns:
       [leading] auto [status] var(--_cinder-status-track) [title] minmax(0, 1fr)
-      [time] auto;
+      [time] var(--_cinder-time-track, auto);
     grid-template-areas:
       'leading title title time'
       'leading status line line'

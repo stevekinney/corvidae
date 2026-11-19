@@ -67,10 +67,14 @@
 // Exit codes: 0 success and read back, 1 refused, not found, API failure or read-back mismatch,
 // 2 invalid CLI usage (including an unavailable LINEAR_API_KEY).
 
+import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
+import { hostname } from 'node:os';
+import { join } from 'node:path';
 import { rootScriptEnvironment } from '../environment-configuration.ts';
 import { isUsableValue, resolveCredential } from './credentials.ts';
 import { describeError, emitResult, parseOptions, UsageError } from './process-runner.ts';
+import { resolveMainCheckout } from './repository-locations.ts';
 
 /** The API rejected a request or answered with something unusable. */
 export class LinearError extends Error {}
@@ -86,6 +90,10 @@ export interface LinearDependencies {
   resolveKey?: () => string | undefined;
   /** The clock `claim`, `lease` and `brief.ts` judge a marker's age by; defaults to the real one. */
   now?: () => Date;
+  /** Disposable state directory for local claim/lease authority tests. */
+  executionStateDirectory?: string;
+  /** Stable coordinator identity; production defaults to the Chef run. */
+  ownerId?: string;
 }
 
 export interface LinearClient {
@@ -372,7 +380,7 @@ export async function postComment(
     return {
       ok: false,
       summary: `${identifier}: the comment was not created.`,
-      data: { identifier, verified: false },
+      data: { identifier, verified: false, mutationSucceeded: created.commentCreate.success },
     };
   const back = await client.request<{
     comment: {
@@ -1177,6 +1185,68 @@ export interface ClaimMarker {
   /** The branch's last pushed head, or `none` before the first push. */
   head: string;
   status: 'held' | 'released';
+  identity?: ProviderOperationIdentity;
+}
+
+/** The immutable local authority and operation this provider marker proves. */
+export interface ProviderOperationIdentity {
+  ownerId: string;
+  generation: number;
+  operationId: string;
+  intentFingerprint: string;
+}
+
+const identityPattern =
+  /^Chef authority: owner (\S+), generation ([1-9]\d*), operation (\S+), intent ([a-f0-9]{64})$/;
+
+function providerIdentity(body: string): ProviderOperationIdentity | undefined {
+  const line = body
+    .split('\n')
+    .map((candidate) => candidate.trim())
+    .find((candidate) => candidate.startsWith('Chef authority:'));
+  const match = line === undefined ? undefined : identityPattern.exec(line);
+  if (match === null || match === undefined) return undefined;
+  return {
+    ownerId: match[1] as string,
+    generation: Number(match[2]),
+    operationId: match[3] as string,
+    intentFingerprint: match[4] as string,
+  };
+}
+
+function formatProviderIdentity(identity: ProviderOperationIdentity): string {
+  return `Chef authority: owner ${identity.ownerId}, generation ${identity.generation}, operation ${identity.operationId}, intent ${identity.intentFingerprint}`;
+}
+
+function intentFingerprint(input: Record<string, string>): string {
+  const canonical = Object.entries(input).toSorted(([left], [right]) => left.localeCompare(right));
+  return createHash('sha256').update(JSON.stringify(canonical)).digest('hex');
+}
+
+function sameProviderIdentity(
+  actual: ProviderOperationIdentity | undefined,
+  expected: ProviderOperationIdentity,
+): boolean {
+  return (
+    actual?.ownerId === expected.ownerId &&
+    actual.generation === expected.generation &&
+    actual.operationId === expected.operationId &&
+    actual.intentFingerprint === expected.intentFingerprint
+  );
+}
+
+function sameProviderAuthority(
+  actual: ProviderOperationIdentity | undefined,
+  expected: ProviderOperationIdentity,
+): boolean {
+  return actual?.ownerId === expected.ownerId && actual.generation === expected.generation;
+}
+
+function markerBody(marker: ClaimMarker | LeaseMarker): string {
+  const line = 'branch' in marker ? formatClaim(marker) : formatLease(marker);
+  if (marker.identity === undefined)
+    throw new LinearError('Chef provider markers require durable operation identity.');
+  return `${line}\n${formatProviderIdentity(marker.identity)}`;
 }
 
 export function formatClaim(marker: ClaimMarker): string {
@@ -1191,6 +1261,7 @@ const claimPattern = new RegExp(
 export function parseClaim(body: string): ClaimMarker | undefined {
   const match = claimPattern.exec(markerLine(body));
   if (match === null) return undefined;
+  const identity = providerIdentity(body);
   return {
     run: match[1] as string,
     branch: match[2] as string,
@@ -1198,6 +1269,7 @@ export function parseClaim(body: string): ClaimMarker | undefined {
     checkpoint: match[4] as string,
     head: match[5] as string,
     status: match[6] as 'held' | 'released',
+    ...(identity === undefined ? {} : { identity }),
   };
 }
 
@@ -1239,7 +1311,13 @@ export function describeClaim(record: ClaimRecord | undefined, now: Date): strin
 export async function claimIssue(
   client: LinearClient,
   identifier: string,
-  options: { run: string; branch: string; head?: string | undefined },
+  options: {
+    run: string;
+    branch: string;
+    head?: string | undefined;
+    identity: ProviderOperationIdentity;
+    expectedCurrent?: ProviderOperationIdentity;
+  },
   now: Date,
 ): Promise<Outcome> {
   const issue = await fetchIssue(client, identifier);
@@ -1251,11 +1329,15 @@ export async function claimIssue(
   });
   if (
     current !== undefined &&
-    current.marker.run !== options.run &&
-    claimIsLive(current.marker, now)
+    claimIsLive(current.marker, now) &&
+    !sameProviderIdentity(current.marker.identity, options.expectedCurrent ?? options.identity)
   )
     return refuse(current);
-  const own = current?.marker.run === options.run ? current : undefined;
+  const own =
+    current?.marker.run === options.run &&
+    sameProviderIdentity(current.marker.identity, options.expectedCurrent ?? options.identity)
+      ? current
+      : undefined;
   const held = own !== undefined && own.marker.status === 'held';
   const marker: ClaimMarker = {
     run: options.run,
@@ -1266,8 +1348,9 @@ export async function claimIssue(
       options.head ??
       (own !== undefined && own.marker.branch === options.branch ? own.marker.head : 'none'),
     status: 'held',
+    identity: options.identity,
   };
-  const body = `${formatClaim(marker)}\n\nWritten by scripts/chef/linear.ts claim; the first line is the record. Update it with the same command at each checkpoint, release it with --release.`;
+  const body = `${markerBody(marker)}\n\nWritten by scripts/chef/linear.ts claim; the first line is the record. Update it with the same command at each checkpoint, release it with --release.`;
   const written =
     own === undefined
       ? await postComment(client, identifier, body)
@@ -1292,10 +1375,15 @@ export async function releaseClaim(
   client: LinearClient,
   identifier: string,
   runId: string,
+  identity: ProviderOperationIdentity,
   now: Date,
 ): Promise<Outcome> {
   const current = latestClaim(await fetchComments(client, identifier));
-  if (current === undefined || current.marker.run !== runId)
+  if (
+    current === undefined ||
+    current.marker.run !== runId ||
+    !sameProviderAuthority(current.marker.identity, identity)
+  )
     return {
       ok: false,
       summary: `Refused: ${identifier} has no claim by run ${runId}; it is ${describeClaim(current, now)}.`,
@@ -1311,12 +1399,13 @@ export async function releaseClaim(
     ...current.marker,
     checkpoint: now.toISOString(),
     status: 'released',
+    identity,
   };
   const written = await updateComment(
     client,
     identifier,
     current.commentId,
-    `${formatClaim(marker)}\n\nReleased by scripts/chef/linear.ts claim --release.`,
+    `${markerBody(marker)}\n\nReleased by scripts/chef/linear.ts claim --release.`,
   );
   if (!written.ok) return written;
   return {
@@ -1331,6 +1420,7 @@ export interface LeaseMarker {
   since: string;
   renewed: string;
   status: 'held' | 'released';
+  identity?: ProviderOperationIdentity;
 }
 
 export function formatLease(marker: LeaseMarker): string {
@@ -1345,11 +1435,13 @@ const leasePattern = new RegExp(
 export function parseLease(body: string): LeaseMarker | undefined {
   const match = leasePattern.exec(markerLine(body));
   if (match === null) return undefined;
+  const identity = providerIdentity(body);
   return {
     run: match[1] as string,
     since: match[2] as string,
     renewed: match[3] as string,
     status: match[4] as 'held' | 'released',
+    ...(identity === undefined ? {} : { identity }),
   };
 }
 
@@ -1414,31 +1506,48 @@ function describeLease(record: LeaseRecord | undefined, now: Date): string {
 /** Take or renew this run's lease on the project; refuse while another run's is live. */
 export async function leaseProject(
   client: LinearClient,
-  reference: string,
+  resolved: ProjectReference,
   runId: string,
+  identity: ProviderOperationIdentity,
+  expectedCurrent: ProviderOperationIdentity | undefined,
   now: Date,
 ): Promise<Outcome> {
-  const resolved = await resolveProject(client, reference);
   const current = await latestLease(client, resolved.id);
   const refuse = (holder: LeaseRecord | undefined, wrote = false): Outcome => ({
     ok: false,
     summary: `Refused: ${resolved.name} lease is ${describeLease(holder, now)}; ${wrote ? "this run's lease update was posted first and is superseded" : 'nothing was changed'}.`,
     data: { project: resolved.name, leased: false, holder: holder?.marker.run ?? null },
   });
-  if (current !== undefined && current.marker.run !== runId && leaseIsLive(current.marker, now))
+  if (
+    current !== undefined &&
+    leaseIsLive(current.marker, now) &&
+    !sameProviderAuthority(current.marker.identity, identity)
+  )
     return refuse(current);
-  const kept = current?.marker.run === runId && current.marker.status === 'held';
+  const kept =
+    current?.marker.run === runId &&
+    current.marker.status === 'held' &&
+    sameProviderIdentity(current.marker.identity, expectedCurrent ?? identity);
   const marker: LeaseMarker = {
     run: runId,
     since: kept ? current.marker.since : now.toISOString(),
     renewed: now.toISOString(),
     status: 'held',
+    identity,
   };
+  const health = await inheritedHealth(client, resolved.id);
+  const beforeWrite = await latestLease(client, resolved.id);
+  if (
+    beforeWrite?.updateId !== current?.updateId ||
+    (expectedCurrent !== undefined &&
+      !sameProviderIdentity(beforeWrite?.marker.identity, expectedCurrent))
+  )
+    return refuse(beforeWrite);
   const written = await createProjectUpdate(
     client,
     resolved,
-    await inheritedHealth(client, resolved.id),
-    `${formatLease(marker)}\n\nWritten by scripts/chef/linear.ts lease. Run it again to renew, with --release to end it.`,
+    health,
+    `${markerBody(marker)}\n\nWritten by scripts/chef/linear.ts lease. Run it again to renew, with --release to end it.`,
   );
   if (!written.ok) return written;
   const after = await latestLease(client, resolved.id);
@@ -1453,13 +1562,17 @@ export async function leaseProject(
 /** End this run's lease on the project; refuse when another run holds it or none is recorded. */
 export async function releaseLease(
   client: LinearClient,
-  reference: string,
+  resolved: ProjectReference,
   runId: string,
+  identity: ProviderOperationIdentity,
   now: Date,
 ): Promise<Outcome> {
-  const resolved = await resolveProject(client, reference);
   const current = await latestLease(client, resolved.id);
-  if (current === undefined || current.marker.run !== runId)
+  if (
+    current === undefined ||
+    current.marker.run !== runId ||
+    !sameProviderAuthority(current.marker.identity, identity)
+  )
     return {
       ok: false,
       summary: `Refused: ${resolved.name} has no lease held by run ${runId}; it is ${describeLease(current, now)}.`,
@@ -1475,7 +1588,7 @@ export async function releaseLease(
     client,
     resolved,
     await inheritedHealth(client, resolved.id),
-    `${formatLease({ ...current.marker, renewed: now.toISOString(), status: 'released' })}\n\nReleased by scripts/chef/linear.ts lease --release.`,
+    `${markerBody({ ...current.marker, renewed: now.toISOString(), status: 'released', identity })}\n\nReleased by scripts/chef/linear.ts lease --release.`,
   );
   if (!written.ok) return written;
   return {
@@ -1531,6 +1644,199 @@ function identifierArgument(parsed: Parsed, count: number): string[] {
   return parsed.positionals;
 }
 
+/**
+ * The provider marker remains evidence, not local exclusion. The short state transaction fences
+ * same-host coordinators; provider inspection and mutation deliberately happen outside it.
+ */
+async function withLocalAuthority(
+  dependencies: LinearDependencies,
+  request: { resource: string; runId: string; ownerId: string },
+  inspectClaim: () => Promise<
+    { holder: string; live: boolean; identity: ProviderOperationIdentity | undefined } | undefined
+  >,
+  action: string,
+  fingerprint: () => string,
+  inspect: (authority: ProviderOperationIdentity) => Promise<Outcome | undefined>,
+  perform: (
+    authority: ProviderOperationIdentity,
+    expectedCurrent: ProviderOperationIdentity | undefined,
+  ) => Promise<Outcome>,
+): Promise<Outcome> {
+  const stateModule = await import('./execution-state.ts');
+  const store = stateModule.createExecutionStateStore({
+    stateDirectory:
+      dependencies.executionStateDirectory ??
+      join(resolveMainCheckout(), 'tmp', 'chef', 'execution-state'),
+    hostId: hostname(),
+  });
+  return stateModule.withProviderTransitionLock(store, request.resource, async () => {
+    const operationFingerprint = fingerprint();
+    let priorAuthority: { generation: number } | undefined;
+    try {
+      priorAuthority = stateModule.currentAuthority(store, request);
+    } catch {
+      // A missing, cancelled or foreign snapshot cannot prove ownership of a live provider marker.
+    }
+    let expectedCurrent: ProviderOperationIdentity | undefined;
+    const acquired = await stateModule.acquireDispatchWithinTransition(store, request, {
+      inspectClaim: async () => {
+        const remote = await inspectClaim();
+        if (remote?.live !== true || remote.identity === undefined || priorAuthority === undefined)
+          return remote;
+        const matched = Object.values(stateModule.readExecutionSnapshot(store).operations).find(
+          (operation) =>
+            operation.action === action &&
+            operation.authority.resource === request.resource &&
+            operation.authority.runId === request.runId &&
+            operation.authority.ownerId === request.ownerId &&
+            operation.authority.generation === priorAuthority.generation &&
+            operation.operationId === remote.identity?.operationId &&
+            operation.intentFingerprint === remote.identity.intentFingerprint,
+        );
+        if (matched === undefined) return remote;
+        expectedCurrent = {
+          ownerId: matched.authority.ownerId,
+          generation: matched.authority.generation,
+          operationId: matched.operationId,
+          intentFingerprint: matched.intentFingerprint,
+        };
+        return undefined;
+      },
+    });
+    if (!acquired.granted)
+      return {
+        ok: false,
+        summary: `Refused: ${request.resource} ${acquired.reason}.`,
+        data: { claimed: false, leased: false, holder: null },
+      };
+    const operationId = `${request.resource}:${acquired.authority.generation}:${action}:${operationFingerprint.slice(0, 16)}`;
+    const identity: ProviderOperationIdentity = {
+      ownerId: acquired.authority.ownerId,
+      generation: acquired.authority.generation,
+      operationId,
+      intentFingerprint: '',
+    };
+    identity.intentFingerprint = operationFingerprint;
+    const existing = stateModule.ambiguousOperation(store, acquired.authority, action);
+    if (existing !== undefined && existing.intentFingerprint !== identity.intentFingerprint)
+      return {
+        ok: false,
+        summary: `Refused: ${request.resource} retains unresolved operation ${existing.operationId}; its intent differs from ${operationId}.`,
+        data: { operationId: existing.operationId, unresolved: true },
+      };
+    if (existing !== undefined) {
+      stateModule.requireAuthority(store, acquired.authority);
+      // A response loss is not permission to replay an external mutation. Only the exact immutable
+      // marker can close this operation; all other provider states remain unresolved.
+      const observed = await inspect(identity);
+      await stateModule.recordMutationResult(store, acquired.authority, operationId, {
+        outcome: observed?.ok === true ? 'observed' : 'unresolved',
+        observed: observed?.data,
+      });
+      return (
+        observed ?? {
+          ok: false,
+          summary: `Refused: ${request.resource} operation ${operationId} remains unresolved after provider inspection.`,
+          data: { operationId, unresolved: true },
+        }
+      );
+    }
+    await stateModule.recordMutationIntent(store, acquired.authority, {
+      operationId,
+      action,
+      intentFingerprint: identity.intentFingerprint,
+    });
+    try {
+      stateModule.requireAuthority(store, acquired.authority);
+      const outcome = await perform(identity, expectedCurrent);
+      await stateModule.recordMutationResult(store, acquired.authority, operationId, {
+        outcome: outcome.ok ? 'observed' : 'unknown',
+        observed: outcome.data,
+      });
+      return {
+        ...outcome,
+        summary: outcome.ok
+          ? `${outcome.summary} Authority generation ${acquired.authority.generation}.`
+          : outcome.summary,
+        data: { ...outcome.data, authority: acquired.authority },
+      };
+    } catch (error) {
+      await stateModule.recordMutationResult(store, acquired.authority, operationId, {
+        outcome: 'unknown',
+      });
+      throw error;
+    }
+  });
+}
+
+async function withReleaseAuthority(
+  dependencies: LinearDependencies,
+  request: { resource: string; runId: string; ownerId: string; generation: number },
+  inspect: (authority: ProviderOperationIdentity) => Promise<Outcome | undefined>,
+  perform: (authority: ProviderOperationIdentity) => Promise<Outcome>,
+): Promise<Outcome> {
+  const stateModule = await import('./execution-state.ts');
+  const store = stateModule.createExecutionStateStore({
+    stateDirectory:
+      dependencies.executionStateDirectory ??
+      join(resolveMainCheckout(), 'tmp', 'chef', 'execution-state'),
+    hostId: hostname(),
+  });
+  return stateModule.withProviderTransitionLock(store, request.resource, async () => {
+    try {
+      stateModule.requireAuthority(store, request);
+    } catch (error) {
+      return {
+        ok: false,
+        summary: `Refused: ${request.resource} release lacks current authority (${describeError(error)}).`,
+        data: { released: false },
+      };
+    }
+    const operationId = `${request.resource}:${request.generation}:release`;
+    const identity: ProviderOperationIdentity = {
+      ownerId: request.ownerId,
+      generation: request.generation,
+      operationId,
+      intentFingerprint: intentFingerprint({ resource: request.resource, action: 'release' }),
+    };
+    const existing = stateModule.ambiguousOperation(store, request, 'release');
+    if (existing !== undefined) {
+      stateModule.requireAuthority(store, request);
+      const observed = await inspect(identity);
+      await stateModule.recordMutationResult(store, request, operationId, {
+        outcome: observed?.ok === true ? 'observed' : 'unresolved',
+        observed: observed?.data,
+      });
+      if (observed?.ok === true) await stateModule.releaseDispatchWithinTransition(store, request);
+      return (
+        observed ?? {
+          ok: false,
+          summary: `Refused: ${request.resource} release ${operationId} remains unresolved after provider inspection.`,
+          data: { operationId, unresolved: true },
+        }
+      );
+    }
+    await stateModule.recordMutationIntent(store, request, {
+      operationId,
+      action: 'release',
+      intentFingerprint: identity.intentFingerprint,
+    });
+    try {
+      stateModule.requireAuthority(store, request);
+      const outcome = await perform(identity);
+      await stateModule.recordMutationResult(store, request, operationId, {
+        outcome: outcome.ok ? 'observed' : 'unknown',
+        observed: outcome.data,
+      });
+      if (outcome.ok) await stateModule.releaseDispatchWithinTransition(store, request);
+      return outcome;
+    } catch (error) {
+      await stateModule.recordMutationResult(store, request, operationId, { outcome: 'unknown' });
+      throw error;
+    }
+  });
+}
+
 export async function run(
   argv: string[],
   dependencies: LinearDependencies = {},
@@ -1571,6 +1877,7 @@ export async function run(
     'run',
     'branch',
     'head',
+    'generation',
   ]);
   if (command !== 'comment' && parsed.options.has('update'))
     throw new UsageError('--update applies only to comment.');
@@ -1665,15 +1972,92 @@ export async function run(
     if (!/^[\w.-]+$/.test(runId))
       throw new UsageError(`--run needs a run id such as 2026-11-10-134500-name, not "${runId}".`);
     const release = parsed.flags.has('release');
+    const ownerId = dependencies.ownerId ?? `linear:${runId}`;
+    const generationText = parsed.options.get('generation');
+    if (
+      generationText !== undefined &&
+      (!/^\d+$/.test(generationText) || Number(generationText) < 1)
+    )
+      throw new UsageError(`--generation needs a positive integer, not "${generationText}".`);
+    const releaseGeneration = generationText === undefined ? undefined : Number(generationText);
     if (command === 'lease') {
-      plan = (client) =>
-        release
-          ? releaseLease(client, target as string, runId, now)
-          : leaseProject(client, target as string, runId, now);
+      plan = async (client) => {
+        const project = await resolveProject(client, target as string);
+        if (release) {
+          if (releaseGeneration === undefined)
+            throw new UsageError('--generation is required to release local authority.');
+          return withReleaseAuthority(
+            dependencies,
+            { resource: `project:${project.id}`, runId, ownerId, generation: releaseGeneration },
+            async (identity) => {
+              const current = await latestLease(client, project.id);
+              return current?.marker.status === 'released' &&
+                sameProviderIdentity(current.marker.identity, identity)
+                ? {
+                    ok: true,
+                    summary: `${project.name}: release ${identity.operationId} reconciled.`,
+                    data: { released: true },
+                  }
+                : undefined;
+            },
+            (identity) => releaseLease(client, project, runId, identity, now),
+          );
+        }
+        return withLocalAuthority(
+          dependencies,
+          {
+            resource: `project:${project.id}`,
+            runId,
+            ownerId,
+          },
+          async () => {
+            const current = await latestLease(client, project.id);
+            if (current === undefined) return undefined;
+            if (!leaseIsLive(current.marker, now))
+              return { holder: current.marker.run, live: false, identity: current.marker.identity };
+            return { holder: current.marker.run, live: true, identity: current.marker.identity };
+          },
+          'lease',
+          () =>
+            intentFingerprint({ resource: `project:${project.id}`, run: runId, action: 'lease' }),
+          async (identity) => {
+            const current = await latestLease(client, project.id);
+            return current?.marker.status === 'held' &&
+              sameProviderIdentity(current.marker.identity, identity)
+              ? {
+                  ok: true,
+                  summary: `${project.name}: lease ${identity.operationId} reconciled.`,
+                  data: { leased: true },
+                }
+              : undefined;
+          },
+          (identity, expectedCurrent) =>
+            leaseProject(client, project, runId, identity, expectedCurrent, now),
+        );
+      };
     } else if (release) {
       if (parsed.options.has('branch') || parsed.options.has('head'))
         throw new UsageError('--release takes no --branch or --head.');
-      plan = (client) => releaseClaim(client, target as string, runId, now);
+      plan = (client) => {
+        if (releaseGeneration === undefined)
+          throw new UsageError('--generation is required to release local authority.');
+        return withReleaseAuthority(
+          dependencies,
+          { resource: `issue:${target}`, runId, ownerId, generation: releaseGeneration },
+          async (identity) => {
+            const current = latestClaim(await fetchComments(client, target as string));
+            return current?.marker.status === 'released' &&
+              sameProviderIdentity(current.marker.identity, identity)
+              ? {
+                  ok: true,
+                  summary: `${target}: release ${identity.operationId} reconciled.`,
+                  data: { released: true },
+                }
+              : undefined;
+          },
+          (identity) => releaseClaim(client, target as string, runId, identity, now),
+        );
+      };
     } else {
       const branch = required(parsed, 'branch');
       if (!/^[^\s,]+$/.test(branch))
@@ -1681,13 +2065,63 @@ export async function run(
       const head = parsed.options.get('head');
       if (head !== undefined && !/^[0-9a-f]{7,40}$/.test(head))
         throw new UsageError(`--head needs a commit sha, not "${head}".`);
-      plan = (client) =>
-        claimIssue(
-          client,
-          target as string,
-          { run: runId, branch, ...(head === undefined ? {} : { head }) },
-          now,
+      plan = (client) => {
+        let effectiveHead = head;
+        return withLocalAuthority(
+          dependencies,
+          {
+            resource: `issue:${target}`,
+            runId,
+            ownerId,
+          },
+          async () => {
+            const current = latestClaim(await fetchComments(client, target as string));
+            if (
+              effectiveHead === undefined &&
+              current?.marker.run === runId &&
+              current.marker.branch === branch
+            )
+              effectiveHead = current.marker.head;
+            if (current === undefined) return undefined;
+            if (!claimIsLive(current.marker, now))
+              return { holder: current.marker.run, live: false, identity: current.marker.identity };
+            return { holder: current.marker.run, live: true, identity: current.marker.identity };
+          },
+          'claim',
+          () =>
+            intentFingerprint({
+              resource: `issue:${target}`,
+              run: runId,
+              action: 'claim',
+              branch,
+              head: effectiveHead ?? 'none',
+            }),
+          async (identity) => {
+            const current = latestClaim(await fetchComments(client, target as string));
+            return current?.marker.status === 'held' &&
+              sameProviderIdentity(current.marker.identity, identity)
+              ? {
+                  ok: true,
+                  summary: `${target}: claim ${identity.operationId} reconciled.`,
+                  data: { claimed: true },
+                }
+              : undefined;
+          },
+          (identity, expectedCurrent) =>
+            claimIssue(
+              client,
+              target as string,
+              {
+                run: runId,
+                branch,
+                identity,
+                ...(expectedCurrent === undefined ? {} : { expectedCurrent }),
+                ...(effectiveHead === undefined ? {} : { head: effectiveHead }),
+              },
+              now,
+            ),
         );
+      };
     }
   } else {
     const [id] = identifierArgument(parsed, 1);

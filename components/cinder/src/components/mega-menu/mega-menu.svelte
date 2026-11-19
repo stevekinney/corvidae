@@ -1,21 +1,4 @@
 <script lang="ts" module>
-  /**
-   * @cinder
-   * @category navigation
-   * @status beta
-   * @purpose Wide primary navigation menu with trigger/content panels, shared viewport, active indicator, and nested submenu support.
-   * @tag navigation
-   * @tag mega-menu
-   * @tag menu
-   * @useWhen Building site-level navigation where top-level categories reveal rich multi-column content.
-   * @useWhen You need optional hover-open behavior with keyboard-first trigger traversal.
-   * @avoidWhen A simple single-trigger flyout is sufficient. | dropdown
-   * @avoidWhen You need command-style application menus with item-by-item keyboard semantics. | menu-bar
-   * @related navigation-bar, menu-bar, dropdown
-   * @a11yPattern Navigation landmark + disclosure buttons
-   * @keyboardShortcut ArrowLeft / ArrowRight / Home / End / ArrowDown / Escape | Traverses triggers and opens/closes panels.
-   * @a11yNote Trigger focus remains in the tab order; Escape closes and returns focus to the active trigger.
-   */
   export type {
     MegaMenuItem,
     MegaMenuItemWithSections,

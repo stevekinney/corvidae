@@ -63,7 +63,9 @@
  * ---------------------------------------- */
 
   .cinder-badge[data-cinder-size='xs'] {
-    font-size: 0.625rem; /* 10px — smaller than 2xs (11px) for icon-button count badges */
+    /* 11px, the type floor: an extra-small badge carries a word ("Plugin") as well as a count. It
+       stays tighter than `sm` through its line height. */
+    font-size: var(--cinder-text-2xs);
     padding: 0 var(--cinder-space-1);
     line-height: 0.875rem;
   }

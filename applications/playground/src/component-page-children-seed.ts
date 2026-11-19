@@ -18,14 +18,14 @@ import type { ComponentManifest } from './types.ts';
 import {
   COMPOUND_COMPONENT_FAMILIES,
   COMPOUND_COMPONENT_PARENTS,
-} from './shell-app/compound-families.ts';
+} from './shell-app/compound-families.generated.ts';
 
 /**
  * Components whose `children` need structure, an ancestor, or interactive state
  * that plain text cannot stand in for.
  *
  * Kept deliberately small. Anything covered by the compound-family rules below
- * is NOT listed here — `compound-families.test.ts` guards that, so a slug added
+ * is NOT listed here — `shell-app/compound-parts.test.ts` guards that, so a slug added
  * out of habit fails rather than silently overlapping.
  *
  * Grouped by why:
@@ -82,8 +82,8 @@ export const NO_TEXT_CHILDREN: ReadonlySet<string> = new Set([
  *  2. Any member of a compound FAMILY, root or leaf. `table-cell` is a `<td>`
  *     with no table; `dropdown-label` is an unstyled orphan outside its
  *     `role="menu"`; `side-navigation-group` renders a bare `<li>`. The mapping
- *     is already maintained and drift-guarded in `compound-families.ts`, so this
- *     rule costs nothing. Both directions are checked because a family root does
+ *     is derived from component metadata (`compound-families.generated.ts`), so
+ *     this rule costs nothing. Both directions are checked because a family root does
  *     not always assemble its parts with `Object.assign` — `segmented-control`
  *     re-exports `Segment` instead, so `isCompound` is false for it.
  *  3. {@link NO_TEXT_CHILDREN}.

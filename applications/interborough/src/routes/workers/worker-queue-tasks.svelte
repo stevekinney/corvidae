@@ -211,7 +211,13 @@
   {:else}
     <DataList items={rows} key={(row: QueueTaskRow) => row.id} statusColumn>
       {#snippet children(row)}
-        <StackedListItem wrapMeta data-task={row.id} data-word={row.word} actions={rowActions(row)}>
+        <StackedListItem
+          wrapMeta
+          data-task={row.id}
+          data-word={row.word}
+          actions={rowActions(row)}
+          time={row.time}
+        >
           {#snippet status()}<StatusDot word={row.word} size="sm" />{/snippet}
           {#snippet title()}
             <span class="ib-worker-tasks__title">
@@ -226,7 +232,6 @@
               {/if}
             </span>
           {/snippet}
-          {#snippet time()}{row.time}{/snippet}
           {#snippet meta()}
             {row.line}
             {#if row.failed}

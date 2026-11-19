@@ -6,8 +6,8 @@
  * stack with a zero top segment and values below zero, and the same data grouped.
  */
 
+import { fixtureRoute } from '@lostgradient/testing/playwright/overlay-fixture';
 import { expect, test, type Page } from '@playwright/test';
-import { fixtureRoute } from './overlay-fixture.ts';
 
 const R = '3px';
 const CLIP = {

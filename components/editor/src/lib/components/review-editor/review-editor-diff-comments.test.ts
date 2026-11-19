@@ -21,7 +21,7 @@ import { buildReviewEditorDiffReviewTarget } from './review-editor-diff-review.t
  * comment opens the diff tab and focuses its side; a comment created there survives an
  * editor-tab round trip) is real-browser-only for the same environment reason `DiffViewer`'s own
  * annotation interactions are (`diff-viewer.annotation-hooks.test.ts`) and is covered by
- * `scripts/browser-fixtures/tests/review-editor-diff-comments.playwright.ts` instead. The merged
+ * `components/editor/browser/tests/review-editor-diff-comments.playwright.ts` instead. The merged
  * comment list's own navigation routing (current vs. outdated/removed) IS covered here, at the
  * `CommentSidebar` layer, in `comment-sidebar-diff-comments.test.ts` -- it renders no `DiffViewer`
  * of its own.
@@ -462,7 +462,7 @@ describe('ReviewEditor diff comments: unsaved drafts inventory', () => {
    * only way to REACH that state from a `diffReviewState` prop the host supplies is to inject a
    * state that already contains a pending (nonempty-body) draft, exactly as a host reading back
    * `onDiffReviewStateChange` after a real Cancel would. See
-   * `scripts/browser-fixtures/tests/review-editor-diff-comments.playwright.ts` for the real
+   * `components/editor/browser/tests/review-editor-diff-comments.playwright.ts` for the real
    * select-type-Cancel round trip through the actual composer in a real browser.
    */
   function stateWithPendingDraft(id: string): DiffReviewState {

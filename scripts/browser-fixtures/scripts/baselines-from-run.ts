@@ -2,7 +2,9 @@
  * `bun scripts/browser-fixtures/scripts/baselines-from-run.ts <run-id> [--write]` (COR-2457)
  *
  * Updates the committed Linux baselines from a `main.yml` run's failure artifact, with no
- * local Docker pass. The fixtures job uploads `playwright-fixtures-<shard>` on failure, and
+ * local Docker pass. The fixtures job uploads `playwright-fixtures-<shard>` on failure, the
+ * package browser suites job `playwright-packages` (each actual goes back to its package's own
+ * `browser/snapshots`), and
  * the `*-actual.png` files in it come from the baseline renderer's own comparison. The
  * script downloads those artifacts, lists each actual with the baseline it would replace,
  * and copies only with `--write`. Look at the images before `--write`; see
@@ -60,8 +62,25 @@ export function mapActual(
       reason: 'name is not <theme>-<viewport>-<fixture>',
     };
   }
-  const baseline = `${LINUX_BASELINE_DIRECTORY}/${component}/${name}.png`;
+  const baseline = `${baselineDirectoryFor(segments)}/${component}/${name}.png`;
   return { kind: baselineExists(baseline) ? 'changed' : 'new', actual: actualPath, baseline };
+}
+
+/**
+ * The Linux baseline directory an actual belongs to. A package browser suite (COR-2080) writes its
+ * actuals under `<package>/browser/test-results/`, which the `playwright-packages` artifact keeps,
+ * and keeps its baselines in `components/<package>/browser/snapshots/chromium/linux`; every other
+ * actual is the root suite's.
+ */
+function baselineDirectoryFor(segments: readonly string[]): string {
+  const browser = segments.findIndex(
+    (segment, index) => segment === 'browser' && segments[index + 1] === 'test-results',
+  );
+  const packageName = browser > 0 ? segments[browser - 1] : undefined;
+  if (packageName === undefined || !COMPONENT_SLUG.test(packageName)) {
+    return LINUX_BASELINE_DIRECTORY;
+  }
+  return `components/${packageName}/browser/snapshots/chromium/linux`;
 }
 
 export type HeadCheck = { ok: true } | { ok: false; message: string };
@@ -157,6 +176,8 @@ async function main(argv: string[]): Promise<number> {
     runId,
     '--pattern',
     'playwright-fixtures-*',
+    '--pattern',
+    'playwright-packages',
     '--dir',
     downloadDirectory,
   ]);

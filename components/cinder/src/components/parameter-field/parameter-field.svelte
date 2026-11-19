@@ -1,16 +1,4 @@
 <script lang="ts" module>
-  /**
-   * @cinder
-   * @category form
-   * @status beta
-   * @purpose Numeric parameter editor that distinguishes an inherited base value from a local override and makes reset state explicit.
-   * @tag form
-   * @tag numeric
-   * @useWhen Editing a numeric setting that inherits a default but can be overridden locally.
-   * @avoidWhen Collecting an independent numeric value with no inheritance semantics — use number-input or slider.
-   * @related number-input, slider, badge
-   * @rationale Nearest alternative: NumberInput — ParameterField adds base/override ownership, reset, and change-state semantics around the numeric editor.
-   */
   export type { ParameterFieldEditorState, ParameterFieldProps } from './parameter-field.types.ts';
 </script>
 

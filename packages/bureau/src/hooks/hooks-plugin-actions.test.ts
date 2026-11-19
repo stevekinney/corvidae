@@ -660,7 +660,7 @@ describe('a contributed hook action', () => {
     expect(setup.received).toHaveLength(0);
   });
 
-  it('ends a delivery failed, without a retry, when its plugin no longer contributes the kind', async () => {
+  it('writes no delivery when its plugin no longer contributes the kind (COR-2182)', async () => {
     const kv = textValueStore(new MemoryStorage(), { disposeUnderlyingStorage: false });
     const before = fixture({ kv });
     const hook = await before.hooks.create({ events: ['run.settled'], action: ACTION });
@@ -669,11 +669,7 @@ describe('a contributed hook action', () => {
     const after = fixture({ kv, registrations: () => [] });
     await after.fire();
 
-    const delivery = await onlyDelivery(after.hooks, hook.id);
-    expect(delivery.status).toBe('failed');
-    expect(delivery.attempts).toHaveLength(1);
-    expect(delivery.attempts[0]).toMatchObject({ outcome: 'rejected' });
-    expect(delivery.attempts[0]?.error).toContain('slack/post-message');
+    expect(await after.hooks.deliveries(hook.id)).toEqual([]);
   });
 
   it('refuses a plugin and kind contributed twice when the hooks are built', () => {

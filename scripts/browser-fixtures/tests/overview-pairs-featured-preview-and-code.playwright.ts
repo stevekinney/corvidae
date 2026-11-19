@@ -1,7 +1,7 @@
 import { THEME_STORAGE_KEY, themeContextOptions } from '@lostgradient/testing';
+import { browserPorts } from '@lostgradient/testing/browser/browser-ports';
 import { expect, test } from '@playwright/test';
 import { resolve } from 'node:path';
-import { browserPorts } from '../scripts/browser-ports.ts';
 
 /**
  * COR-441: the Overview README snippet used to sit above a live preview that was

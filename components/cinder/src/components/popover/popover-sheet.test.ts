@@ -2,8 +2,11 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { createRawSnippet } from 'svelte';
 
+import {
+  DEFAULT_TEST_VIEWPORT,
+  setTestViewportWidth,
+} from '@lostgradient/component-tooling/test/viewport.ts';
 import { setupHappyDom } from '@lostgradient/testing';
-import { DEFAULT_TEST_VIEWPORT, setTestViewportWidth } from '../../test/viewport.ts';
 
 setupHappyDom();
 

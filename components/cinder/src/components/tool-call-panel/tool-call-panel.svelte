@@ -1,19 +1,4 @@
 <script lang="ts" module>
-  /**
-   * @cinder
-   * @category overlay
-   * @status beta
-   * @purpose One tool call's side panel: its state, its input and result as fields, a failure's message first with next steps, and a waiting call's note and decision. Docks from 1280px; a Drawer below.
-   * @tag tool-call
-   * @tag panel
-   * @tag agent
-   * @useWhen Opening a tool call from a ToolCallRail row to read what it was given and what came back.
-   * @useWhen Letting a person answer a call that is waiting on them, with a note, without leaving the conversation.
-   * @avoidWhen Showing an arbitrary payload on its own — use payload-inspector.
-   * @avoidWhen Showing supplementary navigation or settings from a page edge — use drawer.
-   * @rationale Nearest alternative: Drawer — a drawer is always an overlay, while this panel docks in the page where there is room, shares its header, status line and sections across every kind of call, and uses a Drawer only below the docking width.
-   * @related tool-call-rail, drawer, approval-card, payload-inspector
-   */
   export type {
     ToolCallPanelError,
     ToolCallPanelLabels,
