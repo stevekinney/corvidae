@@ -285,7 +285,7 @@ describe('BulkPurgeDialog', () => {
     await fireEvent.click(refresh);
 
     await waitFor(() => {
-      expect(queryByRole('button', { name: 'Refresh preview' })).toBeNull();
+      expect(queryByRole('button', { name: 'Refresh preview' }) === null).toBe(true);
     });
     // Loading again: the footer is still there, Cancel works and Purge cannot be pressed.
     const purge = requireElement(getByRole('button', { name: 'Purge' }), HTMLButtonElement);

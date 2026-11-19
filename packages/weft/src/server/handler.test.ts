@@ -895,7 +895,12 @@ describe('handleRequest', () => {
       }),
       engine,
     );
-    expect(otherFilter.status).toBe(400);
+    // The token names the workflows another filter selects: a conflict with the preview, not a
+    // malformed request, so the caller is told to preview again.
+    expect(otherFilter.status).toBe(409);
+    expect(((await json(otherFilter)) as { error: string }).error).toContain(
+      'Run the preview again',
+    );
     expect(await engine.get('purge-token-a')).not.toBeNull();
   });
 
