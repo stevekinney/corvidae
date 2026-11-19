@@ -37,7 +37,7 @@
 //   7. usage      optional spend record, as `merge-gate.ts` appends it, with the column that holds a
 //                 pull request number there holding `branch:<name>` here.
 //
-// Merge lock: `directMergeExclusively` holds the same lock `merge-gate.ts` holds for a pull request
+// Merge lock: `directMerge` holds the same lock `merge-gate.ts` holds for a pull request
 // merge (`withMergeLock`), from before step 1 to after step 7, so a direct merge and a pull request
 // merge never interleave their pushes.
 //
@@ -47,8 +47,17 @@
 // This module is a library; it has no command line.
 
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
-import { dirname } from 'node:path';
-import type { AcquireHostLockOptions } from '../run-exclusively.ts';
+import { dirname, resolve } from 'node:path';
+import {
+  isDeliveryMergeObservation,
+  loadDeliveryVerification,
+  recordDeliveryMergeObservation,
+  validateDeliveryApproval,
+  validateDeliveryVerification,
+  type DeliveryVerification,
+  type DeliveryVerificationDependencies,
+} from './delivery-verification.ts';
+import { readExecutionSnapshot, withProviderTransitionLock } from './execution-state.ts';
 import { fetchWithRetry } from './fetch-retry.ts';
 import { mainCiComparisonWarning, mainCiHealth, mainCiWarning } from './main-ci.ts';
 import { withMergeLock } from './merge-gate.ts';
@@ -82,6 +91,7 @@ export interface DirectMergeOptions {
   /** Where to append the spend record after a successful merge; needs `transcripts`. */
   usageLog?: string | undefined;
   transcripts?: string[] | undefined;
+  verification: DeliveryVerification;
 }
 
 export interface DirectMergeReport {
@@ -115,6 +125,7 @@ export interface DirectMergeDependencies {
   usage: (paths: string[]) => UsageTotals;
   now: () => Date;
   sleep: (milliseconds: number) => void;
+  verification: DeliveryVerificationDependencies;
 }
 
 /** The refusal's detail: the first failing guard by name, and the others that failed after it. */
@@ -132,15 +143,18 @@ function firstLine(text: string): string {
   return (text.split('\n').find((line) => line.trim() !== '') ?? '').trim().slice(0, 200);
 }
 
-/** Run the steps. Never throws for a failed step; the report names it. */
-export function directMerge(
+function validateDirectInputs(
   options: DirectMergeOptions,
-  partial: Partial<DirectMergeDependencies> = {},
-): DirectMergeReport {
-  const runner = partial.runner ?? defaultRunner;
+  partial: Partial<DirectMergeDependencies>,
+) {
   const config = loadRepositoryConfig(options.configPath);
   const { defaultBranch } = config;
   if (!existsSync(options.worktree)) throw new UsageError(`No such worktree: ${options.worktree}`);
+  const verification = loadDeliveryVerification(options.verification, partial.verification);
+  if (config.repository !== verification.request.repository)
+    throw new UsageError('repository differs from the coordinator-approved delivery');
+  if (resolve(options.worktree) !== resolve(verification.request.worktree))
+    throw new UsageError('worktree differs from the coordinator-approved ownership');
   if (!SAFE_BRANCH.test(options.branch) || options.branch.includes('..'))
     throw new UsageError(`"${options.branch}" is not a safe branch name.`);
   if (options.branch === defaultBranch)
@@ -158,6 +172,17 @@ export function directMerge(
     if (!existsSync(transcript)) throw new UsageError(`No such transcript: ${transcript}`);
   }
 
+  return { config, verification, transcripts };
+}
+
+/** Run the steps while the public entrypoint holds both fences. */
+async function directMergeCore(
+  options: DirectMergeOptions,
+  partial: Partial<DirectMergeDependencies> = {},
+): Promise<DirectMergeReport> {
+  const runner = partial.runner ?? defaultRunner;
+  const { config, verification, transcripts } = validateDirectInputs(options, partial);
+  const { defaultBranch } = config;
   const report: DirectMergeReport = {
     branch: options.branch,
     head: options.head,
@@ -236,6 +261,19 @@ export function directMerge(
   const baseTree = git('rev-parse', `${base}^{tree}`).stdout.trim();
   if (tree === baseTree)
     return fail('merge', `${options.branch} changes nothing relative to origin/${defaultBranch}.`);
+  const verificationProblem = validateDeliveryVerification(
+    verification,
+    {
+      repository: config.repository,
+      revision: options.head,
+      base,
+      integrationTree: tree,
+      route: 'branch',
+      action: 'merge',
+    },
+    partial.verification,
+  );
+  if (verificationProblem !== undefined) return fail('verification', verificationProblem);
   const created = git('commit-tree', tree, '-p', base, '-F', options.messageFile);
   const commit = created.stdout.trim();
   if (created.code !== 0 || !/^[0-9a-f]{40,64}$/.test(commit))
@@ -270,17 +308,64 @@ export function directMerge(
   }
 
   // 5. merge
+  // The push is consequential. Persist the exact intended commit immediately before attempting it
+  // so a lost response is reconciled, while a guard refusal remains a retryable non-mutation.
+  await recordDeliveryMergeObservation(
+    verification,
+    {
+      route: 'branch',
+      branch: options.branch,
+      reviewedHead: options.head,
+      base,
+      integrationTree: tree,
+      mergeCommit: commit,
+      state: 'pending-provider-outcome',
+    },
+    'unknown',
+    partial.verification,
+  );
+
   const pushed = git('push', 'origin', `${commit}:refs/heads/${defaultBranch}`);
   if (pushed.code !== 0)
     return fail(
       'merge',
-      `git push origin ${commit.slice(0, 12)}:refs/heads/${defaultBranch} was rejected (exit ${pushed.code}): ${firstLine(pushed.stderr)}. Nothing changed; run delivery again.`,
+      `git push origin ${commit.slice(0, 12)}:refs/heads/${defaultBranch} did not confirm success (exit ${pushed.code}): ${firstLine(pushed.stderr)}. Delivery must inspect this prepared commit before any further action.`,
     );
   report.merged = true;
   report.mergeCommit = commit;
 
+  const confirmed = git('fetch', 'origin', defaultBranch);
+  const defaultHead = git('rev-parse', `origin/${defaultBranch}`).stdout.trim();
+  const parent = git('rev-parse', `${commit}^`).stdout.trim();
+  const committedTree = git('rev-parse', `${commit}^{tree}`).stdout.trim();
+  if (confirmed.code !== 0 || defaultHead !== commit || parent !== base || committedTree !== tree)
+    return fail(
+      'confirm',
+      'direct push returned success but its exact prepared commit could not be confirmed.',
+    );
+  await recordDeliveryMergeObservation(
+    verification,
+    {
+      route: 'branch',
+      branch: options.branch,
+      reviewedHead: options.head,
+      base,
+      integrationTree: tree,
+      mergeCommit: commit,
+      state: 'confirmed-merge',
+    },
+    'observed',
+    partial.verification,
+  );
+
   // 6. delete
-  const deleted = git('push', 'origin', '--delete', options.branch);
+  const deleted = git(
+    'push',
+    'origin',
+    '--delete',
+    options.branch,
+    `--force-with-lease=refs/heads/${options.branch}:${options.head}`,
+  );
   if (deleted.code !== 0)
     return fail(
       'delete',
@@ -314,21 +399,141 @@ export function directMerge(
   return report;
 }
 
-/** `directMerge` under the cross-session merge lock that `merge-gate.ts` holds for a pull request. */
-export async function directMergeExclusively(
+async function recoverDirectMerge(
+  options: DirectMergeOptions,
+  partial: Partial<DirectMergeDependencies>,
+  verification: ReturnType<typeof loadDeliveryVerification>,
+): Promise<DirectMergeReport | undefined> {
+  const operation = readExecutionSnapshot(verification.state).operations[
+    verification.request.operationId
+  ];
+  if (operation === undefined || operation.outcome === 'intent') return undefined;
+  const approval = validateDeliveryApproval(
+    verification,
+    { route: 'branch', action: 'merge' },
+    partial.verification,
+  );
+  if (approval !== undefined)
+    return {
+      branch: options.branch,
+      head: options.head,
+      base: null,
+      merged: false,
+      mergeCommit: null,
+      failedStep: 'recovery',
+      detail: approval,
+    };
+  if (
+    !isDeliveryMergeObservation(operation.observed) ||
+    operation.observed.route !== 'branch' ||
+    operation.observed.branch !== options.branch ||
+    options.head !== verification.request.revision ||
+    operation.observed.reviewedHead !== verification.request.revision
+  )
+    return {
+      branch: options.branch,
+      head: options.head,
+      base: null,
+      merged: false,
+      mergeCommit: null,
+      failedStep: 'recovery',
+      detail: 'delivery merge receipt is absent or does not name this branch and approved head.',
+    };
+  const receipt = operation.observed;
+  const runner = partial.runner ?? defaultRunner;
+  const git = (...args: string[]) => runner(['git', ...args], { cwd: options.worktree });
+  const config = loadRepositoryConfig(options.configPath);
+  const report: DirectMergeReport = {
+    branch: options.branch,
+    head: options.head,
+    base: receipt.base,
+    merged: false,
+    mergeCommit: receipt.mergeCommit ?? null,
+    failedStep: null,
+    detail: null,
+  };
+  const fetched = git('fetch', 'origin', config.defaultBranch);
+  const commit = receipt.mergeCommit;
+  if (
+    commit === undefined ||
+    fetched.code !== 0 ||
+    git('merge-base', '--is-ancestor', commit, `origin/${config.defaultBranch}`).code !== 0 ||
+    git('rev-parse', `${commit}^`).stdout.trim() !== receipt.base ||
+    git('rev-parse', `${commit}^{tree}`).stdout.trim() !== receipt.integrationTree
+  )
+    return {
+      ...report,
+      failedStep: 'recovery',
+      detail: 'the original direct merge remains unconfirmed; it will not be attempted again.',
+    };
+  report.merged = true;
+  await recordDeliveryMergeObservation(
+    verification,
+    { ...receipt, state: 'confirmed-merge' },
+    'observed',
+    partial.verification,
+  );
+  const deleted = git(
+    'push',
+    'origin',
+    '--delete',
+    options.branch,
+    `--force-with-lease=refs/heads/${options.branch}:${receipt.reviewedHead}`,
+  );
+  // Git reports a missing remote ref as an error; the readback establishes that deletion is complete.
+  if (deleted.code !== 0) {
+    const absent = git('ls-remote', '--heads', 'origin', options.branch);
+    if (absent.code !== 0 || absent.stdout.trim() !== '')
+      return {
+        ...report,
+        failedStep: 'delete',
+        detail: `merged, but deleting origin/${options.branch} failed (exit ${deleted.code}): ${firstLine(deleted.stderr)}`,
+      };
+  }
+  if (options.usageLog !== undefined) {
+    const existing = existsSync(options.usageLog) ? readFileSync(options.usageLog, 'utf8') : '';
+    if (!existing.split('\n').some((line) => line.split('\t')[2] === commit)) {
+      const totals = (partial.usage ?? totalUsage)(options.transcripts ?? []);
+      mkdirSync(dirname(options.usageLog), { recursive: true });
+      appendFileSync(
+        options.usageLog,
+        `${[
+          (partial.now ?? (() => new Date()))().toISOString(),
+          `branch:${options.branch}`,
+          commit,
+          totals.input,
+          totals.cachedInput,
+          totals.output,
+        ].join('\t')}\n`,
+      );
+      report.usage = totals;
+    }
+  }
+  return report;
+}
+
+/** Public consequential route: merge then provider authority fences surround the core transition. */
+export async function directMerge(
   options: DirectMergeOptions,
   partial: Partial<DirectMergeDependencies> = {},
-  onWait?: AcquireHostLockOptions['onWait'],
 ): Promise<DirectMergeReport> {
+  const snapshot = structuredClone(options);
+  const { verification: loaded } = validateDirectInputs(snapshot, partial);
   return withMergeLock(
     {
-      worktree: options.worktree,
-      command: `direct-merge ${options.branch}`,
-      lockDirectory: options.lockDirectory,
-      lockPollIntervalMs: options.lockPollIntervalMs,
+      worktree: snapshot.worktree,
+      command: `direct-merge ${snapshot.branch}`,
+      lockDirectory: snapshot.lockDirectory,
+      lockPollIntervalMs: snapshot.lockPollIntervalMs,
     },
-    () => directMerge(options, partial),
+    () =>
+      withProviderTransitionLock(
+        partial.verification?.state ?? loaded.state,
+        loaded.request.authority.resource,
+        async () =>
+          (await recoverDirectMerge(snapshot, partial, loaded)) ??
+          directMergeCore(snapshot, partial),
+      ),
     partial.runner ?? defaultRunner,
-    onWait,
   );
 }

@@ -63,6 +63,7 @@ export interface VerificationObligation {
   executionBoundary: 'worker' | 'coordinator' | 'provider';
   producer: string;
   selectionReason: string;
+  evidenceKind: 'process-exit' | 'test-report';
 }
 
 export interface VerificationPlan {
@@ -207,7 +208,7 @@ export function createVerificationPlan(input: {
       criterionId,
       risk: 'static-documentation' as const,
       commandOrProviderJob: command,
-      expectedInventory: input.assignment.ownedPaths,
+      expectedInventory: [],
       relevantInputs: [
         input.assignment.identity.digest,
         ...input.assignment.sourceReferences.map((ref) => ref.digest),
@@ -217,6 +218,7 @@ export function createVerificationPlan(input: {
       producer: 'scripts/chef/brief.ts',
       selectionReason:
         'Required direct static and documentation verification for the assigned criterion.',
+      evidenceKind: 'process-exit' as const,
     })),
   );
   for (const risk of activeRisks)
@@ -224,7 +226,7 @@ export function createVerificationPlan(input: {
       criterionId: obligationCriteria[0] ?? 'STATIC',
       risk,
       commandOrProviderJob: 'bun scripts/chef/focused-checks.ts',
-      expectedInventory: input.assignment.ownedPaths,
+      expectedInventory: [],
       relevantInputs: input.assignment.ownedPaths,
       environmentToolchain: 'Bun workspace toolchain',
       executionBoundary:
@@ -235,6 +237,7 @@ export function createVerificationPlan(input: {
             : 'worker',
       producer: 'scripts/chef/brief.ts',
       selectionReason: `Risk map includes ${risk}.`,
+      evidenceKind: 'process-exit',
     });
   return {
     version: assignmentVersion,
