@@ -35,9 +35,9 @@
    * message. Any other commit fault shows its message, which says how many
    * workflows were deleted when the server knows, and offers "Refresh preview" too:
    * a purge never retries with the same token, because some workflows may already
-   * be gone. A failed dry run deleted nothing, so it offers "Retry".
-   * `bulk-action-dialog.svelte` still reads the whole `invalid` bucket, because the
-   * other bulk operations still answer a stale token as `InvalidParams`.
+   * be gone. A failed dry run deleted nothing, so it offers "Retry". Every bulk
+   * operation answers a stale token as `Conflict`, and `bulk-action-dialog.svelte`
+   * reads it the same way.
    */
   import {
     Badge,
