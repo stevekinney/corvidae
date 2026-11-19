@@ -338,6 +338,76 @@ describe('BulkPurgeDialog', () => {
     expect(queryByText(/Nothing was purged\./)).toBeNull();
   });
 
+  test('a failed commit says what was deleted and never retries with the same token: it offers Refresh preview, which runs the dry run again', async () => {
+    let dryRunCalls = 0;
+    let purgeCalls = 0;
+    const { getByRole, getByLabelText, getByText, queryByRole } = render(BulkPurgeDialog, {
+      props: {
+        runDryRun: async () => {
+          dryRunCalls += 1;
+          return preview();
+        },
+        runPurge: async () => {
+          purgeCalls += 1;
+          throw new HttpClientError(500, 'Purge deleted 30 workflows and failed for 17.', {
+            faultCode: 'EngineFailure',
+          });
+        },
+        onClose: () => {},
+      },
+    });
+
+    await waitFor(() => {
+      expect(getByLabelText(PHRASE_LABEL)).not.toBeNull();
+    });
+    await fireEvent.input(getByLabelText(PHRASE_LABEL), {
+      target: { value: 'purge 47 workflows' },
+    });
+    await fireEvent.click(getByRole('button', { name: 'Purge 47 workflows' }));
+
+    await waitFor(() => {
+      expect(getByText('Purge deleted 30 workflows and failed for 17.')).not.toBeNull();
+    });
+    expect(getByText('Refresh the preview to see what is left.')).not.toBeNull();
+    // The same-token retry is gone: nothing in the dialog sends the commit a second time.
+    expect(queryByRole('button', { name: 'Retry' })).toBeNull();
+    expect(purgeCalls).toBe(1);
+
+    await fireEvent.click(getByRole('button', { name: 'Refresh preview' }));
+    await waitFor(() => {
+      expect(getByLabelText(PHRASE_LABEL)).not.toBeNull();
+    });
+    expect(dryRunCalls).toBe(2);
+    expect(purgeCalls).toBe(1);
+    // A new preview needs a new confirmation: the phrase typed for the old one is gone.
+    expect((getByLabelText(PHRASE_LABEL) as HTMLInputElement).value).toBe('');
+  });
+
+  test('a commit that never got an answer does not claim nothing was deleted', async () => {
+    const { getByRole, getByLabelText, getByText } = render(BulkPurgeDialog, {
+      props: {
+        runDryRun: async () => preview(),
+        runPurge: async () => {
+          throw new TypeError('Failed to fetch');
+        },
+        onClose: () => {},
+      },
+    });
+
+    await waitFor(() => {
+      expect(getByLabelText(PHRASE_LABEL)).not.toBeNull();
+    });
+    await fireEvent.input(getByLabelText(PHRASE_LABEL), {
+      target: { value: 'purge 47 workflows' },
+    });
+    await fireEvent.click(getByRole('button', { name: 'Purge 47 workflows' }));
+
+    await waitFor(() => {
+      expect(getByText('Refresh the preview to see what is left.')).not.toBeNull();
+    });
+    expect(getByRole('button', { name: 'Refresh preview' })).not.toBeNull();
+  });
+
   test('a failed dry run offers Retry, which runs the dry run again', async () => {
     let dryRunCalls = 0;
     const { getByRole, getByLabelText } = render(BulkPurgeDialog, {

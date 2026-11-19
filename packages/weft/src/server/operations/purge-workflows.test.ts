@@ -11,6 +11,7 @@ import {
 } from '@lostgradient/backchannel/internals';
 import { MemoryStorage } from '@lostgradient/storage';
 import { Engine } from '../../core/engine.ts';
+import { KEYS } from '../../storage/keys.ts';
 import { type WorkflowContext, workflow } from '../../core/types.ts';
 import { startAndSettle } from '../../testing/run-observation.test-support.ts';
 import { handleRequestAsLocalUser as handleRequest } from '../local-user-request.test-support.ts';
@@ -24,8 +25,24 @@ const echoWorkflow = workflow({ name: 'echo' }).execute(async function* (
   return input;
 });
 
-function createEngine(): Engine {
-  const engine = new Engine({ storage: new MemoryStorage() });
+/** Refuses the commit that deletes one run, once armed, as a storage that fails for that run alone would. */
+class PurgeFailingStorage extends MemoryStorage {
+  failingWorkflowId: string | undefined;
+
+  override conditionalBatch(
+    ...[conditions, operations]: Parameters<MemoryStorage['conditionalBatch']>
+  ): ReturnType<MemoryStorage['conditionalBatch']> {
+    const failingKey =
+      this.failingWorkflowId === undefined ? undefined : KEYS.workflow(this.failingWorkflowId);
+    if (failingKey !== undefined && conditions.some((condition) => condition.key === failingKey)) {
+      return Promise.reject(new Error('disk full'));
+    }
+    return super.conditionalBatch(conditions, operations);
+  }
+}
+
+function createEngine(storage: MemoryStorage = new MemoryStorage()): Engine {
+  const engine = new Engine({ storage });
   engine.register(echoWorkflow);
   return engine;
 }
@@ -56,6 +73,27 @@ async function purgeWithPreview(engine: Engine, body: Record<string, unknown>): 
     operationRegistry: registry,
     restBindings: bindings,
   });
+}
+
+type PurgeJsonRpcAnswer = {
+  result?: { confirmationToken: string };
+  error?: { code: number; message: string; data: { weftCode: string; httpStatus: number } };
+};
+
+/** Calls `weft.workflows.purge` over JSON-RPC HTTP as a `workflows:admin` operator. */
+function jsonRpcPurge(engine: Engine) {
+  const principal = principalFromApiKey({ subject: 'purge-admin', scopes: ['workflows:admin'] });
+  return async (params: unknown, id: number): Promise<PurgeJsonRpcAnswer> => {
+    const response = await handleJsonRpcHttpRequest(
+      new Request('http://localhost/jsonrpc', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ jsonrpc: '2.0', method: 'weft.workflows.purge', params, id }),
+      }),
+      { registry, host: engine, principal },
+    );
+    return (await response.json()) as PurgeJsonRpcAnswer;
+  };
 }
 
 describe('weft.workflows.purge', () => {
@@ -159,21 +197,7 @@ describe('weft.workflows.purge', () => {
   it('answers a stale confirmation token over JSON-RPC as Conflict, apart from invalid input, and deletes nothing', async () => {
     await using engine = createEngine();
     await startAndSettle(engine, 'echo', 'keep', 'purge-rpc-a');
-    const principal = principalFromApiKey({ subject: 'purge-admin', scopes: ['workflows:admin'] });
-    const call = async (params: unknown, id: number) =>
-      (
-        await handleJsonRpcHttpRequest(
-          new Request('http://localhost/jsonrpc', {
-            method: 'POST',
-            headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({ jsonrpc: '2.0', method: 'weft.workflows.purge', params, id }),
-          }),
-          { registry, host: engine, principal },
-        )
-      ).json() as Promise<{
-        result?: { confirmationToken: string };
-        error?: { code: number; message: string; data: { weftCode: string; httpStatus: number } };
-      }>;
+    const call = jsonRpcPurge(engine);
 
     const preview = await call({ status: 'completed', dryRun: true }, 1);
     await startAndSettle(engine, 'echo', 'late', 'purge-rpc-late');
@@ -191,6 +215,44 @@ describe('weft.workflows.purge', () => {
     // Input a caller got wrong stays InvalidParams, so the two never share a code.
     const missingToken = await call({ status: 'completed' }, 3);
     expect(missingToken.error?.data.weftCode).toBe('InvalidParams');
+  });
+
+  it('a purge that fails part-way tells the JSON-RPC caller how many workflows it deleted and how many it failed for', async () => {
+    const storage = new PurgeFailingStorage();
+    await using engine = createEngine(storage);
+    await startAndSettle(engine, 'echo', 'one', 'purge-partial-a');
+    await startAndSettle(engine, 'echo', 'two', 'purge-partial-b');
+    const call = jsonRpcPurge(engine);
+
+    const preview = await call({ status: 'completed', dryRun: true }, 1);
+    storage.failingWorkflowId = 'purge-partial-b';
+    const failed = await call(
+      { status: 'completed', confirmationToken: preview.result?.confirmationToken },
+      2,
+    );
+
+    expect(failed.error?.data.weftCode).toBe('EngineFailure');
+    // The message is what the caller shows: it says what was deleted, not "internal error".
+    expect(failed.error?.message).toBe('Purge deleted 1 workflow and failed for 1.');
+    expect(await engine.get('purge-partial-a')).toBeNull();
+    expect(await engine.get('purge-partial-b')).not.toBeNull();
+  });
+
+  it('a failure that deleted nothing says so', async () => {
+    const storage = new PurgeFailingStorage();
+    await using engine = createEngine(storage);
+    await startAndSettle(engine, 'echo', 'one', 'purge-none-a');
+    const call = jsonRpcPurge(engine);
+
+    const preview = await call({ status: 'completed', dryRun: true }, 1);
+    storage.failingWorkflowId = 'purge-none-a';
+    const failed = await call(
+      { status: 'completed', confirmationToken: preview.result?.confirmationToken },
+      2,
+    );
+
+    expect(failed.error?.message).toBe('Purge deleted 0 workflows and failed for 1.');
+    expect(await engine.get('purge-none-a')).not.toBeNull();
   });
 
   it('refuses a commit that carries no confirmation token', async () => {

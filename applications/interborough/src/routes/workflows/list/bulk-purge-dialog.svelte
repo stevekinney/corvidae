@@ -32,9 +32,12 @@
    * run named. A commit fault with the `Conflict` code means the token no longer
    * matches (the matched set changed since the preview), so the response is a
    * warning callout with one "Refresh preview" action, never the server's
-   * message; any other fault retries with the same token. `bulk-action-dialog.svelte`
-   * still reads the whole `invalid` bucket, because the other bulk operations
-   * still answer a stale token as `InvalidParams`.
+   * message. Any other commit fault shows its message, which says how many
+   * workflows were deleted when the server knows, and offers "Refresh preview" too:
+   * a purge never retries with the same token, because some workflows may already
+   * be gone. A failed dry run deleted nothing, so it offers "Retry".
+   * `bulk-action-dialog.svelte` still reads the whole `invalid` bucket, because the
+   * other bulk operations still answer a stale token as `InvalidParams`.
    */
   import {
     Badge,
@@ -73,9 +76,9 @@
   let confirmText = $state('');
   let result = $state<BulkCommitSummary | null>(null);
   let faultMessage = $state('');
-  /** Which phase produced the current `fault`: a failed dry run has no token to retry with, so it re-runs the dry run. */
+  /** Which phase produced the current `fault`: a failed dry run deleted nothing ("Retry"), a failed commit may have deleted some. */
   let faultOrigin = $state<'loading' | 'committing'>('loading');
-  /** `true` when the commit fault means "re-run the preview", not "retry the same token". */
+  /** `true` when the server refused the commit because the matching workflows changed after the preview. */
   let faultMeansStalePreview = $state(false);
 
   $effect(() => {
@@ -123,9 +126,13 @@
     }
   }
 
-  function retryFromFault(): void {
-    if (faultOrigin === 'loading' || faultMeansStalePreview) void loadPreview();
-    else void commit();
+  /**
+   * The one way out of a fault. A purge cannot be undone, so a failed commit never retries with the
+   * same token: some workflows may already be gone, and the token names the set as it was. The
+   * preview counts what is left, and a new phrase confirms it.
+   */
+  function refreshPreview(): void {
+    void loadPreview();
   }
 
   function handleDismiss(): void {
@@ -196,7 +203,7 @@
         <div role="alert">
           <Callout variant="warning" semantic="note" title={BULK_PURGE_COPY.stale.title}>
             {#snippet action()}
-              <Button variant="secondary" size="sm" onclick={retryFromFault}>
+              <Button variant="secondary" size="sm" onclick={refreshPreview}>
                 {BULK_PURGE_COPY.stale.refreshAction}
               </Button>
             {/snippet}
@@ -205,6 +212,10 @@
         </div>
       {:else}
         <p class="weft-bulk-dialog__fault" role="alert">{faultMessage}</p>
+        {#if faultOrigin === 'committing'}
+          <!-- The commit may have deleted some workflows before it failed, or been cut off; the preview says what is left. -->
+          <p class="weft-bulk-dialog__note">{BULK_PURGE_COPY.failed.refreshNote}</p>
+        {/if}
       {/if}
     {/if}
   {/snippet}
@@ -230,7 +241,11 @@
       <Button variant="ghost" size="sm" onclick={onClose}>Close</Button>
       <!-- A stale preview carries its own Refresh action in the callout. -->
       {#if !faultMeansStalePreview}
-        <Button variant="secondary" size="sm" onclick={retryFromFault}>Retry</Button>
+        <Button variant="secondary" size="sm" onclick={refreshPreview}>
+          {faultOrigin === 'committing'
+            ? BULK_PURGE_COPY.stale.refreshAction
+            : BULK_PURGE_COPY.failed.retryAction}
+        </Button>
       {/if}
     {/if}
   {/snippet}

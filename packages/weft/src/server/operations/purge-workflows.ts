@@ -2,6 +2,7 @@ import { invalidParamsFault, type UnknownRestBinding } from '@lostgradient/backc
 import { purgeOutputSchema } from './bulk-output-schemas.ts';
 import {
   assertOperationEngineMethods,
+  engineFailureFault,
   faultMessage,
   readOptionalJsonBody,
 } from './operation-helpers.ts';
@@ -9,6 +10,7 @@ import {
 import { defineOperation, type OperationFault } from '@lostgradient/backchannel';
 import type { z } from 'zod';
 import { BulkOperationConfirmationError } from '../../core/engine.ts';
+import { PurgeIncompleteError } from '../../core/engine/bulk-operations-purge-commit.ts';
 import { coerceStartWorkflowTags } from '../../core/start-workflow-validation.ts';
 import { parseBulkListFilterFromBody } from './bulk-filter-body.ts';
 import {
@@ -32,7 +34,16 @@ const STALE_PREVIEW_REMEDIATION =
   'The workflows that match the filter changed after the preview. Run the preview again with ' +
   '`dryRun: true`, then commit with its new `confirmationToken`.';
 
-const purgeWorkflowsInput =bulkListFilterInputSchema.merge(bulkOperationControlInputSchema);
+function workflowCount(count: number): string {
+  return `${String(count)} ${count === 1 ? 'workflow' : 'workflows'}`;
+}
+
+/** What a caller shows for a purge that failed part-way: how many it deleted and how many it failed for. */
+function partialPurgeMessage(error: PurgeIncompleteError): string {
+  return `Purge deleted ${workflowCount(error.deletedCount)} and failed for ${String(error.failedCount)}.`;
+}
+
+const purgeWorkflowsInput = bulkListFilterInputSchema.merge(bulkOperationControlInputSchema);
 
 export type PurgeWorkflowsInput = BulkListFilterInput & BulkOperationControlInput;
 export type PurgeWorkflowsOutput = z.output<typeof purgeOutputSchema>;
@@ -101,6 +112,11 @@ export const purgeWorkflowsOperation = defineOperation({
           data: { reason: STALE_PREVIEW_REASON, weftCode: error.code },
         };
         throw fault;
+      }
+      if (error instanceof PurgeIncompleteError) {
+        // Deletes that committed cannot be undone, so the caller is told how many there were. Over
+        // JSON-RPC the message reaches the caller; REST masks every `EngineFailure`.
+        throw engineFailureFault(partialPurgeMessage(error));
       }
       throw error;
     }

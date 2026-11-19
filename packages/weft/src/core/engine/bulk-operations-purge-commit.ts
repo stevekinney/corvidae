@@ -35,6 +35,29 @@ import type { EngineInternals } from './internals.ts';
 import { streamWorkflowStates } from './listing.ts';
 
 /**
+ * A purge commit that deleted some runs and failed for others. The deletes cannot be undone, so the
+ * error carries both counts for the server to report; it is still an `AggregateError` of the
+ * failures, with the message callers of the engine already read. Not exported from the package:
+ * the server turns it into a fault that says what was deleted.
+ */
+export class PurgeIncompleteError extends AggregateError {
+  /** How many runs the purge failed to delete. */
+  readonly failedCount: number;
+  /** How many runs the purge deleted before it threw. */
+  readonly deletedCount: number;
+
+  constructor(failures: unknown[], failedCount: number, deletedCount: number) {
+    super(
+      failures,
+      `Purge failed for ${failedCount} workflow(s) after deleting ${deletedCount} workflow(s)`,
+    );
+    this.name = 'PurgeIncompleteError';
+    this.failedCount = failedCount;
+    this.deletedCount = deletedCount;
+  }
+}
+
+/**
  * The runs a purge of `filter` would remove right now, in the order it would remove them: terminal,
  * owing no finalizer, past the filter's `offset` and within its `limit`. It reads and writes
  * nothing else, so a preview and the token derived from it describe exactly what a commit with
@@ -132,10 +155,7 @@ async function runBulkPurge(
         failures.push(auditFailure);
       }
     }
-    throw new AggregateError(
-      failures,
-      `Purge failed for ${failedWorkflows} workflow(s) after deleting ${deleted} workflow(s)`,
-    );
+    throw new PurgeIncompleteError(failures, failedWorkflows, deleted);
   }
 
   const result: PurgeResult = { deleted };

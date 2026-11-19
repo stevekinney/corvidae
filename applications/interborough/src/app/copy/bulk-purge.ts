@@ -27,6 +27,16 @@ export const BULK_PURGE_COPY = {
     notShown: (count: number): string => `…and ${String(count)} more.`,
   },
   /**
+   * A fault that is not a stale preview. A failed commit may have deleted some workflows before it
+   * failed (the server's message says how many when it knows), or been cut off, so the person
+   * counts what is left instead of pressing the same purge again.
+   */
+  failed: {
+    refreshNote: 'Refresh the preview to see what is left.',
+    /** A dry run that failed deleted nothing, so the same request is safe to send again. */
+    retryAction: 'Retry',
+  },
+  /**
    * The purge was refused because the matching workflows changed after the preview. Nothing was
    * deleted: the server checks the preview before it touches any workflow.
    */
