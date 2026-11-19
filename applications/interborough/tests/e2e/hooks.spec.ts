@@ -690,9 +690,11 @@ for (const width of [320, 375] as const) {
       if ((await word.count()) > 0) {
         const { lines } = await textLines(word);
         expect(lines, `${id}: the status word is one line`).toBe(1);
-        const clipped = await row
-          .locator('.cinder-stacked-list-item__status')
-          .evaluate((cell) => cell.scrollWidth > cell.clientWidth + 0.5);
+        const status = row.locator(
+          '.cinder-stacked-list-item__status, .cinder-stacked-list-item__status-inline',
+        );
+        await expect(status, `${id}: the row renders one status`).toHaveCount(1);
+        const clipped = await status.evaluate((cell) => cell.scrollWidth > cell.clientWidth + 0.5);
         expect(clipped, `${id}: the status word is not cut`).toBe(false);
       }
       for (const part of await row.locator('.cinder-stacked-list-item__time-part').all()) {
