@@ -1,5 +1,6 @@
 import { requireElement } from '../../../../tests/dom.test-support.ts';
 
+import { faultToJsonRpcError } from '@lostgradient/backchannel/internals';
 import { fireEvent, render, waitFor } from '@testing-library/svelte';
 import { describe, expect, test } from 'bun:test';
 import { tick } from 'svelte';
@@ -76,6 +77,80 @@ describe('additional coverage', () => {
       const params = requestParams(fetch.calls[0]);
       expect(params['dryRun']).toBe(true);
       expect(params['status']).toBe('failed');
+    } finally {
+      fetch.restore();
+    }
+  });
+
+  test('the real client turns the server\'s stale-token Conflict into the changed-workflows callout, and its partial-purge failure into a message that says what was deleted', async () => {
+    // The envelopes are built by Weft's own fault mapper, so this follows the wire contract the
+    // server tests pin: a stale token answers `Conflict`, a part-way failure answers
+    // `EngineFailure` with the counts in the message.
+    const fetch = new ScriptedFetch();
+    fetch.enqueueJson({ jsonrpc: '2.0', id: 1, result: PURGE_PREVIEW });
+    fetch.enqueueJson({
+      jsonrpc: '2.0',
+      id: 1,
+      error: faultToJsonRpcError({
+        code: 'Conflict',
+        message:
+          'Bulk confirmation token does not match the current dry-run scope. ' +
+          'The workflows that match the filter changed after the preview. Run the preview again.',
+        data: { reason: 'confirmation-token-stale', weftCode: 'BulkOperationConfirmationError' },
+      }),
+    });
+    fetch.enqueueJson({ jsonrpc: '2.0', id: 1, result: PURGE_PREVIEW });
+    fetch.enqueueJson({
+      jsonrpc: '2.0',
+      id: 1,
+      error: faultToJsonRpcError({
+        code: 'EngineFailure',
+        message: 'Purge deleted 7 workflows and failed for 5.',
+        data: {},
+      }),
+    });
+
+    try {
+      const { getByRole, getAllByRole, getByLabelText, getByText, queryByText } = render(
+        BulkSelectionBar,
+        { props: baseProps() },
+      );
+
+      await fireEvent.click(getByRole('checkbox', { name: /Select all 47 matching the filter/ }));
+      const purgeButton = requireElement(
+        getAllByRole('button').find((button) => button.textContent?.trim() === 'Purge'),
+        HTMLButtonElement,
+      );
+      await fireEvent.click(purgeButton);
+      const phraseLabel = 'Type "purge 12 workflows" to confirm';
+      await waitFor(() => {
+        expect(getByLabelText(phraseLabel)).not.toBeNull();
+      });
+      await fireEvent.input(getByLabelText(phraseLabel), {
+        target: { value: 'purge 12 workflows' },
+      });
+      await fireEvent.click(getByRole('button', { name: 'Purge 12 workflows' }));
+
+      await waitFor(() => {
+        expect(getByText('The matching workflows changed')).not.toBeNull();
+      });
+      expect(queryByText(/does not match the current dry-run scope/)).toBeNull();
+
+      // Refresh the preview, then purge again: this time the server fails part-way.
+      await fireEvent.click(getByRole('button', { name: 'Refresh preview' }));
+      await waitFor(() => {
+        expect(getByLabelText(phraseLabel)).not.toBeNull();
+      });
+      await fireEvent.input(getByLabelText(phraseLabel), {
+        target: { value: 'purge 12 workflows' },
+      });
+      await fireEvent.click(getByRole('button', { name: 'Purge 12 workflows' }));
+
+      await waitFor(() => {
+        expect(getByText('Purge deleted 7 workflows and failed for 5.')).not.toBeNull();
+      });
+      expect(queryByText('The matching workflows changed')).toBeNull();
+      expect(getByRole('button', { name: 'Refresh preview' })).not.toBeNull();
     } finally {
       fetch.restore();
     }

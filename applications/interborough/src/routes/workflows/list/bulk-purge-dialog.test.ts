@@ -384,7 +384,7 @@ describe('BulkPurgeDialog', () => {
   });
 
   test('a commit that never got an answer does not claim nothing was deleted', async () => {
-    const { getByRole, getByLabelText, getByText } = render(BulkPurgeDialog, {
+    const { getByRole, getByLabelText, getByText, queryByText } = render(BulkPurgeDialog, {
       props: {
         runDryRun: async () => preview(),
         runPurge: async () => {
@@ -406,6 +406,8 @@ describe('BulkPurgeDialog', () => {
       expect(getByText('Refresh the preview to see what is left.')).not.toBeNull();
     });
     expect(getByRole('button', { name: 'Refresh preview' })).not.toBeNull();
+    // Only the server's Conflict, raised before anything is touched, may say nothing was purged.
+    expect(queryByText(/Nothing was purged/)).toBeNull();
   });
 
   test('a failed dry run offers Retry, which runs the dry run again', async () => {
