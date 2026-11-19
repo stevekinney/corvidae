@@ -60,7 +60,7 @@ import {
 import { bureauCall, expectEngineMissesForRuns, taskOfSession } from './task-support.ts';
 import { TEXT_ECHO_AGENT_NAME } from './text-echo-agent.ts';
 
-const WIDTHS = [375, 1280] as const;
+const WIDTHS = [375, 1280, 1920] as const;
 
 /** The hook the hooks list's ready state is shown with; the spec deletes every hook of this name. */
 const HOOK_NAME = 'e2e-view-states';
