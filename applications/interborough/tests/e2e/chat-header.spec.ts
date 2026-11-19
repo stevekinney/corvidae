@@ -252,12 +252,7 @@ async function headerCentres(page: Page) {
     const badge = root.querySelector('.cinder-page-header__status .cinder-badge');
     const badgeBox = badge?.getBoundingClientRect();
     const band = root.closest('.weft-chat-head');
-    // The conversation's pane: the route, except on a phone, where the outlet keeps a 4px gutter
-    // beside the route and the pane is the whole outlet.
-    const route =
-      window.innerWidth < 640
-        ? root.closest('.weft-shell-outlet')
-        : root.closest('.weft-chat-route');
+    const route = root.closest('.weft-chat-route');
     const bandBox = band?.getBoundingClientRect();
     const routeBox = route?.getBoundingClientRect();
     return {
