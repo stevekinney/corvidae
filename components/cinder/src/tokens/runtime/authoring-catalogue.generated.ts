@@ -6457,7 +6457,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       category: 'color',
       component: null,
       description:
-        'Page canvas background, distinct from `surface.base` (a card body). Light mode is a grey page under white panels (owner decision, 2026-11-15): the canvas (0.976) sits below the white surface and raised (1.000) and above the inset well (0.955), dark enough that the focus ring still reads 3.5:1 on it. Dark mode builds up from the canvas (0.145) through the surface (0.185) and the inset (0.210) to raised (0.235).',
+        'Page canvas background, distinct from `surface.base` (a card body). Light mode is a grey page under white panels (owner decisions, 2026-11-15 and 2026-11-19: the panes and the page read as one pale grey): the canvas (0.976) sits below the white surface and raised (1.000) and above the inset well (0.955), as dark as it can be while the focus ring still reads 3.5:1 on it and a hovered row stays apart from it; the panels part from it by their 16% edge (`border`). Dark mode builds up from the canvas (0.145) through the surface (0.185) and the inset (0.210) to raised (0.235).',
       themeAware: true,
       deprecated: false,
       profile: 'color',
@@ -7373,7 +7373,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       category: 'color',
       component: null,
       description:
-        'Emphasized structural edge for containers and dividers that need more weight than `border`. A 15% alpha step over `border.ink`: heavier than `border`, lighter than `border.control`, and not a control boundary on its own, so a bordered button or chip reads `border.control` instead.',
+        'Emphasized structural edge for containers and dividers that need more weight than `border`. A 24% alpha step over `border.ink` in light (15% in dark): heavier than `border`, lighter than `border.control`, and not a control boundary on its own, so a bordered button or chip reads `border.control` instead.',
       themeAware: true,
       deprecated: false,
       profile: 'color',
@@ -7599,7 +7599,8 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       cssProperty: '--cinder-text-subtle',
       category: 'color',
       component: null,
-      description: 'Subtle (tertiary) text color.',
+      description:
+        "Subtle (tertiary) text color. It holds 4.5:1 on every surface it is drawn on, the selected row's fill included, in both themes (`text-on-surface-contrast.test.ts`).",
       themeAware: true,
       deprecated: false,
       profile: 'color',
@@ -7831,7 +7832,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       cssProperty: '--cinder-text-default',
       category: 'color',
       component: null,
-      description: 'Default body text color.',
+      description: 'Default body text color: near-black in light mode (owner, 2026-11-19).',
       themeAware: true,
       deprecated: false,
       profile: 'color',
@@ -10789,35 +10790,36 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       category: 'color',
       component: null,
       description:
-        'Fill of the one selected row in a list or a navigation column: the current page in a vertical NavigationItem (the sidebar and the settings sub-navigation) and the selected StackedListItem (the row open in the detail beside it). The soft accent tint, so every selected row in the app reads as one recipe; its label stays the default text colour, because accent text is for actions and links.',
-      themeAware: false,
+        'Fill of the one selected row in a list or a navigation column: the current page in a vertical NavigationItem (the sidebar and the settings sub-navigation) and the selected StackedListItem (the row open in the detail beside it). Its label stays the default text colour, because accent text is for actions and links. In light mode it is the accent mixed 22% into the surface, a real filled state a clear step from the white panel (owner, 2026-11-19: the soft 12% tint read as a thin outline on a faded page); in dark mode it is the soft accent background.',
+      themeAware: true,
       deprecated: false,
       profile: 'color',
       palette: { family: 'unknown', role: 'unknown', anchor: 'unknown' },
       disposition: {
-        edit: 'recipe',
+        edit: 'supported',
         cssExport: 'supported',
         dtcgExport: 'subset',
-        cssSerialization: 'trusted-recipe',
-        reason: 'The DTCG value is exported; the trusted CSS recipe that governs emission is not.',
+        cssSerialization: 'mixed',
+        reason:
+          'Some contexts emit a trusted CSS recipe and others a typed value; the DTCG value is exported, the recipe is not.',
       },
       variants: [
         {
-          contexts: [
-            'light/default',
-            'light/reduced',
-            'light/forced-reduced-motion',
-            'dark/default',
-            'dark/reduced',
-            'dark/forced-reduced-motion',
-          ],
+          contexts: ['light/default', 'light/reduced', 'light/forced-reduced-motion'],
           provenance: {
-            winner: { document: 'sets/semantic.tokens.json', path: 'selected.background' },
+            winner: { document: 'themes/light.tokens.json', path: 'selected.background' },
             layers: [
               {
                 document: 'sets/semantic.tokens.json',
                 kind: 'set',
                 layer: 'sets.foundation',
+                path: 'selected.background',
+                via: 'declared',
+              },
+              {
+                document: 'themes/light.tokens.json',
+                kind: 'modifier',
+                layer: 'theme.light',
                 path: 'selected.background',
                 via: 'declared',
               },
@@ -10828,11 +10830,42 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
               declaredAt: { document: 'sets/semantic.tokens.json', path: 'selected.background' },
             },
             inputs: {
-              aliases: ['accent.background'],
+              aliases: [],
               refs: [],
               extends: [],
-              recipes: [{ cssProperty: '--cinder-accent-background', path: 'accent.background' }],
+              recipes: [
+                { cssProperty: '--cinder-accent-solid', path: 'accent.solid' },
+                { cssProperty: '--cinder-surface', path: 'surface.base' },
+              ],
             },
+          },
+        },
+        {
+          contexts: ['dark/default', 'dark/reduced', 'dark/forced-reduced-motion'],
+          provenance: {
+            winner: { document: 'themes/dark.tokens.json', path: 'selected.background' },
+            layers: [
+              {
+                document: 'sets/semantic.tokens.json',
+                kind: 'set',
+                layer: 'sets.foundation',
+                path: 'selected.background',
+                via: 'declared',
+              },
+              {
+                document: 'themes/dark.tokens.json',
+                kind: 'modifier',
+                layer: 'theme.dark',
+                path: 'selected.background',
+                via: 'declared',
+              },
+            ],
+            effectiveType: {
+              type: 'color',
+              origin: 'local',
+              declaredAt: { document: 'themes/dark.tokens.json', path: 'selected.background' },
+            },
+            inputs: { aliases: ['accent.background'], refs: [], extends: [], recipes: [] },
           },
         },
       ],

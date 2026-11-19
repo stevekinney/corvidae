@@ -300,8 +300,10 @@ describe('border-on-surface contrast', () => {
     expect(borderMuted.dark.alpha).toBe(0.08);
     expect(border.dark.alpha).toBe(0.12);
     expect(borderStrong.dark.alpha).toBe(0.15);
-    expect(borderMuted.light.alpha).toBe(0.05);
-    expect(border.light.alpha).toBe(0.09);
+    // Light mode read faded (owner, 2026-11-19): its structural tiers are 9%, 16% and 24%.
+    expect(borderMuted.light.alpha).toBe(0.09);
+    expect(border.light.alpha).toBe(0.16);
+    expect(borderStrong.light.alpha).toBe(0.24);
   });
 
   it('the dark contrast tier keeps its 56% step on every dark surface', () => {
@@ -341,9 +343,11 @@ describe('border-on-surface contrast', () => {
     expect(borderContrast.dark.alpha).toBe(1);
   });
 
-  it('the control edge is 32% of the ink at rest and 42% on hover in light, 38% and 44% in dark', () => {
-    expect(borderControl.light.alpha).toBe(0.32);
-    expect(borderControlHover.light.alpha).toBe(0.42);
+  // Owner, 2026-11-19: light mode read faded. The light control edge rose to 50% at rest and 60% on
+  // hover, which clears 3:1 on the canvas and the panels (`text-on-surface-contrast.test.ts`).
+  it('the control edge is 50% of the ink at rest and 60% on hover in light, 38% and 44% in dark', () => {
+    expect(borderControl.light.alpha).toBe(0.5);
+    expect(borderControlHover.light.alpha).toBe(0.6);
     expect(borderControl.dark.alpha).toBe(0.38);
     expect(borderControlHover.dark.alpha).toBe(0.44);
   });

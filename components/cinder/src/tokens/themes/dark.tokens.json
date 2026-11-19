@@ -252,6 +252,12 @@
       }
     }
   },
+  "selected": {
+    "background": {
+      "$type": "color",
+      "$value": "{accent.background}"
+    }
+  },
   "accent": {
     "$type": "color",
     "contrast": {

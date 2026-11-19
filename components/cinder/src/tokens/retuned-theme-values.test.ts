@@ -72,7 +72,8 @@ const LIGHT_VALUES: readonly ExpectedColor[] = [
   ['--cinder-surface-pressed', [0.9424, 0.0288, 257.04]],
   ['--cinder-surface-raised-hover', [0.9664, 0.0168, 256.19]],
   ['--cinder-text-muted', [0.44, 0.01, 265]],
-  ['--cinder-text-subtle', [0.5, 0.01, 265]],
+  // Owner, 2026-11-19: 4.5:1 on the selected row's stronger fill too.
+  ['--cinder-text-subtle', [0.47, 0.01, 265]],
   ['--cinder-accent-solid', [0.52, 0.24, 272]],
   ['--cinder-accent-background', [0.9424, 0.0288, 257.04]],
   ['--cinder-status-success-solid', [0.6, 0.174, 148]],
@@ -107,15 +108,18 @@ const LIGHT_VALUES: readonly ExpectedColor[] = [
  * The structural tiers and the control tiers, as alpha steps over the border ink. COR-2308 gives
  * the dark arm its own structural steps (8% and 12% of a white ink) and keeps the light ones.
  */
+// Owner, 2026-11-19: light mode read faded, its borders barely showing. The light tiers step up:
+// 9%, 16% and 24% structural, 50% and 60% for a control's edge (3:1 on every panel), 66% and 76%
+// for the contrast tier above it.
 const INK_TIERS = [
-  ['--cinder-border-muted', { light: 0.05, dark: 0.08 }],
-  ['--cinder-border', { light: 0.09, dark: 0.12 }],
-  ['--cinder-border-strong', { light: 0.15, dark: 0.15 }],
-  ['--cinder-border-control', { light: 0.32, dark: 0.38 }],
-  ['--cinder-border-control-hover', { light: 0.42, dark: 0.44 }],
-  ['--cinder-border-contrast', { light: 0.48, dark: 0.48 }],
-  ['--cinder-border-contrast-hover', { light: 0.58, dark: 0.58 }],
-  ['--cinder-button-border', { light: 0.32, dark: 0.38 }],
+  ['--cinder-border-muted', { light: 0.09, dark: 0.08 }],
+  ['--cinder-border', { light: 0.16, dark: 0.12 }],
+  ['--cinder-border-strong', { light: 0.24, dark: 0.15 }],
+  ['--cinder-border-control', { light: 0.5, dark: 0.38 }],
+  ['--cinder-border-control-hover', { light: 0.6, dark: 0.44 }],
+  ['--cinder-border-contrast', { light: 0.66, dark: 0.48 }],
+  ['--cinder-border-contrast-hover', { light: 0.76, dark: 0.58 }],
+  ['--cinder-button-border', { light: 0.5, dark: 0.38 }],
 ] as const;
 
 /** The one tier whose dark arm is the opaque literal below, not a step over the ink. */
@@ -250,7 +254,8 @@ describe('COR-2010: the dark arm moves the inset, inverse chip, control edge and
 
   test('the inverse chip is the light text ink, so a tooltip separates from raised popovers', () => {
     expectColor('dark', ['--cinder-surface-inverse', [0.95, 0.01, 265]]);
-    expectColor('light', ['--cinder-surface-inverse', [0.2, 0.018, 245]]);
+    // The light text ink is near-black (owner, 2026-11-19).
+    expectColor('light', ['--cinder-surface-inverse', [0.17, 0.018, 245]]);
     expectColor('dark', ['--cinder-text-inverse', [0.185, 0.024, 265]]);
   });
 
@@ -320,7 +325,7 @@ describe('COR-2308: the dark arm ships the neutral ladder', () => {
 
   test('the neutral status border follows the structural border tier in each arm', () => {
     expect(contexts.dark.get('--cinder-status-neutral-border')?.alpha).toBe(0.12);
-    expect(contexts.light.get('--cinder-status-neutral-border')?.alpha).toBe(0.09);
+    expect(contexts.light.get('--cinder-status-neutral-border')?.alpha).toBe(0.16);
   });
 });
 

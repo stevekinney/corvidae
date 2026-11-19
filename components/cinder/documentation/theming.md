@@ -46,7 +46,7 @@ To override the OS preference, cinder supports two related paths. They both infl
     color-scheme: light;
     --cinder-surface: oklch(100% 0 255);
     --cinder-surface-raised: oklch(100% 0 255);
-    --cinder-text-default: oklch(20% 0.018 245);
+    --cinder-text-default: oklch(17% 0.018 245);
     --cinder-border-ink: oklch(20% 0.02 255);
     --cinder-accent-solid: oklch(52% 0.24 272);
     --cinder-ring-color: oklch(from var(--cinder-accent-solid) 0.62 0.16 h);

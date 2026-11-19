@@ -1006,7 +1006,7 @@
       "public": true,
       "themeAware": true,
       "deprecated": false,
-      "description": "Page canvas background, distinct from `surface.base` (a card body). Light mode is a grey page under white panels (owner decision, 2026-11-15): the canvas (0.976) sits below the white surface and raised (1.000) and above the inset well (0.955), dark enough that the focus ring still reads 3.5:1 on it. Dark mode builds up from the canvas (0.145) through the surface (0.185) and the inset (0.210) to raised (0.235)."
+      "description": "Page canvas background, distinct from `surface.base` (a card body). Light mode is a grey page under white panels (owner decisions, 2026-11-15 and 2026-11-19: the panes and the page read as one pale grey): the canvas (0.976) sits below the white surface and raised (1.000) and above the inset well (0.955), as dark as it can be while the focus ring still reads 3.5:1 on it and a hovered row stays apart from it; the panels part from it by their 16% edge (`border`). Dark mode builds up from the canvas (0.145) through the surface (0.185) and the inset (0.210) to raised (0.235)."
     },
     {
       "path": "surface.translucent",
@@ -1105,7 +1105,7 @@
       "public": true,
       "themeAware": true,
       "deprecated": false,
-      "description": "Emphasized structural edge for containers and dividers that need more weight than `border`. A 15% alpha step over `border.ink`: heavier than `border`, lighter than `border.control`, and not a control boundary on its own, so a bordered button or chip reads `border.control` instead."
+      "description": "Emphasized structural edge for containers and dividers that need more weight than `border`. A 24% alpha step over `border.ink` in light (15% in dark): heavier than `border`, lighter than `border.control`, and not a control boundary on its own, so a bordered button or chip reads `border.control` instead."
     },
     {
       "path": "border.inverse",
@@ -1132,7 +1132,7 @@
       "public": true,
       "themeAware": true,
       "deprecated": false,
-      "description": "Subtle (tertiary) text color."
+      "description": "Subtle (tertiary) text color. It holds 4.5:1 on every surface it is drawn on, the selected row's fill included, in both themes (`text-on-surface-contrast.test.ts`)."
     },
     {
       "path": "text.disabled",
@@ -1159,7 +1159,7 @@
       "public": true,
       "themeAware": true,
       "deprecated": false,
-      "description": "Default body text color."
+      "description": "Default body text color: near-black in light mode (owner, 2026-11-19)."
     },
     {
       "path": "fill.disabled",
@@ -1517,9 +1517,9 @@
       "cssProperty": "--cinder-selected-background",
       "category": "color",
       "public": true,
-      "themeAware": false,
+      "themeAware": true,
       "deprecated": false,
-      "description": "Fill of the one selected row in a list or a navigation column: the current page in a vertical NavigationItem (the sidebar and the settings sub-navigation) and the selected StackedListItem (the row open in the detail beside it). The soft accent tint, so every selected row in the app reads as one recipe; its label stays the default text colour, because accent text is for actions and links."
+      "description": "Fill of the one selected row in a list or a navigation column: the current page in a vertical NavigationItem (the sidebar and the settings sub-navigation) and the selected StackedListItem (the row open in the detail beside it). Its label stays the default text colour, because accent text is for actions and links. In light mode it is the accent mixed 22% into the surface, a real filled state a clear step from the white panel (owner, 2026-11-19: the soft 12% tint read as a thin outline on a faded page); in dark mode it is the soft accent background."
     },
     {
       "path": "list.row.min-height",

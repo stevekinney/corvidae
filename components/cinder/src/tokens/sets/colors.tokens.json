@@ -70,7 +70,7 @@
         "$type": "color",
         "$value": {
           "colorSpace": "oklch",
-          "components": [0.456, 0.05, 151.329]
+          "components": [0.4452, 0.05, 151.329]
         },
         "$description": "Success color moved toward the current text color. Derived in one polarity-aware recipe shared by all four status colors.",
         "$extensions": {
@@ -164,7 +164,7 @@
         "$type": "color",
         "$value": {
           "colorSpace": "oklch",
-          "components": [0.5776, 0.05, 75.641]
+          "components": [0.5668, 0.05, 75.641]
         },
         "$description": "Warning color moved toward the current text color. Derived in one polarity-aware recipe shared by all four status colors.",
         "$extensions": {
@@ -306,7 +306,7 @@
         "$type": "color",
         "$value": {
           "colorSpace": "oklch",
-          "components": [0.4368, 0.05, 25.392]
+          "components": [0.426, 0.05, 25.392]
         },
         "$description": "Danger color moved toward the current text color. Derived in one polarity-aware recipe shared by all four status colors.",
         "$extensions": {
@@ -400,7 +400,7 @@
         "$type": "color",
         "$value": {
           "colorSpace": "oklch",
-          "components": [0.424, 0.05, 238.535]
+          "components": [0.4132, 0.05, 238.535]
         },
         "$description": "Info color moved toward the current text color. Derived in one polarity-aware recipe shared by all four status colors.",
         "$extensions": {

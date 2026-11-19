@@ -256,7 +256,7 @@
   --cinder-surface-inverse: var(--cinder-text-default);
   /* Upcoming step marker background. Keeps the inset treatment in light mode (surface-inset is visibly recessed vs surface), and uses the surface in dark mode, which steps up from the 14.5% canvas a marker is drawn on (18.5%) and stays below the inset bands and raised cards around it. */
   --cinder-surface-upcoming-marker: light-dark(var(--cinder-surface-inset), var(--cinder-surface));
-  /* Page canvas background, distinct from `surface.base` (a card body). Light mode is a grey page under white panels (owner decision, 2026-11-15): the canvas (0.976) sits below the white surface and raised (1.000) and above the inset well (0.955), dark enough that the focus ring still reads 3.5:1 on it. Dark mode builds up from the canvas (0.145) through the surface (0.185) and the inset (0.210) to raised (0.235). */
+  /* Page canvas background, distinct from `surface.base` (a card body). Light mode is a grey page under white panels (owner decisions, 2026-11-15 and 2026-11-19: the panes and the page read as one pale grey): the canvas (0.976) sits below the white surface and raised (1.000) and above the inset well (0.955), as dark as it can be while the focus ring still reads 3.5:1 on it and a hovered row stays apart from it; the panels part from it by their 16% edge (`border`). Dark mode builds up from the canvas (0.145) through the surface (0.185) and the inset (0.210) to raised (0.235). */
   --cinder-surface-canvas: light-dark(oklch(97.6% 0.004 265), oklch(14.5% 0.022 265));
   /* The canvas at 90%, for a header or bar that content scrolls under, drawn with a backdrop blur (`.cinder-translucent-surface`; AppBar keeps its own 82% mix), and opaque canvas where the platform cannot blur or `prefers-reduced-transparency` is set. The 90% is the least the canvas can keep so that the body and status text on it hold 4.5:1 over the worst backdrop, pure black or pure white, in both themes (`translucent-surface-contrast.test.ts`). */
   --cinder-surface-translucent: color-mix(in oklch, var(--cinder-surface-canvas) 90%, transparent);
@@ -264,49 +264,55 @@
   --cinder-polarity-ink: light-dark(oklch(0% 0 0), oklch(100% 0 0));
   /* Structural edge for containers: cards, dialogs, drawers, popovers, panels, tables, toasts. A 9% alpha step over `border.ink` in light mode and 12% in dark mode. Quiet on purpose and exempt from WCAG 1.4.11 (the container is identified by its surface and content); a control boundary uses `border.control` instead. */
   --cinder-border: light-dark(
-    color-mix(in oklch, var(--cinder-border-ink), transparent 91%),
+    color-mix(in oklch, var(--cinder-border-ink), transparent 84%),
     color-mix(in oklch, var(--cinder-border-ink), transparent 88%)
   );
   /* The single polarity-aware ink every neutral border tier is mixed from: a dark cool ink in light mode, neutral white in dark mode. The tiers do three different jobs. STRUCTURAL tiers (`border.muted` 5% light and 8% dark, `border` 9% light and 12% dark, `border.strong` 15%) separate regions and outline containers; they are deliberately quiet and exempt from WCAG 1.4.11 because the region they bound is identified by its content and surface. CONTROL tiers (`border.control` 32% light and 38% dark, `border.control.hover` 42% light and 44% dark) are the resting edge of an input or bordered button: heavier than every structural tier, quiet in light by owner decision (2026-11-11) and at least 3:1 in dark by owner decision (2026-11-17, controls only: structural borders stay quiet in both themes). CONTRAST tiers (`border.contrast` 48%, `border.contrast.hover` 58%) clear 3:1 against every surface; they are what the control tiers become under `prefers-contrast: more`, and what draws an unchecked checkbox, an unselected radio, and a neutral indicator with no other boundary. All seven are alpha steps over this ink (the dark arm of `border.contrast` is the one opaque literal), so each tier tracks the surface underneath it and one override re-tints them together; the generator re-declares each tier inside every [data-theme] block, so overriding this token on a themed element re-derives them there. The four HUED status borders (info, success, warning, danger) are deliberately NOT derived from it and stay opaque, because a translucent status border would take its hue from whatever it happened to sit on. */
   --cinder-border-ink: light-dark(oklch(20% 0.02 255), oklch(100% 0 0));
   /* Control boundary: the resting edge of every text-entry control and bordered button. A 32% alpha step over `border.ink` in light (owner decision, 2026-11-11): quiet by default, heavier than every structural tier so a control still reads as the interactive thing, and deliberately under WCAG 1.4.11's 3:1, because a control is also identified by its fill, its label, and its focus ring. In dark it is a 38% step (owner decision, 2026-11-17: controls only), which reads 3.4:1 or better on the raised surface a control paints, resting and hovered, so a dark input, composer or secondary button has an edge that clears 3:1 while structural borders stay quiet. Under `prefers-contrast: more` it becomes `border.contrast`, which clears 3:1. Never fill an indicator with it, and never draw a control that is only its edge with it: an unchecked checkbox, an unselected radio, and an indicator with no other boundary use `border.contrast`. */
   --cinder-border-control: light-dark(
-    color-mix(in oklch, var(--cinder-border-ink), transparent 68%),
+    color-mix(in oklch, var(--cinder-border-ink), transparent 50%),
     color-mix(in oklch, var(--cinder-border-ink), transparent 62%)
   );
   /* Hovered control boundary, one step heavier than `border.control`. A 42% alpha step over `border.ink`; becomes `border.contrast.hover` under `prefers-contrast: more`. */
   --cinder-border-control-hover: light-dark(
-    color-mix(in oklch, var(--cinder-border-ink), transparent 58%),
+    color-mix(in oklch, var(--cinder-border-ink), transparent 40%),
     color-mix(in oklch, var(--cinder-border-ink), transparent 56%)
   );
   /* The neutral edge that clears WCAG 1.4.11's 3:1 against every surface a control sits on. It does two jobs: it is what `border.control` becomes under `prefers-contrast: more`, it is the edge of a control that is nothing but its edge (an unchecked checkbox, an unselected radio), and it fills neutral indicators that have no other boundary (a toggle's off track, a slider's rail, a drag handle, an empty rating star), which must stay visible on their own. Light arm: a 48% alpha step over `border.ink` (the ink at 52% transparency, about oklch(66% .006 255) over white). Dark arm: the opaque oklch(64% .03 265), which reads about 5.5:1 on the surfaces; it sits above the 38% dark control edge so `prefers-contrast: more` still means a heavier edge, and the contrast pairs hold it above the 3:1 floor on `surface.raised`. */
   --cinder-border-contrast: light-dark(
-    color-mix(in oklch, var(--cinder-border-ink), transparent 52%),
+    color-mix(in oklch, var(--cinder-border-ink), transparent 34%),
     oklch(64% 0.03 265)
   );
   /* Hovered form of `border.contrast`, one step heavier. A 58% alpha step over `border.ink`; clears 3:1 against every supported surface. */
-  --cinder-border-contrast-hover: color-mix(in oklch, var(--cinder-border-ink), transparent 42%);
+  --cinder-border-contrast-hover: light-dark(
+    color-mix(in oklch, var(--cinder-border-ink), transparent 24%),
+    color-mix(in oklch, var(--cinder-border-ink), transparent 42%)
+  );
   /* Decorative-only hairline. Never use as a control boundary: it is intentionally below the WCAG 1.4.11 3:1 non-text threshold. */
-  --cinder-border-faint: light-dark(oklch(92% 0.003 255), oklch(33% 0.03 265));
+  --cinder-border-faint: light-dark(oklch(88.5% 0.004 255), oklch(33% 0.03 265));
   /* Interior divider: rules between rows, table cells, list items, and under tab lists, and the Divider component. A 5% alpha step over `border.ink` in light mode and 8% in dark mode; structural, so exempt from 3:1, and always lighter than `border`. */
   --cinder-border-muted: light-dark(
-    color-mix(in oklch, var(--cinder-border-ink), transparent 95%),
+    color-mix(in oklch, var(--cinder-border-ink), transparent 91%),
     color-mix(in oklch, var(--cinder-border-ink), transparent 92%)
   );
-  /* Emphasized structural edge for containers and dividers that need more weight than `border`. A 15% alpha step over `border.ink`: heavier than `border`, lighter than `border.control`, and not a control boundary on its own, so a bordered button or chip reads `border.control` instead. */
-  --cinder-border-strong: color-mix(in oklch, var(--cinder-border-ink), transparent 85%);
+  /* Emphasized structural edge for containers and dividers that need more weight than `border`. A 24% alpha step over `border.ink` in light (15% in dark): heavier than `border`, lighter than `border.control`, and not a control boundary on its own, so a bordered button or chip reads `border.control` instead. */
+  --cinder-border-strong: light-dark(
+    color-mix(in oklch, var(--cinder-border-ink), transparent 76%),
+    color-mix(in oklch, var(--cinder-border-ink), transparent 85%)
+  );
   /* Border for surfaces using `surface.inverse` (Tooltip). Transparent in both themes: the inverse chip separates from its surroundings by lightness alone (a dark chip on light surfaces, a light chip on dark ones). */
   --cinder-border-inverse: transparent;
   /* Muted (secondary) text color. */
   --cinder-text-muted: light-dark(oklch(44% 0.01 265), oklch(78% 0.01 265));
-  /* Subtle (tertiary) text color. */
-  --cinder-text-subtle: light-dark(oklch(50% 0.01 265), oklch(68% 0.01 265));
+  /* Subtle (tertiary) text color. It holds 4.5:1 on every surface it is drawn on, the selected row's fill included, in both themes (`text-on-surface-contrast.test.ts`). */
+  --cinder-text-subtle: light-dark(oklch(47% 0.01 265), oklch(68% 0.01 265));
   /* Disabled text color. Clears the 3:1 UI floor in both themes even though disabled controls are exempt from WCAG text contrast; a disabled control still has to be visible as a control. */
   --cinder-text-disabled: light-dark(oklch(52% 0.01 245), oklch(64% 0.02 265));
   /* Text color for use on `surface.inverse` (Tooltip). */
   --cinder-text-inverse: var(--cinder-surface);
-  /* Default body text color. */
-  --cinder-text-default: light-dark(oklch(20% 0.018 245), oklch(95% 0.01 265));
+  /* Default body text color: near-black in light mode (owner, 2026-11-19). */
+  --cinder-text-default: light-dark(oklch(17% 0.018 245), oklch(95% 0.01 265));
   /* Neutral fill for disabled solid controls (disabled-checked checkbox/radio) so they stop misusing `text.disabled` (a text-lightness token) as an assertive fill. The glyph on top must use `text.disabled`, not `accent.contrast`: accent-contrast is dark ink in both arms and would be near-invisible on the dark-arm fill. */
   --cinder-fill-disabled: light-dark(oklch(86% 0.006 255), oklch(30% 0.015 265));
   /* Label color for solid accent fills. Light arm flips to white (the indigo fill is dark enough); dark arm keeps dark ink against the bright dark-mode fill. */
@@ -389,8 +395,11 @@
   --cinder-gap-inline: var(--cinder-space-2);
   /* Fill of a skeleton bar: a 12% alpha step over `border.ink` in both themes, so a bar is the same visible step over whatever it sits on (the canvas, the surface a list or card body paints, raised, or the inset). An opaque surface fill vanished on a ground of its own colour: the light inset bars read about 1.05:1 on the surface a list and a card body paint, and the dark raised bars vanished on a raised statistic card. */
   --cinder-skeleton-background: color-mix(in oklch, var(--cinder-border-ink), transparent 88%);
-  /* Fill of the one selected row in a list or a navigation column: the current page in a vertical NavigationItem (the sidebar and the settings sub-navigation) and the selected StackedListItem (the row open in the detail beside it). The soft accent tint, so every selected row in the app reads as one recipe; its label stays the default text colour, because accent text is for actions and links. */
-  --cinder-selected-background: var(--cinder-accent-background);
+  /* Fill of the one selected row in a list or a navigation column: the current page in a vertical NavigationItem (the sidebar and the settings sub-navigation) and the selected StackedListItem (the row open in the detail beside it). Its label stays the default text colour, because accent text is for actions and links. In light mode it is the accent mixed 22% into the surface, a real filled state a clear step from the white panel (owner, 2026-11-19: the soft 12% tint read as a thin outline on a faded page); in dark mode it is the soft accent background. */
+  --cinder-selected-background: light-dark(
+    color-mix(in oklch, var(--cinder-accent-solid), var(--cinder-surface) 78%),
+    var(--cinder-accent-background)
+  );
   /* Minimum block size of a list row (StackedListItem, DataList rows). Zero by default so a row is as tall as its content; a coarse pointer (`@media (pointer: coarse)`) raises it to `touch.target.min` (44px) so a row is never smaller than a touch target. Emitted as `0px` so it stays a length in `min-height`. */
   --cinder-list-row-min-height: 0px;
   /* Default control padding. */
@@ -887,6 +896,7 @@
   --cinder-text-default: oklch(95% 0.01 265);
   --cinder-fill-disabled: oklch(30% 0.015 265);
   --cinder-control-background-disabled: var(--cinder-fill-disabled);
+  --cinder-selected-background: var(--cinder-accent-background);
   --cinder-accent-contrast: oklch(15% 0.035 270);
   --cinder-accent-text: oklch(72% 0.14 270);
   --cinder-accent-text-hover: oklch(from var(--cinder-accent-text) calc(l - 0.08) c h);
@@ -1079,20 +1089,20 @@
   --cinder-surface-canvas: oklch(97.6% 0.004 265);
   --cinder-surface-translucent: color-mix(in oklch, var(--cinder-surface-canvas) 90%, transparent);
   --cinder-polarity-ink: oklch(0% 0 0);
-  --cinder-border: color-mix(in oklch, var(--cinder-border-ink), transparent 91%);
+  --cinder-border: color-mix(in oklch, var(--cinder-border-ink), transparent 84%);
   --cinder-border-ink: oklch(20% 0.02 255);
-  --cinder-border-faint: oklch(92% 0.003 255);
-  --cinder-border-control: color-mix(in oklch, var(--cinder-border-ink), transparent 68%);
-  --cinder-border-control-hover: color-mix(in oklch, var(--cinder-border-ink), transparent 58%);
-  --cinder-border-contrast: color-mix(in oklch, var(--cinder-border-ink), transparent 52%);
-  --cinder-border-contrast-hover: color-mix(in oklch, var(--cinder-border-ink), transparent 42%);
-  --cinder-border-muted: color-mix(in oklch, var(--cinder-border-ink), transparent 95%);
-  --cinder-border-strong: color-mix(in oklch, var(--cinder-border-ink), transparent 85%);
+  --cinder-border-faint: oklch(88.5% 0.004 255);
+  --cinder-border-control: color-mix(in oklch, var(--cinder-border-ink), transparent 50%);
+  --cinder-border-control-hover: color-mix(in oklch, var(--cinder-border-ink), transparent 40%);
+  --cinder-border-contrast: color-mix(in oklch, var(--cinder-border-ink), transparent 34%);
+  --cinder-border-contrast-hover: color-mix(in oklch, var(--cinder-border-ink), transparent 24%);
+  --cinder-border-muted: color-mix(in oklch, var(--cinder-border-ink), transparent 91%);
+  --cinder-border-strong: color-mix(in oklch, var(--cinder-border-ink), transparent 76%);
   --cinder-text-muted: oklch(44% 0.01 265);
-  --cinder-text-subtle: oklch(50% 0.01 265);
+  --cinder-text-subtle: oklch(47% 0.01 265);
   --cinder-text-disabled: oklch(52% 0.01 245);
   --cinder-text-inverse: var(--cinder-surface);
-  --cinder-text-default: oklch(20% 0.018 245);
+  --cinder-text-default: oklch(17% 0.018 245);
   --cinder-fill-disabled: oklch(86% 0.006 255);
   --cinder-control-background-disabled: var(--cinder-surface-inset);
   --cinder-accent-contrast: oklch(100% 0 0);
@@ -1216,6 +1226,11 @@
     in oklch,
     var(--cinder-text-default),
     transparent 92%
+  );
+  --cinder-selected-background: color-mix(
+    in oklch,
+    var(--cinder-accent-solid),
+    var(--cinder-surface) 78%
   );
   --cinder-control-background: var(--cinder-surface-raised);
   --cinder-control-border: var(--cinder-border-control);
