@@ -138,8 +138,10 @@ export type FilterSegment = {
 /**
  * How the bar is drawn. `wide` shows the segments, the facet chips and the search field in one
  * row. `search-folded` folds the search field to an icon button first and keeps the segments.
- * `medium` also collapses the segments to a select. `narrow` shows only the select and a Filter
- * menu that holds every facet and the search. Search folds away before the segments do.
+ * `medium` also collapses the segments to a select, and, when the row still cannot hold them, moves
+ * the unapplied chips one at a time into a Filter menu behind an icon button (`foldOrder`).
+ * `narrow` shows only the select and a Filter menu that holds every facet and the search. Search
+ * folds away before the segments do.
  */
 export type FilterBarLayout = 'wide' | 'search-folded' | 'medium' | 'narrow';
 
@@ -185,6 +187,13 @@ export type FilterBarProps = Omit<HTMLAttributes<HTMLDivElement>, 'class' | 'chi
    * the consumer; each entry is a key/value/label triple.
    */
   appliedFilters?: readonly AppliedFilter[];
+  /**
+   * The keys of the choice and toggle facets, least used first, in the order their chips move into
+   * a Filter menu when the medium form cannot hold them. A chip with an applied filter never moves,
+   * so a filter that is on stays visible and removable; the bar folds to `narrow` only once every
+   * unapplied chip has moved. Facets left out fold after those named, from the end of the list.
+   */
+  foldOrder?: readonly string[];
   /**
    * Force a layout. By default the bar follows the viewport (phone under 640px, tablet under
    * 1024px) and narrows further when its own width cannot hold the wider form.

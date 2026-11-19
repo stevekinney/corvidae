@@ -18,7 +18,7 @@
  */
 import { humanizeIdentifier, type DataListGroup } from '@lostgradient/cinder';
 
-import { TASK_COPY } from '../../../app/copy/tasks.ts';
+import { SIGNAL_WAIT_WORD, TASK_COPY } from '../../../app/copy/tasks.ts';
 import type { ChatContext } from '../../../lib/bureau-client.ts';
 import type { Goal } from '../../../lib/bureau-goals.ts';
 import {
@@ -746,7 +746,7 @@ export function serializeRunFilter(filter: RunFilter): string {
 }
 
 /** The word a run's status reads as: one of the seven, or "Check not met" for a goal's attempt. */
-export type RunStatusWord = StatusWord | 'Check not met' | 'Waiting';
+export type RunStatusWord = StatusWord | 'Check not met' | typeof SIGNAL_WAIT_WORD;
 
 /** Whether a run that has not ended is parked at an `await-signal` step, waiting for a signal. */
 function awaitingSignalOf(
@@ -766,7 +766,9 @@ export function runStatusWord(
   now?: number,
 ): RunStatusWord {
   if (row.checkNotMet) return 'Check not met';
-  if (awaitingSignalOf({ status: row.status, workflow: row.workflow }) !== null) return 'Waiting';
+  if (awaitingSignalOf({ status: row.status, workflow: row.workflow }) !== null) {
+    return SIGNAL_WAIT_WORD;
+  }
   if (
     row.status === 'working' &&
     row.dueAt !== undefined &&
@@ -834,6 +836,12 @@ export type RunLineContext = {
    * identifier, or `undefined` when the schedule was not read (row 53l).
    */
   readonly scheduleCadence?: (scheduleId: string) => string | undefined;
+  /**
+   * Why a schedule will not start its next run, in words, by its identifier and the agent the run
+   * is for ("Order refund can’t load", "no provider is connected"); empty when nothing holds it.
+   * A schedule's run that is due says them before its agent (row 10h).
+   */
+  readonly scheduleHolds?: (scheduleId: string, agentName: string | null) => readonly string[];
 };
 
 /**
@@ -877,13 +885,25 @@ export function runLineTwo(row: RunRow, context: RunLineContext): string {
   if (instance && row.scheduleName !== null && row.scheduleName !== undefined) {
     parts.push(row.scheduleName);
   }
+  const scheduleId =
+    row.origin.kind === 'schedule' ? (row.origin.scheduleId ?? workflow?.scheduleId ?? null) : null;
+  // A schedule's run that is due says what holds its schedule first, then its agent and when it
+  // is due: "Schedule, Order refund can’t load, no provider is connected, Tool runner, due today at
+  // 11:00 AM" (row 10h). It says no cadence: the due time is the one that matters.
+  const due =
+    (row.status === 'working' || row.status === 'submitted') &&
+    awaitingSignalOf(row) === null &&
+    runStatusWord(row, context.now) === 'Scheduled';
+  if (due && scheduleId !== null) {
+    for (const hold of context.scheduleHolds?.(scheduleId, row.agentName) ?? []) {
+      parts.push(hold);
+    }
+  }
   if (agent !== null) parts.push(agent);
   // A schedule's chat run says when its schedule runs, after the agent: "Schedule, Assistant,
   // every day at 3:00 AM, 14 s" (row 53l).
-  const scheduleId =
-    row.origin.kind === 'schedule' ? (row.origin.scheduleId ?? workflow?.scheduleId ?? null) : null;
   const cadence =
-    !instance && scheduleId !== null ? context.scheduleCadence?.(scheduleId) : undefined;
+    !instance && !due && scheduleId !== null ? context.scheduleCadence?.(scheduleId) : undefined;
   if (cadence !== undefined && cadence !== '') parts.push(cadence);
   if (row.attempt !== null) parts.push(copy.attempt(row.attempt.number, row.attempt.of));
   if (tick !== null) {
