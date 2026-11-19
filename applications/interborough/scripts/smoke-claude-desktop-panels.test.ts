@@ -1,6 +1,8 @@
 import { describe, expect, test } from 'bun:test';
 import { EventEmitter } from 'node:events';
 
+import { rejectionOf } from '@lostgradient/testing';
+
 import { buildThenStart, guideText, waitForStop } from './smoke-claude-desktop-panels.ts';
 
 describe('guideText', () => {
@@ -39,7 +41,7 @@ describe('buildThenStart', () => {
         return 'host';
       },
     });
-    await expect(failing).rejects.toThrow(/browser build failed.*exited with code 1/);
+    expect(String(await rejectionOf(failing))).toMatch(/browser build failed.*exited with code 1/);
     expect(started).toBe(false);
   });
 });
