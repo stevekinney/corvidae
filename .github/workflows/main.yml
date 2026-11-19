@@ -9,12 +9,27 @@ name: Main
 
 on:
   workflow_dispatch:
+    inputs:
+      verification_request:
+        description: Immutable P07 verification request key.
+        required: false
+        type: string
+      verification_plan:
+        description: SHA-256 digest of the verification plan.
+        required: false
+        type: string
+      verification_base:
+        description: Candidate base commit.
+        required: false
+        type: string
   push:
     branches:
       - main
 
 permissions:
   contents: read
+
+run-name: ${{ github.event_name == 'workflow_dispatch' && inputs.verification_request != '' && format('P07 {0}', inputs.verification_request) || github.workflow }}
 
 # One group for every push: a running run finishes, and a newer pending run replaces the older pending one.
 # A manual dispatch (an exception validate on a branch, COR-2374) takes a group of its own per ref, so
@@ -215,3 +230,29 @@ jobs:
       # The check alone: `bun run check:test-durations` would run the whole fast lane again first.
       - run: bun scripts/check-test-durations.ts
         continue-on-error: true
+
+  evidence:
+    name: Evidence aggregate
+    needs: [root, workspaces, tests, tests-slow, browser, test-durations]
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Record authenticated checkout identity
+        env:
+          VERIFICATION_REQUEST: ${{ inputs.verification_request }}
+          VERIFICATION_PLAN: ${{ inputs.verification_plan }}
+          VERIFICATION_BASE: ${{ inputs.verification_base }}
+        run: >-
+          printf '{"requestKey":"%s","planDigest":"%s","base":"%s","checkedRevision":"%s","checkedTree":"%s","event":"%s","runId":"%s","attempt":"%s"}\n'
+          "$VERIFICATION_REQUEST" "$VERIFICATION_PLAN" "$VERIFICATION_BASE"
+          "$(git rev-parse HEAD)" "$(git rev-parse HEAD^{tree})" "${{ github.event_name }}"
+          "${{ github.run_id }}" "${{ github.run_attempt }}" > ci-evidence-receipt.json
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ci-evidence-receipt
+          path: ci-evidence-receipt.json
+          if-no-files-found: error
