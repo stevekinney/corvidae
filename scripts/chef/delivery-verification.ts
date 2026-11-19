@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { createGitHubCiEvidenceProvider } from './ci-evidence-github.ts';
 import { ciEvidenceRequestKey, type CiEvidenceProvider } from './ci-evidence.ts';
 import {
+  batchVerificationPlanDigest,
   collectCompletionRecords,
   readDeliveryRequest,
   type DeliveryRequest,
@@ -268,14 +269,14 @@ export async function validateDeliveryCiEvidence(
         .filter((item) => item.phase === 'pre-integration')
         .map((item) => `${item.criterionId}:${item.commandOrProviderJob}`),
     );
-    const planDigest = digest(JSON.stringify(member.plan));
-    return member.providerRuns
-      .filter((run) => obligations.has(run.obligation) && aggregatedWorkflows.has(run.workflowPath))
-      .map((run) => ({ ...run, planDigest }));
+    return member.providerRuns.filter(
+      (run) => obligations.has(run.obligation) && aggregatedWorkflows.has(run.workflowPath),
+    );
   });
   if (mappings.length === 0) return undefined;
   if (!Array.isArray(request.ciEvidence))
     return 'verification request is missing the CI evidence contract';
+  const manualPlanDigest = batchVerificationPlanDigest(request.members);
   const source =
     partial.ciProvider ??
     createGitHubCiEvidenceProvider({
@@ -292,7 +293,7 @@ export async function validateDeliveryCiEvidence(
         identity.integrationTree === request.integrationTree &&
         identity.event === mapping.event &&
         (mapping.event !== 'workflow_dispatch' ||
-          identity.verificationPlanDigest === mapping.planDigest) &&
+          identity.verificationPlanDigest === manualPlanDigest) &&
         identity.workflow === mapping.workflow &&
         identity.workflowPath === mapping.workflowPath &&
         identity.requestKey === ciEvidenceRequestKey(identity),

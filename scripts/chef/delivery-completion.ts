@@ -45,6 +45,13 @@ export interface DeliveryRequest extends Omit<
   ciEvidence?: CiEvidenceRequest[];
 }
 
+/** Bind one manual verification run to every approved plan in its batch. */
+export function batchVerificationPlanDigest(
+  members: readonly Pick<DeliveryMember, 'plan'>[],
+): string {
+  return digest(JSON.stringify(members.map(({ plan }) => digest(JSON.stringify(plan))).toSorted()));
+}
+
 export interface CompletionRecord {
   operationId: string;
   runId: string;
