@@ -80,6 +80,56 @@ export class RunGuardrailRecordedEvent extends Event {
 }
 
 /**
+ * A run that is alive stopped making progress outside a declared wait (COR-2526): Operative's own
+ * `alive-but-stalled` assessment, which the Bureau recorded on the task. It is published once each
+ * time a run enters the state, from the write that recorded it, so a stall that clears and begins
+ * again is announced again and a repeated snapshot of the same stall is not.
+ */
+export class RunStalledEvent extends Event {
+  /** The event kind, as the event feed publishes it. */
+  static readonly type = 'run.stalled' as const;
+
+  /** The run's identifier. */
+  readonly runId: string;
+  /** The instant, as ISO 8601 on the Bureau's clock, the Bureau saw the run stall. */
+  readonly since: string;
+
+  constructor(runId: string, since: string) {
+    super(RunStalledEvent.type);
+    this.runId = runId;
+    this.since = since;
+  }
+}
+
+/** What a loop report said: the toolbox's `loop-warning`, or the `loop-blocked` that refused a call. */
+export type RunLoopLevel = 'warning' | 'blocked';
+
+/**
+ * A run's toolbox reported a loop (COR-2526): the same call repeated, or two calls alternating,
+ * past its warning or its block threshold. It is published once for a run, with the first report,
+ * because a run stays looping until it settles; the audit trail keeps each report as
+ * `toolbox.loop-warning` or `toolbox.loop-blocked`.
+ */
+export class RunLoopingEvent extends Event {
+  /** The event kind, as the event feed publishes it. */
+  static readonly type = 'run.looping' as const;
+
+  /** The run's identifier. */
+  readonly runId: string;
+  /** The instant, as ISO 8601 on the Bureau's clock, the Bureau recorded the first report. */
+  readonly since: string;
+  /** What the first report was. */
+  readonly level: RunLoopLevel;
+
+  constructor(runId: string, since: string, level: RunLoopLevel) {
+    super(RunLoopingEvent.type);
+    this.runId = runId;
+    this.since = since;
+    this.level = level;
+  }
+}
+
+/**
  * A run's spend crossed one of its budget's warning fractions (COR-2096), as the run recorded it.
  * The feed publishes the fraction, the spend, the budget and the model, never request content.
  */
@@ -1465,6 +1515,10 @@ export interface BureauEventMap extends EventMap {
   [SteeringAppliedRecordedEvent.type]: SteeringAppliedRecordedEvent;
   /** A hook of a run's plan threw (COR-2097). */
   [HookPlanFailedRecordedEvent.type]: HookPlanFailedRecordedEvent;
+  /** A run stopped making progress outside a declared wait (COR-2526). */
+  [RunStalledEvent.type]: RunStalledEvent;
+  /** A run's toolbox reported a loop (COR-2526). */
+  [RunLoopingEvent.type]: RunLoopingEvent;
   [RunRegisteredEvent.type]: RunRegisteredEvent;
   [RunSettledEvent.type]: RunSettledEvent;
   /** A run ended without failing and without being aborted (COR-2095). */

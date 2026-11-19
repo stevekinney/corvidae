@@ -40,6 +40,8 @@ const view: TaskView = {
   wakeAt: null,
   workflow: PLAIN_TASK_WORKFLOW,
   usage: null,
+  attention: [],
+  stalledSince: null,
 };
 
 /** A repair over one settled record whose history holds `kinds`; resolves what it appended. */

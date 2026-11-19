@@ -25,8 +25,9 @@ import { type ConditionalTextValueStore, encodeStorageKeyComponent } from '@lost
  * moves with the view's shape: `v2` (COR-1689) added `kind`, `v3` (COR-1867) added `origin`, and `v4`
  * (COR-1868) widened the origin union and added the parent filters to the page token's binding, and
  * `v5` (COR-1987) added `wakeAt` and the `parentContextId` filter, and `v6` (COR-2423) added the
- * `workflow` view field and its filter, and `v7` (COR-2524) added the `usage` view field; a snapshot
- * of an earlier version is never read as a view that lacks them. A record of an earlier
+ * `workflow` view field and its filter, and `v7` (COR-2524, COR-2526) added the `usage`, `attention`
+ * and `stalledSince` view fields and the `attention` filter; a snapshot of an earlier version is
+ * never read as a view that lacks them. A record of an earlier
  * version left in storage is not read, and is not swept.
  */
 export const TASK_LISTING_KEY_PREFIX = 'bureau-task-listing:v7:';
@@ -83,6 +84,8 @@ export interface TaskListingFilters {
   readonly topLevelOnly: boolean;
   /** Only the tasks that ran on this workflow type (COR-2423). */
   readonly workflow: string | null;
+  /** Only the tasks whose view lists this attention kind (COR-2526). */
+  readonly attention: string | null;
   /** Whether the engine's own runs were listed with the tasks (COR-2423): the caller's reach to them. */
   readonly engineRuns: boolean;
   readonly statusTimestampAfter: number | null;
@@ -254,6 +257,7 @@ function sameFilters(left: TaskListingFilters, right: TaskListingFilters): boole
     left.siblingsOf === right.siblingsOf &&
     left.topLevelOnly === right.topLevelOnly &&
     left.workflow === right.workflow &&
+    left.attention === right.attention &&
     left.engineRuns === right.engineRuns &&
     left.statusTimestampAfter === right.statusTimestampAfter
   );

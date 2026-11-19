@@ -15,6 +15,7 @@ import {
   originatingMessageText,
   settledTaskState,
   TASK_CONTEXT_INDEX_KEY_PREFIX,
+  TASK_OWNER_LOST_FINISH_REASON,
   TASK_RECORD_KEY_PREFIX,
   type TaskCleanupState,
   type TaskRegistryHost,
@@ -64,6 +65,7 @@ function build(
     kv?: ConditionalTextValueStore;
     onSettled?: Parameters<typeof createTaskRegistry>[0]['onSettled'];
     onCleanupAcknowledged?: Parameters<typeof createTaskRegistry>[0]['onCleanupAcknowledged'];
+    processId?: string;
   } = {},
 ) {
   const runtime = createManualRuntimeServices({ origin: '2026-10-18T00:00:00.000Z' });
@@ -123,6 +125,7 @@ function build(
     diagnose: (message) => diagnostics.push(message),
     onSettled: options.onSettled,
     onCleanupAcknowledged: options.onCleanupAcknowledged,
+    ...(options.processId === undefined ? {} : { processId: options.processId }),
   });
   return { registry, kv, host, held, runtime, diagnostics };
 }
@@ -1991,5 +1994,212 @@ describe('usage and cost (COR-2524)', () => {
     const { registry } = build();
     await registry.recordUsage('missing', FIRST_STEP);
     expect(await registry.get('missing')).toBeUndefined();
+  });
+});
+
+describe('attention: stalled and looping (COR-2526)', () => {
+  const STALLED_AT = '2026-10-18T00:02:00.000Z';
+  const LATER = '2026-10-18T00:05:00.000Z';
+  const SETTLEMENT = {
+    at: '2026-10-18T01:00:00.000Z',
+    status: 'canceled' as const,
+    finishReason: 'aborted',
+    message: null,
+  };
+
+  it('is empty for a task that was never stalled or looping, and for a record written before the field', async () => {
+    const { registry, kv } = build();
+    await admit(registry, 'run-1');
+    const view = await registry.get('run-1');
+    expect(view?.attention).toEqual([]);
+    expect(view?.stalledSince).toBeNull();
+    const stored = JSON.parse((await kv.get(`${TASK_RECORD_KEY_PREFIX}run-1`)) as string);
+    expect('attention' in stored).toBe(false);
+  });
+
+  it('records a stall once per episode, with the instant it began, and clears it', async () => {
+    const { registry, held } = build();
+    await admit(registry, 'run-1');
+    held.live.set('run-1', running);
+
+    expect(await registry.recordStall('run-1', STALLED_AT)).toBe(true);
+    // A stall already recorded changes nothing and keeps the instant it began at.
+    expect(await registry.recordStall('run-1', LATER)).toBe(false);
+    expect(await registry.get('run-1')).toMatchObject({
+      attention: ['stalled'],
+      stalledSince: STALLED_AT,
+    });
+    expect((await registry.record('run-1'))?.revision).toBeUndefined();
+
+    expect(await registry.recordStall('run-1', null)).toBe(true);
+    expect(await registry.recordStall('run-1', null)).toBe(false);
+    expect(await registry.get('run-1')).toMatchObject({ attention: [], stalledSince: null });
+    expect((await registry.record('run-1'))?.attention).toBeUndefined();
+
+    // A second stall is a new episode.
+    expect(await registry.recordStall('run-1', LATER)).toBe(true);
+    expect((await registry.get('run-1'))?.stalledSince).toBe(LATER);
+  });
+
+  it('applies a task’s stall writes in the order they were asked, and announces only a stall that began', async () => {
+    const { registry, held } = build();
+    await admit(registry, 'run-1');
+    held.live.set('run-1', running);
+    const results = await Promise.all([
+      registry.recordStall('run-1', STALLED_AT),
+      registry.recordStall('run-1', null),
+      registry.recordStall('run-1', LATER),
+    ]);
+    expect(results).toEqual([true, true, true]);
+    expect((await registry.get('run-1'))?.stalledSince).toBe(LATER);
+  });
+
+  it('is looping from the first report until the task settles, and reports it once', async () => {
+    const { registry, held } = build();
+    await admit(registry, 'run-1');
+    held.live.set('run-1', running);
+
+    expect(await registry.recordLooping('run-1', STALLED_AT)).toBe(true);
+    expect(await registry.recordLooping('run-1', LATER)).toBe(false);
+    expect((await registry.get('run-1'))?.attention).toEqual(['looping']);
+    // It is not a stall: `stalledSince` stays null.
+    expect((await registry.get('run-1'))?.stalledSince).toBeNull();
+
+    held.live.set('run-1', { ...running, phase: 'aborted', finishReason: 'aborted' });
+    await registry.recordSettled('run-1', SETTLEMENT);
+    expect((await registry.get('run-1'))?.attention).toEqual([]);
+    expect((await registry.record('run-1'))?.attention).toBeUndefined();
+  });
+
+  it('lists both kinds in a fixed order, and filters on either', async () => {
+    const { registry, held } = build();
+    for (const id of ['run-1', 'run-2', 'run-3']) {
+      await admit(registry, id);
+      held.live.set(id, running);
+    }
+    await registry.recordStall('run-1', STALLED_AT);
+    await registry.recordLooping('run-1', STALLED_AT);
+    await registry.recordLooping('run-2', STALLED_AT);
+
+    expect((await registry.get('run-1'))?.attention).toEqual(['stalled', 'looping']);
+    const ids = async (attention: 'stalled' | 'looping') =>
+      (await registry.enumerate({ attention, limit: 10, offset: 0 })).tasks.map((task) => task.id);
+    expect(await ids('stalled')).toEqual(['run-1']);
+    expect((await ids('looping')).toSorted()).toEqual(['run-1', 'run-2']);
+  });
+
+  it('binds a page token to the attention filter it was issued for', async () => {
+    const { registry, held } = build();
+    for (const id of ['run-1', 'run-2', 'run-3']) {
+      await admit(registry, id);
+      held.live.set(id, running);
+      await registry.recordLooping(id, STALLED_AT);
+    }
+    const first = await registry.list({
+      principal: OWNER,
+      attention: 'looping',
+      limit: 1,
+    });
+    expect(first.nextPageToken).not.toBeNull();
+    const refused = await rejectionOf(
+      registry.list({
+        principal: OWNER,
+        limit: 1,
+        pageToken: first.nextPageToken as string,
+      }),
+    );
+    expect(refused).toMatchObject({ reason: 'filters' });
+  });
+
+  it('is never shown for an ended task, and writes nothing once the task has settled', async () => {
+    const { registry, held } = build();
+    await admit(registry, 'run-1');
+    held.live.set('run-1', running);
+    await registry.recordStall('run-1', STALLED_AT);
+    await registry.recordSettled('run-1', SETTLEMENT);
+    held.live.delete('run-1');
+
+    expect((await registry.get('run-1'))?.attention).toEqual([]);
+    expect((await registry.record('run-1'))?.attention).toBeUndefined();
+    // A holder that is a moment behind cannot bring it back.
+    expect(await registry.recordStall('run-1', LATER)).toBe(false);
+    expect(await registry.recordLooping('run-1', LATER)).toBe(false);
+    expect((await registry.record('run-1'))?.attention).toBeUndefined();
+  });
+
+  it('is dropped by a cancel from a process that does not hold the run, which writes the settlement itself', async () => {
+    const { registry, held } = build();
+    await admit(registry, 'run-1');
+    await registry.recordStall('run-1', STALLED_AT);
+    await registry.recordLooping('run-1', STALLED_AT);
+    // This process holds no live run, so the cancel goes to the engine.
+    expect(held.live.has('run-1')).toBe(false);
+
+    const outcome = await registry.cancel('run-1', 0);
+    expect(outcome?.receipt).toBe('canceled');
+    expect(held.durableCancelled).toEqual(['run-1']);
+    const record = await registry.record('run-1');
+    expect(record?.settled?.status).toBe('canceled');
+    expect(record?.attention).toBeUndefined();
+    expect((await registry.get('run-1'))?.attention).toEqual([]);
+  });
+
+  it('is dropped by an owner-lost settlement, and a stall is never recorded from a dead holder afterwards', async () => {
+    const { registry, held } = build({}, { processId: 'process-a' });
+    await admit(registry, 'run-1');
+    held.live.set('run-1', running);
+    await registry.recordStall('run-1', STALLED_AT);
+    held.live.delete('run-1');
+    expect((await registry.get('run-1'))?.attention).toEqual(['stalled']);
+
+    // The lease of the process that held the run is gone, so the next boot settles the task lost.
+    const result = await registry.settleAbandoned(
+      'run-1',
+      'process-a',
+      { key: 'bureau-process:v1:process-a', expected: null },
+      {
+        at: LATER,
+        status: 'failed',
+        finishReason: TASK_OWNER_LOST_FINISH_REASON,
+        message: null,
+      },
+    );
+    expect(result).toBe('written');
+    const record = await registry.record('run-1');
+    expect(record?.settled?.finishReason).toBe(TASK_OWNER_LOST_FINISH_REASON);
+    expect(record?.attention).toBeUndefined();
+    expect((await registry.get('run-1'))?.attention).toEqual([]);
+
+    // A dead holder's snapshot, arriving late, writes nothing back.
+    expect(await registry.recordStall('run-1', LATER)).toBe(false);
+    expect((await registry.record('run-1'))?.attention).toBeUndefined();
+  });
+
+  it('shows a stall only while no person is asked anything: a run waiting on a review is not stalled', async () => {
+    const { registry, held } = build();
+    await admit(registry, 'run-1');
+    held.live.set('run-1', running);
+    await registry.recordStall('run-1', STALLED_AT);
+    await registry.recordLooping('run-1', STALLED_AT);
+
+    held.reviews = [humanWait('run-1')];
+    const waiting = await registry.get('run-1');
+    expect(waiting?.status).toBe('input-required');
+    expect(waiting?.attention).toEqual(['looping']);
+    expect(waiting?.stalledSince).toBeNull();
+
+    // The review closes and the silence is still there: it reads as the stall it is.
+    held.reviews = [];
+    expect((await registry.get('run-1'))?.attention).toEqual(['stalled', 'looping']);
+  });
+
+  it('reads a record whose attention is malformed as unreadable, like any other bad field', async () => {
+    const { registry, kv, diagnostics } = build();
+    await admit(registry, 'run-1');
+    const key = `${TASK_RECORD_KEY_PREFIX}run-1`;
+    const stored = JSON.parse((await kv.get(key)) as string);
+    await kv.set(key, JSON.stringify({ ...stored, attention: { stalledSince: 'not a time' } }));
+    expect(await registry.get('run-1')).toBeUndefined();
+    expect(diagnostics.length).toBeGreaterThan(0);
   });
 });

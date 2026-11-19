@@ -32,6 +32,8 @@ const VIEW: TaskView = {
   wakeAt: null,
   workflow: PLAIN_TASK_WORKFLOW,
   usage: null,
+  attention: [],
+  stalledSince: null,
 };
 
 function envelope(sequence: number, kind: string, payload: unknown = {}): DurableEventEnvelope {

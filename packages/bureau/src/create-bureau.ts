@@ -2609,6 +2609,9 @@ async function constructBureau<const D extends AgentDefinitions>(
     dropPendingApprovalOverride,
     recordTaskWakeup,
     recordTaskUsage,
+    recordTaskLoop,
+    watchRunAttention,
+    unwatchRunAttention,
     recordTaskSettlement,
   } = createRunBookkeeping<D>(core, peers);
   const { scanApprovedToolResult, scannedApprovedOutcome } = createApprovedToolScan<D>(core, peers);
@@ -3915,6 +3918,7 @@ async function constructBureau<const D extends AgentDefinitions>(
           break;
         }
         recordTaskUsage(storeActionEvent.action);
+        recordTaskLoop(storeActionEvent.action);
         recordTaskSettlement(storeActionEvent.action);
         recordTaskWakeup(storeActionEvent.action);
         // COR-2096: a guardrail, a budget threshold and a tool's failure or refusal are published
@@ -3940,6 +3944,10 @@ async function constructBureau<const D extends AgentDefinitions>(
       }
       case 'run.registered': {
         const registeredRunId = (event as StoreRunRegisteredEvent).runId;
+        // COR-2526: whether a run is stalled is recorded for every run this process holds, a
+        // `bureau.run()` run included, since its task record is what a reader in another process
+        // sees.
+        watchRunAttention(registeredRunId);
         // COR-1302: see the `'action'` case above.
         if (catalogRunIds.has(registeredRunId)) break;
         emitter.dispatch(new RunRegisteredEvent(registeredRunId));
@@ -3947,6 +3955,7 @@ async function constructBureau<const D extends AgentDefinitions>(
       }
       case 'run.removed': {
         const removedRunId = (event as StoreRunRemovedEvent).runId;
+        unwatchRunAttention(removedRunId);
         // COR-1302: a `bureau.run()` run's release is not a deletion, so it
         // is not announced as one. Durable event history records
         // `run.removed` as the evidence that a run's record was deleted,

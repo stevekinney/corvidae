@@ -10,6 +10,7 @@ import { BureauError } from '../bureau-errors';
 import type { BureauToolbox } from '../runtime-composition-types';
 import { detachBestEffortPromise } from '../bureau-construction-support';
 import { serializeUnknownError } from '../serialization';
+import { RunLoopingEvent, RunStalledEvent } from '../events';
 import { settledTaskState, type TaskUsage } from '../task-registry';
 
 /** The callables run bookkeeping reads from elsewhere in `constructBureau`. */
@@ -131,6 +132,93 @@ export function createRunBookkeeping<D extends AgentDefinitions>(
     });
   }
 
+  /**
+   * COR-2526 — keeps whether a run is stalled on its task record, from the liveness snapshots of
+   * the run this process holds. Operative's own assessment decides: the Bureau records `stalled`
+   * when `alive-but-stalled` begins and clears it when the assessment changes (a pulse, the end of
+   * the tool call, a declared wait, an abort, the end of the run), and applies no threshold of its
+   * own. The instant is the Bureau's clock when the snapshot arrived: a snapshot's own times are
+   * monotonic and mean nothing to another process. The record is written on a change of the
+   * assessment, never per pulse; and `run.stalled` is announced only when that write began a stall,
+   * so a stall that is already recorded, or a write the task's settlement beat, announces nothing.
+   *
+   * The first snapshot is delivered synchronously and is written too: a run recovered from a dead
+   * holder starts healthy, while its record may still say stalled, and that stale stall must not
+   * outlive the process that saw it. A run's subscription ends with its terminal snapshot, and when
+   * the run is removed from the store.
+   */
+  const attentionSubscriptions = new Map<
+    string,
+    { readonly activeRun: unknown; readonly unsubscribe: () => void }
+  >();
+
+  function watchRunAttention(runId: string): void {
+    const activeRun = store.getRun(runId)?.activeRun;
+    if (activeRun === undefined) return;
+    const watching = attentionSubscriptions.get(runId);
+    // The same run registered twice is watched once; a run id the store now holds another run under
+    // (a recovery's) is watched afresh, and the earlier run's snapshots are no longer heard.
+    if (watching?.activeRun === activeRun) return;
+    watching?.unsubscribe();
+    let stalled: boolean | undefined;
+    const subscription = activeRun.subscribeSnapshot((snapshot) => {
+      const nowStalled = snapshot.assessment === 'alive-but-stalled';
+      if (nowStalled === stalled) return;
+      stalled = nowStalled;
+      const since = core.runtimeServices.clock.nowISO();
+      core.tasks
+        .recordStall(runId, nowStalled ? since : null)
+        .then((changed) => {
+          if (changed && nowStalled) core.emitter.dispatch(new RunStalledEvent(runId, since));
+        })
+        .catch((error: unknown) => {
+          diagnose({
+            level: 'error',
+            scope: 'task-registry',
+            message: `[bureau] Could not record whether task "${runId}" is stalled: ${serializeUnknownError(error)}`,
+            cause: error,
+          });
+        });
+    });
+    attentionSubscriptions.set(runId, { activeRun, unsubscribe: () => subscription.unsubscribe() });
+  }
+
+  /** Ends a run's liveness subscription, as the run is removed from the store. */
+  function unwatchRunAttention(runId: string): void {
+    attentionSubscriptions.get(runId)?.unsubscribe();
+    attentionSubscriptions.delete(runId);
+  }
+
+  /**
+   * COR-2526 — marks a task `looping` from the first loop its toolbox reports (`loop-warning` or
+   * `loop-blocked`, which a run records as `toolbox.loop-warning` and `toolbox.loop-blocked`), and
+   * announces `run.looping` once, from the write that began it. Each report stays in the audit
+   * trail. A run stays looping until it settles: the settlement drops the mark.
+   */
+  function recordTaskLoop(action: { readonly runId: string; readonly type: string }): void {
+    const level =
+      action.type === 'toolbox.loop-warning'
+        ? 'warning'
+        : action.type === 'toolbox.loop-blocked'
+          ? 'blocked'
+          : undefined;
+    if (level === undefined) return;
+    const since = core.runtimeServices.clock.nowISO();
+    core.tasks
+      .recordLooping(action.runId, since)
+      .then((changed) => {
+        if (changed) core.emitter.dispatch(new RunLoopingEvent(action.runId, since, level));
+      })
+      .catch((error: unknown) => {
+        diagnose({
+          level: 'error',
+          scope: 'task-registry',
+          message: `[bureau] Could not record that task "${action.runId}" is looping: ${serializeUnknownError(error)}`,
+          cause: error,
+        });
+      });
+  }
+
   /** COR-1481 — records how a task ended, from the action that ended its run. */
   function recordTaskSettlement(action: {
     readonly runId: string;
@@ -195,6 +283,9 @@ export function createRunBookkeeping<D extends AgentDefinitions>(
     dropPendingApprovalOverride,
     recordTaskWakeup,
     recordTaskUsage,
+    recordTaskLoop,
+    watchRunAttention,
+    unwatchRunAttention,
     recordTaskSettlement,
   };
 }

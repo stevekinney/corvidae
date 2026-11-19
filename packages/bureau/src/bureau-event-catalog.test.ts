@@ -2,8 +2,24 @@
  * COR-1940 — the event catalog describes exactly the published kinds, so a new published kind
  * without an entry fails here (and at compile time).
  */
-import { describe, expect, it } from 'bun:test';
+import type { EncryptionKey } from '@lostgradient/cryptography';
+import { createManualRuntimeServices } from '@lostgradient/lifecycle';
+import { createAgent, stopWhen } from '@lostgradient/operative';
+import { MemoryStorage } from '@lostgradient/storage';
+import { createTool, createToolbox, type Toolbox } from 'armorer';
+import { afterEach, beforeAll, describe, expect, it } from 'bun:test';
+import { z } from 'zod';
 
+import {
+  createClock,
+  createReceiver,
+  deliveriesOf,
+  newEncryptionKey,
+  openHooksBureau,
+  type OpenedHooksBureau,
+  SIGNING_SECRET,
+  waitForSettledDeliveries,
+} from './hooks/hooks.test-support.ts';
 import {
   type Action,
   AgentScheduledEvent,
@@ -84,8 +100,10 @@ import {
   ScorerThresholdBreachedEvent,
   ToolErrorRecordedEvent,
   ToolPolicyDeniedRecordedEvent,
+  RunLoopingEvent,
   RunRemovedEvent,
   RunSettledEvent,
+  RunStalledEvent,
   ScheduleMissedEvent,
   TaskCleanupAcknowledgedEvent,
 } from './events.ts';
@@ -246,6 +264,12 @@ const EVENTS: Record<
           model: 'cheap',
         }),
       ),
+  },
+  'run.stalled': {
+    sparsest: () => new RunStalledEvent('run-1', '2026-11-19T12:00:00.000Z'),
+  },
+  'run.looping': {
+    sparsest: () => new RunLoopingEvent('run-1', '2026-11-19T12:00:00.000Z', 'warning'),
   },
   'tool.policy-denied': {
     sparsest: () =>
@@ -875,6 +899,16 @@ describe('the guardrail, budget and tool kinds (COR-2096)', () => {
       ['budget', false],
       ['model', false],
     ],
+    // COR-2526: a stall and a loop name the run, when the Bureau saw it, and a loop's first report.
+    'run.stalled': [
+      ['runId', false],
+      ['since', false],
+    ],
+    'run.looping': [
+      ['runId', false],
+      ['since', false],
+      ['level', false],
+    ],
     'tool.policy-denied': TOOL_FIELDS,
     'tool.error': [...TOOL_FIELDS, ['errorCode', false]],
     'scorer.threshold-breached': [
@@ -955,5 +989,125 @@ describe('the run outcome kinds (COR-2095)', () => {
     expect(header).toContain('bureau.tasks.get');
     expect(header).not.toContain('redactErrorMessage');
     expect(header).toContain('owner-lost');
+  });
+});
+
+describe('the run.stalled and run.looping kinds (COR-2526)', () => {
+  let key: EncryptionKey;
+  beforeAll(async () => {
+    key = await newEncryptionKey();
+  });
+  const bureaus: OpenedHooksBureau[] = [];
+  afterEach(async () => {
+    for (const bureau of bureaus.splice(0)) await bureau.dispose();
+  });
+
+  const HOOK = {
+    url: 'https://receiver.example/hook',
+    signingSecret: SIGNING_SECRET,
+    principal: 'api-key:alice',
+  } as const;
+
+  it('are published run kinds, scoped to agent, workflow and schedule', () => {
+    for (const kind of ['run.stalled', 'run.looping'] as const) {
+      expect(BUREAU_EVENT_CATALOG[kind]).toMatchObject({
+        kind,
+        origin: 'run',
+        scopes: ['agent', 'workflow', 'schedule'],
+      });
+    }
+  });
+
+  it('reach a hook once each: a stall that goes on, and a loop that repeats, deliver one event', async () => {
+    const hold = Promise.withResolvers<void>();
+    const entered = Promise.withResolvers<void>();
+    const hangTool = createTool({
+      name: 'hang',
+      description: 'holds until released',
+      input: z.object({}),
+      execute: async () => {
+        entered.resolve();
+        await hold.promise;
+        return 'ok';
+      },
+    });
+    const nextTool = createTool({
+      name: 'next',
+      description: 'continue',
+      input: z.object({}),
+      execute: async () => 'ok',
+    });
+    const loopEnd = Promise.withResolvers<void>();
+    const loopHold = Promise.withResolvers<void>();
+    const runtime = createManualRuntimeServices({ origin: '2026-11-19T12:00:00.000Z' });
+    const { clock, now } = createClock();
+    const receiver = createReceiver();
+    const bureau = await openHooksBureau({
+      storage: new MemoryStorage(),
+      fetch: receiver.fetch,
+      key,
+      now,
+      runtime,
+      durable: false,
+      agents: {
+        stalling: createAgent({
+          generate: async ({ step }: { step: number }) =>
+            step < 1
+              ? { content: '', toolCalls: [{ name: 'hang', arguments: {} }] }
+              : { content: 'Done.', toolCalls: [] },
+          toolbox: createToolbox([hangTool]) as unknown as Toolbox,
+          stopWhen: stopWhen.noToolCalls(),
+        }),
+        looping: createAgent({
+          generate: async ({ step }: { step: number }) => {
+            if (step < 6) return { content: '', toolCalls: [{ name: 'next', arguments: {} }] };
+            loopEnd.resolve();
+            await loopHold.promise;
+            return { content: 'Done.', toolCalls: [] };
+          },
+          toolbox: createToolbox([nextTool], {
+            loopDetection: { warningThreshold: 2, blockThreshold: 4, maxWindowSize: 30 },
+          }) as unknown as Toolbox,
+          stopWhen: stopWhen.noToolCalls(),
+        }),
+      },
+    });
+    bureaus.push(bureau);
+    const stalled = await bureau.bureau.hooks!.create({ ...HOOK, events: ['run.stalled'] });
+    const looping = await bureau.bureau.hooks!.create({ ...HOOK, events: ['run.looping'] });
+
+    const loopTask = await bureau.bureau.tasks.start('looping', 'Loop.', {
+      principal: 'api-key:alice',
+    });
+    await loopEnd.promise;
+    const stallTask = await bureau.bureau.tasks.start('stalling', 'Hold.', {
+      principal: 'api-key:alice',
+    });
+    await entered.promise;
+    // Six checks: the stall begins at the third and the assessment does not change after it.
+    for (let check = 0; check < 6; check += 1) await runtime.advance(38_000);
+
+    const [stalledDelivery] = await waitForSettledDeliveries(bureau.bureau, stalled.id, 1);
+    const [loopingDelivery] = await waitForSettledDeliveries(bureau.bureau, looping.id, 1);
+    expect(stalledDelivery).toMatchObject({ kind: 'run.stalled', status: 'delivered' });
+    expect(loopingDelivery).toMatchObject({ kind: 'run.looping', status: 'delivered' });
+    const bodies = receiver.calls.map((call) => JSON.parse(call.body) as Record<string, unknown>);
+    expect(bodies.find((body) => body['kind'] === 'run.stalled')?.['payload']).toMatchObject({
+      runId: stallTask.id,
+    });
+    expect(bodies.find((body) => body['kind'] === 'run.looping')?.['payload']).toMatchObject({
+      runId: loopTask.id,
+      level: 'warning',
+    });
+
+    hold.resolve();
+    loopHold.resolve();
+    await stallTask.result();
+    await loopTask.result();
+    // Neither state is announced again when the run ends, and each hook was delivered to once.
+    await bureau.bureau.internals.taskRegistry.flush();
+    expect(await deliveriesOf(bureau.bureau, stalled.id)).toHaveLength(1);
+    expect(await deliveriesOf(bureau.bureau, looping.id)).toHaveLength(1);
+    expect(clock.milliseconds).toBeGreaterThan(0);
   });
 });

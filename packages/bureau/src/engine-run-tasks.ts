@@ -225,6 +225,8 @@ export function createEngineRunTasks(dependencies: EngineRunTasksDependencies): 
       wakeAt: null,
       workflow,
       usage: null,
+      attention: [],
+      stalledSince: null,
     };
   }
 

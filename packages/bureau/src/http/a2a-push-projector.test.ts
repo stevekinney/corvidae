@@ -55,6 +55,8 @@ const VIEW: TaskView = {
   wakeAt: null,
   workflow: PLAIN_TASK_WORKFLOW,
   usage: null,
+  attention: [],
+  stalledSince: null,
 };
 
 const CALLER = { authenticated: true, userName: 'api-key:alice' };

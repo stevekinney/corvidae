@@ -217,9 +217,16 @@ function deriveAssessment(
   if (status === 'terminal') return 'terminal';
   if (status === 'aborting') return 'aborting';
   if (status === 'cleaning-up') return 'cleaning-up';
-  if (reachability === 'unreachable') return 'unreachable';
+  // A declared wait outranks every silence (COR-2526): a run parked on a review, a signal or a
+  // wakeup is not stalled however long its tool-call watchdog has gone without a pulse.
   if (status === 'waiting') return 'legitimately-waiting';
+  // This process drives the run it observes, so a stalled progress dimension means the run is
+  // alive and has stopped making progress. Both dimensions of a tool-call watchdog cross their
+  // threshold on the same tick, and `unreachable` once won that tie, which made `alive-but-stalled`
+  // unreachable for an agent run: a stalled tool call read `unreachable`, a word for a subject the
+  // observer has lost.
   if (progress === 'stalled') return 'alive-but-stalled';
+  if (reachability === 'unreachable') return 'unreachable';
   return 'healthy';
 }
 

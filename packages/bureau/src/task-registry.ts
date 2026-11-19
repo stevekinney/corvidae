@@ -182,6 +182,27 @@ export interface TaskUsage {
   readonly costUsd: number | null;
 }
 
+/**
+ * COR-2526 — what asks for a person's attention on a task that has not ended: `stalled` while
+ * Operative assesses its run as alive but making no progress outside a declared wait, and `looping`
+ * once its toolbox has reported a loop (a warning or a block) until the run settles.
+ */
+export type TaskAttention = 'stalled' | 'looping';
+
+/** Every {@link TaskAttention}, in the order a view lists them. */
+export const TASK_ATTENTION_KINDS: readonly TaskAttention[] = ['stalled', 'looping'];
+
+/**
+ * COR-2526 — the attention kinds a record holds, each with the wall-clock instant (ISO 8601, on the
+ * Bureau's clock) the Bureau saw it begin. A stall is cleared when the run's assessment changes; a
+ * loop stays until the task settles. The settlement drops both, and a view shows neither for a task
+ * that has ended.
+ */
+export interface StoredTaskAttention {
+  readonly stalledSince?: string | undefined;
+  readonly loopingSince?: string | undefined;
+}
+
 /** The durable record of one task. */
 export interface TaskRecord {
   readonly schemaVersion: 1;
@@ -273,6 +294,11 @@ export interface TaskRecord {
    * run's first step, and in a record written before it was kept; the view then reads `null`.
    */
   readonly usage?: TaskUsage | undefined;
+  /**
+   * COR-2526 — whether the task is stalled or looping, kept on the record so a process that does not
+   * hold the run reads it. Absent when neither holds, and in a record written before it was kept.
+   */
+  readonly attention?: StoredTaskAttention | undefined;
 }
 
 /**
@@ -377,6 +403,16 @@ export interface TaskView {
    * `costUsd` is `null` when no request was priced from the model catalog, never `0`.
    */
   readonly usage: TaskUsage | null;
+  /**
+   * COR-2526 — what asks for attention: `stalled` while the run is alive but making no progress
+   * outside a declared wait (Operative's own `alive-but-stalled` assessment, which the Bureau
+   * stores and applies no threshold to), and `looping` once the run's toolbox reported a loop.
+   * Always empty for a task that has ended, so a settled task is never listed as stuck; `stalled`
+   * is empty too while a person is asked something, which is a wait and not a stall.
+   */
+  readonly attention: readonly TaskAttention[];
+  /** COR-2526 — the instant the Bureau saw the run stall, while `attention` holds `stalled`; else `null`. */
+  readonly stalledSince: string | null;
 }
 
 /** What a context is doing, from its latest live task. */
@@ -502,6 +538,8 @@ export interface TaskListQuery<T = TaskView> {
   readonly topLevelOnly?: boolean | undefined;
   /** COR-2423 — only tasks that ran on this workflow type ({@link TaskWorkflow.type}). */
   readonly workflow?: string | undefined;
+  /** COR-2526 — only tasks whose view lists this attention; an engine run lists none. */
+  readonly attention?: TaskAttention | undefined;
   /**
    * COR-2423 — whether the engine's own runs (schedule ticks, instances of workflow files) are
    * listed beside the tasks that have records. Defaults to `true`; the management operation sets it
@@ -545,6 +583,8 @@ export interface TaskQuery {
   readonly topLevelOnly?: boolean | undefined;
   /** See {@link TaskListQuery.workflow}. */
   readonly workflow?: string | undefined;
+  /** See {@link TaskListQuery.attention}. */
+  readonly attention?: TaskAttention | undefined;
   readonly limit: number;
   readonly offset: number;
 }
@@ -589,6 +629,22 @@ export interface TaskRegistry {
    * does not count as a change of the record: it moves no `revision`.
    */
   recordUsage(taskId: string, usage: TaskUsage): Promise<void>;
+  /**
+   * COR-2526 — records that the Bureau saw a task's run stall (`stalledAt`, an ISO 8601 instant on
+   * the Bureau's clock), or that it no longer does (`null`). It writes only a task that has a record
+   * and has not settled, so a stall never outlives or resurrects a terminal state, applies in the
+   * order it was asked for the task, and does not count as a change of the record. Resolves `true`
+   * when the record changed: a stall that begins, or one that clears. A stall already recorded
+   * resolves `false` and keeps the instant it began at.
+   */
+  recordStall(taskId: string, stalledAt: string | null): Promise<boolean>;
+  /**
+   * COR-2526 — records that the run's toolbox reported a loop (`at`, an ISO 8601 instant on the
+   * Bureau's clock). It writes only a task that has a record and has not settled, and resolves
+   * `true` only the first time: a task is `looping` from then until it settles, and a repeated
+   * report changes nothing.
+   */
+  recordLooping(taskId: string, at: string): Promise<boolean>;
   /** Removes a record whose task never started. */
   discard(taskId: string): Promise<void>;
   /**
@@ -994,6 +1050,14 @@ function isTaskUsage(value: unknown): boolean {
   );
 }
 
+function isStoredTaskAttention(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    (value['stalledSince'] === undefined || isTimestamp(value['stalledSince'])) &&
+    (value['loopingSince'] === undefined || isTimestamp(value['loopingSince']))
+  );
+}
+
 /** Whether a stored value is a task record in every field a reader depends on. */
 function isTaskRecord(value: unknown): value is TaskRecord {
   return (
@@ -1009,6 +1073,7 @@ function isTaskRecord(value: unknown): value is TaskRecord {
     (value['ownerProcess'] === undefined || typeof value['ownerProcess'] === 'string') &&
     (value['pendingWakeup'] === undefined || isPendingWakeup(value['pendingWakeup'])) &&
     (value['usage'] === undefined || isTaskUsage(value['usage'])) &&
+    (value['attention'] === undefined || isStoredTaskAttention(value['attention'])) &&
     (value['workflow'] === undefined || isStoredTaskWorkflow(value['workflow'])) &&
     (value['origin'] === undefined || isStoredTaskOrigin(value['origin'])) &&
     isTimestamp(value['createdAt']) &&
@@ -1089,6 +1154,16 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
     const chain: Promise<unknown> = queued.then(release, release);
     liveWrites.set(taskId, chain);
     return track(queued);
+  }
+
+  /** The record with `attention` as given, left out of the record altogether when it holds nothing. */
+  function withAttention(record: TaskRecord, attention: StoredTaskAttention): TaskRecord {
+    const { attention: _previous, ...rest } = record;
+    const kept: StoredTaskAttention = {
+      ...(attention.stalledSince === undefined ? {} : { stalledSince: attention.stalledSince }),
+      ...(attention.loopingSince === undefined ? {} : { loopingSince: attention.loopingSince }),
+    };
+    return Object.keys(kept).length === 0 ? rest : { ...rest, attention: kept };
   }
 
   function sameUsage(left: TaskUsage | undefined, right: TaskUsage): boolean {
@@ -1210,6 +1285,17 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
       record.pendingWakeup.wakeAt > Date.parse(clock.nowISO())
         ? new Date(record.pendingWakeup.wakeAt).toISOString()
         : null;
+    // COR-2526 — attention shows only for a task that has not ended, and a stall only while no
+    // person is asked anything: a run parked on a review is waiting, not stalled.
+    const open =
+      record.settled === undefined &&
+      (status === 'working' || status === 'submitted' || status === 'input-required');
+    const stalledSince =
+      open && status !== 'input-required' ? (record.attention?.stalledSince ?? null) : null;
+    const attention: TaskAttention[] = [
+      ...(stalledSince === null ? [] : (['stalled'] as const)),
+      ...(open && record.attention?.loopingSince !== undefined ? (['looping'] as const) : []),
+    ];
     return {
       id: record.taskId,
       contextId: record.contextId,
@@ -1231,6 +1317,8 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
         status === 'completed' || status === 'failed' || status === 'canceled',
       ),
       usage: record.usage ?? null,
+      attention,
+      stalledSince,
     };
   }
 
@@ -1281,6 +1369,7 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
       | 'parentContextId'
       | 'topLevelOnly'
       | 'workflow'
+      | 'attention'
     >,
     siblings: TaskListingSiblings | null,
   ): Promise<TaskView[]> {
@@ -1328,7 +1417,8 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
     return views.filter(
       (view) =>
         (query.status === undefined || view.status === query.status) &&
-        (query.workflow === undefined || view.workflow.type === query.workflow),
+        (query.workflow === undefined || view.workflow.type === query.workflow) &&
+        (query.attention === undefined || view.attention.includes(query.attention)),
     );
   }
 
@@ -1355,7 +1445,9 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
       query.agentName !== undefined ||
       query.parentRunId !== undefined ||
       query.parentContextId !== undefined ||
-      query.siblingsOf !== undefined
+      query.siblingsOf !== undefined ||
+      // An engine run has no record to hold an attention, so it lists none (COR-2526).
+      query.attention !== undefined
     ) {
       return [];
     }
@@ -1410,6 +1502,7 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
       siblingsOf: query.siblingsOf ?? null,
       topLevelOnly: query.topLevelOnly === true,
       workflow: query.workflow ?? null,
+      attention: query.attention ?? null,
       engineRuns: query.engineRuns !== false && query.topLevelOnly !== true,
       statusTimestampAfter:
         query.statusTimestampAfter === undefined ? null : Date.parse(query.statusTimestampAfter),
@@ -1694,8 +1787,10 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
         ? (settlement.answer ?? record.settled?.answer)
         : undefined;
     const { answer: _ignored, usage, ...rest } = settlement;
+    // COR-2526: an ended task is neither stalled nor looping, so the settlement drops both.
+    const { attention: _ended, ...kept } = record;
     return {
-      ...record,
+      ...kept,
       // COR-2524: the run's own total replaces the last per-step figure in the same write as the
       // settlement; a settlement that carries none (another process's) leaves the figure standing.
       ...(usage === undefined ? {} : { usage }),
@@ -1898,6 +1993,48 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
           },
           false,
         );
+      });
+    },
+
+    recordStall(taskId, stalledAt) {
+      return queueLiveWrite(taskId, async () => {
+        let changed = false;
+        await update(
+          taskId,
+          (record) => {
+            // Re-judged on every compare-and-swap attempt: only the attempt that commits counts.
+            changed = false;
+            if (record.settled !== undefined) return undefined;
+            const held = record.attention?.stalledSince;
+            if (stalledAt === null ? held === undefined : held !== undefined) return undefined;
+            changed = true;
+            return withAttention(record, {
+              ...record.attention,
+              stalledSince: stalledAt ?? undefined,
+            });
+          },
+          false,
+        );
+        return changed;
+      });
+    },
+
+    recordLooping(taskId, at) {
+      return queueLiveWrite(taskId, async () => {
+        let changed = false;
+        await update(
+          taskId,
+          (record) => {
+            changed = false;
+            if (record.settled !== undefined || record.attention?.loopingSince !== undefined) {
+              return undefined;
+            }
+            changed = true;
+            return withAttention(record, { ...record.attention, loopingSince: at });
+          },
+          false,
+        );
+        return changed;
       });
     },
 
@@ -2304,8 +2441,10 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
             };
             const recorded = await update(taskId, (current) => {
               canceled.newlySettled = current.settled === undefined;
+              // COR-2526: a stop is an end, so the stall the holder recorded goes with it.
+              const { attention: _ended, ...kept } = current;
               const next: TaskRecord = {
-                ...current,
+                ...kept,
                 settled: {
                   at: clock.nowISO(),
                   status: 'canceled',
