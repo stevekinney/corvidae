@@ -99,6 +99,8 @@ export async function openStatesChat(
   request: APIRequestContext,
   chat: StatesChat,
   now: string | number = SAMPLE_NOW,
+  /** Fields of the chat's record to answer differently, such as the Bureau's `activity`. */
+  contextOverrides: Record<string, unknown> = {},
 ): Promise<void> {
   const read = await request.post(`${E2E_SHOWCASE_URL}/bureau/jsonrpc`, {
     data: {
@@ -110,7 +112,7 @@ export async function openStatesChat(
   });
   const kind = ((await read.json()) as { result: Record<string, unknown> }).result;
   const thread = threadOf(chat);
-  const context = contextOf(chat, kind);
+  const context = { ...contextOf(chat, kind), ...contextOverrides };
   await page.route('**/jsonrpc', async (route) => {
     const body = operationOf(route);
     // The chat list and the bell read the Bureau's recent runs of every chat; this chat's run is
