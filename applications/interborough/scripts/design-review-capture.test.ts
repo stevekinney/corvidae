@@ -24,9 +24,11 @@ import {
   parseArguments,
   portIsFree,
   probeSocketHandlers,
+  REVIEW_WIDTH_ORDER,
   routesMissingFromTitles,
   SHOWCASE_SPECIFICATION_PATHS,
   specificationsThatRanNothing,
+  writeReviewOrder,
   type CaptureEnvironment,
 } from './design-review-capture.ts';
 import { endToEndPort } from './environment-configuration.ts';
@@ -460,6 +462,43 @@ describe('captureCount', () => {
     expect(await captureCount(directory)).toBe(0);
     await writeFile(join(directory, 'manifest.jsonl'), '{"a":1}\n\n  \n{"a":2}\n');
     expect(await captureCount(directory)).toBe(2);
+  });
+
+  // Owner, 2026-11-19: review leads with 1280 and 1920, then 768 and 375, in both themes.
+  test('writes the review order: 1280 and 1920 first, then 768 and 375, light before dark', async () => {
+    const line = (route: string, width: number, colorScheme: 'light' | 'dark') =>
+      JSON.stringify({ route, width, colorScheme });
+    await writeFile(
+      join(directory, 'manifest.jsonl'),
+      [
+        line('/', 375, 'light'),
+        line('/', 768, 'dark'),
+        line('/', 1280, 'dark'),
+        line('/', 320, 'light'),
+        line('/', 1920, 'light'),
+        line('/', 1280, 'light'),
+        line('/health', 1280, 'light'),
+        line('/', 768, 'light'),
+        line('/', 375, 'dark'),
+      ].join('\n'),
+    );
+    expect(await writeReviewOrder(directory)).toBe(9);
+    const order = (await readFile(join(directory, 'review-order.jsonl'), 'utf8'))
+      .trim()
+      .split('\n')
+      .map((text) => JSON.parse(text) as { route: string; width: number; colorScheme: string });
+    expect(order.map((entry) => `${entry.route}@${entry.width}/${entry.colorScheme}`)).toEqual([
+      '/@1280/light',
+      '/health@1280/light',
+      '/@1280/dark',
+      '/@1920/light',
+      '/@768/light',
+      '/@768/dark',
+      '/@375/light',
+      '/@375/dark',
+      '/@320/light',
+    ]);
+    expect(REVIEW_WIDTH_ORDER).toEqual([1280, 1920, 768, 375]);
   });
 });
 

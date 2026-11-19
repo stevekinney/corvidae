@@ -11,8 +11,9 @@
  *
  * It runs those three Playwright specifications with `INTERBOROUGH_DESIGN_REVIEW_CAPTURE` set, so they
  * screenshot each page once it holds its content (`tests/e2e/design-review-capture.ts`), and writes
- * `manifest.jsonl` (one line per capture) and `summary.json` (what ran and how it exited) beside
- * the screenshots, then holds what each page measured to the rubric's thresholds
+ * `manifest.jsonl` (one line per capture), `review-order.jsonl` (the same lines in the order a
+ * review reads them: 1280 and 1920 first, then 768 and 375, light then dark, `reviewOrder`) and
+ * `summary.json` (what ran and how it exited) beside the screenshots, then holds what each page measured to the rubric's thresholds
  * (`scripts/design-review-geometry.ts`) and writes `geometry-report.md` and `geometry-findings.json`
  * there too. Every page of a capture runs at the sample world's "now", Monday, Nov 2, 2026,
  * 10:46 AM in America/Chicago (`fixtures/sample-now.ts`): the specifications' shared fixture
@@ -342,6 +343,56 @@ export function portIsFree(port: number): boolean {
   }
 }
 
+/**
+ * The order a review reads the captures in (owner, 2026-11-19): 1280 and 1920 first, then 768 and
+ * 375, then any other width, each width in light then dark, and the routes in the order they were
+ * captured within that. A width that is not listed comes last, widest first.
+ */
+export const REVIEW_WIDTH_ORDER = [1280, 1920, 768, 375] as const;
+
+/** One capture, as far as the review order reads it. */
+export interface ReviewOrderEntry {
+  readonly width: number;
+  readonly colorScheme: 'light' | 'dark';
+}
+
+/** `entries` in the order a review reads them; the input is left as it is. */
+export function reviewOrder<Entry extends ReviewOrderEntry>(entries: readonly Entry[]): Entry[] {
+  const rank = (width: number): number => {
+    const at = (REVIEW_WIDTH_ORDER as readonly number[]).indexOf(width);
+    return at >= 0 ? at : REVIEW_WIDTH_ORDER.length + 10_000 - width;
+  };
+  return entries
+    .map((entry, index) => ({ entry, index }))
+    .toSorted(
+      (left, right) =>
+        rank(left.entry.width) - rank(right.entry.width) ||
+        Number(left.entry.colorScheme === 'dark') - Number(right.entry.colorScheme === 'dark') ||
+        left.index - right.index,
+    )
+    .map(({ entry }) => entry);
+}
+
+/** Writes `review-order.jsonl` beside the manifest: the manifest's lines in the order a review reads them. */
+export async function writeReviewOrder(out: string): Promise<number> {
+  let text: string;
+  try {
+    text = await readFile(join(out, 'manifest.jsonl'), 'utf8');
+  } catch {
+    return 0;
+  }
+  const entries = text
+    .split('\n')
+    .filter((line) => line.trim() !== '')
+    .map((line) => JSON.parse(line) as ReviewOrderEntry);
+  const ordered = reviewOrder(entries);
+  await writeFile(
+    join(out, 'review-order.jsonl'),
+    ordered.map((entry) => `${JSON.stringify(entry)}\n`).join(''),
+  );
+  return ordered.length;
+}
+
 /** Counts the lines of the manifest, which is one capture each. */
 export async function captureCount(out: string): Promise<number> {
   try {
@@ -431,6 +482,7 @@ export async function captureDesignReview(
     runs.push({ scheme, exitCode, ranNothing });
   }
   const captures = await captureCount(options.out);
+  await writeReviewOrder(options.out);
   const geometry = await auditGeometry(options.out);
   const ranNothing = runs.some((run) => run.ranNothing.length > 0);
   const summary = {
