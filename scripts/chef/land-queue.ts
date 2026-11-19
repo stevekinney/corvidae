@@ -6,9 +6,11 @@
 // or not (review Cause E). Here the rule is mechanical:
 //   1. the commits on `main` since the merge-base of E and `main` are listed, with their files;
 //   2. their files are intersected with the plan's scope: the plan's changed files, plus everything
-//      its selection reaches, meaning each unit-test workspace (the whole folder, or the exact test
-//      paths for the root), each fixture and end-to-end spec, and each fixture slug's source
-//      (`scripts/browser-fixtures/src/fixtures/<slug>.svelte` and the component folder of that name);
+//      its selection reaches: each unit-test workspace and every workspace it depends on,
+//      transitively (the whole folder); for the root lane, the modules its tests import,
+//      transitively (any `scripts/` file when a test cannot be read); each fixture and
+//      end-to-end spec; each fixture slug's source; and the global inputs (`bun.lock`,
+//      `turbo.json`, the root `package.json`, any `tsconfig*.json`, `.github/`, `internal/`);
 //   3. no overlap: LAND, with no new run; overlap: REDISPATCH, naming the overlapping files.
 // A plan with `requires_full_run` covers the whole tree, so any commit on `main` overlaps it.
 //
@@ -16,14 +18,17 @@
 //   bun scripts/chef/land-queue.ts --evidence <sha> --plan <plan.json> [--base origin/main]
 //                                  [--worktree <path>] [--lock-directory <path>] [--json]
 //
-// `--plan` is the JSON of `evidence-plan.ts --json` for the evidence's head. The command holds the
-// merge lock (`merge-gate.ts` `withMergeLock`) and fetches `main` inside it, so the answer cannot go
-// stale between a merge by another session and this one. `landQueueVerdict` is exported for
-// `deliver.ts` to call inside the lock it already holds, once the delivery records its evidence plan
-// (fix list item 4); nothing calls it there yet. Exit codes: 0 LAND, 3 REDISPATCH, 2 invalid input.
+// `--plan` is the JSON of `evidence-plan.ts --json` for the evidence's head. The command is
+// ADVISORY: its merge lock and fetch cover only the read, so a merge by another session after it
+// returns can still make its answer stale. The decision and the push are one critical section only
+// when the landing path calls `landQueueVerdict` inside the lock it already holds for the merge
+// (`direct-merge.ts`); that wiring is item 3 of the review round and waits for fix list item 4,
+// so nothing calls it there yet. Exit codes: 0 LAND, 3 REDISPATCH, 2 invalid input.
 
 import { readFileSync } from 'node:fs';
+import { posix } from 'node:path';
 
+import { discoverWorkspaces } from '../affected-tests.ts';
 import { withMergeLock } from './merge-gate.ts';
 import {
   defaultRunner,
@@ -65,14 +70,66 @@ export interface PlanScope {
   /** Workspace folders, each with a trailing slash. */
   directories: readonly string[];
   slugs: ReadonlySet<string>;
+  /** Any file under `scripts/` is in scope: the root lane's imports could not be computed. */
+  anyRootScript: boolean;
 }
 
-export function planScope(plan: EvidencePlan): PlanScope {
-  const files = new Set<string>(plan.changed);
-  const directories: string[] = [];
+/**
+ * Files that change every task's result whatever the plan selected: the lockfile, the Turborepo and
+ * root manifests, any TypeScript configuration, the workflows, and the repository configuration.
+ */
+const GLOBAL_INPUT =
+  /^(?:bun\.lock|turbo\.json|package\.json|\.github\/|internal\/)|(?:^|\/)tsconfig[^/]*\.json$/;
+
+/** The workspaces the plan's tests belong to, with every workspace they depend on, transitively. */
+export function reachedDirectories(
+  plan: EvidencePlan,
+  workspaces: readonly WorkspaceGraphNode[],
+): string[] {
+  const byName = new Map(workspaces.map((workspace) => [workspace.name, workspace]));
+  const start = new Set<string>(
+    plan.unit_tests.filter((lane) => lane.workspace !== '').map((lane) => lane.workspace),
+  );
+  for (const path of plan.changed)
+    for (const workspace of workspaces)
+      if (workspace.directory !== '' && path.startsWith(`${workspace.directory}/`))
+        start.add(workspace.directory);
+  const reached = new Set<string>();
+  const pending = workspaces.filter((workspace) => start.has(workspace.directory));
+  while (pending.length > 0) {
+    const workspace = pending.pop() as WorkspaceGraphNode;
+    if (reached.has(workspace.directory)) continue;
+    reached.add(workspace.directory);
+    for (const name of workspace.dependencies) {
+      const dependency = byName.get(name);
+      if (dependency !== undefined && dependency.directory !== '') pending.push(dependency);
+    }
+  }
+  return [...reached].toSorted();
+}
+
+export interface WorkspaceGraphNode {
+  name: string;
+  /** Repository-relative, '' for the root. */
+  directory: string;
+  dependencies: readonly string[];
+}
+
+export interface PlanScopeInputs {
+  workspaces?: readonly WorkspaceGraphNode[];
+  /** Files the root lane's tests import, transitively, as computed by {@link rootImportClosure}. */
+  rootImports?: ReadonlySet<string>;
+  /** The root lane's imports could not be computed: any `scripts/` file counts. */
+  anyRootScript?: boolean;
+}
+
+export function planScope(plan: EvidencePlan, inputs: PlanScopeInputs = {}): PlanScope {
+  const files = new Set<string>([...plan.changed, ...(inputs.rootImports ?? [])]);
+  const directories = reachedDirectories(plan, inputs.workspaces ?? []).map(
+    (directory) => `${directory}/`,
+  );
   for (const lane of plan.unit_tests) {
     if (lane.workspace === '') {
-      // The root has no folder of its own to claim: only the tests the selection names.
       for (const path of lane.paths) files.add(path);
     } else {
       directories.push(`${lane.workspace.replace(/\/+$/, '')}/`);
@@ -84,9 +141,47 @@ export function planScope(plan: EvidencePlan): PlanScope {
   return {
     everything: plan.requires_full_run,
     files,
-    directories,
+    directories: [...new Set(directories)],
     slugs: new Set(plan.fixture_slugs),
+    anyRootScript: inputs.anyRootScript === true,
   };
+}
+
+const RELATIVE_IMPORT = /(?:from|import)\s*\(?\s*['"](\.{1,2}\/[^'"]+)['"]/g;
+
+/**
+ * The files the root lane's tests import through relative paths, transitively, read at the evidence
+ * commit. A test file that cannot be read makes the closure unknowable, so the caller then treats
+ * any `scripts/` change as overlapping.
+ */
+export function rootImportClosure(
+  tests: readonly string[],
+  read: (path: string) => string | undefined,
+): { files: Set<string>; complete: boolean } {
+  const files = new Set<string>();
+  let complete = true;
+  const pending = [...tests];
+  const seen = new Set<string>();
+  while (pending.length > 0) {
+    const path = pending.pop() as string;
+    if (seen.has(path)) continue;
+    seen.add(path);
+    const text = read(path);
+    if (text === undefined) {
+      if (tests.includes(path)) complete = false;
+      continue;
+    }
+    files.add(path);
+    for (const match of text.matchAll(RELATIVE_IMPORT)) {
+      const target = posix.normalize(posix.join(posix.dirname(path), match[1] ?? ''));
+      for (const candidate of [target, `${target}.ts`, `${target}/index.ts`])
+        if (read(candidate) !== undefined) {
+          pending.push(candidate);
+          break;
+        }
+    }
+  }
+  return { files, complete };
 }
 
 function slugOf(path: string): string | undefined {
@@ -100,7 +195,8 @@ function slugOf(path: string): string | undefined {
 }
 
 export function inScope(scope: PlanScope, path: string): boolean {
-  if (scope.everything || scope.files.has(path)) return true;
+  if (scope.everything || scope.files.has(path) || GLOBAL_INPUT.test(path)) return true;
+  if (scope.anyRootScript && path.startsWith('scripts/')) return true;
   if (scope.directories.some((directory) => path.startsWith(directory))) return true;
   const slug = slugOf(path);
   return slug !== undefined && scope.slugs.has(slug);
@@ -123,11 +219,13 @@ export interface LandQueueOptions {
   /** The default branch as a ref, normally `origin/main`, fetched by the caller. */
   base?: string;
   cwd?: string | undefined;
+  /** The workspace graph; the repository's own (`affected-tests.ts`) by default. */
+  workspaces?: readonly WorkspaceGraphNode[];
 }
 
 /**
  * The verdict for one branch. Fakeable through `runner`: it only reads (`rev-parse`, `merge-base`,
- * `rev-list`, `diff-tree`), and callers hold the merge lock and have fetched `base`.
+ * `rev-list`, `diff-tree`, `show`), and callers hold the merge lock and have fetched `base`.
  */
 export function landQueueVerdict(options: LandQueueOptions): LandQueueResult {
   const { runner, cwd, plan } = options;
@@ -138,7 +236,21 @@ export function landQueueVerdict(options: LandQueueOptions): LandQueueResult {
   const shas = git(runner, ['rev-list', '--reverse', `${mergeBase}..${mainHead}`], cwd)
     .split('\n')
     .filter(Boolean);
-  const scope = planScope(plan);
+  const rootTests = plan.unit_tests
+    .filter((lane) => lane.workspace === '')
+    .flatMap((lane) => lane.paths);
+  const closure = rootImportClosure(rootTests, (path) => {
+    const result = runner(
+      ['git', 'show', `${evidence}:${path}`],
+      cwd === undefined ? undefined : { cwd },
+    );
+    return result.code === 0 ? result.stdout : undefined;
+  });
+  const scope = planScope(plan, {
+    workspaces: options.workspaces ?? discoverWorkspaces(),
+    rootImports: closure.files,
+    anyRootScript: !closure.complete,
+  });
   const commits: MainCommit[] = shas.map((sha) => ({
     sha,
     files: git(

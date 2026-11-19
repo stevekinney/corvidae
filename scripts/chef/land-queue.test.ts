@@ -25,14 +25,41 @@ const plan: EvidencePlan = {
   full_run_rules: [],
 };
 
+/** The workspace graph: armorer depends on core, which depends on nothing; weft stands alone. */
+const workspaces = [
+  { name: 'root', directory: '', dependencies: [] },
+  { name: 'armorer', directory: 'packages/armorer', dependencies: ['@lostgradient/core'] },
+  { name: '@lostgradient/core', directory: 'packages/core', dependencies: [] },
+  { name: 'operative', directory: 'packages/operative', dependencies: [] },
+  { name: 'weft', directory: 'packages/weft', dependencies: [] },
+];
+
+/** The root lane's test imports a helper in its own folder and one outside `scripts/`. */
+const ROOT_FILES: Record<string, string> = {
+  'scripts/chef/land-queue.test.ts':
+    "import { x } from './helper.ts';\nimport { y } from '../../testing/testing/src/wait.ts';\nimport z from 'bun:test';",
+  'scripts/chef/helper.ts': "export * from '../shared.ts';",
+  'scripts/shared.ts': '',
+  'testing/testing/src/wait.ts': '',
+};
+
 /** A repository whose `main` has `commits` (oldest first) on top of the evidence's merge-base. */
-function repository(commits: Record<string, string[]>): { runner: Runner; calls: string[][] } {
+function repository(
+  commits: Record<string, string[]>,
+  files: Record<string, string> = ROOT_FILES,
+): { runner: Runner; calls: string[][] } {
   const calls: string[][] = [];
   const runner: Runner = (command) => {
     calls.push(command);
     const [, verb, ...rest] = command;
     const out = (stdout: string) => ({ code: 0, stdout: `${stdout}\n`, stderr: '' });
     if (verb === 'fetch') return out('');
+    if (verb === 'show') {
+      const text = files[(rest[0] ?? '').slice(`${EVIDENCE}:`.length)];
+      return text === undefined
+        ? { code: 128, stdout: '', stderr: 'bad object' }
+        : { code: 0, stdout: text, stderr: '' };
+    }
     if (verb === 'rev-parse')
       return out(rest.includes(`${EVIDENCE}^{commit}`) ? EVIDENCE : MAIN_HEAD);
     if (verb === 'merge-base') return out(MERGE_BASE);
@@ -43,9 +70,13 @@ function repository(commits: Record<string, string[]>): { runner: Runner; calls:
   return { runner, calls };
 }
 
-function verdict(commits: Record<string, string[]>, evidencePlan = plan) {
-  const { runner } = repository(commits);
-  return landQueueVerdict({ runner, evidence: EVIDENCE, plan: evidencePlan });
+function verdict(
+  commits: Record<string, string[]>,
+  evidencePlan = plan,
+  files: Record<string, string> = ROOT_FILES,
+) {
+  const { runner } = repository(commits, files);
+  return landQueueVerdict({ runner, evidence: EVIDENCE, plan: evidencePlan, workspaces });
 }
 
 describe('land-queue verdict', () => {
@@ -96,9 +127,41 @@ describe('land-queue verdict', () => {
     ]);
   });
 
-  test('the root workspace claims only the tests the selection names, not every root file', () => {
+  test('a root lane overlaps the modules its tests import, transitively, and no other script', () => {
     expect(verdict({ c1: ['scripts/chef/land-queue.test.ts'] }).verdict).toBe('REDISPATCH');
+    // Imported through `./helper.ts`, then `../shared.ts`, and from outside `scripts/`.
+    expect(verdict({ c1: ['scripts/chef/helper.ts'] }).overlapping).toEqual([
+      'scripts/chef/helper.ts',
+    ]);
+    expect(verdict({ c1: ['scripts/shared.ts'] }).verdict).toBe('REDISPATCH');
+    expect(verdict({ c1: ['testing/testing/src/wait.ts'] }).verdict).toBe('REDISPATCH');
     expect(verdict({ c1: ['scripts/chef/direct-merge.ts'] }).verdict).toBe('LAND');
+  });
+
+  test('a root test that cannot be read makes any scripts change overlap', () => {
+    expect(verdict({ c1: ['scripts/chef/direct-merge.ts'] }, plan, {}).verdict).toBe('REDISPATCH');
+  });
+
+  test('a commit to a workspace the planned tests depend on overlaps, though no test is there', () => {
+    const result = verdict({ c1: ['packages/core/src/index.ts'] });
+    expect(result.verdict).toBe('REDISPATCH');
+    expect(result.overlapping).toEqual(['packages/core/src/index.ts']);
+    expect(verdict({ c1: ['packages/weft/src/index.ts'] }).verdict).toBe('LAND');
+  });
+
+  test('a global input overlaps whatever the plan selected', () => {
+    for (const path of [
+      'bun.lock',
+      'turbo.json',
+      'package.json',
+      'packages/weft/tsconfig.json',
+      'tsconfig.base.json',
+      '.github/workflows/main.yml',
+      'internal/typescript/library.json',
+    ])
+      expect(verdict({ c1: [path] }).verdict, path).toBe('REDISPATCH');
+    // Only the root manifest: another workspace's manifest is not a global input.
+    expect(verdict({ c1: ['packages/weft/package.json'] }).verdict).toBe('LAND');
   });
 
   test('a plan that requires a full run is overlapped by any commit', () => {
@@ -114,7 +177,7 @@ describe('land-queue verdict', () => {
     const { runner, calls } = repository({ c1: ['packages/weft/src/protocol.ts'] });
     landQueueVerdict({ runner, evidence: EVIDENCE, plan });
     expect(new Set(calls.map((call) => call[1]))).toEqual(
-      new Set(['rev-parse', 'merge-base', 'rev-list', 'diff-tree']),
+      new Set(['rev-parse', 'merge-base', 'rev-list', 'show', 'diff-tree']),
     );
   });
 
