@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, test } from 'bun:test';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -10,110 +10,115 @@ import {
   readSourceInfo,
   staleBuildProblem,
   UNKNOWN_COMMIT,
+  type GitRunner,
 } from './build-info.ts';
 import { serveProblem } from './supervisor.ts';
 
 const scratch = mkdtempSync(join(tmpdir(), 'build-info-test-'));
 afterAll(() => rmSync(scratch, { recursive: true, force: true }));
 
-function run(directory: string, ...command: string[]): void {
-  const result = Bun.spawnSync(command, { cwd: directory, stdout: 'ignore', stderr: 'pipe' });
-  if (result.exitCode !== 0) throw new Error(result.stderr.toString());
+/** What a stand-in `git` answers: the commit of `HEAD`, the edits to tracked files, untracked names. */
+type Checkout = { commit?: string; edits: string; untracked: string };
+
+function fakeGit(checkout: Checkout): GitRunner {
+  return (_directory, argumentsList) => {
+    if (checkout.commit === undefined) return undefined;
+    if (argumentsList[0] === 'rev-parse') return `${checkout.commit}\n`;
+    if (argumentsList[0] === 'diff') return checkout.edits;
+    return checkout.untracked;
+  };
 }
 
-/** A checkout with one commit, and an empty build directory beside it. */
-function checkout(): { source: string; build: string } {
-  const source = mkdtempSync(join(scratch, 'source-'));
-  run(source, 'git', 'init', '--quiet');
-  run(source, 'git', 'config', 'user.email', 'test@example.com');
-  run(source, 'git', 'config', 'user.name', 'Test');
-  run(source, 'git', 'config', 'commit.gpgsign', 'false');
-  writeFileSync(join(source, 'file.txt'), 'one');
-  run(source, 'git', 'add', '.');
-  run(source, 'git', 'commit', '--quiet', '-m', 'one');
-  const build = mkdtempSync(join(scratch, 'build-'));
-  writeFileSync(join(build, 'index.html'), 'page');
-  return { source, build };
-}
+const first = 'a'.repeat(40);
+const second = 'b'.repeat(40);
+const clean: Checkout = { commit: first, edits: '', untracked: '' };
 
-function record(build: string, source: string): void {
-  writeFileSync(join(build, BUILD_INFO_FILE), JSON.stringify(readSourceInfo(source)));
+/** A build directory holding a page and, when given a source, the record of it. */
+function build(recorded?: Checkout): string {
+  const directory = mkdtempSync(join(scratch, 'build-'));
+  writeFileSync(join(directory, 'index.html'), 'page');
+  if (recorded !== undefined) {
+    writeFileSync(
+      join(directory, BUILD_INFO_FILE),
+      JSON.stringify(readSourceInfo('.', fakeGit(recorded))),
+    );
+  }
+  return directory;
 }
 
 describe('staleBuildProblem', () => {
+  // spawn-free: the git runner is a stand-in that answers from memory
   test('accepts a build made from the current commit of a clean tree', () => {
-    const { source, build } = checkout();
-    record(build, source);
-    expect(staleBuildProblem(build, source)).toBeUndefined();
+    expect(staleBuildProblem(build(clean), '.', fakeGit(clean))).toBeUndefined();
   });
 
+  // spawn-free: the git runner is a stand-in that answers from memory
   test('refuses a build whose recorded commit is not HEAD', () => {
-    const { source, build } = checkout();
-    record(build, source);
-    writeFileSync(join(source, 'file.txt'), 'two');
-    run(source, 'git', 'commit', '--quiet', '-am', 'two');
-    const problem = staleBuildProblem(build, source);
-    expect(problem).toContain('was made from');
-    expect(problem).toContain(readSourceInfo(source).commit.slice(0, 7));
+    const problem = staleBuildProblem(build(clean), '.', fakeGit({ ...clean, commit: second }));
+    expect(problem).toContain('was made from aaaaaaa but HEAD is bbbbbbb');
   });
 
+  // spawn-free: the git runner is a stand-in that answers from memory
   test('refuses a clean build once the tree has uncommitted changes, and one of an old edit', () => {
-    const { source, build } = checkout();
-    record(build, source);
-    writeFileSync(join(source, 'file.txt'), 'edited');
-    expect(staleBuildProblem(build, source)).toContain('uncommitted changes');
-    record(build, source);
-    expect(staleBuildProblem(build, source)).toBeUndefined();
-    writeFileSync(join(source, 'file.txt'), 'edited again');
-    expect(staleBuildProblem(build, source)).toContain('uncommitted changes');
+    const edited = { ...clean, edits: 'diff one' };
+    expect(staleBuildProblem(build(clean), '.', fakeGit(edited))).toContain('uncommitted changes');
+    expect(staleBuildProblem(build(edited), '.', fakeGit(edited))).toBeUndefined();
+    expect(
+      staleBuildProblem(build(edited), '.', fakeGit({ ...clean, edits: 'diff two' })),
+    ).toContain('uncommitted changes');
   });
 
+  // spawn-free: the git runner is a stand-in that answers from memory
   test('counts an untracked file as a change', () => {
-    const { source, build } = checkout();
-    record(build, source);
-    writeFileSync(join(source, 'new.txt'), 'new');
-    expect(staleBuildProblem(build, source)).toContain('uncommitted changes');
+    const problem = staleBuildProblem(build(clean), '.', fakeGit({ ...clean, untracked: 'a.txt' }));
+    expect(problem).toContain('uncommitted changes');
   });
 
+  // spawn-free: the git runner is a stand-in that answers from memory
   test('refuses a build that records nothing, and one whose record is not a record', () => {
-    const { source, build } = checkout();
-    expect(staleBuildProblem(build, source)).toContain('records no source commit');
-    writeFileSync(join(build, BUILD_INFO_FILE), '[1]');
-    expect(staleBuildProblem(build, source)).toContain('records no source commit');
-    writeFileSync(join(build, BUILD_INFO_FILE), 'not json');
-    expect(readBuildInfo(build)).toBeUndefined();
+    const directory = build();
+    expect(staleBuildProblem(directory, '.', fakeGit(clean))).toContain('records no source commit');
+    writeFileSync(join(directory, BUILD_INFO_FILE), '[1]');
+    expect(staleBuildProblem(directory, '.', fakeGit(clean))).toContain('records no source commit');
+    writeFileSync(join(directory, BUILD_INFO_FILE), 'not json');
+    expect(readBuildInfo(directory)).toBeUndefined();
   });
 
+  // spawn-free: the git runner is a stand-in that answers from memory
+  test('refuses a build that recorded an unknown commit when the checkout knows its own', () => {
+    expect(staleBuildProblem(build({ edits: '', untracked: '' }), '.', fakeGit(clean))).toContain(
+      'was made from unknown',
+    );
+  });
+
+  // spawn-free: the git runner is a stand-in that answers from memory
   test('has nothing to compare in a directory with no Git history', () => {
-    const bare = mkdtempSync(join(scratch, 'bare-'));
-    expect(readSourceInfo(bare).commit).toBe(UNKNOWN_COMMIT);
-    expect(staleBuildProblem(bare, bare)).toBeUndefined();
+    const none: Checkout = { edits: '', untracked: '' };
+    expect(readSourceInfo('.', fakeGit(none)).commit).toBe(UNKNOWN_COMMIT);
+    expect(staleBuildProblem(build(clean), '.', fakeGit(none))).toBeUndefined();
   });
 });
 
 describe('serveProblem', () => {
+  // spawn-free: the git runner is a stand-in that answers from memory
   test('refuses to serve a build made from another commit, so `serve` exits nonzero', () => {
-    const { source, build } = checkout();
-    record(build, source);
-    expect(serveProblem(build, source)).toBeUndefined();
-    writeFileSync(join(source, 'file.txt'), 'two');
-    run(source, 'git', 'commit', '--quiet', '-am', 'two');
-    expect(serveProblem(build, source)).toContain('Run `bun run build` first.');
+    const directory = build(clean);
+    expect(serveProblem(directory, '.', fakeGit(clean))).toBeUndefined();
+    const problem = serveProblem(directory, '.', fakeGit({ ...clean, commit: second }));
+    expect(problem).toContain('Run `bun run build` first.');
   });
 
+  // spawn-free: the git runner is a stand-in that answers from memory
   test('still names a build that is missing', () => {
-    const { source } = checkout();
-    const missing = join(scratch, 'missing');
-    mkdirSync(missing);
-    expect(serveProblem(missing, source)).toContain('has not been built');
+    const directory = mkdtempSync(join(scratch, 'empty-'));
+    expect(serveProblem(directory, '.', fakeGit(clean))).toContain('has not been built');
   });
 });
 
 describe('displayedCommit', () => {
   test('shows seven characters, marks an edited tree, and shows nothing for an unknown commit', () => {
-    const commit = 'a'.repeat(40);
-    expect(displayedCommit({ commit, changes: '' })).toBe('aaaaaaa');
-    expect(displayedCommit({ commit, changes: 'abc' })).toBe('aaaaaaa (edited)');
+    expect(displayedCommit({ commit: first, changes: '' })).toBe('aaaaaaa');
+    expect(displayedCommit({ commit: first, changes: 'abc' })).toBe('aaaaaaa (edited)');
     expect(displayedCommit({ commit: UNKNOWN_COMMIT, changes: '' })).toBe('');
   });
 });

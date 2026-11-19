@@ -27,7 +27,7 @@ import { existsSync } from 'node:fs';
 import { constants } from 'node:os';
 import { join, resolve as resolvePath } from 'node:path';
 
-import { staleBuildProblem } from './build-info.ts';
+import { runGit, staleBuildProblem, type GitRunner } from './build-info.ts';
 import { DEVELOPMENT_PLUGIN_FLAG } from './development-plugin-flag.ts';
 import { processEnvironment, resolveBuildDirectory } from './environment-configuration.ts';
 import {
@@ -169,12 +169,13 @@ export async function supervise(options: SuperviseOptions): Promise<number> {
 export function serveProblem(
   buildDirectory: string,
   source: string = PACKAGE_DIRECTORY,
+  git: GitRunner = runGit,
 ): string | undefined {
   const page = join(buildDirectory, 'index.html');
   if (!existsSync(page)) {
     return `Interborough has not been built: ${page} does not exist. Run \`bun run build\` first.`;
   }
-  return staleBuildProblem(buildDirectory, source);
+  return staleBuildProblem(buildDirectory, source, git);
 }
 
 const USAGE =

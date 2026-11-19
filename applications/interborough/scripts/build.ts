@@ -32,6 +32,7 @@ import {
   BUILD_INFO_FILE,
   displayedCommit,
   readSourceInfo,
+  UNKNOWN_COMMIT,
   type BuildInfo,
 } from '../src/host/build-info.ts';
 
@@ -352,7 +353,10 @@ export async function buildApplication(
   options: {
     readonly outdir?: string;
     readonly development?: boolean;
-    /** The source being built, read from the checkout by default; a test supplies one. */
+    /**
+     * The source being built, which the build records. The command-line entry reads it from the
+     * checkout; a caller that gives none records an unknown commit, which every server refuses.
+     */
     readonly source?: BuildInfo;
     /** The bundler. `Bun.build` by default; a test supplies a fake so it need not bundle. */
     readonly bundle?: (configuration: Bun.BuildConfig) => Promise<Bun.BuildOutput>;
@@ -369,7 +373,7 @@ export async function buildApplication(
   const staging = mkdtempSync(join(parent, '.build-staging-'));
   stagingDirectories.add(staging);
   try {
-    const source = options.source ?? readSourceInfo(PACKAGE_DIRECTORY);
+    const source = options.source ?? { commit: UNKNOWN_COMMIT, changes: '' };
     const result = await (options.bundle ?? Bun.build)({
       ...browserBuildOptions({
         entrypoints: [ENTRY_HTML_PATH],
@@ -543,4 +547,9 @@ export async function runBuildMain(
   if (exitWithParent) exit(0);
 }
 
-if (import.meta.main) await runBuildMain(process.argv.slice(2));
+if (import.meta.main) {
+  // Only the command line reads the checkout's commit, so no test starts Git.
+  await runBuildMain(process.argv.slice(2), undefined, undefined, (options) =>
+    buildApplication({ ...options, source: readSourceInfo(PACKAGE_DIRECTORY) }),
+  );
+}

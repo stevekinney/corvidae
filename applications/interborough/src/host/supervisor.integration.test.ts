@@ -14,6 +14,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { BUILD_INFO_FILE, readSourceInfo } from './build-info.ts';
 import { processEnvironment } from './environment-configuration.ts';
 import { hostCommand, supervise, type SupervisorSignals } from './supervisor.ts';
 
@@ -112,6 +113,24 @@ const launchDirectory = scratch();
 const launchBuild = join(launchDirectory, 'build');
 mkdirSync(launchBuild);
 writeFileSync(join(launchBuild, 'index.html'), '<!doctype html>');
+// A build `serve` accepts records the checkout's current source (`build-info.ts`).
+writeFileSync(
+  join(launchBuild, BUILD_INFO_FILE),
+  JSON.stringify(readSourceInfo(join(import.meta.dir, '..', '..'))),
+);
+// A build made from another commit is refused, and nothing starts.
+const staleDirectory = scratch();
+const staleBuild = join(staleDirectory, 'build');
+mkdirSync(staleBuild);
+writeFileSync(join(staleBuild, 'index.html'), '<!doctype html>');
+writeFileSync(
+  join(staleBuild, BUILD_INFO_FILE),
+  JSON.stringify({ commit: '0'.repeat(40), changes: '' }),
+);
+const staleServe = await runWithHangGuard([process.execPath, supervisorEntry, 'serve'], {
+  cwd: join(import.meta.dir, '..', '..'),
+  env: { ...process.env, INTERBOROUGH_BUILD_DIRECTORY: staleBuild },
+});
 const launchOutput = join(launchDirectory, 'launch.json');
 const launchFixture = join(import.meta.dir, 'launch-command-fixture.test-support.ts');
 const launched = await runWithHangGuard(
@@ -256,6 +275,13 @@ describe('the supervisor command', () => {
     expect(missingBuild.stderr.toString()).toContain('bun run build');
     expect(missingBuild.stderr.toString()).toContain(join(emptyBuild, 'index.html'));
     expect(missingBuild.stdout.toString()).not.toContain('Started the host');
+  });
+
+  test('`serve` on a build made from another commit exits 1, starts nothing, and names `bun run build`', () => {
+    expect(staleServe.exitCode).toBe(1);
+    expect(staleServe.stderr.toString()).toContain('Run `bun run build` first.');
+    expect(staleServe.stderr.toString()).toContain('0000000');
+    expect(staleServe.stdout.toString()).not.toContain('listening');
   });
 
   test('hands the host the terminal command it was launched with, recorded at startup (COR-2009)', () => {

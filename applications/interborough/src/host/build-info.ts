@@ -28,7 +28,7 @@ export type BuildInfo = {
  * The expression the build replaces with the text the page shows (`src/lib/build-commit.ts` reads
  * it), so the commit is compiled into the bundle and no request fetches it.
  */
-export const BUILD_COMMIT_VARIABLE = 'process.env.INTERBOROUGH_BUILD_COMMIT';
+export const BUILD_COMMIT_VARIABLE = '__INTERBOROUGH_BUILD_COMMIT__';
 
 /**
  * What the page shows for `source`: the short commit, with "(edited)" after it when the tree
@@ -40,7 +40,11 @@ export function displayedCommit(source: BuildInfo): string {
   return source.changes === '' ? short : `${short} (edited)`;
 }
 
-function git(directory: string, argumentsList: readonly string[]): string | undefined {
+/** Runs `git` with `argumentsList` in `directory`: its output, or `undefined` when it failed. */
+export type GitRunner = (directory: string, argumentsList: readonly string[]) => string | undefined;
+
+/** The real `git`, for the command line and the server; a test supplies a stand-in. */
+export const runGit: GitRunner = (directory, argumentsList) => {
   try {
     const result = Bun.spawnSync(['git', ...argumentsList], {
       cwd: directory,
@@ -51,10 +55,10 @@ function git(directory: string, argumentsList: readonly string[]): string | unde
   } catch {
     return undefined;
   }
-}
+};
 
 /** Read the checkout at `directory`: its `HEAD` commit and a digest of what is changed on top of it. */
-export function readSourceInfo(directory: string): BuildInfo {
+export function readSourceInfo(directory: string, git: GitRunner = runGit): BuildInfo {
   const commit = git(directory, ['rev-parse', 'HEAD'])?.trim();
   if (commit === undefined || commit === '') return { commit: UNKNOWN_COMMIT, changes: '' };
   const edits = git(directory, ['diff', 'HEAD', '--no-ext-diff']) ?? '';
@@ -69,7 +73,8 @@ export function readBuildInfo(buildDirectory: string): BuildInfo | undefined {
   try {
     const parsed: unknown = JSON.parse(readFileSync(join(buildDirectory, BUILD_INFO_FILE), 'utf8'));
     if (typeof parsed !== 'object' || parsed === null) return undefined;
-    const { commit, changes } = parsed as Record<string, unknown>;
+    const commit: unknown = Reflect.get(parsed, 'commit');
+    const changes: unknown = Reflect.get(parsed, 'changes');
     return typeof commit === 'string' && typeof changes === 'string'
       ? { commit, changes }
       : undefined;
@@ -82,8 +87,12 @@ export function readBuildInfo(buildDirectory: string): BuildInfo | undefined {
  * Say why the build in `buildDirectory` is not the current source of the checkout at `source`, or
  * `undefined` when it is, or when the checkout has no Git history to compare against.
  */
-export function staleBuildProblem(buildDirectory: string, source: string): string | undefined {
-  const current = readSourceInfo(source);
+export function staleBuildProblem(
+  buildDirectory: string,
+  source: string,
+  git: GitRunner = runGit,
+): string | undefined {
+  const current = readSourceInfo(source, git);
   if (current.commit === UNKNOWN_COMMIT) return undefined;
   const recorded = readBuildInfo(buildDirectory);
   const rebuild = 'Run `bun run build` first.';

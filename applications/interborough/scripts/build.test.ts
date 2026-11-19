@@ -405,7 +405,7 @@ describe('buildApplication', () => {
     expect(result.files).toEqual(['assets/main-aaaaaaaa.js', 'build-info.json', 'index.html']);
     // The build records its commit, and the page is given the short one.
     expect(JSON.parse(await Bun.file(join(outdir, 'build-info.json')).text())).toEqual(source);
-    expect(calls[0]?.define?.['process.env.INTERBOROUGH_BUILD_COMMIT']).toBe('"bbbbbbb"');
+    expect(calls[0]?.define?.['__INTERBOROUGH_BUILD_COMMIT__']).toBe('"bbbbbbb"');
     expect(result.metafile).toEqual({ inputs: {}, outputs: {} });
     expect(calls).toHaveLength(1);
     expect(calls[0]?.entrypoints).toEqual([ENTRY_HTML_PATH]);
