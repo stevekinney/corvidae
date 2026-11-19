@@ -191,9 +191,77 @@ const CORRECTION_SCHEMA = {
     status: { type: 'string', enum: ['ready-for-review', 'blocked', 'needs-decision'] },
     head: { type: 'string' },
     report: { type: 'string' },
+    regressionTest: {
+      type: 'object',
+      properties: {
+        path: { type: 'string' },
+        failsOn: { type: 'string' },
+        passesOn: { type: 'string' },
+      },
+      required: ['path', 'failsOn', 'passesOn'],
+    },
+    entryPoints: { type: 'array', items: { type: 'string' } },
   },
   required: ['status', 'head', 'report'],
 };
+
+// The defect classes of scripts/chef/defect-classes.json (a test keeps the two lists equal).
+const CLASS_NAMES = [
+  'adapter-drop',
+  'pre-commit-exposure',
+  'unfenced-check-then-act',
+  'stale-generation',
+  'receipt-mismatch',
+  'missing-authorization',
+  'boundary-validation',
+  'unsnapshotted-input',
+  'spec-contradiction',
+  'state-machine',
+];
+
+const CLASSIFY_SCHEMA = {
+  type: 'object',
+  properties: {
+    classes: { type: 'array', items: { type: 'string', enum: CLASS_NAMES } },
+    seenOnBranch: { type: 'array', items: { type: 'string', enum: CLASS_NAMES } },
+  },
+  required: ['classes', 'seenOnBranch'],
+};
+
+const PIN_SCHEMA = {
+  type: 'object',
+  properties: {
+    priorExitCode: { type: 'integer' },
+    priorHead: { type: 'string' },
+    newExitCode: { type: 'integer' },
+    newHead: { type: 'string' },
+    priorOutput: { type: 'string' },
+  },
+  required: ['priorExitCode', 'priorHead', 'newExitCode', 'newHead', 'priorOutput'],
+};
+
+const TEST_FILE = /\.(test|spec)\.[cm]?[jt]sx?$/;
+
+// scripts/bun-test.ts exits 75 when the test pool is busy and 70 when the hang guard fires: neither
+// says anything about the test, so only exit 1 with a (fail) line under the pinned file counts.
+const NOT_A_RESULT = [70, 75];
+
+/** null when the pin ran and proved the test; else the reason it did not. */
+function pinProblem(pin, test) {
+  if (pin.priorHead !== test.failsOn || pin.newHead !== test.passesOn)
+    return 'regression test was proven at the wrong commits';
+  if (NOT_A_RESULT.includes(pin.priorExitCode) || NOT_A_RESULT.includes(pin.newExitCode))
+    return `pin did not run: regression test exited ${pin.priorExitCode} then ${pin.newExitCode} (busy pool or hang guard)`;
+  if (pin.priorExitCode === 0)
+    return `regression test passes on the pre-fix head ${test.failsOn}, so it pins nothing`;
+  const output = typeof pin.priorOutput === 'string' ? pin.priorOutput : '';
+  const at = output.indexOf(test.path);
+  if (pin.priorExitCode !== 1 || at < 0 || !/^\(fail\) /m.test(output.slice(at)))
+    return `pin did not run: regression test at ${test.failsOn} gave exit ${pin.priorExitCode} and no (fail) line under ${test.path}`;
+  if (pin.newExitCode !== 0)
+    return `regression test fails on the new head ${test.passesOn} (exit ${pin.newExitCode})`;
+  return null;
+}
 
 const NO_MERGE = 'Never merge and never run deliver.ts; the coordinator lands the branch.';
 
@@ -451,23 +519,116 @@ function chooseModel(issue, paths) {
   return { model: 'sonnet', rule: 'no design-heavy interface path or explicit opus entry' };
 }
 
-function correct(issue, worktree, branch, findings, model) {
-  phase('correct');
-  log(`${issue}: one correction of ${findings.length} finding(s)`);
+/** Haiku runs the classifier script; the class names are the script's, never a model's own. */
+function classify(issue, branch, findings, pullRequest) {
   return agent(
     [
-      `cd into ${worktree}, the worktree of branch ${branch}, and fix these findings, and only these:`,
+      `Classify the findings of ${issue} into defect classes. Invoke no skills. Change nothing in the repository.`,
+      'For each finding below run `bun scripts/chef/review-threads.ts tag --text <the finding, as one shell argument>` and return the union of the "classes" it prints as classes.',
+      pullRequest
+        ? `Then run \`bun scripts/chef/review-threads.ts classes --pr ${pullRequest} --json\` (exit 1 is a normal result) and return its "repeating" array as seenOnBranch.`
+        : 'There is no pull request: return seenOnBranch as an empty array.',
       ...findings.map((finding) => `- ${finding}`),
-      `Run \`bun scripts/chef/focused-checks.ts\`, push the branch ${branch} once, and return the new head. ${NO_MERGE}`,
     ].join('\n'),
     {
-      label: `correct ${issue}`,
+      label: `classify ${issue}`,
+      phase: 'correct',
+      schema: CLASSIFY_SCHEMA,
+      model: 'haiku',
+      effort: 'low',
+    },
+  );
+}
+
+/** Every correction, point fix or class fix, from the branch path or a coordinator, is this step. */
+function correct(issue, where, findings, model, kind, classes) {
+  phase('correct');
+  const classFix = kind === 'CLASS_FIX';
+  log(`${issue}: ${kind} of ${findings.length} finding(s) at ${where.head}`);
+  return agent(
+    [
+      `cd into ${where.worktree}, the worktree of branch ${where.branch}, at the pre-fix head ${where.head}, and fix these findings, and only these:`,
+      ...findings.map((finding) => `- ${finding}`),
+      classFix
+        ? `These findings repeat a defect class already seen on this branch (${classes.join(', ')}), so a point fix is refused. Your criterion is a test that enumerates every entry point of that class (every route, every exported boundary, every hook it can reach), not the one instance, and fails today. Return entryPoints: the entry points that test covers.`
+        : 'Fix the instance the findings name.',
+      `Write the regression test first and run it on ${where.head}: it must fail there. Then fix, run \`bun scripts/chef/focused-checks.ts\`, push the branch ${where.branch} once, and return the new head and regressionTest: path (the test file), failsOn (${where.head}) and passesOn (the new head). Never edit a test to make it pass. ${NO_MERGE}`,
+    ].join('\n'),
+    {
+      label: `${classFix ? 'class-fix' : 'correct'} ${issue}`,
       phase: 'correct',
       schema: CORRECTION_SCHEMA,
       agentType: 'chef-worker',
       model: model,
     },
   );
+}
+
+function pinRegression(issue, where, regressionTest) {
+  return agent(
+    [
+      `Prove the regression test ${regressionTest.path} of ${issue} fails before the fix and passes after it. Invoke no skills. Change nothing in the repository.`,
+      `cd ${where.worktree} and run \`git fetch origin ${where.branch}\`. Do this once for ${regressionTest.failsOn} and once for ${regressionTest.passesOn}: \`git worktree add --detach <a new path under tmp/> <sha>\`; in it run \`bun install --frozen-lockfile\`; for the pre-fix sha copy the test file from the new sha with \`git show ${regressionTest.passesOn}:${regressionTest.path}\`; run \`CORVIDAE_TEST_POOL_WAIT_SECONDS=300 bun scripts/bun-test.ts ${regressionTest.path}\` there, and record its exit code and \`git rev-parse HEAD\` there; then \`git worktree remove --force\` that path.`,
+      `Return priorExitCode and priorHead (the run at ${regressionTest.failsOn}), priorOutput (that run's output, verbatim: the file header line and every (fail) line) and newExitCode and newHead (the run at ${regressionTest.passesOn}). Report a setup failure as its real exit code; never turn it into 1.`,
+    ].join('\n'),
+    {
+      label: `pin ${issue}`,
+      phase: 'correct',
+      schema: PIN_SCHEMA,
+      model: 'haiku',
+      effort: 'low',
+    },
+  );
+}
+
+/**
+ * The one correction path. Classifies the findings against the classes seen so far, runs a point
+ * fix or (on a repeated class) a CLASS_FIX, and refuses unless the returned test is proven to fail
+ * on the pre-fix head and pass on the new one. Returns { head } or { done: <judgment> }.
+ */
+async function runCorrection(context, where, findings, key) {
+  const { issue, steps, state, chosen } = context;
+  const stop = (reason, extra) => ({
+    done: judgment(issue, reason, steps, { ...where, findings, ...extra }),
+  });
+  const classified = await classify(issue, where.branch, findings, state.pullRequest);
+  if (classified === null) return stop('classify step failed');
+  const classes = [...new Set([...classified.classes, ...state.named])];
+  const repeated = classes.filter(
+    (name) => state.seen.has(name) || classified.seenOnBranch.includes(name),
+  );
+  for (const name of classes) state.seen.add(name);
+  const kind = repeated.length > 0 ? 'CLASS_FIX' : 'POINT_FIX';
+  state.named = [];
+  const record = { kind, classes, repeated };
+  steps[key] = record;
+  const fixed = await correct(issue, where, findings, chosen.model, kind, repeated);
+  if (fixed === null) return stop('correction failed');
+  record.fixed = fixed;
+  if (fixed.status !== 'ready-for-review')
+    return stop(`correction ${fixed.status}: ${fixed.report}`);
+  const test = fixed.regressionTest;
+  if (
+    !test ||
+    typeof test.path !== 'string' ||
+    !TEST_FILE.test(test.path) ||
+    test.failsOn !== where.head ||
+    test.passesOn !== fixed.head ||
+    fixed.head === where.head
+  )
+    return stop(
+      `correction refused: no failing-first regression test (a test file, failing on ${where.head}, passing on the new head)`,
+    );
+  if (kind === 'CLASS_FIX' && !(Array.isArray(fixed.entryPoints) && fixed.entryPoints.length > 0))
+    return stop(
+      'class fix refused: its test must enumerate every entry point of the class, and none were listed',
+    );
+  const pin = await pinRegression(issue, where, test);
+  if (pin === null) return stop('regression test pin step failed');
+  record.pin = pin;
+  const problem = pinProblem(pin, test);
+  if (problem !== null) return stop(problem);
+  return { head: fixed.head };
 }
 
 /** The structured result the coordinator lands from: only facts a step returned. */
@@ -605,11 +766,57 @@ async function deliverOne(issue) {
       worktree: built.worktree,
     });
 
+  const loop = {
+    issue,
+    run,
+    built,
+    chosen,
+    overridden,
+    steps,
+    state: correctionState(issue, null, []),
+  };
   let head = built.head;
   for (let round = 1; round <= MAXIMUM_ROUNDS; round += 1) {
+    const verified = await verifyRound(loop, head, round, `round${round}`);
+    if (verified.status !== undefined) return verified;
+    const where = { head, branch: built.branch, worktree: built.worktree };
+    if (round === MAXIMUM_ROUNDS)
+      return judgment(issue, `still failing after ${MAXIMUM_ROUNDS} rounds`, steps, {
+        ...where,
+        findings: verified.findings,
+      });
+    const corrected = await runCorrection(loop, where, verified.findings, `correction${round}`);
+    if (corrected.done) return corrected.done;
+    head = corrected.head;
+  }
+  return judgment(issue, 'no round ran', steps, {});
+}
+
+/** Per issue: the pull request (if any), the classes seen so far, and a class the coordinator named. */
+function correctionState(issue, pullRequest, seen, named) {
+  const pullRequests = args && args.pullRequests;
+  return {
+    pullRequest:
+      pullRequest !== null
+        ? pullRequest
+        : pullRequests && Object.hasOwn(pullRequests, issue)
+          ? pullRequests[issue]
+          : null,
+    seen: new Set(seen),
+    named: named === undefined ? [] : named,
+  };
+}
+
+/**
+ * One verification round of a head: checks, evidence run, wait, compare, review. Returns a
+ * READY_TO_LAND or NEEDS_JUDGMENT result (it has a status), or { findings } to correct.
+ */
+async function verifyRound(context, head, round, key) {
+  const { issue, run, built, chosen, overridden, steps } = context;
+  {
     const where = { head, branch: built.branch, worktree: built.worktree };
     const evidence = {};
-    steps[`round${round}`] = evidence;
+    steps[key] = evidence;
 
     const checks = await runChecks(issue, built.worktree, built.branch, head);
     if (checks === null) return judgment(issue, 'checks step failed', steps, where);
@@ -681,25 +888,71 @@ async function deliverOne(issue) {
       }
     }
 
-    if (round === MAXIMUM_ROUNDS)
-      return judgment(issue, `still failing after ${MAXIMUM_ROUNDS} rounds`, steps, {
-        ...where,
-        findings,
-      });
-    const fixed = await correct(issue, built.worktree, built.branch, findings, chosen.model);
-    if (fixed === null || fixed.status !== 'ready-for-review')
-      return judgment(
-        issue,
-        fixed === null ? 'correction failed' : `correction ${fixed.status}: ${fixed.report}`,
-        steps,
-        { ...where, findings },
-      );
-    head = fixed.head;
+    return { findings };
   }
-  return judgment(issue, 'no round ran', steps, {});
+}
+
+/**
+ * args.correction = { issue, head, branch, worktree, finding, class?, pr?, seenClasses? }: a
+ * correction the coordinator asks for. It skips the brief and the build and runs the one
+ * correction path, then the checks, evidence, compare and review of the new head.
+ */
+async function correctOne(request) {
+  const issue = request && request.issue;
+  const text = (value) => typeof value === 'string' && value.trim() !== '';
+  const findings = Array.isArray(request && request.finding)
+    ? request.finding
+    : [request && request.finding];
+  if (
+    !text(issue) ||
+    !text(request.head) ||
+    !text(request.branch) ||
+    !text(request.worktree) ||
+    !findings.every(text)
+  )
+    return judgment(
+      text(issue) ? issue : 'unknown',
+      'invalid correction: it needs issue, head, branch, worktree and finding',
+      {},
+    );
+  if (request.class !== undefined && !CLASS_NAMES.includes(request.class))
+    return judgment(issue, `invalid correction: ${request.class} is not a defect class`, {});
+  const steps = {};
+  const built = { branch: request.branch, worktree: request.worktree };
+  const paths = args && args.paths && Array.isArray(args.paths[issue]) ? args.paths[issue] : [];
+  const chosen = chooseModel(issue, paths);
+  steps.model = chosen;
+  const context = {
+    issue,
+    run: args && args.run,
+    built,
+    chosen,
+    overridden: null,
+    steps,
+    state: correctionState(
+      issue,
+      request.pr === undefined ? null : request.pr,
+      Array.isArray(request.seenClasses) ? request.seenClasses : [],
+      request.class === undefined ? [] : [request.class],
+    ),
+  };
+  const where = { head: request.head, branch: request.branch, worktree: request.worktree };
+  const corrected = await runCorrection(context, where, findings, 'correction1');
+  if (corrected.done) return corrected.done;
+  const verified = await verifyRound(context, corrected.head, 1, 'verify');
+  if (verified.status !== undefined) return verified;
+  return judgment(issue, 'the corrected head still has findings', steps, {
+    head: corrected.head,
+    branch: request.branch,
+    worktree: request.worktree,
+    findings: verified.findings,
+  });
 }
 
 const issues = Array.isArray(args && args.issues) ? args.issues : [];
+if (args && args.correction) {
+  return [await correctOne(args.correction)];
+}
 if (issues.length === 0) {
   log('no issues given; args.issues must be a non-empty array of COR ids');
 }
