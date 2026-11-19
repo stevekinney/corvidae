@@ -21,6 +21,8 @@ import { BUREAU_HANDLER_OPERATIONS, createBureauHandler } from '../create-bureau
 import { bureauHooksOperations } from './hooks-operations.ts';
 import { openBureau, type OpenedBureau, rpc } from './management-fixtures.test-support.ts';
 import type { WorkspaceMembershipOptions } from '../workspace-principal.ts';
+import type { BureauOptions } from '../../bureau-types/options.ts';
+import { definePlugin } from '@lostgradient/interborough-plugin';
 
 const cleanups: Array<() => Promise<void>> = [];
 afterEach(async () => {
@@ -35,6 +37,7 @@ async function open(
     workspace?: WorkspaceMembershipOptions;
     script?: Parameters<typeof createReceiver>[0];
     actionKinds?: readonly HookActionKindRegistration[];
+    plugins?: BureauOptions['plugins'];
   } = {},
 ) {
   const receiver = createReceiver(
@@ -55,6 +58,7 @@ async function open(
             answerEncryption: { current: await generateEncryptionKey() },
           }),
       webhooks: { targets: [], fetch: receiver.fetch, sleep: () => Promise.resolve() },
+      ...(options.plugins === undefined ? {} : { plugins: options.plugins }),
     },
     ...(options.workspace === undefined
       ? {}
@@ -1363,5 +1367,84 @@ describe('bureau.hooks.duplicate and declaredBy (COR-2181)', () => {
       'alice-observer-key',
     );
     expect(tooLong?.code).toBe(-32602);
+  });
+});
+
+describe('bureau.hooks.* on a kind a plugin declares (COR-2226)', () => {
+  /** `reports` (1.0.0) declares `digest-ready`, with no version of its own. */
+  const reports = () => ({
+    descriptor: definePlugin({
+      name: 'reports',
+      version: '1.0.0',
+      description: 'Writes digests.',
+      setup: () => ({
+        events: [
+          {
+            name: 'digest-ready',
+            description: 'A digest is ready to read.',
+            payload: z.object({ digestId: z.string().meta({ identifier: true }) }),
+          },
+        ],
+      }),
+    }),
+    source: 'package' as const,
+    location: '@example/reports',
+  });
+  const NOTIFY = { type: 'notify' } as const;
+
+  it('accepts a declared kind on create and update, answers it pinned to its version, and refuses an undeclared one at events (AC1)', async () => {
+    const { opened } = await open({ plugins: [reports()] });
+    const created = await wire(
+      opened,
+      'bureau.hooks.create',
+      { events: ['reports:digest-ready', 'run.settled'], action: NOTIFY },
+      'alice-observer-key',
+    );
+    expect(created.events).toEqual(['reports:digest-ready@1.0.0', 'run.settled']);
+    const read = await wire(opened, 'bureau.hooks.get', { hookId: created.id }, 'alice-key');
+    expect(read.events).toEqual(['reports:digest-ready@1.0.0', 'run.settled']);
+    const updated = await wire(
+      opened,
+      'bureau.hooks.update',
+      { hookId: created.id, events: ['reports:digest-ready@1.0.0'] },
+      'alice-observer-key',
+    );
+    expect(updated.events).toEqual(['reports:digest-ready@1.0.0']);
+
+    for (const events of [['nobody:thing'], ['reports:digest-ready@0.9.0'], ['hook.test']]) {
+      const refused = await errorOf(
+        opened,
+        'bureau.hooks.create',
+        { events, action: NOTIFY },
+        'alice-observer-key',
+      );
+      expect(refused?.code).toBe(-32602);
+      expect(refused?.data).toMatchObject({ issues: [{ path: ['events'] }] });
+    }
+  });
+
+  it('lists a hook whose declared kind’s plugin is gone with an event-missing problem, loadedVersion null, and keeps it on', async () => {
+    const storage = new MemoryStorage();
+    const first = await open({ storage, plugins: [reports()] });
+    const created = await wire(
+      first.opened,
+      'bureau.hooks.create',
+      { events: ['reports:digest-ready', 'run.settled'], action: NOTIFY },
+      'alice-observer-key',
+    );
+    await first.opened.dispose();
+    cleanups.splice(cleanups.length - 1, 1);
+
+    const second = await open({ storage });
+    const listed = await wire(second.opened, 'bureau.hooks.list', {}, 'hooks-reader-key');
+    expect(listed.hooks).toHaveLength(1);
+    expect(listed.hooks[0]).toMatchObject({
+      id: created.id,
+      enabled: true,
+      events: ['reports:digest-ready@1.0.0', 'run.settled'],
+      problems: [
+        { code: 'event-missing', kind: 'reports:digest-ready@1.0.0', loadedVersion: null },
+      ],
+    });
   });
 });
