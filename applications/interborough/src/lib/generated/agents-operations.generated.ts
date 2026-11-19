@@ -53,6 +53,7 @@ export type AgentsOperationTypes = {
       }>;
       readonly tools: ReadonlyArray<{
         readonly defaultApproval: 'allow' | 'ask';
+        readonly defaultAsks: 'never' | 'on-changes' | 'always';
         readonly description: string;
         readonly inputSchema: Record<string, unknown> | null;
         readonly name: string;
@@ -62,6 +63,7 @@ export type AgentsOperationTypes = {
         readonly source: 'host' | 'bureau' | 'plugin' | 'skill';
         readonly tier: 'read-only' | 'mutating' | 'dangerous' | null;
         readonly title: string | null;
+        readonly userApprovals: Record<string, unknown>;
         readonly users: ReadonlyArray<string>;
       }>;
     };
@@ -309,6 +311,19 @@ export type AgentsOperationTypes = {
       }>;
     };
     readonly faults: never;
+  };
+  'bureau.skills.get': {
+    readonly input: { readonly name: string };
+    readonly output: {
+      readonly instructions: {
+        readonly size: number;
+        readonly text: string;
+        readonly truncated: boolean;
+      } | null;
+      readonly name: string;
+      readonly unavailableReason: 'not-found' | 'changed' | 'unavailable' | null;
+    };
+    readonly faults: 'Forbidden' | 'InvalidParams';
   };
   'bureau.skills.list': {
     readonly input: {};
