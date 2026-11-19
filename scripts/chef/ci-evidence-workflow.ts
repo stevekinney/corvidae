@@ -1,7 +1,17 @@
 #!/usr/bin/env bun
 import { createHash } from 'node:crypto';
-import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  lstatSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { dirname } from 'node:path';
+
+import { parseJUnit } from './evidence-provider.ts';
 
 export class CiEvidenceWorkflowError extends Error {}
 
@@ -18,6 +28,7 @@ export interface CiEvidenceWorkflowEnvironment {
   VERIFICATION_BASE?: string | undefined;
   CI_EVIDENCE_NEEDS?: string | undefined;
   CI_EVIDENCE_NOT_APPLICABLE?: string | undefined;
+  CI_EVIDENCE_ARTIFACT_DIRECTORY?: string | undefined;
 }
 
 interface GitResult {
@@ -39,6 +50,7 @@ export interface CiEvidenceWorkflowReceipt {
   runId: number;
   attempt: number;
   jobs: Record<string, 'success' | 'not-applicable'>;
+  reports?: Record<string, { reports: number; testCases: number }>;
 }
 
 const commit = (value: unknown): value is string =>
@@ -195,6 +207,78 @@ function pushCommit(payload: unknown, field: 'before' | 'after'): string {
   return sha;
 }
 
+/** Parse every required artifact bundle independently, so a partial report set is never aggregate success. */
+export function validateJUnitArtifacts(
+  artifacts: Readonly<Record<string, readonly Uint8Array[]>>,
+  expected: readonly string[],
+): Record<string, { reports: number; testCases: number }> {
+  const summaries: Record<string, { reports: number; testCases: number }> = {};
+  for (const name of expected) {
+    const reports = artifacts[name];
+    if (reports === undefined)
+      throw new CiEvidenceWorkflowError(`required JUnit artifact ${name} is missing`);
+    if (reports.length === 0)
+      throw new CiEvidenceWorkflowError(`required JUnit artifact ${name} has no reports`);
+    let testCases = 0;
+    for (const report of reports) {
+      let parsed: { inventory: string[]; assertionPassed: boolean };
+      try {
+        parsed = parseJUnit(report);
+      } catch {
+        throw new CiEvidenceWorkflowError(`required JUnit artifact ${name} has malformed XML`);
+      }
+      if (parsed.inventory.length === 0)
+        throw new CiEvidenceWorkflowError(`required JUnit artifact ${name} has an empty report`);
+      if (!parsed.assertionPassed)
+        throw new CiEvidenceWorkflowError(
+          `required JUnit artifact ${name} contains a failed assertion`,
+        );
+      testCases += parsed.inventory.length;
+    }
+    summaries[name] = { reports: reports.length, testCases };
+  }
+  return summaries;
+}
+
+function reportFiles(directory: string): Uint8Array[] {
+  const files: Uint8Array[] = [];
+  const visit = (path: string): void => {
+    for (const entry of readdirSync(path, { withFileTypes: true })) {
+      const child = `${path}/${entry.name}`;
+      const status = lstatSync(child);
+      if (status.isSymbolicLink())
+        throw new CiEvidenceWorkflowError('JUnit artifact contains a symbolic link');
+      if (status.isDirectory()) visit(child);
+      else if (status.isFile() && entry.name.endsWith('.xml')) files.push(readFileSync(child));
+    }
+  };
+  try {
+    visit(directory);
+  } catch (error) {
+    if (error instanceof CiEvidenceWorkflowError) throw error;
+    throw new CiEvidenceWorkflowError(
+      `required JUnit artifact directory ${directory} is unreadable`,
+    );
+  }
+  return files;
+}
+
+function expectedArtifacts(attempt: number): string[] {
+  return [
+    `junit-root-${attempt}`,
+    ...Array.from({ length: 7 }, (_, index) => `junit-tests-${index}-${attempt}`),
+  ];
+}
+
+function downloadedJUnitArtifacts(
+  directory: string,
+  attempt: number,
+): Record<string, Uint8Array[]> {
+  return Object.fromEntries(
+    expectedArtifacts(attempt).map((name) => [name, reportFiles(`${directory}/${name}`)]),
+  );
+}
+
 export function createCiEvidenceWorkflowReceipt(input: {
   environment: CiEvidenceWorkflowEnvironment;
   eventPayload: unknown;
@@ -239,6 +323,8 @@ export function createCiEvidenceWorkflowReceipt(input: {
           planDigest,
           workflowRevision,
         });
+  const attempt = requiredPositiveInteger(environment.GITHUB_RUN_ATTEMPT, 'GITHUB_RUN_ATTEMPT');
+  const reportDirectory = environment.CI_EVIDENCE_ARTIFACT_DIRECTORY;
   return {
     repository: environment.GITHUB_REPOSITORY,
     event,
@@ -251,8 +337,16 @@ export function createCiEvidenceWorkflowReceipt(input: {
     checkedRevision,
     checkedTree,
     runId: requiredPositiveInteger(environment.GITHUB_RUN_ID, 'GITHUB_RUN_ID'),
-    attempt: requiredPositiveInteger(environment.GITHUB_RUN_ATTEMPT, 'GITHUB_RUN_ATTEMPT'),
+    attempt,
     jobs,
+    ...(reportDirectory === undefined
+      ? {}
+      : {
+          reports: validateJUnitArtifacts(
+            downloadedJUnitArtifacts(reportDirectory, attempt),
+            expectedArtifacts(attempt),
+          ),
+        }),
   };
 }
 
@@ -305,6 +399,7 @@ if (import.meta.main) {
           VERIFICATION_BASE: process.env['VERIFICATION_BASE'],
           CI_EVIDENCE_NEEDS: process.env['CI_EVIDENCE_NEEDS'],
           CI_EVIDENCE_NOT_APPLICABLE: process.env['CI_EVIDENCE_NOT_APPLICABLE'],
+          CI_EVIDENCE_ARTIFACT_DIRECTORY: process.env['CI_EVIDENCE_ARTIFACT_DIRECTORY'],
         },
         eventPayload: readEventPayload(process.env['GITHUB_EVENT_PATH']),
         git,

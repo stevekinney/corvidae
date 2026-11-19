@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import {
   CiEvidenceWorkflowError,
   createCiEvidenceWorkflowReceipt,
+  validateJUnitArtifacts,
   type CiEvidenceWorkflowEnvironment,
 } from './ci-evidence-workflow.ts';
 
@@ -143,6 +144,10 @@ describe('CI evidence workflow producers', () => {
     expect(main).toContain('name: ci-evidence-receipt-${{ github.run_attempt }}');
     expect(main).not.toContain('printf \'{"requestKey"');
     expect(main).toContain('if-no-files-found: error');
+    expect(main).toContain('name: junit-root-${{ github.run_attempt }}');
+    expect(main).toContain('name: junit-tests-${{ strategy.job-index }}-${{ github.run_attempt }}');
+    expect(main).toContain('pattern: junit-*-${{ github.run_attempt }}');
+    expect(main).toContain('CI_EVIDENCE_ARTIFACT_DIRECTORY: ci-evidence-artifacts');
   });
 
   test('produces independent pull-request evidence with explicit browser non-applicability', () => {
@@ -150,5 +155,39 @@ describe('CI evidence workflow producers', () => {
     expect(pullRequest).toContain('CI_EVIDENCE_NEEDS: ${{ toJSON(needs) }}');
     expect(pullRequest).toContain('CI_EVIDENCE_NOT_APPLICABLE:');
     expect(pullRequest).toContain('name: ci-evidence-receipt-${{ github.run_attempt }}');
+  });
+});
+
+describe('validateJUnitArtifacts', () => {
+  const expected = [
+    'junit-root-2',
+    ...Array.from({ length: 7 }, (_, index) => `junit-tests-${index}-2`),
+  ];
+  const report = (body = '<testcase name="passes"/>') =>
+    new TextEncoder().encode(`<testsuite>${body}</testsuite>`);
+  const artifacts = () => Object.fromEntries(expected.map((name) => [name, [report()]]));
+
+  test('accepts every expected nonempty, passing JUnit artifact', () => {
+    expect(validateJUnitArtifacts(artifacts(), expected)).toEqual(
+      Object.fromEntries(expected.map((name) => [name, { reports: 1, testCases: 1 }])),
+    );
+  });
+
+  test('rejects missing, empty, malformed, and failing required report bundles', () => {
+    const cases = [
+      (() => {
+        const value = artifacts();
+        delete value['junit-root-2'];
+        return value;
+      })(),
+      { ...artifacts(), 'junit-root-2': [] },
+      { ...artifacts(), 'junit-root-2': [new TextEncoder().encode('<testsuite>')] },
+      {
+        ...artifacts(),
+        'junit-root-2': [new TextEncoder().encode('<testsuite><failure/></testsuite>')],
+      },
+    ];
+    for (const value of cases)
+      expect(() => validateJUnitArtifacts(value, expected)).toThrow(CiEvidenceWorkflowError);
   });
 });
