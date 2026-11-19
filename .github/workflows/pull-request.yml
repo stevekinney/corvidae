@@ -19,6 +19,9 @@ env:
   TURBO_SCM_BASE: origin/${{ github.base_ref }}
   TURBO_TELEMETRY_DISABLED: '1'
   DO_NOT_TRACK: '1'
+  # Vercel Remote Cache, shared with the owner's machine; empty (a fork), remote caching is off.
+  TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
+  TURBO_TEAM: ${{ vars.TURBO_TEAM }}
 
 jobs:
   static:
@@ -142,6 +145,8 @@ jobs:
     name: Browser suites
     needs: browser-selection
     uses: ./.github/workflows/browser-suites.yml
+    # The called workflow reads TURBO_TOKEN for the remote cache.
+    secrets: inherit
     with:
       fixtures: ${{ needs.browser-selection.outputs.fixtures == 'true' }}
       interborough: ${{ needs.browser-selection.outputs.interborough == 'true' }}

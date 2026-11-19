@@ -1,5 +1,6 @@
-# Persists Turborepo's local task cache (`.turbo/cache`) across runs, with no remote cache and no
-# secret. This half restores: a runner takes the newest cache saved under the same job name (a
+# Persists Turborepo's local task cache (`.turbo/cache`) across runs. The workflows, not this
+# action, hold the Vercel Remote Cache credentials shared with the owner's machine; without them (a
+# fork, or before they are set) remote caching is off and this cache alone serves. This half restores: a runner takes the newest cache saved under the same job name (a
 # branch run reads the default branch's caches). Its pair, `../save`, writes the cache under the
 # commit the job ran. A hit still needs Turborepo's own task hash to match, so a restored entry
 # never answers a task whose inputs changed.
@@ -32,6 +33,10 @@ runs:
         # Turborepo's default, written out so a change of its default cannot move the cache away
         # from the path this action saves.
         echo "TURBO_CACHE_DIR=$GITHUB_WORKSPACE/.turbo/cache" >> "$GITHUB_ENV"
+        # Test tasks hash this (turbo.json `env`), so a test result from another platform, such as
+        # a macOS run through the shared remote cache, never stands in for this runner's. Lint,
+        # type-check and generated files leave it out and are shared across platforms.
+        echo "CORVIDAE_TEST_PLATFORM=${RUNNER_OS}-${RUNNER_ARCH}" >> "$GITHUB_ENV"
     - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: .turbo/cache
