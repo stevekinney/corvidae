@@ -151,7 +151,8 @@ async function requireReadableForkAndSource(
   if (!(await authorizeWorkflowRead({ principal, workflowId: input.workflowId }))) {
     throw new WorkflowNotFoundError(input.workflowId);
   }
-  const sourceWorkflowId = (await engine.get(input.workflowId))?.forkedFrom?.workflowId;
+  const forkState = await engine.get(input.workflowId);
+  const sourceWorkflowId = forkState?.forkedFrom?.workflowId;
   if (sourceWorkflowId === undefined) return;
   if (!(await authorizeWorkflowRead({ principal, workflowId: sourceWorkflowId }))) {
     throw new WorkflowNotFoundError(input.workflowId);

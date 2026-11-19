@@ -16,7 +16,7 @@ import type { BatchOperation } from '@lostgradient/storage';
 import { KEYS } from '../../storage/keys.ts';
 import { decode, encode } from '../codec.ts';
 import { readRetryingActivity } from '../context/activity-retry-state.ts';
-import type { Checkpoint, WorkflowRetrying } from '../types.ts';
+import type { Checkpoint, WorkflowRetrying, WorkflowState } from '../types.ts';
 import type { EngineInternals } from './internals.ts';
 
 function sameRetrying(
@@ -40,6 +40,26 @@ export function buildActivityRetryingOperations(
   const next = readRetryingActivity(nextCheckpoint.locals);
   if (sameRetrying(previous, next)) return [];
   return [activityRetryingOperation(workflowId, next, nextCheckpoint.workflowExecutionToken)];
+}
+
+/**
+ * The operation `engine.retryFailed` writes when it reactivates a failed run. The failed run's last
+ * checkpoint, the one the re-run resumes from, still names the activity that failed (no checkpoint
+ * commits after a failure), so the re-run's first commit sees no change and would write no record.
+ * The re-run is an attempt 2 or later whenever that checkpoint names one, so the record says so
+ * from the moment the run is running again; a checkpoint that names none clears what the failure
+ * left behind.
+ */
+export function reactivationRetryingOperation(
+  workflowId: string,
+  checkpoint: Pick<Checkpoint, 'locals'>,
+  reactivatedState: Pick<WorkflowState, 'workflowExecutionToken'>,
+): BatchOperation {
+  return activityRetryingOperation(
+    workflowId,
+    readRetryingActivity(checkpoint.locals),
+    reactivatedState.workflowExecutionToken,
+  );
 }
 
 /**

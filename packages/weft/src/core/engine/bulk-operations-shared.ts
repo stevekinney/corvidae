@@ -348,8 +348,9 @@ async function persistBulkOperationAuditEvent(
   };
 
   // A disposed engine issues no new writes: the bulk operation's own writes
-  // already landed, and skipping the record matches a bulk operation that fails
-  // part-way. One already issued is tracked so async disposal lets it land.
+  // already landed, and the record is skipped (a purge that failed part-way adds this
+  // refusal to the failures it throws). One already issued is tracked so async
+  // disposal lets it land.
   if (internals.disposed) throw new EngineDisposedError();
   await trackPurgeWrite(
     internals,
