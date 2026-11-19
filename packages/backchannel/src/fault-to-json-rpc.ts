@@ -29,6 +29,7 @@
  * decides the wire shape.
  */
 
+import { FAULT_CODE_RETRYABLE, type FaultCode } from './fault-code.ts';
 import {
   FAULT_CODE_TO_HTTP_STATUS,
   FAULT_CODE_TO_JSON_RPC_CODE,
@@ -60,6 +61,25 @@ export function faultToJsonRpcError(unsafeFault: OperationFault): JsonRpcError {
     ...(remediation === undefined ? {} : { remediation }),
   };
   return { code, message: fault.message, data };
+}
+
+/**
+ * The `error.data` of a JSON-RPC error a transport answers itself, before or beside the operation
+ * pipeline (a frame too large, a refused first frame, an unknown subscription): the envelope keys
+ * `faultToJsonRpcError` writes (`weftCode`, `httpStatus`, `retryable`) for the fault `code`, with
+ * `payload` as the fault's own fields. A transport that writes the keys by hand drops the ones a
+ * later field adds, so every such error builds its `data` here.
+ */
+export function faultErrorData(
+  code: FaultCode,
+  payload: Record<string, unknown> = {},
+): Record<string, unknown> {
+  return {
+    ...payload,
+    weftCode: code,
+    httpStatus: FAULT_CODE_TO_HTTP_STATUS[code],
+    retryable: FAULT_CODE_RETRYABLE[code],
+  };
 }
 
 /**

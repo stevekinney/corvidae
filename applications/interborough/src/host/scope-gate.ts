@@ -145,7 +145,8 @@ function forbiddenMessage(id: unknown, scope: ApiScope): Record<string, unknown>
     error: {
       code: FORBIDDEN_CODE,
       message: reason,
-      data: { reason, scope, weftCode: 'Forbidden', httpStatus: 403 },
+      // `retryable` as every `Forbidden` fault says it: the session must hold the scope first.
+      data: { reason, scope, weftCode: 'Forbidden', httpStatus: 403, retryable: false },
     },
   };
 }

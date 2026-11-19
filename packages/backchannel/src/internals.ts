@@ -32,7 +32,7 @@ export { isDiscoverable } from './discovery-filter.ts';
 export type { EventSelector } from './event-selector.ts';
 export { FAULT_CODE_RETRYABLE, isFaultRetryable } from './fault-code.ts';
 export { faultToHttpResponse } from './fault-to-http.ts';
-export { faultToJsonRpcError } from './fault-to-json-rpc.ts';
+export { faultErrorData, faultToJsonRpcError } from './fault-to-json-rpc.ts';
 export {
   authContextFromAuthResult,
   unauthorizedResponse,
