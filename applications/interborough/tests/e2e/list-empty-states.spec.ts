@@ -2,43 +2,72 @@
  * One empty state for every list page (owner report, 2026-11-19): each list in the sidebar, with
  * nothing in it, keeps its page header and its labelled create action, and shows one Cinder
  * `EmptyState` in the `page` layout under it, top-aligned at the same offset on every page, in no
- * box, with the page's own sidebar icon, buttons rather than text links, plain words, and no count,
- * search, filter or segments over nothing. Each is read at 1280 and 375 pixels in both themes, and
- * captured for the design review.
+ * box, with the page's own sidebar icon, buttons rather than text links, plain words held to about
+ * 60 characters, and no count, search, filter or segments over nothing. Each page is read at 1920,
+ * 1280, 768 and 375 pixels in both themes and captured for the design review; one more case per
+ * width and theme measures the offset under the header across the pages. `src/app/list-page-empty.test.ts`
+ * walks the same pages in-process and holds the list to the sidebar's.
  *
- * The showcase host holds the sample world, so every list is emptied by rewriting what the host
- * answers: each Bureau `*.list` result (and the catalog's tools) loses its items, the engine's
- * schedules are none, and the workflows the Bureau lists keep only the code types, so what remains is
- * the types Interborough runs itself (as `26-workflows.spec.ts` does).
+ * Every list is emptied by rewriting what the host answers: each Bureau `*.list` result (and the
+ * catalog's tools) loses its items, and the engine's schedules are none. Workflows are read on the
+ * host whose console is the Bureau's own engine, keeping only the code types the Bureau lists, so
+ * what remains is the types Interborough runs itself (as `26-workflows.spec.ts` does).
  */
 import type { Page, Route } from '@playwright/test';
 
 import { SAMPLE_TIME_ZONE } from '../../fixtures/sample-now.ts';
-import { DESTINATIONS } from '../../src/app/shell/destinations.ts';
-import type { ViewName } from '../../src/app/views.ts';
 import { isBureauCall } from './bureau-answer-support.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
-import { E2E_SHOWCASE_URL } from './e2e-constants.ts';
+import { E2E_BUREAU_URL, E2E_SHOWCASE_URL } from './e2e-constants.ts';
 import { expect, test } from './fixtures.ts';
 
-test.use({ baseURL: E2E_SHOWCASE_URL, timezoneId: SAMPLE_TIME_ZONE });
-
 const SOURCE = 'list-empty-states.spec.ts';
-const WIDTHS = [1280, 375] as const;
+const WIDTHS = [1920, 1280, 768, 375] as const;
 const THEMES = ['light', 'dark'] as const;
+/** The narrowest width at which the sidebar, and so its icons, is on screen. */
+const SIDEBAR_WIDTH = 1024;
 
-/** Every list page in the sidebar and its create action; Reviews and Checks make nothing. */
-const LIST_PAGES: readonly { view: ViewName; path: string; create: string | null }[] = [
-  { view: 'chat', path: '/chats', create: 'New chat' },
-  { view: 'reviews', path: '/reviews', create: null },
-  { view: 'runs', path: '/runs', create: 'Start run' },
-  { view: 'checks', path: '/checks', create: null },
-  { view: 'agents', path: '/agents', create: 'New agent' },
-  { view: 'workflows', path: '/workflows', create: 'New workflow' },
-  { view: 'schedules', path: '/schedules', create: 'New schedule' },
-  { view: 'goals', path: '/goals', create: 'New goal' },
-  { view: 'capabilities', path: '/capabilities', create: 'Connect tools' },
-  { view: 'hooks', path: '/hooks', create: 'New hook' },
+interface ListPage {
+  readonly path: string;
+  /** The view's name, as the empty state's `data-list-empty` says it. */
+  readonly view: string;
+  /** The header's create action, or `null` for a list that makes nothing (Reviews, Checks). */
+  readonly create: string | null;
+  /** The host the page is read on. */
+  readonly host: string;
+  /** Whether its state sits right under a page header (not Chat's pane, not under Capabilities' tabs). */
+  readonly measured: boolean;
+}
+
+const LIST_PAGES: readonly ListPage[] = [
+  { path: '/chats', view: 'chat', create: 'New chat', host: E2E_SHOWCASE_URL, measured: false },
+  { path: '/reviews', view: 'reviews', create: null, host: E2E_SHOWCASE_URL, measured: true },
+  { path: '/runs', view: 'runs', create: 'Start run', host: E2E_SHOWCASE_URL, measured: true },
+  { path: '/checks', view: 'checks', create: null, host: E2E_SHOWCASE_URL, measured: true },
+  { path: '/agents', view: 'agents', create: 'New agent', host: E2E_SHOWCASE_URL, measured: true },
+  {
+    path: '/workflows',
+    view: 'workflows',
+    create: 'New workflow',
+    host: E2E_BUREAU_URL,
+    measured: true,
+  },
+  {
+    path: '/schedules',
+    view: 'schedules',
+    create: 'New schedule',
+    host: E2E_SHOWCASE_URL,
+    measured: true,
+  },
+  { path: '/goals', view: 'goals', create: 'New goal', host: E2E_SHOWCASE_URL, measured: true },
+  {
+    path: '/capabilities',
+    view: 'capabilities',
+    create: 'Connect tools',
+    host: E2E_SHOWCASE_URL,
+    measured: false,
+  },
+  { path: '/hooks', view: 'hooks', create: 'New hook', host: E2E_SHOWCASE_URL, measured: true },
 ];
 
 type JsonRecord = Record<string, unknown>;
@@ -48,6 +77,7 @@ function emptied(result: JsonRecord, method: string): JsonRecord {
   const next: JsonRecord = {};
   for (const [key, value] of Object.entries(result)) {
     if (method === 'bureau.workflows.list' && key === 'workflows' && Array.isArray(value)) {
+      // The code workflows plugins contributed stay: the page leaves them out of its rows.
       next[key] = value.filter(
         (entry) => typeof entry === 'object' && entry !== null && 'kind' in entry,
       );
@@ -69,10 +99,8 @@ async function emptyEveryList(page: Page): Promise<void> {
   await page.route(isBureauCall, async (route: Route) => {
     const body = JSON.parse(route.request().postData() ?? '{}') as { method?: string };
     const method = body.method ?? '';
-    if (
-      !method.startsWith('bureau.') ||
-      !(method.endsWith('.list') || method.endsWith('.catalog'))
-    ) {
+    const lists = method.endsWith('.list') || method === 'bureau.agents.catalog';
+    if (!method.startsWith('bureau.') || !lists) {
       await route.fallback();
       return;
     }
@@ -89,92 +117,92 @@ async function emptyEveryList(page: Page): Promise<void> {
   );
 }
 
-/** The lucide name of an icon, such as `lucide-target`. */
-async function iconName(page: Page, selector: string): Promise<string | undefined> {
-  const classes = await page.locator(selector).first().getAttribute('class');
-  return (classes ?? '')
-    .split(/\s+/)
-    .find((name) => name.startsWith('lucide-') && name !== 'lucide-icon');
+/** Opens `list` with nothing in it, at `width` in `theme`, and answers its empty state. */
+async function openEmpty(
+  page: Page,
+  list: ListPage,
+  width: number,
+  theme: 'light' | 'dark',
+): Promise<void> {
+  await page.emulateMedia({ colorScheme: theme });
+  await page.setViewportSize({ width, height: 900 });
+  await emptyEveryList(page);
+  await page.goto(new URL(list.path, list.host).toString());
+  await expect(page.locator(`main [data-list-empty="${list.view}"]`)).toBeVisible();
 }
 
-test('walks every list in the sidebar', () => {
-  const lists = DESTINATIONS.map((destination) => destination.view).filter(
-    (view) => view !== 'home' && view !== 'health' && view !== 'settings',
-  );
-  expect(LIST_PAGES.map((list) => list.view).toSorted()).toEqual(lists.toSorted());
-});
+/** The lucide name of the first icon `selector` matches, such as `lucide-target`. */
+async function iconName(page: Page, selector: string): Promise<string | undefined> {
+  const icon = page.locator(selector).first();
+  if ((await icon.count()) === 0) return undefined;
+  const classes = (await icon.getAttribute('class')) ?? '';
+  return classes.split(/\s+/).find((name) => name.startsWith('lucide-') && name !== 'lucide-icon');
+}
 
-for (const width of WIDTHS) {
-  for (const theme of THEMES) {
-    test(`every list page's empty state is the one pattern, at ${String(width)} pixels, ${theme}`, async ({
-      page,
-      checkA11y,
-    }) => {
-      await page.emulateMedia({ colorScheme: theme });
-      await page.setViewportSize({ width, height: 900 });
-      await emptyEveryList(page);
-      /** How far below its page header each list's state starts. */
-      const offsets = new Map<string, number>();
+test.use({ timezoneId: SAMPLE_TIME_ZONE });
 
-      for (const list of LIST_PAGES) {
-        await page.goto(list.path);
+for (const list of LIST_PAGES) {
+  for (const width of WIDTHS) {
+    for (const theme of THEMES) {
+      test(`${list.path} with nothing in it is the one list-page empty state, at ${String(width)} pixels, ${theme}`, async ({
+        page,
+        checkA11y,
+      }) => {
+        await openEmpty(page, list, width, theme);
         const main = page.locator('main');
         const state = main.locator(`[data-list-empty="${list.view}"]`);
-        await expect(state, `${list.path} shows its empty state`).toBeVisible();
 
         // The header stays, with its create action as a labelled primary button.
         await expect(main.getByRole('heading', { level: 1 })).toHaveCount(1);
         if (list.create !== null) {
-          const header =
-            list.view === 'chat'
-              ? main.locator('.ib-chats__title')
-              : main.locator('.cinder-page-header');
+          const header = main.locator(
+            list.view === 'chat' ? '.ib-chats__title' : '.cinder-page-header',
+          );
           const create = header.locator('.cinder-button').filter({ hasText: list.create });
           await expect(create).toBeVisible();
+          await expect(create).toHaveText(list.create);
           await expect(create).toHaveAttribute('data-cinder-variant', 'primary');
           await expect(create).not.toHaveAttribute('data-cinder-icon-only', /.*/);
         }
 
-        // One state in the page layout, in no box, with the sidebar's icon for the page.
+        // One state in the page layout, with nothing around it drawing a border.
         await expect(main.locator('.cinder-empty-state')).toHaveCount(1);
         await expect(state).toHaveAttribute('data-cinder-layout', 'page');
         await expect(state).not.toHaveAttribute('data-cinder-bordered', /.*/);
-        const border = await state.evaluate((element) => {
+        const bordered = await state.evaluate((element) => {
           for (let node: Element | null = element; node !== null; node = node.parentElement) {
-            if (node.tagName === 'MAIN') return 'none';
+            if (node.tagName === 'MAIN') return null;
             const style = getComputedStyle(node);
             if (style.borderTopStyle !== 'none' && Number.parseFloat(style.borderTopWidth) > 0) {
               return node.className;
             }
           }
-          return 'none';
+          return null;
         });
-        expect(border, `${list.path}: nothing around the state draws a border`).toBe('none');
-        const navigation = await iconName(
-          page,
-          `nav a[href="${DESTINATIONS.find((entry) => entry.view === list.view)?.path ?? ''}"] svg`,
-        );
-        if (navigation !== undefined) {
+        expect(bordered, 'nothing around the state draws a border').toBeNull();
+
+        // The page's own icon, the one its sidebar item shows, where the sidebar is on screen.
+        if (width >= SIDEBAR_WIDTH) {
+          const navigation = await iconName(page, `nav a[href="${list.path}"] svg`);
+          expect(navigation, 'the sidebar item has an icon').toBeDefined();
           expect(
             await iconName(page, `[data-list-empty="${list.view}"] .cinder-empty-state-icon svg`),
           ).toBe(navigation);
         }
 
-        // The words hold a reading measure, and say nothing of paths or tool ids.
-        const description = state.locator('.cinder-empty-state-description');
-        const measure = await description.evaluate((element) => {
-          const style = getComputedStyle(element);
-          const probe = document.createElement('span');
-          probe.style.font = style.font;
-          probe.textContent = '0';
-          document.body.append(probe);
-          const zero = probe.getBoundingClientRect().width;
-          probe.remove();
-          return element.getBoundingClientRect().width / zero;
-        });
-        expect(measure, `${list.path}: the sentence holds about 60 characters`).toBeLessThanOrEqual(
-          61,
-        );
+        // The sentence holds a reading measure, and the words say nothing of paths or tool ids.
+        const characters = await state
+          .locator('.cinder-empty-state-description')
+          .evaluate((element) => {
+            const probe = document.createElement('span');
+            probe.style.font = getComputedStyle(element).font;
+            probe.textContent = '0';
+            document.body.append(probe);
+            const zero = probe.getBoundingClientRect().width;
+            probe.remove();
+            return element.getBoundingClientRect().width / zero;
+          });
+        expect(characters, 'the sentence holds about 60 characters').toBeLessThanOrEqual(61);
         const words = (await state.textContent()) ?? '';
         expect(words).not.toMatch(/(^|\s)[~.]?\/\w/);
         expect(words).not.toContain('bureau:');
@@ -185,29 +213,32 @@ for (const width of WIDTHS) {
         await expect(main.getByRole('searchbox')).toHaveCount(0);
         await expect(main.locator('.cinder-segmented-control')).toHaveCount(0);
 
-        // Chat's list is a pane with its own header, and Capabilities has its tabs under the header.
-        if (list.view !== 'chat' && list.view !== 'capabilities') {
-          const headerBox = await main.locator('.cinder-page-header').first().boundingBox();
-          const stateBox = await state.boundingBox();
-          if (headerBox !== null && stateBox !== null) {
-            offsets.set(list.path, Math.round(stateBox.y - (headerBox.y + headerBox.height)));
-          }
-        }
-
         await captureForDesignReview(page, {
           route: list.path,
           state: `empty (${theme})`,
           source: SOURCE,
         });
         await checkA11y(`${list.path} empty at ${String(width)}px, ${theme}`);
-      }
+      });
+    }
+  }
+}
 
-      // Top-aligned at one offset under the header on every page.
-      const distinct = new Set(offsets.values());
-      expect(
-        distinct.size,
-        `every state starts as far under its header: ${JSON.stringify([...offsets])}`,
-      ).toBe(1);
+for (const width of WIDTHS) {
+  for (const theme of THEMES) {
+    test(`every list's empty state starts the same distance under its header, at ${String(width)} pixels, ${theme}`, async ({
+      page,
+    }) => {
+      const offsets: Record<string, number> = {};
+      for (const list of LIST_PAGES.filter((candidate) => candidate.measured)) {
+        await openEmpty(page, list, width, theme);
+        const header = await page.locator('main .cinder-page-header').first().boundingBox();
+        const state = await page.locator(`main [data-list-empty="${list.view}"]`).boundingBox();
+        if (header === null || state === null)
+          throw new Error(`${list.path} has no header or state`);
+        offsets[list.path] = Math.round(state.y - (header.y + header.height));
+      }
+      expect(new Set(Object.values(offsets)).size, JSON.stringify(offsets)).toBe(1);
     });
   }
 }

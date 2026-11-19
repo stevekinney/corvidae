@@ -576,11 +576,15 @@ describe('the hooks list', () => {
       ),
     );
 
-    // The header's secondary "+" and the state's primary button are both named New hook.
+    // The header's and the state's New hook, both labelled primaries (owner report, 2026-11-19).
     const buttons = view.getAllByRole('button', { name: HOOKS_COPY.newAction });
     expect(buttons.length).toBe(2);
+    for (const button of buttons) {
+      expect(button.getAttribute('data-cinder-variant')).toBe('primary');
+      expect(button.textContent?.trim()).toBe(HOOKS_COPY.newAction);
+    }
     const primary = buttons.filter(
-      (button) => button.getAttribute('data-cinder-variant') === 'primary',
+      (button) => !button.classList.contains('cinder-page-header__create'),
     );
     expect(primary.length).toBe(1);
     await fireEvent.click(primary[0]!);

@@ -94,8 +94,11 @@ const headerCreate = (container: HTMLElement): HTMLElement => {
   if (button === null) throw new Error('the page header has no create action');
   return button;
 };
+/** The primary buttons under the header (whose Start run is a labelled primary of its own). */
 const primaryButtons = (container: HTMLElement): HTMLElement[] => [
-  ...container.querySelectorAll<HTMLElement>('[data-cinder-variant="primary"]'),
+  ...container.querySelectorAll<HTMLElement>(
+    '[data-cinder-variant="primary"]:not(.cinder-page-header__create)',
+  ),
 ];
 const toolbar = (container: HTMLElement): Element | null =>
   container.querySelector(`[aria-label="${TASK_COPY.filtersLabel}"]`);
@@ -112,8 +115,10 @@ describe('nothing run yet (rows 52v and 52w)', () => {
     expect(toolbar(view.container)).toBeNull();
     expect(view.container.querySelectorAll('[data-run]')).toHaveLength(0);
 
-    // The header's "+" stays secondary, and Start run, the state's primary, is the only one.
-    expect(headerCreate(view.container).getAttribute('data-cinder-variant')).toBe('secondary');
+    // The header's Start run is a labelled primary (owner report, 2026-11-19), and the state repeats
+    // it as its one primary.
+    expect(headerCreate(view.container).getAttribute('data-cinder-variant')).toBe('primary');
+    expect(headerCreate(view.container).textContent?.trim()).toBe(TASK_COPY.startRun);
     const primaries = primaryButtons(view.container);
     expect(primaries).toHaveLength(1);
     expect(primaries[0]?.textContent?.trim()).toBe(TASK_COPY.startRun);
@@ -121,7 +126,8 @@ describe('nothing run yet (rows 52v and 52w)', () => {
     const chat = view.getByRole('link', { name: TASK_COPY.empty.chatAction });
     expect(chat.getAttribute('data-cinder-variant')).toBe('secondary');
     expect(chat.getAttribute('href')).toBe(TASK_COPY.empty.chatPath);
-    expect(chat.querySelector('svg')).not.toBeNull();
+    // Every list page's secondary is its words alone; only the create action carries the "+".
+    expect(chat.querySelector('svg')).toBeNull();
 
     // An accent disc with the play glyph: the first-use kind, not a neutral one.
     const empty = state.closest('.cinder-empty-state');
@@ -144,7 +150,7 @@ describe('filtered to nothing (rows 10q, 10r, 12r, 12s, 12t, 52x and 52y)', () =
     expect(
       view.getByRole('button', { name: `Remove filter: ${TASK_COPY.agentLabel}: Model switcher` }),
     ).not.toBeNull();
-    expect(headerCreate(view.container).getAttribute('data-cinder-variant')).toBe('secondary');
+    expect(headerCreate(view.container).getAttribute('data-cinder-variant')).toBe('primary');
 
     // A neutral disc with a funnel, and the secondary Clear filters as the only action.
     const state = title.closest('.cinder-empty-state') as HTMLElement;

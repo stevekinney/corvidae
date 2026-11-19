@@ -478,7 +478,7 @@ describe('the tool table', () => {
 });
 
 describe('connecting tools from the Sources tab', () => {
-  test('has one primary button when no source is connected, and a secondary "+" in the header (rows 31z, 32a)', async () => {
+  test('has Connect tools in the empty state and as the header’s labelled primary when no source is connected (rows 31z, 32a)', async () => {
     serve({ sources: [] });
     landAt('/capabilities?tab=sources');
     const { container, findByText } = mount();
@@ -491,13 +491,14 @@ describe('connecting tools from the Sources tab', () => {
         button.textContent?.trim() === copy.source.connect.action ||
         button.getAttribute('aria-label') === copy.source.connect.action,
     );
+    // The header's and the empty state's Connect tools, both labelled primaries with the same words
+    // (owner report, 2026-11-19).
     expect(buttons.map((button) => button.getAttribute('data-cinder-variant'))).toEqual([
-      'secondary',
+      'primary',
       'primary',
     ]);
-    // The header's is icon only; the empty state's is the one with words.
-    expect(buttons[0]?.hasAttribute('data-cinder-icon-only')).toBe(true);
-    expect(container.querySelectorAll('[data-cinder-variant="primary"]')).toHaveLength(1);
+    expect(buttons[0]?.hasAttribute('data-cinder-icon-only')).toBe(false);
+    expect(buttons[0]?.classList.contains('cinder-page-header__create')).toBe(true);
   });
 
   test('opens the same Connect tools page from the empty state and from the header (row 33b)', async () => {
@@ -532,6 +533,7 @@ describe('connecting tools from the Sources tab', () => {
         button.getAttribute('aria-label') === copy.source.connect.action,
     );
     expect(buttons).toHaveLength(1);
-    expect(buttons[0]?.getAttribute('data-cinder-variant')).toBe('secondary');
+    expect(buttons[0]?.getAttribute('data-cinder-variant')).toBe('primary');
+    expect(buttons[0]?.classList.contains('cinder-page-header__create')).toBe(true);
   });
 });

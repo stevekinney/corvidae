@@ -131,14 +131,11 @@ describe('every list page’s empty state', () => {
         },
       });
 
-      const state = await waitFor(
-        () => {
-          const found = container.querySelector<HTMLElement>(`[data-list-empty="${page.view}"]`);
-          if (found === null) throw new Error(`no empty state on ${page.path} yet`);
-          return found;
-        },
-        { timeout: 5_000 },
-      );
+      const state = await waitFor(() => {
+        const found = container.querySelector<HTMLElement>(`[data-list-empty="${page.view}"]`);
+        if (found === null) throw new Error(`no empty state on ${page.path} yet`);
+        return found;
+      });
       const frame = container.querySelector(`.weft-view[data-view="${page.view}"]`);
 
       // The header stays: the page's title as its one level-one heading.
@@ -166,9 +163,9 @@ describe('every list page’s empty state', () => {
       expect(state.closest('[data-cinder-bordered], .cinder-card')).toBeNull();
 
       // The page's own icon, the one its sidebar item shows.
-      expect(iconName(state.querySelector('.cinder-empty-state-icon svg'))).toBe(
-        navigationIconName(page.view),
-      );
+      const navigation = navigationIconName(page.view);
+      expect(navigation).toBeDefined();
+      expect(iconName(state.querySelector('.cinder-empty-state-icon svg'))).toBe(navigation);
 
       // Buttons, never text links; the first is the create action, in the header's words.
       const actions = [

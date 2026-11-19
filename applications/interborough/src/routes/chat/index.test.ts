@@ -135,8 +135,9 @@ describe('a chat that cannot be loaded (design rows 17c, 17d, 17e)', () => {
     expect(container.querySelector('[data-chat-availability="error"]')).not.toBeNull();
     expect(container.querySelector('h1')?.textContent).toBe(CHAT_COPY.load.crumb);
     expect(queryComposer(container)).toBeNull();
-    // The list beside it stays live.
-    expect(container.querySelector('input[type="search"], [role="searchbox"]')).not.toBeNull();
+    // The list beside it stays live: it lists no chat here, so it offers New chat and no search
+    // over nothing (owner report, 2026-11-19).
+    expect(container.querySelector('a[href="/chats/new"]')).not.toBeNull();
     expect(breadcrumbTrail('/chats/session-1').map((item) => item.label)).toEqual([
       'Chat',
       CHAT_COPY.load.crumb,

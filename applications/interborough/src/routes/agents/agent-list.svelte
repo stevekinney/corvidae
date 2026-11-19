@@ -37,7 +37,7 @@
     StackedListItem,
     type FilterSegment,
   } from '@lostgradient/cinder';
-  import { Plug, Plus } from '@lucide/svelte';
+  import { Bot, Plug, Plus } from '@lucide/svelte';
   import { createQuery, useQueryClient } from '@tanstack/svelte-query';
 
   import { getConnection } from '../../app/connection.svelte.ts';
@@ -356,8 +356,9 @@
         />
       </ListPageEmpty>
     {:else if onlyHeld}
+      <!-- Nothing can run: the list page's empty state too, in its one layout with the Agents icon. -->
       <EmptyState
-        bordered
+        layout="page"
         kind="disabled"
         title={AGENTS_COPY.onlyUnavailable.title}
         description={AGENTS_COPY.onlyUnavailable.description(
@@ -365,7 +366,9 @@
           heldPlugins.map((plugin) => plugin.title),
         )}
         headingLevel={2}
+        data-list-empty="agents"
       >
+        {#snippet icon()}<Bot aria-hidden="true" />{/snippet}
         {#snippet action()}
           {@render enableAction('primary')}
           {@render newAgentAction('secondary')}

@@ -127,13 +127,18 @@
 
 /* ── The list's status-first rows and its empty state ───── */
 
-/* The region that holds the page under its header lays out as the page does, at the list pages'
-   rhythm, so the first-use state sits at the same offset under the header as on every list page. */
+/* The region that holds the page under its header lays out as the page does. */
 .ib-workflows__body {
   display: flex;
   flex-direction: column;
-  gap: var(--cinder-space-4);
+  gap: var(--cinder-space-3);
   min-width: 0;
+}
+
+/* The first-use state sits at the list pages' rhythm under the header, the same offset as on every
+   list page (owner report, 2026-11-19). */
+.ib-workflows__body:has(> [data-list-empty]) {
+  gap: var(--cinder-space-4);
 }
 
 /* A workflow with no title is its identifier alone, bold and monospaced. */

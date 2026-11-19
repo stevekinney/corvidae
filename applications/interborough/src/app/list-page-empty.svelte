@@ -59,6 +59,10 @@
 
 {#snippet plus()}<Plus aria-hidden="true" />{/snippet}
 
+{#snippet pageIcon()}
+  {#if Icon}<Icon aria-hidden="true" />{/if}
+{/snippet}
+
 <EmptyState
   layout="page"
   {kind}
@@ -67,10 +71,7 @@
   {description}
   {actions}
   {...children === undefined ? {} : { children }}
+  {...Icon === undefined ? {} : { icon: pageIcon }}
   data-list-empty={view}
   data-testid={testId}
->
-  {#snippet icon()}
-    {#if Icon}<Icon aria-hidden="true" />{/if}
-  {/snippet}
-</EmptyState>
+/>
