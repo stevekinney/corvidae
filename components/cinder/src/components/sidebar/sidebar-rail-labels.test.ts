@@ -63,9 +63,10 @@ describe('Sidebar railLabels (COR-2315)', () => {
       sidebarCss.match(/> \.cinder-side-navigation-item__label\s*\{[^}]*\}/)?.[0] ?? '';
     expect(labelRule).not.toContain('text-overflow: ellipsis');
     expect(labelRule).toContain('white-space: normal');
-    // The group break is a margin and a padding of one step each side of the hairline.
+    // The group break is a margin and a padding of one step each side of the hairline; a group with
+    // no heading draws no hairline and takes its own gap instead.
     expect(sidebarCss).toMatch(
-      /\[data-cinder-rail-labels\]\s+\.cinder-side-navigation-group\[data-cinder-static\]\s*\{\s*margin-block-start:\s*calc\(\s*var\(--cinder-space-2\) - var\(--cinder-side-navigation-list-gap, var\(--cinder-space-1\)\)\s*\);\s*padding-block-start:\s*var\(--cinder-space-2\);/,
+      /\[data-cinder-rail-labels\]\s+\.cinder-side-navigation-group\[data-cinder-static\]:not\(\[data-cinder-label-hidden\]\)\s*\{\s*margin-block-start:\s*calc\(\s*var\(--cinder-space-2\) - var\(--cinder-side-navigation-list-gap, var\(--cinder-space-1\)\)\s*\);\s*padding-block-start:\s*var\(--cinder-space-2\);/,
     );
   });
 

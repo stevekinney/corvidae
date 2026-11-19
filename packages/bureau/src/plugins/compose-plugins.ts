@@ -908,8 +908,10 @@ const HOOK_PROBLEM_NAME_LIMIT = 100;
  * plugin. A hook is refused when its name is not text or repeats one before it, when its `reaction`
  * is not one of the plugin's own reactions, and when it lists no event kind or one that is not
  * published: a kind of the core catalog, or one a running plugin declares (`declaredKinds`, every
- * running plugin's, whatever the load order, plus this plugin's own). Everything else, the configuration and the scope, is checked as `hooks.create` checks it when
- * the hook is reconciled, and a refusal there is the same problem.
+ * running plugin's, whatever the load order, plus this plugin's own). Everything else, the
+ * configuration, the scope, and a kind of this plugin's own (which its reaction never runs on), is
+ * checked as `hooks.create` checks it when the hook is reconciled, and a refusal there is the same
+ * problem.
  */
 function declaredHooksOf(
   descriptor: BureauPluginEntry['descriptor'],

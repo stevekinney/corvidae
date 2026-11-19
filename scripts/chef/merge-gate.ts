@@ -76,6 +76,7 @@ import {
   loadDeliveryVerification,
   recordDeliveryMergeObservation,
   validateDeliveryApproval,
+  validateDeliveryCiEvidence,
   validateDeliveryVerification,
   type DeliveryVerification,
   type DeliveryVerificationDependencies,
@@ -335,6 +336,9 @@ async function mergeGateCore(
     partial.verification,
   );
   if (verificationProblem !== undefined) return fail('verification', verificationProblem);
+  const ciEvidenceProblem = await validateDeliveryCiEvidence(verification, partial.verification);
+  if (ciEvidenceProblem !== undefined) return fail('verification', ciEvidenceProblem);
+
   if (options.dryRun) return report;
 
   // 5. comment

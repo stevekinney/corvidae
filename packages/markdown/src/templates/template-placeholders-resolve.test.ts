@@ -551,7 +551,10 @@ describe('resolveTemplatePlaceholders Markdown interaction caveats', () => {
   });
 
   it('never scans tokens inside dollar-delimited inline math, even in strict mode', () => {
-    const template = 'Was ${{old}}, now ${{new}}.';
+    // `${{old}}, now $` cannot be math: the closing dollar is followed by a
+    // digit, so the dollar rule keeps both dollars literal and `{{old}}` fills.
+    // `${{new}}.` stays math because its closing dollar is not followed by one.
+    const template = 'Was ${{old}}, now $2 and $x{{new}}$.';
 
     expect(
       resolveTemplatePlaceholders(
@@ -559,7 +562,7 @@ describe('resolveTemplatePlaceholders Markdown interaction caveats', () => {
         { old: '1', new: '2' },
         { ...declare('old', 'new'), unresolved: 'error' },
       ),
-    ).toEqual({ text: 'Was ${{old}}, now $2.', issues: [] });
+    ).toEqual({ text: 'Was $1, now $2 and $x{{new}}$.', issues: [] });
   });
 
   it('keeps ASCII letters and digits, so values can combine with adjacent template syntax', () => {

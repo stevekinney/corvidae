@@ -119,14 +119,12 @@ test.describe('on a desktop', () => {
     await expect(name.locator('svg, img')).toHaveCount(0);
     await expect(page.getByRole('button', { name: 'Collapse sidebar' })).toBeVisible();
 
-    await expect(navigation(page).locator('.cinder-side-navigation-group__heading')).toHaveText([
-      'Work',
-      'Build',
-      'System',
-    ]);
-    await expect(
-      navigation(page).locator('.cinder-side-navigation-group__heading').first(),
-    ).toHaveCSS('font-size', '11.5px');
+    // The sections have names for a screen reader and no heading on the page.
+    await expect(navigation(page).locator('.cinder-side-navigation-group__heading')).toHaveCount(0);
+    for (const name of ['Work', 'Build', 'System']) {
+      await expect(navigation(page).getByRole('list', { name, exact: true })).toBeVisible();
+      await expect(navigation(page).getByText(name, { exact: true })).toHaveCount(0);
+    }
 
     const rows = [
       navigation(page).getByRole('link', { name: 'Agents' }),
@@ -194,7 +192,6 @@ test.describe('on a desktop', () => {
     await expectWidth(sidebar(page), 56);
     await expect(page.getByRole('button', { name: 'Expand sidebar' })).toBeVisible();
 
-    // The group labels give way to hairlines: the words stay in the accessibility tree.
     const reviews = navigation(page).getByRole('link', { name: REVIEWS });
     // On the rail Reviews' count is a small round warning dot on the icon's corner (COR-2315: a
     // count is plain text, never a badge, and the rail has no room for the figure); the figure
@@ -208,7 +205,9 @@ test.describe('on a desktop', () => {
     const health = navigation(page).getByRole('link', { name: HEALTH });
     expect(await widthOf(health.locator('.cinder-status-dot'))).toBeGreaterThan(4);
     const groups = navigation(page).locator('.cinder-side-navigation-group');
-    await expect(groups.first()).toHaveCSS('border-top-width', '1px');
+    // No heading and no hairline: one gap sets the sections apart, and Home above them has none.
+    await expect(groups.first()).toHaveCSS('border-top-width', '0px');
+    await expect(groups.first()).toHaveCSS('padding-top', '12px');
 
     // Hovering a row names it in a tooltip, with its count.
     await reviews.hover();
@@ -357,11 +356,11 @@ test.describe('on a phone', () => {
     await expectWidth(panel.locator('.cinder-drawer__panel'), 280);
     await expect(panel.locator('.cinder-drawer__title')).toHaveText('Interborough');
     await expect(panel.getByRole('button', { name: 'Close navigation' })).toBeVisible();
-    await expect(panel.locator('.cinder-side-navigation-group__heading')).toHaveText([
-      'Work',
-      'Build',
-      'System',
-    ]);
+    await expect(panel.locator('.cinder-side-navigation-group__heading')).toHaveCount(0);
+    for (const name of ['Work', 'Build', 'System']) {
+      await expect(panel.getByRole('list', { name, exact: true })).toBeVisible();
+      await expect(panel.getByText(name, { exact: true })).toHaveCount(0);
+    }
     const rows = panel.locator('a.cinder-side-navigation-item');
     await expect(rows).toHaveCount(13);
     for (const row of await rows.all()) expect(await heightOf(row)).toBeGreaterThanOrEqual(44);

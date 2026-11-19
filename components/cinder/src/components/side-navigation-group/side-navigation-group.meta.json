@@ -6,7 +6,8 @@
   "tags": ["navigation", "grouping"],
   "useWhen": [
     "Splitting a long side-navigation column into clearly named sections.",
-    "Letting users collapse rarely used groups to reduce visual noise in the sidebar."
+    "Letting users collapse rarely used groups to reduce visual noise in the sidebar.",
+    "Sectioning an app's navigation with no visible headings: collapsible false plus labelVisibility hidden keeps the name for screen readers."
   ],
   "avoidWhen": [
     { "reason": "Used outside a side-navigation ancestor — it expects that landmark for context." },

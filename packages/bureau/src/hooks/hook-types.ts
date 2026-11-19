@@ -147,7 +147,10 @@ export interface Hook {
   readonly name?: string;
   /** What the hook does for each event. A record stored before actions existed reads as a webhook. */
   readonly action: HookAction;
-  /** The published Bureau event kinds the hook fires on; never empty. */
+  /**
+   * The event kinds the hook fires on; never empty. A published Bureau kind as it is, and a kind a
+   * plugin declares pinned to the version it was written at, `<plugin>:<name>@<version>` (COR-2226).
+   */
   readonly events: readonly string[];
   /**
    * The one subject the hook fires for. Absent, it fires for its events across the whole Bureau, as
@@ -406,6 +409,17 @@ export type HookProblem =
       readonly code: 'configuration-invalid';
       /** Every field the schema refuses. */
       readonly issues: readonly HookConfigurationIssue[];
+    }
+  | {
+      /**
+       * COR-2226 — a plugin kind the hook lists is `missing`: its plugin is not loaded, or is loaded
+       * at a version other than the one the hook pinned. That kind fires nothing; the others still do.
+       */
+      readonly code: 'event-missing';
+      /** The entry as the hook lists it, pinned: `reports:digest-ready@1.0.0`. */
+      readonly kind: string;
+      /** The version of the kind loaded now; absent when no running plugin declares it. */
+      readonly loadedVersion?: string;
     };
 
 /** A hook as `hooks.list` answers it, with its newest delivery. */
