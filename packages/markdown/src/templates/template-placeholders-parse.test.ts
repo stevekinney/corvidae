@@ -362,6 +362,36 @@ describe('parseMarkdownPlaceholderTokens eligibility', () => {
     ]);
   });
 
+  it('finds a placeholder between currency dollars that are not math delimiters', () => {
+    const sources = [
+      'Refunds of $5-{{amount}}-$10 need approval',
+      'Between $25–{{amount}}–$100 inclusive',
+      'Budget $ {{amount}} $ total',
+    ];
+    for (const source of sources) {
+      expect(spans(parseMarkdownPlaceholderTokens(source))).toEqual([
+        placeholderAt(source, '{{amount}}'),
+      ]);
+    }
+  });
+
+  it('still treats real inline math beside a placeholder as math', () => {
+    const source = 'Cost $x{{math}}$ then {{kept}} and $y$.';
+
+    expect(spans(parseMarkdownPlaceholderTokens(source))).toEqual([
+      placeholderAt(source, '{{kept}}'),
+    ]);
+  });
+
+  it('keeps offsets exact after currency dollars with front matter present', () => {
+    const source = '---\ntitle: x\n---\nPay $5 or $10 then {{amount}} and \\$ {{other}}';
+
+    expect(spans(parseMarkdownPlaceholderTokens(source))).toEqual([
+      placeholderAt(source, '{{amount}}'),
+      placeholderAt(source, '{{other}}'),
+    ]);
+  });
+
   it('keeps escaped and entity-encoded opening braces literal', () => {
     const source = '\\{{escaped}} &#123;&#123;numeric}} &lbrace;&lbrace;named}} &#x7b;{hex}}';
 
