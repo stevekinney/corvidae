@@ -63,7 +63,7 @@
   } from './key-listing.ts';
   import { discoverPrefixes } from './prefix-discovery.ts';
   import { storageQueryKeys } from './queries.ts';
-  import { abbreviateKey, groupName, keyGroupName } from './storage-groups.ts';
+  import { groupName, keyGroupName, keyInItsGroup } from './storage-groups.ts';
   import type { StorageConnection } from './storage-client.ts';
 
   interface Props {
@@ -418,6 +418,28 @@
     {#if lastResult !== undefined}
       <p class="ib-storage__note" data-testid="storage-last-result">{lastResult}</p>
     {/if}
+    <!-- The table's footer holds only the control that loads more, when loading more failed. The
+         count is metadata, said once outside the table (owner, 2026-11-19: "Showing 29 of 29
+         keys" was the table's last row, cut in half by its own scroll box). -->
+    {#snippet retryFooter()}
+      <LoadMore
+        variant="footer"
+        failed
+        hasMore={listing.hasNextPage}
+        loading={listing.isFetchingNextPage}
+        loadedCount={entries.length}
+        {...totalKeys === undefined ? {} : { totalCount: Math.max(totalKeys, entries.length) }}
+        itemLabel={copy.loadMore.itemLabel}
+        retryLabel={copy.loadMore.retry}
+        endOfListMessage=""
+        onLoadMore={retryLoadMore}
+      />
+    {/snippet}
+    {#if !loadMoreFailed}
+      <p class="ib-storage__count" data-testid="storage-count">
+        {copy.footer(entries.length, totalKeys, listing.hasNextPage)}
+      </p>
+    {/if}
     <ListDetail
       items={entries}
       key={(entry) => entry.key}
@@ -442,34 +464,13 @@
           openRowId={body.selectedKey}
           onRowOpen={(row) => body.open(row.key)}
           onReachEnd={listing.hasNextPage ? loadMore : undefined}
+          footer={loadMoreFailed ? retryFooter : undefined}
         >
           {#snippet cell({ row, column, value })}
             {#if column.key === 'key'}
-              {abbreviateKey(row.key)}
+              {keyInItsGroup(row.key)}
             {:else}
               {value}
-            {/if}
-          {/snippet}
-          {#snippet footer()}
-            {#if loadMoreFailed}
-              <LoadMore
-                variant="footer"
-                failed
-                hasMore={listing.hasNextPage}
-                loading={listing.isFetchingNextPage}
-                loadedCount={entries.length}
-                {...totalKeys === undefined
-                  ? {}
-                  : { totalCount: Math.max(totalKeys, entries.length) }}
-                itemLabel={copy.loadMore.itemLabel}
-                retryLabel={copy.loadMore.retry}
-                endOfListMessage=""
-                onLoadMore={retryLoadMore}
-              />
-            {:else}
-              <span class="ib-storage__footer" data-testid="storage-count">
-                {copy.footer(entries.length, totalKeys, listing.hasNextPage)}
-              </span>
             {/if}
           {/snippet}
         </DataTable>
@@ -597,7 +598,7 @@
   }
 
   .ib-storage__note,
-  .ib-storage__footer {
+  .ib-storage__count {
     margin: 0;
     color: var(--cinder-text-muted);
     font-size: var(--cinder-text-sm);

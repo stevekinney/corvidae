@@ -81,6 +81,18 @@ export function abbreviateKey(key: string): string {
   return key.replace(UUID, '$1…');
 }
 
+/**
+ * `key` as the table's Key column shows it: without the group's prefix, which the Group column
+ * beside it already gives (owner, 2026-11-19: "fleet-event:0000000004" sat beside "fleet-event:"),
+ * and with each UUID cut short. A key that is in no group, or is nothing but its prefix, is shown
+ * whole.
+ */
+export function keyInItsGroup(key: string): string {
+  const group = keyGroup(key);
+  const rest = group === undefined ? key : key.slice(group.length);
+  return abbreviateKey(rest === '' ? key : rest);
+}
+
 /** The longest key the pane shows without saying how long it is. */
 export const LONG_KEY_CHARACTERS = 100;
 

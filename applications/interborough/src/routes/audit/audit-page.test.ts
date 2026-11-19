@@ -322,6 +322,19 @@ describe('the table', () => {
     const count = await findByTestId('audit-count');
     await waitFor(() => expect(count.textContent).toBe('1,240 events'));
   });
+
+  // Owner, 2026-11-19: a count is metadata outside the table, never one of its rows.
+  test('says what it has loaded outside the table, never as a row of it', async () => {
+    const { container, findByTestId } = open(() => ({
+      records: [KEY_REMOVED, STARTED],
+      nextCursor: null,
+      total: 2,
+    }));
+    const footer = await findByTestId('audit-footer');
+    const table = container.querySelector('table');
+    expect(table?.contains(footer)).toBe(false);
+    expect(footer.closest('table, tfoot, tbody')).toBeNull();
+  });
 });
 
 describe('the open event', () => {

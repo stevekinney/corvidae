@@ -344,16 +344,20 @@ export const STORAGE_COPY = {
   /** The Updated column of a key whose backend records no write time. */
   noUpdated: '—',
   /**
-   * The table's footer: how many keys are loaded, of how many there are when storage can count them
-   * (it cannot for a range), and what loads the rest.
+   * The count over the table, said once and never as a row of it (owner, 2026-11-19): how many keys
+   * there are ("29 keys"), and "Showing 20 of 29 keys" only while some are not loaded yet, with what
+   * loads the rest. Storage cannot count a range, so a range says only how many are loaded.
    */
   footer: (loaded: number, total: number | undefined, more: boolean): string => {
     const count = (value: number): string => value.toLocaleString('en-US');
-    const keys =
-      total === undefined
-        ? `Showing ${count(loaded)} ${loaded === 1 ? 'key' : 'keys'}.`
-        : `Showing ${count(loaded)} of ${count(Math.max(total, loaded))} ${total === 1 ? 'key' : 'keys'}.`;
-    return more ? `${keys} Scroll to load more.` : keys;
+    const noun = (value: number): string => (value === 1 ? 'key' : 'keys');
+    const all = total === undefined ? undefined : Math.max(total, loaded);
+    if (more && all !== undefined) {
+      return `Showing ${count(loaded)} of ${count(all)} ${noun(all)}. Scroll to load more.`;
+    }
+    const shown = all ?? loaded;
+    const keys = `${count(shown)} ${noun(shown)}`;
+    return more ? `${keys} so far. Scroll to load more.` : keys;
   },
   loadingLabel: 'Loading keys',
   /** What the table says after "Cancel" in the "Still loading" line: nothing failed, the person stopped it. */

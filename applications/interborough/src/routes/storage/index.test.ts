@@ -93,10 +93,26 @@ describe('the gate', () => {
 });
 
 describe('the key table', () => {
+  // Owner, 2026-11-19: "Showing 29 of 29 keys" was the table's last row, cut in half by its own
+  // scroll box, and the Key column repeated the prefix the Group column gives.
+  test('says its count once, outside the table, and shows each key without its group’s prefix', async () => {
+    const view = await open();
+    const table = await view.findByRole('table');
+    await footerSays(view, '6 keys');
+    const count = view.getByTestId('storage-count');
+    expect(table.contains(count)).toBe(false);
+    expect(count.closest('table, tfoot, tbody, [role="table"]')).toBeNull();
+    expect(table.textContent).not.toMatch(/\d+ keys?\b/);
+    const row = rowOf(view, 'app:config');
+    const cells = [...row.querySelectorAll('th, td')].map((cell) => cell.textContent?.trim());
+    expect(cells).toContain('config');
+    expect(cells).not.toContain('app:config');
+  });
+
   test('lists every key with its group and size, and says how many it holds', async () => {
     const view = await open();
     await view.findByRole('table');
-    await footerSays(view, 'Showing 6 of 6 keys.');
+    await footerSays(view, '6 keys');
     const row = rowOf(view, 'app:config');
     expect(row.textContent).toContain('App data and memory');
     expect(row.textContent).toContain(`${new TextEncoder().encode(KEYS['app:config']).length} B`);
@@ -125,7 +141,7 @@ describe('the key table', () => {
 
     await fireEvent.change(groups, { target: { value: 'app:' } });
 
-    await footerSays(view, 'Showing 2 of 2 keys.');
+    await footerSays(view, '2 keys');
     expect(view.container.querySelector('[data-cinder-row-id="cache:rates"]')).toBeNull();
     const scans = server?.calls.filter(
       (call) => new URL(call.url, 'http://localhost').pathname === '/v1/storage',
@@ -143,7 +159,7 @@ describe('the key table', () => {
     const field = view.getByLabelText(STORAGE_COPY.searchLabel);
 
     await fireEvent.input(field, { target: { value: 'app:n' } });
-    await footerSays(view, 'Showing 1 of 1 key.');
+    await footerSays(view, '1 key');
     expect(rowOf(view, 'app:notes')).toBeDefined();
     // The server does the narrowing: the request carries the typed text as its prefix.
     const prefixes = server?.calls
@@ -155,7 +171,7 @@ describe('the key table', () => {
     await fireEvent.input(field, { target: { value: 'NOTES' } });
     await view.findByText(STORAGE_COPY.noMatches.title);
     await fireEvent.click(view.getByRole('button', { name: STORAGE_COPY.noMatches.clear }));
-    await footerSays(view, 'Showing 6 of 6 keys.');
+    await footerSays(view, '6 keys');
   });
 
   test('a group and text that part ways match no key, and one that extends the other reads the longer', async () => {
@@ -172,7 +188,7 @@ describe('the key table', () => {
     await view.findByText(STORAGE_COPY.noMatches.title);
 
     await fireEvent.input(field, { target: { value: 'app:c' } });
-    await footerSays(view, 'Showing 1 of 1 key.');
+    await footerSays(view, '1 key');
     expect(rowOf(view, 'app:config')).toBeDefined();
   });
 
@@ -192,7 +208,7 @@ describe('the key table', () => {
   test('marks no key with a lock in the table, which has no Managed column, and shows no Load more button', async () => {
     const view = await open();
     await view.findByRole('table');
-    await footerSays(view, 'Showing 6 of 6 keys.');
+    await footerSays(view, '6 keys');
     expect(view.queryByText(STORAGE_COPY.managedBadge)).toBeNull();
     expect(view.queryByRole('button', { name: 'Load more' })).toBeNull();
   });
@@ -243,7 +259,7 @@ describe('scrolling to the end of the table', () => {
 
     reachEnd();
 
-    await footerSays(view, 'Showing 130 of 130 keys.');
+    await footerSays(view, '130 keys');
     expect(scanCount()).toBe(before + 1);
     const continued = server?.calls
       .filter((call) => new URL(call.url, 'http://localhost').pathname === '/v1/storage')
@@ -283,7 +299,7 @@ describe('Range', () => {
     await fireEvent.input(end, { target: { value: 'audit:2026-11-02' } });
 
     // Every key that starts with the last one is in the range, so the 16:33 key is.
-    await footerSays(view, 'Showing 3 keys.');
+    await footerSays(view, '3 keys');
     expect(
       [...view.container.querySelectorAll('[data-cinder-row-id]')].map((row) =>
         row.getAttribute('data-cinder-row-id'),
@@ -307,7 +323,7 @@ describe('Range', () => {
     await fireEvent.input(start, { target: { value: 'audit:' } });
     await fireEvent.input(end, { target: { value: 'zzz' } });
 
-    await footerSays(view, 'Showing 1 key.');
+    await footerSays(view, '1 key');
     expect(rowOf(view, 'goal:seeded-goal')).toBeDefined();
   });
 
@@ -316,7 +332,7 @@ describe('Range', () => {
     const { start, end } = await openRange(view);
     await fireEvent.input(start, { target: { value: 'audit:2026-11-01' } });
     await fireEvent.input(end, { target: { value: 'audit:2026-11-02' } });
-    await footerSays(view, 'Showing 3 keys.');
+    await footerSays(view, '3 keys');
 
     await fireEvent.input(end, { target: { value: 'audit:2026-10-31' } });
 
@@ -332,7 +348,7 @@ describe('Range', () => {
     expect(view.container.querySelectorAll('[data-cinder-row-id]')).toHaveLength(3);
 
     await fireEvent.input(end, { target: { value: 'audit:2026-11-03' } });
-    await footerSays(view, 'Showing 4 keys.');
+    await footerSays(view, '4 keys');
     expect(view.queryByText(STORAGE_COPY.range.reversed)).toBeNull();
     expect(end.getAttribute('aria-invalid')).toBeNull();
     expect(view.queryByTestId('storage-last-result')).toBeNull();
@@ -903,7 +919,7 @@ describe('Delete', () => {
     expect(server?.store.has('cache:rates')).toBe(false);
     expect(await view.findByText(STORAGE_COPY.detail.deleted('cache:rates'))).not.toBeNull();
     await waitFor(() => expect(view.queryByTestId('storage-key')?.outerHTML ?? null).toBeNull());
-    await footerSays(view, 'Showing 5 of 5 keys.');
+    await footerSays(view, '5 keys');
   });
 
   test('leaves a key that changed after it was opened, and says so', async () => {
@@ -1031,7 +1047,7 @@ describe('Delete', () => {
     await view.findByText(STORAGE_COPY.noMatches.title);
     expect((view.getByLabelText('Group') as HTMLSelectElement).value).toBe('cache:');
     await fireEvent.click(view.getByRole('button', { name: STORAGE_COPY.noMatches.clear }));
-    await footerSays(view, 'Showing 5 of 5 keys.');
+    await footerSays(view, '5 keys');
   });
 
   test('closing after a delete leaves open the key the person moved to while it ran', async () => {
@@ -1049,7 +1065,7 @@ describe('Delete', () => {
     await fireEvent.click(rowOf(view, 'app:notes'));
 
     await waitFor(() => expect(server?.store.has('cache:rates')).toBe(false));
-    await footerSays(view, 'Showing 5 of 5 keys.');
+    await footerSays(view, '5 keys');
     expect(view.getByTestId('storage-key-name').textContent).toBe('app:notes');
   });
 });

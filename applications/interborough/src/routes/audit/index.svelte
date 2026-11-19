@@ -565,6 +565,11 @@
           </EmptyState>
         {/if}
       {:else}
+        <!-- The count is metadata, said once outside the table, never as a row of it (owner,
+             2026-11-19: Storage's count was a row its own scroll box cut in half). -->
+        <p class="ib-audit__footer" data-testid="audit-footer">
+          {copy.footer(events.length, totalQuery.data ?? undefined, trail.hasNextPage)}
+        </p>
         <div class="ib-audit__frame" data-shortcut-region="list-detail" bind:this={frame}>
           <ListDetail
             items={events}
@@ -601,11 +606,6 @@
                   {:else}
                     {value}
                   {/if}
-                {/snippet}
-                {#snippet footer()}
-                  <span class="ib-audit__footer" data-testid="audit-footer">
-                    {copy.footer(events.length, totalQuery.data ?? undefined, trail.hasNextPage)}
-                  </span>
                 {/snippet}
               </DataTable>
             {/snippet}
@@ -735,6 +735,7 @@
   }
 
   .ib-audit__footer {
+    margin: 0;
     color: var(--cinder-text-muted);
     font-size: var(--cinder-text-sm);
   }
