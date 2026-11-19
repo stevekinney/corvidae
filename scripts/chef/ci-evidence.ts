@@ -54,11 +54,6 @@ interface StoredRequest {
   runs: CiEvidenceRun[];
 }
 
-interface CiEvidenceSnapshot {
-  version: 1;
-  requests: Record<string, StoredRequest>;
-}
-
 const commit = (value: string) => /^[0-9a-f]{40}$/.test(value);
 const digest = (value: string) => /^[0-9a-f]{64}$/.test(value);
 const text = (value: string) => value.trim() !== '' && !value.includes('\0');
@@ -103,36 +98,30 @@ function validateRequest(request: CiEvidenceRequest): void {
     throw new CiEvidenceError('CI evidence request has invalid identity');
 }
 
-function emptySnapshot(): CiEvidenceSnapshot {
-  return { version: 1, requests: Object.create(null) as Record<string, StoredRequest> };
+function recordPath(store: CiEvidenceStore, requestKey: string): string {
+  return join(store.stateDirectory, 'ci-evidence-requests', `${requestKey}.json`);
 }
 
-function readSnapshot(store: CiEvidenceStore): CiEvidenceSnapshot {
+function readRecord(store: CiEvidenceStore, requestKey: string): StoredRequest | undefined {
   try {
-    const parsed: unknown = JSON.parse(readFileSync(store.requestPath, 'utf8'));
-    if (
-      typeof parsed !== 'object' ||
-      parsed === null ||
-      Array.isArray(parsed) ||
-      (parsed as { version?: unknown }).version !== 1 ||
-      typeof (parsed as { requests?: unknown }).requests !== 'object' ||
-      (parsed as { requests?: unknown }).requests === null
-    )
-      throw new CiEvidenceError('CI evidence state is malformed');
-    return parsed as CiEvidenceSnapshot;
+    const parsed: unknown = JSON.parse(readFileSync(recordPath(store, requestKey), 'utf8'));
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed))
+      throw new CiEvidenceError('CI evidence record is malformed');
+    return parsed as StoredRequest;
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return emptySnapshot();
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined;
     if (error instanceof CiEvidenceError) throw error;
-    throw new CiEvidenceError('CI evidence state is unreadable');
+    throw new CiEvidenceError('CI evidence record is unreadable');
   }
 }
 
-function writeSnapshot(store: CiEvidenceStore, snapshot: CiEvidenceSnapshot): void {
-  mkdirSync(store.stateDirectory, { recursive: true });
-  const temporary = `${store.requestPath}.tmp-${process.pid}-${crypto.randomUUID()}`;
+function writeRecord(store: CiEvidenceStore, requestKey: string, record: StoredRequest): void {
+  const path = recordPath(store, requestKey);
+  mkdirSync(join(store.stateDirectory, 'ci-evidence-requests'), { recursive: true });
+  const temporary = `${path}.tmp-${process.pid}-${crypto.randomUUID()}`;
   try {
-    writeFileSync(temporary, `${JSON.stringify(snapshot)}\n`);
-    renameSync(temporary, store.requestPath);
+    writeFileSync(temporary, `${JSON.stringify(record)}\n`);
+    renameSync(temporary, path);
   } catch (error) {
     rmSync(temporary, { force: true });
     throw error;
@@ -177,13 +166,11 @@ export async function reconcileCiEvidenceRequest(
 ): Promise<CiEvidenceReconciliation> {
   validateRequest(request);
   return withProviderTransitionLock(store, `ci-evidence:${request.requestKey}`, async () => {
-    const snapshot = readSnapshot(store);
-    let record = snapshot.requests[request.requestKey];
+    let record = readRecord(store, request.requestKey);
     if (record === undefined) {
       record = { request, dispatchAttempted: false, state: 'intent', runs: [] };
-      snapshot.requests[request.requestKey] = record;
-      writeSnapshot(store, snapshot);
-    } else if (JSON.stringify(record.request) !== JSON.stringify(request)) {
+      writeRecord(store, request.requestKey, record);
+    } else if (ciEvidenceRequestKey(record.request) !== request.requestKey) {
       throw new CiEvidenceError('CI evidence request key has conflicting durable intent');
     }
 
@@ -195,7 +182,7 @@ export async function reconcileCiEvidenceRequest(
       observed = await provider.findRuns(request);
     } catch {
       record.state = 'unresolved';
-      writeSnapshot(store, snapshot);
+      writeRecord(store, request.requestKey, record);
       return { state: 'unresolved', requestKey: request.requestKey, runs: record.runs };
     }
     if (!Array.isArray(observed))
@@ -204,33 +191,33 @@ export async function reconcileCiEvidenceRequest(
     const accepted = observed.filter((run) => matches(request, run));
     if (accepted.length === 1 && observed.length === 1) {
       record.state = 'bound';
-      writeSnapshot(store, snapshot);
+      writeRecord(store, request.requestKey, record);
       return { state: 'bound', requestKey: request.requestKey, run: accepted[0]! };
     }
     if (observed.length > 1 || accepted.length > 1) {
       record.state = 'ambiguous';
-      writeSnapshot(store, snapshot);
+      writeRecord(store, request.requestKey, record);
       return { state: 'ambiguous', requestKey: request.requestKey, runs: observed };
     }
     if (observed.length === 1) {
       record.state = 'unresolved';
-      writeSnapshot(store, snapshot);
+      writeRecord(store, request.requestKey, record);
       return { state: 'unresolved', requestKey: request.requestKey, runs: observed };
     }
     if (!record.dispatchAttempted && request.event === 'workflow_dispatch') {
       record.dispatchAttempted = true;
       record.state = 'intent';
-      writeSnapshot(store, snapshot);
+      writeRecord(store, request.requestKey, record);
       try {
         await provider.dispatch(request);
       } catch {
         record.state = 'unresolved';
-        writeSnapshot(store, snapshot);
+        writeRecord(store, request.requestKey, record);
         return { state: 'unresolved', requestKey: request.requestKey, runs: [] };
       }
     }
     record.state = 'unresolved';
-    writeSnapshot(store, snapshot);
+    writeRecord(store, request.requestKey, record);
     return { state: 'unresolved', requestKey: request.requestKey, runs: [] };
   });
 }
