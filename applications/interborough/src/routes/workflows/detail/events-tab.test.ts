@@ -160,11 +160,14 @@ describe('EventsTab', () => {
       props: { client: client([]), workflow: workflow() },
     });
 
+    // Wait for the title alone, then assert where it sits: an absence assertion inside waitFor
+    // would serialize the whole element graph into its failure message.
     await waitFor(() => {
-      const title = getByText('No events yet');
-      expect(title.closest('.cinder-empty-state')).not.toBeNull();
-      expect(title.closest('ol')).toBeNull();
+      expect(getByText('No events yet')).not.toBeNull();
     });
+    const title = getByText('No events yet');
+    expect(title.closest('.cinder-empty-state') === null).toBe(false);
+    expect(title.closest('ol') === null).toBe(true);
   });
 
   test('a non-checkpoint event renders its raw type as the summary', async () => {
