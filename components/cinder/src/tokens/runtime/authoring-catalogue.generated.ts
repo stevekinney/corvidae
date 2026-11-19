@@ -9387,6 +9387,84 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       ],
     },
     {
+      path: 'scroll-shadow.color',
+      cssProperty: '--cinder-scroll-shadow-color',
+      category: 'color',
+      component: null,
+      description:
+        'The color of a scroll-edge or sticky-column shadow. Black in both themes, never text ink; the dark arm is denser, because a shadow has to be to read against a dark surface.',
+      themeAware: true,
+      deprecated: false,
+      profile: 'color',
+      palette: { family: 'unknown', role: 'unknown', anchor: 'unknown' },
+      disposition: {
+        edit: 'supported',
+        cssExport: 'supported',
+        dtcgExport: 'subset',
+        cssSerialization: 'mixed',
+        reason:
+          'Some contexts emit a trusted CSS recipe and others a typed value; the DTCG value is exported, the recipe is not.',
+      },
+      variants: [
+        {
+          contexts: ['light/default', 'light/reduced', 'light/forced-reduced-motion'],
+          provenance: {
+            winner: { document: 'themes/light.tokens.json', path: 'scroll-shadow.color' },
+            layers: [
+              {
+                document: 'sets/semantic.tokens.json',
+                kind: 'set',
+                layer: 'sets.foundation',
+                path: 'scroll-shadow.color',
+                via: 'declared',
+              },
+              {
+                document: 'themes/light.tokens.json',
+                kind: 'modifier',
+                layer: 'theme.light',
+                path: 'scroll-shadow.color',
+                via: 'declared',
+              },
+            ],
+            effectiveType: {
+              type: 'color',
+              origin: 'local',
+              declaredAt: { document: 'themes/light.tokens.json', path: 'scroll-shadow.color' },
+            },
+            inputs: { aliases: [], refs: [], extends: [], recipes: [] },
+          },
+        },
+        {
+          contexts: ['dark/default', 'dark/reduced', 'dark/forced-reduced-motion'],
+          provenance: {
+            winner: { document: 'themes/dark.tokens.json', path: 'scroll-shadow.color' },
+            layers: [
+              {
+                document: 'sets/semantic.tokens.json',
+                kind: 'set',
+                layer: 'sets.foundation',
+                path: 'scroll-shadow.color',
+                via: 'declared',
+              },
+              {
+                document: 'themes/dark.tokens.json',
+                kind: 'modifier',
+                layer: 'theme.dark',
+                path: 'scroll-shadow.color',
+                via: 'declared',
+              },
+            ],
+            effectiveType: {
+              type: 'color',
+              origin: 'local',
+              declaredAt: { document: 'themes/dark.tokens.json', path: 'scroll-shadow.color' },
+            },
+            inputs: { aliases: [], refs: [], extends: [], recipes: [] },
+          },
+        },
+      ],
+    },
+    {
       path: 'overlay.backdrop',
       cssProperty: '--cinder-overlay-backdrop',
       category: 'color',
@@ -19958,8 +20036,8 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       category: 'color',
       component: 'kanban-board',
       description:
-        'Horizontal scroll-edge fade gradient color -- `text-default` at 12% opacity, tracking whichever theme arm resolves.',
-      themeAware: true,
+        'Horizontal scroll-edge fade gradient color -- the scroll-shadow color, black in both themes, so the edge darkens what is under it instead of glowing.',
+      themeAware: false,
       deprecated: false,
       profile: 'color',
       palette: { family: 'unknown', role: 'unknown', anchor: 'unknown' },
@@ -19972,10 +20050,17 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       },
       variants: [
         {
-          contexts: ['light/default', 'light/reduced', 'light/forced-reduced-motion'],
+          contexts: [
+            'light/default',
+            'light/reduced',
+            'light/forced-reduced-motion',
+            'dark/default',
+            'dark/reduced',
+            'dark/forced-reduced-motion',
+          ],
           provenance: {
             winner: {
-              document: 'themes/light.tokens.json',
+              document: 'sets/components.tokens.json',
               path: 'kanban-board.board.scroll-edge',
             },
             layers: [
@@ -19986,13 +20071,6 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
                 path: 'kanban-board.board.scroll-edge',
                 via: 'declared',
               },
-              {
-                document: 'themes/light.tokens.json',
-                kind: 'modifier',
-                layer: 'theme.light',
-                path: 'kanban-board.board.scroll-edge',
-                via: 'declared',
-              },
             ],
             effectiveType: {
               type: 'color',
@@ -20003,46 +20081,12 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
               },
             },
             inputs: {
-              aliases: [],
+              aliases: ['scroll-shadow.color'],
               refs: [],
               extends: [],
-              recipes: [{ cssProperty: '--cinder-text-default', path: 'text.default' }],
-            },
-          },
-        },
-        {
-          contexts: ['dark/default', 'dark/reduced', 'dark/forced-reduced-motion'],
-          provenance: {
-            winner: { document: 'themes/dark.tokens.json', path: 'kanban-board.board.scroll-edge' },
-            layers: [
-              {
-                document: 'sets/components.tokens.json',
-                kind: 'set',
-                layer: 'sets.foundation',
-                path: 'kanban-board.board.scroll-edge',
-                via: 'declared',
-              },
-              {
-                document: 'themes/dark.tokens.json',
-                kind: 'modifier',
-                layer: 'theme.dark',
-                path: 'kanban-board.board.scroll-edge',
-                via: 'declared',
-              },
-            ],
-            effectiveType: {
-              type: 'color',
-              origin: 'local',
-              declaredAt: {
-                document: 'themes/dark.tokens.json',
-                path: 'kanban-board.board.scroll-edge',
-              },
-            },
-            inputs: {
-              aliases: [],
-              refs: [],
-              extends: [],
-              recipes: [{ cssProperty: '--cinder-text-default', path: 'text.default' }],
+              recipes: [
+                { cssProperty: '--cinder-scroll-shadow-color', path: 'scroll-shadow.color' },
+              ],
             },
           },
         },

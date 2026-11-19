@@ -2,14 +2,19 @@
 // Chef targeted run: builds, validates and dispatches `targeted-checks.yml` for a correction round,
 // so a mistyped fixture slug or spec path is refused here, with the valid choices listed, instead
 // of after a runner has started. With no input given, it derives each one from
-// `git diff --name-only origin/main...HEAD`:
+// `git diff --name-only origin/main...HEAD` through the evidence plan (`evidence-plan.ts`):
 //
-//   fixture components  `components/cinder/src/components/<slug>/...`, `components/chat/src/lib/
-//                       components/<slug>/...` and `scripts/browser-fixtures/src/fixtures/<slug>.svelte`
-//                       whose slug is in the fixture manifest
-//   fixture specs       `scripts/browser-fixtures/tests/*.playwright.ts`
-//   e2e specs           `applications/interborough/tests/e2e/*.spec.ts`, as `tests/e2e/*.spec.ts`
-//   unit files          `*.test.ts` files of the one workspace holding the most of them
+//   fixture components  every manifest slug on a token change, otherwise the changed components'
+//   fixture specs       specs that name a changed component, and changed specs
+//   e2e specs           specs that reference a changed route or test id, or the whole Interborough
+//                       suite for a Cinder change, as `tests/e2e/*.spec.ts`
+//   unit lanes          every lane of the plan (a workspace, its test files, its bunfig; the root,
+//                       workspace `.`, runs its `scripts/` files through `bun scripts/bun-test.ts`),
+//                       sent as the `unit_lanes` JSON list the workflow runs as a matrix. Files
+//                       become folders when they exceed the input limit; a plan that still does
+//                       not fit, or wants a whole suite, sets `requires_full_run` under the rule
+//                       "plan exceeds one targeted dispatch" and dispatches `main.yml`: nothing is
+//                       dropped, and only a plan dispatched whole carries a `plan_digest`
 //
 // The valid slugs are the ones `components.playwright.ts` accepts: the generated manifest's, which
 // this script regenerates first with `prepare-manifest.ts`. The slug check is the workflow's own
@@ -21,14 +26,26 @@
 //       [--unit-path <path>]... [--unit-config <file>] [--dry-run] [--json]
 //
 // Without `--dry-run` it dispatches the workflow, once, on `--ref` (default: the current branch).
-// A newer dispatch on a ref cancels the older one. Exit codes: 0 dispatched (or printed), 2 invalid
-// input, with nothing dispatched.
+// A plan that sets `requires_full_run` (a one-way door, the whole Interborough suite, or every
+// fixture slug: none fits a targeted job's 30 minutes) dispatches `main.yml`, the sharded full run,
+// instead, and says so; this script is the one dispatcher of `main.yml` on a branch. Explicit
+// inputs always dispatch `targeted-checks.yml`. A newer dispatch on a ref cancels the older one.
+// With `--json` it prints
+// `{ ref, inputs, command, requiresFullRun }`; `requiresFullRun` is the plan's full-run flag
+// (one-way doors and whole-suite plans), computed the same way for explicit inputs. Exit codes: 0 dispatched (or printed), 2 invalid input,
+// with nothing dispatched.
 
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 import { parseComponentFilter } from '../../testing/testing/src/helpers/component-filter.ts';
-import { loadManifest } from '../../testing/testing/src/helpers/manifest.ts';
+import {
+  changedFiles,
+  preparedSlugs,
+  REPOSITORY_ROOT,
+  repositoryContext,
+} from './evidence-plan.ts';
+import { landingPlan } from './landing-plan.ts';
 import {
   defaultRunner,
   emitResult,
@@ -37,27 +54,72 @@ import {
   shellQuote,
   UsageError,
 } from './process-runner.ts';
+import {
+  computeEvidencePlan,
+  type EvidenceContext,
+  type EvidencePlan,
+  oneWayDoorMatches,
+  wholeSuiteMatches,
+} from './verification-plan.ts';
 
 export { UsageError };
 
-const REPOSITORY_ROOT = resolve(import.meta.dirname, '..', '..');
 const FIXTURE_SPEC = /^scripts\/browser-fixtures\/tests\/[\w.-]+\.playwright\.ts$/;
 const E2E_SPEC = /^tests\/e2e\/[\w.-]+\.spec\.ts$/;
 const WORKSPACE = /^(applications|components|packages|plugins|testing|internal)\/[\w.-]+$/;
 const SAFE_PATH = /^[\w@./-]+$/;
-const COMPONENT_DIRECTORIES = [
-  /^components\/cinder\/src\/components\/([\w-]+)\//,
-  /^components\/chat\/src\/lib\/components\/([\w-]+)\//,
-  /^scripts\/browser-fixtures\/src\/fixtures\/([\w-]+)\.svelte$/,
-];
+/**
+ * The most characters the `unit_lanes` input takes in one dispatch. GitHub caps all of a dispatch's
+ * inputs at 65,535 characters together, and the e2e and fixture inputs of a Cinder change take about
+ * 10,000.
+ */
+const UNIT_PATH_BUDGET = 30_000;
+
+/** The rule a plan carries when its unit lanes do not fit one targeted dispatch. */
+export const OVERSIZE_RULE = 'plan exceeds one targeted dispatch';
+
+/** One unit test lane of the dispatch: a workspace (`.` is the repository root), its paths, its bunfig. */
+export interface UnitLane {
+  workspace: string;
+  paths: string[];
+  config: string;
+}
+
+/**
+ * The lanes with their paths named file by file when they fit one dispatch, else as the folders
+ * holding them. `bun test` takes a path as a filter, so a folder runs every file in it; the
+ * selection only ever grows. `undefined` when even folders do not fit: nothing is dropped, so the
+ * caller must dispatch the full run instead.
+ */
+export function fitUnitLanes(lanes: readonly UnitLane[]): UnitLane[] | undefined {
+  const fits = (candidate: readonly UnitLane[]) =>
+    JSON.stringify(candidate).length <= UNIT_PATH_BUDGET;
+  // A file at the workspace root stays named: an empty folder would match every test.
+  const within = (path: string, depth: number) => {
+    const parts = path.split('/');
+    return parts.length <= 1
+      ? path
+      : `${parts.slice(0, Math.min(depth, parts.length - 1)).join('/')}/`;
+  };
+  const folded = (depth: number): UnitLane[] =>
+    lanes.map((lane) => ({
+      ...lane,
+      paths: [...new Set(lane.paths.map((path) => within(path, depth)))].toSorted(),
+    }));
+  if (fits(lanes)) return lanes.map((lane) => ({ ...lane, paths: [...lane.paths] }));
+  for (const depth of [Number.MAX_SAFE_INTEGER, 2]) {
+    const candidate = folded(depth);
+    if (fits(candidate)) return candidate;
+  }
+  return undefined;
+}
 
 export interface TargetedInputs {
   fixtureComponents: string[];
   fixtureSpecs: string[];
   e2eSpecs: string[];
-  unitWorkspace: string;
-  unitPaths: string[];
-  unitConfig: string;
+  /** Every unit lane the plan names; none is dropped. */
+  unitLanes: UnitLane[];
 }
 
 export interface TargetedDependencies {
@@ -66,33 +128,8 @@ export interface TargetedDependencies {
   exists: (path: string) => boolean;
   /** The slugs the fixture manifest holds. */
   knownSlugs: () => ReadonlySet<string>;
-}
-
-/**
- * Where `scripts/browser-fixtures/scripts/prepare-manifest.ts` writes the root suite's manifest
- * (`defaultManifestLayout.outputDirectory`), which `components.playwright.ts` reads its slugs from.
- */
-export const MANIFEST_PATH = resolve(
-  REPOSITORY_ROOT,
-  'scripts/browser-fixtures/.playwright/manifest.json',
-);
-
-/**
- * The slugs `components.playwright.ts` accepts: the generated manifest's own entries, never a copy
- * of the layout's fixture roots, which went stale when a package moved its fixtures.
- */
-export function manifestSlugs(path = MANIFEST_PATH): ReadonlySet<string> {
-  return new Set(loadManifest(path).map((entry) => entry.slug));
-}
-
-/** Regenerates the manifest (a no-op when its inputs are unchanged), then reads its slugs. */
-function preparedSlugs(runner: Runner): ReadonlySet<string> {
-  const result = runner(['bun', 'scripts/browser-fixtures/scripts/prepare-manifest.ts']);
-  if (result.code !== 0)
-    throw new UsageError(
-      `prepare-manifest.ts failed: ${result.stderr.trim().split('\n')[0] ?? ''}`,
-    );
-  return manifestSlugs();
+  /** The repository's files and unit-test selection, for the evidence plan. */
+  context: (known: ReadonlySet<string>) => EvidenceContext;
 }
 
 /**
@@ -105,45 +142,49 @@ export function unitConfigFor(workspace: string, path: string): string {
   return /^(src\/host|fixtures)\//.test(path) ? '' : './bunfig.ui.toml';
 }
 
-/** The inputs a branch's changed files reach; unknown component directories are left out. */
-export function deriveInputs(changed: string[], known: ReadonlySet<string>): TargetedInputs {
-  const slugs = new Set<string>();
-  const fixtureSpecs: string[] = [];
-  const e2eSpecs: string[] = [];
-  const unitByWorkspace = new Map<string, string[]>();
-  for (const file of changed) {
-    for (const pattern of COMPONENT_DIRECTORIES) {
-      const slug = pattern.exec(file)?.[1];
-      if (slug !== undefined && known.has(slug)) slugs.add(slug);
+/**
+ * The workflow inputs an evidence plan maps to. Every unit lane of the plan becomes a lane of the
+ * dispatch (the root, `.`, runs its `scripts/` files through `bun scripts/bun-test.ts`;
+ * Interborough's host and UI tests run under their own bunfigs), and nothing is dropped. What one
+ * targeted dispatch cannot carry is named in `undispatchable`: a lane that wants its whole suite,
+ * a workspace the workflow cannot enter, or lanes that do not fit the input limit. A plan with any
+ * is dispatched as the full run, never truncated.
+ */
+export function inputsFromPlan(plan: EvidencePlan): {
+  inputs: TargetedInputs;
+  undispatchable: string[];
+} {
+  const undispatchable: string[] = [];
+  const lanes: UnitLane[] = [];
+  for (const lane of plan.unit_tests) {
+    const workspace = lane.workspace === '' ? '.' : lane.workspace;
+    if (workspace !== '.' && !WORKSPACE.test(workspace)) {
+      undispatchable.push(`${workspace}: a workspace the targeted workflow cannot enter`);
+      continue;
     }
-    if (FIXTURE_SPEC.test(file)) fixtureSpecs.push(file);
-    const e2e = /^applications\/interborough\/(tests\/e2e\/[\w.-]+\.spec\.ts)$/.exec(file)?.[1];
-    if (e2e !== undefined) e2eSpecs.push(e2e);
-    const unit =
-      /^((?:applications|components|packages|plugins|testing|internal)\/[\w.-]+)\/(.+\.test\.ts)$/.exec(
-        file,
-      );
-    if (unit?.[1] !== undefined && unit[2] !== undefined) {
-      const lane = `${unit[1]}\0${unitConfigFor(unit[1], unit[2])}`;
-      unitByWorkspace.set(lane, [...(unitByWorkspace.get(lane) ?? []), unit[2]]);
+    if (lane.full) undispatchable.push(`${workspace}: its whole suite`);
+    if (workspace !== 'applications/interborough') {
+      if (lane.paths.length > 0) lanes.push({ workspace, config: '', paths: lane.paths });
+      continue;
+    }
+    for (const config of ['./bunfig.ui.toml', '']) {
+      const paths = lane.paths.filter((path) => unitConfigFor(workspace, path) === config);
+      if (paths.length > 0) lanes.push({ workspace, config, paths });
     }
   }
-  // One unit run takes one workspace and one bunfig, so the busiest lane wins.
-  let unitLane = '';
-  let unitPaths: string[] = [];
-  for (const [lane, paths] of unitByWorkspace)
-    if (paths.length > unitPaths.length) {
-      unitLane = lane;
-      unitPaths = paths;
-    }
-  const [unitWorkspace = '', unitConfig = ''] = unitLane === '' ? [] : unitLane.split('\0');
+  const fitted = fitUnitLanes(lanes);
+  if (fitted === undefined)
+    undispatchable.push(
+      `${lanes.length} unit lanes, ${lanes.reduce((sum, lane) => sum + lane.paths.length, 0)} test files, over the dispatch input limit`,
+    );
   return {
-    fixtureComponents: [...slugs].toSorted(),
-    fixtureSpecs,
-    e2eSpecs,
-    unitWorkspace,
-    unitPaths,
-    unitConfig,
+    inputs: {
+      fixtureComponents: plan.fixture_slugs,
+      fixtureSpecs: plan.fixture_specs,
+      e2eSpecs: plan.e2e_specs,
+      unitLanes: fitted ?? [],
+    },
+    undispatchable,
   };
 }
 
@@ -169,44 +210,64 @@ export function validateInputs(
       problems.push(
         `End-to-end spec '${spec}' must be an existing tests/e2e/<name>.spec.ts in applications/interborough.`,
       );
-  if (inputs.unitWorkspace !== '' || inputs.unitPaths.length > 0) {
+  for (const lane of inputs.unitLanes) {
+    const root = lane.workspace === '.';
+    const at = (path: string) => (root ? path : `${lane.workspace}/${path}`);
+    if (lane.workspace === '' && lane.config !== '' && lane.paths.length === 0) {
+      problems.push(`Unit config '${lane.config}' needs --unit-workspace to say whose it is.`);
+      continue;
+    }
     if (
-      !WORKSPACE.test(inputs.unitWorkspace) ||
-      !dependencies.exists(`${inputs.unitWorkspace}/package.json`)
-    )
+      !root &&
+      (!WORKSPACE.test(lane.workspace) || !dependencies.exists(`${lane.workspace}/package.json`))
+    ) {
       problems.push(
-        `Unit workspace '${inputs.unitWorkspace}' must be a workspace folder such as components/cinder.`,
+        `Unit workspace '${lane.workspace}' must be a workspace folder such as components/cinder.`,
       );
-    else if (inputs.unitPaths.length === 0)
-      problems.push('A unit workspace needs at least one --unit-path.');
-    for (const path of inputs.unitPaths)
-      if (!SAFE_PATH.test(path) || !dependencies.exists(`${inputs.unitWorkspace}/${path}`))
-        problems.push(`Unit path '${path}' does not exist in ${inputs.unitWorkspace}.`);
+      continue;
+    }
+    if (lane.paths.length === 0) problems.push('A unit workspace needs at least one --unit-path.');
+    for (const path of lane.paths)
+      if (!SAFE_PATH.test(path) || !dependencies.exists(at(path)))
+        problems.push(`Unit path '${path}' does not exist in ${lane.workspace}.`);
+    if (
+      lane.config !== '' &&
+      (root || !SAFE_PATH.test(lane.config) || !dependencies.exists(at(lane.config)))
+    )
+      problems.push(`Unit config '${lane.config}' does not exist in ${lane.workspace}.`);
   }
-  if (inputs.unitConfig !== '' && inputs.unitWorkspace === '')
-    problems.push(`Unit config '${inputs.unitConfig}' needs --unit-workspace to say whose it is.`);
-  else if (
-    inputs.unitConfig !== '' &&
-    (!SAFE_PATH.test(inputs.unitConfig) ||
-      !dependencies.exists(`${inputs.unitWorkspace}/${inputs.unitConfig}`))
-  )
-    problems.push(`Unit config '${inputs.unitConfig}' does not exist in ${inputs.unitWorkspace}.`);
   return problems;
 }
 
 /** The `gh workflow run` command for `inputs`; only inputs that name something are passed. */
-export function buildCommand(ref: string, inputs: TargetedInputs): string[] {
+export function buildCommand(ref: string, inputs: TargetedInputs, planDigest = ''): string[] {
   const command = ['gh', 'workflow', 'run', 'targeted-checks.yml', '--ref', ref];
   const add = (name: string, value: string): void => {
     if (value !== '') command.push('-f', `${name}=${value}`);
   };
+  // The run's name carries this digest; landing (`landing-evidence.ts`) accepts the run as coverage
+  // only for the plan it computes itself from the same diff (`landing-plan.ts`).
+  add('plan_digest', planDigest);
   add('fixture_components', inputs.fixtureComponents.join(','));
   add('fixture_specs', inputs.fixtureSpecs.join(' '));
   add('e2e_specs', inputs.e2eSpecs.join(' '));
-  add('unit_workspace', inputs.unitWorkspace);
-  add('unit_paths', inputs.unitPaths.join(' '));
-  add('unit_config', inputs.unitConfig);
+  // Every lane, as the JSON list the workflow runs as a matrix.
+  add('unit_lanes', inputs.unitLanes.length === 0 ? '' : JSON.stringify(inputs.unitLanes));
   return command;
+}
+
+/** The full sharded run. A plan that requires one dispatches this, never `targeted-checks.yml`. */
+export function buildFullRunCommand(ref: string): string[] {
+  return ['gh', 'workflow', 'run', 'main.yml', '--ref', ref];
+}
+
+function emptyInputs(): TargetedInputs {
+  return {
+    fixtureComponents: [],
+    fixtureSpecs: [],
+    e2eSpecs: [],
+    unitLanes: [],
+  };
 }
 
 function git(runner: Runner, args: string[]): string {
@@ -224,8 +285,9 @@ export function run(
     runner: defaultRunner,
     exists: (path) => existsSync(resolve(REPOSITORY_ROOT, path)),
     knownSlugs: () => preparedSlugs(defaultRunner),
+    context: (known) => repositoryContext(REPOSITORY_ROOT, known),
   },
-): { code: number; output: string } {
+): { code: number; output: string; notes: string[] } {
   const parsed = parseOptions(argv, {
     values: ['ref', 'fixture-components', 'unit-workspace', 'unit-config'],
     repeated: ['fixture-spec', 'e2e-spec', 'unit-path'],
@@ -241,38 +303,85 @@ export function run(
       .filter((slug) => slug !== ''),
     fixtureSpecs: parsed.repeated['fixture-spec'] ?? [],
     e2eSpecs: parsed.repeated['e2e-spec'] ?? [],
-    unitWorkspace: parsed.values['unit-workspace'] ?? '',
-    unitPaths: parsed.repeated['unit-path'] ?? [],
-    unitConfig: parsed.values['unit-config'] ?? '',
+    unitLanes: [],
   };
+  // The command line names one unit lane: `--unit-workspace`, its `--unit-path`s and its config.
+  const explicitLane: UnitLane = {
+    workspace: parsed.values['unit-workspace'] ?? '',
+    paths: parsed.repeated['unit-path'] ?? [],
+    config: parsed.values['unit-config'] ?? '',
+  };
+  if (explicitLane.workspace !== '' || explicitLane.paths.length > 0 || explicitLane.config !== '')
+    explicit.unitLanes = [explicitLane];
   const given =
     explicit.fixtureComponents.length +
       explicit.fixtureSpecs.length +
       explicit.e2eSpecs.length +
-      explicit.unitPaths.length >
+      explicitLane.paths.length >
     0;
-  // A deleted file has nothing to run, so the derived selection reads only files the branch keeps.
-  const derived = (): TargetedInputs => {
-    const inputs = deriveInputs(
-      git(runner, ['diff', '--name-only', '--diff-filter=d', 'origin/main...HEAD'])
-        .split('\n')
-        .filter(Boolean),
-      dependencies.knownSlugs(),
-    );
-    return explicit.unitConfig === '' ? inputs : { ...inputs, unitConfig: explicit.unitConfig };
-  };
-  const inputs = given ? explicit : derived();
+  // A deleted file has nothing to run, so the plan reads only files the branch keeps.
+  const changed = changedFiles(runner, 'origin/main');
+  const notes: string[] = [];
+  let inputs = explicit;
+  let requiresFullRun = [...oneWayDoorMatches(changed), ...wholeSuiteMatches(changed)];
+  let fullDispatch = false;
+  if (!given) {
+    const plan = computeEvidencePlan(changed, dependencies.context(dependencies.knownSlugs()));
+    requiresFullRun = plan.full_run_rules;
+    const mapped = inputsFromPlan(plan);
+    // A plan that needs a one-way-door check, the whole Interborough suite or every fixture slug
+    // does not fit the targeted workflow's single jobs: the sharded `main.yml` runs it. So does a
+    // plan the dispatch would have to truncate: every lane is dispatched, or none is.
+    if (mapped.undispatchable.length > 0)
+      requiresFullRun = [
+        ...requiresFullRun,
+        { rule: OVERSIZE_RULE, path: mapped.undispatchable.join('; ') },
+      ];
+    fullDispatch = plan.requires_full_run || mapped.undispatchable.length > 0;
+    inputs = fullDispatch
+      ? emptyInputs()
+      : explicitLane.config === ''
+        ? mapped.inputs
+        : {
+            ...mapped.inputs,
+            unitLanes: mapped.inputs.unitLanes.map((lane) =>
+              lane.workspace === '.' ? lane : { ...lane, config: explicitLane.config },
+            ),
+          };
+    if (explicitLane.config !== '' && explicitLane.workspace === '' && fullDispatch)
+      notes.push('--unit-config is ignored: the plan dispatches the full run');
+  }
   const ref = parsed.values['ref'] ?? git(runner, ['rev-parse', '--abbrev-ref', 'HEAD']);
   if (!/^[\w./-]+$/.test(ref)) throw new UsageError(`'${ref}' is not a branch name.`);
   const problems = validateInputs(inputs, dependencies);
   if (problems.length > 0) throw new UsageError(problems.join('\n'));
-  const command = buildCommand(ref, inputs);
+  // The digest names the diff with every status, deletions included, as landing reads it. Only a
+  // plan dispatched whole carries one: an explicit selection names no plan, and a plan that does
+  // not fit goes to the full run, so no targeted run ever covers a truncated plan.
+  const planDigest =
+    given || fullDispatch
+      ? ''
+      : landingPlan(
+          git(runner, ['diff', '--name-only', 'origin/main...HEAD']).split('\n').filter(Boolean),
+        ).digest;
+  const command = fullDispatch ? buildFullRunCommand(ref) : buildCommand(ref, inputs, planDigest);
   // With no input the run is the `checks` job alone: lint and type-check of the changed workspaces.
-  const note =
-    command.length === 6
+  const nothingToRun =
+    inputs.fixtureComponents.length +
+      inputs.fixtureSpecs.length +
+      inputs.e2eSpecs.length +
+      inputs.unitLanes.length ===
+    0;
+  const note = fullDispatch
+    ? '\n# Dispatching main.yml, the full sharded run, because the plan requires one (rules below).'
+    : nothingToRun
       ? '\n# No fixture, spec or unit test file to run: only lint and type-check of the changed workspaces will.'
       : '';
-  const text = command.map(shellQuote).join(' ') + note;
+  const fullRun =
+    requiresFullRun.length === 0
+      ? '\n# requires_full_run: false'
+      : `\n# requires_full_run: true\n${requiresFullRun.map(({ path, rule }) => `#   ${path}: ${rule}`).join('\n')}`;
+  const text = command.map(shellQuote).join(' ') + note + fullRun;
   if (!parsed.flags.has('dry-run')) {
     const result = runner(command);
     if (result.code !== 0)
@@ -280,13 +389,17 @@ export function run(
   }
   return {
     code: 0,
-    output: parsed.flags.has('json') ? JSON.stringify({ ref, inputs, command }) : text,
+    output: parsed.flags.has('json')
+      ? JSON.stringify({ ref, inputs, command, requiresFullRun: requiresFullRun.length > 0 })
+      : text,
+    notes,
   };
 }
 
 if (import.meta.main) {
   try {
-    const { code, output } = run(Bun.argv.slice(2));
+    const { code, output, notes } = run(Bun.argv.slice(2));
+    for (const note of notes) process.stderr.write(`targeted-run: ${note}\n`);
     emitResult(Bun.argv.slice(2), { code, output });
     process.exitCode = code;
   } catch (error) {

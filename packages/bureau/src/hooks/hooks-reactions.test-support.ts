@@ -95,6 +95,8 @@ export interface HarnessOptions {
   readonly subjects?: HooksDependencies['subjects'];
   /** What publishing a delivery event does (COR-2099); the harness captures every one either way. */
   readonly publish?: (event: Event) => void;
+  /** The event kinds running plugins declare, read each time the hooks ask (COR-2226). */
+  readonly declaredEvents?: HooksDependencies['declaredEvents'];
 }
 
 /** One `hook.delivery.*` event as a test reads it: the kind and the payload fields it carries. */
@@ -280,6 +282,7 @@ export function harness(options: HarnessOptions = {}) {
     ...(options.workspace === undefined ? {} : { workspace: options.workspace }),
     ...(options.subjects === undefined ? {} : { subjects: options.subjects }),
     ...(options.formatEvent === undefined ? {} : { formatEvent: options.formatEvent }),
+    ...(options.declaredEvents === undefined ? {} : { declaredEvents: options.declaredEvents }),
     ...(options.eventForHookOwner === undefined
       ? {}
       : { eventForHookOwner: options.eventForHookOwner }),

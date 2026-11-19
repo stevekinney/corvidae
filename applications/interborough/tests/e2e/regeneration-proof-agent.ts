@@ -64,6 +64,15 @@ const regenerationModel =
     throw new Error('The regeneration proof model is not cataloged.');
   })();
 
+/**
+ * The lifetime the retry's approval gets: long enough that the real clock running through page
+ * loads under shard load can never expire it. The first approval keeps the real 20-second binding
+ * expiry, which the spec waits out; the retry's expiry is never in play, so no wall-clock race
+ * decides whether its Approve button is still attached.
+ */
+const RETRY_APPROVAL_LIFETIME_MS = 60 * 60 * 1000;
+let approvalClockOffset = 0;
+
 export function createRegenerationProofAgent() {
   const expiringTool = createTool({
     name: EXPIRING_APPROVAL_TOOL,
@@ -88,11 +97,17 @@ export function createRegenerationProofAgent() {
           toolCalls: [],
         };
       }
+      const userTurns = conversation
+        .getMessages()
+        .filter((message) => message.role === 'user').length;
+      // The first request's approval expires on the real 20-second binding clock; every retry's
+      // approval is issued with a clock that reads an hour ahead, so it expires an hour later.
+      approvalClockOffset = userTurns > 1 ? RETRY_APPROVAL_LIFETIME_MS : 0;
       return {
         content: '',
         toolCalls: [
           {
-            id: `expiring-approval-${conversation.getMessages().filter((message) => message.role === 'user').length}`,
+            id: `expiring-approval-${userTurns}`,
             name: EXPIRING_APPROVAL_TOOL,
             arguments: { value: 'durable-expiry-proof' },
           },
@@ -103,6 +118,7 @@ export function createRegenerationProofAgent() {
       approvalSecret: 'e2e-expiring-approval-secret',
       approvalPolicy: { mode: 'on-mutation' },
       approvalBindingTtlMs: 20_000,
+      approvalNow: () => Date.now() + approvalClockOffset,
     }),
     stopWhen: [stopWhen.pendingApproval(), stopWhen.noToolCalls()],
   });

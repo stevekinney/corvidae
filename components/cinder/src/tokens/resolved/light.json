@@ -2015,6 +2015,18 @@
     },
     "$description": "Scrollbar thumb hover color."
   },
+  "scroll-shadow.color": {
+    "$type": "color",
+    "$value": { "colorSpace": "oklch", "components": [0, 0, 0], "alpha": 0.14 },
+    "$description": "The color of a scroll-edge or sticky-column shadow. Black in both themes, never text ink; the dark arm is denser, because a shadow has to be to read against a dark surface.",
+    "$extensions": {
+      "com.lostgradient.cinder": {
+        "cssProperty": "--cinder-scroll-shadow-color",
+        "public": true,
+        "category": "color"
+      }
+    }
+  },
   "overlay.backdrop": {
     "$type": "color",
     "$value": { "colorSpace": "oklch", "components": [0.2, 0.03, 245], "alpha": 0.25 },
@@ -4174,18 +4186,18 @@
     }
   },
   "kanban-board.board.scroll-edge": {
-    "$value": { "colorSpace": "oklch", "components": [0.2, 0.018, 245], "alpha": 0.12 },
+    "$type": "color",
+    "$value": { "colorSpace": "oklch", "components": [0, 0, 0], "alpha": 0.14 },
+    "$description": "Horizontal scroll-edge fade gradient color -- the scroll-shadow color, black in both themes, so the edge darkens what is under it instead of glowing.",
     "$extensions": {
       "com.lostgradient.cinder": {
-        "cssRecipe": "color-mix(in oklch, var(--cinder-text-default), transparent 88%)",
         "cssProperty": "--cinder-kanban-board-scroll-edge",
         "public": true,
         "category": "color",
-        "component": "kanban-board"
+        "component": "kanban-board",
+        "cssRecipe": "var(--cinder-scroll-shadow-color)"
       }
-    },
-    "$type": "color",
-    "$description": "Horizontal scroll-edge fade gradient color -- `text-default` at 12% opacity, tracking whichever theme arm resolves."
+    }
   },
   "map-marker.fill": {
     "$value": { "colorSpace": "oklch", "components": [1, 0, 255] },

@@ -190,4 +190,11 @@
     padding-inline-start: 0;
     gap: var(--cinder-side-navigation-list-gap, var(--cinder-space-1));
   }
+
+  /* A static section with a hidden label has no header to space it, so it carries one gap above its
+ * list, the same between every group. The gap is padding so that an app can still push the last
+ * group to the bottom of the column with an auto margin. */
+  .cinder-side-navigation-group[data-cinder-label-hidden] {
+    padding-block-start: var(--cinder-space-3);
+  }
 }
