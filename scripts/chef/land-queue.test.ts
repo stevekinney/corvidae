@@ -64,7 +64,8 @@ function repository(
       return out(rest.includes(`${EVIDENCE}^{commit}`) ? EVIDENCE : MAIN_HEAD);
     if (verb === 'merge-base') return out(MERGE_BASE);
     if (verb === 'rev-list') return out(Object.keys(commits).join('\n'));
-    if (verb === 'diff-tree') return out((commits[rest.at(-1) ?? ''] ?? []).join('\n'));
+    if (verb === 'diff-tree')
+      return { code: 0, stdout: (commits[rest.at(-1) ?? ''] ?? []).join('\0'), stderr: '' };
     return { code: 1, stdout: '', stderr: `unexpected ${command.join(' ')}` };
   };
   return { runner, calls };

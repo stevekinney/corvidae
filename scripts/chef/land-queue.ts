@@ -254,10 +254,11 @@ export function landQueueVerdict(options: LandQueueOptions): LandQueueResult {
     sha,
     files: git(
       runner,
-      ['diff-tree', '--no-commit-id', '--name-only', '-r', '--root', '-m', sha],
+      ['diff-tree', '-z', '--no-commit-id', '--name-only', '-r', '--root', '-m', sha],
       cwd,
     )
-      .split('\n')
+      // NUL-separated, so a path Git would quote (a non-ASCII or special name) arrives verbatim.
+      .split('\0')
       .filter(Boolean),
   }));
   const overlapping = [

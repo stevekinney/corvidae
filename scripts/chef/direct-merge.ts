@@ -205,13 +205,13 @@ function landingQueue(
 ): { refusal: string } | { classified: LandQueueResult } {
   try {
     const changed = runner(
-      ['git', 'diff', '--name-only', '--diff-filter=d', `${base}...${options.head}`],
+      ['git', 'diff', '-z', '--name-only', '--diff-filter=d', `${base}...${options.head}`],
       {
         cwd: options.worktree,
       },
     );
     if (changed.code !== 0) return { refusal: `git diff failed: ${firstLine(changed.stderr)}` };
-    const files = changed.stdout.split('\n').filter(Boolean);
+    const files = changed.stdout.split('\0').filter(Boolean);
     const plan = (partial.evidencePlan ?? defaultEvidencePlan)(files, options.worktree);
     const verdict = landQueueVerdict({
       runner,
@@ -259,24 +259,27 @@ function acceptMovedMain(
   const reproduced = git('merge-tree', '--write-tree', attested.base, head);
   if (reproduced.code !== 0 || reproduced.stdout.split('\n')[0]?.trim() !== attested.tree)
     return refuse('merging the head onto the attested base does not give the attested tree');
-  const log = git('log', '--name-only', '--format=', `${attested.base}..${base}`);
+  // `-z` throughout: a path Git would quote (a non-ASCII or special name) is read verbatim.
+  const log = git('log', '-z', '--name-only', '--format=', `${attested.base}..${base}`);
   if (log.code !== 0) return refuse(`git log failed: ${firstLine(log.stderr)}`);
-  const incoming = new Set(log.stdout.split('\n').filter(Boolean));
+  const incoming = new Set(log.stdout.split('\0').filter((path) => path.trim() !== ''));
   const classifiedFiles = new Set(classified.commits.flatMap((commit) => commit.files));
   const unclassified = [...incoming].filter((path) => !classifiedFiles.has(path));
   if (unclassified.length > 0)
     return refuse(`the queue did not classify ${unclassified.slice(0, 5).join(', ')}`);
-  const differing = git('diff', '--name-only', attested.tree, tree);
+  const differing = git('diff', '-z', '--name-only', '--no-renames', attested.tree, tree);
   if (differing.code !== 0) return refuse(`git diff failed: ${firstLine(differing.stderr)}`);
-  const outside = differing.stdout.split('\n').filter((path) => path !== '' && !incoming.has(path));
+  const outside = differing.stdout.split('\0').filter((path) => path !== '' && !incoming.has(path));
   if (outside.length > 0)
     return refuse(
       `the trees differ outside main's new commits at ${outside.slice(0, 5).join(', ')}`,
     );
   for (const path of incoming) {
-    const merged = git('rev-parse', `${tree}:${path}`);
-    const current = git('rev-parse', `${base}:${path}`);
-    if (merged.code !== current.code || merged.stdout.trim() !== current.stdout.trim())
+    // The entry (mode, type, object) at the path in each tree; a path absent from both (main
+    // deleted it, and the merge did too) is an empty entry on each side and matches.
+    const merged = git('ls-tree', '-z', tree, '--', path);
+    const current = git('ls-tree', '-z', base, '--', path);
+    if (merged.code !== 0 || current.code !== 0 || merged.stdout !== current.stdout)
       return refuse(`${path} is not what main holds`);
   }
   return undefined;

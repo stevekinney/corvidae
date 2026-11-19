@@ -20,6 +20,7 @@ import { greenLanding } from './landing-evidence.test-support.ts';
 import { withMergeLock } from './merge-gate.ts';
 import { defaultRunner, type Runner } from './process-runner.ts';
 import type { GuardsResult } from './text-guards.ts';
+import type { EvidencePlan } from './verification-plan.ts';
 
 /**
  * `directMerge` against real Git: a bare repository as `origin`, a clone that the merge runs in, and
@@ -88,7 +89,23 @@ interface World {
  * `origin`. The clone has fetched neither since, so its remote-tracking refs are stale. With
  * `conflicting`, `branch` also edits `shared.txt` and `main` then edits the same line.
  */
-async function world(conflicting = false, integrateMain = true): Promise<World> {
+interface WorldExtras {
+  /** The branch also edits line one of `shared.txt` (main never touches line one). */
+  branchEditsShared?: boolean;
+  /** `main` gains `early.txt` before the branch integrates it, but the evidence names the older base. */
+  lateMain?: boolean;
+  /**
+   * Runs after the evidence is taken, in the clone that moves `main`; it pushes what `main` gains
+   * afterwards. A returned tree replaces the attested integration tree.
+   */
+  afterEvidence?: (other: string, evidence: { base: string; head: string }) => string | undefined;
+}
+
+async function world(
+  conflicting = false,
+  integrateMain = true,
+  extras: WorldExtras = {},
+): Promise<World> {
   const directory = mkdtempSync(join(tmpdir(), 'direct-merge-world-'));
   scratchDirectories.push(directory);
   const origin = join(directory, 'origin.git');
@@ -107,17 +124,23 @@ async function world(conflicting = false, integrateMain = true): Promise<World> 
   git(other, 'checkout', '-q', '-b', 'branch');
   commit(other, 'feature.txt', 'feature\n', 'Add the feature');
   if (conflicting) commit(other, 'shared.txt', 'one\nbranch\nthree\n', 'Edit shared on the branch');
+  if (extras.branchEditsShared)
+    commit(other, 'shared.txt', 'branch\ntwo\nthree\n', 'Edit shared line one on the branch');
   let head = git(other, 'rev-parse', 'HEAD');
   git(other, 'push', '-q', 'origin', 'branch');
   git(other, 'checkout', '-q', 'main');
   // `main` moves after the clone last fetched, so the clone's `origin/main` is stale.
-  commit(
+  const moved = commit(
     other,
     conflicting ? 'shared.txt' : 'moved.txt',
     conflicting ? 'one\nmain\nthree\n' : 'moved\n',
     'Move main',
   );
   git(other, 'push', '-q', 'origin', 'main');
+  if (extras.lateMain) {
+    commit(other, 'early.txt', 'early\n', 'A later commit on main that the branch integrates');
+    git(other, 'push', '-q', 'origin', 'main');
+  }
   if (!conflicting && integrateMain) {
     // Positive delivery controls must attest to the actual candidate tree, including moved main.
     git(other, 'checkout', '-q', 'branch');
@@ -128,8 +151,9 @@ async function world(conflicting = false, integrateMain = true): Promise<World> 
   }
   const staleBase = git(clone, 'rev-parse', 'origin/main');
   git(clone, 'fetch', '-q', 'origin', 'main', 'branch');
-  const base = refs(origin, 'refs/heads/main');
-  const integrationTree = mergeTree(other, base, head).first;
+  const base = extras.lateMain ? moved : refs(origin, 'refs/heads/main');
+  const integrationTree =
+    extras.afterEvidence?.(other, { base, head }) ?? mergeTree(other, base, head).first;
   const fixture = await createDeliveryVerificationFixture(
     {
       directory: clone,
@@ -355,6 +379,117 @@ const queueLand = await outcomeOf(async () => {
   expect(observed?.base).toBe(verification.request.base);
   expect(observed?.landedBase).toBe(notes);
   expect(observed?.landedTree).toBe(git(w.origin, 'rev-parse', `${merged}^{tree}`));
+});
+
+const planWithoutShared = (): EvidencePlan => ({
+  changed: ['feature.txt'],
+  unit_tests: [],
+  root_checks: ['lint:root', 'typecheck:root'],
+  fixture_slugs: [],
+  fixture_specs: [],
+  e2e_specs: [],
+  requires_full_run: false,
+  full_run_rules: [],
+});
+
+/** Lands a world whose `main` moved, expecting the refusal at `verification` and `main` untouched. */
+async function refusedAtVerification(
+  w: World,
+  detail: string,
+  partial: { evidencePlan?: () => EvidencePlan } = {},
+): Promise<void> {
+  const mainTip = refs(w.origin, 'refs/heads/main');
+  const report = await directMerge(w.options, {
+    runner: isolated,
+    verification: w.verification,
+    guards: guardsPass,
+    ...partial,
+  });
+  expect(report).toMatchObject({ merged: false, mergeCommit: null, failedStep: 'verification' });
+  expect(report.detail).toContain(detail);
+  expect(refs(w.origin, 'refs/heads/main')).toBe(mainTip);
+  expect(refs(w.origin, 'refs/heads/branch')).toBe(w.head);
+}
+
+// (b) The head merged onto the attested base must reproduce the attested tree. Here the attested
+// tree is the right one for the pushed base, not for the attested base.
+const attestedTreeNotReproduced = await outcomeOf(async () => {
+  const w = await world(false, true, {
+    afterEvidence: (other, { head }) => {
+      const notes = commit(other, 'notes.txt', 'notes\n', 'Unrelated file on main');
+      git(other, 'push', '-q', 'origin', 'main');
+      return mergeTree(other, notes, head).first;
+    },
+  });
+  await refusedAtVerification(w, 'does not give the attested tree');
+});
+
+// (c) A path main's new commits touch must be one the queue classified. The head integrated a later
+// main commit than the attested base names, so that commit's path is main's, yet outside the range
+// the queue classified (it starts at the merge-base with the head).
+const unclassifiedPath = await outcomeOf(async () => {
+  const w = await world(false, true, { lateMain: true });
+  await refusedAtVerification(w, 'the queue did not classify early.txt');
+});
+
+// (d) The pushed tree may differ from the attested tree only at paths main's new commits touch. An
+// evil merge on main changes `evil.txt` in the merge commit alone, which no commit's file list shows.
+const differsOutsideIncoming = await outcomeOf(async () => {
+  const w = await world(false, true, {
+    afterEvidence: (other) => {
+      git(other, 'checkout', '-q', '-b', 'side');
+      commit(other, 'side.txt', 'side\n', 'A side commit');
+      git(other, 'checkout', '-q', 'main');
+      git(other, 'merge', '-q', '--no-ff', '--no-commit', 'side');
+      writeFileSync(join(other, 'evil.txt'), 'evil\n');
+      git(other, 'add', 'evil.txt');
+      git(other, 'commit', '-q', '-m', 'Merge side, with a change only the merge makes');
+      git(other, 'push', '-q', 'origin', 'main');
+      return undefined;
+    },
+  });
+  await refusedAtVerification(w, 'the trees differ outside main');
+});
+
+// (d) At each path main's new commits touch, the pushed tree must hold what main holds. The branch
+// and main both edit `shared.txt` (different lines), so the merge holds both edits, not main's.
+const incomingContentDiffers = await outcomeOf(async () => {
+  const w = await world(false, true, {
+    branchEditsShared: true,
+    afterEvidence: (other) => {
+      commit(other, 'shared.txt', 'one\ntwo\nmain\n', 'Edit shared line three on main');
+      git(other, 'push', '-q', 'origin', 'main');
+      return undefined;
+    },
+  });
+  await refusedAtVerification(w, 'shared.txt is not what main holds', {
+    evidencePlan: planWithoutShared,
+  });
+});
+
+// Main deletes an unrelated file and adds a path Git quotes (non-ASCII), after the evidence: the
+// landing succeeds, with the deletion and the new path in the merged tree.
+const deletionAndQuotedPath = await outcomeOf(async () => {
+  const w = await world(false, true, {
+    afterEvidence: (other) => {
+      git(other, 'rm', '-q', 'moved.txt');
+      writeFileSync(join(other, 'naïve.txt'), 'naive\n');
+      git(other, 'add', 'naïve.txt');
+      git(other, 'commit', '-q', '-m', 'Delete moved.txt and add a non-ASCII path on main');
+      git(other, 'push', '-q', 'origin', 'main');
+      return undefined;
+    },
+  });
+  const report = await directMerge(w.options, {
+    runner: isolated,
+    verification: w.verification,
+    guards: guardsPass,
+  });
+  expect(report).toMatchObject({ merged: true, failedStep: null, detail: null });
+  const names = git(w.origin, 'ls-tree', '-z', '--name-only', report.mergeCommit ?? '').split('\0');
+  expect(names).toContain('naïve.txt');
+  expect(names).not.toContain('moved.txt');
+  expect(names).toContain('feature.txt');
 });
 
 // Movement the queue did not classify stays refused: main is rewritten so the attested base is no
@@ -637,6 +772,26 @@ describe('directMerge against real Git', () => {
 
   test('still refuses a moved main whose tree is not the attested tree plus its new commits', () => {
     rethrow(queueMismatch);
+  });
+
+  test('refuses when the head merged onto the attested base does not reproduce the attested tree', () => {
+    rethrow(attestedTreeNotReproduced);
+  });
+
+  test('refuses when main touches a path the queue did not classify', () => {
+    rethrow(unclassifiedPath);
+  });
+
+  test('refuses when the pushed tree differs from the attested tree outside main new commits', () => {
+    rethrow(differsOutsideIncoming);
+  });
+
+  test('refuses when the pushed tree holds other content than main at a path main changed', () => {
+    rethrow(incomingContentDiffers);
+  });
+
+  test('lands when main deleted an unrelated file and added a non-ASCII path', () => {
+    rethrow(deletionAndQuotedPath);
   });
 
   test('a head that is not the pinned one is refused at head', () => {
