@@ -22,7 +22,9 @@ export const BULK_PURGE_COPY = {
     /** Above the ids the server named. */
     sampleIntro: 'These workflows will be deleted:',
     /** A preview that matched none: nothing to confirm, so no warning either. */
-    nothing: 'None of the matching workflows have finished, so there is nothing to purge.',
+    nothing: 'No finished workflows match this filter now, so there is nothing to purge.',
+    /** The one dismiss action when there is nothing to purge: it closes, it does not abandon a purge. */
+    closeAction: 'Close',
     /** The ids the list does not show. */
     notShown: (count: number): string => `…and ${String(count)} more.`,
   },

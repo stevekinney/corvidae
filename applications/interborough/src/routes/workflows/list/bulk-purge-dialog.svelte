@@ -233,7 +233,10 @@
         cannot be pressed yet, so focus always has a stable target and the dialog does not change
         height as the preview arrives.
       -->
-      <Button variant="ghost" size="sm" onclick={onClose}>Cancel</Button>
+      <!-- With nothing to purge there is nothing to cancel: the one action closes the dialog. -->
+      <Button variant="ghost" size="sm" onclick={onClose}>
+        {phase === 'preview' && matched === 0 ? BULK_PURGE_COPY.preview.closeAction : 'Cancel'}
+      </Button>
       {#if phase === 'loading'}
         <Button variant="danger" size="sm" disabled>Purge</Button>
       {:else if matched > 0}

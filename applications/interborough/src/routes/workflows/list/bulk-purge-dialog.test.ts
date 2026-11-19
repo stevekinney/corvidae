@@ -175,19 +175,31 @@ describe('BulkPurgeDialog', () => {
   });
 
   test('a preview that matches nothing says so, warns of nothing, and offers no purge button', async () => {
-    const { getByText, queryByText, queryByRole } = render(BulkPurgeDialog, {
+    let closed = 0;
+    const { getAllByRole, getByText, queryByText, queryByRole } = render(BulkPurgeDialog, {
       props: {
         runDryRun: async () => preview({ matched: 0, sampleWorkflowIds: [] }),
         runPurge: async () => ({ headline: 'unused', errors: [] }),
-        onClose: () => {},
+        onClose: () => {
+          closed += 1;
+        },
       },
     });
 
     await waitFor(() => {
       expect(
-        getByText('None of the matching workflows have finished, so there is nothing to purge.'),
+        getByText('No finished workflows match this filter now, so there is nothing to purge.'),
       ).not.toBeNull();
     });
+    // The one dismiss action is "Close": with nothing to purge there is nothing to cancel.
+    expect(queryByRole('button', { name: 'Cancel' })).toBeNull();
+    // The modal's own corner X is also named "Close"; the footer action is the one with the word.
+    const footerClose = requireElement(
+      getAllByRole('button').find((button) => button.textContent?.trim() === 'Close'),
+      HTMLButtonElement,
+    );
+    await fireEvent.click(footerClose);
+    expect(closed).toBe(1);
     // Nothing will be deleted, so there is no irreversibility to warn about and nothing to confirm.
     expect(queryByText(/can't be undone/)).toBeNull();
     expect(queryByText(/Permanently deletes/)).toBeNull();
