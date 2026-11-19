@@ -33,7 +33,11 @@
   flex-direction: column;
   gap: var(--cinder-space-2);
   inline-size: max-content;
-  max-inline-size: min(22.5rem, 100%);
+  /* At most 360px, and never wider than the screen less the popover's 8px margins and 12px padding
+   * a side. Not a percentage of the popover: the popover sizes to its content where it was first
+   * placed, so at 375 it shrank to the room right of the title and the Copy button ran past the
+   * screen's edge (to 398) instead of the popover moving left to fit (COR-2438, 16a and 16g). */
+  max-inline-size: min(22.5rem, calc(100vw - 2.5rem));
   min-inline-size: 0;
   font-size: var(--cinder-text-sm);
 }

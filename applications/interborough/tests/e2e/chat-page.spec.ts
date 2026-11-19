@@ -822,7 +822,12 @@ test.describe('an open chat whose approval is answered in Reviews (18i, 18j)', (
     await expect(conversationArea(page).locator('.chat-input-status')).toHaveText(
       'A message now steers the run.',
     );
-    await expect(conversationArea(page).getByRole('img', { name: 'Running' })).toBeVisible();
+    // The header's status is a Badge now (COR-2438, criterion 18b), not a dot named for its word.
+    await expect(
+      conversationArea(page).locator(
+        '[data-testid="chat-header"] .cinder-page-header__status .cinder-badge',
+      ),
+    ).toHaveText('Running');
     // The decision stays as it was, and is not told again.
     await expect(decided.locator('.cinder-approval-card__outcome')).toContainText(
       /Approved by you in Reviews\s*10:46 AM/,

@@ -20,6 +20,7 @@
 import type { Page } from '@playwright/test';
 
 import { AGENT_EDITOR_COPY } from '../../src/app/copy/agents.ts';
+import { CHAT_COPY } from '../../src/app/copy/chat.ts';
 import { MODELS_COPY } from '../../src/app/copy/models.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
 import { E2E_FIRST_RUN_URL } from './e2e-constants.ts';
@@ -311,11 +312,18 @@ test('each step completes from its own signal, from connecting a provider to say
   await expect(
     homeSteps(page).nth(1).getByRole('link', { name: 'Create an agent' }),
   ).toHaveAttribute('data-cinder-variant', 'primary');
-  // The box that starts a chat comes back with a provider; no agent is listed yet, so there is
-  // nobody to send to.
+  // With a provider but no agent there is nobody to send to, so Start a chat offers no composer
+  // that cannot work: it says why and leads to the missing step (COR-2438, criterion 21c).
+  const notReady = page.getByTestId('home-start-chat');
+  await expect(
+    notReady.getByRole('heading', { level: 3, name: CHAT_COPY.readiness['needs-agent'].title }),
+  ).toBeVisible();
+  await expect(
+    notReady.getByRole('link', { name: CHAT_COPY.readiness['needs-agent'].action }),
+  ).toHaveAttribute('href', /\/agents\/new$/);
   await expect(
     page.getByTestId('home-start-chat').getByPlaceholder('Ask an agent to do something'),
-  ).toBeVisible();
+  ).toHaveCount(0);
   await expect(page.getByTestId('home-counts')).toHaveCount(0);
 
   // New chat has no agent to start with yet, and leads to the agent form.
