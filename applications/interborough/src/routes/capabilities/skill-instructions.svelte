@@ -84,8 +84,7 @@
         <span class="ib-skill-instructions__file">{copy.cardFile(size)}</span>
       </p>
       {#if html === ''}
-        <!-- Cinder's one empty state, as every empty section is (COR-2431). -->
-        <EmptyState kind="first-use" headingLevel={4} title={copy.empty} />
+        <EmptyState headingLevel={5} title={copy.empty} />
       {:else}
         <!-- `renderMarkdown` sanitizes before it returns HTML: a skill's file is untrusted text. -->
         <div

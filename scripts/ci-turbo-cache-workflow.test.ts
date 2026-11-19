@@ -224,3 +224,64 @@ describe('Turborepo cache in the workflows', () => {
     );
   });
 });
+
+describe('the remote cache shared with the owner', () => {
+  const turbo = JSON.parse(readFileSync(resolve(root, 'turbo.json'), 'utf8')) as {
+    tasks: Record<string, { cache?: boolean; env?: string[] }>;
+  };
+  const workflowsRunningTurbo = [
+    ...new Set(
+      jobs()
+        .filter(runsTurbo)
+        .map((job) => job.workflow),
+    ),
+  ];
+
+  test('every workflow that runs Turborepo hands it the token and team', () => {
+    const missing = workflowsRunningTurbo.filter((workflow) => {
+      const text = readFileSync(resolve(workflowDirectory, workflow), 'utf8');
+      return (
+        !text.includes('TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}') ||
+        !text.includes('TURBO_TEAM: ${{ vars.TURBO_TEAM }}')
+      );
+    });
+    expect(missing).toEqual([]);
+  });
+
+  test('a call to a workflow that runs Turborepo passes the secrets on', () => {
+    const missing: string[] = [];
+    for (const workflow of readdirSync(workflowDirectory).filter((name) => name.endsWith('.yml'))) {
+      const text = readFileSync(resolve(workflowDirectory, workflow), 'utf8');
+      for (const match of text.matchAll(
+        /uses: \.\/\.github\/workflows\/([\w.-]+)\n([\s\S]*?)\n\n/gu,
+      ))
+        if (workflowsRunningTurbo.includes(match[1]!) && !match[2]!.includes('secrets: inherit'))
+          missing.push(`${workflow} -> ${match[1]}`);
+    }
+    expect(missing).toEqual([]);
+  });
+
+  // A macOS pass through the shared cache must never stand in for a Linux CI test run.
+  test('every test task hashes the platform, and lint, type-check and generation do not', () => {
+    const isTest = (name: string) => /^(test|ci:browser)/u.test(name.replace(/^.*#/u, ''));
+    const isShared = (name: string) =>
+      /^(lint|typecheck|metadata|types|transit)$/u.test(name.replace(/^.*#/u, ''));
+    const unkeyed: string[] = [];
+    const keyed: string[] = [];
+    for (const [name, task] of Object.entries(turbo.tasks)) {
+      const hashes = task.env?.includes('CORVIDAE_TEST_PLATFORM') ?? false;
+      if (isTest(name) && task.cache !== false && !hashes) unkeyed.push(name);
+      if (isShared(name) && hashes) keyed.push(name);
+    }
+    expect(unkeyed).toEqual([]);
+    expect(keyed).toEqual([]);
+  });
+
+  test('the cache restore step sets the platform every test task hashes', () => {
+    const action = readFileSync(
+      resolve(root, '.github/actions/turbo-cache/restore/action.yml'),
+      'utf8',
+    );
+    expect(action).toContain('CORVIDAE_TEST_PLATFORM=${RUNNER_OS}-${RUNNER_ARCH}');
+  });
+});

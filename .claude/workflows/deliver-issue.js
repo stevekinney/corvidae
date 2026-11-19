@@ -5,10 +5,13 @@ export const meta = {
   phases: ['brief', 'critique', 'implement', 'check', 'evidence', 'review', 'correct'],
 };
 
-// The default delivery path (a branch the coordinator lands with scripts/chef/deliver.ts), as
-// code. Every step is one agent call or a script an agent runs; a script's exit code and output
-// are the evidence, never a report from the worker. Models come from agent frontmatter alone: a
-// typed agent (agentType) never sets `model`; only the untyped shell agents run on Haiku.
+// The coordinator runs brief.ts with --json and the pinned repository and base. In
+// args.preparedBriefs[issue], record its process exit as exitCode, its JSON path as
+// briefPath (empty on refusal), and preserve error, needsResolvedRows and owned paths.
+// Set validated only after checking the result and issue identity. After a design
+// critique, the coordinator can rerun preparation against the validated rows and
+// resume with the resulting brief. An owner-approved override similarly takes a
+// coordinator-written result in args.overrideBriefs, with the verified file byte count.
 //
 // Concurrency: AGENTS.md "Parallel runs" allows at most two implementation workers at once on this
 // host. Issues run in chunks of two with parallel(): a chunk finishes before the next starts, so
@@ -19,18 +22,6 @@ export const meta = {
 
 const REPOSITORY = 'stevekinney/corvidae';
 const MAXIMUM_ROUNDS = 2;
-
-const BRIEF_SCHEMA = {
-  type: 'object',
-  properties: {
-    exitCode: { type: 'integer' },
-    briefPath: { type: 'string' },
-    error: { type: 'string' },
-    paths: { type: 'array', items: { type: 'string' } },
-    needsResolvedRows: { type: 'boolean' },
-  },
-  required: ['exitCode', 'briefPath'],
-};
 
 // What the pre-build design critique returns; scripts/chef/design-rows-resolved.ts defines the
 // file and design-critique.ts validates it before writing, so the schema only shapes the answer.
@@ -171,12 +162,6 @@ const COMPARE_SCHEMA = {
   required: ['headSha', 'complete', 'noEvidence', 'hasNew'],
 };
 
-const OVERRIDE_BRIEF_SCHEMA = {
-  type: 'object',
-  properties: { briefPath: { type: 'string' }, bytes: { type: 'integer' } },
-  required: ['briefPath', 'bytes'],
-};
-
 const VERDICT = {
   type: 'object',
   properties: {
@@ -283,61 +268,6 @@ function judgment(issue, reason, steps, extra) {
 
 function shellArgument(value) {
   return `'${value.replaceAll("'", "'\"'\"'")}'`;
-}
-
-function briefCommand(issue, run, context, classification, stdout) {
-  const arguments_ = [
-    'bun',
-    'scripts/chef/brief.ts',
-    shellArgument(issue),
-    '--repository',
-    REPOSITORY,
-    '--base',
-    '"$(git rev-parse HEAD)"',
-  ];
-  if (classification !== null) arguments_.push('--classification', shellArgument(classification));
-  if (context !== null) arguments_.push('--context', shellArgument(context));
-  if (run !== undefined) arguments_.push('--run', shellArgument(run));
-  arguments_.push(stdout ? '--stdout' : '--json');
-  return arguments_.join(' ');
-}
-
-/** Only after an override: brief.ts writes no file when it refuses, so the brief is generated to stdout. */
-function writeOverrideBrief(issue, run, context, classification) {
-  return agent(
-    [
-      `Write the brief of ${issue}. Invoke no skills. Make no Linear or GitHub writes.`,
-      'The main checkout is the parent directory of the output of `git rev-parse --path-format=absolute --git-common-dir`. Create its tmp/chef/briefs directory if it is absent.',
-      `Run \`${briefCommand(issue, run, context, classification, true)}\` once, with its standard output redirected to <main checkout>/tmp/chef/briefs/${issue}.md as an absolute path. If it prints nothing, leave no file.`,
-      'Return briefPath (that absolute path) and bytes (the size of the file in bytes, 0 when there is none).',
-    ].join('\n'),
-    {
-      label: `override brief ${issue}`,
-      phase: 'brief',
-      schema: OVERRIDE_BRIEF_SCHEMA,
-      model: 'haiku',
-      effort: 'low',
-    },
-  );
-}
-
-function runBrief(issue, run, context, classification) {
-  phase('brief');
-  log(`${issue}: preparing the brief`);
-  return agent(
-    [
-      `Prepare chef delivery of ${issue}. Invoke no skills. Make no Linear or GitHub writes.`,
-      `Run \`${briefCommand(issue, run, context, classification)}\` once and read its exit code and its JSON output. The coordinator supplied ${context ? 'the verified context file' : 'no design context file'} and ${classification ? `the ${classification} classification` : 'no exceptional classification'}; do not invent either from issue text.`,
-      'Return exitCode (the exit code of that command), briefPath (the JSON path field, or an empty string) error (the JSON error field or the first line of stderr, when there is one), needsResolvedRows (copy the JSON field of that name; false when it is absent) and paths (the repository paths the brief file lists as owned by the issue, or an empty array).',
-    ].join('\n'),
-    {
-      label: `brief ${issue}`,
-      phase: 'brief',
-      schema: BRIEF_SCHEMA,
-      model: 'haiku',
-      effort: 'low',
-    },
-  );
 }
 
 /**
@@ -678,6 +608,18 @@ function verifyBlockers(evidence) {
   return blockers;
 }
 
+function coordinatorBrief(records, issue) {
+  const record = records && Object.hasOwn(records, issue) ? records[issue] : null;
+  if (
+    !record ||
+    record.validated !== true ||
+    !Number.isInteger(record.exitCode) ||
+    typeof record.briefPath !== 'string'
+  )
+    return null;
+  return record;
+}
+
 async function deliverOne(issue) {
   const run = args && args.run;
   const context =
@@ -710,16 +652,18 @@ async function deliverOne(issue) {
     return judgment(issue, 'invalid override: it needs a reason and a time', {});
 
   const steps = {};
-  let prepared = await runBrief(issue, run, context, classification);
-  if (prepared === null) return judgment(issue, 'brief step failed', steps);
+  let prepared = coordinatorBrief(args && args.preparedBriefs, issue);
+  if (prepared === null)
+    return judgment(issue, 'missing validated coordinator brief; no worker', steps);
   steps.brief = prepared;
   // An issue with design rows is briefed only after its critique: one critique, one re-brief. An
   // issue without design rows adds no call here.
   if (prepared.exitCode !== 0 && prepared.needsResolvedRows === true) {
     const failure = await resolveRows(issue, steps, context);
     if (failure !== null) return failure;
-    prepared = await runBrief(issue, run, context, classification);
-    if (prepared === null) return judgment(issue, 'brief step failed after the critique', steps);
+    prepared = coordinatorBrief(args && args.resolvedBriefs, issue);
+    if (prepared === null)
+      return judgment(issue, 'missing validated coordinator brief after the critique', steps);
     steps.rebrief = prepared;
   }
   let briefPath = prepared.briefPath.trim();
@@ -738,19 +682,21 @@ async function deliverOne(issue) {
       return judgment(issue, 'brief override could not be recorded', steps);
     steps.override = recorded;
     overridden = { reason: override.reason, at: override.at };
-    const written = await writeOverrideBrief(issue, run, context, classification);
-    if (written === null) return judgment(issue, 'override brief step failed', steps);
-    steps.overrideBrief = written;
-    briefPath = written.briefPath.trim();
+    const written = coordinatorBrief(args && args.overrideBriefs, issue);
     if (
+      written === null ||
+      written.exitCode !== 0 ||
+      !Number.isSafeInteger(written.bytes) ||
       written.bytes <= 0 ||
-      !briefPath.startsWith('/') ||
-      !briefPath.endsWith(`/tmp/chef/briefs/${issue}.md`)
+      !written.briefPath.startsWith('/') ||
+      !written.briefPath.endsWith(`/tmp/chef/briefs/${issue}.md`)
     )
       return judgment(issue, 'override produced no brief; no worker', steps);
+    steps.overrideBrief = written;
+    briefPath = written.briefPath;
     log(`${issue}: brief override recorded: ${override.reason}`);
-  } else if (briefPath === '') {
-    return judgment(issue, 'brief exited 0 without a brief path', steps);
+  } else if (!briefPath.startsWith('/')) {
+    return judgment(issue, 'brief exited 0 without an absolute brief path', steps);
   }
 
   const ownedPaths = [
@@ -797,7 +743,7 @@ async function deliverOne(issue) {
     if (verified.status !== undefined) return verified;
     const where = { head, branch: built.branch, worktree: built.worktree };
     if (round === MAXIMUM_ROUNDS)
-      return judgment(issue, `still failing after ${MAXIMUM_ROUNDS} rounds`, steps, {
+      return judgment(issue, `still failing after ${round - 1} correction`, steps, {
         ...where,
         findings: verified.findings,
       });
