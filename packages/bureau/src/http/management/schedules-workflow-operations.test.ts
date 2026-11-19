@@ -325,19 +325,27 @@ describe('who owns and may change a workflow schedule', () => {
     expect(await served.bureau.ownerOf({ kind: 'run', id: runId })).not.toBe('api-key:victim');
   });
 
-  it('never takes the owner of a run from the input the caller wrote, and reads back whatever shape it has', async () => {
+  it('never takes the owner, origin or schedule of a run from the input the caller wrote, and reads back whatever shape it has', async () => {
     const served = await serve();
-    const forgedOrigin = { kind: 'person', principal: 'api-key:victim', surface: 'api' };
+    const forgedPerson = { kind: 'person', principal: 'api-key:victim', surface: 'api' };
+    const forgedSchedule = { kind: 'schedule', scheduleId: 'elsewhere', fireId: 'forged' };
     const inputs = [
       undefined,
       5,
       ['a'],
-      { origin: forgedOrigin },
-      { kind: 'manual', input: { n: 1 }, origin: forgedOrigin },
-      { kind: 'schedule', scheduleId: 'elsewhere', origin: forgedOrigin },
+      // Not an origin at all: a task origin the output schema would refuse.
+      { origin: 'SFO' },
+      { origin: null },
+      { origin: forgedPerson },
+      { origin: forgedSchedule },
+      { kind: 'manual', input: { n: 1 }, origin: forgedPerson },
+      { kind: 'schedule', scheduleId: 'elsewhere' },
+      { kind: 'schedule', scheduleId: 'elsewhere', origin: forgedPerson },
+      { agentName: 'writer', input: 'x', scheduleId: 'elsewhere', principal: 'api-key:victim' },
     ];
     const engine = served.bureau.durableEngine()!;
     for (const workflowInput of inputs) {
+      const label = JSON.stringify(workflowInput);
       const id = await created(
         served,
         workflowInput === undefined
@@ -348,34 +356,50 @@ describe('who owns and may change a workflow schedule', () => {
       const runId = ran.result!['taskId'] as string;
       await completes(engine, runId);
 
-      // The run belongs to the deployment, as the instance of any workflow does, and not to the
-      // owner its input names.
-      expect(await served.bureau.ownerOf({ kind: 'run', id: runId })).toBe('anonymous:local');
+      // The run belongs to the owner of the schedule that fired it, never to the owner its input
+      // names.
+      expect([label, await served.bureau.ownerOf({ kind: 'run', id: runId })]).toEqual([
+        label,
+        STARTER_OWNER,
+      ]);
       const detail = await rpc(
         served.keyed,
         'bureau.workflows.runs.get',
         { runId },
         'workflows-reader-key',
       );
-      expect([JSON.stringify(workflowInput), detail.error]).toEqual([
-        JSON.stringify(workflowInput),
-        undefined,
-      ]);
+      expect([label, detail.error]).toEqual([label, undefined]);
+      // The input's own `origin` is the caller's data, not the origin of the start.
+      expect([label, detail.result!['origin']]).toEqual([label, null]);
       const listed = await rpc(
         served.keyed,
         'bureau.workflows.runs.list',
         {},
         'workflows-reader-key',
       );
-      expect(listed.error).toBeUndefined();
-      // The tasks list reads on, lists the run under the deployment's owner, and shows the victim
-      // none of it.
-      const tasks = await rpc(served.keyed, 'bureau.tasks.list', {}, 'operator-key');
-      expect(tasks.error).toBeUndefined();
-      const listedTask = (tasks.result!['tasks'] as Array<{ id: string; owner: string }>).find(
+      expect([label, listed.error]).toEqual([label, undefined]);
+      const listedRun = (listed.result!['runs'] as Array<{ id: string; origin: unknown }>).find(
         (entry) => entry.id === runId,
       );
-      expect(listedTask?.owner).toBe('anonymous:local');
+      expect([label, listedRun?.origin]).toEqual([label, null]);
+      // The tasks list reads on, lists the run under the schedule's owner and the schedule that
+      // fired it, and shows the victim none of it.
+      const tasks = await rpc(served.keyed, 'bureau.tasks.list', {}, 'operator-key');
+      expect([label, tasks.error]).toEqual([label, undefined]);
+      const listedTask = (
+        tasks.result!['tasks'] as Array<{
+          id: string;
+          owner: string;
+          origin: unknown;
+          workflow: { scheduleId: string | null };
+        }>
+      ).find((entry) => entry.id === runId);
+      expect([label, listedTask?.owner]).toEqual([label, STARTER_OWNER]);
+      expect([label, listedTask?.workflow.scheduleId]).toEqual([label, id]);
+      expect([label, listedTask?.origin]).toEqual([
+        label,
+        { kind: 'schedule', scheduleId: id, fireId: runId },
+      ]);
       const victimTasks = await rpc(served.keyed, 'bureau.tasks.list', {}, 'bob-key');
       expect(victimTasks.result!['tasks']).toEqual([]);
       await call(served, 'cancel', { scheduleId: id });

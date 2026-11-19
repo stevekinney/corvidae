@@ -55,6 +55,7 @@ import type { VersionedCatalogEntry } from './versioned-catalog';
 import { z } from 'zod';
 
 import { auditTrailWorkflowOwnerId } from './audit-trail';
+import { startOfRun } from './workflow-run-start';
 import {
   taskOriginTag,
   type TaskOrigin,
@@ -2106,20 +2107,18 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
     }
   }
 
-  function summarize(state: {
+  async function summarize(state: {
     id: string;
     type: string;
     status: WorkflowStatus;
     version: string;
     createdAt: number;
     updatedAt: number;
+    tags?: readonly string[] | undefined;
     input?: unknown;
-  }): WorkflowRunSummary {
-    const input = state.input;
-    const origin =
-      typeof input === 'object' && input !== null && 'origin' in input
-        ? (input.origin as TaskOrigin | null)
-        : null;
+  }): Promise<WorkflowRunSummary> {
+    // COR-2546: the origin a Bureau start declared, never one a schedule's caller wrote.
+    const { origin } = await startOfRun(engine, state);
     return {
       id: state.id,
       workflow: bureauNameOf(state.type),
@@ -2944,7 +2943,7 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
             ) {
               continue;
             }
-            found.push(summarize({ ...run, input: state?.input }));
+            found.push(await summarize({ ...run, input: state?.input }));
           }
           offset += page.items.length;
           if (page.items.length === 0 || offset >= page.total) break;
@@ -3018,15 +3017,16 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
           : undefined;
       const error = state.error ?? cancellation?.reason;
       return {
-        ...summarize({
+        ...(await summarize({
           id: state.id,
           type: state.type,
           status: state.status,
           version: state.versionTuple.workflowVersion,
           createdAt: state.createdAt,
           updatedAt: state.updatedAt,
+          tags: state.tags,
           input: state.input,
-        }),
+        })),
         trigger: state.input,
         ...(state.result === undefined ? {} : { result: state.result }),
         ...(error === undefined ? {} : { error }),

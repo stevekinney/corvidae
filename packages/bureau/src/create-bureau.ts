@@ -2646,6 +2646,9 @@ async function constructBureau<const D extends AgentDefinitions>(
     createRunHookOrigins({
       kv: runtime.kv,
       workflowOf: async (runId) => runtime.durable?.engine.get(runId),
+      // COR-2546: Weft's record of the fire, never the run's input, which a schedule's caller writes.
+      scheduleOfFire: async (runId) =>
+        (await runtime.durable?.engine.getScheduleProvenance(runId))?.scheduleId,
       taskOriginOf: async (runId) => {
         const record = await tasks.record(runId);
         return record?.origin;

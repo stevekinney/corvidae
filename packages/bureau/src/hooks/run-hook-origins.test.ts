@@ -3,22 +3,38 @@
  * of the run and every run above it, over scripted records.
  */
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
+import { MemoryStorage, textValueStore } from '@lostgradient/storage';
 import { describe, expect, it } from 'bun:test';
 
 import type { StoredTaskOrigin } from '../task-origin.ts';
 import { createRunHookOrigins } from './run-hook-origins.ts';
 
 type Task = { agent?: string; origin?: StoredTaskOrigin };
-type Instance = { type: string; input?: unknown };
+type Instance = { type: string; input?: unknown; tags?: string[] };
 
-function subjects(tasks: Record<string, Task>, instances: Record<string, Instance> = {}) {
-  return createRunHookOrigins({
-    kv: undefined,
-    workflowOf: (runId) => Promise.resolve(instances[runId] ?? null),
-    taskOriginOf: (runId) => Promise.resolve(tasks[runId]?.origin),
-    agentOf: (runId) => Promise.resolve(tasks[runId]?.agent ?? null),
+/** What the sources read: `fires` is Weft's record of which schedule fired each run. */
+function sourcesOf(
+  tasks: Record<string, Task>,
+  instances: Record<string, Instance>,
+  fires: Record<string, string>,
+  kv?: ReturnType<typeof textValueStore>,
+) {
+  return {
+    kv,
+    workflowOf: (runId: string) => Promise.resolve(instances[runId] ?? null),
+    scheduleOfFire: (runId: string) => Promise.resolve(fires[runId]),
+    taskOriginOf: (runId: string) => Promise.resolve(tasks[runId]?.origin),
+    agentOf: (runId: string) => Promise.resolve(tasks[runId]?.agent ?? null),
     diagnose: () => undefined,
-  }).subjectsOfRun;
+  };
+}
+
+function subjects(
+  tasks: Record<string, Task>,
+  instances: Record<string, Instance> = {},
+  fires: Record<string, string> = {},
+) {
+  return createRunHookOrigins(sourcesOf(tasks, instances, fires)).subjectsOfRun;
 }
 
 describe('the subjects of a run', () => {
@@ -34,6 +50,7 @@ describe('the subjects of a run', () => {
         instance: {},
       },
       { instance: { type: 'nightly', input: { kind: 'schedule', scheduleId: 'bureau-s' } } },
+      { instance: 'bureau-s' },
     );
     expect(await read('step')).toEqual({
       agent: 'scout',
@@ -70,5 +87,53 @@ describe('the subjects of a run', () => {
       loop: { origin: { kind: 'parent', parentRunId: 'loop' } },
     });
     expect((await rejectionOf(endless('loop'))) as Error).toBeInstanceOf(Error);
+  });
+});
+
+describe('the schedule a run was fired by (COR-2546)', () => {
+  /** A hook-started run's schedules carry the hook; a person's `elsewhere` schedule carries one too. */
+  async function hookChain(instances: Record<string, Instance>, fires: Record<string, string>) {
+    const kv = textValueStore(new MemoryStorage());
+    const origins = createRunHookOrigins(sourcesOf({}, instances, fires, kv));
+    await origins.scheduleHookOrigins!.recordSchedule('hooked-schedule', 'hook-1');
+    return origins;
+  }
+
+  const forgedInputs: Array<[string, unknown]> = [
+    ['a schedule trigger', { kind: 'schedule', scheduleId: 'hooked-schedule' }],
+    [
+      'an agent schedule’s fire',
+      { agentName: 'writer', input: 'x', scheduleId: 'hooked-schedule' },
+    ],
+  ];
+
+  for (const [name, input] of forgedInputs) {
+    it(`is not the one ${name} in a run’s input names, when no schedule fired the run`, async () => {
+      const origins = await hookChain({ 'run-1': { type: 'kit__echo', input } }, {});
+      expect(await origins.startedByHook('run-1')).toBeUndefined();
+      expect(await origins.subjectsOfRun('run-1')).toEqual({
+        agent: undefined,
+        workflows: ['kit:echo'],
+        schedules: [],
+      });
+    });
+
+    it(`is the one the fire record names, not the one ${name} in the input names`, async () => {
+      const origins = await hookChain(
+        { 'run-1': { type: 'kit__echo', input } },
+        { 'run-1': 'people-schedule' },
+      );
+      expect(await origins.startedByHook('run-1')).toBeUndefined();
+      expect((await origins.subjectsOfRun('run-1')).schedules).toEqual(['people-schedule']);
+    });
+  }
+
+  it('reads a hook-made schedule of a code workflow as the hook’s, though its raw input names no schedule', async () => {
+    const origins = await hookChain(
+      { 'run-1': { type: 'kit__echo', input: { n: 1 } } },
+      { 'run-1': 'hooked-schedule' },
+    );
+    expect(await origins.startedByHook('run-1')).toBe('hook-1');
+    expect((await origins.subjectsOfRun('run-1')).schedules).toEqual(['hooked-schedule']);
   });
 });
