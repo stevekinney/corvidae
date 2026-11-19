@@ -63,8 +63,6 @@
   /** The tool the address names (`?tool=`), which is a tool's own page while it loads, fails or is missing. */
   const requested = $derived(router.search.get('tool'));
   const asked = $derived(requested !== null && requested !== '');
-  /** The address names a tool the catalog does not hold. A tool the filter only hides is held. */
-  const missing = $derived(asked && !tools.some((tool) => tool.name === requested));
 
   /**
    * Stops waiting for the tool: the address no longer names it, so the list takes the page's place
@@ -106,6 +104,7 @@
         key={(tool) => tool.name}
         label={copy.listLabel.tools}
         detailLabel={copy.detailLabel.tools}
+        openFirst
         selectionParameter="tool"
         {selectionLocation}
         storageKey="interborough-capabilities-tools"
@@ -173,16 +172,16 @@
         {#snippet detail(tool)}
           <ToolDetail {tool} />
         {/snippet}
+        <!-- A tool the address names that the catalog does not hold: the tool's own not-found page. -->
+        {#snippet notFound()}
+          <ToolPageState kind="not-found" />
+        {/snippet}
         {#snippet empty()}
-          {#if missing}
-            <ToolPageState kind="not-found" />
-          {:else}
-            <EmptyState
-              kind="first-use"
-              title={copy.emptyDetailTitle}
-              description={copy.emptyDetailDescription}
-            />
-          {/if}
+          <EmptyState
+            kind="first-use"
+            title={copy.emptyDetailTitle}
+            description={copy.emptyDetailDescription}
+          />
         {/snippet}
       </ListDetail>
     </div>

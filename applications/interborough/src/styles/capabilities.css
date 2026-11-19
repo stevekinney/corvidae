@@ -13,12 +13,12 @@
   padding-block-start: var(--cinder-space-3);
 }
 
-/* ListDetail fills the height it is given and scrolls each pane, so the frame gives it one. */
+/* ListDetail fills the height it is given and scrolls each pane, so the frame gives it one. It
+ * draws no box: the list and the open item sit on the page under the tabs, and ListDetail's divider
+ * is the one line between them. */
 .ib-capabilities__frame {
   block-size: max(28rem, calc(100dvh - 18rem));
   min-inline-size: 0;
-  border: 1px solid var(--cinder-border-muted);
-  border-radius: var(--cinder-radius-md);
   overflow: hidden;
 }
 

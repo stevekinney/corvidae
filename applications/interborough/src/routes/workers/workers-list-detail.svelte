@@ -102,6 +102,7 @@
     detailLabel={copy.list.detailLabel}
     emptyTitle={copy.list.pickTitle}
     emptyDescription={copy.list.pickDescription}
+    openFirst
     selectionParameter="worker"
     {selectionLocation}
     bind:selectedKey
@@ -165,31 +166,26 @@
         </DataList>
       {/if}
     {/snippet}
+    <!-- A worker the address names that the list does not hold (closed, or never here). -->
+    {#snippet notFound(workerId)}
+      <EmptyState
+        kind="first-use"
+        headingLevel={2}
+        title={copy.list.closedTitle}
+        description={copy.list.closedDescription(workerId)}
+      >
+        {#snippet action()}
+          <Button variant="secondary" size="sm" label={copy.list.backToList} onclick={backToList} />
+        {/snippet}
+      </EmptyState>
+    {/snippet}
     {#snippet empty()}
-      {#if selectedKey !== null}
-        <EmptyState
-          kind="first-use"
-          headingLevel={2}
-          title={copy.list.closedTitle}
-          description={copy.list.closedDescription(selectedKey)}
-        >
-          {#snippet action()}
-            <Button
-              variant="secondary"
-              size="sm"
-              label={copy.list.backToList}
-              onclick={backToList}
-            />
-          {/snippet}
-        </EmptyState>
-      {:else}
-        <EmptyState
-          kind="first-use"
-          headingLevel={2}
-          title={copy.list.pickTitle}
-          description={copy.list.pickDescription}
-        />
-      {/if}
+      <EmptyState
+        kind="first-use"
+        headingLevel={2}
+        title={copy.list.pickTitle}
+        description={copy.list.pickDescription}
+      />
     {/snippet}
     {#snippet detail(worker)}
       {#snippet tasksOf()}{@render queueTasks(worker)}{/snippet}

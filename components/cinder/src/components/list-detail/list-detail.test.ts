@@ -263,7 +263,7 @@ describe('ListDetail', () => {
     await tick();
 
     expect(detailText(container)).toBe('Beta chat detail');
-    expect(onSelectedKeyChange).toHaveBeenCalledWith('beta');
+    expect(onSelectedKeyChange).toHaveBeenCalledWith('beta', { automatic: false });
     expect(location.write).toHaveBeenCalledWith('selected', 'beta');
     expect(primaryOf(container, 'beta').getAttribute('aria-current')).toBe('true');
   });
@@ -332,7 +332,7 @@ describe('ListDetail', () => {
 
     expect(location.read).toHaveBeenCalledWith('selected');
     expect(detailText(container)).toBe('Beta chat detail');
-    expect(onSelectedKeyChange).toHaveBeenCalledWith('beta');
+    expect(onSelectedKeyChange).toHaveBeenCalledWith('beta', { automatic: false });
     expect(location.write).not.toHaveBeenCalled();
     expect(primaryOf(container, 'beta').getAttribute('aria-current')).toBe('true');
   });
@@ -494,6 +494,123 @@ describe('ListDetail', () => {
     await tick();
     expect(stacked.queryByRole('region', { name: 'Details' })).toBeNull();
     expect(stacked.getByRole('region', { name: 'Chats' })).toBeTruthy();
+  });
+
+  test('openFirst reports its choice as automatic and leaves focus where it was', async () => {
+    const changes: Array<[string | null, boolean]> = [];
+    const outside = document.createElement('button');
+    document.body.append(outside);
+    outside.focus();
+    const { container } = render(ListDetailFixture, {
+      props: {
+        selectionLocation: memoryLocation(),
+        openFirst: true,
+        onSelectedKeyChange: (key, change) => changes.push([key, change.automatic]),
+      },
+    });
+    await measure(container, 1000);
+    await tick();
+
+    expect(changes).toEqual([['alpha', true]]);
+    expect(document.activeElement).toBe(outside);
+    expect(primaryOf(container, 'alpha').getAttribute('aria-current')).toBe('true');
+
+    await fireEvent.click(primaryOf(container, 'beta'));
+    await tick();
+    expect(changes.at(-1)).toEqual(['beta', false]);
+  });
+
+  test('openFirst opens nothing while the panes sit one above the other', async () => {
+    const { container } = render(ListDetailFixture, {
+      props: { selectionLocation: memoryLocation(), openFirst: true, stackBelow: 1200 },
+    });
+    await measure(container, 1000);
+    await tick();
+
+    expect(container.querySelector('.cinder-list-detail')?.getAttribute('data-cinder-layout')).toBe(
+      'below',
+    );
+    expect(detailText(container)).toBe(
+      'Nothing selected Choose an item from the list to see it here.',
+    );
+  });
+
+  test('openFirst opens the new first item when a filter hides the open one, and clears an emptied list', async () => {
+    const location = memoryLocation('beta');
+    const items = [
+      { id: 'alpha', title: 'Alpha chat' },
+      { id: 'beta', title: 'Beta chat' },
+      { id: 'gamma', title: 'Gamma chat' },
+    ];
+    const { container, rerender } = render(ListDetailFixture, {
+      props: { items, selectionLocation: location, openFirst: true },
+    });
+    await measure(container, 1000);
+    await tick();
+    expect(detailText(container)).toBe('Beta chat detail');
+
+    await rerender({ items: items.filter((item) => item.id !== 'beta' && item.id !== 'alpha') });
+    await tick();
+    expect(detailText(container)).toBe('Gamma chat detail');
+    expect(location.write).toHaveBeenLastCalledWith('selected', 'gamma');
+
+    await rerender({ items: [] });
+    await tick();
+    expect(location.write).toHaveBeenLastCalledWith('selected', null);
+
+    await rerender({ items });
+    await tick();
+    expect(detailText(container)).toBe('Alpha chat detail');
+  });
+
+  test('openFirst never overrides a link to an item the list does not have: its not-found detail shows', async () => {
+    const location = memoryLocation('missing');
+    const { container } = render(ListDetailFixture, {
+      props: { selectionLocation: location, openFirst: true },
+    });
+    await measure(container, 1000);
+    await tick();
+
+    expect(detailText(container)).toBe(
+      'Not found This item is not in the list. It may have been removed.',
+    );
+    expect(location.write).not.toHaveBeenCalledWith('selected', 'alpha');
+  });
+
+  test('reopenFirst={false} keeps the open item that left the list, in its notFound place', async () => {
+    const items = [
+      { id: 'alpha', title: 'Alpha chat' },
+      { id: 'beta', title: 'Beta chat' },
+    ];
+    const { container, rerender } = render(ListDetailFixture, {
+      props: {
+        items,
+        selectionLocation: memoryLocation('beta'),
+        openFirst: true,
+        reopenFirst: false,
+        notFoundTitle: 'No longer waiting',
+      },
+    });
+    await measure(container, 1000);
+    await tick();
+    await rerender({ items: items.slice(0, 1) });
+    await tick();
+
+    expect(detailText(container)).toContain('No longer waiting');
+  });
+
+  test('openFirst waits for the list to load before it opens anything', async () => {
+    const location = memoryLocation();
+    const { container, rerender } = render(ListDetailFixture, {
+      props: { items: [], loading: true, selectionLocation: location, openFirst: true },
+    });
+    await measure(container, 1000);
+    await tick();
+    expect(location.write).not.toHaveBeenCalled();
+
+    await rerender({ items: [{ id: 'alpha', title: 'Alpha chat' }], loading: false });
+    await tick();
+    expect(detailText(container)).toBe('Alpha chat detail');
   });
 
   test('pushBelow and backLabel are configurable', async () => {

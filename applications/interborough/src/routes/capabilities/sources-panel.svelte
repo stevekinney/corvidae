@@ -113,6 +113,7 @@
         detailLabel={copy.detailLabel.sources}
         emptyTitle={copy.emptyDetailTitle}
         emptyDescription={copy.emptyDetailDescription}
+        openFirst
         selectionParameter="source"
         {selectionLocation}
         storageKey="interborough-capabilities-sources"

@@ -47,6 +47,7 @@
     StackedListItem,
     StatusDot,
     Tooltip,
+    type ListDetailSelectionChange,
   } from '@lostgradient/cinder';
   import {
     Archive,
@@ -386,15 +387,22 @@
     target?.focus();
   }
 
-  /** Opens the chosen row's chat, or the list alone when Back clears the choice. */
-  function openChat(key: string | null): void {
+  /**
+   * Opens the chosen row's chat, or the list alone when Back clears the choice. The latest chat that
+   * ListDetail opens beside the list on arrival replaces the address, so Back leaves the page, and
+   * keeps the page mounted: the address names the chat the pane already shows, so the list, its
+   * search and its focus stay as they were.
+   */
+  function openChat(key: string | null, change?: ListDetailSelectionChange): void {
     if (key === openId) return;
+    const automatic = change?.automatic === true;
+    const options = automatic ? { replace: true, keep: true } : {};
     if (key !== null) {
-      router.navigate(chatPath(key));
+      router.navigate(chatPath(key), options);
       return;
     }
     const query = viewSearch(showingArchived).toString();
-    router.navigate(query === '' ? '/chats' : `/chats?${query}`);
+    router.navigate(query === '' ? '/chats' : `/chats?${query}`, options);
   }
 
   /**
@@ -636,6 +644,7 @@
     detailLabel={CHAT_COPY.list.detailLabel}
     selectedKey={openId}
     onSelectedKeyChange={openChat}
+    openFirst={!isNew && !showingArchived}
     selectionParameter={null}
     storageKey="interborough-chats"
     listCollapsible
@@ -715,7 +724,13 @@
       />
     {/snippet}
     {#snippet empty()}
-      {#if noChats}
+      {#if listState === 'loading'}
+        <!-- While the list is read the latest chat is about to open beside it: a skeleton of the
+             open chat holds its place, never the "Pick a chat" sentence (COR-2445). -->
+        <div class="ib-chats__loading-detail" data-chats-loading-detail aria-hidden="true">
+          <Skeleton lines={5} delay={300} />
+        </div>
+      {:else if noChats}
         <EmptyState
           kind="first-use"
           headingLevel={2}

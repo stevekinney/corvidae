@@ -8,8 +8,8 @@
    * and never act in a field). J, K and Enter are ListDetail's own, and Enter also moves focus into
    * the open review's first control, and never decides it.
    *
-   * Waiting opens the oldest review on arrival when the panes sit side by side (ListDetail's
-   * `openFirst`), and writes it to the address. A decision opens the review after it and moves focus
+   * Both open their first review on arrival when the panes sit side by side (ListDetail's
+   * `openFirst`), and write it to the address. A decision opens the review after it and moves focus
    * to its row; a review that leaves the queue while it is open (the agent moved on) is said so in
    * its place, with one button to the next. Both are announced politely.
    */
@@ -510,6 +510,16 @@
   </div>
 {/snippet}
 
+<!-- Waiting keeps its own account of an open review the list no longer has (`reopenFirst` is off):
+     one that left without this page deciding it says so, and one being decided waits for the next. -->
+{#snippet missingDetail()}
+  {#if gone}
+    {@render goneDetail()}
+  {:else}
+    <EmptyState title={REVIEWS_COPY.noReviewSelected} description={REVIEWS_COPY.chooseReview} />
+  {/if}
+{/snippet}
+
 {#if phase === 'ready' && visible.length === 0}
   {#if mode === 'waiting'}
     <EmptyState
@@ -552,13 +562,15 @@
         loading={phase === 'loading'}
         loadingRows={3}
         loadingLabel={REVIEWS_COPY.loading}
-        openFirst={mode === 'waiting'}
+        openFirst
+        reopenFirst={mode !== 'waiting'}
         defaultListWidth={listWidth}
         bind:selectedKey
         selectionParameter="review"
         selectionLocation={selection}
         storageKey="interborough-reviews"
         {...gone ? { empty: goneDetail } : {}}
+        {...mode === 'waiting' ? { notFound: missingDetail } : {}}
         {...mode === 'done' ? { groupBy: dayGroup } : {}}
       >
         {#snippet header()}

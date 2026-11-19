@@ -424,6 +424,7 @@
       label={copy.tableLabel}
       detailLabel={copy.detail.paneLabel}
       class="ib-storage__layout"
+      openFirst
       selectionParameter={null}
       bind:selectedKey
       storageKey="interborough-storage"

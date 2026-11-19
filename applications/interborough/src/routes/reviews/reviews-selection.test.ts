@@ -105,7 +105,7 @@ describe('arriving at the inbox', () => {
     expect(router.search.get('review')).toBe(QUESTION_KEY);
   });
 
-  test('opens nothing in Done, which is read and not answered', async () => {
+  test('opens the latest decision in Done too, so the pane beside the list is never empty (COR-2445)', async () => {
     measuredAt(1200);
     const approved = toolApprovalFixture({
       id: 'approval:run-a:call-1',
@@ -116,7 +116,9 @@ describe('arriving at the inbox', () => {
     });
     const { container } = open({ reviews: [approved] }, '/reviews?tab=done');
     await waitFor(() => expect(rows(container).length).toBe(1));
-    expect(router.search.get('review')).toBeNull();
+    const key = rows(container)[0]?.getAttribute('data-review-row');
+    expect(key).not.toBeNull();
+    await waitFor(() => expect(router.search.get('review')).toBe(key ?? ''));
   });
 });
 

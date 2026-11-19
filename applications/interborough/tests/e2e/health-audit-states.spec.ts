@@ -100,31 +100,25 @@ const rows = (page: Page) => page.locator('main tbody tr[data-cinder-row-id]');
 
 for (const width of WIDTHS) {
   test.describe(`Health › Audit log states at ${width} pixels`, () => {
-    test('nothing selected: the pane says what to do', async ({ page, checkA11y }) => {
+    test('filters that list different events: the first of them opens, never "Select an event"', async ({
+      page,
+      checkA11y,
+    }) => {
       test.skip(width < 600, 'below its push breakpoint the log shows the table alone');
       await open(page, width);
       const main = page.locator('main');
       await expect(rows(page).first()).toBeVisible();
 
-      // Filters that list different events leave none of them open.
+      // COR-2445: the pane beside the table is never empty while the filters list an event.
       await main.getByLabel('Who', { exact: true }).selectOption('agents');
       await expect(page).toHaveURL(/actor=agents/);
       const pane = main.locator('.cinder-list-detail__detail');
-      // 82s: a document icon in an accent disc, the title, and the line under it.
+      await expect(rows(page).first()).toHaveAttribute('aria-current', 'true');
+      await expect(main.locator('tbody tr[aria-current="true"]')).toHaveCount(1);
       await expect(
         pane.getByRole('heading', { name: 'Select an event to see what changed' }),
-      ).toBeVisible();
-      await expect(
-        pane.getByText('Each event shows who did it, when, and the before and after.'),
-      ).toBeVisible();
-      await expect(pane.locator('.cinder-empty-state-icon svg')).toBeVisible();
-      await expect(main.locator('tbody tr[aria-current="true"]')).toHaveCount(0);
-      await captureForDesignReview(page, {
-        route: '/health/audit',
-        state: 'nothing-selected',
-        source: SOURCE,
-      });
-      await checkA11y(`health audit, nothing selected at ${width}px`);
+      ).toHaveCount(0);
+      await checkA11y(`health audit, the first filtered event open at ${width}px`);
     });
 
     test('filters that match nothing: 0 events, a search icon in a neutral disc, and Clear filters', async ({
@@ -158,7 +152,7 @@ for (const width of WIDTHS) {
       await checkA11y(`health audit, filters that match nothing at ${width}px`);
 
       await clear.click();
-      await expect(page).toHaveURL(/\/health\/audit$/);
+      await expect(page).toHaveURL(/\/health\/audit(\?record=[^&]+)?$/);
       await expect(main.getByLabel('Who', { exact: true })).toHaveValue('');
       await expect(main.getByLabel('Period', { exact: true })).toHaveValue('7d');
     });

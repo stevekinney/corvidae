@@ -371,6 +371,11 @@
   margin-inline-start: calc(-1 * var(--cinder-space-2));
 }
 
+/* The open chat's skeleton while the list is read keeps the inset a detail pane would have. */
+.ib-chats__loading-detail {
+  padding: var(--cinder-space-4);
+}
+
 /* The agent that line two names in a pane wide enough for it keeps the muted line's colour. */
 .ib-chat-row__agent {
   color: var(--cinder-text-muted);

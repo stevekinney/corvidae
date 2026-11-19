@@ -130,6 +130,7 @@
         detailLabel={copy.detailLabel.skills}
         emptyTitle={copy.emptyDetailTitle}
         emptyDescription={copy.emptyDetailDescription}
+        openFirst
         selectionParameter="skill"
         {selectionLocation}
         storageKey="interborough-capabilities-skills"

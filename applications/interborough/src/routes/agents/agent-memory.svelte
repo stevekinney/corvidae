@@ -638,6 +638,7 @@
         emptyDescription={MEMORY_COPY.nothingOpen.description}
         selectedKey={selectedId}
         onSelectedKeyChange={open}
+        openFirst
         selectionParameter={null}
         storageKey="interborough-memory"
       >
@@ -819,12 +820,11 @@
   }
 
   /* ListDetail fills the height it is given and scrolls each pane, so the frame gives it one: what
-     the window leaves under the agent's header and tab bar. */
+     the window leaves under the agent's header and tab bar. It draws no box: the list and the open
+     memory sit on the page, and ListDetail's divider is the one line between them. */
   .ib-memory__frame {
     block-size: max(28rem, calc(100dvh - 18rem));
     min-inline-size: 0;
-    border: 1px solid var(--cinder-border-muted);
-    border-radius: var(--cinder-radius-md);
     overflow: hidden;
   }
 

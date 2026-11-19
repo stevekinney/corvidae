@@ -312,6 +312,43 @@ describe('the list of sessions', () => {
     expect(router.pathname).toBe('/chats/session-0');
   });
 
+  test('beside the list the latest chat opens on arrival, replacing the address, and a row still opens its chat', async () => {
+    const measure = HTMLElement.prototype.getBoundingClientRect;
+    HTMLElement.prototype.getBoundingClientRect = () =>
+      ({
+        width: 1200,
+        height: 800,
+        x: 0,
+        y: 0,
+        top: 0,
+        left: 0,
+        right: 1200,
+        bottom: 800,
+      }) as DOMRect;
+    try {
+      const served = bureau({
+        'bureau.contexts.list': () => page(0, 2, false),
+        'bureau.reviews.list': () => ({ reviews: [] }),
+        'bureau.contexts.get': (params) => ({ ...CONTEXT, id: String(params['contextId']) }),
+      });
+      restore = served.restore;
+      landAt('/chats');
+      const entries = window.history.length;
+      const { findByRole, getByRole } = mount();
+      const search = await findByRole('searchbox', { name: 'Search chats' });
+
+      await waitFor(() => expect(router.pathname).toBe('/chats/session-0'));
+      // A replace: Back leaves the page rather than returning to the bare list.
+      expect(window.history.length).toBe(entries);
+      expect(getByRole('searchbox', { name: 'Search chats' })).toBe(search);
+
+      (await findByRole('link', { name: /Chat 1/ })).click();
+      expect(router.pathname).toBe('/chats/session-1');
+    } finally {
+      HTMLElement.prototype.getBoundingClientRect = measure;
+    }
+  });
+
   test('shows no time for a chat whose time is unreadable', async () => {
     const served = bureau({
       'bureau.contexts.list': () => ({
@@ -340,7 +377,8 @@ describe('the list of sessions', () => {
     const { findByRole } = mount();
 
     const detail = await findByRole('region', { name: 'Open chat' });
-    expect(detail.textContent).toContain('Pick a chat');
+    // While the list is read the pane holds a skeleton of the chat that is about to open (COR-2445).
+    await waitFor(() => expect(detail.textContent).toContain('Pick a chat'));
     expect(detail.querySelector('a[href="/chats/new"]')?.textContent).toContain('New chat');
     const title = await findByRole('heading', { level: 1 });
     expect(title.textContent?.trim()).toBe('Chats');
