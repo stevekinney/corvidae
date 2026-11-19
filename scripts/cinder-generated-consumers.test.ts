@@ -1,8 +1,9 @@
 import { expect, test } from 'bun:test';
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { discoverWorkspaces } from './affected-tests.ts';
+import { CINDER_GENERATED_OUTPUTS } from './ensure-cinder-generated.ts';
 
 // Cinder's token artifacts are generated, not tracked (`components/cinder/.gitignore`), and its
 // `src/index.ts` imports them. A task of any workspace that reaches Cinder, however indirectly,
@@ -97,4 +98,18 @@ test('type tasks reach Cinder metadata through the types of their dependencies',
   // `^types` reaches Cinder's `types`, which itself waits for `metadata`.
   expect(effective(CINDER, 'types')).toContain('metadata');
   expect(effective(CINDER, 'typecheck')).toContain('metadata');
+});
+
+// `check-light-shadows.ts` read `resolved/light.json` directly and failed `lint:root` on every
+// fresh checkout, because no Turbo task runs before a root script.
+test('a root script that reads a generated Cinder file generates it first', () => {
+  const missing: string[] = [];
+  for (const name of readdirSync(join(root, 'scripts'))) {
+    if (!name.endsWith('.ts') || /\.test(-support)?\.ts$/.test(name)) continue;
+    if (name === 'ensure-cinder-generated.ts') continue;
+    const text = readFileSync(join(root, 'scripts', name), 'utf8');
+    const reads = CINDER_GENERATED_OUTPUTS.some((output) => text.includes(output));
+    if (reads && !text.includes('ensureCinderGenerated(')) missing.push(name);
+  }
+  expect(missing).toEqual([]);
 });

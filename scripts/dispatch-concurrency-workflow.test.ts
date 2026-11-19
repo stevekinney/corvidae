@@ -55,7 +55,8 @@ describe('workflow_dispatch concurrency', () => {
     expect(job).toContain('TURBO_SCM_BASE: origin/main');
     expect(job).toContain('fetch-depth: 0');
     expect(job).toContain('turbo run lint typecheck --affected');
-    expect(job).not.toContain('if:');
+    // The job itself always runs; a step may carry a condition (the cache save runs unless cancelled).
+    expect(job.slice(0, job.indexOf('\n    steps:\n'))).not.toContain('if:');
   });
 
   // A dispatch without unit_config ran Interborough UI tests DOM-less (run 44371426895).

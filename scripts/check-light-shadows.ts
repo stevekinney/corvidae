@@ -31,6 +31,8 @@
 import { readdirSync } from 'node:fs';
 import { join, relative } from 'node:path';
 
+import { ensureCinderGenerated } from './ensure-cinder-generated.ts';
+
 const root = join(import.meta.dir, '..');
 
 /** Directories scanned, relative to the repository root. */
@@ -244,6 +246,8 @@ export function judgeShadowTokens(
 }
 
 async function main(): Promise<void> {
+  // The resolved token files are generated and untracked: a fresh checkout has none.
+  ensureCinderGenerated();
   const paths: string[] = [];
   for (const directory of SCANNED_DIRECTORIES) collectScannedFiles(join(root, directory), paths);
 
