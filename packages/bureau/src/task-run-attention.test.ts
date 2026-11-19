@@ -10,20 +10,20 @@
  * runs, and B is the process that does not.
  */
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
-import { createAgent, stopWhen } from '@lostgradient/operative';
+import { createAgent, stopWhen, TOOL_CALL_POLICY } from '@lostgradient/operative';
 import { MemoryStorage } from '@lostgradient/storage';
 import { waitUntil } from '@lostgradient/testing/wait-until';
 import { createTool, createToolbox, type Toolbox } from 'armorer';
 import { afterEach, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 
+import { RunLoopingEvent, RunStalledEvent } from './events.ts';
 import {
-  rpc,
   openBureau,
   type OpenedBureau,
+  rpc,
 } from './http/management/management-fixtures.test-support.ts';
-import { RunLoopingEvent, RunStalledEvent } from './events.ts';
-import { TOOL_CALL_POLICY } from '@lostgradient/operative';
+import type { TaskView } from './task-registry.ts';
 
 /** One check of the tool-call watchdog: its cadence, its grace and its jitter. */
 const CHECK_MILLISECONDS =
@@ -35,6 +35,38 @@ const opened: OpenedBureau[] = [];
 afterEach(async () => {
   for (const bureau of opened.splice(0).toReversed()) await bureau.dispose();
 });
+
+/** One field of a task, as `bureau.tasks.get` shows it from `bureau`. */
+async function fieldOf<K extends keyof TaskView>(
+  bureau: OpenedBureau['bureau'],
+  taskId: string,
+  key: K,
+): Promise<TaskView[K] | undefined> {
+  const view = await bureau.tasks.get(taskId);
+  return view?.[key];
+}
+
+/** What `bureau`'s registry stored of a task's attention, or `undefined` for none. */
+async function storedAttentionOf(bureau: OpenedBureau['bureau'], taskId: string) {
+  const record = await bureau.internals.taskRegistry.record(taskId);
+  return record?.attention;
+}
+
+/** Whether `bureau` shows the task as stalled. */
+async function isStalled(bureau: OpenedBureau['bureau'], taskId: string): Promise<boolean> {
+  const attention = await fieldOf(bureau, taskId, 'attention');
+  return attention?.includes('stalled') === true;
+}
+
+/** The tasks a `bureau.tasks.list` call answered, as their id and their attention. */
+async function listedBy(
+  handler: OpenedBureau['handler'],
+  params: Record<string, unknown>,
+): Promise<ReadonlyArray<readonly [string, readonly string[]]>> {
+  const body = await rpc(handler, 'bureau.tasks.list', params, OWNER_KEY);
+  const tasks = (body.result?.['tasks'] ?? []) as Array<{ id: string; attention: string[] }>;
+  return tasks.map((task) => [task.id, task.attention] as const);
+}
 
 /** A tool that holds each call until the test lets it go, and says when a call began. */
 function holdingTool(calls: number) {
@@ -94,15 +126,24 @@ async function open(holds: number, durable = false) {
   const peer = await openBureau({ storage, bureauOptions });
   opened.push(peer);
   const stalled: RunStalledEvent[] = [];
-  const looping: RunLoopingEvent[] = [];
   holder.bureau.addEventListener('run.stalled', (event) => stalled.push(event));
-  holder.bureau.addEventListener('run.looping', (event) => looping.push(event));
   const advanceChecks = async (count: number): Promise<void> => {
     for (let check = 0; check < count; check += 1) await runtime.advance(CHECK_MILLISECONDS);
   };
-  const attentionOf = async (taskId: string) =>
-    (await peer.bureau.tasks.get(taskId))?.attention ?? [];
-  return { holder, peer, runtime, tool, stalled, looping, advanceChecks, attentionOf };
+  return {
+    holder,
+    peer,
+    runtime,
+    tool,
+    stalled,
+    advanceChecks,
+    /** Whether the peer, which holds no run, shows the task as stalled. */
+    peerSeesStalled: (taskId: string) => isStalled(peer.bureau, taskId),
+    /** One field of a task as the peer shows it. */
+    peerField: <K extends keyof TaskView>(taskId: string, key: K) =>
+      fieldOf(peer.bureau, taskId, key),
+    peerStoredAttention: (taskId: string) => storedAttentionOf(peer.bureau, taskId),
+  };
 }
 
 describe('a stalled run (COR-2526)', () => {
@@ -113,10 +154,10 @@ describe('a stalled run (COR-2526)', () => {
 
     // Two missed pulses are late, not stalled: Operative's own threshold decides, not the Bureau's.
     await world.advanceChecks(2);
-    expect(await world.attentionOf(task.id)).toEqual([]);
+    expect(await world.peerField(task.id, 'attention')).toEqual([]);
 
     await world.advanceChecks(1);
-    await waitUntil(async () => (await world.attentionOf(task.id)).includes('stalled'));
+    await waitUntil(() => world.peerSeesStalled(task.id));
     const view = await world.peer.bureau.tasks.get(task.id);
     expect(view?.attention).toEqual(['stalled']);
     expect(view?.status).toBe('working');
@@ -127,7 +168,7 @@ describe('a stalled run (COR-2526)', () => {
     // The silence goes on and the assessment does not change: nothing is written or announced again.
     await world.advanceChecks(3);
     await world.holder.bureau.internals.taskRegistry.flush();
-    expect((await world.peer.bureau.tasks.get(task.id))?.stalledSince).toBe(expected);
+    expect(await world.peerField(task.id, 'stalledSince')).toBe(expected);
     expect(world.stalled.map((event) => [event.runId, event.since])).toEqual([[task.id, expected]]);
 
     world.tool.release(0);
@@ -139,7 +180,7 @@ describe('a stalled run (COR-2526)', () => {
     const task = await world.holder.bureau.tasks.start('stalling', 'Go.');
     await world.tool.entered(0);
     await world.advanceChecks(3);
-    await waitUntil(async () => (await world.attentionOf(task.id)).includes('stalled'));
+    await waitUntil(() => world.peerSeesStalled(task.id));
     await world.advanceChecks(2);
     expect(world.stalled).toHaveLength(1);
 
@@ -147,7 +188,7 @@ describe('a stalled run (COR-2526)', () => {
     await task.result();
     await world.holder.bureau.internals.whenTaskRecorded(task.id);
     await world.holder.bureau.internals.taskRegistry.flush();
-    expect((await world.peer.bureau.tasks.get(task.id))?.attention).toEqual([]);
+    expect(await world.peerField(task.id, 'attention')).toEqual([]);
     expect(world.stalled).toHaveLength(1);
   });
 
@@ -156,19 +197,22 @@ describe('a stalled run (COR-2526)', () => {
     const task = await world.holder.bureau.tasks.start('stalling', 'Go.');
     await world.tool.entered(0);
     await world.advanceChecks(3);
-    await waitUntil(async () => (await world.attentionOf(task.id)).includes('stalled'));
-    const first = (await world.peer.bureau.tasks.get(task.id))?.stalledSince;
+    await waitUntil(() => world.peerSeesStalled(task.id));
+    const first = await world.peerField(task.id, 'stalledSince');
 
     // The tool call returns: the watchdog ends, the assessment changes, the record clears.
     world.tool.release(0);
     await world.tool.entered(1);
-    await waitUntil(async () => (await world.attentionOf(task.id)).length === 0);
-    expect((await world.peer.bureau.tasks.get(task.id))?.stalledSince).toBeNull();
+    await waitUntil(async () => {
+      const attention = await world.peerField(task.id, 'attention');
+      return attention?.length === 0;
+    });
+    expect(await world.peerField(task.id, 'stalledSince')).toBeNull();
 
     // The next call goes silent too: a new episode, announced again.
     await world.advanceChecks(3);
-    await waitUntil(async () => (await world.attentionOf(task.id)).includes('stalled'));
-    const second = (await world.peer.bureau.tasks.get(task.id))?.stalledSince;
+    await waitUntil(() => world.peerSeesStalled(task.id));
+    const second = await world.peerField(task.id, 'stalledSince');
     expect(second).not.toBe(first);
     expect(world.stalled).toHaveLength(2);
 
@@ -183,27 +227,23 @@ describe('a stalled run (COR-2526)', () => {
     await quick.result();
     await world.tool.entered(0);
     await world.advanceChecks(3);
-    await waitUntil(async () => (await world.attentionOf(stalling.id)).includes('stalled'));
+    await waitUntil(() => world.peerSeesStalled(stalling.id));
 
-    const listed = async (params: Record<string, unknown>) => {
-      const body = await rpc(world.peer.handler, 'bureau.tasks.list', params, OWNER_KEY);
-      return (body.result?.['tasks'] as Array<{ id: string; attention: string[] }>).map(
-        (task) => [task.id, task.attention] as const,
-      );
-    };
-    const everything = await listed({});
+    const everything = await listedBy(world.peer.handler, {});
     expect(everything.map(([id]) => id).toSorted()).toEqual([stalling.id, quick.id].toSorted());
-    expect(await listed({ attention: 'stalled' })).toEqual([[stalling.id, ['stalled']]]);
-    expect(await listed({ attention: 'looping' })).toEqual([]);
+    expect(await listedBy(world.peer.handler, { attention: 'stalled' })).toEqual([
+      [stalling.id, ['stalled']],
+    ]);
+    expect(await listedBy(world.peer.handler, { attention: 'looping' })).toEqual([]);
 
     // The stall ends with the run: a settled task is listed by neither kind.
     world.tool.release(0);
     await stalling.result();
     await world.holder.bureau.internals.whenTaskRecorded(stalling.id);
     await world.holder.bureau.internals.taskRegistry.flush();
-    expect((await world.peer.bureau.tasks.get(stalling.id))?.attention).toEqual([]);
-    expect((await world.peer.bureau.tasks.get(stalling.id))?.stalledSince).toBeNull();
-    expect(await listed({ attention: 'stalled' })).toEqual([]);
+    expect(await world.peerField(stalling.id, 'attention')).toEqual([]);
+    expect(await world.peerField(stalling.id, 'stalledSince')).toBeNull();
+    expect(await listedBy(world.peer.handler, { attention: 'stalled' })).toEqual([]);
   });
 
   it('(l) is not resurrected, and does not outlive a cancel from a process that does not hold the run', async () => {
@@ -211,7 +251,7 @@ describe('a stalled run (COR-2526)', () => {
     const task = await world.holder.bureau.tasks.start('stalling', 'Go.');
     await world.tool.entered(0);
     await world.advanceChecks(3);
-    await waitUntil(async () => (await world.attentionOf(task.id)).includes('stalled'));
+    await waitUntil(() => world.peerSeesStalled(task.id));
 
     // The peer settles the task canceled; its view lists nothing, and the record keeps no stall.
     await world.peer.bureau.internals.taskRegistry.recordSettled(task.id, {
@@ -220,12 +260,9 @@ describe('a stalled run (COR-2526)', () => {
       finishReason: 'aborted',
       message: null,
     });
-    const settled = await world.peer.bureau.tasks.get(task.id);
-    expect(settled?.status).toBe('canceled');
-    expect(settled?.attention).toEqual([]);
-    expect(
-      (await world.peer.bureau.internals.taskRegistry.record(task.id))?.attention,
-    ).toBeUndefined();
+    expect(await world.peerField(task.id, 'status')).toBe('canceled');
+    expect(await world.peerField(task.id, 'attention')).toEqual([]);
+    expect(await world.peerStoredAttention(task.id)).toBeUndefined();
 
     // The holder, still silent, goes on to a later check and its own end (a run with no durable
     // workflow cannot be stopped from another process, so its real settlement replaces the peer's):
@@ -234,10 +271,8 @@ describe('a stalled run (COR-2526)', () => {
     world.tool.release(0);
     await task.result();
     await world.holder.bureau.internals.taskRegistry.flush();
-    expect((await world.peer.bureau.tasks.get(task.id))?.attention).toEqual([]);
-    expect(
-      (await world.peer.bureau.internals.taskRegistry.record(task.id))?.attention,
-    ).toBeUndefined();
+    expect(await world.peerField(task.id, 'attention')).toEqual([]);
+    expect(await world.peerStoredAttention(task.id)).toBeUndefined();
     expect(world.stalled).toHaveLength(1);
   });
 });
@@ -264,8 +299,7 @@ describe('a run parked on a review (COR-2526)', () => {
 
     const task = await world.bureau.tasks.start('asking', 'Ask.');
     await waitUntil(() => world.bureau.reviews.list().some((review) => review.runId === task.id));
-    const parked = await world.bureau.tasks.get(task.id);
-    expect(parked?.status).toBe('input-required');
+    expect(await fieldOf(world.bureau, task.id, 'status')).toBe('input-required');
 
     const assessments: string[] = [];
     const subscription = world.bureau.tasks.snapshot(task.id, (snapshot) =>
@@ -279,17 +313,10 @@ describe('a run parked on a review (COR-2526)', () => {
     expect(assessments.at(-1)).toBe('legitimately-waiting');
     expect(assessments).not.toContain('alive-but-stalled');
     await world.bureau.internals.taskRegistry.flush();
-    const waiting = await world.bureau.tasks.get(task.id);
-    expect(waiting?.status).toBe('input-required');
-    expect(waiting?.attention).toEqual([]);
-    expect(waiting?.stalledSince).toBeNull();
-    const listed = await rpc(
-      world.handler,
-      'bureau.tasks.list',
-      { attention: 'stalled' },
-      OWNER_KEY,
-    );
-    expect(listed.result?.['tasks']).toEqual([]);
+    expect(await fieldOf(world.bureau, task.id, 'status')).toBe('input-required');
+    expect(await fieldOf(world.bureau, task.id, 'attention')).toEqual([]);
+    expect(await fieldOf(world.bureau, task.id, 'stalledSince')).toBeNull();
+    expect(await listedBy(world.handler, { attention: 'stalled' })).toEqual([]);
   });
 });
 
@@ -312,15 +339,14 @@ describe('a run parked on a wakeup (COR-2526)', () => {
     opened.push(world);
 
     const task = await world.bureau.tasks.start('sleeper', 'Sleep.');
-    await waitUntil(async () => (await world.bureau.tasks.get(task.id))?.wakeAt !== null);
+    await waitUntil(async () => (await fieldOf(world.bureau, task.id, 'wakeAt')) !== null);
     for (let check = 0; check < 12; check += 1) await runtime.advance(CHECK_MILLISECONDS);
     await world.bureau.internals.taskRegistry.flush();
 
-    const sleeping = await world.bureau.tasks.get(task.id);
-    expect(sleeping?.status).toBe('working');
-    expect(sleeping?.wakeAt).not.toBeNull();
-    expect(sleeping?.attention).toEqual([]);
-    expect(sleeping?.stalledSince).toBeNull();
+    expect(await fieldOf(world.bureau, task.id, 'status')).toBe('working');
+    expect(await fieldOf(world.bureau, task.id, 'wakeAt')).not.toBeNull();
+    expect(await fieldOf(world.bureau, task.id, 'attention')).toEqual([]);
+    expect(await fieldOf(world.bureau, task.id, 'stalledSince')).toBeNull();
   });
 });
 
@@ -361,16 +387,15 @@ describe('a looping run (COR-2526)', () => {
 
     const task = await world.bureau.tasks.start('looper', 'Loop the tool.');
     await reachedEnd.promise;
-    await waitUntil(
-      async () => (await world.bureau.tasks.get(task.id))?.attention.includes('looping') === true,
-    );
-    const view = await world.bureau.tasks.get(task.id);
-    expect(view?.status).toBe('working');
-    expect(view?.attention).toEqual(['looping']);
-    expect(view?.stalledSince).toBeNull();
-    const body = await rpc(world.handler, 'bureau.tasks.list', { attention: 'looping' }, OWNER_KEY);
-    expect((body.result?.['tasks'] as Array<{ id: string }>).map((entry) => entry.id)).toEqual([
-      task.id,
+    await waitUntil(async () => {
+      const attention = await fieldOf(world.bureau, task.id, 'attention');
+      return attention?.includes('looping') === true;
+    });
+    expect(await fieldOf(world.bureau, task.id, 'status')).toBe('working');
+    expect(await fieldOf(world.bureau, task.id, 'attention')).toEqual(['looping']);
+    expect(await fieldOf(world.bureau, task.id, 'stalledSince')).toBeNull();
+    expect(await listedBy(world.handler, { attention: 'looping' })).toEqual([
+      [task.id, ['looping']],
     ]);
 
     // Both reports reached the audit trail under their own kinds, and the hook catalog under one.
@@ -386,7 +411,7 @@ describe('a looping run (COR-2526)', () => {
     await task.result();
     await world.bureau.internals.whenTaskRecorded(task.id);
     await world.bureau.internals.taskRegistry.flush();
-    expect((await world.bureau.tasks.get(task.id))?.attention).toEqual([]);
+    expect(await fieldOf(world.bureau, task.id, 'attention')).toEqual([]);
     expect(events).toHaveLength(1);
   });
 });

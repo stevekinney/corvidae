@@ -4,7 +4,6 @@
  */
 import type { EncryptionKey } from '@lostgradient/cryptography';
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
-import { createAgent, stopWhen } from '@lostgradient/operative';
 import { MemoryStorage } from '@lostgradient/storage';
 import { createTool, createToolbox, type Toolbox } from 'armorer';
 import { afterEach, beforeAll, describe, expect, it } from 'bun:test';
@@ -23,6 +22,7 @@ import {
 import {
   type Action,
   AgentScheduledEvent,
+  createAgent,
   ScheduleAttemptedEvent,
   ScheduleCancelledEvent,
   ScheduleCompletedEvent,
@@ -34,6 +34,7 @@ import {
   SessionDeletedEvent,
   SessionSavedEvent,
   SteeringAcceptedEvent,
+  stopWhen,
   WorkflowVersionMismatchEvent,
 } from '@lostgradient/operative';
 

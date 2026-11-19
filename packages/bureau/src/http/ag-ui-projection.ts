@@ -674,7 +674,8 @@ export async function recordedCostUsd(
   runId: string,
 ): Promise<number | null> {
   try {
-    return (await tasks.get(runId))?.usage?.costUsd ?? null;
+    const task = await tasks.get(runId);
+    return task?.usage?.costUsd ?? null;
   } catch {
     return null;
   }

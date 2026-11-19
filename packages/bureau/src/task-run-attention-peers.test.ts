@@ -39,7 +39,7 @@ describe('a stalled run cancelled from another process (COR-2526)', () => {
       let generations = 0;
       const holder = await startFileBureau({
         scripts: {
-          'claude-opus-5-5': (async () => {
+          'claude-opus-5-5': async () => {
             generations += 1;
             if (generations === 1) {
               return { content: '', toolCalls: [{ name: 'lookup-order', arguments: {} }] };
@@ -47,7 +47,7 @@ describe('a stalled run cancelled from another process (COR-2526)', () => {
             reached.resolve();
             await gate.promise;
             return { content: 'late' };
-          }) as never,
+          },
         },
         overrides: { id: 'attention-peers', storage: fixture.storage, durableOwnership: OWNERSHIP },
       });
@@ -64,12 +64,20 @@ describe('a stalled run cancelled from another process (COR-2526)', () => {
       await reached.promise;
       const stalledAt = new Date().toISOString();
       expect(await holder.bureau.internals.taskRegistry.recordStall(task.id, stalledAt)).toBe(true);
-      expect((await peer.bureau.tasks.get(task.id))?.attention).toEqual(['stalled']);
+      const peerView = async () => peer.bureau.tasks.get(task.id);
+      const peerRecord = async () => peer.bureau.internals.taskRegistry.record(task.id);
+      const stalledView = await peerView();
+      expect(stalledView?.attention).toEqual(['stalled']);
 
       await peer.bureau.tasks.cancel(task.id);
-      await waitUntil(async () => (await peer.bureau.tasks.get(task.id))?.status === 'canceled');
-      expect((await peer.bureau.tasks.get(task.id))?.attention).toEqual([]);
-      expect((await peer.bureau.internals.taskRegistry.record(task.id))?.attention).toBeUndefined();
+      await waitUntil(async () => {
+        const view = await peerView();
+        return view?.status === 'canceled';
+      });
+      const canceledView = await peerView();
+      expect(canceledView?.attention).toEqual([]);
+      const canceledRecord = await peerRecord();
+      expect(canceledRecord?.attention).toBeUndefined();
 
       // The holder, a moment behind, tries to write the stall back, and again after its step ends.
       expect(await holder.bureau.internals.taskRegistry.recordStall(task.id, stalledAt)).toBe(
@@ -81,10 +89,11 @@ describe('a stalled run cancelled from another process (COR-2526)', () => {
       expect(await holder.bureau.internals.taskRegistry.recordStall(task.id, stalledAt)).toBe(
         false,
       );
-      const record = await peer.bureau.internals.taskRegistry.record(task.id);
+      const record = await peerRecord();
       expect(record?.settled?.status).toBe('canceled');
       expect(record?.attention).toBeUndefined();
-      expect((await peer.bureau.tasks.get(task.id))?.attention).toEqual([]);
+      const finalView = await peerView();
+      expect(finalView?.attention).toEqual([]);
     } finally {
       await Promise.all(
         harnesses

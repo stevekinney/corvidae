@@ -170,6 +170,7 @@ export function createRunBookkeeping<D extends AgentDefinitions>(
         .recordStall(runId, nowStalled ? since : null)
         .then((changed) => {
           if (changed && nowStalled) core.emitter.dispatch(new RunStalledEvent(runId, since));
+          return changed;
         })
         .catch((error: unknown) => {
           diagnose({
@@ -208,6 +209,7 @@ export function createRunBookkeeping<D extends AgentDefinitions>(
       .recordLooping(action.runId, since)
       .then((changed) => {
         if (changed) core.emitter.dispatch(new RunLoopingEvent(action.runId, since, level));
+        return changed;
       })
       .catch((error: unknown) => {
         diagnose({

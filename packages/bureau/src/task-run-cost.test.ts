@@ -166,7 +166,10 @@ describe.each(['non-durable', 'durable'] as const)('a task’s cost, %s dispatch
     );
     const task = await bureau.tasks.start('helper', 'Go.');
     await model.reached;
-    await waitUntil(async () => (await bureau.tasks.get(task.id))?.usage?.costUsd !== undefined);
+    await waitUntil(async () => {
+      const view = await bureau.tasks.get(task.id);
+      return view?.usage?.costUsd !== undefined;
+    });
 
     const running = await bureau.tasks.get(task.id);
     expect(running?.status).toBe('working');

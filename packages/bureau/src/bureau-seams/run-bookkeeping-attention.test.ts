@@ -4,7 +4,6 @@
  * snapshot too, so a run recovered from a dead holder clears the stall that holder left on the
  * record. The registry and the run are doubles: the test is about what is written, and when.
  */
-import { yieldEventLoopTurn } from '@lostgradient/testing/wait-until';
 import { describe, expect, it } from 'bun:test';
 
 import type { BureauDiagnostic } from '../bureau-types/options.ts';
@@ -36,6 +35,9 @@ function fakeRun(initial: string) {
   };
 }
 
+/** The writes the latest {@link bookkeeping} double was asked for. */
+let pendingWrites: Promise<unknown>[] = [];
+
 function bookkeeping(
   runs: Map<string, ReturnType<typeof fakeRun>['activeRun']>,
   outcomes: { stall: boolean[]; looping: boolean[]; reject?: boolean } = {
@@ -48,17 +50,24 @@ function bookkeeping(
   const dispatched: unknown[] = [];
   const diagnostics: BureauDiagnostic[] = [];
   let tick = 0;
+  pendingWrites = [];
   const core = {
     store: { getRun: (runId: string) => ({ activeRun: runs.get(runId) }) },
     tasks: {
-      recordStall: async (runId: string, at: string | null) => {
+      recordStall: (runId: string, at: string | null) => {
         stalls.push([runId, at]);
-        if (outcomes.reject === true) throw new Error('The write failed.');
-        return outcomes.stall.shift() ?? true;
+        const write =
+          outcomes.reject === true
+            ? Promise.reject(new Error('The write failed.'))
+            : Promise.resolve(outcomes.stall.shift() ?? true);
+        pendingWrites.push(write);
+        return write;
       },
-      recordLooping: async (runId: string, at: string) => {
+      recordLooping: (runId: string, at: string) => {
         loops.push([runId, at]);
-        return outcomes.looping.shift() ?? true;
+        const write = Promise.resolve(outcomes.looping.shift() ?? true);
+        pendingWrites.push(write);
+        return write;
       },
     },
     emitter: { dispatch: (event: unknown) => dispatched.push(event) },
@@ -71,8 +80,16 @@ function bookkeeping(
   return { seam, stalls, loops, dispatched, diagnostics };
 }
 
-/** Lets the writes the seam started finish. */
-const settle = () => yieldEventLoopTurn();
+/**
+ * Waits for the writes the seam started to settle, and for what the seam does with each answer: the
+ * seam's own reactions on a write's promise were attached before this one, so they have run when
+ * this resumes, and the two hops cover the diagnosis of a rejection.
+ */
+async function settle(): Promise<void> {
+  await Promise.allSettled(pendingWrites);
+  await Promise.resolve();
+  await Promise.resolve();
+}
 
 describe('watching a run’s liveness (COR-2526)', () => {
   it('writes the first snapshot, so a recovered run clears a stall its dead holder left', async () => {

@@ -76,7 +76,7 @@ describe('the cost of a run cancelled from another process (COR-2524)', () => {
     try {
       const model = heldSecondStep();
       const holder = await startFileBureau({
-        scripts: { 'claude-opus-5-5': model.script as never },
+        scripts: { 'claude-opus-5-5': model.script },
         overrides: { id: 'cost-peers', storage: fixture.storage, durableOwnership: OWNERSHIP },
       });
       harnesses.push(holder);
@@ -90,11 +90,17 @@ describe('the cost of a run cancelled from another process (COR-2524)', () => {
 
       const task = await holder.bureau.tasks.start('helper', 'Go.');
       await model.reached;
-      await waitUntil(async () => (await peer.bureau.tasks.get(task.id))?.usage !== null);
+      await waitUntil(async () => {
+        const view = await peer.bureau.tasks.get(task.id);
+        return view?.usage !== null;
+      });
 
       const cancelled = await peer.bureau.tasks.cancel(task.id);
       expect(cancelled.receipt).not.toBe('rejected');
-      await waitUntil(async () => (await peer.bureau.tasks.get(task.id))?.status === 'canceled');
+      await waitUntil(async () => {
+        const view = await peer.bureau.tasks.get(task.id);
+        return view?.status === 'canceled';
+      });
       // The canceller wrote the settlement and no figure: the one on the record is the holder's.
       const settled = await peer.bureau.tasks.get(task.id);
       expect(settled?.usage?.costUsd).toBeCloseTo(STEP_COST, 10);
@@ -129,7 +135,7 @@ describe('a stream another process serves for a run it does not hold (COR-2524)'
     try {
       const model = heldSecondStep();
       const holder = await startFileBureau({
-        scripts: { 'claude-opus-5-5': model.script as never },
+        scripts: { 'claude-opus-5-5': model.script },
         overrides: {
           id: 'cost-peer-stream',
           storage: fixture.storage,
