@@ -21,7 +21,9 @@ import type { StatusDotStatus } from './status-dot.types.ts';
  *
  * Some words are scoped: "Disabled" is a plugin that is turned off, "Set" and "Missing" are a secret
  * a plugin declared (a key that is saved, and one that is not: neutral, because a missing secret is
- * a state, not a failure; the plugin's own "Needs setup" says what waits on it), "Ended" is chats only, "Delivered" and "Retrying" are hooks only, and
+ * a state, not a failure; the plugin's own "Needs setup" says what waits on it), and "Missing" is
+ * also a plugin's event kind a hook lists whose plugin is not loaded at the version the hook pinned
+ * (neutral for the same reason: the hook stays on), "Ended" is chats only, "Delivered" and "Retrying" are hooks only, and
  * "Connected", "Draining" and "Disconnected" are workers only, "Listening", "Ready", "Standby" and
  * "Waiting for a secret" are a workflow trigger's states ("Failed" and "Stopped" serve it too),
  * "Failed for good" is a task that ran out of tries, and "Live" and "Reconnecting…" are for the line above a streaming run's steps.

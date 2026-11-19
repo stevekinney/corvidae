@@ -273,8 +273,18 @@ export const HOOKS_COPY = {
       none: 'No event is chosen yet.',
       loadFailed: 'The events could not be read.',
       remove: (name: string): string => `Remove ${name}`,
-      removeAction: 'Remove',
       areaOther: 'Other',
+      /**
+       * A plugin kind the hook lists that fires nothing now (COR-2226, row R5): the status word and
+       * the one line that says why.
+       */
+      missing: {
+        word: 'Missing' as const,
+        notLoaded: 'Plugin not loaded',
+        otherVersion: (pinned: string, loaded: string): string =>
+          `Pinned to ${pinned}, ${loaded} is loaded`,
+        notPinned: 'Not pinned to a version',
+      },
       /** Why an event cannot be chosen for the action. */
       notifyLoop:
         'A notification hook cannot listen to this: its own notification would run it again.',
