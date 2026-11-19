@@ -300,11 +300,27 @@ export async function withBulkAuditEvent<TResult extends object>(
   return { ...result, auditEvent };
 }
 
+/**
+ * Persist the audit event of a bulk operation that is about to fail part-way: `affectedCount` is
+ * what did commit, and the failure is recorded on the event (`failedCount`, and up to the sample
+ * limit of the errors), so the record of what the operation changed is not lost with the throw.
+ */
+export function persistFailedBulkAuditEvent(
+  internals: EngineInternals,
+  preparation: BulkOperationPreparation,
+  options: BulkOperationCommitOptions,
+  affectedCount: number,
+  errors: readonly BulkOperationError[],
+): Promise<BulkOperationAuditEvent> {
+  return persistBulkOperationAuditEvent(internals, preparation, options, affectedCount, errors);
+}
+
 async function persistBulkOperationAuditEvent(
   internals: EngineInternals,
   preparation: BulkOperationPreparation,
   options: BulkOperationCommitOptions,
   affectedCount: number,
+  errors: readonly BulkOperationError[] = [],
 ): Promise<BulkOperationAuditEvent> {
   const timestamp = internals.options.getNow();
   const explicitRequestId = options.requestId?.trim();
@@ -323,6 +339,12 @@ async function persistBulkOperationAuditEvent(
     affectedCount,
     sampleWorkflowIds: preparation.scope.sampleWorkflowIds,
     confirmationToken: preparation.confirmationToken,
+    ...(errors.length === 0
+      ? {}
+      : {
+          failedCount: errors.length,
+          errors: errors.slice(0, BULK_OPERATION_SAMPLE_LIMIT),
+        }),
   };
 
   // A disposed engine issues no new writes: the bulk operation's own writes

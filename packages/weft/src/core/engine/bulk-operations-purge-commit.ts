@@ -21,9 +21,11 @@ import {
 import {
   buildBulkOperationPreparation,
   normalizeBulkOperationOptions,
+  persistFailedBulkAuditEvent,
   resolveBulkOperationConcurrency,
   runBulkWorkflowPool,
   shouldPersistBulkAudit,
+  toBulkOperationError,
   validateBulkConfirmation,
   withBulkAuditEvent,
   workflowStateToBulkSnapshot,
@@ -109,9 +111,30 @@ async function runBulkPurge(
   );
   const deleted = results.filter((result) => result.status === 'fulfilled' && result.value).length;
   if (failures.length > 0) {
+    const failedWorkflows = failures.length;
+    // The deletes that did commit are irreversible, so the record of them is written before the
+    // failure is surfaced, with the failure on it. A record that cannot be written joins the
+    // failures, so the caller still learns what failed.
+    if (shouldPersistBulkAudit(options)) {
+      try {
+        await persistFailedBulkAuditEvent(
+          internals,
+          preparation,
+          options,
+          deleted,
+          results.flatMap((result) =>
+            result.status === 'rejected'
+              ? [toBulkOperationError(internals, result.item, result.reason)]
+              : [],
+          ),
+        );
+      } catch (auditFailure) {
+        failures.push(auditFailure);
+      }
+    }
     throw new AggregateError(
       failures,
-      `Purge failed for ${failures.length} workflow(s) after deleting ${deleted} workflow(s)`,
+      `Purge failed for ${failedWorkflows} workflow(s) after deleting ${deleted} workflow(s)`,
     );
   }
 

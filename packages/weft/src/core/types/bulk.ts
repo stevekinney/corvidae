@@ -246,7 +246,8 @@ export type BulkSignalAllCommitOptions = BulkOperationCommitOptions;
 export type BulkSignalAllOptions = BulkSignalAllDryRunOptions | BulkSignalAllCommitOptions;
 
 /**
- * Durable audit record persisted after a committed bulk operation succeeds.
+ * Durable audit record persisted after a committed bulk operation, whether it succeeded or failed
+ * part-way (a purge that deleted some runs and failed for others writes one before it throws).
  *
  * @example
  * ```ts
@@ -285,6 +286,13 @@ export type BulkOperationAuditEvent = {
   affectedCount: number;
   sampleWorkflowIds: WorkflowId[];
   confirmationToken: string;
+  /**
+   * Present only on the event of a bulk operation that failed part-way and threw: how many
+   * workflows it failed for. `affectedCount` is then what did commit.
+   */
+  failedCount?: number;
+  /** With `failedCount`, the first failures (at most 20), as the result of the other bulk operations lists them. */
+  errors?: BulkOperationError[];
 };
 
 /**

@@ -3,6 +3,7 @@ import { describe, expect, it } from 'bun:test';
 import { MemoryStorage } from '@lostgradient/storage';
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { KEYS } from '../../storage/keys.ts';
+import { decode } from '../codec.ts';
 import {
   workflow,
   type BulkOperationDryRunResult,
@@ -20,8 +21,26 @@ async function storeContents(storage: MemoryStorage): Promise<[string, string][]
   return entries.toSorted(([left], [right]) => (left < right ? -1 : 1));
 }
 
-async function engineWithCompletedRuns(ids: readonly string[]) {
-  const storage = new MemoryStorage();
+/** Refuses the commit that deletes one run, once armed, as a storage that fails for that run alone would. */
+class PurgeFailingStorage extends MemoryStorage {
+  failingWorkflowId: string | undefined;
+
+  override conditionalBatch(
+    ...[conditions, operations]: Parameters<MemoryStorage['conditionalBatch']>
+  ): ReturnType<MemoryStorage['conditionalBatch']> {
+    const failingKey =
+      this.failingWorkflowId === undefined ? undefined : KEYS.workflow(this.failingWorkflowId);
+    if (failingKey !== undefined && conditions.some((condition) => condition.key === failingKey)) {
+      return Promise.reject(new Error('disk full'));
+    }
+    return super.conditionalBatch(conditions, operations);
+  }
+}
+
+async function engineWithCompletedRuns(
+  ids: readonly string[],
+  storage: MemoryStorage = new MemoryStorage(),
+) {
   const engine = new Engine({ storage });
   engine.register(
     workflow({ name: 'echo' }).execute(async function* (_ctx: WorkflowContext, input: unknown) {
@@ -144,6 +163,58 @@ describe('engine.purge with options (COR-2521)', () => {
 
     expect(preview.matched).toBe(1);
     expect(preview.sampleWorkflowIds).toEqual(['b']);
+  });
+
+  it('writes the audit event of the deletes that committed, with the failure on it, before it throws', async () => {
+    const storage = new PurgeFailingStorage();
+    const { engine } = await engineWithCompletedRuns(['a', 'b'], storage);
+    await using _engine = engine;
+    const preview = await engine.purge(undefined, { dryRun: true, requestId: 'partial' });
+    storage.failingWorkflowId = 'b';
+
+    const failure = await rejectionOf(
+      engine.purge(undefined, {
+        confirmationToken: preview.confirmationToken,
+        requestId: 'partial',
+        principal: { method: 'api-key', subject: 'operator' },
+      }),
+    );
+
+    expect(failure).toBeInstanceOf(AggregateError);
+    expect((failure as AggregateError).message).toBe(
+      'Purge failed for 1 workflow(s) after deleting 1 workflow(s)',
+    );
+    expect(await engine.get('a')).toBeNull();
+    expect(await engine.get('b')).not.toBeNull();
+    const audits: Record<string, unknown>[] = [];
+    for await (const [, value] of storage.scan(KEYS.bulkOperationAuditPrefix())) {
+      audits.push(decode(value) as Record<string, unknown>);
+    }
+    expect(audits).toHaveLength(1);
+    expect(audits[0]).toMatchObject({
+      type: 'bulk-operation:audit',
+      action: 'purge',
+      requestId: 'partial',
+      principal: { method: 'api-key', subject: 'operator' },
+      affectedCount: 1,
+      failedCount: 1,
+      errors: [{ id: 'b', error: 'disk full' }],
+      confirmationToken: preview.confirmationToken,
+    });
+  });
+
+  it('writes no failure fields on the audit event of a purge that fully succeeds', async () => {
+    const storage = new MemoryStorage();
+    const { engine } = await engineWithCompletedRuns(['a'], storage);
+    await using _engine = engine;
+    const preview = await engine.purge(undefined, { dryRun: true });
+
+    const result = await engine.purge(undefined, {
+      confirmationToken: preview.confirmationToken,
+    });
+
+    expect(Object.hasOwn(result.auditEvent ?? {}, 'failedCount')).toBe(false);
+    expect(Object.hasOwn(result.auditEvent ?? {}, 'errors')).toBe(false);
   });
 
   it('with no options purges at once, as before', async () => {
