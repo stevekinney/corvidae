@@ -167,7 +167,10 @@ export async function createDeliveryVerificationFixture(
   const { plan, providerRuns, ...common } = source;
   const request: DeliveryRequest = {
     ...common,
-    ...(options.landing === true ? { ciEvidence: [landingIdentity(common)] } : {}),
+    // A conflicting branch has no integration tree to pin, and is refused before any evidence.
+    ...(options.landing === true && /^[0-9a-f]{40,64}$/.test(common.integrationTree)
+      ? { ciEvidence: [landingIdentity(common)] }
+      : {}),
     worktree: directory,
     members: [
       {

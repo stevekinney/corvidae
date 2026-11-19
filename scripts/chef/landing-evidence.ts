@@ -35,6 +35,7 @@ import { ciEvidenceRequestKey, type CiEvidenceProvider } from './ci-evidence.ts'
 import { batchVerificationPlanDigest } from './delivery-completion.ts';
 import type { LoadedDeliveryVerification } from './delivery-verification.ts';
 import { defaultRunner, type Runner } from './process-runner.ts';
+import { oneWayDoorMatches } from './verification-plan.ts';
 
 export interface LandingDependencies {
   /** Answers `gh` and `bun` commands; the merge's own runner, so one fake serves a test. */
@@ -150,14 +151,12 @@ function readPlan(runner: Runner, cwd: string, base: string, head: string): Land
       !Array.isArray(plan.full_run_rules)
     )
       return 'the evidence plan answer is missing its changed files or full-run rules';
-    const rules = plan.full_run_rules as { rule?: unknown; path?: unknown }[];
+    const changed = plan.changed.map(String);
     return {
-      changed: plan.changed.map(String),
+      changed,
       requiresFullRun: plan.requires_full_run,
-      // Whole-suite rules widen the run; only the rest are one-way doors.
-      oneWayDoors: rules
-        .filter((entry) => !String(entry.rule).startsWith('whole-suite:'))
-        .map((entry) => ({ rule: String(entry.rule), path: String(entry.path) })),
+      // The plan's own one-way-door rules; its whole-suite rules widen the run and are no door.
+      oneWayDoors: oneWayDoorMatches(changed),
     };
   } catch {
     return 'the evidence plan answer is not JSON';

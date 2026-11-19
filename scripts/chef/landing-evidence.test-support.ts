@@ -140,7 +140,12 @@ export function greenLanding(inner: Runner): Runner {
       head = runs[2] ?? '';
       return Object.values(runsAnswer(runs[1] ?? '', head, [{ head_sha: head }]))[0]!;
     }
-    if (command.join(' ') === 'git rev-parse HEAD' && head !== '') return reply(`${head}\n`);
+    // Once per landing: the check's own read of the worktree, never a fixture's.
+    if (command.join(' ') === 'git rev-parse HEAD' && head !== '') {
+      const at = head;
+      head = '';
+      return reply(`${at}\n`);
+    }
     if (command[0] === 'bun' && command[1] === 'scripts/chef/evidence-plan.ts')
       return Object.values(planAnswer(command[3] ?? ''))[0]!;
     return inner(command, options);
