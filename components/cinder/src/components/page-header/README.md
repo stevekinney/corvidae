@@ -30,7 +30,7 @@ A list page's create action is a `createAction`: a secondary icon-only "+" with 
 
 While a full-page `ErrorState` shows under the header, pass `error` so the header's primary buttons draw as secondary and Try again is the only primary.
 
-`status` takes the page's status as a snippet and `statusPlacement` puts it beside the title (`inline`, on its first line) or under it (`below`, the default). The title wraps to two lines and then ends in an ellipsis; its tooltip carries the full text, from `title` or, when `title` is a snippet, from `titleText`.
+`status` takes the page's status as a snippet and `statusPlacement` puts it beside the title (`inline`, on its first line) or under it (`below`, the default). An inline status and the actions are each one line box of the title's own size with their content centred in it, so they share the centre of the title's first line however the title wraps and whatever a control's height. The title wraps to two lines and then ends in an ellipsis; its tooltip carries the full text, from `title` or, when `title` is a snippet, from `titleText`.
 
 In a narrow header (a phone) the actions drop to a row of their own under the title and the status. Pass `narrowActions="beside-status"` to put them at the inline end of the status's row instead, which gives that row's height back to the page; it suits a few compact actions above content that needs the room, such as a chat's context ring and More menu. With no status they sit beside the title instead, so they never take a row alone. A wide header is the same either way.
 
