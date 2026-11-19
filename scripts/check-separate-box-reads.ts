@@ -284,7 +284,7 @@ export const ALLOWED_INSTANCES: Record<string, { count: number; reason: string }
       {
         '14-shell-and-principal.spec.ts': 2,
         'chat-states.spec.ts': 1,
-        'first-run.spec.ts': 3,
+        'first-run.spec.ts': 1,
         'health-audit-states.spec.ts': 2,
         'health-audit.spec.ts': 6,
         'health-overview.spec.ts': 2,

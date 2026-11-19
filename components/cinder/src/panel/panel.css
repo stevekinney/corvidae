@@ -72,7 +72,7 @@
   );
   --cinder-text-default: var(
     --color-text-primary,
-    light-dark(oklch(20% 0.018 245), oklch(95% 0.01 265))
+    light-dark(oklch(17% 0.018 245), oklch(95% 0.01 265))
   );
   --cinder-text-muted: var(
     --color-text-secondary,
@@ -80,7 +80,7 @@
   );
   --cinder-text-subtle: var(
     --color-text-tertiary,
-    light-dark(oklch(50% 0.01 265), oklch(68% 0.01 265))
+    light-dark(oklch(47% 0.01 265), oklch(68% 0.01 265))
   );
   --cinder-status-success-text: var(
     --color-text-success,
@@ -101,14 +101,14 @@
   --cinder-border: var(
     --color-border-primary,
     light-dark(
-      color-mix(in oklch, var(--cinder-border-ink), transparent 91%),
+      color-mix(in oklch, var(--cinder-border-ink), transparent 84%),
       color-mix(in oklch, var(--cinder-border-ink), transparent 88%)
     )
   );
   --cinder-border-muted: var(
     --color-border-secondary,
     light-dark(
-      color-mix(in oklch, var(--cinder-border-ink), transparent 95%),
+      color-mix(in oklch, var(--cinder-border-ink), transparent 91%),
       color-mix(in oklch, var(--cinder-border-ink), transparent 92%)
     )
   );

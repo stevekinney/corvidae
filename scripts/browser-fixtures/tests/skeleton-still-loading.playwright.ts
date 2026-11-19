@@ -6,8 +6,8 @@
  * layout, so it is measured here.
  */
 
+import { fixtureRoute } from '@lostgradient/testing/playwright/overlay-fixture';
 import { expect, test } from '@playwright/test';
-import { fixtureRoute } from './overlay-fixture.ts';
 
 const WIDTHS = [320, 375, 1280] as const;
 

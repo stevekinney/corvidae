@@ -6,8 +6,8 @@
  * performs no layout, so it is measured here.
  */
 
+import { fixtureRoute } from '@lostgradient/testing/playwright/overlay-fixture';
 import { expect, test } from '@playwright/test';
-import { fixtureRoute } from './overlay-fixture.ts';
 
 for (const width of [320, 1280] as const) {
   test(`the two rows place their action alike at ${width}px`, async ({ page }) => {

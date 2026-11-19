@@ -483,7 +483,8 @@ describe('captureCount', () => {
       ].join('\n'),
     );
     expect(await writeReviewOrder(directory)).toBe(9);
-    const order = (await readFile(join(directory, 'review-order.jsonl'), 'utf8'))
+    const written = await readFile(join(directory, 'review-order.jsonl'), 'utf8');
+    const order = written
       .trim()
       .split('\n')
       .map((text) => JSON.parse(text) as { route: string; width: number; colorScheme: string });

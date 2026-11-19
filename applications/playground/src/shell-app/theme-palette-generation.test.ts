@@ -192,7 +192,9 @@ describe('palette proposals over the shipped baseline', () => {
     // (oklch(0.304 0.0248 187.103)). The light proposal keeps the 0.365 offset from the anchor
     // (0.985) and its chroma is gamut-limited; the dark proposal fits.
     expect(textOf(success, 'light', 'status.success.background')).toBe('oklch(0.985 0.02339 150)');
-    expect(textOf(success, 'dark', 'status.success.background')).toBe('oklch(0.144 0.03543 150)');
+    // COR-2489 design round: a dark status ground mixes its solid into a neutral of the surface's
+    // lightness, so the dark proposal keeps a little more chroma.
+    expect(textOf(success, 'dark', 'status.success.background')).toBe('oklch(0.144 0.0396 150)');
     const neutral = proposalFor(fresh(), 'neutral', '#6b7280');
     // The light surface is pure white since 2026-11-15 (chroma 0), so it takes none of the
     // seed's chroma; the dark text default keeps the seed's chroma.
