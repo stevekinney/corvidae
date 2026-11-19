@@ -186,6 +186,7 @@
   } from './tool-activity.ts';
   import { failedStopNoteId, withEndedLine, withStopLine } from './stop-line.ts';
   import ToolCalls from './tool-calls.svelte';
+  import { lapsedChats } from './lapsed-chats.svelte.ts';
   import SessionTasks from './session-tasks.svelte';
 
   interface ChatConversationProps {
@@ -1410,6 +1411,18 @@
       settled: approvalsSettled,
     });
   }
+  /**
+   * The calls drawn as no longer waiting, which Chat is told too: its result still asks, and Chat
+   * would otherwise keep reminding over the composer of an approval nobody can answer (COR-2438).
+   */
+  const lapsedCalls = $derived(
+    new Set(
+      [...activity.groups.values()]
+        .flatMap((group) => group.entries)
+        .filter((entry) => lapsed(entry))
+        .map((entry) => entry.callId),
+    ),
+  );
   function displayEntry(original: ToolCallEntry): ToolCallEntry {
     // A parked call no run waits on is shown as what it is: no Waiting badge, no Deny or Approve.
     const entry = lapsed(original) ? { ...original, lapsed: true } : original;
@@ -1523,11 +1536,27 @@
   );
   // The chat's state beside its title, in the shared status words: a person's turn first, then a
   // run going, then how the last one ended. A new chat, and one with nothing said yet, has none.
+  // The approval the chat was parked on lapsed and nothing else waits (COR-2438): the Bureau may
+  // still say the chat is parked on input, but no run goes and nobody can answer. The header says
+  // so and the chat list reads it from `lapsedChats`, so both say what the card says.
+  const parkedOnLapsed = $derived(
+    lapsedCalls.size > 0 &&
+      !approvalWaits &&
+      shownRequests.length === 0 &&
+      !session.streaming &&
+      context.data?.activity === 'awaiting-input',
+  );
+  $effect(() => {
+    const id = sessionId;
+    if (!parkedOnLapsed) return undefined;
+    lapsedChats.add(id);
+    return () => lapsedChats.delete(id);
+  });
   const chatStatus = $derived.by(() => {
     if (choosing || Object.keys(session.conversation.messages).length === 0) return undefined;
     if (endedByRestart) return CHAT_COPY.status.ended;
     if (approvalWaits || shownRequests.length > 0) return CHAT_COPY.status.waiting;
-    if (runGoing) return CHAT_COPY.status.running;
+    if (runGoing && !parkedOnLapsed) return CHAT_COPY.status.running;
     if (retryNoteId !== undefined) return CHAT_COPY.status.failed;
     return CHAT_COPY.status.done;
   });
@@ -2291,6 +2320,7 @@
           {emptyPrompts}
           streaming={session.streaming && !choosing}
           trailingAskPending={!session.streaming && session.humanRequests.length > 0}
+          lapsedApprovals={lapsedCalls}
           surfaceMode="transparent"
           scrollFadeVisible
           variant="transcript"

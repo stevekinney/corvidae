@@ -32,6 +32,15 @@ const card = (page: Page) => page.locator('.cinder-approval-card[data-approval-d
 const toolRow = (page: Page) =>
   page.locator('[data-cinder-tool-call-row]').filter({ hasText: /Discover agents/i });
 
+/** 10: the row's Waiting badge became a neutral "No longer waiting" Badge right after the name. */
+async function expectNoLongerWaitingBadge(page: Page): Promise<void> {
+  const badges = toolRow(page).locator('.cinder-tool-call-rail__name > .cinder-badge');
+  await expect(badges).toHaveCount(1);
+  await expect(badges).toHaveText(CHAT_COPY.tools.noLongerWaiting);
+  await expect(badges).toHaveAttribute('data-cinder-variant', 'neutral');
+  await expect(toolRow(page).locator('.cinder-tool-call-rail__result')).toHaveCount(0);
+}
+
 async function openAt(
   page: Page,
   request: Parameters<typeof openStatesChat>[1],
@@ -143,8 +152,15 @@ test.describe('the approval on a chat (/chats/:chat)', () => {
     await expect(card(page)).toContainText(CHAT_COPY.approval.lapsed);
     await expect(card(page).getByRole('button', { name: 'Approve' })).toHaveCount(0);
     await expect(card(page).getByRole('button', { name: 'Deny' })).toHaveCount(0);
-    await expect(toolRow(page).locator('.cinder-badge')).toHaveCount(0);
-    await expect(toolRow(page)).toContainText(CHAT_COPY.tools.noLongerWaiting);
+    await expectNoLongerWaitingBadge(page);
+
+    // 14. The list's row (which the segment counts read) and the header say what the card says.
+    const header = page.locator('[data-testid="chat-header"] .cinder-page-header__status');
+    await expect(header.locator('.cinder-badge')).toHaveText(CHAT_COPY.status.done);
+    const listed = page.locator('[data-chat]').filter({ hasText: DISCOVER_AGENTS_ASK });
+    await expect(listed).toHaveCount(1);
+    await expect(listed).not.toContainText(CHAT_COPY.status.waiting);
+    await expect(listed).toContainText(CHAT_COPY.status.done);
 
     // 12. The error moved nothing: the last message and the composer are where they were.
     const after = await readBoxes(page, { message: lastMessage, composer });
@@ -171,7 +187,7 @@ test('a page that loads the chat after its approval stopped waiting never shows 
   await expect(card(page)).toContainText(CHAT_COPY.approval.lapsed);
   await expect(card(page).getByRole('button', { name: 'Approve' })).toHaveCount(0);
   await expect(card(page).getByRole('button', { name: 'Deny' })).toHaveCount(0);
-  await expect(toolRow(page).locator('.cinder-badge')).toHaveCount(0);
+  await expectNoLongerWaitingBadge(page);
 });
 
 // 13. The chat list is flush to the navigation rail and the top bar, with no frame of its own.

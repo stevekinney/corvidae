@@ -4,6 +4,7 @@ import { CHAT_COPY } from '../../app/copy/chat.ts';
 import type { ChatContext } from '../../lib/bureau-client.ts';
 import type { BureauReview } from '../../lib/bureau-reviews.ts';
 import { calendarDay, dateLine, zoneLabel } from '../../lib/format/clock.ts';
+import { lapsedChats } from './lapsed-chats.svelte.ts';
 
 /** The status words of a chat, in the one table every status word comes from (`StatusDot`'s). */
 export type ChatStatusWord = 'Waiting on you' | 'Running' | 'Failed' | 'Ended' | 'Done';
@@ -30,14 +31,18 @@ export type SessionRow = {
  * of it (`waitingChats`, from `waitingChatIds`): a tool approval does not park its run, so the
  * chat's activity alone said Done beside an approval the chat itself showed waiting (COR-2438). The
  * pending reviews are the one source the list and the chat's own page both read, so they agree, and
- * once an approval is settled and read again they agree on that.
+ * once an approval is settled and read again they agree on that. A chat whose open page found its
+ * approval lapsed (`lapsed`, from `lapsedChats`) waits on no one and is not running either, whatever
+ * the Bureau still lists, as the page itself says.
  */
 export function chatStatusWord(
   context: Pick<ChatContext, 'id' | 'activity' | 'endReason'>,
   failedChats: ReadonlySet<string>,
   waitingChats: ReadonlySet<string> = new Set(),
+  lapsed: ReadonlySet<string> = lapsedChats,
 ): ChatStatusWord {
-  if (context.activity === 'awaiting-input' || waitingChats.has(context.id)) {
+  const stopped = lapsed.has(context.id);
+  if (!stopped && (context.activity === 'awaiting-input' || waitingChats.has(context.id))) {
     return 'Waiting on you';
   }
   if (context.activity === 'running') return 'Running';

@@ -72,6 +72,7 @@
     focusPendingApproval,
     PENDING_APPROVAL_CARD_SELECTOR,
     pendingApprovalCard,
+    withLapsedApprovals,
   } from './chat-approval-review.ts';
   import ChatJumpControls from './chat-jump-controls.svelte';
   import { classifyQuestion } from '../question/question-kind.ts';
@@ -181,6 +182,7 @@
     empty,
     trailing,
     trailingAskPending = false,
+    lapsedApprovals,
     emptyTitle = 'No messages yet',
     emptyDescription,
     emptyPrompts,
@@ -1631,9 +1633,14 @@
   const canResolveToolApproval = $derived(commandActions.canResolveToolApproval);
   // An approval is waiting on the person: the composer says so in a drawer, and what is sent now
   // reads Queue. A blocked composer has no draft to queue and says why on its own row.
+  // An approval the host knows no run waits on any more (`lapsedApprovals`) waits on nobody here
+  // either, though its result still asks: no reminder over the composer and no Queue (COR-2438).
+  const waitStates = $derived(
+    withLapsedApprovals(commandActions.approvalStates, lapsedApprovals),
+  );
   const approvalWait = useChatApprovalWait({
     getMessages: () => messages,
-    getApprovalStates: () => commandActions.approvalStates,
+    getApprovalStates: () => waitStates,
   });
   const approvalWaiting = $derived(
     approvalWait.waiting &&

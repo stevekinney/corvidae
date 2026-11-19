@@ -376,6 +376,26 @@ describe('Chat composer drawer for a waiting approval', () => {
     expect(drawerOf(container)).toBeNull();
   });
 
+  // COR-2438: after a decision refused because the run had stopped, the host drew the card as no
+  // longer waiting, but the result still asked, so the reminder appeared over the composer and
+  // pushed it 70px up.
+  test('says nothing for an approval the host says no run waits on, and Send stays Send', async () => {
+    const { container } = render(Chat, {
+      id: 'chat-drawer-lapsed',
+      conversation: approvalConversation('drawer-lapsed'),
+      adapter: { sendMessage: async () => undefined, sendRunInput: async () => undefined },
+      lapsedApprovals: new Set(['call']),
+    });
+    await arrivalFrame();
+    await arrivalFrame();
+
+    expect(drawerOf(container)).toBeNull();
+    await fireEvent.input(composerOf(container), { target: { value: 'one more thing' } });
+    await tick();
+    expect(sendButton(container).getAttribute('aria-label')).toBe('Send message');
+    expect(drawerOf(container)).toBeNull();
+  });
+
   test('leaves the blocked composer to say why on its own row', () => {
     const { container } = render(Chat, {
       id: 'chat-drawer-blocked',

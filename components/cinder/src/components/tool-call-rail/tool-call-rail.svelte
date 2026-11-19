@@ -231,16 +231,17 @@
 {/snippet}
 
 {#snippet cells(call: ToolCallRailCall)}
-  <!-- A call waiting on a person says so in a warning Badge right after its name, at every width,
-       never in the result column where it floats away from the name (COR-2438). -->
-  <span
-    class="cinder-tool-call-rail__name"
-    data-cinder-badged={call.status === 'waiting' || undefined}
-  >
+  <!-- Where an approval stands is a Badge right after the call's name, at every width, never in
+       the result column where it floats away from the name (COR-2438): a warning Badge while it
+       waits on a person, and a neutral one once it no longer does ("Approval expired", or the
+       host's words for an approval nothing waits on any more). The Badge says it, so no hidden
+       status word goes before the name. -->
+  {@const badged = call.status === 'waiting' || call.status === 'expired'}
+  <span class="cinder-tool-call-rail__name" data-cinder-badged={badged || undefined}>
     <span class="cinder-tool-call-rail__name-text"
-      >{#if statusWord(call) !== ''}<span class="cinder-sr-only">{statusWord(call)}:</span
+      >{#if !badged && statusWord(call) !== ''}<span class="cinder-sr-only">{statusWord(call)}:</span
         >{' '}{/if}{call.name}</span
-    >{#if call.status === 'waiting'}{' '}<Badge variant="warning" size="sm"
+    >{#if badged}{' '}<Badge variant={call.status === 'waiting' ? 'warning' : 'neutral'} size="sm"
         >{resultText(call)}</Badge
       >{/if}
   </span>
@@ -248,7 +249,7 @@
     {#if call.input !== undefined && call.input !== ''}
       <span class="cinder-tool-call-rail__input" title={call.input}>{call.input}</span>
     {/if}
-    {#if resultText(call) !== '' && call.status !== 'waiting'}
+    {#if resultText(call) !== '' && !badged}
       <span class="cinder-tool-call-rail__result" title={resultText(call)}
         >{@render resultCell(call)}</span
       >

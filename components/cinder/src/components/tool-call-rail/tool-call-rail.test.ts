@@ -102,8 +102,9 @@ describe('ToolCallRail row count and summary', () => {
     const row = rows(container).find(
       (candidate) => candidate.dataset['cinderToolCallRow'] === 'expired',
     );
-    expect(text(row ?? null)).toContain('Expired: Issue refund');
-    expect(text(row ?? null)).toContain('Approval expired');
+    // The neutral Badge after the name says it, so no hidden "Expired:" goes before the name.
+    expect(text(row ?? null)).toContain('Issue refund Approval expired');
+    expect(text(row ?? null)).not.toContain('Expired:');
     expect(row?.parentElement?.dataset['cinderStatus']).toBe('expired');
   });
 
@@ -290,6 +291,32 @@ describe('ToolCallRail rows', () => {
     expect(text(byId('ok').querySelector('.cinder-tool-call-rail__result'))).toBe(
       'Approved by you 10:33 AM',
     );
+  });
+
+  // COR-2438: an approval nothing waits on any more read as plain words floating mid-row.
+  test('an approval that no longer waits is a neutral Badge right after the name, with its words', () => {
+    const calls: Call[] = [
+      { id: 'lapsed', name: 'Discover agents', status: 'expired', result: 'No longer waiting' },
+      { id: 'expired', name: 'Issue refund', status: 'expired' },
+    ];
+    const { container } = render(ToolCallRail, { props: { calls } });
+    for (const [id, words] of [
+      ['lapsed', 'No longer waiting'],
+      ['expired', 'Approval expired'],
+    ] as const) {
+      const row = requiredInstance(
+        container.querySelector(`[data-cinder-tool-call-row="${id}"]`),
+        HTMLElement,
+      );
+      expect(row.querySelector('.cinder-tool-call-rail__result')).toBeNull();
+      const badge = row.querySelector('.cinder-tool-call-rail__name > .cinder-badge');
+      expect(text(badge)).toBe(words);
+      expect(badge?.getAttribute('data-cinder-variant')).toBe('neutral');
+      expect(row.querySelector('.cinder-tool-call-rail__name-text')?.nextElementSibling).toBe(badge);
+      expect(text(row.querySelector('.cinder-tool-call-rail__name-text'))).not.toContain(
+        'Expired',
+      );
+    }
   });
 
   test('a failed call has one danger line with the quiet links for the handlers given', async () => {
