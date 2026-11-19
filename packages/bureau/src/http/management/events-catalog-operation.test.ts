@@ -106,7 +106,9 @@ describe('bureau.events.catalog', () => {
       events.slice(0, PUBLISHED_BUREAU_EVENT_KINDS.length).map((event) => event['kind']),
     ).toEqual([...PUBLISHED_BUREAU_EVENT_KINDS]);
     expect(
-      events.slice(0, PUBLISHED_BUREAU_EVENT_KINDS.length).some((event) => 'source' in event),
+      events
+        .slice(0, PUBLISHED_BUREAU_EVENT_KINDS.length)
+        .some((event) => 'source' in event || 'version' in event),
     ).toBe(false);
     expect(events.slice(PUBLISHED_BUREAU_EVENT_KINDS.length)).toEqual([
       {
@@ -120,6 +122,8 @@ describe('bureau.events.catalog', () => {
         ],
         scopes: [],
         source: 'kit',
+        // The version a hook that lists the kind pins: the plugin's, as it declares none (COR-2226).
+        version: '1.0.0',
       },
     ]);
   });

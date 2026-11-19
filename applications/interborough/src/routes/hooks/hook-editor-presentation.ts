@@ -27,6 +27,7 @@ import {
   isScopeKind,
   webhookHost,
   type DraftAction,
+  type PluginTitleOf,
 } from './hook-presentation.ts';
 
 const COPY = HOOKS_COPY.editor;
@@ -86,10 +87,14 @@ function limitClause(
  * the hook is limited to none, so the sentence says it covers any of them (`undefined` for events
  * about the whole system, which no subject narrows).
  */
-export function editorClause(hook: EditorHook, anyOf: HookScopeKind | undefined): string {
+export function editorClause(
+  hook: EditorHook,
+  anyOf: HookScopeKind | undefined,
+  titleOf?: PluginTitleOf,
+): string {
   const limit = limitClause(hook.scope, anyOf);
   return [
-    `${HOOKS_COPY.sentence.when} ${eventClauses(hook.events)}`,
+    `${HOOKS_COPY.sentence.when} ${eventClauses(hook.events, titleOf)}`,
     limit,
     actionClause(hook.action),
   ]
@@ -98,16 +103,21 @@ export function editorClause(hook: EditorHook, anyOf: HookScopeKind | undefined)
 }
 
 /** The editor's sentence with its full stop, which the header and the Check step show. */
-export function editorSentence(hook: EditorHook, anyOf: HookScopeKind | undefined): string {
-  return `${editorClause(hook, anyOf)}.`;
+export function editorSentence(
+  hook: EditorHook,
+  anyOf: HookScopeKind | undefined,
+  titleOf?: PluginTitleOf,
+): string {
+  return `${editorClause(hook, anyOf, titleOf)}.`;
 }
 
 /** What names a saved hook: its name, or its sentence (without the full stop) when it has none. */
 export function editorTitle(
   hook: EditorHook & { readonly name: string | null },
   anyOf: HookScopeKind | undefined,
+  titleOf?: PluginTitleOf,
 ): string {
-  return hook.name === null || hook.name === '' ? editorClause(hook, anyOf) : hook.name;
+  return hook.name === null || hook.name === '' ? editorClause(hook, anyOf, titleOf) : hook.name;
 }
 
 /**
@@ -121,8 +131,12 @@ export function anyScopeOf(allowed: readonly HookScopeKind[]): HookScopeKind | u
 }
 
 /** What the phone's When step says: the events, then what the hook is limited to. */
-export function whenSummary(hook: EditorHook, anyOf: HookScopeKind | undefined): string {
-  const events = capitalized(eventClauses(hook.events));
+export function whenSummary(
+  hook: EditorHook,
+  anyOf: HookScopeKind | undefined,
+  titleOf?: PluginTitleOf,
+): string {
+  const events = capitalized(eventClauses(hook.events, titleOf));
   const limit = limitClause(hook.scope, anyOf);
   return COPY.steps.whenSummary(
     events,

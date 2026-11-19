@@ -15,6 +15,7 @@ export type EventsOperationTypes = {
         }>;
         readonly scopes: ReadonlyArray<'agent' | 'workflow' | 'schedule'>;
         readonly source?: string;
+        readonly version?: string;
       }>;
     };
     readonly faults: never;
