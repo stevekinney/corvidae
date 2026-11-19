@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { throwingRejectionOf } from '../../testing/testing/src/helpers/promise-outcome.ts';
 import { validateJUnitArtifacts } from './ci-evidence-workflow.ts';
 import { validateDeliveryMergeObservation } from './delivery-verification.ts';
 import {
@@ -55,13 +56,15 @@ test('replays exclusive ownership, stale completion, duplicate registration, can
     action: 'merge',
     intentFingerprint: 'original-intent',
   });
-  await expect(
-    recordMutationIntent(state, first.authority, {
-      operationId: 'merge:COR-9',
-      action: 'merge',
-      intentFingerprint: 'changed-intent',
-    }),
-  ).rejects.toThrow('already names merge');
+  expect(
+    await throwingRejectionOf(
+      recordMutationIntent(state, first.authority, {
+        operationId: 'merge:COR-9',
+        action: 'merge',
+        intentFingerprint: 'changed-intent',
+      }),
+    ),
+  ).toThrow('already names merge');
 
   expect(await cancelDispatch(state, first.authority)).toBe(true);
   const replacement = await acquireDispatch(state, {
