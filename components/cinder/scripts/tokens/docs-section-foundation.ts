@@ -287,6 +287,7 @@ export const FOUNDATION_DOC_SECTIONS: readonly DocSection[] = ([] = [
       '--cinder-scrollbar-track',
       '--cinder-scrollbar-thumb',
       '--cinder-scrollbar-thumb-hover',
+      '--cinder-scroll-shadow-color',
     ],
   },
 ]);
