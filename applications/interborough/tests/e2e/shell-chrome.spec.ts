@@ -191,7 +191,6 @@ test.describe('on a desktop', () => {
     await expectWidth(sidebar(page), 56);
     await expect(page.getByRole('button', { name: 'Expand sidebar' })).toBeVisible();
 
-    // The group labels give way to hairlines: the words stay in the accessibility tree.
     const reviews = navigation(page).getByRole('link', { name: REVIEWS });
     // On the rail Reviews' count is a small round warning dot on the icon's corner (COR-2315: a
     // count is plain text, never a badge, and the rail has no room for the figure); the figure
@@ -205,7 +204,9 @@ test.describe('on a desktop', () => {
     const health = navigation(page).getByRole('link', { name: HEALTH });
     expect(await widthOf(health.locator('.cinder-status-dot'))).toBeGreaterThan(4);
     const groups = navigation(page).locator('.cinder-side-navigation-group');
-    await expect(groups.first()).toHaveCSS('border-top-width', '1px');
+    // No heading and no hairline: one gap sets the sections apart, and Home above them has none.
+    await expect(groups.first()).toHaveCSS('border-top-width', '0px');
+    await expect(groups.first()).toHaveCSS('padding-top', '12px');
 
     // Hovering a row names it in a tooltip, with its count.
     await reviews.hover();
