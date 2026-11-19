@@ -1842,7 +1842,9 @@ test('[new-hook-plugin-event-long] a raw kind too long for the phone’s panel d
         const range = document.createRange();
         range.setStart(text, match.index);
         range.setEnd(text, match.index + match[0].length);
-        words.push(new Set([...range.getClientRects()].map((rect) => Math.round(rect.top))).size === 1);
+        words.push(
+          new Set([...range.getClientRects()].map((rect) => Math.round(rect.top))).size === 1,
+        );
       }
     }
     return {
@@ -1857,9 +1859,9 @@ test('[new-hook-plugin-event-long] a raw kind too long for the phone’s panel d
   expect(geometry.codeAtLabelStart).toBe(true);
   expect(geometry.labelWordsWhole).toBe(true);
   expect(geometry.codeRight).toBeLessThanOrEqual(geometry.rowRight);
-  expect(
-    await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
-  ).toBe(true);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
+    true,
+  );
   await captureForDesignReview(page, {
     route: '/hooks/new',
     state: 'new-hook-plugin-event-long',

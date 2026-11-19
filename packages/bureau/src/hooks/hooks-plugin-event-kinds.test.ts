@@ -249,10 +249,9 @@ describe('update', () => {
   it('refuses events that list the plugin action’s own plugin’s kind, and writes nothing', async () => {
     const { h } = plugins();
     const hook = await h.hook(['run.settled']);
-    expectOwnKindRefusal(
-      await refusal(h.hooks.update(hook.id, { events: ['run.settled', OWN] })),
-      ['events'],
-    );
+    expectOwnKindRefusal(await refusal(h.hooks.update(hook.id, { events: ['run.settled', OWN] })), [
+      'events',
+    ]);
     expect(await storedEvents(h, hook.id)).toEqual(['run.settled']);
   });
 

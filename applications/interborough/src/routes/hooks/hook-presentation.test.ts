@@ -803,9 +803,9 @@ describe('a plugin’s event kinds (COR-2226)', () => {
     expect(eventClauses(row.events, titleOf)).toBe(
       'Weekly reports: digest ready or a run finishes',
     );
-    expect(
-      whenSummary({ events: row.events, action: row.action }, undefined, titleOf),
-    ).toStartWith('Weekly reports: digest ready or a run finishes');
+    expect(whenSummary({ events: row.events, action: row.action }, undefined, titleOf)).toStartWith(
+      'Weekly reports: digest ready or a run finishes',
+    );
     expect(editorSentence({ events: row.events, action: row.action }, undefined, titleOf)).toBe(
       'When Weekly reports: digest ready or a run finishes, notify me.',
     );

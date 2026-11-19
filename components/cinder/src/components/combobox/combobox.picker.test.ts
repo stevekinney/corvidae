@@ -314,7 +314,9 @@ describe('Combobox rows and states', () => {
 
   test('an identifier longer than a phone panel is drawn whole in the heading, after the label, where it can drop under it', async () => {
     render(Fixture, { longCode: true });
-    await fireEvent.focus(requiredInstance(document.body.querySelector('#event'), HTMLInputElement));
+    await fireEvent.focus(
+      requiredInstance(document.body.querySelector('#event'), HTMLInputElement),
+    );
     await waitFor(() => expect(document.body.querySelectorAll('[role="option"]').length).toBe(4));
 
     const row = Array.from(document.body.querySelectorAll('[role="option"]')).find((option) =>
