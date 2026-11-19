@@ -11,6 +11,10 @@ function finishedWorkflows(count: number): string {
 }
 
 export const BULK_PURGE_COPY = {
+  /** The dialog's title: what is purged, in the words the lead sentence and the result use. */
+  title: 'Purge finished workflows',
+  /** While the commit is in flight: the server finishes the purge even if the person leaves. */
+  committing: 'Purging. This keeps running on the server if you leave this page.',
   /** The dry run is counting what a purge would delete. */
   loading: 'Counting the workflows a purge would delete',
   preview: {

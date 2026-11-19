@@ -10,6 +10,7 @@ import type { BulkOperationDryRunResult } from '@lostgradient/weft';
 import { HttpClientError } from '@lostgradient/weft';
 
 import BulkPurgeDialog from './bulk-purge-dialog.svelte';
+import type { BulkCommitSummary } from './bulk-result-summary.ts';
 
 function preview(overrides: Partial<BulkOperationDryRunResult> = {}): BulkOperationDryRunResult {
   return {
@@ -172,6 +173,38 @@ describe('BulkPurgeDialog', () => {
     });
     expect(received.call).toEqual({ token: 'bulk:token-purge', matched: 47 });
     expect(succeeded).toBe(1);
+  });
+
+  test('the dialog is titled for finished workflows, and while the purge runs it says it continues on the server', async () => {
+    const { getByRole, getByLabelText, getByText, queryByText, container } = render(
+      BulkPurgeDialog,
+      {
+        props: {
+          runDryRun: async () => preview(),
+          runPurge: () => new Promise<BulkCommitSummary>(() => {}),
+          onClose: () => {},
+        },
+      },
+    );
+
+    await waitFor(() => {
+      expect(getByLabelText(PHRASE_LABEL)).not.toBeNull();
+    });
+    expect(getByText('Purge finished workflows')).not.toBeNull();
+    expect(queryByText('Purge terminal workflows')).toBeNull();
+
+    await fireEvent.input(getByLabelText(PHRASE_LABEL), {
+      target: { value: 'purge 47 workflows' },
+    });
+    await fireEvent.click(getByRole('button', { name: 'Purge 47 workflows' }));
+
+    await waitFor(() => {
+      expect(
+        getByText('Purging. This keeps running on the server if you leave this page.'),
+      ).not.toBeNull();
+    });
+    // No spaced em dash, and no talk of closing the dialog: the person may leave the page.
+    expect(container.ownerDocument.body.textContent).not.toMatch(/ — |Closing this/);
   });
 
   test('a preview that matches nothing says so, warns of nothing, and offers no purge button', async () => {

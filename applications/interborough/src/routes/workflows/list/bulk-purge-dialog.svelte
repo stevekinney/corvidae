@@ -149,7 +149,7 @@
 
 <Modal
   open={true}
-  title="Purge terminal workflows"
+  title={BULK_PURGE_COPY.title}
   dismissOnBackdropClick={phase !== 'committing'}
   dismissOnEscape={phase !== 'committing'}
   closeButtonVisible={phase !== 'committing'}
@@ -193,10 +193,7 @@
     {:else if phase === 'committing'}
       <div class="weft-bulk-dialog__progress">
         <Progress ariaLabel="Purge in progress" />
-        <p class="weft-bulk-dialog__note">
-          Please keep this open until it finishes. Closing this doesn't cancel the server operation
-          — it will keep running.
-        </p>
+        <p class="weft-bulk-dialog__note">{BULK_PURGE_COPY.committing}</p>
       </div>
     {:else if phase === 'result' && result}
       <p class="weft-bulk-dialog__headline">
