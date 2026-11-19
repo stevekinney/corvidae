@@ -20,6 +20,7 @@ import { isBureauCall } from './bureau-answer-support.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
 import { E2E_BUREAU_URL, E2E_SHOWCASE_URL } from './e2e-constants.ts';
 import { expect, test } from './fixtures.ts';
+import { readBoxes } from './read-boxes.ts';
 
 const SOURCE = 'list-empty-states.spec.ts';
 const WIDTHS = [1920, 1280, 768, 375] as const;
@@ -232,10 +233,10 @@ for (const width of WIDTHS) {
       const offsets: Record<string, number> = {};
       for (const list of LIST_PAGES.filter((candidate) => candidate.measured)) {
         await openEmpty(page, list, width, theme);
-        const header = await page.locator('main .cinder-page-header').first().boundingBox();
-        const state = await page.locator(`main [data-list-empty="${list.view}"]`).boundingBox();
-        if (header === null || state === null)
-          throw new Error(`${list.path} has no header or state`);
+        const { header, state } = await readBoxes(page, {
+          header: page.locator('main .cinder-page-header').first(),
+          state: page.locator(`main [data-list-empty="${list.view}"]`),
+        });
         offsets[list.path] = Math.round(state.y - (header.y + header.height));
       }
       expect(new Set(Object.values(offsets)).size, JSON.stringify(offsets)).toBe(1);
