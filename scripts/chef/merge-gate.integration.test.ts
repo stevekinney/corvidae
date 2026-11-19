@@ -18,6 +18,12 @@ import {
   requireAuthority,
 } from './execution-state.ts';
 import {
+  changedAnswer,
+  greenLanding,
+  jobsAnswer,
+  runsAnswer,
+} from './landing-evidence.test-support.ts';
+import {
   mergeGate as mergeGateImplementation,
   renderMergeGate,
   run as runImplementation,
@@ -56,7 +62,7 @@ async function mergeGate(input: MergeGateOptions, partial: Partial<MergeGateDepe
         ),
         outputDirectory: mkdtempSync(join(tmpdir(), 'independent-merge-control-')),
       },
-      { route: 'pull-request' },
+      { route: 'pull-request', landing: true },
     );
     return mergeGateImplementation(
       { ...input, worktree: fresh.directory, verification: fresh.verification },
@@ -88,7 +94,7 @@ async function run(argv: string[], partial: Partial<MergeGateDependencies> = {})
         ),
         outputDirectory: mkdtempSync(join(tmpdir(), 'independent-merge-control-')),
       },
-      { route: 'pull-request' },
+      { route: 'pull-request', landing: true },
     );
     const replaced = [...argv];
     replaced[replaced.indexOf('--worktree') + 1] = fresh.directory;
@@ -135,7 +141,10 @@ function prepare(): { directory: string; prepared: Omit<MergeGateOptions, 'verif
 async function setUp(): Promise<void> {
   const made = prepare();
   sandbox = made.directory;
-  const fixture = await createDeliveryVerificationFixture(undefined, { route: 'pull-request' });
+  const fixture = await createDeliveryVerificationFixture(undefined, {
+    route: 'pull-request',
+    landing: true,
+  });
   HEAD = fixture.request.revision;
   BASE = fixture.request.base;
   EXPECTED_TREE = fixture.request.integrationTree;
@@ -188,7 +197,7 @@ function fake(world: World = {}) {
   let viewCall = 0;
   let mergeTreeCall = 0;
   const nodes = world.threadNodes ?? [{ id: 'T1', isResolved: true }];
-  const runner: Runner = (command) => {
+  const runner: Runner = greenLanding((command) => {
     calls.push(command);
     const [program, ...rest] = command;
     if (program === 'git') {
@@ -282,7 +291,7 @@ function fake(world: World = {}) {
     if (program === 'gh' && rest[0] === 'run' && rest[1] === 'list')
       return { code: 0, stdout: '[{"conclusion":"success"}]', stderr: '' };
     throw new Error(`unexpected command ${command.join(' ')}`);
-  };
+  });
   const posted = () => calls.some((call) => call[0] === 'gh' && call[2] === 'comment');
   const merged = () => calls.some((call) => call[0] === 'gh' && call[2] === 'merge');
   /** Anything that is not git or gh would be a test gate, an install or a build. */
@@ -947,7 +956,10 @@ scenarios.describe('run', () => {
  */
 async function lockScenarios() {
   const { directory, prepared } = prepare();
-  const fixture = await createDeliveryVerificationFixture(undefined, { route: 'pull-request' });
+  const fixture = await createDeliveryVerificationFixture(undefined, {
+    route: 'pull-request',
+    landing: true,
+  });
   const lockWorld = (
     bound: Awaited<ReturnType<typeof createDeliveryVerificationFixture>>,
     world: World = {},
@@ -1011,6 +1023,7 @@ async function lockScenarios() {
   plantHolder(child.pid);
   const reclaimedFixture = await createDeliveryVerificationFixture(undefined, {
     route: 'pull-request',
+    landing: true,
   });
   const reclaimWorld = lockWorld(reclaimedFixture);
   const reclaimed = {
@@ -1032,6 +1045,7 @@ async function lockScenarios() {
   // A failing step still releases the lock.
   const failedFixture = await createDeliveryVerificationFixture(undefined, {
     route: 'pull-request',
+    landing: true,
   });
   const failed = {
     report: await mergeGateImplementation(
@@ -1174,5 +1188,73 @@ scenarios.scenario(
     expect(existsSync(providerLock)).toBe(false);
   },
 );
+
+// The pull request route runs the same landing check as a branch merge (`landing-evidence.ts`).
+// Each case varies one read of the green landing; deleting the call in `merge-gate.ts` lands them all.
+scenarios.describe('mergeGate landing evidence', () => {
+  /** `fake()` with `answers` (keyed by a command's arguments without its program) taking precedence. */
+  const landing = (answers: Record<string, { code: number; stdout: string; stderr: string }>) => {
+    const world = fake();
+    const runner: Runner = (command, runnerOptions) =>
+      answers[command.slice(1).join(' ')] ?? world.runner(command, runnerOptions);
+    return { ...world, runner };
+  };
+  const reply = (stdout: string) => ({ code: 0, stdout, stderr: '' });
+  const asAnswers = (answers: Record<string, { code: number; stdout: string; stderr: string }>) =>
+    answers;
+  const DOOR = 'packages/bureau/src/http/__fixtures__/wire-golden/local.openrpc.json';
+
+  scenarios.scenario('a head with no workflow runs is refused at verification', async () => {
+    const world = landing(asAnswers(runsAnswer('acme/widgets', HEAD, [])));
+    const report = await mergeGate(options, { runner: world.runner });
+    expect(report.failedStep).toBe('verification');
+    expect(report.detail).toContain('no workflow runs exist on the head');
+    expect(world.merged()).toBe(false);
+  });
+
+  scenarios.scenario('a red run with a failure main does not have is refused', async () => {
+    const world = landing(
+      asAnswers({
+        ...runsAnswer('acme/widgets', HEAD, [{ head_sha: HEAD, conclusion: 'failure' }]),
+        [`run view 4242 --repo acme/widgets --json status,conclusion,jobs`]: reply(
+          JSON.stringify({
+            status: 'completed',
+            conclusion: 'failure',
+            jobs: [{ name: 'Root checks', conclusion: 'failure' }],
+          }),
+        ),
+        [`run view 4242 --repo acme/widgets --log-failed`]: reply(''),
+      }),
+    );
+    const report = await mergeGate(options, { runner: world.runner });
+    expect(report.failedStep).toBe('verification');
+    expect(report.detail).toContain('is red with failures main does not have');
+    expect(world.merged()).toBe(false);
+  });
+
+  scenarios.scenario(
+    'a one-way door needs a full main.yml run: a pull request run alone is refused, and the full run lands',
+    async () => {
+      const door = changedAnswer(BASE, HEAD, [DOOR]);
+      const without = landing(
+        asAnswers({
+          ...door,
+          ...runsAnswer('acme/widgets', HEAD, [
+            { head_sha: HEAD, path: '.github/workflows/pull-request.yml' },
+          ]),
+          ...jobsAnswer('acme/widgets'),
+        }),
+      );
+      const refused = await mergeGate(options, { runner: without.runner });
+      expect(refused.failedStep).toBe('verification');
+      expect(refused.detail).toContain('requires a full main.yml run');
+      expect(without.merged()).toBe(false);
+      const full = landing(asAnswers(door));
+      const landed = await mergeGate(options, { runner: full.runner });
+      expect(landed.failedStep).toBeNull();
+      expect(full.merged()).toBe(true);
+    },
+  );
+});
 
 await scenarios.settled();
