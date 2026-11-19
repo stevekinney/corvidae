@@ -265,8 +265,6 @@ export function parseArguments(argv: readonly string[], now = new Date()): Optio
         : (planShards(specifications, shard.count)[shard.index - 1]?.specifications ?? []),
     grep,
     shard,
-    specifications,
-    grep,
     ...(expectFile === undefined ? {} : { expect: expectFile }),
   };
 }

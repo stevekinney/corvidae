@@ -8,7 +8,14 @@
    * rendered and sanitized by `@lostgradient/markdown`, never inserted raw. Until Show all, the
    * rendered card is cut to a few lines.
    */
-  import { Button, Card, Collapsible, SectionHeading, Skeleton } from '@lostgradient/cinder';
+  import {
+    Button,
+    Card,
+    Collapsible,
+    EmptyState,
+    SectionHeading,
+    Skeleton,
+  } from '@lostgradient/cinder';
   import { renderMarkdown } from '@lostgradient/markdown';
   import { createQuery } from '@tanstack/svelte-query';
 
@@ -77,7 +84,8 @@
         <span class="ib-skill-instructions__file">{copy.cardFile(size)}</span>
       </p>
       {#if html === ''}
-        <p class="ib-capability__line">{copy.empty}</p>
+        <!-- Cinder's one empty state, as every empty section is (COR-2431). -->
+        <EmptyState kind="first-use" headingLevel={4} title={copy.empty} />
       {:else}
         <!-- `renderMarkdown` sanitizes before it returns HTML: a skill's file is untrusted text. -->
         <div
