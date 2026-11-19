@@ -2,6 +2,7 @@ import { requireElement } from '../../../../tests/dom.test-support.ts';
 
 import { fireEvent, render, waitFor } from '@testing-library/svelte';
 import { describe, expect, test } from 'bun:test';
+import { tick } from 'svelte';
 
 import type { WorkflowListQuery } from '../../../lib/filters.ts';
 import type { ScopeGate } from '../../../lib/scopes.svelte.ts';
@@ -70,11 +71,53 @@ describe('additional coverage', () => {
       await fireEvent.click(purgeButton);
 
       await waitFor(() => {
-        expect(getByText('12 terminal workflows')).not.toBeNull();
+        expect(getByText(/Permanently deletes 12 finished workflows/)).not.toBeNull();
       });
       const params = requestParams(fetch.calls[0]);
       expect(params['dryRun']).toBe(true);
       expect(params['status']).toBe('failed');
+    } finally {
+      fetch.restore();
+    }
+  });
+
+  test('a list refresh that hands the bar an equal filter object does not re-run the purge dry run or clear the typed phrase', async () => {
+    // The bar passes `runDryRun={() => dryRunPurge(client, bulkFilter)}`, a closure over a derived
+    // value, so every new `filter` object (every list refresh) used to read as a new `runDryRun`
+    // and the dialog's effect ran the preview again, which clears the phrase being typed.
+    const fetch = new ScriptedFetch();
+    fetch.routeJsonRpcMethod('weft.workflows.purge', PURGE_PREVIEW);
+
+    try {
+      const { getByRole, getAllByRole, getByLabelText, rerender } = render(BulkSelectionBar, {
+        props: baseProps(),
+      });
+
+      await fireEvent.click(getByRole('checkbox', { name: /Select all 47 matching the filter/ }));
+      const purgeButton = requireElement(
+        getAllByRole('button').find((button) => button.textContent?.trim() === 'Purge'),
+        HTMLButtonElement,
+      );
+      await fireEvent.click(purgeButton);
+      await waitFor(() => {
+        expect(getByLabelText('Type "purge 12 workflows" to confirm')).not.toBeNull();
+      });
+      await fireEvent.input(getByLabelText('Type "purge 12 workflows" to confirm'), {
+        target: { value: 'purge 12 wor' },
+      });
+      expect(fetch.calls).toHaveLength(1);
+
+      // The live list refreshed: the same filter, as a new object.
+      await rerender({ filter: { status: 'failed' } as WorkflowListQuery, selectedCount: 4 });
+      await tick();
+      await tick();
+
+      expect(fetch.calls).toHaveLength(1);
+      const input = requireElement(
+        getByLabelText('Type "purge 12 workflows" to confirm'),
+        HTMLInputElement,
+      );
+      expect(input.value).toBe('purge 12 wor');
     } finally {
       fetch.restore();
     }

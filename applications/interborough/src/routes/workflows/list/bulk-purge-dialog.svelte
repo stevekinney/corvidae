@@ -49,6 +49,7 @@
     Progress,
   } from '@lostgradient/cinder';
   import { HttpClientError, type BulkOperationDryRunResult } from '@lostgradient/weft';
+  import { onMount } from 'svelte';
 
   import { BULK_PURGE_COPY } from '../../../app/copy/bulk-purge.ts';
   import { faultTreatment } from '../../../lib/faults.ts';
@@ -81,7 +82,12 @@
   /** `true` when the server refused the commit because the matching workflows changed after the preview. */
   let faultMeansStalePreview = $state(false);
 
-  $effect(() => {
+  // Once, when the dialog opens, never from an effect: an effect would track `runDryRun`, and the
+  // selection bar builds it as a closure over its filter, so every list refresh that handed the bar
+  // a new filter object would run the preview again and clear the phrase being typed. A change of
+  // filter does not change what this open dialog was asked to purge; "Refresh preview" is the one
+  // way to count again.
+  onMount(() => {
     void loadPreview();
   });
 
