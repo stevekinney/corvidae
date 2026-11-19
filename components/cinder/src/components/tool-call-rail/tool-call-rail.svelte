@@ -239,7 +239,8 @@
   {@const badged = call.status === 'waiting' || call.status === 'expired'}
   <span class="cinder-tool-call-rail__name" data-cinder-badged={badged || undefined}>
     <span class="cinder-tool-call-rail__name-text"
-      >{#if !badged && statusWord(call) !== ''}<span class="cinder-sr-only">{statusWord(call)}:</span
+      >{#if !badged && statusWord(call) !== ''}<span class="cinder-sr-only"
+          >{statusWord(call)}:</span
         >{' '}{/if}{call.name}</span
     >{#if badged}{' '}<Badge variant={call.status === 'waiting' ? 'warning' : 'neutral'} size="sm"
         >{resultText(call)}</Badge

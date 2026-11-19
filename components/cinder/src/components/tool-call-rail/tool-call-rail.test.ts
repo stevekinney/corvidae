@@ -312,10 +312,10 @@ describe('ToolCallRail rows', () => {
       const badge = row.querySelector('.cinder-tool-call-rail__name > .cinder-badge');
       expect(text(badge)).toBe(words);
       expect(badge?.getAttribute('data-cinder-variant')).toBe('neutral');
-      expect(row.querySelector('.cinder-tool-call-rail__name-text')?.nextElementSibling).toBe(badge);
-      expect(text(row.querySelector('.cinder-tool-call-rail__name-text'))).not.toContain(
-        'Expired',
+      expect(row.querySelector('.cinder-tool-call-rail__name-text')?.nextElementSibling).toBe(
+        badge,
       );
+      expect(text(row.querySelector('.cinder-tool-call-rail__name-text'))).not.toContain('Expired');
     }
   });
 

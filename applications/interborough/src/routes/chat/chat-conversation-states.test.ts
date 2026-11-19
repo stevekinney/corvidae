@@ -184,7 +184,14 @@ describe('a chat whose approval nothing waits on any more', () => {
     expect(rows.some((row) => row.textContent?.includes(CHAT_COPY.tools.noLongerWaiting))).toBe(
       true,
     );
-    expect(container.querySelector('.cinder-tool-call-rail__name > .cinder-badge')).toBeNull();
+    // No warning Waiting badge: the row's Badge after the name is the neutral "No longer waiting".
+    const badges = [...container.querySelectorAll('.cinder-tool-call-rail__name > .cinder-badge')];
+    expect(badges.map((badge) => badge.textContent?.trim())).toEqual([
+      CHAT_COPY.tools.noLongerWaiting,
+    ]);
+    expect(badges.map((badge) => badge.getAttribute('data-cinder-variant'))).toEqual(['neutral']);
+    // Chat is told too, so no reminder rises over the composer for an approval nobody can answer.
+    expect(container.querySelector('[data-chat-approval-drawer]')).toBeNull();
   });
 });
 

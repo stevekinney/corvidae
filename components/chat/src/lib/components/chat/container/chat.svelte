@@ -1635,9 +1635,7 @@
   // reads Queue. A blocked composer has no draft to queue and says why on its own row.
   // An approval the host knows no run waits on any more (`lapsedApprovals`) waits on nobody here
   // either, though its result still asks: no reminder over the composer and no Queue (COR-2438).
-  const waitStates = $derived(
-    withLapsedApprovals(commandActions.approvalStates, lapsedApprovals),
-  );
+  const waitStates = $derived(withLapsedApprovals(commandActions.approvalStates, lapsedApprovals));
   const approvalWait = useChatApprovalWait({
     getMessages: () => messages,
     getApprovalStates: () => waitStates,

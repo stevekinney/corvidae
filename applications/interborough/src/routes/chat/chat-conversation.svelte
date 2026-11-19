@@ -1411,18 +1411,6 @@
       settled: approvalsSettled,
     });
   }
-  /**
-   * The calls drawn as no longer waiting, which Chat is told too: its result still asks, and Chat
-   * would otherwise keep reminding over the composer of an approval nobody can answer (COR-2438).
-   */
-  const lapsedCalls = $derived(
-    new Set(
-      [...activity.groups.values()]
-        .flatMap((group) => group.entries)
-        .filter((entry) => lapsed(entry))
-        .map((entry) => entry.callId),
-    ),
-  );
   function displayEntry(original: ToolCallEntry): ToolCallEntry {
     // A parked call no run waits on is shown as what it is: no Waiting badge, no Deny or Approve.
     const entry = lapsed(original) ? { ...original, lapsed: true } : original;
@@ -1539,6 +1527,18 @@
   // The approval the chat was parked on lapsed and nothing else waits (COR-2438): the Bureau may
   // still say the chat is parked on input, but no run goes and nobody can answer. The header says
   // so and the chat list reads it from `lapsedChats`, so both say what the card says.
+  /**
+   * The calls drawn as no longer waiting, which Chat is told too: its result still asks, and Chat
+   * would otherwise keep reminding over the composer of an approval nobody can answer (COR-2438).
+   */
+  const lapsedCalls = $derived(
+    new Set(
+      [...activity.groups.values()]
+        .flatMap((group) => group.entries)
+        .filter((entry) => lapsed(entry))
+        .map((entry) => entry.callId),
+    ),
+  );
   const parkedOnLapsed = $derived(
     lapsedCalls.size > 0 &&
       !approvalWaits &&

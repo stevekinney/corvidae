@@ -39,7 +39,8 @@ for (const viewport of [
         const box = toggle.getBoundingClientRect();
         const headerBox = header.getBoundingClientRect();
         const listBox = list.getBoundingClientRect();
-        const headerStart = headerBox.left + Number.parseFloat(getComputedStyle(header).paddingLeft);
+        const headerStart =
+          headerBox.left + Number.parseFloat(getComputedStyle(header).paddingLeft);
         return {
           textStart: text.left,
           headerStart,
