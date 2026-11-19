@@ -116,6 +116,25 @@ describe('design-rounds dispatch', () => {
   });
 
   // spawn-free: the host lock is stood in by a plain call, so no process starts
+  test('names chef/capture-1920 when every missing capture is at 1920', async () => {
+    const wide = capture('wide', {
+      complete: false,
+      expected: 6,
+      missing: [{ width: 1920 }, { width: 1920 }],
+    });
+    const refused = await dispatch('chef/a', wide);
+    expect(refused.code).toBe(1);
+    expect(refused.output).toContain('1920 captures come from chef/capture-1920 (COR-2445)');
+    const mixed = capture('mixed', {
+      complete: false,
+      expected: 6,
+      missing: [{ width: 1920 }, { width: 375 }],
+    });
+    const other = await dispatch('chef/a', mixed);
+    expect(other.output).not.toContain('capture-1920');
+  });
+
+  // spawn-free: the host lock is stood in by a plain call, so no process starts
   test('refuses a capture that expected nothing: an empty plan proves nothing', async () => {
     const empty = capture('empty', { complete: true, expected: 0, missing: [] });
     const refused = await dispatch('chef/a', empty);

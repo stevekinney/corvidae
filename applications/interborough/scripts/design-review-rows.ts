@@ -310,6 +310,19 @@ export function describeMissing(entry: CaptureExpectation): string {
   return `missing capture: route ${entry.route}, state "${entry.state}" (${entry.kind}), width ${entry.width}, ${entry.theme}, declared by row ${entry.row}`;
 }
 
+/** Said when every missing capture is at 1920, which only `chef/capture-1920` produces. */
+export const WIDE_CAPTURE_DEPENDENCY =
+  '1920 captures come from chef/capture-1920 (COR-2445); until it lands, a plan that expects 1920 cannot be covered';
+
+/** The dependency hint when every missing capture is at 1920, otherwise nothing. */
+export function wideCaptureHint(
+  missing: readonly { readonly width?: unknown }[],
+): string | undefined {
+  return missing.length > 0 && missing.every((entry) => entry.width === 1920)
+    ? WIDE_CAPTURE_DEPENDENCY
+    : undefined;
+}
+
 /** Reads an expected-captures file, or answers what is wrong with it. */
 export function parseCaptureManifest(text: string): CaptureManifest | string {
   let parsed: unknown;

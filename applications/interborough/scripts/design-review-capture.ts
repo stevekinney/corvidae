@@ -57,6 +57,7 @@ import {
   describeMissing,
   missingCaptures,
   parseCaptureManifest,
+  wideCaptureHint,
   type CapturedLine,
   type CaptureExpectation,
   type CaptureManifest,
@@ -508,6 +509,8 @@ async function coverageOf(
   const missing = missingCaptures(manifest.captures, lines);
   for (const entry of missing)
     environment.standardError(`design review: ${describeMissing(entry)}\n`);
+  const hint = wideCaptureHint(missing);
+  if (hint !== undefined) environment.standardError(`design review: ${hint}\n`);
   return { expected: manifest.captures.length, missing, complete: missing.length === 0 };
 }
 

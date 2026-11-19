@@ -18,8 +18,15 @@ import { join } from 'node:path';
 
 export const RESOLVED_VERSION = 1 as const;
 
-/** The widths a row is captured at when it names none: the owner works at about 1,950px. */
-export const DEFAULT_WIDTHS: readonly number[] = [1920, 1280, 768, 375];
+/**
+ * The widths a row is captured at when it names none, each from the specs that capture it:
+ * 1920 because the owner works at about 1,950px (`chef/capture-1920`, COR-2445, repeats every 1280
+ * capture there, so plans refuse until it lands); 1280 and 375 because every state spec captures
+ * them (`15-view-states.spec.ts` WIDTHS, `first-run.spec.ts`). 768 is not a default: only the
+ * showcase specs (`00-showcase.spec.ts` WIDTHS, ready states with data) capture it, so a row that
+ * declares a ready state at 768 names its `widths` itself.
+ */
+export const DEFAULT_WIDTHS: readonly number[] = [1920, 1280, 375];
 
 /** The themes a row is captured in when it names none. */
 export const DEFAULT_THEMES: readonly ('light' | 'dark')[] = ['light', 'dark'];

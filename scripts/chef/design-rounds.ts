@@ -26,6 +26,7 @@ import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { hostname } from 'node:os';
 import { join, resolve } from 'node:path';
 
+import { wideCaptureHint } from '../../applications/interborough/scripts/design-review-rows.ts';
 import { acquireHostLock, processStartTime } from '../run-exclusively.ts';
 import { emitResult, parseOptions, requireOption, UsageError } from './process-runner.ts';
 import { resolveMainCheckout } from './repository-locations.ts';
@@ -99,8 +100,9 @@ function coverageProblem(capture: string): string | undefined {
   if (!(typeof coverage.expected === 'number' && coverage.expected > 0))
     return `${capture} expected no captures, so its coverage proves nothing`;
   if (coverage.complete) return undefined;
-  const missing = Array.isArray(coverage.missing) ? coverage.missing.length : 0;
-  return `the capture is missing ${missing} declared state(s); each is named in its summary.json under coverage.missing`;
+  const list = Array.isArray(coverage.missing) ? (coverage.missing as { width?: unknown }[]) : [];
+  const hint = wideCaptureHint(list);
+  return `the capture is missing ${list.length} declared state(s); each is named in its summary.json under coverage.missing${hint === undefined ? '' : `. ${hint}`}`;
 }
 
 async function underLock<T>(stateDirectory: string, operation: () => T): Promise<T> {

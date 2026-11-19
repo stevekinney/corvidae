@@ -821,6 +821,7 @@ describe('captureDesignReview', () => {
         'design review: missing capture: route /, state "first run fresh installation" (first-run), width 1920, light, declared by row 12a\n',
       );
       expect(calls.err.match(/missing capture/g)).toHaveLength(1);
+      expect(calls.err).toContain('1920 captures come from chef/capture-1920 (COR-2445)');
       const summary = JSON.parse(await readFile(join(out, 'summary.json'), 'utf8'));
       expect(summary.coverage.complete).toBe(false);
       expect(summary.coverage.expected).toBe(3);

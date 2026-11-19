@@ -21,6 +21,7 @@ import {
   parseArguments,
   parseCaptureManifest,
   parseRows,
+  wideCaptureHint,
   type DesignRow,
 } from './design-review-rows.ts';
 
@@ -346,7 +347,7 @@ describe('captureManifest', () => {
   test('names every declared state at every width and theme, including 1920 and first-run', () => {
     const { captures } = captureManifest(resolved);
     // 11a: two states, four default widths, two themes; 12a: one state, three widths, one theme.
-    expect(captures).toHaveLength(2 * 4 * 2 + 1 * 3 * 1);
+    expect(captures).toHaveLength(2 * 3 * 2 + 1 * 3 * 1);
     const names = (row: string) =>
       new Set(
         captures
@@ -354,11 +355,38 @@ describe('captureManifest', () => {
           .map((entry) => `${entry.route}|${entry.state}|${entry.width}|${entry.theme}`),
       );
     for (const state of ['ready', 'empty'])
-      for (const width of [1920, 1280, 768, 375])
+      for (const width of [1920, 1280, 375])
         for (const theme of ['light', 'dark'])
           expect(names('11a')).toContain(`/runs|${state}|${width}|${theme}`);
     expect(names('12a')).toContain('/|first run fresh installation|1920|light');
     expect(captures.some((entry) => entry.kind === 'first-run' && entry.width === 1920)).toBe(true);
+  });
+
+  test('a first-run row is fully covered by captures at 375, 1280 and 1920, with no 768 required', () => {
+    const firstRun: ResolvedRows = {
+      ...resolved,
+      rows: [
+        {
+          id: '12a',
+          board: 'Home',
+          text: 'Home on a fresh installation',
+          states: [{ route: '/', state: 'first run fresh installation', kind: 'first-run' }],
+        },
+      ],
+    };
+    const { captures } = captureManifest(firstRun);
+    expect(new Set(captures.map((entry) => entry.width))).toEqual(new Set([1920, 1280, 375]));
+    const taken = captures.map((entry) => ({
+      route: entry.route,
+      state: entry.state,
+      width: entry.width,
+      colorScheme: entry.theme,
+    }));
+    expect(missingCaptures(captures, taken)).toEqual([]);
+    const without1920 = taken.filter((line) => line.width !== 1920);
+    const missing = missingCaptures(captures, without1920);
+    expect(wideCaptureHint(missing)).toContain('chef/capture-1920 (COR-2445)');
+    expect(wideCaptureHint([{ width: 1920 }, { width: 375 }])).toBeUndefined();
   });
 
   test('orders the whole manifest widest width first, light before dark', () => {
@@ -449,7 +477,7 @@ describe('--manifest', () => {
     expect(await checkRowFiles(['--manifest', path, '--out', out], streams)).toBe(0);
     const written = JSON.parse(await Bun.file(out).text()) as { captures: { width: number }[] };
     expect(written.captures[0]?.width).toBe(1920);
-    expect(output).toContain('8 expected captures');
+    expect(output).toContain('6 expected captures');
   });
 
   test('exits 1 for an --only that names no row, since an empty plan is covered by anything', async () => {
