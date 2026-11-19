@@ -25,6 +25,27 @@ describe('light shadows', () => {
       'an inline style string',
       '<div style="box-shadow: 0 0 8px var(--cinder-text-default)"></div>',
     ],
+    [
+      'the kanban scroll-edge token',
+      ':root { --cinder-kanban-board-scroll-edge: color-mix(in oklch, var(--cinder-text-default), transparent 88%); }',
+    ],
+    ['an edge custom property', ':root { --panel-edge: var(--cinder-text-default); }'],
+    ['a glow custom property', ':root { --panel-glow: white; }'],
+    ['a fade custom property', ':root { --panel-fade: oklch(95% 0 0 / 0.3); }'],
+    ['a scrim custom property', ':root { --panel-scrim: #fff; }'],
+    ['a shade custom property', ':root { --panel-shade: currentColor; }'],
+    [
+      'a linear-gradient scroll edge',
+      '.board-edge::before { background: linear-gradient(90deg, var(--cinder-text-default), transparent); }',
+    ],
+    [
+      'a radial-gradient glow',
+      '.glow { background: radial-gradient(circle, white, transparent); }',
+    ],
+    [
+      'a conic-gradient shade',
+      '.shade { background: conic-gradient(from 0deg, var(--cinder-ink), transparent); }',
+    ],
   ])('reports %s', (_name, source) => {
     expect(findLightShadows(`first line\n${source}`).map((violation) => violation.line)).toEqual([
       2,
@@ -60,7 +81,19 @@ describe('light shadows', () => {
       'a { color: var(--cinder-text-default); box-shadow: none; }',
     ],
     ['a block comment', 'a { /* box-shadow: 0 0 4px white; */ box-shadow: none; }'],
-    ['a longer property name', 'a { text-box-shadow-like: white; }'],
+    [
+      'the kanban scroll-edge token as the scroll shadow color',
+      ':root { --cinder-kanban-board-scroll-edge: var(--cinder-scroll-shadow-color); }',
+    ],
+    [
+      'a gradient scroll edge from a black shadow token',
+      '.board { background: linear-gradient(90deg, var(--cinder-scroll-shadow-color), transparent); }',
+    ],
+    [
+      'a white gradient that is not an edge',
+      '.swatch { background: linear-gradient(90deg, white, black); }',
+    ],
+    ['a longer property name','a { text-box-shadow-like: white; }'],
   ])('accepts %s', (_name, source) => {
     expect(findLightShadows(source)).toEqual([]);
   });

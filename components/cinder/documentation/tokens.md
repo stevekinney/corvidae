@@ -848,7 +848,7 @@ Component-owned custom-property theming surfaces, one section per component (bes
 | `--cinder-kanban-column-gap` | `var(--cinder-space-4)` | Gap between columns. |
 | `--cinder-kanban-column-background` | `var(--cinder-surface-raised)` | Column background. |
 | `--cinder-kanban-card-background` | `var(--cinder-surface)` | Card background. |
-| `--cinder-kanban-board-scroll-edge` | `color-mix(in oklch, var(--cinder-text-default), transparent 88%)` | Horizontal scroll-edge fade gradient color -- `text-default` at 12% opacity, tracking whichever theme arm resolves. |
+| `--cinder-kanban-board-scroll-edge` | `var(--cinder-scroll-shadow-color)` | Horizontal scroll-edge fade gradient color -- the scroll-shadow color, black in both themes, so the edge darkens what is under it instead of glowing. |
 
 <!-- END GENERATED TOKEN TABLE -->
 

@@ -11,7 +11,10 @@
  * and `--*shadow*` declaration, and every `drop-shadow(...)` call, across lines, and fails when the
  * value references `--cinder-text-`, `--cinder-ink`, `--cinder-polarity-ink`, `currentColor`,
  * `white`, `#fff` or `#ffffff`, or an `oklch(` with a lightness of 90% or more. Block comments are
- * ignored. A focus ring is not an elevation shadow: references to the ring tokens
+ * ignored. The same rule covers any custom property whose name contains `edge`, `glow`, `fade`,
+ * `scrim` or `shade`, and any `linear-`, `radial-` or `conic-gradient(...)` whose selector or
+ * declaration names an edge, glow, fade, scrim, shade or shadow: a scroll-edge fade painted from
+ * `--cinder-text-default` glows near-white in dark mode just as a shadow does. A focus ring is not an elevation shadow: references to the ring tokens
  * (`--cinder-ring-*`, `--_cinder-focus-ring-shadow`) are allowed by name, and so is a declaration
  * of `--_cinder-focus-ring-shadow` itself.
  *
@@ -46,8 +49,24 @@ function blankComments(source: string): string {
   return source.replace(/\/\*[\s\S]*?\*\//g, (comment) => comment.replace(/[^\n]/g, ' '));
 }
 
-const DECLARATION = /(?<![\w-])(box-shadow|boxShadow|--[\w-]*shadow[\w-]*)\s*:/g;
+const DECLARATION =
+  /(?<![\w-])(box-shadow|boxShadow|--[\w-]*(?:shadow|edge|glow|fade|scrim|shade)[\w-]*)\s*:/gi;
 const DROP_SHADOW = /drop-shadow\(/g;
+const GRADIENT = /(?<![\w-])(?:repeating-)?(?:linear|radial|conic)-gradient\(/g;
+/** A word that marks a gradient as painting an edge, a fade, a scrim or a shade. */
+const EDGE_WORDS = /edge|glow|fade|scrim|shade|shadow/i;
+
+/** The selector and the declaration text before `index`, which say what a gradient paints. */
+function gradientContext(text: string, index: number): string {
+  const declarationStart = Math.max(
+    text.lastIndexOf(';', index),
+    text.lastIndexOf('{', index),
+    text.lastIndexOf('}', index),
+  );
+  const ruleStart = text.lastIndexOf('{', index);
+  const selectorStart = Math.max(text.lastIndexOf('}', ruleStart), text.lastIndexOf(';', ruleStart));
+  return `${text.slice(selectorStart + 1, ruleStart)} ${text.slice(declarationStart + 1, index)}`;
+}
 
 /** The text from `start` to the end of a CSS value: a `;`, an unmatched `}` or `)`, or a quote. */
 function readValue(source: string, start: number, stopAtComma: boolean): string {
@@ -103,6 +122,10 @@ export function findLightShadows(source: string): LightShadowViolation[] {
     report(match.index, readValue(text, start, match[1] === 'boxShadow'));
   }
   for (const match of text.matchAll(DROP_SHADOW)) {
+    report(match.index, readValue(text, match.index + match[0].length, false));
+  }
+  for (const match of text.matchAll(GRADIENT)) {
+    if (!EDGE_WORDS.test(gradientContext(text, match.index))) continue;
     report(match.index, readValue(text, match.index + match[0].length, false));
   }
   return violations.toSorted((first, second) => first.line - second.line);

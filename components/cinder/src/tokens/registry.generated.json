@@ -2904,9 +2904,9 @@
       "category": "color",
       "component": "kanban-board",
       "public": true,
-      "themeAware": true,
+      "themeAware": false,
       "deprecated": false,
-      "description": "Horizontal scroll-edge fade gradient color -- `text-default` at 12% opacity, tracking whichever theme arm resolves."
+      "description": "Horizontal scroll-edge fade gradient color -- the scroll-shadow color, black in both themes, so the edge darkens what is under it instead of glowing."
     },
     {
       "path": "map-marker.fill",

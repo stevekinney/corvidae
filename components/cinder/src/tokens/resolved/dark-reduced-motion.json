@@ -4160,17 +4160,17 @@
   },
   "kanban-board.board.scroll-edge": {
     "$type": "color",
-    "$value": { "colorSpace": "oklch", "components": [0.95, 0.01, 265], "alpha": 0.12 },
+    "$value": { "colorSpace": "oklch", "components": [0, 0, 0], "alpha": 0.5 },
+    "$description": "Horizontal scroll-edge fade gradient color -- the scroll-shadow color, black in both themes, so the edge darkens what is under it instead of glowing.",
     "$extensions": {
       "com.lostgradient.cinder": {
-        "cssRecipe": "color-mix(in oklch, var(--cinder-text-default), transparent 88%)",
         "cssProperty": "--cinder-kanban-board-scroll-edge",
         "public": true,
         "category": "color",
-        "component": "kanban-board"
+        "component": "kanban-board",
+        "cssRecipe": "var(--cinder-scroll-shadow-color)"
       }
-    },
-    "$description": "Horizontal scroll-edge fade gradient color -- `text-default` at 12% opacity, tracking whichever theme arm resolves."
+    }
   },
   "map-marker.fill": {
     "$value": { "colorSpace": "oklch", "components": [0.235, 0.014, 265] },

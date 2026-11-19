@@ -711,12 +711,8 @@
   --cinder-kanban-column-background: var(--cinder-surface-raised);
   /* Card background. */
   --cinder-kanban-card-background: var(--cinder-surface);
-  /* Horizontal scroll-edge fade gradient color -- `text-default` at 12% opacity, tracking whichever theme arm resolves. */
-  --cinder-kanban-board-scroll-edge: color-mix(
-    in oklch,
-    var(--cinder-text-default),
-    transparent 88%
-  );
+  /* Horizontal scroll-edge fade gradient color -- the scroll-shadow color, black in both themes, so the edge darkens what is under it instead of glowing. */
+  --cinder-kanban-board-scroll-edge: var(--cinder-scroll-shadow-color);
   /* The marker's body and anchor fill: the raised surface, so a marker reads as a chip over the map. */
   --cinder-map-marker-fill: var(--cinder-surface-raised);
   /* The marker's text color on its fill. */
@@ -1020,11 +1016,6 @@
   --cinder-code-block-background: var(--cinder-surface-inset);
   --cinder-docked-action-bar-shadow-color: oklch(0% 0 0 / 0.4);
   --cinder-scroll-shadow-color: oklch(0% 0 0 / 0.5);
-  --cinder-kanban-board-scroll-edge: color-mix(
-    in oklch,
-    var(--cinder-text-default),
-    transparent 88%
-  );
   --cinder-skeleton-background: color-mix(in oklch, var(--cinder-border-ink), transparent 88%);
   --cinder-week-schedule-today-background: color-mix(
     in oklch,
@@ -1194,11 +1185,6 @@
   --cinder-alert-info: oklch(45% 0.14 245);
   --cinder-docked-action-bar-shadow-color: oklch(0% 0 0 / 0.08);
   --cinder-scroll-shadow-color: oklch(0% 0 0 / 0.14);
-  --cinder-kanban-board-scroll-edge: color-mix(
-    in oklch,
-    var(--cinder-text-default),
-    transparent 88%
-  );
   --cinder-skeleton-background: color-mix(in oklch, var(--cinder-border-ink), transparent 88%);
   --cinder-week-schedule-today-background: color-mix(
     in oklch,

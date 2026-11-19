@@ -1306,23 +1306,6 @@
       }
     }
   },
-  "kanban-board": {
-    "board": {
-      "scroll-edge": {
-        "$type": "color",
-        "$value": {
-          "colorSpace": "oklch",
-          "components": [0.95, 0.01, 265],
-          "alpha": 0.12
-        },
-        "$extensions": {
-          "com.lostgradient.cinder": {
-            "cssRecipe": "color-mix(in oklch, var(--cinder-text-default), transparent 88%)"
-          }
-        }
-      }
-    }
-  },
   "skeleton": {
     "$type": "color",
     "background": {
