@@ -599,7 +599,11 @@ describe('a goal’s page', () => {
       'Done',
       'Check not met',
     ]);
-    expect(attempts[0]?.querySelector('a')?.getAttribute('href')).toBe('/runs/run-b');
+    // Every attempt row links to its own run, the met one and the missed one alike (row 67i).
+    expect(attempts.map((attempt) => attempt.querySelector('a')?.getAttribute('href'))).toEqual([
+      '/runs/run-b',
+      '/runs/run-a',
+    ]);
     expect(
       view.getByRole('heading', { level: 2, name: `${GOALS_COPY.detail.attemptsHeading} 2 of 3` }),
     ).not.toBeNull();
@@ -774,6 +778,84 @@ describe('a goal’s page', () => {
       ]),
     );
     expect(served.goals[0]?.status).toBe('canceled');
+  });
+
+  test('says why an attempt met its check, from the owner’s read of the goal (row 67v)', async () => {
+    const { view } = open(
+      [
+        goal('goal-1', {
+          identity: { name: 'Say hello', version: '1' },
+          status: 'succeeded',
+          closedAt: '2026-10-30T12:48:08.000Z',
+          attempts: [
+            {
+              attemptId: 'goal-1-a0',
+              attemptIndex: 0,
+              runId: 'run-hello',
+              sessionId: 'session-hello',
+              status: 'passed',
+              startedAt: '2026-10-30T12:48:00.000Z',
+              completedAt: '2026-10-30T12:48:08.000Z',
+              finishReason: 'stop-condition',
+              usage: { steps: 1, tokens: 1, costUsd: null },
+              feedback: null,
+              reason: 'Reply said hello',
+            },
+          ],
+        }),
+      ],
+      { path: '/goals/goal-1' },
+    );
+
+    // The client's schema keeps the reason, and the row says it after how long the attempt took.
+    await waitFor(() =>
+      expect(view.container.querySelector('[data-attempt]')?.textContent).toContain(
+        'reply said hello',
+      ),
+    );
+  });
+
+  test('says what an attempt’s run took while its result is checked, which does not grow with the clock (row 67x)', async () => {
+    // The goal's last write was long after its run ended (an edit), so only the run says what the
+    // agent took: 72 s, from its start to its end.
+    const { view } = open(
+      [
+        goal('goal-1', {
+          agentName: 'tool-runner',
+          status: 'evaluating',
+          updatedAt: '2026-11-02T16:40:00.000Z',
+          attempts: [
+            {
+              attemptId: 'goal-1-a0',
+              attemptIndex: 0,
+              runId: 'run-checked',
+              sessionId: 'session-checked',
+              status: 'evaluating',
+              startedAt: '2026-10-30T15:07:00.000Z',
+              completedAt: null,
+              finishReason: null,
+              usage: { steps: 1, tokens: 1, costUsd: null },
+            },
+          ],
+        }),
+      ],
+      { path: '/goals/goal-1' },
+    );
+    stub?.on('bureau.tasks.get', () =>
+      taskFixture({
+        id: 'run-checked',
+        status: 'completed',
+        createdAt: '2026-10-30T15:07:00.000Z',
+        updatedAt: '2026-10-30T15:08:12.000Z',
+      }),
+    );
+
+    await waitFor(() =>
+      expect(view.container.querySelector('[data-attempt]')?.textContent).toContain(
+        'Agent took 1 min 12 s',
+      ),
+    );
+    expect(view.container.querySelector('[data-attempt]')?.textContent).not.toMatch(/ h /);
   });
 
   test('says an attempt waits on you in an amber note that opens the review in Reviews', async () => {

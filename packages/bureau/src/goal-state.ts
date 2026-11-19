@@ -456,6 +456,8 @@ function boundError(error: ProjectedValidatorError): ProjectedValidatorError {
 }
 
 const COMPACT_TEXT_CHARACTERS = 256;
+/** The longest a pass's `reason` is kept (COR-2425): a sentence, never a document. */
+export const PASS_REASON_MAXIMUM_CHARACTERS = 1024;
 const COMPACT_SOURCE_CHARACTERS = 128;
 const COMPACT_CODE_CHARACTERS = 64;
 /** Evidence past this many entries is dropped in the second tier, however small each is. */
@@ -482,7 +484,11 @@ function boundFirstTier(outcome: ProjectedValidatorOutcome): ProjectedValidatorO
     items.map((item) => ({ source: item.source, detail: truncationMarker(item.detail) }));
   switch (outcome.kind) {
     case 'pass':
-      return { kind: 'pass', evidence: evidence(outcome.evidence) };
+      return {
+        kind: 'pass',
+        evidence: evidence(outcome.evidence),
+        ...(outcome.reason === undefined ? {} : { reason: truncateText(outcome.reason) }),
+      };
     case 'fail':
       return {
         kind: 'fail',
@@ -552,7 +558,13 @@ function boundSecondTier(
   };
   switch (outcome.kind) {
     case 'pass':
-      return withEvidence(outcome.evidence, (evidence) => ({ kind: 'pass', evidence }));
+      return withEvidence(outcome.evidence, (evidence) => ({
+        kind: 'pass',
+        evidence,
+        ...(outcome.reason === undefined
+          ? {}
+          : { reason: cut(outcome.reason, COMPACT_TEXT_CHARACTERS) }),
+      }));
     case 'fail':
       return withEvidence(outcome.evidence, (evidence) => ({
         kind: 'fail',
@@ -591,11 +603,22 @@ function boundSecondTier(
  *
  * Only a ceiling below the size of that replacement (a few dozen bytes) cannot
  * be honoured; the record's own cap is orders of magnitude above it.
+ *
+ * A pass's `reason` (COR-2425) is a sentence a page shows beside the attempt, so it is held to
+ * {@link PASS_REASON_MAXIMUM_CHARACTERS} whatever the ceiling: the verdict's own text never grows
+ * the record for a line nobody reads past its first words.
  */
 export function boundValidationOutcome(
-  outcome: ProjectedValidatorOutcome,
+  given: ProjectedValidatorOutcome,
   maximumBytes: number = GOAL_VALIDATION_MAXIMUM_BYTES,
 ): ProjectedValidatorOutcome {
+  const outcome: ProjectedValidatorOutcome =
+    given.kind === 'pass' &&
+    given.reason !== undefined &&
+    given.reason.length > PASS_REASON_MAXIMUM_CHARACTERS
+      ? // `cut` ends what it cuts with an ellipsis, which the maximum counts.
+        { ...given, reason: cut(given.reason, PASS_REASON_MAXIMUM_CHARACTERS - 1) }
+      : given;
   if (fitsWithin(outcome, maximumBytes) || outcome.kind === 'canceled') return outcome;
   const first = boundFirstTier(outcome);
   if (fitsWithin(first, maximumBytes)) return first;
@@ -761,7 +784,11 @@ const isEvidenceList = (value: unknown): boolean =>
 type OutcomeCheck = (value: PlainRecord) => boolean;
 
 const OUTCOME_CHECKS: Readonly<Record<ProjectedValidatorOutcome['kind'], OutcomeCheck>> = {
-  pass: (value) => hasExactKeys(value, ['kind', 'evidence']) && isEvidenceList(value['evidence']),
+  // A pass's `reason` (COR-2425) is optional: a record written before it has none.
+  pass: (value) =>
+    hasExactKeys(value, ['kind', 'evidence', 'reason']) &&
+    isEvidenceList(value['evidence']) &&
+    isOptionalString(value['reason']),
   fail: (value) =>
     hasExactKeys(value, ['kind', 'feedback', 'evidence', 'retryable']) &&
     isString(value['feedback']) &&

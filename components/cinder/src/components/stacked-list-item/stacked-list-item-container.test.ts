@@ -156,7 +156,20 @@ describe('StackedListItem chooses its layout from its own width (COR-2448)', () 
   });
 
   test('every phone rule is a container query on the row; only the line-two status column reads the viewport', () => {
-    expect(stylesheet).not.toMatch(/data-cinder-phone\b(?!-)/);
+    // A row that follows the window (`phoneWidth="viewport"`) is the one exception: the container
+    // queries pass it by, and its phone rules read the script's phone mark beside its own.
+    for (const match of stylesheet.matchAll(/data-cinder-phone\b(?!-)/g)) {
+      expect(stylesheet.slice(Math.max(0, match.index - 40), match.index)).toContain(
+        "[data-cinder-phone-width='viewport']",
+      );
+    }
+    for (const block of stylesheet
+      .split('@container cinder-stacked-list-item (max-width: 639.98px) {')
+      .slice(1)) {
+      expect(block.slice(0, block.indexOf('\n  }\n'))).toContain(
+        "[data-cinder-phone-width='viewport']",
+      );
+    }
     expect(stylesheet).not.toMatch(/@media[^{]*(?:max-width|min-width|width\s*[<>])/);
     // The one viewport rule: the chat list's line-two status keeps its fixed column in a narrow
     // pane of a wide window (previews line up) and gives it up on a phone (COR-2016), which the

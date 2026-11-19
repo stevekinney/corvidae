@@ -136,6 +136,7 @@ Use `type: 'custom'` with a `control` snippet for any facet that cannot be expre
 | `aria-label` | `string` | no | — | Defines a string value that labels the current element. |
 | `class` | `string` | no | — | Additional CSS classes applied to the root element. |
 | `disabled` | `boolean` | no | — | When true, all filter controls and chips are disabled. |
+| `foldOrder` | `string`[] | no | — | The keys of the choice and toggle facets, least used first, in the order their chips move into a Filter menu when the medium form cannot hold them. A chip with an applied filter never moves, so a filter that is on stays visible and removable; the bar folds to `narrow` only once every unapplied chip has moved. Facets left out fold after those named, from the end of the list. |
 | `layout` | `"auto"` \| `"wide"` \| `"search-folded"` \| `"medium"` \| `"narrow"` | no | — | Force a layout. By default the bar follows the viewport (phone under 640px, tablet under 1024px) and narrows further when its own width cannot hold the wider form. |
 | `searchAriaLabel` | `string` | no | — | Accessible label for the search input. Defaults to 'Search'. |
 | `searchPlaceholder` | `string` | no | — | Placeholder text shown in the search field. |
