@@ -20,6 +20,10 @@
 //   3. conflict   `git merge-tree --write-tree <base> <head>` builds the merged tree; a conflict is
 //                 refused and nothing is merged in: the worker merges the base in and returns a new
 //                 head. A branch that changes nothing relative to the base is refused at `merge`;
+//   3b. queue     `land-queue.ts`: a commit on `origin/<default>` since the head's merge-base that
+//                 touches what the head's evidence plan reaches refuses the landing, naming the
+//                 files, because the head's evidence never saw it. It runs here, inside the merge
+//                 lock the push holds, so the decision and the push are one critical section;
 //   4. guards     each guard of `lint:guards` runs as its own process on the tree that will be
 //                 pushed (the one squash commit, in a temporary detached Git worktree that is
 //                 always removed afterwards; `text-guards.ts` says why a worktree and not an
@@ -48,6 +52,7 @@
 
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
+import { discoverWorkspaces } from '../affected-tests.ts';
 import {
   isDeliveryMergeObservation,
   loadDeliveryVerification,
@@ -58,8 +63,10 @@ import {
   type DeliveryVerification,
   type DeliveryVerificationDependencies,
 } from './delivery-verification.ts';
+import { repositoryContext } from './evidence-plan.ts';
 import { readExecutionSnapshot, withProviderTransitionLock } from './execution-state.ts';
 import { fetchWithRetry } from './fetch-retry.ts';
+import { landQueueVerdict } from './land-queue.ts';
 import { validateLandingEvidence } from './landing-evidence.ts';
 import { mainCiComparisonWarning, mainCiHealth, mainCiWarning } from './main-ci.ts';
 import { withMergeLock } from './merge-gate.ts';
@@ -73,6 +80,7 @@ import {
   type GuardsResult,
 } from './text-guards.ts';
 import { totalUsage, type UsageTotals } from './transcript-usage.ts';
+import { computeEvidencePlan, type EvidencePlan } from './verification-plan.ts';
 
 export interface DirectMergeOptions {
   configPath: string;
@@ -128,6 +136,8 @@ export interface DirectMergeDependencies {
   now: () => Date;
   sleep: (milliseconds: number) => void;
   verification: DeliveryVerificationDependencies;
+  /** The evidence plan of a changed-file list, read from `worktree`; a test supplies one. */
+  evidencePlan: (changed: string[], worktree: string) => EvidencePlan;
 }
 
 /** The refusal's detail: the first failing guard by name, and the others that failed after it. */
@@ -175,6 +185,47 @@ function validateDirectInputs(
   }
 
   return { config, verification, transcripts };
+}
+
+/**
+ * Why the landing queue refuses the head, or `undefined` when no commit on the default branch since
+ * the head's merge-base overlaps its evidence plan. Fails closed: a plan that cannot be computed is
+ * a refusal.
+ */
+function landingQueue(
+  options: DirectMergeOptions,
+  partial: Partial<DirectMergeDependencies>,
+  runner: Runner,
+  base: string,
+  defaultBranch: string,
+): string | undefined {
+  try {
+    const changed = runner(
+      ['git', 'diff', '--name-only', '--diff-filter=d', `${base}...${options.head}`],
+      {
+        cwd: options.worktree,
+      },
+    );
+    if (changed.code !== 0) return `git diff failed: ${firstLine(changed.stderr)}`;
+    const files = changed.stdout.split('\n').filter(Boolean);
+    const plan = (partial.evidencePlan ?? defaultEvidencePlan)(files, options.worktree);
+    const verdict = landQueueVerdict({
+      runner,
+      evidence: options.head,
+      plan,
+      base,
+      cwd: options.worktree,
+      workspaces: discoverWorkspaces(options.worktree),
+    });
+    if (verdict.verdict === 'LAND') return undefined;
+    return `commits on origin/${defaultBranch} since the evidence head ${options.head.slice(0, 12)} touch what its plan reaches, so it needs a new evidence run: ${verdict.overlapping.join(', ')}`;
+  } catch (error) {
+    return `the landing queue could not decide: ${error instanceof Error ? error.message : 'unknown error'}`;
+  }
+}
+
+function defaultEvidencePlan(changed: string[], worktree: string): EvidencePlan {
+  return computeEvidencePlan(changed, repositoryContext(worktree, new Set()));
 }
 
 /** Run the steps while the public entrypoint holds both fences. */
@@ -263,6 +314,11 @@ async function directMergeCore(
   const baseTree = git('rev-parse', `${base}^{tree}`).stdout.trim();
   if (tree === baseTree)
     return fail('merge', `${options.branch} changes nothing relative to origin/${defaultBranch}.`);
+  // 3b. queue: inside the merge lock this step shares with the push, so the decision and the merge
+  // are one critical section. Commits that reached `main` since the head's evidence, and touch
+  // what its plan reaches, need a new evidence run: refuse with the files named.
+  const queued = landingQueue(options, partial, runner, base, defaultBranch);
+  if (queued !== undefined) return fail('queue', queued);
   const verificationProblem = validateDeliveryVerification(
     verification,
     {

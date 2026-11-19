@@ -99,6 +99,8 @@ async function world(conflicting = false, integrateMain = true): Promise<World> 
   configure(other);
   git(other, 'remote', 'add', 'origin', origin);
   commit(other, 'shared.txt', 'one\ntwo\nthree\n', 'Add shared');
+  // The landing queue reads the repository's workspaces, so the world has a manifest.
+  commit(other, 'package.json', '{"name":"world","workspaces":[]}\n', 'Add the manifest');
   git(other, 'push', '-q', 'origin', 'main');
   git(directory, 'clone', '-q', origin, clone);
   configure(clone);
@@ -235,6 +237,7 @@ const clean = await outcomeOf(async () => {
   expect(git(w.origin, 'ls-tree', '--name-only', merged).split('\n')).toEqual([
     'feature.txt',
     'moved.txt',
+    'package.json',
     'shared.txt',
   ]);
   // The remote branch is gone, and the merge never touched the clone's checked-out files.
@@ -291,6 +294,42 @@ const race = await outcomeOf(async () => {
   });
   expect(refs(w.origin, 'refs/heads/main')).toBe(racing);
   expect(refs(w.origin, 'refs/heads/branch')).toBe(w.head);
+});
+
+// An overlapping commit that reaches main after the head's evidence is refused by the landing queue,
+// inside the merge lock the push holds, with the files named. One that touches nothing the plan
+// reaches is not refused by the queue.
+const queueOverlap = await outcomeOf(async () => {
+  const w = await world();
+  commit(w.other, 'bun.lock', 'lock\n', 'Change the lockfile on main');
+  git(w.other, 'push', '-q', 'origin', 'main');
+  const lockDirectory = w.options.lockDirectory ?? '';
+  let heldDuringQueue = false;
+  const watching: Runner = (command, options) => {
+    if (command[1] === 'rev-list') heldDuringQueue = existsSync(lockDirectory);
+    return isolated(command, options);
+  };
+  const mainTip = refs(w.origin, 'refs/heads/main');
+  const report = await directMerge(w.options, {
+    runner: watching,
+    verification: w.verification,
+    guards: guardsPass,
+  });
+  expect(report).toMatchObject({ merged: false, mergeCommit: null, failedStep: 'queue' });
+  expect(report.detail).toContain('bun.lock');
+  expect(heldDuringQueue).toBe(true);
+  expect(refs(w.origin, 'refs/heads/main')).toBe(mainTip);
+  expect(refs(w.origin, 'refs/heads/branch')).toBe(w.head);
+
+  const quiet = await world();
+  commit(quiet.other, 'notes.txt', 'notes\n', 'Unrelated file on main');
+  git(quiet.other, 'push', '-q', 'origin', 'main');
+  const other = await directMerge(quiet.options, {
+    runner: isolated,
+    verification: quiet.verification,
+    guards: guardsPass,
+  });
+  expect(other.failedStep).not.toBe('queue');
 });
 
 // A failed branch delete is its own named step, and the merge stands.
@@ -541,6 +580,10 @@ describe('directMerge against real Git', () => {
 
   test('a guard refusal records no merge attempt and the original operation remains retryable', () => {
     rethrow(newFinding);
+  });
+
+  test('refuses, inside the merge lock, an overlapping commit that reached main after the evidence', () => {
+    rethrow(queueOverlap);
   });
 
   test('a head that is not the pinned one is refused at head', () => {

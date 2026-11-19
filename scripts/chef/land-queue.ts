@@ -20,10 +20,9 @@
 //
 // `--plan` is the JSON of `evidence-plan.ts --json` for the evidence's head. The command is
 // ADVISORY: its merge lock and fetch cover only the read, so a merge by another session after it
-// returns can still make its answer stale. The decision and the push are one critical section only
-// when the landing path calls `landQueueVerdict` inside the lock it already holds for the merge
-// (`direct-merge.ts`); that wiring is item 3 of the review round and waits for fix list item 4,
-// so nothing calls it there yet. Exit codes: 0 LAND, 3 REDISPATCH, 2 invalid input.
+// returns can still make its answer stale. The binding decision is `direct-merge.ts` step 3b, which
+// calls `landQueueVerdict` inside the merge lock the push holds, so the decision and the push are
+// one critical section. Exit codes: 0 LAND, 3 REDISPATCH, 2 invalid input.
 
 import { readFileSync } from 'node:fs';
 import { posix } from 'node:path';
