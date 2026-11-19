@@ -26,7 +26,17 @@ export interface ActivityRetryState {
    * preserved whenever the retry-state slot is rebuilt.
    */
   dispatchedAt?: Record<string, number>;
+  /**
+   * The activity's name per step, kept for as long as the activity is retrying (COR-2529): written
+   * with each retry attempt, dropped when the activity settles or runs out of retries. The commit
+   * that records a retry reads it, together with `attempts`, to say which activity is on which
+   * attempt. `attempts` alone cannot: an exhausted activity keeps its slot, and carries no name.
+   */
+  activityNames?: Record<string, string>;
 }
+
+/** The maps of one retry-state slot, as {@link writeRetryStateSlot} rebuilds them. */
+type RetryStateMaps = Omit<ActivityRetryState, 'version'>;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -38,7 +48,8 @@ export function isActivityRetryState(value: unknown): value is ActivityRetryStat
     value['version'] === ACTIVITY_RETRY_STATE_VERSION &&
     isRecord(value['attempts']) &&
     (value['completedRetrySleeps'] === undefined || isRecord(value['completedRetrySleeps'])) &&
-    (value['dispatchedAt'] === undefined || isRecord(value['dispatchedAt']))
+    (value['dispatchedAt'] === undefined || isRecord(value['dispatchedAt'])) &&
+    (value['activityNames'] === undefined || isRecord(value['activityNames']))
   );
 }
 
@@ -114,18 +125,15 @@ function currentRetryState(internals: ContextInternals): ActivityRetryState | un
  * Every mutator routes through here so no field (`completedRetrySleeps`,
  * `dispatchedAt`) is silently erased when the slot is rebuilt.
  */
-function writeRetryStateSlot(
-  internals: ContextInternals,
-  attempts: Record<string, number>,
-  completedRetrySleeps: Record<string, number> | undefined,
-  dispatchedAt: Record<string, number> | undefined,
-): void {
+function writeRetryStateSlot(internals: ContextInternals, maps: RetryStateMaps): void {
+  const { attempts, completedRetrySleeps, dispatchedAt, activityNames } = maps;
   const { [ACTIVITY_RETRY_STATE_LOCAL_KEY]: _removed, ...remainingLocals } =
     internals.checkpointLocals;
   const hasAttempts = Object.keys(attempts).length > 0;
   const hasSleeps =
     completedRetrySleeps !== undefined && Object.keys(completedRetrySleeps).length > 0;
   const hasDispatched = dispatchedAt !== undefined && Object.keys(dispatchedAt).length > 0;
+  const hasNames = activityNames !== undefined && Object.keys(activityNames).length > 0;
   if (!hasAttempts && !hasSleeps && !hasDispatched) {
     internals.checkpointLocals = remainingLocals;
     return;
@@ -137,7 +145,20 @@ function writeRetryStateSlot(
       attempts,
       ...(hasSleeps ? { completedRetrySleeps } : {}),
       ...(hasDispatched ? { dispatchedAt } : {}),
+      ...(hasNames ? { activityNames } : {}),
     } satisfies ActivityRetryState,
+  };
+}
+
+/** The slot's maps as they are now, copied so a mutator can change one and write all back. */
+function copyRetryStateMaps(current: ActivityRetryState | undefined): RetryStateMaps {
+  return {
+    attempts: { ...current?.attempts },
+    ...(current?.completedRetrySleeps
+      ? { completedRetrySleeps: current.completedRetrySleeps }
+      : {}),
+    ...(current?.dispatchedAt ? { dispatchedAt: current.dispatchedAt } : {}),
+    ...(current?.activityNames ? { activityNames: { ...current.activityNames } } : {}),
   };
 }
 
@@ -145,24 +166,89 @@ export function writeActivityRetryAttempt(
   internals: ContextInternals,
   key: ActivityRetryStateKey,
   attempt: number,
+  activityName?: string,
 ): void {
   assertValidRetryAttempt(attempt, key);
-  const current = currentRetryState(internals);
-  const attempts = current ? { ...current.attempts } : {};
-  attempts[retryStateSlotKey(key)] = attempt;
-  // Preserve completedRetrySleeps and dispatchedAt: rebuilding the slot with only
-  // `attempts` would erase them, causing a recovered workflow to re-run backoff
-  // sleeps it already completed or to reset its scheduleToCloseTimeout window.
-  writeRetryStateSlot(internals, attempts, current?.completedRetrySleeps, current?.dispatchedAt);
+  // Rebuild from every map: dropping `completedRetrySleeps` or `dispatchedAt` would make a
+  // recovered workflow re-run backoff sleeps it already completed or reset its
+  // scheduleToCloseTimeout window.
+  const maps = copyRetryStateMaps(currentRetryState(internals));
+  const slotKey = retryStateSlotKey(key);
+  maps.attempts[slotKey] = attempt;
+  if (activityName !== undefined) {
+    maps.activityNames = { ...maps.activityNames, [slotKey]: activityName };
+  }
+  writeRetryStateSlot(internals, maps);
 }
 
 function clearActivityRetryAttempt(internals: ContextInternals, key: ActivityRetryStateKey): void {
   const current = currentRetryState(internals);
   if (!current) return;
 
-  const attempts = { ...current.attempts };
-  delete attempts[retryStateSlotKey(key)];
-  writeRetryStateSlot(internals, attempts, current.completedRetrySleeps, current.dispatchedAt);
+  const maps = copyRetryStateMaps(current);
+  const slotKey = retryStateSlotKey(key);
+  delete maps.attempts[slotKey];
+  if (maps.activityNames !== undefined) delete maps.activityNames[slotKey];
+  writeRetryStateSlot(internals, maps);
+}
+
+/**
+ * Stop reporting the activity at `key` as retrying, for an activity whose retries ended without a
+ * result (its error was not retryable, or the attempts or the budget ran out). Only the name goes:
+ * the attempt stays, as it always has, so retry behavior is untouched. A no-op when the step has no
+ * recorded name, which is every activity that failed on its first attempt.
+ */
+export function forgetActivityRetryName(
+  internals: ContextInternals,
+  key: ActivityRetryStateKey,
+): void {
+  const current = currentRetryState(internals);
+  const slotKey = retryStateSlotKey(key);
+  if (current?.activityNames === undefined || !Object.hasOwn(current.activityNames, slotKey))
+    return;
+
+  const maps = copyRetryStateMaps(current);
+  if (maps.activityNames !== undefined) delete maps.activityNames[slotKey];
+  writeRetryStateSlot(internals, maps);
+}
+
+/**
+ * `locals` without the names of the activities being retried, so a run that starts from a copy of
+ * another run's checkpoint (a fork) reports nothing as retrying until it retries something
+ * itself. The attempts stay, so the copy resumes the retry where the original was. Returns
+ * `locals` itself when it holds no name.
+ */
+export function withoutRetryingActivityNames(
+  locals: Record<string, unknown>,
+): Record<string, unknown> {
+  const slot = locals[ACTIVITY_RETRY_STATE_LOCAL_KEY];
+  if (!isActivityRetryState(slot) || slot.activityNames === undefined) return locals;
+
+  const { activityNames: _names, ...withoutNames } = slot;
+  return { ...locals, [ACTIVITY_RETRY_STATE_LOCAL_KEY]: withoutNames };
+}
+
+/**
+ * The activity a checkpoint's locals show as retrying, for `WorkflowSummary.retrying`: the step on
+ * the highest attempt (the lowest step key on a tie) among those with a recorded name and an
+ * attempt of 2 or later; `undefined` when none is. Reads only own entries of the slot's maps, and
+ * skips anything malformed, since a checkpoint's locals come from storage.
+ */
+export function readRetryingActivity(
+  locals: Record<string, unknown> | undefined,
+): { activity: string; attempt: number } | undefined {
+  const state = locals?.[ACTIVITY_RETRY_STATE_LOCAL_KEY];
+  if (!isActivityRetryState(state) || state.activityNames === undefined) return undefined;
+
+  let retrying: { activity: string; attempt: number } | undefined;
+  for (const slotKey of Object.keys(state.activityNames).toSorted()) {
+    const activity = state.activityNames[slotKey];
+    const attempt = readSlot(state.attempts, slotKey);
+    if (typeof activity !== 'string' || activity.length === 0) continue;
+    if (typeof attempt !== 'number' || !Number.isSafeInteger(attempt) || attempt < 2) continue;
+    if (retrying === undefined || attempt > retrying.attempt) retrying = { activity, attempt };
+  }
+  return retrying;
 }
 
 export function completeActivityRetryAttempt(
@@ -182,11 +268,12 @@ export function completeActivityRetryAttempt(
   clearActivityRetryAttempt(internals, key);
   if (completedRetrySleepCount === 0) return;
 
-  const current = currentRetryState(internals);
-  const attempts = current ? { ...current.attempts } : {};
-  const completedRetrySleeps = current ? { ...current.completedRetrySleeps } : {};
-  completedRetrySleeps[retryStateSlotKey(key)] = completedRetrySleepCount;
-  writeRetryStateSlot(internals, attempts, completedRetrySleeps, current?.dispatchedAt);
+  const maps = copyRetryStateMaps(currentRetryState(internals));
+  maps.completedRetrySleeps = {
+    ...maps.completedRetrySleeps,
+    [retryStateSlotKey(key)]: completedRetrySleepCount,
+  };
+  writeRetryStateSlot(internals, maps);
 }
 
 /**
@@ -218,9 +305,8 @@ export function readOrInitActivityDispatchedAt(
       `Invalid checkpointed activity dispatch anchor ${String(existing)} for ${retryStateKeyLabel(key)}`,
     );
   }
-  const attempts = current ? { ...current.attempts } : {};
-  const dispatchedAt = current?.dispatchedAt ? { ...current.dispatchedAt } : {};
-  dispatchedAt[slotKey] = now;
-  writeRetryStateSlot(internals, attempts, current?.completedRetrySleeps, dispatchedAt);
+  const maps = copyRetryStateMaps(current);
+  maps.dispatchedAt = { ...maps.dispatchedAt, [slotKey]: now };
+  writeRetryStateSlot(internals, maps);
   return now;
 }

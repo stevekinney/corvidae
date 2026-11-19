@@ -421,6 +421,8 @@ function buildReactivationBatchOperations(
   return [
     ...buildTerminalWorkflowIndexOperations(currentState, reactivatedState),
     { type: 'put', key: KEYS.workflow(workflowId), value: encode(reactivatedState) },
+    // A reactivated run starts with nothing reported as retrying (COR-2529).
+    { type: 'delete', key: KEYS.activityRetrying(workflowId) },
     ...visibilityIndexOperations(internals, currentState, reactivatedState),
     ...buildRetrySearchAttributeOperations(
       workflowId,

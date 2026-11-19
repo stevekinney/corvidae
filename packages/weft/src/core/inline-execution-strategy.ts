@@ -12,6 +12,7 @@
 
 import type { ContextOperationRequest } from './context.ts';
 import { Context, endResumeReplay, setContextWorkflowInterceptor } from './context.ts';
+import { errorCodeOf } from './error-code-of.ts';
 import type { ExecutionStrategy } from './execution-strategy.ts';
 import {
   classifyErrorAsFailureCategory,
@@ -393,6 +394,8 @@ export class InlineExecutionStrategy implements ExecutionStrategy {
           if (error instanceof Error && error.stack !== undefined) {
             failedMessage.errorStack = error.stack;
           }
+          const errorCode = errorCodeOf(error);
+          if (errorCode !== undefined) failedMessage.errorCode = errorCode;
           this.#emit(failedMessage);
         }
       })(),

@@ -39,6 +39,12 @@
  * fixture's; no key was added, removed or reordered, and no other value moved.
  * The record format is unchanged, so a stream persisted with the old stamp
  * still reads.
+ *
+ * COR-2529 (`WorkflowState.errorCode` and `failedStep`) added the `failed-run` scenario, whose
+ * `.bin` and replay JSON were generated, since a record cannot hold a field no scenario ever
+ * writes. The ten earlier snapshots were not regenerated, for the reason COR-1988 gives: each reads
+ * as written, with the new fields absent. `engine/failed-run-record.test.ts` reads a record
+ * captured from the engine as it was before the change.
  */
 
 import { afterEach, describe, expect, it } from 'bun:test';
@@ -54,7 +60,7 @@ import type { TraceFixture } from '../../src/testing/trace-fixture-support.test-
 
 const checkpointFixtureDirectory = 'tests/checkpoint-compat';
 const replayFixtureDirectory = 'tests/replay-fixtures';
-const expectedFixtureCount = 10;
+const expectedFixtureCount = 11;
 const textDecoder = new TextDecoder();
 const binaryFixtureGlob = new Bun.Glob('*.bin');
 const fixtureFiles = [...binaryFixtureGlob.scanSync(checkpointFixtureDirectory)].toSorted();

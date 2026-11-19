@@ -1,6 +1,7 @@
 import type { WorkflowWorkerBindingRecord } from '../../worker/versioning-policy.ts';
 import type { AtomicStateOptions } from '../atomic-state.ts';
 import type { WorkflowWorkerVersioningPolicy } from '../versioning.ts';
+import type { WeftErrorCode } from '../weft-error.ts';
 import type { WorkflowVersionTuple } from '../workflow-version-tuple.ts';
 import type { ActivityCallOptions } from './activity.ts';
 import type { CheckpointState } from './checkpoint.ts';
@@ -40,6 +41,20 @@ export interface WorkflowState {
    * `engine.list({ attributes: [{ key: 'failureCategory', value: 'application' }] })`
    */
   failureCategory?: FailureCategory | null;
+  /**
+   * The {@link WeftErrorCode} of the error that failed this workflow, stored in the same write as
+   * `status: 'failed'`. Present only when that error is a Weft error (an activity's Weft error
+   * reaches the workflow with its code as its name, and counts); absent for any other error, on
+   * a workflow that has not failed, and on a record written before this field existed.
+   */
+  errorCode?: WeftErrorCode;
+  /**
+   * The step the workflow was on when it failed, stored in the same write as `status: 'failed'`:
+   * the last step the run started, the one the timeline marks failed. Absent when the run failed
+   * before it started a step, on a workflow that has not failed, once the run is retried, and on
+   * a record written before this field existed.
+   */
+  failedStep?: WorkflowFailedStep;
   /**
    * Distinct reason a workflow reached its terminal state, beyond the
    * {@link WorkflowStatus} itself. Currently populated only when the history
@@ -164,6 +179,27 @@ export interface RestartLineage {
 export interface ForkLineage {
   workflowId: WorkflowId;
   step: number;
+}
+
+/**
+ * The step a failed run stopped at, as recorded on {@link WorkflowState.failedStep} and
+ * {@link WorkflowSummary.failedStep}.
+ */
+export interface WorkflowFailedStep {
+  /** The durable step index, the value of the timeline entry's `stepIndex`. */
+  index: number;
+  /** The step's operation label (an activity's name, for one), cut to 200 characters. */
+  label: string;
+}
+
+/**
+ * The activity a running workflow is retrying, as recorded on {@link WorkflowSummary.retrying}.
+ */
+export interface WorkflowRetrying {
+  /** The activity's name. */
+  activity: string;
+  /** The attempt the activity is on or about to start; always 2 or later. */
+  attempt: number;
 }
 
 /**
@@ -414,6 +450,15 @@ export interface WorkflowSummary {
   executionDeadline?: number;
   /** Failure category if set on the workflow state. */
   failureCategory?: FailureCategory;
+  /** The step a failed run stopped at, from {@link WorkflowState.failedStep}. */
+  failedStep?: WorkflowFailedStep;
+  /**
+   * The activity a running workflow is retrying: present while an activity is on attempt 2 or
+   * later and has not settled (during the backoff before the attempt as well as while it runs),
+   * and absent once it succeeds, the run leaves `running`, or the retries run out. When several
+   * activities retry at once (`ctx.all`), it names the one on the highest attempt.
+   */
+  retrying?: WorkflowRetrying;
 }
 
 // ---------------------------------------------------------------------------

@@ -4,6 +4,7 @@ import { inheritWorkflowWorkerBinding } from '../../../worker/binding-helpers.ts
 import { assertInheritedWorkerBuildNotRemoved } from '../../../worker/inherited-worker-build.ts';
 import { deserializeCheckpoint } from '../../checkpoint.ts';
 import { encode } from '../../codec.ts';
+import { withoutRetryingActivityNames } from '../../context/activity-retry-state.ts';
 import { buildIndexOperations } from '../../search-attributes.ts';
 import type { Checkpoint, ForkLineage, SearchAttributeValue, WorkflowState } from '../../types.ts';
 import type { ForkOptions } from '../../types/options.ts';
@@ -481,6 +482,8 @@ export function buildForkCheckpoint(
     .filter((step) => !settledSteps.has(step));
   return {
     ...sourceCheckpointForFork,
+    // A fork reports nothing as retrying until it retries something itself (COR-2529).
+    locals: withoutRetryingActivityNames(sourceCheckpointForFork.locals),
     // The signatures the source had no outcome for are evidence about the source's execution.
     ...(copiedSignatureSteps.length > 0 && { forkCopiedSignatureSteps: copiedSignatureSteps }),
     createdAt: forkedAt,
