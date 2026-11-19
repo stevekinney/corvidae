@@ -70,7 +70,13 @@ test.describe('Settings › Models, no provider connected', () => {
   }) => {
     await open(page, E2E_SHOWCASE_URL);
     await expect(page.getByText(MODELS_COPY.intro)).toBeVisible();
-    await expect(page.locator('main h2')).toHaveText(['Providers', 'Models', 'Decisions']);
+    // The empty Models section is its empty state alone, the state's title its heading (owner
+    // report, 2026-11-19).
+    await expect(page.locator('main h2')).toHaveText([
+      'Providers',
+      MODELS_COPY.models.empty.title,
+      'Decisions',
+    ]);
     await expect(page.getByRole('tab')).toHaveCount(0);
 
     // The shell: breadcrumb, Models active in the section navigation, a 170px column.

@@ -347,7 +347,10 @@ test.describe('Home with nothing waiting and a provider connected', () => {
     // The empty section shows its empty state alone, the state's title its heading (owner report,
     // 2026-11-19, which supersedes the heading over the clear line).
     const attentionSection = page.locator('[data-home-card="Needs attention"]');
-    await expect(attentionSection.getByRole('heading', { name: 'Needs attention' })).toHaveCount(0);
+    // Exact: a substring match would also find the state's own "Nothing needs attention".
+    await expect(
+      attentionSection.getByRole('heading', { name: 'Needs attention', exact: true }),
+    ).toHaveCount(0);
     await expect(
       attentionSection.getByRole('heading', { level: 2, name: 'Nothing needs attention' }),
     ).toBeVisible();
@@ -450,9 +453,11 @@ test.describe('Home on a new installation that lists Assistant', () => {
     await expect(page.locator('[data-home-card="Needs attention"]')).toHaveCount(0);
     await expect(page.locator('main').getByRole('alert')).toHaveCount(0);
     await expect(page.getByText('Connect a model provider')).toHaveCount(0);
-    // Below the checklist, Recent chats is a compact empty state with a chat disc.
+    // Below the checklist, Recent chats is its empty state alone, with a chat disc: the state's
+    // title is the section's heading (owner report, 2026-11-19).
     const recent = page.locator('[data-home-card="Recent chats"]');
-    await expect(recent.getByRole('heading', { level: 3, name: 'No chats yet' })).toBeVisible();
+    await expect(recent.getByRole('heading', { level: 2, name: 'No chats yet' })).toBeVisible();
+    await expect(recent.getByRole('heading', { name: 'Recent chats', exact: true })).toHaveCount(0);
     await expect(recent).toContainText('Your chats appear here once you send a first message.');
     await expect(recent.locator('.cinder-empty-state-icon svg')).toBeVisible();
     await expect(recent.getByRole('link', { name: 'All chats' })).toHaveCount(0);
