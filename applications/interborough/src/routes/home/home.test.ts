@@ -649,12 +649,12 @@ describe('Home on a new installation (01y, 01z, 13c, 13d, 13f, 14c, 14d)', () =>
     await waitFor(() =>
       expect(within(card).getByRole('group', { name: 'No chats yet' })).toBeDefined(),
     );
-    expect(words(card)).toBe(
-      'Recent chats No chats yet Your chats appear here once you send a first message.',
-    );
+    // The empty state alone, under no "Recent chats" title (owner report, 2026-11-19).
+    expect(words(card)).toBe('No chats yet Your chats appear here once you send a first message.');
+    expect(card.getAttribute('aria-label')).toBe('Recent chats');
     expect(card.querySelector('.cinder-empty-state-icon svg')).not.toBeNull();
     expect(within(card).queryByRole('link', { name: 'All chats' })).toBeNull();
-    expect(within(card).getByRole('heading', { level: 3, name: 'No chats yet' })).toBeDefined();
+    expect(within(card).getByRole('heading', { level: 2, name: 'No chats yet' })).toBeDefined();
   });
 
   test('keys off whether a chat happened, not off the providers: a chat ends the checklist with no provider (14c)', async () => {

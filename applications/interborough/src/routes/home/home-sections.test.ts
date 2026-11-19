@@ -89,6 +89,15 @@ describe('Home’s sections', () => {
     for (const section of sections) {
       const title = section.getAttribute('data-home-card');
       expect(section.tagName, `${String(title)} is a section`).toBe('SECTION');
+      // A section that holds nothing is its empty state alone, named by its region (owner
+      // report, 2026-11-19): the state's title is its one heading.
+      if (section.querySelector('.cinder-empty-state') !== null) {
+        expect(section.getAttribute('aria-label')).toBe(title);
+        expect(section.querySelector('h2')?.classList.contains('cinder-empty-state-title')).toBe(
+          true,
+        );
+        continue;
+      }
       expect(section.classList.contains('cinder-section')).toBe(true);
       const heading = section.querySelector('h2');
       expect(heading?.classList.contains('cinder-section__title')).toBe(true);
