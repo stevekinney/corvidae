@@ -198,8 +198,12 @@ const focusedChecks = await outcomeOf(async () => {
     base: 'origin/main',
   }).find((planned) => planned.name === 'turbo');
   expect(step).toBeDefined();
-  // The planned launcher and `run`, with the fixture's task in place of lint and type-check.
-  const launcher = (step as { command: string[] }).command.slice(0, 3);
+  // The planned launcher and `run`, with the fixture's task in place of lint and type-check. The
+  // step takes host pool slots first (`host-slots.ts … --`), so the launcher follows that prefix.
+  const command = (step as { command: string[] }).command;
+  expect(command).toContain('scripts/host-slots.ts');
+  const start = command.indexOf('bunx');
+  const launcher = command.slice(start, start + 3);
   expect(launcher).toEqual(['bunx', 'turbo', 'run']);
   const peak = await measure((environment) => spawnInFixture([...launcher, 'work'], environment));
   expect(peak).toBeLessThanOrEqual(configuredCap());
