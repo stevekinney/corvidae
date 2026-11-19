@@ -25,9 +25,17 @@ describe('main.yml dispatch guard', () => {
     expect(rawDispatches("x\n['gh', 'workflow', 'run', 'main.yml', '--ref', ref]")).toEqual([2]);
   });
 
+  test('flags a raw targeted-checks.yml dispatch, which drops lanes', () => {
+    expect(rawDispatches('gh workflow run targeted-checks.yml --ref b')).toEqual([1]);
+    expect(rawDispatches("['gh', 'workflow', 'run', 'targeted-checks.yml']")).toEqual([1]);
+    const root = fixture({
+      '.codex/agents/worker.toml': 'Run gh workflow run targeted-checks.yml --ref b\n',
+    });
+    expect(scanForRawDispatch(root)).toEqual([{ file: '.codex/agents/worker.toml', line: 1 }]);
+  });
+
   test('allows a line that says not to, and other workflows', () => {
     expect(rawDispatches('Never run `gh workflow run main.yml` by hand.')).toEqual([]);
-    expect(rawDispatches('gh workflow run targeted-checks.yml --ref b')).toEqual([]);
     expect(rawDispatches('gh workflow run design-review-capture.yml --ref b')).toEqual([]);
   });
 

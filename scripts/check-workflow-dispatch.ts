@@ -26,12 +26,13 @@ const SCANNED_EXTENSIONS = /\.(?:ts|js|md|toml|json|ya?ml|sh)$/u;
 export const EXEMPT_FILES = new Set([
   'scripts/chef/targeted-run.ts',
   'scripts/chef/targeted-run.test.ts',
+  'scripts/chef/targeted-run.integration.test.ts',
   'scripts/check-workflow-dispatch.ts',
   'scripts/check-workflow-dispatch.test.ts',
 ]);
 
 const DISPATCH =
-  '\\bgh\\s+workflow\\s+run\\s+[\'"]?main\\.yml\\b|[\'"]workflow[\'"]\\s*,\\s*[\'"]run[\'"]\\s*,\\s*[\'"]main\\.yml[\'"]';
+  '\\bgh\\s+workflow\\s+run\\s+[\'"]?(?:main|targeted-checks)\\.yml\\b|[\'"]workflow[\'"]\\s*,\\s*[\'"]run[\'"]\\s*,\\s*[\'"](?:main|targeted-checks)\\.yml[\'"]';
 const RAW_DISPATCH = new RegExp(DISPATCH, 'u');
 // A prohibition covers a dispatch only in its own sentence: no full stop between the two.
 const PROHIBITED = new RegExp(`\\b(?:never|do not|don't|not use)\\b[^.\\n]*?(?:${DISPATCH})`, 'iu');

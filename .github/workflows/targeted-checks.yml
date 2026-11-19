@@ -201,6 +201,14 @@ jobs:
             bun scripts/bun-test.ts $UNIT_PATHS
             exit
           fi
+          # The browser-fixtures workspace runs as the root `test:browser-fixtures` does: its tests
+          # read the generated, gitignored manifest, and the curated build is verified after them.
+          if [ "$UNIT_WORKSPACE" = scripts/browser-fixtures ]; then
+            bun scripts/browser-fixtures/scripts/prepare-manifest.ts
+            (cd "$UNIT_WORKSPACE" && bun test --conditions browser --conditions svelte $UNIT_PATHS)
+            bun scripts/browser-fixtures/scripts/verify-curated-build.ts
+            exit
+          fi
           cd "$UNIT_WORKSPACE"
           config=""
           # Interborough runs every test outside src/host and fixtures under bunfig.ui.toml (its
