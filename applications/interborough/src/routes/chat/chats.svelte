@@ -106,6 +106,9 @@
     router.current.route?.pattern === '/chats/new' ? crypto.randomUUID() : null,
   );
   const isNew = $derived(router.current.route?.pattern === '/chats/new');
+  // The outlet unmounts this page a tick after the address leaves it. In that tick no chat is named,
+  // and opening the first one would navigate back over the page the person went to.
+  const onChats = $derived(router.current.route?.pattern.startsWith('/chats') === true);
   /** The chat that is open: the address's, or the new chat's, which keeps its name once it starts. */
   const openId = $derived(router.current.params['chat'] ?? draftId);
   // The chats that are not archived. The archived ones are their own list, read only while their
@@ -644,7 +647,7 @@
     detailLabel={CHAT_COPY.list.detailLabel}
     selectedKey={openId}
     onSelectedKeyChange={openChat}
-    openFirst={!isNew && !showingArchived}
+    openFirst={onChats && !isNew && !showingArchived}
     selectionParameter={null}
     storageKey="interborough-chats"
     listCollapsible

@@ -101,6 +101,12 @@
   );
   /** The open memory: the one the address names, so a link and a reload open it. */
   const selectedId = $derived(router.search.get('selected'));
+  // The outlet unmounts this tab a tick after the address leaves it. In that tick no memory is named,
+  // and opening the first one would navigate back over the page the person went to.
+  const onMemory = $derived(
+    router.current.route?.pattern === '/agents/:agent/memory' &&
+      router.current.params['agent'] === agentId,
+  );
   /** What the last change said above the list: only a correction that landed. */
   let notice = $state<'corrected' | undefined>(undefined);
   /** A correction that was refused, with the text that was sent, until it is dismissed or retried. */
@@ -638,7 +644,7 @@
         emptyDescription={MEMORY_COPY.nothingOpen.description}
         selectedKey={selectedId}
         onSelectedKeyChange={open}
-        openFirst
+        openFirst={onMemory}
         selectionParameter={null}
         storageKey="interborough-memory"
       >

@@ -1,5 +1,6 @@
 import { cleanup, render, waitFor } from '@testing-library/svelte';
 import { afterEach, describe, expect, spyOn, test } from 'bun:test';
+import { flushSync, tick } from 'svelte';
 
 import { router } from '../../lib/router.svelte.ts';
 import Chats from './chats.svelte';
@@ -345,6 +346,41 @@ describe('the list of sessions', () => {
       const second = await findByRole('link', { name: /Chat 1/ });
       second.click();
       expect(router.pathname).toBe('/chats/session-1');
+    } finally {
+      HTMLElement.prototype.getBoundingClientRect = measure;
+    }
+  });
+
+  test('leaving for another page while the list is still mounted opens no chat on the way out', async () => {
+    const measure = HTMLElement.prototype.getBoundingClientRect;
+    HTMLElement.prototype.getBoundingClientRect = () =>
+      ({
+        width: 1200,
+        height: 800,
+        x: 0,
+        y: 0,
+        top: 0,
+        left: 0,
+        right: 1200,
+        bottom: 800,
+      }) as DOMRect;
+    try {
+      const served = bureau({
+        'bureau.contexts.list': () => page(0, 2, false),
+        'bureau.reviews.list': () => ({ reviews: [] }),
+        'bureau.contexts.get': (params) => ({ ...CONTEXT, id: String(params['contextId']) }),
+      });
+      restore = served.restore;
+      landAt('/chats');
+      mount();
+      await waitFor(() => expect(router.pathname).toBe('/chats/session-0'));
+
+      // The outlet unmounts the page a tick after the address changes: in that tick the open chat
+      // is gone from the address, and the list must not open its first chat again over the new page.
+      router.navigate('/agents');
+      flushSync();
+      await tick();
+      expect(router.pathname).toBe('/agents');
     } finally {
       HTMLElement.prototype.getBoundingClientRect = measure;
     }
