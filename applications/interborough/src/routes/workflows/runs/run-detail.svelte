@@ -455,6 +455,18 @@
         }
       : undefined;
   });
+  // The session a goal's attempt or a schedule's fire ran in, which its header does not link (rows
+  // 55f, 55j): the Details rail opens it, as the only place a goal's session is reached from, and
+  // only while the Bureau still has it.
+  const railSession = $derived.by((): string | undefined => {
+    if (goalTask || attempt !== undefined) {
+      return attemptSession.isSuccess ? chatSessionPath(attemptSession.data.id) : undefined;
+    }
+    if (task.data !== undefined && runRow?.origin.kind === 'schedule' && chat.isSuccess) {
+      return chatSessionPath(task.data.contextId);
+    }
+    return undefined;
+  });
 
   // A note for the run's Activity, under How it ran, when there is no task to read tool calls from.
   const activityNote = $derived(
@@ -1040,6 +1052,7 @@
           {missedSince}
           recordOrigin={task.data === undefined ? record?.origin : undefined}
           viewer={principal.principal?.subject}
+          session={railSession}
         />
       {/if}
     </div>

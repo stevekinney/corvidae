@@ -47,6 +47,12 @@ export interface ToolExecutionDependencies {
   abortStep: (reason?: string) => void;
   elicit: ReturnType<typeof import('./run-step-support').createElicit> | undefined;
   toolCallInputs: GenerateResponse['toolCalls'];
+  /**
+   * COR-2426 — the text the model wrote in this step beside its tool calls, after the response
+   * guardrails. A tool reads it from `executionContext[STEP_TEXT_EXECUTION_KEY]`: the human input
+   * tool keeps it with its park, so the review shows what the agent said.
+   */
+  stepText?: string | undefined;
   emittedSettledCallIds: Set<string>;
   stepAbortController: AbortController;
   stepToolbox: AnyToolbox;
@@ -57,6 +63,22 @@ export interface ToolExecutionDependencies {
    * assistant message to carry it (a response with tool calls and no text).
    */
   firstToolCallMetadata?: Record<string, JSONValue> | undefined;
+}
+
+/**
+ * COR-2426 — the `executionContext` key a tool reads the step's text under: what the model wrote
+ * beside its tool calls in the step that made the call.
+ */
+export const STEP_TEXT_EXECUTION_KEY = 'stepText';
+
+/** `options` with the step's text in its `executionContext`, when the step wrote any. */
+function withStepText<O extends object>(options: O, stepText: string | undefined): O {
+  if (stepText === undefined || stepText.trim() === '') return options;
+  const existing = (options as { executionContext?: Record<string, unknown> }).executionContext;
+  return {
+    ...options,
+    executionContext: { ...existing, [STEP_TEXT_EXECUTION_KEY]: stepText },
+  };
 }
 
 /** The message a call a `beforeToolExecution` hook left out, without a guardrail's refusal, carries. */
@@ -361,6 +383,9 @@ export async function executeTools(
             : {}),
         };
 
+        // COR-2426: the step's text joins the execution context, beside the run-scoped fields.
+        const executeOptions = withStepText(toolboxExecuteOptions, input.stepText);
+
         const onForwardedSettled = (event: Event) => {
           if (!(event instanceof ToolSettledBubbleEvent)) return;
           if (
@@ -381,12 +406,12 @@ export async function executeTools(
               ? await deps.withTraceContext(deps.parentContext, () =>
                   stepToolbox.execute(
                     callsToExecute as Parameters<typeof stepToolbox.execute>[0],
-                    toolboxExecuteOptions,
+                    executeOptions,
                   ),
                 )
               : await stepToolbox.execute(
                   callsToExecute as Parameters<typeof stepToolbox.execute>[0],
-                  toolboxExecuteOptions,
+                  executeOptions,
                 );
         } finally {
           eventTarget?.removeEventListener(ToolSettledBubbleEvent.type, onForwardedSettled);

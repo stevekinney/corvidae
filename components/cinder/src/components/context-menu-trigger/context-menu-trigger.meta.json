@@ -1,0 +1,17 @@
+{
+  "$schema": "../../../../../internal/component-tooling/src/schemas/component-meta.schema.json",
+  "category": "overlay",
+  "status": "stable",
+  "purpose": "Compose-only trigger region that opens a context-menu on right-click or touch long-press.",
+  "tags": ["overlay", "menu"],
+  "useWhen": [
+    "Wrapping the region that should own contextual actions inside ContextMenu.",
+    "Pairing pointer-positioned menu behavior with dropdown menu items."
+  ],
+  "avoidWhen": [
+    { "reason": "Used outside context-menu — it requires the ContextMenu provider." },
+    { "reason": "Opening a normal click menu from a visible button — use dropdown-trigger." }
+  ],
+  "related": ["context-menu", "dropdown-trigger"],
+  "composeOnly": true
+}

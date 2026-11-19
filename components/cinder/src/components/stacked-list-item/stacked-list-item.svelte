@@ -1,19 +1,4 @@
 <script lang="ts" module>
-  /**
-   * @cinder
-   * @category data-display
-   * @status stable
-   * @purpose Dense list row with leading, status, title, time, description, meta, and trailing slots; the status-first two-line row has a fixed 128px status column, a two-line title clamp and a whole-row link.
-   * @tag list
-   * @tag row
-   * @tag status
-   * @useWhen Listing entities vertically with consistent leading icons or avatars and trailing actions.
-   * @useWhen Linking each row to a detail view by passing href, which makes the whole row one link.
-   * @useWhen Listing runs, goals, schedules or agents with a status word, bold title and time on line one and muted meta on line two.
-   * @avoidWhen Comparing tabular data across columns — use table instead.
-   * @avoidWhen Rendering cards in a responsive grid — use grid-list instead.
-   * @related grid-list-item, table-row, avatar
-   */
   export type {
     StackedListItemAction,
     StackedListItemDensity,
@@ -56,6 +41,7 @@
     statusPlacement = 'leading',
     phoneWidth = 'row',
     title,
+    badge,
     titleLines = 2,
     tooltip,
     time,
@@ -133,6 +119,14 @@
       : [tooltip, metaTooltip].filter((part) => part !== undefined && part !== '').join('\n') ||
           undefined,
   );
+  // A time given as text is drawn as its parts, each kept whole: the day with its comma, then the
+  // clock after the last comma ("Yesterday," and "6:00 PM"; "Mon, Nov 2," and "3:00 AM"). Where
+  // the row lets its time wrap, it breaks only there.
+  const timeParts = $derived.by(() => {
+    if (typeof time !== 'string') return undefined;
+    const comma = time.lastIndexOf(', ');
+    return comma < 0 ? [time] : [time.slice(0, comma + 1), time.slice(comma + 2)];
+  });
   const lineTooltip = $derived(linkHref === undefined ? tooltip : undefined);
   const lineMetaTooltip = $derived(linkHref === undefined ? metaTooltip : undefined);
   // The phone form is the row's own width below 640px, not the viewport's (COR-2448), so a row in
@@ -175,6 +169,22 @@
       phone &&
       error === undefined &&
       (description !== undefined || lineMeta !== undefined),
+  );
+  // Under `wrapMeta` a phone row reads line two as one run of text (the dot, the word, then the
+  // meta), so a wrapped line returns to the row's leading edge. The status is drawn once, either in
+  // its column or at the start of line two, never both: a second copy would be a second image with
+  // the same name to a screen reader and a second match to a text query. The script decides, from
+  // the same row width as the phone form, and the stylesheet keys line two's span on the class this
+  // sets, so the placement and its styles cannot disagree. A row with no text line two (none, or a
+  // failure) keeps its status in the column.
+  const statusInline = $derived(
+    isLines &&
+      wrapMeta &&
+      status !== undefined &&
+      statusPlacement === 'leading' &&
+      phone &&
+      error === undefined &&
+      (description !== undefined || meta !== undefined),
   );
   const hasActions = $derived(actions !== undefined && actions.length > 0);
   // On a phone two or more actions are one menu button, unless the row asks to keep them as
@@ -226,6 +236,18 @@
 </script>
 
 {#snippet titleRegion()}
+  {#if badge}
+    <!-- The mark sits after the title, outside its clamp: the title gives way, the mark is never cut. -->
+    <div class="cinder-stacked-list-item__title-row">
+      {@render titleText()}
+      <span class="cinder-stacked-list-item__badge">{@render badge()}</span>
+    </div>
+  {:else}
+    {@render titleText()}
+  {/if}
+{/snippet}
+
+{#snippet titleText()}
   <div
     class="cinder-stacked-list-item__title"
     data-cinder-title-lines={titleLines}
@@ -350,7 +372,11 @@
         {#if isLines}
           {#if time || details}
             <div class="cinder-stacked-list-item__time">
-              {#if time}{@render time()}{/if}
+              {#if timeParts !== undefined}<span class="cinder-stacked-list-item__time-text"
+                  >{#each timeParts as part, index (index)}{#if index > 0}{' '}{/if}<span
+                      class="cinder-stacked-list-item__time-part">{part}</span
+                    >{/each}</span
+                >{:else if typeof time === 'function'}{@render time()}{/if}
               {#if details}
                 <button
                   type="button"

@@ -1,17 +1,4 @@
 <script lang="ts" module>
-  /**
-   * @cinder
-   * @category form
-   * @status beta
-   * @purpose Single-row filtering toolbar for list views: status segments, select and chip facets, a search field, and a collapse to a select and a Filter menu on narrow screens.
-   * @tag form
-   * @tag filter
-   * @useWhen Filtering a list or table by several dimensions at once, such as status, who started it, and which agent ran it.
-   * @useWhen Showing applied filters as tinted chips that read "Agent: Tool runner" and can be removed in place.
-   * @avoidWhen A single search field or one select is sufficient — compose SearchField or Select directly.
-   * @avoidWhen Filtering navigates to a new page — the bar owns no routing or persistence.
-   * @related search-field, segmented-control, select, popover
-   */
   export type {
     AppliedFilter,
     ChoiceFacet,

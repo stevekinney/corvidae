@@ -282,6 +282,61 @@ export function versionChanges(version: AgentVersion, previous: AgentVersion | u
 }
 
 /**
+ * What a version changed, as its row and the restore question say it (COR-2429, rows 38x and 38z):
+ * the Bureau's `summary`, which reads the change from the version's content ("Instructions: added
+ * “Refunds over $25 need approval.”"), with the page's own words kept for a part the page names
+ * better (a model or a tool by its display name). The Bureau's summary has one part per changed
+ * key, in `changedKeys` order; one that does not is shown whole. A part taken from the Bureau keeps
+ * the page's label for its key ("Copied from", never the Bureau's "From"), with the Bureau's words
+ * after it. A Bureau that sends none leaves the page's own words.
+ */
+export function versionSummary(version: AgentVersion, previous: AgentVersion | undefined): string {
+  const own = versionChanges(version, previous);
+  const summary = version.summary;
+  if (summary === null) return own;
+  const parts = summary.split('; ');
+  const ownParts = own.split('; ');
+  const keys = version.changedKeys;
+  if (keys.length === 0 || parts.length !== keys.length || ownParts.length !== keys.length) {
+    return summary;
+  }
+  const edited = AGENT_PAGE_COPY.versions.change.edited;
+  return keys
+    .map((key, index) => {
+      const mine = ownParts[index] ?? '';
+      const label = keyLabel(key);
+      const theirs = parts[index];
+      if (mine !== edited(label) || theirs === undefined) return mine;
+      // The Bureau labels a key by its own words ("From"); the page names it ("Copied from").
+      const separator = theirs.indexOf(': ');
+      return separator === -1 ? theirs : `${label}: ${theirs.slice(separator + 2)}`;
+    })
+    .join('; ');
+}
+
+/**
+ * What a restore of `revision` removes, as the restore question says it (row 38z): what each later
+ * version changed (`versionSummary`), oldest first. While a later version has no summary from the
+ * Bureau, the parts it changed, each once ("Instructions and Tools").
+ */
+export function restoredSummary(versions: readonly AgentVersion[], revision: number): string {
+  const later = versions
+    .filter((version) => version.revision > revision)
+    .toSorted((left, right) => left.revision - right.revision);
+  if (later.length === 0 || later.some((version) => version.summary === null)) {
+    return restoredChanges(versions, revision);
+  }
+  return later
+    .map((version) =>
+      versionSummary(
+        version,
+        versions.find((candidate) => candidate.revision === version.revision - 1),
+      ),
+    )
+    .join('; ');
+}
+
+/**
  * The parts a restore of `revision` removes: what every later version changed, each part once,
  * as the restore question names them ("Instructions and Tools").
  */

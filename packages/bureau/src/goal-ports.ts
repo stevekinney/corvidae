@@ -185,10 +185,13 @@ export interface GoalPortsDependencies {
   readonly getDurable: () => DurableActiveRunContext | undefined;
   /** Reads the recovery record that says whose run holds an attempt's deterministic id. */
   readonly readRunRecord: RunRecordReader;
-  /** `undefined` when the catalog has no agent by this name. */
+  /** `undefined` when the catalog has no agent by this name, or a person disabled it (COR-2429). */
   readonly planAgent: (
     agentName: string,
-  ) => { readonly durable: boolean; readonly agentVersion: string } | undefined;
+  ) =>
+    | { readonly durable: boolean; readonly agentVersion: string }
+    | undefined
+    | Promise<{ readonly durable: boolean; readonly agentVersion: string } | undefined>;
   readonly startAttemptRun: (start: GoalAttemptStart) => GoalAttemptRun;
   readonly cancelRun: (runId: string) => Promise<CancelDurableRunOutcome>;
   /** Tombstones an attempt's claim before its run is stopped; see `goal-attempt-fence.ts`. */
@@ -423,7 +426,7 @@ export function createGoalPorts(dependencies: GoalPortsDependencies): GoalWorkfl
     // time, and adopting it needs nothing from today's catalog: an agent that
     // was removed or made non-durable since must not strand its finished or
     // running attempt. This is deliberately after the adoption above.
-    const plan = planAgent(agentName);
+    const plan = await planAgent(agentName);
     if (plan === undefined) {
       return failed(
         ATTEMPT_RUN_FAILURE_DETAIL.runStart(`agent "${agentName}" is no longer in the catalog`),

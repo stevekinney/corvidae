@@ -1,0 +1,17 @@
+{
+  "$schema": "../../../../../internal/component-tooling/src/schemas/component-meta.schema.json",
+  "category": "data-display",
+  "status": "stable",
+  "purpose": "Single-panel disclosure that toggles one region with an animated height.",
+  "tags": ["disclosure", "collapsible"],
+  "useWhen": [
+    "Hiding a single optional region behind a labeled trigger.",
+    "You need controlled or uncontrolled show/hide with an accessible toggle."
+  ],
+  "avoidWhen": [
+    {
+      "reason": "Coordinating multiple sections where opening one may close others — use accordion."
+    }
+  ],
+  "related": ["accordion", "accordion-item"]
+}

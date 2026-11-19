@@ -1,19 +1,4 @@
 <script lang="ts" module>
-  /**
-   * @cinder
-   * @category overlay
-   * @status beta
-   * @purpose Full-viewport fixed scrim primitive for custom overlay patterns such as loading dimmers and image lightboxes.
-   * @tag overlay
-   * @tag scrim
-   * @useWhen Providing a full-screen dimming layer behind a custom overlay that is not modal or drawer.
-   * @useWhen Building a loading state that dims the full viewport while an async operation runs.
-   * @avoidWhen Interrupting the user for a decision — use modal or alert-dialog which manage focus and Escape automatically.
-   * @avoidWhen Showing a side panel — use drawer instead.
-   * @avoidWhen Showing structured content in a dialog — use modal or drawer, which render their own native `<dialog>::backdrop` scrim.
-   * @related modal, drawer
-   */
-
   /*
    * Backdrop is a low-level primitive: it dims/captures pointer events and locks
    * body scroll (`scrollLocked`, default true), but it does NOT trap focus or

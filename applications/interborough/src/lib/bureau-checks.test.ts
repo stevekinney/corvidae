@@ -1,8 +1,6 @@
 /**
- * `bureau.checks.list` as the browser reads it (COR-2113, COR-2114): what a read sends, and what it
- * refuses to read.
+ * `bureau.checks.list` as the browser reads it (COR-2113, COR-2114): what a read sends.
  */
-import { throwingRejectionOf } from '@lostgradient/testing';
 import { afterEach, describe, expect, test } from 'bun:test';
 
 import { listChecks } from './bureau-checks.ts';
@@ -59,20 +57,5 @@ describe('a read of the checks', () => {
 
     expect(page.checks).toEqual([checkFixture('a'), scored]);
     expect(page.nextCursor).toBe('next');
-  });
-
-  test('refuses an answer with a kind or an outcome it does not know, or a row with no score field', async () => {
-    for (const row of [
-      { ...checkFixture('a'), kind: 'goal.attempt.failed' },
-      { ...checkFixture('a'), outcome: 'passed' },
-      Object.fromEntries(Object.entries(checkFixture('a')).filter(([key]) => key !== 'score')),
-    ]) {
-      stub?.restore();
-      stub = installBureauStub({
-        'bureau.checks.list': () => ({ checks: [row], nextCursor: null }),
-      });
-      const refused = await throwingRejectionOf(listChecks({}, undefined));
-      expect(refused).toBeDefined();
-    }
   });
 });

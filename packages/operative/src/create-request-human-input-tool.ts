@@ -63,6 +63,13 @@ export interface RequestHumanInputResult {
    * the model leaves it out (see `modelFacingToolResult`).
    */
   inputSchema?: HumanInputSchema | undefined;
+  /**
+   * COR-2426 — what the agent wrote beside this call in the step that parked, when it wrote
+   * anything. It rides in the tool result, which the step record the checkpoint commits holds, so
+   * it is kept in the same write as the park and a restarted run reads it back. The model's copy
+   * of the result leaves it out (it wrote it).
+   */
+  said?: string | undefined;
   /** Human-readable message the LLM can use in its response. */
   message: string;
 }
@@ -287,7 +294,10 @@ export function createRequestHumanInputTool(options: CreateRequestHumanInputTool
         ),
     }),
 
-    execute(input: RequestHumanInputInput): RequestHumanInputOutcome {
+    execute(
+      input: RequestHumanInputInput,
+      toolContext?: { readonly executionContext?: Readonly<Record<string, unknown>> | undefined },
+    ): RequestHumanInputOutcome {
       if (!context.durable) {
         throw new DurableCapabilityUnavailableError('requestHumanInput');
       }
@@ -329,10 +339,14 @@ export function createRequestHumanInputTool(options: CreateRequestHumanInputTool
           };
         }
       }
+      // COR-2426: what the agent wrote beside this call in its step, kept with the park, in the
+      // same write, so a review says what the agent said.
+      const said = stepTextOf(toolContext?.executionContext);
       context.pendingHumanWait = {
         signalName: input.signalName,
         ...(input.prompt !== undefined ? { prompt: input.prompt } : {}),
         ...(inputSchema !== undefined ? { inputSchema } : {}),
+        ...(said !== undefined ? { said } : {}),
       };
 
       // F3 / C3 — emit HumanWaitParkedEvent so observers see the transition.
@@ -345,6 +359,7 @@ export function createRequestHumanInputTool(options: CreateRequestHumanInputTool
             context.runId ?? '',
             input.prompt,
             inputSchema,
+            said,
           ),
         );
       }
@@ -358,10 +373,30 @@ export function createRequestHumanInputTool(options: CreateRequestHumanInputTool
         signalName: input.signalName,
         ...(input.prompt !== undefined ? { prompt: input.prompt } : {}),
         ...(inputSchema !== undefined ? { inputSchema } : {}),
+        ...(said !== undefined ? { said } : {}),
         message,
       };
     },
   } as const;
+}
+
+/** The longest stretch of what the agent said that a park keeps. */
+export const HUMAN_WAIT_SAID_MAXIMUM_LENGTH = 4_000;
+
+/**
+ * The step's text the run gave the call (`executionContext.stepText`), trimmed and cut to
+ * {@link HUMAN_WAIT_SAID_MAXIMUM_LENGTH}, or `undefined` when the step wrote none.
+ */
+function stepTextOf(
+  executionContext: Readonly<Record<string, unknown>> | undefined,
+): string | undefined {
+  const value = executionContext?.['stepText'];
+  if (typeof value !== 'string') return undefined;
+  const text = value.trim();
+  if (text === '') return undefined;
+  return text.length > HUMAN_WAIT_SAID_MAXIMUM_LENGTH
+    ? `${text.slice(0, HUMAN_WAIT_SAID_MAXIMUM_LENGTH - 1)}…`
+    : text;
 }
 
 /** The type of the tool object created by {@link createRequestHumanInputTool}. */

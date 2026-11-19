@@ -1,0 +1,60 @@
+import { describe, expect, test } from 'bun:test';
+import { existsSync } from 'node:fs';
+import { join } from 'node:path';
+
+import { collectionResult, collectionSteps } from './check-playwright-collection.ts';
+
+describe('collectionResult', () => {
+  test('passes a listing that collected tests and exited cleanly', () => {
+    const output =
+      'Listing tests:\n  [chromium] › a.playwright.ts:3:1 › a\nTotal: 1 test in 1 file\n';
+    expect(collectionResult(0, output)).toEqual({ ok: true, summary: 'Total: 1 test in 1 file' });
+  });
+
+  test('fails a spec whose import does not resolve, naming the module', () => {
+    const output = [
+      "ResolveMessage: Cannot find module './overlay-fixture.ts' imported from /x/tests/a.playwright.ts",
+      '',
+      'Error: No tests found',
+      'Listing tests:',
+      'Total: 0 tests in 0 files',
+    ].join('\n');
+    const result = collectionResult(1, output);
+    expect(result.ok).toBe(false);
+    expect(result.ok ? '' : result.reason).toContain('./overlay-fixture.ts');
+  });
+
+  test('fails a load error even when the process exits zero', () => {
+    const output = 'Error: boom\nTotal: 3 tests in 1 file\n';
+    expect(collectionResult(0, output).ok).toBe(false);
+  });
+
+  test('fails a non-zero exit with no recognisable error', () => {
+    expect(collectionResult(1, 'Total: 3 tests in 1 file\n').ok).toBe(false);
+  });
+});
+
+describe('collectionSteps', () => {
+  test('lists the root fixture configuration and each component package configuration', () => {
+    const configurations = collectionSteps().map((step) => step.configuration);
+    expect(configurations[0]).toBe('scripts/browser-fixtures/playwright.config.ts');
+    expect(configurations).toContain('components/chat/browser/playwright.config.ts');
+    expect(configurations).toContain('components/editor/browser/playwright.config.ts');
+    expect(configurations).toContain('components/terminal/browser/playwright.config.ts');
+  });
+
+  // A fresh checkout has none of the ignored manifests the specs read at module scope, and
+  // `--list` starts no web server to write them, so every configuration prepares its own first.
+  test('prepares each suite with the step that writes its manifest', () => {
+    const prepareBy = new Map(collectionSteps().map((step) => [step.configuration, step.prepare]));
+    expect(prepareBy.get('scripts/browser-fixtures/playwright.config.ts')).toEqual([
+      'bun',
+      'scripts/browser-fixtures/scripts/prepare-manifest.ts',
+    ]);
+    for (const name of ['chat', 'editor', 'terminal']) {
+      const prepare = prepareBy.get(`components/${name}/browser/playwright.config.ts`);
+      expect(prepare).toEqual(['bun', `components/${name}/browser/harness.ts`, 'prepare']);
+      expect(existsSync(join(import.meta.dir, '..', prepare?.[1] ?? ''))).toBe(true);
+    }
+  });
+});

@@ -1,19 +1,4 @@
 <script lang="ts" module>
-  /**
-   * @cinder
-   * @category layout
-   * @status stable
-   * @purpose Page-level heading with named title, description, breadcrumb, and action regions, as a default header, a large title that collapses on scroll, or a full-bleed hero band.
-   * @tag page
-   * @tag heading
-   * @tag layout
-   * @useWhen Rendering a route-level heading that needs consistent spacing and border treatment across pages.
-   * @useWhen Pairing page context and supporting copy with optional right-aligned controls.
-   * @useWhen Opening an overview page with a full-bleed hero band: an eyebrow, a display title, facts and one focal value.
-   * @avoidWhen Rendering section-scoped headings within page content — use section-heading.
-   * @avoidWhen Building a marketing page with photography and several columns of copy — compose container (see its hero-section example).
-   * @related section-heading, container, app-bar
-   */
   export type {
     PageHeaderCreateAction,
     PageHeaderHeadingLevel,
@@ -100,6 +85,9 @@
   const decisionOverflow = $derived((overflow ?? []).filter((action) => action.decision === true));
   const menuOverflow = $derived((overflow ?? []).filter((action) => action.decision !== true));
   const hasDecisions = $derived(decisions !== undefined || decisionOverflow.length > 0);
+  // A large title's sticky bar carries the decisions once the title has scrolled away, so a decision
+  // is never out of reach below the fold of the page.
+  const barCarriesDecisions = $derived(resolvedVariant === 'large' && collapsedBar && hasDecisions);
   // Every action but the create "+": in a narrow header these drop to a row of their own under
   // the title, and the "+" stays beside it.
   const hasOtherActions = $derived(
@@ -279,14 +267,23 @@
   {/if}
 {/snippet}
 
+{#snippet decisionGroup(extraClass: string | undefined, inertGroup: boolean)}
+  <div
+    class={classNames('cinder-page-header__decisions', extraClass)}
+    inert={inertGroup ? true : undefined}
+  >
+    {#if decisions}{@render decisions()}{/if}
+    {#each decisionOverflow as action, index (index)}
+      {@render decisionButton(action)}
+    {/each}
+  </div>
+{/snippet}
+
 {#snippet actionGroups()}
   {#if hasDecisions}
-    <div class="cinder-page-header__decisions">
-      {#if decisions}{@render decisions()}{/if}
-      {#each decisionOverflow as action, index (index)}
-        {@render decisionButton(action)}
-      {/each}
-    </div>
+    <!-- Once the large title has scrolled away the sticky bar carries the decisions, so this group
+         is out of view and out of the tab order until the header is back. -->
+    {@render decisionGroup(undefined, barCarriesDecisions && collapsed)}
   {/if}
   {#if actions}{@render actions()}{/if}
   {#if menuOverflow.length > 0}
@@ -315,16 +312,20 @@
 {/snippet}
 
 {#if resolvedVariant === 'large' && collapsedBar}
-  <!-- The title again, at the default size, in a sticky bar once the large title scrolls away. It
-       sits before the header, in the page's flow, so it stays stuck for the whole page; the heading
-       itself stays where it is, so the bar is hidden from assistive technology. -->
+  <!-- The title again, at the default size, in a sticky bar once the large title scrolls away, with
+       the decision actions at its end. It sits before the header, in the page's flow, so it stays
+       stuck for the whole page; the heading itself stays where it is, so the title is hidden from
+       assistive technology. The decisions are live only while the bar is showing. -->
   <div
     class="cinder-page-header__bar"
     data-cinder-collapsed={collapsed ? '' : undefined}
-    aria-hidden="true"
+    aria-hidden={barCarriesDecisions ? undefined : 'true'}
   >
     <div class="cinder-page-header__bar-surface">
-      <span class="cinder-page-header__bar-title">{@render titleWords()}</span>
+      <span class="cinder-page-header__bar-title" aria-hidden="true">{@render titleWords()}</span>
+      {#if barCarriesDecisions}
+        {@render decisionGroup('cinder-page-header__bar-decisions', !collapsed)}
+      {/if}
     </div>
   </div>
 {/if}

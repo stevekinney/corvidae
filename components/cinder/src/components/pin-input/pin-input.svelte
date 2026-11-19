@@ -1,17 +1,4 @@
 <script lang="ts" module>
-  /**
-   * @cinder
-   * @category form
-   * @status stable
-   * @purpose Segmented one-time-code input with auto-advance, paste distribution, and masking support for entering short security codes.
-   * @tag form
-   * @tag otp
-   * @useWhen Collecting a short security code such as a one-time password or SMS verification code.
-   * @useWhen Letting the browser autofill a one-time-code into a visually segmented control.
-   * @avoidWhen Collecting a free-form string of any length — use input instead.
-   * @avoidWhen Collecting a numeric value that participates in arithmetic — use number-input instead.
-   * @related input, number-input, form-field
-   */
   export type { PinInputMode, PinInputProps } from './pin-input.types.ts';
 </script>
 

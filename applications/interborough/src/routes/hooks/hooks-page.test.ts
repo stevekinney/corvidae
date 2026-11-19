@@ -419,7 +419,7 @@ describe('the hooks list', () => {
     await waitFor(() => expect(row(view.container, 'quiet')).not.toBeNull());
     const quiet = row(view.container, 'quiet')!;
     expect(quiet.querySelector('[data-status-word]')?.textContent?.trim()).toBe('Off');
-    expect(quiet.querySelector('[data-last-delivery]')).toBeNull();
+    expect(quiet.querySelector('.cinder-stacked-list-item__time')).toBeNull();
     expect(lineTwo(view.container, 'quiet')).toMatch(/, last delivery /);
     expect(within(quiet).getByRole('switch').getAttribute('aria-checked')).toBe('false');
     // The switch's label follows its state: a hook that is off never reads On.
@@ -679,10 +679,25 @@ describe('the hook editor', () => {
       });
     }
     // With nothing typed, every event of the catalog is offered.
-    await waitFor(async () => {
-      const labels = await optionLabels('');
-      expect(labels.length).toBe(CATALOG.length);
+    const labels = await waitFor(async () => {
+      const found = await optionLabels('');
+      expect(found.length).toBe(CATALOG.length);
+      return found;
     });
+    // R10-23: an option is its words; no event of the catalog reads alike, so none shows its kind.
+    for (const label of labels) {
+      for (const event of CATALOG) expect(label).not.toContain(event.kind);
+    }
+    expect(document.body.querySelector('[role="option"] code')).toBeNull();
+    // Nor does an event once chosen, in the list under the field.
+    await chooseEvent(view, 'Reviews', 'A review is waiting');
+    const chosen = await waitFor(() => {
+      const found = view.container.querySelector('li[data-event="review.requested"]');
+      if (found === null) throw new Error('not chosen yet');
+      return found;
+    });
+    expect(chosen.textContent).not.toContain('review.requested');
+    expect(chosen.querySelector('code')).toBeNull();
   });
 
   test('makes a webhook hook from an event and an address, which the Bureau signs with a secret it makes', async () => {
@@ -702,9 +717,13 @@ describe('the hook editor', () => {
       target: { value: 'Tell the receiver' },
     });
     // Until it is saved the Check step says the event it will watch, and that nothing watches yet.
+    // Row R10-23: the event in words, and no event kind's identifier anywhere in the summary.
     const summary = view.getByTestId('hook-check-summary');
-    expect(summary.textContent).toContain('A review is waiting');
-    expect(summary.textContent).toContain('review.requested');
+    expect(view.getByTestId('hook-check-events').textContent).toBe(
+      eventOptionLabel('review.requested'),
+    );
+    expect(summary.querySelector('code')).toBeNull();
+    for (const { kind } of CATALOG) expect(summary.textContent ?? '', kind).not.toContain(kind);
     expect(summary.textContent).toContain(HOOKS_COPY.editor.check.saveToStart);
     await fireEvent.click(view.getByRole('button', { name: HOOKS_COPY.editor.check.create }));
 
@@ -1390,7 +1409,9 @@ describe('a saved hook’s header', () => {
     await waitFor(() =>
       expect(within(header).getByRole('switch').getAttribute('aria-checked')).toBe('false'),
     );
-    expect(within(header).getByText(HOOKS_COPY.editor.header.off)).not.toBeNull();
+    // The switch says Off, and so does the one status line under the heading (COR-2181, row R10-02).
+    expect(within(header).getAllByText(HOOKS_COPY.editor.header.off)).toHaveLength(2);
+    expect(header.querySelector('[data-status-word="Off"]')).not.toBeNull();
     expect(within(header).queryByText(HOOKS_COPY.editor.header.on)).toBeNull();
 
     await fireEvent.click(await view.findByRole('button', { name: 'Undo' }));
@@ -1441,11 +1462,14 @@ describe('a saved hook’s header', () => {
 });
 
 describe('the steps of a saved hook', () => {
-  test('shows the event as plain text with its raw kind and a note, and offers no picker', async () => {
+  test('shows the event as plain text in words, not its raw kind, with a note, and offers no picker (R10-23)', async () => {
     const { view } = open([hook('alpha')], { path: '/hooks/alpha' });
     const locked = await view.findByTestId('hook-event-locked');
     expect(locked.textContent).toContain('A review is waiting');
-    expect(locked.textContent).toContain('review.requested');
+    for (const kind of hook('alpha').events) expect(locked.textContent).not.toContain(kind);
+    expect(locked.querySelector('code')).toBeNull();
+    // No kind is shown, so no lock glyph stands alone under the help: the help says it is fixed.
+    expect(locked.querySelector('.ib-hook-events__lock')).toBeNull();
     expect(locked.textContent).toContain(HOOKS_COPY.editor.event.fixed);
     expect(locked.querySelector('[aria-readonly="true"]')).not.toBeNull();
     expect(view.container.querySelector('input[role="combobox"]')).toBeNull();
@@ -1773,7 +1797,7 @@ describe('the editor for a hook it cannot change the action of', () => {
       { path: '/hooks/alpha' },
     );
     await view.findByText(HOOKS_COPY.editor.action.plugin);
-    expect(view.getByTestId('hook-sentence').textContent).toContain('run page from acme');
+    expect(view.getByTestId('hook-sentence').textContent).toContain('run Page from Acme');
     expect(view.queryByLabelText(HOOKS_COPY.editor.action.label)).toBeNull();
     // Without a test: a plugin's action is not a signed message, and this one offers none.
     expect(
@@ -1946,9 +1970,11 @@ describe('a hook’s delivery log', () => {
       'events.pagerduty.com answered 410 Gone on all 8 tries, so Interborough stopped. The webhook URL may have been removed. Check the URL, then retry.',
     );
     const facts = within(item).getByTestId('hook-delivery-facts');
-    expect(facts.textContent).toContain(copy.facts.event);
-    expect(facts.textContent).toContain('A run fails');
-    expect(facts.textContent).toContain('run.error');
+    // The row above names the event in words, so the facts do not say it again; its raw kind shows
+    // only beside an event that reads alike (R10-23).
+    expect(facts.textContent).not.toContain(copy.facts.event);
+    expect(item.textContent).toContain('A run fails');
+    expect(facts.textContent).not.toContain('run.error');
     expect(facts.textContent).toContain('events.pagerduty.com');
     expect(facts.textContent).toContain('410 Gone');
 

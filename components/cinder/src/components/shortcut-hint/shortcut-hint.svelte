@@ -1,16 +1,4 @@
 <script lang="ts" module>
-  /**
-   * @cinder
-   * @category typography
-   * @status alpha
-   * @purpose Inline shortcut hint that renders a key combo via Kbd alongside an action label, with an accessible text representation not reliant on visual keycaps alone.
-   * @tag shortcut
-   * @tag inline
-   * @useWhen Showing a keyboard shortcut inline beside a label in a toolbar button, menu item, or tooltip.
-   * @useWhen Pairing with command-palette items to surface available shortcuts.
-   * @avoidWhen Displaying a full shortcut reference table — use keyboard-shortcuts instead.
-   * @related kbd, keyboard-shortcuts, tooltip
-   */
   export type { ShortcutHintProps } from './shortcut-hint.types.ts';
 </script>
 

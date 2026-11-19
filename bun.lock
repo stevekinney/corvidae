@@ -15,6 +15,7 @@
         "@types/pngjs": "catalog:",
         "ajv": "catalog:",
         "ajv-formats": "catalog:",
+        "fflate": "catalog:",
         "oxlint": "catalog:",
         "oxlint-tsgolint": "catalog:",
         "pixelmatch": "catalog:",
@@ -24,6 +25,7 @@
         "prettier-plugin-svelte": "catalog:",
         "prettier-plugin-toml": "catalog:",
         "publint": "catalog:",
+        "saxes": "catalog:",
         "shiki": "catalog:",
         "svelte": "catalog:",
         "svelte-check": "catalog:",
@@ -97,6 +99,7 @@
         "happy-dom": "catalog:",
         "oxlint": "catalog:",
         "oxlint-tsgolint": "catalog:",
+        "prettier": "catalog:",
         "svelte-check": "catalog:",
         "typescript": "catalog:",
       },
@@ -121,6 +124,7 @@
       },
       "devDependencies": {
         "@axe-core/playwright": "catalog:",
+        "@lostgradient/component-tooling": "workspace:*",
         "@lostgradient/typescript": "workspace:*",
         "@playwright/test": "catalog:",
         "@testing-library/svelte": "catalog:",
@@ -173,11 +177,14 @@
         "@lostgradient/operative": "workspace:*",
         "@lostgradient/testing": "workspace:*",
         "@lostgradient/typescript": "workspace:*",
+        "@playwright/test": "catalog:",
         "@testing-library/svelte": "catalog:",
         "@types/bun": "catalog:",
+        "@types/pngjs": "catalog:",
         "ajv": "catalog:",
         "happy-dom": "catalog:",
         "oxlint": "catalog:",
+        "pngjs": "catalog:",
         "postcss": "catalog:",
         "prettier": "catalog:",
         "svelte-check": "catalog:",
@@ -216,6 +223,7 @@
         "zod": "catalog:",
       },
       "devDependencies": {
+        "@lostgradient/component-tooling": "workspace:*",
         "@lostgradient/environmentalist": "catalog:",
         "@lostgradient/testing": "workspace:*",
         "@lostgradient/typescript": "workspace:*",
@@ -240,7 +248,6 @@
         "prettier-plugin-svelte": "catalog:",
         "svelte-check": "catalog:",
         "svelte2tsx": "catalog:",
-        "ts-morph": "catalog:",
         "typescript": "catalog:",
       },
     },
@@ -290,12 +297,42 @@
       "devDependencies": {
         "@lostgradient/testing": "workspace:*",
         "@lostgradient/typescript": "workspace:*",
+        "@playwright/test": "catalog:",
         "@testing-library/svelte": "catalog:",
         "@types/bun": "catalog:",
         "happy-dom": "catalog:",
         "oxlint": "catalog:",
         "svelte-check": "catalog:",
         "typescript": "catalog:",
+      },
+    },
+    "internal/component-tooling": {
+      "name": "@lostgradient/component-tooling",
+      "dependencies": {
+        "@lostgradient/environmentalist": "catalog:",
+        "@tanstack/virtual-core": "catalog:",
+        "ajv": "catalog:",
+        "ajv-formats": "catalog:",
+        "esm-env": "catalog:",
+        "postcss": "catalog:",
+        "postcss-selector-parser": "catalog:",
+        "prettier": "catalog:",
+        "svelte": "catalog:",
+        "svelte2tsx": "catalog:",
+        "ts-morph": "catalog:",
+        "typescript": "catalog:",
+        "zod": "catalog:",
+      },
+      "devDependencies": {
+        "@lostgradient/testing": "workspace:*",
+        "@lostgradient/typescript": "workspace:*",
+        "@testing-library/dom": "catalog:",
+        "@testing-library/jest-dom": "catalog:",
+        "@testing-library/svelte": "catalog:",
+        "@types/bun": "catalog:",
+        "happy-dom": "catalog:",
+        "oxlint": "catalog:",
+        "oxlint-tsgolint": "catalog:",
       },
     },
     "internal/typescript": {
@@ -1149,6 +1186,7 @@
     "diff-match-patch": "^1.0.5",
     "esm-env": "^1.2.0",
     "fake-indexeddb": "^6.2.5",
+    "fflate": "0.8.3",
     "gray-matter": "^4.0.3",
     "happy-dom": "^21.0.4",
     "hast-util-sanitize": "^5.0.0",
@@ -1186,6 +1224,7 @@
     "remark-parse": "^11.0.0",
     "remark-rehype": "^11.1.2",
     "remark-stringify": "^11.0.0",
+    "saxes": "6.0.0",
     "shiki": "^3.21.0",
     "smol-toml": "^1.9.0",
     "standardwebhooks": "^1.1.1",
@@ -1351,6 +1390,8 @@
     "@lostgradient/chat": ["@lostgradient/chat@workspace:components/chat"],
 
     "@lostgradient/cinder": ["@lostgradient/cinder@workspace:components/cinder"],
+
+    "@lostgradient/component-tooling": ["@lostgradient/component-tooling@workspace:internal/component-tooling"],
 
     "@lostgradient/cryptography": ["@lostgradient/cryptography@workspace:packages/cryptography"],
 
@@ -2382,6 +2423,8 @@
 
     "safe-buffer": ["safe-buffer@5.2.1", "", {}, "sha512-rp3So07KcdmmKbGvgaNxQSJr7bGVSVk5S9Eq1F+ppbRo70+YeaDxkw5Dd8NPN+GD6bjnYm2VuPuCXmpuYvmCXQ=="],
 
+    "saxes": ["saxes@6.0.0", "", { "dependencies": { "xmlchars": "^2.2.0" } }, "sha512-xAg7SOnEhrm5zI3puOOKyy1OMcMlIJZYNJY7xLBwSze0UjhPLnWfj2GF2EpT0jmzaJKIWKHLsaSSajf35bcYnA=="],
+
     "scule": ["scule@1.3.0", "", {}, "sha512-6FtHJEvt+pVMIB9IBY+IcCJ6Z5f1iQnytgyfKMhDKgmzYG+TeH/wx1y3l27rshSbLiSanrR9ffZDrEsmjlQF2g=="],
 
     "section-matter": ["section-matter@1.0.0", "", { "dependencies": { "extend-shallow": "^2.0.1", "kind-of": "^6.0.0" } }, "sha512-vfD3pmTzGpufjScBh50YHKzEu2lxBWhVEHsNGoEXmCmn2hKGfeNLYMzCJpe8cD7gqX7TJluOVpBkAequ6dgMmA=="],
@@ -2533,6 +2576,8 @@
     "wrappy": ["wrappy@1.0.2", "", {}, "sha512-l4Sp/DRseor9wL6EvV2+TuQn63dMkPjZ/sp9XkghTEbV9KlPS1xUsZ3u7/IQO4wxtcFB4bgpQPRcR3QCvezPcQ=="],
 
     "ws": ["ws@8.21.3", "", { "peerDependencies": { "bufferutil": "^4.0.1", "utf-8-validate": ">=5.0.2" }, "optionalPeers": ["bufferutil", "utf-8-validate"] }, "sha512-201TZ/kPWxoPr/OKWjquZR1SWKXcvxdH+e1xrx89b3YbmzLMFCLfnaG1HFIgWzJOEWZ7MvpK++odZufgYR50Rw=="],
+
+    "xmlchars": ["xmlchars@2.2.0", "", {}, "sha512-JZnDKK8B0RCDw84FNdDAIpZK+JuJw+s7Lz8nksI7SIuU3UXJJslUthsi+uWBUYOwPFwW7W7PRLRfUKpxjtjFCw=="],
 
     "xtend": ["xtend@4.0.2", "", {}, "sha512-LKYU1iAXJXUgAXn9URjiu+MWhyUXHsvfp7mcuYm9dSUKK0/CjtrUwFAxD82/mCWbtLsGjFIad0wIsod4zrTAEQ=="],
 

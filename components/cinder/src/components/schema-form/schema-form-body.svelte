@@ -41,9 +41,12 @@
     pathId,
     pathKey,
     rebaseFieldPath,
+    secretKeyOf,
     type SchemaFormField,
   } from './schema-form-model.ts';
   import SchemaFormChips from './schema-form-chips.svelte';
+  import SchemaFormReadOnly from './schema-form-read-only.svelte';
+  import SchemaFormSecret from './schema-form-secret.svelte';
   import DurationField from '../duration-field/duration-field.svelte';
   import { focusFirstProblem } from '../form/focus-first-problem.ts';
   import SchemaFormJsonPanel from './schema-form-json-panel.svelte';
@@ -84,6 +87,7 @@
     'boolean',
     'number',
     'integer',
+    'secret',
   ]);
 
   /** Kinds edited by one control that holds many values, so their descendants' issues show on it. */
@@ -114,6 +118,8 @@
     submitVisible = true,
     disabled = false,
     hosted = false,
+    secrets,
+    readOnly = false,
     class: customClassName,
     onSubmit,
     onDraftChange,
@@ -194,8 +200,10 @@
   const jsonPanelAllowed = $derived(jsonEditable && !hosted && !schemaHoldsConcealedField(schema));
   // The setting rows keep one shape at any size: no filter, no JSON panel, no reordering, no groups.
   const largeForm = $derived(
-    !settingRows && countLeafFields(model.field) > LARGE_FORM_FIELD_THRESHOLD,
+    !settingRows && !readOnly && countLeafFields(model.field) > LARGE_FORM_FIELD_THRESHOLD,
   );
+  /** A form that is not a `<form>`: one drawn inside another surface, and one that cannot be changed. */
+  const bare = $derived(hosted || readOnly);
   const filterQuery = $derived(filterText.trim().toLowerCase());
 
   const formId = $derived((rest.id as string | undefined) ?? `${generatedId}-form`);
@@ -560,8 +568,33 @@
 
 <!-- The control of a setting row, which sits at the inline end. Its label, description and error
      belong to the row, so the control takes none of its own. -->
+{#snippet secretControl(
+  field: SchemaFormField,
+  id: string,
+  label: string,
+  description?: string,
+  labelVisible = true,
+)}
+  <SchemaFormSecret
+    {id}
+    {label}
+    {labelVisible}
+    {description}
+    error={fieldError(field)}
+    required={field.required}
+    disabled={frozen}
+    value={secretKeyOf(getValueAtPath(formState.formValue, field.path))}
+    {secrets}
+    onValueChange={(key) =>
+      formState.updateValue(field.path, key === undefined ? undefined : { $secret: key })}
+    onblur={() => formState.validateTouchedField(field)}
+  />
+{/snippet}
+
 {#snippet settingControl(field: SchemaFormField, id: string)}
-  {#if field.kind === 'string'}
+  {#if field.kind === 'secret'}
+    {@render secretControl(field, id, rowLabel(field), undefined, false)}
+  {:else if field.kind === 'string'}
     <Input
       {id}
       label={rowLabel(field)}
@@ -706,7 +739,11 @@
     >
       {#snippet control()}
         {#if lone}
-          <SchemaFormNamedControl {id} label={rowLabel(lone)} named={lone.kind !== 'enum'}>
+          <SchemaFormNamedControl
+            {id}
+            label={rowLabel(lone)}
+            named={lone.kind !== 'enum' && lone.kind !== 'secret'}
+          >
             {@render settingControl(lone, id)}
           </SchemaFormNamedControl>
         {:else if inline}
@@ -852,6 +889,8 @@
               )
           }
         />
+      {:else if field.kind === 'secret'}
+        {@render secretControl(field, id, textOf(field), field.description)}
       {:else if field.kind === 'tags'}
         <SchemaFormTags
           {id}
@@ -959,94 +998,99 @@
 {/snippet}
 
 <svelte:element
-  this={hosted ? 'div' : 'form'}
+  this={bare ? 'div' : 'form'}
   {...rest}
   id={formId}
   bind:this={formElement}
   class={classNames('cinder-schema-form', customClassName)}
   data-cinder-hosted={hosted ? '' : undefined}
+  data-cinder-read-only={readOnly ? '' : undefined}
   data-cinder-variant={settingRows ? 'setting-rows' : undefined}
-  role={hosted ? 'group' : undefined}
-  novalidate={hosted ? undefined : (novalidate ?? true)}
-  onsubmit={hosted ? undefined : handleSubmit}
+  role={bare ? 'group' : undefined}
+  novalidate={bare ? undefined : (novalidate ?? true)}
+  onsubmit={bare ? undefined : handleSubmit}
 >
-  {#if rootError}
-    <p
-      id={rootErrorId}
-      class="cinder-schema-form__error"
-      role="alert"
-      aria-live="polite"
-      tabindex="-1"
-    >
-      {rootError}
-    </p>
-  {/if}
+  {#if readOnly}
+    <SchemaFormReadOnly field={model.field} value={formState.formValue} {secrets} />
+  {:else}
+    {#if rootError}
+      <p
+        id={rootErrorId}
+        class="cinder-schema-form__error"
+        role="alert"
+        aria-live="polite"
+        tabindex="-1"
+      >
+        {rootError}
+      </p>
+    {/if}
 
-  {#if largeForm}
-    <div class="cinder-schema-form__toolbar">
-      <Input
-        id="{formId}-find"
-        type="search"
-        label="Find a field"
-        autocomplete="off"
-        bind:value={filterText}
-        onkeydown={blockEnterSubmit}
-      />
-      {#if jsonPanelAllowed}
-        <button
-          type="button"
-          class="cinder-schema-form__secondary-button"
-          aria-expanded={jsonPanelOpen}
+    {#if largeForm}
+      <div class="cinder-schema-form__toolbar">
+        <Input
+          id="{formId}-find"
+          type="search"
+          label="Find a field"
+          autocomplete="off"
+          bind:value={filterText}
+          onkeydown={blockEnterSubmit}
+        />
+        {#if jsonPanelAllowed}
+          <button
+            type="button"
+            class="cinder-schema-form__secondary-button"
+            aria-expanded={jsonPanelOpen}
+            disabled={frozen}
+            onclick={toggleJsonPanel}
+          >
+            Edit as JSON
+          </button>
+        {/if}
+      </div>
+      {#if jsonPanelAllowed && jsonPanelOpen}
+        <SchemaFormJsonPanel
+          id="{formId}-json"
+          text={jsonText}
+          error={jsonError}
           disabled={frozen}
-          onclick={toggleJsonPanel}
-        >
-          Edit as JSON
-        </button>
+          onTextChange={(next) => (jsonText = next)}
+          onApply={applyJsonPanel}
+          onCancel={() => (jsonPanelOpen = false)}
+        />
       {/if}
-    </div>
-    {#if jsonPanelAllowed && jsonPanelOpen}
-      <SchemaFormJsonPanel
-        id="{formId}-json"
-        text={jsonText}
-        error={jsonError}
-        disabled={frozen}
-        onTextChange={(next) => (jsonText = next)}
-        onApply={applyJsonPanel}
-        onCancel={() => (jsonPanelOpen = false)}
+    {/if}
+
+    {#if filterQuery !== '' && rootFields.length === 0}
+      <p class="cinder-schema-form__description" role="status">No fields match your search.</p>
+    {/if}
+
+    {#if settingRows && model.field.kind === 'object'}
+      <div class="cinder-schema-form__setting-rows">
+        {#each rootFields as field (pathKey(field.path))}
+          {@render settingRow(field)}
+        {/each}
+      </div>
+    {:else}
+      {@render renderFields(rootFields)}
+    {/if}
+
+    {#if !hosted}
+      <input
+        bind:this={serializedInputElement}
+        type="hidden"
+        {name}
+        value={formState.serializedValue}
       />
     {/if}
-  {/if}
 
-  {#if filterQuery !== '' && rootFields.length === 0}
-    <p class="cinder-schema-form__description" role="status">No fields match your search.</p>
-  {/if}
-
-  {#if settingRows && model.field.kind === 'object'}
-    <div class="cinder-schema-form__setting-rows">
-      {#each rootFields as field (pathKey(field.path))}
-        {@render settingRow(field)}
-      {/each}
-    </div>
-  {:else}
-    {@render renderFields(rootFields)}
-  {/if}
-
-  {#if !hosted}
-    <input
-      bind:this={serializedInputElement}
-      type="hidden"
-      {name}
-      value={formState.serializedValue}
-    />
-  {/if}
-
-  {#if submitVisible && !hosted}
-    <Button
-      type="submit"
-      variant="primary"
-      class="cinder-schema-form__submit"
-      disabled={frozen}
-      label={submitting ? 'Validating...' : submitLabel}
-    />
+    {#if submitVisible && !hosted}
+      <Button
+        type="submit"
+        variant="primary"
+        class="cinder-schema-form__submit"
+        disabled={frozen}
+        label={submitting ? 'Validating...' : submitLabel}
+      />
+    {/if}
   {/if}
 </svelte:element>

@@ -8,9 +8,9 @@
 import { THEME_STORAGE_KEY, waitForFocusStyleFrame } from '@lostgradient/testing';
 import { expect, type Browser, type Locator, type Page } from '@playwright/test';
 
+import { FIXTURE_ORIGIN } from '@lostgradient/testing/browser/fixture-port';
+import { fixtureRoute } from '@lostgradient/testing/playwright/overlay-fixture';
 import { environmentConfiguration } from '../environment-configuration.ts';
-import { FIXTURE_ORIGIN } from '../scripts/fixture-port.ts';
-import { fixtureRoute } from './overlay-fixture.ts';
 
 export type Theme = 'light' | 'dark';
 export const THEMES: readonly Theme[] = ['light', 'dark'];

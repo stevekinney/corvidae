@@ -1,20 +1,4 @@
 <script lang="ts" module>
-  /**
-   * @cinder
-   * @category feedback
-   * @status beta
-   * @purpose Quiet inline dot-and-word status for a live connection, telling connecting, live, reconnecting, polling, stale, out-of-date, and closed apart by shape and text, not color alone.
-   * @tag connection
-   * @tag status
-   * @tag realtime
-   * @useWhen Surfacing the transport-level health of a websocket, SSE stream, or polling loop as a compact, self-contained dot and word.
-   * @useWhen Distinguishing push (`live`) from interval polling (`polling`) so operators don't mistake one for the other.
-   * @avoidWhen Annotating a static entity's state (a row, a user, a deployment) rather than a live transport — use status-dot instead. | status-dot
-   * @avoidWhen Rendering a full event log with per-event connection transitions — use feed's log arm instead. | feed
-   * @a11yPattern role="status" live region
-   * @a11yNote Status is conveyed by shape and text together, never color alone (WCAG 1.4.1): live is a dot, out-of-date a hollow ring, the rest an icon. The live pulsing dot collapses to a static dot under prefers-reduced-motion.
-   * @related status-dot, feed, badge
-   */
   export type {
     ConnectionIndicatorProps,
     ConnectionIndicatorSchemaProps,

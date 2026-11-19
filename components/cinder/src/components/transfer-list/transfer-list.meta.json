@@ -1,0 +1,18 @@
+{
+  "$schema": "../../../../../internal/component-tooling/src/schemas/component-meta.schema.json",
+  "category": "form",
+  "status": "beta",
+  "purpose": "Compact multi-select assignment control for choosing a subset from a fixed item pool.",
+  "tags": ["form", "selection"],
+  "useWhen": ["Letting users choose permissions, tags, or visible columns from a fixed pool."],
+  "avoidWhen": [
+    {
+      "reason": "The pool needs inline search or filtering — compose search controls around the list instead."
+    },
+    {
+      "reason": "The user only needs independent checkbox choices — use checkbox-group instead.",
+      "alternative": "checkbox-group"
+    }
+  ],
+  "related": ["checkbox-group", "selection-popover", "sortable-list"]
+}

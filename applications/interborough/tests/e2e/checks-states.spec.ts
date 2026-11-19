@@ -27,7 +27,7 @@ test.use({ baseURL: E2E_SHOWCASE_URL, timezoneId: SAMPLE_TIME_ZONE });
 const SOURCE = 'checks-states.spec.ts';
 const WIDTHS = [1280, 375] as const;
 /** Every request the page makes of the host, which a test takes away to make the server stop answering. */
-const HOST_REQUESTS = /\/(v1|bureau|api)\//;
+const HOST_REQUESTS = /\/(v1|bureau|api)\/|\/jsonrpc$/;
 /** The longest a check's name is let to be on a row: three hundred characters with no place to break. */
 const LONG_NAME = `check-${'a'.repeat(294)}`;
 
@@ -51,7 +51,7 @@ async function answerOperation(
   method: string,
   answer: (route: Route, id: unknown, params: Record<string, unknown>) => Promise<void> | void,
 ): Promise<void> {
-  await page.route('**/bureau/jsonrpc', async (route) => {
+  await page.route('**/jsonrpc', async (route) => {
     const body = JSON.parse(route.request().postData() ?? '{}') as {
       method?: string;
       id?: unknown;
@@ -271,7 +271,7 @@ test.describe('Load more', () => {
     checkA11y,
   }) => {
     pageErrors.expectEvery({
-      pattern: loggedFailedResponse(500, /\/bureau\/jsonrpc/),
+      pattern: loggedFailedResponse(500, /\/jsonrpc/),
       reason: 'the test answers the second page of the checks with a 500',
     });
     let failing = true;
@@ -378,7 +378,7 @@ for (const width of WIDTHS) {
       checkA11y,
     }) => {
       pageErrors.expectEvery({
-        pattern: loggedFailedResponse(500, /\/bureau\/jsonrpc/),
+        pattern: loggedFailedResponse(500, /\/jsonrpc/),
         reason: 'the test answers the checks list with a 500',
       });
       await answerOperation(page, 'bureau.checks.list', (route) =>
@@ -410,7 +410,7 @@ for (const width of WIDTHS) {
       await checkA11y(`checks failing at ${width}px`);
 
       // The server comes back, and Try again reads the results.
-      await page.unroute('**/bureau/jsonrpc');
+      await page.unroute('**/jsonrpc');
       await primaries(page).click();
       await expect(rows(page).nth(0)).toBeVisible();
     });

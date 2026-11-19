@@ -234,13 +234,22 @@ export interface HookDeliveryAttempt {
   readonly receipt?: HookActionReceipt;
 }
 
-/** What a `start-workflow` or `notify` action made. */
+/** What an action made. */
 export interface HookActionReceipt {
   /** The run a `start-workflow` action started. */
   readonly runId?: string;
   /** The notification a `notify` action wrote, or found already written for this delivery. */
   readonly notificationId?: string;
+  /** COR-2182 — what a plugin's reaction made in the other service, as it named it. */
+  readonly id?: string;
+  /** COR-2182 — where the owner can see it: an `https:` address; a reaction's other value is dropped. */
+  readonly url?: string;
+  /** COR-2182 — what was made, at most {@link HOOK_RECEIPT_SUMMARY_LIMIT} characters; a longer one is dropped. */
+  readonly summary?: string;
 }
+
+/** The longest `summary` a reaction's receipt keeps, in characters. */
+export const HOOK_RECEIPT_SUMMARY_LIMIT = 200;
 
 /** Where a delivery stands. */
 export type HookDeliveryStatus =
@@ -368,10 +377,43 @@ export interface HookDeliverySummary {
   readonly updatedAt: number;
 }
 
+/**
+ * One thing the schema of a plugin hook's reaction refuses in the configuration the hook stores
+ * (COR-2182): where it is and Zod's code for it, never its message, which can quote a value.
+ */
+export interface HookConfigurationIssue {
+  /** The path to the field, from the configuration's root; empty for the configuration as a whole. */
+  readonly path: readonly string[];
+  /** Zod's issue code, such as `invalid_type` or `too_small`. */
+  readonly code: string;
+}
+
+/**
+ * Why a hook cannot do what it says, as `hooks.list` shows it (COR-2182). Each is a code and
+ * identifiers, never free text.
+ */
+export type HookProblem =
+  | {
+      /**
+       * The plugin hook's reaction is not registered: its plugin is disabled, was removed, failed
+       * to set up, or dropped the kind. The hook writes no delivery until the reaction is back. A
+       * default hook its plugin withdrew has it too, while it stays withdrawn.
+       */
+      readonly code: 'reaction-unavailable';
+    }
+  | {
+      /** The reaction's schema now refuses the configuration the hook stored (an upgrade changed it). */
+      readonly code: 'configuration-invalid';
+      /** Every field the schema refuses. */
+      readonly issues: readonly HookConfigurationIssue[];
+    };
+
 /** A hook as `hooks.list` answers it, with its newest delivery. */
 export interface ListedHook extends Hook {
   /** The hook's newest delivery, a test included; `null` when it has none. */
   readonly lastDelivery: HookDeliverySummary | null;
+  /** Why the hook cannot do what it says; empty when nothing is wrong. */
+  readonly problems: readonly HookProblem[];
 }
 
 /** The record under which a delivery is stored. */

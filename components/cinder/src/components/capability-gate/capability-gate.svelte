@@ -1,18 +1,4 @@
 <script lang="ts" module>
-  /**
-   * @cinder
-   * @category feedback
-   * @status alpha
-   * @purpose Present feature availability and next action for browser permission or support states, with accessible status text and focus management.
-   * @tag feedback
-   * @tag permission
-   * @tag notice
-   * @useWhen Surfacing that a feature requires a browser permission such as microphone or notifications.
-   * @useWhen Communicating that a feature is unsupported in the current browser with a clear fallback path.
-   * @avoidWhen Performing the actual feature detection or permission request — wire that in userland.
-   * @avoidWhen Storing permission state — CapabilityGate is a pure presentation component.
-   * @related alert, banner, callout, modal
-   */
   export type {
     CapabilityGateProps,
     CapabilityGateState,

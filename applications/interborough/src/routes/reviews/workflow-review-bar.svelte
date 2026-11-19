@@ -7,7 +7,7 @@
    * decided. A review with sections keeps `review-decision-form.svelte`, which decides each section.
    * Both need `reviews:write`, and the buttons are held without it.
    */
-  import { Button, Textarea, Tooltip } from '@lostgradient/cinder';
+  import { Button, DockedActionBar, Textarea, Tooltip } from '@lostgradient/cinder';
 
   import { REVIEWS_COPY } from '../../app/copy/reviews.ts';
   import type { ScopeGate } from '../../lib/scopes.svelte.ts';
@@ -60,24 +60,28 @@
     disabled={submitting}
   />
 </div>
-<div class="ib-review-pane__footer">
+<!-- Cinder's docked bar (row 25q): it stays at the end of the pane as it scrolls, and below its own
+     32rem the note takes the whole row and the buttons sit under it at the trailing edge. -->
+<DockedActionBar label={REVIEWS_COPY.workflow.decisionLabel}>
   <p class="ib-review-pane__footer-note">{REVIEWS_COPY.workflow.footer}</p>
-  <Tooltip text={submitGate.title ?? ''}>
-    <Button
-      data-changes
-      variant="secondary"
-      label={REVIEWS_COPY.workflow.sendBack}
-      disabled={!canSubmit}
-      onclick={() => submit('needs-changes')}
-    />
-  </Tooltip>
-  <Tooltip text={submitGate.title ?? ''}>
-    <Button
-      data-changes
-      variant="primary"
-      label={REVIEWS_COPY.workflow.approve}
-      disabled={!canSubmit}
-      onclick={() => submit('approved')}
-    />
-  </Tooltip>
-</div>
+  {#snippet actions()}
+    <Tooltip text={submitGate.title ?? ''}>
+      <Button
+        data-changes
+        variant="secondary"
+        label={REVIEWS_COPY.workflow.sendBack}
+        disabled={!canSubmit}
+        onclick={() => submit('needs-changes')}
+      />
+    </Tooltip>
+    <Tooltip text={submitGate.title ?? ''}>
+      <Button
+        data-changes
+        variant="primary"
+        label={REVIEWS_COPY.workflow.approve}
+        disabled={!canSubmit}
+        onclick={() => submit('approved')}
+      />
+    </Tooltip>
+  {/snippet}
+</DockedActionBar>

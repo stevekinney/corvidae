@@ -64,10 +64,10 @@ describe('applied values', () => {
     expect(optionLabel(CHOICE.options, 'other')).toBe('other');
   });
 
-  test('a segment select label carries its count, and a pending count is left off', () => {
+  test('a segment select label carries its count, and a pending count is the wide segment’s dash', () => {
     expect(segmentSelectLabel({ value: 'a', label: 'All', count: 19 })).toBe('All 19');
     expect(segmentSelectLabel({ value: 'a', label: 'All', count: 0 })).toBe('All 0');
-    expect(segmentSelectLabel({ value: 'a', label: 'All', count: 'pending' })).toBe('All');
+    expect(segmentSelectLabel({ value: 'a', label: 'All', count: 'pending' })).toBe('All –');
     expect(segmentSelectLabel({ value: 'a', label: 'All' })).toBe('All');
   });
 

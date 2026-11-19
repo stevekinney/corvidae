@@ -1,18 +1,4 @@
 <script lang="ts" module>
-  /**
-   * @cinder
-   * @category data-display
-   * @status beta
-   * @purpose Inset group of rows on one rounded surface with inset separators, a header and footer outside the surface, and an optional quick-add first row.
-   * @tag list
-   * @tag group
-   * @useWhen Listing related rows, such as settings, people or places, as one grouped surface instead of a stack of boxed cards.
-   * @useWhen Adding items inline with a first row that takes text and submits on Return.
-   * @avoidWhen Rows need a status column, details or a disclosure — use data-list with stacked-list-item.
-   * @avoidWhen Comparing values across columns — use table.
-   * @related grouped-list-item, section, data-list
-   * @rationale Nearest alternative: DataList — a grouped list is one rounded surface with separators that start at the text, where a data list draws a border under every row.
-   */
   export type { GroupedListProps } from './grouped-list.types.ts';
 </script>
 

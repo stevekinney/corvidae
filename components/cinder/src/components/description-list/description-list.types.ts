@@ -137,7 +137,7 @@ export type DescriptionListProps = Omit<HTMLAttributes<HTMLDListElement>, 'class
    *   surrounding context already labels the value. NOT a general compact mode.
    * - `fields`: a record read as a list: a regular-weight muted term in a fixed 140px column, its value
    *   beside it, each row at least 44px tall flat, with a quiet rule under each (`framed` adds a tinted group,
-   *   raised on a phone); a row with an `href` ends in a trailing chevron; the term stacks above its value
+   *   raised while the list is narrower than 700px); a row with an `href` ends in a trailing chevron; the term stacks above its value
    *   while the list is narrower than 23rem (368px).
    * - `facts`: one row of equal columns, each a muted term above its value, between two quiet
    *   rules (the queues, tasks, workflow and version of a worker); wraps to more rows as the
@@ -159,8 +159,9 @@ export type DescriptionListProps = Omit<HTMLAttributes<HTMLDListElement>, 'class
   /**
    * Keeps the tinted, rounded frame around the `fields` variant. The variant is flat by default, so
    * a record inside a pane or a card never draws a box inside a box; set this where the list stands
-   * alone on the page canvas. Below a 700px viewport the frame takes the raised fill of a grouped
-   * list, as an Inspector's group does on a phone. Has no effect on any other variant.
+   * alone on the page canvas. While the list is narrower than 700px of its own width the frame takes
+   * the raised fill of a grouped list, as an Inspector's group does below 700px of its own. Has no
+   * effect on any other variant.
    * @default false
    */
   framed?: boolean;

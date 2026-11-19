@@ -1,13 +1,4 @@
 <script lang="ts" module>
-  /** @cinder
-   * @category data-display
-   * @status beta
-   * @purpose Interactive viewport for zooming and panning images, diagrams, and rendered Mermaid content.
-   * @tag zoom-pan-viewer
-   * @useWhen Viewing large images or SVG diagrams that need pointer and keyboard navigation.
-   * @avoidWhen Showing ordinary responsive media that does not need a viewport transform.
-   * @related image, button
-   */
   export type { ZoomPanViewerProps } from './zoom-pan-viewer.types.ts';
 </script>
 

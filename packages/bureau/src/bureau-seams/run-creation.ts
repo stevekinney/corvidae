@@ -39,6 +39,7 @@ import { registerTrailingOnStep } from '../bureau-invariant-hooks';
 import { sessionRunMediaOptions } from '../provider-resolution';
 import {
   type BureauToolbox,
+  type CatalogRunRecordedDefinition,
   type SessionAgentRun,
   type SessionAgentRunResolution,
 } from '../runtime-composition-types';
@@ -222,6 +223,38 @@ function unresolvedStart(
     : new BureauError(describeDefinitionDrift(agentName, resolution.drift), 'CONFLICT');
 }
 
+/**
+ * COR-2429 — what a start on an existing chat tells the agent resolver: the command id it carries
+ * and whether it brings input of its own, as `review-continuation` evidence, which
+ * `admitsRunOnDisabledAgent` alone judges (only the continuation of a decided tool approval of a
+ * run of this chat proceeds on a disabled agent). A start with no command id, or on no chat, gives
+ * none, and is a new run.
+ */
+function continuationRecord(
+  sessionId: string,
+  session: unknown,
+  request: {
+    readonly runCreationRequestId?: string | undefined;
+    readonly message?: unknown;
+    readonly inputParts?: unknown;
+    readonly appendMessages?: readonly unknown[] | undefined;
+  },
+): CatalogRunRecordedDefinition | undefined {
+  if (session === undefined || request.runCreationRequestId === undefined) return undefined;
+  return {
+    agentDefinitionHash: undefined,
+    startedEvidence: {
+      kind: 'review-continuation',
+      sessionId,
+      commandId: request.runCreationRequestId.trim(),
+      bringsInput:
+        request.message !== undefined ||
+        request.inputParts !== undefined ||
+        (request.appendMessages?.length ?? 0) > 0,
+    },
+  };
+}
+
 /** Builds the run creation functions of one Bureau. Synchronous, and registers nothing. */
 export function createRunCreation<D extends AgentDefinitions>(
   core: BureauCore<D>,
@@ -306,10 +339,15 @@ export function createRunCreation<D extends AgentDefinitions>(
     // COR-323 — every run belongs to a catalog agent. The implicit `bureau` agent, which ran on
     // Bureau-wide `generate`/`toolbox` options, no longer exists, so a session stored under it
     // answers as any unknown agent does.
-    const resolution = await runtime.resolveSessionAgentRun(agentName, runId, owner, undefined, {
-      sessionId,
-      metadata: session?.metadata,
-    });
+    // COR-2429 — the command id a start carries is the only evidence it gives; whether it may run
+    // on a disabled agent is `admitsRunOnDisabledAgent`'s to decide (`continuationRecord`).
+    const resolution = await runtime.resolveSessionAgentRun(
+      agentName,
+      runId,
+      owner,
+      continuationRecord(sessionId, session, request),
+      { sessionId, metadata: session?.metadata },
+    );
     if (resolution.status === 'missing-agent') throw peers.missingAgentError(agentName);
     if (resolution.status === 'not-durable-capable') {
       throw new BureauError(

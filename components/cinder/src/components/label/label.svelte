@@ -1,16 +1,4 @@
 <script lang="ts" module>
-  /**
-   * @cinder
-   * @category form
-   * @status stable
-   * @purpose Standalone label primitive that associates text with a custom control via for and matches the visual treatment of built-in inputs.
-   * @tag form
-   * @tag primitive
-   * @useWhen Building a hand-rolled field that wraps multiple inputs needing one shared label.
-   * @useWhen Matching the disabled or required visual treatment of cinder inputs on a custom control.
-   * @avoidWhen Labelling a built-in input that already renders its own label prop — pass label instead.
-   * @related form-field, input, checkbox, radio-group
-   */
   export type { LabelProps } from './label.types.ts';
 </script>
 

@@ -1,10 +1,10 @@
 /** Structural and namespace convention collection for public components. */
 
+import { hasSubstantiveTest } from '@lostgradient/component-tooling/scripts/component-conventions-tests.ts';
 import { requiredValue } from '@lostgradient/testing';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { parse } from 'svelte/compiler';
-import { hasSubstantiveTest } from '../scripts/component-conventions-tests.ts';
 import {
   findPropsDeclaration,
   findPropsObjectPattern,

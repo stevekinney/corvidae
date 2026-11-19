@@ -31,7 +31,7 @@ Once a day, or before a release, launch `bun run harden` in the background, neve
 
 - One batch gets one branch, one worktree, and one change. Claim every issue in the batch against it, naming the others in each claim.
 - Use one commit per issue where the work separates, and name every issue in the squash commit. Reference issues with a non-closing word such as `Refs`, never `Fixes` or `Closes`.
-- Pass `deliver.ts` one `--issue <ID> --completion-file <md>` pair per issue and `--closes <ID>` for each issue the delivery completes; an issue the change only partly delivers gets no `--closes`.
+- Put each issue's assignment and evidence plan in its own approved delivery-request member. Set `track: true` to post its collected report and `requestedClose: true` only when this delivery owns its full completion boundary. Independent satisfied members close while members with pending obligations remain open; inspect `leftOpen` even when `deliver.ts` exits 0.
 - An issue has stalled after two failed corrections, a new native blocker, or a wait on an owner decision. Move its commits to a branch of its own, ship the rest, and return it to the queue with a `Blocked` or `Handoff` comment.
 
 ## Report at the project level

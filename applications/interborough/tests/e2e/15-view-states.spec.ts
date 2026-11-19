@@ -123,11 +123,11 @@ function jsonRpcProbe(method: string): ProbeRoute {
   };
 }
 
-/** A Bureau operation's request is a JSON-RPC call to `/bureau/jsonrpc`, answered with `empty` when the view is empty. */
+/** A Bureau operation's request is a JSON-RPC call to `/jsonrpc`, answered with `empty` when the view is empty. */
 function bureauProbe(method: string, empty: unknown): ProbeRoute {
   return {
-    url: /\/bureau\/jsonrpc/,
-    matches: (url, body) => url.pathname === '/bureau/jsonrpc' && body.includes(`"${method}"`),
+    url: /\/jsonrpc/,
+    matches: (url, body) => url.pathname.endsWith('/jsonrpc') && body.includes(`"${method}"`),
     empty,
   };
 }
@@ -166,7 +166,7 @@ const PROBES: Readonly<Record<ProbedView, ProbeRoute>> = {
     url: /\/(bureau\/)?jsonrpc/,
     matches: (url, body) =>
       (url.pathname.endsWith('/jsonrpc') && body.includes('"weft.workflows.definitions.list"')) ||
-      (url.pathname === '/bureau/jsonrpc' && body.includes('"bureau.workflows.list"')),
+      (url.pathname.endsWith('/jsonrpc') && body.includes('"bureau.workflows.list"')),
     empty: { definitions: [] },
     emptyFor: (body) =>
       body.includes('"bureau.workflows.list"')
@@ -179,9 +179,9 @@ const PROBES: Readonly<Record<ProbedView, ProbeRoute>> = {
   // with a list of rows beneath it would not be the first-use state, and a failed probe over a list
   // that loaded would not be the error.
   runs: {
-    url: /\/bureau\/jsonrpc/,
+    url: /\/jsonrpc/,
     matches: (url, body) =>
-      url.pathname === '/bureau/jsonrpc' && /"bureau\.(tasks|goals)\.list"/.test(body),
+      url.pathname.endsWith('/jsonrpc') && /"bureau\.(tasks|goals)\.list"/.test(body),
     empty: { tasks: [], nextPageToken: null },
     emptyFor: (body) =>
       body.includes('"bureau.tasks.list"')
@@ -591,7 +591,7 @@ for (const width of WIDTHS) {
   }) => {
     await page.setViewportSize({ width, height: 900 });
     // Never answered: the list stays a skeleton for as long as the page is open.
-    await page.route('**/bureau/jsonrpc', async (route) => {
+    await page.route('**/jsonrpc', async (route) => {
       if ((route.request().postData() ?? '').includes('"bureau.health.attention"')) return;
       await route.fallback();
     });
@@ -662,7 +662,7 @@ async function answerMemory(
   page: Page,
   handlers: Readonly<Record<string, (params: Record<string, unknown>) => unknown>>,
 ): Promise<void> {
-  await page.route('**/bureau/jsonrpc', async (route) => {
+  await page.route('**/jsonrpc', async (route) => {
     const body = JSON.parse(route.request().postData() ?? '{}') as {
       id?: unknown;
       method?: string;
@@ -755,7 +755,7 @@ for (const width of WIDTHS) {
   }) => {
     await page.setViewportSize({ width, height: 900 });
     pageErrors.expectEvery({
-      pattern: loggedFailedResponse(422, /\/bureau\/jsonrpc/),
+      pattern: loggedFailedResponse(422, /\/jsonrpc/),
       reason: 'the test refuses the release, as the checks do for a memory that is flagged again',
     });
     await answerMemory(page, {
@@ -764,7 +764,7 @@ for (const width of WIDTHS) {
           ? { memories: QUARANTINED_THREE, nextOffset: null }
           : { memories: [], nextOffset: null },
     });
-    await page.route('**/bureau/jsonrpc', async (route) => {
+    await page.route('**/jsonrpc', async (route) => {
       const body = JSON.parse(route.request().postData() ?? '{}') as {
         id?: unknown;
         method?: string;
@@ -889,10 +889,10 @@ for (const width of WIDTHS) {
   }) => {
     await page.setViewportSize({ width, height: 900 });
     pageErrors.expectEvery({
-      pattern: loggedFailedResponse(403, /\/bureau\/jsonrpc/),
+      pattern: loggedFailedResponse(403, /\/jsonrpc/),
       reason: 'the test refuses the quarantined list, as a caller without bureau.memory:govern is',
     });
-    await page.route('**/bureau/jsonrpc', async (route) => {
+    await page.route('**/jsonrpc', async (route) => {
       const body = JSON.parse(route.request().postData() ?? '{}') as {
         id?: unknown;
         method?: string;
@@ -1097,7 +1097,7 @@ for (const width of WIDTHS) {
   }) => {
     await page.setViewportSize({ width, height: 900 });
     pageErrors.expectEvery({
-      pattern: loggedFailedResponse(404, /\/bureau\/jsonrpc/),
+      pattern: loggedFailedResponse(404, /\/jsonrpc/),
       reason: 'the test answers the verdict as the Bureau does for a goal the caller does not own',
     });
     // The goal reads as another person's, so the missing verdict is private, not "not judged yet".
@@ -1118,7 +1118,7 @@ for (const width of WIDTHS) {
   }) => {
     await page.setViewportSize({ width, height: 900 });
     pageErrors.expectEvery({
-      pattern: loggedFailedResponse(404, /\/bureau\/jsonrpc/),
+      pattern: loggedFailedResponse(404, /\/jsonrpc/),
       reason: 'the test answers the verdict as the Bureau does for an attempt with none yet',
     });
     await refuseMethod(page, 'bureau.goals.verdict', 404, {
@@ -1141,7 +1141,7 @@ for (const width of WIDTHS) {
   }) => {
     await page.setViewportSize({ width, height: 900 });
     pageErrors.expectEvery({
-      pattern: loggedFailedResponse(503, /\/bureau\/jsonrpc/),
+      pattern: loggedFailedResponse(503, /\/jsonrpc/),
       reason: 'the test answers the verdict with a 503, the read that failed',
     });
     await refuseMethod(page, 'bureau.goals.verdict', 503, {
@@ -1231,7 +1231,7 @@ for (const width of WIDTHS) {
     // The form sends nothing a client can refuse; if it sends the empty setting, the Bureau refuses
     // it as it does a required field that is missing, and the field says so either way.
     pageErrors.expectEvery({
-      pattern: loggedFailedResponse(400, /\/bureau\/jsonrpc/),
+      pattern: loggedFailedResponse(400, /\/jsonrpc/),
       reason: 'the test answers a create that carries no setting with the Bureau’s refusal',
     });
     await answerWith(page, 'bureau.validators.list', { validators: ALL_SOURCES });
@@ -1256,7 +1256,7 @@ for (const width of WIDTHS) {
   }) => {
     await page.setViewportSize({ width, height: 900 });
     pageErrors.expectEvery({
-      pattern: loggedFailedResponse(400, /\/bureau\/jsonrpc/),
+      pattern: loggedFailedResponse(400, /\/jsonrpc/),
       reason: 'the test answers the create with the refusal the Bureau gives a setting it rejects',
     });
     await answerWith(page, 'bureau.validators.list', { validators: ALL_SOURCES });
@@ -1298,7 +1298,7 @@ for (const width of WIDTHS) {
   }) => {
     await page.setViewportSize({ width, height: 900 });
     pageErrors.expectEvery({
-      pattern: loggedFailedResponse(503, /\/bureau\/jsonrpc/),
+      pattern: loggedFailedResponse(503, /\/jsonrpc/),
       reason: 'the test answers the list of checks with a 503',
     });
     await refuseMethod(page, 'bureau.validators.list', 503, {
@@ -1466,7 +1466,7 @@ async function answerRetry(
   const gate = new Promise<void>((resolve) => {
     release = resolve;
   });
-  await page.route('**/bureau/jsonrpc', async (route) => {
+  await page.route('**/jsonrpc', async (route) => {
     const body = JSON.parse(route.request().postData() ?? '{}') as {
       method?: string;
       id?: unknown;
@@ -1511,7 +1511,7 @@ async function changeBureau(
   page: Page,
   changes: Readonly<Record<string, (result: unknown, params: Record<string, unknown>) => unknown>>,
 ): Promise<void> {
-  await page.route('**/bureau/jsonrpc', async (route) => {
+  await page.route('**/jsonrpc', async (route) => {
     const body = JSON.parse(route.request().postData() ?? '{}') as {
       method?: string;
       params?: Record<string, unknown>;
@@ -1973,7 +1973,13 @@ test.describe('trigger state', () => {
       // Searching for the area narrows the list to the trigger events, under their group.
       await picker.fill('Triggers');
       await expect(page.getByRole('listbox')).toContainText('Triggers');
-      await expect(page.getByRole('option').filter({ hasText: 'trigger.' }).first()).toBeVisible();
+      // Each event reads in words (R10-23), "Trigger fired", not its raw kind.
+      await expect(
+        page
+          .getByRole('option')
+          .filter({ hasText: /\bTrigger\b/ })
+          .first(),
+      ).toBeVisible();
       await captureForDesignReview(page, {
         route: '/hooks/new',
         state: 'trigger-events-picker',

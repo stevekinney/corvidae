@@ -1,19 +1,4 @@
 <script lang="ts" module>
-  /**
-   * @cinder
-   * @category data-display
-   * @status stable
-   * @purpose Composite root that renders a hierarchical tree of tree-item nodes with keyboard navigation and selection state.
-   * @tag tree
-   * @tag hierarchy
-   * @useWhen Presenting hierarchical data such as a file system, organization, or nested categories.
-   * @useWhen Coordinating single- or multi-select state across all descendant tree-items via the selectionMode prop.
-   * @avoidWhen Disclosing flat sibling sections — use accordion instead.
-   * @avoidWhen Switching between sibling views of the same region — use tabs instead.
-   * @avoidWhen Showing an in-page heading outline. | table-of-contents
-   * @avoidWhen Providing vertical sidebar route navigation. | side-navigation
-   * @related tree-item, table-of-contents, side-navigation, accordion
-   */
   export type {
     TreeFilterPredicate,
     TreeProps,

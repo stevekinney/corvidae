@@ -62,6 +62,7 @@
   import {
     activityText,
     availableRow,
+    disabledRow,
     holdingPlugins,
     rowMatches,
     sortByActivity,
@@ -119,9 +120,15 @@
 
   // The agents that can run, most recently used first; an unavailable agent is one the Bureau does
   // not list as able to run, so an agent in both lists is available.
-  const availableRows = $derived(
-    sortByActivity((agents.data ?? []).map((agent) => availableRow(agent, usage.get(agent.name)))),
-  );
+  // An agent a person disabled (COR-2429) stays among them, marked Disabled, so it can be enabled again.
+  const availableRows = $derived.by(() => {
+    const running = (agents.data ?? []).map((agent) => availableRow(agent, usage.get(agent.name)));
+    const listed = new Set(running.map((row) => row.id));
+    const disabledRows = (definitions.data ?? [])
+      .filter((entry) => entry.state === 'disabled' && !listed.has(entry.id))
+      .map((entry) => disabledRow(entry, usage.get(entry.id)));
+    return sortByActivity([...running, ...disabledRows]);
+  });
   const heldRows = $derived.by(() => {
     const running = new Set(availableRows.map((row) => row.id));
     return (definitions.data ?? [])

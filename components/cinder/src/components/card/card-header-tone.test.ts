@@ -3,7 +3,7 @@ import { afterEach, describe, expect, test } from 'bun:test';
 
 import { setupHappyDom } from '@lostgradient/testing';
 
-import { declarationsFor } from '../../test/css.ts';
+import { declarationsFor } from '@lostgradient/component-tooling/test/css.ts';
 
 setupHappyDom();
 

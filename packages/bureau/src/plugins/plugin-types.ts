@@ -358,6 +358,19 @@ export type PluginProblem =
       readonly contentDigest: string;
     }
   | {
+      /**
+       * A hook the plugin declares (COR-2180) was skipped alone: it names a reaction the plugin does
+       * not contribute, lists an event kind that is not published, repeats a name, or was refused
+       * when it was reconciled. The plugin and its other hooks load. It names the hook and the
+       * field, never the reason in words.
+       */
+      readonly code: 'hook-invalid';
+      /** The hook's name, cut to 100 characters; empty when it has none. */
+      readonly hook: string;
+      /** The field the hook was refused at. */
+      readonly path: HookInvalidPath;
+    }
+  | {
       /** `start` threw or rejected; the plugin's contributions stay registered. */
       readonly code: 'start-failed';
       /** The error's message, with every secret value the plugin was handed removed. */
@@ -376,6 +389,13 @@ export type PluginProblem =
       /** The failure's message, with every secret value the plugin was handed removed. */
       readonly message: string;
     };
+
+/**
+ * The field a `hook-invalid` problem names. A hook that is not an object is reported at `name`;
+ * `declaration` is a reconcile refusal that names no field of the hook (`reconcile-plugin-hooks.ts`).
+ */
+export type HookInvalidPath =
+  'name' | 'reaction' | 'events' | 'configuration' | 'scope' | 'declaration';
 
 /** Fails to compile when `PluginProblem` and `PLUGIN_PROBLEM_CODES` disagree on the codes. */
 export type PluginProblemCodesAgree = AssertTrue<
@@ -534,6 +554,12 @@ export interface PluginReactionListing {
    * a kind without one cannot be tested.
    */
   readonly dryRun: boolean;
+  /**
+   * Whether the kind can run now (COR-2181): `needs-setup` while a secret its plugin declared is
+   * missing, which is when a hook of it waits instead of running, and `available` otherwise. Read
+   * when the list is asked for, so a secret saved since is seen without a restart.
+   */
+  readonly availability: 'available' | 'needs-setup';
   /** The kind's configuration schema as JSON Schema, or `null` when it cannot be written as one. */
   readonly configuration: Readonly<Record<string, unknown>> | null;
 }

@@ -1,17 +1,4 @@
 <script lang="ts" module>
-  /**
-   * @cinder
-   * @category overlay
-   * @status stable
-   * @purpose Compose-only trigger region that opens a context-menu on right-click or touch long-press.
-   * @tag overlay
-   * @tag menu
-   * @useWhen Wrapping the region that should own contextual actions inside ContextMenu.
-   * @useWhen Pairing pointer-positioned menu behavior with dropdown menu items.
-   * @avoidWhen Used outside context-menu — it requires the ContextMenu provider.
-   * @avoidWhen Opening a normal click menu from a visible button — use dropdown-trigger.
-   * @related context-menu, dropdown-trigger
-   */
   export type { ContextMenuTriggerProps } from './context-menu-trigger.types.ts';
 </script>
 

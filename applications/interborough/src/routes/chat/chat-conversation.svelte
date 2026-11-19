@@ -40,7 +40,7 @@
    * the address becomes `/chats/:chat` by replacing the history entry, with this page kept
    * mounted (`router.navigate`'s `keep`), and the agent is fixed from then on.
    */
-  import { onMount, tick, untrack } from 'svelte';
+  import { onDestroy, onMount, tick, untrack } from 'svelte';
   import { MediaQuery } from 'svelte/reactivity';
   import type { McpUiHostContext } from '@modelcontextprotocol/ext-apps/app-bridge';
 
@@ -57,9 +57,9 @@
     type ApprovalResolution,
   } from '@lostgradient/cinder';
   import {
-    approvalArrivalBox,
-    approvalArrivalShift,
+    approvalPlacementShift,
     Chat,
+    CHAT_OVERLAY_INSET_START_PROPERTY,
     ChatNote,
     ChatQuestion,
     createConversationHistory,
@@ -96,7 +96,7 @@
     chatAttachmentErrorMessage,
     createAttachmentUpload,
   } from '../../lib/chat-attachments.ts';
-  import { getAgentCatalog, getAgentDefinition } from '../../lib/agent-definitions.ts';
+  import { enableAgent, getAgentCatalog, getAgentDefinition } from '../../lib/agent-definitions.ts';
   import { agentLabel } from '../../lib/agent-label.ts';
   import { agentPath } from '../../lib/agent-paths.ts';
   import { getPlugins } from '../../lib/host-plugins.ts';
@@ -126,6 +126,7 @@
   import { downloadText } from '../audit/audit-export.ts';
   import { useMinuteClock } from '../home/home-clock.svelte.ts';
   import { modelInUse } from './agent-model.ts';
+  import { createApprovalPlacement } from './approval-placement.ts';
   import BranchOrigin from './branch-origin.svelte';
   import ChatApproval from './chat-approval.svelte';
   import { branchPointIds } from './branch-points.ts';
@@ -425,17 +426,35 @@
     () => ({
       queryKey: queryKeys.agents.definition(agent),
       queryFn: ({ signal }) => getAgentDefinition(agent, { signal }),
-      enabled: !choosing && agent.includes(':'),
+      // COR-2429: an agent the list leaves out may also be one a person disabled, which the
+      // definition says.
+      enabled:
+        !choosing &&
+        (agent.includes(':') ||
+          (agents.data !== undefined && !agents.data.some((entry) => entry.name === agent))),
       retry: false,
     }),
     undefined,
   );
   const agentUnavailable = $derived(definition.data?.state === 'unavailable');
+  // COR-2429: a person disabled the agent, so the chat is read-only until it is enabled again.
+  const agentDisabled = $derived(definition.data?.state === 'disabled');
   // What the agent is called where a person reads it: its display name, in words (`tool-runner`
   // reads "Tool runner"). An agent held back by a plugin is not in the catalog, so its name is the
   // definition's, without the plugin's prefix.
   const unavailableName = $derived(agentLabel(definition.data?.name ?? agent, undefined));
-  const agentShown = $derived(agentUnavailable ? unavailableName : agentLabel(agent, agents.data));
+  const agentShown = $derived(
+    agentUnavailable || agentDisabled ? unavailableName : agentLabel(agent, agents.data),
+  );
+  /** Enables the disabled agent, from the composer, and reads the agent again. */
+  async function enableDisabledAgent(): Promise<void> {
+    try {
+      await enableAgent(agent);
+    } finally {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.agents.definition(agent) });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.agents.list() });
+    }
+  }
   // The server stopped the chat when it restarted, so its run cannot continue.
   const endedByRestart = $derived(context.data?.endReason === 'host-stopped');
   // What the catalog says of each tool, for its name as a person reads it and for what an
@@ -517,6 +536,9 @@
   // stays readable. Archive is refused while a run goes or waits on the person, so no approval or
   // question can wait under the bar.
   const archivedAt = $derived(choosing ? null : (context.data?.archivedAt ?? null));
+  // A read-only chat offers no Regenerate or Try again: either would start a run its agent may not
+  // start (COR-2429, design review 2).
+  const mayRegenerate = $derived(archivedAt === null && !agentDisabled && !agentUnavailable);
   let archiving = $state(false);
   /**
    * Archives the chat or unarchives it (`chat-archive.ts`). Unarchived from the bar, the composer
@@ -553,6 +575,9 @@
             plugin: pluginTitle,
             enable: () => (confirmingEnable = true),
           }
+        : undefined,
+      disabledAgent: agentDisabled
+        ? { agent: unavailableName, enable: () => void enableDisabledAgent() }
         : undefined,
       ended: endedByRestart,
       // A missing model provider is Chat's `unconfigured` availability here (COR-2285 V4), not the
@@ -768,6 +793,31 @@
   }
 
   let route = $state<HTMLElement | undefined>();
+  let head = $state<HTMLElement | undefined>();
+  // The header is laid over the top of the conversation on a translucent ground, so the transcript
+  // scrolls under it. Its height is the transcript's top inset (Chat's overlay inset property,
+  // read by Chat for the first row, for scrolling to a row and for placing an approval), kept as
+  // the header grows and shrinks with its banners and alerts.
+  $effect(() => {
+    const element = head;
+    const owner = route;
+    if (element === undefined || owner === undefined || typeof ResizeObserver === 'undefined')
+      return;
+    const write = (): void => {
+      owner.style.setProperty(
+        CHAT_OVERLAY_INSET_START_PROPERTY,
+        `${element.getBoundingClientRect().height}px`,
+      );
+      approvalPlacement.headerChanged();
+    };
+    write();
+    const observer = new ResizeObserver(write);
+    observer.observe(element);
+    return () => {
+      observer.disconnect();
+      owner.style.removeProperty(CHAT_OVERLAY_INSET_START_PROPERTY);
+    };
+  });
   /** The frames to wait for the approval's row to be drawn before giving up on bringing the person to it. */
   const ARRIVAL_FRAMES = 20;
   /**
@@ -800,18 +850,30 @@
   function bringApprovalIntoView(row: HTMLElement): void {
     const transcript = row.closest<HTMLElement>('.chat-timeline');
     if (transcript !== null) {
-      const card = row.getBoundingClientRect();
-      // Chat's own rule against Chat's own box, the transcript without the reminder, so this and
-      // Chat's arrival placement agree and the reminder cannot move the card (COR-2327).
-      const box = approvalArrivalBox(transcript);
-      // A layout not yet measured (zero-sized boxes) says nothing about fit: centre the card.
-      if (card.height > 0 && box.bottom - box.top > 0) {
-        transcript.scrollTop += approvalArrivalShift(card, box);
+      // Chat's own rule (the card and the row that labels it as one unit, in the box under the
+      // header, resting at the end only where that clears the header), so this and Chat's arrival
+      // placement agree and the reminder cannot move the card (COR-2327).
+      const shift = approvalPlacementShift(transcript, row);
+      // A layout not yet measured says nothing about fit: centre the card.
+      if (shift !== null) {
+        transcript.scrollTop += shift;
+        approvalPlacement.placed(transcript);
+        placedApprovalRow = row;
         return;
       }
     }
     row.scrollIntoView?.({ block: 'center' });
   }
+
+  // The header's title and status arrive after the chat opens, so it is taller when it settles than
+  // when the approval was placed: while the arrival placement is in force (until the person's first
+  // scrolling input; never the placement's own scroll, nor where focus is), a change in the header's
+  // height places the approval again (`approval-placement.ts`).
+  let placedApprovalRow: HTMLElement | undefined;
+  const approvalPlacement = createApprovalPlacement(() => {
+    if (placedApprovalRow?.isConnected) bringApprovalIntoView(placedApprovalRow);
+  });
+  onDestroy(() => approvalPlacement.release());
 
   /** Scrolls the first approval's row into view and focuses it, once it is drawn. */
   async function focusApproval(): Promise<void> {
@@ -2006,7 +2068,7 @@
     <!-- The header, the runs line and the alerts sit in the conversation's own column, at the
          transcript's inset, so the title, each line under it, the transcript and the composer share
          one left edge at every width (COR-2327 B4). -->
-    <div class="weft-chat-head">
+    <div class="weft-chat-head cinder-translucent-surface" bind:this={head}>
       <!-- While the host restarts for this chat's plugin the conversation stays on screen at full
          contrast, and the shared restart preset says what is happening above the heading (row 20e):
          no action while the restart is asked for, Retry now once the host stopped answering. A
@@ -2093,6 +2155,8 @@
             <p class="weft-chat-approval__message">
               {session.regeneration.error ?? CHAT_COPY.regeneration.failed}
             </p>
+          {/if}
+          {#if session.regeneration.status === 'failed' && mayRegenerate}
             <Button
               size="sm"
               variant="secondary"
@@ -2110,7 +2174,7 @@
         id={`chat-${sessionId}`}
         conversation={choosing ? unstartedConversation : shown}
         adapter={chatAdapter}
-        {...archivedAt === null ? { onRegenerate: regenerateAnswer } : {}}
+        {...mayRegenerate ? { onRegenerate: regenerateAnswer } : {}}
         messageStatus={regenerationStatus}
         {availability}
         {...choosing ? { empty: newChatEmpty } : {}}

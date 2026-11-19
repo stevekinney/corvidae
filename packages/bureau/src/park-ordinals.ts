@@ -34,6 +34,8 @@ export type CheckpointParks = {
     readonly signalName: string;
     readonly prompt: string | undefined;
     readonly inputSchema?: HumanInputSchema | undefined;
+    /** COR-2426 — what the agent wrote beside the call that parked, as the park kept it. */
+    readonly said?: string | undefined;
     readonly ordinal: number;
   };
 };
@@ -61,6 +63,7 @@ export function countCheckpointParks(steps: readonly CheckpointStep[]): Checkpoi
         signalName: park.signalName,
         prompt: park.prompt,
         ...(park.inputSchema === undefined ? {} : { inputSchema: park.inputSchema }),
+        ...(park.said === undefined ? {} : { said: park.said }),
         ordinal: priorParks,
       },
     };

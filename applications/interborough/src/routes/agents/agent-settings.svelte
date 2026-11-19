@@ -26,6 +26,10 @@
    * a file, or whose plugin is disabled, shows its model and the models a chat may be switched to
    * read-only, with no Delete and no versions, and says why in one line.
    *
+   * An agent defined in code ends the tab with Disable this agent (row 38y): Disable agent asks
+   * first, naming the chats that stay and what stops finding it, with no typed confirmation because
+   * it is reversible (row 40d), and once the agent is disabled Enable agent takes its place.
+   *
    * Every write names the hash of the file the page read, so a file that changed since is refused
    * instead of overwritten, and the page says so. A read of the file that lands while the form
    * holds changes never overwrites them. The tab bar names the tab, so the body repeats no heading
@@ -56,7 +60,9 @@
     agentFaultOf,
     DEFAULT_STEP_LIMIT,
     deleteAgent,
+    disableAgent,
     EFFORTS,
+    enableAgent,
     getAgentCatalog,
     listAgentReferences,
     listAgentVersions,
@@ -66,6 +72,7 @@
     type AgentFault,
     type Effort,
   } from '../../lib/agent-definitions.ts';
+  import { agentLabel } from '../../lib/agent-label.ts';
   import { AGENT_TABS, agentTabPath, pluginOfAgent } from '../../lib/agent-paths.ts';
   import { getProviders } from '../../lib/host-providers.ts';
   import { keyedByOccurrence } from '../../lib/list-keys.ts';
@@ -73,6 +80,7 @@
   import { LeaveGuard, router } from '../../lib/router.svelte.ts';
   import {
     abilitiesOf,
+    abilitiesSentence,
     modelGroups,
     NO_RESTRICTIONS,
   } from '../agent-editor/agent-editor-models.ts';
@@ -268,15 +276,31 @@
       : [{ value: model, label: model === '' ? copy.modelNone : modelName(model) }, ...offered];
   });
 
-  /** What the chosen model can do, in one muted line. */
+  /**
+   * The catalog's own row of the model, when the field offers none: a provider whose key is not
+   * saved keeps its rows in the catalog, `unavailable` (COR-2143), and the field leaves them out,
+   * but what the model can do is still known from its row (row 38u, design review 2). Found by its
+   * identifier or by one of its aliases (`anthropic/sonnet`).
+   */
+  const ownRow = $derived(
+    modelRow ??
+      catalog.data?.models.find(
+        (row) =>
+          `${row.provider}/${row.model}` === model ||
+          row.aliases.some((entry) => `${row.provider}/${entry.alias}` === model),
+      ),
+  );
+
+  /** What the chosen model can do, in one muted line, connected or not. */
   const abilityLine = $derived.by(() => {
-    if (modelRow === undefined) return '';
-    const abilities = abilitiesOf(modelRow);
+    if (ownRow === undefined) return '';
     const words = AGENT_EDITOR_COPY.model;
-    return [
+    const abilities = abilitiesOf(ownRow);
+    // As a sentence reads: "Tools, images, streaming, 1M context window" (design review 3).
+    return abilitiesSentence([
       ...abilities.has.map((ability) => words.abilities[ability]),
       words.context(abilities.context),
-    ].join(', ');
+    ]);
   });
 
   /** The provider of the model, when the host says it holds no key (row 38u). */
@@ -454,6 +478,48 @@
     if (hash !== null) removal.mutate(hash);
   }
 
+  // ── Disable and enable (rows 38y and 40d) ────────────────────────────────────────────────────
+
+  /** An agent defined in code can be disabled but not deleted; a disabled plugin's runs nothing already. */
+  // A code agent the page changes arrives shaped as a file (`overridableDetail`), with `overrides` set.
+  const disableable = $derived(
+    (detail?.source === 'code' || overrides !== undefined) && !unavailable,
+  );
+  const disabled = $derived(detail?.state === 'disabled');
+  /** The agent's name as the agents list says it ("Tool runner"), for the Disable block and question. */
+  const shownName = $derived(agentLabel(name, undefined));
+  let confirmingDisable = $state(false);
+
+  // What finds the agent, read once the disable question opens: the same read the delete question uses.
+  const disableReferences = createQuery(
+    () => ({
+      queryKey: queryKeys.agents.references(id),
+      queryFn: ({ signal }) => listAgentReferences(id, { signal }),
+      enabled: confirmingDisable,
+      retry: false,
+    }),
+    undefined,
+  );
+
+  const toggle = createMutation(() => ({
+    mutationFn: (next: 'disable' | 'enable') =>
+      next === 'disable' ? disableAgent(id) : enableAgent(id),
+    onMutate: () => {
+      problem = null;
+    },
+    onSuccess: () => {
+      confirmingDisable = false;
+      void queryClient.invalidateQueries({ queryKey: queryKeys.agents.definition(id) });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.agents.definitions() });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.agents.list() });
+    },
+    onError: (error, next) =>
+      refuse(
+        agentFaultOf(error),
+        next === 'disable' ? copy.disable.failed : copy.disable.enableFailed,
+      ),
+  }));
+
   /** The version open read-only in the form's place, or `null` while the form shows. */
   let viewing = $state<number | null>(null);
 
@@ -481,7 +547,7 @@
             title={pluginTitle}
             mode={unavailable ? 'unavailable' : 'read-only'}
           />
-        {:else if !isFile}
+        {:else if !isFile && !disabled}
           <p class="ib-agent-note" data-testid="agent-built-in">{copy.builtIn}</p>
         {/if}
         <dl class="ib-agent-settings__list">
@@ -561,7 +627,7 @@
                 title={copy.noProvider.title(unconnected)}
                 data-testid="agent-settings-no-provider"
               >
-                <p>{copy.noProvider.description(name)}</p>
+                <p>{copy.noProvider.description(shownName)}</p>
                 {#snippet action()}
                   <Button
                     href={router.href(SETTINGS_MODELS_PATH)}
@@ -672,21 +738,81 @@
       {#if viewing === null && overrides === undefined}
         <!-- Demoted: the dialog holds the solid danger button (row 39a). -->
         <section class="ib-agent-section" aria-label={copy.deleteHeading}>
-          <SectionHeading level={2} title={copy.deleteHeading} description={copy.deleteNote} />
-          <div>
-            <Button
-              data-changes
-              variant="ghost-danger"
-              size="sm"
-              disabled={hash === null || removal.isPending}
-              onclick={() => (confirmingDelete = true)}>{copy.deleteAction}</Button
-            >
-          </div>
+          <!-- The action at the inline end, as the Disable block's is. -->
+          <SectionHeading level={2} title={copy.deleteHeading} description={copy.deleteNote}>
+            {#snippet actions()}
+              <Button
+                data-changes
+                variant="ghost-danger"
+                size="sm"
+                disabled={hash === null || removal.isPending}
+                onclick={() => (confirmingDelete = true)}>{copy.deleteAction}</Button
+              >
+            {/snippet}
+          </SectionHeading>
         </section>
       {/if}
     {/if}
+
+    {#if disableable && viewing === null}
+      <!-- Last on the tab: an agent defined in code is disabled, never deleted, and Enable agent
+           takes Disable's place once it is (rows 38y, 40d). -->
+      <section
+        class="ib-agent-section"
+        aria-label={disabled ? copy.disable.enabledHeading : copy.disable.heading}
+        data-testid="agent-disable"
+      >
+        <!-- The action sits at the inline end, through the heading's actions (design review 1). -->
+        {#if disabled}
+          <SectionHeading
+            level={2}
+            title={copy.disable.enabledHeading}
+            description={copy.disable.enabledNote(shownName)}
+          >
+            {#snippet actions()}
+              <Button
+                data-changes
+                variant="secondary"
+                size="sm"
+                loading={toggle.isPending}
+                onclick={() => toggle.mutate('enable')}>{copy.disable.enable}</Button
+              >
+            {/snippet}
+          </SectionHeading>
+        {:else}
+          <SectionHeading
+            level={2}
+            title={copy.disable.heading}
+            description={copy.disable.note(
+              shownName,
+              plugin === null ? null : pluginTitle || plugin,
+            )}
+          >
+            {#snippet actions()}
+              <Button
+                data-changes
+                variant="ghost-danger"
+                size="sm"
+                disabled={toggle.isPending}
+                onclick={() => (confirmingDisable = true)}>{copy.disable.action}</Button
+              >
+            {/snippet}
+          </SectionHeading>
+        {/if}
+      </section>
+    {/if}
   {/if}
 </div>
+
+<!-- Reversible, so it asks without a typed confirmation (row 40d). -->
+<ConfirmDialog
+  bind:open={confirmingDisable}
+  title={copy.disable.dialog.title(shownName)}
+  description={copy.disable.dialog.description(chats, dependentsLine(disableReferences.data))}
+  confirmLabel={copy.disable.dialog.confirm}
+  destructive
+  onConfirm={() => toggle.mutate('disable')}
+/>
 
 <ConfirmDialog
   bind:open={confirmingDelete}

@@ -284,7 +284,30 @@ describe('CodeBlock — numeric tokens (row 07s)', () => {
     const css = await Bun.file(new URL('./code-block.css', import.meta.url)).text();
 
     expect(css).toMatch(
-      /span\.cinder-code-block__number\[style\*='--shiki-dark:#79b8ff' i\]\s*\{\s*--shiki-dark:\s*oklch\(82% 0\.14 75\)\s*!important;/,
+      /span\.cinder-code-block__number\[style\*='--shiki-dark:#79b8ff' i\]\s*\{\s*--shiki-dark:\s*var\(--cinder-code-block-number\)\s*!important;/,
     );
+  });
+
+  test('the number token is the agreed amber in the corpus and in every theme (COR-2394)', async () => {
+    const corpus = (await Bun.file(
+      new URL('../../tokens/sets/components.tokens.json', import.meta.url),
+    ).json()) as {
+      'code-block': { number: { $value: unknown; $extensions: Record<string, unknown> } };
+    };
+    const token = corpus['code-block'].number;
+    expect(token.$value).toEqual({ colorSpace: 'oklch', components: [0.82, 0.14, 75] });
+    expect(token.$extensions['com.lostgradient.cinder']).toMatchObject({
+      cssProperty: '--cinder-code-block-number',
+      cssRecipe: 'oklch(82% 0.14 75)',
+    });
+
+    // One declaration in the generated stylesheet: no theme block overrides the amber.
+    const tokensBase = await Bun.file(
+      new URL('../../styles/tokens-base.css', import.meta.url),
+    ).text();
+    const declarations = [
+      ...tokensBase.matchAll(/^\s*--cinder-code-block-number:\s*([^;]+);/gm),
+    ].map((match) => match[1]);
+    expect(declarations).toEqual(['oklch(82% 0.14 75)']);
   });
 });

@@ -1,16 +1,4 @@
 <script lang="ts" module>
-  /**
-   * @cinder
-   * @category feedback
-   * @status alpha
-   * @purpose Render a read-only terminal stream with a bounded subset of ANSI SGR color and line-rewrite behavior.
-   * @tag terminal
-   * @tag ansi
-   * @tag output
-   * @useWhen Showing command output or logs that include basic ANSI styling and carriage-return progress updates.
-   * @avoidWhen Hosting an interactive real PTY — use terminal-frame.
-   * @related terminal-frame, code-block
-   */
   export type {
     TerminalForeground,
     TerminalLine,

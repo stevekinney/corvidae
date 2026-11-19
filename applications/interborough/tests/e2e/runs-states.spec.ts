@@ -20,17 +20,19 @@ import {
 } from '../../fixtures/sample-now.ts';
 import { readSampleWorldRecords } from '../../fixtures/sample-world-records.ts';
 import { SIGNAL_WAIT_WORD } from '../../src/app/copy/tasks.ts';
+import { rewriteBureauAnswer } from './bureau-answer-support.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
 import { E2E_SHOWCASE_URL } from './e2e-constants.ts';
 import { expect, loggedFailedResponse, test } from './fixtures.ts';
 import { readBoxes } from './read-boxes.ts';
+import { textLines } from './text-lines.ts';
 
 test.use({ baseURL: E2E_SHOWCASE_URL, timezoneId: SAMPLE_TIME_ZONE });
 
 const SOURCE = 'runs-states.spec.ts';
 const WIDTHS = [1280, 375] as const;
 /** Every request the page makes of the host, which a test takes away to make the server stop answering. */
-const HOST_REQUESTS = /\/(v1|bureau|api)\//;
+const HOST_REQUESTS = /\/(v1|bureau|api)\/|\/jsonrpc$/;
 
 /**
  * The runs the sample world holds, as the segments count them (Nov 3 correction): All 20, with the
@@ -78,13 +80,32 @@ async function openRuns(page: Page, width = 1280, path = '/runs'): Promise<void>
   await expect(page.locator('main li[data-run]').first()).toBeVisible();
 }
 
+/**
+ * The missed-runs group row's date ("Oct 30") and its "Show" each take one line, side by side on the
+ * title's line: a phone's narrow time cell never breaks them ("Sh / ow", COR-2181).
+ */
+async function expectGroupRowOnOneLine(page: Page): Promise<void> {
+  const group = page.locator('main li.cinder-stacked-list-item--group').first();
+  await expect(group).toBeVisible();
+  const cell = group.locator('.cinder-stacked-list-item__time');
+  const disclosure = cell.locator('.cinder-stacked-list-item__disclosure');
+  await expect(disclosure).toContainText('Show');
+  const show = await textLines(disclosure);
+  const whole = await textLines(cell);
+  const title = await textLines(group.locator('.cinder-stacked-list-item__title'));
+  expect(show.lines, 'Show is one line').toBe(1);
+  expect(whole.lines, 'the date and Show share one line').toBe(1);
+  // The cell sits on the title's baseline in a smaller face, so the middles differ by a few pixels.
+  expect(Math.abs(whole.middle - title.middle), 'on the title’s line').toBeLessThan(8);
+}
+
 /** Answers the Bureau operation `method` with `answer`, and leaves every other operation to the host. */
 async function answerOperation(
   page: Page,
   method: string,
   answer: (route: Route, id: unknown) => Promise<void> | void,
 ): Promise<void> {
-  await page.route('**/bureau/jsonrpc', async (route) => {
+  await page.route('**/jsonrpc', async (route) => {
     const body = JSON.parse(route.request().postData() ?? '{}') as {
       method?: string;
       id?: unknown;
@@ -139,8 +160,16 @@ test.describe('/runs: the list on a phone, a tablet and in the dark', () => {
     await expect(
       missed.locator('.cinder-stacked-list-item__time').getByRole('button', { name: /Show/ }),
     ).toBeVisible();
+    await expectGroupRowOnOneLine(page);
     await captureForDesignReview(page, { route: '/runs', state: 'ready', source: SOURCE });
     await checkA11y('runs on a phone');
+  });
+
+  test('at 320 pixels the missed-runs row keeps its date and its Show whole, on one line', async ({
+    page,
+  }) => {
+    await openRuns(page, 320);
+    await expectGroupRowOnOneLine(page);
   });
 
   test('on a tablet folds the segments into a Status select, keeps the Started by and Agent chips, and turns search into an icon button (05x, 05y)', async ({
@@ -326,7 +355,7 @@ for (const width of WIDTHS) {
     }) => {
       // The test answers the runs' read with a 500, and Chromium logs each such response.
       pageErrors.expectEvery({
-        pattern: loggedFailedResponse(500, /\/bureau\/jsonrpc/),
+        pattern: loggedFailedResponse(500, /\/jsonrpc/),
         reason: 'the test answers the runs list with a 500',
       });
       await answerOperation(page, 'bureau.tasks.list', (route) =>
@@ -363,7 +392,7 @@ for (const width of WIDTHS) {
       await checkA11y(`runs failing at ${width}px`);
 
       // The server comes back, and Try again reads the runs.
-      await page.unroute('**/bureau/jsonrpc');
+      await page.unroute('**/jsonrpc');
       await primaries(page).first().click();
       await expect(main.locator('li[data-run]').first()).toBeVisible();
       await expect(headerCreate(page)).not.toHaveAttribute('aria-disabled', 'true');
@@ -487,24 +516,9 @@ for (const width of WIDTHS) {
         agentName: 'tool-runner',
       }),
     ];
-    await page.route('**/bureau/jsonrpc', async (route) => {
-      const body = JSON.parse(route.request().postData() ?? '{}') as {
-        method?: string;
-        id?: unknown;
-      };
-      if (body.method !== 'bureau.tasks.list') {
-        await route.fallback();
-        return;
-      }
-      const response = await route.fetch();
-      const answer = (await response.json()) as {
-        result?: { tasks?: unknown[]; nextPageToken?: string | null };
-      };
-      const tasks = answer.result?.tasks ?? [];
-      await route.fulfill({
-        response,
-        json: { ...answer, result: { ...answer.result, tasks: [...tasks, ...extra] } },
-      });
+    await rewriteBureauAnswer(page, 'bureau.tasks.list', (listing) => {
+      const tasks = (listing['tasks'] as unknown[] | undefined) ?? [];
+      return { ...listing, tasks: [...tasks, ...extra] };
     });
     await page.clock.setFixedTime(SAMPLE_NOW);
     await page.setViewportSize({ width, height: 900 });

@@ -46,7 +46,7 @@ Use `ToolCallRail` for the tool calls of a chat turn, where the agent's reply le
 ## How many calls
 
 - One or two calls are plain rows: no `Used N tools` line, no rail connector and no fold.
-- From three calls the summary line appears (`Used 3 tools`) and every call still shows. It adds `1 failed` and `1 waiting on you` after commas, each with its dot, only when such calls exist, and the turn's `duration` when you pass one.
+- From three calls the summary line appears (`Used 3 tools`) and every call still shows. It adds `1 failed` and `1 waiting on you`, each with its coloured dot and none of them after a comma (a gap and the dot tell the counts apart), only when such calls exist, and the turn's `duration` when you pass one.
 - From eight calls the middle folds: the first 3 and the last 3 stay, with `Show 2 more, 2 done: Lookup order ×2` between them. A folded group hides at least two calls, because hiding one saves nothing, so seven calls show all seven.
 - Calls that failed, expired, were denied, wait on a person or are running are _pinned_: they stay on the rail wherever they fall and split the folded middle into separate groups, each counting only the calls it hides. The group's summary lists the three names that appear most (`×N` when more than once) and counts every other call as `6 others`.
 - `Show N more` opens that group in place, in time order, and a `Show fewer` button after the last row folds every open group again.

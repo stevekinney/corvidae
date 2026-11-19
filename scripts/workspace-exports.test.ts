@@ -139,3 +139,25 @@ test('allows importing the workspace root or a subpath its exports declare, and 
     declaresImportSpecifier('@lostgradient/weft/server', '@lostgradient/weft', undefined),
   ).toBe(false);
 });
+
+test('a wildcard subpath declares every specifier its star stands for, and a metadata export passes', () => {
+  const exports = {
+    '.': './src/index.ts',
+    './manifest': './.metadata/components.json',
+    './*/schema': './.metadata/*/schema.json',
+  };
+  expect(
+    declaresImportSpecifier('@lostgradient/chat/chat/schema', '@lostgradient/chat', exports),
+  ).toBe(true);
+  expect(
+    declaresImportSpecifier('@lostgradient/chat/manifest', '@lostgradient/chat', exports),
+  ).toBe(true);
+  expect(declaresImportSpecifier('@lostgradient/chat//schema', '@lostgradient/chat', exports)).toBe(
+    false,
+  );
+  expect(
+    declaresImportSpecifier('@lostgradient/chat/chat/variables', '@lostgradient/chat', exports),
+  ).toBe(false);
+  expect(sourceExportViolations(exports, exists, { declarations: true })).toEqual([]);
+  expect(sourceExportViolations(exports, exists)).not.toEqual([]);
+});

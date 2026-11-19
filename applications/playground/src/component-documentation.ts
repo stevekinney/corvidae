@@ -1,4 +1,4 @@
-import { join, relative, resolve, sep } from 'node:path';
+import { dirname, join, relative, resolve, sep } from 'node:path';
 
 import { initializeHighlighter, renderMarkdown } from '@lostgradient/markdown';
 
@@ -248,11 +248,12 @@ function artifactPath(
   componentName: string,
   artifactName: DocumentationArtifactName,
 ): string {
-  return join(
-    componentSource.componentsRoot,
-    componentName,
-    `${componentName}.${artifactName}.json`,
-  );
+  // Constraints are authored beside the component; the schema, variables and examples copy are
+  // the package's `metadata` task output, in `.metadata/<id>/` beside its manifest.
+  if (artifactName === 'constraints') {
+    return join(componentSource.componentsRoot, componentName, `${componentName}.constraints.json`);
+  }
+  return join(dirname(componentSource.manifestPath), componentName, `${artifactName}.json`);
 }
 
 function readmePath(componentSource: ComponentSource, componentName: string): string {

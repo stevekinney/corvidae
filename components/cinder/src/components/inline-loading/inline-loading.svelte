@@ -1,19 +1,4 @@
 <script lang="ts" module>
-  /**
-   * @cinder
-   * @category feedback
-   * @status alpha
-   * @purpose Inline async-action status indicator that transitions from loading to success or error with accessible announcements.
-   * @tag async
-   * @tag feedback
-   * @tag loading
-   * @tag status
-   * @useWhen Showing a compact Submit -> loading -> success/error lifecycle beside a button or form row.
-   * @useWhen Communicating short-lived async state transitions without reserving large layout space.
-   * @avoidWhen Showing indeterminate work without success/error transitions — use spinner.
-   * @avoidWhen Reporting static non-loading status in dense lists — use status-dot.
-   * @related spinner, status-dot
-   */
   export type { InlineLoadingProps, InlineLoadingStatus } from './inline-loading.types.ts';
 </script>
 

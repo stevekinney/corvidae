@@ -56,7 +56,7 @@ async function answerAttention(
   page: Page,
   change: (answer: AttentionAnswer) => AttentionAnswer,
 ): Promise<void> {
-  await page.route('**/bureau/jsonrpc', async (route) => {
+  await page.route('**/jsonrpc', async (route) => {
     if (!(route.request().postData() ?? '').includes('"bureau.health.attention"')) {
       await route.fallback();
       return;
@@ -70,7 +70,7 @@ async function answerAttention(
 
 /** Answers every read of the reviews that wait with none. */
 async function answerNoReviews(page: Page): Promise<void> {
-  await page.route('**/bureau/jsonrpc', async (route) => {
+  await page.route('**/jsonrpc', async (route) => {
     if (!(route.request().postData() ?? '').includes('"bureau.reviews.list"')) {
       await route.fallback();
       return;
@@ -96,7 +96,7 @@ interface AuditAnswerRecord {
  * and 76v). The sample world's other runs are the sample world's, not this frame's.
  */
 async function answerAllClearActivity(page: Page): Promise<void> {
-  await page.route('**/bureau/jsonrpc', async (route) => {
+  await page.route('**/jsonrpc', async (route) => {
     if (!(route.request().postData() ?? '').includes('"bureau.audit.query"')) {
       await route.fallback();
       return;
@@ -123,7 +123,7 @@ async function answerAllClearActivity(page: Page): Promise<void> {
     await route.fulfill({ response, json: body });
   });
   // The 4472 refund's chat, titled the way the board names its run.
-  await page.route('**/bureau/jsonrpc', async (route) => {
+  await page.route('**/jsonrpc', async (route) => {
     if (!(route.request().postData() ?? '').includes('"bureau.contexts.get"')) {
       await route.fallback();
       return;
@@ -345,7 +345,7 @@ for (const width of WIDTHS) {
   }) => {
     await page.setViewportSize({ width, height: 900 });
     // Never answered: the page stays on its first read for as long as it is open.
-    await page.route('**/bureau/jsonrpc', async (route) => {
+    await page.route('**/jsonrpc', async (route) => {
       if ((route.request().postData() ?? '').includes('"bureau.health.attention"')) return;
       await route.fallback();
     });

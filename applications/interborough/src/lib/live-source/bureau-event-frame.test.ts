@@ -2,8 +2,8 @@ import { describe, expect, test } from 'bun:test';
 
 import {
   isRecoveryKind,
-  isReplayCompletePing,
   parseBureauEventFrame,
+  readBureauEventFrame,
 } from './bureau-event-frame.ts';
 
 describe('parseBureauEventFrame', () => {
@@ -60,11 +60,19 @@ describe('parseBureauEventFrame', () => {
   });
 });
 
-describe('isReplayCompletePing', () => {
-  test('is true only for the replayComplete marker', () => {
-    expect(isReplayCompletePing('{"replayComplete":true}')).toBe(true);
-    expect(isReplayCompletePing('{"replayComplete":false}')).toBe(false);
-    expect(isReplayCompletePing('garbage')).toBe(false);
+describe('readBureauEventFrame', () => {
+  test('reads data the transport already parsed, and is null for what is not an envelope', () => {
+    const envelope = {
+      kind: 'run.settled',
+      cursor: 'a:1',
+      sequence: 1,
+      emittedAtMs: 2,
+      payload: {},
+    };
+    expect(readBureauEventFrame(envelope)).toEqual(envelope);
+    expect(readBureauEventFrame('text')).toBeNull();
+    expect(readBureauEventFrame(null)).toBeNull();
+    expect(readBureauEventFrame({ ...envelope, sequence: 'one' })).toBeNull();
   });
 });
 

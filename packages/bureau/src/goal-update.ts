@@ -68,10 +68,13 @@ export interface GoalUpdateDependencies {
   readonly store: Pick<GoalStore, 'updateConfiguration'>;
   /** Resolves a new validator, and says what it promises about determinism. */
   readonly catalog: Pick<GoalValidatorCatalog, 'resolve'>;
-  /** `undefined` when the catalog has no agent by this name. */
+  /** `undefined` when the catalog has no agent by this name, or a person disabled it (COR-2429). */
   readonly planAgent: (
     agentName: string,
-  ) => { readonly durable: boolean; readonly agentVersion: string } | undefined;
+  ) =>
+    | { readonly durable: boolean; readonly agentVersion: string }
+    | undefined
+    | Promise<{ readonly durable: boolean; readonly agentVersion: string } | undefined>;
   readonly clock: Pick<RuntimeServices['clock'], 'nowISO'>;
 }
 
@@ -137,11 +140,11 @@ interface PreparedUpdate {
  * the write: the fields named, their values, and what the Bureau holds now. Otherwise, what the
  * write needs beyond the request ({@link PreparedUpdate}).
  */
-function refusalOf(
+async function refusalOf(
   dependencies: Pick<GoalUpdateDependencies, 'catalog' | 'planAgent'>,
   record: GoalState,
   request: BureauGoalUpdateRequest,
-): Rejection | PreparedUpdate {
+): Promise<Rejection | PreparedUpdate> {
   let validatorConfiguration: JSONValue | undefined;
   let validatorDefinition: ValidatorFileDefinition | undefined;
   const { prompt, agentName, validator, maximumAttempts } = request;
@@ -169,7 +172,7 @@ function refusalOf(
   // an attempt is in flight is decided inside the write (`agent-between-attempts`), against the
   // record it would replace.
   if (agentName !== undefined && agentName !== record.objective.agentName) {
-    const plan = dependencies.planAgent(agentName);
+    const plan = await dependencies.planAgent(agentName);
     if (plan === undefined) {
       return rejected('agent-not-found', `Unknown agent "${agentName}".`);
     }
@@ -264,7 +267,7 @@ export async function updateGoal(
   if (record.revision !== request.expectedRevision) {
     return { outcome: 'stale-revision', goal: record };
   }
-  const prepared = refusalOf(dependencies, record, request);
+  const prepared = await refusalOf(dependencies, record, request);
   if ('outcome' in prepared) return prepared;
   const patch: GoalConfigurationPatch = {
     ...(request.prompt === undefined ? {} : { prompt: request.prompt }),

@@ -5,7 +5,7 @@
 import { rejectionOf } from '@lostgradient/testing';
 import { afterEach, describe, expect, test } from 'bun:test';
 
-import { callBureau } from './bureau-client.ts';
+import { bureauClient } from './bureau-api.ts';
 import { ServerUnreachableError } from './faults.ts';
 import { armWriteGuard, classifyRequest, isReadOperation, READ_OPERATIONS } from './write-guard.ts';
 
@@ -132,13 +132,13 @@ describe('armWriteGuard', () => {
       return Response.json({ jsonrpc: '2.0', id: 'x', result: { ok: true } });
     };
     expect(
-      await rejectionOf(callBureau('bureau.tasks.cancel', { taskId: 't' }, { fetch: fetcher })),
+      await rejectionOf(bureauClient['bureau.tasks.cancel']({ taskId: 't' }, { fetch: fetcher })),
     ).toBeInstanceOf(ServerUnreachableError);
     expect(sent).toBe(0);
-    await callBureau('bureau.tasks.get', { taskId: 't' }, { fetch: fetcher });
+    await bureauClient['bureau.tasks.get']({ taskId: 't' }, { fetch: fetcher });
     expect(sent).toBe(1);
     state.down = false;
-    await callBureau('bureau.tasks.cancel', { taskId: 't' }, { fetch: fetcher });
+    await bureauClient['bureau.tasks.cancel']({ taskId: 't' }, { fetch: fetcher });
     expect(sent).toBe(2);
   });
 

@@ -1,0 +1,16 @@
+{
+  "$schema": "../../../../../internal/component-tooling/src/schemas/component-meta.schema.json",
+  "category": "data-display",
+  "status": "stable",
+  "purpose": "Responsive image wrapper that handles aspect ratio, lazy loading, placeholder, and a fallback for load failures.",
+  "tags": ["image", "media"],
+  "useWhen": [
+    "Rendering content imagery with a consistent ratio and lazy-loading behavior.",
+    "Supplying a placeholder while loading and a fallback when the source errors."
+  ],
+  "avoidWhen": [
+    { "reason": "Representing a person or account — use avatar instead." },
+    { "reason": "Rendering a decorative icon — use an icon component instead." }
+  ],
+  "related": ["avatar"]
+}

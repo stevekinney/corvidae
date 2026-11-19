@@ -1,17 +1,4 @@
 <script lang="ts" module>
-  /**
-   * @cinder
-   * @category overlay
-   * @status stable
-   * @purpose Hover-and-focus triggered rich preview card for non-interactive contextual content.
-   * @tag overlay
-   * @tag hover
-   * @useWhen Showing a profile, issue, or metadata preview that is richer than a tooltip but still read-only.
-   * @useWhen Revealing supplementary preview content on pointer hover or keyboard focus without moving focus.
-   * @avoidWhen The floating content contains focusable controls — use popover.
-   * @avoidWhen The trigger needs a short accessible description — use tooltip.
-   * @related tooltip, popover
-   */
   export type { HoverCardPlacement, HoverCardProps } from './hover-card.types.ts';
 </script>
 

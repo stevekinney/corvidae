@@ -1,5 +1,10 @@
 import { describe, expect, test } from 'bun:test';
-import variables from './chat.variables.ts';
+import { readFileSync } from 'node:fs';
+
+// The variables the `metadata` task generated for Chat (`.metadata/chat/variables.json`).
+const variables: string[] = JSON.parse(
+  readFileSync(Bun.resolveSync('@lostgradient/chat/chat/variables', import.meta.dir), 'utf8'),
+);
 
 const chatCss = await Bun.file(`${import.meta.dir}/chat.css`).text();
 

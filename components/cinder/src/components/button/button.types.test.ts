@@ -40,7 +40,8 @@ type _SnapshotVariant =
   | 'soft-danger'
   | 'ghost'
   | 'ghost-danger'
-  | 'ghost-accent';
+  | 'ghost-accent'
+  | 'link';
 
 type _SnapshotSize = 'xs' | 'sm' | 'md' | 'lg';
 

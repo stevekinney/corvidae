@@ -78,6 +78,19 @@
         "colorSpace": "oklch",
         "components": [0.145, 0.012, 265]
       }
+    },
+    "translucent": {
+      "$type": "color",
+      "$value": {
+        "colorSpace": "oklch",
+        "components": [0.145, 0.012, 265],
+        "alpha": 0.9
+      },
+      "$extensions": {
+        "com.lostgradient.cinder": {
+          "cssRecipe": "color-mix(in oklch, var(--cinder-surface-canvas) 90%, transparent)"
+        }
+      }
     }
   },
   "polarity": {
@@ -1271,6 +1284,16 @@
     "background": {
       "$type": "color",
       "$value": "{surface.inset}"
+    }
+  },
+  "docked-action-bar": {
+    "shadow-color": {
+      "$type": "color",
+      "$value": {
+        "colorSpace": "oklch",
+        "components": [0, 0, 0],
+        "alpha": 0.4
+      }
     }
   },
   "kanban-board": {

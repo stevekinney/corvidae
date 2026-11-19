@@ -12,9 +12,11 @@
      * comma ("Running, checking the result"), so a run page can say "Waiting" for a signal.
      */
     word: StatusDotWordLabel;
+    /** A count or short phrase drawn after the word, muted and with no comma in the visible text. */
+    qualifier?: string | number | undefined;
   }
 
-  let { word }: Props = $props();
+  let { word, qualifier }: Props = $props();
 </script>
 
-<StatusDot {word} data-status-word={word} />
+<StatusDot {word} {...qualifier === undefined ? {} : { qualifier }} data-status-word={word} />

@@ -204,6 +204,11 @@ export interface PendingHumanWait {
    * shape of the answer the wait expects. It is persisted with the wait, so a restart reads it back.
    */
   inputSchema?: HumanInputSchema | undefined;
+  /**
+   * COR-2426 — what the agent wrote beside the call in the step that parked: kept with the wait, in
+   * the same write, so a review says what the agent said and not only its prompt.
+   */
+  said?: string | undefined;
 }
 
 export interface PendingChildWait {

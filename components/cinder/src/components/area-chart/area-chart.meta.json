@@ -1,0 +1,18 @@
+{
+  "$schema": "../../../../../internal/component-tooling/src/schemas/component-meta.schema.json",
+  "category": "data-display",
+  "status": "stable",
+  "purpose": "Filled SVG area chart for showing magnitude and cumulative trends across an ordered x domain.",
+  "tags": ["chart", "area", "analytics"],
+  "useWhen": [
+    "Showing magnitude under a trend line.",
+    "Comparing cumulative or stacked contribution over an ordered domain."
+  ],
+  "avoidWhen": [
+    {
+      "reason": "Exact point comparison matters more than area magnitude — use line-chart instead."
+    },
+    { "reason": "Comparing discrete category totals — use bar-chart instead." }
+  ],
+  "related": ["line-chart", "bar-chart", "table", "statistic"]
+}

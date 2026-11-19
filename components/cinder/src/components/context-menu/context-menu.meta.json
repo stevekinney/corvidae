@@ -1,0 +1,17 @@
+{
+  "$schema": "../../../../../internal/component-tooling/src/schemas/component-meta.schema.json",
+  "category": "overlay",
+  "status": "stable",
+  "purpose": "Right-click and long-press menu positioned at the user's pointer while reusing dropdown menu parts.",
+  "tags": ["overlay", "menu"],
+  "useWhen": [
+    "Providing contextual actions for a canvas, list row, file, or selected item.",
+    "Opening a menu from a pointer location instead of a visible dropdown trigger."
+  ],
+  "avoidWhen": [
+    { "reason": "The menu should open from a button — use dropdown." },
+    { "reason": "Showing arbitrary rich content rather than menu actions — use popover." }
+  ],
+  "related": ["dropdown", "dropdown-menu", "dropdown-item"],
+  "compound": { "parts": ["context-menu-trigger"] }
+}

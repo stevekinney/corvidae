@@ -1,16 +1,4 @@
 <script lang="ts" module>
-  /**
-   * @cinder
-   * @category action
-   * @status beta
-   * @purpose Circular button representing the single most important action on a screen.
-   * @tag action
-   * @tag button
-   * @useWhen One action dominates the page purpose (compose, add, create).
-   * @avoidWhen Multiple equally-important actions exist — use a toolbar or button group.
-   * @avoidWhen You need it pinned to the viewport — it doesn't position itself; wrap it in your own fixed/sticky container.
-   * @related button, toolbar
-   */
   export type {
     FloatingActionProps,
     FloatingActionShape,

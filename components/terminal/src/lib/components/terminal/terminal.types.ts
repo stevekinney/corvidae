@@ -60,7 +60,17 @@ export const TERMINAL_STATE_MESSAGE: Readonly<Record<TerminalState, string>> = {
 
 /** Measured character-cell geometry. Only positive finite whole numbers are ever reported. */
 export type TerminalGeometry = {
+  /**
+   * @integer
+   * @minimum 1
+   * @maximum 65535
+   */
   columns: number;
+  /**
+   * @integer
+   * @minimum 1
+   * @maximum 65535
+   */
   rows: number;
 };
 
@@ -123,6 +133,7 @@ export type TerminalProps = Omit<HTMLAttributes<HTMLDivElement>, 'class' | 'titl
   /**
    * The grid the session's owner dictates. A `'read-only'` terminal adopts it, scrolling locally
    * when it is larger than the viewport, instead of fitting itself to the viewport.
+   * @schemaObject
    */
   ownerGeometry?: TerminalGeometry;
   /** Accessible name of the terminal input surface. @default 'Terminal' */
@@ -147,6 +158,9 @@ export type TerminalProps = Omit<HTMLAttributes<HTMLDivElement>, 'class' | 'titl
    * The most paste text, in UTF-8 bytes, that is offered for review. A larger paste is refused
    * whole and nothing is sent. An integer from 1 to 262144; anything else uses the default.
    * @default 65536
+   * @integer
+   * @minimum 1
+   * @maximum 262144
    */
   maximumPasteBytes?: number;
   /**

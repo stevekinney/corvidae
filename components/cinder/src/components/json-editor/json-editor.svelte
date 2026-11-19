@@ -1,23 +1,4 @@
 <script lang="ts" module>
-  /**
-   * @cinder
-   * @category form
-   * @status stable
-   * @purpose Controlled free-form JSON editor in one frame: validity status and Format float at the top inline-end corner of a lazily loaded CodeMirror view with marked problem lines, backed by a native textarea.
-   * @tag form
-   * @tag json
-   * @tag editor
-   * @useWhen Editing arbitrary JSON source while preserving the exact string in parent-owned state.
-   * @useWhen The value is genuinely free-form JSON and benefits from line numbers, folding, and completion.
-   * @avoidWhen The value has a known shape that a guided form can edit. | schema-form
-   * @avoidWhen Editing a JSON Schema with guided form and diff views. | json-schema-editor
-   * @avoidWhen Displaying JSON without allowing changes. | json-viewer
-   * @related textarea, json-schema-editor, json-viewer
-   * @keyboardShortcut Tab | Moves focus out of the editor without trapping the keyboard.
-   * @keyboardShortcut Shift+Alt+F | Formats the document as indented JSON.
-   * @keyboardShortcut Ctrl+Space | Opens schema completions when a schema is provided.
-   * @a11yNote The editable area is labelled by the visible label and described by the description and parse feedback; a native textarea with the same wiring serves until the editor loads and wherever it cannot.
-   */
   export type { JsonEditorProps } from './json-editor.types.ts';
 </script>
 

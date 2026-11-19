@@ -42,7 +42,7 @@ async function sendFollowUp(page: Page, text: string): Promise<void> {
   await expect(upNext(page)).toContainText(text);
   const answered = page.waitForResponse(
     (response) =>
-      response.url().endsWith('/bureau/jsonrpc') &&
+      response.url().endsWith('/jsonrpc') &&
       (response.request().postData() ?? '').includes('"bureau.contexts.input"'),
   );
   await upNext(page).getByRole('button', { name: 'Send now instead' }).click();
@@ -444,7 +444,7 @@ async function answerSessionProbe(
   page: Page,
   outcome: 'loading' | 'error' | 'forbidden',
 ): Promise<void> {
-  await page.route('**/bureau/jsonrpc', async (route) => {
+  await page.route('**/jsonrpc', async (route) => {
     if (!(route.request().postData() ?? '').includes('"bureau.contexts.get"')) {
       await route.fallback();
       return;
@@ -507,7 +507,7 @@ for (const width of [375, 1280] as const) {
       }) => {
         if (outcome !== 'loading') {
           pageErrors.expectEvery({
-            pattern: loggedFailedResponse(outcome === 'error' ? 500 : 403, /bureau\/jsonrpc/),
+            pattern: loggedFailedResponse(outcome === 'error' ? 500 : 403, /\/jsonrpc/),
             reason: `the test answers the session read with a ${outcome === 'error' ? 500 : 403}`,
           });
         }
@@ -587,7 +587,7 @@ for (const width of [375, 1280] as const) {
       // The longest prompt the Bureau allows, with a word too long for any line.
       const prompt = `Look up ${'x'.repeat(150)} and refund it`;
       expect(prompt.length).toBeLessThanOrEqual(200);
-      await page.route('**/bureau/jsonrpc', async (route) => {
+      await page.route('**/jsonrpc', async (route) => {
         if (!(route.request().postData() ?? '').includes('"bureau.agents.list"')) {
           await route.fallback();
           return;

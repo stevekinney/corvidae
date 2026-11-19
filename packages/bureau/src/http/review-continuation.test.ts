@@ -360,6 +360,44 @@ describe('a decision through bureau.reviews.resolve continues the chat (COR-2016
     });
   }
 
+  for (const decision of ['approve', 'deny'] as const) {
+    it(`finishes a chat run parked on an approval before its agent was disabled, on ${decision} (COR-2429)`, async () => {
+      const charges: number[] = [];
+      await withHarness(
+        {
+          script: [chargeOnce, say(decision === 'approve' ? 'Charged.' : 'Not charged.')],
+          toolbox: approvalToolbox(charges),
+        },
+        async (harness) => {
+          const [reviewId] = await chatWaitingOnApprovals(harness);
+          // The run had started and parked; then a person disables its agent.
+          await harness.bureau.agents.disable('assistant', { disabledBy: 'operator' });
+
+          const reply = await resolveThroughOperation(harness.handler, {
+            id: reviewId,
+            decision,
+            ...(decision === 'deny' ? { reason: 'Not this one.' } : {}),
+          });
+
+          expect(reply.result?.receipt).toBe('applied');
+          // The decided run is continued to its end, as a run that started finishes on a
+          // disabled agent; nothing new may start on it after.
+          expect(reply.result?.continuation?.status).toBe('started');
+          const continuation =
+            reply.result?.continuation?.status === 'started' ? reply.result.continuation.runId : '';
+          await waitForTaskState(harness.bureau, continuation);
+          const task = await harness.bureau.tasks.get(continuation);
+          expect(task?.status).toBe('completed');
+          expect(charges).toEqual(decision === 'approve' ? [500] : []);
+          expect(await lastRow(harness)).toMatchObject({
+            role: 'assistant',
+            content: decision === 'approve' ? 'Charged.' : 'Not charged.',
+          });
+        },
+      );
+    });
+  }
+
   it('continues after a deny, whose note is the outcome the agent answers', async () => {
     const charges: number[] = [];
     await withHarness(

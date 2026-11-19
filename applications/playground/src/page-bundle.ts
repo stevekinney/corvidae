@@ -127,6 +127,12 @@ let instance: Record<string, unknown> | undefined;
 const sidebarNavigation = document.querySelector<HTMLElement>('nav.dx-nav');
 const releaseSidebarScroll =
   sidebarNavigation === null ? undefined : persistScrollPosition(sidebarNavigation);
+// Cinder withdraws the global focus ring from a script focus target until the keyboard is used,
+// which needs this tracker (documentation/focus-ring-policy.md, "Script focus targets"). It loads
+// with Cinder, after the first paint, so the page's first transfer does not carry it.
+const releaseInputModality = import('@lostgradient/cinder').then(({ trackInputModality }) =>
+  trackInputModality(document),
+);
 
 // Keep the bare component implementation behind the Playground tab. The page
 // resolves the imported namespace by \`documentation.component.exportName\`,
@@ -418,6 +424,7 @@ const run: PageRun = {
       instance = undefined;
     }
     if (typeof releaseSidebarScroll === 'function') releaseSidebarScroll();
+    void releaseInputModality.then((release) => release());
     target.removeAttribute('data-playground-controls-hydrated');
     delete (window as unknown as Record<string, unknown>)['__CINDER_SCENARIO_LOADERS__'];
   },

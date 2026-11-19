@@ -65,7 +65,7 @@ async function answerAuditRecords(
   page: Page,
   choose: (records: readonly AuditAnswerRecord[]) => readonly AuditAnswerRecord[],
 ): Promise<void> {
-  await page.route('**/bureau/jsonrpc', async (route) => {
+  await page.route('**/jsonrpc', async (route) => {
     if (!(route.request().postData() ?? '').includes('"bureau.audit.query"')) {
       await route.fallback();
       return;

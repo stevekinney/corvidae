@@ -1,6 +1,7 @@
 /// <reference lib="dom" />
 import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
 
+import { readComponentSchema } from '@lostgradient/component-tooling/scripts/lib/metadata-files.ts';
 import { requiredInstance, setupHappyDom } from '@lostgradient/testing';
 import Ajv2020 from 'ajv/dist/2020';
 import type {
@@ -16,8 +17,7 @@ setupHappyDom();
 
 const { cleanup, fireEvent, render } = await import('@testing-library/svelte');
 const { default: InvocationRuleBuilder } = await import('./invocation-rule-builder.svelte');
-const { default: invocationRuleBuilderSchema } =
-  await import('./invocation-rule-builder.schema.ts');
+const invocationRuleBuilderSchema = readComponentSchema('invocation-rule-builder');
 
 const fieldOptions: InvocationRuleOption[] = [
   { value: 'path', label: 'Path' },

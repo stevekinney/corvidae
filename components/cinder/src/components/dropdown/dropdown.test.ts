@@ -2,9 +2,9 @@
 import { afterEach, beforeEach, describe, expect, jest, test } from 'bun:test';
 import { createRawSnippet, flushSync } from 'svelte';
 
+import { stripCinderComponentsLayer } from '@lostgradient/component-tooling/test/css.ts';
 import { requiredInstance, setupHappyDom } from '@lostgradient/testing';
 import { createTransitionEndEvent } from '../../_internal/transition-completion-test-events.ts';
-import { stripCinderComponentsLayer } from '../../test/css.ts';
 
 setupHappyDom();
 

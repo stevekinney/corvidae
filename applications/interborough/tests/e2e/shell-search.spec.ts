@@ -44,7 +44,7 @@ async function rowText(row: Locator): Promise<[string, string]> {
  * row is read as the design draws it ("Issue refund, issue-refund, tool, Tool runner").
  */
 async function listIssueRefundInCatalog(page: Page): Promise<void> {
-  await page.route('**/bureau/jsonrpc', async (route) => {
+  await page.route('**/jsonrpc', async (route) => {
     const call = route.request().postDataJSON() as { method?: string } | null;
     if (call?.method !== 'bureau.agents.catalog') return route.continue();
     const response = await route.fetch();

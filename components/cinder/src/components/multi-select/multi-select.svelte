@@ -1,18 +1,4 @@
 <script lang="ts" module>
-  /**
-   * @cinder
-   * @category form
-   * @status alpha
-   * @purpose Multi-value dropdown with checkbox options, optional filtering, and count-summary trigger text.
-   * @tag form
-   * @tag selection
-   * @tag multiselect
-   * @useWhen Selecting multiple values from a fixed option list while preserving compact form layout.
-   * @useWhen Showing many options in an anchored picker instead of a permanently-expanded checkbox group.
-   * @avoidWhen Selecting a single value from a short fixed list — use select instead.
-   * @avoidWhen Moving items between available/selected panes — use transfer-list instead.
-   * @related select, combobox, checkbox-group, transfer-list
-   */
   export type {
     MultiSelectDirection,
     MultiSelectItem,

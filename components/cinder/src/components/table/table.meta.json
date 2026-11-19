@@ -1,0 +1,27 @@
+{
+  "$schema": "../../../../../internal/component-tooling/src/schemas/component-meta.schema.json",
+  "category": "data-display",
+  "status": "stable",
+  "purpose": "Composite root that establishes table semantics, density, and sort context for nested header, body, row, and cell parts.",
+  "tags": ["table", "grid"],
+  "useWhen": [
+    "Comparing rows of structured records across consistent columns.",
+    "Coordinating column sort state across header cells via the sort prop."
+  ],
+  "avoidWhen": [
+    { "reason": "Rendering a responsive card grid — use grid-list instead." },
+    { "reason": "Listing key-value attributes of one entity — use description-list instead." }
+  ],
+  "related": [
+    "data-table",
+    "data-grid",
+    "table-header",
+    "table-body",
+    "table-row",
+    "table-cell",
+    "table-header-cell"
+  ],
+  "compound": {
+    "parts": ["table-body", "table-cell", "table-header", "table-header-cell", "table-row"]
+  }
+}

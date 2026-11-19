@@ -1,0 +1,12 @@
+{
+  "$schema": "../../../../../internal/component-tooling/src/schemas/component-meta.schema.json",
+  "category": "navigation",
+  "status": "beta",
+  "purpose": "Docked, backend-agnostic find controls with debounced query notifications and match navigation.",
+  "tags": ["find-bar"],
+  "useWhen": ["Providing find-in-document controls backed by a host search implementation."],
+  "avoidWhen": [
+    { "reason": "Building a general search field with suggestions — use SearchField or Combobox." }
+  ],
+  "related": ["input", "form-field", "button"]
+}

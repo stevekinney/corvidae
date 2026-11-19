@@ -8,7 +8,7 @@ Complete this record before merge. Automated checks can detect malformed APIs, m
 - Review outcome: Pending. The design-reviewer verdict has not been recorded yet.
 - Nearest neighbours: DescriptionList, SettingRow, GroupedList.
 - Why this component exists: Detail pages showed properties as stacks of always-editable fields or as gray label grids. An inspector shows them as quiet rows that become editable on activation.
-- Findings and resolutions: The group is a description list, so each label is the term of its value. A header names the group. The rail and the phone layout share one markup: the tint and the stacked label change below 700px, and no second component is needed.
+- Findings and resolutions: The group is a description list, so each label is the term of its value. A header names the group. The rail and the phone layout share one markup: the tint changes below 700px of the inspector's own width and the stacked label below 23rem, and no second component is needed.
 
 ## Novel interaction accessibility review
 

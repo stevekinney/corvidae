@@ -96,7 +96,7 @@ async function openLongTurn(page: Page, request: APIRequestContext, height = 110
       // The divider is left where it is.
     }
   }, LIST_WIDTH);
-  await page.route('**/bureau/jsonrpc', async (route) => {
+  await page.route('**/jsonrpc', async (route) => {
     const body = operationOf(route);
     if (body.method === 'bureau.contexts.get' && body.params?.contextId === TOOL_CALL_TURN_THREAD) {
       await route.fulfill({ json: { jsonrpc: '2.0', id: body.id, result: context } });
@@ -270,7 +270,7 @@ test.describe('the long turn beside the chat list (21o, 21p, 21q)', () => {
     ).toBeVisible();
 
     await expect(rail(page).locator('.cinder-tool-call-rail__summary')).toHaveText(
-      /^\s*Used 30 tools,\s*1 failed,\s*1 waiting on you,\s*18s\s*$/,
+      /^\s*Used 30 tools\s*1 failed\s*1 waiting on you\s*18s\s*$/,
     );
     // The rail: the first three calls, one fold of the twenty-four between, then the failed call,
     // the approved one and the one that waits.

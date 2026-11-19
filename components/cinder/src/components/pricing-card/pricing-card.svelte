@@ -1,17 +1,4 @@
 <script lang="ts" module>
-  /**
-   * @cinder
-   * @category data-display
-   * @status alpha
-   * @purpose Presents a single pricing plan with its name, price, feature list, and a call-to-action button.
-   * @tag pricing
-   * @tag plan
-   * @useWhen Letting users compare and select subscription tiers or product plans.
-   * @useWhen Highlighting one tier as selected or recommended in a pricing comparison.
-   * @avoidWhen Showing generic grouped content without a distinct price or CTA — use card instead.
-   * @avoidWhen Displaying a single key metric in isolation — use statistic or statistic-group instead.
-   * @related card, button, statistic, statistic-group
-   */
   export type { PricingCardProps } from './pricing-card.types.ts';
 </script>
 

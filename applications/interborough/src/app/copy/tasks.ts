@@ -7,7 +7,7 @@ import { NOT_FOUND_COPY } from './views.ts';
  * page, its row's status on the Runs list, and the label of the Runs list's segment that counts
  * such runs. It is a word of Cinder's StatusDot, so its tone is StatusDot's (the hollow ring).
  */
-export const SIGNAL_WAIT_WORD = 'Waiting' as const satisfies StatusDotWord;
+export const SIGNAL_WAIT_WORD = 'Waiting for a signal' as const satisfies StatusDotWord;
 
 /** The words the Tasks view uses outside its states. */
 export const TASK_COPY = {

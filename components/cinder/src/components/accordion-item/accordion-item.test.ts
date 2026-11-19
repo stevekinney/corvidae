@@ -2,6 +2,7 @@
 import { describe, expect, test } from 'bun:test';
 import { createRawSnippet, mount, unmount } from 'svelte';
 
+import { readComponentVariables } from '@lostgradient/component-tooling/scripts/lib/metadata-files.ts';
 import { requiredInstance, setupHappyDom } from '@lostgradient/testing';
 
 setupHappyDom();
@@ -9,7 +10,7 @@ setupHappyDom();
 const { render, fireEvent } = await import('@testing-library/svelte');
 const { default: Accordion } = await import('../accordion/accordion.svelte');
 const { default: AccordionItem } = await import('./accordion-item.svelte');
-const { default: accordionItemVariables } = await import('./accordion-item.variables.ts');
+const accordionItemVariables = readComponentVariables('accordion-item');
 
 // ---------------------------------------------------------------------------
 // Helpers

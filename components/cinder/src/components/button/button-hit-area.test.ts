@@ -7,7 +7,7 @@
 import { describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 
-import { declarationsFor } from '../../test/css.ts';
+import { declarationsFor } from '@lostgradient/component-tooling/test/css.ts';
 
 const buttonCss = await Bun.file(new URL('./button.css', import.meta.url)).text();
 const tokens = await Bun.file(new URL('../../styles/tokens-base.css', import.meta.url)).text();

@@ -2,6 +2,7 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 
+import { readComponentSchema } from '@lostgradient/component-tooling/scripts/lib/metadata-files.ts';
 import { requiredInstance, setupHappyDom } from '@lostgradient/testing';
 import Ajv2020 from 'ajv/dist/2020';
 
@@ -12,7 +13,7 @@ setupHappyDom();
 
 const { render, cleanup, fireEvent } = await import('@testing-library/svelte');
 const { default: PayloadInspector } = await import('./payload-inspector.svelte');
-const { default: payloadInspectorSchema } = await import('./payload-inspector.schema.ts');
+const payloadInspectorSchema = readComponentSchema('payload-inspector');
 
 beforeEach(() => document.body.replaceChildren());
 afterEach(() => cleanup());

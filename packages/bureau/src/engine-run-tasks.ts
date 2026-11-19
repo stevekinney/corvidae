@@ -208,8 +208,6 @@ export function createEngineRunTasks(dependencies: EngineRunTasksDependencies): 
       actor: null,
       kind: 'catalog',
       origin,
-      // An engine run of the Bureau's own continues no chat run.
-      continues: null,
       status,
       finishReason:
         status === 'failed' ? (state.status === 'timed-out' ? 'timed-out' : 'error') : null,

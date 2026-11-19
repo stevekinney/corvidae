@@ -13,6 +13,7 @@ It is `position: sticky`, so it sits in the flow at the end of the content. The 
 - **Touch**: with a coarse pointer every control in the bar is a 44px target. The bar overrides the shared `--cinder-control-height-*` and `--cinder-button-height-*` steps, which buttons and fields both read.
 - **Height**: while the bar is docked to the bottom of the viewport, or to the top of a bottom [`NavigationBar`](../navigation-bar/README.md), the distance to its top edge, safe area included, is the internal `--_cinder-docked-action-bar-height` on the document element (otherwise its own height is), and `ToastRegion` reads it to sit above the bar. The bar is sticky and in the flow, so the content above it never needs bottom padding of its own.
 - **Off**: `off` and `reason` turn the actions off together. Buttons inside that opted in with `mutating` go inert exactly as under a `StaleRegion` (focusable, `aria-disabled`, described by the reason), and the reason is drawn under the row and announced politely. A field in the bar is the page's to make read-only, and the bar mutes an `Input` or `Textarea` inside it (the inset fill and muted text) while it is off.
+- **A padded scrolling area**: the bar sticks to the bottom of what its scrolling area shows, inside that area's bottom padding, so a strip of the page shows under it as tall as the padding. A shell that wants room at the end of its scrolling area keeps it with a spacer after the content instead, and the bar sits flush at the bottom.
 - **Narrow**: below 32rem of bar width the actions take their own row under the content, each at its own compact width, ending at the trailing edge with the primary last; more actions than fit wrap onto further lines instead of overflowing.
 
 ## Usage
@@ -72,7 +73,8 @@ Before publishing this component, complete the live [component authoring pre-fli
 
 <!-- generated:variables:start -->
 
-This component does not declare any local CSS variables.
+- `--cinder-docked-action-bar-shadow-color`
+
 <!-- generated:variables:end -->
 
 ## Subcomponents

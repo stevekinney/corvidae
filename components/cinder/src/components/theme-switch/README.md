@@ -53,7 +53,20 @@ The switch is a `radiogroup` of three buttons with `role="radio"`, so exactly on
 
 <!-- generated:variables:start -->
 
-This component does not declare any local CSS variables.
+- `--cinder-theme-switch-night-border`
+- `--cinder-theme-switch-night-icon`
+- `--cinder-theme-switch-night-icon-hover`
+- `--cinder-theme-switch-night-icon-selected`
+- `--cinder-theme-switch-night-thumb`
+- `--cinder-theme-switch-night-track`
+- `--cinder-theme-switch-sky-border`
+- `--cinder-theme-switch-sky-icon`
+- `--cinder-theme-switch-sky-icon-hover`
+- `--cinder-theme-switch-sky-icon-selected`
+- `--cinder-theme-switch-sky-thumb`
+- `--cinder-theme-switch-sky-track`
+- `--cinder-theme-switch-thumb-shadow-color`
+
 <!-- generated:variables:end -->
 
 ## Subcomponents

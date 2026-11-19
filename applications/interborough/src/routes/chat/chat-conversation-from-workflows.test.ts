@@ -222,7 +222,10 @@ describe('a chat started from Workflows with an agent that can create workflows'
     ).toBeTruthy();
     // Workflow author's greeting is the only title, with no sentence, no suggestions and no list of
     // other agents under the composer.
-    expect(container.querySelector('h1')?.textContent).toBe('What should Workflow author do?');
+    // The agents are read after the composer is drawn, so the greeting waits for them.
+    await waitFor(() =>
+      expect(container.querySelector('h1')?.textContent).toBe('What should Workflow author do?'),
+    );
     expect(container.querySelector('.ib-new-chat__description')).toBeNull();
     expect(container.querySelector('[data-testid="new-chat-choices"]')).toBeNull();
     expect(field.placeholder).toBe('Message Workflow author…');

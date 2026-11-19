@@ -1,0 +1,17 @@
+{
+  "$schema": "../../../../../internal/component-tooling/src/schemas/component-meta.schema.json",
+  "category": "overlay",
+  "status": "stable",
+  "purpose": "Headless portal primitive that moves a subtree into a target element while preserving inline rendering as an explicit opt-out.",
+  "tags": ["overlay", "utilities"],
+  "useWhen": [
+    "Rendering an overlay or floating surface outside the current stacking or overflow context.",
+    "Building a custom anchored or modal primitive that needs to append content into document.body or a named host."
+  ],
+  "avoidWhen": [
+    {
+      "reason": "The content should stay in normal document flow or inherit layout from its original parent."
+    }
+  ],
+  "related": ["popover", "modal", "drawer"]
+}

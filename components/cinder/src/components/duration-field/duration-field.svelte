@@ -1,18 +1,4 @@
 <script lang="ts" module>
-  /**
-   * @cinder
-   * @category form
-   * @status beta
-   * @purpose Number plus unit for a duration that is stored in milliseconds, so a person types 30 and picks seconds while the value stays one number.
-   * @tag form
-   * @tag duration
-   * @tag numeric
-   * @useWhen A setting or schema field holds a length of time in milliseconds and the person should not have to count zeros.
-   * @useWhen A setting always counts in one unit and should show it beside the number ("30 seconds") — set `unitSelectable` to `false`.
-   * @avoidWhen Collecting a clock time or a calendar date — use time-field or date-picker.
-   * @avoidWhen Showing a duration read-only — format it with `formatDuration`.
-   * @related number-input, select, time-field
-   */
   export type { DurationFieldProps } from './duration-field.types.ts';
   export type { DurationUnit } from './duration-units.ts';
 </script>

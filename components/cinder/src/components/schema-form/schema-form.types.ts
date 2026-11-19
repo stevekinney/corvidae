@@ -11,6 +11,71 @@ export type SchemaFormVariant = 'default' | 'input' | 'setting-rows';
 
 export type SchemaFormDraftChangeHandler = (value: SchemaFormOutput) => void;
 
+/** One saved secret a form's secret field can name. */
+export type SchemaFormSecretKey = {
+  /** The key. It is the whole of what the field holds: `{ "$secret": key }`. */
+  key: string;
+  /** What groups the key in the list, such as the plugin that declares it. */
+  group?: string;
+  /** Whether a value is saved under the key. A key that is not set shows as Missing. */
+  set: boolean;
+};
+
+/** The words of a form's secret fields. Every member has a default. */
+export type SchemaFormSecretCopy = {
+  /** Help under the field. */
+  help: string;
+  /** The trigger's text while no key is chosen. */
+  placeholder: string;
+  /** The disabled trigger's text when there is no key to choose. */
+  emptyPlaceholder: string;
+  /** What the form says when there is no key; a `manage` link follows it. */
+  emptyHelp: string;
+  /** What follows the `manage` link, such as a full stop. */
+  emptyHelpEnd: string;
+  /** The line shown when the keys could not be read. */
+  failed: string;
+  /** The button that reads them again. */
+  retry: string;
+  /** The warning under a chosen key that is not set; it names the key, which is drawn in monospace. */
+  missing: (key: string) => string;
+  /** The button on that warning. */
+  addKey: string;
+  /** An optional field's empty choice. */
+  none: string;
+  /** An option's note for a key that is set. */
+  set: string;
+  /** An option's note for a key that is not set. */
+  missingNote: string;
+  /** What a read-only form shows for a field it never shows, such as a password. */
+  hidden: string;
+  /** What a read-only form shows for a secret field that names no key. */
+  notChosen: string;
+  /** A read-only boolean's two words. */
+  yes: string;
+  no: string;
+};
+
+/**
+ * What a form needs to draw a field marked `secret: true`: the saved keys to choose from, the words,
+ * and what to do when the person wants to add a missing key or read the keys again. The form never
+ * holds a secret's value: the field is `{ "$secret": key }` and nothing else.
+ */
+export type SchemaFormSecrets = {
+  /** The keys the field offers, each with its group and whether it is set. */
+  keys: readonly SchemaFormSecretKey[];
+  /** `failed` when the keys could not be read: the field says so and the rest of the form stays usable. */
+  status?: 'ready' | 'failed';
+  /** Words that replace the defaults. */
+  copy?: Partial<SchemaFormSecretCopy>;
+  /** Called with the chosen key when the person asks to add it, which is a key that is not set. */
+  onAdd?: (key: string) => void;
+  /** Called when the person asks to read the keys again (`status` is `failed`). */
+  onRetry?: () => void;
+  /** Where to save a key when there is none to choose: a link after `copy.emptyHelp`. */
+  manage?: { label: string; href: string; onclick?: (event: MouseEvent) => void };
+};
+
 export type SchemaFormSubmitHandler = (
   value: SchemaFormOutput,
   event: SubmitEvent,
@@ -81,6 +146,19 @@ export type SchemaFormProps = Omit<HTMLFormAttributes, 'class' | 'onsubmit'> & {
    * Read the value through `onDraftChange`. Defaults to `false`.
    */
   hosted?: boolean;
+  /**
+   * The saved secret keys a field marked `secret: true` offers, with the words and actions around
+   * it. A schema string marked `secret: true` is drawn as a Select of keys (never a text input) and
+   * its value is `{ "$secret": key }`. Without this prop such a field has no key to choose.
+   */
+  secrets?: SchemaFormSecrets;
+  /**
+   * Draws every field as a label and its value, with no control, no submit button and no Edit
+   * as JSON: a form the person can read and not change, such as a default hook's configuration. A
+   * secret field shows its key in monospace beside a Set or Missing dot, and a `writeOnly` field
+   * shows "Hidden". Defaults to `false`.
+   */
+  readOnly?: boolean;
   /** Custom class merged with `.cinder-schema-form`. */
   class?: string;
   /** Called after validation passes with the schema-conformant output value. */

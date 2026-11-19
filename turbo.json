@@ -4,15 +4,32 @@
   "tasks": {
     "build": {
       "outputs": ["build/**", ".svelte-kit/**"],
-      "dependsOn": ["transit"]
+      "dependsOn": ["transit", "^metadata"]
     },
     "dev": {
       "persistent": true,
       "cache": false
     },
+    "metadata": {
+      "dependsOn": ["transit", "^metadata"],
+      "outputs": [".metadata/**"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "!**/*.test.ts",
+        "$TURBO_ROOT$/components/cinder/scripts/**",
+        "!$TURBO_ROOT$/components/cinder/scripts/**/*.test.ts",
+        "$TURBO_ROOT$/components/cinder/src/**",
+        "!$TURBO_ROOT$/components/cinder/src/**/*.test.ts",
+        "$TURBO_ROOT$/internal/component-tooling/scripts/**",
+        "!$TURBO_ROOT$/internal/component-tooling/scripts/**/*.test.ts",
+        "$TURBO_ROOT$/internal/component-tooling/src/**",
+        "!$TURBO_ROOT$/internal/component-tooling/src/**/*.test.ts",
+        "$TURBO_ROOT$/package.json"
+      ]
+    },
     "lint": {
       "outputs": [],
-      "dependsOn": ["transit"],
+      "dependsOn": ["transit", "metadata"],
       "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/scripts/check-inherited-key-reads.ts"]
     },
     "lint:fix": {
@@ -40,7 +57,7 @@
     },
     "test": {
       "outputs": ["test-output/junit/**"],
-      "dependsOn": ["transit"],
+      "dependsOn": ["transit", "metadata", "^metadata"],
       "env": ["CODEX_CI", "NODE_ENV", "CORVIDAE_TEST_SELECTION"],
       "inputs": [
         "$TURBO_DEFAULT$",
@@ -62,7 +79,7 @@
     },
     "test:slow": {
       "outputs": [],
-      "dependsOn": ["transit"],
+      "dependsOn": ["transit", "metadata", "^metadata"],
       "env": ["CODEX_CI", "NODE_ENV", "CORVIDAE_TEST_SELECTION"],
       "inputs": [
         "$TURBO_DEFAULT$",
@@ -120,7 +137,10 @@
       ]
     },
     "//#test:browser-fixtures": {
-      "dependsOn": ["@lostgradient/browser-fixtures#transit"],
+      "dependsOn": [
+        "@lostgradient/browser-fixtures#transit",
+        "@lostgradient/browser-fixtures#metadata"
+      ],
       "env": ["CODEX_CI", "CORVIDAE_TEST_SELECTION"],
       "passThroughEnv": ["TMPDIR"],
       "inputs": [
@@ -151,7 +171,74 @@
     },
     "//#dev:browser-fixtures": {
       "persistent": true,
-      "cache": false
+      "cache": false,
+      "dependsOn": ["@lostgradient/browser-fixtures#metadata"]
+    },
+    "@lostgradient/chat#test:browser": {
+      "dependsOn": ["transit"],
+      "env": ["CINDER_TEST_COMPONENTS", "CINDER_UPDATE_SNAPSHOTS", "CINDER_VISUAL_DIFF"],
+      "passThroughEnv": [
+        "CI",
+        "HOME",
+        "PLAYWRIGHT_BROWSERS_PATH",
+        "PLAYWRIGHT_HTML_OUTPUT_DIR",
+        "PLAYWRIGHT_JSON_OUTPUT_FILE",
+        "TMPDIR"
+      ],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/scripts/host-slots.ts",
+        "$TURBO_ROOT$/scripts/bun-test-pool.ts",
+        "$TURBO_ROOT$/scripts/run-exclusively.ts",
+        "$TURBO_ROOT$/scripts/environment-configuration.ts",
+        "$TURBO_ROOT$/scripts/test-deadlines.ts",
+        "$TURBO_ROOT$/scripts/test-watchdog.ts"
+      ],
+      "outputs": []
+    },
+    "@lostgradient/editor#test:browser": {
+      "dependsOn": ["transit"],
+      "env": ["CINDER_TEST_COMPONENTS", "CINDER_UPDATE_SNAPSHOTS", "CINDER_VISUAL_DIFF"],
+      "passThroughEnv": [
+        "CI",
+        "HOME",
+        "PLAYWRIGHT_BROWSERS_PATH",
+        "PLAYWRIGHT_HTML_OUTPUT_DIR",
+        "PLAYWRIGHT_JSON_OUTPUT_FILE",
+        "TMPDIR"
+      ],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/scripts/host-slots.ts",
+        "$TURBO_ROOT$/scripts/bun-test-pool.ts",
+        "$TURBO_ROOT$/scripts/run-exclusively.ts",
+        "$TURBO_ROOT$/scripts/environment-configuration.ts",
+        "$TURBO_ROOT$/scripts/test-deadlines.ts",
+        "$TURBO_ROOT$/scripts/test-watchdog.ts"
+      ],
+      "outputs": []
+    },
+    "@lostgradient/terminal#test:browser": {
+      "dependsOn": ["transit"],
+      "env": ["CINDER_TEST_COMPONENTS", "CINDER_UPDATE_SNAPSHOTS", "CINDER_VISUAL_DIFF"],
+      "passThroughEnv": [
+        "CI",
+        "HOME",
+        "PLAYWRIGHT_BROWSERS_PATH",
+        "PLAYWRIGHT_HTML_OUTPUT_DIR",
+        "PLAYWRIGHT_JSON_OUTPUT_FILE",
+        "TMPDIR"
+      ],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/scripts/host-slots.ts",
+        "$TURBO_ROOT$/scripts/bun-test-pool.ts",
+        "$TURBO_ROOT$/scripts/run-exclusively.ts",
+        "$TURBO_ROOT$/scripts/environment-configuration.ts",
+        "$TURBO_ROOT$/scripts/test-deadlines.ts",
+        "$TURBO_ROOT$/scripts/test-watchdog.ts"
+      ],
+      "outputs": []
     },
     "@lostgradient/interborough#build": {
       "dependsOn": ["transit"],
@@ -874,26 +961,74 @@
         "$TURBO_ROOT$/scripts/environment-configuration.ts"
       ]
     },
+    "@lostgradient/component-tooling#test": {
+      "outputs": ["test-output/junit/**"],
+      "dependsOn": ["transit", "@lostgradient/cinder#metadata"],
+      "env": ["CODEX_CI", "NODE_ENV", "CORVIDAE_TEST_SELECTION"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/package.json",
+        "$TURBO_ROOT$/components/*/src/**",
+        "$TURBO_ROOT$/components/*/browser/fixtures/**",
+        "$TURBO_ROOT$/components/*/*.json",
+        "$TURBO_ROOT$/components/*/README.md",
+        "$TURBO_ROOT$/components/cinder/scripts/**",
+        "$TURBO_ROOT$/scripts/browser-fixtures/src/**",
+        "$TURBO_ROOT$/scripts/bun-test-junit.ts",
+        "$TURBO_ROOT$/scripts/check-test-durations.ts",
+        "$TURBO_ROOT$/scripts/test-duration-allowlist.json",
+        "$TURBO_ROOT$/testing/testing/src/hang-guard.ts",
+        "$TURBO_ROOT$/scripts/test-deadlines.ts",
+        "$TURBO_ROOT$/scripts/test-watchdog.ts",
+        "$TURBO_ROOT$/scripts/test-heartbeat.ts",
+        "$TURBO_ROOT$/scripts/bun-test-pool.ts",
+        "$TURBO_ROOT$/scripts/run-exclusively.ts",
+        "$TURBO_ROOT$/scripts/worker-crash-report.ts",
+        "$TURBO_ROOT$/scripts/affected-tests-manifest.ts",
+        "$TURBO_ROOT$/scripts/environment-configuration.ts",
+        "$TURBO_ROOT$/scripts/workspace-directories.ts"
+      ]
+    },
+    "@lostgradient/component-tooling#test:slow": {
+      "outputs": [],
+      "dependsOn": ["transit", "@lostgradient/cinder#metadata"],
+      "env": ["CODEX_CI", "NODE_ENV", "CORVIDAE_TEST_SELECTION"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/package.json",
+        "$TURBO_ROOT$/components/*/src/**",
+        "$TURBO_ROOT$/components/*/*.json",
+        "$TURBO_ROOT$/components/cinder/scripts/**",
+        "$TURBO_ROOT$/scripts/**/*.ts",
+        "$TURBO_ROOT$/internal/typescript/**",
+        "$TURBO_ROOT$/testing/testing/src/**",
+        "$TURBO_ROOT$/scripts/affected-tests-manifest.ts",
+        "$TURBO_ROOT$/scripts/bun-test-selected.ts",
+        "$TURBO_ROOT$/scripts/environment-configuration.ts",
+        "$TURBO_ROOT$/scripts/test-deadlines.ts",
+        "$TURBO_ROOT$/scripts/test-watchdog.ts",
+        "$TURBO_ROOT$/scripts/test-heartbeat.ts",
+        "$TURBO_ROOT$/scripts/bun-test-pool.ts",
+        "$TURBO_ROOT$/scripts/run-exclusively.ts"
+      ]
+    },
     "@lostgradient/cinder#lint": {
       "outputs": [],
-      "dependsOn": ["transit"],
+      "dependsOn": ["transit", "metadata"],
       "inputs": [
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/scripts/check-inherited-key-reads.ts",
-        "$TURBO_ROOT$/components/chat/src/**",
-        "$TURBO_ROOT$/components/editor/src/**",
-        "$TURBO_ROOT$/scripts/browser-fixtures/src/**"
+        "$TURBO_ROOT$/packages/bureau/src/a2ui/cinder-catalog.schema.json",
+        "$TURBO_ROOT$/packages/bureau/src/a2ui/PROVENANCE.json"
       ]
     },
     "@lostgradient/cinder#test:coverage": {
-      "dependsOn": ["transit"],
+      "dependsOn": ["transit", "metadata"],
       "outputs": ["coverage/**"],
       "env": ["CODEX_CI", "NODE_ENV", "CINDER_SVG_DATA_URI_ROOTS"],
       "inputs": [
         "$TURBO_DEFAULT$",
-        "$TURBO_ROOT$/components/chat/src/**",
         "$TURBO_ROOT$/components/editor/src/**",
-        "$TURBO_ROOT$/scripts/browser-fixtures/src/**",
         "$TURBO_ROOT$/scripts/bun-test.ts",
         "$TURBO_ROOT$/testing/testing/src/hang-guard.ts",
         "$TURBO_ROOT$/scripts/test-deadlines.ts",
@@ -906,14 +1041,11 @@
     },
     "@lostgradient/cinder#test": {
       "outputs": ["test-output/junit/**"],
-      "dependsOn": ["transit"],
+      "dependsOn": ["transit", "metadata"],
       "env": ["CODEX_CI", "NODE_ENV", "CINDER_SVG_DATA_URI_ROOTS", "CORVIDAE_TEST_SELECTION"],
       "inputs": [
         "$TURBO_DEFAULT$",
-        "$TURBO_ROOT$/components/chat/src/**",
         "$TURBO_ROOT$/components/editor/src/**",
-        "$TURBO_ROOT$/components/editor/components.json",
-        "$TURBO_ROOT$/scripts/browser-fixtures/src/**",
         "$TURBO_ROOT$/scripts/bun-test-junit.ts",
         "$TURBO_ROOT$/scripts/check-test-durations.ts",
         "$TURBO_ROOT$/scripts/test-duration-allowlist.json",
@@ -931,7 +1063,7 @@
     },
     "@lostgradient/cinder#test:slow": {
       "outputs": [],
-      "dependsOn": ["transit"],
+      "dependsOn": ["transit", "metadata"],
       "env": ["CODEX_CI", "NODE_ENV", "CORVIDAE_TEST_SELECTION", "CINDER_SVG_DATA_URI_ROOTS"],
       "inputs": [
         "$TURBO_DEFAULT$",
@@ -944,10 +1076,33 @@
         "$TURBO_ROOT$/scripts/test-heartbeat.ts",
         "$TURBO_ROOT$/scripts/bun-test-pool.ts",
         "$TURBO_ROOT$/scripts/run-exclusively.ts",
-        "$TURBO_ROOT$/components/chat/src/**",
-        "$TURBO_ROOT$/components/editor/src/**",
-        "$TURBO_ROOT$/components/editor/components.json",
-        "$TURBO_ROOT$/scripts/browser-fixtures/src/**"
+        "$TURBO_ROOT$/components/editor/src/**"
+      ]
+    },
+    "@lostgradient/playground#dev": {
+      "persistent": true,
+      "cache": false,
+      "dependsOn": ["^metadata"]
+    },
+    "@lostgradient/playground#test": {
+      "outputs": ["test-output/junit/**"],
+      "dependsOn": ["transit", "metadata", "^metadata"],
+      "env": ["CODEX_CI", "NODE_ENV", "CORVIDAE_TEST_SELECTION"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/scripts/bun-test-junit.ts",
+        "$TURBO_ROOT$/scripts/check-test-durations.ts",
+        "$TURBO_ROOT$/scripts/test-duration-allowlist.json",
+        "$TURBO_ROOT$/testing/testing/src/hang-guard.ts",
+        "$TURBO_ROOT$/scripts/test-deadlines.ts",
+        "$TURBO_ROOT$/scripts/test-watchdog.ts",
+        "$TURBO_ROOT$/scripts/test-heartbeat.ts",
+        "$TURBO_ROOT$/scripts/bun-test-pool.ts",
+        "$TURBO_ROOT$/scripts/run-exclusively.ts",
+        "$TURBO_ROOT$/scripts/worker-crash-report.ts",
+        "$TURBO_ROOT$/scripts/affected-tests-manifest.ts",
+        "$TURBO_ROOT$/scripts/environment-configuration.ts",
+        "$TURBO_ROOT$/scripts/workspace-directories.ts"
       ]
     }
   },

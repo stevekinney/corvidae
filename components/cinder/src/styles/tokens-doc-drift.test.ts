@@ -20,8 +20,8 @@ import { join } from 'node:path';
 
 import { describe, expect, test } from 'bun:test';
 
+import { readRootTokenValues } from '@lostgradient/component-tooling/test/token-introspection.ts';
 import { loadCorpus } from '../../scripts/tokens/generate.ts';
-import { readRootTokenValues } from '../test/token-introspection.ts';
 import {
   buildBaseDocuments,
   buildBaseIndex,

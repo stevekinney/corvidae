@@ -53,6 +53,22 @@ describe('a blocked composer', () => {
     expect(enabled).toBe(1);
   });
 
+  test('keeps the chat of a disabled agent read-only, with Enable agent (COR-2429)', () => {
+    let enabled = 0;
+    const status = composerStatusOf(
+      facts({ disabledAgent: { agent: 'Tool runner', enable: () => (enabled += 1) } }),
+    );
+
+    expect(status).toMatchObject({
+      kind: 'blocked',
+      reason: 'Tool runner is disabled, so this chat is read-only. Enable it to continue.',
+      action: { label: 'Enable agent' },
+    });
+    if (status?.kind !== 'blocked') throw new Error('The composer is not blocked.');
+    status.action?.onclick?.();
+    expect(enabled).toBe(1);
+  });
+
   test('says no agent can create workflows once, with a link to Agents', () => {
     expect(
       composerStatusOf(facts({ noWorkflowAgent: true, agentsHref: '/agents', noProvider: true })),

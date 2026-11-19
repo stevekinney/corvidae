@@ -55,7 +55,7 @@ function recordStarts(page: Page): Array<{ messages: unknown[]; resume?: unknown
 function recordResolves(page: Page): Array<Record<string, unknown>> {
   const resolves: Array<Record<string, unknown>> = [];
   page.on('request', (outgoing) => {
-    if (outgoing.method() !== 'POST' || !outgoing.url().includes('/bureau/jsonrpc')) return;
+    if (outgoing.method() !== 'POST' || !outgoing.url().includes('/jsonrpc')) return;
     const body = outgoing.postDataJSON() as { method?: string; params?: Record<string, unknown> };
     if (body.method === 'bureau.reviews.resolve') resolves.push(body.params ?? {});
   });
@@ -118,7 +118,7 @@ test.describe('a tool approval', () => {
     const source = paneOf(page).getByTestId('review-source');
     await expect(source).toContainText('Asked by');
     await expect(source.getByRole('link', { name: /tool runner/i })).toBeVisible();
-    await expect(source).toContainText('waiting since');
+    await expect(source).toContainText(/waiting \d+ (min|h|days?)/);
     await expect(paneOf(page)).toContainText('order-1001');
     // No raw policy string, no Live toggle, and no separate section for the engine's reviews.
     await expect(page.getByText(/requires approval/)).toHaveCount(0);
@@ -135,7 +135,7 @@ test.describe('a tool approval', () => {
   test('denied from the inbox with a note never runs the tool', async ({ page, request }) => {
     const { threadId, review } = await waitingRefund(page, request, 'reviews-reject');
     const resolves = recordResolves(page);
-    await paneOf(page).getByLabel('Note', { exact: true }).fill('Wrong customer.');
+    await paneOf(page).getByLabel('Note (optional)', { exact: true }).fill('Wrong customer.');
     await paneOf(page).getByRole('button', { name: 'Deny' }).click();
 
     await expect(rowOf(page, review)).toHaveCount(0);
@@ -153,7 +153,7 @@ test.describe('a tool approval', () => {
   }) => {
     const approved = await waitingRefund(page, request, 'reviews-key-approve');
     // Typing an "a" or a "d" into the note is typing, not a decision.
-    const note = paneOf(page).getByLabel('Note', { exact: true });
+    const note = paneOf(page).getByLabel('Note (optional)', { exact: true });
     await note.fill('');
     await note.press('a');
     await note.press('d');
@@ -170,7 +170,7 @@ test.describe('a tool approval', () => {
 
     const denied = await waitingRefund(page, request, 'reviews-key-deny');
     const resolves = recordResolves(page);
-    await paneOf(page).getByLabel('Note', { exact: true }).fill('Not this one.');
+    await paneOf(page).getByLabel('Note (optional)', { exact: true }).fill('Not this one.');
     await paneOf(page).getByRole('heading', { level: 2 }).click();
     await page.keyboard.press('d');
     await expect(rowOf(page, denied.review)).toHaveCount(0);
@@ -470,23 +470,22 @@ test.describe('a Bureau that fails', () => {
     pageErrors,
   }) => {
     // Each read of the review list the page makes on arrival fails once; none retries, and the
-    // feed's catch-up is held, so the count is exact. Observed on arrival, by the request each
-    // read sends: the view's probe and the notification feed ask the Bureau's own list, one read
-    // each; the merged waiting list is read once by the navigation's count, once more when the
-    // page's own query mounts onto the failed one, and once by a further observer of it; the Done
-    // tab's list reads once.
-    const PROBE_AND_FEED_READS = 2;
-    const WAITING_LIST_READS = 3;
-    const DONE_LIST_READS = 1;
+    // feed's catch-up is held. The view's probe and the notification feed read the Bureau's own
+    // list once each, the Done tab once, and the merged waiting list once for the navigation's
+    // count. The count is not exact: the page draws its own loading and mounts beside the probe
+    // (row 26a), so whether its own query shares that read in flight or makes one more follows
+    // the order the network answers in (5 or 6 seen). It is bounded, so a page that kept asking
+    // after a failure would still fail the test.
     pageErrors.expect({
-      pattern: loggedFailedResponse(500, /bureau\/jsonrpc/),
+      pattern: loggedFailedResponse(500, /\/jsonrpc/),
       reason:
         'the test answers each read of the Bureau’s review list the page makes on arrival with a 500',
-      count: PROBE_AND_FEED_READS + WAITING_LIST_READS + DONE_LIST_READS,
+      count: 5,
+      atMost: 8,
     });
     // The feed's catch-up would ask the lists again while the page is open, so it is held.
     await holdBureauFeed(page);
-    await page.route('**/bureau/jsonrpc', async (route) => {
+    await page.route('**/jsonrpc', async (route) => {
       if ((route.request().postData() ?? '').includes('"bureau.reviews.list"')) {
         await route.fulfill({ status: 500, json: { error: 'The Bureau broke.' } });
         return;

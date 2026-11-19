@@ -43,9 +43,10 @@ export interface PluginTestHostAgent {
   readonly id: string;
   /**
    * Whether the agent can run: `ready` does, `invalid` is a file that cannot be used, and
-   * `unavailable` is a code agent of a disabled plugin, which the host lists but never runs.
+   * `unavailable` is a code agent of a disabled plugin, which the host lists but never runs, and
+   * `disabled` an agent a person disabled, which runs nothing until it is enabled again.
    */
-  readonly state: 'ready' | 'invalid' | 'unavailable';
+  readonly state: 'ready' | 'invalid' | 'unavailable' | 'disabled';
   /** The plugin that ships the agent, for a file of a plugin's read-only layer or a disabled plugin's code. */
   readonly plugin?: string | undefined;
   /** Why an `invalid` agent cannot run. */

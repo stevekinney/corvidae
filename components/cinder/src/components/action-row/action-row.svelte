@@ -1,18 +1,4 @@
 <script lang="ts" module>
-  /**
-   * @cinder
-   * @category action
-   * @status beta
-   * @purpose Full-width button row for selectable sidebars, timelines, and master-detail lists with leading, title, description, meta, and trailing regions.
-   * @tag row
-   * @tag list
-   * @tag selection
-   * @useWhen Selecting an item in-place from a vertical list, timeline, run list, or master-detail sidebar.
-   * @useWhen A row must behave like a native button while presenting rich row metadata.
-   * @avoidWhen Navigating to a URL — use stacked-list-item with href or navigation-item instead.
-   * @avoidWhen Showing static record rows without button semantics — use stacked-list-item inside data-list.
-   * @related stacked-list-item, data-list, button
-   */
   export type {
     ActionRowCurrentValue,
     ActionRowProps,

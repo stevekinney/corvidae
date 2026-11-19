@@ -223,7 +223,10 @@ function namesAnAgent(operation: CatalogOperation): boolean {
   return (
     operation.name.startsWith('bureau.agents.definitions.') ||
     operation.name.startsWith('bureau.agents.versions.') ||
-    operation.name.startsWith('bureau.agents.overrides.')
+    operation.name.startsWith('bureau.agents.overrides.') ||
+    // COR-2429: disable and enable name the agent they turn off and on.
+    operation.name === 'bureau.agents.disable' ||
+    operation.name === 'bureau.agents.enable'
   );
 }
 

@@ -1,16 +1,4 @@
 <script lang="ts" module>
-  /**
-   * @cinder
-   * @category form
-   * @status stable
-   * @purpose Sliding switch implementing the WAI-ARIA switch pattern for a single on or off setting that applies immediately.
-   * @tag form
-   * @tag switch
-   * @useWhen Flipping a single setting on or off with immediate effect such as notifications or dark mode.
-   * @avoidWhen Picking one option from a small fixed set — use segmented-control instead.
-   * @avoidWhen Collecting a deferred boolean (agreement, opt-in) in a Submit-style form — a switch implies immediate effect; use checkbox instead.
-   * @related checkbox, segmented-control
-   */
   export type { ToggleProps } from './toggle.types.ts';
 </script>
 

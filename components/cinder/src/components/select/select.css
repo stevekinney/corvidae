@@ -1,4 +1,6 @@
 @layer cinder.tokens, cinder.foundation, cinder.components, cinder.utilities;
+/* An option marked `code` draws its label with Text (truncate="middle"). */
+@import '../text/text.css';
 @layer cinder.components {
   /* ========================================
  * SELECT
@@ -421,6 +423,14 @@
     color: var(--cinder-text-muted);
   }
 
+  /* A chosen `code` option: Text cuts the label in its middle, so the value is a flex box that gives
+     it the room left and never an ellipsis of its own. */
+  .cinder-select__value[data-cinder-code] {
+    display: flex;
+    overflow: visible;
+    overflow-wrap: normal;
+  }
+
   .cinder-select__value[data-cinder-placeholder] {
     color: var(--cinder-text-muted);
   }
@@ -504,6 +514,13 @@
     font-weight: var(--cinder-font-medium);
     line-height: var(--cinder-leading-normal);
     overflow-wrap: anywhere;
+  }
+
+  /* An identifier keeps one line and gives way in its middle, so the row never wraps it. */
+  .cinder-select__option-label[data-cinder-code] {
+    display: flex;
+    min-inline-size: 0;
+    overflow-wrap: normal;
   }
 
   .cinder-select__option-description,

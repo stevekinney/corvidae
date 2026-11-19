@@ -6,6 +6,7 @@ import { quietFor, waitUntil } from '@lostgradient/testing/wait-until';
 import { QueryClient, QueryObserver } from '@tanstack/svelte-query';
 import { afterEach, describe, expect, test } from 'bun:test';
 
+import { bureauClient } from '../lib/bureau-api.ts';
 import {
   askAgainAfterOutage,
   CONNECTION_MAX_ATTEMPTS,
@@ -353,6 +354,31 @@ describe('asking again once the server answers', () => {
     expect(observer.getCurrentResult().status).toBe('success');
     expect(observer.getCurrentResult().data).toEqual(['digest']);
     expect(loads).toBe(2);
+    stop();
+  });
+});
+
+describe('a refused connection through the generated Bureau client', () => {
+  test('makes the server unreachable, as every other failed request does', async () => {
+    const monitor = open(() => new Promise(() => undefined));
+    const queryClient = new QueryClient();
+    const stop = monitor.observe(queryClient);
+    const original = globalThis.fetch;
+    globalThis.fetch = Object.assign(() => Promise.reject(new TypeError('Failed to fetch')), {
+      preconnect: original.preconnect,
+    });
+    try {
+      await queryClient
+        .fetchQuery({
+          queryKey: ['bureau', 'deployment'],
+          queryFn: () => bureauClient['bureau.deployment.get']({}),
+          retry: false,
+        })
+        .catch(() => undefined);
+    } finally {
+      globalThis.fetch = original;
+    }
+    expect(monitor.unreachable).toBe(true);
     stop();
   });
 });

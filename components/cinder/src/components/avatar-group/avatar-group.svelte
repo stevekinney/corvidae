@@ -1,17 +1,4 @@
 <script lang="ts" module>
-  /**
-   * @cinder
-   * @category data-display
-   * @status stable
-   * @purpose Overlapping collaborator avatar stack built on the Avatar primitive with focusable names and overflow count.
-   * @tag identity
-   * @tag collaboration
-   * @useWhen Showing who is present, assigned, or collaborating in a compact surface.
-   * @useWhen Summarizing a bounded set of people with a visible overflow count.
-   * @avoidWhen Rendering a single person — use avatar instead.
-   * @avoidWhen Showing status, counts, or metadata labels unrelated to people — use badge, chip, or status-dot instead.
-   * @related avatar, badge, tooltip, status-dot
-   */
   export type {
     AvatarGroupItem,
     AvatarGroupProps,

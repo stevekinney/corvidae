@@ -1,18 +1,4 @@
 <script lang="ts" module>
-  /**
-   * @cinder
-   * @category domain
-   * @status domain-suite
-   * @purpose Conversation navigation list for switching among Chat transcripts without embedding the list inside Chat.
-   * @tag chat
-   * @tag conversation
-   * @tag navigation
-   * @useWhen Rendering a multi-conversation chat sidebar beside one active Chat transcript.
-   * @useWhen Showing unread counts and last-message previews for compatible conversation snapshots.
-   * @avoidWhen Rendering the message transcript itself — use chat for the active conversation surface.
-   * @avoidWhen Building app-wide primary navigation — use side-navigation or navigation-bar.
-   * @related chat, chat-conversation-header, side-navigation
-   */
   export type { ChatConversationListProps } from './chat-conversation-list.types.ts';
   export type {
     ConversationActivity,

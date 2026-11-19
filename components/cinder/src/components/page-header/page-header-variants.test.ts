@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 
 import { setupHappyDom } from '@lostgradient/testing';
 
-import { declarationsFor } from '../../test/css.ts';
+import { declarationsFor } from '@lostgradient/component-tooling/test/css.ts';
 import {
   contrastRatio,
   type OklchColor,
@@ -211,6 +211,32 @@ describe('PageHeader large title (COR-2320)', () => {
 
     moveTitle(title, 40);
     expect(bar?.hasAttribute('data-cinder-collapsed')).toBe(false);
+  });
+
+  test('the collapsed bar keeps the decisions in reach and the header copy leaves the tab order (COR-2445)', () => {
+    const { container } = render(Harness, {
+      props: { variant: 'large', withDecisions: true },
+    });
+    const bar = container.querySelector('.cinder-page-header__bar');
+    const inBar = bar?.querySelector('.cinder-page-header__bar-decisions');
+    const inHeader = container.querySelector('.cinder-page-header .cinder-page-header__decisions');
+    const title = container.querySelector('h1.cinder-page-header__title');
+    if (title === null || inBar === null || inBar === undefined || inHeader === null) {
+      throw new Error('missing parts');
+    }
+    // The bar is not hidden as a whole, only its repeated title.
+    expect(bar?.hasAttribute('aria-hidden')).toBe(false);
+    expect(bar?.querySelector('.cinder-page-header__bar-title')?.getAttribute('aria-hidden')).toBe(
+      'true',
+    );
+    expect(inBar.textContent).toContain('Approve');
+    expect(inBar.textContent).toContain('Deny');
+    expect(inBar.hasAttribute('inert')).toBe(true);
+    expect(inHeader.hasAttribute('inert')).toBe(false);
+
+    moveTitle(title, -120);
+    expect(inBar.hasAttribute('inert')).toBe(false);
+    expect(inHeader.hasAttribute('inert')).toBe(true);
   });
 
   test('a title waiting below the fold has not collapsed', () => {

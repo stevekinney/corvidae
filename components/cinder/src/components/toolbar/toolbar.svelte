@@ -1,16 +1,4 @@
 <script lang="ts" module>
-  /**
-   * @cinder
-   * @category action
-   * @status stable
-   * @purpose Named grouping of related controls that implements the WAI-ARIA toolbar pattern with DOM-driven roving tabindex.
-   * @tag action
-   * @tag grouping
-   * @useWhen Rendering a row or column of related controls where the whole set should be one Tab stop and arrow keys should move between items.
-   * @useWhen Wrapping existing cinder controls such as Button, SegmentedControl, and NumberInput without adding toolbar-specific child APIs.
-   * @avoidWhen Building a static flex row of controls that should remain in ordinary Tab order — use inline, cluster, or button-group instead.
-   * @related button-group, segmented-control, number-input
-   */
   export type { ToolbarOrientation, ToolbarProps } from './toolbar.types.ts';
 </script>
 

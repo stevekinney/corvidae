@@ -20,6 +20,7 @@
   import { commitValue } from '../../utilities/value-change.ts';
   import { createCommandListState } from '../_internal/create-command-list-state.svelte.ts';
   import Popover from '../popover/popover.svelte';
+  import Text from '../text/text.svelte';
   import type { SelectGroup, SelectOption, SelectVariant } from './select.types.ts';
 
   type Section = {
@@ -418,6 +419,18 @@
   }
 
   const ariaLabel = $derived((rest as { 'aria-label'?: string })['aria-label']);
+
+  /**
+   * The accessible name of a `code` option: its whole label, then what the row adds, as the row
+   * reads. Its middle cut draws the label as two boxes, which an accessible name taken from the
+   * content would split in two.
+   */
+  function codeOptionName(option: SelectOption<T>): string {
+    const words = [option.description, option.note].filter(
+      (part): part is string => part !== undefined && part !== '',
+    );
+    return [`${option.label}${option.suffix ? `, ${option.suffix}` : ''}`, ...words].join(' ');
+  }
 </script>
 
 {#snippet optionRow(option: SelectOption<T>, index: number)}
@@ -429,6 +442,7 @@
     role="option"
     class="cinder-_option-row cinder-select__option"
     aria-selected={selected}
+    aria-label={option.code ? codeOptionName(option) : undefined}
     aria-disabled={option.disabled || undefined}
     data-cinder-active={index === activeIndex || undefined}
     onmousedown={(event) => {
@@ -445,8 +459,16 @@
       >
     {/if}
     <span class="cinder-select__option-text">
-      <span class="cinder-select__option-label"
-        >{option.label}{#if option.suffix}<span class="cinder-select__suffix"
+      <!-- An identifier is cut in its middle with the whole label in a tooltip. Its text stays out of
+           the Tab order: the trigger drives the list, and the option already names the whole label. -->
+      <span class="cinder-select__option-label" data-cinder-code={option.code ? '' : undefined}
+        >{#if option.code}<Text
+            variant="code"
+            as="span"
+            truncate="middle"
+            text={option.label}
+            tabindex={-1}
+          />{:else}{option.label}{/if}{#if option.suffix}<span class="cinder-select__suffix"
             >{`, ${option.suffix}`}</span
           >{/if}</span
       >
@@ -517,8 +539,16 @@
         >
       {/if}
       {#if selectedOption}
-        <span class="cinder-select__value"
-          >{selectedOption.label}{#if selectedOption.triggerSuffix}<span
+        <!-- A chosen identifier is drawn as its option draws it: monospace, cut in its middle with
+             the whole label in a tooltip, and out of the Tab order, since the trigger is the stop. -->
+        <span class="cinder-select__value" data-cinder-code={selectedOption.code ? '' : undefined}
+          >{#if selectedOption.code}<Text
+              variant="code"
+              as="span"
+              truncate="middle"
+              text={selectedOption.label}
+              tabindex={-1}
+            />{:else}{selectedOption.label}{/if}{#if selectedOption.triggerSuffix}<span
               class="cinder-select__suffix">{`, ${selectedOption.triggerSuffix}`}</span
             >{/if}</span
         >

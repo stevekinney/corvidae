@@ -49,7 +49,7 @@ async function refuse(
   method: string,
   fault: { message: string; httpStatus: number; weftCode: string },
 ): Promise<void> {
-  await page.route('**/bureau/jsonrpc', async (route) => {
+  await page.route('**/jsonrpc', async (route) => {
     const call = route.request().postDataJSON() as { method?: string; id?: unknown };
     if (call.method !== method) {
       await route.fallback();
@@ -254,7 +254,7 @@ for (const width of WIDTHS) {
     // runs its tabs are the editable form. The Bureau is made to answer for it as a ready agent
     // that is a file of the Demo plugin, which is the one shape the read-only branch renders for.
     const agent = 'demo:release-helper';
-    await page.route('**/bureau/jsonrpc', async (route) => {
+    await page.route('**/jsonrpc', async (route) => {
       const call = route.request().postDataJSON() as {
         method?: string;
         id?: unknown;
@@ -359,7 +359,7 @@ for (const width of WIDTHS) {
       const held = new Promise<void>((resolve) => {
         release = resolve;
       });
-      await page.route('**/bureau/jsonrpc', async (request) => {
+      await page.route('**/jsonrpc', async (request) => {
         const call = request.request().postDataJSON() as { method?: string };
         if (call.method === 'bureau.agents.overrides.get') await held;
         await request.fallback();
@@ -374,7 +374,7 @@ for (const width of WIDTHS) {
       await captureForDesignReview(page, { route, state: 'loading', source: SOURCE });
       release();
       await expect(page.getByTestId('agent-tab-loading')).toHaveCount(0);
-      await page.unroute('**/bureau/jsonrpc');
+      await page.unroute('**/jsonrpc');
 
       await refuse(page, 'bureau.agents.overrides.get', FAILED);
       await page.reload();
@@ -385,7 +385,7 @@ for (const width of WIDTHS) {
         source: SOURCE,
       });
       await checkA11y(`${tab} tab of a plugin agent, failed to load, at ${width}px`);
-      await page.unroute('**/bureau/jsonrpc');
+      await page.unroute('**/jsonrpc');
       await page.getByRole('button', { name: 'Try again' }).click();
       await expect(page.getByTestId('agent-tab-failed')).toHaveCount(0);
       await expect(page.getByTestId('agent-plugin-note')).toBeVisible();
@@ -412,7 +412,7 @@ for (const width of WIDTHS) {
       state: 'stale write',
       source: SOURCE,
     });
-    await page.unroute('**/bureau/jsonrpc');
+    await page.unroute('**/jsonrpc');
     await refuse(page, 'bureau.agents.overrides.update', FORBIDDEN);
     await page.getByRole('button', { name: settings.save }).click();
     await expect(alert.filter({ hasText: settings.forbidden })).toBeVisible();
@@ -421,7 +421,7 @@ for (const width of WIDTHS) {
       state: 'forbidden',
       source: SOURCE,
     });
-    await page.unroute('**/bureau/jsonrpc');
+    await page.unroute('**/jsonrpc');
 
     // Access: the spend limit saves when the field is left.
     const access = AGENT_PAGE_COPY.access;
@@ -437,7 +437,7 @@ for (const width of WIDTHS) {
       state: 'stale write',
       source: SOURCE,
     });
-    await page.unroute('**/bureau/jsonrpc');
+    await page.unroute('**/jsonrpc');
     await refuse(page, 'bureau.agents.overrides.update', FORBIDDEN);
     await spend.fill('5');
     await spend.press('Tab');

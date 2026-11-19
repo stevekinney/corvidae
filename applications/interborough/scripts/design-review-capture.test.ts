@@ -83,6 +83,9 @@ describe('parseArguments', () => {
       'tests/e2e/goals-list-states.spec.ts',
       // The view states are a showcase specification too, run once where first listed.
       'tests/e2e/15-view-states.spec.ts',
+      'tests/e2e/agents-reviews-design-states.spec.ts',
+      'tests/e2e/hooks.spec.ts',
+      'tests/e2e/hooks-states.spec.ts',
       'tests/e2e/responsive.spec.ts',
     ]);
     expect(options.grep).toBeUndefined();
@@ -153,6 +156,9 @@ describe('parseArguments', () => {
       'tests/e2e/goal-page-states.spec.ts',
       'tests/e2e/goals-list-states.spec.ts',
       'tests/e2e/15-view-states.spec.ts',
+      'tests/e2e/agents-reviews-design-states.spec.ts',
+      'tests/e2e/hooks.spec.ts',
+      'tests/e2e/hooks-states.spec.ts',
     ]);
     expect(specificationsOf(['--data', 'stress'])).toEqual([
       'tests/e2e/responsive.spec.ts',
@@ -208,6 +214,9 @@ describe('parseArguments', () => {
       'tests/e2e/goal-page-states.spec.ts',
       'tests/e2e/goals-list-states.spec.ts',
       'tests/e2e/15-view-states.spec.ts',
+      'tests/e2e/agents-reviews-design-states.spec.ts',
+      'tests/e2e/hooks.spec.ts',
+      'tests/e2e/hooks-states.spec.ts',
       'tests/e2e/responsive.spec.ts',
     ]);
     // `--specs` alone keeps meaning what it always meant: one of the stress specifications.

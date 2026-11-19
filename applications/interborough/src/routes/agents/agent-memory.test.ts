@@ -6,8 +6,9 @@
  * correcting in place (the original is kept in the history), and the governance actions (share,
  * hold, quarantine, export). The tab words its own first load and its failure in its body
  * (`agent-tab-state.svelte`); the Agents view's frame owns not-found (`app/view-frame.test.ts`).
- * The real server is exercised in the Playwright suite. Row 45r (forget at once, with an Undo that
- * restores it) waits for a Bureau operation that restores a forgotten memory, which does not exist.
+ * The real server is exercised in the Playwright suite. Row 45r forgets at once with an Undo toast,
+ * and the forget is sent only once the toast closes (COR-2429), because the Bureau has no way to
+ * bring a forgotten memory back.
  */
 import { cleanup, fireEvent, render, waitFor, within } from '@testing-library/svelte';
 import { afterEach, describe, expect, mock, test } from 'bun:test';
@@ -15,6 +16,7 @@ import { afterEach, describe, expect, mock, test } from 'bun:test';
 import { AGENT_PAGE_COPY } from '../../app/copy/agents.ts';
 import { MEMORY_COPY } from '../../app/copy/memory.ts';
 import { RETRY_LABEL } from '../../app/copy/views.ts';
+import { dismissToast } from '../../app/toast-host.svelte';
 import {
   installBureauStub,
   StubFault,
@@ -142,6 +144,11 @@ function bureau(answers: Answers = {}): BureauStub {
     'bureau.memory.search': () => ({ hits: [] }),
     'bureau.memory.get': (params) => detailOf_(params['id'] === WINDOW.id ? WINDOW : AISLE),
     'bureau.contexts.get': () => ({ ...CONTEXT, title: CHAT_TITLE }),
+    'bureau.memory.forget': (params) => ({
+      id: params['id'],
+      deletion: 'completed',
+      receipt: RECEIPT,
+    }),
     ...answers,
     ...(list === undefined || quarantineAware.has(list)
       ? {}
@@ -182,6 +189,27 @@ async function openDetails(
   const more = region.querySelector<HTMLDetailsElement>('details');
   if (more !== null) more.open = true;
   return region;
+}
+
+/** The toast a forget shows, with its Undo, once it is on the page. */
+async function forgetToastOf(
+  view: Pick<ReturnType<typeof open>, 'container'>,
+): Promise<HTMLElement> {
+  return waitFor(() => {
+    const toast = view.container.ownerDocument.querySelector<HTMLElement>(
+      '.cinder-toast[data-cinder-undo]:not([data-cinder-leaving="true"])',
+    );
+    expect(toast?.textContent ?? '').toContain('Forgot');
+    return toast as HTMLElement;
+  });
+}
+
+/** Closes the forget's toast as the shell does when it is dismissed, which sends the forget. */
+async function closeForgetToast(view: Pick<ReturnType<typeof open>, 'container'>): Promise<void> {
+  const toast = await forgetToastOf(view);
+  const id = toast.getAttribute('data-cinder-toast-id');
+  if (id === null) throw new Error('The toast has no id.');
+  dismissToast(id);
 }
 
 /** The value of a fact in the details, found by its term. */
@@ -885,7 +913,8 @@ describe('forgetting a memory', () => {
     // As the server does: a memory that was forgotten is not found when it is read again.
     let gone = false;
     const served = bureau({
-      'bureau.memory.get': () => {
+      'bureau.memory.get': (params) => {
+        if (params['id'] === WINDOW.id) return detailOf_(WINDOW);
         if (gone) throw new StubFault('NotFound', 404, 'No memory.', { resource: 'memory' });
         return detailOf_(AISLE);
       },
@@ -908,27 +937,187 @@ describe('forgetting a memory', () => {
     await fireEvent.click(
       within(detail).getByRole('button', { name: MEMORY_COPY.forget.iconLabel }),
     );
-    const dialog = await view.findByRole('dialog', { name: MEMORY_COPY.forget.dialog.title });
-    // The question names the memory that goes.
-    expect(dialog.textContent).toContain(AISLE.content.slice(0, 20));
-    expect(dialog.textContent).toContain(MEMORY_COPY.forget.dialog.description(AISLE.content));
-    await fireEvent.click(
-      within(dialog).getByRole('button', { name: MEMORY_COPY.forget.dialog.confirm }),
-    );
+    // No question: the toast shows, and closing it sends the forget.
+    await closeForgetToast(view);
     return { served, view, detail };
   }
 
-  test('asks first, and forgets nothing when the question is declined', async () => {
+  test('forgets at once with no question, and says so in a toast with Undo (row 45r)', async () => {
+    const served = bureau();
+    const view = open();
+    const detail = await openDetails(view, AISLE.content);
+
+    await fireEvent.click(
+      within(detail).getByRole('button', { name: MEMORY_COPY.forget.iconLabel }),
+    );
+
+    expect(view.queryByRole('dialog')).toBeNull();
+    const toast = await forgetToastOf(view);
+    expect(toast.textContent).toContain('Forgot “The user prefers aisle seats.”.');
+    expect(within(toast).getByRole('button', { name: 'Undo' })).not.toBeNull();
+    // It leaves the list at once, and the next memory opens in its place.
+    await waitFor(() =>
+      expect(
+        view.container.querySelector(`[data-memory="${AISLE.id}"]`)?.outerHTML ?? null,
+      ).toBeNull(),
+    );
+    await waitFor(() => expect(router.search.get('selected')).toBe(WINDOW.id));
+    // Nothing is sent while the toast shows.
+    expect(served.callsTo('bureau.memory.forget')).toEqual([]);
+  });
+
+  test('sends the forget when the toast closes, and not before', async () => {
     const served = bureau();
     const view = open();
     const detail = await openDetails(view, AISLE.content);
     await fireEvent.click(
       within(detail).getByRole('button', { name: MEMORY_COPY.forget.iconLabel }),
     );
-    const dialog = await view.findByRole('dialog', { name: MEMORY_COPY.forget.dialog.title });
+    await forgetToastOf(view);
+    expect(served.callsTo('bureau.memory.forget')).toEqual([]);
 
-    await fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+    await closeForgetToast(view);
 
+    await waitFor(() =>
+      expect(served.callsTo('bureau.memory.forget').map((call) => call.params)).toEqual([
+        { agentId: 'assistant', id: AISLE.id },
+      ]),
+    );
+  });
+
+  test('sends a forget for the agent it was made on, even once the page shows another agent (COR-2429)', async () => {
+    const served = bureau({
+      'bureau.agents.list': () => ({
+        agents: [AGENT, { ...AGENT, name: 'other', displayName: 'Other' }],
+      }),
+    });
+    const view = open();
+    const detail = await openDetails(view, AISLE.content);
+    await fireEvent.click(
+      within(detail).getByRole('button', { name: MEMORY_COPY.forget.iconLabel }),
+    );
+    await forgetToastOf(view);
+
+    // The person moves to another agent's memory while the toast still offers Undo.
+    router.navigate('/agents/other/memory');
+    await closeForgetToast(view);
+
+    await waitFor(() =>
+      expect(served.callsTo('bureau.memory.forget').map((call) => call.params)).toEqual([
+        { agentId: 'assistant', id: AISLE.id },
+      ]),
+    );
+  });
+
+  test('sends the forget when the page is left while the toast shows', async () => {
+    const served = bureau();
+    const view = open();
+    const detail = await openDetails(view, AISLE.content);
+    await fireEvent.click(
+      within(detail).getByRole('button', { name: MEMORY_COPY.forget.iconLabel }),
+    );
+    await forgetToastOf(view);
+    expect(served.callsTo('bureau.memory.forget')).toEqual([]);
+
+    view.unmount();
+
+    await waitFor(() =>
+      expect(served.callsTo('bureau.memory.forget').map((call) => call.params)).toEqual([
+        { agentId: 'assistant', id: AISLE.id },
+      ]),
+    );
+  });
+
+  test('sends the first forget when a second memory is forgotten, and keeps Undo for the second', async () => {
+    const served = bureau();
+    const view = open();
+    let detail = await openDetails(view, AISLE.content);
+    await fireEvent.click(
+      within(detail).getByRole('button', { name: MEMORY_COPY.forget.iconLabel }),
+    );
+    await forgetToastOf(view);
+    // The next memory opened in its place.
+    detail = await view.findByRole('region', { name: MEMORY_COPY.detail.heading });
+    await waitFor(() =>
+      expect(detail.querySelector(`[data-memory-detail="${WINDOW.id}"]`)).not.toBeNull(),
+    );
+    await fireEvent.click(
+      within(detail).getByRole('button', { name: MEMORY_COPY.forget.iconLabel }),
+    );
+
+    await waitFor(() =>
+      expect(served.callsTo('bureau.memory.forget').map((call) => call.params)).toEqual([
+        { agentId: 'assistant', id: AISLE.id },
+      ]),
+    );
+    const toast = await waitFor(() => {
+      const shown = view.container.ownerDocument.querySelector<HTMLElement>(
+        '.cinder-toast[data-cinder-undo]:not([data-cinder-leaving="true"])',
+      );
+      expect(shown?.textContent).toContain('window seats');
+      return shown as HTMLElement;
+    });
+    await fireEvent.click(within(toast).getByRole('button', { name: 'Undo' }));
+    view.unmount();
+    // Only the first memory was forgotten.
+    expect(served.callsTo('bureau.memory.forget')).toHaveLength(1);
+  });
+
+  test('sends the forget as the tab or window closes, once, and none after Undo', async () => {
+    const served = bureau();
+    const view = open();
+    let detail = await openDetails(view, AISLE.content);
+    await fireEvent.click(
+      within(detail).getByRole('button', { name: MEMORY_COPY.forget.iconLabel }),
+    );
+    await forgetToastOf(view);
+
+    window.dispatchEvent(new window.Event('pagehide'));
+    window.dispatchEvent(new window.Event('pagehide'));
+
+    await waitFor(() =>
+      expect(served.callsTo('bureau.memory.forget').map((call) => call.params)).toEqual([
+        { agentId: 'assistant', id: AISLE.id },
+      ]),
+    );
+
+    // The next one, undone, is not sent when the page goes.
+    detail = await view.findByRole('region', { name: MEMORY_COPY.detail.heading });
+    await waitFor(() =>
+      expect(detail.querySelector(`[data-memory-detail="${WINDOW.id}"]`)).not.toBeNull(),
+    );
+    await fireEvent.click(
+      within(detail).getByRole('button', { name: MEMORY_COPY.forget.iconLabel }),
+    );
+    const toast = await waitFor(() => {
+      // The first toast still shows: the page going sent its forget without closing it.
+      const shown = [
+        ...view.container.ownerDocument.querySelectorAll<HTMLElement>(
+          '.cinder-toast[data-cinder-undo]:not([data-cinder-leaving="true"])',
+        ),
+      ].find((element) => element.textContent?.includes('window seats'));
+      expect(shown).toBeDefined();
+      return shown as HTMLElement;
+    });
+    await fireEvent.click(within(toast).getByRole('button', { name: 'Undo' }));
+    window.dispatchEvent(new window.Event('pagehide'));
+    view.unmount();
+    expect(served.callsTo('bureau.memory.forget')).toHaveLength(1);
+  });
+
+  test('sends no forget once Undo is pressed, and puts the memory back', async () => {
+    const served = bureau();
+    const view = open();
+    const detail = await openDetails(view, AISLE.content);
+    await fireEvent.click(
+      within(detail).getByRole('button', { name: MEMORY_COPY.forget.iconLabel }),
+    );
+    const toast = await forgetToastOf(view);
+
+    await fireEvent.click(within(toast).getByRole('button', { name: 'Undo' }));
+
+    await waitFor(() => expect(rowOf(view, AISLE.id)).not.toBeNull());
+    view.unmount();
     expect(served.callsTo('bureau.memory.forget')).toEqual([]);
   });
 
@@ -951,10 +1140,26 @@ describe('forgetting a memory', () => {
     });
   }
 
+  /** Opens the memory forgotten in `forgetWith` again, once the list holds it again. */
+  async function reopenAisle(view: ReturnType<typeof open>): Promise<HTMLElement> {
+    const row = await waitFor(() => rowOf(view, AISLE.id));
+    await fireEvent.click(row.closest('button') ?? row);
+    await waitFor(() => expect(router.search.get('selected')).toBe(AISLE.id));
+    const region = await view.findByRole('region', { name: MEMORY_COPY.detail.heading });
+    await waitFor(() =>
+      expect(region.querySelector(`[data-memory-detail="${AISLE.id}"]`)).not.toBeNull(),
+    );
+    const more = region.querySelector<HTMLDetailsElement>('details');
+    if (more !== null) more.open = true;
+    return region;
+  }
+
   test('learns of a legal hold from the exempt answer, and leaves the memory listed', async () => {
-    const { served, view, detail } = await forgetWith('exempt');
+    const { served, view } = await forgetWith('exempt');
 
     await view.findByText(MEMORY_COPY.forget.outcome.exempt.title);
+    // It stays stored, so it is back in the list.
+    const detail = await reopenAisle(view);
 
     expect(textOf(factOf(detail, MEMORY_COPY.detail.fields.legalHold))).toBe(
       MEMORY_COPY.detail.legalHold.held,
@@ -968,12 +1173,13 @@ describe('forgetting a memory', () => {
   });
 
   test('keeps a legal hold known after the receipt that reported it is dismissed', async () => {
-    const { view, detail } = await forgetWith('exempt');
+    const { view } = await forgetWith('exempt');
     await view.findByText(MEMORY_COPY.forget.outcome.exempt.title);
 
     await fireEvent.click(view.getByRole('button', { name: /dismiss/i }));
 
     expect(view.queryByText(MEMORY_COPY.forget.outcome.exempt.title)).toBeNull();
+    const detail = await reopenAisle(view);
     expect(textOf(factOf(detail, MEMORY_COPY.detail.fields.legalHold))).toBe(
       MEMORY_COPY.detail.legalHold.held,
     );
@@ -1010,10 +1216,6 @@ describe('forgetting a memory', () => {
     await fireEvent.click(
       within(detail).getByRole('button', { name: MEMORY_COPY.forget.iconLabel }),
     );
-    const dialog = await view.findByRole('dialog', { name: MEMORY_COPY.forget.dialog.title });
-    await fireEvent.click(
-      within(dialog).getByRole('button', { name: MEMORY_COPY.forget.dialog.confirm }),
-    );
 
     await waitFor(() => expect(router.search.get('selected')).toBe(AISLE.id));
   });
@@ -1028,14 +1230,11 @@ describe('forgetting a memory', () => {
       },
     });
     landAt('/agents/assistant/memory');
+    // A frame with no toast host: with nowhere to offer Undo, the forget is sent at once.
     const view = render(FramedMemory, { props: { agentId: 'assistant' } } as never);
     const detail = await openDetails(view, AISLE.content);
     await fireEvent.click(
       within(detail).getByRole('button', { name: MEMORY_COPY.forget.iconLabel }),
-    );
-    const dialog = await view.findByRole('dialog', { name: MEMORY_COPY.forget.dialog.title });
-    await fireEvent.click(
-      within(dialog).getByRole('button', { name: MEMORY_COPY.forget.dialog.confirm }),
     );
 
     // An empty state, not a status line, and the receipt is still there to read.
@@ -1082,17 +1281,19 @@ describe('forgetting a memory', () => {
     });
     const view = open();
     const detail = await openDetails(view, AISLE.content);
-    const forget = within(detail).getByRole('button', { name: MEMORY_COPY.forget.iconLabel });
-    await fireEvent.click(forget);
-    const dialog = await view.findByRole('dialog', { name: MEMORY_COPY.forget.dialog.title });
     await fireEvent.click(
-      within(dialog).getByRole('button', { name: MEMORY_COPY.forget.dialog.confirm }),
+      within(detail).getByRole('button', { name: MEMORY_COPY.forget.iconLabel }),
     );
+    await closeForgetToast(view);
     await waitFor(() => expect(served.callsTo('bureau.memory.forget')).toHaveLength(1));
 
-    await waitFor(() => expect(forget.hasAttribute('disabled')).toBe(true));
+    // The next memory is open now, and its Forget is held while the first is saved.
+    const forget = await waitFor(() => {
+      const button = within(detail).getByRole('button', { name: MEMORY_COPY.forget.iconLabel });
+      expect(button.hasAttribute('disabled')).toBe(true);
+      return button;
+    });
     await fireEvent.click(forget);
-    expect(view.queryByRole('dialog', { name: MEMORY_COPY.forget.dialog.title })).toBeNull();
     expect(served.callsTo('bureau.memory.forget')).toHaveLength(1);
 
     settle({ id: AISLE.id, deletion: 'completed', receipt: RECEIPT });

@@ -27,7 +27,10 @@ export type ErrorStateTone = 'danger' | 'neutral';
 export type ErrorStateProps = Omit<HTMLAttributes<HTMLDivElement>, 'class' | 'title'> & {
   /** Primary heading text rendered as a heading element at the configured `headingLevel`. */
   title: string;
-  /** Secondary descriptive text rendered as a paragraph below the title. */
+  /**
+   * Secondary descriptive text rendered as a paragraph below the title. A `'row'` whose title is
+   * its whole sentence passes `''` and draws no second paragraph.
+   */
   description: string;
   /**
    * Optional technical detail, such as a fault code. It sits behind a disclosure labelled
@@ -125,7 +128,10 @@ export type ErrorStateProps = Omit<HTMLAttributes<HTMLDivElement>, 'class' | 'ti
 export interface ErrorStateSchemaProps {
   /** Primary heading text rendered as a heading element at the configured `headingLevel`. */
   title: string;
-  /** Secondary descriptive text rendered as a paragraph below the title. */
+  /**
+   * Secondary descriptive text rendered as a paragraph below the title. A `'row'` whose title is
+   * its whole sentence passes `''` and draws no second paragraph.
+   */
   description: string;
   /**
    * Optional technical detail, such as a fault code. It sits behind a disclosure labelled

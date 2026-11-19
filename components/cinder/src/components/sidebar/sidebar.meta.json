@@ -1,0 +1,24 @@
+{
+  "$schema": "../../../../../internal/component-tooling/src/schemas/component-meta.schema.json",
+  "category": "layout",
+  "status": "stable",
+  "purpose": "Responsive layout shell that anchors a collapsible column beside main content and swaps to a drawer below a configurable breakpoint.",
+  "tags": ["layout", "responsive"],
+  "useWhen": [
+    "Wrapping the page chrome so a navigation column can collapse and become a mobile drawer automatically.",
+    "Sharing collapsed state between a side-navigation column and the rest of the app shell via context."
+  ],
+  "avoidWhen": [
+    {
+      "reason": "Building the page body itself rather than the surrounding shell — use a hand-rolled page scaffold instead."
+    },
+    {
+      "reason": "Rendering navigation entries directly — place side-navigation inside the sidebar column."
+    },
+    {
+      "reason": "Needing only an accessible nav landmark, not a responsive collapsing shell.",
+      "alternative": "side-navigation"
+    }
+  ],
+  "related": ["side-navigation", "drawer"]
+}

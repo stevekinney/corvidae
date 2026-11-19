@@ -323,6 +323,9 @@ test.describe('Chat on a phone (04y, 06l, 06m)', () => {
     await page.goto(`/chats/${SAMPLE_WORLD_THREADS.refund}`);
     const row = page.locator('[data-approval-decision]');
     await expect(row).toBeFocused();
+    // Nothing was typed: the page focused the card by script as it opened, and a script focus draws
+    // no ring unless the keyboard was the last input (the owner's comment on `grid-card-320`).
+    await expect(row).toHaveCSS('outline-style', 'none');
     // The narrow card says things once, so the whole of it, question to Approve, fits above the
     // blocked row. Each attempt reads the whole layout in one pass and judges that pass, so a frame
     // mid-settle is never acted on.
@@ -560,7 +563,17 @@ test.describe('Chat on a phone (04y, 06l, 06m)', () => {
           viewport: document.documentElement.clientWidth,
           phoneGutter,
           title: box('h1.cinder-page-header__title'),
-          head: box('.weft-chat-head'),
+          // The header's translucent ground spans the pane; its content box is the column.
+          head: (() => {
+            const element = document.querySelector('.weft-chat-head');
+            if (element === null) return null;
+            const { left, right } = element.getBoundingClientRect();
+            const style = getComputedStyle(element);
+            return {
+              left: left + Number.parseFloat(style.paddingLeft),
+              right: right - Number.parseFloat(style.paddingRight),
+            };
+          })(),
           composer: box('.chat-input-shell'),
         };
       });
