@@ -241,7 +241,7 @@ async function headerCentres(page: Page) {
     const first = rects[0];
     if (first === undefined) throw new Error('The title has no line boxes.');
     // A clamped title lays out its hidden lines too: only the lines inside the heading show.
-    const shown = rects.filter((rect) => rect.bottom <= headingBox.bottom + 0.5);
+    const shown = rects.filter((rect) => rect.top < headingBox.bottom - 0.5);
     const more = [...root.querySelectorAll('button')].find(
       (button) => button.textContent?.trim() === moreLabel,
     );

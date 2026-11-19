@@ -330,7 +330,12 @@
   // With no chat at all (none archived either) and none open there is no list pane: one empty state
   // fills the page, and what it offers follows whether a chat can work yet (COR-2438).
   const readiness = useChatReadiness();
-  const firstUse = $derived(listState === 'first-use' && openId === null);
+  // Only once the archived read has answered: a person whose chats are all archived has a list.
+  const firstUse = $derived(
+    listState === 'first-use' &&
+      openId === null &&
+      (anyArchived.data !== undefined || anyArchived.isError),
+  );
 
   function clearFilters(): void {
     typed = '';
