@@ -184,7 +184,7 @@ test.describe('the chat list hidden beside an open chat (COR-2327 AC1)', () => {
     await expect(detail.getByRole('heading', { level: 1, name: refund })).toBeVisible();
     const detailBefore = await detail.boundingBox();
 
-    // One control in one place: on the rail at the start edge, not beside the list's "+".
+    // One control: a handle on the divider, never in the header beside the list's "+" (COR-2438).
     const hide = page.getByRole('button', { name: 'Hide chats' });
     await expect(hide).toBeVisible();
     await expect(list(page).getByRole('button', { name: 'Hide chats' })).toHaveCount(0);
@@ -214,6 +214,43 @@ test.describe('the chat list hidden beside an open chat (COR-2327 AC1)', () => {
     await page.getByRole('button', { name: 'Show chats' }).click();
     await expect(page.locator('[data-chat]')).toHaveCount(CHAT_COUNT);
     await expect(page.getByRole('button', { name: 'Hide chats' })).toBeFocused();
+  });
+
+  test('puts Hide chats on the divider inside the list pane, with its own icon, and starts the title on the search field’s edge, at 1280 pixels (COR-2438)', async ({
+    page,
+  }) => {
+    await openChats(page, 1280);
+    const read = await page.evaluate(() => {
+      const pane = document.querySelector('.cinder-list-detail__list');
+      const title = pane?.querySelector('.ib-chats__title h1, .ib-chats__title h2');
+      const search = pane?.querySelector('.cinder-search-field, input[type="search"]');
+      const toggle = document.querySelector('.cinder-list-detail__list-toggle');
+      if (!pane || !title || !search || !toggle) return undefined;
+      const range = document.createRange();
+      range.selectNodeContents(title);
+      const words = [...range.getClientRects()].find((rect) => rect.width > 0);
+      const box = (element: Element) => element.getBoundingClientRect();
+      return {
+        pane: box(pane).toJSON(),
+        titleLeft: words?.left ?? box(title).left,
+        searchLeft: box(search).left,
+        toggle: box(toggle).toJSON(),
+        inHeader: toggle.closest('.cinder-list-detail__header') !== null,
+        icon: toggle.querySelector('svg')?.getAttribute('class') ?? '',
+      };
+    });
+    expect(read).toBeDefined();
+    expect(Math.abs(read!.titleLeft - read!.searchLeft)).toBeLessThanOrEqual(1);
+    expect(read!.inHeader).toBe(false);
+    expect(read!.toggle.left).toBeGreaterThanOrEqual(read!.pane.left - 0.5);
+    expect(read!.toggle.right).toBeLessThanOrEqual(read!.pane.right + 0.5);
+    expect(read!.toggle.top).toBeGreaterThanOrEqual(read!.pane.top - 0.5);
+    expect(read!.toggle.bottom).toBeLessThanOrEqual(read!.pane.bottom + 0.5);
+    // Its own icon, not the sidebar's panel icon.
+    expect(read!.icon).not.toMatch(/panel-left/);
+    // Reachable by keyboard, and shown once it has focus.
+    await page.getByRole('button', { name: 'Hide chats' }).focus();
+    await expect(page.locator('.cinder-list-detail__toggle')).toHaveCSS('opacity', '1');
   });
 });
 

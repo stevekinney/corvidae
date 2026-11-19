@@ -809,7 +809,7 @@ describe('ListDetail', () => {
       expect(getByRole('button', { name: 'Show list' })).toBeTruthy();
     });
 
-    test('the toggle has one rule for both states, at the header corner, and the rail draws none of its own', async () => {
+    test('the toggle sits at the top of the rail once the list is hidden, and on the divider inside the list pane while it shows (COR-2438)', async () => {
       const css = stripCinderComponentsLayer(
         await Bun.file(new URL('./list-detail.css', import.meta.url)).text(),
       );
@@ -817,12 +817,30 @@ describe('ListDetail', () => {
       expect(rule.get('position')).toBe('absolute');
       expect(rule.get('inset-block-start')).toBe('var(--cinder-space-3-5)');
       expect(rule.get('inset-inline-start')).toBe('var(--cinder-space-2)');
+      // While the list shows: against the divider, inside the list pane, centred on its length.
+      const handle = declarationsFor(
+        css,
+        '.cinder-list-detail:not([data-cinder-list-collapsed]) .cinder-list-detail__toggle',
+      );
+      expect(handle.get('inset-block-start')).toBe(
+        'calc(50% - var(--cinder-button-height-sm) / 2)',
+      );
+      expect(handle.get('inset-inline-start')?.replace(/\s+/g, ' ')).toBe(
+        'calc( var(--_cinder-list-detail-list-width, 0px) - var(--cinder-button-height-sm) - var(--cinder-space-1) )',
+      );
+      // Shown on hover and focus where the pointer hovers; a touch screen always shows it.
+      expect(css).toMatch(
+        /@media \(hover: hover\)[\s\S]*\.cinder-list-detail__toggle:focus-within/,
+      );
+      // The header holds no slot for it, so its title starts on the search field's edge.
+      expect(css).not.toContain('data-cinder-toggle-slot');
+      expect(css).not.toContain('data-cinder-toggle-space');
       // The rail only reserves the width: no padding that would place a button in it.
       const rail = declarationsFor(css, '.cinder-list-detail__rail');
       expect(rail.has('padding')).toBe(false);
     });
 
-    test('a list with no header of its own gets an empty one that holds the toggle’s place', async () => {
+    test('a list with no header of its own gets no empty one: the toggle is not in a header', async () => {
       const { container, getByRole } = render(ListDetailTableFixture, {
         props: { selectionLocation: memoryLocation(), selectedKey: 'beta', listCollapsible: true },
       });
@@ -831,11 +849,7 @@ describe('ListDetail', () => {
       const toggle = getByRole('button', { name: 'Hide list' });
       expect(toggle.closest('.cinder-list-detail__toggle')).not.toBeNull();
       expect(toggle.closest('.cinder-list-detail__header')).toBeNull();
-      expect(
-        container
-          .querySelector('.cinder-list-detail__header')
-          ?.hasAttribute('data-cinder-toggle-space'),
-      ).toBe(true);
+      expect(container.querySelector('.cinder-list-detail__header')).toBeNull();
     });
 
     test('takes its labels from the host, and has nothing to hide below pushBelow', async () => {

@@ -649,7 +649,7 @@
   >
     {#snippet header()}
       <!-- The header's rows are ListDetail's own column (the title row, then the search and the
-           status segments), so it starts the first row after its list toggle. -->
+           status segments), each starting on one edge: the list toggle is a handle on the divider. -->
       {#if showingArchived}
         <!-- The archived view's way back to the chats, above its title. Its label says where it
                goes, so it needs no tooltip, which would open on the focus it is given on arrival. -->
@@ -676,7 +676,7 @@
               : CHAT_COPY.sessionsTitle}
         >
           {#snippet actions()}
-            <!-- The "+" alone: the toggle that hides the list is ListDetail's, on its rail. -->
+            <!-- The "+" alone: the toggle that hides the list is ListDetail's, on the divider. -->
             {@render newChatButton()}
           {/snippet}
         </SectionHeading>
