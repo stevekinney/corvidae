@@ -106,7 +106,8 @@ test('a root script that reads a generated Cinder file generates it first', () =
   const missing: string[] = [];
   for (const name of readdirSync(join(root, 'scripts'))) {
     if (!name.endsWith('.ts') || /\.test(-support)?\.ts$/.test(name)) continue;
-    if (name === 'ensure-cinder-generated.ts') continue;
+    // The helper itself, and an export map that names the manifest path without reading it.
+    if (name === 'ensure-cinder-generated.ts' || name === 'workspace-exports.ts') continue;
     const text = readFileSync(join(root, 'scripts', name), 'utf8');
     const reads = CINDER_GENERATED_OUTPUTS.some((output) => text.includes(output));
     if (reads && !text.includes('ensureCinderGenerated(')) missing.push(name);
