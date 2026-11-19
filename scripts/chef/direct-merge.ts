@@ -23,7 +23,11 @@
 //   3b. queue     `land-queue.ts`: a commit on `origin/<default>` since the head's merge-base that
 //                 touches what the head's evidence plan reaches refuses the landing, naming the
 //                 files, because the head's evidence never saw it. It runs here, inside the merge
-//                 lock the push holds, so the decision and the push are one critical section;
+//                 lock the push holds, so the decision and the push are one critical section. On
+//                 LAND with `main` moved, the integration-tree check accepts the attested base and
+//                 tree for the pushed ones only when Git shows the pushed tree is the attested
+//                 tree plus exactly main's new commits (`acceptMovedMain`); any other movement is
+//                 refused at `verification`;
 //   4. guards     each guard of `lint:guards` runs as its own process on the tree that will be
 //                 pushed (the one squash commit, in a temporary detached Git worktree that is
 //                 always removed afterwards; `text-guards.ts` says why a worktree and not an
@@ -66,7 +70,7 @@ import {
 import { repositoryContext } from './evidence-plan.ts';
 import { readExecutionSnapshot, withProviderTransitionLock } from './execution-state.ts';
 import { fetchWithRetry } from './fetch-retry.ts';
-import { landQueueVerdict } from './land-queue.ts';
+import { landQueueVerdict, type LandQueueResult } from './land-queue.ts';
 import { validateLandingEvidence } from './landing-evidence.ts';
 import { mainCiComparisonWarning, mainCiHealth, mainCiWarning } from './main-ci.ts';
 import { withMergeLock } from './merge-gate.ts';
@@ -198,7 +202,7 @@ function landingQueue(
   runner: Runner,
   base: string,
   defaultBranch: string,
-): string | undefined {
+): { refusal: string } | { classified: LandQueueResult } {
   try {
     const changed = runner(
       ['git', 'diff', '--name-only', '--diff-filter=d', `${base}...${options.head}`],
@@ -206,7 +210,7 @@ function landingQueue(
         cwd: options.worktree,
       },
     );
-    if (changed.code !== 0) return `git diff failed: ${firstLine(changed.stderr)}`;
+    if (changed.code !== 0) return { refusal: `git diff failed: ${firstLine(changed.stderr)}` };
     const files = changed.stdout.split('\n').filter(Boolean);
     const plan = (partial.evidencePlan ?? defaultEvidencePlan)(files, options.worktree);
     const verdict = landQueueVerdict({
@@ -217,11 +221,65 @@ function landingQueue(
       cwd: options.worktree,
       workspaces: discoverWorkspaces(options.worktree),
     });
-    if (verdict.verdict === 'LAND') return undefined;
-    return `commits on origin/${defaultBranch} since the evidence head ${options.head.slice(0, 12)} touch what its plan reaches, so it needs a new evidence run: ${verdict.overlapping.join(', ')}`;
+    if (verdict.verdict === 'LAND') return { classified: verdict };
+    return {
+      refusal: `commits on origin/${defaultBranch} since the evidence head ${options.head.slice(0, 12)} touch what its plan reaches, so it needs a new evidence run: ${verdict.overlapping.join(', ')}`,
+    };
   } catch (error) {
-    return `the landing queue could not decide: ${error instanceof Error ? error.message : 'unknown error'}`;
+    return {
+      refusal: `the landing queue could not decide: ${error instanceof Error ? error.message : 'unknown error'}`,
+    };
   }
+}
+
+/**
+ * `main` moved after the evidence and the queue classified every new commit as outside the plan's
+ * scope. The integration-tree check may then accept the attested identity for the tree actually
+ * pushed, but only when Git itself shows the two agree. Returns why not, or `undefined`:
+ *   1. the attested base is an ancestor of the current one;
+ *   2. merging the head onto the attested base reproduces the attested tree;
+ *   3. the paths main's new commits touch are all among those the queue classified;
+ *   4. the pushed tree differs from the attested tree only at those paths, and at each of them it
+ *      holds exactly what the current base holds: the attested tree plus main's new commits, and
+ *      nothing else.
+ * A conflict, or a tree that differs anywhere else, stays refused.
+ */
+function acceptMovedMain(
+  git: (...args: string[]) => ReturnType<Runner>,
+  attested: { base: string; tree: string },
+  head: string,
+  base: string,
+  tree: string,
+  classified: LandQueueResult,
+): string | undefined {
+  const refuse = (why: string) =>
+    `main moved after the evidence and the merged tree cannot be shown to be the attested tree plus main's new commits: ${why}`;
+  if (git('merge-base', '--is-ancestor', attested.base, base).code !== 0)
+    return refuse(`the attested base ${attested.base.slice(0, 12)} is not an ancestor of main`);
+  const reproduced = git('merge-tree', '--write-tree', attested.base, head);
+  if (reproduced.code !== 0 || reproduced.stdout.split('\n')[0]?.trim() !== attested.tree)
+    return refuse('merging the head onto the attested base does not give the attested tree');
+  const log = git('log', '--name-only', '--format=', `${attested.base}..${base}`);
+  if (log.code !== 0) return refuse(`git log failed: ${firstLine(log.stderr)}`);
+  const incoming = new Set(log.stdout.split('\n').filter(Boolean));
+  const classifiedFiles = new Set(classified.commits.flatMap((commit) => commit.files));
+  const unclassified = [...incoming].filter((path) => !classifiedFiles.has(path));
+  if (unclassified.length > 0)
+    return refuse(`the queue did not classify ${unclassified.slice(0, 5).join(', ')}`);
+  const differing = git('diff', '--name-only', attested.tree, tree);
+  if (differing.code !== 0) return refuse(`git diff failed: ${firstLine(differing.stderr)}`);
+  const outside = differing.stdout.split('\n').filter((path) => path !== '' && !incoming.has(path));
+  if (outside.length > 0)
+    return refuse(
+      `the trees differ outside main's new commits at ${outside.slice(0, 5).join(', ')}`,
+    );
+  for (const path of incoming) {
+    const merged = git('rev-parse', `${tree}:${path}`);
+    const current = git('rev-parse', `${base}:${path}`);
+    if (merged.code !== current.code || merged.stdout.trim() !== current.stdout.trim())
+      return refuse(`${path} is not what main holds`);
+  }
+  return undefined;
 }
 
 function defaultEvidencePlan(changed: string[], worktree: string): EvidencePlan {
@@ -318,14 +376,33 @@ async function directMergeCore(
   // are one critical section. Commits that reached `main` since the head's evidence, and touch
   // what its plan reaches, need a new evidence run: refuse with the files named.
   const queued = landingQueue(options, partial, runner, base, defaultBranch);
-  if (queued !== undefined) return fail('queue', queued);
+  if ('refusal' in queued) return fail('queue', queued.refusal);
+  // The identity the verification chain attests: the actual base and tree, or, when main moved
+  // outside the plan's scope and Git shows the tree is the attested one plus main's new commits,
+  // the attested ones. Any other movement keeps the actual values and is refused below.
+  let attested = { base, tree };
+  let landed: { landedBase: string; landedTree: string } | undefined;
+  const { request } = verification;
+  if (base !== request.base) {
+    const movedProblem = acceptMovedMain(
+      git,
+      { base: request.base, tree: request.integrationTree },
+      options.head,
+      base,
+      tree,
+      queued.classified,
+    );
+    if (movedProblem !== undefined) return fail('verification', movedProblem);
+    attested = { base: request.base, tree: request.integrationTree };
+    landed = { landedBase: base, landedTree: tree };
+  }
   const verificationProblem = validateDeliveryVerification(
     verification,
     {
       repository: config.repository,
       revision: options.head,
-      base,
-      integrationTree: tree,
+      base: attested.base,
+      integrationTree: attested.tree,
       route: 'branch',
       action: 'merge',
     },
@@ -388,8 +465,9 @@ async function directMergeCore(
       route: 'branch',
       branch: options.branch,
       reviewedHead: options.head,
-      base,
-      integrationTree: tree,
+      base: attested.base,
+      integrationTree: attested.tree,
+      ...landed,
       mergeCommit: commit,
       state: 'pending-provider-outcome',
     },
@@ -421,8 +499,9 @@ async function directMergeCore(
       route: 'branch',
       branch: options.branch,
       reviewedHead: options.head,
-      base,
-      integrationTree: tree,
+      base: attested.base,
+      integrationTree: attested.tree,
+      ...landed,
       mergeCommit: commit,
       state: 'confirmed-merge',
     },
@@ -530,8 +609,9 @@ async function recoverDirectMerge(
     commit === undefined ||
     fetched.code !== 0 ||
     git('merge-base', '--is-ancestor', commit, `origin/${config.defaultBranch}`).code !== 0 ||
-    git('rev-parse', `${commit}^`).stdout.trim() !== receipt.base ||
-    git('rev-parse', `${commit}^{tree}`).stdout.trim() !== receipt.integrationTree
+    git('rev-parse', `${commit}^`).stdout.trim() !== (receipt.landedBase ?? receipt.base) ||
+    git('rev-parse', `${commit}^{tree}`).stdout.trim() !==
+      (receipt.landedTree ?? receipt.integrationTree)
   )
     return {
       ...report,

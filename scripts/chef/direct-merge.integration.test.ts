@@ -320,16 +320,61 @@ const queueOverlap = await outcomeOf(async () => {
   expect(heldDuringQueue).toBe(true);
   expect(refs(w.origin, 'refs/heads/main')).toBe(mainTip);
   expect(refs(w.origin, 'refs/heads/branch')).toBe(w.head);
+});
 
-  const quiet = await world();
-  commit(quiet.other, 'notes.txt', 'notes\n', 'Unrelated file on main');
-  git(quiet.other, 'push', '-q', 'origin', 'main');
-  const other = await directMerge(quiet.options, {
+// Main moves after the evidence with a commit outside the plan's scope: the landing queue says LAND,
+// and the integration-tree check accepts the merged tree because Git shows it is the attested tree
+// plus main's new commit. No new evidence run is needed.
+const queueLand = await outcomeOf(async () => {
+  const w = await world();
+  const notes = commit(w.other, 'notes.txt', 'notes\n', 'Unrelated file on main');
+  git(w.other, 'push', '-q', 'origin', 'main');
+  const report = await directMerge(w.options, {
     runner: isolated,
-    verification: quiet.verification,
+    verification: w.verification,
     guards: guardsPass,
   });
-  expect(other.failedStep).not.toBe('queue');
+  expect(report).toMatchObject({ merged: true, failedStep: null, detail: null, base: notes });
+  const merged = report.mergeCommit ?? '';
+  expect(git(w.origin, 'rev-list', '--parents', '-n', '1', merged).split(' ')).toEqual([
+    merged,
+    notes,
+  ]);
+  expect(git(w.origin, 'ls-tree', '--name-only', merged).split('\n')).toEqual([
+    'feature.txt',
+    'moved.txt',
+    'notes.txt',
+    'package.json',
+    'shared.txt',
+  ]);
+  // The durable receipt keeps the attested identity and names the pushed base and tree.
+  const verification = loadDeliveryVerification(w.options.verification, w.verification);
+  const observed = readExecutionSnapshot(verification.state).operations[
+    verification.request.operationId
+  ]?.observed as { base: string; landedBase: string; landedTree: string } | undefined;
+  expect(observed?.base).toBe(verification.request.base);
+  expect(observed?.landedBase).toBe(notes);
+  expect(observed?.landedTree).toBe(git(w.origin, 'rev-parse', `${merged}^{tree}`));
+});
+
+// Movement the queue did not classify stays refused: main is rewritten so the attested base is no
+// longer an ancestor, although the only new commit (`notes.txt`) is outside the plan's scope.
+const queueMismatch = await outcomeOf(async () => {
+  const w = await world();
+  git(w.other, 'checkout', '-q', 'main');
+  git(w.other, 'reset', '-q', '--hard', 'HEAD~1');
+  commit(w.other, 'notes.txt', 'notes\n', 'Rewrite main without the attested commit');
+  git(w.other, 'push', '-q', '--force', 'origin', 'main');
+  const mainTip = refs(w.origin, 'refs/heads/main');
+  const report = await directMerge(w.options, {
+    runner: isolated,
+    verification: w.verification,
+    guards: guardsPass,
+  });
+  expect(report).toMatchObject({ merged: false, mergeCommit: null, failedStep: 'verification' });
+  expect(report.detail).toContain('cannot be shown to be the attested tree');
+  expect(refs(w.origin, 'refs/heads/main')).toBe(mainTip);
+  expect(refs(w.origin, 'refs/heads/branch')).toBe(w.head);
 });
 
 // A failed branch delete is its own named step, and the merge stands.
@@ -584,6 +629,14 @@ describe('directMerge against real Git', () => {
 
   test('refuses, inside the merge lock, an overlapping commit that reached main after the evidence', () => {
     rethrow(queueOverlap);
+  });
+
+  test('lands without a new run when main moved only outside the plan scope, and the tree is proven', () => {
+    rethrow(queueLand);
+  });
+
+  test('still refuses a moved main whose tree is not the attested tree plus its new commits', () => {
+    rethrow(queueMismatch);
   });
 
   test('a head that is not the pinned one is refused at head', () => {
