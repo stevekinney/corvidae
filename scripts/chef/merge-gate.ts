@@ -10,6 +10,7 @@
 //
 // Usage:
 //   bun scripts/chef/merge-gate.ts [--config <json>] --pr <n> --worktree <dir> --comment-file <md>
+//                                  --verification-file <json> --verification-digest <sha256>
 //                                  [--head <sha>] [--dry-run] [--json] [--fixes-main]
 //                                  [--usage-log <file> --transcript <path>...]
 //
@@ -31,7 +32,8 @@
 //   7. confirm        the pull request is MERGED, and the merge commit's tree equals the tree
 //                     `git merge-tree --write-tree <mergeCommit>^1 <head>` computes: the head itself
 //                     when the merge commit's parent is contained in it, else the clean merge of the
-//                     two, which is `treesMatch` (skipped with --dry-run).
+//                     two, and the coordinator-approved integration tree (`treesMatch`). Skipped
+//                     with --dry-run.
 //
 // Cross-session merge lock: unless --dry-run, the command line holds one exclusive lock in the Git
 // common directory (`corvidae-merge-lock`, the lock of `scripts/run-exclusively.ts`) from before
@@ -62,13 +64,23 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import {
   acquireHostLock,
   processStartTime,
   type AcquireHostLockOptions,
   type HostLockHolder,
 } from '../run-exclusively.ts';
+import {
+  isDeliveryMergeObservation,
+  loadDeliveryVerification,
+  recordDeliveryMergeObservation,
+  validateDeliveryApproval,
+  validateDeliveryVerification,
+  type DeliveryVerification,
+  type DeliveryVerificationDependencies,
+} from './delivery-verification.ts';
+import { readExecutionSnapshot, withProviderTransitionLock } from './execution-state.ts';
 import { fetchWithRetry } from './fetch-retry.ts';
 import { mainCiComparisonWarning, mainCiHealth, mainCiWarning } from './main-ci.ts';
 import {
@@ -110,6 +122,7 @@ export interface MergeGateOptions {
   usageLog?: string | undefined;
   /** Transcript files or directories whose token usage the spend record totals. */
   transcripts?: string[] | undefined;
+  verification: DeliveryVerification;
 }
 
 export interface MergeGateReport {
@@ -144,6 +157,7 @@ export interface MergeGateDependencies {
   now: () => Date;
   /** Blocks between fetch retries and mergeability reads; defaults to `Bun.sleepSync`. */
   sleep: (milliseconds: number) => void;
+  verification: DeliveryVerificationDependencies;
 }
 
 interface PullRequestView {
@@ -174,14 +188,13 @@ function viewPullRequest(
   }
 }
 
-/** Run the steps. Never throws for a failed step; the report names it. */
-export function mergeGate(
-  options: MergeGateOptions,
-  partial: Partial<MergeGateDependencies> = {},
-): MergeGateReport {
-  const runner = partial.runner ?? defaultRunner;
-  const sleep = partial.sleep ?? ((milliseconds: number) => Bun.sleepSync(milliseconds));
+function validateMergeInputs(options: MergeGateOptions, partial: Partial<MergeGateDependencies>) {
   const config = loadRepositoryConfig(options.configPath);
+  const verification = loadDeliveryVerification(options.verification, partial.verification);
+  if (config.repository !== verification.request.repository)
+    throw new UsageError('repository differs from the coordinator-approved delivery');
+  if (resolve(options.worktree) !== resolve(verification.request.worktree))
+    throw new UsageError('worktree differs from the coordinator-approved ownership');
   if (!existsSync(options.worktree)) throw new UsageError(`No such worktree: ${options.worktree}`);
   if (!existsSync(options.commentFile))
     throw new UsageError(`No such comment file: ${options.commentFile}`);
@@ -194,6 +207,17 @@ export function mergeGate(
     if (!existsSync(transcript)) throw new UsageError(`No such transcript: ${transcript}`);
   }
 
+  return { config, verification, transcripts };
+}
+
+/** Run the steps while the public entrypoint holds both fences. */
+async function mergeGateCore(
+  options: MergeGateOptions,
+  partial: Partial<MergeGateDependencies> = {},
+): Promise<MergeGateReport> {
+  const runner = partial.runner ?? defaultRunner;
+  const sleep = partial.sleep ?? ((milliseconds: number) => Bun.sleepSync(milliseconds));
+  const { config, verification, transcripts } = validateMergeInputs(options, partial);
   const { repository, defaultBranch } = config;
   const report: MergeGateReport = {
     pr: options.pr,
@@ -294,6 +318,23 @@ export function mergeGate(
     return fail('threads', `read ${listing.seen} of ${listing.total} review threads.`);
   if (listing.unresolved > 0)
     return fail('threads', `${listing.unresolved} review thread(s) are unresolved.`);
+  const verificationTree = git('merge-tree', '--write-tree', report.base ?? '', head);
+  const integrationTree = verificationTree.stdout.split('\n')[0]?.trim() ?? '';
+  if (verificationTree.code !== 0 || !/^[0-9a-f]{40,64}$/.test(integrationTree))
+    return fail('conflict', 'could not derive the current integration tree for verification.');
+  const verificationProblem = validateDeliveryVerification(
+    verification,
+    {
+      repository,
+      revision: head,
+      base: report.base ?? '',
+      integrationTree,
+      route: 'pull-request',
+      action: 'merge',
+    },
+    partial.verification,
+  );
+  if (verificationProblem !== undefined) return fail('verification', verificationProblem);
   if (options.dryRun) return report;
 
   // 5. comment
@@ -320,6 +361,19 @@ export function mergeGate(
   }
 
   // 6. merge, pinned to the head
+  await recordDeliveryMergeObservation(
+    verification,
+    {
+      route: 'pull-request',
+      pullRequest: options.pr,
+      reviewedHead: head,
+      base: report.base ?? '',
+      integrationTree,
+      state: 'pending-provider-outcome',
+    },
+    'unknown',
+    partial.verification,
+  );
   const merge = runner([
     'gh',
     'pr',
@@ -365,12 +419,26 @@ export function mergeGate(
   const tree = git('rev-parse', `${mergeCommit}^{tree}`);
   if (tree.code !== 0)
     return fail('confirm', `could not read the merge commit's tree: ${firstLine(tree.stderr)}`);
-  report.treesMatch = tree.stdout.trim() === expectedTree;
+  report.treesMatch = tree.stdout.trim() === expectedTree && tree.stdout.trim() === integrationTree;
   if (!report.treesMatch)
     return fail(
       'confirm',
-      `merged but the merge commit's tree differs from ${head.slice(0, 12)} merged into the commit it landed on.`,
+      `merged but the merge commit's tree differs from the approved integration tree or from ${head.slice(0, 12)} merged into the commit it landed on.`,
     );
+  await recordDeliveryMergeObservation(
+    verification,
+    {
+      route: 'pull-request',
+      pullRequest: options.pr,
+      reviewedHead: head,
+      base: report.base ?? '',
+      integrationTree,
+      mergeCommit,
+      state: 'confirmed-merge',
+    },
+    'observed',
+    partial.verification,
+  );
 
   // 8. usage (optional): the spend record for this merge
   if (options.usageLog !== undefined) {
@@ -394,6 +462,111 @@ export function mergeGate(
         'usage',
         `merged, but the spend record was not written: ${error instanceof Error ? error.message : String(error)}`,
       );
+    }
+  }
+  return report;
+}
+
+async function recoverPullRequestMerge(
+  options: MergeGateOptions,
+  partial: Partial<MergeGateDependencies>,
+  verification: ReturnType<typeof loadDeliveryVerification>,
+): Promise<MergeGateReport | undefined> {
+  const operation = readExecutionSnapshot(verification.state).operations[
+    verification.request.operationId
+  ];
+  if (operation === undefined || operation.outcome === 'intent') return undefined;
+  const approval = validateDeliveryApproval(
+    verification,
+    { route: 'pull-request', action: 'merge' },
+    partial.verification,
+  );
+  const unresolved = (
+    detail = approval ??
+      'the original pull-request merge remains unconfirmed; it will not be attempted again.',
+  ): MergeGateReport => ({
+    pr: options.pr,
+    head: null,
+    base: null,
+    mergeable: null,
+    threads: null,
+    merged: false,
+    mergeCommit: null,
+    treesMatch: null,
+    failedStep: 'recovery',
+    detail,
+  });
+  if (
+    approval !== undefined ||
+    !isDeliveryMergeObservation(operation.observed) ||
+    operation.observed.route !== 'pull-request' ||
+    operation.observed.pullRequest !== options.pr
+  )
+    return unresolved();
+  const receipt = operation.observed;
+  const runner = partial.runner ?? defaultRunner;
+  const config = loadRepositoryConfig(options.configPath);
+  const view = viewPullRequest(
+    runner,
+    config.repository,
+    options.pr,
+    'headRefOid,state,mergeCommit',
+  );
+  if (
+    typeof view === 'string' ||
+    view.state !== 'MERGED' ||
+    view.headRefOid !== receipt.reviewedHead ||
+    typeof view.mergeCommit?.oid !== 'string'
+  )
+    return unresolved();
+  const mergeCommit = view.mergeCommit.oid;
+  const git = (...args: string[]) => runner(['git', ...args], { cwd: options.worktree });
+  const fetched = git('fetch', 'origin', mergeCommit);
+  const expected = git('merge-tree', '--write-tree', `${mergeCommit}^1`, receipt.reviewedHead);
+  const expectedTree = expected.stdout.split('\n')[0]?.trim();
+  const tree = git('rev-parse', `${mergeCommit}^{tree}`).stdout.trim();
+  if (
+    fetched.code !== 0 ||
+    expected.code !== 0 ||
+    tree !== receipt.integrationTree ||
+    expectedTree !== receipt.integrationTree
+  )
+    return unresolved();
+  await recordDeliveryMergeObservation(
+    verification,
+    { ...receipt, mergeCommit, state: 'confirmed-merge' },
+    'observed',
+    partial.verification,
+  );
+  const report: MergeGateReport = {
+    pr: options.pr,
+    head: receipt.reviewedHead,
+    base: receipt.base,
+    mergeable: null,
+    threads: null,
+    merged: true,
+    mergeCommit,
+    treesMatch: true,
+    failedStep: null,
+    detail: null,
+  };
+  if (options.usageLog !== undefined) {
+    const existing = existsSync(options.usageLog) ? readFileSync(options.usageLog, 'utf8') : '';
+    if (!existing.split('\n').some((line) => line.split('\t')[2] === mergeCommit)) {
+      const totals = (partial.usage ?? totalUsage)(options.transcripts ?? []);
+      mkdirSync(dirname(options.usageLog), { recursive: true });
+      appendFileSync(
+        options.usageLog,
+        `${[
+          (partial.now ?? (() => new Date()))().toISOString(),
+          options.pr,
+          mergeCommit,
+          totals.input,
+          totals.cachedInput,
+          totals.output,
+        ].join('\t')}\n`,
+      );
+      report.usage = totals;
     }
   }
   return report;
@@ -452,21 +625,30 @@ export async function withMergeLock<T>(
   }
 }
 
-/** `mergeGate` under the merge lock (`withMergeLock`). A dry run takes no lock. */
-export async function mergeGateExclusively(
+/** Public consequential route: merge then provider authority fences surround the core transition. */
+export async function mergeGate(
   options: MergeGateOptions,
   partial: Partial<MergeGateDependencies> = {},
   onWait?: AcquireHostLockOptions['onWait'],
 ): Promise<MergeGateReport> {
-  if (options.dryRun) return mergeGate(options, partial);
+  const snapshot = structuredClone(options);
+  const { verification: loaded } = validateMergeInputs(snapshot, partial);
+  if (snapshot.dryRun) return mergeGateCore(snapshot, partial);
   return withMergeLock(
     {
-      worktree: options.worktree,
-      command: `merge-gate pr #${options.pr}`,
-      lockDirectory: options.lockDirectory,
-      lockPollIntervalMs: options.lockPollIntervalMs,
+      worktree: snapshot.worktree,
+      command: `merge-gate pr #${snapshot.pr}`,
+      lockDirectory: snapshot.lockDirectory,
+      lockPollIntervalMs: snapshot.lockPollIntervalMs,
     },
-    () => mergeGate(options, partial),
+    () =>
+      withProviderTransitionLock(
+        partial.verification?.state ?? loaded.state,
+        loaded.request.authority.resource,
+        async () =>
+          (await recoverPullRequestMerge(snapshot, partial, loaded)) ??
+          mergeGateCore(snapshot, partial),
+      ),
     partial.runner ?? defaultRunner,
     onWait,
   );
@@ -503,7 +685,16 @@ export function renderMergeGate(report: MergeGateReport, dryRun: boolean): strin
 
 function parseArguments(argv: string[]): { options: MergeGateOptions; json: boolean } {
   const parsed = parseOptions(argv, {
-    values: ['config', 'pr', 'worktree', 'comment-file', 'usage-log', 'head'],
+    values: [
+      'config',
+      'pr',
+      'worktree',
+      'comment-file',
+      'usage-log',
+      'head',
+      'verification-file',
+      'verification-digest',
+    ],
     repeated: ['transcript'],
     flags: ['dry-run', 'json', 'fixes-main'],
   });
@@ -527,6 +718,10 @@ function parseArguments(argv: string[]): { options: MergeGateOptions; json: bool
       expectedHead,
       usageLog: parsed.values['usage-log'],
       transcripts: parsed.repeated['transcript'] ?? [],
+      verification: {
+        file: requireOption(parsed, 'verification-file'),
+        digest: requireOption(parsed, 'verification-digest'),
+      },
     },
   };
 }
@@ -542,32 +737,19 @@ function finish(
   };
 }
 
-/** Runs the gate without the merge lock; the command line uses `runExclusively`. */
-export function run(
-  argv: string[],
-  dependencies: Partial<MergeGateDependencies> = {},
-): { code: number; output: string } {
-  const { options, json } = parseArguments(argv);
-  return finish(mergeGate(options, dependencies), options, json);
-}
-
-/** Runs the gate under the cross-session merge lock (a dry run takes none). */
-export async function runExclusively(
+/** Parses arguments and invokes the same protected route used by the command line. */
+export async function run(
   argv: string[],
   dependencies: Partial<MergeGateDependencies> = {},
 ): Promise<{ code: number; output: string }> {
   const { options, json } = parseArguments(argv);
-  const report = await mergeGateExclusively(options, dependencies, (holder) =>
-    process.stderr.write(
-      `merge-gate: waiting for the merge lock${holder === undefined ? '' : ` held by ${holder.command} (pid ${holder.pid})`}\n`,
-    ),
-  );
+  const report = await mergeGate(options, dependencies);
   return finish(report, options, json);
 }
 
 if (import.meta.main) {
   try {
-    const { code, output } = await runExclusively(Bun.argv.slice(2));
+    const { code, output } = await run(Bun.argv.slice(2));
     emitResult(Bun.argv.slice(2), { code, output });
     process.exitCode = code;
   } catch (error) {

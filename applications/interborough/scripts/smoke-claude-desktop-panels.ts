@@ -14,7 +14,8 @@
  *      a panel tool is visible to the model and the app, every other tool to the model alone.
  *      (The server advertises visibility; the host refuses an app's call to a model-only tool, so
  *      the refusal itself is a by-hand step.)
- *   3. Prints the by-hand steps and a record template, then keeps the server up until Enter.
+ *   3. Prints the by-hand steps and a record template, then keeps the server up until Enter (on a
+ *      terminal) or Ctrl+C (SIGINT or SIGTERM, when stdin is not a terminal, as under `bun run --filter`).
  *
  * The result is never inferred: the template's host fields stay blank until a person fills them.
  */
@@ -161,6 +162,37 @@ Leave a field "not observed" rather than guessing:
 `);
 }
 
+type StopSignals = {
+  on(signal: 'SIGINT' | 'SIGTERM', listener: () => void): unknown;
+  off(signal: 'SIGINT' | 'SIGTERM', listener: () => void): unknown;
+};
+
+/**
+ * Keeps the server up until the person stops it: Enter on a terminal, otherwise (for example under
+ * `bun run --filter`, where stdin is not a TTY) SIGINT or SIGTERM. Removes its listeners afterwards.
+ */
+export async function waitForStop(options: {
+  isTTY: boolean;
+  signals: StopSignals;
+}): Promise<void> {
+  if (options.isTTY) {
+    console.log(`${label} Press Enter to stop the server.`);
+    const iterator = console[Symbol.asyncIterator]();
+    await iterator.next();
+    return;
+  }
+  console.log(`${label} Press Ctrl+C to stop the server.`);
+  await new Promise<void>((resolve) => {
+    const stop = () => {
+      options.signals.off('SIGINT', stop);
+      options.signals.off('SIGTERM', stop);
+      resolve();
+    };
+    options.signals.on('SIGINT', stop);
+    options.signals.on('SIGTERM', stop);
+  });
+}
+
 async function main(): Promise<number> {
   const home = await mkdtemp(join(tmpdir(), 'interborough-desktop-smoke-home-'));
   // The host leaves out a panel whose page does not build within 30 seconds (a loaded machine) and
@@ -188,11 +220,7 @@ async function main(): Promise<number> {
       return 1;
     }
     printGuide(endpoint);
-    if (process.stdin.isTTY) {
-      console.log(`${label} Press Enter to stop the server.`);
-      const iterator = console[Symbol.asyncIterator]();
-      await iterator.next();
-    }
+    await waitForStop({ isTTY: process.stdin.isTTY, signals: process });
   } finally {
     await host.close();
     await rm(home, { recursive: true, force: true });

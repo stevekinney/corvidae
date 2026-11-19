@@ -28,10 +28,12 @@ import {
   effortChoices,
   modelLineOf,
   restoredChanges,
+  restoredSummary,
   settingsDefinition,
   settingsFormOf,
   stepLimitError,
   versionChanges,
+  versionSummary,
 } from './agent-settings.ts';
 
 let stub: BureauStub | undefined;
@@ -598,6 +600,23 @@ describe('what the Settings tab words and writes', () => {
     });
     expect(versionChanges(copied, VERSIONS[3])).toBe('Copied from: changed');
     expect(restoredChanges([copied, VERSIONS[3] as AgentVersion], 1)).toBe('Copied from');
+  });
+
+  test('keeps Copied from as the label when the Bureau’s summary words the change as From', () => {
+    const copied = {
+      ...version(2, ['from', 'model'], {
+        from: { agent: 'linear:triager', version: '0.0.2' },
+        model: 'anthropic/sonnet',
+      }),
+      summary: 'From: Version 0.0.2; Model: anthropic/haiku to anthropic/sonnet',
+    };
+    const first = VERSIONS[3] as AgentVersion;
+    expect(versionSummary(copied, first)).toBe(
+      'Copied from: Version 0.0.2; Model: Haiku to Sonnet',
+    );
+    expect(restoredSummary([copied, first], 1)).toBe(
+      'Copied from: Version 0.0.2; Model: Haiku to Sonnet',
+    );
   });
 
   test('names what finds an agent, by name or by identifier', () => {

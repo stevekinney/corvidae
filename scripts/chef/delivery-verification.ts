@@ -1,0 +1,249 @@
+import { hostname } from 'node:os';
+import { join } from 'node:path';
+import {
+  collectCompletionRecords,
+  readDeliveryRequest,
+  type DeliveryRequest,
+} from './delivery-completion.ts';
+import type { ProviderEvidenceTransport } from './evidence-transport.ts';
+import {
+  createExecutionStateStore,
+  readExecutionSnapshot,
+  recordMutationResult,
+  registerDeliveryApproval,
+  requireAuthority,
+  type ExecutionStateStore,
+} from './execution-state.ts';
+import { resolveMainCheckout } from './repository-locations.ts';
+import { digest, gateAssignment, type Assignment } from './verification-plan.ts';
+
+/** Coordinator-pinned input required before either delivery route can mutate a provider. */
+export interface DeliveryVerification {
+  file: string;
+  digest: string;
+  stateDirectory?: string | undefined;
+}
+
+export interface LoadedDeliveryVerification {
+  request: DeliveryRequest;
+  file: string;
+  digest: string;
+  state: ExecutionStateStore;
+}
+
+/** Production defaults authenticate provider facts; callers may inject only those raw dependencies. */
+export interface DeliveryVerificationDependencies {
+  state: ExecutionStateStore;
+  transport?: ProviderEvidenceTransport;
+}
+
+export interface DeliveryRoute {
+  route: string;
+  action: string;
+}
+
+/** The durable, provider-observed identity of one delivery merge. */
+export interface DeliveryMergeObservation {
+  route: 'branch' | 'pull-request';
+  reviewedHead: string;
+  base: string;
+  integrationTree: string;
+  mergeCommit?: string;
+  state: 'pending-provider-outcome' | 'confirmed-merge';
+  branch?: string;
+  pullRequest?: number;
+}
+
+function isCommit(value: unknown): value is string {
+  return typeof value === 'string' && /^[0-9a-f]{40}(?:[0-9a-f]{24})?$/.test(value);
+}
+
+export function isDeliveryMergeObservation(value: unknown): value is DeliveryMergeObservation {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
+  const observation = value as Partial<DeliveryMergeObservation>;
+  try {
+    validateDeliveryMergeObservation(observation as DeliveryMergeObservation, {
+      revision: observation.reviewedHead ?? '',
+      base: observation.base ?? '',
+      integrationTree: observation.integrationTree ?? '',
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Refuses malformed provider observations before their durable persistence. */
+export function validateDeliveryMergeObservation(
+  value: DeliveryMergeObservation,
+  request: Pick<DeliveryRequest, 'revision' | 'base' | 'integrationTree'>,
+): void {
+  if (
+    (value.route !== 'branch' && value.route !== 'pull-request') ||
+    !isCommit(value.reviewedHead) ||
+    !isCommit(value.base) ||
+    !isCommit(value.integrationTree) ||
+    value.reviewedHead !== request.revision ||
+    value.base !== request.base ||
+    value.integrationTree !== request.integrationTree ||
+    (value.state !== 'pending-provider-outcome' && value.state !== 'confirmed-merge') ||
+    (value.state === 'confirmed-merge' && !isCommit(value.mergeCommit)) ||
+    (value.mergeCommit !== undefined && !isCommit(value.mergeCommit)) ||
+    (value.route === 'branch' && (typeof value.branch !== 'string' || value.branch === '')) ||
+    (value.route === 'pull-request' &&
+      (value.pullRequest === undefined ||
+        !Number.isSafeInteger(value.pullRequest) ||
+        value.pullRequest < 1))
+  )
+    throw new Error('delivery merge observation does not match the original request identity');
+}
+
+/** Persist a validated merge receipt, retaining the original authority and operation identity. */
+export async function recordDeliveryMergeObservation(
+  verification: LoadedDeliveryVerification,
+  observation: DeliveryMergeObservation,
+  outcome: 'observed' | 'unknown' | 'unresolved',
+  partial: Partial<DeliveryVerificationDependencies> = {},
+): Promise<void> {
+  validateDeliveryMergeObservation(observation, verification.request);
+  const state = partial.state ?? verification.state;
+  requireAuthority(state, verification.request.authority);
+  await recordMutationResult(
+    state,
+    verification.request.authority,
+    verification.request.operationId,
+    {
+      outcome,
+      observed: observation,
+    },
+  );
+}
+
+/**
+ * Records the coordinator's accepted contract on the original operation before a delivery route
+ * starts. This is intentionally separate from route execution: a request cannot approve itself.
+ */
+export async function prepareDeliveryVerification(
+  verification: DeliveryVerification,
+  assignments: Assignment[],
+  route: DeliveryRoute,
+  partial: Partial<DeliveryVerificationDependencies> = {},
+): Promise<void> {
+  const request = readDeliveryRequest(verification.file, verification.digest);
+  const state = deliveryState(verification, partial);
+  requireAuthority(state, request.authority);
+  const approvedAssignments = structuredClone(assignments);
+  if (approvedAssignments.length !== request.members.length)
+    throw new Error('delivery approval does not match its accepted members');
+  for (const [index, member] of request.members.entries()) {
+    const assignment = approvedAssignments[index];
+    if (
+      assignment === undefined ||
+      !gateAssignment(assignment, 'held').dispatchable ||
+      JSON.stringify(assignment) !== JSON.stringify(member.assignment)
+    )
+      throw new Error('delivery approval has an unaccepted assignment');
+    if (!assignment.allowedConsequentialActions.includes(route.action))
+      throw new Error(`delivery approval does not permit ${route.action}`);
+  }
+  await registerDeliveryApproval(state, request.authority, request.operationId, {
+    members: request.members.map((member) => ({
+      identifier: member.assignment.identity.identifier,
+      assignmentDigest: member.assignment.identity.digest,
+      planDigest: digest(JSON.stringify(member.plan)),
+    })),
+    requestDigest: verification.digest,
+    repository: request.repository,
+    revision: request.revision,
+    base: request.base,
+    integrationTree: request.integrationTree,
+    route: route.route,
+    action: route.action,
+  });
+}
+
+function deliveryState(
+  verification: DeliveryVerification,
+  partial: Partial<DeliveryVerificationDependencies>,
+): ExecutionStateStore {
+  return (
+    partial.state ??
+    createExecutionStateStore({
+      stateDirectory:
+        verification.stateDirectory ??
+        join(resolveMainCheckout(), 'tmp', 'chef', 'execution-state'),
+      hostId: hostname(),
+    })
+  );
+}
+
+/** Validates untrusted file shape, digest and the originally acquired authority before Git/provider work. */
+export function loadDeliveryVerification(
+  verification: DeliveryVerification,
+  partial: Partial<DeliveryVerificationDependencies> = {},
+): LoadedDeliveryVerification {
+  const request = readDeliveryRequest(verification.file, verification.digest);
+  const state = deliveryState(verification, partial);
+  requireAuthority(state, request.authority);
+  return { request, file: verification.file, digest: verification.digest, state };
+}
+
+/** Recovery authenticates original approval without requiring an already merged base to stay current. */
+export function validateDeliveryApproval(
+  verification: LoadedDeliveryVerification,
+  expected: DeliveryRoute,
+  partial: Partial<DeliveryVerificationDependencies> = {},
+): string | undefined {
+  const { request } = verification;
+  const state = partial.state ?? verification.state;
+  requireAuthority(state, request.authority);
+  const operation = readExecutionSnapshot(state).operations[request.operationId];
+  const approval = operation?.approval;
+  if (approval === undefined) return 'delivery request has no coordinator approval binding';
+  const members = request.members.map((member) => ({
+    identifier: member.assignment.identity.identifier,
+    assignmentDigest: member.assignment.identity.digest,
+    planDigest: digest(JSON.stringify(member.plan)),
+  }));
+  if (
+    operation?.action !== expected.action ||
+    approval.action !== expected.action ||
+    approval.route !== expected.route ||
+    JSON.stringify(approval.members) !== JSON.stringify(members) ||
+    approval.requestDigest !== verification.digest ||
+    approval.repository !== request.repository ||
+    approval.revision !== request.revision ||
+    approval.base !== request.base ||
+    approval.integrationTree !== request.integrationTree
+  )
+    return 'delivery request does not match its coordinator approval binding';
+  return undefined;
+}
+
+/** Authenticated evidence is re-collected only after current Git identity is known. */
+export function validateDeliveryVerification(
+  verification: LoadedDeliveryVerification,
+  expected: {
+    repository: string;
+    revision: string;
+    base: string;
+    integrationTree: string;
+  } & DeliveryRoute,
+  partial: Partial<DeliveryVerificationDependencies> = {},
+): string | undefined {
+  const problem = validateDeliveryApproval(verification, expected, partial);
+  if (problem !== undefined) return problem;
+  const { request } = verification;
+  if (request.repository !== expected.repository)
+    return 'verification request names another repository';
+  if (request.revision !== expected.revision)
+    return 'verification request has a stale reviewed head';
+  if (request.base !== expected.base) return 'verification request has a stale base';
+  if (request.integrationTree !== expected.integrationTree)
+    return 'verification request has a stale expected integration tree';
+  const records = collectCompletionRecords(request, 'pre-integration', partial.transport);
+  const problems = records.flatMap((record) =>
+    record.remainingGates.map((gate) => `${record.identifier}: ${gate}`),
+  );
+  return problems.length === 0 ? undefined : problems.join('; ');
+}
