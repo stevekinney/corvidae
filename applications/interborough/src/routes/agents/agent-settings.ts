@@ -286,8 +286,9 @@ export function versionChanges(version: AgentVersion, previous: AgentVersion | u
  * the Bureau's `summary`, which reads the change from the version's content ("Instructions: added
  * “Refunds over $25 need approval.”"), with the page's own words kept for a part the page names
  * better (a model or a tool by its display name). The Bureau's summary has one part per changed
- * key, in `changedKeys` order; one that does not is shown whole. A Bureau that sends none leaves
- * the page's own words.
+ * key, in `changedKeys` order; one that does not is shown whole. A part taken from the Bureau keeps
+ * the page's label for its key ("Copied from", never the Bureau's "From"), with the Bureau's words
+ * after it. A Bureau that sends none leaves the page's own words.
  */
 export function versionSummary(version: AgentVersion, previous: AgentVersion | undefined): string {
   const own = versionChanges(version, previous);
@@ -303,7 +304,12 @@ export function versionSummary(version: AgentVersion, previous: AgentVersion | u
   return keys
     .map((key, index) => {
       const mine = ownParts[index] ?? '';
-      return mine === edited(keyLabel(key)) ? (parts[index] ?? mine) : mine;
+      const label = keyLabel(key);
+      const theirs = parts[index];
+      if (mine !== edited(label) || theirs === undefined) return mine;
+      // The Bureau labels a key by its own words ("From"); the page names it ("Copied from").
+      const separator = theirs.indexOf(': ');
+      return separator === -1 ? theirs : `${label}: ${theirs.slice(separator + 2)}`;
     })
     .join('; ');
 }

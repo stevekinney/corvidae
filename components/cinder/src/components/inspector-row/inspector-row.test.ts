@@ -288,10 +288,12 @@ describe('InspectorRow stylesheet', () => {
     expect(css).not.toMatch(/\[data-cinder-readonly\][^{]*:hover/);
   });
 
-  test("below 700px of the inspector's own width the label stacks above the value", () => {
+  test("below 23rem of the inspector's own width the label stacks above the value", () => {
     expect(css).not.toMatch(/@media[^{]*width/);
+    // Not 700px: a 28rem inspector keeps a suggested value on its label's line (COR-2441).
+    expect(css).not.toMatch(/@container[^{]*700px/);
     expect(css).toMatch(
-      /@container cinder-inspector \(width < 700px\) \{\s*\.cinder-inspector-row \{[^}]*grid-template-columns: minmax\(0, 1fr\)/,
+      /@container cinder-inspector \(width < 23rem\) \{\s*\.cinder-inspector-row \{[^}]*grid-template-columns: minmax\(0, 1fr\)/,
     );
   });
 

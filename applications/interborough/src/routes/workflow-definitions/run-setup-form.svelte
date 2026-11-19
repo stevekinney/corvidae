@@ -671,8 +671,9 @@
    */
   .ib-run-setup__footer {
     position: sticky;
-    /* The outlet pads its own bottom edge; reach through it so nothing scrolls under the bar. */
-    bottom: calc(-1 * var(--cinder-space-6));
+    /* The outlet has no bottom padding, so the bar sticks to the bottom of what it shows; its
+       negative margin overlaps the spacer that ends the outlet (`foundation.css`). */
+    bottom: 0;
     z-index: 1;
     margin-block-end: calc(-1 * var(--cinder-space-6));
     padding-block: var(--cinder-space-3);

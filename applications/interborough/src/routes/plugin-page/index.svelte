@@ -208,13 +208,14 @@
 <SecretDialog bind:target={secret} />
 
 <style>
-  /* The panel fills what is left of the outlet, to its bottom edge: the outlet pads its page, so the
-     page takes the bottom padding back, and the app scrolls inside itself, never the page. */
+  /* The panel fills what is left of the outlet, to its bottom edge: the outlet has no bottom padding
+     but ends in a spacer (`foundation.css`), so the page's negative margin takes that room back, and
+     the app scrolls inside itself, never the page. */
   .ib-plugin-page {
     display: flex;
     flex-direction: column;
     gap: var(--cinder-space-3);
-    block-size: calc(100% + var(--cinder-space-6));
+    block-size: 100%;
     margin-block-end: calc(var(--cinder-space-6) * -1);
     min-block-size: 0;
   }
