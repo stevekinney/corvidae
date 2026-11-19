@@ -75,7 +75,10 @@ export function branchRunner(
     const key = command.slice(1).join(' ');
     calls.push(key);
     return (
-      handler(command) ?? answers[key] ?? defaults[key] ?? reply('', 1, `unexpected command: ${key}`)
+      handler(command) ??
+      answers[key] ??
+      defaults[key] ??
+      reply('', 1, `unexpected command: ${key}`)
     );
   };
   return { runner, calls, messageFile };

@@ -17,6 +17,7 @@ import {
   readExecutionSnapshot,
   requireAuthority,
 } from './execution-state.ts';
+import { greenLanding } from './landing-evidence.test-support.ts';
 import {
   mergeGate as mergeGateImplementation,
   renderMergeGate,
@@ -26,7 +27,6 @@ import {
   type MergeGateOptions,
 } from './merge-gate.ts';
 import { UsageError, type Runner } from './process-runner.ts';
-import { greenLanding } from './landing-evidence.test-support.ts';
 import { createScenarios } from './scenario.test-support.ts';
 
 let HEAD = 'a'.repeat(40);
@@ -136,7 +136,10 @@ function prepare(): { directory: string; prepared: Omit<MergeGateOptions, 'verif
 async function setUp(): Promise<void> {
   const made = prepare();
   sandbox = made.directory;
-  const fixture = await createDeliveryVerificationFixture(undefined, { route: 'pull-request', landing: true });
+  const fixture = await createDeliveryVerificationFixture(undefined, {
+    route: 'pull-request',
+    landing: true,
+  });
   HEAD = fixture.request.revision;
   BASE = fixture.request.base;
   EXPECTED_TREE = fixture.request.integrationTree;
@@ -948,7 +951,10 @@ scenarios.describe('run', () => {
  */
 async function lockScenarios() {
   const { directory, prepared } = prepare();
-  const fixture = await createDeliveryVerificationFixture(undefined, { route: 'pull-request', landing: true });
+  const fixture = await createDeliveryVerificationFixture(undefined, {
+    route: 'pull-request',
+    landing: true,
+  });
   const lockWorld = (
     bound: Awaited<ReturnType<typeof createDeliveryVerificationFixture>>,
     world: World = {},

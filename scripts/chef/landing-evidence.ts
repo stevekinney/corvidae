@@ -100,12 +100,13 @@ function listRuns(runner: Runner, repository: string, head: string): ListedRun[]
   try {
     const parsed = JSON.parse(answer.stdout) as { workflow_runs?: unknown };
     if (!Array.isArray(parsed.workflow_runs)) return 'the workflow runs answer has no run list';
+    const text = (value: unknown): string => (typeof value === 'string' ? value : '');
     return parsed.workflow_runs.map((entry: Record<string, unknown>) => ({
       id: Number(entry['id']),
-      head: String(entry['head_sha'] ?? ''),
-      path: String(entry['path'] ?? '').split('@')[0] ?? '',
-      status: String(entry['status'] ?? ''),
-      conclusion: String(entry['conclusion'] ?? ''),
+      head: text(entry['head_sha']),
+      path: text(entry['path']).split('@')[0] ?? '',
+      status: text(entry['status']),
+      conclusion: text(entry['conclusion']),
     }));
   } catch {
     return 'the workflow runs answer is not JSON';
@@ -163,7 +164,8 @@ async function checkDigests(
   for (const identity of identities) {
     if (identity.requestKey !== ciEvidenceRequestKey(identity))
       return 'a CI evidence identity does not match its request key';
-    const expected = identity.event === 'workflow_dispatch' ? batch : identity.verificationPlanDigest;
+    const expected =
+      identity.event === 'workflow_dispatch' ? batch : identity.verificationPlanDigest;
     let observed;
     try {
       observed = await source.findRuns(identity);

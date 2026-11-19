@@ -1,7 +1,11 @@
 // Green defaults for the landing check (`landing-evidence.ts`): a fake `gh` and plan runner, and a
 // provider, that let a fixture land. A test varies one input to make a refusal. No process starts.
 
-import { ciEvidenceRequestKey, type CiEvidenceProvider, type CiEvidenceRequest } from './ci-evidence.ts';
+import {
+  ciEvidenceRequestKey,
+  type CiEvidenceProvider,
+  type CiEvidenceRequest,
+} from './ci-evidence.ts';
 import type { DeliveryRequest } from './delivery-completion.ts';
 import type { Runner, RunnerResult } from './process-runner.ts';
 
@@ -130,7 +134,9 @@ export function greenLanding(inner: Runner): Runner {
       url,
     );
     if (runs !== null)
-      return Object.values(runsAnswer(runs[1] ?? '', runs[2] ?? '', [{ head_sha: runs[2] ?? '' }]))[0]!;
+      return Object.values(
+        runsAnswer(runs[1] ?? '', runs[2] ?? '', [{ head_sha: runs[2] ?? '' }]),
+      )[0]!;
     if (command[0] === 'bun' && command[1] === 'scripts/chef/evidence-plan.ts')
       return Object.values(planAnswer(command[3] ?? ''))[0]!;
     return inner(command, options);

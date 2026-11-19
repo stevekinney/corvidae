@@ -3,13 +3,8 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os';
 import { join, relative } from 'node:path';
 import { rejectionOf } from '../../testing/testing/src/helpers/promise-outcome.ts';
-import {
-  deliver,
-  renderDeliver,
-  run,
-  type DeliverOptions,
-  type LeaseReading,
-} from './deliver.ts';
+import { createDeliveryFixture, branchRunner as landingRunner } from './deliver.test-support.ts';
+import { deliver, renderDeliver, run, type DeliverOptions, type LeaseReading } from './deliver.ts';
 import { readDeliveryRequest } from './delivery-completion.ts';
 import { ledgerLine, type LedgerEntry } from './delivery-ledger.ts';
 import {
@@ -20,15 +15,14 @@ import {
   type DeliveryVerificationDependencies,
 } from './delivery-verification.ts';
 import { directMerge, type DirectMergeOptions } from './direct-merge.ts';
-import { branchRunner as landingRunner, createDeliveryFixture } from './deliver.test-support.ts';
 import { recordMutationIntent } from './execution-state.ts';
-import { designVerdictPath } from './landing-evidence.ts';
 import {
   greenLandingAnswers,
   landingProvider,
   planAnswer,
   runsAnswer,
 } from './landing-evidence.test-support.ts';
+import { designVerdictPath } from './landing-evidence.ts';
 import { LinearError, type LinearClient } from './linear.ts';
 import type { MergeGateOptions, MergeGateReport } from './merge-gate.ts';
 import { UsageError, type Runner, type RunnerResult } from './process-runner.ts';
@@ -1393,6 +1387,8 @@ scenarios.describe('deliver --branch', () => {
             {
               configPath: options.configPath,
               worktree: sandbox,
+              run: 'run',
+              project: 'Widgets',
               verification: options.verification,
               ...extra,
             },
@@ -1776,19 +1772,22 @@ scenarios.describe('deliver --branch refuses to land without evidence', () => {
     },
   );
 
-  scenarios.scenario('a one-way door through a branch merge, which has no pull request', async () => {
-    const { report, code } = await landBranch({
-      answers: planAnswer(BASE, {
-        changed: [DOOR.path],
-        requires_full_run: true,
-        full_run_rules: [DOOR],
-      }),
-    });
-    expect(report).toMatchObject({ merged: false, failedStep: 'verification' });
-    expect(report.detail).toContain('one-way door');
-    expect(report.detail).toContain('must go through a pull request');
-    expect(code).toBe(1);
-  });
+  scenarios.scenario(
+    'a one-way door through a branch merge, which has no pull request',
+    async () => {
+      const { report, code } = await landBranch({
+        answers: planAnswer(BASE, {
+          changed: [DOOR.path],
+          requires_full_run: true,
+          full_run_rules: [DOOR],
+        }),
+      });
+      expect(report).toMatchObject({ merged: false, failedStep: 'verification' });
+      expect(report.detail).toContain('one-way door');
+      expect(report.detail).toContain('must go through a pull request');
+      expect(code).toBe(1);
+    },
+  );
 
   scenarios.scenario('a whole-suite rule widens the run and is no one-way door', async () => {
     const { report } = await landBranch({
@@ -1801,18 +1800,21 @@ scenarios.describe('deliver --branch refuses to land without evidence', () => {
     expect(report).toMatchObject({ failedStep: null, merged: true });
   });
 
-  scenarios.scenario('a plan that needs the full run is not covered by a targeted run', async () => {
-    const { report } = await landBranch({
-      answers: {
-        ...runsAnswer('acme/widgets', HEAD, [
-          { head_sha: HEAD, path: '.github/workflows/targeted-checks.yml' },
-        ]),
-        ...planAnswer(BASE, { requires_full_run: true }),
-      },
-    });
-    expect(report).toMatchObject({ merged: false, failedStep: 'verification' });
-    expect(report.detail).toContain('requires a full main.yml run');
-  });
+  scenarios.scenario(
+    'a plan that needs the full run is not covered by a targeted run',
+    async () => {
+      const { report } = await landBranch({
+        answers: {
+          ...runsAnswer('acme/widgets', HEAD, [
+            { head_sha: HEAD, path: '.github/workflows/targeted-checks.yml' },
+          ]),
+          ...planAnswer(BASE, { requires_full_run: true }),
+        },
+      });
+      expect(report).toMatchObject({ merged: false, failedStep: 'verification' });
+      expect(report.detail).toContain('requires a full main.yml run');
+    },
+  );
 
   scenarios.scenario('a run that does not hold the lease', async () => {
     for (const lease of [{ run: 'other', live: true }, null, { run: 'run', live: false }]) {

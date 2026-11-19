@@ -146,10 +146,12 @@ async function leaseRefusal(
   } catch (error) {
     return `the lease of ${options.project} could not be read: ${error instanceof Error ? error.message : String(error)}`;
   }
-  if (lease === null) return `${options.project} has no lease; run ${options.run} does not hold it.`;
+  if (lease === null)
+    return `${options.project} has no lease; run ${options.run} does not hold it.`;
   if (lease.run !== options.run)
     return `${options.project} is leased to run ${lease.run}, not run ${options.run}.`;
-  if (!lease.live) return `run ${options.run}'s lease on ${options.project} is released or expired.`;
+  if (!lease.live)
+    return `run ${options.run}'s lease on ${options.project} is released or expired.`;
   return undefined;
 }
 

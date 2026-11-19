@@ -16,8 +16,8 @@ import {
   readExecutionSnapshot,
   requireAuthority,
 } from './execution-state.ts';
-import { withMergeLock } from './merge-gate.ts';
 import { greenLanding } from './landing-evidence.test-support.ts';
+import { withMergeLock } from './merge-gate.ts';
 import { defaultRunner, type Runner } from './process-runner.ts';
 import type { GuardsResult } from './text-guards.ts';
 
