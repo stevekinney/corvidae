@@ -11,6 +11,7 @@ How to read it, and what feeds it:
 - **sentence-case labels**: `timeZone` reads "Time zone", `orderId` "Order ID", through `humanizeIdentifier` in sentence case.
 - **long values**: a long field name truncates on one line with the full label as its tooltip, and the dot stays after it; a value with no spaces breaks anywhere inside its cell and never widens the grid.
 - **phone width**: when the view itself is narrower than 30rem the columns restack, with the label and type on one line, the type at the end, and the description and facts below it with _More_ inline after it.
+- **rows and the open document**: `layout="rows"` drops the frame and the header row for a short input such as a tool's: each field is one row, its name flush with the text above, then the word _Required_, then its type in plain words, with the description and facts on the line below; nesting, folding and _More_ work as in the grid. `raw="beside"` shows the raw document open in a JSON code block instead of behind the disclosure, beside the fields once the view is 38rem wide and under them when it is narrower; `raw="none"` leaves it out.
 
 Local `$ref`s into `$defs` or `definitions` are followed and `allOf` members are merged, including properties that more than one member declares. A reference that points back into the object being shown is not expanded again; its type reads, for example, `node (recursive)`. The view lists at most 500 expanded fields, and an object it did not open past that shows the same note as one beyond `maxDepth`. A schema that is not an object with properties shows one _Value_ row that names its type, and a schema with no fields shows one line, "This schema takes no fields, so there is nothing to fill in.", in a bordered box instead of an empty grid.
 
@@ -54,8 +55,10 @@ Use it wherever a schema is shown for reading: a workflow's input and output, a 
 | `class` | `string` | no | — | Additional class merged onto the `.cinder-schema-view` root element. |
 | `emptyLabel` | `string` | no | `"This schema takes no fields, so there is nothing to fill in."` | Text shown, in a bordered box instead of an empty grid, when the schema declares no fields. |
 | `label` | `string` | no | `"Schema"` | Accessible name of the view, for example "Workflow input". It is the `aria-label` of the region, so name what the schema describes. |
+| `layout` | `"table"` \| `"rows"` | no | `"table"` | How the fields are drawn. `table` is the framed grid of Field, Type and Description under a header row. `rows` is one unframed row per field, its name flush with the text above it, then the word "Required", then its type as plain words, with its description and rules on the line below. |
 | `maxDepth` | `number` | no | `8` | How many levels of nested objects are expanded. Deeper objects show their line without their fields, and the raw document still holds them. |
-| `rawLabel` | `string` | no | `"JSON schema"` | Label of the disclosure that reveals the raw schema document. |
+| `raw` | `"collapsed"` \| `"beside"` \| `"none"` | no | `"collapsed"` | Where the raw schema document is. `collapsed` puts it behind a closed disclosure after the fields. `beside` shows it open in a JSON code block: beside the fields when the view is at least 38rem wide, under them when it is narrower. `none` leaves it out. |
+| `rawLabel` | `string` | no | `"JSON schema"` | Label of the raw schema document: the disclosure's trigger, or the title over the code block. |
 | `schema` | `(opaque)` | yes | — | The JSON Schema to show, as a parsed object. Local `$ref`s into `$defs` or `definitions` are followed and `allOf` members are merged. A schema that is not an object with properties shows one `Value` line naming its type. Not expressible in JSON Schema; see the component types for the signature. |
 
 <!-- generated:props:end -->
