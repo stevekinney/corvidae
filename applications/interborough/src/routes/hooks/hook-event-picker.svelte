@@ -18,7 +18,14 @@
    * is pinned to: the version the Bureau lists while the hook is new, and the pin once it is saved
    * (row R4). Without a plugin kind the field is what it always was (row R7).
    */
-  import { Button, Combobox, DataList, Select, StackedListItem, Tooltip } from '@lostgradient/cinder';
+  import {
+    Button,
+    Combobox,
+    DataList,
+    Select,
+    StackedListItem,
+    Tooltip,
+  } from '@lostgradient/cinder';
   import { Lock, X } from '@lucide/svelte';
 
   import type { HookActionType, HookEventKind } from '../../lib/bureau-hooks.ts';

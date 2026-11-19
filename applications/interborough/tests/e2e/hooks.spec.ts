@@ -2055,9 +2055,7 @@ test('[hook-event-missing-edit] /hooks/:hook: at 320 pixels the When step’s Ed
   );
   const when = page.getByTestId('hook-step-summary-when');
   const then = page.getByTestId('hook-step-summary-then');
-  await expect(when.getByTestId('hook-missing-events')).toContainText(
-    copy.event.missing.notLoaded,
-  );
+  await expect(when.getByTestId('hook-missing-events')).toContainText(copy.event.missing.notLoaded);
   const whenEdit = when.getByRole('button', { name: copy.steps.edit });
   const thenEdit = then.getByRole('button', { name: copy.steps.edit });
   await expect(whenEdit).toBeVisible();
