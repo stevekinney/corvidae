@@ -77,7 +77,8 @@ describe('a run that is still going', () => {
     await waitFor(() => expect(headerText(view)).toMatch(/\d+ s so far/));
     expect(view.queryByRole('link', { name: 'Run again' })).toBeNull();
     expect(await view.findByRole('heading', { level: 2, name: 'What happened' })).not.toBeNull();
-    expect(view.getByText(/^Started \d+:\d{2}\s[AP]M$/)).not.toBeNull();
+    // To the second, as the offsets after it are (06b: "Started 10:45:50 AM").
+    expect(view.getByText(/^Started \d+:\d{2}:\d{2}\s[AP]M$/)).not.toBeNull();
     expect(view.getByText('Replied')).not.toBeNull();
     expect(view.getByText('Not run yet')).not.toBeNull();
   });

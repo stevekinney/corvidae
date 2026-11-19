@@ -130,11 +130,16 @@
     };
   }, undefined);
   // How long each finished attempt's run took, read from the run itself, as Runs says it (rows 67l,
-  // 67r): an attempt's own `completedAt` is when its check answered. A run that cannot be read
-  // leaves its attempt's line saying the attempt's own span.
+  // 67r): an attempt's own `completedAt` is when its check answered. An attempt whose result is
+  // being checked has a run that has ended too, and says what that run took, never the time since
+  // it started (row 67x). A run that cannot be read leaves its attempt's line saying the attempt's
+  // own span.
   const endedRunIds = $derived(
     (goal.data?.attempts ?? [])
-      .filter((attempt) => attempt.completedAt !== null && attempt.runId !== '')
+      .filter(
+        (attempt) =>
+          (attempt.completedAt !== null || attempt.status === 'evaluating') && attempt.runId !== '',
+      )
       .map((attempt) => attempt.runId),
   );
   const attemptRuns = createQueries(() => ({

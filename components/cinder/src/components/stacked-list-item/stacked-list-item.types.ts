@@ -8,6 +8,13 @@ export type StackedListItemDensity = 'comfortable' | 'condensed';
  * line two in any case.
  */
 export type StackedListItemStatusPlacement = 'leading' | 'line-two';
+/**
+ * Which width decides a row's phone form. `row`, the default, is the row's own width below 640px
+ * (COR-2448), so a row in a narrow pane of a wide window takes it. `viewport` is the window's width
+ * below 640px, the rule a list that fills the page's content column follows, so on a tablet with a
+ * navigation rail beside it the status still leads in its column (the Runs list, rows 05w and 05x).
+ */
+export type StackedListItemPhoneWidth = 'row' | 'viewport';
 /** How many lines a row's title may take before it ends in an ellipsis. */
 export type StackedListItemTitleLines = 1 | 2;
 /**
@@ -101,6 +108,12 @@ type StackedListItemBase = ForwardedLiAttributes & {
   statusColumn?: boolean;
   /** Where the status sits. Default `leading`. */
   statusPlacement?: StackedListItemStatusPlacement;
+  /**
+   * Which width decides the row's phone form: the row's own (`row`, the default) or the window's
+   * (`viewport`), each below 640px. Pass `viewport` on the rows of a list that fills the page's
+   * content column, so a tablet with a navigation rail keeps the leading status column.
+   */
+  phoneWidth?: StackedListItemPhoneWidth;
   /** Primary label. Required. */
   title: Snippet;
   /**
@@ -149,6 +162,14 @@ type StackedListItemBase = ForwardedLiAttributes & {
    * control (an error with its own "Try again") may put one in.
    */
   meta?: Snippet;
+  /**
+   * Line two on a phone, in place of `meta`: the few words a narrow row has room for (the missed
+   * runs' "Schedule since Oct 30" for the wide "Schedule Assistant every day at 3:00 AM missed 4
+   * times since Oct 30"). Only one of the two is drawn, so a screen reader reads line two once;
+   * keep `metaTooltip` the whole line. With `wrapMeta` the status leads it, once, on line two, and
+   * the time and a group row's disclosure stay on line one.
+   */
+  metaCompact?: Snippet;
   /**
    * A third line under line two that wraps instead of ending in an ellipsis, so nothing on it is
    * ever cut. A schedule row on a phone puts the reason it won't run first and the cadence last

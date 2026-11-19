@@ -134,6 +134,8 @@ const SHOWCASE_SPECIFICATIONS = [
   'tests/e2e/goal-page-states.spec.ts',
   // Capabilities and Connect tools in the states the sample world does not hold (COR-2435, COR-2436).
   'tests/e2e/capabilities-states.spec.ts',
+  // The Goals list while its goals are read (COR-2425, row 68k).
+  'tests/e2e/goals-list-states.spec.ts',
   // Every view loading, empty, failed and forbidden, which a route filter (`--grep '/runs'`) reaches
   // through each title's address, and the goal check's loading states.
   'tests/e2e/15-view-states.spec.ts',

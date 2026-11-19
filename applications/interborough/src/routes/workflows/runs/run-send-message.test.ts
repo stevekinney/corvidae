@@ -77,6 +77,17 @@ describe('the Send a message bar', () => {
     );
   });
 
+  test('draws no box around the bar, so the sticky bar docks inside the page (row 06b)', async () => {
+    const view = mount();
+    const form = view.getByTestId('run-send-message');
+    // A sticky box sticks only inside its parent's box: a form exactly the bar's height held the
+    // bar in the flow, under the rail on a phone, and never docked it.
+    expect(form.classList.contains('ib-run-send-message')).toBe(true);
+    const sheet = await Bun.file(new URL('../../../styles/tasks.css', import.meta.url)).text();
+    expect(sheet).toMatch(/\.ib-run-send-message\s*\{\s*display:\s*contents;\s*\}/);
+    expect(form.firstElementChild?.classList.contains('cinder-docked-action-bar')).toBe(true);
+  });
+
   test('keeps Send off until there are words', () => {
     const view = mount();
 

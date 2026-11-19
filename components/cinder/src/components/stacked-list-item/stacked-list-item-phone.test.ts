@@ -202,7 +202,12 @@ describe('StackedListItem on a phone', () => {
     expect(phoneBlock).toContain("'leading title title time trailing'");
     expect(phoneBlock).toContain("'leading status line line trailing'");
     expect(phoneBlock).toMatch(/--_cinder-status-track:\s*max-content;/);
-    expect(stylesheet).not.toMatch(/\[data-cinder-phone\]/);
+    // The script's phone mark is read only by a row that follows the window (`phoneWidth`).
+    for (const match of stylesheet.matchAll(/\[data-cinder-phone\]/g)) {
+      expect(stylesheet.slice(Math.max(0, match.index - 40), match.index)).toContain(
+        "[data-cinder-phone-width='viewport']",
+      );
+    }
   });
 
   test('on a phone the status word is never cut: its track is its own width, and a long time wraps and gives way (R10-02)', () => {
@@ -500,7 +505,11 @@ describe('StackedListItem on a phone', () => {
       /__detail\s*\{[^}]*grid-row:\s*details;[^}]*overflow-wrap:\s*anywhere/,
     );
     expect(stylesheet).toMatch(
-      /--lines:not\(\.cinder-stacked-list-item--band\)\s+\.cinder-stacked-list-item__detail\s*\{[^}]*grid-column:\s*2 \/ 5/,
+      /--lines:not\(\s*\.cinder-stacked-list-item--band,\s*\[data-cinder-phone-width='viewport'\]\s*\)\s+\.cinder-stacked-list-item__detail\s*\{[^}]*grid-column:\s*2 \/ 5/,
+    );
+    // A row that follows the window takes the same rule from the script's phone mark.
+    expect(stylesheet).toMatch(
+      /\[data-cinder-phone-width='viewport'\]\[data-cinder-phone\]\s+\.cinder-stacked-list-item__detail\s*\{[^}]*grid-column:\s*2 \/ 5/,
     );
     // Wrapping, not truncating: the third line carries no ellipsis or nowrap rule.
     const rule = /\.cinder-stacked-list-item__detail\s*\{[^}]*\}/.exec(stylesheet)?.[0] ?? '';

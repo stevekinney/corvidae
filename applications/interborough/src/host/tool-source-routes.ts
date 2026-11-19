@@ -408,7 +408,8 @@ export function toolSourceRoutes(
                 principal: mutation.owner,
                 createOnly: body['create'] === true,
                 tools: body['tools'],
-                // The labels the request names, or none, which keeps the saved ones.
+                // The labels a person gives the source (COR-2022): the manager checks them, keeps a
+                // saved one that is left out, and clears a description sent empty.
                 ...(body['name'] === undefined ? {} : { name: body['name'] }),
                 ...(body['description'] === undefined ? {} : { description: body['description'] }),
                 // A sign-in made before the source was saved, by reference (COR-2436).
