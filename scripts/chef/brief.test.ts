@@ -366,12 +366,6 @@ describe('charter rules', () => {
       agents,
       'never `git reset --soft` onto a newer `main`',
     ],
-    ['`bun scripts/chef/revert-check.ts`', agents, '`bun scripts/chef/revert-check.ts`'],
-    [
-      '`git diff --name-only origin/main...head`',
-      agents,
-      '`git diff --name-only origin/main...head`',
-    ],
     ['there is no context ceiling', agents, 'a worker has no context ceiling'],
     ['never poll', agents, 'never poll'],
     ['answer every thread before merge', agents, 'answer every thread before merge'],
@@ -451,6 +445,21 @@ describe('charter rules', () => {
     for (const [charter, document, rule] of governing) {
       expect(rules, charter).toContain(normalize(charter));
       expect(read(document), `${document}: ${rule}`).toContain(normalize(rule));
+    }
+  });
+
+  // The revert check is the charter's alone: the other copies of the sequence were deleted, and
+  // `scripts/process-docs-budget.test.ts` fails when a governed document holds both commands again.
+  test('state the revert check once, in the Branch rule, and AGENTS.md points at it', () => {
+    const branch = normalize(
+      charterRules.find((candidate) => candidate.startsWith('**Branch:**')) ?? '',
+    );
+    expect(branch).toContain('`bun scripts/chef/revert-check.ts`');
+    expect(branch).toContain('`git diff --name-only origin/main...head`');
+    expect(read(agents)).toContain(normalize('`charterRules` (`scripts/chef/brief.ts`)'));
+    for (const path of ['.claude/agents/chef-worker.md', '.codex/agents/chef-worker.toml']) {
+      expect(read(path), path).toContain("brief's branch rule");
+      expect(read(path), path).toContain("brief's checks rule");
     }
   });
 
