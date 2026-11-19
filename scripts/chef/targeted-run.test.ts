@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { defaultManifestLayout } from '../browser-fixtures/scripts/prepare-manifest.ts';
 
 import { MANIFEST_PATH, manifestSlugs } from './evidence-plan.ts';
+import { landingPlan } from './landing-plan.ts';
 import type { Runner } from './process-runner.ts';
 import {
   buildCommand,
@@ -215,9 +216,21 @@ describe('run', () => {
     ]);
     const result = run(['--dry-run'], dependencies);
     expect(result.output).toBe(
-      "'gh' 'workflow' 'run' 'targeted-checks.yml' '--ref' 'chef/x' '-f' 'fixture_components=description-list'\n# requires_full_run: false",
+      `'gh' 'workflow' 'run' 'targeted-checks.yml' '--ref' 'chef/x' '-f' 'plan_digest=${landingPlan(['scripts/browser-fixtures/src/fixtures/description-list.svelte']).digest}' '-f' 'fixture_components=description-list'\n# requires_full_run: false`,
     );
     expect(calls.some((call) => call[0] === 'gh')).toBe(false);
+  });
+
+  test('passes the digest of the plan over the diff with every status, deletions included', () => {
+    const golden = 'packages/bureau/src/http/__fixtures__/wire-golden/local.openrpc.json';
+    const { dependencies } = fake(['scripts/chef/a.ts'], [], [golden]);
+    const command = run(['--dry-run', '--json'], dependencies).output;
+    expect(JSON.parse(command).command).toContain(
+      `plan_digest=${landingPlan(['scripts/chef/a.ts', golden]).digest}`,
+    );
+    expect(landingPlan(['scripts/chef/a.ts', golden]).digest).not.toBe(
+      landingPlan(['scripts/chef/a.ts']).digest,
+    );
   });
 
   test('--json with no inputs prints { ref, inputs, command, requiresFullRun } from the plan', () => {
@@ -294,6 +307,8 @@ describe('run', () => {
         '--ref',
         'b',
         '-f',
+        `plan_digest=${landingPlan([]).digest}`,
+        '-f',
         'fixture_components=approval-card',
       ],
     ]);
@@ -351,7 +366,16 @@ describe('run', () => {
     const result = run(['--ref', 'b'], dependencies);
     expect(result.output).toContain('only lint and type-check');
     expect(calls.filter((call) => call[0] === 'gh')).toEqual([
-      ['gh', 'workflow', 'run', 'targeted-checks.yml', '--ref', 'b'],
+      [
+        'gh',
+        'workflow',
+        'run',
+        'targeted-checks.yml',
+        '--ref',
+        'b',
+        '-f',
+        `plan_digest=${landingPlan(['packages/bureau/src/table-cell.ts']).digest}`,
+      ],
     ]);
   });
 });

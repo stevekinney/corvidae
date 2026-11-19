@@ -41,6 +41,7 @@ import {
   REPOSITORY_ROOT,
   repositoryContext,
 } from './evidence-plan.ts';
+import { landingPlan } from './landing-plan.ts';
 import {
   defaultRunner,
   emitResult,
@@ -221,11 +222,14 @@ export function validateInputs(
 }
 
 /** The `gh workflow run` command for `inputs`; only inputs that name something are passed. */
-export function buildCommand(ref: string, inputs: TargetedInputs): string[] {
+export function buildCommand(ref: string, inputs: TargetedInputs, planDigest = ''): string[] {
   const command = ['gh', 'workflow', 'run', 'targeted-checks.yml', '--ref', ref];
   const add = (name: string, value: string): void => {
     if (value !== '') command.push('-f', `${name}=${value}`);
   };
+  // The run's name carries this digest; landing (`landing-evidence.ts`) accepts the run as coverage
+  // only for the plan it computes itself from the same diff (`landing-plan.ts`).
+  add('plan_digest', planDigest);
   add('fixture_components', inputs.fixtureComponents.join(','));
   add('fixture_specs', inputs.fixtureSpecs.join(' '));
   add('e2e_specs', inputs.e2eSpecs.join(' '));
@@ -320,11 +324,15 @@ export function run(
   if (!/^[\w./-]+$/.test(ref)) throw new UsageError(`'${ref}' is not a branch name.`);
   const problems = validateInputs(inputs, dependencies);
   if (problems.length > 0) throw new UsageError(problems.join('\n'));
-  const command = fullDispatch ? buildFullRunCommand(ref) : buildCommand(ref, inputs);
+  // The digest names the diff with every status, deletions included, as landing reads it.
+  const planDigest = landingPlan(
+    git(runner, ['diff', '--name-only', 'origin/main...HEAD']).split('\n').filter(Boolean),
+  ).digest;
+  const command = fullDispatch ? buildFullRunCommand(ref) : buildCommand(ref, inputs, planDigest);
   // With no input the run is the `checks` job alone: lint and type-check of the changed workspaces.
   const note = fullDispatch
     ? '\n# Dispatching main.yml, the full sharded run, because the plan requires one (rules below).'
-    : command.length === 6
+    : command.length === 8
       ? '\n# No fixture, spec or unit test file to run: only lint and type-check of the changed workspaces will.'
       : '';
   const fullRun =

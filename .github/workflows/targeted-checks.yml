@@ -52,6 +52,15 @@ on:
         type: string
         required: false
         default: ''
+      plan_digest:
+        description: SHA-256 digest of the evidence plan (scripts/chef/landing-plan.ts), set by targeted-run.ts. Landing reads it from the run name.
+        type: string
+        required: false
+        default: ''
+
+# Landing (scripts/chef/landing-evidence.ts) accepts this run as coverage for a head only when the
+# name carries the digest of the plan it computes itself.
+run-name: ${{ inputs.plan_digest != '' && format('targeted {0}', inputs.plan_digest) || 'Targeted checks' }}
 
 permissions:
   contents: read

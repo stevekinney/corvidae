@@ -17,7 +17,12 @@ import {
   readExecutionSnapshot,
   requireAuthority,
 } from './execution-state.ts';
-import { greenLanding } from './landing-evidence.test-support.ts';
+import {
+  changedAnswer,
+  greenLanding,
+  jobsAnswer,
+  runsAnswer,
+} from './landing-evidence.test-support.ts';
 import {
   mergeGate as mergeGateImplementation,
   renderMergeGate,
@@ -1183,5 +1188,73 @@ scenarios.scenario(
     expect(existsSync(providerLock)).toBe(false);
   },
 );
+
+// The pull request route runs the same landing check as a branch merge (`landing-evidence.ts`).
+// Each case varies one read of the green landing; deleting the call in `merge-gate.ts` lands them all.
+scenarios.describe('mergeGate landing evidence', () => {
+  /** `fake()` with `answers` (keyed by a command's arguments without its program) taking precedence. */
+  const landing = (answers: Record<string, { code: number; stdout: string; stderr: string }>) => {
+    const world = fake();
+    const runner: Runner = (command, runnerOptions) =>
+      answers[command.slice(1).join(' ')] ?? world.runner(command, runnerOptions);
+    return { ...world, runner };
+  };
+  const reply = (stdout: string) => ({ code: 0, stdout, stderr: '' });
+  const asAnswers = (answers: Record<string, { code: number; stdout: string; stderr: string }>) =>
+    answers;
+  const DOOR = 'packages/bureau/src/http/__fixtures__/wire-golden/local.openrpc.json';
+
+  scenarios.scenario('a head with no workflow runs is refused at verification', async () => {
+    const world = landing(asAnswers(runsAnswer('acme/widgets', HEAD, [])));
+    const report = await mergeGate(options, { runner: world.runner });
+    expect(report.failedStep).toBe('verification');
+    expect(report.detail).toContain('no workflow runs exist on the head');
+    expect(world.merged()).toBe(false);
+  });
+
+  scenarios.scenario('a red run with a failure main does not have is refused', async () => {
+    const world = landing(
+      asAnswers({
+        ...runsAnswer('acme/widgets', HEAD, [{ head_sha: HEAD, conclusion: 'failure' }]),
+        [`run view 4242 --repo acme/widgets --json status,conclusion,jobs`]: reply(
+          JSON.stringify({
+            status: 'completed',
+            conclusion: 'failure',
+            jobs: [{ name: 'Root checks', conclusion: 'failure' }],
+          }),
+        ),
+        [`run view 4242 --repo acme/widgets --log-failed`]: reply(''),
+      }),
+    );
+    const report = await mergeGate(options, { runner: world.runner });
+    expect(report.failedStep).toBe('verification');
+    expect(report.detail).toContain('is red with failures main does not have');
+    expect(world.merged()).toBe(false);
+  });
+
+  scenarios.scenario(
+    'a one-way door needs a full main.yml run: a pull request run alone is refused, and the full run lands',
+    async () => {
+      const door = changedAnswer(BASE, HEAD, [DOOR]);
+      const without = landing(
+        asAnswers({
+          ...door,
+          ...runsAnswer('acme/widgets', HEAD, [
+            { head_sha: HEAD, path: '.github/workflows/pull-request.yml' },
+          ]),
+          ...jobsAnswer('acme/widgets'),
+        }),
+      );
+      const refused = await mergeGate(options, { runner: without.runner });
+      expect(refused.failedStep).toBe('verification');
+      expect(refused.detail).toContain('requires a full main.yml run');
+      expect(without.merged()).toBe(false);
+      const full = landing(asAnswers(door));
+      const landed = await mergeGate(options, { runner: full.runner });
+      expect(landed.failedStep).toBeNull();
+      expect(full.merged()).toBe(true);
+    },
+  );
+});
 
 await scenarios.settled();
