@@ -146,6 +146,8 @@ const SHOWCASE_SPECIFICATIONS = [
   // The Checks page in each state of its design rows: first use, filtered to nothing, loading,
   // failing and a Load more that failed (COR-2114).
   'tests/e2e/checks-states.spec.ts',
+  // The Goals list while its goals are read (COR-2425, row 68k).
+  'tests/e2e/goals-list-states.spec.ts',
   // Every view loading, empty, failed and forbidden, which a route filter (`--grep '/runs'`) reaches
   // through each title's address, and the goal check's loading states.
   'tests/e2e/15-view-states.spec.ts',

@@ -618,6 +618,7 @@ Themed native scrollbars for components that opt in via `scrollbar-width` and `:
 | `--cinder-scrollbar-track` | `color-mix(in oklch, var(--cinder-polarity-ink), transparent 96%)` | Scrollbar track color. |
 | `--cinder-scrollbar-thumb` | `color-mix(in oklch, var(--cinder-polarity-ink), transparent 55%)` | Scrollbar thumb color. |
 | `--cinder-scrollbar-thumb-hover` | `color-mix(in oklch, var(--cinder-polarity-ink), transparent 35%)` | Scrollbar thumb hover color. |
+| `--cinder-scroll-shadow-color` | `light-dark(oklch(0% 0 0 / 0.14), oklch(0% 0 0 / 0.5))` | The color of a scroll-edge or sticky-column shadow. Black in both themes, never text ink; the dark arm is denser, because a shadow has to be to read against a dark surface. |
 
 <!-- END GENERATED TOKEN TABLE -->
 
@@ -847,7 +848,7 @@ Component-owned custom-property theming surfaces, one section per component (bes
 | `--cinder-kanban-column-gap` | `var(--cinder-space-4)` | Gap between columns. |
 | `--cinder-kanban-column-background` | `var(--cinder-surface-raised)` | Column background. |
 | `--cinder-kanban-card-background` | `var(--cinder-surface)` | Card background. |
-| `--cinder-kanban-board-scroll-edge` | `color-mix(in oklch, var(--cinder-text-default), transparent 88%)` | Horizontal scroll-edge fade gradient color -- `text-default` at 12% opacity, tracking whichever theme arm resolves. |
+| `--cinder-kanban-board-scroll-edge` | `var(--cinder-scroll-shadow-color)` | Horizontal scroll-edge fade gradient color -- the scroll-shadow color, black in both themes, so the edge darkens what is under it instead of glowing. |
 
 <!-- END GENERATED TOKEN TABLE -->
 

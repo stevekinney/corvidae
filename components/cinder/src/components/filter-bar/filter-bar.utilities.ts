@@ -87,34 +87,78 @@ export function isCollapsible(contents: FilterBarContents): boolean {
   );
 }
 
-const ORDER: Record<FilterBarLayout, number> = {
-  wide: 3,
-  'search-folded': 2,
-  medium: 1,
-  narrow: 0,
-};
-// The search folds to an icon button before the segments fold to a select.
-const NARROWER: Record<FilterBarLayout, FilterBarLayout> = {
-  wide: 'search-folded',
-  'search-folded': 'medium',
-  medium: 'narrow',
-  narrow: 'narrow',
-};
-const WIDER: Record<FilterBarLayout, FilterBarLayout> = {
-  wide: 'wide',
-  'search-folded': 'wide',
-  medium: 'search-folded',
-  narrow: 'medium',
+/**
+ * One form the bar can draw: a layout and, in the `medium` layout, how many of its unapplied chips
+ * have moved into a Filter menu because the row could not hold them. Applied chips never fold, so
+ * a filter that is on stays visible and removable until the bar folds to `narrow`.
+ */
+export type FilterBarForm = {
+  readonly layout: FilterBarLayout;
+  /** How many of the foldable chips (`foldableFacetKeys`) are in the Filter menu, first first. */
+  readonly folded: number;
 };
 
-/** The next wider form than `layout`, which is `layout` itself when it is the widest. */
-export function widerLayout(layout: FilterBarLayout): FilterBarLayout {
-  return WIDER[layout];
+/** The form a layout is drawn in before any chip has folded. */
+export function layoutForm(layout: FilterBarLayout): FilterBarForm {
+  return { layout, folded: 0 };
 }
 
-/** The narrower of two layouts. */
-export function narrowerLayout(first: FilterBarLayout, second: FilterBarLayout): FilterBarLayout {
-  return ORDER[first] <= ORDER[second] ? first : second;
+/**
+ * Where a form stands among a bar's forms, widest first: wide, search-folded, medium with none to
+ * all `foldable` chips folded, then narrow. The search folds to an icon button before the segments
+ * fold to a select, and the unapplied chips fold one at a time before the bar folds to narrow. A
+ * fold count past `foldable` (the bar's contents changed since) counts as every foldable chip.
+ */
+function formIndex(form: FilterBarForm, foldable: number): number {
+  switch (form.layout) {
+    case 'wide': {
+      return 0;
+    }
+    case 'search-folded': {
+      return 1;
+    }
+    case 'medium': {
+      return 2 + Math.min(Math.max(form.folded, 0), foldable);
+    }
+    case 'narrow': {
+      return 3 + foldable;
+    }
+  }
+}
+
+/** The form at `index` for a bar with `foldable` foldable chips, clamped to the forms there are. */
+function formAt(index: number, foldable: number): FilterBarForm {
+  if (index <= 0) return layoutForm('wide');
+  if (index === 1) return layoutForm('search-folded');
+  if (index >= 3 + foldable) return layoutForm('narrow');
+  return { layout: 'medium', folded: index - 2 };
+}
+
+/** A form with its fold count clamped to the chips that can fold now. */
+export function normalizeForm(form: FilterBarForm, foldable: number): FilterBarForm {
+  return formAt(formIndex(form, foldable), foldable);
+}
+
+/** A key that names a form, for remembering what it was measured to need. */
+export function formKey(form: FilterBarForm): string {
+  return `${form.layout}:${String(form.folded)}`;
+}
+
+/** The next wider form than `form`, which is `form` itself when it is the widest. */
+export function widerForm(form: FilterBarForm, foldable: number): FilterBarForm {
+  return formAt(formIndex(form, foldable) - 1, foldable);
+}
+
+/** The narrower of two forms. */
+export function narrowerForm(
+  first: FilterBarForm,
+  second: FilterBarForm,
+  foldable: number,
+): FilterBarForm {
+  return normalizeForm(
+    formIndex(first, foldable) >= formIndex(second, foldable) ? first : second,
+    foldable,
+  );
 }
 
 /** The layout the viewport asks for: narrow on a phone, medium on a tablet, wide otherwise. */
@@ -123,27 +167,51 @@ export function viewportLayout(phone: boolean, tablet: boolean): FilterBarLayout
   return tablet ? 'medium' : 'wide';
 }
 
-/** What decides the layout. */
-export type ResolveLayoutInput = {
+/**
+ * The keys of the chips that may fold into the Filter menu, in the order they fold: the choice and
+ * toggle facets that have no applied filter. Those `foldOrder` names fold first, in its order (list
+ * the least used first); the rest follow from the end of the facet list.
+ */
+export function foldableFacetKeys(
+  facets: readonly FacetDefinition[],
+  appliedKeys: ReadonlySet<string>,
+  foldOrder: readonly string[] = [],
+): string[] {
+  const foldable = facets
+    .filter(
+      (facet) =>
+        (facet.type === 'choice' || facet.type === 'toggle') && !appliedKeys.has(facet.key),
+    )
+    .map((facet) => facet.key);
+  const named = foldOrder.filter(
+    (key, index) => foldable.includes(key) && foldOrder.indexOf(key) === index,
+  );
+  return [...named, ...foldable.filter((key) => !named.includes(key)).toReversed()];
+}
+
+/** What decides the form. */
+export type ResolveFormInput = {
   /** Whether the bar has anything to fold (`isCollapsible`). */
   collapsible: boolean;
   /** A layout the consumer forced. */
   forced: 'auto' | FilterBarLayout;
   /** The layout the viewport asks for (`viewportLayout`). */
   viewport: FilterBarLayout;
-  /** The widest layout the bar's measured row fits, `wide` until the row has been measured. */
-  fitted: FilterBarLayout;
+  /** The widest form the bar's measured row fits, `wide` until the row has been measured. */
+  fitted: FilterBarForm;
+  /** How many chips can fold into the Filter menu (`foldableFacetKeys`). */
+  foldable: number;
 };
 
 /**
- * The layout the bar is drawn in: the narrower of what the viewport asks for and what the bar's
- * own row was measured to hold, so a bar beside a wide sidebar never overflows and never wraps. A
- * forced layout wins, and a bar that cannot collapse is always `wide`.
+ * The form the bar is drawn in: the narrower of what the viewport asks for and what the bar's own
+ * row was measured to hold, so a bar beside a wide sidebar never overflows and never wraps. A
+ * forced layout wins and folds no chip, and a bar that cannot collapse is always `wide`.
  */
-export function resolveFilterBarLayout(input: ResolveLayoutInput): FilterBarLayout {
-  if (input.forced !== 'auto') return input.forced;
-  if (!input.collapsible) return 'wide';
-  return narrowerLayout(input.viewport, input.fitted);
+export function resolveFilterBarForm(input: ResolveFormInput): FilterBarForm {
+  if (input.forced !== 'auto') return layoutForm(input.forced);
+  if (!input.collapsible) return layoutForm('wide');
+  return narrowerForm(layoutForm(input.viewport), input.fitted, input.foldable);
 }
 
 /**
@@ -154,10 +222,12 @@ const FIT_TOLERANCE = 0.5;
 
 /** One measurement of the drawn row, and what is known about the next wider form. */
 export type FilterBarFitInput = {
-  /** The layout drawn when the row was measured. */
-  drawn: FilterBarLayout;
+  /** The form drawn when the row was measured. */
+  drawn: FilterBarForm;
   /** The layout the viewport asks for, which the bar never draws wider than. */
   viewport: FilterBarLayout;
+  /** How many chips can fold into the Filter menu (`foldableFacetKeys`). */
+  foldable: number;
   /** The inline size, in pixels, the drawn row's controls need. */
   need: number;
   /** The row's inline size, in pixels. */
@@ -176,8 +246,8 @@ export type FilterBarFitInput = {
 
 /** What a measurement decides. */
 export type FilterBarFit = {
-  /** The widest layout the bar now fits, or `undefined` to keep the one it has. */
-  fitted: FilterBarLayout | undefined;
+  /** The widest form the bar now fits, or `undefined` to keep the one it has. */
+  fitted: FilterBarForm | undefined;
   /** Whether a wider form may fit but could not be drawn to find out, so the bar asks again later. */
   waiting: boolean;
 };
@@ -190,14 +260,17 @@ export type FilterBarFit = {
  * inside the bar, in which case it waits.
  */
 export function nextFilterBarFit(input: FilterBarFitInput): FilterBarFit {
+  const drawn = formIndex(input.drawn, input.foldable);
   if (input.need - input.available > FIT_TOLERANCE) {
     return {
-      fitted: input.drawn === 'narrow' ? undefined : NARROWER[input.drawn],
+      fitted: input.drawn.layout === 'narrow' ? undefined : formAt(drawn + 1, input.foldable),
       waiting: false,
     };
   }
-  if (ORDER[input.drawn] >= ORDER[input.viewport]) return { fitted: undefined, waiting: false };
-  const wider = WIDER[input.drawn];
+  if (drawn <= formIndex(layoutForm(input.viewport), input.foldable)) {
+    return { fitted: undefined, waiting: false };
+  }
+  const wider = formAt(drawn - 1, input.foldable);
   if (input.widerNeed !== undefined) {
     const fits = input.widerNeed - input.available <= FIT_TOLERANCE;
     return { fitted: fits ? wider : undefined, waiting: false };

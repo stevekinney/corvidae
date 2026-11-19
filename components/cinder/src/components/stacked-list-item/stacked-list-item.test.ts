@@ -36,8 +36,11 @@ describe('StackedListItem status on a phone (COR-2018)', () => {
         /status-leading:not\(\s*\.cinder-stacked-list-item--no-line-two\s*\)\s*\.cinder-stacked-list-item__status:has\(\*\)\s*\{([^}]*)\}/g,
       ),
     ];
-    expect(spacing).toHaveLength(1);
-    expect(spacing[0]?.[1]).toContain('margin-inline-end: var(--cinder-space-1-5)');
+    // Once for the row's own width and once for a row that follows the window (`phoneWidth`).
+    expect(spacing).toHaveLength(2);
+    for (const rule of spacing) {
+      expect(rule[1]).toContain('margin-inline-end: var(--cinder-space-1-5)');
+    }
     const statusDot = readFileSync(
       new URL('../status-dot/status-dot.css', import.meta.url),
       'utf8',

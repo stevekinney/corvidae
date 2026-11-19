@@ -16,7 +16,10 @@ import {
 
 /** The chats of the sample world, by the thread each lives in. */
 export const SAMPLE_WORLD_THREADS = {
+  /** The 4471 refund, which waits on you. */
   refund: 'sample-chat-refunds',
+  /** The 4472 refund, approved at 10:33 AM: a chat of its own (rows 09p, 52s). */
+  refund4472: 'sample-chat-refund-4472',
   release: 'sample-chat-release-notes-fix',
   sayHello: 'sample-chat-say-hello',
   lookUp4468: LOOK_UP_4468_CHAT.threadId,
@@ -138,8 +141,9 @@ export async function readSampleWorldRecords(origin: string): Promise<SampleWorl
     );
   const hook = (name: string) =>
     found(hooks.hooks, (row) => (row.name === name ? row.id : undefined), `hook ${name}`);
-  const review = (rows: Array<{ id: string; sessionId?: string }>, what: string) =>
-    `bureau:${found(rows, (row) => (row.sessionId === SAMPLE_WORLD_THREADS.refund ? row.id : undefined), what)}`;
+  // The review waiting on you is the 4471 refund's; the one you decided, the 4472 refund's.
+  const review = (rows: Array<{ id: string; sessionId?: string }>, thread: string, what: string) =>
+    `bureau:${found(rows, (row) => (row.sessionId === thread ? row.id : undefined), what)}`;
   const summarize = goal(SAMPLE_WORLD_GOALS.summarizeRefunds.key);
   const summarizeAttempts = goals.goals.find((row) => row.goalRunId === summarize)?.attempts ?? [];
   return {
@@ -191,8 +195,8 @@ export async function readSampleWorldRecords(origin: string): Promise<SampleWorl
       refundAudit: hook(SAMPLE_WORLD_HOOKS.refundAudit.name),
     },
     reviews: {
-      waiting: review(pending.reviews, 'review waiting on you'),
-      decided: review(resolved.reviews, 'decided review'),
+      waiting: review(pending.reviews, SAMPLE_WORLD_THREADS.refund, 'review waiting on you'),
+      decided: review(resolved.reviews, SAMPLE_WORLD_THREADS.refund4472, 'decided review'),
     },
     toolSource: GITHUB_SOURCE_ID,
   };
