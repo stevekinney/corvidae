@@ -209,7 +209,7 @@
     box-shadow: inset 0 0 0 var(--cinder-ring-width) var(--cinder-ring-color);
   }
 
-  /* Beside the label (700px and wider) a suggested row's label column is two lines, the word and the
+  /* Beside the label (23rem and wider) a suggested row's label column is two lines, the word and the
      label, so a vertically centred value sat between them ("Suggested", "Phone", "Context", COR-2441).
      The value starts at the top instead, one word-line down, so it shares the label's own line. */
   .cinder-inspector-row[data-cinder-suggested] > .cinder-inspector-row__value {
@@ -218,11 +218,14 @@
   }
 
   /* ----------------------------------------
- * A narrow inspector: the label stacks above the value. The container is the Inspector
- * (`inspector.css`); a row outside one keeps its side-by-side layout.
+ * A narrow row: below 23rem (368px) of the Inspector's width, which is its rows' width, too narrow
+ * for the 140px label and a readable value beside it, the label stacks above the value, as a
+ * DescriptionList's term does at the same width. A phone-width inspector and a 20rem rail stack; a
+ * 28rem one keeps each value on its label's line. The container is the Inspector (`inspector.css`);
+ * a row outside one keeps its side-by-side layout.
  * ---------------------------------------- */
 
-  @container cinder-inspector (width < 700px) {
+  @container cinder-inspector (width < 23rem) {
     .cinder-inspector-row {
       grid-template-columns: minmax(0, 1fr);
     }

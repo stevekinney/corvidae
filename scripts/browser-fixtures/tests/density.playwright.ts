@@ -119,7 +119,13 @@ test.describe('COR-2310: density reaches Button, Card and PageHeader', () => {
     test(`${density}: a PageHeader title is ${PAGE_TITLE_EXPECTED[density]}`, async ({ page }) => {
       await page.goto(fixtureRoute('page-header'), { waitUntil: 'load' });
       await applyDensity(page, density);
-      const title = await computedStyle(page, '.cinder-page-header__title', ['font-size']);
+      // The default variant only: a large or hero header (COR-2445) sets its own title size, and the
+      // fixture draws them first.
+      const title = await computedStyle(
+        page,
+        '.cinder-page-header:not([data-cinder-variant]) .cinder-page-header__title',
+        ['font-size'],
+      );
       expect(title['font-size']).toBe(PAGE_TITLE_EXPECTED[density]);
     });
 

@@ -217,7 +217,7 @@ Acceptance:
 Verification:
 
 ```bash
-bun scripts/bun-test.ts scripts/chef/linear.test.ts scripts/host-sessions-model.test.ts ./scripts/chef/execution-state.test.ts
+bun scripts/bun-test.ts scripts/chef/linear.test.ts scripts/host-sessions-model.test.ts
 bun scripts/bun-test.ts ./scripts/chef/execution-state.integration.test.ts scripts/chef/workers.integration.test.ts
 ```
 

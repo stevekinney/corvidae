@@ -2,9 +2,9 @@
 /**
  * COR-2444 (from COR-2323), with COR-2394's container queries: an Inspector and a framed
  * DescriptionList `fields` record follow their own width, not the viewport's (owner, 2026-11-16 and
- * 2026-11-18). Below 700px of its own width an Inspector sits on the raised group with each
- * InspectorRow's label above its value; at 700px or wider it is the tinted group with each label
- * beside its value. A framed fields record takes the same surface by the same width.
+ * 2026-11-18). Below 700px of its own width an Inspector sits on the raised group, and below 23rem
+ * each InspectorRow's label stacks above its value; at 700px or wider it is the tinted group with
+ * each label beside its value. A framed fields record takes the same surface by the same width.
  *
  * The `detail-page` fixture puts the Inspector in a 20rem rail beside the content at 1280 and 768,
  * and under the content at 375: the rail is narrower than 700px at every width, so it is stacked
