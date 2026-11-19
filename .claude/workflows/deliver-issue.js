@@ -321,25 +321,6 @@ function writeOverrideBrief(issue, run, context, classification) {
   );
 }
 
-function runBrief(issue, run, context, classification) {
-  phase('brief');
-  log(`${issue}: preparing the brief`);
-  return agent(
-    [
-      `Prepare chef delivery of ${issue}. Invoke no skills. Make no Linear or GitHub writes.`,
-      `Run \`${briefCommand(issue, run, context, classification)}\` once and read its exit code and its JSON output. The coordinator supplied ${context ? 'the verified context file' : 'no design context file'} and ${classification ? `the ${classification} classification` : 'no exceptional classification'}; do not invent either from issue text.`,
-      'Return exitCode (the exit code of that command), briefPath (the JSON path field, or an empty string) error (the JSON error field or the first line of stderr, when there is one), needsResolvedRows (copy the JSON field of that name; false when it is absent) and paths (the repository paths the brief file lists as owned by the issue, or an empty array).',
-    ].join('\n'),
-    {
-      label: `brief ${issue}`,
-      phase: 'brief',
-      schema: BRIEF_SCHEMA,
-      model: 'haiku',
-      effort: 'low',
-    },
-  );
-}
-
 /**
  * The pre-build critique of an issue's design rows, run only for an issue whose brief was refused
  * for want of rows.resolved.json (brief.ts refuses an issue with design rows until the file is
@@ -710,16 +691,24 @@ async function deliverOne(issue) {
     return judgment(issue, 'invalid override: it needs a reason and a time', {});
 
   const steps = {};
-  let prepared = await runBrief(issue, run, context, classification);
-  if (prepared === null) return judgment(issue, 'brief step failed', steps);
+  let prepared =
+    args && args.preparedBriefs && typeof args.preparedBriefs === 'object'
+      ? args.preparedBriefs[issue]
+      : undefined;
+  if (prepared === undefined || prepared === null || prepared.validated !== true)
+    return judgment(issue, 'missing validated coordinator brief; no worker', steps);
   steps.brief = prepared;
   // An issue with design rows is briefed only after its critique: one critique, one re-brief. An
   // issue without design rows adds no call here.
   if (prepared.exitCode !== 0 && prepared.needsResolvedRows === true) {
     const failure = await resolveRows(issue, steps, context);
     if (failure !== null) return failure;
-    prepared = await runBrief(issue, run, context, classification);
-    if (prepared === null) return judgment(issue, 'brief step failed after the critique', steps);
+    prepared =
+      args && args.resolvedBriefs && typeof args.resolvedBriefs === 'object'
+        ? args.resolvedBriefs[issue]
+        : undefined;
+    if (prepared === undefined || prepared === null || prepared.validated !== true)
+      return judgment(issue, 'missing validated coordinator brief after the critique', steps);
     steps.rebrief = prepared;
   }
   let briefPath = prepared.briefPath.trim();

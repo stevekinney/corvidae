@@ -111,7 +111,14 @@ async function runDelivery(arguments_: Record<string, unknown> = {}, stubs: Resp
   const run = await runWorkflow(
     'deliver-issue.js',
     cleanResponses,
-    { issues: ['COR-7'], run: 'run-1', ...arguments_ },
+    {
+      issues: ['COR-7'],
+      run: 'run-1',
+      preparedBriefs: {
+        'COR-7': { validated: true, exitCode: 0, briefPath: '/main/tmp/chef/briefs/COR-7.md' },
+      },
+      ...arguments_,
+    },
     stubs,
   );
   return { ...run, result: run.result as DeliveryResult[] };
