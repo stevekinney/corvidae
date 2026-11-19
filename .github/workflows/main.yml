@@ -255,6 +255,7 @@ jobs:
           VERIFICATION_PLAN: ${{ inputs.verification_plan }}
           VERIFICATION_BASE: ${{ inputs.verification_base }}
           CI_EVIDENCE_NEEDS: ${{ toJSON(needs) }}
+          CI_EVIDENCE_EXPECTED_JOBS: '["root","workspaces","tests","tests-slow","browser","test-durations"]'
           CI_EVIDENCE_ARTIFACT_DIRECTORY: ci-evidence-artifacts
         run: bun scripts/chef/ci-evidence-workflow.ts ci-evidence-receipt.json
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

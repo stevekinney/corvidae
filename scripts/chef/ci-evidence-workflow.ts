@@ -28,6 +28,7 @@ export interface CiEvidenceWorkflowEnvironment {
   VERIFICATION_BASE?: string | undefined;
   CI_EVIDENCE_NEEDS?: string | undefined;
   CI_EVIDENCE_NOT_APPLICABLE?: string | undefined;
+  CI_EVIDENCE_EXPECTED_JOBS?: string | undefined;
   CI_EVIDENCE_ARTIFACT_DIRECTORY?: string | undefined;
 }
 
@@ -135,9 +136,27 @@ function notApplicableJobs(value: string | undefined): Set<string> {
   return new Set(parsed);
 }
 
+function expectedJobs(value: string | undefined): Set<string> {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(value ?? '');
+  } catch {
+    throw new CiEvidenceWorkflowError('CI_EVIDENCE_EXPECTED_JOBS is not valid JSON');
+  }
+  if (
+    !Array.isArray(parsed) ||
+    parsed.length === 0 ||
+    !parsed.every((name) => typeof name === 'string' && /^[A-Za-z0-9_-]+$/.test(name)) ||
+    new Set(parsed).size !== parsed.length
+  )
+    throw new CiEvidenceWorkflowError('CI_EVIDENCE_EXPECTED_JOBS must be a unique job-name array');
+  return new Set(parsed);
+}
+
 function needsInventory(
   value: string | undefined,
   notApplicable: ReadonlySet<string>,
+  expected: ReadonlySet<string>,
 ): Record<string, 'success' | 'not-applicable'> {
   let parsed: unknown;
   try {
@@ -148,6 +167,13 @@ function needsInventory(
   const entries = record(parsed);
   if (entries === undefined || Object.keys(entries).length === 0)
     throw new CiEvidenceWorkflowError('CI_EVIDENCE_NEEDS has no prerequisite jobs');
+  const names = new Set(Object.keys(entries));
+  for (const name of expected)
+    if (!names.has(name))
+      throw new CiEvidenceWorkflowError(`expected prerequisite ${name} is missing`);
+  for (const name of names)
+    if (!expected.has(name))
+      throw new CiEvidenceWorkflowError(`unexpected prerequisite ${name} is present`);
   const inventory: Record<string, 'success' | 'not-applicable'> = {};
   for (const [name, detail] of Object.entries(entries)) {
     const result = record(detail)?.['result'];
@@ -180,16 +206,6 @@ function derivedPlanDigest(input: {
       }),
     )
     .digest('hex');
-}
-
-function derivedRequestKey(input: {
-  repository: string;
-  base: string;
-  candidate: string;
-  planDigest: string;
-  workflowRevision: string;
-}): string {
-  return createHash('sha256').update(JSON.stringify(input)).digest('hex');
 }
 
 function payloadCommit(payload: unknown, side: 'base' | 'head'): string {
@@ -296,33 +312,43 @@ export function createCiEvidenceWorkflowReceipt(input: {
   const jobs = needsInventory(
     environment.CI_EVIDENCE_NEEDS,
     notApplicableJobs(environment.CI_EVIDENCE_NOT_APPLICABLE),
+    expectedJobs(environment.CI_EVIDENCE_EXPECTED_JOBS),
   );
+  const manualValues = [
+    environment.VERIFICATION_REQUEST,
+    environment.VERIFICATION_PLAN,
+    environment.VERIFICATION_BASE,
+  ];
+  const manualBound =
+    event === 'workflow_dispatch' &&
+    manualValues.every((value) => value !== undefined && value !== '');
+  const manualUnbound =
+    event === 'workflow_dispatch' &&
+    manualValues.every((value) => value === undefined || value === '');
+  if (event === 'workflow_dispatch' && !manualBound && !manualUnbound)
+    throw new CiEvidenceWorkflowError(
+      'manual verification inputs must be all supplied or all empty',
+    );
   const base =
     event === 'pull_request'
       ? payloadCommit(input.eventPayload, 'base')
       : event === 'push'
         ? pushCommit(input.eventPayload, 'before')
-        : requiredCommit(environment.VERIFICATION_BASE, 'VERIFICATION_BASE');
+        : manualBound
+          ? requiredCommit(environment.VERIFICATION_BASE, 'VERIFICATION_BASE')
+          : checkedCommit(input.git, 'HEAD^');
   const candidate =
     event === 'pull_request'
       ? payloadCommit(input.eventPayload, 'head')
       : event === 'push'
         ? pushCommit(input.eventPayload, 'after')
         : checkedRevision;
-  const planDigest =
-    event === 'workflow_dispatch'
-      ? requiredDigest(environment.VERIFICATION_PLAN, 'VERIFICATION_PLAN')
-      : derivedPlanDigest({ event, workflowPath, workflowRevision, jobs });
-  const requestKey =
-    event === 'workflow_dispatch'
-      ? requiredDigest(environment.VERIFICATION_REQUEST, 'VERIFICATION_REQUEST')
-      : derivedRequestKey({
-          repository: environment.GITHUB_REPOSITORY,
-          base,
-          candidate,
-          planDigest,
-          workflowRevision,
-        });
+  const planDigest = manualBound
+    ? requiredDigest(environment.VERIFICATION_PLAN, 'VERIFICATION_PLAN')
+    : derivedPlanDigest({ event, workflowPath, workflowRevision, jobs });
+  const requestKey = manualBound
+    ? requiredDigest(environment.VERIFICATION_REQUEST, 'VERIFICATION_REQUEST')
+    : '';
   const attempt = requiredPositiveInteger(environment.GITHUB_RUN_ATTEMPT, 'GITHUB_RUN_ATTEMPT');
   const reportDirectory = environment.CI_EVIDENCE_ARTIFACT_DIRECTORY;
   return {
@@ -399,6 +425,7 @@ if (import.meta.main) {
           VERIFICATION_BASE: process.env['VERIFICATION_BASE'],
           CI_EVIDENCE_NEEDS: process.env['CI_EVIDENCE_NEEDS'],
           CI_EVIDENCE_NOT_APPLICABLE: process.env['CI_EVIDENCE_NOT_APPLICABLE'],
+          CI_EVIDENCE_EXPECTED_JOBS: process.env['CI_EVIDENCE_EXPECTED_JOBS'],
           CI_EVIDENCE_ARTIFACT_DIRECTORY: process.env['CI_EVIDENCE_ARTIFACT_DIRECTORY'],
         },
         eventPayload: readEventPayload(process.env['GITHUB_EVENT_PATH']),
