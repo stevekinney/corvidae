@@ -194,7 +194,6 @@ export function missedLineTwo(
   }
   return [
     copy.kinds.schedule,
-    copy.missed.since(missed.count, missedDay(missed.since, zone)),
     ...(missed.agentName === null ? [] : [agentLabel(missed.agentName)]),
     ...(form === 'wide' ? [missed.cadence] : []),
     copy.missed.since(missed.count, day),

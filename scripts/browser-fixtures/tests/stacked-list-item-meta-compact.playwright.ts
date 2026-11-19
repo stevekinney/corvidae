@@ -7,8 +7,8 @@
  * its own width is below 640px. Every box is read in one pass.
  */
 
+import { fixtureRoute } from '@lostgradient/testing/playwright/overlay-fixture';
 import { expect, test } from '@playwright/test';
-import { fixtureRoute } from './overlay-fixture.ts';
 
 /** What one row of the fixture shows, read in one pass. */
 async function readRow(page: import('@playwright/test').Page, testId: string) {

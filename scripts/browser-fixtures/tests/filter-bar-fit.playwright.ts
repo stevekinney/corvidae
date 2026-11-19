@@ -122,8 +122,12 @@ test.describe('FilterBar folds by its measured width', () => {
   }) => {
     const bar = page.getByRole('search', { name: 'Run filters with chips folded in order' });
     await expect(bar).toHaveAttribute('data-cinder-layout', 'medium');
-    await expect(bar.getByRole('button', { name: 'Remove filter: Started by: Chats' })).toBeVisible();
-    await expect(bar.getByRole('button', { name: 'Remove filter: Agent: Tool runner' })).toBeVisible();
+    await expect(
+      bar.getByRole('button', { name: 'Remove filter: Started by: Chats' }),
+    ).toBeVisible();
+    await expect(
+      bar.getByRole('button', { name: 'Remove filter: Agent: Tool runner' }),
+    ).toBeVisible();
     await expect(bar.getByRole('button', { name: 'Workflow', exact: true })).toHaveCount(0);
     await bar.locator('.cinder-filter-bar__menu-button').click();
     await expect(

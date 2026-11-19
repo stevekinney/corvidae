@@ -214,7 +214,11 @@ test.describe('/runs: the list on a phone, a tablet and in the dark', () => {
     await expect(bar.getByRole('button', { name: /^Remove filter: Agent/ })).toBeVisible();
     await expect(bar.getByRole('button', { name: 'Workflow', exact: true })).toHaveCount(0);
     await expect(bar.locator('.cinder-filter-bar__menu-button')).toBeVisible();
-    await captureForDesignReview(page, { route: '/runs', state: 'filtered, tablet', source: SOURCE });
+    await captureForDesignReview(page, {
+      route: '/runs',
+      state: 'filtered, tablet',
+      source: SOURCE,
+    });
   });
 
   test('wide, the missed runs say the schedule’s cadence before how many runs it missed (09q)', async ({
