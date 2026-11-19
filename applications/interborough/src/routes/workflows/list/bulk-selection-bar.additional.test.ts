@@ -43,6 +43,24 @@ const PURGE_PREVIEW = {
   confirmationTokenVersion: 1,
 };
 
+const DELETE_PREVIEW = {
+  dryRun: true,
+  action: 'delete',
+  matched: 6,
+  requestId: 'bulk:req-delete',
+  scope: {
+    matched: 6,
+    filter: { status: 'failed' },
+    statuses: ['failed'],
+    workflowTypes: [],
+    sampleWorkflowIds: [],
+    sampleLimit: 20,
+  },
+  sampleWorkflowIds: [],
+  confirmationToken: 'bulk:token-delete',
+  confirmationTokenVersion: 1,
+};
+
 function requestParams(call: FetchCall | undefined): Record<string, unknown> {
   const body = call?.init?.body;
   if (typeof body !== 'string') throw new Error('JSON-RPC request body missing');
@@ -385,6 +403,72 @@ describe('additional coverage', () => {
       // #978, round 6) — the first sentence is qualified, not unconditional.
       expect(getByText(/when one exists/)).not.toBeNull();
       expect(getByText(/falls back to the same active-revision resolution/)).not.toBeNull();
+    } finally {
+      fetch.restore();
+    }
+  });
+
+  test("the real client turns a bulk operation's stale-token Conflict into Refresh preview, and the next commit goes through with the new token", async () => {
+    // The envelope is built by Weft's own fault mapper, as `staleConfirmationFault` throws it for
+    // every bulk operation (cancel, delete, tags, retry-failed, signal, purge).
+    const fetch = new ScriptedFetch();
+    fetch.enqueueJson({ jsonrpc: '2.0', id: 1, result: DELETE_PREVIEW });
+    fetch.enqueueJson({
+      jsonrpc: '2.0',
+      id: 1,
+      error: faultToJsonRpcError({
+        code: 'Conflict',
+        message:
+          'Bulk confirmation token does not match the current dry-run scope. ' +
+          'The workflows that match the filter changed after the preview. Run the preview again.',
+        data: { reason: 'confirmation-token-stale', weftCode: 'BulkOperationConfirmationError' },
+      }),
+    });
+    fetch.enqueueJson({
+      jsonrpc: '2.0',
+      id: 1,
+      result: { ...DELETE_PREVIEW, confirmationToken: 'bulk:token-delete-2' },
+    });
+    fetch.enqueueJson({ jsonrpc: '2.0', id: 1, result: { deleted: 6, failed: 0, errors: [] } });
+
+    try {
+      const { getByRole, getAllByRole, getByLabelText, getByText } = render(BulkSelectionBar, {
+        props: baseProps({ client: realClient() }),
+      });
+
+      await fireEvent.click(getByRole('checkbox', { name: /Select all 47 matching the filter/ }));
+      const deleteButton = requireElement(
+        getAllByRole('button').find((button) => button.textContent?.trim() === 'Delete'),
+        HTMLButtonElement,
+      );
+      await fireEvent.click(deleteButton);
+      const phraseLabel = 'Type "delete 6 workflows" to confirm';
+      await waitFor(() => {
+        expect(getByLabelText(phraseLabel)).not.toBeNull();
+      });
+      await fireEvent.input(getByLabelText(phraseLabel), {
+        target: { value: 'delete 6 workflows' },
+      });
+      await fireEvent.click(getByRole('button', { name: 'Delete 6 workflows' }));
+
+      await waitFor(() => {
+        expect(getByText(/changed since the preview/)).not.toBeNull();
+      });
+      // Refresh preview re-runs the dry run; the commit that follows carries the new token.
+      await fireEvent.click(getByRole('button', { name: 'Refresh preview' }));
+      await waitFor(() => {
+        expect(getByLabelText(phraseLabel)).not.toBeNull();
+      });
+      await fireEvent.input(getByLabelText(phraseLabel), {
+        target: { value: 'delete 6 workflows' },
+      });
+      await fireEvent.click(getByRole('button', { name: 'Delete 6 workflows' }));
+      await waitFor(() => {
+        expect(fetch.calls).toHaveLength(4);
+      });
+      expect(requestParams(fetch.calls[1])['confirmationToken']).toBe('bulk:token-delete');
+      expect(requestParams(fetch.calls[2])['dryRun']).toBe(true);
+      expect(requestParams(fetch.calls[3])['confirmationToken']).toBe('bulk:token-delete-2');
     } finally {
       fetch.restore();
     }

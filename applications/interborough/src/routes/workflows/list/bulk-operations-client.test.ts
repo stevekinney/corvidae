@@ -1,6 +1,7 @@
+import { faultToJsonRpcError } from '@lostgradient/backchannel/internals';
 import { describe, expect, test } from 'bun:test';
 
-import { throwingRejectionOf } from '@lostgradient/testing';
+import { rejectionOf, throwingRejectionOf } from '@lostgradient/testing';
 import {
   commitBulkCancel,
   commitBulkDelete,
@@ -91,18 +92,28 @@ describe('dryRunBulkCancel / commitBulkCancel', () => {
     fetch.restore();
   });
 
-  test('a stale confirmation token surfaces as an InvalidParams-shaped fault', async () => {
+  test('a stale confirmation token surfaces as a Conflict fault with the server message', async () => {
     const fetch = new ScriptedFetch();
-    fetch.routeJsonRpcMethodUnprocessable(
-      'weft.workflows.bulk.cancel',
-      'Bulk confirmation token does not match the current dry-run scope',
-    );
+    fetch.enqueueJson({
+      jsonrpc: '2.0',
+      id: 1,
+      error: faultToJsonRpcError({
+        code: 'Conflict',
+        message: 'Bulk confirmation token does not match the current dry-run scope',
+        data: { reason: 'confirmation-token-stale', weftCode: 'BulkOperationConfirmationError' },
+      }),
+    });
     const client = realClient();
 
-    expect(
-      await throwingRejectionOf(commitBulkCancel(client, { status: 'failed' }, 'bulk:stale-token')),
-    ).toThrow(/confirmation token/i);
-    fetch.restore();
+    try {
+      const error = await rejectionOf(
+        commitBulkCancel(client, { status: 'failed' }, 'bulk:stale-token'),
+      );
+      expect(error).toMatchObject({ faultCode: 'Conflict' });
+      expect(error).toHaveProperty('message', expect.stringMatching(/confirmation token/i));
+    } finally {
+      fetch.restore();
+    }
   });
 });
 

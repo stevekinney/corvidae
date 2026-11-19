@@ -35,19 +35,20 @@
    * `preview` (matched count + filter chip + type-to-confirm) → `committing`
    * (non-dismissible, indeterminate progress) → `result` | `fault`.
    *
-   * A commit fault classified `invalid` (plan §10.4) means the confirmation
-   * token no longer matches the current dry-run scope — weft's
+   * A commit fault with the `Conflict` code means the confirmation token no
+   * longer matches the current dry-run scope — weft's
    * `BulkOperationConfirmationError` (`weft/src/core/engine/errors.ts`),
-   * content-based, not time-based: it fires when the matched set changed
-   * between preview and commit, not on a clock. The UI response is to run a
-   * fresh preview, not to show a generic error — `retryMeansPreview` below
-   * drives that branch. Any OTHER fault kind at commit time (network,
-   * `EngineFailure`, …) offers a same-token retry instead, since the token
-   * itself is still valid.
+   * which every bulk operation answers as `Conflict`
+   * (`staleConfirmationFault`), content-based, not time-based: it fires when
+   * the matched set changed between preview and commit, not on a clock. The
+   * UI response is to run a fresh preview, not to show a generic error —
+   * `faultMeansStalePreview` below drives that branch. Any OTHER fault at
+   * commit time (a malformed request, network, `EngineFailure`, …) offers a
+   * same-token retry instead, since the token itself is still valid.
    */
   import { Badge, Button, Input, Modal, Progress, Skeleton } from '@lostgradient/cinder';
   import type { Snippet } from 'svelte';
-  import type { BulkOperationDryRunResult } from '@lostgradient/weft';
+  import { HttpClientError, type BulkOperationDryRunResult } from '@lostgradient/weft';
 
   import { faultTreatment } from '../../../lib/faults.ts';
   import { confirmPhrase, confirmPhraseMatches, filterSummaryChip } from './bulk-preview-format.ts';
@@ -169,7 +170,9 @@
       const treatment = faultTreatment(error);
       faultMessage = treatment.message;
       faultOrigin = 'committing';
-      faultMeansStalePreview = treatment.kind === 'invalid';
+      // Only the server's `Conflict` means the matching workflows moved after the preview. Other
+      // `invalid` faults (a malformed filter, a missing token) are input the preview cannot fix.
+      faultMeansStalePreview = error instanceof HttpClientError && error.faultCode === 'Conflict';
       phase = 'fault';
     }
   }
