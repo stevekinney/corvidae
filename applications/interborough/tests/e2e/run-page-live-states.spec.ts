@@ -291,7 +291,8 @@ for (const width of WIDTHS) {
       if (width <= 600) {
         const { docked, tabs } = await readBoxes(page, {
           docked: bar,
-          tabs: page.locator('.weft-shell-tab-bar'),
+          // By its role: the tab bar's popover scope carries the bar's class too.
+          tabs: page.getByRole('navigation', { name: 'Main tabs' }),
         });
         expect(docked.y + docked.height).toBeLessThanOrEqual(tabs.y + 1);
         expect(docked.y).toBeGreaterThan(0);
