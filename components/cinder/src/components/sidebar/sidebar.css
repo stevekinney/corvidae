@@ -161,7 +161,8 @@
     display: flex;
   }
 
-  .cinder-sidebar[data-cinder-collapsed] .cinder-side-navigation-group[data-cinder-static] {
+  .cinder-sidebar[data-cinder-collapsed]
+    .cinder-side-navigation-group[data-cinder-static]:not([data-cinder-label-hidden]) {
     margin-block-start: var(--cinder-space-2);
     padding-block-start: var(--cinder-space-2);
     border-block-start: 1px solid var(--cinder-border-muted);
@@ -322,7 +323,7 @@
    * padding below it, and above it the margin plus the list's own gap (a token, 2px by default),
    * which together come to the same step. */
   .cinder-sidebar[data-cinder-collapsed][data-cinder-rail-labels]
-    .cinder-side-navigation-group[data-cinder-static] {
+    .cinder-side-navigation-group[data-cinder-static]:not([data-cinder-label-hidden]) {
     margin-block-start: calc(
       var(--cinder-space-2) - var(--cinder-side-navigation-list-gap, var(--cinder-space-1))
     );

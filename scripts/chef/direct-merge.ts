@@ -53,6 +53,7 @@ import {
   loadDeliveryVerification,
   recordDeliveryMergeObservation,
   validateDeliveryApproval,
+  validateDeliveryCiEvidence,
   validateDeliveryVerification,
   type DeliveryVerification,
   type DeliveryVerificationDependencies,
@@ -274,6 +275,9 @@ async function directMergeCore(
     partial.verification,
   );
   if (verificationProblem !== undefined) return fail('verification', verificationProblem);
+  const ciEvidenceProblem = await validateDeliveryCiEvidence(verification, partial.verification);
+  if (ciEvidenceProblem !== undefined) return fail('verification', ciEvidenceProblem);
+
   const created = git('commit-tree', tree, '-p', base, '-F', options.messageFile);
   const commit = created.stdout.trim();
   if (created.code !== 0 || !/^[0-9a-f]{40,64}$/.test(commit))

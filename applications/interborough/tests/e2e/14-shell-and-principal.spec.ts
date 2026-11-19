@@ -334,11 +334,10 @@ test('the sidebar groups Home, Work, Build and System, with System pinned to the
   for (const [index, label] of DESTINATIONS.entries()) {
     await expect(links.nth(index)).toHaveAccessibleName(new RegExp(`^${label}`));
   }
-  await expect(navigation.locator('.cinder-side-navigation-group__heading')).toHaveText([
-    'Work',
-    'Build',
-    'System',
-  ]);
+  await expect(navigation.locator('.cinder-side-navigation-group__heading')).toHaveCount(0);
+  for (const name of ['Work', 'Build', 'System']) {
+    await expect(navigation.getByRole('list', { name, exact: true })).toBeVisible();
+  }
   // System sits below the rest, with the space between them.
   // Indexed by name, so a new destination moves no box read onto the wrong row.
   const capabilities = await links.nth(DESTINATIONS.indexOf('Capabilities')).boundingBox();

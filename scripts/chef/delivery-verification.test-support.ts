@@ -128,7 +128,7 @@ export async function createDeliveryVerificationFixture(
             obligation: 'AC1:verify',
             job: 'verify',
             workflow: 'Verify',
-            workflowPath: '.github/workflows/main.yml',
+            workflowPath: '.github/workflows/verify.yml',
             event: 'push',
           },
         ],
@@ -190,7 +190,7 @@ export async function createDeliveryVerificationFixture(
             status: 'completed',
             conclusion: 'success',
             name: 'Verify',
-            path: '.github/workflows/main.yml',
+            path: '.github/workflows/verify.yml',
             event: 'push',
             run_attempt: 1,
           });
