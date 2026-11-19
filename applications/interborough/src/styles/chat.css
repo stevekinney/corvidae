@@ -380,6 +380,32 @@
   overflow: hidden;
 }
 
+/* A new chat that cannot work yet: why, and the missing step, centred where the composer would be. */
+.weft-chat-not-ready {
+  display: grid;
+  flex: 1;
+  place-items: center;
+  min-block-size: 0;
+  padding: var(--cinder-space-6) var(--cinder-space-4);
+}
+
+/* No chat at all: one empty state centred in the page, with no list pane (COR-2438). */
+.ib-chats--first-use {
+  display: grid;
+  place-items: center;
+  padding: var(--cinder-space-6) var(--cinder-space-4);
+}
+
+/* With chats listed and none open, the pane says so quietly, centred, with no disc and no action. */
+.ib-chats__no-chat {
+  display: grid;
+  place-items: center;
+  block-size: 100%;
+  margin: 0;
+  color: var(--cinder-text-muted);
+  font-size: var(--cinder-text-sm);
+}
+
 /* The pane's header is ListDetail's column: the title and "+", then the search field and the status
  * segments under them, each on a line of its own so the action never reads as the field's submit
  * button. The title row is measured for the width the segments need. */

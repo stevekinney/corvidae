@@ -131,11 +131,8 @@ export const CHAT_COPY = {
     /** The list could not be read: the error stays in the list and the page stays live. */
     failedTitle: 'Couldn’t load chats',
     failedDescription: 'Interborough didn’t send them back.',
-    pickTitle: 'Pick a chat',
-    pickDescription: 'Choose a chat from the list, or start a new one.',
-    /** What the open pane says when there is no chat to pick, so the list's one primary stays alone. */
+    /** The quiet hint in the pane beside the list while chats are listed and none is open. */
     noChatTitle: 'No chat open',
-    noChatDescription: 'A chat you start opens here.',
   },
   /** What a chat with no message says in place of its transcript. */
   emptyTranscript: {
@@ -581,6 +578,22 @@ export const CHAT_COPY = {
     failed: 'Failed',
     ended: 'Ended',
     done: 'Done',
+  },
+  /**
+   * What a place that starts a chat says when a chat cannot work yet (COR-2438, `chatReadiness`):
+   * why, and the one step that is missing, as its action. Never an action that cannot work.
+   */
+  readiness: {
+    'needs-provider': {
+      title: 'Connect a provider first',
+      description: 'A chat needs a model provider to answer. Connect one, then start a chat.',
+      action: 'Connect a provider',
+    },
+    'needs-agent': {
+      title: 'Create an agent first',
+      description: 'A chat is with an agent. Create one, then start a chat with it.',
+      action: 'Create an agent',
+    },
   },
   /**
    * The details popover the last breadcrumb opens (board ChatPage frame b): the agent, when the chat

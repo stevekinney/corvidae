@@ -329,7 +329,7 @@ describe('the list of sessions', () => {
     expect(row.closest('[data-chat]')?.querySelector('time')).toBeNull();
   });
 
-  test('says to pick a chat, with New chat as an action, until one is open', async () => {
+  test('says quietly that no chat is open, with no second empty state, until one is open (COR-2438)', async () => {
     const served = bureau({
       'bureau.contexts.list': () => page(0, 1, false),
       'bureau.reviews.list': () => ({ reviews: [] }),
@@ -340,8 +340,9 @@ describe('the list of sessions', () => {
     const { findByRole } = mount();
 
     const detail = await findByRole('region', { name: 'Open chat' });
-    expect(detail.textContent).toContain('Pick a chat');
-    expect(detail.querySelector('a[href="/chats/new"]')?.textContent).toContain('New chat');
+    expect(detail.textContent?.trim()).toBe('No chat open');
+    expect(detail.querySelector('.cinder-empty-state')).toBeNull();
+    expect(detail.querySelector('a[href="/chats/new"]')).toBeNull();
     const title = await findByRole('heading', { level: 1 });
     expect(title.textContent?.trim()).toBe('Chats');
   });
@@ -457,7 +458,8 @@ describe('the list of sessions', () => {
 
     const { findByRole } = mount();
 
-    const empty = await findByRole('heading', { level: 3, name: 'No chats yet' });
+    // One empty state for the page, with no list pane (COR-2438).
+    const empty = await findByRole('heading', { level: 1, name: 'No chats yet' });
     expect(empty.closest('.cinder-empty-state')).not.toBeNull();
   });
 

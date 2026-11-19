@@ -48,17 +48,12 @@
     StatusDot,
     Tooltip,
   } from '@lostgradient/cinder';
-  import {
-    Archive,
-    ChevronLeft,
-    ChevronRight,
-    MessageSquare,
-    MessageSquarePlus,
-    Plus,
-  } from '@lucide/svelte';
+  import { Archive, ChevronLeft, ChevronRight, MessageSquare, Plus } from '@lucide/svelte';
   import { createInfiniteQuery, createQuery } from '@tanstack/svelte-query';
 
+  import { useChatReadiness } from '../../app/chat-readiness.svelte.ts';
   import { CHAT_COPY } from '../../app/copy/chat.ts';
+  import { CHAT_READINESS_PATHS } from '../../app/first-run.ts';
   import { agentLabel } from '../../lib/agent-label.ts';
   import { getContext, listAgents, listContexts } from '../../lib/bureau-client.ts';
   import { listBureauReviews } from '../../lib/bureau-reviews.ts';
@@ -332,7 +327,10 @@
     if (!showingArchived && allRows.length === 0) return hasArchived ? 'all-archived' : 'first-use';
     return searching ? 'no-match' : 'none';
   });
-  const noChats = $derived(sessions.data !== undefined && allRows.length === 0);
+  // With no chat at all (none archived either) and none open there is no list pane: one empty state
+  // fills the page, and what it offers follows whether a chat can work yet (COR-2438).
+  const readiness = useChatReadiness();
+  const firstUse = $derived(listState === 'first-use' && openId === null);
 
   function clearFilters(): void {
     typed = '';
@@ -342,12 +340,17 @@
   // The list pane, where the focus is put after a change of view.
   let listPane = $state<HTMLElement | undefined>();
 
-  function openNewChat(event: MouseEvent): void {
+  /** Opens a page of the application without leaving it, as a plain click on its link. */
+  function openPath(event: MouseEvent, path: string): void {
     if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
       return;
     }
     event.preventDefault();
-    router.navigate('/chats/new');
+    router.navigate(path);
+  }
+
+  function openNewChat(event: MouseEvent): void {
+    openPath(event, '/chats/new');
   }
 
   /** The query that keeps the view: the archived chats', or none. */
@@ -628,127 +631,142 @@
   {/if}
 {/snippet}
 
-<!-- On a phone the top bar's "‹ Chat" is the way back to the list (design rows 04y, 06m), so the pane
-     draws no second Back of its own; between 640px and the width a pane stacks at, it still does. -->
-<div class="ib-chats" data-shortcut-region="list-detail" bind:this={listPane}>
-  <ListDetail
-    {items}
-    key={(row: SessionRow) => row.id}
-    label={CHAT_COPY.sessionsTitle}
-    detailLabel={CHAT_COPY.list.detailLabel}
-    selectedKey={openId}
-    onSelectedKeyChange={openChat}
-    selectionParameter={null}
-    storageKey="interborough-chats"
-    listCollapsible
-    collapseListLabel={CHAT_COPY.list.hideList}
-    expandListLabel={CHAT_COPY.list.showList}
-    flushDetail
-    backVisible={!phone.current}
-    {listBody}
-  >
-    {#snippet header()}
-      <!-- The header's rows are ListDetail's own column (the title row, then the search and the
-           status segments), each starting on one edge: the list toggle is a handle on the divider. -->
-      {#if showingArchived}
-        <!-- The archived view's way back to the chats, above its title. Its label says where it
-               goes, so it needs no tooltip, which would open on the focus it is given on arrival. -->
-        <div class="ib-chats__back-row">
+{#if firstUse}
+  <!-- No chat at all: no list pane, one empty state centred in the page (COR-2438). Its action is
+       the step a chat is missing, or New chat once a chat can work, and none while that is read. -->
+  {@const ready = readiness()}
+  {@const missing = ready === undefined || ready === 'ready' ? undefined : ready}
+  <div class="ib-chats ib-chats--first-use" data-testid="chats-first-use">
+    <EmptyState
+      kind="first-use"
+      headingLevel={1}
+      title={missing === undefined ? CHAT_COPY.list.emptyTitle : CHAT_COPY.readiness[missing].title}
+      description={missing === undefined
+        ? CHAT_COPY.list.emptyDescription
+        : CHAT_COPY.readiness[missing].description}
+    >
+      {#snippet icon()}<MessageSquare aria-hidden="true" />{/snippet}
+      {#snippet action()}
+        {#if missing !== undefined}
           <Button
-            data-chats-view-back
-            href={router.href(viewPath(false))}
-            variant="ghost"
+            data-changes
+            href={router.href(CHAT_READINESS_PATHS[missing])}
+            variant="primary"
             size="sm"
-            onclick={(event: MouseEvent) => void switchView(event, false)}
+            onclick={(event: MouseEvent) => openPath(event, CHAT_READINESS_PATHS[missing])}
           >
-            <ChevronLeft aria-hidden="true" size={16} />
-            {CHAT_COPY.sessionsTitle}
+            {CHAT_COPY.readiness[missing].action}
           </Button>
-        </div>
-      {/if}
-      <div class="ib-chats__title" bind:clientWidth={paneWidth}>
-        <SectionHeading
-          level={openId === null ? 1 : 2}
-          title={showingArchived
-            ? CHAT_COPY.list.archivedTitle
-            : phone.current
-              ? CHAT_COPY.sessionsTitlePhone
-              : CHAT_COPY.sessionsTitle}
-        >
-          {#snippet actions()}
-            <!-- The "+" alone: the toggle that hides the list is ListDetail's, on the divider. -->
-            {@render newChatButton()}
-          {/snippet}
-        </SectionHeading>
-      </div>
-      {#if !phone.current}
-        <SearchField
-          size="md"
-          aria-label={CHAT_COPY.list.searchLabel}
-          placeholder={CHAT_COPY.list.searchPlaceholder}
-          bind:value={typed}
-        />
-        {#if segmentsFit && !showingArchived}
-          <SegmentedControl
-            id="chat-status"
-            label={CHAT_COPY.list.segmentsLabel}
-            labelVisible={false}
+        {:else if ready === 'ready'}
+          <Button
+            data-changes
+            href={router.href('/chats/new')}
+            variant="primary"
             size="sm"
-            value={segment}
-            onValueChange={(next: ChatSegment) => (chosen = next)}
+            onclick={openNewChat}
           >
-            {#each CHAT_SEGMENTS as option (option)}
-              <Segment
-                value={option}
-                count={sessions.data === undefined ? 'pending' : counts[option]}
-              >
-                {CHAT_COPY.list.segments[option]}
-              </Segment>
-            {/each}
-          </SegmentedControl>
+            {CHAT_COPY.newChat}
+          </Button>
         {/if}
-      {/if}
-    {/snippet}
-    {#snippet detail(row)}
-      <ChatPane
-        sessionId={row.id}
-        {isNew}
-        agent={row.agentName === '' ? undefined : agentName(row)}
-      />
-    {/snippet}
-    {#snippet empty()}
-      {#if noChats}
-        <EmptyState
-          kind="first-use"
-          headingLevel={2}
-          title={CHAT_COPY.list.noChatTitle}
-          description={CHAT_COPY.list.noChatDescription}
-        >
-          {#snippet icon()}<MessageSquarePlus size={28} aria-hidden="true" />{/snippet}
-        </EmptyState>
-      {:else}
-        <EmptyState
-          kind="first-use"
-          headingLevel={2}
-          title={listState === 'failed' ? CHAT_COPY.list.noChatTitle : CHAT_COPY.list.pickTitle}
-          description={listState === 'failed'
-            ? CHAT_COPY.list.noChatDescription
-            : CHAT_COPY.list.pickDescription}
-        >
-          {#snippet icon()}<MessageSquarePlus size={28} aria-hidden="true" />{/snippet}
-          {#snippet action()}
+      {/snippet}
+    </EmptyState>
+  </div>
+{:else}
+  <!-- On a phone the top bar's "‹ Chat" is the way back to the list (design rows 04y, 06m), so the pane
+     draws no second Back of its own; between 640px and the width a pane stacks at, it still does. -->
+  <div class="ib-chats" data-shortcut-region="list-detail" bind:this={listPane}>
+    <ListDetail
+      {items}
+      key={(row: SessionRow) => row.id}
+      label={CHAT_COPY.sessionsTitle}
+      detailLabel={CHAT_COPY.list.detailLabel}
+      selectedKey={openId}
+      onSelectedKeyChange={openChat}
+      selectionParameter={null}
+      storageKey="interborough-chats"
+      listCollapsible
+      collapseListLabel={CHAT_COPY.list.hideList}
+      expandListLabel={CHAT_COPY.list.showList}
+      flushDetail
+      backVisible={!phone.current}
+      {listBody}
+    >
+      {#snippet header()}
+        <!-- The header's rows are ListDetail's own column (the title row, then the search and the
+           status segments), each starting on one edge: the list toggle is a handle on the divider. -->
+        {#if showingArchived}
+          <!-- The archived view's way back to the chats, above its title. Its label says where it
+               goes, so it needs no tooltip, which would open on the focus it is given on arrival. -->
+          <div class="ib-chats__back-row">
             <Button
-              data-changes
-              href={router.href('/chats/new')}
-              variant="primary"
+              data-chats-view-back
+              href={router.href(viewPath(false))}
+              variant="ghost"
               size="sm"
-              onclick={openNewChat}
+              onclick={(event: MouseEvent) => void switchView(event, false)}
             >
-              {CHAT_COPY.newChat}
+              <ChevronLeft aria-hidden="true" size={16} />
+              {CHAT_COPY.sessionsTitle}
             </Button>
-          {/snippet}
-        </EmptyState>
-      {/if}
-    {/snippet}
-  </ListDetail>
-</div>
+          </div>
+        {/if}
+        <div class="ib-chats__title" bind:clientWidth={paneWidth}>
+          <SectionHeading
+            level={openId === null ? 1 : 2}
+            title={showingArchived
+              ? CHAT_COPY.list.archivedTitle
+              : phone.current
+                ? CHAT_COPY.sessionsTitlePhone
+                : CHAT_COPY.sessionsTitle}
+          >
+            {#snippet actions()}
+              <!-- The "+" alone: the toggle that hides the list is ListDetail's, on the divider. -->
+              {@render newChatButton()}
+            {/snippet}
+          </SectionHeading>
+        </div>
+        {#if !phone.current}
+          <SearchField
+            size="md"
+            aria-label={CHAT_COPY.list.searchLabel}
+            placeholder={CHAT_COPY.list.searchPlaceholder}
+            bind:value={typed}
+          />
+          {#if segmentsFit && !showingArchived}
+            <SegmentedControl
+              id="chat-status"
+              label={CHAT_COPY.list.segmentsLabel}
+              labelVisible={false}
+              size="sm"
+              value={segment}
+              onValueChange={(next: ChatSegment) => (chosen = next)}
+            >
+              {#each CHAT_SEGMENTS as option (option)}
+                <Segment
+                  value={option}
+                  count={sessions.data === undefined ? 'pending' : counts[option]}
+                >
+                  {CHAT_COPY.list.segments[option]}
+                </Segment>
+              {/each}
+            </SegmentedControl>
+          {/if}
+        {/if}
+      {/snippet}
+      {#snippet detail(row)}
+        <ChatPane
+          sessionId={row.id}
+          {isNew}
+          agent={row.agentName === '' ? undefined : agentName(row)}
+        />
+      {/snippet}
+      {#snippet empty()}
+        <!-- With chats listed and none open the pane is a quiet hint, never a second empty state
+           beside the list's (COR-2438): the list and its "+" are the ways in. -->
+        <p class="ib-chats__no-chat" data-testid="chats-no-chat-open">
+          {CHAT_COPY.list.noChatTitle}
+        </p>
+      {/snippet}
+    </ListDetail>
+  </div>
+{/if}

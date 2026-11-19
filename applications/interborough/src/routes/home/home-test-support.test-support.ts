@@ -139,6 +139,8 @@ export interface HomeWorld {
   providerKeyless: boolean;
   /** Whether the person made an agent of their own, one defined in a file. */
   fileAgent: boolean;
+  /** Whether the Bureau lists no agent at all, not even Assistant. */
+  noAgents?: boolean;
   /** The runs the engine counts as failed in the last 24 hours. */
   failedRuns: number;
   /** Whether the caller is refused the attention feed (it lacks `bureau.diagnostics:read`). */
@@ -178,12 +180,14 @@ export function installHome(home: HomeWorld): InstalledHome {
   stub.on('bureau.schedules.list', () => ({ schedules: home.schedules, nextOffset: null }));
   stub.on('bureau.contexts.list', () => ({ contexts: home.chats, nextOffset: null }));
   stub.on('bureau.agents.list', () => ({
-    agents: [
-      agent('assistant', 'assistant', null),
-      agent('tool-runner', 'tool-runner', {}),
-      agent('request-human-input', 'request-human-input', null),
-      ...(home.fileAgent ? [agent('researcher', 'Researcher', {}, 'file')] : []),
-    ],
+    agents: home.noAgents
+      ? []
+      : [
+          agent('assistant', 'assistant', null),
+          agent('tool-runner', 'tool-runner', {}),
+          agent('request-human-input', 'request-human-input', null),
+          ...(home.fileAgent ? [agent('researcher', 'Researcher', {}, 'file')] : []),
+        ],
   }));
   stub.on('bureau.agents.catalog', () => ({
     models: [],

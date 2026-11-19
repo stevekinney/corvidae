@@ -110,9 +110,11 @@ test.describe.serial('a fresh Interborough, and the sessions a goal and a schedu
       await expect(page).toHaveURL(/\/chats$/);
       // The frame is ready: the list words its own first use, inside its pane.
       await expect(page.locator('[data-view="chat"]')).toHaveAttribute('data-state', 'ready');
-      const list = page.getByRole('region', { name: 'Chats' });
-      await expect(list.getByRole('heading', { level: 3, name: 'No chats yet' })).toBeVisible();
-      await expect(list).toContainText('Start one with an agent.');
+      // No chat at all: one empty state for the page, with no list pane beside it (COR-2438).
+      const state = page.getByTestId('chats-first-use');
+      await expect(state.getByRole('heading', { level: 1, name: 'No chats yet' })).toBeVisible();
+      await expect(state).toContainText('Start one with an agent.');
+      await expect(page.getByRole('region', { name: 'Chats' })).toHaveCount(0);
       await expect(newChatAction(page)).toBeVisible();
       await checkA11y(`chat — the first use at ${width}px`);
     });

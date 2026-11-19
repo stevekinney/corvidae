@@ -15,10 +15,12 @@
    * again.
    */
   import { ChatInput } from '@lostgradient/chat';
-  import { Button, Select, Textarea } from '@lostgradient/cinder';
+  import { Button, EmptyState, Select, Textarea } from '@lostgradient/cinder';
   import { Send } from '@lucide/svelte';
 
+  import { CHAT_COPY } from '../../app/copy/chat.ts';
   import { HOME_COPY } from '../../app/copy/home.ts';
+  import { CHAT_READINESS_PATHS, chatReadiness } from '../../app/first-run.ts';
   import { getConnection } from '../../app/connection.svelte.ts';
   import { agentLabel } from '../../lib/agent-label.ts';
   import { router } from '../../lib/router.svelte.ts';
@@ -67,6 +69,12 @@
         })
       : undefined,
   );
+  // Whether a chat can work at all, by the rule every place that starts a chat reads.
+  const missing = $derived.by(() => {
+    if (agents.data === undefined || providers.data === undefined) return undefined;
+    const ready = chatReadiness({ providers: providers.data.providers, agents: agents.data });
+    return ready === 'ready' ? undefined : ready;
+  });
   const options = $derived(
     startChatAgents(agents.data ?? [], selected).map((agent) => ({
       value: agent.name,
@@ -92,6 +100,33 @@
   <HomeCard title={copy.title}>
     {#if agents.data === undefined && agents.isError}
       <HomeCardError title={copy.failed} onRetry={() => void agents.refetch()} />
+    {:else if missing !== undefined}
+      <!-- No agent a chat could work with: why, and the step that is missing (COR-2438), never a
+           box whose Send does nothing. -->
+      <EmptyState
+        kind="first-use"
+        size="compact"
+        layout="row"
+        headingLevel={3}
+        title={CHAT_COPY.readiness[missing].title}
+        description={CHAT_COPY.readiness[missing].description}
+        data-testid="home-start-chat-not-ready"
+      >
+        {#snippet action()}
+          <Button
+            href={router.href(CHAT_READINESS_PATHS[missing])}
+            variant="primary"
+            size="sm"
+            onclick={(event: MouseEvent) => {
+              if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+              event.preventDefault();
+              router.navigate(CHAT_READINESS_PATHS[missing]);
+            }}
+          >
+            {CHAT_COPY.readiness[missing].action}
+          </Button>
+        {/snippet}
+      </EmptyState>
     {:else if blocked !== undefined}
       <ChatInput id="home-start-chat-blocked" status={blocked} />
     {:else}

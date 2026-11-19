@@ -452,7 +452,7 @@ test.describe('the chat list at other widths', () => {
 });
 
 test.describe('the states of the chat list', () => {
-  test('first use is "No chats yet" with the only primary New chat, and the "+" stays secondary (17u)', async ({
+  test('first use is one page with "No chats yet" and the only primary New chat, with no list pane (17u, COR-2438 21a)', async ({
     page,
   }) => {
     // Nothing is waiting on anyone either: a chat a pending review names is listed on its own.
@@ -467,19 +467,99 @@ test.describe('the states of the chat list', () => {
     await page.clock.setFixedTime(SAMPLE_NOW);
     await page.setViewportSize({ width: 1280, height: 900 });
     await page.goto('/chats');
-    const state = list(page).locator('.cinder-empty-state');
-    await expect(state.getByRole('heading', { level: 3, name: 'No chats yet' })).toBeVisible();
+    const state = page.getByTestId('chats-first-use');
+    await expect(state.getByRole('heading', { level: 1, name: 'No chats yet' })).toBeVisible();
     await expect(state).toContainText('Start one with an agent.');
     await expect(state.getByRole('link', { name: 'New chat' })).toHaveAttribute(
       'data-cinder-variant',
       'primary',
     );
     await expect(page.locator('main [data-cinder-variant="primary"]')).toHaveCount(1);
-    await expect(
-      list(page).locator('header').getByRole('link', { name: 'New chat' }),
-    ).toHaveAttribute('data-cinder-variant', 'secondary');
+    // One empty state: no list pane and no "No chat open" beside it.
+    await expect(list(page)).toHaveCount(0);
+    await expect(page.locator('main .cinder-empty-state')).toHaveCount(1);
+    await expect(page.getByText('No chat open')).toHaveCount(0);
     await captureForDesignReview(page, { route: '/chats', state: 'first use', source: SOURCE });
   });
+
+  // COR-2438 21b, 21e: with no chat, the page follows whether a chat can work: no provider asks for
+  // one first, a provider with no agent asks for an agent, and New chat is never offered then.
+  for (const theme of ['light', 'dark'] as const) {
+    for (const width of [1280, 375]) {
+      for (const setup of [
+        {
+          name: 'no provider',
+          connected: false,
+          title: 'Connect a provider first',
+          action: 'Connect a provider',
+          href: '/settings/models',
+        },
+        {
+          name: 'no agent',
+          connected: true,
+          title: 'Create an agent first',
+          action: 'Create an agent',
+          href: '/agents/new',
+        },
+      ] as const) {
+        test(`first use with ${setup.name} says so and links to the missing step, at ${width} pixels (${theme})`, async ({
+          page,
+          checkA11y,
+        }) => {
+          await page.addInitScript((selected) => {
+            localStorage.setItem('weft-ui-theme', selected);
+          }, theme);
+          await answerOperation(page, 'bureau.reviews.list', (route, id) =>
+            route.fulfill({ json: { jsonrpc: '2.0', id, result: { reviews: [] } } }),
+          );
+          await answerOperation(page, 'bureau.contexts.list', (route, id) =>
+            route.fulfill({
+              json: { jsonrpc: '2.0', id, result: { contexts: [], nextOffset: null } },
+            }),
+          );
+          await answerOperation(page, 'bureau.agents.list', (route, id) =>
+            route.fulfill({ json: { jsonrpc: '2.0', id, result: { agents: [] } } }),
+          );
+          await page.route('**/host/providers', (route) =>
+            route.fulfill({
+              json: {
+                configurationRevision: null,
+                providers: [
+                  {
+                    name: 'anthropic',
+                    configured: setup.connected,
+                    hasKey: setup.connected,
+                    connected: setup.connected,
+                  },
+                ],
+                catalog: [],
+                models: [],
+              },
+            }),
+          );
+          await page.clock.setFixedTime(SAMPLE_NOW);
+          await page.setViewportSize({ width, height: 900 });
+          await page.goto('/chats');
+
+          const state = page.getByTestId('chats-first-use');
+          await expect(state.getByRole('heading', { level: 1, name: setup.title })).toBeVisible();
+          await expect(state.getByRole('link', { name: setup.action })).toHaveAttribute(
+            'href',
+            setup.href,
+          );
+          await expect(page.locator('main a[href="/chats/new"]')).toHaveCount(0);
+          await expect(list(page)).toHaveCount(0);
+          await expect(page.locator('main .cinder-empty-state')).toHaveCount(1);
+          await checkA11y(`chat first use with ${setup.name} at ${width}px (${theme})`);
+          await captureForDesignReview(page, {
+            route: '/chats',
+            state: `first use with ${setup.name} at ${width} (${theme})`,
+            source: SOURCE,
+          });
+        });
+      }
+    }
+  }
 
   test('a search with no results says what was searched and offers Clear search (17v)', async ({
     page,

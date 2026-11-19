@@ -511,6 +511,29 @@ describe('Home’s Start a chat card (01k)', () => {
     expect(card.querySelector('[data-chat-composer-status="blocked"]')).toBeNull();
   });
 
+  test('with no agent and no provider says to connect a provider first, never a box whose Send does nothing (COR-2438 21c)', async () => {
+    const { getByTestId } = await open(sampleHomeWorld({ noAgents: true }));
+    const card = getByTestId('home-start-chat');
+    const state = await waitFor(() => within(card).getByTestId('home-start-chat-not-ready'));
+    expect(state.textContent).toContain('Connect a provider first');
+    expect(
+      within(state).getByRole('link', { name: 'Connect a provider' }).getAttribute('href'),
+    ).toBe('/settings/models');
+    expect(card.querySelector('textarea')).toBeNull();
+  });
+
+  test('with a provider and no agent says to create an agent (COR-2438 21c)', async () => {
+    const { getByTestId } = await open(
+      sampleHomeWorld({ noAgents: true, providerConnected: true }),
+    );
+    const card = getByTestId('home-start-chat');
+    const state = await waitFor(() => within(card).getByTestId('home-start-chat-not-ready'));
+    expect(within(state).getByRole('link', { name: 'Create an agent' }).getAttribute('href')).toBe(
+      '/agents/new',
+    );
+    expect(card.querySelector('textarea')).toBeNull();
+  });
+
   test('a model agent is not blocked once a provider holds a key', async () => {
     const { getByTestId } = await open(sampleHomeWorld({ providerConnected: true }));
     const card = getByTestId('home-start-chat');
