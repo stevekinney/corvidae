@@ -46,10 +46,15 @@ export interface FirstRunSignals {
   readonly assistantChosen?: boolean;
 }
 
+/** Whether a provider can be called: it holds a key, or declares no secret to hold one. */
+export function providerConnected(providers: FirstRunSignals['providers']): boolean {
+  return providers.some((provider) => provider.connected);
+}
+
 /** Which steps the signals say are done. */
 export function firstRunProgress(signals: FirstRunSignals): FirstRunProgress {
   return {
-    provider: signals.providers.some((provider) => provider.connected),
+    provider: providerConnected(signals.providers),
     agent:
       signals.assistantChosen === true || signals.agents.some((agent) => agent.kind === 'file'),
     chat: signals.chatCount > 0,
@@ -65,6 +70,44 @@ export function firstRunProgress(signals: FirstRunSignals): FirstRunProgress {
 export function homeChecklistShows(progress: FirstRunProgress, saidHello: boolean): boolean {
   return !saidHello && !progress.chat;
 }
+
+/**
+ * Whether a chat can work now, and if not, the step it is missing (COR-2438): every place a chat is
+ * started (the chat list with no chats, New chat in the sidebar and its key, the command palette,
+ * Home's Start a chat, the new chat's composer) reads this one answer, from the signals the
+ * checklist's steps read, so none offers an action that cannot work.
+ *
+ * A chat is with an agent Chat offers (a hidden agent is not). A scripted agent names no model
+ * (`media` is `null`), so a chat with it works with no provider, as Assistant's does. Any other
+ * agent needs a provider that can be called. With neither a provider nor an agent, the provider is
+ * the first step, as on the checklist.
+ */
+export type ChatReadiness = 'ready' | 'needs-provider' | 'needs-agent';
+
+/** The signals {@link chatReadiness} reads. */
+export interface ChatReadinessSignals {
+  /** The providers `GET /host/providers` lists. */
+  readonly providers: FirstRunSignals['providers'];
+  /** The agents `bureau.agents.list` lists: `media` is `null` for one that names no model. */
+  readonly agents: readonly {
+    readonly media: unknown;
+    readonly visibility?: 'hidden' | undefined;
+  }[];
+}
+
+/** Whether a chat can work now, or the step it is missing. */
+export function chatReadiness(signals: ChatReadinessSignals): ChatReadiness {
+  const offered = signals.agents.filter((agent) => agent.visibility !== 'hidden');
+  if (offered.some((agent) => agent.media === null)) return 'ready';
+  if (!providerConnected(signals.providers)) return 'needs-provider';
+  return offered.length > 0 ? 'ready' : 'needs-agent';
+}
+
+/** Where the step a chat is missing is taken. */
+export const CHAT_READINESS_PATHS: Readonly<Record<Exclude<ChatReadiness, 'ready'>, string>> = {
+  'needs-provider': '/settings/models',
+  'needs-agent': '/agents/new',
+};
 
 /** How many steps are still open, which says how far the person has to go. */
 export function stepsLeft(progress: FirstRunProgress): number {
