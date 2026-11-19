@@ -644,6 +644,19 @@ for (const width of [1920, 1280, 768, 375] as const) {
       });
       const name = await row.getAttribute('data-tool-row');
       expect(name).not.toBeNull();
+      // 4: the row carries the page's whole set, in its words and order, on one line together.
+      await expect(row.getByTestId('tool-row-risk')).toHaveText('Reads');
+      await expect(row.getByTestId('tool-row-asks')).toHaveText('Asks: Never');
+      await expect(row.getByTestId('tool-row-source')).toHaveText('Built in');
+      const rowBox = await readBoxes(page, {
+        risk: row.getByTestId('tool-row-risk'),
+        asks: row.getByTestId('tool-row-asks'),
+        origin: row.getByTestId('tool-row-source'),
+      });
+      for (const badge of [rowBox.asks, rowBox.origin]) {
+        expect(Math.abs(badge.y - rowBox.risk.y)).toBeLessThanOrEqual(0.5);
+        expect(Math.abs(badge.height - rowBox.risk.height)).toBeLessThanOrEqual(0.5);
+      }
       await page.goto(`/capabilities?tool=${encodeURIComponent(name ?? '')}`);
       const detail = page.getByTestId('tool-detail');
 
@@ -710,3 +723,44 @@ for (const width of [1920, 1280, 768, 375] as const) {
     });
   });
 }
+
+test.describe('/capabilities tool page, on a dark system', () => {
+  // The page names no theme, so it follows the system: on a dark one the open schema's tokens take
+  // Shiki's dark colours, never its near-black light ones (design review, 2026-11-19).
+  test('the open schema reads in its dark colours when the page follows a dark system', async ({
+    page,
+  }) => {
+    await page.emulateMedia({ colorScheme: 'dark' });
+    await open(page, 1280, '/capabilities');
+    const row = page.locator('[data-tool-row]', {
+      has: page.getByTestId('tool-row-name').getByText('Read asset', { exact: true }),
+    });
+    const name = await row.getAttribute('data-tool-row');
+    await page.goto(`/capabilities?tool=${encodeURIComponent(name ?? '')}`);
+    await expect(page.locator('html')).not.toHaveAttribute('data-theme');
+    const tokens = page
+      .getByTestId('tool-input-schema')
+      .locator(".cinder-schema-view__source pre.shiki span[style*='--shiki-dark']");
+    await expect(tokens.first()).toBeVisible();
+    // Each token is drawn in a colour other than the light one Shiki wrote inline beside its dark one.
+    const mismatches = await tokens.evaluateAll((spans) => {
+      const probe = document.createElement('span');
+      document.body.append(probe);
+      const resolve = (value: string) => {
+        probe.style.color = value;
+        return getComputedStyle(probe).color;
+      };
+      const wrong = spans.flatMap((span) => {
+        const light = span.style.color;
+        const dark = span.style.getPropertyValue('--shiki-dark').trim();
+        if (light === '' || dark === '' || resolve(light) === resolve(dark)) return [];
+        const drawn = getComputedStyle(span).color;
+        return drawn === resolve(light) ? [`${span.textContent}: ${drawn}`] : [];
+      });
+      probe.remove();
+      return { total: spans.length, wrong };
+    });
+    expect(mismatches.total).toBeGreaterThan(0);
+    expect(mismatches.wrong).toEqual([]);
+  });
+});

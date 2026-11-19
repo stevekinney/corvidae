@@ -52,7 +52,7 @@
   white-space: nowrap;
 }
 
-/* A row's first line: the name at the left, the badge for what it may do at the right (rows 31e, 31g). */
+/* A row's first line: the name at the left, and Paused at the right while the tool cannot run. */
 .ib-capabilities__row-title {
   display: flex;
   align-items: center;
@@ -73,22 +73,26 @@
   font-weight: 400;
 }
 
-/* A row's second line: the badge for where it comes from, then a line about it that ends with an
- * ellipsis, never wrapping. The badges are chips on one centre line with the words. */
+/* Under the name: a line about the tool that ends with an ellipsis, never wrapping, then the page's
+ * one badge set. The chips share one line and one centre; on a pane too narrow for all three the
+ * set wraps rather than pushing the row wider. */
 .ib-capabilities__row-line {
   display: flex;
-  align-items: center;
-  gap: var(--cinder-space-2);
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--cinder-space-1-5);
   min-width: 0;
 }
 
-.ib-capabilities__row-badge {
+.ib-capabilities__row-badges {
   display: flex;
-  flex: none;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--cinder-space-1-5);
+  min-width: 0;
 }
 
 .ib-capabilities__row-summary {
-  flex: 1 1 auto;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;

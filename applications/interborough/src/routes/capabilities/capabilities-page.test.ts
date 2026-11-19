@@ -157,27 +157,38 @@ describe('the Tools tab', () => {
     const row = (name: string) => container.querySelector(`[data-tool-row="${name}"]`);
     const part = (name: string, testId: string) =>
       row(name)?.querySelector(`[data-testid="${testId}"]`)?.textContent?.trim();
-    // Two lines: the name for a person and the risk badge, then the source badge and the sentence.
+    // The page's order: the name for a person, the sentence, then the page's one badge set.
     expect(part('read-file', 'tool-row-name')).toBe('Read file');
     expect(part('read-file', 'tool-row-risk')).toBe('Reads');
+    expect(part('read-file', 'tool-row-asks')).toBe('Asks: Never');
     expect(part('read-file', 'tool-row-source')).toBe('From an MCP server');
     expect(part('read-file', 'tool-row-summary')).toBe('Reads one file');
     // A tool that declares no tier is not classified, which is never read as read-only.
     expect(part('run-shell', 'tool-row-risk')).toBe('Not classified');
     expect(part('run-shell', 'tool-row-summary')).toBe('Runs a shell command.');
     expect(part('gemini:search', 'tool-row-name')).toBe('Search');
-    // Source, then sentence, in that order on the second line.
+    // Sentence, then the set; the set's three chips sit together in the page's order, on one line
+    // of their own, never split across the name's line and the sentence's (owner report, 2026-11-19).
     const line = row('read-file')?.querySelector('.ib-capabilities__row-line');
     expect([...(line?.children ?? [])].map((child) => child.getAttribute('data-testid'))).toEqual([
-      'tool-row-source',
       'tool-row-summary',
+      'tool-row-badges',
     ]);
+    const set = row('read-file')?.querySelector('[data-testid="tool-row-badges"]');
+    expect([...(set?.children ?? [])].map((child) => child.getAttribute('data-testid'))).toEqual([
+      'tool-row-risk',
+      'tool-row-asks',
+      'tool-row-source',
+    ]);
+    expect(
+      row('read-file')?.querySelector('.ib-capabilities__row-title [data-cinder-variant]'),
+    ).toBeNull();
     // The badges are the page's own neutral chips, so Dangerous is never red, and a row, which is
     // itself the control, holds nothing focusable of its own.
     const variants = [...(row('read-file')?.querySelectorAll('[data-cinder-variant]') ?? [])].map(
       (chip) => chip.getAttribute('data-cinder-variant'),
     );
-    expect(variants).toEqual(['neutral', 'neutral']);
+    expect(variants).toEqual(['neutral', 'neutral', 'neutral']);
     expect(row('read-file')?.querySelector('[tabindex="0"]')).toBeNull();
 
     await fireEvent.click(row('read-file')!);

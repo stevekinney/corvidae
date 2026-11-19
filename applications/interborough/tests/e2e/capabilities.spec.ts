@@ -22,7 +22,7 @@ const toolRows = (page: Page) => page.locator('[data-tool-row]');
 const skillRows = (page: Page) => page.locator('[data-skill-row]');
 
 test.describe('the Tools tab', () => {
-  test('lists every tool of the catalog as two lines, and counts them in the tab', async ({
+  test('lists every tool of the catalog with its sentence and badge set, and counts them in the tab', async ({
     page,
     request,
   }) => {
@@ -40,13 +40,22 @@ test.describe('the Tools tab', () => {
     for (const tool of tools) {
       const row = page.locator(`[data-tool-row="${tool.name}"]:not([data-lost])`);
       await expect(row).toHaveCount(1);
-      // Line one: the name for a person and the muted risk word. Line two: the source, then the sentence.
+      // The page's order: the name for a person, the sentence, then the page's one badge set, whose
+      // three chips are one treatment in the page's own words.
       await expect(row.getByTestId('tool-row-name')).not.toBeEmpty();
-      await expect(row.getByTestId('tool-row-risk')).toHaveText(
-        /^(Reads|Changes things|Dangerous|Not classified)$/,
-      );
-      await expect(row.getByTestId('tool-row-source')).not.toBeEmpty();
       await expect(row.getByTestId('tool-row-summary')).not.toBeEmpty();
+      const risk = (await row.getByTestId('tool-row-risk').innerText()).trim();
+      expect(['Reads', 'Changes things', 'Dangerous', 'Not classified']).toContain(risk);
+      expect((await row.getByTestId('tool-row-asks').innerText()).trim()).toMatch(/^Asks: \S/);
+      await expect(row.getByTestId('tool-row-source')).not.toBeEmpty();
+      const heights = await row
+        .getByTestId('tool-row-badges')
+        .locator(':scope > *')
+        .evaluateAll((chips) =>
+          chips.map((chip) => Math.round(chip.getBoundingClientRect().height)),
+        );
+      expect(heights).toHaveLength(3);
+      expect(new Set(heights).size).toBe(1);
     }
     // The count is in the tab, not in the list; the list shows one only while something is typed.
     await expect(page.getByTestId('tab-count-tools')).toHaveText(String(tools.length + lostRows));

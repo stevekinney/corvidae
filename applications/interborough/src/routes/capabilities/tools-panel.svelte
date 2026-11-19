@@ -1,10 +1,9 @@
 <script lang="ts">
   /**
    * The Tools tab: every tool in the catalog (`bureau.agents.catalog`) as a list with the open tool
-   * beside it. A tool's row is two lines (board PageCapabilities, "Capabilities, Tools tab"): its
-   * name for a person at the left with the badge for what it may do at the right, then the badge
-   * for where it comes from and a line about it, cut with an ellipsis. The badges are the tool
-   * page's own words and chips (owner report, 2026-11-19). From 40 tools the rows are grouped by
+   * beside it. A tool's row reads as its page does: its name for a person, a line about it cut with
+   * an ellipsis, then the page's one badge set (what it may do, when it asks, where it comes from)
+   * in the page's own words, chips and order, on one baseline (owner report, 2026-11-19). From 40 tools the rows are grouped by
    * source. Its details show what it may do, how it is approved by default, where it comes from,
    * its inputs and its users.
    */
@@ -208,11 +207,7 @@
                   <span class="ib-capabilities__row-name" data-testid="tool-row-name"
                     >{toolHeading(tool)}</span
                   >
-                  <!-- The page's neutral badge, never a colour of its own: Dangerous is not red (row 31g). -->
-                  <span class="ib-capabilities__row-badge" data-testid="tool-row-risk"
-                    ><ToolBadge kind="risk" {tool} /></span
-                  >
-                  <!-- A tool that cannot run now says so on the first line, in the same muted word. -->
+                  <!-- A tool that cannot run now says so on the first line, in a muted word. -->
                   {#if tool.lost !== undefined}
                     <span class="ib-capabilities__row-risk" data-testid="tool-row-paused"
                       >{copy.tool.lost.paused}</span
@@ -222,12 +217,16 @@
               {/snippet}
               {#snippet description()}
                 <span class="ib-capabilities__row-line">
-                  <span class="ib-capabilities__row-badge" data-testid="tool-row-source"
-                    ><ToolBadge kind="source" {tool} {sourceNames} /></span
-                  >
                   <span class="ib-capabilities__row-summary" data-testid="tool-row-summary"
                     >{toolSummary(tool)}</span
                   >
+                  <!-- The page's own set, in its order, on one line that wraps on a narrow pane. The
+                       chips are neutral, so Dangerous is not red (row 31g). -->
+                  <span class="ib-capabilities__row-badges" data-testid="tool-row-badges">
+                    <ToolBadge kind="risk" {tool} testId="tool-row-risk" />
+                    <ToolBadge kind="asks" {tool} testId="tool-row-asks" />
+                    <ToolBadge kind="source" {tool} {sourceNames} testId="tool-row-source" />
+                  </span>
                 </span>
               {/snippet}
             </SelectableRow>
