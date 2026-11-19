@@ -19,7 +19,12 @@
 
   let { task, receipt, rejection, failure }: RunCancelNoteProps = $props();
 
-  const words = $derived(task.cleanup ?? receipt);
+  // A run that is canceled and cleaned up says so in its status line ("Canceled"), so the note
+  // does not say it again; a cleanup still under way, or a refusal, is still said.
+  const words = $derived.by(() => {
+    const said = task.cleanup ?? receipt;
+    return task.status === 'canceled' && said === 'cleaned-up' ? undefined : said;
+  });
   // A refusal that names its owner says so, instead of claiming the run had finished.
   const refusal = $derived(
     task.cleanup === null && receipt === 'rejected' && rejection !== undefined

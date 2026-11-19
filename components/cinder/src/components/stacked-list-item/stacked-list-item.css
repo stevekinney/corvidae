@@ -427,6 +427,36 @@
     white-space: normal;
   }
 
+  /* On a phone a `wrapMeta` row's line two is one run of text: the dot, the word, then the meta,
+     across the status column and the text, so a wrapped line returns to the row's leading edge
+     instead of wrapping in a narrow column beside the word. The row then draws its status there
+     and not in the column (one copy, never two), and marks itself `--status-inline`; the script
+     decides from the row's own width, as the phone form does, so these rules key on that class
+     rather than a container query that could disagree with the markup for a frame. Rows without
+     `wrapMeta` keep the status in its column. */
+  .cinder-stacked-list-item--status-inline .cinder-stacked-list-item__line-two {
+    /* `trailing-start`, not `trailing`: an end line named `trailing` resolves to the trailing
+       area's implicit `trailing-end` line, which would run line two under the actions. */
+    grid-column: status / trailing-start;
+  }
+
+  .cinder-stacked-list-item--status-inline .cinder-stacked-list-item__status-inline {
+    display: inline-flex;
+    vertical-align: baseline;
+    margin-inline-end: var(--cinder-space-2);
+    font-size: var(--cinder-text-xs);
+  }
+
+  .cinder-stacked-list-item__status-inline .cinder-status-dot__indicator {
+    inline-size: 0.5rem; /* 8px, as in the status column */
+    block-size: 0.5rem;
+  }
+
+  .cinder-stacked-list-item--status-inline
+    :is(.cinder-stacked-list-item__meta, .cinder-stacked-list-item__description) {
+    display: inline;
+  }
+
   /* A third line (a phone schedule's reason and cadence): muted like line two, but it wraps, so
      nothing on it is cut. It shares the details row, which no row uses at the same time, and
      starts under the title; on a phone, where the status leads line two, it starts at the left

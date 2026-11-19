@@ -21,6 +21,7 @@
   import { queryKeys } from '../../../lib/query.ts';
   import { createSerialQueue } from '../../../lib/serial-queue.ts';
   import type { ScopeGate } from '../../../lib/scopes.svelte.ts';
+  import { editableRunTags } from './run-tags.ts';
 
   interface RunTagsProps {
     readonly client: Pick<HttpClient, 'addTags' | 'removeTags'>;
@@ -35,9 +36,8 @@
     tagGate = { disabled: false, title: undefined },
   }: RunTagsProps = $props();
 
-  function editableTags(values: readonly string[] | null | undefined): string[] {
-    return (values ?? []).filter((tag) => tag !== 'origin:agent-run');
-  }
+  // The system's own tags are counted in the rail, never edited by hand.
+  const editableTags = editableRunTags;
 
   const queryClient = useQueryClient();
 
@@ -87,11 +87,14 @@
   <div class="ib-run-tags__label" id={`workflow-detail-tags-label-${workflow.id}`}>
     {RUN_PAGE_COPY.facts.tags}
   </div>
+  {#if tags.length === 0}
+    <p class="ib-run__note" data-run-tags-none>{RUN_PAGE_COPY.noTags}</p>
+  {/if}
   <TagInput
     {...{ 'data-changes': true }}
     id={`workflow-detail-tags-${workflow.id}`}
     aria-labelledby={`workflow-detail-tags-label-${workflow.id}`}
-    placeholder="Add tag"
+    placeholder={RUN_PAGE_COPY.addTag}
     disabled={tagGate.disabled}
     bind:value={tags}
     onValueChange={changeTags}

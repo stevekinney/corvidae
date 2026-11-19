@@ -11,6 +11,7 @@
  * this fixture run, so replacing it again is safe anywhere in the run order.
  */
 import { expect, test } from './fixtures.ts';
+import { openHowItRan } from './workflow-support.ts';
 
 const WORKFLOW_ID = 'nightly-reconciliation-demo';
 
@@ -37,7 +38,7 @@ test('operator restarts a completed run, seeing the revision it will select firs
   const stampBefore = await readReplacement(page.request);
   await page.goto(`/runs/${WORKFLOW_ID}`);
   await expect(
-    page.getByRole('heading', { level: 1, name: 'nightly-reconciliation' }),
+    page.getByRole('heading', { level: 1, name: 'Nightly reconciliation' }),
   ).toBeVisible();
   // Restart is in the More menu, and only for a terminal run.
   await page.getByRole('button', { name: 'More actions' }).click();
@@ -64,6 +65,9 @@ test('operator restarts a completed run, seeing the revision it will select firs
   // Same id, fresh run: the server's lineage stamp changed, so a new run
   // replaced the prior one, and the panel still shows the continuation chain.
   await expect.poll(() => readReplacement(page.request)).not.toBe(stampBefore);
+  // The lineage is in How it ran's Versioning tab (COR-2424, row 54i).
+  await openHowItRan(page);
+  await page.getByRole('tab', { name: 'Versioning' }).click();
   await expect(page.getByText('Continuation chain, same workflow ID')).toBeVisible();
   await expect(page.getByText('Previous run')).toBeVisible();
   await checkA11y('workflow detail — after restart');

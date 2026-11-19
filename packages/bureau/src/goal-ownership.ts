@@ -203,9 +203,11 @@ export function isOwnController(
 }
 
 /**
- * The agent and principal a goal runs its attempts as, which are what a run
- * must have been started with to be the goal's own. Read from the goal's record
- * by id, so a run's own marker cannot vouch for itself.
+ * The agent and principal a goal runs one attempt as, which are what that
+ * attempt's run must have been started with to be the goal's own. Read from the
+ * goal's record by id and attempt index (an attempt's agent can differ from the
+ * goal's current one, `attemptAgentName`), so a run's own marker cannot vouch
+ * for itself.
  */
 export interface GoalOwner {
   readonly agentName: string;
@@ -219,7 +221,10 @@ export interface GoalOwner {
  * readable goal has that id. A lookup that fails rejects, which is a fault to
  * retry and never a verdict.
  */
-export type GoalOwnerResolver = (goalRunId: string) => Promise<GoalOwner | undefined>;
+export type GoalOwnerResolver = (
+  goalRunId: string,
+  attemptIndex: number,
+) => Promise<GoalOwner | undefined>;
 
 /**
  * The one test for whether a goal-namespaced run is a goal's own, shared by the
@@ -238,7 +243,7 @@ async function isOwnedGoalRun(
   if (load.status !== 'found') return false;
   const marker = load.record.goalAttempt;
   if (marker === undefined) return false;
-  const owner = await resolveGoalOwner(marker.goalRunId);
+  const owner = await resolveGoalOwner(marker.goalRunId, marker.attemptIndex);
   return owner !== undefined && isGoalOwnedRunRecord(load.record, runId, owner);
 }
 

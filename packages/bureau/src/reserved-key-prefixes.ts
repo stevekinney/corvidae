@@ -165,7 +165,7 @@ export const BUREAU_RESERVED_KEY_FAMILIES: readonly ReservedKeyFamily[] = [
     'the index from a context to its task ids, which every purge pass reads to find a run admitted after the delete began',
   ),
   kept(
-    'bureau-task-listing:v5:',
+    'bureau-task-listing:v6:',
     'a listing’s page snapshot of task views (ids, statuses, origins, and a failed task’s status message), which its page token outlives by fifteen minutes at most (TASK_LISTING_LIFETIME_MILLISECONDS) and the sweep then deletes',
   ),
   kept(
@@ -177,6 +177,10 @@ export const BUREAU_RESERVED_KEY_FAMILIES: readonly ReservedKeyFamily[] = [
     'a workflow file’s listener lease: the id of the process that runs its trigger (COR-2167), not a chat’s',
   ),
   kept('bureau-workflow-cancelled-run:v1:', 'a workflow run’s cancellation record, not a chat’s'),
+  kept(
+    'bureau-workflow-retry:v1:',
+    'a workflow file run’s retry receipt (its retry count and the step and retry id asked for), not a chat’s',
+  ),
   kept(
     'bureau-workflow-revision:v1:',
     'a workflow’s saved version (its file content, who saved it, and what changed), not a chat’s',

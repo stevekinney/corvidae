@@ -44,6 +44,7 @@ import { isTryAgentName } from '../agent-try';
 import { originatingMessageText } from '../task-registry';
 import { registerScheduledFireApproval } from '../scheduled-fire-review-state';
 import { validateRunWorkspaceAuthority } from '../run-authority.ts';
+import { createWorkflowRetryReceipts } from '../workflow-retry-receipts';
 
 /** The callables child runs reads from elsewhere in `constructBureau`. */
 export interface ChildRunsPeers {
@@ -91,6 +92,12 @@ export function createChildRuns<D extends AgentDefinitions>(
     runRequestContexts,
     scheduledFireReviewState,
   } = core;
+  /**
+   * COR-2424 — how many times an instance was retried, which names its steps' runs. Read from the
+   * runtime's store at the step, the store the workflow runtime writes the receipts to.
+   */
+  const retryGeneration = (workflowId: string): Promise<number> =>
+    createWorkflowRetryReceipts({ store: runtime.kv }).generation(workflowId);
 
   /**
    * COR-1302: registers the `ActiveRun` behind a `bureau.run()` dispatch on
@@ -348,7 +355,13 @@ export function createChildRuns<D extends AgentDefinitions>(
         `Agent "${request.agent}" cannot run: this Bureau has no durable engine.`,
       );
     }
-    const runId = workflowStepRunId(request.workflowId, request.stepAddress ?? request.step);
+    // COR-2424: a step that runs after a retry of its instance has an id of that retry's own, so
+    // the step that failed does not find the run it failed in.
+    const runId = workflowStepRunId(
+      request.workflowId,
+      request.stepAddress ?? request.step,
+      await retryGeneration(request.workflowId),
+    );
     if ((await engine.get(runId)) !== null) {
       // Adopt the run at this id only if it is this step's own: its recovery record carries the
       // step's marker. Anything else holding the id is not a run to take a result from.

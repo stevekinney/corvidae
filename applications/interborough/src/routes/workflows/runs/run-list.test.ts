@@ -28,11 +28,11 @@ import {
   type BureauWorldStub,
 } from '../../../lib/bureau-world.test-support.ts';
 import { router } from '../../../lib/router.svelte.ts';
-import { AUTHORIZATION_SCOPES } from '../../../lib/scopes.svelte.ts';
+import { AUTHORIZATION_SCOPES, type AuthorizationScope } from '../../../lib/scopes.svelte.ts';
 import { STATUS_WORDS } from '../../../lib/status.ts';
 import { landAt } from '../../chat/pages.test-support.ts';
 import { filterLabelOf } from './run-rows.ts';
-import { STARTED_BY_KINDS, STARTED_BY_LABELS } from './started-by.ts';
+import { STARTED_BY_FILTER_LABELS, STARTED_BY_KINDS, STARTED_BY_LABELS } from './started-by.ts';
 
 let stub: BureauWorldStub | undefined;
 afterEach(() => {
@@ -73,6 +73,8 @@ function open(
     readonly schedules?: readonly BureauSchedule[];
     /** Makes the Bureau refuse to list the schedules. */
     readonly schedulesFail?: boolean;
+    /** The scopes the caller holds; every one unless a test narrows them. */
+    readonly scopes?: readonly AuthorizationScope[];
   } = {},
 ) {
   stub = installBureauWorld(
@@ -116,7 +118,7 @@ function open(
   return render(RouteOutletHarness, {
     props: {
       client: new HttpClient({ baseUrl: 'http://localhost/api' }),
-      scopes: AUTHORIZATION_SCOPES,
+      scopes: options.scopes ?? AUTHORIZATION_SCOPES,
     },
   } as never);
 }
@@ -201,12 +203,53 @@ describe('the Started by and Agent chips', () => {
   test('an applied chip names its choice, and its x takes it out of the address', async () => {
     const view = open('/runs?startedBy=goal');
     await waitFor(() => expect(rowIds(view.container)).toEqual(['goal-1-a0']));
-    const remove = view.getByRole('button', {
-      name: `Remove filter: ${TASK_COPY.startedByLabel}: ${STARTED_BY_LABELS.goal}`,
-    });
+    // The chip reads "Started by: Goals" (row 52x), the plural of what started the runs.
+    const remove = view.getByRole('button', { name: 'Remove filter: Started by: Goals' });
+    expect(STARTED_BY_FILTER_LABELS.goal).toBe('Goals');
+    expect(STARTED_BY_LABELS.goal).toBe('A goal');
     await fireEvent.click(remove);
     await waitFor(() => expect(router.search.get('startedBy')).toBeNull());
     await waitFor(() => expect(rowIds(view.container)).toHaveLength(3));
+  });
+
+  test('Workflow offers the workflows the runs ran, by name, and the one chosen narrows the list (row 52d)', async () => {
+    const notes = taskFixture({
+      id: 'notes-run',
+      contextId: 'notes-run',
+      kind: 'catalog',
+      agentName: null,
+      status: 'completed',
+      origin: { kind: 'api' },
+      workflow: {
+        type: 'release-notes',
+        scheduleId: null,
+        scheduleName: null,
+        tick: null,
+        steps: { total: 4, at: 4 },
+        awaitingSignal: null,
+      },
+    });
+    const view = open('/runs', { tasks: [notes] });
+    await waitFor(() => expect(rowIds(view.container)).toHaveLength(4));
+    await fireEvent.click(view.getByRole('button', { name: TASK_COPY.workflowLabel }));
+    flushSync();
+    await waitFor(() =>
+      expect(document.querySelector('.cinder-filter-bar__options')).not.toBeNull(),
+    );
+    const radios = [
+      ...document.querySelectorAll<HTMLInputElement>(
+        '.cinder-filter-bar__options input[type="radio"]',
+      ),
+    ];
+    // The goal's attempt and the ordinary runs are workflows too, each named as a person reads it.
+    expect(radios.map((radio) => radio.value)).toEqual(['release-notes', 'goalRun']);
+
+    await fireEvent.click(radios[0]!);
+    await waitFor(() => expect(router.search.get('workflow')).toBe('release-notes'));
+    await waitFor(() => expect(rowIds(view.container)).toEqual(['notes-run']));
+    expect(
+      view.getByRole('button', { name: 'Remove filter: Workflow: Release notes' }),
+    ).not.toBeNull();
   });
 
   test('a long agent name is cut on the chip, and the address keeps the whole name (COR-1862)', async () => {
@@ -315,6 +358,23 @@ describe('the runs a schedule missed', () => {
     ).toBe('/schedules/daily-summary');
   });
 
+  test('say how many in the status, named "Missed runs, 2", the count its own piece with no separator (row 09q)', async () => {
+    const view = open('/runs', { schedules: [DAILY_SUMMARY] });
+    const row = await waitFor(() => {
+      const found = view.container.querySelector<HTMLElement>(
+        '[data-missed-schedule="daily-summary"]',
+      );
+      if (found === null) throw new Error('The missed row is not listed yet.');
+      return found;
+    });
+    const status = within(row).getByRole('img', { name: 'Missed runs, 2' });
+    // The word, then the count as its own muted piece: no comma, no middle dot in what shows.
+    expect(status.querySelector('.cinder-status-dot__qualifier')?.textContent).toBe('2');
+    expect(status.textContent?.replaceAll(/\s+/g, ' ').trim()).toBe('Missed runs 2');
+    expect(status.textContent).not.toContain(String.fromCodePoint(0xb7));
+    expect(status.getAttribute('data-cinder-status')).toBe('warning');
+  });
+
   test('are left out of a filtered list, which is about runs', async () => {
     const view = open('/runs?status=failed', { schedules: [DAILY_SUMMARY] });
     await waitFor(() => expect(rowIds(view.container)).toEqual(['run-2']));
@@ -342,5 +402,49 @@ describe('opening from a row', () => {
     expect(router.pathname).toBe('/runs');
     expect(await fireEvent.click(link, { button: 0 })).toBe(false);
     expect(router.pathname).toBe('/runs/run-2');
+  });
+});
+
+describe('a run only the workflow engine holds (COR-2424)', () => {
+  /** What the Bureau lists for the schedule tick: no agent, and its own identifier for a context. */
+  const TICK = taskFixture({
+    id: 'tick-1',
+    contextId: 'tick-1',
+    kind: 'catalog',
+    agentName: null,
+    status: 'completed',
+    origin: { kind: 'system' },
+    workflow: {
+      type: 'scheduleTick',
+      scheduleId: 'daily-summary',
+      scheduleName: 'Daily summary',
+      tick: { event: 'missed-runs', missedRuns: 4, whileStopped: true },
+      steps: null,
+      awaitingSignal: null,
+    },
+  });
+
+  test('opens its page for a caller who may read the engine, which serves it read-only', async () => {
+    const view = open('/runs', { tasks: [TICK] });
+    await waitFor(() => expect(rowIds(view.container)).toContain('tick-1'));
+
+    const link = view.container.querySelector<HTMLAnchorElement>('[data-run="tick-1"] a');
+    expect(link?.getAttribute('href')).toBe('/runs/tick-1');
+  });
+
+  test('does not open for a caller who may not, and says what it needs, so no row leads to a page that is not found', async () => {
+    const view = open('/runs', {
+      tasks: [TICK],
+      scopes: AUTHORIZATION_SCOPES.filter((scope) => scope !== 'workflows:read'),
+    });
+    await waitFor(() => expect(rowIds(view.container)).toContain('tick-1'));
+
+    const row = view.container.querySelector('[data-run="tick-1"]');
+    expect(row?.querySelector('a')).toBeNull();
+    expect(row?.textContent).toContain(TASK_COPY.list.engineRunLocked);
+    // The Bureau's own tasks still open: only the engine's runs need the engine.
+    expect(view.container.querySelector('[data-run="run-1"] a')?.getAttribute('href')).toBe(
+      '/runs/run-1',
+    );
   });
 });

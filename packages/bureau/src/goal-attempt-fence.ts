@@ -97,7 +97,7 @@ import {
 } from '@lostgradient/operative';
 
 import { isGoalOwnedRunRecord, type RunRecordReader } from './goal-ownership';
-import { isTerminalGoalStatus } from './goal-state';
+import { attemptAgentName, isTerminalGoalStatus } from './goal-state';
 import type { GoalStore } from './goal-store';
 
 /** The attempt a run was started for. */
@@ -199,7 +199,7 @@ export function createGoalAttemptFence(dependencies: {
         claimed.attemptIndex === target.attemptIndex &&
         claimed.tombstonedAt === undefined &&
         isGoalOwnedRunRecord(load.record, target.runId, {
-          agentName: record.objective.agentName,
+          agentName: attemptAgentName(record, target.attemptIndex),
           principal: record.principal,
           maximumAttempts: record.bounds.maximumAttempts,
         })

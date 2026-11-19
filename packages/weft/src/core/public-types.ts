@@ -109,6 +109,7 @@ export type {
   RestartLineage,
   RetentionOverview,
   RetentionPolicy,
+  RetryFailedWorkflowResult,
   RetryPolicy,
   ReviewDecision,
   ReviewListEntry,

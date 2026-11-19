@@ -148,19 +148,41 @@ export type HeaderCountOptions = {
   streaming?: boolean;
   /** The serialized size in bytes. It follows the count only above 1 KB. */
   bytes?: number | undefined;
+  /** How many of the fields the Fields view leaves out, so only the JSON view shows them. */
+  jsonOnly?: number | undefined;
 };
 
 /**
  * The header's count, in words: "1 field", "3 fields", "1 value" for a payload that is not an
- * object, "2 fields so far" while it arrives. The size follows after a comma only when the
- * payload is above 1 KB ("2 fields, 1.4 KB").
+ * object, "2 fields so far" while it arrives. Fields only the JSON view shows follow after a comma
+ * ("3 fields, 1 in JSON only"). The size follows after a comma only when the payload is above 1 KB
+ * ("2 fields, 1.4 KB").
  */
 export function headerCount(value: unknown, options: HeaderCountOptions = {}): string {
   const count = describeContents(value);
   const counted = options.streaming === true ? `${count} so far` : count;
+  const hidden =
+    options.jsonOnly !== undefined && options.jsonOnly > 0
+      ? `${counted}, ${String(options.jsonOnly)} in JSON only`
+      : counted;
   return options.bytes !== undefined && options.bytes > 1024
-    ? `${counted}, ${formatBytes(options.bytes)}`
-    : counted;
+    ? `${hidden}, ${formatBytes(options.bytes)}`
+    : hidden;
+}
+
+/**
+ * The names in `jsonOnly` that `value` has as top-level properties: the fields the Fields view
+ * leaves out. A value that is not an object has none.
+ */
+export function jsonOnlyKeysOf(value: unknown, jsonOnly: readonly string[] | undefined): string[] {
+  if (jsonOnly === undefined || !isPlainRecord(value)) return [];
+  return jsonOnly.filter((key) => Object.hasOwn(value, key));
+}
+
+/** `value` without the top-level properties named in `hidden`; any other value as it is. */
+export function withoutKeys(value: unknown, hidden: readonly string[]): unknown {
+  if (hidden.length === 0 || !isPlainRecord(value)) return value;
+  return Object.fromEntries(Object.entries(value).filter(([key]) => !hidden.includes(key)));
 }
 
 const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;

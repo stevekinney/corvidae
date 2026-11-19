@@ -20,7 +20,7 @@
     type StatusDotWordLabel,
   } from '@lostgradient/cinder';
   import type { WorkflowState } from '@lostgradient/weft';
-  import { Copy, Ellipsis, MessageSquare, Play, RotateCcw } from '@lucide/svelte';
+  import { Copy, Ellipsis, MessageSquare, Play, RefreshCw, RotateCcw } from '@lucide/svelte';
 
   import { RUN_DETAIL_COPY, RUN_PAGE_COPY } from '../../../app/copy/runs.ts';
   import { TASK_COPY } from '../../../app/copy/tasks.ts';
@@ -40,6 +40,8 @@
   import RunCancel from './run-cancel.svelte';
   import RunCancelNote from './run-cancel-note.svelte';
   import { durationWords } from './run-rows.ts';
+  // A clause joined to the status line by a comma starts in lower case ("Running, started 40 s ago").
+  import { reasonClause } from '../../../lib/reason-clause.ts';
 
   interface RunHeaderProps {
     runId: string;
@@ -56,11 +58,18 @@
     status: StatusDotWordLabel | undefined;
     /** When the run started, in milliseconds, and how long it took once it is over. */
     startedAt?: number | undefined;
+    /** Whether the day and time are said; off when `phrases` say how long ago the run started (row 54l). */
+    showStamp?: boolean;
     tookMilliseconds?: number | undefined;
     /** What the duration is called: "took" for a run that finished, "ran" for one that was canceled. */
     tookWord?: 'took' | 'ran';
     /** The Bureau's task, when the run is one: it owns Cancel run. */
     task?: TaskView | undefined;
+    /**
+     * Whether the task's Cancel run is in the header. Off while the page docks a message bar, which
+     * holds Cancel run beside Send instead (rows 06b, 54l).
+     */
+    cancelInHeader?: boolean;
     /**
      * The parts of the status line after the day, the time and the duration ("12 s so far",
      * "waiting 4 min", "needs your approval to continue"), each set off by a comma.
@@ -68,6 +77,8 @@
     phrases?: readonly string[] | undefined;
     /** The signals a run waits for, said after the phrases as "waiting for signal" and each name in code. */
     waitingForSignals?: readonly string[] | undefined;
+    /** Where a failed run failed ("at step 2 of 4"), said right after the status word. */
+    stepNote?: string | undefined;
     /** A short phrase after the status, such as "answer sent, undo for 5 s" while an answer can be undone. */
     note?: string | undefined;
     /**
@@ -79,8 +90,33 @@
     chat?: { readonly href: string; readonly label: string } | undefined;
     /** Where Open goal or Open schedule goes, for a run that belongs to one, and what it says. */
     owner?: { readonly href: string; readonly label: string } | undefined;
-    /** The page that sets up another run of this run's workflow: Run again goes there. */
-    runAgain?: string | undefined;
+    /**
+     * Run again: where it goes (a new chat, or the page that sets up another run of the workflow),
+     * or `onRun` when it starts the schedule's run now. While `blocked` (no model provider is
+     * connected and the run needs one) it is `aria-disabled`, and a link to Settings › Models beneath
+     * it says why, tied to it by `aria-describedby`.
+     */
+    runAgain?:
+      | {
+          readonly href?: string | undefined;
+          readonly onRun?: (() => void) | undefined;
+          readonly blocked?: boolean | undefined;
+          readonly busy?: boolean | undefined;
+        }
+      | undefined;
+    /**
+     * Retry from this step, the primary action of a failed run of a workflow file (row 54z): it runs
+     * the run again in place from the step it failed at. Held while `gate` says the scope is missing.
+     */
+    retry?:
+      | {
+          readonly onRetry: () => void;
+          readonly busy?: boolean | undefined;
+          readonly gate?: ScopeGate | undefined;
+        }
+      | undefined;
+    /** The words beside the buttons: which version Retry from this step and Run again run on. */
+    besideButtons?: string | undefined;
     /** The engine's status of the run, when the engine holds it: it sets the actions in More. */
     engineStatus?: WorkflowState['status'] | undefined;
     /** The action being carried out, which disables the others. */
@@ -98,16 +134,21 @@
     fallbackTitle,
     status,
     startedAt,
+    showStamp = true,
     tookMilliseconds,
     tookWord = 'took',
     task,
+    cancelInHeader = true,
     phrases = [],
     waitingForSignals = [],
+    stepNote,
     note,
     cancelRun = false,
     chat,
     owner,
     runAgain,
+    retry,
+    besideButtons,
     engineStatus,
     pendingAction = null,
     actionGate = { disabled: false, title: undefined },
@@ -187,16 +228,31 @@
 {/snippet}
 
 {#snippet summary()}
-  {#if status !== undefined}<StatusLabel word={status} />{/if}{#if startedAt !== undefined}, <time
-      datetime={new Date(startedAt).toISOString()}
-      title={utcStamp(startedAt)}>{dayStamp(startedAt)}</time
-    >{/if}{#if tookMilliseconds !== undefined}{`, ${tookWord} ${durationWords(tookMilliseconds)}`}{/if}{#each phrases as phrase (phrase)}{`, ${phrase}`}{/each}{#each waitingForSignals as signal (signal)}{`, ${signalWords} `}<code
+  {#if status !== undefined}<StatusLabel
+      word={status}
+    />{/if}{#if stepNote !== undefined}{`, ${stepNote}`}{/if}{#if startedAt !== undefined && showStamp},
+    <time datetime={new Date(startedAt).toISOString()} title={utcStamp(startedAt)}
+      >{dayStamp(startedAt)}</time
+    >{/if}{#if tookMilliseconds !== undefined}{`, ${tookWord} ${durationWords(tookMilliseconds)}`}{/if}{#each phrases as phrase (phrase)}{`, ${reasonClause(phrase)}`}{/each}{#each waitingForSignals as signal (signal)}{`, ${signalWords} `}<code
       class="ib-identifier">{signal}</code
     >{/each}{#if note !== undefined}{`, ${note}`}{/if}
 {/snippet}
 
 {#snippet actions()}
   <div class="ib-run__actions">
+    {#if retry !== undefined}
+      {@const retrying = retry}
+      <Button
+        variant="primary"
+        label={RUN_DETAIL_COPY.instance.retryFromStep}
+        title={retrying.gate?.title}
+        disabled={retrying.gate?.disabled === true}
+        loading={retrying.busy === true}
+        onclick={() => retrying.onRetry()}
+      >
+        {#snippet leadingIcon()}<RefreshCw aria-hidden="true" size={16} />{/snippet}
+      </Button>
+    {/if}
     {#if chat !== undefined}
       <Button
         variant="secondary"
@@ -216,16 +272,41 @@
       />
     {/if}
     {#if runAgain !== undefined}
-      <Button
-        variant="secondary"
-        href={router.href(runAgain)}
-        label={RUN_DETAIL_COPY.runAgain}
-        onclick={(event) => openLink(event, runAgain)}
-      >
-        {#snippet leadingIcon()}<Play aria-hidden="true" size={16} />{/snippet}
-      </Button>
+      {@const again = runAgain}
+      <span class="ib-run__again">
+        {#if again.blocked === true}
+          <!-- Held: the link that says why is the header's caption under the actions (row 54f). -->
+          <Button
+            variant="secondary"
+            label={RUN_DETAIL_COPY.runAgain}
+            aria-disabled="true"
+            aria-describedby="ib-run-again-blocked"
+          >
+            {#snippet leadingIcon()}<Play aria-hidden="true" size={16} />{/snippet}
+          </Button>
+        {:else if again.href !== undefined}
+          {@const path = again.href}
+          <Button
+            variant="secondary"
+            href={router.href(path)}
+            label={RUN_DETAIL_COPY.runAgain}
+            onclick={(event) => openLink(event, path)}
+          >
+            {#snippet leadingIcon()}<Play aria-hidden="true" size={16} />{/snippet}
+          </Button>
+        {:else}
+          <Button
+            variant="secondary"
+            label={RUN_DETAIL_COPY.runAgain}
+            loading={again.busy === true}
+            onclick={() => again.onRun?.()}
+          >
+            {#snippet leadingIcon()}<Play aria-hidden="true" size={16} />{/snippet}
+          </Button>
+        {/if}
+      </span>
     {/if}
-    {#if task !== undefined}<RunCancel
+    {#if task !== undefined && cancelInHeader}<RunCancel
         {task}
         showStatus={false}
         bind:receipt={cancelReceipt}
@@ -277,8 +358,30 @@
   </div>
 {/snippet}
 
-<PageHeader data-run-header headingLevel={1} title={heading} description={summary} {actions} />
-{#if task !== undefined}
+<!-- Under the actions, Cinder's caption: which version each button runs on (row 54z), and the link
+     to connect a provider while Run again is held (row 54f). -->
+{#snippet actionsNote()}
+  {#if besideButtons !== undefined}<span data-run-beside>{besideButtons}</span>{/if}
+  {#if runAgain?.blocked === true}
+    <a
+      id="ib-run-again-blocked"
+      class="ib-run__again-note"
+      href={router.href(RUN_DETAIL_COPY.providersPath)}
+      onclick={(event) => openLink(event, RUN_DETAIL_COPY.providersPath)}
+      >{RUN_DETAIL_COPY.connectProvider}</a
+    >
+  {/if}
+{/snippet}
+
+<PageHeader
+  data-run-header
+  headingLevel={1}
+  title={heading}
+  description={summary}
+  {actions}
+  {...besideButtons !== undefined || runAgain?.blocked === true ? { actionsNote } : {}}
+/>
+{#if task !== undefined && cancelInHeader}
   <RunCancelNote
     {task}
     receipt={cancelReceipt}

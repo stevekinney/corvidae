@@ -187,6 +187,24 @@ describe('a scoped hook', () => {
     expect(await run.hooks.deliveries(chats.id)).toHaveLength(1);
   });
 
+  it('matches an event about one goal attempt by the agent that attempt ran as (COR-2425)', async () => {
+    // Goal 1 was pursued by `alpha` for attempt 0 and by `beta` from attempt 1 on.
+    const run = setup({
+      agentOfGoal: (goalRunId, attemptIndex) =>
+        Promise.resolve(goalRunId !== 'goal-1' ? undefined : attemptIndex === 0 ? 'alpha' : 'beta'),
+    });
+    const alpha = await run.notifyHook(['goal.succeeded'], { kind: 'agent', id: 'alpha' });
+    const beta = await run.notifyHook(['goal.succeeded'], { kind: 'agent', id: 'beta' });
+
+    await run.fire('goal.succeeded', { goalRunId: 'goal-1', attemptIndex: 0 });
+    expect(await run.hooks.deliveries(alpha.id)).toHaveLength(1);
+    expect(await run.hooks.deliveries(beta.id)).toHaveLength(0);
+
+    await run.fire('goal.succeeded', { goalRunId: 'goal-1', attemptIndex: 1 });
+    expect(await run.hooks.deliveries(alpha.id)).toHaveLength(1);
+    expect(await run.hooks.deliveries(beta.id)).toHaveLength(1);
+  });
+
   it('asks the Bureau once for an event however many scoped hooks list it, and never without one', async () => {
     const run = setup();
     await run.notifyHook(['run.settled']);

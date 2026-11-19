@@ -65,6 +65,12 @@ export type PayloadInspectorProps = Omit<HTMLAttributes<HTMLElement>, 'class' | 
    */
   label?: string;
   /**
+   * A name drawn a space after the label, set in code a weight lighter, such as an output's name:
+   * with `label` "Output" and `labelCode` "notes" the header reads "Output `notes`", with no comma,
+   * and the card is named "Output, notes". Ignored without a `label`.
+   */
+  labelCode?: string;
+  /**
    * Which view the payload shows. `'fields'` lists each property with a
    * sentence-case label; `'json'` shows the stored payload with its raw keys.
    * Bindable, and switched by the Fields / JSON control in the header row.
@@ -87,6 +93,20 @@ export type PayloadInspectorProps = Omit<HTMLAttributes<HTMLElement>, 'class' | 
    * pass `[]` to hide nothing.
    */
   redact?: readonly string[];
+  /**
+   * Top-level property names the Fields view leaves out and only the JSON view shows, such as a
+   * run's identifier or other internals. The Fields list ends with a muted "1 more in JSON" line
+   * so nothing hides silently, and the header counts every top-level field and says how many are
+   * JSON only ("3 fields, 1 in JSON only"). A name the value does not have is ignored, and so is
+   * the list for a value that is not an object.
+   */
+  jsonOnly?: readonly string[];
+  /**
+   * What the Fields view lays out and counts, when it is not `value` itself: a run's input
+   * unwrapped from the envelope the engine stores it in, with the envelope's keys named in
+   * `jsonOnly`. The JSON view, the size and Copy always show `value`, the payload as stored.
+   */
+  fieldsValue?: unknown;
   /**
    * Writes a value in the Fields view as the caller wants it, such as cents as
    * dollars. It receives the path and the stored value; return `undefined` to
@@ -188,6 +208,12 @@ export type PayloadInspectorSchemaProps = {
    */
   label?: string;
   /**
+   * A name drawn a space after the label, set in code a weight lighter, such as an output's name:
+   * with `label` "Output" and `labelCode` "notes" the header reads "Output `notes`", with no comma,
+   * and the card is named "Output, notes". Ignored without a `label`.
+   */
+  labelCode?: string;
+  /**
    * Secret paths: values to hide in both views and in Copy, before anything is
    * laid out. Each path is dot-separated property names from the root, array
    * positions count from 1, and `*` stands for any one name or position (`headers.authorization`,
@@ -197,6 +223,14 @@ export type PayloadInspectorSchemaProps = {
    * pass `[]` to hide nothing.
    */
   redact?: readonly string[];
+  /**
+   * Top-level property names the Fields view leaves out and only the JSON view shows, such as a
+   * run's identifier or other internals. The Fields list ends with a muted "1 more in JSON" line
+   * so nothing hides silently, and the header counts every top-level field and says how many are
+   * JSON only ("3 fields, 1 in JSON only"). A name the value does not have is ignored, and so is
+   * the list for a value that is not an object.
+   */
+  jsonOnly?: readonly string[];
   /**
    * True while the payload is still arriving. `value` is the JSON text received
    * so far: fields appear as they complete, the last one shows "Receiving…", the

@@ -113,11 +113,11 @@ describe('a goal as a row', () => {
     });
   });
 
-  test('is titled by its identifier when the goal has no name, and has no time when the Bureau’s is unreadable', () => {
+  test('is titled by its identifier in words when the goal has no name, as everywhere a goal is named, and has no time when the Bureau’s is unreadable', () => {
     const row = goalRow(
       goalFixture('goal-2', { identity: { name: ' ', version: '1' }, createdAt: 'not a time' }),
     );
-    expect(row.title).toBe('goal-2');
+    expect(row.title).toBe('Goal 2');
     expect(row.startedAt).toBeNull();
   });
 });

@@ -24,6 +24,7 @@ import {
   type BureauWorldStub,
 } from '../../../lib/bureau-world.test-support.ts';
 import { settle, until } from '../../../lib/fake-timers.test-support.ts';
+import { viewerTimeZone } from '../../../lib/format/clock.ts';
 import { router } from '../../../lib/router.svelte.ts';
 import { AUTHORIZATION_SCOPES } from '../../../lib/scopes.svelte.ts';
 import { landAt } from '../../chat/pages.test-support.ts';
@@ -32,6 +33,7 @@ import {
   RUN_LIST_LOADING_DELAY_MILLISECONDS,
   RUN_LIST_STILL_LOADING_MILLISECONDS,
 } from './run-list-states.svelte';
+import { runDayGroup } from './run-rows.ts';
 
 let stub: BureauWorldStub | undefined;
 let monitor: ConnectionMonitor | undefined;
@@ -215,6 +217,13 @@ describe('a read in progress (rows 10k, 10l, 14m, 14n, 14p and 52z)', () => {
     expect(
       view.container.querySelectorAll('.cinder-skeleton-row .cinder-skeleton-time-bar'),
     ).toHaveLength(5);
+    // The band is the real one, today and the zone the times are in (row 52z), not a bar.
+    const today = runDayGroup(Date.now(), Date.now(), viewerTimeZone());
+    const band = view.container.querySelector('.cinder-skeleton-day-band') as HTMLElement;
+    expect(band.querySelector('.cinder-skeleton-day-label')?.textContent).toBe(today.label);
+    expect(band.querySelector('.cinder-skeleton-day-detail')?.textContent).toBe(today.detail);
+    expect(today.label).toMatch(/^Today, /);
+    expect(band.querySelector('.cinder-skeleton')).toBeNull();
     // All six segments, none with a count: the counts wait for the data.
     for (const word of SEGMENT_WORDS) {
       expect(

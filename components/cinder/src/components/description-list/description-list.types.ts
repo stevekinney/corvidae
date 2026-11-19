@@ -112,6 +112,12 @@ export type DescriptionListItem = {
    */
   note?: string;
   /**
+   * An identifier the note starts with, drawn in the mono family at the note's size, such as a
+   * workflow's `agentRun` before "(built in)". It is drawn with or without `note`, a space apart
+   * from it, and is left out when empty.
+   */
+  noteCode?: string;
+  /**
    * Where the row leads, such as the page of the record a value names. A row with an address ends
    * in a trailing chevron, and the whole row is its link target; a row without one is read-only and
    * draws no chevron, so a row that goes somewhere never looks like one that does not. The link is

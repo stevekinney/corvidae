@@ -33,15 +33,17 @@ type FileEntry = Exclude<ListedWorkflow, { readonly kind: 'code' }>;
  */
 export type WorkflowFileListing = AbsentTolerant<FileEntry>;
 
-/** A file as a Bureau that predates `title`, `steps` or `listener` shows it: without them. */
-type AbsentTolerant<File extends Pick<FileEntry, 'title' | 'steps' | 'listener'>> = Omit<
-  File,
-  'title' | 'steps' | 'listener'
-> & {
-  readonly title?: File['title'] | undefined;
-  readonly steps?: File['steps'] | undefined;
-  readonly listener?: File['listener'] | undefined;
-};
+/**
+ * A file as a Bureau that predates `title`, `steps`, `listener` or `outputName` (COR-2424) shows
+ * it: without them.
+ */
+type AbsentTolerant<File extends Pick<FileEntry, 'title' | 'steps' | 'listener' | 'outputName'>> =
+  Omit<File, 'title' | 'steps' | 'listener' | 'outputName'> & {
+    readonly title?: File['title'] | undefined;
+    readonly steps?: File['steps'] | undefined;
+    readonly listener?: File['listener'] | undefined;
+    readonly outputName?: File['outputName'] | undefined;
+  };
 
 /**
  * A problem the Bureau found in a workflow file: a code, a message, and the field-level issues
@@ -171,6 +173,29 @@ export async function getLatestSavedSteps(
   return revisions[0]?.steps;
 }
 
+type SavedVersion = BureauOutput<'bureau.workflows.history'>['revisions'][number];
+
+/**
+ * One saved version of a workflow: its number (`1.2.0`) and the engine revision it registered as,
+ * and the version's steps as written, titles included, which the engine's revision drops.
+ */
+export type WorkflowVersionLabel = Pick<SavedVersion, 'version' | 'current' | 'workflowVersion'> & {
+  readonly steps?: SavedVersion['steps'] | undefined;
+};
+
+/**
+ * The saved versions of a workflow, newest first, as `bureau.workflows.history` numbers them
+ * (`1.0.0`, `1.1.0`, …), each with the engine revision it registered as, so the run page can say
+ * "1.2.0" for the revision a run ran (COR-2424).
+ */
+export async function listWorkflowVersionLabels(
+  id: string,
+  options?: Options,
+): Promise<readonly WorkflowVersionLabel[]> {
+  const { revisions } = await bureauClient['bureau.workflows.history']({ id }, options);
+  return revisions;
+}
+
 /** A code-defined workflow's description and registered contract. Anything the caller may not read is a `NotFound` fault. */
 export async function getCodeWorkflow(id: string, options?: Options): Promise<CodeWorkflow> {
   return bureauClient['bureau.workflows.internal.get']({ id }, options);
@@ -235,13 +260,15 @@ export type WorkflowFileRun = Omit<RunSummary, 'origin'> & {
 /** One workflow-file run detail returned by the Bureau get operation, with what started it and how it ended. */
 export type WorkflowFileRunDetail = Omit<
   BureauOutput<'bureau.workflows.runs.get'>,
-  'origin' | 'result' | 'error' | 'finishReason'
+  'origin' | 'result' | 'error' | 'finishReason' | 'outputName'
 > & {
   readonly origin?: RunSummary['origin'] | undefined;
   /** The Bureau answers `null` for a result or an error the instance has not got. */
   readonly result?: unknown;
   readonly error?: string | null | undefined;
   readonly finishReason?: BureauOutput<'bureau.workflows.runs.get'>['finishReason'] | undefined;
+  /** COR-2424: the name the version the run ran gives what it produces; a Bureau before it says none. */
+  readonly outputName?: string | null | undefined;
 };
 
 /**
@@ -265,6 +292,45 @@ export async function getWorkflowFileRun(
   options?: Options,
 ): Promise<WorkflowFileRunDetail> {
   return workflowRunOf(await bureauClient['bureau.workflows.runs.get']({ runId }, options));
+}
+
+/** What `bureau.workflows.runs.retry` answers: the instance is running again from `step`. */
+export type WorkflowRunRetry = BureauOutput<'bureau.workflows.runs.retry'>;
+
+/**
+ * Runs a failed instance of a workflow file again from the step it failed at, in place and on the
+ * version it ran (COR-2424, `bureau.workflows.runs.retry`). `step` is counted from one and must be
+ * the step it failed at; `retryId` makes a repeat of this request answer what the first did. A
+ * refusal is an `Unprocessable` fault whose `data.reason` says why.
+ */
+export async function retryWorkflowRun(
+  runId: string,
+  step: number,
+  retryId: string,
+  options?: Options,
+): Promise<WorkflowRunRetry> {
+  return bureauClient['bureau.workflows.runs.retry']({ runId, step, retryId }, options);
+}
+
+/** An instance's history, as `bureau.workflows.runs.history` sanitizes it. */
+export type WorkflowRunHistory = BureauOutput<'bureau.workflows.runs.history'>;
+
+/**
+ * One event of an instance's history; its `step` is the step the event belongs to, by its index
+ * from zero, or `null`.
+ */
+export type WorkflowRunHistoryEvent = WorkflowRunHistory['events'][number];
+
+/**
+ * The bounded, sanitized step history of one instance of a workflow file
+ * (`bureau.workflows.runs.history`): which step it started, when, and what each activity was.
+ * A not-found fault when the Bureau does not hold the instance.
+ */
+export async function getWorkflowRunHistory(
+  runId: string,
+  options?: Options,
+): Promise<WorkflowRunHistory> {
+  return bureauClient['bureau.workflows.runs.history']({ runId, limit: 500 }, options);
 }
 
 /** The newest `limit` instances of one workflow file. */

@@ -72,6 +72,18 @@
   gap: var(--cinder-space-2);
 }
 
+/* Run again, and the link to Settings beneath it while no provider is connected to run it. */
+.ib-run__again {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--cinder-space-1);
+}
+
+.ib-run__again-note {
+  font-size: var(--cinder-text-sm);
+}
+
 .ib-run__note,
 .ib-run__cancel-note p {
   margin: 0;
@@ -206,6 +218,14 @@
   color: var(--cinder-text-muted);
   font-size: var(--cinder-text-sm);
   font-variant-numeric: tabular-nums;
+}
+
+/* The actions inside a failed step's block (row 14t): retry, run again, open the step. */
+.ib-run-happened__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--cinder-space-2);
 }
 
 .ib-run-happened__detail {

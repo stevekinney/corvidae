@@ -65,6 +65,13 @@ export interface WorkflowRevisionContent {
   readonly inputSchema: Readonly<Record<string, unknown>> | null;
   /** The output schema, or `null`. */
   readonly outputSchema: Readonly<Record<string, unknown>> | null;
+  /**
+   * The name of what an instance produces (COR-2424). Present only when the file gives one: a
+   * version recorded before the field existed has no key, and a file without one adds none, so
+   * the digest of every version without one is the digest it always had and no new version is
+   * recorded for a file that did not change.
+   */
+  readonly outputName?: string;
 }
 
 /** The content a usable file's version is made of. */
@@ -76,6 +83,7 @@ export function revisionContentOf(file: WorkflowFileContents): WorkflowRevisionC
     steps: file.steps,
     inputSchema: file.inputSchema,
     outputSchema: file.outputSchema,
+    ...(file.outputName === null ? {} : { outputName: file.outputName }),
   };
 }
 
@@ -101,6 +109,12 @@ export type WorkflowRevisionChange =
     }
   | { readonly kind: 'input-schema'; readonly breaking: true }
   | { readonly kind: 'output-schema'; readonly breaking: true }
+  | {
+      readonly kind: 'output-name';
+      readonly from: string | null;
+      readonly to: string | null;
+      readonly breaking: false;
+    }
   | { readonly kind: 'step-added'; readonly step: number; readonly breaking: false }
   | { readonly kind: 'step-removed'; readonly step: number; readonly breaking: true }
   | { readonly kind: 'step-replaced'; readonly step: number; readonly breaking: true }
@@ -276,6 +290,17 @@ export function compareWorkflowRevisions(
   }
   if (!same(before.outputSchema, after.outputSchema)) {
     changes.push({ kind: 'output-schema', breaking: true });
+  }
+  // Renaming the output says what a run produces in other words; a run in flight carries on.
+  const outputNameBefore = before.outputName ?? null;
+  const outputNameAfter = after.outputName ?? null;
+  if (outputNameBefore !== outputNameAfter) {
+    changes.push({
+      kind: 'output-name',
+      from: outputNameBefore,
+      to: outputNameAfter,
+      breaking: false,
+    });
   }
   const shared = Math.min(before.steps.length, after.steps.length);
   for (let index = 0; index < shared; index += 1) {

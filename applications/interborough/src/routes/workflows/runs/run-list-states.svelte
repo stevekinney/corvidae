@@ -27,10 +27,15 @@
 
   import { RETRY_LABEL } from '../../../app/copy/views.ts';
   import { TASK_COPY } from '../../../app/copy/tasks.ts';
+  import { runDayGroup } from './run-rows.ts';
 
   interface Props {
     /** Whether the runs are being read, or the person canceled the read. */
     kind: 'loading' | 'canceled';
+    /** The clock the day band names today from, in epoch milliseconds. */
+    now: number;
+    /** The IANA zone the band names the times' zone of: the viewer's. */
+    zone: string;
     /** The filter bar as the page draws it while it has no counts. */
     bar: Snippet;
     /** Called when Cancel, in the status line a slow read shows, is pressed. */
@@ -39,7 +44,10 @@
     onRetry: () => void;
   }
 
-  let { kind, bar, onCancel, onRetry }: Props = $props();
+  let { kind, now, zone, bar, onCancel, onRetry }: Props = $props();
+
+  // The band the rows will sit under: today, and the zone their times are in (row 52z).
+  const today = $derived(runDayGroup(now, now, zone));
 
   // The skeleton keeps its own time, so the filter bar waits the same delay beside it.
   let revealed = $state(false);
@@ -71,6 +79,8 @@
     variant="list"
     rows={5}
     dayBand
+    dayBandLabel={today.label}
+    dayBandDetail={today.detail}
     delay={RUN_LIST_LOADING_DELAY_MILLISECONDS}
     stillLoadingAfter={RUN_LIST_STILL_LOADING_MILLISECONDS}
     stillLoadingLabel={TASK_COPY.list.stillLoading}

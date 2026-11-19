@@ -136,6 +136,7 @@ describe('the wire listing of a plugin code workflow', () => {
           description: null,
           inputSchema: null,
           outputSchema: null,
+          outputName: null,
           problem: null,
         },
         CODE_ENTRY,

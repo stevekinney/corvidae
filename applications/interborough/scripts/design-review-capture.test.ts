@@ -17,10 +17,14 @@ import {
 import {
   captureCount,
   captureDesignReview,
+  capturedRoutes,
   hostEnvironment,
   parseArguments,
   portIsFree,
   probeSocketHandlers,
+  routesMissingFromTitles,
+  SHOWCASE_SPECIFICATION_PATHS,
+  specificationsThatRanNothing,
   type CaptureEnvironment,
 } from './design-review-capture.ts';
 import { endToEndPort } from './environment-configuration.ts';
@@ -72,11 +76,16 @@ describe('parseArguments', () => {
       'tests/e2e/chat-availability.spec.ts',
       'tests/e2e/chat-archive.spec.ts',
       'tests/e2e/workflow-builder-cards.spec.ts',
+      'tests/e2e/runs-states.spec.ts',
+      'tests/e2e/run-page-states.spec.ts',
+      'tests/e2e/run-page-live-states.spec.ts',
+      'tests/e2e/goal-page-states.spec.ts',
+      // The view states are a showcase specification too, run once where first listed.
+      'tests/e2e/15-view-states.spec.ts',
       'tests/e2e/agents-reviews-design-states.spec.ts',
       'tests/e2e/hooks.spec.ts',
       'tests/e2e/hooks-states.spec.ts',
       'tests/e2e/responsive.spec.ts',
-      'tests/e2e/15-view-states.spec.ts',
     ]);
     expect(options.grep).toBeUndefined();
     expect(options.out).toEndWith('/tmp/design-review/2026-11-02T08-30-00-000Z');
@@ -140,6 +149,11 @@ describe('parseArguments', () => {
       'tests/e2e/chat-availability.spec.ts',
       'tests/e2e/chat-archive.spec.ts',
       'tests/e2e/workflow-builder-cards.spec.ts',
+      'tests/e2e/runs-states.spec.ts',
+      'tests/e2e/run-page-states.spec.ts',
+      'tests/e2e/run-page-live-states.spec.ts',
+      'tests/e2e/goal-page-states.spec.ts',
+      'tests/e2e/15-view-states.spec.ts',
       'tests/e2e/agents-reviews-design-states.spec.ts',
       'tests/e2e/hooks.spec.ts',
       'tests/e2e/hooks-states.spec.ts',
@@ -192,6 +206,11 @@ describe('parseArguments', () => {
       'tests/e2e/chat-availability.spec.ts',
       'tests/e2e/chat-archive.spec.ts',
       'tests/e2e/workflow-builder-cards.spec.ts',
+      'tests/e2e/runs-states.spec.ts',
+      'tests/e2e/run-page-states.spec.ts',
+      'tests/e2e/run-page-live-states.spec.ts',
+      'tests/e2e/goal-page-states.spec.ts',
+      'tests/e2e/15-view-states.spec.ts',
       'tests/e2e/agents-reviews-design-states.spec.ts',
       'tests/e2e/hooks.spec.ts',
       'tests/e2e/hooks-states.spec.ts',
@@ -220,6 +239,153 @@ describe('parseArguments', () => {
     expect(parseArguments(['--color', 'dark'], NOW)).toBe('unknown flag --color');
     expect(parseArguments(['--grep'], NOW)).toBe('--grep needs a value');
     expect(parseArguments(['--out', '--scheme', 'dark'], NOW)).toBe('--out needs a value');
+  });
+});
+
+/**
+ * The showcase specifications whose titles do not yet name every route they capture, so a route
+ * filter can skip their captures. This list only shrinks: a specification leaves it once its
+ * titles name its routes, and none may join it.
+ */
+const TITLES_WITHOUT_ROUTES: readonly string[] = [
+  'tests/e2e/shell-chrome.spec.ts',
+  'tests/e2e/shell-search.spec.ts',
+  'tests/e2e/schedules-list.spec.ts',
+  'tests/e2e/schedules-states.spec.ts',
+  'tests/e2e/schedules-edit.spec.ts',
+  'tests/e2e/schedules-detail.spec.ts',
+  'tests/e2e/health-overview.spec.ts',
+  'tests/e2e/health-states.spec.ts',
+  'tests/e2e/health-workers-states.spec.ts',
+  'tests/e2e/health-storage.spec.ts',
+  'tests/e2e/health-audit.spec.ts',
+  'tests/e2e/health-audit-states.spec.ts',
+  'tests/e2e/settings-allowed-models.spec.ts',
+  'tests/e2e/first-run.spec.ts',
+  'tests/e2e/home.spec.ts',
+  'tests/e2e/chat-list.spec.ts',
+  'tests/e2e/chat-page.spec.ts',
+  'tests/e2e/chat-responsive.spec.ts',
+  'tests/e2e/chat-tool-call-turn.spec.ts',
+  'tests/e2e/chat-states.spec.ts',
+  'tests/e2e/chat-new.spec.ts',
+  'tests/e2e/chat-new-states.spec.ts',
+  'tests/e2e/chat-new-workflows.spec.ts',
+  'tests/e2e/agent-duplicate.spec.ts',
+  'tests/e2e/agent-plugin-editing.spec.ts',
+  'tests/e2e/chat-availability.spec.ts',
+  'tests/e2e/chat-archive.spec.ts',
+  'tests/e2e/workflow-builder-cards.spec.ts',
+];
+
+describe('the showcase specifications’ titles', () => {
+  const applicationDirectory = join(import.meta.dir, '..');
+
+  test('name, in the test or the describe around it, every route the test captures', async () => {
+    const missing: string[] = [];
+    for (const specification of SHOWCASE_SPECIFICATION_PATHS) {
+      if (TITLES_WITHOUT_ROUTES.includes(specification)) continue;
+      const source = await readFile(join(applicationDirectory, specification), 'utf8');
+      for (const { title, route } of routesMissingFromTitles(source)) {
+        missing.push(`${specification}: "${title}" captures ${route}`);
+      }
+    }
+    expect(missing).toEqual([]);
+  });
+
+  test('the allowance only shrinks: every specification on it still misses a route', async () => {
+    for (const specification of TITLES_WITHOUT_ROUTES) {
+      const source = await readFile(join(applicationDirectory, specification), 'utf8');
+      expect(routesMissingFromTitles(source).length, specification).toBeGreaterThan(0);
+    }
+  });
+
+  test('find a capture whose route neither its test nor its describe names', () => {
+    const source = [
+      "test.describe('/runs at 375 pixels', () => {",
+      "  test('the list', async () => { await capture({ route: '/runs' }); });",
+      "  test('the page', async () => { await capture({ route: '/runs/:run' }); });",
+      '});',
+      "test('a run', async () => { await capture({ route: '/goals' }); });",
+    ].join('\n');
+    // `/runs` in the describe does not name `/runs/:run`, which a `--grep '/runs/:run'` asks for.
+    expect(routesMissingFromTitles(source)).toEqual([
+      { title: 'the page', route: '/runs/:run' },
+      { title: 'a run', route: '/goals' },
+    ]);
+    expect(capturedRoutes(source)).toEqual(['/runs', '/runs/:run', '/goals']);
+  });
+});
+
+describe('specificationsThatRanNothing', () => {
+  const sources: Record<string, string> = {
+    'tests/e2e/run-page-states.spec.ts': [
+      'test.describe(`/runs/:run at ${String(width)} pixels`, () => {',
+      "  test('a failed instance', async () => { capture({ route: '/runs/:run' }); });",
+      '});',
+    ].join('\n'),
+    // Captures `/runs`, but under a title that does not name it, so `--grep '/runs|/goals'` does
+    // not reach it (the titles test is what catches that), and it must not be flagged here.
+    'tests/e2e/shell-chrome.spec.ts':
+      "test('at 200% text the shell reflows', async () => { capture({ route: '/runs' }); });",
+    'tests/e2e/chat-page.spec.ts':
+      "test('/chats/:chat opens the details', async () => { capture({ route: '/chats/:chat' }); });",
+  };
+  const sourceOf = (path: string) => sources[path] ?? '';
+  const listed = Object.keys(sources);
+
+  /**
+   * One file's suite as CI's capture writes it: Playwright names the file from the configuration's
+   * `testDir` (`./tests`), so `e2e/run-page-states.spec.ts`, and nests the describes under it.
+   */
+  const ciSuite = (file: string, specs: number) => ({
+    title: file,
+    file,
+    column: 0,
+    line: 0,
+    specs: [],
+    suites: [
+      {
+        title: '/runs/:run at 1280 pixels',
+        file,
+        line: 41,
+        column: 3,
+        specs: Array.from({ length: specs }, (_, index) => ({
+          title: `test ${String(index)}`,
+          ok: true,
+          tags: [],
+          tests: [{ projectName: 'chromium', status: 'expected', results: [{ status: 'passed' }] }],
+          file,
+          line: 42,
+          column: 5,
+        })),
+      },
+    ],
+  });
+
+  test('counts a report written as CI writes it, file paths from testDir, as the listed specification', () => {
+    const report = {
+      config: { rootDir: '/__w/corvidae/corvidae/applications/interborough/tests' },
+      suites: [ciSuite('e2e/run-page-states.spec.ts', 5), ciSuite('e2e/chat-page.spec.ts', 1)],
+    };
+    expect(specificationsThatRanNothing(report, listed, '/runs|/goals', sourceOf)).toEqual([]);
+    expect(specificationsThatRanNothing(report, listed, undefined, sourceOf)).toEqual([
+      'tests/e2e/shell-chrome.spec.ts',
+    ]);
+  });
+
+  test('names a specification whose titles the filter matches and that ran no test', () => {
+    const report = { suites: [ciSuite('e2e/chat-page.spec.ts', 1)] };
+    expect(specificationsThatRanNothing(report, listed, '/runs|/goals', sourceOf)).toEqual([
+      'tests/e2e/run-page-states.spec.ts',
+    ]);
+  });
+
+  test('does not flag one whose titles the filter does not match, whatever it captures', () => {
+    const report = { suites: [ciSuite('e2e/run-page-states.spec.ts', 2)] };
+    expect(specificationsThatRanNothing(report, listed, '/runs|/goals', sourceOf)).not.toContain(
+      'tests/e2e/shell-chrome.spec.ts',
+    );
   });
 });
 
@@ -480,8 +646,16 @@ describe('captureDesignReview', () => {
     ).toBe(0);
     expect(calls.probed).toEqual([endToEndPort()]);
     expect(calls.commands.map((call) => call.variables)).toEqual([
-      { INTERBOROUGH_DESIGN_REVIEW_CAPTURE: out, INTERBOROUGH_DESIGN_REVIEW_COLOR_SCHEME: 'light' },
-      { INTERBOROUGH_DESIGN_REVIEW_CAPTURE: out, INTERBOROUGH_DESIGN_REVIEW_COLOR_SCHEME: 'dark' },
+      {
+        INTERBOROUGH_DESIGN_REVIEW_CAPTURE: out,
+        INTERBOROUGH_DESIGN_REVIEW_COLOR_SCHEME: 'light',
+        PLAYWRIGHT_JSON_OUTPUT_NAME: join(out, 'playwright-light.json'),
+      },
+      {
+        INTERBOROUGH_DESIGN_REVIEW_CAPTURE: out,
+        INTERBOROUGH_DESIGN_REVIEW_COLOR_SCHEME: 'dark',
+        PLAYWRIGHT_JSON_OUTPUT_NAME: join(out, 'playwright-dark.json'),
+      },
     ]);
     expect(calls.commands[0]?.command).toEqual([
       'bun',
@@ -490,6 +664,7 @@ describe('captureDesignReview', () => {
       'test',
       '--config',
       'playwright.config.ts',
+      '--reporter=list,json',
       'tests/e2e/15-view-states.spec.ts',
       '--grep',
       'agents',
@@ -503,13 +678,40 @@ describe('captureDesignReview', () => {
       specifications: ['tests/e2e/15-view-states.spec.ts'],
       grep: 'agents',
       runs: [
-        { scheme: 'light', exitCode: 0 },
-        { scheme: 'dark', exitCode: 0 },
+        { scheme: 'light', exitCode: 0, ranNothing: [] },
+        { scheme: 'dark', exitCode: 0, ranNothing: [] },
       ],
       clean: true,
       geometry: { captures: 3, measured: 0, coarse: 0, unscaled: 0, findings: 0 },
     });
     expect(calls.out).not.toContain('geometry findings');
+  });
+
+  test('exits 1 and names a listed specification the filter reaches that ran no test', async () => {
+    const stand = standIn({ manifestLines: 2 });
+    const calls = stand.calls;
+    // The stand-in Playwright writes a report in which the view states ran nothing.
+    const environment: CaptureEnvironment = {
+      ...stand.environment,
+      run: async (command, variables) => {
+        const code = await stand.environment.run(command, variables);
+        await writeFile(
+          variables['PLAYWRIGHT_JSON_OUTPUT_NAME'] ?? '',
+          JSON.stringify({ suites: [] }),
+        );
+        return code;
+      },
+    };
+    expect(
+      await captureDesignReview(
+        ['--out', directory, '--specs', 'states', '--scheme', 'light', '--grep', '/runs'],
+        environment,
+      ),
+    ).toBe(1);
+    expect(calls.err).toContain('tests/e2e/15-view-states.spec.ts ran no test in light');
+    const summary = JSON.parse(await readFile(join(directory, 'summary.json'), 'utf8'));
+    expect(summary.clean).toBe(false);
+    expect(summary.runs[0].ranNothing).toEqual(['tests/e2e/15-view-states.spec.ts']);
   });
 
   test('audits what the captures measured and names the geometry report', async () => {

@@ -168,7 +168,11 @@
               {#if tags.tags.length > 0}
                 <ul class="cinder-description-list__tag-list" aria-label={item.term}>
                   {#each tags.tags as tag (tag)}
-                    <li><Chip label={tag} size="sm" /></li>
+                    <!-- A tag longer than the row ends in an ellipsis and keeps its whole text as
+                         its title, so it never runs out of the row. -->
+                    <li class="cinder-description-list__tag" title={tag}>
+                      <Chip label={tag} size="sm" />
+                    </li>
                   {/each}
                 </ul>
               {:else if !tags.systemTagCount && !tags.onAddTag}
@@ -183,8 +187,12 @@
                 <Button size="xs" variant="ghost" onclick={tags.onAddTag}>Add a tag</Button>
               {/if}
             </span>
-          {/if}{#if item.note !== undefined && item.note !== ''}{' '}<span
-              class="cinder-description-list__note">{item.note}</span
+          {/if}{#if (item.note !== undefined && item.note !== '') || (item.noteCode !== undefined && item.noteCode !== '')}{' '}<span
+              class="cinder-description-list__note"
+              >{#if item.noteCode !== undefined && item.noteCode !== ''}<code
+                  class="cinder-description-list__note-code">{item.noteCode}</code
+                >{#if item.note !== undefined && item.note !== ''}{' '}{/if}{/if}{item.note ??
+                ''}</span
             >{/if}
         </div>
         {#if actions}

@@ -36,12 +36,16 @@ import type { ApiPrincipal } from './api-routes.ts';
 export const BUREAU_METHOD_SCOPES: ReadonlyMap<string, ApiScope> = new Map<string, ApiScope>([
   ['bureau.workflows.runs.list', 'runs:read'],
   ['bureau.workflows.runs.get', 'runs:read'],
+  // COR-2424: the run page reads an instance's step history, which is as much a read of the run.
+  ['bureau.workflows.runs.history', 'runs:read'],
   ['bureau.tasks.list', 'runs:read'],
   ['bureau.tasks.get', 'runs:read'],
   ['bureau.tasks.inspect', 'runs:read'],
   // COR-2113: every check result links to the run or goal it judged, so the list is a read of runs.
   ['bureau.checks.list', 'runs:read'],
   ['bureau.workflows.start', 'runs:write'],
+  // COR-2424: running a failed run again from its failed step changes the run, as a start does.
+  ['bureau.workflows.runs.retry', 'runs:write'],
   ['bureau.workflows.signal', 'runs:write'],
   ['bureau.tasks.cancel', 'runs:write'],
   ['bureau.contexts.input', 'chats:write'],

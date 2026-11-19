@@ -5,9 +5,11 @@
    * bar's last crumb), its status word with a qualifier for what it is doing ("Running, checking the
    * result"), a note that says how it ended or what its attempt waits on, then its attempts newest
    * first (`goal-attempts.svelte`) with a Details panel beside them. Every rule for what it says is
-   * in `goal-page-rows.ts`; the goal's view carries neither its prompt nor its check's feedback, so
-   * the page says neither. Each attempt's Verdict button opens what the check decided about it, read
-   * from `bureau.goals.verdict` (`goal-verdict-panel.svelte`), and the Details panel names the
+   * in `goal-page-rows.ts`. The goal's owner reads its prompt and each attempt's check feedback too
+   * (COR-2425): the prompt shows under "Asked" (`goal-asked.svelte`), held to three lines with
+   * Show all, and a failed attempt says what the check said on line two. A read without them says
+   * neither. Each attempt's Verdict button opens what the check decided about it, read from
+   * `bureau.goals.verdict` (`goal-verdict-panel.svelte`), and the Details panel names the
    * validator by its exact name and version beside the check's words (COR-2124).
    *
    * The header's actions follow the goal, all secondary: Edit on every goal; Stop goal, the page's
@@ -39,7 +41,7 @@
     StatusDot,
   } from '@lostgradient/cinder';
   import { RotateCcw, Square } from '@lucide/svelte';
-  import { createQuery, useQueryClient } from '@tanstack/svelte-query';
+  import { createQueries, createQuery, useQueryClient } from '@tanstack/svelte-query';
 
   import { usePageLabel } from '../../app/breadcrumbs.svelte.ts';
   import { getConnection } from '../../app/connection.svelte.ts';
@@ -56,6 +58,8 @@
   import { queryKeys } from '../../lib/query.ts';
   import { router, workflowDetailPath } from '../../lib/router.svelte.ts';
   import { getPrincipalStore, hasPrincipalStore } from '../../lib/scopes.svelte.ts';
+  import GoalAsked from './goal-asked.svelte';
+  import { goalName } from '../workflows/runs/run-rows.ts';
   import GoalAttempts from './goal-attempts.svelte';
   import GoalVerdictPanel from './goal-verdict-panel.svelte';
   import {
@@ -125,6 +129,31 @@
           : false,
     };
   }, undefined);
+  // How long each finished attempt's run took, read from the run itself, as Runs says it (rows 67l,
+  // 67r): an attempt's own `completedAt` is when its check answered. A run that cannot be read
+  // leaves its attempt's line saying the attempt's own span.
+  const endedRunIds = $derived(
+    (goal.data?.attempts ?? [])
+      .filter((attempt) => attempt.completedAt !== null && attempt.runId !== '')
+      .map((attempt) => attempt.runId),
+  );
+  const attemptRuns = createQueries(() => ({
+    queries: endedRunIds.map((runId) => ({
+      queryKey: queryKeys.bureauTasks.detail(runId),
+      queryFn: ({ signal }: { signal: AbortSignal }) => getTask(runId, { signal }),
+      retry: false,
+    })),
+  }));
+  const runDurations = $derived.by(() => {
+    const durations = new Map<string, number>();
+    for (const read of attemptRuns) {
+      const run = read.data;
+      if (run === undefined || !isTerminalState(run.status)) continue;
+      const took = Date.parse(run.updatedAt) - Date.parse(run.createdAt);
+      if (Number.isFinite(took)) durations.set(run.id, Math.max(0, took));
+    }
+    return durations;
+  });
   // The review it is parked on names the tool and says how long it has waited.
   const openWait = $derived(
     liveTask.data?.status === 'input-required' ? liveTask.data.openWaits[0] : undefined,
@@ -176,8 +205,8 @@
   const name = $derived.by(() => {
     const found = goal.data;
     if (found === undefined) return undefined;
-    const trimmed = found.identity.name.trim();
-    return trimmed === '' ? found.goalRunId : trimmed;
+    // The one helper every page names a goal with (rows 55f, 55h).
+    return goalName(found);
   });
   usePageLabel(() => ({ path: router.pathname, label: name }));
 
@@ -253,7 +282,7 @@
     {@const actions = goalActions(found)}
     {@const agent = agentLabel(found.agentName)}
     {@const note = goalNote(found, { zone, liveWait })}
-    {@const rows = attemptRows(found, { agent, zone, now, liveWait })}
+    {@const rows = attemptRows(found, { agent, zone, now, liveWait, agentLabel, runDurations })}
     {@const facts = goalFacts(found, {
       agent,
       zone,
@@ -265,14 +294,6 @@
          action column holds buttons alone and a phone gives the title its width. -->
     {#snippet status()}
       <StatusDot {word} />
-      {#if actions.startAgain && needsProvider}
-        <a
-          class="ib-goal__reason"
-          id={providerReasonId}
-          href={router.href(copy.connectProviderPath)}
-          onclick={(event) => go(event, copy.connectProviderPath)}>{copy.connectProvider}</a
-        >
-      {/if}
       {#if connection.unreachable}
         <span class="ib-goal__reason" id={offlineReasonId} data-testid="goal-offline-reason">
           {copy.offlineReason}
@@ -323,6 +344,17 @@
         label=""
         aria-hidden="true"
       />{/snippet}
+    <!-- Why Start again is held sits beneath it, in the header's caption under the actions
+         (row 67p), tied to the button by its own aria-describedby. -->
+    {#snippet providerReason()}
+      <a
+        class="ib-goal__reason"
+        id={providerReasonId}
+        data-testid="goal-provider-reason"
+        href={router.href(copy.connectProviderPath)}
+        onclick={(event) => go(event, copy.connectProviderPath)}>{copy.connectProvider}</a
+      >
+    {/snippet}
     <StaleRegion
       stale={connection.unreachable}
       describedBy={connection.unreachable ? offlineReasonId : undefined}
@@ -333,7 +365,12 @@
         {status}
         statusPlacement="inline"
         actions={headerActions}
+        {...actions.startAgain && needsProvider ? { actionsNote: providerReason } : {}}
       />
+
+      {#if found.prompt !== undefined && found.prompt.trim() !== ''}
+        <GoalAsked prompt={found.prompt} />
+      {/if}
 
       {#if note !== undefined}
         <Callout

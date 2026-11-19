@@ -252,6 +252,8 @@ function definitionParameters(operation: CatalogOperation) {
   if (operation.name.startsWith('bureau.goals.')) return GOAL_PARAMETERS;
   if (operation.name.startsWith('bureau.deployments.')) return DEPLOYMENT_PARAMETERS;
   if (operation.name.startsWith('bureau.hooks.')) return HOOK_PARAMETERS;
+  // COR-2424: a retry names the step to run again, so the call reaches its own check.
+  if (operation.name === 'bureau.workflows.runs.retry') return { step: 1 };
   return operation.name.startsWith('bureau.agents.')
     ? AGENT_DEFINITION_PARAMETERS
     : WORKFLOW_PARAMETERS;
@@ -849,15 +851,17 @@ describe('identifiers grant nothing', () => {
   /** The string-valued id parameters an operation declares, found from its own schema. */
   function idParameters(operation: (typeof BUREAU_HANDLER_OPERATIONS)[number]): string[] {
     const shape = (operation.inputSchema as unknown as { shape: Record<string, unknown> }).shape;
-    // `messageId` and `signalId` are a caller's idempotency keys, `callId` selects a wait within a
-    // task, and `inputId` an input within a context: none is the id of a resource on its own, and
-    // `callId` and `inputId` need their task or context named beside them (the context is probed).
+    // `messageId`, `signalId` and a run retry's `retryId` are a caller's idempotency keys, `callId`
+    // selects a wait within a task, and `inputId` an input within a context: none is the id of a
+    // resource on its own, and `callId` and `inputId` need their task or context named beside them
+    // (the context is probed). A retry's `runId` is probed.
     return Object.keys(shape).filter(
       (key) =>
         key !== 'messageId' &&
         key !== 'throughMessageId' &&
         key !== 'commandId' &&
         key !== 'signalId' &&
+        key !== 'retryId' &&
         key !== 'callId' &&
         key !== 'inputId' &&
         (key === 'id' || key.endsWith('Id')),

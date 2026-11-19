@@ -196,8 +196,10 @@
       label={copy.promptLabel}
       description={copy.promptDescription}
       rows={4}
-      required={!editing}
-      placeholder={editing ? copy.edit.promptPlaceholder(form.currentName) : undefined}
+      required={!form.keepsCurrentPrompt}
+      placeholder={form.keepsCurrentPrompt
+        ? copy.edit.promptPlaceholder(form.currentName)
+        : undefined}
       error={problems.prompt ?? ''}
       disabled={locked}
       readonly={busy}
@@ -257,7 +259,7 @@
           error={problems.agent ?? ''}
           bind:value={form.agentName}
           disabled={locked || agents === undefined}
-          readonly={busy || editing}
+          readonly={busy}
           options={agentOptions}
         />
       </div>

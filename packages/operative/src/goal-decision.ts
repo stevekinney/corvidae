@@ -303,15 +303,26 @@ export function validateConversationPolicy(
  * prompt followed by the feedback, because the fork dropped the attempts that
  * carried it; under `fresh-from-artifact` it is the prompt again, because the
  * artifact is how the earlier attempt reaches the new conversation.
+ *
+ * `promptRevised` marks the one retry that is the first to be given an edited prompt (a goal's
+ * prompt changed after an attempt opened). The transcript of a `continue` goal holds the prompt as
+ * it was, not as it now stands, so that retry is the edited prompt followed by the feedback, as a
+ * fork's is; the retries after it return to the feedback alone, because the transcript then holds
+ * the edit. It changes nothing under the other policies, which already carry the prompt, and
+ * nothing for the first attempt. Omitted, it is `false`.
  */
 export function goalAttemptInput(
   kind: GoalConversationPolicy['kind'],
   prompt: string,
   attemptIndex: number,
   feedback: string | undefined,
+  promptRevised = false,
 ): string {
   if (attemptIndex === 0) return prompt;
-  if (kind === 'continue') return feedback ?? prompt;
+  if (kind === 'continue') {
+    if (promptRevised) return feedback === undefined ? prompt : `${prompt}\n\n${feedback}`;
+    return feedback ?? prompt;
+  }
   if (kind === 'fork-from-baseline' && feedback !== undefined) return `${prompt}\n\n${feedback}`;
   return prompt;
 }

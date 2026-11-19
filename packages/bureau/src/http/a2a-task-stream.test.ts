@@ -10,6 +10,7 @@ import { describe, expect, it } from 'bun:test';
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { DURABLE_HISTORY_GAP_KIND } from '../durable-event-history.ts';
 import type { TaskView } from '../task-registry.ts';
+import { PLAIN_TASK_WORKFLOW } from '../task-workflow.test-support.ts';
 import { type A2AStreamBureau, followTask } from './a2a-task-stream.ts';
 import { waitUntil, yieldEventLoopTurn } from '@lostgradient/testing/wait-until';
 
@@ -29,6 +30,7 @@ const VIEW: TaskView = {
   cleanup: null,
   openWaits: [],
   wakeAt: null,
+  workflow: PLAIN_TASK_WORKFLOW,
 };
 
 function envelope(sequence: number, kind: string, payload: unknown = {}): DurableEventEnvelope {
