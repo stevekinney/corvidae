@@ -1444,6 +1444,44 @@
             ],
             "type": "string"
           },
+          "target": {
+            "oneOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "agentName": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "const": "agent",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "agentName"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "workflow",
+                    "type": "string"
+                  },
+                  "workflowType": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "workflowType"
+                ],
+                "type": "object"
+              }
+            ]
+          },
           "timeZone": {
             "type": "string"
           },
@@ -1458,6 +1496,7 @@
           "id",
           "owner",
           "agentName",
+          "target",
           "inputPreview",
           "continuesChat",
           "workflowType",

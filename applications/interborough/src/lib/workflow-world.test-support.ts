@@ -528,6 +528,10 @@ export function installWorkflowWorld(world: World = emptyWorld()): WorkflowStub 
     id: schedule.id,
     owner: 'anonymous:local',
     agentName: world.scheduleAgents[schedule.id] ?? null,
+    target:
+      world.scheduleAgents[schedule.id] === undefined
+        ? { kind: 'workflow', workflowType: schedule.workflowType }
+        : { kind: 'agent', agentName: world.scheduleAgents[schedule.id] },
     inputPreview: world.scheduleInputs[schedule.id] ?? null,
     continuesChat: world.scheduleContinuing.includes(schedule.id),
     workflowType: schedule.workflowType,

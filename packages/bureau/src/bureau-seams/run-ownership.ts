@@ -25,10 +25,15 @@ import type { PendingReview, ReviewResolutionFields } from '../bureau-types/revi
 import type { RunAttribution } from '../serialization';
 import { type ScheduledAgentRunInput, isScheduledAgentRunInput } from '@lostgradient/operative';
 import type { WorkflowScheduleBlocker } from '../workflow-runtime';
-import { isTaskOrigin } from '../task-origin';
+import { isTaskOrigin, taskOriginTag } from '../task-origin';
 import { ownerOrLocal } from '../owner-of-record';
 import { resolvePersistedRunOwningPrincipal, resolveSessionOwner } from '../session-authority';
 import { scheduleInputPreview } from '../schedule-input-preview';
+import {
+  AGENT_SCHEDULE_WORKFLOW_TYPE,
+  storedAgentInputOf,
+  workflowScheduleOwnerOf,
+} from '../workflow-schedule';
 
 /** The callables run ownership reads from elsewhere in `constructBureau`. */
 export interface RunOwnershipPeers {
@@ -85,10 +90,25 @@ export function createRunOwnership<D extends AgentDefinitions>(
       const input = fire.input;
       const origin =
         typeof input === 'object' && input !== null && 'origin' in input ? input.origin : undefined;
-      if (isTaskOrigin(origin) && origin.kind === 'person') return origin.principal;
+      // COR-2546: the origin is the start's own only when the run carries the tag that start set
+      // beside it. A run a caller-made schedule started has the input the caller wrote, which can
+      // name any origin, and no such tag.
+      if (
+        isTaskOrigin(origin) &&
+        origin.kind === 'person' &&
+        fire.tags?.includes(taskOriginTag(origin)) === true
+      ) {
+        return origin.principal;
+      }
       return core.workflowRuntime.workflows.owner;
     }
-    if (fire !== null && isScheduledAgentRunInput(fire.input)) {
+    // COR-2546: only an `agentRun` names its owner in its input. A code workflow's input is the
+    // caller's own, and can be shaped like an agent's.
+    if (
+      fire !== null &&
+      fire.type === AGENT_SCHEDULE_WORKFLOW_TYPE &&
+      isScheduledAgentRunInput(fire.input)
+    ) {
       return ownerOrLocal(fire.input.principal);
     }
     // COR-1580: a session run another process created after this one booted. Its owner is the one
@@ -148,13 +168,16 @@ export function createRunOwnership<D extends AgentDefinitions>(
     const bytes = await runtime.durable.engine.storage.get(KEYS.schedule(scheduleId));
     if (!bytes) return undefined;
     const state: unknown = decode(bytes);
-    const input =
-      typeof state === 'object' && state !== null
-        ? (state as { input?: unknown }).input
-        : undefined;
+    if (typeof state !== 'object' || state === null) return undefined;
+    const record = state as { workflowType?: unknown; input?: unknown; metadata?: unknown };
+    // COR-2546: the owner of a schedule a caller made for a workflow is in its metadata, never its
+    // input, which the workflow receives as the caller wrote it.
+    const workflowOwner = workflowScheduleOwnerOf(record);
+    if (workflowOwner !== undefined) return workflowOwner;
     // Only an agent schedule has an owner; the local default applies to one that
     // names no principal, never to some other workflow's schedule on the same engine.
-    return isScheduledAgentRunInput(input) ? ownerOrLocal(input.principal) : undefined;
+    const input = storedAgentInputOf(record);
+    return input === undefined ? undefined : ownerOrLocal(input.principal);
   }
 
   /**
@@ -174,11 +197,11 @@ export function createRunOwnership<D extends AgentDefinitions>(
     const bytes = await runtime.durable.engine.storage.get(KEYS.schedule(scheduleId));
     if (!bytes) return undefined;
     const state: unknown = decode(bytes);
-    const input =
-      typeof state === 'object' && state !== null
-        ? (state as { input?: unknown }).input
-        : undefined;
-    return isScheduledAgentRunInput(input) ? input : undefined;
+    if (typeof state !== 'object' || state === null) return undefined;
+    const record = state as { workflowType?: unknown; input?: unknown; metadata?: unknown };
+    // COR-2546: a schedule a caller made for a workflow runs no agent, whatever shape its input has.
+    if (workflowScheduleOwnerOf(record) !== undefined) return undefined;
+    return storedAgentInputOf(record);
   }
 
   /**

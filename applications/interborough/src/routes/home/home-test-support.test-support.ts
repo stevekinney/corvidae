@@ -82,6 +82,7 @@ export const DAILY_SUMMARY: BureauSchedule = {
   id: 'schedule-daily',
   owner: 'anonymous:local',
   agentName: 'assistant',
+  target: { kind: 'agent', agentName: 'assistant' },
   inputPreview: 'Summarize the open reviews.',
   continuesChat: false,
   workflowType: 'agentRun',

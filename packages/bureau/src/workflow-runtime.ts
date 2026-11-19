@@ -671,6 +671,13 @@ export interface BureauWorkflows {
    */
   readonly assertStartable: (id: string) => void;
   /**
+   * Every way `input` breaks the input schema of workflow `id` (COR-2546), judged as a start of it
+   * would judge it: empty when the workflow has no schema or the input satisfies it. Throws as
+   * {@link BureauWorkflows.assertStartable} does for a workflow that cannot be started, so a path
+   * that stores an input for later (a schedule's) refuses what a start would refuse.
+   */
+  readonly inputIssues: (id: string, input: unknown) => readonly WorkflowSchemaIssue[];
+  /**
    * Deliver a signal named `name` and start what it triggers (COR-1528), in that order. First
    * `payload` goes to every running instance of a workflow file that is waiting at an
    * `await-signal` step of that name, including the instances of a paused or deleted workflow,
@@ -3268,6 +3275,17 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
       if (file === undefined || file.paused) {
         throw options.createError(`Workflow "${id}" does not exist`, 'NOT_FOUND');
       }
+    },
+
+    inputIssues(id, input) {
+      workflows.assertStartable(id);
+      const code = codeWorkflows.get(id);
+      if (code !== undefined) return codeInputIssues(code.definition.inputSchema, input);
+      const file = catalog.find(id);
+      if (file === undefined || file.paused) {
+        throw options.createError(`Workflow "${id}" does not exist`, 'NOT_FOUND');
+      }
+      return file.inputSchema === null ? [] : inputSchemaIssues(file.inputSchema, input);
     },
   };
 

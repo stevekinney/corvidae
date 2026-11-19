@@ -352,6 +352,7 @@ export type BureauHandlerSource = Pick<
   readonly schedules: Pick<
     BureauSchedules,
     | 'create'
+    | 'createWorkflow'
     | 'get'
     | 'list'
     | 'pause'
@@ -1398,6 +1399,7 @@ export function buildBureauHandlerHost(
     formatEvent: bureau.formatEvent,
     schedules: {
       create: bureau.schedules.create,
+      createWorkflow: bureau.schedules.createWorkflow,
       get: bureau.schedules.get,
       list: bureau.schedules.list,
       pause: bureau.schedules.pause,

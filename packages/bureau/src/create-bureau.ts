@@ -2350,6 +2350,7 @@ async function constructBureau<const D extends AgentDefinitions>(
   const { recoverDurableRuns } = createDurableRecovery<D>(core, peers);
   const {
     createSchedule,
+    createWorkflowSchedule,
     recordScheduleTick,
     getSchedule,
     listSchedules,
@@ -4752,6 +4753,7 @@ async function constructBureau<const D extends AgentDefinitions>(
   const schedules = createSchedules({
     // Never the third, internal parameter: only a plugin's host API names a source.
     create: (definition, scheduleOptions) => createSchedule(definition, scheduleOptions),
+    createWorkflow: createWorkflowSchedule,
     get: getSchedule,
     list: listSchedules,
     pause: pauseSchedule,
