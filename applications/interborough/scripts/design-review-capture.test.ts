@@ -782,6 +782,89 @@ describe('captureDesignReview', () => {
       1,
     );
   });
+
+  describe('with --expect', () => {
+    const line = (route: string, state: string, width: number) =>
+      JSON.stringify({ route, state, width, colorScheme: 'light' });
+    const expectation = (width: number) => ({
+      row: '12a',
+      route: '/',
+      state: 'first run fresh installation',
+      kind: 'first-run',
+      theme: 'light',
+      width,
+    });
+
+    async function expectFile(widths: number[]): Promise<string> {
+      const path = join(directory, 'expected.json');
+      await writeFile(
+        path,
+        JSON.stringify({ version: 1, issue: 'COR-9', captures: widths.map(expectation) }),
+      );
+      return path;
+    }
+
+    test('exits 1, naming each missing route, state and width, when a declared state was not captured', async () => {
+      const { calls, environment } = standIn({
+        manifest: [
+          line('/', 'first run fresh installation', 1280),
+          line('/', 'first run fresh installation', 375),
+        ].join('\n'),
+      });
+      const out = join(directory, 'capture');
+      const code = await captureDesignReview(
+        ['--out', out, '--scheme', 'light', '--expect', await expectFile([1920, 1280, 375])],
+        environment,
+      );
+      expect(code).toBe(1);
+      expect(calls.err).toContain(
+        'design review: missing capture: route /, state "first run fresh installation" (first-run), width 1920, light, declared by row 12a\n',
+      );
+      expect(calls.err.match(/missing capture/g)).toHaveLength(1);
+      const summary = JSON.parse(await readFile(join(out, 'summary.json'), 'utf8'));
+      expect(summary.coverage.complete).toBe(false);
+      expect(summary.coverage.expected).toBe(3);
+      expect(summary.coverage.missing).toEqual([expectation(1920)]);
+    });
+
+    test('exits 0 and records complete coverage when every declared state was captured', async () => {
+      const { calls, environment } = standIn({
+        manifest: [1920, 1280, 375]
+          .map((width) => line('/', 'first run fresh installation', width))
+          .join('\n'),
+      });
+      const out = join(directory, 'capture');
+      expect(
+        await captureDesignReview(
+          ['--out', out, '--scheme', 'light', '--expect', await expectFile([1920, 1280, 375])],
+          environment,
+        ),
+      ).toBe(0);
+      expect(calls.err).not.toContain('missing capture');
+      const summary = JSON.parse(await readFile(join(out, 'summary.json'), 'utf8'));
+      expect(summary.coverage).toEqual({ expected: 3, missing: [], complete: true });
+    });
+
+    test('answers 2 for an expected-captures file it cannot read, and runs nothing', async () => {
+      const { calls, environment } = standIn({ manifestLines: 1 });
+      expect(
+        await captureDesignReview(
+          ['--out', directory, '--expect', join(directory, 'absent.json')],
+          environment,
+        ),
+      ).toBe(2);
+      expect(calls.commands).toEqual([]);
+    });
+
+    test('adds no coverage to a capture run without --expect', async () => {
+      const { environment } = standIn({ manifestLines: 1 });
+      const out = join(directory, 'capture');
+      await captureDesignReview(['--out', out, '--scheme', 'light'], environment);
+      expect(
+        JSON.parse(await readFile(join(out, 'summary.json'), 'utf8')).coverage,
+      ).toBeUndefined();
+    });
+  });
 });
 
 describe('hostEnvironment', () => {
