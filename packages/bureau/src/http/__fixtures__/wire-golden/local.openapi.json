@@ -501,6 +501,7 @@
             "type": "boolean"
           },
           "events": {
+            "description": "The event kinds the hook fires on: a published Bureau kind as it is, and a kind a plugin declares pinned to the version it was written at, `<plugin>:<name>@<version>`.",
             "items": {
               "type": "string"
             },
@@ -1054,6 +1055,7 @@
             "type": "boolean"
           },
           "events": {
+            "description": "The event kinds the hook fires on: a published Bureau kind as it is, and a kind a plugin declares pinned to the version it was written at, `<plugin>:<name>@<version>`.",
             "items": {
               "type": "string"
             },

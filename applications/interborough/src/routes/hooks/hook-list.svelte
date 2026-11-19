@@ -38,11 +38,19 @@
   import { VIEW_COPY } from '../../app/copy/view-pages.ts';
   import { listHooks } from '../../lib/bureau-hooks.ts';
   import { classifyFault } from '../../lib/faults.ts';
+  import { getPlugins } from '../../lib/host-plugins.ts';
   import { queryKeys } from '../../lib/query.ts';
   import { router } from '../../lib/router.svelte.ts';
   import { HOOKS_COPY } from './hook-copy.ts';
-  import { eventOptionLabel, hookListFailure, hookMatches } from './hook-presentation.ts';
+  import {
+    eventChosenLabel,
+    eventKindOf,
+    hookListFailure,
+    hookMatches,
+    pluginEventOf,
+  } from './hook-presentation.ts';
   import HookRows from './hook-rows.svelte';
+  import { pluginTitleOf } from './hook-standing.ts';
   import HooksUnavailable from './hooks-unavailable.svelte';
 
   const NEW_HOOK_PATH = '/hooks/new';
@@ -101,11 +109,30 @@
   const eventFilter = $derived(router.current.search.get('event') ?? undefined);
   const agentFilter = $derived(router.current.search.get('agent') ?? undefined);
 
+  // The plugins' titles, read only when a hook lists a plugin's event kind: the event filter and the
+  // search name that plugin by its title, as the rows do (COR-2226, rows R3 and R10). The rows read
+  // the same query.
+  const listsPluginEvent = $derived(
+    rows.some((hook) => hook.events.some((entry) => pluginEventOf(entry) !== undefined)),
+  );
+  const plugins = createQuery(
+    () => ({
+      queryKey: queryKeys.hostPlugins(),
+      queryFn: ({ signal }: { signal: AbortSignal }) => getPlugins({ signal }),
+      enabled: listsPluginEvent,
+      retry: false,
+    }),
+    undefined,
+  );
+  const titleOf = (plugin: string): string => pluginTitleOf(plugin, plugins.data?.plugins);
+
   const visible = $derived(
     rows.filter(
       (hook) =>
-        hookMatches(hook, search) &&
-        (eventFilter === undefined || hook.events.includes(eventFilter)) &&
+        hookMatches(hook, search, titleOf) &&
+        // A plugin kind filters by its kind, whatever version a hook pinned it to (COR-2226).
+        (eventFilter === undefined ||
+          hook.events.some((entry) => eventKindOf(entry) === eventFilter)) &&
         (agentFilter === undefined ||
           (hook.scope?.kind === 'agent' && hook.scope.id === agentFilter)),
     ),
@@ -113,7 +140,10 @@
 
   const eventKinds = $derived(
     [
-      ...new Set([...rows.flatMap((hook) => hook.events), ...(eventFilter ? [eventFilter] : [])]),
+      ...new Set([
+        ...rows.flatMap((hook) => hook.events.map(eventKindOf)),
+        ...(eventFilter ? [eventFilter] : []),
+      ]),
     ].toSorted(),
   );
   const agentNames = $derived(
@@ -130,7 +160,7 @@
       key: 'event',
       label: HOOKS_COPY.eventFilter,
       placeholder: HOOKS_COPY.anyEvent,
-      options: eventKinds.map((kind) => ({ value: kind, label: eventOptionLabel(kind) })),
+      options: eventKinds.map((kind) => ({ value: kind, label: eventChosenLabel(kind, titleOf) })),
     },
     {
       type: 'select' as const,
