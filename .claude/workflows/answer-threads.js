@@ -127,7 +127,7 @@ phase('answer');
 const classified = await agent(
   [
     `cd ${worktree}. Invoke no skills. Change nothing in the repository.`,
-    `Run \`bun scripts/chef/review-threads.ts classes --pr ${pr} --json\` (exit 1 is a normal result) and \`git rev-parse HEAD\`. Return head (that commit) and repeating (the "repeating" array of the JSON).`,
+    `Run \`bun scripts/chef/review-threads.ts classes --pr ${pr} --json\` (exit 1 is a normal result) and \`git rev-parse HEAD\`. Return head (that SHA) and repeating (the "repeating" array of the JSON).`,
   ].join('\n'),
   {
     label: `classify PR ${pr}`,
