@@ -1337,7 +1337,7 @@
       "cssProperty": "--cinder-scroll-shadow-color",
       "category": "color",
       "public": true,
-      "themeAware": false,
+      "themeAware": true,
       "deprecated": false,
       "description": "The color of a scroll-edge or sticky-column shadow. Black in both themes, never text ink; the dark arm is denser, because a shadow has to be to read against a dark surface."
     },

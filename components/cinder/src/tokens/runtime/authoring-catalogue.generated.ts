@@ -9393,29 +9393,23 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       component: null,
       description:
         'The color of a scroll-edge or sticky-column shadow. Black in both themes, never text ink; the dark arm is denser, because a shadow has to be to read against a dark surface.',
-      themeAware: false,
+      themeAware: true,
       deprecated: false,
       profile: 'color',
       palette: { family: 'unknown', role: 'unknown', anchor: 'unknown' },
       disposition: {
-        edit: 'recipe',
+        edit: 'supported',
         cssExport: 'supported',
         dtcgExport: 'subset',
-        cssSerialization: 'trusted-recipe',
-        reason: 'The DTCG value is exported; the trusted CSS recipe that governs emission is not.',
+        cssSerialization: 'mixed',
+        reason:
+          'Some contexts emit a trusted CSS recipe and others a typed value; the DTCG value is exported, the recipe is not.',
       },
       variants: [
         {
-          contexts: [
-            'light/default',
-            'light/reduced',
-            'light/forced-reduced-motion',
-            'dark/default',
-            'dark/reduced',
-            'dark/forced-reduced-motion',
-          ],
+          contexts: ['light/default', 'light/reduced', 'light/forced-reduced-motion'],
           provenance: {
-            winner: { document: 'sets/semantic.tokens.json', path: 'scroll-shadow.color' },
+            winner: { document: 'themes/light.tokens.json', path: 'scroll-shadow.color' },
             layers: [
               {
                 document: 'sets/semantic.tokens.json',
@@ -9424,11 +9418,46 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
                 path: 'scroll-shadow.color',
                 via: 'declared',
               },
+              {
+                document: 'themes/light.tokens.json',
+                kind: 'modifier',
+                layer: 'theme.light',
+                path: 'scroll-shadow.color',
+                via: 'declared',
+              },
             ],
             effectiveType: {
               type: 'color',
               origin: 'local',
-              declaredAt: { document: 'sets/semantic.tokens.json', path: 'scroll-shadow.color' },
+              declaredAt: { document: 'themes/light.tokens.json', path: 'scroll-shadow.color' },
+            },
+            inputs: { aliases: [], refs: [], extends: [], recipes: [] },
+          },
+        },
+        {
+          contexts: ['dark/default', 'dark/reduced', 'dark/forced-reduced-motion'],
+          provenance: {
+            winner: { document: 'themes/dark.tokens.json', path: 'scroll-shadow.color' },
+            layers: [
+              {
+                document: 'sets/semantic.tokens.json',
+                kind: 'set',
+                layer: 'sets.foundation',
+                path: 'scroll-shadow.color',
+                via: 'declared',
+              },
+              {
+                document: 'themes/dark.tokens.json',
+                kind: 'modifier',
+                layer: 'theme.dark',
+                path: 'scroll-shadow.color',
+                via: 'declared',
+              },
+            ],
+            effectiveType: {
+              type: 'color',
+              origin: 'local',
+              declaredAt: { document: 'themes/dark.tokens.json', path: 'scroll-shadow.color' },
             },
             inputs: { aliases: [], refs: [], extends: [], recipes: [] },
           },

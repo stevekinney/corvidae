@@ -2023,8 +2023,7 @@
       "com.lostgradient.cinder": {
         "cssProperty": "--cinder-scroll-shadow-color",
         "public": true,
-        "category": "color",
-        "cssRecipe": "light-dark(oklch(0% 0 0 / 0.14), oklch(0% 0 0 / 0.5))"
+        "category": "color"
       }
     }
   },

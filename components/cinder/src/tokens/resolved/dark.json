@@ -2017,14 +2017,13 @@
   },
   "scroll-shadow.color": {
     "$type": "color",
-    "$value": { "colorSpace": "oklch", "components": [0, 0, 0], "alpha": 0.14 },
+    "$value": { "colorSpace": "oklch", "components": [0, 0, 0], "alpha": 0.5 },
     "$description": "The color of a scroll-edge or sticky-column shadow. Black in both themes, never text ink; the dark arm is denser, because a shadow has to be to read against a dark surface.",
     "$extensions": {
       "com.lostgradient.cinder": {
         "cssProperty": "--cinder-scroll-shadow-color",
         "public": true,
-        "category": "color",
-        "cssRecipe": "light-dark(oklch(0% 0 0 / 0.14), oklch(0% 0 0 / 0.5))"
+        "category": "color"
       }
     }
   },
