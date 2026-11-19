@@ -29,8 +29,11 @@ import {
 } from '../../../lib/bureau-tasks.ts';
 import { calendarDay, clockTime, dateLine, zoneLabel } from '../../../lib/format/clock.ts';
 import { chatSessionPath, goalPath } from '../../../lib/identifier-paths.ts';
+import { oneLine } from '../../../lib/one-line.ts';
+import { reasonClause } from '../../../lib/reason-clause.ts';
 import { scheduleDetailPath, workflowDetailPath } from '../../../lib/router.svelte.ts';
 import { taskStatusWord, type StatusWord } from '../../../lib/status.ts';
+import { isBuiltInWorkflow, workflowTypeName } from '../../../lib/workflow-type-name.ts';
 import { workflowTypePath } from '../../../lib/workflow-type-paths.ts';
 import type { MissedRuns } from './missed-runs.ts';
 import { STARTED_BY_KINDS, type StartedBy } from './started-by.ts';
@@ -41,19 +44,25 @@ export type RunPersonSurface = 'web' | 'palette' | 'api';
 export type RunOrigin =
   | { readonly kind: 'chat'; readonly title: string; readonly href: string }
   /** A person started it outside a chat, from the surface the origin names. */
-  | { readonly kind: 'person'; readonly surface: RunPersonSurface | null }
+  | {
+      readonly kind: 'person';
+      readonly surface: RunPersonSurface | null;
+      /** Who started it, as the Bureau recorded them, when it did: "You" when it is the viewer. */
+      readonly principal?: string | null | undefined;
+    }
   /**
    * A schedule's fire. The origin names the schedule (`scheduleId`, and `schedulePath` is its page)
    * and whether a person fired it by hand. A task recorded before origins were kept says it only
    * through its `actor`, and then there is no schedule to name. Either way the fire ran in a
    * session, which is linked (`href`) and titled by the text the schedule delivered when the caller
    * lists that session, and empty when it does not (an operator sees every owner's fires and lists
-   * only their own sessions).
+   * only their own sessions). An instance of a workflow file a schedule fired ran in no session, so
+   * it has no `href` (COR-2424).
    */
   | {
       readonly kind: 'schedule';
       readonly title: string;
-      readonly href: string;
+      readonly href: string | null;
       readonly scheduleId: string | null;
       readonly schedulePath: string | null;
       readonly manual: boolean;
@@ -77,7 +86,10 @@ export type RunOrigin =
   /** A goal's attempt: the goal, and the session the attempt ran in while the Bureau still has it. */
   | {
       readonly kind: 'goal';
+      /** The goal's identifier. */
       readonly name: string;
+      /** What the goal is called (`goalName`): its own name, or its identifier in words. */
+      readonly title: string;
       readonly href: string;
       readonly session: { readonly title: string; readonly href: string } | null;
     }
@@ -134,10 +146,59 @@ export type RunRow = {
    * well) and reads "Check not met" with a neutral dot, never Failed.
    */
   readonly checkNotMet: boolean;
+  /**
+   * The workflow the run ran on (COR-2423), when the Bureau says: `agentRun` for a chat's run,
+   * `goalRun` for a goal's attempt, `scheduleTick` for the Bureau's own record of what its
+   * scheduler did, or a workflow file's identifier for one of its instances. A row built from a
+   * workflow's own instance list says none, and the Workflow filter then matches it by nothing.
+   */
+  readonly workflowType?: string | null;
+  /** What the Bureau recorded of the workflow: its schedule, what a tick recorded, how far it got. */
+  readonly workflow?: RunWorkflow | null;
+  /** The name of the schedule the run belongs to, when it is known, which line two names it by. */
+  readonly scheduleName?: string | null;
+  /** When a run that asked to be woken is due, in epoch milliseconds, while it is still ahead. */
+  readonly dueAt?: number | null;
+  /**
+   * Whether only the workflow engine holds the run: the schedule tick and an instance of a workflow
+   * file, which the Bureau builds from the engine when it lists them and has no task for. Its page
+   * is the engine's, so it opens for a caller who may read the engine (`workflows:read`).
+   */
+  readonly engineRun?: boolean;
 };
 
+/** The workflow types a task record is made for; every other type is a run only the engine holds. */
+const RECORDED_TASK_WORKFLOWS: readonly string[] = ['agentRun', 'goalRun'];
+
+/**
+ * Whether a task view stands for a run only the workflow engine holds (COR-2423): the Bureau builds
+ * these from the engine, with no agent and the run's own identifier for its context, so
+ * `bureau.tasks.get` answers NotFound for them (COR-2424).
+ */
+export function isEngineRunTask(
+  task: Pick<TaskView, 'id' | 'contextId' | 'agentName' | 'workflow'>,
+): boolean {
+  const type = task.workflow?.type;
+  return (
+    type !== undefined &&
+    !RECORDED_TASK_WORKFLOWS.includes(type) &&
+    task.agentName === null &&
+    task.contextId === task.id
+  );
+}
+
+/** What the Bureau says of the workflow a task ran on. */
+export type RunWorkflow = NonNullable<TaskView['workflow']>;
+
 /** The status segments of the filter bar, after All: each holds the runs of one status word. */
-export const RUN_STATUS_SEGMENTS = ['waiting', 'running', 'done', 'failed', 'canceled'] as const;
+export const RUN_STATUS_SEGMENTS = [
+  'waiting',
+  'signal',
+  'running',
+  'done',
+  'failed',
+  'canceled',
+] as const;
 
 /** One status segment a filter can narrow to. */
 export type RunStatusSegment = (typeof RUN_STATUS_SEGMENTS)[number];
@@ -148,6 +209,7 @@ export const RUN_SEGMENTS = ['all', ...RUN_STATUS_SEGMENTS] as const;
 /** One segment of the bar, All included. */
 export type RunSegment = (typeof RUN_SEGMENTS)[number];
 
+// `signal` is no state of a task: it is a run parked at an `await-signal` step, which `runSegmentOfRow` counts.
 const SEGMENT_OF_STATE: Readonly<Record<TaskState, RunStatusSegment>> = {
   submitted: 'running',
   working: 'running',
@@ -165,10 +227,36 @@ export function runSegmentOf(status: TaskState): RunStatusSegment {
   return SEGMENT_OF_STATE[status];
 }
 
+/**
+ * The segment a row is counted under. A run parked at an `await-signal` step needs nobody at the
+ * page, so it counts under Waiting and not under Running (COR-2424, row 56g); every other run is
+ * counted by its status.
+ */
+export function runSegmentOfRow(
+  row: Pick<RunRow, 'status'> & { readonly workflow?: RunWorkflow | null | undefined },
+): RunStatusSegment {
+  return awaitingSignalOf(row) === null ? runSegmentOf(row.status) : 'signal';
+}
+
+/**
+ * The segments the bar draws: every one, but Waiting (a run parked on a signal) only while it
+ * holds a run or is the one chosen, since most workspaces never have one.
+ */
+export function visibleRunSegments(
+  counts: Readonly<Record<RunSegment, number>>,
+  chosen: RunSegment | undefined,
+): readonly RunSegment[] {
+  return RUN_SEGMENTS.filter(
+    (value) => value !== 'signal' || counts.signal > 0 || chosen === value,
+  );
+}
+
 export type RunFilter = {
   readonly status?: RunStatusSegment;
   readonly agent?: string;
   readonly startedBy?: StartedBy;
+  /** The workflow type the runs ran on (COR-2423): `agentRun`, `goalRun`, `scheduleTick`, or a workflow file's identifier. */
+  readonly workflow?: string;
   /** Words the title, the agent or the summary must hold, whatever their case. */
   readonly search?: string;
 };
@@ -204,6 +292,19 @@ function recordedText(origin: object, key: string): string | undefined {
 const PERSON_SURFACES: readonly RunPersonSurface[] = ['web', 'palette', 'api'];
 
 /**
+ * A run a person started by hand, from the `person` origin the Bureau recorded: the surface they
+ * started it from and who they are, so the page can say "You" for the viewer's own (COR-2424).
+ */
+export function personOrigin(recorded: object): Extract<RunOrigin, { kind: 'person' }> {
+  const surface = PERSON_SURFACES.find((one) => one === recordedText(recorded, 'surface'));
+  return {
+    kind: 'person',
+    surface: surface ?? null,
+    principal: recordedText(recorded, 'principal') ?? null,
+  };
+}
+
+/**
  * What started the task, read from the origin the Bureau recorded with it. An origin of a kind
  * this page does not know, or one missing a field its kind needs, is read as a task with none.
  */
@@ -224,16 +325,15 @@ function recordedOrigin(
         href: chatSessionPath(contextId),
       };
     }
-    case 'person': {
-      const surface = PERSON_SURFACES.find((one) => one === recordedText(recorded, 'surface'));
-      return { kind: 'person', surface: surface ?? null };
-    }
+    case 'person':
+      return personOrigin(recorded);
     case 'schedule': {
       const scheduleId = recordedText(recorded, 'scheduleId');
       return {
         kind: 'schedule',
         title: chats.get(task.contextId)?.title ?? '',
-        href: chatSessionPath(task.contextId),
+        // A run only the engine holds has its own identifier for a context, and no session has it.
+        href: isEngineRunTask(task) ? null : chatSessionPath(task.contextId),
         scheduleId: scheduleId ?? null,
         schedulePath: scheduleId === undefined ? null : scheduleDetailPath(scheduleId),
         manual: Reflect.get(recorded, 'manual') === true,
@@ -264,7 +364,13 @@ function recordedOrigin(
     case 'goal': {
       const goalRunId = recordedText(recorded, 'goalRunId');
       if (goalRunId === undefined) return undefined;
-      return { kind: 'goal', name: goalRunId, href: goalPath(goalRunId), session: null };
+      return {
+        kind: 'goal',
+        name: goalRunId,
+        title: goalTitle(goalRunId),
+        href: goalPath(goalRunId),
+        session: null,
+      };
     }
     case 'parent': {
       const parentRunId = recordedText(recorded, 'parentRunId');
@@ -311,6 +417,17 @@ function taskOrigin(task: TaskView, chats: ReadonlyMap<string, ChatContext>): Ru
   return { kind: 'none' };
 }
 
+/** The workflow type of the schedule tick, which the Bureau starts to record what its scheduler did. */
+const SCHEDULE_TICK_TYPE = 'scheduleTick';
+
+/**
+ * Whether a workflow type is one an instance of a workflow file (or a plugin's code workflow) runs
+ * on, as opposed to one Interborough registers itself for chats, goals and schedules.
+ */
+function isInstanceWorkflow(type: string): boolean {
+  return !isBuiltInWorkflow(type);
+}
+
 /** The title of a run a chat, a schedule's fire, or anything else with a session started. */
 function taskTitle(
   task: TaskView,
@@ -318,6 +435,11 @@ function taskTitle(
   chats: ReadonlyMap<string, ChatContext>,
   scheduleNames: ReadonlyMap<string, string>,
 ): string {
+  // The Bureau's own runs are named by what they are: the schedule tick, and an instance of a
+  // workflow file by its workflow, whatever started it (rows 09p and 09r).
+  const type = task.workflow?.type;
+  if (type === SCHEDULE_TICK_TYPE) return TASK_COPY.list.scheduleTickTitle;
+  if (type !== undefined && isInstanceWorkflow(type)) return workflowTypeName(type);
   if (origin.kind === 'schedule') {
     const named = origin.scheduleId === null ? undefined : scheduleNames.get(origin.scheduleId);
     return named ?? (origin.title === '' ? TASK_COPY.untitledChat : origin.title);
@@ -325,7 +447,7 @@ function taskTitle(
   if (origin.kind === 'chat') return origin.title === '' ? TASK_COPY.untitledChat : origin.title;
   if (origin.kind === 'parent') return TASK_COPY.list.workflowRunTitle;
   // A goal's attempt is titled by its goal, whether or not the goal itself was read.
-  if (origin.kind === 'goal') return goalTitle(origin.name);
+  if (origin.kind === 'goal') return origin.title;
   return chats.get(task.contextId)?.title ?? TASK_COPY.runTitle;
 }
 
@@ -342,6 +464,16 @@ export function goalTitle(goalRunId: string): string {
     : goalRunId;
 }
 
+/**
+ * What a goal is called wherever a page names it (rows 55f, 55h): the name the goal was given, and
+ * its identifier (`goalTitle`) only when it has none. The one helper every place that names a read
+ * goal uses, so no page says `16e7…-sample-goal-summarize-open-refunds`.
+ */
+export function goalName(goal: Pick<Goal, 'goalRunId' | 'identity'>): string {
+  const name = goal.identity.name.trim();
+  return name === '' ? goalTitle(goal.goalRunId) : name;
+}
+
 function taskRow(
   task: TaskView,
   chats: ReadonlyMap<string, ChatContext>,
@@ -356,6 +488,10 @@ function taskRow(
         ? (task.statusMessage ?? task.finishReason ?? '')
         : '';
   const origin = taskOrigin(task, chats);
+  const workflow = task.workflow ?? null;
+  const wake =
+    task.wakeAt === undefined || task.wakeAt === null ? Number.NaN : Date.parse(task.wakeAt);
+  const scheduleId = workflow?.scheduleId ?? null;
   return {
     id: task.id,
     agentName: task.agentName,
@@ -368,6 +504,14 @@ function taskRow(
     durationMs: isTerminalState(task.status) ? Math.max(0, updatedAt - startedAt) : null,
     attempt: null,
     checkNotMet: false,
+    workflowType: workflow?.type ?? null,
+    workflow,
+    scheduleName:
+      (scheduleId === null ? undefined : scheduleNames.get(scheduleId)) ??
+      workflow?.scheduleName ??
+      null,
+    dueAt: task.status === 'working' && !Number.isNaN(wake) ? wake : null,
+    engineRun: isEngineRunTask(task),
   };
 }
 
@@ -394,11 +538,13 @@ function goalRows(goal: Goal, chats: ReadonlyMap<string, ChatContext>): RunRow[]
       origin: {
         kind: 'goal',
         name: goal.goalRunId,
+        title: goalName(goal),
         href: goalPath(goal.goalRunId),
         session:
           attempt.sessionId === '' ? null : { title, href: chatSessionPath(attempt.sessionId) },
       },
-      title: goalTitle(goal.goalRunId),
+      // The goal's own name, as the goals list says it; the identifier only when it has none.
+      title: goalName(goal),
       summary: attempt.status === 'passed' ? '' : (attempt.finishReason ?? ''),
       startedAt,
       updatedAt: completedAt ?? startedAt,
@@ -408,6 +554,7 @@ function goalRows(goal: Goal, chats: ReadonlyMap<string, ChatContext>): RunRow[]
         of: Math.max(goal.bounds.maximumAttempts, attempt.attemptIndex + 1),
       },
       checkNotMet: false,
+      workflowType: 'goalRun',
     };
   });
 }
@@ -446,6 +593,8 @@ function instanceRow(parentRunId: string, steps: readonly RunRow[]): RunRow {
     durationMs: isTerminalState(status) ? Math.max(0, updatedAt - startedAt) : null,
     attempt: null,
     checkNotMet: false,
+    // No task is the instance, only its steps are: the engine holds the run a person started.
+    engineRun: true,
   };
 }
 
@@ -508,7 +657,15 @@ export function runListRows(rows: readonly RunRow[]): RunRow[] {
     }
   }
   for (const [parentRunId, instanceSteps] of steps) {
-    if (!listed.has(parentRunId)) listed.set(parentRunId, instanceRow(parentRunId, instanceSteps));
+    const instance = listed.get(parentRunId);
+    if (instance === undefined) {
+      listed.set(parentRunId, instanceRow(parentRunId, instanceSteps));
+    } else if (instance.agentName === null) {
+      // The engine's record of an instance names no agent; its steps say which one ran them, which
+      // its row says after its schedule (row 53l, "Schedule, Inbox triage, Assistant").
+      const agentName = instanceSteps.find((step) => step.agentName !== null)?.agentName ?? null;
+      if (agentName !== null) listed.set(parentRunId, { ...instance, agentName });
+    }
   }
   return [...listed.values()].toSorted(
     (left, right) => right.startedAt - left.startedAt || left.id.localeCompare(right.id),
@@ -535,9 +692,10 @@ export function filterRunRows(
 ): RunRow[] {
   return rows.filter(
     (row) =>
-      (filter.status === undefined || runSegmentOf(row.status) === filter.status) &&
+      (filter.status === undefined || runSegmentOfRow(row) === filter.status) &&
       (filter.agent === undefined || row.agentName === filter.agent) &&
       (filter.startedBy === undefined || row.origin.kind === filter.startedBy) &&
+      (filter.workflow === undefined || row.workflowType === filter.workflow) &&
       (filter.search === undefined || matchesSearch(row, filter.search, agentLabelOf)),
   );
 }
@@ -550,12 +708,13 @@ export function runSegmentCounts(rows: readonly RunRow[]): Readonly<Record<RunSe
   const counts: Record<RunSegment, number> = {
     all: rows.length,
     waiting: 0,
+    signal: 0,
     running: 0,
     done: 0,
     failed: 0,
     canceled: 0,
   };
-  for (const row of rows) counts[runSegmentOf(row.status)] += 1;
+  for (const row of rows) counts[runSegmentOfRow(row)] += 1;
   return counts;
 }
 
@@ -564,11 +723,13 @@ export function parseRunFilter(search: URLSearchParams): RunFilter {
   const status = RUN_STATUS_SEGMENTS.find((segment) => segment === search.get('status'));
   const agent = search.get('agent')?.trim();
   const startedBy = STARTED_BY_KINDS.find((kind) => kind === search.get('startedBy'));
+  const workflow = search.get('workflow')?.trim();
   const words = search.get('q')?.trim();
   return {
     ...(status === undefined ? {} : { status }),
     ...(agent === undefined || agent === '' ? {} : { agent }),
     ...(startedBy === undefined ? {} : { startedBy }),
+    ...(workflow === undefined || workflow === '' ? {} : { workflow }),
     ...(words === undefined || words === '' ? {} : { search: words }),
   };
 }
@@ -579,16 +740,58 @@ export function serializeRunFilter(filter: RunFilter): string {
   if (filter.status !== undefined) params.set('status', filter.status);
   if (filter.agent !== undefined) params.set('agent', filter.agent);
   if (filter.startedBy !== undefined) params.set('startedBy', filter.startedBy);
+  if (filter.workflow !== undefined) params.set('workflow', filter.workflow);
   if (filter.search !== undefined) params.set('q', filter.search);
   return params.toString();
 }
 
 /** The word a run's status reads as: one of the seven, or "Check not met" for a goal's attempt. */
-export type RunStatusWord = StatusWord | 'Check not met';
+export type RunStatusWord = StatusWord | 'Check not met' | 'Waiting';
 
-/** The status word of a row, which Cinder's `StatusDot` gives its one tone. */
-export function runStatusWord(row: Pick<RunRow, 'status' | 'checkNotMet'>): RunStatusWord {
-  return row.checkNotMet ? 'Check not met' : taskStatusWord(row.status);
+/** Whether a run that has not ended is parked at an `await-signal` step, waiting for a signal. */
+function awaitingSignalOf(
+  row: Pick<RunRow, 'status'> & { readonly workflow?: RunWorkflow | null | undefined },
+): string | null {
+  const going = row.status === 'working' || row.status === 'submitted';
+  return going ? (row.workflow?.awaitingSignal ?? null) : null;
+}
+
+/**
+ * The status word of a row, which Cinder's `StatusDot` gives its one tone. An instance waiting for
+ * a signal is "Waiting" (the hollow ring), and a run that asked to be woken is "Scheduled" until it
+ * is (`now`, when it is given, is the clock the due time is read against).
+ */
+export function runStatusWord(
+  row: Pick<RunRow, 'status' | 'checkNotMet'> & Partial<Pick<RunRow, 'workflow' | 'dueAt'>>,
+  now?: number,
+): RunStatusWord {
+  if (row.checkNotMet) return 'Check not met';
+  if (awaitingSignalOf({ status: row.status, workflow: row.workflow }) !== null) return 'Waiting';
+  if (
+    row.status === 'working' &&
+    row.dueAt !== undefined &&
+    row.dueAt !== null &&
+    row.dueAt > (now ?? Date.now())
+  ) {
+    return 'Scheduled';
+  }
+  return taskStatusWord(row.status);
+}
+
+/** Whether a row is running now: going, and neither waiting for a signal nor asleep until it is due. */
+export function isRunRowRunning(row: RunRow, now: number): boolean {
+  return (
+    (row.status === 'working' || row.status === 'submitted') &&
+    runStatusWord(row, now) === 'Running'
+  );
+}
+
+/** A due time as a sentence reads it: "today at 11:00 AM", "tomorrow at 9:00 AM", "Friday, Oct 30 at 9:00 AM". */
+export function dueWords(at: number, now: number, zone: string): string {
+  const copy = TASK_COPY.list;
+  const days = calendarDay(at, zone) - calendarDay(now, zone);
+  const day = days === 0 ? copy.due.today : days === 1 ? copy.due.tomorrow : dateLine(at, zone);
+  return copy.dueAtTime(day, clockTime(at, zone));
 }
 
 /** How long a run took or has run, in the words of line two: "8 s", "3 min 12 s", "1 h 4 min". */
@@ -626,6 +829,11 @@ export type RunLineContext = {
    * run a trigger started names its plugin ("GitHub"). Left out, the identifier is said.
    */
   readonly pluginTitle?: (plugin: string) => string | undefined;
+  /**
+   * When a schedule runs, as a clause in the viewer's time ("every day at 3:00 AM"), by its
+   * identifier, or `undefined` when the schedule was not read (row 53l).
+   */
+  readonly scheduleCadence?: (scheduleId: string) => string | undefined;
 };
 
 /**
@@ -636,32 +844,90 @@ export type RunLineContext = {
  */
 export function runLineTwo(row: RunRow, context: RunLineContext): string {
   const copy = TASK_COPY.list;
-  // A run with no agent names who started it: Interborough, or the trigger's plugin by its title
-  // (COR-2171), and by its identifier only when no title is loaded; never "An agent".
+  const workflow = row.workflow ?? null;
+  const tick = workflow?.tick ?? null;
+  // An instance of a workflow file names the schedule that fired it, when one did, and then the
+  // agent its steps ran as: "Schedule, Inbox triage, Assistant" (row 53l).
+  const instance =
+    workflow !== null && workflow.type !== SCHEDULE_TICK_TYPE && isInstanceWorkflow(workflow.type);
+  // A run with no agent names who started it: the trigger's plugin by its title (COR-2171), and by
+  // its identifier only when no title is loaded; never "An agent". Interborough's own bookkeeping
+  // says "Interborough started" only of a tick it recorded after a restart, which is when that is
+  // true (row 53l); any other is said by what it did.
   const agent =
     row.origin.kind === 'system'
-      ? copy.interboroughStarted
-      : row.agentName !== null
-        ? context.agentLabel(row.agentName)
-        : row.origin.kind === 'trigger' && row.origin.plugin !== null
-          ? (context.pluginTitle?.(row.origin.plugin) ?? row.origin.plugin)
-          : TASK_COPY.unknownAgent;
-  const parts: string[] = [copy.kinds[row.origin.kind], agent];
+      ? tick?.whileStopped === true
+        ? copy.interboroughStarted
+        : null
+      : instance
+        ? // A failed instance gives the room to where and why it failed (rows 09r, 52i: "Schedule,
+          // Release notes digest, failed at step 2 of 4, …"); any other names its agent (53l).
+          row.agentName === null || row.status === 'failed'
+          ? null
+          : context.agentLabel(row.agentName)
+        : row.agentName !== null
+          ? context.agentLabel(row.agentName)
+          : row.origin.kind === 'trigger' && row.origin.plugin !== null
+            ? (context.pluginTitle?.(row.origin.plugin) ?? row.origin.plugin)
+            : TASK_COPY.unknownAgent;
+  // A run of a workflow file that nothing recorded an origin for is still a workflow's.
+  const kind =
+    instance && row.origin.kind === 'none' ? copy.kinds.parent : copy.kinds[row.origin.kind];
+  const parts: string[] = [kind];
+  if (instance && row.scheduleName !== null && row.scheduleName !== undefined) {
+    parts.push(row.scheduleName);
+  }
+  if (agent !== null) parts.push(agent);
+  // A schedule's chat run says when its schedule runs, after the agent: "Schedule, Assistant,
+  // every day at 3:00 AM, 14 s" (row 53l).
+  const scheduleId =
+    row.origin.kind === 'schedule' ? (row.origin.scheduleId ?? workflow?.scheduleId ?? null) : null;
+  const cadence =
+    !instance && scheduleId !== null ? context.scheduleCadence?.(scheduleId) : undefined;
+  if (cadence !== undefined && cadence !== '') parts.push(cadence);
   if (row.attempt !== null) parts.push(copy.attempt(row.attempt.number, row.attempt.of));
+  if (tick !== null) {
+    parts.push(
+      tick.event === 'missed-runs'
+        ? copy.tick.missed(tick.missedRuns ?? 0)
+        : copy.tick.cameDue(row.scheduleName ?? workflow?.scheduleName ?? null),
+    );
+  }
+  const steps = instance ? workflow?.steps : null;
+  const reached = steps?.at ?? null;
   const took = durationWords(row.updatedAt - row.startedAt);
+  const awaiting = awaitingSignalOf(row);
   switch (row.status) {
     case 'input-required':
       parts.push(copy.waitingFor(waitedWords(context.now - row.updatedAt)));
       break;
     case 'submitted':
     case 'working':
-      parts.push(copy.runningFor(durationWords(context.now - row.startedAt)));
+      // Only a run that is running says its step (10h: "step 2 of 4, running 1 min 12 s"); one
+      // waiting for a signal or for its time says what it waits for and nothing of its step.
+      if (awaiting !== null) {
+        parts.push(copy.waitingForSignal(awaiting));
+      } else if (runStatusWord(row, context.now) === 'Scheduled' && row.dueAt != null) {
+        parts.push(copy.dueAt(dueWords(row.dueAt, context.now, context.zone)));
+      } else {
+        if (steps !== null && steps !== undefined && reached !== null) {
+          parts.push(copy.stepOf(reached, steps.total));
+        }
+        parts.push(copy.runningFor(durationWords(context.now - row.startedAt)));
+      }
       break;
     case 'canceled':
       parts.push(copy.canceledAt(clockTime(row.updatedAt, context.zone), took));
       break;
     case 'failed':
-      if (row.summary !== '') parts.push(row.summary);
+      if (steps !== null && steps !== undefined && reached !== null) {
+        parts.push(copy.failedAtStep(reached, steps.total));
+      }
+      // What the run said, never the error's own JSON: "GitHub didn’t answer (HTTP 503)".
+      if (row.summary !== '') {
+        const said = oneLine(row.summary, { keepParenthetical: true });
+        if (said !== '') parts.push(reasonClause(said));
+      }
       parts.push(took);
       break;
     case 'completed':

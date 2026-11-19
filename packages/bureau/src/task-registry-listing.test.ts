@@ -1027,9 +1027,9 @@ describe('TaskRegistry.expireListings', () => {
     expect(left[0]).toContain(encodeURIComponent(BOB));
   });
 
-  it('pins the key version to the task view’s shape, so a snapshot saved without `wakeAt` is never read', () => {
+  it('pins the key version to the task view’s shape, so a snapshot saved without `workflow` is never read', () => {
     // Bump this with the view: a stored view is parsed as the current shape by the next page.
-    expect(TASK_LISTING_KEY_PREFIX).toBe('bureau-task-listing:v5:');
+    expect(TASK_LISTING_KEY_PREFIX).toBe('bureau-task-listing:v6:');
   });
 
   it('stores under a prefix disjoint from the task records and the context index', () => {

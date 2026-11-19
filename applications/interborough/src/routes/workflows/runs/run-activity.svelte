@@ -6,16 +6,13 @@
    * own reads need, and says which one it needs when the caller lacks it, so a caller who can read
    * the timeline but not the events still has the timeline.
    */
-  import { Collapsible, EmptyState, Section, Stack } from '@lostgradient/cinder';
-  import Lock from '@lucide/svelte/icons/lock';
+  import { Section, Stack } from '@lostgradient/cinder';
   import type { WorkflowState } from '@lostgradient/weft';
 
   import { RUN_PAGE_COPY } from '../../../app/copy/runs.ts';
   import { TASK_COPY } from '../../../app/copy/tasks.ts';
   import type { TaskView } from '../../../lib/bureau-tasks.ts';
-  import { getPrincipalStore } from '../../../lib/scopes.svelte.ts';
-  import CheckpointsTab from '../detail/checkpoints/checkpoints-tab.svelte';
-  import EventsTab from '../detail/events-tab.svelte';
+  import RunEngineHistory from './run-engine-history.svelte';
   import RunTimeline from './run-timeline.svelte';
   import RunToolCalls from './run-tool-calls.svelte';
   import { threadIdForTask } from './run-activity.ts';
@@ -36,6 +33,11 @@
     workflow?: WorkflowState | undefined;
     /** Whether a tool approval is decided under its call; off where the page decides it above. */
     decideApprovals?: boolean;
+    /**
+     * Whether the engine's events and checkpoints are drawn here, under the timeline. Off on the
+     * run page, where they have a tab of their own (Events and logs, COR-2424).
+     */
+    history?: boolean;
   }
 
   let {
@@ -46,15 +48,10 @@
     engine,
     workflow,
     decideApprovals = true,
+    history = true,
   }: RunActivityProps = $props();
 
   const taskThreadId = $derived(task === undefined ? undefined : threadIdForTask(task, threadId));
-
-  const principal = getPrincipalStore();
-  const canReadEvents = $derived(principal.hasScope('events:read'));
-
-  let eventsOpen = $state(false);
-  let checkpointsOpen = $state(false);
 </script>
 
 <!-- Without a task to read, the note under the heading says why. Activity sits inside How it ran
@@ -76,36 +73,10 @@
 
     {#if engine !== undefined && workflow !== undefined}
       <RunTimeline {engine} {workflow} />
+    {/if}
 
-      <div class="ib-run__disclosures">
-        <Collapsible bind:open={eventsOpen} variant="flat" trigger={RUN_PAGE_COPY.eventsHeading}>
-          {#if canReadEvents}
-            <EventsTab client={engine.client} {workflow} />
-          {:else}
-            <EmptyState
-              kind="first-use"
-              size="compact"
-              headingLevel={3}
-              title={RUN_PAGE_COPY.eventsLockedTitle}
-              description={RUN_PAGE_COPY.lockedSection('events:read')}
-            >
-              {#snippet icon()}<Lock size={24} aria-hidden="true" />{/snippet}
-            </EmptyState>
-          {/if}
-        </Collapsible>
-        <Collapsible
-          bind:open={checkpointsOpen}
-          variant="flat"
-          trigger={RUN_PAGE_COPY.checkpointsHeading}
-        >
-          <CheckpointsTab
-            client={engine.client}
-            workflowId={workflow.id}
-            workflowType={workflow.type}
-            sourceRevision={workflow.revision}
-          />
-        </Collapsible>
-      </div>
+    {#if engine !== undefined && workflow !== undefined && history}
+      <RunEngineHistory {engine} {workflow} />
     {/if}
   </Stack>
 </Section>

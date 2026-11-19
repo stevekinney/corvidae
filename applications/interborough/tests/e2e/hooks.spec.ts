@@ -612,7 +612,7 @@ async function openHooks(
 }
 
 for (const width of WIDTHS) {
-  test(`[default-hooks] the list marks what a plugin made with Plugin and shows one status per row, at ${width} pixels`, async ({
+  test(`[default-hooks] /hooks: the list marks what a plugin made with Plugin and shows one status per row, at ${width} pixels`, async ({
     page,
     checkA11y,
   }) => {
@@ -747,7 +747,7 @@ test('[default-hooks] a default hook’s switch turns it on and off through upda
   expect(update?.params).toEqual({ hookId: 'default-on', expectedRevision: 1, enabled: false });
 });
 
-test('[default-hook-toggle-failed] a switch the Bureau refuses says so in a toast and returns to its saved state', async ({
+test('[default-hook-toggle-failed] /hooks: a switch the Bureau refuses says so in a toast and returns to its saved state', async ({
   page,
   pageErrors,
 }) => {
@@ -773,7 +773,7 @@ test('[default-hook-toggle-failed] a switch the Bureau refuses says so in a toas
 
 // R10-25: a default hook appears in each list state like any other hook.
 for (const width of WIDTHS) {
-  test(`[default-hooks-loading] a list holding a default hook keeps its header while it loads, then draws the hook with Plugin, at ${width} pixels`, async ({
+  test(`[default-hooks-loading] /hooks: a list holding a default hook keeps its header while it loads, then draws the hook with Plugin, at ${width} pixels`, async ({
     page,
   }) => {
     await page.setViewportSize({ width, height: 900 });
@@ -802,7 +802,7 @@ for (const width of WIDTHS) {
     ).toHaveText(HOOKS_COPY.pluginBadge);
   });
 
-  test(`[default-hooks-filtered] a search keeps a default hook that matches, with Plugin, at ${width} pixels`, async ({
+  test(`[default-hooks-filtered] /hooks: a search keeps a default hook that matches, with Plugin, at ${width} pixels`, async ({
     page,
   }) => {
     await page.setViewportSize({ width, height: 900 });
@@ -819,7 +819,7 @@ for (const width of WIDTHS) {
     });
   });
 
-  test(`[hook-page-loading] a hook's page shows placeholders while it is read, at ${width} pixels`, async ({
+  test(`[hook-page-loading] /hooks/:hook: a hook's page shows placeholders while it is read, at ${width} pixels`, async ({
     page,
   }) => {
     await page.setViewportSize({ width, height: 900 });
@@ -847,7 +847,7 @@ for (const width of WIDTHS) {
     ).toBeVisible();
   });
 
-  test(`[hook-page-error] a hook's page that could not be read says so, at ${width} pixels`, async ({
+  test(`[hook-page-error] /hooks/:hook: a hook's page that could not be read says so, at ${width} pixels`, async ({
     page,
     pageErrors,
   }) => {
@@ -870,7 +870,7 @@ for (const width of WIDTHS) {
 }
 
 for (const width of WIDTHS) {
-  test(`[default-hook-on] a default hook’s page is read only, with the switch, Duplicate, one note and its configuration as pairs, at ${width} pixels`, async ({
+  test(`[default-hook-on] /hooks/:hook: a default hook’s page is read only, with the switch, Duplicate, one note and its configuration as pairs, at ${width} pixels`, async ({
     page,
     checkA11y,
   }) => {
@@ -929,7 +929,7 @@ for (const width of WIDTHS) {
   });
 }
 
-test('[default-hook-phone] at 320 by 640 the switch and Duplicate share one row at the leading edge, 8 pixels apart', async ({
+test('[default-hook-phone] /hooks/:hook: at 320 by 640 the switch and Duplicate share one row at the leading edge, 8 pixels apart', async ({
   page,
 }) => {
   await page.setViewportSize({ width: 320, height: 640 });
@@ -970,7 +970,9 @@ test('[default-hook-phone] at 320 by 640 the switch and Duplicate share one row 
   );
 });
 
-test('[default-hook-off] a hook the owner turned off says so after Off', async ({ page }) => {
+test('[default-hook-off] /hooks/:hook: a hook the owner turned off says so after Off', async ({
+  page,
+}) => {
   await openHooks(page, '/hooks/default-off', [DEFAULT_OFF]);
   const head = page.getByTestId('hook-header');
   await expect(head.locator('[data-status-word="Off"]')).toBeVisible();
@@ -982,7 +984,7 @@ test('[default-hook-off] a hook the owner turned off says so after Off', async (
   });
 });
 
-test('[default-hook-withdrawn] a hook its plugin withdrew stays off, its switch is held and the note says why once', async ({
+test('[default-hook-withdrawn] /hooks/:hook: a hook its plugin withdrew stays off, its switch is held and the note says why once', async ({
   page,
 }) => {
   await openHooks(page, '/hooks/default-withdrawn', [DEFAULT_WITHDRAWN]);
@@ -1005,7 +1007,7 @@ test('[default-hook-withdrawn] a hook its plugin withdrew stays off, its switch 
   });
 });
 
-test('[default-hook-plugin-disabled] a hook of a disabled plugin is Unavailable, links to the plugin, and cannot be tested', async ({
+test('[default-hook-plugin-disabled] /hooks/:hook: a hook of a disabled plugin is Unavailable, links to the plugin, and cannot be tested', async ({
   page,
 }) => {
   await openHooks(page, '/hooks/default-plugin-disabled', [DEFAULT_DISABLED_PLUGIN]);
@@ -1036,7 +1038,7 @@ test('[default-hook-plugin-disabled] a hook of a disabled plugin is Unavailable,
   });
 });
 
-test('[default-hook-needs-setup] a hook whose plugin needs one key says Needs setup with Add the key, and cannot be tested yet', async ({
+test('[default-hook-needs-setup] /hooks/:hook: a hook whose plugin needs one key says Needs setup with Add the key, and cannot be tested yet', async ({
   page,
 }) => {
   await openHooks(page, '/hooks/default-needs-setup', [DEFAULT_NEEDS_SETUP]);
@@ -1058,7 +1060,7 @@ test('[default-hook-needs-setup] a hook whose plugin needs one key says Needs se
   });
 });
 
-test('[default-hook-duplicated] Duplicate makes an off copy named “<name> copy”, opens it, and says so', async ({
+test('[default-hook-duplicated] /hooks/:hook: Duplicate makes an off copy named “<name> copy”, opens it, and says so', async ({
   page,
 }) => {
   const copyRecord = hookRecord('default-copy', {
@@ -1095,7 +1097,7 @@ test('[default-hook-duplicated] Duplicate makes an off copy named “<name> copy
   });
 });
 
-test('[default-hook-duplicate-failed] a Duplicate the Bureau refuses says so in a toast and stays on the default hook', async ({
+test('[default-hook-duplicate-failed] /hooks/:hook: a Duplicate the Bureau refuses says so in a toast and stays on the default hook', async ({
   page,
   pageErrors,
 }) => {
@@ -1121,7 +1123,7 @@ test('[default-hook-duplicate-failed] a Duplicate the Bureau refuses says so in 
 });
 
 for (const width of WIDTHS) {
-  test(`[plugin-hook-configuration] a hook the owner made shows its configuration as fields, with the secret as a Select of keys, at ${width} pixels`, async ({
+  test(`[plugin-hook-configuration] /hooks/:hook: a hook the owner made shows its configuration as fields, with the secret as a Select of keys, at ${width} pixels`, async ({
     page,
     checkA11y,
   }) => {
@@ -1198,7 +1200,7 @@ for (const width of WIDTHS) {
   });
 }
 
-test('[plugin-hook-secret-missing] a chosen key that is Missing is warned about, and Add the key saves it without a reload', async ({
+test('[plugin-hook-secret-missing] /hooks/:hook: a chosen key that is Missing is warned about, and Add the key saves it without a reload', async ({
   page,
 }) => {
   const keys: SecretState[] = [
@@ -1248,7 +1250,7 @@ test('[plugin-hook-secret-missing] a chosen key that is Missing is warned about,
   await expect(page.getByText('a-secret-the-page-never-shows')).toHaveCount(0);
 });
 
-test('[plugin-hook-no-secrets] with no secret a plugin names, the Select is disabled and says where one is saved', async ({
+test('[plugin-hook-no-secrets] /hooks/:hook: with no secret a plugin names, the Select is disabled and says where one is saved', async ({
   page,
 }) => {
   // No key is chosen: a chosen key the host does not list would be a row of its own, drawn Missing.
@@ -1283,7 +1285,7 @@ test('[plugin-hook-no-secrets] with no secret a plugin names, the Select is disa
   });
 });
 
-test('[plugin-hook-secrets-failed] when the keys cannot be read the field says so with Try again, and the other fields stay usable', async ({
+test('[plugin-hook-secrets-failed] /hooks/:hook: when the keys cannot be read the field says so with Try again, and the other fields stay usable', async ({
   page,
   pageErrors,
 }) => {
@@ -1312,7 +1314,7 @@ test('[plugin-hook-secrets-failed] when the keys cannot be read the field says s
   await expect(action.getByRole('combobox', { name: /^Token/ })).toContainText('slack-bot-token');
 });
 
-test('[plugin-hook-testing] while a test runs, Send a test event shows its loading state', async ({
+test('[plugin-hook-testing] /hooks/:hook: while a test runs, Send a test event shows its loading state', async ({
   page,
 }) => {
   let release: () => void = () => undefined;
@@ -1364,7 +1366,7 @@ test('[plugin-hook-testing] while a test runs, Send a test event shows its loadi
   await expect(test).not.toHaveAttribute('data-cinder-loading', '');
 });
 
-test('[plugin-hook-save-failed] a refused save keeps every value and shows the refusal on the field', async ({
+test('[plugin-hook-save-failed] /hooks/:hook: a refused save keeps every value and shows the refusal on the field', async ({
   page,
   pageErrors,
 }) => {
@@ -1444,7 +1446,7 @@ const RECEIPTED = {
 
 // At 375 the capture also takes the 320 phone, so each of these states is seen at 320 and 1280.
 for (const width of WIDTHS) {
-  test(`[hook-delivery-receipt] a delivery whose reaction made something shows its summary, a link to it and its reference, at ${width} pixels`, async ({
+  test(`[hook-delivery-receipt] /hooks/:hook: a delivery whose reaction made something shows its summary, a link to it and its reference, at ${width} pixels`, async ({
     page,
   }) => {
     await page.setViewportSize({ width, height: 900 });
@@ -1505,7 +1507,7 @@ for (const width of WIDTHS) {
       'Needs attention',
     ],
   ] as const) {
-    test(`[${state}] a hook the Bureau lists with a ${problem.code} problem says ${word} in its row and its page, at ${width} pixels`, async ({
+    test(`[${state}] /hooks and /hooks/:hook: a hook the Bureau lists with a ${problem.code} problem says ${word} in its row and its page, at ${width} pixels`, async ({
       page,
     }) => {
       await page.setViewportSize({ width, height: 900 });
@@ -1560,7 +1562,7 @@ for (const width of WIDTHS) {
 }
 
 // R10-19: a saved plugin action with no dry run says why it has no test.
-test('[plugin-hook-no-test] a saved hook whose action has no test says so, and Send a test event is off', async ({
+test('[plugin-hook-no-test] /hooks/:hook: a saved hook whose action has no test says so, and Send a test event is off', async ({
   page,
 }) => {
   await openHooks(page, '/hooks/owner-plugin', [OWNER_PLUGIN_HOOK], {
@@ -1582,7 +1584,7 @@ test('[plugin-hook-no-test] a saved hook whose action has no test says so, and S
 });
 
 // R10-13 and R10-11: the secret's list open, with one long key cut in its middle.
-test('[plugin-hook-secret-list] the secret Select lists the keys by plugin with Set or Missing, a long key cut in its middle', async ({
+test('[plugin-hook-secret-list] /hooks/:hook: the secret Select lists the keys by plugin with Set or Missing, a long key cut in its middle', async ({
   page,
 }) => {
   const longKey = 'slack-workspace-admin-bot-token-for-the-reviews-channel';
@@ -1607,7 +1609,7 @@ test('[plugin-hook-secret-list] the secret Select lists the keys by plugin with 
 
 // R10-13 at 320: a long key chosen in the secret Select is cut in its middle in the trigger, which
 // stays inside the screen, and keeps the key's start and end.
-test('[plugin-hook-secret-long-key] a long key chosen at 320 pixels is cut in its middle in the trigger', async ({
+test('[plugin-hook-secret-long-key] /hooks/:hook: a long key chosen at 320 pixels is cut in its middle in the trigger', async ({
   page,
 }) => {
   const longKey = 'slack-workspace-admin-bot-token-for-the-reviews-channel';
@@ -1642,7 +1644,7 @@ test('[plugin-hook-secret-long-key] a long key chosen at 320 pixels is cut in it
 
 // R10-23: the event picker's list open, each event in words.
 for (const width of WIDTHS) {
-  test(`[new-hook-event-picker] the event picker lists events in words, at ${width} pixels`, async ({
+  test(`[new-hook-event-picker] /hooks/new: the event picker lists events in words, at ${width} pixels`, async ({
     page,
   }) => {
     await page.setViewportSize({ width, height: 900 });
@@ -1662,7 +1664,7 @@ for (const width of WIDTHS) {
 
 // R10-20 holds at the narrowest phone too.
 for (const width of [320, ...WIDTHS] as const) {
-  test(`[new-hook-plugin-action] every action choice is on screen, and a plugin’s action is chosen from a grouped Select, at ${width} pixels`, async ({
+  test(`[new-hook-plugin-action] /hooks/new: every action choice is on screen, and a plugin’s action is chosen from a grouped Select, at ${width} pixels`, async ({
     page,
     checkA11y,
   }) => {

@@ -27,6 +27,25 @@ export const STARTED_BY_LABELS = {
   trigger: 'A trigger',
 } as const satisfies Record<StartedBy, string>;
 
+/**
+ * The same kinds as the Started by filter names them: the plural a chip reads after its label
+ * ("Started by: Goals"), and "You" for a run a person started by hand, as the design's counts do
+ * ("Chats 5, Schedules 4, Goals 8, Interborough 2, You 0"). The singular words above lead a
+ * sentence or a column; these name a set of runs.
+ */
+export const STARTED_BY_FILTER_LABELS = {
+  chat: 'Chats',
+  person: 'You',
+  schedule: 'Schedules',
+  api: 'The API',
+  agent: 'Agents',
+  'agent-run': 'Agent tool calls',
+  goal: 'Goals',
+  parent: 'Workflows',
+  system: 'Interborough',
+  trigger: 'Triggers',
+} as const satisfies Record<StartedBy, string>;
+
 function isStartedBy(kind: string): kind is StartedBy {
   return Object.hasOwn(STARTED_BY_LABELS, kind);
 }

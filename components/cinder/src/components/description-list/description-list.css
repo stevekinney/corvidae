@@ -407,15 +407,39 @@
     flex-wrap: wrap;
     align-items: center;
     gap: var(--cinder-space-2);
+    min-inline-size: 0;
+    max-inline-size: 100%;
   }
 
   .cinder-description-list__tag-list {
     display: flex;
     flex-wrap: wrap;
     gap: var(--cinder-space-1);
+    min-inline-size: 0;
+    max-inline-size: 100%;
     list-style: none;
     margin: 0;
     padding: 0;
+  }
+
+  /* A tag never runs out of its row: a long one is shortened with an ellipsis, and its title holds
+     the whole text. */
+  .cinder-description-list__tag {
+    display: flex;
+    min-inline-size: 0;
+    max-inline-size: 100%;
+  }
+
+  .cinder-description-list__tag .cinder-chip {
+    min-inline-size: 0;
+    max-inline-size: 100%;
+  }
+
+  .cinder-description-list__tag .cinder-chip__label {
+    min-inline-size: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   /* A muted second line under the definition: what the value is called in the system (a check's
@@ -426,6 +450,12 @@
     font-size: var(--cinder-text-xs);
     line-height: var(--cinder-leading-normal);
     color: var(--cinder-text-muted);
+  }
+
+  /* An identifier at the note's start (`agentRun`), in the mono family at the note's size. */
+  .cinder-description-list__note-code {
+    font-family: var(--cinder-font-mono);
+    font-size: inherit;
   }
 
   .cinder-description-list__system-tags,

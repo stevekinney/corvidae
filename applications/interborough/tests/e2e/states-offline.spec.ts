@@ -239,7 +239,10 @@ test.describe('the server stops answering while a page with data is open', () =>
       await expect(cancel).not.toHaveAttribute('aria-disabled', 'true');
       await cancel.click();
       await page.getByRole('dialog').getByRole('button', { name: TASK_COPY.cancelAction }).click();
-      await expect(page.getByText(TASK_COPY.cancel['cleaned-up'])).toBeVisible();
+      // The status line says it is canceled; the note under it does not say it again.
+      await expect(
+        page.locator('[data-run-header]').getByText('Canceled', { exact: true }),
+      ).toBeVisible();
       expect(operations).toContain('bureau.tasks.cancel');
     } finally {
       held.abort();

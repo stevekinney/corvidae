@@ -30,6 +30,7 @@ const chat = {
 
 const goal = {
   goalRunId: 'seeded-goal',
+  identity: { name: 'Seeded goal', version: '1' },
   agentName: 'assistant',
   bounds: { maximumAttempts: 1 },
   attempts: [
@@ -130,6 +131,7 @@ describe('the session a run ran in', () => {
     expect(row?.origin).toEqual({
       kind: 'goal',
       name: 'seeded-goal',
+      title: 'Seeded goal',
       href: '/goals/seeded-goal',
       session: { title: 'Say hello.', href: '/chats/goal-seeded-goal-s0' },
     });
@@ -142,6 +144,7 @@ describe('the session a run ran in', () => {
     expect(row?.origin).toEqual({
       kind: 'goal',
       name: 'seeded-goal',
+      title: 'Seeded goal',
       href: '/goals/seeded-goal',
       session: { title: '', href: '/chats/goal-seeded-goal-s0' },
     });
@@ -408,7 +411,11 @@ describe('Started by, read from the origin the Bureau recorded', () => {
       title: 'Refund order 1234',
       href: '/chats/chat-1',
     });
-    expect(rowOf(ORIGINS.person)).toEqual({ kind: 'person', surface: 'palette' });
+    expect(rowOf(ORIGINS.person)).toEqual({
+      kind: 'person',
+      surface: 'palette',
+      principal: 'me',
+    });
     expect(rowOf(ORIGINS.schedule)).toMatchObject({
       kind: 'schedule',
       scheduleId: 'nightly',
@@ -426,6 +433,7 @@ describe('Started by, read from the origin the Bureau recorded', () => {
     expect(rowOf(ORIGINS.goal)).toEqual({
       kind: 'goal',
       name: 'seeded-goal',
+      title: 'Seeded goal',
       href: '/goals/seeded-goal',
       session: null,
     });
@@ -459,7 +467,7 @@ describe('Started by, read from the origin the Bureau recorded', () => {
       goals: [],
       chats: [chat],
     });
-    expect(row?.origin).toEqual({ kind: 'person', surface: 'api' });
+    expect(row?.origin).toEqual({ kind: 'person', surface: 'api', principal: 'me' });
   });
 
   test('keeps a goal’s session from the goal list when the task’s origin names the goal', () => {

@@ -613,6 +613,27 @@ describe('a goal’s page', () => {
     expect(frameState(view.container)).toBe('ready');
   });
 
+  test('says what the goal was asked under “Asked” when the owner’s read carries the prompt (rows 67j, 67o, 67t)', async () => {
+    const asked = 'Summarize open refunds.\nSay why each one is waiting.';
+    const owner = open(
+      [goal('goal-1', { status: 'succeeded', prompt: asked, attempts: ATTEMPTS })],
+      { path: '/goals/goal-1' },
+    );
+
+    const section = await owner.view.findByTestId('goal-asked');
+    expect(within(section).getByRole('heading', { level: 2, name: 'Asked' })).not.toBeNull();
+    expect(section.textContent).toContain('Summarize open refunds.');
+    expect(section.textContent).toContain('Say why each one is waiting.');
+  });
+
+  test('draws no “Asked” when the read carries no prompt, which is every caller’s but the owner’s (rows 67j, 67o, 67t)', async () => {
+    const other = open([goal('goal-1', { status: 'succeeded', attempts: ATTEMPTS })], {
+      path: '/goals/goal-1',
+    });
+    await other.view.findByRole('heading', { level: 1 });
+    expect(other.view.queryByTestId('goal-asked')).toBeNull();
+  });
+
   test('says the check was met in a note that opens the attempt, and offers Edit but not Start again', async () => {
     const { view } = open(
       [
@@ -697,6 +718,9 @@ describe('a goal’s page', () => {
       .find((element) => element !== null);
     expect(again?.getAttribute('aria-disabled')).toBe('true');
     expect(again?.getAttribute('aria-describedby')).toContain(reason.id);
+    // Beneath the button, in the header's caption under the actions, not beside the status (67p).
+    expect(reason.closest('.cinder-page-header__actions-note')).not.toBeNull();
+    expect(reason.closest('.cinder-page-header__status')).toBeNull();
   });
 
   test('leaves Start again on for a model agent while the only provider is keyless (COR-2414)', async () => {

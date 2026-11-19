@@ -552,7 +552,7 @@ export const CONTRACT: Record<string, ComponentContract> = {
       expandListLabel: { optional: true, type_kind: 'TSStringKeyword', default: L('Show list') },
       groupBy: { optional: true, type_kind: 'TSFunctionType', default: NO_DEFAULT },
       loading: { optional: true, type_kind: 'TSBooleanKeyword', default: B(false) },
-      // COR-2426: how many placeholder rows the list draws while loading.
+      // COR-2426: how many placeholder rows the list pane shows while `loading`.
       loadingRows: { optional: true, type_kind: 'TSNumberKeyword', default: L(5) },
       loadingLabel: { optional: true, type_kind: 'TSStringKeyword', default: L('Loading') },
       onLoadingCancel: { optional: true, type_kind: 'TSFunctionType', default: NO_DEFAULT },
@@ -709,6 +709,10 @@ export const CONTRACT: Record<string, ComponentContract> = {
       statusPlacement: { optional: true, type_kind: 'TSTypeReference', default: L('below') },
       narrowActions: { optional: true, type_kind: 'TSTypeReference', default: L('own-row') },
       titleText: { optional: true, type_kind: 'TSStringKeyword', default: NO_DEFAULT },
+      // COR-2423: a short caption under the actions' row (`string | Snippet`, as `description`
+      // is), and the id a button's `aria-describedby` names it by.
+      actionsNote: { optional: true, type_kind: 'TSUnionType', default: NO_DEFAULT },
+      actionsNoteId: { optional: true, type_kind: 'TSStringKeyword', default: NO_DEFAULT },
       class: { optional: true, type_kind: 'TSStringKeyword', default: NO_DEFAULT },
     },
     snippets: {
@@ -792,6 +796,10 @@ export const CONTRACT: Record<string, ComponentContract> = {
       trailing: { optional: true, type_kind: 'TSBooleanKeyword', default: L(false) },
       chevronColumn: { optional: true, type_kind: 'TSBooleanKeyword', default: L(false) },
       dayBand: { optional: true, type_kind: 'TSBooleanKeyword', default: L(false) },
+      // COR-2423: the day band's own words, its label and an optional muted detail
+      // (`string | undefined`), drawn as text in place of the bar.
+      dayBandLabel: { optional: true, type_kind: 'TSUnionType', default: NO_DEFAULT },
+      dayBandDetail: { optional: true, type_kind: 'TSUnionType', default: NO_DEFAULT },
       statusColumn: { optional: true, type_kind: 'TSBooleanKeyword', default: L(true) },
       framed: { optional: true, type_kind: 'TSBooleanKeyword', default: L(false) },
       detailLine: { optional: true, type_kind: 'TSBooleanKeyword', default: L(false) },

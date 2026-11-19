@@ -275,6 +275,44 @@ describe('the goal draft opened from a goal to start again', () => {
   });
 });
 
+describe('a goal read by its owner, which carries its prompt (COR-2425)', () => {
+  const ASKED = 'Summarize open refunds.\nSay why each one is waiting.';
+  const asked = { ...SUMMARIZE, prompt: ASKED };
+
+  test('fills Start again with the prompt the goal was asked, not only its name', () => {
+    const form = new GoalFormState('create');
+    form.prefill(asked);
+    expect(form.prompt).toBe(ASKED);
+    expect(form.toInput()).toMatchObject({
+      prompt: ASKED,
+      identity: { name: 'Summarize open refunds.', version: '1' },
+    });
+  });
+
+  test('fills Edit with the prompt, requires it, and names it only once it differs', () => {
+    const form = new GoalFormState('edit');
+    form.prefill(asked);
+    expect(form.prompt).toBe(ASKED);
+    expect(form.keepsCurrentPrompt).toBe(false);
+    expect(form.changed).toBe(false);
+
+    form.prompt = `${ASKED}\nKeep it short.`;
+    expect(form.toChange()).toEqual({ prompt: `${ASKED}\nKeep it short.` });
+
+    // Emptied, there is nothing left to keep that the person can see: a problem, never a silent keep.
+    form.prompt = '  ';
+    expect(form.problems.prompt).toBeDefined();
+    expect(form.isValid).toBe(false);
+  });
+
+  test('keeps an empty prompt as "keep the current one" for a goal read without it', () => {
+    const form = new GoalFormState('edit');
+    form.prefill(SUMMARIZE);
+    expect(form.keepsCurrentPrompt).toBe(true);
+    expect(form.problems.prompt).toBeUndefined();
+  });
+});
+
 describe('the goal draft opened for Edit', () => {
   function opened(): GoalFormState {
     const form = new GoalFormState('edit');
@@ -306,7 +344,7 @@ describe('the goal draft opened for Edit', () => {
     expect(form.changed).toBe(false);
   });
 
-  test('names only what changed, and never the agent', () => {
+  test('names only what changed, the agent included once another is chosen', () => {
     const prompt = opened();
     prompt.prompt = '  Summarize open refunds, and say why each waits.  ';
     expect(prompt.toChange()).toEqual({
@@ -324,6 +362,9 @@ describe('the goal draft opened for Edit', () => {
 
     const agent = opened();
     agent.agentName = 'assistant';
+    expect(agent.toChange()).toEqual({ agentName: 'assistant' });
+    // Chosen and put back, it is the agent the goal has: no change.
+    agent.agentName = 'tool-runner';
     expect(agent.toChange()).toEqual({});
   });
 

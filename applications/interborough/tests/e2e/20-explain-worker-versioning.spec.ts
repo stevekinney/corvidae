@@ -16,6 +16,12 @@ import {
   E2E_VERSIONED_FIRST_BUILD_ID,
 } from './e2e-constants.ts';
 import { expect, test } from './fixtures.ts';
+import { openHowItRan, openTab } from './workflow-support.ts';
+
+/** Opens How it ran's Versioning tab, where the worker binding is (COR-2424, row 54i). */
+async function openVersioning(page: Page): Promise<void> {
+  await openTab(await openHowItRan(page), 'Versioning');
+}
 
 const VIEWPORTS = [
   { width: 375, height: 812 },
@@ -45,6 +51,7 @@ test('a pinned run shows its binding and says why it cannot be overridden', asyn
   checkA11y,
 }) => {
   await page.goto(`/runs/${E2E_PINNED_RUN_ID}`);
+  await openVersioning(page);
   await expect(panel(page)).toBeVisible();
   await expect(figure(page, 'Policy')).toHaveText('Pinned');
   await expect(figure(page, 'Deployment')).toHaveText(E2E_VERSIONED_DEPLOYMENT_NAME);
@@ -74,6 +81,7 @@ test('an auto-upgrade run shows the compatibility it requires and why it may mov
   checkA11y,
 }) => {
   await page.goto(`/runs/${E2E_AUTO_UPGRADE_RUN_ID}`);
+  await openVersioning(page);
   await expect(figure(page, 'Policy')).toHaveText('Auto-upgrade');
   await expect(figure(page, 'Requires build')).toHaveText(E2E_VERSIONED_FIRST_BUILD_ID);
   await expect(figure(page, 'Requires artifact digest')).toHaveText(
@@ -94,6 +102,7 @@ test('the worker binding panel is usable across supported widths and themes', as
     for (const viewport of VIEWPORTS) {
       await page.setViewportSize(viewport);
       await page.goto(`/runs/${E2E_AUTO_UPGRADE_RUN_ID}`);
+      await openVersioning(page);
       await expect(panel(page)).toBeVisible();
       const overflow = await page.evaluate(
         () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
@@ -132,6 +141,7 @@ test('an operator previews a worker upgrade, confirms it, and the restart binds 
   // inherited generation 1.
   await expect.poll(() => boundGeneration(page, E2E_AUTO_UPGRADE_RUN_ID)).toBe(2);
   await page.reload();
+  await openVersioning(page);
   await expect(figure(page, 'Routing generation')).toHaveText('2');
   await expect(figure(page, 'Build')).toHaveText(E2E_VERSIONED_FIRST_BUILD_ID);
   await checkA11y('workflow detail — after worker override');

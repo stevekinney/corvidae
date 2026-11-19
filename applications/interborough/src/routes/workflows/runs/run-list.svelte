@@ -47,12 +47,14 @@
   import { agentLabel as agentLabelOf } from '../../../lib/agent-label.ts';
   import { listAgents, listAllContexts } from '../../../lib/bureau-client.ts';
   import { listAllGoals } from '../../../lib/bureau-goals.ts';
-  import { isRunning, listAllTasks } from '../../../lib/bureau-tasks.ts';
+  import { listAllTasks } from '../../../lib/bureau-tasks.ts';
   import { followLinks } from '../../../lib/follow-links.ts';
   import { viewerTimeZone } from '../../../lib/format/clock.ts';
   import { usePluginTitle } from '../../../lib/plugin-title.svelte.ts';
+  import { workflowTypeName } from '../../../lib/workflow-type-name.ts';
   import { queryKeys } from '../../../lib/query.ts';
   import { router } from '../../../lib/router.svelte.ts';
+  import { getPrincipalStore } from '../../../lib/scopes.svelte.ts';
   import { HOME_CLOCK_MILLISECONDS } from '../../home/home-clock.svelte.ts';
   import { REVIEW_POLL_MILLISECONDS } from '../../reviews/reviews-data.ts';
   import MissedRunsRow from './missed-runs-row.svelte';
@@ -64,18 +66,19 @@
     buildRunRows,
     filterLabelOf,
     filterRunRows,
+    isRunRowRunning,
     parseRunFilter,
     RUN_PAGE_SIZE,
-    RUN_SEGMENTS,
     runDayGroup,
     runListEntries,
     runListRows,
     runSegmentCounts,
     serializeRunFilter,
+    visibleRunSegments,
     type RunFilter,
     type RunListEntry,
   } from './run-rows.ts';
-  import { STARTED_BY_KINDS, STARTED_BY_LABELS } from './started-by.ts';
+  import { STARTED_BY_FILTER_LABELS, STARTED_BY_KINDS } from './started-by.ts';
 
   /** The form that starts a run. */
   const START_RUN_PATH = '/runs/new';
@@ -86,6 +89,8 @@
   const filter = $derived(parseRunFilter(router.current.search));
   const queryClient = useQueryClient();
   const connection = getConnection();
+  // A run only the workflow engine holds opens on the engine's page, for a caller who may read it.
+  const engineReadable = $derived(getPrincipalStore().hasScope('workflows:read'));
 
   // The queries below follow `bureau.events`: a run by `run.*` and `action`, a goal by `goal.*`,
   // a chat by `session.*` (`app/bureau-event-queries.ts`). Each asks again on a timer only while the
@@ -152,6 +157,10 @@
 
   // A run a trigger started names its plugin by its title.
   const pluginTitle = usePluginTitle();
+  // A schedule's chat run says when its schedule runs (row 53l).
+  function scheduleCadence(scheduleId: string): string | undefined {
+    return schedules.data?.cadences?.get(scheduleId);
+  }
 
   const everyRun = $derived(
     runListRows(
@@ -168,6 +177,7 @@
   const others = $derived<RunFilter>({
     ...(filter.agent === undefined ? {} : { agent: filter.agent }),
     ...(filter.startedBy === undefined ? {} : { startedBy: filter.startedBy }),
+    ...(filter.workflow === undefined ? {} : { workflow: filter.workflow }),
     ...(filter.search === undefined ? {} : { search: filter.search }),
   });
   const unsegmented = $derived(filterRunRows(everyRun, others, agentLabel));
@@ -196,7 +206,7 @@
   // list is going, so its duration ticks in place, and each minute otherwise.
   const zone = viewerTimeZone();
   let now = $state(Date.now());
-  const going = $derived(rows.some((row) => isRunning(row)));
+  const going = $derived(rows.some((row) => isRunRowRunning(row, now)));
   $effect(() => {
     const period = going ? RUNNING_CLOCK_MILLISECONDS : HOME_CLOCK_MILLISECONDS;
     // poll-reason: clock
@@ -216,8 +226,19 @@
     ].toSorted(),
   );
 
+  // The workflows to filter by are the ones the runs ran on (row 52d), each named as a person
+  // reads it, so "Chat with an agent" and "Release notes" are choices and `agentRun` is not.
+  const workflowTypes = $derived(
+    [
+      ...new Set([
+        ...everyRun.flatMap((row) => (row.workflowType == null ? [] : [row.workflowType])),
+        ...(filter.workflow === undefined ? [] : [filter.workflow]),
+      ]),
+    ].toSorted((left, right) => workflowTypeName(left).localeCompare(workflowTypeName(right))),
+  );
+
   const segments = $derived<FilterSegment[]>(
-    RUN_SEGMENTS.map((value) => ({
+    visibleRunSegments(counts, filter.status).map((value) => ({
       value,
       label: TASK_COPY.list.segments[value],
       // The counts wait for every read: a segment is not 0 because a read has not arrived.
@@ -230,7 +251,17 @@
       key: 'startedBy',
       label: TASK_COPY.startedByLabel,
       multiple: false,
-      options: STARTED_BY_KINDS.map((value) => ({ value, label: STARTED_BY_LABELS[value] })),
+      options: STARTED_BY_KINDS.map((value) => ({
+        value,
+        label: STARTED_BY_FILTER_LABELS[value],
+      })),
+    },
+    {
+      type: 'choice',
+      key: 'workflow',
+      label: TASK_COPY.workflowLabel,
+      multiple: false,
+      options: workflowTypes.map((value) => ({ value, label: workflowTypeName(value) })),
     },
     {
       type: 'choice',
@@ -244,6 +275,9 @@
     ...(filter.startedBy === undefined
       ? []
       : [{ key: 'startedBy', value: filter.startedBy, label: TASK_COPY.startedByLabel }]),
+    ...(filter.workflow === undefined
+      ? []
+      : [{ key: 'workflow', value: filter.workflow, label: TASK_COPY.workflowLabel }]),
     ...(filter.agent === undefined
       ? []
       : [{ key: 'agent', value: filter.agent, label: TASK_COPY.agentLabel }]),
@@ -385,6 +419,8 @@
     {:else if loading}
       <RunListStates
         kind={showCanceled ? 'canceled' : 'loading'}
+        {now}
+        {zone}
         {bar}
         onCancel={cancelLoading}
         onRetry={retry}
@@ -441,7 +477,15 @@
           >
             {#snippet children(entry: RunListEntry)}
               {#if entry.kind === 'run'}
-                <RunListRow row={entry.row} {now} {zone} {agentLabel} {pluginTitle} />
+                <RunListRow
+                  row={entry.row}
+                  {now}
+                  {zone}
+                  {agentLabel}
+                  {pluginTitle}
+                  {scheduleCadence}
+                  readable={entry.row.engineRun !== true || engineReadable}
+                />
               {:else}
                 <MissedRunsRow missed={entry.missed} {zone} {agentLabel} />
               {/if}

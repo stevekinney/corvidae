@@ -9,6 +9,7 @@
    */
   import { StackedListItem, StatusDot } from '@lostgradient/cinder';
 
+  import { TASK_COPY } from '../../../app/copy/tasks.ts';
   import { clockTime } from '../../../lib/format/clock.ts';
   import { router, workflowDetailPath } from '../../../lib/router.svelte.ts';
   import { runLineTwo, runStatusWord, type RunRow } from './run-rows.ts';
@@ -24,30 +25,53 @@
     agentLabel: (agentName: string) => string;
     /** The title of a plugin, for a run its trigger started; the identifier is said without one. */
     pluginTitle?: ((plugin: string) => string | undefined) | undefined;
+    /** When a schedule runs, by its identifier, which a schedule's chat run says (row 53l). */
+    scheduleCadence?: ((scheduleId: string) => string | undefined) | undefined;
     /**
      * Where the row leads, when not to the run's own page: a workflow's Runs tab opens each run
      * under the workflow it belongs to.
      */
     href?: string | undefined;
+    /**
+     * Whether the row opens. A run only the workflow engine holds is the engine's page, which a
+     * caller who may not read the engine would find missing; its row then does not open, and says why.
+     */
+    readable?: boolean;
   }
 
-  let { row, now, zone, agentLabel, pluginTitle = undefined, href = undefined }: Props = $props();
+  let {
+    row,
+    now,
+    zone,
+    agentLabel,
+    pluginTitle = undefined,
+    scheduleCadence = undefined,
+    href = undefined,
+    readable = true,
+  }: Props = $props();
 
-  const word = $derived(runStatusWord(row));
-  const lineTwo = $derived(
+  const word = $derived(runStatusWord(row, now));
+  const baseLineTwo = $derived(
     runLineTwo(row, {
       now,
       zone,
       agentLabel,
       ...(pluginTitle === undefined ? {} : { pluginTitle }),
+      ...(scheduleCadence === undefined ? {} : { scheduleCadence }),
     }),
   );
+  // Line two keeps what the run was; why the row does not open is the row's own description, so a
+  // line cut short never drops it first.
+  const lineTwo = $derived(baseLineTwo);
 </script>
+
+{#snippet lockedNote()}{TASK_COPY.list.engineRunLocked}{/snippet}
 
 <StackedListItem
   data-run={row.id}
   data-status={word}
-  href={router.href(href ?? workflowDetailPath(row.id))}
+  {...readable ? {} : { description: lockedNote }}
+  {...readable ? { href: router.href(href ?? workflowDetailPath(row.id)) } : {}}
   tooltip={row.title}
   metaTooltip={lineTwo}
 >

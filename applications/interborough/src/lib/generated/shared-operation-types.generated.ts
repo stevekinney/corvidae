@@ -154,7 +154,7 @@ export type SharedActionTypeAttemptsCreate_605da491 = {
     readonly workflowId: string | null;
   } | null;
 };
-export type SharedActorAgentNameCleanup_188ba7c4 = {
+export type SharedActorAgentNameCleanup_04ef488e = {
   readonly actor: string | null;
   readonly agentName: string | null;
   readonly cleanup:
@@ -192,6 +192,18 @@ export type SharedActorAgentNameCleanup_188ba7c4 = {
   readonly statusMessage: string | null;
   readonly updatedAt: string;
   readonly wakeAt: string | null;
+  readonly workflow: {
+    readonly awaitingSignal: string | null;
+    readonly scheduleId: string | null;
+    readonly scheduleName: string | null;
+    readonly steps: { readonly at: number | null; readonly total: number } | null;
+    readonly tick: {
+      readonly event: 'came-due' | 'missed-runs';
+      readonly missedRuns: number | null;
+      readonly whileStopped: boolean;
+    } | null;
+    readonly type: string;
+  };
 };
 export type SharedAdmissionSequenceAdmitte_e74023ec = {
   readonly admissionSequence: number;
@@ -289,10 +301,11 @@ export type SharedAgeMillisecondsAgentName_f1ceaa2d = {
     readonly title?: string;
   };
 };
-export type SharedAgentDescriptionInputSch_7887556b = {
+export type SharedAgentDescriptionInputSch_bae5d7e6 = {
   readonly agent?: string;
   readonly description?: string;
   readonly inputSchema?: Record<string, unknown>;
+  readonly outputName?: string;
   readonly outputSchema?: Record<string, unknown>;
   readonly paused?: boolean;
   readonly steps: ReadonlyArray<Record<string, unknown>>;
@@ -310,9 +323,10 @@ export type SharedAgentIdKindRunId_4feb3c4f = {
   readonly kind: 'agent-run';
   readonly runId: string;
 };
-export type SharedAgentNameAttemptsBounds_770d921e = {
+export type SharedAgentNameAttemptsBounds_368afcde = {
   readonly agentName: string;
   readonly attempts: ReadonlyArray<{
+    readonly agentName: string;
     readonly attemptId: string;
     readonly attemptIndex: number;
     readonly completedAt: string | null;
@@ -321,20 +335,10 @@ export type SharedAgentNameAttemptsBounds_770d921e = {
     readonly sessionId: string;
     readonly startedAt: string;
     readonly status: 'running' | 'evaluating' | 'passed' | 'failed' | 'aborted';
-    readonly usage: {
-      readonly costUsd: number | null;
-      readonly steps: number;
-      readonly tokens: number;
-    };
+    readonly usage: SharedCostUsdStepsTokens_b79f227c;
   }>;
-  readonly bounds: {
-    readonly maximumAttempts: number;
-    readonly maximumTotalCostUsd: number | null;
-    readonly maximumTotalDurationMs: number | null;
-    readonly maximumTotalSteps: number | null;
-    readonly maximumTotalTokens: number | null;
-  };
-  readonly cancellation: { readonly reason: string | null; readonly requestedAt: string } | null;
+  readonly bounds: SharedMaximumAttemptsMaximumTo_703052e7;
+  readonly cancellation: SharedReasonRequestedAt_eb87c207 | null;
   readonly closedAt: string | null;
   readonly createdAt: string;
   readonly goalRunId: string;
@@ -352,13 +356,7 @@ export type SharedAgentNameAttemptsBounds_770d921e = {
     | 'canceled';
   readonly terminalReason: string | null;
   readonly updatedAt: string;
-  readonly usage: {
-    readonly attempts: number;
-    readonly costUsd: number | null;
-    readonly durationMs: number;
-    readonly steps: number;
-    readonly tokens: number;
-  };
+  readonly usage: SharedAttemptsCostUsdDurationM_9b91e38e;
   readonly validator: SharedNameVersion_ad3a242e;
   readonly validatorConfiguration: unknown;
 };
@@ -443,6 +441,13 @@ export type SharedAttemptIdGoalRunIdKind_492a23d4 = {
   readonly goalRunId: string;
   readonly kind: 'goal';
 };
+export type SharedAttemptsCostUsdDurationM_9b91e38e = {
+  readonly attempts: number;
+  readonly costUsd: number | null;
+  readonly durationMs: number;
+  readonly steps: number;
+  readonly tokens: number;
+};
 export type SharedAttemptsDelayMillisecond_2e376a75 = {
   readonly attempts: number;
   readonly delayMilliseconds?: number;
@@ -480,6 +485,12 @@ export type SharedBreakingFromKind_a402b4ba = {
   readonly kind: 'step-signal';
   readonly step: number;
   readonly to: string;
+};
+export type SharedBreakingFromKind_a43395e1 = {
+  readonly breaking: false;
+  readonly from: string | null;
+  readonly kind: 'output-name';
+  readonly to: string | null;
 };
 export type SharedBreakingFromKind_d2f8dbf1 = {
   readonly breaking: false;
@@ -632,6 +643,11 @@ export type SharedCostStepsTools_95f40410 = {
   readonly steps?: number | null;
   readonly tools?: SharedCallsSeconds_35295711 | null;
 };
+export type SharedCostUsdStepsTokens_b79f227c = {
+  readonly costUsd: number | null;
+  readonly steps: number;
+  readonly tokens: number;
+};
 export type SharedCreatedAtDeclaredByteLen_078d11c8 = {
   readonly createdAt: string;
   readonly declaredByteLength: number;
@@ -733,6 +749,13 @@ export type SharedKindPrincipalSurface_7ee42644 = {
   readonly principal: string;
   readonly surface: 'web' | 'palette' | 'api';
 };
+export type SharedMaximumAttemptsMaximumTo_703052e7 = {
+  readonly maximumAttempts: number;
+  readonly maximumTotalCostUsd: number | null;
+  readonly maximumTotalDurationMs: number | null;
+  readonly maximumTotalSteps: number | null;
+  readonly maximumTotalTokens: number | null;
+};
 export type SharedMessagePath_da49cd77 = { readonly message: string; readonly path: string };
 export type SharedNameVersion_ad3a242e = { readonly name: string; readonly version: string };
 export type SharedOutcomeReason_1cc511c4 = {
@@ -747,6 +770,10 @@ export type SharedOwnerDisabledPluginWithd_740a70eb = {
   readonly ownerDisabled: boolean;
   readonly plugin: string;
   readonly withdrawn: boolean;
+};
+export type SharedReasonRequestedAt_eb87c207 = {
+  readonly reason: string | null;
+  readonly requestedAt: string;
 };
 export type SharedTitleType_d5f800b6 = { readonly title: string | null; readonly type: 'notify' };
 export type SharedTypeUrl_4cb7ae9a = { readonly type: 'webhook'; readonly url: string };

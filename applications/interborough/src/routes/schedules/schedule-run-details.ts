@@ -8,6 +8,7 @@ import type { HttpClient, WorkflowTimelineEntry } from '@lostgradient/weft';
 import type { QueryKey } from '@tanstack/svelte-query';
 
 import { SCHEDULE_COPY } from '../../app/copy/schedules.ts';
+import { oneLine } from '../../lib/one-line.ts';
 import {
   getScheduleProvenance,
   type WorkflowScheduleProvenanceClient,
@@ -31,39 +32,6 @@ export type RunDetailClient = Pick<HttpClient, 'get' | 'getTimeline'> &
 
 export function runDetailQueryKey(runId: string): QueryKey {
   return ['schedules', 'run-detail', runId] as const;
-}
-
-/** The `message` of an error object, or of the `cause` it names, when it has one. */
-function messageOf(value: unknown): string | undefined {
-  if (typeof value !== 'object' || value === null) return undefined;
-  const cause: unknown = Reflect.get(value, 'cause');
-  const inner = messageOf(cause);
-  if (inner !== undefined) return inner;
-  const message: unknown = Reflect.get(value, 'message');
-  return typeof message === 'string' && message !== '' ? message : undefined;
-}
-
-/**
- * What a failed run said, in the few words a row has room for: the cause an agent run wraps in its
- * own message (`Agent "assistant" failed (…): {"cause":{"message":"GitHub didn’t answer (HTTP
- * 503)"}}`), without the name of the error class in front of it or the detail in parentheses
- * behind it ("GitHub didn’t answer"). The run's own page says all of it.
- */
-export function oneLine(message: string): string {
-  const braces = message.indexOf('{');
-  let said = message;
-  if (braces >= 0) {
-    try {
-      said = messageOf(JSON.parse(message.slice(braces))) ?? message.slice(0, braces);
-    } catch {
-      // What follows the brace is not JSON, so the message is read as it stands.
-    }
-  }
-  const first = said.split('\n').find((line) => line.trim() !== '') ?? '';
-  return first
-    .replace(/^\s*[A-Za-z]*Error:\s*/, '')
-    .replace(/\s*\([^()]*\)\s*$/, '')
-    .trim();
 }
 
 function stepOf(entry: WorkflowTimelineEntry): number {

@@ -6,9 +6,64 @@
 import { describe, expect, test } from 'bun:test';
 
 import { taskFixture } from '../../../lib/bureau-fixtures.test-support.ts';
-import { runStatusLine } from './run-status-line.ts';
+import {
+  howItRanOpensFirst,
+  phrasesWithStep,
+  runStatusLine,
+  startedAgoPhrases,
+} from './run-status-line.ts';
+
+describe('phrasesWithStep (56g)', () => {
+  const going = { failed: false, over: false, waitingForSignal: false };
+
+  test('a run going on adds its step after the other parts', () => {
+    expect(phrasesWithStep(['12 s so far'], 'step 2 of 4', going)).toEqual([
+      '12 s so far',
+      'step 2 of 4',
+    ]);
+  });
+
+  test('a run waiting for a signal, one that failed and one that is over say no step', () => {
+    expect(phrasesWithStep([], 'step 2 of 4', { ...going, waitingForSignal: true })).toEqual([]);
+    expect(phrasesWithStep(['x'], 'step 2 of 4', { ...going, failed: true })).toEqual(['x']);
+    expect(phrasesWithStep(undefined, 'step 2 of 4', { ...going, over: true })).toBeUndefined();
+  });
+});
 
 const STARTED = Date.parse('2026-11-02T10:45:00-06:00');
+
+describe('howItRanOpensFirst (row 54a)', () => {
+  test('a finished run, a chat’s or a workflow file’s instance alike, opens with How it ran closed', () => {
+    expect(howItRanOpensFirst(true)).toBe(false);
+  });
+
+  test('a run still going opens with it open, where its approvals are answered', () => {
+    expect(howItRanOpensFirst(false)).toBe(true);
+  });
+});
+
+describe('startedAgoPhrases (row 54l)', () => {
+  const running = {
+    status: 'Running',
+    over: false,
+    failed: false,
+    stepPhrase: 'step 2 of 4',
+    signals: [],
+    startedAt: STARTED,
+    now: STARTED + 40_000,
+  } as const;
+
+  test('an instance going on says how long ago it started, then the step', () => {
+    expect(startedAgoPhrases(running)).toEqual(['Started 40 s ago', 'step 2 of 4']);
+  });
+
+  test('a run with no step, one that ended, failed or waits for a signal keeps its own line', () => {
+    expect(startedAgoPhrases({ ...running, stepPhrase: undefined })).toBeUndefined();
+    expect(startedAgoPhrases({ ...running, over: true })).toBeUndefined();
+    expect(startedAgoPhrases({ ...running, failed: true })).toBeUndefined();
+    expect(startedAgoPhrases({ ...running, signals: ['notes-approved'] })).toBeUndefined();
+  });
+});
 
 describe('runStatusLine', () => {
   test('a run still going says how long it has run so far (54l, 06b)', () => {

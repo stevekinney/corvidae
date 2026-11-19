@@ -8,9 +8,10 @@
  * check reads "Check not met", which is neutral, and every note is neutral but the one that says
  * an attempt waits on you, which is amber.
  *
- * A goal's view carries neither its prompt nor its validator's feedback (`goals-operations.ts`), so
- * the page says neither: line two names the agent and how long the attempt took, and the check is
- * said from the validator's name.
+ * Only the owner's read of a goal carries its prompt and its validator's feedback
+ * (`goals-operations.ts`, COR-2425). Without them the page says neither: line two names the agent
+ * and how long the attempt took, and the check is said from the validator's name. With them, an
+ * attempt that missed the check says what the check said at the end of line two.
  */
 import type { StatusDotWordLabel } from '@lostgradient/cinder';
 
@@ -20,6 +21,8 @@ import type { BureauReview } from '../../lib/bureau-reviews.ts';
 import type { TaskView } from '../../lib/bureau-tasks.ts';
 import { checkText } from '../../lib/check-text.ts';
 import { clockTime } from '../../lib/format/clock.ts';
+import { goalPath } from '../../lib/identifier-paths.ts';
+import { reasonClause } from '../../lib/reason-clause.ts';
 import { durationWords, waitedWords } from '../workflows/runs/run-rows.ts';
 import { goalListWord } from './goal-rows.ts';
 
@@ -135,6 +138,12 @@ export type AttemptLineContext = {
    * goal's last write, so this is the goal's `updatedAt` while it is `evaluating`.
    */
   readonly agentEndedAt?: string | undefined;
+  /**
+   * How long each attempt's run took, in milliseconds, by run, as Runs says it (the run's own start
+   * to its end, row 53l). An attempt's `completedAt` is when its check answered, which can be
+   * minutes after its run ended, so a run's own duration is used wherever it is known.
+   */
+  readonly runDurations?: ReadonlyMap<string, number> | undefined;
 };
 
 /** Why the agent stopped, in words, for the finish reasons that are not the agent's normal end. */
@@ -145,14 +154,18 @@ function agentStopWords(finishReason: string | null): string | undefined {
 }
 
 /**
- * Line two of an attempt's row, agent first: "Assistant, took 8 s"; "Tool runner, canceled at
- * 10:08 AM after 1 min 12 s"; "Tool runner, Agent took 1 min 12 s" while its result is checked
- * (with "Agent stopped: …" when the agent did not end its own way); "Tool runner, Issue refund is
- * waiting for your approval, 4 min" while it waits on you.
+ * Line two of an attempt's row, agent first: "Assistant, took 8 s, Reply said hello"; "Tool runner,
+ * canceled at 10:08 AM after 1 min 12 s"; "Tool runner, Agent took 1 min 12 s" while its result is
+ * checked (with "Agent stopped: …" when the agent did not end its own way); "Tool runner, Issue
+ * refund is waiting for your approval, 4 min" while it waits on you (rows 67i, 67l, 67r, 67v).
  */
 export function attemptLineTwo(attempt: GoalAttempt, context: AttemptLineContext): string {
   const parts: string[] = [context.agent];
-  const took = between(attempt.startedAt, attempt.completedAt);
+  const runTook = context.runDurations?.get(attempt.runId);
+  const took =
+    runTook === undefined
+      ? between(attempt.startedAt, attempt.completedAt)
+      : durationWords(runTook);
   switch (attempt.status) {
     case 'running': {
       const { wait } = context;
@@ -186,11 +199,22 @@ export function attemptLineTwo(attempt: GoalAttempt, context: AttemptLineContext
       break;
     }
     case 'passed':
-    case 'failed':
+    case 'failed': {
       if (took !== undefined) parts.push(copy.line.took(took));
+      // The owner's read carries what the check said, met or not ("Reply said hello", 67v); every
+      // other read leaves it out. The reason is said as it is, with no prefix (67l).
+      const said = checkReason(attempt.feedback);
+      if (said !== undefined) parts.push(reasonClause(said));
       break;
+    }
   }
   return parts.join(', ');
+}
+
+/** What the check said, on one line: its words with each run of white space made one space, or `undefined` when it said nothing. */
+function checkReason(feedback: string | null | undefined): string | undefined {
+  const said = feedback?.replaceAll(/\s+/g, ' ').trim();
+  return said === undefined || said === '' ? undefined : said;
 }
 
 /** One attempt as a row of the goal's Attempts list. */
@@ -215,8 +239,15 @@ export type AttemptRow = {
  * waits on, when it does; only that attempt's run is read for it.
  */
 export function attemptRows(
-  goal: Pick<Goal, 'attempts' | 'status' | 'updatedAt'>,
-  context: Omit<AttemptLineContext, 'wait'> & { readonly liveWait: AttemptWait | undefined },
+  goal: Pick<Goal, 'attempts' | 'status' | 'updatedAt' | 'agentName'>,
+  context: Omit<AttemptLineContext, 'wait'> & {
+    readonly liveWait: AttemptWait | undefined;
+    /**
+     * The name an agent goes by on screen, for an attempt that ran as another agent than the goal's
+     * current one. Omitted, the agent's identifier is said as it is.
+     */
+    readonly agentLabel?: (agentName: string) => string;
+  },
 ): AttemptRow[] {
   return goal.attempts
     .toSorted((left, right) => right.attemptIndex - left.attemptIndex)
@@ -233,7 +264,16 @@ export function attemptRows(
         title: copy.attemptTitle(number),
         word: attemptWord(attempt, wait),
         startedAt: instant(attempt.startedAt),
-        lineTwo: attemptLineTwo(attempt, { ...context, wait, agentEndedAt }),
+        // An attempt that ran as another agent than the goal's now says its own.
+        lineTwo: attemptLineTwo(attempt, {
+          ...context,
+          agent:
+            attempt.agentName === undefined || attempt.agentName === goal.agentName
+              ? context.agent
+              : (context.agentLabel?.(attempt.agentName) ?? attempt.agentName),
+          wait,
+          agentEndedAt,
+        }),
       };
     });
 }
@@ -350,8 +390,8 @@ export type GoalFact = {
 
 /**
  * The Details panel: the check, the agent, the attempt limit, when it stops, and when it was made
- * and by whom ("Fri, Oct 30, 8:12 AM by you"). The prompt is not among them: the goal's view does
- * not carry it.
+ * and by whom ("Fri, Oct 30, 8:12 AM by you"). The prompt is not among them: the page says it under
+ * "Asked" (`goal-asked.svelte`), for the owner whose read carries it.
  */
 export function goalFacts(
   goal: Pick<Goal, 'validator' | 'validatorConfiguration' | 'bounds' | 'createdAt' | 'owner'>,
@@ -420,7 +460,8 @@ export function stopDescription(goal: Pick<Goal, 'status' | 'attempts'>): string
 
 /** The goal's Edit page, which the goal form serves (`/goals/:goal/edit`). */
 export function goalEditPath(goalRunId: string): string {
-  return `/goals/${encodeURIComponent(goalRunId)}/edit`;
+  const [path = '', query] = goalPath(goalRunId).split('?');
+  return `${path}/edit${query === undefined ? '' : `?${query}`}`;
 }
 
 /** New goal, prefilled from the goal `goalRunId` (Start again). */

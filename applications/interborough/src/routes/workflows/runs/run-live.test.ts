@@ -153,7 +153,8 @@ describe('a goal attempt checking its result', () => {
 
     await waitFor(() => expect(headerText(view)).toContain('Running, checking the result'));
     expect(headerText(view)).toMatch(/attempt 1 of \d+/);
-    expect(headerText(view)).toContain('Agent took 1 min 12 s');
+    // A clause joined to the status line by a comma starts in lower case (`reasonClause`).
+    expect(headerText(view)).toContain('agent took 1 min 12 s');
     expect(headerText(view).match(/took/g)).toHaveLength(1);
     expect(view.queryByRole('link', { name: 'Run again' })).toBeNull();
   });

@@ -46,6 +46,8 @@
  *   `Workflow <identifier>`.
  * - `input` on a `schedule` trigger: the fixed value every fire starts its instance with, judged
  *   against `inputSchema` when the file is written. With none, a fire starts with `null`.
+ * - `outputName` on the workflow (COR-2424): the name of what an instance produces, such as
+ *   `notes`, which the run page shows on its Output card. With none, the card reads "Output".
  *
  * The trigger kind `manual` (`{ "kind": "manual" }`) is the one extension Weft does see: a
  * workflow that only starts when someone starts it.
@@ -227,6 +229,24 @@ export interface WorkflowFileProblem {
 /** The longest `description`, in characters: a sentence for a list row, not a document. */
 export const WORKFLOW_DESCRIPTION_MAXIMUM_LENGTH = 280;
 
+/** The longest `outputName`, in characters (COR-2424). */
+export const WORKFLOW_OUTPUT_NAME_MAXIMUM_LENGTH = 64;
+
+/**
+ * What an `outputName` looks like: a name a person reads in code, such as `notes` or
+ * `release_notes`: a letter or underscore, then letters, digits, underscores and hyphens.
+ */
+export const WORKFLOW_OUTPUT_NAME_PATTERN = /^[A-Za-z_][A-Za-z0-9_-]*$/;
+
+/** Whether `value` is a usable `outputName`. */
+export function isWorkflowOutputName(value: unknown): value is string {
+  return (
+    typeof value === 'string' &&
+    value.length <= WORKFLOW_OUTPUT_NAME_MAXIMUM_LENGTH &&
+    WORKFLOW_OUTPUT_NAME_PATTERN.test(value)
+  );
+}
+
 /**
  * A file's trigger as written: `kind` and the keys of that kind, a schedule's `timezone`,
  * `catchUp`, `name`, and `input` included.
@@ -296,6 +316,11 @@ export interface WorkflowFileContents {
   /** The JSON Schema the result of an instance must satisfy, or `null` when the file declares none. */
   readonly outputSchema: Readonly<Record<string, unknown>> | null;
   /**
+   * The name of what an instance produces, such as `notes` (COR-2424), or `null` when the file
+   * gives none. Bureau's alone: stripped before Weft, so it is no part of a revision.
+   */
+  readonly outputName: string | null;
+  /**
    * The trigger as written, with the `timezone`, `catchUp`, `name`, and `input` that the document's
    * trigger lacks.
    */
@@ -323,6 +348,8 @@ export interface WorkflowFileDefinition {
   readonly inputSchema?: Readonly<Record<string, unknown>> | undefined;
   /** See {@link WorkflowFileContents.outputSchema}. */
   readonly outputSchema?: Readonly<Record<string, unknown>> | undefined;
+  /** See {@link WorkflowFileContents.outputName}. */
+  readonly outputName?: string | undefined;
   /** The trigger, as {@link WorkflowFileContents.trigger} reads it back. */
   readonly trigger: WorkflowFileTrigger;
   /** The steps, as {@link WorkflowFileContents.steps} reads them back. */
@@ -626,10 +653,16 @@ export function parseWorkflowFile(
       problem: { code: 'invalid-json', message: 'The file must hold one JSON object.' },
     };
   }
-  const { title, description, agent, paused, ...written } = value;
+  const { title, description, agent, paused, outputName, ...written } = value;
   const issues: WorkflowFileIssue[] = [];
   if (Object.hasOwn(value, 'title') && !isTitle(title)) {
     issues.push({ path: 'title', message: TITLE_MESSAGE });
+  }
+  if (Object.hasOwn(value, 'outputName') && !isWorkflowOutputName(outputName)) {
+    issues.push({
+      path: 'outputName',
+      message: `must be a name of at most ${String(WORKFLOW_OUTPUT_NAME_MAXIMUM_LENGTH)} characters that starts with a letter or underscore and holds only letters, digits, underscores and hyphens, such as "notes"`,
+    });
   }
   const { documentInput, annotations } = stripExtensions(written, issues);
   if (
@@ -713,6 +746,7 @@ export function parseWorkflowFile(
       paused: paused === true,
       inputSchema: document.inputSchema ?? null,
       outputSchema: document.outputSchema ?? null,
+      outputName: typeof outputName === 'string' ? outputName : null,
       // A valid document had a trigger object and a steps array, as written.
       trigger: written['trigger'] as WorkflowFileTrigger,
       steps: written['steps'] as WorkflowFileStep[],
@@ -725,7 +759,8 @@ export function parseWorkflowFile(
 /**
  * The text of a file for `definition`, as the workflow `id`: two-space JSON with a trailing
  * newline, keys in the order the workflow page's Code tab shows them: `name`, `title`,
- * `description`, `agent`, `paused`, `trigger`, `inputSchema`, `outputSchema`, `steps`.
+ * `description`, `agent`, `paused`, `trigger`, `inputSchema`, `outputSchema`, `outputName`,
+ * `steps`.
  */
 export function serializeWorkflowFile(id: string, definition: WorkflowFileDefinition): string {
   const body: Record<string, unknown> = { name: id };
@@ -736,6 +771,7 @@ export function serializeWorkflowFile(id: string, definition: WorkflowFileDefini
   body['trigger'] = definition.trigger;
   if (definition.inputSchema !== undefined) body['inputSchema'] = definition.inputSchema;
   if (definition.outputSchema !== undefined) body['outputSchema'] = definition.outputSchema;
+  if (definition.outputName !== undefined) body['outputName'] = definition.outputName;
   body['steps'] = definition.steps;
   const knownKeys = new Set([
     'title',
@@ -745,6 +781,7 @@ export function serializeWorkflowFile(id: string, definition: WorkflowFileDefini
     'trigger',
     'inputSchema',
     'outputSchema',
+    'outputName',
     'steps',
   ]);
   for (const [key, value] of Object.entries(definition)) {

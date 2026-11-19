@@ -396,6 +396,37 @@ describe("a run is the goal's only when its recovery record names the goal's own
     expect(stopped).toEqual([id]);
   });
 
+  it('asks for the owner of the attempt a run is marked for, so a goal whose agent changed still owns its earlier attempts (COR-2425)', async () => {
+    const asked: Array<[string, number]> = [];
+    // Attempt 0 ran as `worker` before the goal moved to `helper`, which attempt 1 runs as.
+    const resolveByAttempt = (goalRunId: string, attemptIndex: number) => {
+      asked.push([goalRunId, attemptIndex]);
+      return Promise.resolve({
+        agentName: attemptIndex === 0 ? 'worker' : 'helper',
+        principal: undefined,
+        maximumAttempts: 10,
+      });
+    };
+    const attemptZero = recordFor({ agentName: 'worker' });
+    const { engine } = fakeEngine({ [id]: { type: 'agentRun', input: {}, status: 'running' } });
+    const owned = createOwnedGoalEngine(
+      engine,
+      () => Promise.resolve(attemptZero),
+      resolveByAttempt,
+    );
+    const visible = await owned.get(id);
+    expect(visible?.status).toBe('running');
+    expect(asked).toEqual([['g1', 0]]);
+
+    // The same run, marked for attempt 0 but started as the goal's current agent, is not its.
+    const impostor = createOwnedGoalEngine(
+      engine,
+      () => Promise.resolve(recordFor({ agentName: 'helper' })),
+      resolveByAttempt,
+    );
+    expect(await impostor.get(id)).toBeNull();
+  });
+
   it('treats a run as foreign when the goal that marked it cannot be found', async () => {
     const { engine } = fakeEngine({ [id]: { type: 'agentRun', input: {}, status: 'running' } });
     const unknownGoal = () => Promise.resolve(undefined);

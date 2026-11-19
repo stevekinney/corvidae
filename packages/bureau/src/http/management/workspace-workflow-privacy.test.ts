@@ -192,6 +192,74 @@ for (const [operation, access] of cases) {
   });
 }
 
+test('bureau.workflows.runs.retry executes all six authenticated actor cases', async () => {
+  const operation = 'bureau.workflows.runs.retry';
+  const control = { writerDown: true };
+  const served = await serveWorkflows(cleanups, {
+    workspace: workspacePrivacyDirectory(),
+    authentication: workspacePrivacyAuthentication,
+    agents: {
+      writer: createAgent({
+        generate: async () => {
+          if (control.writerDown) throw new Error('the writer is down');
+          return { content: 'written', toolCalls: [] };
+        },
+      }),
+    },
+  });
+  await served.bureau.workflows!.create('workspace-retry-flow', {
+    ...definition,
+    steps: [AGENT_STEP],
+  });
+  const fixture = { handler: served.keyed };
+  const started = await workspacePrivacyCall(fixture, 'owner', 'bureau.workflows.start', {
+    id: 'workspace-retry-flow',
+    input: { secret: 'PRIVATE-WORKFLOW-INPUT-d24a' },
+  });
+  const runId = started.body?.result?.['runId'];
+  if (typeof runId !== 'string') throw new Error('Expected seeded run');
+  const statusOf = async () => {
+    const run = await served.bureau.workflows!.getRun(runId);
+    return run?.status;
+  };
+  await waitForCondition(async () => (await statusOf()) === 'failed', 'seeded run fails');
+  control.writerDown = false;
+  // The owner's refusal changes nothing: the step it names is not one the run has.
+  const refused = await workspacePrivacyCall(fixture, 'owner', operation, { runId, step: 9 });
+  expect(refused.body?.error?.data).toMatchObject({ reason: 'step-not-found' });
+  expect(await statusOf()).toBe('failed');
+  // Everyone but the owner first, so each meets the failed run the owner could retry.
+  for (const actor of [
+    'peer',
+    'administrator',
+    'grantee',
+    'foreign',
+    'removed',
+    'owner',
+  ] as const) {
+    const result = await workspacePrivacyCall(fixture, actor, operation, { runId, step: 1 });
+    witnesses.observeWire(operation, actor, result);
+    if (actor === 'foreign' || actor === 'removed') {
+      expect(result.status).toBe(403);
+    } else if (actor !== 'owner') {
+      expect(result.body?.error?.data?.httpStatus).toBe(404);
+      const unknown = await workspacePrivacyCall(fixture, actor, operation, {
+        runId: 'unknown-run',
+        step: 1,
+      });
+      expect(JSON.stringify(result.body?.error).replaceAll(runId, '<id>')).toBe(
+        JSON.stringify(unknown.body?.error).replaceAll('unknown-run', '<id>'),
+      );
+    } else {
+      expect(result.body?.error).toBeUndefined();
+      expect(result.body?.result).toMatchObject({ runId, step: 1 });
+    }
+    // Only the owner's retry ran the instance again; every refusal left it failed.
+    expect((await statusOf()) === 'failed').toBe(actor !== 'owner');
+    expect(result.text).not.toContain('PRIVATE-WORKFLOW-INPUT-d24a');
+  }
+});
+
 test('completed workflow results are serialized only for their current owner', async () => {
   const resultSentinel = 'PRIVATE-WORKFLOW-RESULT-c0e8';
   const served = await serveWorkflows(cleanups, {

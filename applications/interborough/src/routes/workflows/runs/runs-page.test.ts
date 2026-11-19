@@ -32,7 +32,6 @@ import {
 } from '../../../lib/bureau-world.test-support.ts';
 import { AUTHORIZATION_SCOPES, type AuthorizationScope } from '../../../lib/scopes.svelte.ts';
 import { landAt } from '../../chat/pages.test-support.ts';
-import { goalTitle } from './run-rows.ts';
 
 let stub: BureauWorldStub | undefined;
 afterEach(() => {
@@ -248,7 +247,7 @@ describe('a run’s page', () => {
     expect(
       without.queryByRole('button', { name: RUN_DETAIL_COPY.howItRan.heading }),
     ).not.toBeNull();
-    for (const name of ['Input and output', 'Details']) {
+    for (const name of ['Input and output', 'Run details']) {
       // The sections a finished run shows without opening How it ran.
       expect(without.queryByRole('heading', { level: 2, name })).not.toBeNull();
     }
@@ -282,7 +281,7 @@ describe('a run’s page', () => {
       scopes: WITHOUT_ENGINE,
     });
 
-    await findByRole('heading', { level: 1, name: goalTitle('goal-3') });
+    await findByRole('heading', { level: 1, name: 'Goal goal-3' });
     expect(container.textContent).toContain('goal-3');
   });
 
@@ -318,7 +317,7 @@ describe('a run’s page', () => {
 
     failing = false;
     await fireEvent.click(await findByRole('button', { name: RETRY_LABEL }));
-    await findByRole('heading', { level: 1, name: goalTitle('goal-1') });
+    await findByRole('heading', { level: 1, name: 'Goal goal-1' });
   });
 
   test('reads the waits again when the task’s stream reports something, because a superseded approval keeps its review id', async () => {

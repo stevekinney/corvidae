@@ -11,6 +11,7 @@ import {
   RunSettledEvent,
 } from '../events';
 import type { TaskView } from '../task-registry';
+import { PLAIN_TASK_WORKFLOW } from '../task-workflow.test-support';
 import { notificationForSettledTask, startBuiltInNotifications } from './built-in-notifications';
 import { createNotificationStore } from './notification-store';
 import { NOTIFICATION_FIELD_LIMITS, type NotificationInput } from './notification-types';
@@ -31,6 +32,7 @@ const task = (change: Partial<TaskView> = {}): TaskView => ({
   cleanup: null,
   openWaits: [],
   wakeAt: null,
+  workflow: PLAIN_TASK_WORKFLOW,
   ...change,
 });
 

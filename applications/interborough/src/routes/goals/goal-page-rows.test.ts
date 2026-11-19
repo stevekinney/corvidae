@@ -247,6 +247,115 @@ describe('the attempts of a goal that gave up (rows 67i and 67l)', () => {
     ]);
   });
 
+  test('say what the check said on line two when the owner’s read carries it (rows 67i, 67l, 67r, 67v, 67x)', () => {
+    const goal = draftReleaseNotes();
+    const withReasons: Goal = {
+      ...goal,
+      attempts: goal.attempts.map((attempt) =>
+        attempt.attemptIndex === 4
+          ? { ...attempt, feedback: 'The notes\n  never mention the staging fix.' }
+          : attempt.attemptIndex === 3
+            ? { ...attempt, feedback: '   ' }
+            : attempt.attemptIndex === 2
+              ? { ...attempt, feedback: null }
+              : attempt,
+      ),
+    };
+    const rows = attemptRows(withReasons, {
+      agent: 'Assistant',
+      zone: ZONE,
+      now: 0,
+      liveWait: undefined,
+    });
+    // Newest first: the reason is one line, after how long the attempt took; an attempt whose check
+    // said nothing, or whose read carried no feedback at all, is line two as it was.
+    // The reason has no prefix: "Assistant, took 6 s, <reason>" (67l).
+    expect(rows.map((row) => row.lineTwo)).toEqual([
+      // The reason starts in lower case after the comma (`reasonClause`).
+      'Assistant, took 6 s, the notes never mention the staging fix.',
+      'Assistant, took 7 s',
+      'Assistant, took 5 s',
+      'Assistant, took 6 s',
+      'Assistant, took 8 s',
+    ]);
+    // The word stays neutral: the reason is on line two, never red.
+    expect(new Set(rows.map((row) => row.word))).toEqual(new Set(['Check not met']));
+  });
+
+  test('say the reason of an attempt that met its check when its verdict carries one (67v)', () => {
+    const goal = draftReleaseNotes();
+    const passed: Goal = {
+      ...goal,
+      attempts: goal.attempts.map((attempt) =>
+        attempt.attemptIndex === 4
+          ? { ...attempt, status: 'passed', feedback: 'Reply said hello' }
+          : attempt,
+      ),
+    };
+    const [newest] = attemptRows(passed, {
+      agent: 'Assistant',
+      zone: ZONE,
+      now: 0,
+      liveWait: undefined,
+    });
+    expect(newest?.lineTwo).toBe('Assistant, took 6 s, reply said hello');
+  });
+
+  test('say how long the attempt’s run took, as Runs does, not until its check answered (67l, 67r)', () => {
+    const goal = draftReleaseNotes();
+    const checkedLate: Goal = {
+      ...goal,
+      attempts: goal.attempts.map((attempt) =>
+        attempt.attemptIndex === 4
+          ? {
+              ...attempt,
+              completedAt: new Date(Date.parse(attempt.startedAt) + 125_000).toISOString(),
+            }
+          : attempt,
+      ),
+    };
+    const newestRunId = checkedLate.attempts.find((attempt) => attempt.attemptIndex === 4)?.runId;
+    const read = (runDurations?: ReadonlyMap<string, number>) =>
+      attemptRows(checkedLate, {
+        agent: 'Assistant',
+        zone: ZONE,
+        now: 0,
+        liveWait: undefined,
+        runDurations,
+      })[0]?.lineTwo;
+    // Without the run's own duration the page can only say start to the check's answer.
+    expect(read()).toBe('Assistant, took 2 min 5 s');
+    expect(read(new Map([[newestRunId ?? '', 6_000]]))).toBe('Assistant, took 6 s');
+  });
+
+  test('name the agent an attempt ran as when it is not the goal’s current one (COR-2425)', () => {
+    const goal = draftReleaseNotes();
+    const changed: Goal = {
+      ...goal,
+      agentName: 'helper',
+      attempts: goal.attempts.map((attempt) =>
+        attempt.attemptIndex < 2
+          ? { ...attempt, agentName: 'worker' }
+          : { ...attempt, agentName: 'helper' },
+      ),
+    };
+    const rows = attemptRows(changed, {
+      agent: 'Helper',
+      zone: ZONE,
+      now: 0,
+      liveWait: undefined,
+      agentLabel: (name) => (name === 'worker' ? 'Worker' : name),
+    });
+    // Newest first: attempts 5 to 3 ran as the goal's agent, attempts 2 and 1 as Worker.
+    expect(rows.map((row) => row.lineTwo.split(',')[0])).toEqual([
+      'Helper',
+      'Helper',
+      'Helper',
+      'Worker',
+      'Worker',
+    ]);
+  });
+
   test('have a neutral note that says when it gave up, and opens its last attempt', () => {
     const note = goalNote(draftReleaseNotes(), { zone: ZONE, liveWait: undefined });
     expect(note?.tone).toBe('neutral');
@@ -477,6 +586,10 @@ describe('the addresses the page links to', () => {
   test('are the goal’s Edit page, New goal prefilled from it, and the review in Reviews', () => {
     expect(goalEditPath('summarize-open-refunds')).toBe('/goals/summarize-open-refunds/edit');
     expect(startAgainPath('summarize-open-refunds')).toBe('/goals/new?from=summarize-open-refunds');
+    // A goal run named `new` or `.` cannot be a path segment, so its edit page carries it in the query.
+    expect(goalEditPath('new')).toBe('/goals/_/edit?__weft_goal_id=new');
+    expect(goalEditPath('.')).toBe('/goals/_/edit?__weft_goal_id=.');
+    expect(goalEditPath('..')).toBe('/goals/_/edit?__weft_goal_id=..');
     expect(reviewPath('bureau:approval:run-1:call-1')).toBe(
       '/reviews?review=bureau%3Aapproval%3Arun-1%3Acall-1',
     );

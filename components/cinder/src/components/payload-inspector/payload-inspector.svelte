@@ -29,8 +29,10 @@
     chooseFieldsLayout,
     headerCount,
     isTreePayload,
+    jsonOnlyKeysOf,
     LARGE_ARRAY_ABOVE,
     readPartialObject,
+    withoutKeys,
   } from './payload-inspector-model.ts';
   import {
     containsSecret,
@@ -49,12 +51,15 @@
     maxBytes = 1_048_576,
     parse,
     label,
+    labelCode,
     view = $bindable('fields'),
     bare = false,
     plain = false,
     linkFor,
     redact,
     formatValue,
+    jsonOnly,
+    fieldsValue,
     streaming = false,
     failed = false,
     failedMessage = "Couldn't load the full result.",
@@ -66,6 +71,14 @@
   }: PayloadInspectorProps = $props();
 
   const switchId = $props.id();
+  // The card's name: the label, with the name drawn in code after it ("Output, notes").
+  const accessibleLabel = $derived(
+    label === undefined
+      ? 'Payload'
+      : labelCode === undefined || labelCode === ''
+        ? label
+        : `${label}, ${labelCode}`,
+  );
 
   // --------------------------------------------------------------------------
   // Parsing: preserve plain string values, while still accepting serialized JSON
@@ -175,9 +188,22 @@
   const copyDisabled = $derived(mode === 'failed' || mode === 'streaming');
   const showSwitch = $derived(mode === 'ready' || mode === 'streaming' || mode === 'invalid');
 
+  // What the Fields view lays out and counts: the caller's `fieldsValue` when it gives one (secrets
+  // hidden the same way), else the payload itself. The JSON view and Copy keep the stored payload.
+  const fieldsSource = $derived(
+    fieldsValue === undefined || arriving || mode !== 'ready'
+      ? shown
+      : maskSecrets(fieldsValue, redact),
+  );
+  // The top-level fields only the JSON view shows, and the payload the Fields view lays out without them.
+  const hiddenFields = $derived(arriving ? [] : jsonOnlyKeysOf(fieldsSource, jsonOnly));
+  const fieldsShown = $derived(withoutKeys(fieldsSource, hiddenFields));
+
   const countText = $derived.by((): string | undefined => {
     if (bare) return undefined;
-    if (mode === 'ready') return headerCount(shown, { bytes });
+    if (mode === 'ready') {
+      return headerCount(fieldsSource, { bytes, jsonOnly: hiddenFields.length });
+    }
     if (mode === 'streaming') return headerCount(shown, { streaming: true });
     if (mode === 'invalid' || mode === 'text') return 'Text';
     if (mode === 'oversize' && bytes !== undefined) return formatBytes(bytes);
@@ -189,7 +215,7 @@
     formatValue,
     initialDepth,
     maxDepth,
-    tree: isTreePayload(shown),
+    tree: isTreePayload(fieldsShown),
   });
 
   // A payload that has said nothing whole yet has no field to list, only the wait.
@@ -200,15 +226,15 @@
 
   const chosenLayout = $derived.by(() => {
     if (
-      typeof shown !== 'object' ||
-      shown === null ||
-      Array.isArray(shown) ||
-      shown instanceof Date
+      typeof fieldsShown !== 'object' ||
+      fieldsShown === null ||
+      Array.isArray(fieldsShown) ||
+      fieldsShown instanceof Date
     ) {
       return 'rows' as const;
     }
     return chooseFieldsLayout(
-      Object.entries(shown).map(([key, entry]) => ({
+      Object.entries(fieldsShown).map(([key, entry]) => ({
         key,
         value: entry,
         linked:
@@ -255,10 +281,25 @@
   }
 </script>
 
+{#snippet viewSwitch()}
+  <SegmentedControl
+    id={switchId}
+    label={`${label ?? 'Payload'} view`}
+    labelVisible={false}
+    size="sm"
+    value={mode === 'invalid' ? 'fields' : view}
+    disabled={mode === 'invalid'}
+    onValueChange={handleViewChange}
+  >
+    <Segment value="fields">Fields</Segment>
+    <Segment value="json">JSON</Segment>
+  </SegmentedControl>
+{/snippet}
+
 <div
   {...rest}
   role="group"
-  aria-label={label ?? 'Payload'}
+  aria-label={accessibleLabel}
   data-cinder-state={mode}
   data-cinder-bare={bare || undefined}
   class={classNames('cinder-payload-inspector', className)}
@@ -267,26 +308,35 @@
     <p class="cinder-payload-inspector__empty">{emptyLabel}</p>
   {:else}
     <div class="cinder-payload-inspector__header">
+      <!-- A labelled card sets its count as a muted line under the label, start-aligned, so the
+           count never takes a line of its own at the inline end; an unlabelled card keeps it with
+           the copy button (27c). -->
       {#if label !== undefined}
-        <span class="cinder-payload-inspector__label">{label}</span>
+        <div class="cinder-payload-inspector__title">
+          <!-- The name after the label is set a space apart in the code face and a lighter weight,
+               never after a comma (no comma between pieces inside a Cinder component). -->
+          <span class="cinder-payload-inspector__label"
+            >{label}{#if labelCode !== undefined && labelCode !== ''}{' '}<code
+                class="cinder-payload-inspector__label-code">{labelCode}</code
+              >{/if}</span
+          >
+          {#if !bare && countText !== undefined}
+            <span class="cinder-payload-inspector__size">{countText}</span>
+          {/if}
+        </div>
       {/if}
-      {#if showSwitch}
-        <SegmentedControl
-          id={switchId}
-          label={`${label ?? 'Payload'} view`}
-          labelVisible={false}
-          size="sm"
-          value={mode === 'invalid' ? 'fields' : view}
-          disabled={mode === 'invalid'}
-          onValueChange={handleViewChange}
-        >
-          <Segment value="fields">Fields</Segment>
-          <Segment value="json">JSON</Segment>
-        </SegmentedControl>
+      <!-- A labelled card keeps the switch with Copy at the inline end, one group on the title's
+           row, so a narrow card never drops Copy to a line of its own; an unlabelled or bare card
+           leads with the switch (27c). -->
+      {#if showSwitch && (bare || label === undefined)}
+        {@render viewSwitch()}
       {/if}
       {#if !bare}
         <div class="cinder-payload-inspector__header-actions">
-          {#if countText !== undefined}
+          {#if showSwitch && label !== undefined}
+            {@render viewSwitch()}
+          {/if}
+          {#if label === undefined && countText !== undefined}
             <span class="cinder-payload-inspector__size">{countText}</span>
           {/if}
           {#if truncated}
@@ -361,13 +411,16 @@
           data-cinder-tree={fieldsOptions.tree || undefined}
         >
           <PayloadFields
-            source={shown}
+            source={fieldsShown}
             path={[]}
             depth={0}
             options={fieldsOptions}
             layout={rootLayout}
             pendingKey={mode === 'streaming' ? partial?.pendingKey : undefined}
           />
+          {#if hiddenFields.length > 0}
+            <p class="cinder-payload-inspector__more">{hiddenFields.length} more in JSON</p>
+          {/if}
         </div>
       {:else}
         <div class="cinder-payload-inspector__primitive">

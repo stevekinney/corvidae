@@ -601,7 +601,9 @@ export async function searchConsole(
       reading(
         failed,
         groups.runs,
-        listTasks({ limit: RUNS_SEARCHED }).then((page) => page.tasks),
+        // The tasks that have records: an engine run has no chat or agent to find it by, and
+        // would take the slots a task needs (COR-2424).
+        listTasks({ limit: RUNS_SEARCHED, engineRuns: false }).then((page) => page.tasks),
         [] as readonly TaskView[],
       ),
     ]);

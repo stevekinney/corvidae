@@ -218,6 +218,8 @@ const SCHEMA_SAFE_OUTPUTS: Readonly<Record<string, string>> = {
     'Uploads supply only bytes and an optional media type; assetView returns metadata and stable rejection information, never the uploaded bytes (createInput and assetView).',
   'bureau.workflows.runs.cancel':
     'The workflow cancellation output is a run identifier and cancellation status, not workflow input or result (workflowsRunsCancelOperation).',
+  'bureau.workflows.runs.retry':
+    'The retry output is a run identifier, the step number, the revision and the caller’s own retry identifier, not workflow input or result (workflowsRunsRetryOperation).',
   'bureau.workflows.runs.history':
     'historyRuns projects bounded event type, time, step and summary and never returns raw event data (workflow-runtime historyEventOf).',
   'bureau.settings.events':

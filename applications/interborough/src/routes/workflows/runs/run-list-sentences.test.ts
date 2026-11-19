@@ -63,7 +63,7 @@ describe('runNoMatchDescription', () => {
 
   test('has one status word for each segment the bar draws', () => {
     const words = Object.keys(TASK_COPY.list.noMatch.statusWords);
-    expect(words).toEqual(['waiting', 'running', 'done', 'failed', 'canceled']);
+    expect(words).toEqual(['waiting', 'signal', 'running', 'done', 'failed', 'canceled']);
   });
 });
 

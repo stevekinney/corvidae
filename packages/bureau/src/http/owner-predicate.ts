@@ -76,6 +76,27 @@ export const mayAccessOwnedResource: OwnerAccessPredicate = ({
   return caller !== undefined && resourceOwner !== undefined && caller === resourceOwner;
 };
 
+/**
+ * Whether `principal` is the owner of record of a resource, and nothing else: no operator scope
+ * widens it. It is the test for content that only a resource's owner reads (a goal's prompt), where
+ * {@link mayAccessOwnedResource} would also admit a holder of the kind's operator scope.
+ */
+export function isOwnerOfResource(
+  principal: Principal,
+  resourceOwner: string | undefined,
+): boolean {
+  if (principal.method === 'unauthenticated' || resourceOwner === undefined) return false;
+  if (principal.workspace !== undefined) {
+    return (
+      principal.workspace.capabilities.includes('workspace:use') &&
+      principal.workspace.owner === resourceOwner
+    );
+  }
+  const recordedOwner = (principal as Principal & { readonly owner?: string }).owner;
+  if (recordedOwner !== undefined) return recordedOwner === resourceOwner;
+  return ownerOfPrincipal(principal) === resourceOwner;
+}
+
 /** Operator scopes never broaden private ownership on the workspace surface. */
 export function mayUseCrossOwnerScope(principal: Principal, scope: BureauScope): boolean {
   return (

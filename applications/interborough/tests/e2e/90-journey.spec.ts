@@ -476,7 +476,8 @@ test('starts a run it does not release, reaches it from the chat’s run sentenc
   await page.getByRole('button', { name: 'Cancel run', exact: true }).click();
   await page.getByRole('dialog').getByRole('button', { name: 'Cancel run', exact: true }).click();
 
-  await expect(page.getByText(TASK_COPY.cancel['cleaned-up'])).toBeVisible();
+  // The status line says it is canceled; the note under it does not say it again.
+  await expect(page.getByText(TASK_COPY.cancel['cleaned-up'])).toHaveCount(0);
   await expect(
     page.locator('[data-run-header]').getByText('Canceled', { exact: true }),
   ).toBeVisible();

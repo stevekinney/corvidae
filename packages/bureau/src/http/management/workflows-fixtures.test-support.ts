@@ -65,6 +65,8 @@ export interface ServeOptions {
    * between two reads of a failed trigger's listener.
    */
   readonly runtime?: BureauOptions<AgentDefinitions>['runtime'];
+  /** `manual` leaves the engine's maintenance to the test, as a host that runs it on its own does. */
+  readonly maintenance?: 'manual';
 }
 
 export async function serveWorkflows(
@@ -84,6 +86,7 @@ export async function serveWorkflows(
     ...(options.workspace === undefined ? {} : { workspace: options.workspace }),
     ...(options.plugins === undefined ? {} : { plugins: options.plugins }),
     ...(options.runtime === undefined ? {} : { runtime: options.runtime }),
+    ...(options.maintenance === undefined ? {} : { maintenance: options.maintenance }),
     storage: new MemoryStorage(),
     durable: true,
     ...(options.onDiagnostic === undefined ? {} : { onDiagnostic: options.onDiagnostic }),

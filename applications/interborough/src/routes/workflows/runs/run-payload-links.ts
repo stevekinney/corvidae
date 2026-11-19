@@ -64,6 +64,54 @@ export function payloadReferences(value: unknown): PayloadReferences {
   };
 }
 
+/**
+ * The top-level properties of a payload that hold the run's own identifier: an internal the Fields
+ * view leaves out, so the JSON view alone shows it (row 28e). A property that names another run is a
+ * link and stays in the Fields view.
+ */
+export function ownRunIdKeys(value: unknown, ownRunId: string | undefined): string[] {
+  if (ownRunId === undefined || ownRunId === '') return [];
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return [];
+  return RUN_KEYS.filter((key) => Object.getOwnPropertyDescriptor(value, key)?.value === ownRunId);
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/**
+ * The Input card of a workflow file's instance (rows 55c, S38, 28e): the engine starts an instance
+ * with an envelope, `{ kind, scheduleId, input, workspaceAuthority }`, whose `input` is what the
+ * person or the schedule gave the run. The card shows that input's fields ("Input, 1 field",
+ * Branch main), and the envelope's other keys in the JSON view only, so the Fields list ends
+ * "3 more in JSON". That flattened object is for the Fields view ONLY: `stored` is the payload as
+ * the engine stored it, which the JSON view and Copy show, `input` still nested and no key lost. A
+ * value that is no envelope, or whose `input` is not an object, is left as it is.
+ */
+export function inputEnvelopeView(value: unknown): {
+  readonly stored: unknown;
+  readonly fields: unknown;
+  readonly jsonOnly: readonly string[];
+} {
+  if (
+    !isPlainObject(value) ||
+    typeof value['kind'] !== 'string' ||
+    !Object.hasOwn(value, 'input')
+  ) {
+    return { stored: value, fields: value, jsonOnly: [] };
+  }
+  const input = value['input'];
+  if (!isPlainObject(input)) return { stored: value, fields: value, jsonOnly: [] };
+  const envelope = Object.entries(value).filter(
+    ([key]) => key !== 'input' && !Object.hasOwn(input, key),
+  );
+  return {
+    stored: value,
+    fields: { ...input, ...Object.fromEntries(envelope) },
+    jsonOnly: envelope.map(([key]) => key),
+  };
+}
+
 /** What a run is called by its identifier: "Run 8f2c" for `run-8f2c0d71`, from the first four characters of what follows `run-`. */
 export function shortRunName(runId: string): string {
   const tail = runId.startsWith('run-') ? runId.slice('run-'.length) : runId;

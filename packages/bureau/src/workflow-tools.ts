@@ -186,6 +186,8 @@ export interface WorkflowToolListing {
   readonly inputSchema: Readonly<Record<string, unknown>> | null;
   /** The JSON Schema the workflow’s result must satisfy, or `null`; passed back like `inputSchema`. */
   readonly outputSchema: Readonly<Record<string, unknown>> | null;
+  /** The name of what the workflow produces (COR-2424), or `null`; passed back like `inputSchema`. */
+  readonly outputName: string | null;
   /** Why an `invalid` file cannot run, so its author can fix it; `null` for a ready one. */
   readonly problem: string | null;
 }
@@ -272,6 +274,13 @@ const outputSchemaSchema = z
   .optional()
   .describe(
     'A JSON Schema (draft 2020-12) for the value an instance finishes with, under the same limits. The result of the last step is an agent step’s { content, output, finishReason }. An instance whose result breaks it fails with output-invalid. Leave it out for none.',
+  );
+
+const outputNameSchema = z
+  .string()
+  .optional()
+  .describe(
+    'The name of what the workflow produces, such as "notes": at most 64 characters, a letter or underscore first, then letters, digits, underscores and hyphens. Leave it out for none.',
   );
 
 const pausedSchema = z
@@ -458,6 +467,7 @@ export function createWorkflowTools(host: WorkflowToolHost): Record<string, Tool
     description: descriptionSchema,
     inputSchema: inputSchemaSchema,
     outputSchema: outputSchemaSchema,
+    outputName: outputNameSchema,
     trigger: triggerSchema,
     steps: stepsSchema,
     paused: pausedSchema,
@@ -468,6 +478,7 @@ export function createWorkflowTools(host: WorkflowToolHost): Record<string, Tool
     description: descriptionSchema,
     inputSchema: inputSchemaSchema,
     outputSchema: outputSchemaSchema,
+    outputName: outputNameSchema,
     trigger: triggerSchema,
     steps: stepsSchema,
     paused: pausedSchema,
@@ -483,6 +494,7 @@ export function createWorkflowTools(host: WorkflowToolHost): Record<string, Tool
     description: descriptionSchema,
     inputSchema: inputSchemaSchema,
     outputSchema: outputSchemaSchema,
+    outputName: outputNameSchema,
     trigger: triggerSchema,
     steps: stepsSchema,
     paused: pausedSchema,
@@ -592,7 +604,7 @@ export function createWorkflowTools(host: WorkflowToolHost): Record<string, Tool
     name: 'workflows-update',
     version: '1.0.0',
     description:
-      'Replace a workflow with a new trigger and steps, if its file still has the `hash` bureau__workflows-list returned. The whole definition is replaced, description and schemas included, and you become the agent that wrote it. Pass back the `title`, `description`, `inputSchema`, and `outputSchema` workflows-list returned to keep them; leave one out for none, and `paused` out to leave the workflow running.',
+      'Replace a workflow with a new trigger and steps, if its file still has the `hash` bureau__workflows-list returned. The whole definition is replaced, description and schemas included, and you become the agent that wrote it. Pass back the `title`, `description`, `inputSchema`, `outputSchema`, and `outputName` workflows-list returned to keep them; leave one out for none, and `paused` out to leave the workflow running.',
     input: updateInput,
     metadata: {
       mutates: true,
@@ -698,7 +710,7 @@ export function createWorkflowTools(host: WorkflowToolHost): Record<string, Tool
     name: 'workflows-list',
     version: '1.0.0',
     description:
-      'List the workflows: each one’s identifier, the `hash` the other workflow tools take as `expectedHash`, its state, whether it is paused, its trigger kind, its title and description, and its `inputSchema` and `outputSchema` (pass them back to bureau__workflows-update to keep them, because an update replaces the whole definition). A file that cannot run is listed with a null trigger kind and the problem, so you can fix it. A workflow a plugin contributed in code is listed with `kind: "code"`, its `plugin` and `version`, and none of a file’s fields; start it with bureau__workflows-start.',
+      'List the workflows: each one’s identifier, the `hash` the other workflow tools take as `expectedHash`, its state, whether it is paused, its trigger kind, its title and description, and its `inputSchema`, `outputSchema` and `outputName` (pass them back to bureau__workflows-update to keep them, because an update replaces the whole definition). A file that cannot run is listed with a null trigger kind and the problem, so you can fix it. A workflow a plugin contributed in code is listed with `kind: "code"`, its `plugin` and `version`, and none of a file’s fields; start it with bureau__workflows-start.',
     input: z.object({}),
     metadata: {
       readOnly: true,
@@ -730,6 +742,7 @@ export function createWorkflowTools(host: WorkflowToolHost): Record<string, Tool
             description: listing.description,
             inputSchema: listing.inputSchema,
             outputSchema: listing.outputSchema,
+            outputName: listing.outputName,
             problem: listing.problem?.code ?? null,
           })),
           ...code,

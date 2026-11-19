@@ -16,7 +16,9 @@ export function recentTasksQuery(): {
 } {
   return {
     queryKey: ['bureau-tasks', 'recent'],
-    queryFn: ({ signal }) => listTasks({ limit: RECENT_TASK_LIMIT }, { signal }),
+    // Only the tasks that have records: the schedule tick's runs and the instances of workflow
+    // files are the engine's, belong to no chat, and would take the slots a chat's run needs.
+    queryFn: ({ signal }) => listTasks({ limit: RECENT_TASK_LIMIT, engineRuns: false }, { signal }),
   };
 }
 

@@ -20,6 +20,7 @@
   import { getThreadMessages } from '../../../lib/bureau-client.ts';
   import { isScheduleFire, isTerminalState, type TaskView } from '../../../lib/bureau-tasks.ts';
   import { dayAndTime } from '../../../lib/format/clock.ts';
+  import { oneLine } from '../../../lib/one-line.ts';
   import type { WorkflowFileRunDetail } from '../../../lib/workflow-files.ts';
   import { failureCategoryExplanation, failureCategoryLabel } from '../detail/failure-category.ts';
   import { threadIdForTask } from './run-activity.ts';
@@ -54,6 +55,13 @@
      * and the reply. The page turns it off when it shows them under How it ran.
      */
     showRaw?: boolean;
+    /**
+     * Whether the failure of the run is told elsewhere, on the step that failed (an instance of a
+     * workflow file, row 14t), so this section does not tell it a second time.
+     */
+    failureOnStep?: boolean;
+    /** The step a failed instance failed at, counted from one, which its Output card names (row 55c). */
+    failedAt?: number | undefined;
   }
 
   /** The reply is held to this many characters of text before Show all. */
@@ -70,6 +78,8 @@
     startedAt,
     onShowRaw,
     showRaw = true,
+    failureOnStep = false,
+    failedAt = undefined,
   }: RunInputOutputProps = $props();
 
   const copy = RUN_DETAIL_COPY.io;
@@ -102,12 +112,19 @@
       : messageInOfRun(task.id, thread.data),
   );
 
+  // A workflow still going says what it "will produce" (row 54p).
+  const workflowGoing = $derived.by(() => {
+    const status = workflow?.status ?? record?.status;
+    return status === 'pending' || status === 'running' || status === 'suspended';
+  });
   const description = $derived(
     task !== undefined
       ? scheduled
         ? copy.scheduleDescription
         : copy.chatDescription
-      : copy.workflowDescription,
+      : workflowGoing
+        ? copy.workflowDescriptionLive
+        : copy.workflowDescription,
   );
   // What stands in the reply's place: why a run that waits on a person has none yet, or that the
   // agent has not answered, or that it finished without a written answer.
@@ -200,10 +217,10 @@
     {/if}
 
     {#if task === undefined || showRaw}
-      <RunPayloadCards {workflow} {record} />
+      <RunPayloadCards {workflow} {record} {failedAt} />
     {/if}
 
-    {#if workflow !== undefined && workflow.status === 'failed'}
+    {#if workflow !== undefined && workflow.status === 'failed' && !failureOnStep}
       <div class="weft-overview-tab__failure">
         <div class="weft-overview-tab__failure-title">
           <CircleX aria-hidden="true" size={18} />
@@ -218,7 +235,10 @@
           </p>
         {/if}
         {#if workflow.error}
-          <p class="weft-overview-tab__failure-explanation">{workflow.error}</p>
+          <!-- In its own words, never the error's JSON; the stack below says the rest. -->
+          <p class="weft-overview-tab__failure-explanation">
+            {oneLine(workflow.error, { keepParenthetical: true }) || workflow.error}
+          </p>
         {/if}
         {#if errorStack.length > 0}
           <Collapsible variant="flat" trigger="Show full stack trace">
@@ -226,9 +246,13 @@
           </Collapsible>
         {/if}
       </div>
-    {:else if record !== undefined && workflow === undefined}
+    {:else if record !== undefined && workflow === undefined && !failureOnStep}
       {#if record.error !== undefined && record.error !== null}
-        <Section level={3} title={TASK_COPY.runRecord.error} description={record.error} />
+        <Section
+          level={3}
+          title={TASK_COPY.runRecord.error}
+          description={oneLine(record.error, { keepParenthetical: true }) || record.error}
+        />
       {/if}
     {/if}
   </Stack>

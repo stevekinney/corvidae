@@ -18,6 +18,7 @@
   import { queryKeys } from '../../../lib/query.ts';
   import { router } from '../../../lib/router.svelte.ts';
   import {
+    ownRunIdKeys,
     payloadLinkFor,
     payloadReferences,
     payloadValueText,
@@ -30,11 +31,36 @@
     value: unknown;
     /** The card's heading, such as "Input" or "Output"; it also names the card. */
     label: string;
+    /**
+     * This run's own identifier. A top-level property that holds it (the run's ID in its own input)
+     * is an internal a person has no use for beside the others: it is shown in the JSON view only,
+     * and the Fields view says how many more are in JSON (COR-2424, row 28e).
+     */
+    ownRunId?: string | undefined;
+    /** A name drawn after the heading in code, such as the workflow's output name (row 54p). */
+    labelCode?: string | undefined;
+    /** Top-level keys shown in the JSON view only, beside the run's own identifier (row 28e). */
+    jsonOnlyKeys?: readonly string[] | undefined;
+    /**
+     * What the Fields view lays out, when it is not the stored payload (an instance's own input,
+     * unwrapped from its envelope, row 55c). The JSON view and Copy keep `value` as stored.
+     */
+    fieldsValue?: unknown;
   }
 
-  let { value, label }: RunPayloadProps = $props();
+  let {
+    value,
+    label,
+    ownRunId = undefined,
+    labelCode = undefined,
+    jsonOnlyKeys = [],
+    fieldsValue = undefined,
+  }: RunPayloadProps = $props();
 
-  const references = $derived(payloadReferences(value));
+  const fieldsSource = $derived(fieldsValue === undefined ? value : fieldsValue);
+  const jsonOnly = $derived([...ownRunIdKeys(fieldsSource, ownRunId), ...jsonOnlyKeys]);
+
+  const references = $derived(payloadReferences(fieldsSource));
 
   const chats = createQueries(() => ({
     queries: references.chats.map((id) => ({
@@ -106,7 +132,10 @@
   <PayloadInspector
     {value}
     {label}
+    {...labelCode === undefined ? {} : { labelCode }}
+    {...fieldsValue === undefined ? {} : { fieldsValue }}
     redact={[]}
+    {jsonOnly}
     {linkFor}
     {formatValue}
     bind:view={() => payloadViewPreference.view, (view) => payloadViewPreference.choose(view)}

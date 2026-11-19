@@ -833,6 +833,29 @@ describe('goalAttemptInput', () => {
       expect(goalAttemptInput(kind, prompt, index, feedback)).toBe(expected);
     },
   );
+
+  // COR-2425: a goal edited under `continue` gives its next attempt the edited prompt, which its
+  // transcript does not hold, followed by the feedback; the retries after it are feedback alone.
+  const revisedCases = [
+    ['continue', 1, 'fix it', 'work\n\nfix it'],
+    ['continue', 1, undefined, 'work'],
+    ['continue', 0, 'ignored', 'work'],
+    ['fork-from-baseline', 2, 'fix it', 'work\n\nfix it'],
+    ['fork-from-baseline', 2, undefined, 'work'],
+    ['fresh-from-artifact', 1, 'fix it', 'work'],
+  ] as const;
+
+  it.each(revisedCases)(
+    'with an edited prompt, under %s, attempt %d with feedback %p is %p',
+    (kind, index, feedback, expected) => {
+      expect(goalAttemptInput(kind, prompt, index, feedback, true)).toBe(expected);
+    },
+  );
+
+  it('leaves the retries after the edited one at the feedback alone', () => {
+    expect(goalAttemptInput('continue', 'edited', 1, 'fix it', true)).toBe('edited\n\nfix it');
+    expect(goalAttemptInput('continue', 'edited', 2, 'fix it again', false)).toBe('fix it again');
+  });
 });
 
 describe('isAttemptStartFailureDetail', () => {

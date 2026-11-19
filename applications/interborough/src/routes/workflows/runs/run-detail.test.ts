@@ -8,7 +8,7 @@ import { HttpClient } from '@lostgradient/weft';
 import { cleanup, fireEvent, render, waitFor } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 
-import { RUN_DETAIL_COPY } from '../../../app/copy/runs.ts';
+import { RUN_DETAIL_COPY, RUN_PAGE_COPY } from '../../../app/copy/runs.ts';
 import { TASK_COPY } from '../../../app/copy/tasks.ts';
 import RouteOutletHarness from '../../../app/shell/route-outlet.test-harness.svelte';
 import {
@@ -30,7 +30,7 @@ import { router } from '../../../lib/router.svelte.ts';
 import { AUTHORIZATION_SCOPES, type AuthorizationScope } from '../../../lib/scopes.svelte.ts';
 import { landAt } from '../../chat/pages.test-support.ts';
 import RunDetailEngineHarness from './run-detail-engine.test-harness.svelte';
-import { durationWords, goalTitle } from './run-rows.ts';
+import { durationWords } from './run-rows.ts';
 
 let stub: BureauWorldStub | undefined;
 
@@ -73,6 +73,14 @@ function open(
 const BUREAU_ONLY: readonly AuthorizationScope[] = [];
 const origin = (container: HTMLElement) => container.querySelector('[data-testid="run-lineage"]');
 const header = (container: HTMLElement) => container.querySelector('[data-run-header]');
+/** The words of the header's links, which rows 55f and 55j keep free of a session. */
+const headerLinks = (container: HTMLElement): string[] =>
+  [...(header(container)?.querySelectorAll('a') ?? [])].map((link) => link.textContent.trim());
+/** The rail's Open the session link, which opens a goal's or a schedule's session. */
+const railSession = (view: { getByRole: (role: string) => HTMLElement }) =>
+  [...view.getByRole('complementary').querySelectorAll('a')].find(
+    (link) => link.textContent.trim() === TASK_COPY.openSession,
+  );
 
 describe('where a run came from', () => {
   test('a run started from a chat links to the chat, and opens it in place', async () => {
@@ -90,7 +98,17 @@ describe('where a run came from', () => {
     expect(router.pathname).toContain('session-1');
   });
 
-  test('a run that is the whole chain names what started it and draws no row for itself', async () => {
+  test('a chat’s run opens its chat from the header, so its rail has no Session fact', async () => {
+    const view = open('/runs/run-1', {
+      tasks: [taskFixture({ id: 'run-1', contextId: 'session-1', agentName: 'echo' })],
+    });
+
+    await view.findByRole('link', { name: TASK_COPY.openChat });
+    expect(railSession(view)).toBeUndefined();
+    expect(view.getByRole('complementary').textContent).not.toContain(RUN_PAGE_COPY.facts.session);
+  });
+
+  test('a chat’s run names the chat that started it, then itself as This run (row 06d)', async () => {
     const view = open('/runs/run-1', {
       tasks: [taskFixture({ id: 'run-1', contextId: 'session-1', agentName: 'echo' })],
     });
@@ -99,8 +117,9 @@ describe('where a run came from', () => {
     const items = origin(view.container)?.querySelectorAll('li.ib-run-lineage__item') ?? [];
     expect(items).toHaveLength(1);
     expect(items[0]?.textContent).toContain(TASK_COPY.list.kinds.chat);
-    expect(origin(view.container)?.querySelector('li.ib-run-lineage__self')).toBeNull();
-    expect(origin(view.container)?.textContent).not.toContain(RUN_DETAIL_COPY.lineage.thisRun);
+    expect(origin(view.container)?.querySelector('li.ib-run-lineage__self')?.textContent).toContain(
+      RUN_DETAIL_COPY.lineage.thisRun,
+    );
   });
 
   test('a goal’s attempt says which attempt it is, after the goal', async () => {
@@ -118,11 +137,12 @@ describe('where a run came from', () => {
       expect(origin(view.container)?.textContent).toContain(TASK_COPY.list.attempt(1, 3)),
     );
     expect(origin(view.container)?.textContent).toContain(TASK_COPY.list.kinds.goal);
-    expect(origin(view.container)?.textContent).toContain(goalTitle('goal-1'));
+    // The goal's own name (the fixture's "Goal goal-1"), as everywhere a goal is named.
+    expect(origin(view.container)?.textContent).toContain('Goal goal-1');
     // The rail names the goal as a link, and the agent in words.
     const rail = view.getByRole('complementary');
     const goalLink = [...rail.querySelectorAll('a')].find(
-      (link) => link.textContent === goalTitle('goal-1'),
+      (link) => link.textContent === 'Goal goal-1',
     );
     expect(goalLink?.getAttribute('href')).toContain('goal-1');
     expect(rail.textContent).toContain(RUN_DETAIL_COPY.facts.goal);
@@ -141,7 +161,7 @@ describe('where a run came from', () => {
     expect(router.pathname).toContain('session-1');
   });
 
-  test('a run a schedule’s fire started is said so, and opens the session rather than a chat', async () => {
+  test('a run a schedule’s fire started is said so, its header offers no session or chat (55j), and Started by and the rail open the session', async () => {
     const view = open('/runs/run-1', {
       tasks: [
         taskFixture({
@@ -157,9 +177,20 @@ describe('where a run came from', () => {
       origin: 'schedule',
     }));
 
-    const sessionLink = await view.findByRole('link', { name: TASK_COPY.openSession });
     await waitFor(() => expect(origin(view.container)?.textContent).toContain(TASK_COPY.schedule));
+    await waitFor(() => expect(stub?.callsTo('bureau.contexts.get').length).toBeGreaterThan(0));
+    // The rail's Session opens the session the fire ran in; the header links neither it nor a chat.
+    await waitFor(() => expect(railSession(view)?.getAttribute('href')).toContain('fire-1'));
+    expect(headerLinks(view.container)).not.toContain(TASK_COPY.openSession);
     expect(view.queryByRole('link', { name: TASK_COPY.openChat })).toBeNull();
+    // The session is reached from Started by, which names it.
+    const sessionLink = await waitFor(() => {
+      const found = [...(origin(view.container)?.querySelectorAll('a') ?? [])].find(
+        (link) => link.textContent?.trim() === 'Daily summary',
+      );
+      if (found === undefined) throw new Error('No session link in Started by yet.');
+      return found;
+    });
     expect(await fireEvent.click(sessionLink, { button: 0 })).toBe(false);
     expect(router.pathname).toContain('fire-1');
   });
@@ -420,7 +451,7 @@ describe('the page', () => {
     // A finished run's how it ran is folded up; a person opens it for the activity.
     expect(view.getByRole('button', { name: RUN_DETAIL_COPY.howItRan.heading })).not.toBeNull();
     expect(view.queryByRole('heading', { level: 3, name: 'Activity' })).toBeNull();
-    for (const name of ['Input and output', 'Details']) {
+    for (const name of ['Input and output', 'Run details']) {
       expect(view.getByRole('heading', { level: 2, name })).not.toBeNull();
     }
     // What only the workflow's reader may do is not drawn, and the page is whole without it.
@@ -435,6 +466,68 @@ describe('a goal’s attempt', () => {
       attempts: [goalAttemptFixture('goal-1-a0', { status })],
     });
 
+  test('a Bureau run’s rail says its message in one line, nothing more of a cancel, and no finish reason (rows 55h, 54j)', async () => {
+    const failed = open('/runs/run-1', {
+      tasks: [
+        taskFixture({
+          id: 'run-1',
+          status: 'failed',
+          finishReason: 'error',
+          statusMessage:
+            'Agent "assistant" failed: {"cause":{"message":"GitHub didn’t answer (HTTP 503)"}}',
+        }),
+      ],
+    });
+    const rail = await failed.findByRole('complementary', { name: RUN_PAGE_COPY.detailsHeading });
+    await waitFor(() => expect(rail.textContent).toContain('GitHub didn’t answer'));
+    expect(rail.textContent).not.toContain('{');
+    expect(rail.textContent).not.toContain(RUN_PAGE_COPY.facts.finishReason);
+    cleanup();
+    stub?.restore();
+
+    const canceled = open('/runs/run-2', {
+      tasks: [
+        taskFixture({
+          id: 'run-2',
+          status: 'canceled',
+          finishReason: 'aborted',
+          statusMessage: '{"name":"AbortAgentRunError","message":"aborted"}',
+        }),
+      ],
+    });
+    const canceledRail = await canceled.findByRole('complementary', {
+      name: RUN_PAGE_COPY.detailsHeading,
+    });
+    await waitFor(() => expect(header(canceled.container)?.textContent).toContain('Canceled'));
+    expect(canceledRail.textContent).not.toContain(RUN_PAGE_COPY.facts.message);
+    expect(canceledRail.textContent).not.toContain('AbortAgentRunError');
+    expect(canceledRail.textContent).not.toContain('aborted');
+  });
+
+  test('names the goal by its own name in the rail and in Started by, never by its identifier (rows 55f, 55h)', async () => {
+    const goalRunId = '16e7c79642a7c4e1-sample-goal-summarize-open-refunds';
+    const goal = goalFixture(goalRunId, {
+      identity: { name: 'Summarize open refunds', version: '1' },
+      agentName: 'planner',
+      attempts: [goalAttemptFixture('refund-a1', { status: 'aborted' })],
+    });
+    const view = open('/runs/refund-a1', { goals: [goal], scopes: BUREAU_ONLY });
+
+    await view.findByRole('heading', { level: 1, name: 'Summarize open refunds' });
+    const rail = view.getByRole('complementary', { name: RUN_PAGE_COPY.detailsHeading });
+    await waitFor(() =>
+      expect(origin(view.container)?.textContent).toContain('Summarize open refunds'),
+    );
+    expect(
+      [...rail.querySelectorAll('a')].filter(
+        (link) => link.textContent?.trim() === 'Summarize open refunds',
+      ),
+    ).toHaveLength(2);
+    expect(rail.textContent).not.toContain(goalRunId);
+    // A goal's attempt's chain is the goal, the attempt and this run: no untitled session.
+    expect(origin(view.container)?.textContent).not.toContain(TASK_COPY.untitledChat);
+  });
+
   const WORD = { completed: 'Done', failed: 'Failed', canceled: 'Canceled', working: 'Running' };
   test.each([
     ['passed', 'completed'],
@@ -444,25 +537,37 @@ describe('a goal’s attempt', () => {
   ] as const)('an attempt that %s is shown as %s', async (status, state) => {
     const view = open('/runs/goal-1-a0', { goals: [attempt(status)], scopes: BUREAU_ONLY });
 
-    await view.findByRole('heading', { level: 1, name: goalTitle('goal-1') });
+    // The goal's own name, which the fixture writes as "Goal goal-1".
+    await view.findByRole('heading', { level: 1, name: 'Goal goal-1' });
     expect(header(view.container)?.textContent).toContain(WORD[state]);
-    expect(view.getByText(TASK_COPY.goalAttemptNoteBureauOnly)).not.toBeNull();
+    // The note is under How it ran, which a finished attempt's page gives closed (row 54a).
+    const howItRan = view.getByRole('button', { name: RUN_DETAIL_COPY.howItRan.heading });
+    if (howItRan.getAttribute('aria-expanded') !== 'true') await fireEvent.click(howItRan);
+    expect(await view.findByText(TASK_COPY.goalAttemptNoteBureauOnly)).not.toBeNull();
   });
 
-  test('opens the session the attempt ran in, which Chat does not list', async () => {
+  test('a goal’s attempt offers Open goal and no Open the session in its header (row 55f), and its rail opens the session', async () => {
     const view = open('/runs/goal-1-a0', { goals: [attempt('passed')], scopes: BUREAU_ONLY });
     stub?.on('bureau.contexts.get', (params) => ({
       ...contextDetailFixture(String(params['contextId'])),
       origin: 'goal',
     }));
 
-    const link = (await view.findByRole('link', {
-      name: TASK_COPY.openSession,
-    })) as HTMLAnchorElement;
+    await view.findByRole('link', { name: RUN_DETAIL_COPY.openGoal });
+    await waitFor(() => expect(stub?.callsTo('bureau.contexts.get').length).toBeGreaterThan(0));
     expect(stub?.callsTo('bureau.contexts.get')[0]?.params).toEqual({
       contextId: 'goal-session-goal-1-a0',
     });
-    expect(await fireEvent.click(link, { button: 0 })).toBe(false);
+    // A goal's session is listed under no Chats: the attempt's rail is where it is reached.
+    const sessionLink = await waitFor(() => {
+      const found = railSession(view);
+      if (found === undefined) throw new Error('No Open the session in the rail yet.');
+      return found;
+    });
+    expect(sessionLink.getAttribute('href')).toContain('goal-session-goal-1-a0');
+    expect(view.getByRole('complementary').textContent).toContain(RUN_PAGE_COPY.facts.session);
+    expect(headerLinks(view.container)).not.toContain(TASK_COPY.openSession);
+    expect(await fireEvent.click(sessionLink, { button: 0 })).toBe(false);
     expect(router.pathname).toContain('goal-session-goal-1-a0');
   });
 
@@ -472,12 +577,13 @@ describe('a goal’s attempt', () => {
       throw new Error('No such session');
     });
 
-    await view.findByRole('heading', { level: 1, name: goalTitle('goal-1') });
+    await view.findByRole('heading', { level: 1, name: 'Goal goal-1' });
     await waitFor(() => expect(stub?.callsTo('bureau.contexts.get').length).toBeGreaterThan(0));
     expect(view.queryByRole('link', { name: TASK_COPY.openSession })).toBeNull();
+    expect(view.getByRole('complementary').textContent).not.toContain(RUN_PAGE_COPY.facts.session);
   });
 
-  test('a goal’s attempt the Bureau also lists as a task opens the attempt’s session, never the run handle as a chat', async () => {
+  test('a goal’s attempt the Bureau also lists as a task reads the attempt’s session, never the run handle as a chat, and links neither from its header', async () => {
     const view = open('/runs/goal-1-a0', {
       tasks: [
         taskFixture({
@@ -496,17 +602,20 @@ describe('a goal’s attempt', () => {
       origin: 'goal',
     }));
 
-    const link = (await view.findByRole('link', {
-      name: TASK_COPY.openSession,
-    })) as HTMLAnchorElement;
     await waitFor(() =>
       expect(origin(view.container)?.textContent).toContain(TASK_COPY.list.kinds.goal),
     );
-    expect(stub?.callsTo('bureau.contexts.get').map((call) => call.params)).toEqual([
-      { contextId: 'goal-session-goal-1-a0' },
-    ]);
-    expect(await fireEvent.click(link, { button: 0 })).toBe(false);
-    expect(router.pathname).toContain('goal-session-goal-1-a0');
+    await waitFor(() =>
+      expect(stub?.callsTo('bureau.contexts.get').map((call) => call.params)).toEqual([
+        { contextId: 'goal-session-goal-1-a0' },
+      ]),
+    );
+    // The rail opens the attempt's own session, never the run handle.
+    await waitFor(() =>
+      expect(railSession(view)?.getAttribute('href')).toContain('goal-session-goal-1-a0'),
+    );
+    expect(headerLinks(view.container)).not.toContain(TASK_COPY.openSession);
+    expect(view.queryByRole('link', { name: TASK_COPY.openChat })).toBeNull();
   });
 
   test('a goal’s attempt whose goal the person cannot read still shows the task’s open decisions, and reads no thread', async () => {
@@ -556,10 +665,105 @@ describe('a goal’s attempt', () => {
   test('names the goal, which opens in place', async () => {
     const view = open('/runs/goal-1-a0', { goals: [attempt('passed')], scopes: BUREAU_ONLY });
 
-    // The origin line and the rail both name the goal as a link; each opens it in place.
-    const links = await view.findAllByRole('link', { name: goalTitle('goal-1') });
+    // The origin line and the rail both name the goal by its own name as a link; each opens it in
+    // place.
+    const links = await view.findAllByRole('link', { name: 'Goal goal-1' });
     const link = links[0] as HTMLAnchorElement;
     expect(await fireEvent.click(link, { button: 0 })).toBe(false);
     expect(router.pathname).toBe('/goals/goal-1');
+  });
+});
+
+describe('a run a schedule started (COR-2424, rows 55i, 55j, 55m)', () => {
+  const DAILY_SUMMARY = {
+    id: 'daily-summary',
+    owner: 'anonymous:local',
+    agentName: 'assistant',
+    inputPreview: 'Summarize what happened yesterday.',
+    continuesChat: false,
+    workflowType: 'agentRun',
+    description: 'Daily summary',
+    cronExpression: '0 9 * * *',
+    intervalMs: null,
+    status: 'active',
+    overlap: 'skip',
+    revision: 1,
+    timeZone: 'UTC',
+    nextFireAt: '2026-11-03T09:00:00.000Z',
+    skippedOccurrences: [],
+    // The schedule's last fire is this run, and it has missed four occurrences since.
+    lastFireAt: '2026-10-29T09:00:00.000Z',
+    missedFireCount: 4,
+    skippedCount: 0,
+    createdAt: '2026-10-19T08:00:00.000Z',
+    updatedAt: '2026-10-19T08:00:00.000Z',
+    blocker: null,
+  };
+  const FIRE = taskFixture({
+    id: 'fire-1',
+    contextId: 'fire-session',
+    kind: 'schedule-fire',
+    actor: SCHEDULER_ACTOR,
+    agentName: 'assistant',
+    status: 'completed',
+    createdAt: '2026-10-29T09:00:00.000Z',
+    updatedAt: '2026-10-29T09:00:12.000Z',
+    origin: { kind: 'schedule', scheduleId: 'daily-summary', fireId: 'fire-1' },
+  });
+
+  function openFire() {
+    const view = open('/runs/fire-1', { tasks: [FIRE], scopes: BUREAU_ONLY });
+    stub?.on('bureau.schedules.list', () => ({ schedules: [DAILY_SUMMARY], nextOffset: null }));
+    stub?.on('bureau.health.attention', () => ({
+      items: [
+        {
+          kind: 'missed-runs',
+          scheduleId: 'daily-summary',
+          count: 4,
+          since: Date.parse('2026-10-30T09:00:00.000Z'),
+        },
+      ],
+    }));
+    return view;
+  }
+
+  test('says the schedule by its name with when it runs, then the run itself (row 55i)', async () => {
+    const view = openFire();
+
+    await waitFor(() => expect(origin(view.container)?.textContent).toContain('Daily summary'));
+    const line = origin(view.container)?.textContent ?? '';
+    expect(line).toContain(TASK_COPY.list.kinds.schedule);
+    expect(line).toMatch(/every day at/i);
+    expect(origin(view.container)?.querySelector('a')?.getAttribute('href')).toBe(
+      '/schedules/daily-summary',
+    );
+    expect(origin(view.container)?.querySelector('li.ib-run-lineage__self')?.textContent).toContain(
+      RUN_DETAIL_COPY.lineage.thisRun,
+    );
+  });
+
+  test('lists the schedule in the rail, and says it was the last run and how many it has missed since (row 55m)', async () => {
+    const view = openFire();
+
+    const rail = await view.findByRole('complementary');
+    await waitFor(() => expect(rail.textContent).toContain(RUN_DETAIL_COPY.schedule));
+    await waitFor(() =>
+      expect(rail.textContent).toContain(
+        'This was the schedule’s last run. It has missed 4 occurrences since.',
+      ),
+    );
+  });
+
+  test('offers Open schedule and a Run again that starts the schedule now (row 55j)', async () => {
+    const view = openFire();
+
+    expect(await view.findByRole('link', { name: RUN_DETAIL_COPY.openSchedule })).not.toBeNull();
+    stub?.on('bureau.schedules.runnow', () => ({ outcome: 'started', taskId: 'fire-2' }));
+    await fireEvent.click(await view.findByRole('button', { name: RUN_DETAIL_COPY.runAgain }));
+
+    await waitFor(() => expect(stub?.callsTo('bureau.schedules.runnow')).toHaveLength(1));
+    expect(stub?.callsTo('bureau.schedules.runnow')[0]?.params).toEqual({
+      scheduleId: 'daily-summary',
+    });
   });
 });

@@ -179,8 +179,10 @@ export interface GoalConfigurationPatch {
   /** The prompt an attempt opened from now on is given. */
   readonly prompt?: string | undefined;
   /**
-   * The catalog agent that runs the goal's attempts. Accepted only when it names the agent the goal
-   * already has (`agent-fixed` otherwise), so a caller may send every field it shows.
+   * The catalog agent that runs the attempts the goal opens from now on. The attempts already
+   * opened are stamped with the agent they ran under in the same write, so no ownership, fence or
+   * session check ever reads one of them as the new agent. Refused while no attempt is in flight
+   * (`agent-between-attempts`).
    */
   readonly agentName?: string | undefined;
   /** The validator each check from now on runs. */
@@ -209,13 +211,13 @@ export type GoalConfigurationRejection =
   /** A cancellation is recorded: the goal is ending. */
   | 'cancellation-requested'
   /**
-   * The patch names another agent. A goal's sessions and its attempts' runs are bound to the agent
-   * they started with, and every ownership check compares them with the agent the record names, so
-   * a later agent would disown them. That holds even before the first attempt is recorded: the
-   * controller starts with the goal, and its start reads the agent and claims the first attempt's
-   * run before the record says the attempt exists.
+   * The patch names another agent while no attempt is in flight. A controller starting an attempt
+   * reads the goal's agent and claims the attempt's run under it before the record says the attempt
+   * exists, and that window is open exactly when no attempt is in flight (`active` is clear): a
+   * goal that has not opened its first attempt, or is between two. An agent that changed inside it
+   * would leave a run claimed under the old agent for an attempt recorded under the new one.
    */
-  | 'agent-fixed'
+  | 'agent-between-attempts'
   /**
    * The patch changes the attempt limit of a goal whose last allowed attempt is in flight. The
    * controller decides that attempt's ending against the limit it read, so a change now could
@@ -296,6 +298,32 @@ export interface GoalStore {
     patch: GoalConfigurationPatch,
     now: string,
     expectedRevision: number,
+  ): Promise<GoalConfigurationResult>;
+  /**
+   * COR-2425 — the start of attempt `attemptIndex` takes a pending prompt edit: one compare-and-swap
+   * clears `objective.promptPending` and records `promptRevisedAtAttempt: attemptIndex`, and the
+   * start seats its attempt from the record this answers, so the marker says exactly what the
+   * attempt was given. With no edit pending nothing is written (`unchanged`); an edit that lands
+   * after this write stays pending for the attempt after it. Like `updateConfiguration` it advances
+   * `revision` and never `transitionSeq`.
+   */
+  consumePromptEdit(
+    goalRunId: string,
+    attemptIndex: number,
+    now: string,
+  ): Promise<GoalConfigurationResult>;
+  /**
+   * Gives back the edit `consumePromptEdit` took for attempt `attemptIndex` when that start ended
+   * without creating the attempt's run (it adopted a run another try created, or stood down): one
+   * compare-and-swap sets `objective.promptPending` again and restores `previousMarker`, the
+   * marker the record held before the consume, so the record never says an attempt was given a
+   * prompt it never got. A record whose marker is no longer `attemptIndex` is `unchanged`.
+   */
+  restorePromptEdit(
+    goalRunId: string,
+    attemptIndex: number,
+    previousMarker: number | undefined,
+    now: string,
   ): Promise<GoalConfigurationResult>;
   /**
    * Increments `controllerRestarts`. A terminal goal is `rejected`. With
@@ -603,6 +631,59 @@ export function createGoalStore(
         (record) => ({ status: 'updated', record }),
       );
     },
+    consumePromptEdit(goalRunId, attemptIndex, now) {
+      return mutate<GoalConfigurationResult>(
+        goalRunId,
+        (current) =>
+          current.objective.promptPending === true
+            ? {
+                outcome: 'write',
+                next: {
+                  ...current,
+                  objective: {
+                    agentName: current.objective.agentName,
+                    prompt: current.objective.prompt,
+                    ...(current.objective.instructions === undefined
+                      ? {}
+                      : { instructions: current.objective.instructions }),
+                    promptRevisedAtAttempt: attemptIndex,
+                  },
+                  updatedAt: now,
+                },
+              }
+            : { outcome: 'done', result: { status: 'unchanged', record: current } },
+        (record) => ({ status: 'stale', record }),
+        (record) => ({ status: 'updated', record }),
+      );
+    },
+    restorePromptEdit(goalRunId, attemptIndex, previousMarker, now) {
+      return mutate<GoalConfigurationResult>(
+        goalRunId,
+        (current) =>
+          current.objective.promptRevisedAtAttempt === attemptIndex
+            ? {
+                outcome: 'write',
+                next: {
+                  ...current,
+                  objective: {
+                    agentName: current.objective.agentName,
+                    prompt: current.objective.prompt,
+                    ...(current.objective.instructions === undefined
+                      ? {}
+                      : { instructions: current.objective.instructions }),
+                    ...(previousMarker === undefined
+                      ? {}
+                      : { promptRevisedAtAttempt: previousMarker }),
+                    promptPending: true,
+                  },
+                  updatedAt: now,
+                },
+              }
+            : { outcome: 'done', result: { status: 'unchanged', record: current } },
+        (record) => ({ status: 'stale', record }),
+        (record) => ({ status: 'updated', record }),
+      );
+    },
     async recordControllerRestart(goalRunId, now, expectedCount) {
       const result = await control(goalRunId, (current) =>
         isTerminal(current.status)
@@ -701,12 +782,25 @@ function evaluateConfigurationUpdate(
   ) {
     return done({ status: 'unchanged', record: current });
   }
-  if (agentName !== objective.agentName) return refuse('agent-fixed');
+  const agentChanged = agentName !== objective.agentName;
+  if (agentChanged && current.active === undefined) return refuse('agent-between-attempts');
   const opened = current.attempts.length;
   if (maximumAttempts !== bounds.maximumAttempts) {
     if (opened >= bounds.maximumAttempts) return refuse('attempt-limit-fixed');
     if (maximumAttempts <= opened) return refuse('attempt-limit-too-low');
   }
+  // The attempts already opened keep the agent they ran under, written into their own records in
+  // this same write: a record that carries no agent reads as the goal's one agent, which is about
+  // to change. A record that already carries one keeps it.
+  const attempts = agentChanged
+    ? current.attempts.map((attempt) =>
+        attempt.agentName === undefined ? { ...attempt, agentName: objective.agentName } : attempt,
+      )
+    : current.attempts;
+  // The edit is pending until an attempt's start takes it (`consumePromptEdit`): that start, not
+  // this write, says which attempt is the first given the edited prompt, because a start already
+  // under way read the record before this write and seats its attempt from that copy.
+  const promptEdited = prompt !== objective.prompt;
   const nextDefinition = validatorChanged ? patch.validatorDefinition : current.validatorDefinition;
   const {
     validatorConfiguration: _replacedConfiguration,
@@ -715,11 +809,17 @@ function evaluateConfigurationUpdate(
   } = current;
   const next: GoalState = {
     ...withoutValidatorCopies,
-    objective: { ...objective, prompt, agentName },
+    objective: {
+      ...objective,
+      prompt,
+      agentName,
+      ...(promptEdited ? { promptPending: true } : {}),
+    },
     validator: { name: nextValidator.name, version: nextValidator.version },
     ...(nextConfiguration === undefined ? {} : { validatorConfiguration: nextConfiguration }),
     ...(nextDefinition === undefined ? {} : { validatorDefinition: nextDefinition }),
     bounds: { ...bounds, maximumAttempts },
+    attempts,
     updatedAt: now,
   };
   return isGoalState(next) ? { outcome: 'write', next } : refuse('invalid-record');
@@ -751,7 +851,19 @@ function applyAttempt(
     return 'decision-already-recorded';
   }
   const attempts = [...current.attempts];
-  attempts[index] = patch;
+  // The agent an attempt runs as is the store's to record, not the controller's: a controller's
+  // patch carries none, and an attempt replaced must keep the agent it was opened under. A goal whose
+  // agent never changed carries none anywhere. Once one attempt carries an agent (the change
+  // stamps them all), an attempt that opens is stamped with the goal's agent as it stands in this
+  // same write, and an update that changes the agent only lands while an attempt is in flight, so
+  // no start is between reading the agent and opening its attempt.
+  const agentName =
+    existing?.agentName ??
+    patch.agentName ??
+    (current.attempts.some((attempt) => attempt.agentName !== undefined)
+      ? current.objective.agentName
+      : undefined);
+  attempts[index] = agentName === undefined ? patch : { ...patch, agentName };
   return attempts;
 }
 

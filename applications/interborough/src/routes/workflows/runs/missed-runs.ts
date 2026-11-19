@@ -20,6 +20,7 @@ import { clockTime } from '../../../lib/format/clock.ts';
 import { scheduleDetailPath } from '../../../lib/router.svelte.ts';
 import type { ScheduleCadence } from '../../schedules/cadence.ts';
 import { cadenceText } from '../../schedules/schedule-cadence-text.ts';
+import { cadenceClauseOf } from './run-schedule-cadence.ts';
 
 /** The runs one schedule missed since it last fired. */
 export type MissedRuns = {
@@ -91,6 +92,11 @@ export type RunSchedules = {
   readonly names: ReadonlyMap<string, string>;
   /** Every schedule's missed runs, newest logged first. */
   readonly missed: readonly MissedRuns[];
+  /**
+   * When each schedule runs, by its identifier, as a run's row says it in the viewer's time:
+   * "every day at 3:00 AM" (row 53l).
+   */
+  readonly cadences?: ReadonlyMap<string, string>;
 };
 
 /**
@@ -104,8 +110,10 @@ export async function readRunSchedules(
   const now = options.now ?? Date.now();
   const schedules = await listBureauSchedules(request);
   const names = new Map<string, string>();
+  const cadences = new Map<string, string>();
   for (const schedule of schedules) {
     if (schedule.description !== null) names.set(schedule.id, schedule.description);
+    cadences.set(schedule.id, cadenceClauseOf(schedule, undefined, { scheduleZone: false }));
   }
   const missing = schedules.filter(
     (schedule) => schedule.status !== 'cancelled' && (schedule.missedFireCount ?? 0) > 0,
@@ -121,7 +129,7 @@ export async function readRunSchedules(
       return runs === null ? [] : [runs];
     })
     .toSorted((left, right) => right.loggedAt - left.loggedAt);
-  return { names, missed };
+  return { names, missed, cadences };
 }
 
 /** The day a missed row's time column shows: "Oct 30". */
@@ -145,8 +153,10 @@ export function occurrenceWords(at: number, zone: string): string {
 }
 
 /**
- * Line two of the missed row: "Schedule, Assistant, every day at 3:00 AM (9:00 AM UTC), missed 4
- * times since Oct 30". The schedule's own zone stays in the cadence; the occurrences are the viewer's.
+ * Line two of the missed row: "Schedule, missed 4 times since Oct 30, Assistant, every day at 3:00
+ * AM (9:00 AM UTC)". The point of the row comes first, so a line cut short on a phone or a tablet
+ * drops the cadence, then the agent, and keeps how many runs were missed. The schedule's own zone
+ * stays in the cadence; the occurrences are the viewer's.
  */
 export function missedLineTwo(
   missed: MissedRuns,
@@ -156,8 +166,8 @@ export function missedLineTwo(
   const copy = TASK_COPY.list;
   return [
     copy.kinds.schedule,
+    copy.missed.since(missed.count, missedDay(missed.since, zone)),
     ...(missed.agentName === null ? [] : [agentLabel(missed.agentName)]),
     missed.cadence,
-    copy.missed.since(missed.count, missedDay(missed.since, zone)),
   ].join(copy.separator);
 }
