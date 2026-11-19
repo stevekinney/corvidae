@@ -23,7 +23,7 @@ function writeReport(directory: string, path: string): string {
 function configuredReportPathBlocks(source: string): string[] {
   return [
     ...source.matchAll(
-      /name: junit-(?:root|tests-\$\{\{ strategy\.job-index \}\})\n          path: \|\n((?:            .+\n)+)/g,
+      /name: junit-(?:root|tests-\$\{\{ strategy\.job-index \}\})\n          overwrite: true\n          path: \|\n((?:            .+\n)+)/g,
     ),
   ].map(([, paths = '']) =>
     paths

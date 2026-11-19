@@ -3,11 +3,13 @@ import { createHash } from 'node:crypto';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { hostname } from 'node:os';
 import { throwingRejectionOf } from '../../testing/testing/src/helpers/promise-outcome.ts';
-import type { DeliveryRequest } from './delivery-completion.ts';
+import { ciEvidenceRequestKey, type CiEvidenceRequest } from './ci-evidence.ts';
+import { batchVerificationPlanDigest, type DeliveryRequest } from './delivery-completion.ts';
 import { createDeliveryVerificationFixture } from './delivery-verification.test-support.ts';
 import {
   loadDeliveryVerification,
   prepareDeliveryVerification,
+  validateDeliveryCiEvidence,
   validateDeliveryVerification,
   type DeliveryVerification,
 } from './delivery-verification.ts';
@@ -172,6 +174,113 @@ scenarios.scenario(
       ),
     ).toContain('approval binding');
     expect(effects).toBe(0);
+  },
+);
+
+scenarios.scenario(
+  'one successful aggregate binds every approved member plan and the jobs they require',
+  async () => {
+    const fixture = await createDeliveryVerificationFixture(undefined, { approved: false });
+    const request = fixture.request;
+    const entry = request.members[0]!.providerRuns[0]!;
+    entry.workflowPath = '.github/workflows/main.yml';
+    entry.workflow = 'Main';
+    entry.event = 'workflow_dispatch';
+    const second = structuredClone(request.members[0]!);
+    second.assignment.identity.identifier = 'COR-2';
+    second.assignment.identity.digest = digest(
+      JSON.stringify({
+        ...second.assignment,
+        identity: { ...second.assignment.identity, digest: undefined },
+      }),
+    );
+    second.plan.invalidatedBy.assignment = second.assignment.identity.digest;
+    second.plan.obligations[0]!.commandOrProviderJob = 'verify-second';
+    Object.assign(second.providerRuns[0]!, {
+      obligation: 'AC1:verify-second',
+      job: 'verify-second',
+    });
+    request.members.push(second);
+    const planDigest = batchVerificationPlanDigest(request.members);
+    expect(batchVerificationPlanDigest(request.members.toReversed())).toBe(planDigest);
+    expect(batchVerificationPlanDigest([second])).not.toBe(planDigest);
+    const input = {
+      repository: request.repository,
+      resource: 'fixture',
+      base: request.base,
+      candidate: request.revision,
+      integrationTree: request.integrationTree,
+      verificationPlanDigest: planDigest,
+      workflow: entry.workflow,
+      workflowPath: entry.workflowPath,
+      workflowRevision: request.revision,
+      event: 'workflow_dispatch',
+    } satisfies Omit<CiEvidenceRequest, 'requestKey'>;
+    const identity = { ...input, requestKey: ciEvidenceRequestKey(input) };
+    const missing = replaceRequest(fixture.verification, request);
+    expect(
+      await validateDeliveryCiEvidence(loadDeliveryVerification(missing, fixture.dependencies)),
+    ).toContain('missing the CI evidence contract');
+    const wrongPlan = {
+      ...identity,
+      verificationPlanDigest: batchVerificationPlanDigest([request.members[0]!]),
+    };
+    request.ciEvidence = [{ ...wrongPlan, requestKey: ciEvidenceRequestKey(wrongPlan) }];
+    const mismatch = replaceRequest(fixture.verification, request);
+    expect(
+      await validateDeliveryCiEvidence(loadDeliveryVerification(mismatch, fixture.dependencies)),
+    ).toContain('missing or ambiguous CI evidence identity');
+    request.ciEvidence = [identity];
+    const withEvidence = replaceRequest(fixture.verification, request);
+    const loaded = loadDeliveryVerification(withEvidence, fixture.dependencies);
+    const failed = await validateDeliveryCiEvidence(loaded, {
+      ciProvider: {
+        async findRuns() {
+          return [{ state: 'failed', id: entry.id, attempt: 2 }];
+        },
+      },
+    });
+    expect(failed).toContain('successful aggregate');
+    const run = {
+      id: entry.id,
+      attempt: 2,
+      repository: request.repository,
+      head: request.revision,
+      base: request.base,
+      integrationTree: request.integrationTree,
+      event: entry.event,
+      workflow: entry.workflow,
+      workflowPath: entry.workflowPath,
+      checkedRevision: request.revision,
+      checkedTree: request.integrationTree,
+      requestKey: identity.requestKey,
+      receiptRequestKey: identity.requestKey,
+      workflowRevision: identity.workflowRevision,
+      verificationPlanDigest: identity.verificationPlanDigest,
+      receiptJobs: {},
+      jobs: [entry.job, second.providerRuns[0]!.job],
+    };
+    let authenticatedReads = 0;
+    expect(
+      await validateDeliveryCiEvidence(loaded, {
+        ciProvider: {
+          async findRuns() {
+            authenticatedReads++;
+            return [run];
+          },
+        },
+      }),
+    ).toBeUndefined();
+    expect(authenticatedReads).toBe(1);
+    expect(
+      await validateDeliveryCiEvidence(loaded, {
+        ciProvider: {
+          async findRuns() {
+            return [{ ...run, jobs: [entry.job] }];
+          },
+        },
+      }),
+    ).toContain('required job');
   },
 );
 
