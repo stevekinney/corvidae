@@ -23,8 +23,8 @@ export interface LandingPlan {
 }
 
 /** The plan for a list of changed paths (every status). */
-export function landingPlan(changedPaths: readonly string[]): LandingPlan {
-  const changed = [...new Set(changedPaths)].toSorted();
+export function landingPlan(paths: readonly string[]): LandingPlan {
+  const changed = [...new Set(paths)].toSorted();
   const oneWayDoors = oneWayDoorMatches(changed);
   const wholeSuite = wholeSuiteMatches(changed);
   const digest = createHash('sha256')
