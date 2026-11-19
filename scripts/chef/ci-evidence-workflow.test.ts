@@ -31,7 +31,7 @@ function environment(
     GITHUB_REPOSITORY: 'stevekinney/corvidae',
     GITHUB_EVENT_NAME: 'workflow_dispatch',
     GITHUB_EVENT_PATH: '/event.json',
-    GITHUB_WORKFLOW_REF: `stevekinney/corvidae/.github/workflows/main.yml@${sha('a')}`,
+    GITHUB_WORKFLOW_REF: 'stevekinney/corvidae/.github/workflows/main.yml@refs/heads/candidate',
     GITHUB_WORKFLOW_SHA: sha('a'),
     GITHUB_RUN_ID: '17',
     GITHUB_RUN_ATTEMPT: '2',
@@ -81,6 +81,8 @@ describe('createCiEvidenceWorkflowReceipt', () => {
     const receipt = createCiEvidenceWorkflowReceipt({
       environment: environment({
         GITHUB_EVENT_NAME: 'pull_request',
+        GITHUB_WORKFLOW_REF:
+          'stevekinney/corvidae/.github/workflows/pull-request.yml@refs/pull/17/merge',
         VERIFICATION_REQUEST: undefined,
         VERIFICATION_PLAN: undefined,
         VERIFICATION_BASE: undefined,
@@ -90,6 +92,8 @@ describe('createCiEvidenceWorkflowReceipt', () => {
     });
     expect(receipt).toMatchObject({
       event: 'pull_request',
+      workflowPath: '.github/workflows/pull-request.yml',
+      workflowRevision: sha('a'),
       base: sha('b'),
       candidate: sha('d'),
       checkedRevision: sha('c'),
@@ -160,6 +164,25 @@ describe('createCiEvidenceWorkflowReceipt', () => {
     ).toThrow('expected prerequisite tests is missing');
   });
 
+  test('aggregates run-scoped JUnit bundles on a later attempt without new uploads from every job', () => {
+    const directory = artifactFixture();
+    const jobs = ['junit-root', ...Array.from({ length: 7 }, (_, index) => `junit-tests-${index}`)];
+    for (const job of jobs) {
+      const bundle = join(directory, job);
+      mkdirSync(bundle);
+      writeFileSync(join(bundle, 'fast.xml'), '<testsuite><testcase name="passes"/></testsuite>');
+    }
+    const receipt = createCiEvidenceWorkflowReceipt({
+      environment: environment({ CI_EVIDENCE_ARTIFACT_DIRECTORY: directory }),
+      eventPayload: {},
+      git,
+    });
+    expect(receipt.attempt).toBe(2);
+    expect(receipt.reports).toEqual(
+      Object.fromEntries(jobs.map((job) => [job, { reports: 1, testCases: 1 }])),
+    );
+  });
+
   test('rejects partially supplied manual verification identity fields', () => {
     expect(() =>
       createCiEvidenceWorkflowReceipt({
@@ -191,14 +214,17 @@ describe('CI evidence workflow producers', () => {
   const main = readFileSync(join(root, '.github/workflows/main.yml'), 'utf8');
   const pullRequest = readFileSync(join(root, '.github/workflows/pull-request.yml'), 'utf8');
 
-  test('uses the typed producer and attempt-fenced required artifacts instead of shell JSON', () => {
+  test('installs the producer and preserves required job bundles across partial reruns', () => {
     expect(main).toContain('bun scripts/chef/ci-evidence-workflow.ts ci-evidence-receipt.json');
     expect(main).toContain('name: ci-evidence-receipt-${{ github.run_attempt }}');
     expect(main).not.toContain('printf \'{"requestKey"');
     expect(main).toContain('if-no-files-found: error');
-    expect(main).toContain('name: junit-root-${{ github.run_attempt }}');
-    expect(main).toContain('name: junit-tests-${{ strategy.job-index }}-${{ github.run_attempt }}');
-    expect(main).toContain('pattern: junit-*-${{ github.run_attempt }}');
+    expect(main).toContain('name: junit-root\n          overwrite: true');
+    expect(main).toContain(
+      'name: junit-tests-${{ strategy.job-index }}\n          overwrite: true',
+    );
+    expect(main.split('\n  evidence:')[1]).toContain('bun install --frozen-lockfile');
+    expect(main).toContain('pattern: junit-*');
     expect(main).toContain('CI_EVIDENCE_ARTIFACT_DIRECTORY: ci-evidence-artifacts');
     expect(main).toContain(
       'CI_EVIDENCE_EXPECTED_JOBS: \'["root","workspaces","tests","tests-slow","browser","test-durations"]\'',
@@ -207,6 +233,7 @@ describe('CI evidence workflow producers', () => {
 
   test('produces independent pull-request evidence with explicit browser non-applicability', () => {
     expect(pullRequest).toContain('name: Evidence aggregate');
+    expect(pullRequest.split('\n  evidence:')[1]).toContain('bun install --frozen-lockfile');
     expect(pullRequest).toContain('CI_EVIDENCE_NEEDS: ${{ toJSON(needs) }}');
     expect(pullRequest).toContain('CI_EVIDENCE_NOT_APPLICABLE:');
     expect(pullRequest).toContain(

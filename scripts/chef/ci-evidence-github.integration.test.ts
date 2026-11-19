@@ -4,6 +4,8 @@ import { createHash } from 'node:crypto';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
+import { throwingRejectionOf } from '../../testing/testing/src/helpers/promise-outcome.ts';
+
 import { createGitHubCiEvidenceProvider, type GitReader } from './ci-evidence-github.ts';
 import { runCiEvidence } from './ci-evidence-run.ts';
 import { createCiEvidenceWorkflowReceipt } from './ci-evidence-workflow.ts';
@@ -47,6 +49,8 @@ function fixture(
   options: {
     pullRequest?: boolean;
     invalidParents?: boolean;
+    missingLocalMerge?: boolean;
+    inheritedJob?: 'success' | 'failure';
     failedJob?: boolean;
     skippedRequired?: boolean;
     browserMismatch?: boolean;
@@ -56,6 +60,7 @@ function fixture(
   } = {},
 ) {
   const checkedRevision = options.pullRequest ? 'f'.repeat(40) : input.candidate;
+  const runName = input.event === 'workflow_dispatch' ? `P07 ${input.requestKey}` : input.workflow;
   const produced = createCiEvidenceWorkflowReceipt({
     environment: {
       GITHUB_REPOSITORY: input.repository,
@@ -98,7 +103,9 @@ function fixture(
   const commands: string[][] = [];
   const git: GitReader = {
     tree(revision) {
-      return revision === checkedRevision ? input.integrationTree : undefined;
+      return revision === checkedRevision && !options.missingLocalMerge
+        ? input.integrationTree
+        : undefined;
     },
     parents(revision) {
       if (revision !== checkedRevision) return undefined;
@@ -123,7 +130,7 @@ function fixture(
                 id: 17,
                 event: input.event,
                 head_sha: input.candidate,
-                name: input.workflow,
+                name: runName,
                 path: input.workflowPath,
                 display_title: `P07 ${input.requestKey}`,
                 run_attempt: 2,
@@ -143,13 +150,44 @@ function fixture(
             head_sha: input.candidate,
             status: 'completed',
             conclusion: options.runConclusion ?? 'success',
-            name: input.workflow,
+            name: runName,
+            workflow_id: 72,
             path: input.workflowPath,
             event: input.event,
             run_attempt: 2,
           });
+        if (path.endsWith('/actions/workflows/72')) {
+          return encode({ id: 72, name: input.workflow, path: input.workflowPath });
+        }
         if (path.endsWith('/git/ref/heads/candidate-branch'))
           return encode({ object: { sha: input.candidate } });
+        if (path.endsWith(`/git/commits/${checkedRevision}`)) {
+          const parents = options.invalidParents
+            ? [input.candidate, input.base]
+            : [input.base, input.candidate];
+          return encode({
+            sha: checkedRevision,
+            tree: { sha: input.integrationTree },
+            parents: parents.map((sha) => ({ sha })),
+          });
+        }
+        if (path.endsWith('/runs/17/jobs?filter=all&per_page=100&page=1')) {
+          const jobs =
+            options.inheritedJob === undefined
+              ? []
+              : [
+                  {
+                    id: 8,
+                    run_id: 17,
+                    run_attempt: 1,
+                    head_sha: input.candidate,
+                    name: 'Retained test shard',
+                    status: 'completed',
+                    conclusion: options.inheritedJob,
+                  },
+                ];
+          return encode({ total_count: jobs.length, jobs });
+        }
         if (path.endsWith('/runs/17/artifacts?per_page=100&page=1'))
           return encode({
             total_count: 1,
@@ -273,6 +311,17 @@ scenarios.scenario(
     const accepted = fixture(input, { pullRequest: true });
     const acceptedRuns = await accepted.provider.findRuns(input);
     expect(acceptedRuns[0]).toHaveProperty('checkedRevision', 'f'.repeat(40));
+    const remote = fixture(input, { pullRequest: true, missingLocalMerge: true });
+    const remoteRuns = await remote.provider.findRuns(input);
+    expect(remoteRuns[0]).toHaveProperty('checkedRevision', 'f'.repeat(40));
+    const wrongRemote = fixture(input, {
+      pullRequest: true,
+      missingLocalMerge: true,
+      invalidParents: true,
+    });
+    expect(await throwingRejectionOf(wrongRemote.provider.findRuns(input))).toThrow(
+      'does not bind',
+    );
     const wrongBrowser = fixture(input, { pullRequest: true, browserMismatch: true });
     let browserError: unknown;
     try {
@@ -293,6 +342,15 @@ scenarios.scenario(
     expect((error as Error).message).toContain('does not bind');
   },
 );
+
+scenarios.scenario('binds retained successful jobs after a partial workflow rerun', async () => {
+  const input = request();
+  const retained = fixture(input, { inheritedJob: 'success' });
+  const retainedRuns = await retained.provider.findRuns(input);
+  expect(retainedRuns[0]).toHaveProperty('jobs', ['Evidence aggregate', 'Retained test shard']);
+  const failed = fixture(input, { inheritedJob: 'failure' });
+  expect(await throwingRejectionOf(failed.provider.findRuns(input))).toThrow('required job');
+});
 
 scenarios.scenario(
   'public reconciliation entrypoint binds authenticated provider evidence',

@@ -22,6 +22,7 @@ interface GitHubObject {
   name?: unknown;
   repository?: unknown;
   run_attempt?: unknown;
+  workflow_id?: unknown;
   path?: unknown;
   runner_name?: unknown;
   status?: unknown;
@@ -113,12 +114,22 @@ export function createGitHubEvidenceTransport(
       const cached = runs.get(id);
       if (cached !== undefined) return cached;
       const value = query(repository, `actions/runs/${id}`, raw);
+      const workflowId = integer(value.workflow_id);
+      let workflow = string(value.name);
+      if (value.event === 'workflow_dispatch' && /^P07 [0-9a-f]{64}$/.test(workflow)) {
+        if (workflowId === undefined || workflowId < 1)
+          throw new EvidenceRequestError('authenticated workflow run has no workflow ID');
+        const definition = query(repository, `actions/workflows/${workflowId}`, raw);
+        if (definition.id !== workflowId || definition.path !== value.path)
+          throw new EvidenceRequestError('authenticated workflow definition differs from the run');
+        workflow = string(definition.name);
+      }
       const run: ProviderRun = {
         repository: string(object(value.repository).full_name),
         revision: string(value.head_sha),
         status: string(value.status),
         conclusion: string(value.conclusion),
-        workflow: string(value.name),
+        workflow,
         workflowPath: string(value.path),
         event: string(value.event),
         attempt: integer(value.run_attempt) ?? 0,

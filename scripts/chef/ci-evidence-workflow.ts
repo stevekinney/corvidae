@@ -104,7 +104,7 @@ function readWorkflowReference(environment: CiEvidenceWorkflowEnvironment): {
   const match =
     value === undefined
       ? undefined
-      : /^([A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+)\/(\.github\/workflows\/[A-Za-z0-9_.-]+\.ya?ml)@([0-9a-f]{40})$/i.exec(
+      : /^([A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+)\/(\.github\/workflows\/[A-Za-z0-9_.-]+\.ya?ml)@(?:[0-9a-f]{40}|refs\/[^\s]+)$/i.exec(
           value,
         );
   if (match === undefined || match === null || !repository(environment.GITHUB_REPOSITORY))
@@ -114,10 +114,6 @@ function readWorkflowReference(environment: CiEvidenceWorkflowEnvironment): {
       'workflow reference repository does not match GITHUB_REPOSITORY',
     );
   const workflowRevision = requiredCommit(environment.GITHUB_WORKFLOW_SHA, 'GITHUB_WORKFLOW_SHA');
-  if (match[3] !== workflowRevision)
-    throw new CiEvidenceWorkflowError(
-      'workflow reference revision does not match GITHUB_WORKFLOW_SHA',
-    );
   return { workflowPath: match[2]!, workflowRevision };
 }
 
@@ -301,24 +297,10 @@ export function readJUnitArtifactReports(directory: string): Uint8Array[] {
   return files;
 }
 
-function expectedArtifacts(attempt: number): string[] {
-  return [
-    `junit-root-${attempt}`,
-    ...Array.from({ length: 7 }, (_, index) => `junit-tests-${index}-${attempt}`),
-  ];
-}
-
-function downloadedJUnitArtifacts(
-  directory: string,
-  attempt: number,
-): Record<string, Uint8Array[]> {
-  return Object.fromEntries(
-    expectedArtifacts(attempt).map((name) => [
-      name,
-      readJUnitArtifactReports(`${directory}/${name}`),
-    ]),
-  );
-}
+const expectedArtifacts = [
+  'junit-root',
+  ...Array.from({ length: 7 }, (_, index) => `junit-tests-${index}`),
+];
 
 export function createCiEvidenceWorkflowReceipt(input: {
   environment: CiEvidenceWorkflowEnvironment;
@@ -394,8 +376,13 @@ export function createCiEvidenceWorkflowReceipt(input: {
       ? {}
       : {
           reports: validateJUnitArtifacts(
-            downloadedJUnitArtifacts(reportDirectory, attempt),
-            expectedArtifacts(attempt),
+            Object.fromEntries(
+              expectedArtifacts.map((name) => [
+                name,
+                readJUnitArtifactReports(`${reportDirectory}/${name}`),
+              ]),
+            ),
+            expectedArtifacts,
           ),
         }),
   };

@@ -83,7 +83,7 @@ jobs:
       - run: bunx turbo run metadata
       # The Postgres suites start a disposable cluster with `initdb` and `pg_ctl` from PATH; the
       # runner image installs PostgreSQL but leaves its binaries off PATH (as in `main.yml`).
-      - run: echo "$(ls -d /usr/lib/postgresql/*/bin | tail -1)" >> "$GITHUB_PATH"
+      - run: printf '%s\n' /usr/lib/postgresql/*/bin | tail -n 1 >> "$GITHUB_PATH"
       # `--isolated` adds the serial slow and integration lanes, narrowed to the selection: a
       # change that reaches no such test runs none, so a broken integration test fails before merge
       # at the cost of only the tests the change reaches. The `main` workflow's slow job runs them
@@ -144,6 +144,7 @@ jobs:
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version-file: package.json
+      - run: bun install --frozen-lockfile
       # A pull-request receipt names the PR head and base from the authenticated event payload;
       # the checked revision remains the merge checkout and is never presented as the PR head.
       - name: Record pull-request checkout identity and planned job states

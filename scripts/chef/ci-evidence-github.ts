@@ -27,12 +27,15 @@ interface GitHubObject {
   path?: unknown;
   display_title?: unknown;
   run_attempt?: unknown;
+  run_id?: unknown;
   status?: unknown;
   conclusion?: unknown;
   pull_requests?: unknown;
   head?: unknown;
   base?: unknown;
   sha?: unknown;
+  tree?: unknown;
+  parents?: unknown;
   repository?: unknown;
   workflowPath?: unknown;
   workflowRevision?: unknown;
@@ -270,20 +273,84 @@ function readReceipt(bytes: Uint8Array, artifactDigest: string | undefined): Rec
   }
 }
 
-function bindsCheckout(request: CiEvidenceRequest, receipt: Receipt, git: GitReader): boolean {
-  if (git.tree(receipt.checkedRevision) !== receipt.checkedTree) return false;
+function bindsCheckout(
+  request: CiEvidenceRequest,
+  receipt: Receipt,
+  git: GitReader,
+  raw: RawCommandTransport,
+): boolean {
+  const localTree = git.tree(receipt.checkedRevision);
   if (request.event !== 'pull_request')
     return (
       receipt.checkedRevision === request.candidate &&
-      receipt.checkedTree === request.integrationTree
+      receipt.checkedTree === request.integrationTree &&
+      localTree === receipt.checkedTree
     );
+  if (receipt.checkedTree !== request.integrationTree) return false;
+  // The synthetic merge commit is not normally fetched into the delivery worktree.
+  if (localTree === undefined) {
+    const checkout = query(raw, [
+      'gh',
+      'api',
+      `repos/${request.repository}/git/commits/${receipt.checkedRevision}`,
+    ]);
+    if (
+      checkout.sha !== receipt.checkedRevision ||
+      object(checkout.tree).sha !== receipt.checkedTree ||
+      !Array.isArray(checkout.parents)
+    )
+      return false;
+    return (
+      checkout.parents.length === 2 &&
+      object(checkout.parents[0]).sha === request.base &&
+      object(checkout.parents[1]).sha === request.candidate
+    );
+  }
   const parents = git.parents(receipt.checkedRevision);
   return (
-    receipt.checkedTree === request.integrationTree &&
+    localTree === receipt.checkedTree &&
     parents?.length === 2 &&
     parents[0] === request.base &&
     parents[1] === request.candidate
   );
+}
+
+function completedJobs(
+  raw: RawCommandTransport,
+  request: CiEvidenceRequest,
+  runId: number,
+  attempt: number,
+  current: GitHubObject[],
+): GitHubObject[] {
+  if (attempt === 1) return current;
+  const currentNames = new Set(current.map((job) => text(job.name)));
+  const inherited = new Map<string, GitHubObject>();
+  for (const job of pages(
+    raw,
+    request.repository,
+    `actions/runs/${runId}/jobs?filter=all`,
+    'jobs',
+  )) {
+    const name = text(job.name);
+    const jobAttempt = integer(job.run_attempt);
+    if (
+      job.run_id !== runId ||
+      job.head_sha !== request.candidate ||
+      jobAttempt === undefined ||
+      jobAttempt < 1 ||
+      jobAttempt > attempt ||
+      name === ''
+    )
+      throw new CiEvidenceError('authenticated CI job history has invalid run identity');
+    if (currentNames.has(name)) continue;
+    if (jobAttempt === attempt)
+      throw new CiEvidenceError('authenticated CI job history disagrees with the current attempt');
+    const previousAttempt = integer(inherited.get(name)?.run_attempt) ?? 0;
+    if (jobAttempt === previousAttempt)
+      throw new CiEvidenceError('authenticated CI job history contains duplicate jobs');
+    if (jobAttempt > previousAttempt) inherited.set(name, job);
+  }
+  return [...current, ...inherited.values()];
 }
 
 /**
@@ -311,10 +378,10 @@ export function createGitHubCiEvidenceProvider(
           text(run.event) === request.event &&
           text(run.head_sha) === request.candidate &&
           text(run.path) === request.workflowPath &&
-          text(run.name) === request.workflow &&
           (request.event === 'workflow_dispatch'
-            ? text(run.display_title) === `P07 ${request.requestKey}`
-            : true) &&
+            ? text(run.display_title) === `P07 ${request.requestKey}` &&
+              (text(run.name) === request.workflow || text(run.name) === text(run.display_title))
+            : text(run.name) === request.workflow) &&
           (request.event === 'pull_request'
             ? pullRequestIdentity(run)?.head === request.candidate &&
               pullRequestIdentity(run)?.base === request.base
@@ -363,21 +430,18 @@ export function createGitHubCiEvidenceProvider(
           receipt.candidate !== request.candidate ||
           receipt.runId !== id ||
           receipt.attempt !== attempt ||
-          !bindsCheckout(request, receipt, git)
+          !bindsCheckout(request, receipt, git, raw)
         )
           throw new CiEvidenceError(
             'authenticated CI receipt does not bind the requested candidate',
           );
-        const jobRecords = pages(
+        const currentJobs = pages(
           raw,
           request.repository,
           `actions/runs/${id}/attempts/${attempt}/jobs`,
           'jobs',
         );
-        const jobs = jobRecords.map((job) => text(job.name)).filter(Boolean);
-        if (jobs.length === 0 || new Set(jobs).size !== jobs.length)
-          throw new CiEvidenceError('authenticated CI run has invalid job inventory');
-        const aggregate = jobRecords.filter((job) => text(job.name) === 'Evidence aggregate');
+        const aggregate = currentJobs.filter((job) => text(job.name) === 'Evidence aggregate');
         if (
           aggregate.length !== 1 ||
           text(aggregate[0]?.status) !== 'completed' ||
@@ -386,6 +450,10 @@ export function createGitHubCiEvidenceProvider(
           throw new CiEvidenceError(
             'authenticated CI Evidence aggregate did not complete successfully',
           );
+        const jobRecords = completedJobs(raw, request, id, attempt, currentJobs);
+        const jobs = jobRecords.map((job) => text(job.name)).filter(Boolean);
+        if (jobs.length === 0 || new Set(jobs).size !== jobs.length)
+          throw new CiEvidenceError('authenticated CI run has invalid job inventory');
         const maySkipBrowser = request.event === 'pull_request';
         if (
           jobRecords.some(
