@@ -16,17 +16,11 @@
 // Every decision that cannot read its own input fails open and says why in `systemMessage`; only
 // the refusals above deny.
 
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import {
-  briefStemIn,
-  briefVersionIn,
-  unreadCorrections,
-  validateReport,
-  type WorkerReport,
-} from './report-schema.ts';
-import { readCorrections, reportPathOf } from './report.ts';
+import { briefStemIn } from './report-schema.ts';
+import { escapePathOf, reportProblems, type GitReader } from './report.ts';
 
 /** How many times one worker's stop is blocked before it goes through with a logged reason. */
 export const stopBlockLimit = 3;
@@ -88,40 +82,16 @@ function bumpBlocks(stateDirectory: string, agentId: string): number {
   return count + 1;
 }
 
-/** Why a worker's report does not yet let it stop, or `undefined` when it does. */
-function reportProblems(options: {
-  stem: string;
-  stateDirectory: string;
-  briefsDirectory: string;
-}): string[] | undefined {
-  const { stem, stateDirectory, briefsDirectory } = options;
-  let raw: unknown;
+/** When a worker started: its transcript's first timestamp, else the file's creation time. */
+function workerStartedAt(transcript: string, path: string): number | undefined {
+  const first = /"timestamp":"([^"]+)"/.exec(transcript.split('\n')[0] ?? '')?.[1];
+  const parsed = first === undefined ? Number.NaN : Date.parse(first);
+  if (!Number.isNaN(parsed)) return parsed;
   try {
-    raw = JSON.parse(readFileSync(reportPathOf(stateDirectory, stem), 'utf8'));
+    return statSync(path).birthtimeMs;
   } catch {
-    return [`there is no readable report at ${reportPathOf(stateDirectory, stem)}`];
+    return undefined;
   }
-  const checked = validateReport(raw);
-  if (!checked.ok) return checked.errors;
-  const report: WorkerReport = checked.report;
-  const problems: string[] = [];
-  if (report.issue !== stem) problems.push(`issue is ${stem}, not ${report.issue}`);
-  let current: string | undefined;
-  try {
-    current = briefVersionIn(readFileSync(join(briefsDirectory, `${stem}.md`), 'utf8'));
-  } catch {
-    current = undefined;
-  }
-  if (current !== undefined && current !== report.briefVersion)
-    problems.push(
-      `the brief was amended after you read it (version ${current}, you read ${report.briefVersion}): re-read tmp/chef/briefs/${stem}.md and the corrections, and report again`,
-    );
-  const unread = unreadCorrections(readCorrections(stateDirectory, stem), report);
-  if (unread.length > 0)
-    problems.push(
-      `corrections ${unread.map((entry) => entry.id).join(', ')} are unread (${unread.map((entry) => entry.text).join(' | ')}): act on them and list their ids in correctionsRead`,
-    );
-  return problems.length === 0 ? undefined : problems;
 }
 
 /**
@@ -135,6 +105,7 @@ export function workerStopDecision(options: {
   transcriptPath: string;
   stateDirectory: string | undefined;
   briefsDirectory: string | undefined;
+  git?: GitReader | undefined;
 }): FenceOutput | undefined {
   if (options.agentType !== 'chef-worker') return undefined;
   const { stateDirectory, briefsDirectory } = options;
@@ -151,14 +122,27 @@ export function workerStopDecision(options: {
     return failOpen(
       'the worker prompt names no tmp/chef/briefs/<issue>.md, so no report was required',
     );
-  const problems = reportProblems({ stem, stateDirectory, briefsDirectory });
+  const problems = reportProblems({
+    stem,
+    stateDirectory,
+    briefsDirectory,
+    git: options.git,
+    workerStartedAt: workerStartedAt(transcript, options.transcriptPath),
+  });
   if (problems === undefined) return undefined;
   const blocks = bumpBlocks(stateDirectory, options.agentId === '' ? stem : options.agentId);
-  if (blocks > stopBlockLimit)
+  if (blocks > stopBlockLimit) {
+    // The workflow reads this marker, so a report recorded through the escape never lands.
+    mkdirSync(join(stateDirectory, 'reports'), { recursive: true });
+    writeFileSync(
+      escapePathOf(stateDirectory, stem),
+      JSON.stringify({ agentId: options.agentId, at: new Date().toISOString(), problems }),
+    );
     return failOpen(
       `the stop of the worker for ${stem} was blocked ${stopBlockLimit} times (${problems.join('; ')})`,
     );
+  }
   return stopBlock(
-    `You cannot stop yet: the report for ${stem} is not valid.\n${problems.map((problem) => `- ${problem}`).join('\n')}\nWrite {head, checks, status: "READY"|"BLOCKED", reason?, criteria: [{id, status: "met-on-main"|"met-on-branch"|"not-met"|"needs-decision", evidence}], correctionsRead: [ids]} to a file in your scratch directory and run \`bun scripts/chef/report.ts write ${stem} --file <that file>\`. It writes the report under the coordinator's execution state and the ledger documentation/criteria-ledger/${stem}.json, which you commit and push. head is the commit you checked; checks is the focused-checks result line.`,
+    `You cannot stop yet: the report for ${stem} is not valid.\n${problems.map((problem) => `- ${problem}`).join('\n')}\nWrite {head, checks, status: "READY"|"BLOCKED", reason?, criteria: [{id, status: "met-on-main"|"met-on-branch"|"not-met"|"needs-decision", evidence}], correctionsRead: [ids]} to a file in your scratch directory and run \`bun scripts/chef/report.ts write ${stem} --file <that file> --brief-version <the Brief version: line of tmp/chef/briefs/${stem}.md as you read it>\`. It writes the report under the coordinator's execution state and the ledger documentation/criteria-ledger/${stem}.json, which you commit and push. head is the commit you checked; checks is the focused-checks result line.`,
   );
 }

@@ -55,8 +55,10 @@ const CHECKS_SCHEMA = {
     exitCode: { type: 'integer' },
     line: { type: 'string' },
     head: { type: 'string' },
+    reportOk: { type: 'boolean' },
+    reportProblems: { type: 'array', items: { type: 'string' } },
   },
-  required: ['exitCode', 'line', 'head'],
+  required: ['exitCode', 'line', 'head', 'reportOk'],
 };
 
 const DISPATCH_SCHEMA = {
@@ -232,6 +234,7 @@ function runChecks(issue, worktree, branch, head) {
       `Run the focused checks of ${issue} on the branch head ${head}. Invoke no skills. Change nothing in the repository.`,
       `cd ${worktree}. Run \`git fetch origin ${branch}\`, then confirm \`git rev-parse HEAD\` and \`git rev-parse FETCH_HEAD\` both equal ${head}. If either differs, return exitCode 3, line "head mismatch" and the head you found.`,
       'Otherwise run `bun scripts/chef/focused-checks.ts` once, with its output redirected to a file under tmp/ in that worktree, in the background if it runs long, and wait for it to exit. Never rerun it. Return exitCode (its exit code), line (the last non-empty line of that file) and head.',
+      `Then, from the same worktree, run \`bun scripts/chef/report.ts check ${issue} --head ${head}\` once and read its JSON: return reportOk (its ok, false when it printed nothing) and reportProblems (its problems). It verifies that the worker's report exists, is valid, names the current brief version, lists every correction, was not recorded through the three-blocks escape, and is for this head.`,
     ].join('\n'),
     {
       label: `checks ${issue}`,
@@ -324,14 +327,14 @@ function chooseModel(issue, paths) {
   return { model: 'sonnet', rule: 'no design-heavy interface path or explicit opus entry' };
 }
 
-function correct(issue, worktree, branch, findings, model) {
+function correct(issue, worktree, branch, findings, model, briefPath) {
   phase('correct');
   log(`${issue}: one correction of ${findings.length} finding(s)`);
   return agent(
     [
-      `cd into ${worktree}, the worktree of branch ${branch}, and fix these findings, and only these:`,
+      `cd into ${worktree}, the worktree of branch ${branch}. The brief file is ${briefPath}: read it again, and the unread corrections for ${issue} in the main checkout's tmp/chef/execution-state/corrections/${issue}.jsonl (an amendment recorded after the first worker stopped is delivered here). Fix these findings and the amendments, and only these:`,
       ...findings.map((finding) => `- ${finding}`),
-      `Run \`bun scripts/chef/focused-checks.ts\`, push the branch ${branch} once, and return the new head. ${NO_MERGE}`,
+      `Run \`bun scripts/chef/focused-checks.ts\`, write your report again with \`bun scripts/chef/report.ts write ${issue} --file <json in your scratch directory> --brief-version <the Brief version: line of the brief as you read it>\` (list every correction you read in correctionsRead), commit the ledger, push the branch ${branch} once, and return the new head. A hook refuses your stop without a valid report. ${NO_MERGE}`,
     ].join('\n'),
     {
       label: `correct ${issue}`,
@@ -485,6 +488,14 @@ async function deliverOne(issue) {
         steps,
         where,
       );
+    // A report that does not stand for the pushed head never lands: no evidence is dispatched.
+    if (checks.reportOk !== true)
+      return judgment(
+        issue,
+        `the worker report does not stand: ${(checks.reportProblems || ['no report check result']).join('; ')}`,
+        steps,
+        where,
+      );
     let findings = verifyBlockers(evidence);
 
     if (findings.length === 0) {
@@ -550,7 +561,14 @@ async function deliverOne(issue) {
         ...where,
         findings,
       });
-    const fixed = await correct(issue, built.worktree, built.branch, findings, chosen.model);
+    const fixed = await correct(
+      issue,
+      built.worktree,
+      built.branch,
+      findings,
+      chosen.model,
+      briefPath,
+    );
     if (fixed === null || fixed.status !== 'ready-for-review')
       return judgment(
         issue,

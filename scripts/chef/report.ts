@@ -29,6 +29,7 @@ import {
   readdirSync,
   readFileSync,
   renameSync,
+  rmSync,
   writeFileSync,
 } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
@@ -37,6 +38,7 @@ import { defaultRunner } from './process-runner.ts';
 import {
   briefVersionIn,
   ledgerOf,
+  unreadCorrections,
   validateReport,
   volatileImagePaths,
   type CorrectionEntry,
@@ -149,24 +151,150 @@ export function writeReport(options: {
   mainCheckout: string;
   worktree: string;
   branch: string;
+  /** The `Brief version:` the worker read; the report is refused when the brief on disk differs. */
+  briefVersion: string | undefined;
+  at?: Date;
 }): WorkerReport {
   const { issue, input, mainCheckout, worktree, branch } = options;
+  const state = stateDirectoryOf(mainCheckout);
   const fields = typeof input === 'object' && input !== null ? input : {};
-  let briefVersion: string | undefined;
+  let onDisk: string | undefined;
   try {
-    briefVersion = briefVersionIn(readFileSync(briefPathOf(mainCheckout, issue), 'utf8'));
+    onDisk = briefVersionIn(readFileSync(briefPathOf(mainCheckout, issue), 'utf8'));
   } catch {
-    briefVersion = undefined;
+    onDisk = undefined;
   }
-  const checked = validateReport({ ...fields, issue, briefVersion });
+  if (options.briefVersion === undefined)
+    throw new ReportRefusal(
+      `Pass --brief-version <the "Brief version:" line of tmp/chef/briefs/${issue}.md as you read it>; the report records the version you worked from, never the one on disk.`,
+    );
+  if (onDisk === undefined)
+    throw new ReportRefusal(`The brief tmp/chef/briefs/${issue}.md has no "Brief version:" line.`);
+  if (options.briefVersion !== onDisk) {
+    const unread = readCorrections(state, issue).filter(
+      (entry) =>
+        !Array.isArray((fields as { correctionsRead?: unknown }).correctionsRead) ||
+        !(fields as { correctionsRead: unknown[] }).correctionsRead.includes(entry.id),
+    );
+    throw new ReportRefusal(
+      `The brief was amended after you read it: you read version ${options.briefVersion}, it is now ${onDisk}. Re-read tmp/chef/briefs/${issue}.md, act on the amendments${unread.length === 0 ? '' : ` (corrections ${unread.map((entry) => `${entry.id}: ${entry.text}`).join(' | ')})`}, and write the report with --brief-version ${onDisk}.`,
+    );
+  }
+  const checked = validateReport({ ...fields, issue, briefVersion: options.briefVersion });
   if (!checked.ok)
     throw new ReportRefusal(
-      `The report is not valid:\n${checked.errors.map((error) => `- ${error}`).join('\n')}${briefVersion === undefined ? `\n- the brief tmp/chef/briefs/${issue}.md has no "Brief version:" line` : ''}`,
+      `The report is not valid:\n${checked.errors.map((error) => `- ${error}`).join('\n')}`,
     );
-  const state = stateDirectoryOf(mainCheckout);
-  writeWhole(reportPathOf(state, issue), `${JSON.stringify(checked.report)}\n`);
-  writeWhole(ledgerPathOf(worktree, issue), ledgerText(ledgerOf(checked.report, branch)));
-  return checked.report;
+  const written: WorkerReport = {
+    ...checked.report,
+    worktree,
+    writtenAt: (options.at ?? new Date()).toISOString(),
+  };
+  writeWhole(reportPathOf(state, issue), `${JSON.stringify(written)}\n`);
+  rmSync(escapePathOf(state, issue), { force: true });
+  writeWhole(ledgerPathOf(worktree, issue), ledgerText(ledgerOf(written, branch)));
+  return written;
+}
+
+/** Reads a git command's output in a directory; `undefined` when it fails. */
+export type GitReader = (args: string[], cwd: string) => string | undefined;
+
+export const defaultGit: GitReader = (args, cwd) => {
+  const result = defaultRunner(['git', ...args], { cwd });
+  return result.code === 0 ? result.stdout.trim() : undefined;
+};
+
+/** The marker the stop hook leaves when a worker went through after the block limit. */
+export function escapePathOf(stateDirectory: string, issue: string): string {
+  return join(stateDirectory, 'reports', `${issue}.escaped.json`);
+}
+
+const ledgerDirectory = 'documentation/criteria-ledger/';
+
+/**
+ * Whether the report's head is the target head, or the target only adds the ledger commit after it
+ * (committing the ledger moves HEAD past the commit the criteria were checked at).
+ */
+function headProblem(
+  report: WorkerReport,
+  target: string | undefined,
+  git: GitReader | undefined,
+  strict: boolean,
+): string | undefined {
+  const worktree = report.worktree;
+  if (worktree === undefined || git === undefined)
+    return strict ? 'the report names no worktree to compare its head in' : undefined;
+  const pushed = target ?? git(['rev-parse', 'HEAD'], worktree);
+  if (pushed === undefined || pushed === '')
+    return strict ? 'the worker head could not be read' : undefined;
+  if (pushed.startsWith(report.head) || report.head.startsWith(pushed)) return undefined;
+  const changed = git(['diff', '--name-only', `${report.head}..${pushed}`], worktree);
+  if (changed === undefined)
+    return strict
+      ? `the report head ${report.head} could not be compared with ${pushed}`
+      : undefined;
+  const files = changed.split('\n').filter((line) => line !== '');
+  if (files.length > 0 && files.every((file) => file.startsWith(ledgerDirectory))) return undefined;
+  return `the report is for head ${report.head}, not the pushed head ${pushed}: it was left by an earlier worker or before your last commit, so write it again`;
+}
+
+/** Why a worker's report does not yet stand for its work, or `undefined` when it does. */
+export function reportProblems(options: {
+  stem: string;
+  stateDirectory: string;
+  briefsDirectory: string;
+  git?: GitReader | undefined;
+  /** The pushed head to compare with; else the head of the report's worktree. */
+  head?: string | undefined;
+  /** When this worker started, in milliseconds; a report written before it is another worker's. */
+  workerStartedAt?: number | undefined;
+  /** The workflow's check: a stop let through after the block limit, or a head it cannot read, fails. */
+  strict?: boolean;
+}): string[] | undefined {
+  const { stem, stateDirectory, briefsDirectory } = options;
+  const strict = options.strict === true;
+  const escaped =
+    strict && existsSync(escapePathOf(stateDirectory, stem))
+      ? [
+          `the worker's stop was let through after the block limit without a valid report (${escapePathOf(stateDirectory, stem)})`,
+        ]
+      : [];
+  let raw: unknown;
+  try {
+    raw = JSON.parse(readFileSync(reportPathOf(stateDirectory, stem), 'utf8'));
+  } catch {
+    return [`there is no readable report at ${reportPathOf(stateDirectory, stem)}`, ...escaped];
+  }
+  const checked = validateReport(raw);
+  if (!checked.ok) return [...checked.errors, ...escaped];
+  const report: WorkerReport = checked.report;
+  const problems: string[] = [...escaped];
+  if (report.issue !== stem) problems.push(`issue is ${stem}, not ${report.issue}`);
+  let current: string | undefined;
+  try {
+    current = briefVersionIn(readFileSync(join(briefsDirectory, `${stem}.md`), 'utf8'));
+  } catch {
+    current = undefined;
+  }
+  if (current !== undefined && current !== report.briefVersion)
+    problems.push(
+      `the brief was amended after you read it (version ${current}, you read ${report.briefVersion}): re-read tmp/chef/briefs/${stem}.md and the corrections, and report again`,
+    );
+  const unread = unreadCorrections(readCorrections(stateDirectory, stem), report);
+  if (unread.length > 0)
+    problems.push(
+      `corrections ${unread.map((entry) => entry.id).join(', ')} are unread (${unread.map((entry) => entry.text).join(' | ')}): act on them and list their ids in correctionsRead`,
+    );
+  const stale = headProblem(report, options.head, options.git, strict);
+  if (stale !== undefined) problems.push(stale);
+  if (options.workerStartedAt !== undefined) {
+    const writtenAt = Date.parse(report.writtenAt ?? '');
+    if (Number.isNaN(writtenAt) || writtenAt < options.workerStartedAt)
+      problems.push(
+        'the report was written before this worker started, so it is an earlier worker’s: write it again',
+      );
+  }
+  return problems.length === 0 ? undefined : problems;
 }
 
 function option(argumentsList: readonly string[], name: string): string | undefined {
@@ -201,6 +329,7 @@ function main(argumentsList: readonly string[]): number {
         mainCheckout,
         worktree,
         branch: option(argumentsList, '--branch') ?? currentBranch(worktree),
+        briefVersion: option(argumentsList, '--brief-version'),
       });
       const unread = readCorrections(state, issue).filter(
         (entry) => !report.correctionsRead.includes(entry.id),
@@ -209,6 +338,22 @@ function main(argumentsList: readonly string[]): number {
         `report ${reportPathOf(state, issue)} written; ledger ${ledgerPathOf(worktree, issue)} written, commit it.${unread.length === 0 ? '' : ` Unread corrections: ${unread.map((entry) => entry.id).join(', ')} (${correctionsPathOf(state, issue)}).`}\n`,
       );
       return 0;
+    }
+    if (command === 'check') {
+      // The workflow's gate on landing: the report must stand for the pushed head.
+      const head = option(argumentsList, '--head');
+      const problems = reportProblems({
+        stem: issue,
+        stateDirectory: state,
+        briefsDirectory: join(mainCheckout, 'tmp', 'chef', 'briefs'),
+        git: defaultGit,
+        head,
+        strict: true,
+      });
+      process.stdout.write(
+        `${JSON.stringify({ ok: problems === undefined, problems: problems ?? [] })}\n`,
+      );
+      return problems === undefined ? 0 : 1;
     }
     if (command === 'amend') {
       const branch = option(argumentsList, '--branch');

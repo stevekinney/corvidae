@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
@@ -8,7 +8,9 @@ import { briefVersionIn, volatileImagePaths } from './report-schema.ts';
 import {
   appendCorrection,
   attachScreenshot,
+  escapePathOf,
   ledgerPathOf,
+  reportProblems,
   ReportRefusal,
   writeReport,
 } from './report.ts';
@@ -47,7 +49,7 @@ describe('a chef-worker stop', () => {
     const path = join(setting.root, 'worker-transcript.jsonl');
     await writeFile(
       path,
-      `${JSON.stringify({ type: 'user', message: { role: 'user', content: 'Read tmp/chef/briefs/COR-1.md and deliver it.' } })}\n`,
+      `${JSON.stringify({ type: 'user', timestamp: '2020-01-01T00:00:00Z', message: { role: 'user', content: 'Read tmp/chef/briefs/COR-1.md and deliver it.' } })}\n`,
     );
     return path;
   }
@@ -69,15 +71,117 @@ describe('a chef-worker stop', () => {
     correctionsRead: [],
   };
 
-  function report(setting: World, overrides: Record<string, unknown> = {}) {
+  function report(
+    setting: World,
+    overrides: Record<string, unknown> = {},
+    options: { briefVersion?: string; at?: Date } = {},
+  ) {
     return writeReport({
       issue: 'COR-1',
       input: { ...input, ...overrides },
       mainCheckout: setting.main,
       worktree: join(setting.root, 'worktree'),
       branch: 'chef/x',
+      briefVersion: options.briefVersion ?? 'aaaaaaaaaaaa',
+      ...(options.at === undefined ? {} : { at: options.at }),
     });
   }
+
+  /** A git reader whose worktree head is `pushed` and whose diff from any older head is `changed`. */
+  const gitAt =
+    (pushed: string, changed: string[]) =>
+    (args: string[]): string | undefined =>
+      args[0] === 'rev-parse' ? pushed : args[0] === 'diff' ? changed.join('\n') : undefined;
+
+  test('refuses to write against a brief amended since the worker read it, and the stop stays blocked until it does', async () => {
+    const setting = await world();
+    const path = await worker(setting);
+    // The coordinator amends: the brief is re-rendered (version B) and a correction recorded.
+    await writeFile(join(setting.briefs, 'COR-1.md'), briefText('bbbbbbbbbbbb'));
+    const entry = appendCorrection(setting.state, 'COR-1', {
+      branch: 'chef/x',
+      text: 'criterion 16: the header is 700px',
+      at: new Date(0),
+    });
+    // The worker read version A; writing for A is refused, naming the amendment.
+    expect(() => report(setting, {}, { briefVersion: 'aaaaaaaaaaaa' })).toThrow(
+      /amended after you read it[\s\S]*c1: criterion 16/,
+    );
+    expect((await handleHookEvent(stop(path), context(setting)))?.decision).toBe('block');
+    // Omitting the version is refused too: the report records what was read, never the disk.
+    expect(() => report(setting, {}, { briefVersion: undefined as unknown as string })).toThrow(
+      /--brief-version/,
+    );
+    report(setting, { correctionsRead: [entry.id] }, { briefVersion: 'bbbbbbbbbbbb' });
+    expect(await handleHookEvent(stop(path), context(setting))).toBeUndefined();
+  });
+
+  test('refuses a report left by an earlier worker: another head, or written before this worker started', async () => {
+    const setting = await world();
+    const path = await worker(setting);
+    report(setting);
+    const stale = (git: ReturnType<typeof gitAt>) =>
+      handleHookEvent(
+        stop(path),
+        context(setting, {
+          chef: { stateDirectory: setting.state, briefsDirectory: setting.briefs, git },
+        }),
+      );
+    // The worktree moved past the report's head with code, so the report is an earlier worker's.
+    const moved = await stale(gitAt('def5678', ['scripts/thing.ts']));
+    expect(moved?.decision).toBe('block');
+    expect(moved?.reason).toContain('not the pushed head def5678');
+    // The ledger commit alone moves HEAD, which is allowed; so is an equal head.
+    expect(
+      await stale(gitAt('def5678', ['documentation/criteria-ledger/COR-1.json'])),
+    ).toBeUndefined();
+    expect(await stale(gitAt('abc1234ffff', []))).toBeUndefined();
+    // A report written before this worker's transcript began is stale even at the same head.
+    await writeFile(
+      path,
+      `${JSON.stringify({ type: 'user', timestamp: '2999-01-01T00:00:00Z', message: { content: 'Read tmp/chef/briefs/COR-1.md.' } })}\n`,
+    );
+    const earlier = await stale(gitAt('abc1234', []));
+    expect(earlier?.decision).toBe('block');
+    expect(earlier?.reason).toContain('written before this worker started');
+  });
+
+  test('blocks a correction-round worker without a report, from the prompt the workflow gives it', async () => {
+    const setting = await world();
+    await writeFile(join(setting.briefs, 'COR-1.md'), briefText('aaaaaaaaaaaa'));
+    report(setting);
+    const path = join(setting.root, 'correction-transcript.jsonl');
+    await writeFile(
+      path,
+      `${JSON.stringify({ type: 'user', timestamp: '2999-01-01T00:00:00Z', message: { content: 'cd into /worktree, the worktree of branch chef/x. The brief file is /main/tmp/chef/briefs/COR-1.md: read it again.' } })}\n`,
+    );
+    const output = await handleHookEvent(stop(path, { agent_id: 'agent-2' }), context(setting));
+    expect(output?.decision).toBe('block');
+    expect(output?.reason).toContain('written before this worker started');
+  });
+
+  test('a stop let through after the block limit leaves a marker that the workflow check refuses, until a valid report clears it', async () => {
+    const setting = await world();
+    const path = await worker(setting);
+    for (let attempt = 0; attempt <= stopBlockLimit; attempt += 1)
+      await handleHookEvent(stop(path), context(setting));
+    const check = () =>
+      reportProblems({
+        stem: 'COR-1',
+        stateDirectory: setting.state,
+        briefsDirectory: setting.briefs,
+        strict: true,
+      });
+    expect(existsSync(escapePathOf(setting.state, 'COR-1'))).toBe(true);
+    expect(check()?.join('\n')).toContain('let through after the block limit');
+    // Even a valid report written by hand beside the marker does not land.
+    report(setting);
+    writeFileSync(escapePathOf(setting.state, 'COR-1'), '{}');
+    expect(check()?.join('\n')).toContain('let through after the block limit');
+    // A worker that writes a valid report through `write` clears the marker.
+    report(setting);
+    expect(existsSync(escapePathOf(setting.state, 'COR-1'))).toBe(false);
+  });
 
   test('is blocked, with the command that writes the report, when there is none', async () => {
     const setting = await world();

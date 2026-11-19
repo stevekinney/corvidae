@@ -48,7 +48,7 @@ import {
   type ProcessTable,
 } from './bun-test-pool.ts';
 import { contextFenceDecision, fencedToolNames } from './chef/context-fence.ts';
-import { stateDirectoryOf } from './chef/report.ts';
+import { defaultGit, stateDirectoryOf, type GitReader } from './chef/report.ts';
 import { resolveMainCheckout } from './chef/repository-locations.ts';
 import { questionDecision, workerStopDecision, type FenceOutput } from './chef/session-fences.ts';
 import { rootScriptEnvironment } from './environment-configuration.ts';
@@ -884,7 +884,14 @@ export type HookContext = {
   readonly readAgentTools?: (agentType: string) => string | undefined;
   readonly readOnlyCap?: number;
   /** The coordinator's execution state and briefs, in the main checkout; absent when not found. */
-  readonly chef?: { readonly stateDirectory: string; readonly briefsDirectory: string } | undefined;
+  readonly chef?:
+    | {
+        readonly stateDirectory: string;
+        readonly briefsDirectory: string;
+        /** Reads git in a worktree, to compare a report's head with the worker's. */
+        readonly git?: GitReader;
+      }
+    | undefined;
 };
 
 function text(value: unknown): string {
@@ -1163,6 +1170,7 @@ async function sessionFences(
         transcriptPath: text(input.agent_transcript_path),
         stateDirectory: context.chef?.stateDirectory,
         briefsDirectory: context.chef?.briefsDirectory,
+        git: context.chef?.git,
       });
     } else if (event === 'PreToolUse' && tool === 'AskUserQuestion') {
       decision = questionDecision(await leasedSession(sessionId, context));
@@ -1344,6 +1352,7 @@ function chefDirectories(cwd: string): HookContext['chef'] {
     return {
       stateDirectory: stateDirectoryOf(main),
       briefsDirectory: join(main, 'tmp', 'chef', 'briefs'),
+      git: defaultGit,
     };
   } catch {
     // Every failure is safe: with no main checkout there is no state to read, and the hooks that

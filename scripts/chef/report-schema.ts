@@ -43,6 +43,9 @@ export type WorkerReport = {
   readonly criteria: readonly ReportCriterion[];
   /** The ids of the correction entries the worker read (`corrections/<issue>.jsonl`). */
   readonly correctionsRead: readonly string[];
+  /** Set by `report.ts write`: the worktree the head is read in, and when the report was written. */
+  readonly worktree?: string;
+  readonly writtenAt?: string;
 };
 
 export type ReportValidation =
@@ -106,6 +109,8 @@ export function validateReport(value: unknown): ReportValidation {
   const read = value['correctionsRead'];
   if (!Array.isArray(read) || read.some((id) => typeof id !== 'string'))
     errors.push('correctionsRead lists the ids of the corrections read (an empty list if none)');
+  for (const key of ['worktree', 'writtenAt'])
+    if (value[key] !== undefined && typeof value[key] !== 'string') errors.push(`${key} is text`);
   if (errors.length > 0) return { ok: false, errors };
   return { ok: true, report: value as unknown as WorkerReport };
 }
