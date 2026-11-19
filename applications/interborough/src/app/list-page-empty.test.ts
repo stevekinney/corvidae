@@ -10,7 +10,7 @@
  * it. Here the walk asserts the structure that rule applies to.
  */
 import { HttpClient } from '@lostgradient/weft';
-import { render, waitFor } from '@testing-library/svelte';
+import { cleanup, render, waitFor } from '@testing-library/svelte';
 import { afterEach, describe, expect, test } from 'bun:test';
 import { Window } from 'happy-dom';
 
@@ -33,6 +33,9 @@ import type { ViewName } from './views.ts';
 
 let restore: (() => void) | undefined;
 afterEach(() => {
+  // Unmount the page before its host goes, so nothing it left reads into the next file's test.
+  cleanup();
+  document.body.replaceChildren();
   restore?.();
   restore = undefined;
 });
