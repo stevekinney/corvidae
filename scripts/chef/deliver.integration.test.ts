@@ -1,11 +1,16 @@
 import { expect } from 'bun:test';
-import { createHash } from 'node:crypto';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, relative } from 'node:path';
 import { rejectionOf } from '../../testing/testing/src/helpers/promise-outcome.ts';
-import { deliver, renderDeliver, run, type DeliverOptions } from './deliver.ts';
-import { readDeliveryRequest, type DeliveryRequest } from './delivery-completion.ts';
+import {
+  deliver,
+  renderDeliver,
+  run,
+  type DeliverOptions,
+  type LeaseReading,
+} from './deliver.ts';
+import { readDeliveryRequest } from './delivery-completion.ts';
 import { ledgerLine, type LedgerEntry } from './delivery-ledger.ts';
 import {
   loadDeliveryVerification,
@@ -15,23 +20,22 @@ import {
   type DeliveryVerificationDependencies,
 } from './delivery-verification.ts';
 import { directMerge, type DirectMergeOptions } from './direct-merge.ts';
+import { branchRunner as landingRunner, createDeliveryFixture } from './deliver.test-support.ts';
+import { recordMutationIntent } from './execution-state.ts';
+import { designVerdictPath } from './landing-evidence.ts';
 import {
-  acquireDispatch,
-  createExecutionStateStore,
-  recordMutationIntent,
-} from './execution-state.ts';
+  greenLandingAnswers,
+  landingProvider,
+  planAnswer,
+  runsAnswer,
+} from './landing-evidence.test-support.ts';
 import { LinearError, type LinearClient } from './linear.ts';
 import type { MergeGateOptions, MergeGateReport } from './merge-gate.ts';
 import { UsageError, type Runner, type RunnerResult } from './process-runner.ts';
-import {
-  greenLandingAnswers,
-  landingIdentity,
-  landingProvider,
-} from './landing-evidence.test-support.ts';
 import { createScenarios } from './scenario.test-support.ts';
 import type { GuardsResult } from './text-guards.ts';
 import type { UsageTotals } from './transcript-usage.ts';
-import { assignmentVersion, digest, type Assignment } from './verification-plan.ts';
+import { digest } from './verification-plan.ts';
 import { Refusal, type RemoveOptions } from './worktree.ts';
 
 const HEAD = 'a'.repeat(40);
@@ -49,141 +53,9 @@ async function deliveryVerification(
   worktree: string,
   route = 'pull-request',
 ): Promise<DeliveryVerification> {
-  const state = createExecutionStateStore({
-    stateDirectory: join(directory, 'state'),
-    hostId: 'fixture',
-  });
-  const acquired = await acquireDispatch(state, {
-    resource: 'COR-1',
-    runId: 'run',
-    ownerId: 'owner',
-  });
-  if (!acquired.granted) throw new Error(acquired.reason);
-  const assignment: Assignment = {
-    version: assignmentVersion,
-    identity: {
-      identifier: 'COR-1',
-      revision: 'fixture',
-      repository: 'acme/widgets',
-      base: BASE,
-      digest: '',
-    },
-    criteria: [{ id: 'AC1', text: 'fixture' }],
-    ownedPaths: [],
-    exclusions: [],
-    dependencies: [],
-    sourceReferences: [],
-    designRows: [],
-    deliveryBoundary: 'fixture',
-    allowedConsequentialActions: ['merge'],
-    classification: 'behavior',
-  };
-  assignment.identity.digest = digest(
-    JSON.stringify({ ...assignment, identity: { ...assignment.identity, digest: undefined } }),
-  );
-  const request: DeliveryRequest = {
-    repository: 'acme/widgets',
-    revision: HEAD,
-    base: BASE,
-    integrationTree: TREE,
-    environment: 'linux',
-    authority: acquired.authority,
-    operationId: 'operation',
-    worktree,
-    members: [
-      {
-        assignment,
-        plan: {
-          version: 1,
-          obligations: [
-            {
-              criterionId: 'AC1',
-              risk: 'root-scripts',
-              commandOrProviderJob: 'verify',
-              expectedInventory: [],
-              relevantInputs: [],
-              environmentToolchain: 'linux',
-              executionBoundary: 'provider',
-              producer: 'fixture',
-              selectionReason: 'fixture',
-              evidenceKind: 'process-exit',
-              phase: 'pre-integration',
-            },
-          ],
-          risks: {
-            'root-scripts': 'covered',
-            'shared-configuration': 'not-applicable',
-            'transitive-consumers': 'not-applicable',
-            'dynamic-entrypoints': 'not-applicable',
-            authorization: 'not-applicable',
-            'persistence-protocols': 'not-applicable',
-            'installed-artifacts': 'not-applicable',
-            'shared-ui-design': 'not-applicable',
-            'automatic-deployment': 'not-applicable',
-          },
-          invalidatedBy: { assignment: 'a', context: 'b', policy: 'c' },
-        },
-        providerRuns: [
-          {
-            id: 7,
-            obligation: 'AC1:verify',
-            job: 'verify',
-            workflow: 'Verify',
-            workflowPath: '.github/workflows/verify.yml',
-            event: 'push',
-          },
-        ],
-        track: false,
-        requestedClose: false,
-        changes: ['fixture'],
-        blockers: [],
-      },
-    ],
-  };
-  request.members[0]!.plan.invalidatedBy.assignment = assignment.identity.digest;
-  request.ciEvidence = [landingIdentity(request)];
-  const text = JSON.stringify(request);
-  const file = join(directory, 'verification.json');
-  writeFileSync(file, text);
-  verification = {
-    state,
-    ciProvider: landingProvider(request),
-    transport: {
-      run: () => ({
-        repository: 'acme/widgets',
-        revision: HEAD,
-        status: 'completed',
-        conclusion: 'success',
-        workflow: 'Verify',
-        workflowPath: '.github/workflows/verify.yml',
-        event: 'push',
-        attempt: 1,
-      }),
-      job: () => ({
-        id: 3,
-        name: 'verify',
-        status: 'completed',
-        conclusion: 'success',
-        runtime: 'linux',
-        inventory: [],
-        assertionPassed: null,
-      }),
-      content: () => ({ integrationTree: TREE, relevantInputs: [] }),
-      artifact: () => ({ present: false, expired: false }),
-    },
-  };
-  const binding = {
-    file,
-    digest: createHash('sha256').update(text).digest('hex'),
-    stateDirectory: state.stateDirectory,
-  };
-  await recordMutationIntent(state, acquired.authority, {
-    operationId: request.operationId,
-    action: 'merge',
-    intentFingerprint: 'fixture',
-  });
-  await prepareDeliveryVerification(binding, [assignment], { route, action: 'merge' }, { state });
-  return binding;
+  const made = await createDeliveryFixture(directory, worktree, route);
+  verification = made.dependencies;
+  return made.binding;
 }
 
 let operationSequence = 0;
@@ -1718,6 +1590,257 @@ scenarios.describe('deliver --branch', () => {
       expect(seen[0]?.messageFile).toBe(join(sandbox, 'comment.md'));
     },
   );
+});
+
+// Landing refuses without evidence (`landing-evidence.ts`, the lease in `deliver.ts`). Each case
+// starts from the green landing and varies the one input its check reads.
+interface Landing {
+  /** Answers over the green defaults, keyed by a command's arguments without its program. */
+  answers?: Record<string, RunnerResult>;
+  /** Overrides the run the CI evidence provider finds. */
+  providerRun?: Record<string, unknown>;
+  handler?: (command: string[]) => RunnerResult | undefined;
+  lease?: LeaseReading | null;
+  /** Verdict file text, written beside the execution state for the head. */
+  verdicts?: string;
+}
+
+/** `deliver --branch` over a fake git, gh and Linear, with the green landing varied by `landing`. */
+async function landBranch(landing: Landing = {}) {
+  const directory = mkdtempSync(join(tmpdir(), 'deliver-landing-'));
+  const controlDirectory = mkdtempSync(join(tmpdir(), 'deliver-landing-control-'));
+  try {
+    const configPath = join(controlDirectory, 'config.json');
+    writeFileSync(
+      configPath,
+      JSON.stringify({
+        repository: 'acme/widgets',
+        defaultBranch: 'main',
+        worktreeRoots: { claude: '/c', codex: '/x' },
+        manifestName: 'widgets',
+        installCommand: 'install-command',
+        gateCommand: 'true',
+        affectedCheckCommand: 'true',
+        mergeMethod: 'squash',
+      }),
+    );
+    const world = landingRunner(directory, landing.answers, landing.handler);
+    writeFileSync(world.messageFile, 'COR-9: Add widgets\n');
+    const fixture = await createDeliveryFixture(controlDirectory, directory, 'branch');
+    if (landing.verdicts !== undefined) {
+      const path = designVerdictPath(fixture.binding.stateDirectory ?? '', HEAD);
+      mkdirSync(join(path, '..'), { recursive: true });
+      writeFileSync(path, landing.verdicts);
+    }
+    const landed = {
+      ...fixture.dependencies,
+      ...(landing.providerRun === undefined
+        ? {}
+        : {
+            ciProvider: landingProvider(
+              { repository: 'acme/widgets', base: BASE, revision: HEAD, integrationTree: TREE },
+              landing.providerRun,
+            ),
+          }),
+    };
+    const report = await deliver(
+      {
+        configPath,
+        branch: BRANCH,
+        expectedHead: HEAD,
+        messageFile: world.messageFile,
+        worktree: directory,
+        run: 'run',
+        project: 'Widgets',
+        verification: fixture.binding,
+      },
+      {
+        directMerge: async (directOptions) =>
+          directMerge(directOptions, {
+            runner: world.runner,
+            guards: guardsPass,
+            verification: landed,
+          }),
+        verification: landed,
+        readLease: async () =>
+          landing.lease === undefined ? { run: 'run', live: true } : landing.lease,
+        remove: () => ({ path: '/c/alpha', branch: 'b', remoteDeleted: true, ended: [] }),
+        record: () => {},
+        client: {
+          request: async () => {
+            throw new Error('no Linear request is expected');
+          },
+        },
+      },
+    );
+    // The command line's own mapping: 0 when nothing failed, 1 when a step did.
+    return { report, code: report.failedStep === null ? 0 : 1, calls: world.calls };
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+    rmSync(controlDirectory, { recursive: true, force: true });
+  }
+}
+
+const UI_PATH = 'applications/interborough/src/routes/agents/agents-page.svelte';
+const DOOR = {
+  rule: 'wire golden: a wire protocol or published-spec snapshot',
+  path: 'packages/bureau/src/http/__fixtures__/wire-golden/local.openrpc.json',
+};
+const noPush = (calls: string[]) => !calls.some((call) => call.startsWith('push'));
+
+scenarios.describe('deliver --branch refuses to land without evidence', () => {
+  scenarios.scenario(
+    'a head with green runs, its pinned digest, a covered plan and the lease lands',
+    async () => {
+      const { report, code } = await landBranch();
+      expect(report).toMatchObject({ failedStep: null, merged: true });
+      expect(code).toBe(0);
+    },
+  );
+
+  scenarios.scenario('no runs on the head', async () => {
+    const { report, code, calls } = await landBranch({
+      answers: runsAnswer('acme/widgets', HEAD, []),
+    });
+    expect(report).toMatchObject({ merged: false, failedStep: 'verification' });
+    expect(report.detail).toContain('no workflow runs exist on the head');
+    expect(code).toBe(1);
+    expect(noPush(calls)).toBe(true);
+  });
+
+  scenarios.scenario('runs on a different SHA', async () => {
+    const other = '9'.repeat(40);
+    const { report, code } = await landBranch({
+      answers: runsAnswer('acme/widgets', HEAD, [{ head_sha: other }]),
+    });
+    expect(report).toMatchObject({ merged: false, failedStep: 'verification' });
+    expect(report.detail).toContain(`is on ${other}, not the head`);
+    expect(code).toBe(1);
+  });
+
+  scenarios.scenario('a digest that is not the pinned one', async () => {
+    const { report, code } = await landBranch({
+      providerRun: { verificationPlanDigest: '0'.repeat(64) },
+    });
+    expect(report).toMatchObject({ merged: false, failedStep: 'verification' });
+    expect(report.detail).toContain('carries evidence digest');
+    expect(code).toBe(1);
+  });
+
+  scenarios.scenario('a red run with a failure main does not have', async () => {
+    const { report, code } = await landBranch({
+      answers: runsAnswer('acme/widgets', HEAD, [{ head_sha: HEAD, conclusion: 'failure' }]),
+      handler: (command) => {
+        if (command[1] !== 'run') return undefined;
+        if (command[2] === 'list') return reply('[]');
+        if (command.includes('--log-failed')) return reply('');
+        return reply(
+          JSON.stringify({
+            status: 'completed',
+            conclusion: 'failure',
+            jobs: [{ name: 'Root checks', conclusion: 'failure' }],
+          }),
+        );
+      },
+    });
+    expect(report).toMatchObject({ merged: false, failedStep: 'verification' });
+    expect(report.detail).toContain('is red with failures main does not have: Root checks');
+    expect(code).toBe(1);
+  });
+
+  scenarios.scenario('an interface path with no design verdict', async () => {
+    const { report, code } = await landBranch({
+      answers: planAnswer(BASE, { changed: [UI_PATH] }),
+    });
+    expect(report).toMatchObject({ merged: false, failedStep: 'verification' });
+    expect(report.detail).toContain('records no design verdict for the head');
+    expect(code).toBe(1);
+  });
+
+  scenarios.scenario(
+    'an interface path lands with a verdict whose rows all pass, and not with a failing row',
+    async () => {
+      const answers = planAnswer(BASE, { changed: [UI_PATH] });
+      const passing = await landBranch({
+        answers,
+        verdicts: '11a | matches |\n11b | deferred | the issue defers it to COR-9\n',
+      });
+      expect(passing.report).toMatchObject({ failedStep: null, merged: true });
+      const failing = await landBranch({
+        answers,
+        verdicts: '11a | matches |\n11b | drifted | the card is 1950px wide\n',
+      });
+      expect(failing.report).toMatchObject({ merged: false, failedStep: 'verification' });
+      expect(failing.report.detail).toContain('failing rows: 11b: drifted');
+      expect(failing.code).toBe(1);
+    },
+  );
+
+  scenarios.scenario('a one-way door through a branch merge, which has no pull request', async () => {
+    const { report, code } = await landBranch({
+      answers: planAnswer(BASE, {
+        changed: [DOOR.path],
+        requires_full_run: true,
+        full_run_rules: [DOOR],
+      }),
+    });
+    expect(report).toMatchObject({ merged: false, failedStep: 'verification' });
+    expect(report.detail).toContain('one-way door');
+    expect(report.detail).toContain('must go through a pull request');
+    expect(code).toBe(1);
+  });
+
+  scenarios.scenario('a whole-suite rule widens the run and is no one-way door', async () => {
+    const { report } = await landBranch({
+      answers: planAnswer(BASE, {
+        changed: ['scripts/browser-fixtures/tests/density.playwright.ts'],
+        requires_full_run: true,
+        full_run_rules: [{ rule: 'whole-suite: token change', path: 'x' }],
+      }),
+    });
+    expect(report).toMatchObject({ failedStep: null, merged: true });
+  });
+
+  scenarios.scenario('a plan that needs the full run is not covered by a targeted run', async () => {
+    const { report } = await landBranch({
+      answers: {
+        ...runsAnswer('acme/widgets', HEAD, [
+          { head_sha: HEAD, path: '.github/workflows/targeted-checks.yml' },
+        ]),
+        ...planAnswer(BASE, { requires_full_run: true }),
+      },
+    });
+    expect(report).toMatchObject({ merged: false, failedStep: 'verification' });
+    expect(report.detail).toContain('requires a full main.yml run');
+  });
+
+  scenarios.scenario('a run that does not hold the lease', async () => {
+    for (const lease of [{ run: 'other', live: true }, null, { run: 'run', live: false }]) {
+      const { report, code, calls } = await landBranch({ lease });
+      expect(report).toMatchObject({ merged: false, failedStep: 'lease' });
+      expect(code).toBe(1);
+      expect(noPush(calls)).toBe(true);
+    }
+  });
+
+  scenarios.scenario('--run and --project are required on the command line', async () => {
+    const argv = [
+      '--branch',
+      BRANCH,
+      '--head',
+      HEAD,
+      '--worktree',
+      tmpdir(),
+      '--message-file',
+      'm',
+      '--verification-file',
+      'v',
+      '--verification-digest',
+      'd',
+    ];
+    expect(await rejectionOf(run(argv, {}))).toBeInstanceOf(UsageError);
+    expect(await rejectionOf(run([...argv, '--run', 'run'], {}))).toBeInstanceOf(UsageError);
+  });
 });
 
 await scenarios.settled();
