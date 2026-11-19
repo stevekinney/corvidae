@@ -17,6 +17,7 @@ import {
   StubFault,
   type BureauStub,
 } from '../../lib/bureau-stub.test-support.ts';
+import { timesShowIn } from '../../lib/format/clock.ts';
 import { AUTHORIZATION_SCOPES } from '../../lib/scopes.svelte.ts';
 import {
   emptyWorld,
@@ -25,6 +26,7 @@ import {
   type WorkflowStub,
 } from '../../lib/workflow-world.test-support.ts';
 import { landAt } from '../chat/pages.test-support.ts';
+import HealthCountsRow from './health-counts-row.svelte';
 
 let stub: BureauStub | undefined;
 let engine: WorkflowStub | undefined;
@@ -203,15 +205,11 @@ describe('loading (rows 76w and 76x)', () => {
   test('then keeps the real layout: real labels and headings, placeholders for values, rows and charts', async () => {
     const view = await openHanging();
     advance(300);
-    const counts = view.getByRole('group', { name: 'Health counts' });
-    expect(
-      [...counts.querySelectorAll('.cinder-statistic__label')].map((label) =>
-        label.textContent?.trim(),
-      ),
-    ).toEqual(['Running now', 'Needs you', 'Failed in 24 hours', 'Missed schedule runs (7 days)']);
-    // A placeholder block stands where each count will be, never a zero.
-    expect(counts.querySelectorAll('.cinder-skeleton')).toHaveLength(4);
-    expect(counts.textContent).not.toMatch(/\b0\b/);
+    // A count is a tile only once it reads above zero, or could not be read (owner, 2026-11-19), so
+    // none waits as a placeholder that a zero would take away again, and none reads zero.
+    const counts = view.queryByRole('group', { name: 'Health counts' });
+    expect(counts?.querySelector('.cinder-skeleton') ?? null).toBeNull();
+    expect(counts?.textContent ?? '').not.toMatch(/\b0\b/);
 
     const card = view.getByTestId('needs-attention');
     expect(card.querySelector('h2')?.textContent).toBe('Needs attention');
@@ -270,13 +268,15 @@ describe('Needs attention', () => {
     await waitFor(() => expect(window.location.pathname).toBe('/health/storage'));
   });
 
-  test('with nothing to report collapses to one row with no count and no actions', async () => {
+  // Owner, 2026-11-19: an empty "Needs attention" box left dead space under it. No card says
+  // nothing; Home and Health share the one quiet line.
+  test('with nothing to report is one quiet line, with no card, count or actions', async () => {
     const view = open('/health', { 'bureau.health.attention': () => ALL_CLEAR });
-    const card = await view.findByTestId('needs-attention');
-    await waitFor(() => expect(card.textContent).toContain('Nothing needs attention'));
-    expect(card.textContent).toContain('Storage, schedules, providers and hooks are fine.');
-    expect(card.querySelector('.cinder-badge')).toBeNull();
-    expect(card.querySelectorAll('a, button')).toHaveLength(0);
+    const line = await view.findByTestId('needs-attention-clear');
+    expect(line.textContent?.trim()).toBe('Nothing needs attention.');
+    expect(line.hasAttribute('data-quiet-line')).toBe(true);
+    expect(line.closest('.cinder-card')).toBeNull();
+    expect(view.queryByTestId('needs-attention')).toBeNull();
   });
 
   test('a list that could not be read says so and never claims all is well', async () => {
@@ -293,38 +293,68 @@ describe('Needs attention', () => {
 });
 
 describe('the counts', () => {
-  test('are the four of Home, in order, and a missed count carries a dot and its schedule', async () => {
+  // Owner, 2026-11-19: a tile shows only when its count is not zero, and no label carries a
+  // parenthesised qualifier.
+  test('show only the counts that are not zero, in Home’s order, and a missed count carries a dot and its schedule', async () => {
     const view = open();
     const row = await view.findByRole('group', { name: 'Health counts' });
     await waitFor(() => expect(row.textContent).toContain('Daily summary'));
-    const labels = [...row.querySelectorAll('.cinder-statistic__label')].map((label) =>
-      label.textContent?.trim(),
-    );
-    expect(labels).toEqual([
-      'Running now',
-      'Needs you',
-      'Failed in 24 hours',
-      'Missed schedule runs (7 days)',
-    ]);
-    const missed = row.querySelector('[data-count="missed"]');
-    expect(missed?.querySelector('.cinder-statistic__value')?.textContent?.trim()).toBe('4');
-    expect(missed?.hasAttribute('data-cinder-attention')).toBe(true);
-    // The engine answered nothing, so its counts are unavailable and never zero.
+    // The engine answered nothing, so its counts could not be read: a dash, never a zero.
     await waitFor(() =>
       expect(
         row.querySelector('[data-count="running"] .cinder-statistic__value')?.textContent?.trim(),
       ).toBe('—'),
     );
+    const labels = [...row.querySelectorAll('.cinder-statistic__label')].map((label) =>
+      label.textContent?.trim(),
+    );
+    for (const label of labels) expect(label).not.toMatch(/[()]/);
+    expect(labels).toContain('Missed runs in 7 days');
+    const missed = row.querySelector('[data-count="missed"]');
+    expect(missed?.querySelector('.cinder-statistic__value')?.textContent?.trim()).toBe('4');
+    expect(missed?.hasAttribute('data-cinder-attention')).toBe(true);
+    // No tile reads zero.
+    for (const value of row.querySelectorAll('.cinder-statistic__value')) {
+      expect(value.textContent?.trim()).not.toBe('0');
+    }
+  });
+
+  test('draw no tile row at all when every count is zero, and no tile for a count still being read', () => {
+    const zero = { value: 0, caption: '', bad: true };
+    const view = render(HealthCountsRow, {
+      props: { running: zero, needsYou: zero, failed: zero, missed: zero },
+    });
+    expect(view.queryByRole('group', { name: 'Health counts' })).toBeNull();
+    expect(view.container.querySelector('.cinder-statistic')).toBeNull();
+    cleanup();
+    const some = render(HealthCountsRow, {
+      props: {
+        running: { value: undefined, caption: '', bad: false },
+        needsYou: { value: 2, caption: 'Two questions', bad: true },
+        failed: zero,
+        missed: zero,
+      },
+    });
+    const row = some.getByRole('group', { name: 'Health counts' });
+    expect(
+      [...row.querySelectorAll('[data-count]')].map((tile) => tile.getAttribute('data-count')),
+    ).toEqual(['needs-you']);
   });
 });
 
 describe('Recent activity', () => {
-  test('is headed with its zone, links to the audit log with its size, and lists lines with their times', async () => {
+  // Owner, 2026-11-19: Recent activity said Central while Home said Mountain (a fixed "Central
+  // time" label), and put its count in parentheses.
+  test('says its zone as every page does, links to the audit log with its size, and lists lines with their times', async () => {
     const view = open();
     const heading = await view.findByRole('heading', { level: 2, name: /Recent activity/ });
-    expect(heading.textContent).toContain('Central time');
-    const link = await view.findByRole('link', { name: /Open audit log/ });
-    await waitFor(() => expect(link.textContent).toContain('Open audit log (1,240 events) ›'));
+    expect(heading.textContent?.trim()).toBe('Recent activity');
+    expect(view.getByTestId('recent-activity-zone').textContent?.trim()).toBe(
+      `${timesShowIn(Date.now())}.`,
+    );
+    const link = await view.findByRole('link', { name: /audit log/ });
+    await waitFor(() => expect(link.textContent).toContain('All 1,240 events in the audit log ›'));
+    expect(link.textContent).not.toMatch(/[()·]/);
     expect(link.getAttribute('href')).toBe('/health/audit');
 
     const lines = [...view.container.querySelectorAll('[data-activity]')];

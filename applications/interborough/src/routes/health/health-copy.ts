@@ -61,9 +61,11 @@ export const HEALTH_COUNTS_COPY = {
   runningNow: 'Running now',
   needsYou: 'Needs you',
   failedIn24Hours: 'Failed in 24 hours',
-  missedRuns: 'Missed schedule runs (7 days)',
+  missedRuns: 'Missed runs in 7 days',
   /** What a count that could not be read shows in place of its number. */
   unavailable: '—',
+  /** The line under a count that could not be read. */
+  unreadable: 'Couldn’t be read',
   /** The line under "Running now". */
   running: (count: number): string =>
     count === 0
@@ -94,9 +96,8 @@ export const HEALTH_ATTENTION_COPY = {
   title: 'Needs attention',
   /** The list's accessible name. */
   listLabel: 'Needs attention',
-  /** What nothing needing attention says, and what it covers. */
-  allClearTitle: 'Nothing needs attention',
-  allClearLine: 'Storage, schedules, providers and hooks are fine.',
+  /** The one quiet line that stands for the list when nothing needs attention. */
+  allClear: 'Nothing needs attention.',
   /** The row when the list could not be read, and so cannot say all is well. */
   unavailableTitle: 'Couldn’t read what needs attention',
   unavailableLine: 'Interborough didn’t answer. Nothing you did caused it.',
@@ -175,13 +176,16 @@ export const HEALTH_ATTENTION_COPY = {
 /** The words of the Recent activity section. */
 export const HEALTH_ACTIVITY_COPY = {
   title: 'Recent activity',
-  /** After the title, so the times on the rows are read in this zone. */
-  zone: 'Central time',
-  /** The link to the whole trail, with the number of events the trail holds when it is known. */
+  /**
+   * The link to the whole trail, with the number of events the trail holds when it is known, said
+   * in the sentence rather than in parentheses (owner, 2026-11-19). The zone the rows' times are in
+   * is the viewer's, said by the same sentence every page uses (`timesShowIn`); it was a fixed
+   * "Central time" here while Home said the viewer's own zone.
+   */
   auditLink: (total: number | undefined): string =>
     total === undefined
       ? 'Open audit log'
-      : `Open audit log (${total.toLocaleString('en-US')} ${total === 1 ? 'event' : 'events'})`,
+      : `All ${total.toLocaleString('en-US')} ${total === 1 ? 'event' : 'events'} in the audit log`,
   /** The list's accessible name. */
   listLabel: 'Recent activity',
   empty: 'Nothing has happened yet.',
