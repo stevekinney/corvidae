@@ -147,6 +147,6 @@ describe('Turborepo cache in the workflows', () => {
     expect(turbo.tasks['//#test:browser-fixtures']?.outputs).toContain(
       'test-output/junit/browser-fixtures.xml',
     );
-    expect(turbo.tasks.test?.outputs).toContain('test-output/junit/**');
+    expect(turbo.tasks['test']?.outputs).toContain('test-output/junit/**');
   });
 });
