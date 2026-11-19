@@ -690,10 +690,25 @@ for (const width of [320, 375] as const) {
       if ((await word.count()) > 0) {
         const { lines } = await textLines(word);
         expect(lines, `${id}: the status word is one line`).toBe(1);
-        const clipped = await row
-          .locator('.cinder-stacked-list-item__status')
-          .evaluate((cell) => cell.scrollWidth > cell.clientWidth + 0.5);
-        expect(clipped, `${id}: the status word is not cut`).toBe(false);
+        // A phone draws the word inline at the start of line two (no column cell); it does not
+        // clip, so its box must lie inside line two's box. A column cell must not clip it.
+        const whole = await word.evaluate((element) => {
+          const column = element.closest('.cinder-stacked-list-item__status');
+          if (column !== null) return column.scrollWidth <= column.clientWidth + 0.5;
+          const lineTwo = element
+            .closest('.cinder-stacked-list-item')
+            ?.querySelector('.cinder-stacked-list-item__line-two');
+          if (!lineTwo) return false;
+          const box = element.getBoundingClientRect();
+          const frame = lineTwo.getBoundingClientRect();
+          return (
+            box.left >= frame.left - 0.5 &&
+            box.right <= frame.right + 0.5 &&
+            box.top >= frame.top - 0.5 &&
+            box.bottom <= frame.bottom + 0.5
+          );
+        });
+        expect(whole, `${id}: the status word is whole`).toBe(true);
       }
       for (const part of await row.locator('.cinder-stacked-list-item__time-part').all()) {
         const { lines } = await textLines(part);
@@ -2025,6 +2040,14 @@ for (const width of WIDTHS) {
       await expect(missing).toContainText('Weekly reports: digest ready');
       await expect(missing.locator('[data-status-word="Missing"]')).toBeVisible();
       await expect(missing).toContainText(cause);
+      // The cause is whole on line two, wrapped rather than ended in an ellipsis (B7).
+      const causeText = missing.locator('.cinder-stacked-list-item__meta');
+      await expect(causeText).toHaveText(cause);
+      const cut = await causeText.evaluate(
+        (cell) =>
+          cell.scrollWidth > cell.clientWidth + 0.5 || cell.scrollHeight > cell.clientHeight + 0.5,
+      );
+      expect(cut, `${state}: the cause is not cut at ${width}`).toBe(false);
       await captureForDesignReview(page, { route: '/hooks/:hook', state, source: SOURCE });
     });
   }

@@ -242,13 +242,16 @@ describe('a saved hook whose plugin kind is missing (COR-2226, rows R4, R5, R6)'
     expect(item.textContent).toContain('Plugin not loaded');
     // The row the chosen events take: the name its title, Missing its status, the cause line two.
     expect(item.classList.contains('cinder-stacked-list-item')).toBe(true);
+    // A phone draws the status inline at the start of line two, a wide row in its column.
     expect(
-      item.querySelector('.cinder-stacked-list-item__status [data-status-word="Missing"]'),
+      item.querySelector(
+        '.cinder-stacked-list-item__status [data-status-word="Missing"], .cinder-stacked-list-item__status-inline [data-status-word="Missing"]',
+      ),
     ).not.toBeNull();
     expect(item.querySelector('.cinder-stacked-list-item__title')?.textContent?.trim()).toBe(
       'Weekly reports: digest ready',
     );
-    expect(item.querySelector('.cinder-stacked-list-item__description')?.textContent?.trim()).toBe(
+    expect(item.querySelector('.cinder-stacked-list-item__meta')?.textContent?.trim()).toBe(
       'Plugin not loaded',
     );
     const locked = await view.findByTestId('hook-event-locked');

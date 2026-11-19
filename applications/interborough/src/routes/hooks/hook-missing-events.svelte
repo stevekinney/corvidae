@@ -38,11 +38,12 @@
         class="ib-hook-missing__item"
         data-event={entry.kind}
         tooltip={label}
+        wrapMeta
         metaTooltip={cause}
       >
         {#snippet status()}<StatusDot {word} size="sm" data-status-word={word} />{/snippet}
         {#snippet title()}{label}{/snippet}
-        {#snippet description()}{cause}{/snippet}
+        {#snippet meta()}{cause}{/snippet}
       </StackedListItem>
     {/snippet}
   </DataList>
