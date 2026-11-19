@@ -6,6 +6,7 @@ import {
   rejectionOf,
   throwingRejectionOf,
 } from '../../testing/testing/src/helpers/promise-outcome.ts';
+import { handleHookEvent, startSessionToolName } from '../host-sessions.ts';
 import {
   acquireDispatch,
   cancelDispatch,
@@ -1719,6 +1720,7 @@ const leaseMarkerScenario = await (async () => {
     project: 'Alpha',
     run: 'run-a',
     leasedAt: '2026-11-09T12:00:00.000Z',
+    expiresAt: '2026-11-10T00:00:00.000Z',
   });
   expect(fromFlag).toMatchObject({ sessionId: 'session-flag', run: 'run-a' });
   expect(refused.code).toBe(1);
@@ -1731,7 +1733,64 @@ const leaseMarkerScenario = await (async () => {
   };
 })();
 
+sandbox = mkdtempSync(join(tmpdir(), 'linear-durable-'));
+const leaseTakeoverScenario = await (async () => {
+  const fake = fakeLinear();
+  const leaseDirectory = join(sandbox, 'places');
+  const markerFile = (id: string) => join(leaseDirectory, 'leases', `${id}.json`);
+  const at = (iso: string, session: string) => ({
+    ...dependencies(fake),
+    now: () => new Date(iso),
+    environment: { LINEAR_API_KEY: SECRET, CLAUDE_CODE_SESSION_ID: session },
+    leaseDirectory,
+  });
+  const startSession = (session: string) =>
+    handleHookEvent(
+      {
+        hook_event_name: 'PreToolUse',
+        session_id: session,
+        tool_name: startSessionToolName,
+        tool_use_id: `start-${session}`,
+      },
+      {
+        directory: leaseDirectory,
+        hookPid: 1,
+        environment: {},
+        readProcessTable: () => undefined,
+        now: () => Date.parse('2026-11-10T12:31:00Z'),
+        sleep: async () => {},
+      },
+    );
+  await run(['lease', 'Alpha', '--run', 'run-a'], at('2026-11-09T12:00:00Z', 'session-a'));
+  // Run b takes the lease over once run a's has lapsed, then run a releases what it no longer holds.
+  const takeover = await run(
+    ['lease', 'Alpha', '--run', 'run-b'],
+    at('2026-11-10T12:30:00Z', 'session-b'),
+  );
+  const released = await run(
+    ['lease', 'Alpha', '--release', '--run', 'run-a', '--generation', '1'],
+    at('2026-11-10T12:31:00Z', 'session-a'),
+  );
+  const lapsedDenial = await startSession('session-a');
+  const holderDenial = await startSession('session-b');
+  expect(takeover.code).toBe(0);
+  expect(released.code).toBe(1);
+  return {
+    lapsedMarkerRemoved: !existsSync(markerFile('session-a')),
+    lapsedStartAllowed: lapsedDenial === undefined,
+    holderStartDenied: holderDenial?.hookSpecificOutput?.permissionDecision === 'deny',
+  };
+})();
+
 describe('lease', () => {
+  test('a marker does not outlive its lease: a refused release still removes it, and an expired one is absent', () => {
+    expect(leaseTakeoverScenario).toEqual({
+      lapsedMarkerRemoved: true,
+      lapsedStartAllowed: true,
+      holderStartDenied: true,
+    });
+  });
+
   test('writes the session lease marker the start_session hook reads, and removes it on release', () => {
     expect(leaseMarkerScenario).toEqual({
       refusedWroteNone: true,

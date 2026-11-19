@@ -1608,7 +1608,7 @@ export async function releaseLease(
  * neither, the lease stands as before and the summary says no marker was written.
  */
 async function withLeaseMarker(
-  outcome: Outcome,
+  perform: () => Promise<Outcome>,
   options: {
     release: boolean;
     runId: string;
@@ -1617,8 +1617,10 @@ async function withLeaseMarker(
     directory: string | undefined;
   },
 ): Promise<Outcome> {
-  if (!outcome.ok) return outcome;
-  if (options.session === undefined || options.session === '') {
+  const { session } = options;
+  if (session === undefined || session === '') {
+    const outcome = await perform();
+    if (!outcome.ok) return outcome;
     return {
       ...outcome,
       summary: `${outcome.summary} No lease marker was written: CLAUDE_CODE_SESSION_ID is unset, so pass --session <id>.`,
@@ -1628,18 +1630,33 @@ async function withLeaseMarker(
   const host = await import('../host-sessions.ts');
   const directory = options.directory ?? (await host.hostPlacesDirectory());
   if (options.release) {
-    await host.removeLeaseMarker(directory, options.session);
-  } else {
-    await host.writeLeaseMarker(directory, {
-      sessionId: options.session,
-      project: typeof outcome.data['project'] === 'string' ? outcome.data['project'] : '',
-      run: options.runId,
-      leasedAt: options.now.toISOString(),
-    });
+    // A release removes this session's own marker whether or not Linear accepted it: another run
+    // may hold the lease by now, and a marker must never outlive the lease it records.
+    let outcome: Outcome;
+    try {
+      outcome = await perform();
+    } finally {
+      await host.removeLeaseMarker(directory, session);
+    }
+    return {
+      ...outcome,
+      summary: `${outcome.summary} Lease marker removed for session ${session}.`,
+      data: { ...outcome.data, marker: true },
+    };
   }
+  const outcome = await perform();
+  if (!outcome.ok) return outcome;
+  await host.writeLeaseMarker(directory, {
+    sessionId: session,
+    project: typeof outcome.data['project'] === 'string' ? outcome.data['project'] : '',
+    run: options.runId,
+    leasedAt: options.now.toISOString(),
+    // The Linear lease lapses `leaseExpiryHours` after its last renewal; the marker lapses with it.
+    expiresAt: new Date(options.now.getTime() + leaseExpiryHours * 3_600_000).toISOString(),
+  });
   return {
     ...outcome,
-    summary: `${outcome.summary} Lease marker ${options.release ? 'removed' : 'written'} for session ${options.session}.`,
+    summary: `${outcome.summary} Lease marker written for session ${session}.`,
     data: { ...outcome.data, marker: true },
   };
 }
@@ -2184,7 +2201,7 @@ export async function run(
     if (session === '') throw new UsageError('--session needs a session id.');
     const runId = parsed.options.get('run') as string;
     plan = async (client) =>
-      withLeaseMarker(await leasePlan(client), {
+      withLeaseMarker(() => leasePlan(client), {
         release,
         runId,
         now,

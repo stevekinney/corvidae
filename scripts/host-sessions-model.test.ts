@@ -14,6 +14,7 @@ import {
   neverStarted,
   neverStartedLimitMilliseconds,
   opusPlaces,
+  readOnlyAgents,
   runsWithoutAdmission,
   sessionPlaces,
   workerPlaces,
@@ -250,6 +251,25 @@ describe('Opus places', () => {
     expect(workerPlaces(state)).toBe(1);
     expect(opusPlaces(state)).toBe(1);
     expect(opusPlaces(applySessionEvent(state, stop('a-opus')))).toBe(0);
+  });
+
+  test('a read-only agent holds no worker place, pending or running, and no coordinator place', () => {
+    const readOnly: SessionEvent = {
+      kind: 'admit',
+      toolUseId: 't-ro',
+      at: 0,
+      description: 'Scout',
+      dispatcher: '',
+      agentType: 'Explore',
+      readOnly: true,
+    };
+    const pending = foldSession([readOnly]);
+    expect(workerPlaces(pending)).toBe(0);
+    expect(sessionPlaces(pending)).toBe(0);
+    expect(readOnlyAgents(pending)).toBe(1);
+    const running = applySessionEvent(pending, startTyped('a-ro', 'Explore'));
+    expect([workerPlaces(running), readOnlyAgents(running)]).toEqual([0, 1]);
+    expect(readOnlyAgents(applySessionEvent(running, stop('a-ro')))).toBe(0);
   });
 
   test('a pending Opus dispatch counts, and a dispatch with no model on record counts none', () => {

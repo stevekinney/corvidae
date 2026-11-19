@@ -54,6 +54,7 @@ import {
   neverStarted,
   neverStartedLimitMilliseconds,
   opusPlaces,
+  readOnlyAgents,
   runsWithoutAdmission,
   sessionPlaces,
   workerPlaces,
@@ -91,8 +92,34 @@ export const capBypassVariable = 'CORVIDAE_AGENT_CAP_BYPASS';
 /** How many Opus agents the host runs at once, whatever the place cap leaves free. */
 export const opusAgentCap = 1;
 
-/** The tool that starts a child session; a leased coordinator may not call it. */
+/** How many read-only agents the host runs at once. They take no place under the host cap. */
+export const readOnlyAgentCap = 6;
+
+/**
+ * The agent types that are read-only when no definition says otherwise: Claude Code's built-in
+ * read-only agents. A type with a definition is read-only when its `tools:` list names neither
+ * Edit nor Write; any other type is an implementation agent.
+ */
+const builtInReadOnlyAgentTypes: ReadonlySet<string> = new Set([
+  'Explore',
+  'Plan',
+  'claude-code-guide',
+  'statusline-setup',
+]);
+
+/**
+ * The tool that starts a child session; a leased coordinator may not call it. Claude Code names an
+ * MCP server's tool `mcp__<server>__<tool>`: the Claude desktop application's session server is
+ * `ccd_session` and its tool `start_session`. The name is the one in a coordinator session's tool
+ * list (confirmed 2026-11-19); a different host would name it differently and need its own matcher.
+ */
 export const startSessionToolName = 'mcp__ccd_session__start_session';
+
+/** Whether an agent type takes no host place, from its definition's `tools:` or else the built-in list. */
+export function isReadOnlyAgentType(agentType: string, tools: string | undefined): boolean {
+  if (tools !== undefined) return !/\b(?:Edit|Write|NotebookEdit)\b/.test(tools);
+  return builtInReadOnlyAgentTypes.has(agentType);
+}
 
 /** The places directory's name in the Git common directory. */
 export const placesDirectoryName = 'corvidae-agent-places';
@@ -109,15 +136,19 @@ export type SessionLedger = {
   /** The session's process; absent when its ledger has none recorded yet. */
   readonly holder?: OwnerRecord;
   /**
-   * Whether a `SessionStart` registered the session. A registered session holds its coordinator
-   * place whether or not it has a worker. It is a file beside the holder, never an event, so a
-   * checkout that does not know it folds the same ledger unchanged.
+   * Whether a `SessionStart` registered the session, so a resumed session is known at its next
+   * dispatch. A registered session holds no place by itself. It is a file beside the holder, never
+   * an event, so a checkout that does not know it folds the same ledger unchanged.
    */
   readonly registered: boolean;
   readonly state: SessionState;
 };
 
-type Ticket = OwnerRecord & { readonly sessionId: string; readonly opus?: boolean };
+type Ticket = OwnerRecord & {
+  readonly sessionId: string;
+  readonly opus?: boolean;
+  readonly readOnly?: boolean;
+};
 
 const holderFileName = 'holder.json';
 const registeredFileName = 'registered.json';
@@ -150,7 +181,16 @@ export type LeaseMarker = {
   readonly project: string;
   readonly run: string;
   readonly leasedAt: string;
+  /** When the lease lapses unless renewed; the hooks treat a marker past it as absent. */
+  readonly expiresAt?: string;
 };
+
+/** Whether a marker still binds its session at `now`; one without an expiry always does. */
+export function leaseMarkerLive(marker: LeaseMarker, now: number): boolean {
+  if (marker.expiresAt === undefined) return true;
+  const expiry = Date.parse(marker.expiresAt);
+  return Number.isNaN(expiry) || expiry > now;
+}
 
 /** The lease marker a session holds, if any. */
 export async function readLeaseMarker(
@@ -323,9 +363,14 @@ export function sessionAlive(ledger: SessionLedger, table: ProcessTable | undefi
   return ledger.holder === undefined || table === undefined || isHolderAlive(ledger.holder, table);
 }
 
-/** The places one session holds: its workers', and its coordinator's when it has any or is registered. */
+/** The places one session holds: its implementation workers', and its coordinator's while it has any. */
 export function ledgerPlaces(ledger: SessionLedger): number {
-  return sessionPlaces(ledger.state, ledger.registered);
+  return sessionPlaces(ledger.state);
+}
+
+/** The read-only agents every live session holds. */
+export function hostReadOnlyAgents(ledgers: readonly SessionLedger[]): number {
+  return ledgers.reduce((sum, ledger) => sum + readOnlyAgents(ledger.state), 0);
 }
 
 /** The places every live session holds. */
@@ -402,7 +447,7 @@ export function describeSession(
       : `pid ${ledger.holder.pid} in ${ledger.holder.cwd}`;
   const gone = sessionAlive(ledger, table) ? '' : ' (its process has exited: reclaimable)';
   const lines = [
-    `session ${ledger.sessionId.slice(0, 8)} (${process})${gone}: ${workers === 0 ? (ledger.registered ? "registered, its coordinator's place" : 'no place') : `${workers} worker place(s) and its coordinator's`}`,
+    `session ${ledger.sessionId.slice(0, 8)} (${process})${gone}: ${workers === 0 ? 'no place' : `${workers} worker place(s) and its coordinator's`}`,
   ];
   for (const dispatch of state.dispatches.values()) {
     const what = `worker ${dispatch.issue ?? 'without an issue'} "${dispatch.description}", dispatch ${dispatch.toolUseId}, admitted ${age(now - dispatch.admittedAt)} ago${dispatch.bypass ? ' past the cap' : ''}`;
@@ -442,8 +487,12 @@ export function describePlaces(
   const live = ledgers.filter((ledger) => sessionAlive(ledger, table));
   const held = hostPlaces(live);
   const opus = hostOpusAgents(live);
+  const readOnly = hostReadOnlyAgents(live);
   return [
     `${held} of ${cap} host places held${held > cap ? ', over the cap' : ''}`,
+    ...(readOnly === 0
+      ? []
+      : [`${readOnly} of ${readOnlyAgentCap} read-only agent(s) held, which take no host place`]),
     ...(opus === 0
       ? []
       : [`${opus} of ${opusAgentCap} Opus agent(s) held: the host runs ${opusAgentCap} at a time`]),
@@ -493,42 +542,47 @@ export async function describeWaiters(directory: string): Promise<string[]> {
 
 /**
  * The waiters admitted now, in arrival order: each whose need fits in what is left, the oldest
- * first, where a waiter needs one place, or two when its session has no worker yet.
+ * first, where an implementation waiter needs one place, or two when its session has no worker
+ * yet, and a read-only waiter needs none. A waiter holds nothing while it waits: its session's
+ * coordinator place is counted only once a dispatch is admitted.
  */
 export function admissionPlan(
   waiters: ReadonlyArray<{
     readonly name: string;
     readonly sessionId: string;
     readonly opus?: boolean;
+    readonly readOnly?: boolean;
   }>,
   ledgers: readonly SessionLedger[],
   cap: number,
   opusCap = opusAgentCap,
+  readOnlyCap = readOnlyAgentCap,
 ): Set<string> {
   const workers = new Map<string, number>();
-  const registered = new Set<string>();
   for (const ledger of ledgers) {
     workers.set(
       ledger.sessionId,
       (workers.get(ledger.sessionId) ?? 0) + workerPlaces(ledger.state),
     );
-    if (ledger.registered) registered.add(ledger.sessionId);
   }
   let free = cap - hostPlaces(ledgers);
   let opusHeld = hostOpusAgents(ledgers);
+  let readOnlyHeld = hostReadOnlyAgents(ledgers);
   const admitted = new Set<string>();
   for (const waiter of waiters) {
     const held = workers.get(waiter.sessionId) ?? 0;
-    // A session that already holds a worker, or is registered, holds its coordinator's place.
-    const need = held === 0 && !registered.has(waiter.sessionId) ? 2 : 1;
+    const readOnly = waiter.readOnly === true;
+    const need = readOnly ? 0 : held === 0 ? 2 : 1;
     if (need > free) continue;
+    if (readOnly && readOnlyHeld >= readOnlyCap) continue;
     // An Opus waiter waits while an Opus agent is held, one admitted earlier in this plan
     // included, and never holds back a later waiter that is not Opus.
     if (waiter.opus === true && opusHeld >= opusCap) continue;
     admitted.add(waiter.name);
     free -= need;
     if (waiter.opus === true) opusHeld += 1;
-    workers.set(waiter.sessionId, held + 1);
+    if (readOnly) readOnlyHeld += 1;
+    else workers.set(waiter.sessionId, held + 1);
   }
   return admitted;
 }
@@ -544,6 +598,8 @@ export type PlaceRequest = {
   readonly agentType?: string;
   /** Whether the dispatch runs on Opus, so that the host's Opus cap applies to it. */
   readonly opus?: boolean;
+  /** Whether the agent type is read-only: no host place, but the read-only cap. */
+  readonly readOnly?: boolean;
   readonly cwd: string;
   /** The session's process, which holds the places. */
   readonly holder: ProcessIdentity;
@@ -561,6 +617,7 @@ export type AdmitOptions = {
   readonly report?: (lines: readonly string[]) => void;
   readonly cap?: number;
   readonly opusCap?: number;
+  readonly readOnlyCap?: number;
   readonly waitLimitMilliseconds?: number;
   readonly pollIntervalMilliseconds?: number;
   readonly neverStartedLimitMilliseconds?: number;
@@ -656,6 +713,7 @@ function admitEvent(request: PlaceRequest, at: number, bypass: boolean): Session
       ? {}
       : { agentType: request.agentType }),
     ...(request.opus === true ? { opus: true } : {}),
+    ...(request.readOnly === true ? { readOnly: true } : {}),
   };
 }
 
@@ -694,6 +752,7 @@ export async function admitWorker(input: AdmitOptions): Promise<Admission> {
     ...waiter,
     sessionId: request.sessionId,
     ...(request.opus === true ? { opus: true } : {}),
+    ...(request.readOnly === true ? { readOnly: true } : {}),
   } as OwnerRecord);
   let heldWhenWaiting: string[] | undefined;
   try {
@@ -714,10 +773,12 @@ export async function admitWorker(input: AdmitOptions): Promise<Admission> {
             name,
             sessionId: entry.sessionId,
             ...(entry.opus === true ? { opus: true } : {}),
+            ...(entry.readOnly === true ? { readOnly: true } : {}),
           })),
           ledgers,
           cap,
           options.opusCap,
+          options.readOnlyCap,
         );
         if (plan.has(ticket)) {
           await recordHolder(directory, request.sessionId, holder);
@@ -808,6 +869,9 @@ export type HookContext = {
   readonly waitLimitMilliseconds?: number;
   /** The `model:` an agent type's definition names, when a dispatch names no model. */
   readonly readAgentModel?: (agentType: string) => string | undefined;
+  /** The `tools:` an agent type's definition lists, which decide whether it is read-only. */
+  readonly readAgentTools?: (agentType: string) => string | undefined;
+  readonly readOnlyCap?: number;
 };
 
 function text(value: unknown): string {
@@ -853,6 +917,7 @@ async function admitDispatch(
   // With neither a model on the dispatch nor one in the type's definition, the agent inherits
   // its dispatcher's, which is not known here: it is not counted as Opus.
   const opus = opusModel.test(model);
+  const readOnly = isReadOnlyAgentType(agentType, context.readAgentTools?.(agentType));
   const admission = await admitWorker({
     directory: context.directory,
     request: {
@@ -863,6 +928,7 @@ async function admitDispatch(
       ...(issue === undefined ? {} : { issue }),
       ...(agentType === '' ? {} : { agentType }),
       ...(opus ? { opus } : {}),
+      ...(readOnly ? { readOnly } : {}),
       cwd: text(input.cwd),
       holder: identity(session, table.get(session)),
       waiter: identity(context.hookPid, table.get(context.hookPid)),
@@ -881,12 +947,13 @@ async function admitDispatch(
         }),
     cap,
     ...(context.opusCap === undefined ? {} : { opusCap: context.opusCap }),
+    ...(context.readOnlyCap === undefined ? {} : { readOnlyCap: context.readOnlyCap }),
     waitLimitMilliseconds: context.waitLimitMilliseconds ?? placeWaitLimitMilliseconds,
     bypass,
   });
   if (!admission.admitted) {
     const reason = [
-      `Host place cap: this ${opus ? 'Opus ' : ''}${agentType === '' ? 'agent' : agentType} dispatch waited ${minutes(admission.waitedMilliseconds)} for one of the host's ${cap} places for agents and their coordinators${opus ? `, or for the host's only Opus agent (${opusAgentCap} at a time)` : ''} (AGENTS.md "Parallel runs"), and none came free. The places:`,
+      `Host place cap: this ${opus ? 'Opus ' : ''}${agentType === '' ? 'agent' : agentType} dispatch waited ${minutes(admission.waitedMilliseconds)} for ${readOnly ? `one of the host's ${readOnlyAgentCap} read-only agent slots` : `one of the host's ${cap} places for implementation agents and their coordinators`}${opus ? `, or for the host's only Opus agent (${opusAgentCap} at a time)` : ''} (AGENTS.md "Parallel runs"), and none came free. The places:`,
       ...admission.held,
       `Retry the dispatch later, once a holder finishes; \`bun scripts/host-sessions.ts status\` lists the holders, and \`bun scripts/host-sessions.ts release <session, dispatch or agent>\` frees one that is stuck. On the owner's instruction only, a session started with ${capBypassVariable} set to text in a dispatch's description or prompt, such as its issue, admits that dispatch past the cap.`,
     ].join('\n');
@@ -959,6 +1026,9 @@ async function recordStart(input: HookInput, context: HookContext): Promise<void
       agentId,
       at: context.now(),
       ...(agentType === '' ? {} : { agentType }),
+      ...(isReadOnlyAgentType(agentType, context.readAgentTools?.(agentType))
+        ? { readOnly: true }
+        : {}),
     };
     const before = own?.state ?? foldSession([]);
     const after = applySessionEvent(before, event);
@@ -967,8 +1037,7 @@ async function recordStart(input: HookInput, context: HookContext): Promise<void
     const overCap =
       agent !== undefined &&
       runsWithoutAdmission(agent) &&
-      hostPlaces(others) + sessionPlaces(after, own?.registered === true) >
-        (context.cap ?? hostPlaceCap);
+      hostPlaces(others) + sessionPlaces(after) > (context.cap ?? hostPlaceCap);
     await appendEvent(context.directory, sessionId, overCap ? { ...event, overCap } : event);
   });
 }
@@ -982,9 +1051,10 @@ async function recordInLedger(directory: string, sessionId: string, event: Sessi
 }
 
 /**
- * Registers a session at its start, or at its resume in a new process: its coordinator place
- * counts from now on, so the next dispatch of any session sees it. `SessionStart` cannot block;
- * the refusal is at a dispatch. A ledger whose process is gone is removed first, as in
+ * Registers a session at its start, or at its resume in a new process, so it is known and counted
+ * at its next dispatch. A registered session holds no place by itself: its coordinator place is
+ * held only while it has an implementation agent, so idle sessions never starve a dispatch.
+ * `SessionStart` cannot block; the refusal is at a dispatch. A ledger whose process is gone is removed first, as in
  * `recordStart`, so a resumed session does not revive what the old process ran.
  */
 async function registerSession(
@@ -1037,7 +1107,7 @@ async function denyLeasedStartSession(
 ): Promise<HookOutput | undefined> {
   if (sessionId === '') return undefined;
   const marker = await readLeaseMarker(context.directory, sessionId);
-  if (marker === undefined) return undefined;
+  if (marker === undefined || !leaseMarkerLive(marker, context.now())) return undefined;
   return {
     hookSpecificOutput: {
       hookEventName: 'PreToolUse',
@@ -1131,8 +1201,7 @@ export async function releasePlace(
       const after = applySessionEvent(ledger.state, event);
       if (after === ledger.state) continue;
       await appendEvent(directory, ledger.sessionId, event);
-      const freed =
-        sessionPlaces(ledger.state, ledger.registered) - sessionPlaces(after, ledger.registered);
+      const freed = sessionPlaces(ledger.state) - sessionPlaces(after);
       return [`released ${target} in session ${ledger.sessionId}: ${freed} place(s)`];
     }
     throw new Error(`no session, pending dispatch or running agent is named ${target}`);
@@ -1150,29 +1219,49 @@ async function placesDirectory(argumentsList: readonly string[]): Promise<string
   return hostPlacesDirectory();
 }
 
-/** The `model:` line of a Markdown file's front matter, if it has one. */
-export function frontmatterModel(markdown: string): string | undefined {
+/**
+ * One key of a Markdown file's front matter, if it has it: the text after the colon, or else the
+ * `- item` lines under it joined by commas.
+ */
+export function frontmatterField(markdown: string, key: string): string | undefined {
   const match = /^---\r?\n([\s\S]*?)\r?\n---/.exec(markdown);
-  const line = match?.[1]?.split(/\r?\n/).find((each) => /^model\s*:/.test(each));
-  const value = line?.slice(line.indexOf(':') + 1).trim();
-  return value === undefined || value === '' ? undefined : value.replaceAll(/^["']|["']$/g, '');
+  const lines = match?.[1]?.split(/\r?\n/) ?? [];
+  const index = lines.findIndex((each) => new RegExp(`^${key}\\s*:`).test(each));
+  const line = lines[index];
+  if (line === undefined) return undefined;
+  const value = line
+    .slice(line.indexOf(':') + 1)
+    .trim()
+    .replaceAll(/^["']|["']$/g, '');
+  if (value !== '') return value;
+  const items: string[] = [];
+  for (const next of lines.slice(index + 1)) {
+    const item = /^\s*-\s*(.+)$/.exec(next)?.[1];
+    if (item === undefined) break;
+    items.push(item.trim());
+  }
+  return items.length === 0 ? undefined : items.join(', ');
 }
 
 /**
- * Reads an agent type's `model:` from the project's `.claude/agents/<type>.md`, then the user's.
- * A type that is not a plain file name is never turned into a path.
+ * Reads one front-matter key of an agent type's definition, `.claude/agents/<type>.md` in the
+ * project, else the user's. The first definition found answers, whether or not it has the key. A
+ * type that is not a plain file name is never turned into a path.
  */
-function agentModelReader(projectDirectory: string): (agentType: string) => string | undefined {
+function agentDefinitionReader(
+  projectDirectory: string,
+  key: string,
+): (agentType: string) => string | undefined {
   return (agentType) => {
     if (!/^[\w.-]+$/.test(agentType) || agentType.startsWith('.')) return undefined;
     for (const root of [projectDirectory, homedir()]) {
       try {
-        const model = frontmatterModel(
+        return frontmatterField(
           readFileSync(join(root, '.claude', 'agents', `${agentType}.md`), 'utf8'),
+          key,
         );
-        if (model !== undefined) return model;
       } catch (error) {
-        // No definition there: the next directory, and then no model on record.
+        // No definition there: the next directory, and then none on record.
         if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
       }
     }
@@ -1185,13 +1274,14 @@ async function runHook(argumentsList: readonly string[]): Promise<void> {
   try {
     const input = JSON.parse(await Bun.stdin.text()) as HookInput;
     const environment = rootScriptEnvironment();
+    const projectDirectory =
+      environment['CLAUDE_PROJECT_DIR'] ?? (typeof input.cwd === 'string' ? input.cwd : '.');
     output = await handleHookEvent(input, {
       directory: await placesDirectory(argumentsList),
       hookPid: process.pid,
       environment,
-      readAgentModel: agentModelReader(
-        environment['CLAUDE_PROJECT_DIR'] ?? (typeof input.cwd === 'string' ? input.cwd : '.'),
-      ),
+      readAgentModel: agentDefinitionReader(projectDirectory, 'model'),
+      readAgentTools: agentDefinitionReader(projectDirectory, 'tools'),
       readProcessTable,
       now: () => Date.now(),
       sleep: (milliseconds) => Bun.sleep(milliseconds),
