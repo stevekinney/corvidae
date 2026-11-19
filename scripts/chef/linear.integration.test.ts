@@ -1700,7 +1700,17 @@ const leaseMarkerScenario = await (async () => {
   );
   const noSession = await run(['lease', 'proj-2', '--run', 'run-c'], withSession({}));
   const released = await run(
-    ['lease', 'Alpha', '--release', '--run', 'run-a', '--generation', '1', '--session', 'session-flag'],
+    [
+      'lease',
+      'Alpha',
+      '--release',
+      '--run',
+      'run-a',
+      '--generation',
+      '1',
+      '--session',
+      'session-flag',
+    ],
     withSession({}),
   );
   expect(written.code).toBe(0);

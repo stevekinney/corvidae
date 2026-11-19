@@ -1010,9 +1010,8 @@ async function registerSession(
   );
   await mkdir(context.directory, { recursive: true });
   await withAdmissionLock(context.directory, hook, context, async () => {
-    const own = (await readSessions(context.directory)).find(
-      (ledger) => ledger.sessionId === sessionId,
-    );
+    const ledgers = await readSessions(context.directory);
+    const own = ledgers.find((ledger) => ledger.sessionId === sessionId);
     if (own !== undefined && !sessionAlive(own, table)) {
       await removeLedger(context.directory, own.directory);
     }
@@ -1163,9 +1162,7 @@ export function frontmatterModel(markdown: string): string | undefined {
  * Reads an agent type's `model:` from the project's `.claude/agents/<type>.md`, then the user's.
  * A type that is not a plain file name is never turned into a path.
  */
-function agentModelReader(
-  projectDirectory: string,
-): (agentType: string) => string | undefined {
+function agentModelReader(projectDirectory: string): (agentType: string) => string | undefined {
   return (agentType) => {
     if (!/^[\w.-]+$/.test(agentType) || agentType.startsWith('.')) return undefined;
     for (const root of [projectDirectory, homedir()]) {

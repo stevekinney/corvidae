@@ -719,7 +719,8 @@ describe('every session and every agent counts', () => {
       context(directory, { hookPid: 611, readProcessTable: () => resumed }),
     );
     expect(await workersOf(directory, 'session-A')).toBe(0);
-    const ledger = (await readSessions(directory)).find((each) => each.sessionId === 'session-A');
+    const ledgers = await readSessions(directory);
+    const ledger = ledgers.find((each) => each.sessionId === 'session-A');
     expect(ledger?.holder?.pid).toBe(600);
   });
 

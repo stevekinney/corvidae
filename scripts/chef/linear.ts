@@ -1632,7 +1632,7 @@ async function withLeaseMarker(
   } else {
     await host.writeLeaseMarker(directory, {
       sessionId: options.session,
-      project: String(outcome.data['project'] ?? ''),
+      project: typeof outcome.data['project'] === 'string' ? outcome.data['project'] : '',
       run: options.runId,
       leasedAt: options.now.toISOString(),
     });

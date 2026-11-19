@@ -223,12 +223,18 @@ describe('every interleaving', () => {
 
 describe('Opus places', () => {
   const typed = (toolUseId: string, agentType: string, opus: boolean): SessionEvent => ({
-    ...admit(toolUseId),
+    kind: 'admit',
+    toolUseId,
+    at: 0,
+    description: `Deliver ${toolUseId}`,
+    dispatcher: '',
     agentType,
     ...(opus ? { opus } : {}),
   });
   const startTyped = (agentId: string, agentType: string): SessionEvent => ({
-    ...start(agentId),
+    kind: 'start',
+    agentId,
+    at: 0,
     agentType,
   });
 
