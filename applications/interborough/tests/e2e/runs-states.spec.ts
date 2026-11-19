@@ -111,15 +111,16 @@ async function answerOperation(
   });
 }
 
-/** The header's "+": a secondary icon button named for what it starts. */
+/** The header's Start run: a labelled primary button (owner report, 2026-11-19). */
 const headerCreate = (page: Page) => page.locator('main .cinder-page-header__create');
-/** Every primary button or link on the page, which a list page keeps to the one its state offers. */
-const primaries = (page: Page) => page.locator('main [data-cinder-variant="primary"]');
+/** Every primary button or link under the header, which a list page keeps to the one its state offers. */
+const primaries = (page: Page) =>
+  page.locator('main [data-cinder-variant="primary"]:not(.cinder-page-header__create)');
 const filterBar = (page: Page) => page.getByRole('search', { name: 'Filter runs' });
 
 // Every title names `/runs`, so a design review's route filter (`--grep '/runs'`) runs it.
 test.describe('/runs: the list on a phone, a tablet and in the dark', () => {
-  test('on a phone is two-line rows under day bands, with a Status select and a Filter button beside a secondary "+" (05t, 05v)', async ({
+  test('on a phone is two-line rows under day bands, with a Status select and a Filter button under a labelled Start run (05t, 05v)', async ({
     page,
     checkA11y,
   }) => {
@@ -127,7 +128,8 @@ test.describe('/runs: the list on a phone, a tablet and in the dark', () => {
     const main = page.locator('main');
     await expect(main.getByRole('heading', { level: 1, name: 'Runs' })).toBeVisible();
     await expect(main.getByText('What your agents have done, newest first.')).toBeVisible();
-    await expect(headerCreate(page)).toHaveAttribute('data-cinder-variant', 'secondary');
+    await expect(headerCreate(page)).toHaveAttribute('data-cinder-variant', 'primary');
+    await expect(headerCreate(page)).toHaveText('Start run');
     // The segments fold into one select and the chips into a Filter menu.
     await expect(filterBar(page).locator('.cinder-filter-bar__segments-select')).toContainText(
       'Status: All',
@@ -165,7 +167,7 @@ test.describe('/runs: the list on a phone, a tablet and in the dark', () => {
     await expect(bar.getByRole('button', { name: 'Started by', exact: true })).toBeVisible();
     await expect(bar.getByRole('button', { name: 'Agent', exact: true })).toBeVisible();
     await expect(bar.getByRole('button', { name: 'Search runs' })).toBeVisible();
-    await expect(headerCreate(page)).toHaveAttribute('data-cinder-variant', 'secondary');
+    await expect(headerCreate(page)).toHaveAttribute('data-cinder-variant', 'primary');
     await captureForDesignReview(page, { route: '/runs', state: 'ready', source: SOURCE });
     await checkA11y('runs on a tablet');
   });
@@ -211,7 +213,7 @@ for (const width of WIDTHS) {
       );
       // The empty state is the page: no filter bar.
       await expect(filterBar(page)).toHaveCount(0);
-      await expect(headerCreate(page)).toHaveAttribute('data-cinder-variant', 'secondary');
+      await expect(headerCreate(page)).toHaveAttribute('data-cinder-variant', 'primary');
       await expect(primaries(page)).toHaveCount(1);
       await expect(primaries(page).first()).toHaveText('Start run');
       await expect(main.getByRole('link', { name: 'Chat with an agent' })).toHaveAttribute(
@@ -242,7 +244,7 @@ for (const width of WIDTHS) {
         main.getByRole('heading', { level: 2, name: 'No runs match these filters' }),
       ).toBeVisible();
       await expect(main).toContainText('Model switcher has no runs. Try another agent.');
-      await expect(headerCreate(page)).toHaveAttribute('data-cinder-variant', 'secondary');
+      await expect(headerCreate(page)).toHaveAttribute('data-cinder-variant', 'primary');
       if (width >= 1024) {
         // The bar draws its segments as radios when its row fits; with the Workflow and Started by
         // chips beside the Agent chip it steps down to a Status select that holds the same counts.

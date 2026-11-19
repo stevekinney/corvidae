@@ -18,6 +18,7 @@
   import { createQuery } from '@tanstack/svelte-query';
 
   import { CAPABILITIES_COPY } from '../../app/copy/capabilities.ts';
+  import ListPageEmpty from '../../app/list-page-empty.svelte';
   import { RETRY_LABEL } from '../../app/copy/views.ts';
   import { getAgentCatalog } from '../../lib/agent-definitions.ts';
   import { queryKeys } from '../../lib/query.ts';
@@ -37,6 +38,15 @@
   import CapabilitiesLoading from './capabilities-loading.svelte';
   import ToolDetail from './tool-detail.svelte';
   import ToolPageState from './tool-page-state.svelte';
+
+  interface Props {
+    /** Opens the Connect tools page, the first-use state's one action. */
+    onConnect?: () => void;
+    /** The host keeps its configuration in its deployment, so nothing can be connected here. */
+    locked?: boolean;
+  }
+
+  let { onConnect, locked = false }: Props = $props();
 
   const copy = CAPABILITIES_COPY;
   const selectionLocation = routerSelectionLocationFor('/capabilities');
@@ -93,11 +103,18 @@
       >
     </Alert>
   {:else if tools.length === 0}
-    <EmptyState
-      kind="first-use"
-      headingLevel={2}
+    <!-- The one list-page first use (owner report, 2026-11-19), with the header's Connect tools. -->
+    <ListPageEmpty
+      view="capabilities"
       title={copy.tool.empty.title}
       description={copy.tool.empty.description}
+      create={onConnect === undefined
+        ? undefined
+        : {
+            label: copy.source.connect.action,
+            onclick: onConnect,
+            ...(locked ? { inertReason: copy.source.refusal.locked } : {}),
+          }}
     />
   {:else}
     <div class="ib-capabilities__frame" data-shortcut-region="list-detail">

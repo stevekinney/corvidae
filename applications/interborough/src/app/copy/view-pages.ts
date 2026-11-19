@@ -1,5 +1,6 @@
 import { HOOKS_COPY } from '../../routes/hooks/hook-copy.ts';
 import type { ViewName } from '../views.ts';
+import { AGENT_EDITOR_COPY, AGENTS_COPY } from './agents.ts';
 import { CHECKS_COPY } from './checks.ts';
 import { GOALS_COPY } from './goals.ts';
 import { PLUGIN_PAGE_COPY } from './plugin-pages.ts';
@@ -77,9 +78,11 @@ export const VIEW_COPY: Readonly<Record<ViewName, ViewCopy>> = {
       title: 'Loading agents',
       description: 'Asking the server which agents it has.',
     },
+    // The list draws its own first use under its header (`ownsStatesOnPatterns`), in these words.
     empty: {
-      title: 'No agents to show',
-      description: 'No agents are defined yet. Add one as a Markdown file in the agents directory.',
+      title: AGENTS_COPY.empty.title,
+      description: AGENTS_COPY.empty.description,
+      action: { label: AGENT_EDITOR_COPY.newAction, href: '/agents/new' },
     },
     error: {
       title: 'Agents are unavailable',
@@ -117,11 +120,11 @@ export const VIEW_COPY: Readonly<Record<ViewName, ViewCopy>> = {
       title: 'Loading workflows',
       description: 'Reading the workflow definitions and their files.',
     },
+    // The list draws its own first use under its header (`pageOwnsEmptyOn`), in these words.
     empty: {
-      title: 'No workflows yet',
-      description:
-        'Chat with an agent that has the bureau:workflows-create tool, or add a JSON file to the workflows directory.',
-      action: { label: 'New workflow', href: '/workflows/new' },
+      title: WORKFLOW_COPY.list.empty.title,
+      description: WORKFLOW_COPY.list.empty.description,
+      action: { label: WORKFLOW_COPY.newAction, href: '/workflows/new' },
     },
     error: {
       title: 'Workflows are unavailable',

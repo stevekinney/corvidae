@@ -115,8 +115,11 @@ const headerCreate = (container: HTMLElement): HTMLElement => {
   if (button === null) throw new Error('the page header has no create action');
   return button;
 };
+/** The primary buttons in the page's body, under its header. */
 const primaryButtons = (container: HTMLElement): HTMLElement[] => [
-  ...container.querySelectorAll<HTMLElement>('button[data-cinder-variant="primary"]'),
+  ...container.querySelectorAll<HTMLElement>(
+    'button[data-cinder-variant="primary"]:not(.cinder-page-header__create)',
+  ),
 ];
 const toolbar = (container: HTMLElement): Element | null =>
   container.querySelector('[aria-label="Filter schedules"]');
@@ -132,17 +135,22 @@ describe('nothing scheduled yet (row 70p)', () => {
     expect(toolbar(container)).toBeNull();
     expect(rows(container)).toHaveLength(0);
 
-    // The header's "+" stays secondary, and the state's button is the only primary.
-    expect(headerCreate(container).getAttribute('data-cinder-variant')).toBe('secondary');
+    // The header's New schedule is a labelled primary, and the state repeats it with the same verb
+    // (owner report, 2026-11-19).
+    expect(headerCreate(container).getAttribute('data-cinder-variant')).toBe('primary');
+    expect(headerCreate(container).textContent?.trim()).toBe('New schedule');
     const primaries = primaryButtons(container);
     expect(primaries).toHaveLength(1);
     expect(primaries[0]?.textContent?.trim()).toBe('New schedule');
     expect(primaries[0]?.querySelector('svg')).not.toBeNull();
-    // A first use: the accent disc with the calendar glyph.
+    // A first use in the page layout, in no box, with the Schedules icon of the sidebar.
     const state = container.querySelector('.cinder-empty-state');
     expect(state?.getAttribute('data-cinder-kind')).toBe('first-use');
-    expect(state?.hasAttribute('data-cinder-bordered')).toBe(true);
-    expect(state?.querySelector('.cinder-empty-state-icon svg')).not.toBeNull();
+    expect(state?.getAttribute('data-cinder-layout')).toBe('page');
+    expect(state?.hasAttribute('data-cinder-bordered')).toBe(false);
+    expect(
+      state?.querySelector('.cinder-empty-state-icon svg.lucide-calendar-clock'),
+    ).not.toBeNull();
 
     await fireEvent.click(primaries[0] as HTMLElement);
     expect(router.pathname).toBe('/schedules/new');
@@ -165,7 +173,8 @@ describe('nothing scheduled yet (row 70p)', () => {
     await findByRole('heading', { level: 2, name: 'No schedules yet' });
     const primary = primaryButtons(container)[0] as HTMLElement;
     expect(primary.getAttribute('aria-disabled')).toBe('true');
-    expect(primary.getAttribute('title')).toContain('schedules:write');
+    const reason = container.querySelector(`#${primary.getAttribute('aria-describedby') ?? ''}`);
+    expect(reason?.textContent).toContain('schedules:write');
     await fireEvent.click(primary);
     expect(router.pathname).toBe('/schedules');
   });

@@ -90,7 +90,7 @@ async function list() {
 }
 
 describe('the pane header', () => {
-  test('is "Chats" with a secondary "+" named New chat, then a Search chats field (16c)', async () => {
+  test('is "Chats" with a labelled primary New chat, then a Search chats field (16c)', async () => {
     serveChats();
     landAt('/chats');
 
@@ -101,11 +101,10 @@ describe('the pane header', () => {
     const header = region.querySelector('header') as HTMLElement;
     const plus = within(header).getByRole('link', { name: 'New chat' });
     expect(plus.getAttribute('href')).toBe('/chats/new');
-    expect(plus.getAttribute('data-cinder-variant')).toBe('secondary');
-    expect(plus.textContent?.trim()).toBe('');
-    // The tooltip says the same words as the accessible name.
-    const tooltips = within(header).getAllByRole('tooltip', { hidden: true });
-    expect(tooltips.map((tooltip) => tooltip.textContent?.trim())).toContain('New chat');
+    // Its words are on the button, never a "+" alone (owner report, 2026-11-19).
+    expect(plus.getAttribute('data-cinder-variant')).toBe('primary');
+    expect(plus.textContent?.trim()).toBe('New chat');
+    expect(plus.hasAttribute('data-cinder-icon-only')).toBe(false);
     // With no chat open the list is all there is, so it offers no toggle to hide it (COR-2327).
     expect(within(header).queryByRole('button', { name: 'Hide chats' })).toBeNull();
     // The field is below the title row, not beside it.
@@ -238,7 +237,7 @@ describe('searching', () => {
 });
 
 describe('the states of the list', () => {
-  test('first use is "No chats yet" with the only primary New chat, and the header "+" stays secondary (17u)', async () => {
+  test('first use is the one list-page state "No chats yet" with New chat, no search or segments, and a blank pane beside it (17u)', async () => {
     const served = bureau({
       'bureau.contexts.list': () => ({ contexts: [], nextOffset: null }),
       'bureau.reviews.list': () => ({ reviews: [] }),
@@ -248,19 +247,26 @@ describe('the states of the list', () => {
 
     const { findByRole, container } = mount();
 
-    const title = await findByRole('heading', { level: 3, name: 'No chats yet' });
+    const title = await findByRole('heading', { level: 2, name: 'No chats yet' });
     const state = title.closest('.cinder-empty-state') as HTMLElement;
+    expect(state.getAttribute('data-cinder-layout')).toBe('page');
+    expect(
+      state.querySelector('.cinder-empty-state-icon svg.lucide-message-square'),
+    ).not.toBeNull();
     expect(state.textContent).toContain('Start one with an agent.');
     expect(
       within(state).getByRole('link', { name: 'New chat' }).getAttribute('data-cinder-variant'),
     ).toBe('primary');
-    // Nothing else on the page is a primary: not the "+", and not the pane beside the list.
-    expect(container.querySelectorAll('[data-cinder-variant="primary"]')).toHaveLength(1);
-    expect(
-      container.querySelector('header a[href="/chats/new"]')?.getAttribute('data-cinder-variant'),
-    ).toBe('secondary');
+    // The header's New chat is labelled too, and nothing searches or filters nothing.
+    expect(container.querySelector('header a[href="/chats/new"]')?.textContent?.trim()).toBe(
+      'New chat',
+    );
+    expect(container.querySelector('.cinder-search-field')).toBeNull();
+    expect(container.querySelector('.cinder-segmented-control')).toBeNull();
+    // One empty state on the page: the pane beside the list stays blank.
+    expect(container.querySelectorAll('.cinder-empty-state')).toHaveLength(1);
     const pane = await findByRole('region', { name: 'Open chat' });
-    expect(pane.textContent).toContain('No chat open');
+    expect(pane.textContent).not.toContain('No chat open');
   });
 
   test('loading is skeleton rows under the live header, after 300 milliseconds (17w)', async () => {

@@ -22,7 +22,6 @@
    */
   import {
     Banner,
-    Button,
     EmptyState,
     ErrorState,
     FilterBar,
@@ -33,7 +32,7 @@
     type AppliedFilter,
     type FacetDefinition,
   } from '@lostgradient/cinder';
-  import { Calendar, Plus, Search } from '@lucide/svelte';
+  import { Search } from '@lucide/svelte';
   import { untrack } from 'svelte';
 
   import type { ScheduleSummary } from '@lostgradient/weft';
@@ -48,6 +47,7 @@
   } from '../../app/connection.svelte.ts';
   import { CONNECTION_COPY, RETRY_LABEL } from '../../app/copy/views.ts';
   import { SCHEDULE_COPY } from '../../app/copy/schedules.ts';
+  import ListPageEmpty from '../../app/list-page-empty.svelte';
   import { restartActivity } from '../../app/restart/host-restart-flow.svelte.ts';
   import { agentLabel } from '../../lib/agent-label.ts';
   import { getClient } from '../../lib/client.ts';
@@ -370,27 +370,20 @@
         onFilterRemove={(key) => setFilter(key, undefined)}
       />
     {:else if nothingYet}
-      <EmptyState
-        bordered
-        kind="first-use"
+      <!-- The one list-page first use (owner report, 2026-11-19): unboxed, the Schedules icon, and
+           New schedule, held with its reason for a caller who may not write schedules. -->
+      <ListPageEmpty
+        view="schedules"
         title={SCHEDULE_COPY.empty.title}
         description={SCHEDULE_COPY.empty.description}
-        headingLevel={2}
-      >
-        {#snippet icon()}<Calendar aria-hidden="true" />{/snippet}
-        {#snippet action()}
-          <Button
-            variant="primary"
-            label={SCHEDULE_COPY.newAction}
-            aria-disabled={writeGate.disabled ? 'true' : undefined}
-            title={writeGate.title}
-            onclick={() => router.navigate(scheduleCreatePath())}
-            mutating
-          >
-            {#snippet leadingIcon()}<Plus />{/snippet}
-          </Button>
-        {/snippet}
-      </EmptyState>
+        create={{
+          label: SCHEDULE_COPY.newAction,
+          onclick: () => router.navigate(scheduleCreatePath()),
+          ...(writeGate.disabled && writeGate.title !== undefined
+            ? { inertReason: writeGate.title }
+            : {}),
+        }}
+      />
     {:else}
       <FilterBar
         aria-label={SCHEDULE_COPY.filtersLabel}

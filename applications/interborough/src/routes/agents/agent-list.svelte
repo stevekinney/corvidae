@@ -41,6 +41,8 @@
   import { createQuery, useQueryClient } from '@tanstack/svelte-query';
 
   import { getConnection } from '../../app/connection.svelte.ts';
+  import FileLocationDetail from '../../app/file-location-detail.svelte';
+  import ListPageEmpty from '../../app/list-page-empty.svelte';
   import { AGENT_EDITOR_COPY, AGENTS_COPY } from '../../app/copy/agents.ts';
   import { CHAT_COPY } from '../../app/copy/chat.ts';
   import { RETRY_LABEL, STALE_DATA_LABEL } from '../../app/copy/views.ts';
@@ -325,20 +327,34 @@
         onCancel={cancelLoading}
       />
     {:else if nothing}
-      <EmptyState
-        bordered
-        kind="first-use"
+      <!-- The one list-page first use (owner report, 2026-11-19): the Agents icon, New agent and Add
+           a plugin as buttons, and the folder behind a closed row, never in the sentence. -->
+      <ListPageEmpty
+        view="agents"
         title={AGENTS_COPY.empty.title}
         description={AGENTS_COPY.empty.description}
-        headingLevel={2}
+        create={{
+          label: AGENT_EDITOR_COPY.newAction,
+          href: router.href('/agents/new'),
+          onclick: (event) => go(event, '/agents/new'),
+        }}
+        secondary={[
+          {
+            label: AGENTS_COPY.empty.addPlugin,
+            href: router.href(PLUGINS_PATH),
+            onclick: (event) => go(event, PLUGINS_PATH),
+          },
+        ]}
       >
-        {#snippet action()}
-          {@render newAgentAction('primary')}
-          <Button variant="secondary" href={router.href(PLUGINS_PATH)}>
-            {AGENTS_COPY.empty.addPlugin}
-          </Button>
-        {/snippet}
-      </EmptyState>
+        <FileLocationDetail
+          label={AGENTS_COPY.empty.files.label}
+          lead={AGENTS_COPY.empty.files.lead}
+          {directory}
+          copyLabel={AGENTS_COPY.empty.files.copyLabel}
+          copiedLabel={AGENTS_COPY.empty.files.copiedLabel}
+          data-testid="agents-file-location"
+        />
+      </ListPageEmpty>
     {:else if onlyHeld}
       <EmptyState
         bordered

@@ -36,7 +36,7 @@
     type AppliedFilter,
     type FacetDefinition,
   } from '@lostgradient/cinder';
-  import { Plus, Search, Target } from '@lucide/svelte';
+  import { Search } from '@lucide/svelte';
   import { createQuery, useQueryClient } from '@tanstack/svelte-query';
   import { untrack } from 'svelte';
 
@@ -48,6 +48,7 @@
   } from '../../app/connection.svelte.ts';
   import { CONNECTION_COPY, RETRY_LABEL } from '../../app/copy/views.ts';
   import { GOALS_COPY } from '../../app/copy/goals.ts';
+  import ListPageEmpty from '../../app/list-page-empty.svelte';
   import { VIEW_COPY } from '../../app/copy/view-pages.ts';
   import { useBureauEventsLive } from '../../app/live-polling.svelte.ts';
   import { restartActivity } from '../../app/restart/host-restart-flow.svelte.ts';
@@ -310,20 +311,13 @@
         onCancel={stopLoading}
       />
     {:else if nothingYet}
-      <EmptyState
-        bordered
-        kind="first-use"
+      <!-- The one list-page first use (owner report, 2026-11-19). -->
+      <ListPageEmpty
+        view="goals"
         title={GOALS_COPY.empty.title}
         description={GOALS_COPY.empty.description}
-        headingLevel={2}
-      >
-        {#snippet icon()}<Target aria-hidden="true" />{/snippet}
-        {#snippet action()}
-          <Button variant="primary" label={GOALS_COPY.newAction} onclick={newGoal} mutating>
-            {#snippet leadingIcon()}<Plus />{/snippet}
-          </Button>
-        {/snippet}
-      </EmptyState>
+        create={{ label: GOALS_COPY.newAction, onclick: newGoal }}
+      />
     {:else}
       <FilterBar
         aria-label={GOALS_COPY.filtersLabel}

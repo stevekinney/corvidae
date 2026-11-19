@@ -158,15 +158,16 @@ describe('the list of workflows', () => {
     expect(container.querySelector('table')).toBeNull();
   });
 
-  test('says what the page is under its heading, and offers a secondary icon-only New workflow that opens the builder', async () => {
+  test('says what the page is under its heading, and offers a labelled primary New workflow that opens the builder', async () => {
     const { container, findByRole, findByText } = open();
     await findByRole('heading', { level: 1, name: 'Workflows' });
     expect(await findByText(WORKFLOW_COPY.list.subtitle)).not.toBeNull();
 
     const action = await findByRole('link', { name: WORKFLOW_COPY.newAction });
     expect(action.getAttribute('href')).toBe('/workflows/new');
-    // It is the header's own icon, with its name for a screen reader and no visible words.
-    expect(action.textContent?.trim()).toBe('');
+    // Its words are on the button, never a "+" alone (owner report, 2026-11-19).
+    expect(action.textContent?.trim()).toBe(WORKFLOW_COPY.newAction);
+    expect(action.getAttribute('data-cinder-variant')).toBe('primary');
     expect(action.closest('.cinder-page-header')).not.toBeNull();
     await waitFor(() => expect(rowCount(container)).toBe(4));
 
@@ -394,7 +395,7 @@ describe('the segments of the list', () => {
     await waitFor(() => expect(names(container)).toEqual(['digest']));
   });
 
-  test('keep the heading, the action and the Internal workflows card over a segment that shows nothing, and Clear filters brings the rows back', async () => {
+  test('keep the heading, the action and Internal workflows over a segment that shows nothing, and Clear filters brings the rows back', async () => {
     const { container, findByRole, findByText } = open();
     await waitFor(() => expect(rowCount(container)).toBe(4));
     const view = within(container);
@@ -404,33 +405,37 @@ describe('the segments of the list', () => {
     expect(container.querySelector('[data-cinder-kind="filtered"]')).not.toBeNull();
     expect(rowCount(container)).toBe(0);
     expect(await findByText(WORKFLOW_COPY.list.subtitle)).not.toBeNull();
-    expect(testId(container, 'internal-workflows-card')).not.toBeNull();
+    expect(testId(container, 'internal-workflows-action')).not.toBeNull();
 
     await fireEvent.click(await findByRole('button', { name: WORKFLOW_COPY.list.clearAction }));
     await waitFor(() => expect(rowCount(container)).toBe(4));
   });
 });
 
-describe('the Internal workflows card', () => {
-  test('counts the types the Bureau runs for itself from the catalog, and the whole card is a link to their page', async () => {
+describe('the header’s Internal workflows', () => {
+  test('is a secondary control beside New workflow that counts the types the Bureau runs for itself, and opens their page', async () => {
     const { container, findByRole } = open();
     await waitFor(() => expect(rowCount(container)).toBe(4));
 
-    const card = testId(container, 'internal-workflows-card');
-    expect(card?.tagName).toBe('A');
-    expect(card?.getAttribute('href')).toBe('/internal-workflows');
-    expect(card?.textContent).toContain(WORKFLOW_COPY.list.internalCard.title);
-    expect(card?.textContent).toContain(WORKFLOW_COPY.list.internalCard.description);
-    expect(testId(container, 'internal-workflows-count')?.textContent).toBe('3 workflows');
-    // The card sits after the rows, not above them.
-    const list = container.querySelector('ul');
-    expect(list !== null && card !== null && list.compareDocumentPosition(card) === 4).toBe(true);
+    const action = testId(container, 'internal-workflows-action');
+    expect(action?.tagName).toBe('A');
+    expect(action?.getAttribute('href')).toBe('/internal-workflows');
+    expect(action?.getAttribute('data-cinder-variant')).toBe('secondary');
+    expect(action?.textContent?.trim()).toBe('Internal workflows (3)');
+    // In the header, before New workflow (owner report, 2026-11-19); no card under the rows.
+    const header = container.querySelector('.cinder-page-header');
+    expect(action?.closest('.cinder-page-header')).toBe(header);
+    const create = header?.querySelector('.cinder-page-header__create');
+    expect(action !== null && create != null && action.compareDocumentPosition(create) === 4).toBe(
+      true,
+    );
+    expect(testId(container, 'internal-workflows-card')).toBeNull();
 
-    card?.dispatchEvent(
+    action?.dispatchEvent(
       new MouseEvent('click', { bubbles: true, cancelable: true, ctrlKey: true }),
     );
     expect(router.pathname).toBe('/workflows');
-    card?.click();
+    action?.click();
     await findByRole('heading', { level: 1, name: WORKFLOW_COPY.internal.title });
     expect(router.pathname).toBe('/internal-workflows');
   });
@@ -441,7 +446,9 @@ describe('the Internal workflows card', () => {
       files: [],
     });
     await waitFor(() =>
-      expect(testId(one.container, 'internal-workflows-count')?.textContent).toBe('1 workflow'),
+      expect(testId(one.container, 'internal-workflows-action')?.textContent?.trim()).toBe(
+        'Internal workflows (1)',
+      ),
     );
     // The one type of its own is not a row of the list, and the one workflow is.
     expect(rowCount(one.container)).toBe(1);
@@ -458,70 +465,101 @@ describe('the Internal workflows card', () => {
       ],
     });
     await waitFor(() =>
-      expect(testId(four.container, 'internal-workflows-count')?.textContent).toBe('4 workflows'),
+      expect(testId(four.container, 'internal-workflows-action')?.textContent?.trim()).toBe(
+        'Internal workflows (4)',
+      ),
     );
     cleanup();
     stub?.restore();
 
     const none = open({ definitions: [codeDefinition('order-processing')], files: [] });
     await waitFor(() => expect(rowCount(none.container)).toBe(1));
-    expect(testId(none.container, 'internal-workflows-card')).toBeNull();
+    expect(testId(none.container, 'internal-workflows-action')).toBeNull();
   });
 });
 
 describe('a host with no workflow of its own', () => {
-  test('is the page’s own first-use state under its header, with two actions and where a file is added, and no filter row or Internal workflows card', async () => {
+  test('is the page’s own first-use state under its header, with New workflow and Ask an agent, and no filter row', async () => {
     const { container, findByRole, findAllByRole, findByText } = open({
-      definitions: [codeDefinition('agentRun')],
+      definitions: [],
       files: [],
     });
     await findByRole('heading', { level: 2, name: WORKFLOW_COPY.list.empty.title });
     expect(await findByRole('heading', { level: 1, name: 'Workflows' })).toBeTruthy();
     expect(await findByText(WORKFLOW_COPY.list.subtitle)).not.toBeNull();
     expect(rowCount(container)).toBe(0);
-    expect(container.querySelector('[data-cinder-kind="first-use"]')).not.toBeNull();
-    expect(container.textContent).toContain(WORKFLOW_COPY.list.empty.description);
+    const state = testId(container, 'workflows-empty');
+    expect(state?.getAttribute('data-cinder-kind')).toBe('first-use');
+    expect(state?.getAttribute('data-cinder-layout')).toBe('page');
+    expect(state?.textContent).toContain(WORKFLOW_COPY.list.empty.description);
 
-    // Header "+" and the primary action are both New workflow.
+    // The header's and the state's New workflow, both buttons with the same words.
     const makers = await findAllByRole('link', { name: WORKFLOW_COPY.newAction });
     expect(makers).toHaveLength(2);
     for (const maker of makers) expect(maker.getAttribute('href')).toBe('/workflows/new');
     const ask = await findByRole('link', { name: WORKFLOW_COPY.list.empty.askAction });
     expect(ask.getAttribute('href')).toBe('/chats/new?from=workflows');
+    expect(ask.getAttribute('data-cinder-variant')).toBe('secondary');
+    // With no type of its own, it says nothing of internal workflows.
+    expect(testId(container, 'internal-workflows-action')).toBeNull();
+    expect(state?.textContent).not.toContain(WORKFLOW_COPY.list.empty.internalAction);
   });
 
-  test('has no filter row and no Internal workflows card, though the engine holds a type of its own', async () => {
+  test('names the internal workflows the engine holds, with a way to them, and no filter row or toolbar', async () => {
     const { container, findByRole } = open({
-      definitions: [codeDefinition('agentRun')],
+      definitions: [codeDefinition('agentRun'), codeDefinition('goalRun')],
       files: [],
     });
     await findByRole('heading', { level: 2, name: WORKFLOW_COPY.list.empty.title });
+    const state = testId(container, 'workflows-empty');
+    expect(state?.textContent).toContain(WORKFLOW_COPY.list.empty.internal(2));
+    const see = within(state as HTMLElement).getByRole('link', {
+      name: WORKFLOW_COPY.list.empty.internalAction,
+    });
+    expect(see.getAttribute('href')).toBe('/internal-workflows');
+    expect(see.getAttribute('data-cinder-variant')).toBe('secondary');
+    // The header's Internal workflows stays beside New workflow.
+    expect(testId(container, 'internal-workflows-action')?.textContent?.trim()).toBe(
+      'Internal workflows (2)',
+    );
     expect(container.querySelector('[role="radiogroup"]')).toBeNull();
     expect(container.querySelector('.cinder-filter-bar')).toBeNull();
-    expect(testId(container, 'internal-workflows-card')).toBeNull();
     expect(container.querySelector('[data-workflow="agentRun"]')).toBeNull();
   });
 
-  test('says where a file is added as plain text, in monospace, naming the host’s own directory when it says', async () => {
+  test('keeps the folder out of its words, behind a closed Where workflow files live with Copy, naming the host’s own directory', async () => {
     const { container, findByRole } = open({ definitions: [], files: [] });
     await findByRole('heading', { level: 2, name: WORKFLOW_COPY.list.empty.title });
     expect(container.querySelector('[data-view="workflows"]')?.getAttribute('data-state')).toBe(
       'empty',
     );
-    const hint = testId(container, 'workflows-empty-hint');
-    expect(hint?.textContent).toContain(WORKFLOW_COPY.list.empty.hintBefore);
-    expect(hint?.querySelector('a')).toBeNull();
-    await waitFor(() =>
-      expect(testId(container, 'workflow-directory')?.textContent).toBe(STUB_WORKFLOW_DIRECTORY),
+    const state = testId(container, 'workflows-empty');
+    expect(state?.textContent).not.toContain(STUB_WORKFLOW_DIRECTORY);
+    expect(testId(container, 'file-location-directory')).toBeNull();
+
+    await fireEvent.click(
+      await findByRole('button', { name: WORKFLOW_COPY.list.empty.files.label }),
     );
-    expect(testId(container, 'workflow-directory')?.tagName).toBe('CODE');
+    await waitFor(() =>
+      expect(testId(container, 'file-location-directory')?.textContent).toContain(
+        STUB_WORKFLOW_DIRECTORY,
+      ),
+    );
+    expect(
+      within(state as HTMLElement).getByRole('button', {
+        name: WORKFLOW_COPY.list.empty.files.copyLabel,
+      }),
+    ).not.toBeNull();
   });
 
   test('names the usual directory when the host does not say, and the host’s location when it keeps its files in a bucket', async () => {
     const usual = open({ definitions: [], files: [], workflowDirectory: null });
     await usual.findByRole('heading', { level: 2, name: WORKFLOW_COPY.list.empty.title });
+    await fireEvent.click(
+      await usual.findByRole('button', { name: WORKFLOW_COPY.list.empty.files.label }),
+    );
     await waitFor(() =>
-      expect(testId(usual.container, 'workflow-directory')?.textContent).toBe(
+      expect(testId(usual.container, 'file-location-directory')?.textContent).toContain(
         WORKFLOW_COPY.list.empty.hintDirectory,
       ),
     );
@@ -530,8 +568,11 @@ describe('a host with no workflow of its own', () => {
 
     const remote = open({ definitions: [], files: [], hostMode: 'remote' });
     await remote.findByRole('heading', { level: 2, name: WORKFLOW_COPY.list.empty.title });
+    await fireEvent.click(
+      await remote.findByRole('button', { name: WORKFLOW_COPY.list.empty.files.label }),
+    );
     await waitFor(() =>
-      expect(testId(remote.container, 'workflow-directory')?.textContent).toBe(
+      expect(testId(remote.container, 'file-location-directory')?.textContent).toContain(
         STUB_REMOTE_WORKFLOW_DIRECTORY,
       ),
     );

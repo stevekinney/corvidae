@@ -36,11 +36,11 @@
     type FacetDefinition,
     type FilterSegment,
   } from '@lostgradient/cinder';
-  import { MessageSquare, Play, Plus } from '@lucide/svelte';
   import { createQuery, useQueryClient } from '@tanstack/svelte-query';
   import { untrack } from 'svelte';
 
   import { getConnection } from '../../../app/connection.svelte.ts';
+  import ListPageEmpty from '../../../app/list-page-empty.svelte';
   import { CONNECTION_COPY, RETRY_LABEL } from '../../../app/copy/views.ts';
   import { TASK_COPY } from '../../../app/copy/tasks.ts';
   import { useBureauEventsLive } from '../../../app/live-polling.svelte.ts';
@@ -426,34 +426,24 @@
         onRetry={retry}
       />
     {:else if firstUse}
-      <EmptyState
-        bordered
-        kind="first-use"
+      <!-- The one list-page first use (owner report, 2026-11-19): Start run, and a chat beside it. -->
+      <ListPageEmpty
+        view="runs"
         title={TASK_COPY.empty.title}
         description={TASK_COPY.empty.description}
-        headingLevel={2}
-      >
-        {#snippet icon()}<Play aria-hidden="true" />{/snippet}
-        {#snippet action()}
-          <Button
-            href={router.href(START_RUN_PATH)}
-            variant="primary"
-            mutating
-            onclick={(event) => open(event, START_RUN_PATH)}
-          >
-            {#snippet leadingIcon()}<Plus aria-hidden="true" />{/snippet}
-            {TASK_COPY.startRun}
-          </Button>
-          <Button
-            href={router.href(TASK_COPY.empty.chatPath)}
-            variant="secondary"
-            onclick={(event) => open(event, TASK_COPY.empty.chatPath)}
-          >
-            {#snippet leadingIcon()}<MessageSquare aria-hidden="true" />{/snippet}
-            {TASK_COPY.empty.chatAction}
-          </Button>
-        {/snippet}
-      </EmptyState>
+        create={{
+          label: TASK_COPY.startRun,
+          href: router.href(START_RUN_PATH),
+          onclick: (event) => open(event, START_RUN_PATH),
+        }}
+        secondary={[
+          {
+            label: TASK_COPY.empty.chatAction,
+            href: router.href(TASK_COPY.empty.chatPath),
+            onclick: (event) => open(event, TASK_COPY.empty.chatPath),
+          },
+        ]}
+      />
     {:else}
       {@render bar()}
 

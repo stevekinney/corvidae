@@ -29,10 +29,11 @@
     Skeleton,
     StaleRegion,
   } from '@lostgradient/cinder';
-  import { Plus, Search, Webhook } from '@lucide/svelte';
+  import { Search } from '@lucide/svelte';
   import { createQuery, useQueryClient } from '@tanstack/svelte-query';
 
   import { getConnection } from '../../app/connection.svelte.ts';
+  import ListPageEmpty from '../../app/list-page-empty.svelte';
   import { CONNECTION_COPY, RETRY_LABEL } from '../../app/copy/views.ts';
   import { VIEW_COPY } from '../../app/copy/view-pages.ts';
   import { listHooks } from '../../lib/bureau-hooks.ts';
@@ -229,25 +230,13 @@
           />
         </div>
       {:else if nothingYet}
-        <EmptyState
-          bordered
-          kind="first-use"
+        <!-- The one list-page first use (owner report, 2026-11-19). -->
+        <ListPageEmpty
+          view="hooks"
           title={copy.firstUse.title}
           description={copy.firstUse.description}
-          headingLevel={2}
-        >
-          {#snippet icon()}<Webhook aria-hidden="true" />{/snippet}
-          {#snippet action()}
-            <Button
-              variant="primary"
-              label={HOOKS_COPY.newAction}
-              mutating
-              onclick={() => router.navigate(NEW_HOOK_PATH)}
-            >
-              {#snippet leadingIcon()}<Plus />{/snippet}
-            </Button>
-          {/snippet}
-        </EmptyState>
+          create={{ label: HOOKS_COPY.newAction, onclick: () => router.navigate(NEW_HOOK_PATH) }}
+        />
       {:else}
         <div class="ib-hooks__controls">
           <FilterBar

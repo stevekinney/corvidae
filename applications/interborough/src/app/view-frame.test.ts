@@ -705,7 +705,11 @@ describe('the chat list, a new chat, and the agents', () => {
     const browse = container.querySelector('a[href="/agents"]');
     expect(browse?.textContent?.trim()).toBe('Browse agents');
     expect(browse?.getAttribute('data-cinder-variant')).toBe('secondary');
-    expect(container.querySelectorAll('.weft-view__empty a.cinder-button')).toHaveLength(2);
+    // The one list-page empty state, with the Agents icon (owner report, 2026-11-19).
+    const state = container.querySelector('[data-list-empty="agents"]');
+    expect(state?.getAttribute('data-cinder-layout')).toBe('page');
+    expect(state?.querySelectorAll('a.cinder-button')).toHaveLength(2);
+    expect(state?.querySelector('.cinder-empty-state-icon svg.lucide-bot')).not.toBeNull();
     expect(container.querySelector('textarea, [data-testid="first-run"]')).toBeNull();
   });
 

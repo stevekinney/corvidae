@@ -25,11 +25,14 @@ import { expectEngineMissesForRuns } from './task-support.ts';
 const composer = (page: Page) => page.getByRole('textbox');
 
 /**
- * The New chat action of the chat list's first-use state: the one primary button. The header's "+"
- * is a secondary icon button of the same name.
+ * The chat list's New chat: the labelled primary button in the list's header, which the first-use
+ * state repeats (owner report, 2026-11-19).
  */
 const newChatAction = (page: Page) =>
-  page.getByRole('link', { name: 'New chat' }).and(page.locator('[data-cinder-variant="primary"]'));
+  page
+    .getByRole('region', { name: 'Chats' })
+    .locator('header')
+    .getByRole('link', { name: 'New chat' });
 
 // A new chat with no `?agent=` starts with the host's default agent, the barrier agent
 // (`E2E_DEFAULT_AGENT`), which holds its run until the barrier is released. A spec that sends to it
@@ -111,7 +114,7 @@ test.describe.serial('a fresh Interborough, and the sessions a goal and a schedu
       // The frame is ready: the list words its own first use, inside its pane.
       await expect(page.locator('[data-view="chat"]')).toHaveAttribute('data-state', 'ready');
       const list = page.getByRole('region', { name: 'Chats' });
-      await expect(list.getByRole('heading', { level: 3, name: 'No chats yet' })).toBeVisible();
+      await expect(list.getByRole('heading', { level: 2, name: 'No chats yet' })).toBeVisible();
       await expect(list).toContainText('Start one with an agent.');
       await expect(newChatAction(page)).toBeVisible();
       await checkA11y(`chat — the first use at ${width}px`);

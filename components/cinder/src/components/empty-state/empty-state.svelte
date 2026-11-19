@@ -151,26 +151,27 @@
         {#if item.inertReason}
           <span id={reasonId(index)} class="cinder-sr-only">{item.inertReason}</span>
         {/if}
+        {@const icon = item.icon === undefined ? {} : { leadingIcon: item.icon }}
         {#if item.href !== undefined}
           <Button
+            {...icon}
             {variant}
             href={item.href}
             onclick={item.onclick}
             mutating={item.mutating ?? false}
             aria-disabled={item.inertReason ? 'true' : undefined}
             aria-describedby={describedBy}
-            leadingIcon={item.icon}
           >
             {item.label}
           </Button>
         {:else}
           <Button
+            {...icon}
             {variant}
             onclick={item.onclick}
             mutating={item.mutating ?? false}
             aria-disabled={item.inertReason ? 'true' : undefined}
             aria-describedby={describedBy}
-            leadingIcon={item.icon}
           >
             {item.label}
           </Button>

@@ -46,7 +46,6 @@
     Skeleton,
     StackedListItem,
     StatusDot,
-    Tooltip,
   } from '@lostgradient/cinder';
   import {
     Archive,
@@ -59,6 +58,7 @@
   import { createInfiniteQuery, createQuery } from '@tanstack/svelte-query';
 
   import { CHAT_COPY } from '../../app/copy/chat.ts';
+  import ListPageEmpty from '../../app/list-page-empty.svelte';
   import { agentLabel } from '../../lib/agent-label.ts';
   import { getContext, listAgents, listContexts } from '../../lib/bureau-client.ts';
   import { listBureauReviews } from '../../lib/bureau-reviews.ts';
@@ -416,19 +416,17 @@
 </script>
 
 {#snippet newChatButton()}
-  <Tooltip text={CHAT_COPY.newChat}>
-    <Button
-      data-changes
-      href={router.href('/chats/new')}
-      variant="secondary"
-      iconOnly
-      size="sm"
-      aria-label={CHAT_COPY.newChat}
-      onclick={openNewChat}
-    >
-      <Plus aria-hidden="true" size={16} />
-    </Button>
-  </Tooltip>
+  <!-- A labelled primary button, never a "+" alone, as on every list page (owner report, 2026-11-19). -->
+  <Button
+    data-changes
+    href={router.href('/chats/new')}
+    variant="primary"
+    size="sm"
+    onclick={openNewChat}
+  >
+    {#snippet leadingIcon()}<Plus aria-hidden="true" size={16} />{/snippet}
+    {CHAT_COPY.newChat}
+  </Button>
 {/snippet}
 
 {#snippet loadMore()}
@@ -499,26 +497,13 @@
       onRetry={() => void shownList.refetch()}
     />
   {:else if listState === 'first-use'}
-    <EmptyState
-      kind="first-use"
-      size="compact"
-      headingLevel={3}
+    <!-- The one list-page first use (owner report, 2026-11-19), in the list's pane. -->
+    <ListPageEmpty
+      view="chat"
       title={CHAT_COPY.list.emptyTitle}
       description={CHAT_COPY.list.emptyDescription}
-    >
-      {#snippet icon()}<MessageSquare aria-hidden="true" />{/snippet}
-      {#snippet action()}
-        <Button
-          data-changes
-          href={router.href('/chats/new')}
-          variant="primary"
-          size="sm"
-          onclick={openNewChat}
-        >
-          {CHAT_COPY.newChat}
-        </Button>
-      {/snippet}
-    </EmptyState>
+      create={{ label: CHAT_COPY.newChat, href: router.href('/chats/new'), onclick: openNewChat }}
+    />
   {:else if listState === 'all-archived'}
     {@const empty = CHAT_COPY.list.allArchived}
     <EmptyState
@@ -674,12 +659,13 @@
               : CHAT_COPY.sessionsTitle}
         >
           {#snippet actions()}
-            <!-- The "+" alone: the toggle that hides the list is ListDetail's, on its rail. -->
+            <!-- New chat alone: the toggle that hides the list is ListDetail's, on its rail. -->
             {@render newChatButton()}
           {/snippet}
         </SectionHeading>
       </div>
-      {#if !phone.current}
+      <!-- No search or segments over nothing: they come with the first chat (owner report, 2026-11-19). -->
+      {#if !phone.current && listState !== 'first-use'}
         <SearchField
           size="md"
           aria-label={CHAT_COPY.list.searchLabel}
@@ -715,7 +701,10 @@
       />
     {/snippet}
     {#snippet empty()}
-      {#if noChats}
+      {#if listState === 'first-use'}
+        <!-- The list's first use is the page's one empty state; the open chat's pane stays blank
+             rather than say "No chat open" beside it (owner report, 2026-11-19). -->
+      {:else if noChats}
         <EmptyState
           kind="first-use"
           headingLevel={2}
