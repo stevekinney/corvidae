@@ -155,16 +155,15 @@ describe('EventsTab', () => {
     expect(getByText('Events + timeline, JSON')).not.toBeNull();
   });
 
-  test('renders "No events to display." once loaded with no events', async () => {
+  test('is Cinder’s one empty state, in place of the log, once loaded with no events', async () => {
     const { getByText } = render(EventsTabHarness, {
       props: { client: client([]), workflow: workflow() },
     });
 
     await waitFor(() => {
-      const emptyState = getByText('No events to display.');
-      expect(emptyState.getAttribute('role')).toBe('status');
-      expect(emptyState.parentElement?.tagName).toBe('LI');
-      expect(emptyState.parentElement?.parentElement?.tagName).toBe('OL');
+      const title = getByText('No events yet');
+      expect(title.closest('.cinder-empty-state')).not.toBeNull();
+      expect(title.closest('ol')).toBeNull();
     });
   });
 

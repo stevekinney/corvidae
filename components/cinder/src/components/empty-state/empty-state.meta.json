@@ -2,7 +2,7 @@
   "$schema": "../../../../../internal/component-tooling/src/schemas/component-meta.schema.json",
   "category": "feedback",
   "status": "stable",
-  "purpose": "The one placeholder layout, top-aligned and centred across, with optional icon, title, description, and buttons, for any page, tab, section, or panel that has no data to render.",
+  "purpose": "The one placeholder layout, top-aligned, for any page, tab, section or panel with no data.",
   "tags": ["feedback", "empty"],
   "useWhen": [
     "Communicating that a list, table, or workspace has no items yet and suggesting a next step.",

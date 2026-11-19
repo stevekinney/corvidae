@@ -13,7 +13,7 @@
    * declares no policy) gets its own empty state, in the style of the revision
    * row's "Unpinned (pre-revision record)".
    */
-  import { Badge, Callout, DescriptionList, Tooltip } from '@lostgradient/cinder';
+  import { Badge, Callout, DescriptionList, EmptyState, Tooltip } from '@lostgradient/cinder';
   import type { WorkflowState } from '@lostgradient/weft';
   import { CircleAlert, Info } from '@lucide/svelte';
 
@@ -115,13 +115,18 @@
 </script>
 
 <div class="weft-overview-tab__panel weft-worker-binding" data-testid="worker-binding-panel">
-  <h3 class="weft-panel-title">Worker versioning</h3>
+  <!-- With nothing recorded, the empty state stands alone, under no heading (owner report, 2026-11-19). -->
+  {#if reading.kind !== 'absent'}
+    <h3 class="weft-panel-title">Worker versioning</h3>
+  {/if}
 
   {#if reading.kind === 'absent'}
-    <p class="weft-worker-binding__empty">
-      No worker version is recorded. This run predates worker versioning, or its workflow declares
-      no worker versioning policy, so no deployment build is recorded for it.
-    </p>
+    <EmptyState
+      kind="first-use"
+      headingLevel={3}
+      title="No worker version is recorded"
+      description="This run predates worker versioning, or its workflow declares no worker versioning policy, so no deployment build is recorded for it."
+    />
   {:else if reading.kind === 'malformed'}
     <Callout variant="danger" semantic="note" title="Worker version unreadable">
       {#snippet icon()}
@@ -148,12 +153,15 @@
     <h4 class="weft-panel-title weft-worker-binding__subheader">Current binding</h4>
     <DescriptionList items={bindingItems} variant="default" />
 
-    <h4 class="weft-panel-title weft-worker-binding__subheader">Binding history</h4>
     {#if reading.record.history.length === 0}
-      <p class="weft-worker-binding__empty">
-        No earlier versions: this run has only ever been bound to the build above.
-      </p>
+      <EmptyState
+        kind="done"
+        headingLevel={4}
+        title="No earlier versions"
+        description="This run has only ever been bound to the build above."
+      />
     {:else}
+      <h4 class="weft-panel-title weft-worker-binding__subheader">Binding history</h4>
       <ol class="weft-worker-binding__history" aria-label="Earlier worker versions, oldest first">
         {#each historyOldestFirst as entry, index (`${index}-${entry.boundAt}`)}
           <li>
@@ -201,13 +209,8 @@
     gap: 6px;
   }
 
-  .weft-worker-binding__why,
-  .weft-worker-binding__empty {
+  .weft-worker-binding__why {
     font-size: var(--cinder-text-xs);
-  }
-
-  .weft-worker-binding__empty {
-    color: var(--cinder-text-subtle);
   }
 
   .weft-worker-binding__subheader {
