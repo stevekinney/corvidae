@@ -82,6 +82,34 @@ describe('weft.schedules.get', () => {
     expect(body.workflowType).toBe('echo');
   });
 
+  it('returns the schedule’s metadata, and none for a schedule created without (COR-2546)', async () => {
+    engine = createEngine();
+    await engine.schedule('echo', null, '0 * * * *', {
+      id: 'owned-schedule',
+      metadata: { owner: 'ada' },
+    });
+    await engine.schedule('echo', null, '0 * * * *', { id: 'plain-schedule' });
+
+    const read = async (scheduleId: string) => {
+      const response = await handleRequest(
+        new Request(`http://localhost/v1/schedules/${scheduleId}`, { method: 'GET' }),
+        engine!,
+        {
+          operationRegistry: registry,
+          restBindings: [getScheduleRestBinding],
+          ...apiKeyAuthContext(),
+        },
+      );
+      expect(response.status).toBe(200);
+      return (await response.json()) as Record<string, unknown>;
+    };
+
+    const owned = await read('owned-schedule');
+    const plain = await read('plain-schedule');
+    expect(owned['metadata']).toEqual({ owner: 'ada' });
+    expect('metadata' in plain).toBe(false);
+  });
+
   it('returns the schedule revision, and a pause moves it (COR-1482)', async () => {
     engine = createEngine();
     await engine.schedule('echo', {}, '0 * * * *', { id: 'revised-schedule' });

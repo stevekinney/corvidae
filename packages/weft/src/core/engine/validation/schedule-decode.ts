@@ -3,6 +3,7 @@ import { isRecord } from '../../debug-output.ts';
 import { isValidTimeZone } from '../../schedule.ts';
 import type { ScheduleQueuedRun, ScheduleState } from '../../types.ts';
 import { decodeScheduleCadence } from './schedule-cadence.ts';
+import { isScheduleMetadata } from './schedule-options.ts';
 import { decodeScheduleRevisionPolicyFields } from './schedule-revision.ts';
 import { rejectInvalidScheduleRecord } from './schedule-warnings.ts';
 import {
@@ -55,6 +56,7 @@ export function decodeScheduleIdentityFields(decoded: Record<string, unknown>):
 type ScheduleRuntimeFields = Pick<
   ScheduleState,
   | 'description'
+  | 'metadata'
   | 'backfill'
   | 'jitterMs'
   | 'timeZone'
@@ -97,6 +99,25 @@ function decodeScheduleDescription(
     return null;
   }
   return description;
+}
+
+/**
+ * A record written before schedules had metadata has none. A value that is not a plain JSON object
+ * rejects the record, as a description that is not a string does.
+ */
+function decodeScheduleMetadata(
+  decoded: Record<string, unknown>,
+  scheduleId: string,
+): Record<string, unknown> | undefined | null {
+  const metadata = decoded['metadata'];
+  if (metadata === undefined) {
+    return undefined;
+  }
+  if (!isScheduleMetadata(metadata)) {
+    rejectInvalidScheduleRecord(scheduleId, 'with invalid metadata');
+    return null;
+  }
+  return metadata;
 }
 
 function decodeScheduleJitterMs(
@@ -369,9 +390,15 @@ function decodeScheduleQueueFields(
 function decodeScheduleOptionFields(
   decoded: Record<string, unknown>,
   scheduleId: string,
-): Pick<ScheduleRuntimeFields, 'backfill' | 'description' | 'jitterMs' | 'timeZone'> | null {
+): Pick<
+  ScheduleRuntimeFields,
+  'backfill' | 'description' | 'metadata' | 'jitterMs' | 'timeZone'
+> | null {
   const description = decodeScheduleDescription(decoded, scheduleId);
   if (description === null) return null;
+
+  const metadata = decodeScheduleMetadata(decoded, scheduleId);
+  if (metadata === null) return null;
 
   const backfill = decodeScheduleBackfill(decoded, scheduleId);
   if (backfill === null) return null;
@@ -384,6 +411,7 @@ function decodeScheduleOptionFields(
 
   return {
     ...(description !== undefined && { description }),
+    ...(metadata !== undefined && { metadata }),
     backfill,
     ...(jitterMs !== undefined && { jitterMs }),
     timeZone,

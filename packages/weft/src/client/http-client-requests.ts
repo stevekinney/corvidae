@@ -514,6 +514,7 @@ export function updateScheduleRequest(
   setIfDefined(body, 'jitter', options?.jitter);
   setIfDefined(body, 'timeZone', options?.timeZone);
   setIfDefined(body, 'revisionPolicy', options?.revisionPolicy);
+  setIfDefined(body, 'metadata', options?.metadata);
 
   return request<void>(context.baseUrl, `/schedules/${encodeURIComponent(id)}`, context.headers, {
     method: 'PATCH',

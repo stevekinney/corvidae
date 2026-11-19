@@ -160,6 +160,42 @@ describe('weft.schedules.create', () => {
     expect(extracted).toEqual(input);
   });
 
+  it('stores the metadata it is given and returns 400 for metadata that is not a plain JSON object', async () => {
+    engine = createEngine();
+
+    const created = await handleRequest(
+      jsonRequest('POST', '/v1/schedules', {
+        type: 'echo',
+        cronExpression: '0 * * * *',
+        id: 'with-metadata',
+        metadata: { owner: { kind: 'user', id: 'ada' } },
+      }),
+      engine,
+      { operationRegistry: registry, restBindings: bindings },
+    );
+    expect(created.status).toBe(201);
+    const stored = await engine.getSchedule('with-metadata');
+    expect(stored?.metadata).toEqual({ owner: { kind: 'user', id: 'ada' } });
+
+    for (const metadata of ['ada', 7, ['a'], null]) {
+      const response = await handleRequest(
+        jsonRequest('POST', '/v1/schedules', {
+          type: 'echo',
+          cronExpression: '0 * * * *',
+          id: 'bad-metadata',
+          metadata,
+        }),
+        engine,
+        { operationRegistry: registry, restBindings: bindings },
+      );
+      expect(response.status).toBe(400);
+      expect(await response.json()).toEqual({
+        error: 'Field "metadata" must be a plain JSON object',
+      });
+    }
+    expect(await engine.getSchedule('bad-metadata')).toBeNull();
+  });
+
   it('returns 400 when description is not a string', async () => {
     engine = createEngine();
 

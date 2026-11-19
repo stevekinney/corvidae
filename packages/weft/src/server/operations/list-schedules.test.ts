@@ -68,6 +68,30 @@ describe('weft.schedules.list', () => {
     expect(typeof body.offset).toBe('number');
   });
 
+  it('returns each schedule’s metadata, and none for one created without (COR-2546)', async () => {
+    engine = createListSchedulesTestEngine();
+    await engine.schedule('echo', null, '0 * * * *', {
+      id: 'sched-owned',
+      metadata: { owner: 'ada' },
+    });
+    await engine.schedule('echo', null, '30 * * * *', { id: 'sched-plain' });
+
+    const response = await handleRequest(
+      new Request('http://localhost/v1/schedules', { method: 'GET' }),
+      engine,
+      {
+        operationRegistry: listSchedulesTestRegistry,
+        restBindings: [listSchedulesRestBinding],
+        ...createListSchedulesApiKeyAuthContext(),
+      },
+    );
+
+    const body = (await response.json()) as { items: Array<Record<string, unknown>> };
+    const byId = new Map(body.items.map((item) => [item['id'], item]));
+    expect(byId.get('sched-owned')?.['metadata']).toEqual({ owner: 'ada' });
+    expect(byId.get('sched-plain') && 'metadata' in byId.get('sched-plain')!).toBe(false);
+  });
+
   it('registers an executable echo workflow in the test engine', async () => {
     engine = createListSchedulesTestEngine();
 
