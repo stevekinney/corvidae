@@ -222,6 +222,8 @@ const SCHEMA_SAFE_OUTPUTS: Readonly<Record<string, string>> = {
     'The retry output is a run identifier, the step number, the revision and the caller’s own retry identifier, not workflow input or result (workflowsRunsRetryOperation).',
   'bureau.workflows.runs.history':
     'historyRuns projects bounded event type, time, step and summary and never returns raw event data (workflow-runtime historyEventOf).',
+  'bureau.runs.timeline':
+    'projectRunTimeline copies a step’s label, kind, status, start, duration and tries from an allowlist and never an input or output summary (run-timeline.ts).',
   'bureau.settings.events':
     'The subscription response is a subscription identifier; its separately inventoried event carries the change (settings event output schema).',
   'bureau.tasks.events':
