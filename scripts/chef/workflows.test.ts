@@ -121,7 +121,7 @@ async function runWorkflow(
     ...arguments_: string[]
   ) => (...arguments_: unknown[]) => Promise<unknown>;
   const run = new AsyncFunction('args', 'agent', 'phase', 'log', 'parallel', 'pipeline', source);
-  const result = (await run(
+  const result = await run(
     workflowArguments,
     async (prompt: string, options: Call['options']) => {
       calls.push({ prompt, label: options.label, options });
@@ -142,7 +142,7 @@ async function runWorkflow(
     async () => {
       throw new Error('deliver-issue.js does not use pipeline');
     },
-  )) as unknown;
+  );
   const labels = calls.map((call) => call.label.split(' ')[0]);
   return { calls, labels, result };
 }
