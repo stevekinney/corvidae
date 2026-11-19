@@ -1,11 +1,14 @@
 import { describe, expect, test } from 'bun:test';
 
+import { AGENT_PAGE_COPY } from '../../app/copy/agents.ts';
+import { CAPABILITIES_COPY } from '../../app/copy/capabilities.ts';
 import type { Skill } from '../../lib/bureau-skills.ts';
 import type { ToolSourceStanding, ToolSourceTool } from '../../lib/host-tool-sources.ts';
 import {
   asksLabel,
   asksTooltip,
   asksWord,
+  blockedUsers,
   defaultAsks,
   groupToolsBySource,
   isUntrusted,
@@ -50,6 +53,8 @@ import {
   userAsks,
   type CatalogTool,
 } from './capability-presentation.ts';
+
+const TOOL_COPY = CAPABILITIES_COPY.tool;
 
 const TOOL: CatalogTool = {
   name: 'read-file',
@@ -201,7 +206,7 @@ describe('a tool’s row', () => {
     expect(asksLabel({ ...never, defaultAsks: 'never' })).toBe('Asks: Never');
     expect(asksWord({ ...never, defaultAsks: 'never' })).toBe('Never');
     expect(userAsks({ ...never, defaultAsks: 'never', userApprovals: {} }, 'writer').text).toBe(
-      'Asks: Never (the default)',
+      'Asks: Never (default)',
     );
     expect(defaultAsks({ ...TOOL, tier: 'dangerous', defaultApproval: 'ask' })).toBe('always');
     // A saved name wins over the identifier read as words: the row says "GitHub", as the chip does.
@@ -532,8 +537,23 @@ describe('the tools that cannot run now (COR-2435)', () => {
 });
 
 describe('an agent defined in code in Used by', () => {
-  test('reads “set in code” rather than claiming the default, which its code may not use', () => {
-    expect(userAsks(TOOL, 'assistant', new Set(['assistant'])).text).toBe('Asks: set in code');
-    expect(userAsks(TOOL, 'writer', new Set(['assistant'])).text).toBe('Asks: Never (the default)');
+  test('reads “Set in code” rather than claiming the default, which its code may not use', () => {
+    expect(userAsks(TOOL, 'assistant', new Set(['assistant'])).text).toBe('Asks: Set in code');
+    expect(userAsks(TOOL, 'writer', new Set(['assistant'])).text).toBe('Asks: Never (default)');
+  });
+
+  test('the default suffix is the Access tab’s own word, in the same case', () => {
+    const accessSuffix = AGENT_PAGE_COPY.access.approvals.never;
+    expect(`${accessSuffix} (default)`).toBe('Never (default)');
+    expect(userAsks(TOOL, 'writer').text).toBe(`Asks: ${accessSuffix} (default)`);
+  });
+
+  test('the blocked note belongs to each blocked agent alone', () => {
+    expect(blockedUsers({ userApprovals: { planner: 'always', writer: 'blocked' } })).toEqual([
+      'writer',
+    ]);
+    expect(blockedUsers({ userApprovals: { planner: 'always' } })).toEqual([]);
+    expect(blockedUsers({})).toEqual([]);
+    expect(TOOL_COPY.blockedNote('Writer')).toContain('Writer can’t run this tool');
   });
 });

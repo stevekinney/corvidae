@@ -28,7 +28,7 @@ import {
   getAgentDefinition,
   listAgentDefinitions,
 } from '../../lib/agent-definitions.ts';
-import { agentSummarySchema } from '../../lib/bureau-client.ts';
+import { agentSummaryOf, type AgentSummary } from '../../lib/bureau-client.ts';
 import { getSkillInstructions, listSkillCatalog } from '../../lib/bureau-skills.ts';
 import { getPlugins } from '../../lib/host-plugins.ts';
 import {
@@ -56,6 +56,9 @@ const SAMPLE_GITHUB = {
   unmatchedSettings: [],
   credentials: [],
 };
+
+/** A stubbed agent row read as the Agents list reads one. */
+const summaryOf = (agent: unknown): AgentSummary => agentSummaryOf(agent as never);
 
 describe('the stubs of the capabilities states spec', () => {
   for (const state of ['failed', 'needs-authorization'] as const) {
@@ -132,7 +135,7 @@ describe('the stubs of the capabilities states spec', () => {
       fetch: bureauAnswering({ models: [], tools: [DELETE_BRANCH_TOOL] }),
     });
     expect(dangerous.tools[0]?.userApprovals).toEqual({ 'branch-cleaner': 'blocked' });
-    expect(agentSummarySchema.parse(BLOCKED_AGENT_LIST.agents[0]).displayName).toBe(
+    expect(summaryOf(BLOCKED_AGENT_LIST.agents[0]).displayName).toBe(
       'An agent allowed Delete branch',
     );
     expect(catalog.tools[0]?.users).toHaveLength(4);
@@ -144,8 +147,7 @@ describe('the stubs of the capabilities states spec', () => {
     expect(definitions.filter((agent) => agent.source === 'code').map((agent) => agent.id)).toEqual(
       ['code-assistant'],
     );
-    // `listAgents` reads with the page's own `fetch`; its row schema is the one that parses the stub.
-    const agents = SKILL_AGENTS.agents.map((agent) => agentSummarySchema.parse(agent));
+    const agents = SKILL_AGENTS.agents.map(summaryOf);
     expect(agents.map((agent) => agent.name)).toEqual(['workflow-author']);
     const detail = await getAgentDefinition('workflow-author', {
       fetch: bureauAnswering(SKILL_AGENT_DETAIL),

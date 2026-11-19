@@ -168,9 +168,14 @@ export function userAsks(
     : { text: copy.level(words[stated]), blocked: false };
 }
 
-/** Whether any agent that uses `tool` has it blocked: the cue for the "Allow all never overrides" note (row 31x). */
-export function hasBlockedUser(tool: Pick<CatalogTool, 'userApprovals'>): boolean {
-  return Object.values(tool.userApprovals ?? {}).includes('blocked');
+/**
+ * The agents that have `tool` blocked, in the order the host sends them: each one gets the "Allow
+ * all never overrides" note (row 31x), which names it, and an agent that does not has none.
+ */
+export function blockedUsers(tool: Pick<CatalogTool, 'userApprovals'>): string[] {
+  return Object.entries(tool.userApprovals ?? {})
+    .filter(([, level]) => level === 'blocked')
+    .map(([agent]) => agent);
 }
 
 /**

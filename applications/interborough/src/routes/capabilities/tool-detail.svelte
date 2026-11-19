@@ -14,6 +14,8 @@
 
   import { usePageLeaf } from '../../app/breadcrumbs.svelte.ts';
   import { listAgentDefinitions } from '../../lib/agent-definitions.ts';
+  import { agentLabel } from '../../lib/agent-label.ts';
+  import { agentsListQuery } from '../../lib/agent-queries.ts';
   import { getToolSources } from '../../lib/host-tool-sources.ts';
   import { queryKeys } from '../../lib/query.ts';
   import { CAPABILITIES_COPY } from '../../app/copy/capabilities.ts';
@@ -21,7 +23,7 @@
   import {
     asksLabel,
     asksTooltip,
-    hasBlockedUser,
+    blockedUsers,
     riskLabel,
     riskTooltip,
     sourceNamesOf,
@@ -70,6 +72,8 @@
     }),
     undefined,
   );
+  // The names the Agents list shows, for the note that names the blocked agent.
+  const agents = createQuery(agentsListQuery, undefined);
   const sourceNames = $derived(sourceNamesOf(sources.data?.sources));
   const codeAgents = $derived(
     new Set(
@@ -137,7 +141,9 @@
     />
   </section>
 
-  {#if hasBlockedUser(tool)}
-    <p class="ib-capability__line" data-testid="tool-blocked-note">{copy.blockedNote}</p>
-  {/if}
+  {#each blockedUsers(tool) as agent (agent)}
+    <p class="ib-capability__line" data-testid="tool-blocked-note" data-agent={agent}>
+      {copy.blockedNote(agentLabel(agent, agents.data))}
+    </p>
+  {/each}
 </article>

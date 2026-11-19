@@ -232,16 +232,18 @@ describe('the Tools tab', () => {
     );
     // Sorted as the host sends them: a default is marked as one, a stated level is not, Blocked is
     // said as belonging to that agent.
-    expect(notes).toEqual(['Asks: Never (the default)', 'Asks: Always', 'Blocked on this agent']);
+    expect(notes).toEqual(['Asks: Never (default)', 'Asks: Always', 'Blocked on this agent']);
     // Each agent is a Cinder Link named as the Agents list names it, never by its identifier.
     const links = [...detail.querySelectorAll<HTMLElement>('[data-testid="capability-users"] a')];
     expect(links.map((link) => link.dataset['agent'])).toEqual(['assistant', 'planner', 'writer']);
     expect(links[0]?.textContent?.trim()).toBe(AGENT.displayName);
     expect(links[1]?.textContent?.trim()).toBe('Planner');
     expect(links.every((link) => link.className.includes('cinder-link'))).toBe(true);
-    expect(detail.querySelector('[data-testid="tool-blocked-note"]')?.textContent).toBe(
-      copy.tool.blockedNote,
-    );
+    // The note is about the one blocked agent and names it; the agents that are not blocked get none.
+    const blockedNotes = [...detail.querySelectorAll('[data-testid="tool-blocked-note"]')];
+    expect(blockedNotes.map((note) => note.textContent?.trim())).toEqual([
+      copy.tool.blockedNote('Writer'),
+    ]);
     // Blocked is never a property of the tool: the chip still says its default.
     expect(detail.querySelector('[data-testid="tool-approval"]')?.textContent?.trim()).toBe(
       'Asks: Never',
@@ -491,6 +493,30 @@ describe('a tool’s page', () => {
     await fireEvent.click(await findByRole('link', { name: copy.tool.page.notFound.back }));
     expect(router.pathname).toBe('/capabilities');
     expect(router.search.get('tool')).toBeNull();
+  });
+
+  test('says a missing tool is missing on a narrow page too, where the list is the only pane', async () => {
+    restore = serve().restore;
+    const measure = Element.prototype.getBoundingClientRect;
+    // A phone's width: ListDetail shows one pane at a time and its empty pane is never reached.
+    Element.prototype.getBoundingClientRect = function (this: Element): DOMRect {
+      const width = this.classList.contains('ib-capabilities__frame') ? 400 : 0;
+      return { ...measure.call(this), width, right: width } as DOMRect;
+    };
+    try {
+      landAt('/capabilities?tool=no-such-tool');
+      const { container, findByRole, findByText } = mount();
+
+      await findByText(copy.tool.page.notFound.title);
+      expect(container.querySelector('[data-testid="tool-not-found"]')).not.toBeNull();
+      expect(container.querySelector('[data-testid="tool-detail"]')).toBeNull();
+      await fireEvent.click(await findByRole('link', { name: copy.tool.page.notFound.back }));
+      expect(router.search.get('tool')).toBeNull();
+      // With nothing missing the list is back.
+      await waitFor(() => expect(container.querySelector('[data-tool-row]')).not.toBeNull());
+    } finally {
+      Element.prototype.getBoundingClientRect = measure;
+    }
   });
 
   test('Cancel on the slow-loading line leaves the catalog loading, so the list still arrives', async () => {

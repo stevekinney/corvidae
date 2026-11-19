@@ -49,14 +49,18 @@ export const CAPABILITIES_COPY = {
      */
     userAsks: {
       level: (level: string): string => `Asks: ${level}`,
-      defaulted: (level: string): string => `Asks: ${level} (the default)`,
+      /** The suffix is the Access tab's own: "Always (default)" there, "Asks: Always (default)" here. */
+      defaulted: (level: string): string => `Asks: ${level} (default)`,
       blocked: 'Blocked on this agent',
       /** An agent defined in code: its code sets the level, which the catalog does not carry. */
-      inCode: 'Asks: set in code',
+      inCode: 'Asks: Set in code',
     },
-    /** The note under the detail when an agent has the tool blocked (row 31x): Allow all never overrides Blocked. */
-    blockedNote:
-      'Agents can’t run this tool, even in a chat that allows all. Change it on that agent’s Access tab.',
+    /**
+     * The note under the detail for an agent that has the tool blocked (row 31x): Allow all never
+     * overrides Blocked. It names the one agent it is about, and shows for no other.
+     */
+    blockedNote: (agent: string): string =>
+      `${agent} can’t run this tool, even in a chat that allows all. Change it on ${agent}’s Access tab.`,
     /** Used by when no agent has the tool: one muted line with a link inline, never a centred empty state (rows 30e, 30h, 32j). */
     noUsers: {
       line: 'No agent has this tool yet.',
@@ -478,7 +482,11 @@ export const CAPABILITIES_COPY = {
           blocked:
             'Your browser blocked the sign-in window. Allow pop-ups for this page, then try again.',
           notNeeded: 'This server asks for no sign-in.',
-          /** Why a provider refused, from the closed set the host reports; never its own words. */
+          /**
+           * Why a provider refused, from the closed set the host reports; never its own words. Row
+           * 34l's refused-redirect text is amended to this set's wording (owner decision,
+           * 2026-11-19), since the host reports a reason code and not the provider's message.
+           */
           reasons: {
             invalid_request: 'the redirect address or the request wasn’t allowed',
             unauthorized_client: 'this app isn’t allowed to sign in that way',

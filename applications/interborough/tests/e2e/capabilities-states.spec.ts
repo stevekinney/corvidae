@@ -271,11 +271,15 @@ for (const width of WIDTHS) {
       await open(page, width, '/capabilities?tool=github__create_issue');
       const users = page.getByTestId('tool-detail').getByTestId('capability-users');
       await expect(users).toBeVisible();
-      await expect(users).toContainText(/Asks: [A-Za-z ]+ \(the default\)/);
+      await expect(users).toContainText(/Asks: [A-Za-z ]+ \(default\)/);
       await expect(users).toContainText('Asks: Always');
       await expect(users).toContainText(copy.tool.userAsks.inCode);
       await expect(users).toContainText(copy.tool.userAsks.blocked);
-      await expect(page.getByTestId('tool-blocked-note')).toHaveText(copy.tool.blockedNote);
+      // Of four agents only the blocked one has the note, and it names that agent.
+      await expect(page.getByTestId('tool-blocked-note')).toHaveCount(1);
+      await expect(page.getByTestId('tool-blocked-note')).toHaveText(
+        copy.tool.blockedNote('Former intern'),
+      );
       await captureForDesignReview(page, {
         route: '/capabilities',
         state: 'tool used by four agents',
@@ -304,7 +308,9 @@ for (const width of WIDTHS) {
       await expect(users).toContainText(copy.tool.userAsks.blocked);
       await expect(detail.getByTestId('tool-input-schema')).toContainText('Branch');
       await expect(detail.getByTestId('tool-input-schema')).toContainText('The branch to delete.');
-      await expect(page.getByTestId('tool-blocked-note')).toHaveText(copy.tool.blockedNote);
+      await expect(page.getByTestId('tool-blocked-note')).toHaveText(
+        copy.tool.blockedNote('An agent allowed Delete branch'),
+      );
       await captureForDesignReview(page, {
         route: '/capabilities',
         state: 'blocked dangerous tool',

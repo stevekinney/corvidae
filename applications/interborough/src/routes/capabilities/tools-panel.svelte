@@ -111,6 +111,25 @@
   const missing = $derived(asked && !tools.some((tool) => tool.name === requested));
 
   /**
+   * The width at which ListDetail shows one pane at a time, passed to it so the two agree. Where the
+   * list is the only pane there is no detail pane to hold the not-found state, so the page draws it
+   * in place of the list (COR-2435), with the same way back.
+   */
+  const PUSH_BELOW = 600;
+  let frameWidth = $state(0);
+  const singlePane = $derived(frameWidth > 0 && frameWidth < PUSH_BELOW);
+
+  function trackWidth(node: HTMLElement): () => void {
+    const measure = (): void => {
+      frameWidth = node.getBoundingClientRect().width;
+    };
+    measure();
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure);
+    observer?.observe(node);
+    return () => observer?.disconnect();
+  }
+
+  /**
    * Stops waiting for the tool: the address no longer names it, so the list takes the page's place
    * while the catalog keeps loading. The request is not cancelled, because cancelling a query that
    * has never had an answer reverts it to a pending query with nothing in flight, which no load
@@ -144,98 +163,103 @@
       description={copy.tool.empty.description}
     />
   {:else}
-    <div class="ib-capabilities__frame" data-shortcut-region="list-detail">
-      <ListDetail
-        items={shown}
-        key={(tool) => tool.name}
-        label={copy.listLabel.tools}
-        detailLabel={copy.detailLabel.tools}
-        selectionParameter="tool"
-        {selectionLocation}
-        storageKey="interborough-capabilities-tools"
-        {...grouped ? { groupBy: (tool: ShownTool) => toolGroup(tool, sourceNames) } : {}}
-      >
-        {#snippet header()}
-          <!-- The list itself shows no count; one reads at the right of the field once something is typed (row 32b). -->
-          <div class="ib-capabilities__filter">
-            <div class="ib-capabilities__filter-field">
-              <SearchField
-                aria-label={copy.filterLabel.tools}
-                placeholder={copy.filterPlaceholder}
-                bind:value={filter}
-                onClear={() => (filter = '')}
-              />
+    <div class="ib-capabilities__frame" data-shortcut-region="list-detail" {@attach trackWidth}>
+      {#if missing && singlePane}
+        <ToolPageState kind="not-found" />
+      {:else}
+        <ListDetail
+          pushBelow={PUSH_BELOW}
+          items={shown}
+          key={(tool) => tool.name}
+          label={copy.listLabel.tools}
+          detailLabel={copy.detailLabel.tools}
+          selectionParameter="tool"
+          {selectionLocation}
+          storageKey="interborough-capabilities-tools"
+          {...grouped ? { groupBy: (tool: ShownTool) => toolGroup(tool, sourceNames) } : {}}
+        >
+          {#snippet header()}
+            <!-- The list itself shows no count; one reads at the right of the field once something is typed (row 32b). -->
+            <div class="ib-capabilities__filter">
+              <div class="ib-capabilities__filter-field">
+                <SearchField
+                  aria-label={copy.filterLabel.tools}
+                  placeholder={copy.filterPlaceholder}
+                  bind:value={filter}
+                  onClear={() => (filter = '')}
+                />
+              </div>
+              {#if filter.trim() !== ''}
+                <p class="ib-capabilities__count" data-testid="tools-count">
+                  {copy.filteredCount.tools(shown.length, tools.length)}
+                </p>
+              {/if}
             </div>
-            {#if filter.trim() !== ''}
-              <p class="ib-capabilities__count" data-testid="tools-count">
-                {copy.filteredCount.tools(shown.length, tools.length)}
-              </p>
-            {/if}
-          </div>
-        {/snippet}
-        {#snippet list(tool, row)}
-          <SelectableRow
-            selected={row.selected}
-            selectedState="current"
-            onclick={row.open}
-            data-tool-row={tool.name}
-            data-lost={tool.lost === undefined ? undefined : ''}
-          >
-            {#snippet title()}
-              <span class="ib-capabilities__row-title">
-                <span class="ib-capabilities__row-name" data-testid="tool-row-name"
-                  >{toolHeading(tool)}</span
-                >
-                <!-- A muted word, never a colour of its own: Dangerous is not red (row 31g). -->
-                <span class="ib-capabilities__row-risk" data-testid="tool-row-risk"
-                  >{riskLabel(tierOf(tool))}</span
-                >
-                <!-- A tool that cannot run now says so on the first line, in the same muted word. -->
-                {#if tool.lost !== undefined}
-                  <span class="ib-capabilities__row-risk" data-testid="tool-row-paused"
-                    >{copy.tool.lost.paused}</span
+          {/snippet}
+          {#snippet list(tool, row)}
+            <SelectableRow
+              selected={row.selected}
+              selectedState="current"
+              onclick={row.open}
+              data-tool-row={tool.name}
+              data-lost={tool.lost === undefined ? undefined : ''}
+            >
+              {#snippet title()}
+                <span class="ib-capabilities__row-title">
+                  <span class="ib-capabilities__row-name" data-testid="tool-row-name"
+                    >{toolHeading(tool)}</span
                   >
-                {/if}
-              </span>
-            {/snippet}
-            {#snippet description()}
-              <span class="ib-capabilities__row-line">
-                <span class="ib-capabilities__row-source" data-testid="tool-row-source"
-                  >{toolRowSource(tool, sourceNames)}</span
-                >
-                <span class="ib-capabilities__row-summary" data-testid="tool-row-summary"
-                  >{toolSummary(tool)}</span
-                >
-              </span>
-            {/snippet}
-          </SelectableRow>
-        {/snippet}
-        {#snippet listEmpty()}
-          <EmptyState
-            kind="filtered"
-            size="compact"
-            headingLevel={3}
-            title={copy.tool.filtered.title}
-            description={copy.tool.filtered.description}
-            clearFiltersLabel={copy.tool.filtered.clear}
-            onClearFilters={() => (filter = '')}
-          />
-        {/snippet}
-        {#snippet detail(tool)}
-          <ToolDetail {tool} />
-        {/snippet}
-        {#snippet empty()}
-          {#if missing}
-            <ToolPageState kind="not-found" />
-          {:else}
+                  <!-- A muted word, never a colour of its own: Dangerous is not red (row 31g). -->
+                  <span class="ib-capabilities__row-risk" data-testid="tool-row-risk"
+                    >{riskLabel(tierOf(tool))}</span
+                  >
+                  <!-- A tool that cannot run now says so on the first line, in the same muted word. -->
+                  {#if tool.lost !== undefined}
+                    <span class="ib-capabilities__row-risk" data-testid="tool-row-paused"
+                      >{copy.tool.lost.paused}</span
+                    >
+                  {/if}
+                </span>
+              {/snippet}
+              {#snippet description()}
+                <span class="ib-capabilities__row-line">
+                  <span class="ib-capabilities__row-source" data-testid="tool-row-source"
+                    >{toolRowSource(tool, sourceNames)}</span
+                  >
+                  <span class="ib-capabilities__row-summary" data-testid="tool-row-summary"
+                    >{toolSummary(tool)}</span
+                  >
+                </span>
+              {/snippet}
+            </SelectableRow>
+          {/snippet}
+          {#snippet listEmpty()}
             <EmptyState
-              kind="first-use"
-              title={copy.emptyDetailTitle}
-              description={copy.emptyDetailDescription}
+              kind="filtered"
+              size="compact"
+              headingLevel={3}
+              title={copy.tool.filtered.title}
+              description={copy.tool.filtered.description}
+              clearFiltersLabel={copy.tool.filtered.clear}
+              onClearFilters={() => (filter = '')}
             />
-          {/if}
-        {/snippet}
-      </ListDetail>
+          {/snippet}
+          {#snippet detail(tool)}
+            <ToolDetail {tool} />
+          {/snippet}
+          {#snippet empty()}
+            {#if missing}
+              <ToolPageState kind="not-found" />
+            {:else}
+              <EmptyState
+                kind="first-use"
+                title={copy.emptyDetailTitle}
+                description={copy.emptyDetailDescription}
+              />
+            {/if}
+          {/snippet}
+        </ListDetail>
+      {/if}
     </div>
   {/if}
 </div>

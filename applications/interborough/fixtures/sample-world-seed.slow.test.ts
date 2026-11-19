@@ -1020,13 +1020,14 @@ describe('the sample world, part B', () => {
     const { sources } = (await response.json()) as {
       sources: Array<{
         id: string;
+        name?: string | null;
         state: string;
         tools: Array<{ tool: string; enabled: boolean; tier: string }>;
       }>;
     };
     expect(sources).toHaveLength(1);
     const [github] = sources;
-    expect(github).toMatchObject({ id: GITHUB_SOURCE_ID, state: 'loaded' });
+    expect(github).toMatchObject({ id: GITHUB_SOURCE_ID, name: 'GitHub', state: 'loaded' });
     expect(github?.tools.map(({ tool, enabled }) => [tool, enabled])).toEqual([
       ['list_issues', true],
       ['create_issue', true],
