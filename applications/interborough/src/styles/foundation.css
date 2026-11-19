@@ -328,13 +328,16 @@
  * the Button's `line-height: 1` the 13px box cut the descender of the "g" in "Search everything"
  * (COR-2438). It takes the trail's own 20px line (Cinder Breadcrumbs' `1.25rem`), so the title's
  * words and the search field's words are line boxes of one height, centred on one line, and round
- * the same way. */
+ * the same way. The negative block margin hands 4px of that line back, as Cinder Button's own label
+ * does, so the field keeps a medium Button's 32px and stays as tall as the icon buttons and the
+ * breadcrumb select beside it (the 20px line alone made it 34px). */
 .weft-shell-search-trigger__label {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   line-height: 1.25rem;
+  margin-block: -0.125rem;
 }
 
 .weft-shell-search-trigger__kbd {

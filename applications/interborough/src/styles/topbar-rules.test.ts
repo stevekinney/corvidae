@@ -22,6 +22,9 @@ describe('the top bar’s search field', () => {
     const label = ruleOf(css, '.weft-shell-search-trigger__label');
     expect(label).toContain('overflow: hidden;');
     expect(label).toContain('line-height: 1.25rem;');
+    // The 20px line alone made the field 34px beside 32px icon buttons and select; the margin hands
+    // 4px back so it keeps a medium Button's height.
+    expect(label).toContain('margin-block: -0.125rem;');
     const breadcrumbs = await read(
       '../../../../components/cinder/src/components/breadcrumbs/breadcrumbs.css',
     );

@@ -35,6 +35,10 @@
   }
 
   .cinder-breadcrumbs__item {
+    /* The foundation gives every list item a bottom margin for running text (`:where(li)`); a
+       crumb kept it, so the trail was 4px taller than its words and the crumbs sat 2px above the
+       centre of any bar that centres the trail (COR-2438). */
+    margin: 0;
     display: inline-flex;
     align-items: center;
     gap: var(--cinder-space-2);
