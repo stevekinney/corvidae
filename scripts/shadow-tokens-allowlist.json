@@ -1,4 +1,5 @@
 {
+  "components/cinder/src/components/color-picker/color-picker.css": 1,
   "components/cinder/src/components/command-palette/command-palette.css": 1,
   "components/cinder/src/components/data-grid/data-grid.css": 3,
   "components/cinder/src/components/permission-matrix/permission-matrix.css": 1,

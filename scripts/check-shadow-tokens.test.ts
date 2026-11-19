@@ -64,6 +64,38 @@ describe('shadow tokens', () => {
     expect(findBrightShadows(`first line\n${source}`)).toHaveLength(1);
   });
 
+  test.each([
+    ['rgba with commas', 'rgba(255, 255, 255, 0.4)'],
+    ['rgb with spaces and a leading-dot alpha', 'rgb(255 255 255 / .5)'],
+    ['rgb without alpha', 'rgb(255,255,255)'],
+    ['rgb percentages', 'rgb(100% 100% 100% / 0.3)'],
+    ['8-digit hex', '#ffffff80'],
+    ['4-digit hex', '#fff8'],
+    ['uppercase 8-digit hex', '#FFFFFFCC'],
+    ['hsl white', 'hsl(0 0% 100% / 0.4)'],
+    ['hsla white with commas', 'hsla(0, 0%, 100%, 0.4)'],
+    ['oklch white', 'oklch(100% 0 0 / 0.4)'],
+    ['oklch white as a fraction', 'oklch(1 0 0 / 0.4)'],
+  ])('reports white written as %s', (_name, color) => {
+    expect(findBrightShadows(`a { box-shadow: 0 0 0 2px ${color}; }`)).toHaveLength(1);
+    expect(findBrightShadows(`:root { --thumb-shadow-dark: ${color}; }`)).toHaveLength(1);
+  });
+
+  test('accepts black, near-black and mid colours written in the same forms', () => {
+    for (const color of [
+      'rgba(0, 0, 0, 0.5)',
+      'rgb(255 0 0 / .5)',
+      'rgb(25 255 255)',
+      '#00000080',
+      '#fffabc',
+      'hsl(0 0% 10% / 0.4)',
+      'oklch(10% 0 0 / 0.4)',
+      'oklch(0.1 0 0)',
+    ]) {
+      expect(findBrightShadows(`a { box-shadow: 0 0 0 2px ${color}; }`)).toEqual([]);
+    }
+  });
+
   test('accepts black shadows, shadow tokens, ring tokens, comments and unrelated white', () => {
     expect(
       findBrightShadows(

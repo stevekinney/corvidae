@@ -91,8 +91,18 @@ export function judgeShadowTokens(
 
 const DECLARATION =
   /(?<![\w-])(?:box-shadow|boxShadow|--(?!_cinder-focus-ring)[\w-]*shadow[\w-]*)\s*:\s*([^;}]*)|drop-shadow\(([^)]*(?:\([^)]*\)[^)]*)*)\)/g;
-const LIGHT_INK =
-  /--cinder-text-|--cinder-(?:polarity-)?ink\b|currentColor|(?<![\w-])white(?![\w-])|#fff(?:fff)?(?![0-9a-f])/i;
+/** Every spelling of white: the keyword, hex with or without alpha, rgb, hsl and OKLCH. */
+const WHITE_FORMS = [
+  '(?<![\\w-])white(?![\\w-])',
+  '#fff(?:[0-9a-f]|fff(?:[0-9a-f]{2})?)?(?![0-9a-f])',
+  'rgba?\\(\\s*(?:255|100%)[\\s,]+(?:255|100%)[\\s,]+(?:255|100%)(?![\\d.])',
+  'hsla?\\(\\s*[^,)\\s]+[\\s,]+[^,)\\s]+[\\s,]+100(?:\\.0*)?%',
+  'oklch\\(\\s*(?:100(?:\\.0*)?%|1(?:\\.0*)?(?![\\d.]))',
+];
+const LIGHT_INK = new RegExp(
+  `--cinder-text-|--cinder-(?:polarity-)?ink\\b|currentColor|${WHITE_FORMS.join('|')}`,
+  'i',
+);
 
 /** Every shadow in `source` drawn from text, ink or white, as `<line> - <value>`. */
 export function findBrightShadows(source: string): string[] {

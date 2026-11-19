@@ -58,7 +58,11 @@ export function findEmptyStates(original: string): string[] {
     const tag = readTag(source, match.index);
     if (name === 'EmptyState') {
       // An expression or a quoted value can name `size = 1` without passing the prop.
-      let attributes = tag.slice(match[0].length).replace(/"[^"]*"|'[^']*'/g, '""');
+      // The shorthand `{layout}` passes the prop too, so it becomes `layout=` before braces go.
+      let attributes = tag
+        .slice(match[0].length)
+        .replace(/"[^"]*"|'[^']*'/g, '""')
+        .replace(/(\s)\{\s*(layout|size|align)\s*\}/g, '$1$2=');
       for (let depth = 0; depth < 4; depth += 1) attributes = attributes.replace(/\{[^{}]*\}/g, '');
       const variant = VARIANT_PROP.exec(attributes);
       if (variant !== null) {

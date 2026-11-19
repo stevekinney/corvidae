@@ -5,6 +5,8 @@ describe('empty state layout', () => {
   test.each([
     ['a layout prop', '<EmptyState title="x" layout="row" />'],
     ['a size prop', '<EmptyState\n  size="compact"\n  title="x"\n/>'],
+    ['a shorthand layout prop', '<EmptyState title="x" {layout} />'],
+    ['a shorthand size prop', '<EmptyState {size} title="x" />'],
     ['an align prop', '<EmptyState title="x" align="start" />'],
     ['a hand-rolled class', '<p class="ib-workflows__empty">Nothing</p>'],
     ['a hand-rolled class beside others', '<div class="card weft-x-empty">Nothing</div>'],
