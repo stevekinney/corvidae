@@ -24,27 +24,6 @@ function store() {
   return createExecutionStateStore({ stateDirectory: directory, hostId: 'delivery-model' });
 }
 
-type SeededFault =
-  | 'remove-generation-check'
-  | 'accept-wrong-candidate-head'
-  | 'accept-empty-test-run'
-  | 'repeat-completed-merge-after-tracker-failure';
-
-/**
- * Contract model for the four fault seeds. It is deliberately smaller than the production
- * delivery machinery: the result comes from the P04/P05 schedule contract, not implementation
- * control flow. The integration tests retain the real filesystem, provider, and process boundary.
- */
-function replaySeededDelivery(fault?: SeededFault) {
-  return {
-    staleCompletionRefused: fault !== 'remove-generation-check',
-    wrongCandidateRefused: fault !== 'accept-wrong-candidate-head',
-    emptyRunRefused: fault !== 'accept-empty-test-run',
-    mergeCalls: fault === 'repeat-completed-merge-after-tracker-failure' ? 2 : 1,
-    closeoutCalls: 2,
-  };
-}
-
 afterEach(() => {
   for (const directory of directories.splice(0))
     rmSync(directory, { recursive: true, force: true });
@@ -116,29 +95,3 @@ test('rejects wrong candidate identity and empty test success with contract-owne
     validateJUnitArtifacts({ root: [new TextEncoder().encode('<testsuite/>')] }, ['root']),
   ).toThrow('has an empty report');
 });
-
-test.each([
-  ['remove the generation check', 'remove-generation-check', 'staleCompletionRefused', false],
-  ['accept a wrong candidate head', 'accept-wrong-candidate-head', 'wrongCandidateRefused', false],
-  ['count an empty test run as success', 'accept-empty-test-run', 'emptyRunRefused', false],
-  [
-    'repeat a completed merge after tracker failure',
-    'repeat-completed-merge-after-tracker-failure',
-    'mergeCalls',
-    2,
-  ],
-] as const)(
-  'seeded fault: %s is killed by its contract assertion',
-  (_name, fault, field, mutated) => {
-    const baseline = replaySeededDelivery();
-    expect(baseline).toEqual({
-      staleCompletionRefused: true,
-      wrongCandidateRefused: true,
-      emptyRunRefused: true,
-      mergeCalls: 1,
-      closeoutCalls: 2,
-    });
-    expect(replaySeededDelivery(fault)[field]).toBe(mutated);
-    expect(replaySeededDelivery(fault)).not.toEqual(baseline);
-  },
-);
