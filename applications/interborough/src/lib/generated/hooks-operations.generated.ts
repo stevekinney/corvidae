@@ -5,6 +5,7 @@ import type {
   SharedActionTypeAttemptsCreate_605da491,
   SharedConfigurationKindPlugin_6e16570b,
   SharedConfigurationKindPlugin_dcec41c8,
+  SharedDryRunEffectsTarget_b07628bd,
   SharedIdKind_b45ae666,
   SharedIdKind_b653c012,
   SharedInputTypeWorkflowId_2b929ea1,
@@ -32,8 +33,9 @@ export type HooksOperationTypes = {
     readonly faults: 'Forbidden' | 'InvalidParams' | 'UnsupportedCapability';
   };
   'bureau.hooks.delete': {
-    readonly input: { readonly hookId: string };
-    readonly output: { readonly deleted: boolean; readonly hookId: string };
+    readonly input: { readonly dryRun?: boolean; readonly hookId: string };
+    readonly output:
+      SharedDryRunEffectsTarget_b07628bd | { readonly deleted: boolean; readonly hookId: string };
     readonly faults: 'NotFound' | 'UnsupportedCapability';
   };
   'bureau.hooks.deliveries': {

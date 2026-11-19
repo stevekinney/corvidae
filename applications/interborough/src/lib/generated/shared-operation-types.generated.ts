@@ -675,14 +675,48 @@ export type SharedDescriptionExamplesId_fe67aedf = {
   readonly outputModes?: ReadonlyArray<string>;
   readonly tags: ReadonlyArray<string>;
 };
+export type SharedDryRunEffectsTarget_b07628bd = {
+  readonly dryRun: true;
+  readonly effects: ReadonlyArray<{
+    readonly atLeast?: true;
+    readonly count: number;
+    readonly kind:
+      | 'runs-in-progress'
+      | 'running-instances'
+      | 'schedules'
+      | 'goals'
+      | 'open-chats'
+      | 'queued-runs'
+      | 'running-switches'
+      | 'tool-grants'
+      | 'delivery-records'
+      | 'deliveries-in-flight'
+      | 'memories';
+  }>;
+  readonly target: {
+    readonly id: string;
+    readonly kind:
+      | 'task'
+      | 'workflow-run'
+      | 'goal'
+      | 'context'
+      | 'context-grants'
+      | 'agent'
+      | 'hook'
+      | 'memory'
+      | 'workflow'
+      | 'schedule'
+      | 'memory-embedding-switch';
+  };
+};
+export type SharedDryRunExpectedHashId_50848f66 = {
+  readonly dryRun?: boolean;
+  readonly expectedHash: string;
+  readonly id: string;
+};
 export type SharedEnabledThresholdPercent_0fce5636 = {
   readonly enabled: boolean;
   readonly thresholdPercent?: number;
-};
-export type SharedExpectedHashId_6df57fe0 = { readonly expectedHash: string; readonly id: string };
-export type SharedExpectedRevisionSchedule_3fabe1d3 = {
-  readonly expectedRevision?: number;
-  readonly scheduleId: string;
 };
 export type SharedFailedAtReasonSuperseded_bfabdc72 = {
   readonly failedAt: string;

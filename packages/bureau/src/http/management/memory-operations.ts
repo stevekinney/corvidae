@@ -73,6 +73,7 @@ import {
   unaryTransports as transports,
   unknownKeyPolicy,
 } from './management-schemas.ts';
+import { dryRunField, dryRunResult, effect, effectAtLeast, orDryRun } from './dry-run.ts';
 import { holdsScope } from './tasks-operations.ts';
 
 /** What the memory operations read from the handler's `host`. */
@@ -697,7 +698,11 @@ export const memoryRememberOperation = defineOperation<
   },
 });
 
-const forgetInput = z.object({ agentId: agentIdentifier, id: recordIdentifier });
+const forgetInput = z.object({
+  agentId: agentIdentifier,
+  id: recordIdentifier,
+  dryRun: dryRunField,
+});
 const forgetOutput = z.object({
   id: z.string(),
   /**
@@ -709,21 +714,39 @@ const forgetOutput = z.object({
   receipt: memoryReceiptSchema,
 });
 
+const forgetAnswer = orDryRun(forgetOutput);
+
+/** The fault a source deletion of the memory `id` is answered with when memory refuses it. */
+function forgetRefusalOf(
+  id: string,
+  refusal: { readonly status: 'not-found' | 'denied' | 'rejected'; readonly reason?: string },
+): OperationFault {
+  if (refusal.status === 'rejected') {
+    return {
+      code: 'Unprocessable',
+      message: 'This memory is derived from others, so it cannot be forgotten on its own',
+      data: { reason: `memory-${refusal.reason ?? 'rejected'}` },
+    };
+  }
+  return resourceNotFound('memory', id);
+}
+
 export const memoryForgetOperation = defineOperation<
   typeof forgetInput,
-  typeof forgetOutput,
+  typeof forgetAnswer,
   BureauMemoryOperationHost
 >({
   name: 'bureau.memory.forget',
   authorize: authorizeWorkspaceOperation('bureau.memory.forget'),
   mcpExposable: false,
+  supportsDryRun: true,
   summary: 'Forget one memory',
   description:
-    'Deletes one memory of the agent `agentId` as a source deletion, and answers the deletion `receipt` as data with `deletion`, the status of the receipt row that removes the record. Once `deletion` is `completed` the record never appears in a list, a search, a read or a recall. `exempt` means a legal hold keeps it stored and listed, and the deletion resumes when the hold is released; `failed` means the step that removes it failed, and forgetting it again retries; `pending` means it is not settled. The receipt’s other targets settle as Bureau’s maintenance pass runs: the copy of recalled text persisted in a conversation is not scrubbed, so that target stays pending until its deadline and then fails. Another owner’s memory and a missing one are answered `NotFound`; a memory derived from others is `Unprocessable`. Requires `bureau.memory:write`; a caller without it is `Forbidden`.',
+    'Deletes one memory of the agent `agentId` as a source deletion, and answers the deletion `receipt` as data with `deletion`, the status of the receipt row that removes the record. Once `deletion` is `completed` the record never appears in a list, a search, a read or a recall. `exempt` means a legal hold keeps it stored and listed, and the deletion resumes when the hold is released; `failed` means the step that removes it failed, and forgetting it again retries; `pending` means it is not settled. The receipt’s other targets settle as Bureau’s maintenance pass runs: the copy of recalled text persisted in a conversation is not scrubbed, so that target stays pending until its deadline and then fails. Another owner’s memory and a missing one are answered `NotFound`; a memory derived from others is `Unprocessable`. Requires `bureau.memory:write`; a caller without it is `Forbidden`. With `dryRun: true` nothing is deleted and no memory event is recorded, not even the denial of a refused call: the answer is `{ dryRun: true, target, effects }`, whose `memories` effect counts the record the deletion starts with, as a floor (`atLeast`): the summaries derived from it are removed with it and are not counted, and a legal hold on it keeps it stored; a memory that is missing, another owner’s or derived from others answers the fault the real call answers.',
   destructive: true,
   tags: ['Memory'],
   inputSchema: forgetInput,
-  outputSchema: forgetOutput,
+  outputSchema: forgetAnswer,
   producibleFaults: [
     'InvalidParams',
     'Forbidden',
@@ -738,19 +761,26 @@ export const memoryForgetOperation = defineOperation<
   invoke: async ({ input, host, principal }) => {
     const { memory, authority } = acting(host, principal, ACCESS.forget);
     if (authority === undefined) throw resourceNotFound('memory', input.id);
-    const result = await memory.forget(authority, {
-      mode: 'source-deletion',
-      locator: { id: input.id, collection: input.agentId },
-    });
-    if (result.status === 'not-found' || result.status === 'denied') {
-      throw resourceNotFound('memory', input.id);
+    const locator = { id: input.id, collection: input.agentId };
+    if (input.dryRun === true) {
+      // The same decision the deletion makes, read without claiming, deleting or recording.
+      const preview = await memory.previewSourceDeletion(authority, locator);
+      if (preview.outcome === 'refused') throw forgetRefusalOf(input.id, preview);
+      return dryRunResult({ kind: 'memory', id: input.id }, [
+        // A floor: the summaries derived from the record go with it, and the preview does not list them.
+        effectAtLeast('memories', preview.recordIds.length),
+      ]);
     }
-    if (result.status === 'rejected') {
-      throw {
-        code: 'Unprocessable',
-        message: 'This memory is derived from others, so it cannot be forgotten on its own',
-        data: { reason: `memory-${result.reason ?? 'rejected'}` },
-      } satisfies OperationFault;
+    const result = await memory.forget(authority, { mode: 'source-deletion', locator });
+    if (
+      result.status === 'not-found' ||
+      result.status === 'denied' ||
+      result.status === 'rejected'
+    ) {
+      throw forgetRefusalOf(input.id, {
+        status: result.status,
+        ...(result.reason === undefined ? {} : { reason: result.reason }),
+      });
     }
     if (result.receipt === undefined || result.deletion === undefined) {
       throw new Error('Governed memory answered a source deletion with no receipt.');
@@ -1342,35 +1372,43 @@ export const memoryEmbeddingOperation = defineOperation<
   },
 });
 
-const embeddingCancelInput = z.object({});
+const embeddingCancelInput = z.object({ dryRun: dryRunField });
 const embeddingCancelOutput = z.object({
   /** Whether this call cancelled a running switch. */
   cancelled: z.boolean(),
 });
+const embeddingCancelAnswer = orDryRun(embeddingCancelOutput);
 
 /** `bureau.memory.embedding.cancel`: cancels the running switch to another embedder. */
 export const memoryEmbeddingCancelOperation = defineOperation<
   typeof embeddingCancelInput,
-  typeof embeddingCancelOutput,
+  typeof embeddingCancelAnswer,
   BureauMemoryOperationHost
 >({
   name: 'bureau.memory.embedding.cancel',
   authorize: authorizeWorkspaceOperation('bureau.memory.embedding.cancel'),
   mcpExposable: false,
+  supportsDryRun: true,
   summary: 'Cancel the running switch to another embedder',
   description:
-    'Cancels the running switch to another embedder and deletes the profile it was filling; memory keeps the embedding it had, which the switch never touched. `cancelled` is `true` when this call cancelled a running switch, and `false` when none was running, when it had failed or been cancelled already, or when it completed (or another call cancelled it) first; cancelling is not an error then. The `memory.embedder` setting still names the cancelled embedder until the next maintenance pass sets it back to the active one. Requires `bureau.settings:write`; a caller without it is `Forbidden`, whatever the Bureau holds.',
+    'Cancels the running switch to another embedder and deletes the profile it was filling; memory keeps the embedding it had, which the switch never touched. `cancelled` is `true` when this call cancelled a running switch, and `false` when none was running, when it had failed or been cancelled already, or when it completed (or another call cancelled it) first; cancelling is not an error then. The `memory.embedder` setting still names the cancelled embedder until the next maintenance pass sets it back to the active one. Requires `bureau.settings:write`; a caller without it is `Forbidden`, whatever the Bureau holds. The operation has no target to name: it acts on the one switch the Bureau may be running. With `dryRun: true` nothing is cancelled: the answer is `{ dryRun: true, target, effects }`, whose target is the embedder the running switch fills (`none` when no switch runs) and whose `running-switches` effect is 1 while a switch runs and 0 otherwise.',
   destructive: true,
   tags: ['Memory'],
   inputSchema: embeddingCancelInput,
-  outputSchema: embeddingCancelOutput,
+  outputSchema: embeddingCancelAnswer,
   producibleFaults: ['Forbidden', 'UnsupportedCapability'],
   access: { kind: 'authenticated' },
   discoverable: true,
   transports,
   unknownKeyPolicy,
-  invoke: async ({ host, principal }) => {
+  invoke: async ({ input, host, principal }) => {
     const embedding = embeddingOf(host, principal, 'bureau.settings:write');
+    if (input.dryRun === true) {
+      const { job } = await embedding.status();
+      return dryRunResult({ kind: 'memory-embedding-switch', id: job?.target ?? 'none' }, [
+        effect('running-switches', job?.state === 'running' ? 1 : 0),
+      ]);
+    }
     return { cancelled: await embedding.cancel() };
   },
 });

@@ -6,8 +6,10 @@ import {
   ownPrivateResource,
   type ResolvedRecord,
   resourceOf,
+  statusForDenial,
 } from './governance-context';
 import type {
+  MemoryDeletionPreview,
   MemoryDeletionResult,
   MemoryForgetMode,
   MemoryForgetRequest,
@@ -265,6 +267,36 @@ export async function deleteLocated(
     receipt,
     deletion: outcome,
   };
+}
+
+/**
+ * What a source deletion would do to the record `locator` names, read without doing it: the access
+ * decision {@link deleteLocated} would make and the lineage check it would make, and nothing it
+ * would write. It records no event, not even the `memory.access.denied` a refused deletion
+ * records, and claims nothing, so a caller can ask before it deletes.
+ */
+export async function previewSourceDeletion(
+  context: GovernanceContext,
+  authority: MemoryAuthority,
+  locator: MemoryRecordLocator,
+): Promise<MemoryDeletionPreview> {
+  const resolved = await context.resolve(authority, locator);
+  const decision = decideMemoryAccess(
+    authority,
+    'delete',
+    resolved === undefined ? ownPrivateResource(authority) : resourceOf(resolved),
+  );
+  if (!decision.allowed) {
+    const status = statusForDenial(decision.reason);
+    if (status === 'denied' || status === 'not-found') return { outcome: 'refused', status };
+    return { outcome: 'refused', status: 'rejected', reason: decision.reason };
+  }
+  if (resolved === undefined) return { outcome: 'refused', status: 'not-found' };
+  // A derived record is a projection: only a source can be deleted as one.
+  if (resolved.read.governance.lineage !== undefined) {
+    return { outcome: 'refused', status: 'rejected', reason: 'not-source-evidence' };
+  }
+  return { outcome: 'would-delete', recordIds: [locator.id] };
 }
 
 async function revokeExport(

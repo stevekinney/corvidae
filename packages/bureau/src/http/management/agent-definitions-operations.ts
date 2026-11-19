@@ -96,6 +96,8 @@ import {
   unaryTransports as transports,
   unknownKeyPolicy,
 } from './management-schemas.ts';
+import { dryRunField, dryRunResult, orDryRun } from './dry-run.ts';
+import type { BureauDryRunHost } from './dry-run-references.ts';
 
 /** One entry of the audit trail, as the operations write it. */
 export interface AgentDefinitionAuditEntry {
@@ -151,6 +153,7 @@ export type BureauAgentDefinitionsOperationHost = BureauOwnershipHost & {
       | 'duplicate'
       | 'try'
       | 'disable'
+      | 'canDisable'
       | 'enable'
     >;
     /** Whether the `a2a` allowlist of `createBureauHandler` names the code-defined agent `id`. */
@@ -816,64 +819,60 @@ export const agentDefinitionsUpdateOperation = defineOperation<
   },
 });
 
-const guardedInput = z.object({ id: agentIdentifier, expectedHash: hash });
+const deleteInput = z.object({ id: agentIdentifier, expectedHash: hash, dryRun: dryRunField });
+const deleteAnswer = orDryRun(writeResultSchema);
 
-function defineGuardedWrite(
+export const agentDefinitionsDeleteOperation = defineOperation<
+  typeof deleteInput,
+  typeof deleteAnswer,
+  BureauAgentDefinitionsOperationHost & BureauDryRunHost
+>({
   name: 'bureau.agents.definitions.delete',
-  summary: string,
-  description: string,
-  run: (
-    agents: BureauAgentDefinitionsOperationHost['agentDefinitions']['agents'],
-    id: string,
-    expectedHash: string,
-  ) => Promise<z.infer<typeof writeResultSchema>>,
-  auditType: AgentDefinitionAuditEntry['type'],
-) {
-  return defineOperation<
-    typeof guardedInput,
-    typeof writeResultSchema,
-    BureauAgentDefinitionsOperationHost
-  >({
-    name,
-    authorize: authorizeWorkspaceOperation(name),
-    mcpExposable: false,
-    summary,
-    description,
-    destructive: true,
-    tags: ['Agents'],
-    inputSchema: guardedInput,
-    outputSchema: writeResultSchema,
-    producibleFaults: [
-      'InvalidParams',
-      'NotFound',
-      'StaleRevision',
-      'Unprocessable',
-      'UnsupportedCapability',
-    ],
-    access: { kind: 'authenticated' },
-    discoverable: true,
-    transports,
-    unknownKeyPolicy,
-    invoke: async ({ input, host, principal }) => {
-      const definitions = requireWritableAgent(host, principal, input.id);
-      try {
-        const result = await run(definitions.agents, input.id, input.expectedHash);
-        await audit(host, principal, auditType, result, input.expectedHash);
-        return result;
-      } catch (error) {
-        return faultOf(error, input.id, input.expectedHash);
+  authorize: authorizeWorkspaceOperation('bureau.agents.definitions.delete'),
+  mcpExposable: false,
+  supportsDryRun: true,
+  summary: 'Delete an agent definition',
+  description:
+    'Deletes the agent’s file, if it still hashes to `expectedHash`, which removes the agent. A run keeps the definition it started on: the snapshots of runs that are still retained stay, and `bureau.agents.definitions.revisions` still lists them. A run waiting for an answer can still be resumed after the delete. Deleting a code-defined agent’s key is answered `NotFound` before any file is read, whether or not a same-named file exists. Requires `bureau.agents:write` unless the caller owns the deployment’s agents. With `dryRun: true` nothing is deleted and no audit entry is written: the answer is `{ dryRun: true, target, effects }`, whose `schedules`, `goals` and `open-chats` effects count the schedules, unfinished goals and unarchived chats that name the agent, and an agent that is missing, a code-defined agent’s key or a file at another hash than `expectedHash` answers the fault the real call answers.',
+  destructive: true,
+  tags: ['Agents'],
+  inputSchema: deleteInput,
+  outputSchema: deleteAnswer,
+  producibleFaults: [
+    'InvalidParams',
+    'NotFound',
+    'StaleRevision',
+    'Unprocessable',
+    'UnsupportedCapability',
+  ],
+  access: { kind: 'authenticated' },
+  discoverable: true,
+  transports,
+  unknownKeyPolicy,
+  invoke: async ({ input, host, principal }) => {
+    const definitions = requireWritableAgent(host, principal, input.id);
+    try {
+      if (input.dryRun === true) {
+        // The same checks as the delete, with nothing removed.
+        await definitions.agents.delete(input.id, {
+          expectedHash: input.expectedHash,
+          dryRun: true,
+        });
+        return dryRunResult(
+          { kind: 'agent', id: input.id },
+          await host.dryRun.agentEffects(input.id),
+        );
       }
-    },
-  });
-}
-
-export const agentDefinitionsDeleteOperation = defineGuardedWrite(
-  'bureau.agents.definitions.delete',
-  'Delete an agent definition',
-  'Deletes the agent’s file, if it still hashes to `expectedHash`, which removes the agent. A run keeps the definition it started on: the snapshots of runs that are still retained stay, and `bureau.agents.definitions.revisions` still lists them. A run waiting for an answer can still be resumed after the delete. Deleting a code-defined agent’s key is answered `NotFound` before any file is read, whether or not a same-named file exists. Requires `bureau.agents:write` unless the caller owns the deployment’s agents.',
-  (agents, id, expectedHash) => agents.delete(id, { expectedHash }),
-  'agent.deleted',
-);
+      const result = await definitions.agents.delete(input.id, {
+        expectedHash: input.expectedHash,
+      });
+      await audit(host, principal, 'agent.deleted', result, input.expectedHash);
+      return result;
+    } catch (error) {
+      return faultOf(error, input.id, input.expectedHash);
+    }
+  },
+});
 
 const duplicateInput = z.object({
   id: agentIdentifier.describe('The `plugin:name` identifier of the plugin’s agent to copy.'),

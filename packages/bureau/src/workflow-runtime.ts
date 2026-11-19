@@ -546,9 +546,17 @@ export interface BureauWorkflows {
     id: string,
     options: { readonly expectedHash: string } & WorkflowWriteContext,
   ) => Promise<WorkflowFileWriteResult>;
+  /**
+   * Delete the workflow's file, if it still hashes to `expectedHash`. With `dryRun` it makes the
+   * checks the delete makes and refuses as it refuses, then removes nothing and writes no audit
+   * entry, event or schedule change.
+   */
   readonly delete: (
     id: string,
-    options: { readonly expectedHash: string } & WorkflowWriteContext,
+    options: {
+      readonly expectedHash: string;
+      readonly dryRun?: boolean | undefined;
+    } & WorkflowWriteContext,
   ) => Promise<WorkflowFileWriteResult>;
   /**
    * Start the failed listener of workflow `id`'s contributed trigger at once, with its backoff
@@ -2805,7 +2813,18 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
       );
     },
     delete: (id, guard) =>
-      write('workflow.deleted', guard, undefined, () => catalog.delete(id, guard), undefined, id),
+      // A dry run leaves the write pipeline out altogether: it records no audit entry, claims no
+      // hook origin and applies nothing.
+      guard.dryRun === true
+        ? catalog.delete(id, guard)
+        : write(
+            'workflow.deleted',
+            guard,
+            undefined,
+            () => catalog.delete(id, guard),
+            undefined,
+            id,
+          ),
 
     async revisions(id, mayReadRun) {
       if (mayReadRun !== undefined) {

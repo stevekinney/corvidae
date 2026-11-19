@@ -162,6 +162,38 @@ describe.each(eras)('the Bureau MCP adapter ($era era)', ({ mode, version }) => 
     );
   });
 
+  it('takes `dryRun` on the cancel tool: the tool previews the cancel and the task keeps running (COR-2522)', async () => {
+    const opened = await open();
+    const run = await startRun(opened, OWNER.alice);
+    const alice = await connect(opened.handler, 'alice-key', mode);
+
+    const { tools } = await alice.listTools();
+    const tool = tools.find((candidate) => candidate.name === 'bureau.tasks.cancel');
+    expect(tool?.inputSchema).toMatchObject({ properties: { dryRun: { type: 'boolean' } } });
+    expect(tool?.inputSchema.required ?? []).not.toContain('dryRun');
+
+    const previewed = await alice.callTool({
+      name: 'bureau.tasks.cancel',
+      arguments: { taskId: run.id, dryRun: true },
+    });
+    expect(previewed.isError).toBeFalsy();
+    expect(previewed.structuredContent).toEqual({
+      dryRun: true,
+      target: { kind: 'task', id: run.id },
+      effects: [{ kind: 'runs-in-progress', count: 1 }],
+    });
+    expect(opened.bureau.tasks.detail(run.id)?.status).toBe('running');
+
+    // A dry run of a task the caller may not touch is the fault the real call answers.
+    const bob = await connect(opened.handler, 'bob-key', mode);
+    const hidden = await bob.callTool({
+      name: 'bureau.tasks.cancel',
+      arguments: { taskId: run.id, dryRun: true },
+    });
+    expect(hidden.isError).toBe(true);
+    expect(hidden.structuredContent).toMatchObject({ code: 'NotFound', retryable: false });
+  });
+
   it('inspects a task: liveness, children, and nothing of its content', async () => {
     const opened = await open();
     const run = await startRun(opened, OWNER.alice);

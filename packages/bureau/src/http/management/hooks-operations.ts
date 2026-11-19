@@ -69,6 +69,7 @@ import {
   unaryTransports as transports,
   unknownKeyPolicy,
 } from './management-schemas.ts';
+import { dryRunField, dryRunResult, effect, effectAtLeast, orDryRun } from './dry-run.ts';
 
 /** What the hooks operations read from the handler's `host`. */
 export type BureauHooksOperationHost = BureauOwnershipHost & {
@@ -961,21 +962,28 @@ export const hooksReplaceSigningSecretOperation = defineOperation<
   },
 });
 
+const deleteInput = idInput.extend({ dryRun: dryRunField });
+const deleteAnswer = orDryRun(z.object({ hookId: z.string(), deleted: z.boolean() }));
+
+/** The most delivery records one read of a hook's deliveries returns. */
+const DELIVERY_PAGE = 200;
+
 export const hooksDeleteOperation = defineOperation<
-  typeof idInput,
-  z.ZodObject<{ hookId: z.ZodString; deleted: z.ZodBoolean }>,
+  typeof deleteInput,
+  typeof deleteAnswer,
   BureauHooksOperationHost
 >({
   name: 'bureau.hooks.delete',
   authorize: authorizeWorkspaceOperation('bureau.hooks.delete'),
   mcpExposable: false,
+  supportsDryRun: true,
   summary: 'Delete a hook',
   description:
-    'Deletes one of the caller’s hooks, its sealed signing secret and its delivery records; `bureau.hooks:write` deletes any owner’s, and anyone else is answered `NotFound`. A delivery in flight stops at its next attempt. Answers `{ hookId, deleted: true }`.',
+    'Deletes one of the caller’s hooks, its sealed signing secret and its delivery records; `bureau.hooks:write` deletes any owner’s, and anyone else is answered `NotFound`. A delivery in flight stops at its next attempt. Answers `{ hookId, deleted: true }`. With `dryRun: true` nothing is deleted, no event is published and no audit entry is written: the answer is `{ dryRun: true, target, effects }`, whose `delivery-records` effect counts the delivery records the delete would remove (a floor, marked `atLeast`, when the hook has more than 200) and whose `deliveries-in-flight` effect counts the deliveries that would stop at their next attempt, and a hook that is missing or not the caller’s is `NotFound` as well.',
   destructive: true,
   tags: ['Hooks'],
-  inputSchema: idInput,
-  outputSchema: z.object({ hookId: z.string(), deleted: z.boolean() }),
+  inputSchema: deleteInput,
+  outputSchema: deleteAnswer,
   producibleFaults: ['NotFound', 'UnsupportedCapability'],
   access: { kind: 'authenticated' },
   discoverable: true,
@@ -983,6 +991,18 @@ export const hooksDeleteOperation = defineOperation<
   unknownKeyPolicy,
   invoke: async ({ input, host, principal }) => {
     const { hooks } = await hookFor(host, principal, input.hookId, 'bureau.hooks:write');
+    if (input.dryRun === true) {
+      const deliveries = await hooks.deliveries(input.hookId, { limit: DELIVERY_PAGE });
+      const records =
+        deliveries.length >= DELIVERY_PAGE
+          ? effectAtLeast('delivery-records', deliveries.length)
+          : effect('delivery-records', deliveries.length);
+      const inFlight = deliveries.filter((delivery) => delivery.status === 'pending').length;
+      return dryRunResult({ kind: 'hook', id: input.hookId }, [
+        records,
+        effect('deliveries-in-flight', inFlight),
+      ]);
+    }
     const actor = actorOf(principal);
     const deleted = await hooks.delete(
       input.hookId,

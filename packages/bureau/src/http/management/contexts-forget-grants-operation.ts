@@ -20,9 +20,11 @@ import { z } from 'zod';
 import { BureauShuttingDownError } from '../../bureau-errors.ts';
 import type { BureauContexts } from '../../bureau-types/contexts.ts';
 import type { BureauInternals } from '../../bureau-types/facade.ts';
+import { withoutGrantsFor } from '../../session-grants.ts';
 import { type BureauOwnershipHost } from '../owner-predicate.ts';
 import { authorizeWorkspaceOperation } from '../workspace-authorization.ts';
 import { noSessions } from './contexts-operations.ts';
+import { dryRunField, dryRunResult, effect, orDryRun } from './dry-run.ts';
 import {
   resourceNotFound,
   unaryTransports as transports,
@@ -45,6 +47,7 @@ const contextsForgetGrantsInput = z.object({
     .describe(
       'The names of the tools whose "Allow for the rest of this chat" grant the context forgets, as a tool call carries them (`namespace__name`, `namespace:name`, or a bare name in the default namespace); each matches every version of its tool, and no other namespace’s tool of that name.',
     ),
+  dryRun: dryRunField,
 });
 
 const contextsForgetGrantsOutput = z.object({
@@ -52,21 +55,24 @@ const contextsForgetGrantsOutput = z.object({
   forgotten: z.array(z.string()),
 });
 
+const contextsForgetGrantsAnswer = orDryRun(contextsForgetGrantsOutput);
+
 export const contextsForgetGrantsOperation = defineOperation<
   typeof contextsForgetGrantsInput,
-  typeof contextsForgetGrantsOutput,
+  typeof contextsForgetGrantsAnswer,
   BureauContextsForgetGrantsOperationHost
 >({
   name: 'bureau.contexts.forgetgrants',
   authorize: authorizeWorkspaceOperation('bureau.contexts.forgetgrants'),
   mcpExposable: false,
+  supportsDryRun: true,
   summary: 'Forget a context’s remembered tool grants',
   description:
-    'Forgets the “Allow for the rest of this chat” grant of each tool named in `tools`, in one of the caller’s own contexts, so the next call of that tool asks for approval again; a caller holding `bureau.contexts:write` reaches any owner’s. A name is read as the name a provider calls the tool by, as a stored call carries it (`shop__issue-refund`) or as a result reports it (`shop:issue-refund`), and matches the grants of every version of that tool; a name no grant matches changes nothing, so a retry is safe. Nothing else of the context changes: no row of its conversation is removed, and its `updatedAt` does not move. Answers `{ forgotten }`, the grants forgotten as they were stored. Another owner’s context and a missing one answer `NotFound`. A Bureau that keeps no sessions is `UnsupportedCapability`, and one that is shutting down is `Unavailable` with reason `shutting-down`.',
+    'Forgets the “Allow for the rest of this chat” grant of each tool named in `tools`, in one of the caller’s own contexts, so the next call of that tool asks for approval again; a caller holding `bureau.contexts:write` reaches any owner’s. A name is read as the name a provider calls the tool by, as a stored call carries it (`shop__issue-refund`) or as a result reports it (`shop:issue-refund`), and matches the grants of every version of that tool; a name no grant matches changes nothing, so a retry is safe. Nothing else of the context changes: no row of its conversation is removed, and its `updatedAt` does not move. Answers `{ forgotten }`, the grants forgotten as they were stored. Another owner’s context and a missing one answer `NotFound`. A Bureau that keeps no sessions is `UnsupportedCapability`, and one that is shutting down is `Unavailable` with reason `shutting-down`. With `dryRun: true` nothing is forgotten: the answer is `{ dryRun: true, target, effects }`, whose `tool-grants` effect counts the grants the call would forget, and a context that is missing or not the caller’s answers `NotFound` as well.',
   destructive: false,
   tags: ['Contexts'],
   inputSchema: contextsForgetGrantsInput,
-  outputSchema: contextsForgetGrantsOutput,
+  outputSchema: contextsForgetGrantsAnswer,
   producibleFaults: ['InvalidParams', 'NotFound', 'UnsupportedCapability', 'Unavailable'],
   access: { kind: 'authenticated' },
   discoverable: true,
@@ -86,6 +92,13 @@ export const contextsForgetGrantsOperation = defineOperation<
       })
     ) {
       throw resourceNotFound('context', contextId);
+    }
+    if (input.dryRun === true) {
+      // The same match the call makes on the session it just loaded, with nothing written.
+      const { forgotten: wouldForget } = withoutGrantsFor(session.metadata, input.tools);
+      return dryRunResult({ kind: 'context-grants', id: contextId }, [
+        effect('tool-grants', wouldForget.length),
+      ]);
     }
     let forgotten;
     try {

@@ -30,7 +30,7 @@ import {
 import { authentication, type Handler, type RpcBody } from './management-fixtures.test-support.ts';
 import { createMemoryAssetStorage } from '../../assets/storage';
 import { workflowFileDirectory } from '../../sources/workflow-file-directory';
-import { MemoryStorage } from '@lostgradient/storage';
+import { MemoryStorage, type Storage } from '@lostgradient/storage';
 import type { WorkspaceMembershipOptions } from '../workspace-principal.ts';
 
 export interface Served {
@@ -67,6 +67,8 @@ export interface ServeOptions {
   readonly runtime?: BureauOptions<AgentDefinitions>['runtime'];
   /** `manual` leaves the engine's maintenance to the test, as a host that runs it on its own does. */
   readonly maintenance?: 'manual';
+  /** The store the Bureau writes to, for a test that reads what it holds. Defaults to a fresh one. */
+  readonly storage?: Storage;
 }
 
 export async function serveWorkflows(
@@ -87,7 +89,7 @@ export async function serveWorkflows(
     ...(options.plugins === undefined ? {} : { plugins: options.plugins }),
     ...(options.runtime === undefined ? {} : { runtime: options.runtime }),
     ...(options.maintenance === undefined ? {} : { maintenance: options.maintenance }),
-    storage: new MemoryStorage(),
+    storage: options.storage ?? new MemoryStorage(),
     durable: true,
     ...(options.onDiagnostic === undefined ? {} : { onDiagnostic: options.onDiagnostic }),
   });

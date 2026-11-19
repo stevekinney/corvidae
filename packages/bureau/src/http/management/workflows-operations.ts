@@ -71,6 +71,8 @@ import {
   unaryTransports as transports,
   unknownKeyPolicy,
 } from './management-schemas.ts';
+import { dryRunField, dryRunResult, effect, orDryRun } from './dry-run.ts';
+import type { BureauDryRunHost } from './dry-run-references.ts';
 
 /** What the workflow operations read from the handler's `host`. */
 export type BureauWorkflowsOperationHost = BureauOwnershipHost & {
@@ -625,7 +627,7 @@ export const workflowsUpdateOperation = defineOperation<
 const guardedInput = z.object({ id: workflowId, expectedHash: hash });
 
 function defineGuardedWrite(
-  name: 'bureau.workflows.pause' | 'bureau.workflows.resume' | 'bureau.workflows.delete',
+  name: 'bureau.workflows.pause' | 'bureau.workflows.resume',
   summary: string,
   description: string,
   run: (
@@ -694,12 +696,55 @@ export const workflowsResumeOperation = defineGuardedWrite(
   (workflows, id, guard) => workflows.resume(id, guard),
 );
 
-export const workflowsDeleteOperation = defineGuardedWrite(
-  'bureau.workflows.delete',
-  'Delete a workflow file',
-  'Deletes the workflow’s file, if it still hashes to `expectedHash`, and cancels its schedule before the call returns. Instances already running finish on the revision they began on, including after a restart; nothing new starts from the schedule. Requires `bureau.workflows:write` unless the caller owns the deployment’s workflows.',
-  (workflows, id, guard) => workflows.delete(id, guard),
-);
+const deleteInput = guardedInput.extend({ dryRun: dryRunField });
+const deleteAnswer = orDryRun(writeResultSchema);
+
+export const workflowsDeleteOperation = defineOperation<
+  typeof deleteInput,
+  typeof deleteAnswer,
+  BureauWorkflowsOperationHost & BureauDryRunHost
+>({
+  name: 'bureau.workflows.delete',
+  authorize: authorizeWorkspaceOperation('bureau.workflows.delete'),
+  mcpExposable: false,
+  supportsDryRun: true,
+  summary: 'Delete a workflow file',
+  description:
+    'Deletes the workflow’s file, if it still hashes to `expectedHash`, and cancels its schedule before the call returns. Instances already running finish on the revision they began on, including after a restart; nothing new starts from the schedule. Requires `bureau.workflows:write` unless the caller owns the deployment’s workflows. With `dryRun: true` nothing is deleted, no schedule is cancelled and no audit entry is written: the answer is `{ dryRun: true, target, effects }`, whose `schedules` effect counts the schedules the delete would cancel and whose `running-instances` effect counts the instances that would finish on their own revision, and a workflow that is missing, not the caller’s, or at another hash than `expectedHash` answers the fault the real call answers.',
+  destructive: true,
+  tags: ['Workflows'],
+  inputSchema: deleteInput,
+  outputSchema: deleteAnswer,
+  producibleFaults: [
+    'InvalidParams',
+    'NotFound',
+    'StaleRevision',
+    'Unprocessable',
+    'Unavailable',
+    'UnsupportedCapability',
+  ],
+  access: { kind: 'authenticated' },
+  discoverable: true,
+  transports,
+  unknownKeyPolicy,
+  invoke: async ({ input, host, principal }) => {
+    const workflows = workflowsFor(host, principal, 'bureau.workflows:write', 'workflow', input.id);
+    const guard = { expectedHash: input.expectedHash, actor: ownerOfPrincipal(principal) };
+    try {
+      if (input.dryRun === true) {
+        // The same checks as the delete, with nothing removed and nothing recorded.
+        await workflows.delete(input.id, { ...guard, dryRun: true });
+        return dryRunResult(
+          { kind: 'workflow', id: input.id },
+          await host.dryRun.workflowEffects(input.id),
+        );
+      }
+      return await workflows.delete(input.id, guard);
+    } catch (error) {
+      return faultOf(error, input.id, input.expectedHash);
+    }
+  },
+});
 
 const retryInput = z.object({ id: workflowId });
 
@@ -1170,21 +1215,30 @@ export const workflowsRunsGetOperation = defineOperation<
   },
 });
 
+const runsCancelInput = runsGetInput.extend({ dryRun: dryRunField });
+const runsCancelAnswer = orDryRun(
+  z.object({ runId: z.string(), status: z.literal('cancel-requested') }),
+);
+
+/** The statuses of an instance that has not finished. */
+const UNFINISHED_RUN_STATUSES: ReadonlySet<string> = new Set(['pending', 'running', 'suspended']);
+
 export const workflowsRunsCancelOperation = defineOperation<
-  typeof runsGetInput,
-  z.ZodObject<{ runId: z.ZodString; status: z.ZodLiteral<'cancel-requested'> }>,
+  typeof runsCancelInput,
+  typeof runsCancelAnswer,
   BureauWorkflowsOperationHost
 >({
   name: 'bureau.workflows.runs.cancel',
   authorize: authorizeWorkspaceOperation('bureau.workflows.runs.cancel'),
   mcpExposable: false,
+  supportsDryRun: true,
   summary: 'Cancel a workflow run',
   description:
-    'Requests cancellation of a Bureau workflow-file instance. Returns immediately with `cancel-requested`; read `bureau.workflows.runs.get` to observe the terminal status.',
+    'Requests cancellation of a Bureau workflow-file instance. Returns immediately with `cancel-requested`; read `bureau.workflows.runs.get` to observe the terminal status. With `dryRun: true` nothing is cancelled: the answer is `{ dryRun: true, target, effects }`, whose `running-instances` effect is 1 while the instance has not finished and 0 once it has, and a run the real call would not find, or may not touch, is `NotFound` as well.',
   destructive: true,
   tags: ['Workflows'],
-  inputSchema: runsGetInput,
-  outputSchema: z.object({ runId: z.string(), status: z.literal('cancel-requested') }),
+  inputSchema: runsCancelInput,
+  outputSchema: runsCancelAnswer,
   producibleFaults: ['InvalidParams', 'NotFound', 'UnsupportedCapability'],
   access: { kind: 'authenticated' },
   discoverable: true,
@@ -1210,6 +1264,13 @@ export const workflowsRunsCancelOperation = defineOperation<
       })
     ) {
       throw resourceNotFound('run', input.runId);
+    }
+    if (input.dryRun === true) {
+      const run = await workflows.getRun(input.runId);
+      if (run === undefined) throw resourceNotFound('run', input.runId);
+      return dryRunResult({ kind: 'workflow-run', id: input.runId }, [
+        effect('running-instances', UNFINISHED_RUN_STATUSES.has(run.status) ? 1 : 0),
+      ]);
     }
     try {
       return await workflows.cancel(input.runId);
