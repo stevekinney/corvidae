@@ -139,13 +139,13 @@ describe('weft.workflows.compare', () => {
     it('answers NotFound, naming only the fork, when the hook allows the fork but not its source', async () => {
       await using engine = await engineWithRun(3);
       const forkId = await forkOfSource(engine);
-      const asked: { workflowId: string; subject: string | undefined }[] = [];
+      const asked: { workflowId: string; method: string }[] = [];
 
       const response = await handleRequest(
         compareRequest(forkId),
         engine,
         optionsWithHook(({ principal, workflowId }) => {
-          asked.push({ workflowId, subject: principal.subject });
+          asked.push({ workflowId, method: principal.method });
           return workflowId === forkId;
         }),
       );
@@ -155,7 +155,7 @@ describe('weft.workflows.compare', () => {
       expect(body.error).toBe(`Workflow "${forkId}" not found`);
       expect(body.error).not.toContain('source');
       expect(asked.map((entry) => entry.workflowId)).toEqual([forkId, 'source']);
-      expect(asked[0]?.subject).toBe('unauthenticated-local');
+      expect(asked[0]?.method).toBe('unauthenticated-local');
     });
 
     it('answers the same NotFound when the hook denies the fork, and never asks about the source', async () => {
