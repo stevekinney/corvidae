@@ -1,9 +1,9 @@
 <script lang="ts">
   /**
    * An EmptyState row with its action beside an ErrorState row with its retry, at the full width
-   * and in a column narrower than 26rem, so the two rows can be seen and measured placing their
-   * action alike: at the end of the line when wide, and on a line of their own at the row's
-   * leading inset when narrow (COR-2489).
+   * and in a 22rem column, so the two rows can be seen and measured placing their action alike: at
+   * the end of the line when wide, and on a line of their own on the same trailing edge when narrow
+   * (COR-2489, COR-2394).
    */
   import { Button } from '../button/index.ts';
   import { ErrorState } from '../error-state/index.ts';

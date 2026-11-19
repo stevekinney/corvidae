@@ -1,9 +1,9 @@
 /// <reference lib="dom" />
 /**
- * COR-2489: an EmptyState row and an ErrorState row place their action alike. In a column
- * narrower than 26rem (GroupedListItem's container query) each drops its action onto a line of its
- * own at the row's leading inset, the same inline start; in a wide column each keeps it at the end
- * of the line. happy-dom performs no layout, so it is measured here.
+ * COR-2489: an EmptyState row and an ErrorState row place their action alike. In a narrow column
+ * (each row's own 28rem container query, COR-2394) each drops its action onto a line of its own,
+ * on the same trailing edge; in a wide column each keeps it at the end of the line. happy-dom
+ * performs no layout, so it is measured here.
  */
 
 import { expect, test } from '@playwright/test';
@@ -21,10 +21,8 @@ for (const width of [320, 1280] as const) {
       const rect = (selector: string) =>
         column.querySelector(selector)!.getBoundingClientRect().toJSON() as DOMRect;
       return {
-        empty: rect('[data-testid="empty-row"] .cinder-empty-state'),
         emptyTitle: rect('[data-testid="empty-row"] .cinder-empty-state-title'),
         emptyAction: rect('[data-testid="empty-row"] .cinder-empty-state-action > *'),
-        error: rect('[data-testid="error-row"] .cinder-error-state'),
         errorText: rect('[data-testid="error-row"] .cinder-error-state-text'),
         errorAction: rect('[data-testid="error-row"] .cinder-error-state-action > *'),
       };
@@ -32,11 +30,8 @@ for (const width of [320, 1280] as const) {
     // Each action is on a line of its own under the words.
     expect(geometry.emptyAction.top).toBeGreaterThanOrEqual(geometry.emptyTitle.bottom - 1);
     expect(geometry.errorAction.top).toBeGreaterThanOrEqual(geometry.errorText.bottom - 1);
-    // The same inline start, measured from each row's own edge.
-    expect(geometry.emptyAction.left - geometry.empty.left).toBeCloseTo(
-      geometry.errorAction.left - geometry.error.left,
-      0,
-    );
+    // One trailing edge for both, in one column (COR-2394, the owner's trailing-edge actions).
+    expect(geometry.emptyAction.right).toBeCloseTo(geometry.errorAction.right, 0);
 
     if (width === 1280) {
       // Wide, each action stays at the end of the words' line.
