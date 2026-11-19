@@ -389,7 +389,8 @@ async function billingChatEndedByARestart({ host, runtime }: SessionContext): Pr
   const store = host.bureau.internals.sessionStore;
   if (store === undefined) throw new Error('The host has no session store.');
   runtime.setTime(SAMPLE_WORLD_TIMES.billingAsked);
-  const conversation = new Conversation();
+  // The message is dated on the story's clock: the chat says it was asked Oct 29, 11:04 AM.
+  const conversation = new Conversation(undefined, { now: () => runtime.clock.nowISO() });
   conversation.appendUserMessage(chat.message);
   const session = createAgentSession({
     id: chat.threadId,
