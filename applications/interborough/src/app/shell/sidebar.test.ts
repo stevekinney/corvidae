@@ -5,7 +5,7 @@
  * the three forms it takes, the column, the 76px rail with its overlay, and the drawer.
  */
 import { HttpClient } from '@lostgradient/weft';
-import { fireEvent, render, waitFor } from '@testing-library/svelte';
+import { fireEvent, render, waitFor, within } from '@testing-library/svelte';
 import { afterEach, describe, expect, test } from 'bun:test';
 import { Window } from 'happy-dom';
 
@@ -267,11 +267,20 @@ describe('the sidebar', () => {
     expect(links).toEqual(ROW_LABELS);
 
     const groups = Array.from(navigation.querySelectorAll('.cinder-side-navigation-group'));
-    expect(
-      groups.map(
-        (group) => group.querySelector('.cinder-side-navigation-group__heading')?.textContent,
-      ),
-    ).toEqual(['Work', 'Build', 'System']);
+    // The sections are named for a screen reader and drawn with no header at all.
+    expect(navigation.querySelector('.cinder-side-navigation-group__heading')).toBeNull();
+    expect(navigation.querySelector('.cinder-side-navigation-group__trigger')).toBeNull();
+    for (const name of ['Work', 'Build', 'System']) {
+      expect(within(navigation).getByRole('list', { name })).toBeDefined();
+      expect(
+        Array.from(navigation.querySelectorAll('*')).some(
+          (element) =>
+            element.children.length === 0 &&
+            element.textContent?.trim() === name &&
+            !element.closest('a'),
+        ),
+      ).toBe(false);
+    }
     // Every section is a static label over its rows, not a control that folds.
     expect(navigation.querySelectorAll('.cinder-side-navigation-group__trigger').length).toBe(0);
     expect(groups.map((group) => Array.from(group.querySelectorAll('a')).map(labelOf))).toEqual([
