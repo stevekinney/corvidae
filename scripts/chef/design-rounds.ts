@@ -7,7 +7,7 @@
 // spends a round nor passes for one.
 //
 // Usage:
-//   bun scripts/chef/design-rounds.ts dispatch --branch <name> --capture <directory>
+//   bun scripts/chef/design-rounds.ts dispatch --branch <name> --capture <directory> --head <sha>
 //                                     [--state-directory <directory>] [--json]
 //   bun scripts/chef/design-rounds.ts status --branch <name> [--state-directory <directory>] [--json]
 //
@@ -15,8 +15,9 @@
 // round, whose `summary.json` must hold `coverage.complete: true`, which
 // `bun scripts/design-review-capture.ts --expect <expected-captures.json>` writes. The count lives in
 // `design-rounds.json` under the main checkout's `tmp/chef/execution-state`, never in a worktree, so
-// a worker's fresh checkout cannot reset it. Dispatching the same capture again is the same round
-// (a malformed verdict sent back to the same reviewer).
+// a worker's fresh checkout cannot reset it. A round is the branch head (`--head`): dispatching the
+// same head again, or recapturing it elsewhere, is the same round (a malformed verdict sent back to
+// the same reviewer), so only a new commit can spend the next round.
 //
 // Exit codes: 0 the round may be dispatched; 1 the round was refused (incomplete coverage or the
 // rounds are spent: NEEDS_JUDGMENT); 2 invalid usage.
@@ -36,7 +37,7 @@ export const ROUND_LIMIT = 2;
 const ROUND_NAMES = ['full round', 'narrow look'] as const;
 
 interface BranchRounds {
-  rounds: { capture: string }[];
+  rounds: { head: string; capture: string }[];
 }
 
 interface RoundsFile {
@@ -86,7 +87,7 @@ function roundsOf(file: RoundsFile, branch: string): BranchRounds {
 
 /** A capture's coverage verdict from its `summary.json`: complete, or the reason it is not. */
 function coverageProblem(capture: string): string | undefined {
-  let summary: { coverage?: { complete?: unknown; missing?: unknown } };
+  let summary: { coverage?: { complete?: unknown; missing?: unknown; expected?: unknown } };
   try {
     summary = JSON.parse(readFileSync(join(capture, 'summary.json'), 'utf8'));
   } catch {
@@ -95,6 +96,8 @@ function coverageProblem(capture: string): string | undefined {
   const coverage = summary.coverage;
   if (coverage === undefined || typeof coverage.complete !== 'boolean')
     return `${capture} was captured without --expect, so its coverage is unproven`;
+  if (!(typeof coverage.expected === 'number' && coverage.expected > 0))
+    return `${capture} expected no captures, so its coverage proves nothing`;
   if (coverage.complete) return undefined;
   const missing = Array.isArray(coverage.missing) ? coverage.missing.length : 0;
   return `the capture is missing ${missing} declared state(s); each is named in its summary.json under coverage.missing`;
@@ -142,13 +145,13 @@ export async function runRounds(
   dependencies: RoundsDependencies = {},
 ): Promise<{ code: number; output: string }> {
   const parsed = parseOptions(argv, {
-    values: ['branch', 'capture', 'state-directory'],
+    values: ['branch', 'capture', 'head', 'state-directory'],
     flags: ['json'],
   });
   const [command] = parsed.positionals;
   if (parsed.positionals.length !== 1 || (command !== 'dispatch' && command !== 'status'))
     throw new UsageError(
-      'Usage: design-rounds.ts dispatch --branch <name> --capture <directory> | status --branch <name> [--state-directory <directory>] [--json]',
+      'Usage: design-rounds.ts dispatch --branch <name> --capture <directory> --head <sha> | status --branch <name> [--state-directory <directory>] [--json]',
     );
   const branch = requireOption(parsed, 'branch');
   const json = parsed.flags.has('json');
@@ -167,6 +170,11 @@ export async function runRounds(
   }
 
   const capture = resolve(requireOption(parsed, 'capture'));
+  // A round is a head: recapturing the same commit into another directory is the same round, so the
+  // count cannot be reset by capturing again.
+  const head = requireOption(parsed, 'head').toLowerCase();
+  if (!/^[0-9a-f]{7,40}$/.test(head))
+    throw new UsageError('--head must be a commit SHA of 7 to 40 hexadecimal digits.');
   // Coverage first: a capture that missed a declared state spends nothing and passes for nothing.
   const problem = coverageProblem(capture);
   if (problem !== undefined)
@@ -179,13 +187,13 @@ export async function runRounds(
   return (dependencies.withLock ?? underLock)(stateDirectory, () => {
     const file = readRounds(path);
     const rounds = roundsOf(file, branch);
-    const seen = rounds.rounds.findIndex((round) => round.capture === capture);
+    const seen = rounds.rounds.findIndex((round) => round.head === head);
     if (seen >= 0)
       return report(
         json,
         0,
         { branch, round: seen + 1, counted: false, repeat: true },
-        `${branch}: ${ROUND_NAMES[seen]} (round ${seen + 1} of ${ROUND_LIMIT}) already counted for this capture.`,
+        `${branch}: ${ROUND_NAMES[seen]} (round ${seen + 1} of ${ROUND_LIMIT}) already counted for head ${head}.`,
       );
     if (rounds.rounds.length >= ROUND_LIMIT)
       return report(
@@ -194,7 +202,7 @@ export async function runRounds(
         { branch, status: 'NEEDS_JUDGMENT', used: rounds.rounds.length, limit: ROUND_LIMIT },
         `NEEDS_JUDGMENT: ${branch} has used its ${ROUND_LIMIT} design-review rounds (one full round and one narrow look). Stop dispatching reviewers; the coordinator decides which findings stand.`,
       );
-    file.branches[branch] = { rounds: [...rounds.rounds, { capture }] };
+    file.branches[branch] = { rounds: [...rounds.rounds, { head, capture }] };
     save(path, file);
     const round = rounds.rounds.length + 1;
     return report(

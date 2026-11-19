@@ -258,7 +258,7 @@ function runBrief(issue, run, context, classification) {
     [
       `Prepare chef delivery of ${issue}. Invoke no skills. Make no Linear or GitHub writes.`,
       `Run \`${briefCommand(issue, run, context, classification)}\` once and read its exit code and its JSON output. The coordinator supplied ${context ? 'the verified context file' : 'no design context file'} and ${classification ? `the ${classification} classification` : 'no exceptional classification'}; do not invent either from issue text.`,
-      'Return exitCode (the exit code of that command), briefPath (the JSON path field, or an empty string) error (the JSON error field or the first line of stderr, when there is one), needsResolvedRows (true only when the error text contains "rows.resolved.json") and paths (the repository paths the brief file lists as owned by the issue, or an empty array).',
+      'Return exitCode (the exit code of that command), briefPath (the JSON path field, or an empty string) error (the JSON error field or the first line of stderr, when there is one), needsResolvedRows (copy the JSON field of that name; false when it is absent) and paths (the repository paths the brief file lists as owned by the issue, or an empty array).',
     ].join('\n'),
     {
       label: `brief ${issue}`,
@@ -278,13 +278,18 @@ function runBrief(issue, run, context, classification) {
  * validates and writes the file, because the reviewer is read-only and a model's file is not
  * trusted. Returns a judgment when the critique or the file failed, otherwise null.
  */
-async function resolveRows(issue, steps) {
+async function resolveRows(issue, steps, context) {
   phase('critique');
   log(`${issue}: design rows need rows.resolved.json; running the pre-build critique`);
   const critiqued = await agent(
     [
       `Critique the design rows of ${issue} before anything is built, in critique mode of the design-review skill's findings reference. You are read-only; write no file.`,
-      `Run \`bun scripts/chef/design-critique.ts rows ${issue}\` and read its JSON: rowIds, literals (every literal pixel criterion in the issue) and the description. Read the boards under tmp/chef/briefs/${issue}/boards/ of the main checkout when they exist (the main checkout is the parent directory of the output of \`git rev-parse --path-format=absolute --git-common-dir\`).`,
+      `Run \`bun scripts/chef/design-critique.ts rows ${issue}\` and read its JSON: rowIds, literals (every literal pixel criterion in the issue) and the description. Read the boards under tmp/chef/briefs/${issue}/boards/ of the main checkout when they exist (the main checkout is the parent directory of the output of \`git rev-parse --path-format=absolute --git-common-dir\`).${
+        context
+          ? ` The coordinator's verified copy of the design is in ${context}, a JSON array of locator and content entries; read it with Read, since it is the only copy of the canvas you can see.`
+          : ' The coordinator supplied no design context file, so the issue text and any saved boards are all there is; say so in a deferral rather than guess a row.'
+      }`,
+      'This dispatch is a pre-build critique of rows, not a screenshot review: use Bash only for that command and for greps, and return the JSON the schema names instead of the findings formats.',
       'For every row id: declare each state the row covers as a route (a route pattern from applications/interborough/src/app/routes.ts) and the exact state name a capture specification writes (grep the `state:` strings in applications/interborough/tests/e2e), with a kind. First-run and empty states are first-class: declare them whenever the row shows them. Leave widths and themes out unless the row narrows them; the default is 1920, 1280, 768 and 375 in light and dark.',
       'For every literal criterion in `literals`: say whether the rows are consistent with it or conflict with it (`checked`). Record each conflict, and each pair of rows that contradict each other, as a decision or a deferral with a reason, in `conflicts`. Never leave one open; when you cannot choose, defer it with the reason "owner decision needed".',
       'Return rows (id, board, text, states, optional widths and themes), checked and conflicts.',
@@ -535,7 +540,7 @@ async function deliverOne(issue) {
   // An issue with design rows is briefed only after its critique: one critique, one re-brief. An
   // issue without design rows adds no call here.
   if (prepared.exitCode !== 0 && prepared.needsResolvedRows === true) {
-    const failure = await resolveRows(issue, steps);
+    const failure = await resolveRows(issue, steps, context);
     if (failure !== null) return failure;
     prepared = await runBrief(issue, run, context, classification);
     if (prepared === null) return judgment(issue, 'brief step failed after the critique', steps);

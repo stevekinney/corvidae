@@ -321,6 +321,8 @@ export function parseCaptureManifest(text: string): CaptureManifest | string {
   const file = parsed as Partial<CaptureManifest> | null;
   if (file?.version !== 1 || !Array.isArray(file.captures))
     return 'the capture manifest needs version 1 and a captures list';
+  // An empty plan is covered by anything, so it is no plan.
+  if (file.captures.length === 0) return 'the capture manifest expects no captures';
   return file as CaptureManifest;
 }
 
@@ -359,7 +361,16 @@ async function emitManifest(argv: readonly string[], streams: RowReportStreams):
     return 1;
   }
   const only = values.get('--only')?.split(',');
+  const unknown = (only ?? []).filter((id) => !resolved.rows.some((row) => row.id === id));
+  if (unknown.length > 0) {
+    streams.standardError(`--only names no row of ${resolved.issue}: ${unknown.join(', ')}\n`);
+    return 1;
+  }
   const manifest = captureManifest(resolved, only);
+  if (manifest.captures.length === 0) {
+    streams.standardError('the capture manifest would expect nothing\n');
+    return 1;
+  }
   const text = `${JSON.stringify(manifest, null, 2)}\n`;
   const out = values.get('--out');
   if (out === undefined) streams.standardOutput(text);

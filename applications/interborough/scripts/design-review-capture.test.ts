@@ -856,6 +856,17 @@ describe('captureDesignReview', () => {
       expect(calls.commands).toEqual([]);
     });
 
+    test('answers 2 for an empty plan, which every capture would cover', async () => {
+      const { calls, environment } = standIn({ manifestLines: 1 });
+      const code = await captureDesignReview(
+        ['--out', directory, '--expect', await expectFile([])],
+        environment,
+      );
+      expect(code).toBe(2);
+      expect(calls.err).toContain('expects no captures');
+      expect(calls.commands).toEqual([]);
+    });
+
     test('adds no coverage to a capture run without --expect', async () => {
       const { environment } = standIn({ manifestLines: 1 });
       const out = join(directory, 'capture');

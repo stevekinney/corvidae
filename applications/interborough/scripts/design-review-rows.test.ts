@@ -402,6 +402,9 @@ describe('captureManifest', () => {
     expect(parseCaptureManifest('{"version":2}')).toBe(
       'the capture manifest needs version 1 and a captures list',
     );
+    expect(parseCaptureManifest('{"version":1,"issue":"COR-9","captures":[]}')).toBe(
+      'the capture manifest expects no captures',
+    );
   });
 });
 
@@ -447,6 +450,24 @@ describe('--manifest', () => {
     const written = JSON.parse(await Bun.file(out).text()) as { captures: { width: number }[] };
     expect(written.captures[0]?.width).toBe(1920);
     expect(output).toContain('8 expected captures');
+  });
+
+  test('exits 1 for an --only that names no row, since an empty plan is covered by anything', async () => {
+    const path = join(directory, 'rows.resolved.json');
+    await writeFile(
+      path,
+      resolvedFile([
+        {
+          id: '11a',
+          board: 'Runs',
+          text: 'x',
+          states: [{ route: '/runs', state: 'ready', kind: 'ready' }],
+        },
+      ]),
+    );
+    expect(await checkRowFiles(['--manifest', path, '--only', '99z'], streams)).toBe(1);
+    expect(errors).toContain('--only names no row of COR-9: 99z');
+    expect(output).toBe('');
   });
 
   test('exits 1 for a row that declares no states', async () => {

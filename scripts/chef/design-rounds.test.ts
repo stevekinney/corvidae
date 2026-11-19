@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import { createHash } from 'node:crypto';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -21,7 +22,7 @@ afterEach(() => {
 /** A capture directory whose summary says whether its coverage was complete, or has none. */
 function capture(
   name: string,
-  coverage: { complete: boolean; missing?: unknown[] } | null,
+  coverage: { complete: boolean; expected: number; missing?: unknown[] } | null,
 ): string {
   const directory = join(sandbox, name);
   mkdirSync(directory, { recursive: true });
@@ -32,16 +33,31 @@ function capture(
   return directory;
 }
 
-const complete = { complete: true, missing: [] };
+const complete = { complete: true, expected: 3, missing: [] };
+
+/** A head per capture directory, so each distinct capture below is a distinct commit. */
+function headOf(directory: string): string {
+  return createHash('sha1').update(directory).digest('hex');
+}
 
 /** The host lock stands in as a plain call: the lock only matters between concurrent processes. */
 const dependencies = {
   withLock: <T>(_directory: string, operation: () => T) => Promise.resolve(operation()),
 };
 
-function dispatch(branch: string, directory: string) {
+function dispatch(branch: string, directory: string, head = headOf(directory)) {
   return runRounds(
-    ['dispatch', '--branch', branch, '--capture', directory, '--state-directory', stateDirectory],
+    [
+      'dispatch',
+      '--branch',
+      branch,
+      '--capture',
+      directory,
+      '--head',
+      head,
+      '--state-directory',
+      stateDirectory,
+    ],
     dependencies,
   );
 }
@@ -85,8 +101,31 @@ describe('design-rounds dispatch', () => {
   });
 
   // spawn-free: the host lock is stood in by a plain call, so no process starts
+  test('keys a round on the head, so recapturing a commit elsewhere cannot spend or reset rounds', async () => {
+    const head = 'abcdef0';
+    const first = await dispatch('chef/a', capture('one', complete), head);
+    expect(first.code).toBe(0);
+    const recaptured = await dispatch('chef/a', capture('again', complete), head);
+    expect(recaptured.code).toBe(0);
+    expect(recaptured.output).toContain(`already counted for head ${head}`);
+    expect(await codeOf('chef/a', capture('two', complete))).toBe(0);
+    expect(await codeOf('chef/a', capture('three', complete))).toBe(1);
+    // Recapturing the first head after the rounds are spent changes nothing.
+    const fourth = await dispatch('chef/a', capture('fourth', complete), head);
+    expect(fourth.output).toContain('already counted');
+  });
+
+  // spawn-free: the host lock is stood in by a plain call, so no process starts
+  test('refuses a capture that expected nothing: an empty plan proves nothing', async () => {
+    const empty = capture('empty', { complete: true, expected: 0, missing: [] });
+    const refused = await dispatch('chef/a', empty);
+    expect(refused.code).toBe(1);
+    expect(refused.output).toContain('expected no captures');
+  });
+
+  // spawn-free: the host lock is stood in by a plain call, so no process starts
   test('counts only a round whose capture manifest was complete: coverage before counting', async () => {
-    const incomplete = capture('partial', { complete: false, missing: [{}, {}] });
+    const incomplete = capture('partial', { complete: false, expected: 5, missing: [{}, {}] });
     for (let attempt = 0; attempt < 3; attempt += 1) {
       const refused = await dispatch('chef/a', incomplete);
       expect(refused.code).toBe(1);
@@ -126,6 +165,8 @@ describe('design-rounds dispatch', () => {
         'constructor',
         '--capture',
         capture('one', complete),
+        '--head',
+        'abcdef0',
         '--state-directory',
         stateDirectory,
         '--json',

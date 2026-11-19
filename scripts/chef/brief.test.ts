@@ -1423,8 +1423,13 @@ describe('design rows need rows.resolved.json', () => {
     const { argv, dependencies } = command(designDescription);
     const result = await run(argv, dependencies, runner);
     expect(result.code).toBe(1);
-    const parsed = JSON.parse(result.output) as { ok: boolean; error: string };
+    const parsed = JSON.parse(result.output) as {
+      ok: boolean;
+      error: string;
+      needsResolvedRows: boolean;
+    };
     expect(parsed.ok).toBe(false);
+    expect(parsed.needsResolvedRows).toBe(true);
     expect(parsed.error).toContain('design rows are not resolved');
     expect(parsed.error).toContain('rows.resolved.json');
     expect(existsSync(join(sandbox, 'COR-7.md'))).toBe(false);

@@ -543,6 +543,18 @@ describe('workflow scripts', () => {
       expect(delivery.result[0]?.status).toBe('READY_TO_LAND');
     });
 
+    test('hands the critique the coordinator’s verified design context, or says there is none', async () => {
+      const withContext = await runDelivery(
+        { verifiedContexts: { 'COR-7': '/main/tmp/chef/context.json' } },
+        { brief: needsRows },
+      );
+      const critique = withContext.calls.find((call) => call.label.startsWith('critique'));
+      expect(critique?.prompt).toContain('/main/tmp/chef/context.json');
+      const without = await runDelivery({}, { brief: needsRows });
+      const bare = without.calls.find((call) => call.label.startsWith('critique'));
+      expect(bare?.prompt).toContain('supplied no design context file');
+    });
+
     test('stops for judgment, building nothing, when the file was refused', async () => {
       const delivery = await runDelivery(
         {},

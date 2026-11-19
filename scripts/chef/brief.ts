@@ -1247,6 +1247,8 @@ export async function run(
       const structured = {
         ok: false,
         error,
+        // The workflow reads this field, not the error text, to decide to run the critique.
+        needsResolvedRows: unresolved !== undefined,
         ...(singleContract ?? contracts),
         ...(brief.scratch === undefined ? {} : { scratch: brief.scratch }),
       };
