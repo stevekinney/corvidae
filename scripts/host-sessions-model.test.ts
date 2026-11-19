@@ -13,6 +13,7 @@ import {
   foldSession,
   neverStarted,
   neverStartedLimitMilliseconds,
+  opusPlaces,
   runsWithoutAdmission,
   sessionPlaces,
   workerPlaces,
@@ -217,5 +218,36 @@ describe('every interleaving', () => {
         event.kind === kind ? state : applySessionEvent(state, event);
     expect(exploreReclaims(without('expire')).failures).not.toEqual([]);
     expect(exploreReclaims(without('release')).failures).not.toEqual([]);
+  });
+});
+
+describe('Opus places', () => {
+  const typed = (toolUseId: string, agentType: string, opus: boolean): SessionEvent => ({
+    ...admit(toolUseId),
+    agentType,
+    ...(opus ? { opus } : {}),
+  });
+  const startTyped = (agentId: string, agentType: string): SessionEvent => ({
+    ...start(agentId),
+    agentType,
+  });
+
+  test('an Opus agent that started second keeps its own place when the Sonnet agent stops first', () => {
+    const state = foldSession([
+      typed('t-opus', 'chef-reviewer', true),
+      typed('t-sonnet', 'chef-worker', false),
+      // Sonnet starts first, though its dispatch is the younger one.
+      startTyped('a-sonnet', 'chef-worker'),
+      startTyped('a-opus', 'chef-reviewer'),
+      stop('a-sonnet'),
+    ]);
+    expect(workerPlaces(state)).toBe(1);
+    expect(opusPlaces(state)).toBe(1);
+    expect(opusPlaces(applySessionEvent(state, stop('a-opus')))).toBe(0);
+  });
+
+  test('a pending Opus dispatch counts, and a dispatch with no model on record counts none', () => {
+    expect(opusPlaces(foldSession([typed('t-1', 'general-purpose', true)]))).toBe(1);
+    expect(opusPlaces(foldSession([admit('t-1')]))).toBe(0);
   });
 });

@@ -1,9 +1,16 @@
 #!/usr/bin/env bun
 /**
- * The host-wide cap on implementation workers and the coordinators that dispatch them (AGENTS.md
- * "Parallel runs", COR-2455), enforced by Claude Code hooks in `.claude/settings.json`.
+ * The host-wide cap on agents and the sessions that run them (AGENTS.md "Parallel runs", COR-2455),
+ * enforced by Claude Code hooks in `.claude/settings.json`.
  *
- * Each session that dispatches a place-taking agent ({@link placeTakingAgentTypes}) keeps a ledger
+ * Every `Agent` dispatch takes a place, whatever its type, and the host runs one Opus agent at a
+ * time ({@link opusAgentCap}), read from the dispatch's `model` or else its type's `model:`. A
+ * `SessionStart` registers the session, so a session counts (its coordinator's place) from its
+ * start or resume, and the refusal comes at the next dispatch. `PreToolUse` on `start_session`
+ * denies a session that holds a lease marker (`leases/<session id>.json`, written by
+ * `scripts/chef/linear.ts lease`).
+ *
+ * Each session that dispatches an agent keeps a ledger
  * in the Git common directory, which every worktree shares: the session's own process (the nearest
  * `claude` ancestor of the hook, by pid and start time), and its hook events, each appended as the
  * next numbered file by one exclusive link, so a ledger has one order. `scripts/host-sessions-model.ts`
@@ -29,7 +36,9 @@
  * `--directory=<path>` uses another places directory, for a check by hand.
  */
 
-import { link, mkdir, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
+import { readFileSync } from 'node:fs';
+import { access, link, mkdir, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
+import { homedir } from 'node:os';
 import { join } from 'node:path';
 
 import {
@@ -44,6 +53,7 @@ import {
   foldSession,
   neverStarted,
   neverStartedLimitMilliseconds,
+  opusPlaces,
   runsWithoutAdmission,
   sessionPlaces,
   workerPlaces,
@@ -78,11 +88,17 @@ export const admissionLockRetryMilliseconds = 100;
 /** Set to text in one dispatch's description or prompt to admit that dispatch past the cap. */
 export const capBypassVariable = 'CORVIDAE_AGENT_CAP_BYPASS';
 
-/** The agent types that take a place. Every other type, `chef-reviewer` and Explore among them, takes none. */
-export const placeTakingAgentTypes: ReadonlySet<string> = new Set(['chef-worker']);
+/** How many Opus agents the host runs at once, whatever the place cap leaves free. */
+export const opusAgentCap = 1;
+
+/** The tool that starts a child session; a leased coordinator may not call it. */
+export const startSessionToolName = 'mcp__ccd_session__start_session';
 
 /** The places directory's name in the Git common directory. */
 export const placesDirectoryName = 'corvidae-agent-places';
+
+/** The Opus model is the one the Opus cap limits; a model named by anything else is not counted. */
+const opusModel = /opus/i;
 
 type ProcessIdentity = { readonly pid: number; readonly pidStartedAt?: string };
 
@@ -92,12 +108,19 @@ export type SessionLedger = {
   readonly directory: string;
   /** The session's process; absent when its ledger has none recorded yet. */
   readonly holder?: OwnerRecord;
+  /**
+   * Whether a `SessionStart` registered the session. A registered session holds its coordinator
+   * place whether or not it has a worker. It is a file beside the holder, never an event, so a
+   * checkout that does not know it folds the same ledger unchanged.
+   */
+  readonly registered: boolean;
   readonly state: SessionState;
 };
 
-type Ticket = OwnerRecord & { readonly sessionId: string };
+type Ticket = OwnerRecord & { readonly sessionId: string; readonly opus?: boolean };
 
 const holderFileName = 'holder.json';
+const registeredFileName = 'registered.json';
 const eventsDirectoryName = 'events';
 const eventFile = /^\d{12}\.json$/;
 
@@ -109,8 +132,45 @@ function queueDirectory(directory: string): string {
   return join(directory, 'queue');
 }
 
+function safeSessionName(sessionId: string): string {
+  return sessionId.replaceAll(/[^\w-]/g, '_');
+}
+
 function ledgerDirectory(directory: string, sessionId: string): string {
-  return join(sessionsDirectory(directory), sessionId.replaceAll(/[^\w-]/g, '_'));
+  return join(sessionsDirectory(directory), safeSessionName(sessionId));
+}
+
+/** A coordinator's lease marker: `leases/<session id>.json` in the places directory. */
+export function leaseMarkerPath(directory: string, sessionId: string): string {
+  return join(directory, 'leases', `${safeSessionName(sessionId)}.json`);
+}
+
+export type LeaseMarker = {
+  readonly sessionId: string;
+  readonly project: string;
+  readonly run: string;
+  readonly leasedAt: string;
+};
+
+/** The lease marker a session holds, if any. */
+export async function readLeaseMarker(
+  directory: string,
+  sessionId: string,
+): Promise<LeaseMarker | undefined> {
+  return readJson<LeaseMarker>(leaseMarkerPath(directory, sessionId));
+}
+
+/** Writes the marker whole, in one rename, so a hook never reads half of it. */
+export async function writeLeaseMarker(directory: string, marker: LeaseMarker): Promise<void> {
+  const path = leaseMarkerPath(directory, marker.sessionId);
+  await mkdir(join(directory, 'leases'), { recursive: true });
+  const staged = `${path}.${crypto.randomUUID()}`;
+  await writeFile(staged, JSON.stringify(marker));
+  await rename(staged, path);
+}
+
+export async function removeLeaseMarker(directory: string, sessionId: string): Promise<void> {
+  await rm(leaseMarkerPath(directory, sessionId), { force: true });
 }
 
 async function readJson<T>(path: string): Promise<T | undefined> {
@@ -144,10 +204,15 @@ async function readLedger(path: string): Promise<SessionLedger | undefined> {
   const holder = await readJson<OwnerRecord & { sessionId?: string }>(join(path, holderFileName));
   const sessionId = holder?.sessionId ?? eventSessionId;
   if (holder === undefined && events.length === 0) return undefined;
+  const registered = await access(join(path, registeredFileName)).then(
+    () => true,
+    () => false,
+  );
   return {
     sessionId: sessionId ?? '',
     directory: path,
     ...(holder === undefined ? {} : { holder }),
+    registered,
     state: foldSession(events),
   };
 }
@@ -258,9 +323,19 @@ export function sessionAlive(ledger: SessionLedger, table: ProcessTable | undefi
   return ledger.holder === undefined || table === undefined || isHolderAlive(ledger.holder, table);
 }
 
+/** The places one session holds: its workers', and its coordinator's when it has any or is registered. */
+export function ledgerPlaces(ledger: SessionLedger): number {
+  return sessionPlaces(ledger.state, ledger.registered);
+}
+
 /** The places every live session holds. */
 export function hostPlaces(ledgers: readonly SessionLedger[]): number {
-  return ledgers.reduce((sum, ledger) => sum + sessionPlaces(ledger.state), 0);
+  return ledgers.reduce((sum, ledger) => sum + ledgerPlaces(ledger), 0);
+}
+
+/** The Opus agents every live session holds. */
+export function hostOpusAgents(ledgers: readonly SessionLedger[]): number {
+  return ledgers.reduce((sum, ledger) => sum + opusPlaces(ledger.state), 0);
 }
 
 /**
@@ -327,7 +402,7 @@ export function describeSession(
       : `pid ${ledger.holder.pid} in ${ledger.holder.cwd}`;
   const gone = sessionAlive(ledger, table) ? '' : ' (its process has exited: reclaimable)';
   const lines = [
-    `session ${ledger.sessionId.slice(0, 8)} (${process})${gone}: ${workers === 0 ? 'no place' : `${workers} worker place(s) and its coordinator's`}`,
+    `session ${ledger.sessionId.slice(0, 8)} (${process})${gone}: ${workers === 0 ? (ledger.registered ? "registered, its coordinator's place" : 'no place') : `${workers} worker place(s) and its coordinator's`}`,
   ];
   for (const dispatch of state.dispatches.values()) {
     const what = `worker ${dispatch.issue ?? 'without an issue'} "${dispatch.description}", dispatch ${dispatch.toolUseId}, admitted ${age(now - dispatch.admittedAt)} ago${dispatch.bypass ? ' past the cap' : ''}`;
@@ -364,11 +439,16 @@ export function describePlaces(
   now: number,
   table: ProcessTable | undefined,
 ): string[] {
-  const held = hostPlaces(ledgers.filter((ledger) => sessionAlive(ledger, table)));
+  const live = ledgers.filter((ledger) => sessionAlive(ledger, table));
+  const held = hostPlaces(live);
+  const opus = hostOpusAgents(live);
   return [
     `${held} of ${cap} host places held${held > cap ? ', over the cap' : ''}`,
+    ...(opus === 0
+      ? []
+      : [`${opus} of ${opusAgentCap} Opus agent(s) held: the host runs ${opusAgentCap} at a time`]),
     ...ledgers
-      .filter((ledger) => sessionPlaces(ledger.state) > 0)
+      .filter((ledger) => ledgerPlaces(ledger) > 0)
       .flatMap((ledger) => describeSession(ledger, now, table)),
   ];
 }
@@ -416,25 +496,38 @@ export async function describeWaiters(directory: string): Promise<string[]> {
  * first, where a waiter needs one place, or two when its session has no worker yet.
  */
 export function admissionPlan(
-  waiters: ReadonlyArray<{ readonly name: string; readonly sessionId: string }>,
+  waiters: ReadonlyArray<{
+    readonly name: string;
+    readonly sessionId: string;
+    readonly opus?: boolean;
+  }>,
   ledgers: readonly SessionLedger[],
   cap: number,
+  opusCap = opusAgentCap,
 ): Set<string> {
   const workers = new Map<string, number>();
+  const registered = new Set<string>();
   for (const ledger of ledgers) {
     workers.set(
       ledger.sessionId,
       (workers.get(ledger.sessionId) ?? 0) + workerPlaces(ledger.state),
     );
+    if (ledger.registered) registered.add(ledger.sessionId);
   }
   let free = cap - hostPlaces(ledgers);
+  let opusHeld = hostOpusAgents(ledgers);
   const admitted = new Set<string>();
   for (const waiter of waiters) {
     const held = workers.get(waiter.sessionId) ?? 0;
-    const need = held === 0 ? 2 : 1;
+    // A session that already holds a worker, or is registered, holds its coordinator's place.
+    const need = held === 0 && !registered.has(waiter.sessionId) ? 2 : 1;
     if (need > free) continue;
+    // An Opus waiter waits while an Opus agent is held, one admitted earlier in this plan
+    // included, and never holds back a later waiter that is not Opus.
+    if (waiter.opus === true && opusHeld >= opusCap) continue;
     admitted.add(waiter.name);
     free -= need;
+    if (waiter.opus === true) opusHeld += 1;
     workers.set(waiter.sessionId, held + 1);
   }
   return admitted;
@@ -447,6 +540,10 @@ export type PlaceRequest = {
   /** The dispatch's description. */
   readonly description: string;
   readonly issue?: string;
+  /** The dispatch's `subagent_type`, which an agent of that type takes the place of first. */
+  readonly agentType?: string;
+  /** Whether the dispatch runs on Opus, so that the host's Opus cap applies to it. */
+  readonly opus?: boolean;
   readonly cwd: string;
   /** The session's process, which holds the places. */
   readonly holder: ProcessIdentity;
@@ -463,6 +560,7 @@ export type AdmitOptions = {
   /** Told the holders once, when the dispatch starts waiting. */
   readonly report?: (lines: readonly string[]) => void;
   readonly cap?: number;
+  readonly opusCap?: number;
   readonly waitLimitMilliseconds?: number;
   readonly pollIntervalMilliseconds?: number;
   readonly neverStartedLimitMilliseconds?: number;
@@ -554,6 +652,10 @@ function admitEvent(request: PlaceRequest, at: number, bypass: boolean): Session
     ...(request.issue === undefined ? {} : { issue: request.issue }),
     dispatcher: request.dispatcher,
     ...(bypass ? { bypass } : {}),
+    ...(request.agentType === undefined || request.agentType === ''
+      ? {}
+      : { agentType: request.agentType }),
+    ...(request.opus === true ? { opus: true } : {}),
   };
 }
 
@@ -588,7 +690,11 @@ export async function admitWorker(input: AdmitOptions): Promise<Admission> {
     request.cwd,
     started,
   );
-  const ticket = await enqueue(queue, { ...waiter, sessionId: request.sessionId } as OwnerRecord);
+  const ticket = await enqueue(queue, {
+    ...waiter,
+    sessionId: request.sessionId,
+    ...(request.opus === true ? { opus: true } : {}),
+  } as OwnerRecord);
   let heldWhenWaiting: string[] | undefined;
   try {
     for (;;) {
@@ -604,9 +710,14 @@ export async function admitWorker(input: AdmitOptions): Promise<Admission> {
           options.neverStartedLimitMilliseconds,
         );
         const plan = admissionPlan(
-          waiters.map(({ name, ticket: entry }) => ({ name, sessionId: entry.sessionId })),
+          waiters.map(({ name, ticket: entry }) => ({
+            name,
+            sessionId: entry.sessionId,
+            ...(entry.opus === true ? { opus: true } : {}),
+          })),
           ledgers,
           cap,
+          options.opusCap,
         );
         if (plan.has(ticket)) {
           await recordHolder(directory, request.sessionId, holder);
@@ -669,6 +780,8 @@ export type HookInput = {
   readonly tool_use_id?: unknown;
   readonly tool_response?: unknown;
   readonly cwd?: unknown;
+  /** `SessionStart`: startup, resume, clear or compact. */
+  readonly source?: unknown;
 };
 
 export type HookOutput = {
@@ -691,7 +804,10 @@ export type HookContext = {
   /** Where the holders go when a dispatch starts waiting: standard error in the hook. */
   readonly report?: (lines: readonly string[]) => void;
   readonly cap?: number;
+  readonly opusCap?: number;
   readonly waitLimitMilliseconds?: number;
+  /** The `model:` an agent type's definition names, when a dispatch names no model. */
+  readonly readAgentModel?: (agentType: string) => string | undefined;
 };
 
 function text(value: unknown): string {
@@ -732,6 +848,11 @@ async function admitDispatch(
   const bypass =
     bypassText !== '' && (description.includes(bypassText) || prompt.includes(bypassText));
   const cap = context.cap ?? hostPlaceCap;
+  const agentType = text(field(toolInput, 'subagent_type'));
+  const model = text(field(toolInput, 'model')) || (context.readAgentModel?.(agentType) ?? '');
+  // With neither a model on the dispatch nor one in the type's definition, the agent inherits
+  // its dispatcher's, which is not known here: it is not counted as Opus.
+  const opus = opusModel.test(model);
   const admission = await admitWorker({
     directory: context.directory,
     request: {
@@ -740,6 +861,8 @@ async function admitDispatch(
       toolUseId: text(input.tool_use_id),
       description: description.slice(0, 120),
       ...(issue === undefined ? {} : { issue }),
+      ...(agentType === '' ? {} : { agentType }),
+      ...(opus ? { opus } : {}),
       cwd: text(input.cwd),
       holder: identity(session, table.get(session)),
       waiter: identity(context.hookPid, table.get(context.hookPid)),
@@ -757,12 +880,13 @@ async function admitDispatch(
             ]),
         }),
     cap,
+    ...(context.opusCap === undefined ? {} : { opusCap: context.opusCap }),
     waitLimitMilliseconds: context.waitLimitMilliseconds ?? placeWaitLimitMilliseconds,
     bypass,
   });
   if (!admission.admitted) {
     const reason = [
-      `Host place cap: this ${[...placeTakingAgentTypes].join('/')} dispatch waited ${minutes(admission.waitedMilliseconds)} for one of the host's ${cap} places for implementation workers and their coordinators (AGENTS.md "Parallel runs"), and none came free. The places:`,
+      `Host place cap: this ${opus ? 'Opus ' : ''}${agentType === '' ? 'agent' : agentType} dispatch waited ${minutes(admission.waitedMilliseconds)} for one of the host's ${cap} places for agents and their coordinators${opus ? `, or for the host's only Opus agent (${opusAgentCap} at a time)` : ''} (AGENTS.md "Parallel runs"), and none came free. The places:`,
       ...admission.held,
       `Retry the dispatch later, once a holder finishes; \`bun scripts/host-sessions.ts status\` lists the holders, and \`bun scripts/host-sessions.ts release <session, dispatch or agent>\` frees one that is stuck. On the owner's instruction only, a session started with ${capBypassVariable} set to text in a dispatch's description or prompt, such as its issue, admits that dispatch past the cap.`,
     ].join('\n');
@@ -829,7 +953,13 @@ async function recordStart(input: HookInput, context: HookContext): Promise<void
       );
       await recordHolder(context.directory, sessionId, holder);
     }
-    const event: SessionEvent = { kind: 'start', agentId, at: context.now() };
+    const agentType = text(input.agent_type);
+    const event: SessionEvent = {
+      kind: 'start',
+      agentId,
+      at: context.now(),
+      ...(agentType === '' ? {} : { agentType }),
+    };
     const before = own?.state ?? foldSession([]);
     const after = applySessionEvent(before, event);
     const agent = after.agents.get(agentId);
@@ -837,7 +967,8 @@ async function recordStart(input: HookInput, context: HookContext): Promise<void
     const overCap =
       agent !== undefined &&
       runsWithoutAdmission(agent) &&
-      hostPlaces(others) + sessionPlaces(after) > (context.cap ?? hostPlaceCap);
+      hostPlaces(others) + sessionPlaces(after, own?.registered === true) >
+        (context.cap ?? hostPlaceCap);
     await appendEvent(context.directory, sessionId, overCap ? { ...event, overCap } : event);
   });
 }
@@ -850,6 +981,73 @@ async function recordInLedger(directory: string, sessionId: string, event: Sessi
   }
 }
 
+/**
+ * Registers a session at its start, or at its resume in a new process: its coordinator place
+ * counts from now on, so the next dispatch of any session sees it. `SessionStart` cannot block;
+ * the refusal is at a dispatch. A ledger whose process is gone is removed first, as in
+ * `recordStart`, so a resumed session does not revive what the old process ran.
+ */
+async function registerSession(
+  input: HookInput,
+  context: HookContext,
+): Promise<HookOutput | undefined> {
+  const sessionId = text(input.session_id);
+  if (sessionId === '') return undefined;
+  const table = context.readProcessTable();
+  const session = table === undefined ? undefined : sessionProcess(context.hookPid, table);
+  if (table === undefined || session === undefined) {
+    return {
+      systemMessage:
+        "host-sessions: could not find this session's process, so it was not registered against the host place cap.",
+    };
+  }
+  const cwd = text(input.cwd);
+  const hook = ownerFor(
+    identity(context.hookPid, table.get(context.hookPid)),
+    `session ${sessionId.slice(0, 8)} start`,
+    cwd,
+    context.now(),
+  );
+  await mkdir(context.directory, { recursive: true });
+  await withAdmissionLock(context.directory, hook, context, async () => {
+    const own = (await readSessions(context.directory)).find(
+      (ledger) => ledger.sessionId === sessionId,
+    );
+    if (own !== undefined && !sessionAlive(own, table)) {
+      await removeLedger(context.directory, own.directory);
+    }
+    const holder = ownerFor(
+      identity(session, table.get(session)),
+      'claude session',
+      cwd,
+      context.now(),
+    );
+    await recordHolder(context.directory, sessionId, holder);
+    await writeFile(
+      join(ledgerDirectory(context.directory, sessionId), registeredFileName),
+      JSON.stringify({ registeredAt: new Date(context.now()).toISOString() }),
+    );
+  });
+  return undefined;
+}
+
+/** Denies `start_session` from a session that holds a coordinator lease marker. */
+async function denyLeasedStartSession(
+  sessionId: string,
+  context: HookContext,
+): Promise<HookOutput | undefined> {
+  if (sessionId === '') return undefined;
+  const marker = await readLeaseMarker(context.directory, sessionId);
+  if (marker === undefined) return undefined;
+  return {
+    hookSpecificOutput: {
+      hookEventName: 'PreToolUse',
+      permissionDecision: 'deny',
+      permissionDecisionReason: `This session holds the coordinator lease for ${marker.project} (run ${marker.run}, since ${marker.leasedAt}), and a leased coordinator starts no child session: it dispatches Agent subagents (chef-worker, chef-reviewer) from this one, so that one coordinator takes the owner's instructions. End the lease with \`bun scripts/chef/linear.ts lease ${marker.project} --run ${marker.run} --release\` first if this session should hand work to another.`,
+    },
+  };
+}
+
 /** The hook's answer to one event, after recording it; undefined to print nothing. */
 export async function handleHookEvent(
   input: HookInput,
@@ -860,14 +1058,17 @@ export async function handleHookEvent(
   const toolUseId = text(input.tool_use_id);
   const agentId = text(input.agent_id);
   const at = context.now();
-  const isAgentCall =
-    text(input.tool_name) === 'Agent' &&
-    placeTakingAgentTypes.has(text(field(input.tool_input, 'subagent_type')));
-  const isPlaceTakingAgent = placeTakingAgentTypes.has(text(input.agent_type));
+  // Every Agent dispatch takes a place, whatever its type: reviewers, Explore and general-purpose
+  // agents run models too.
+  const isAgentCall = text(input.tool_name) === 'Agent';
+  if (event === 'PreToolUse' && text(input.tool_name) === startSessionToolName) {
+    return denyLeasedStartSession(sessionId, context);
+  }
   if (event === 'PreToolUse' && isAgentCall) return admitDispatch(input, context);
-  if (event === 'SubagentStart' && isPlaceTakingAgent) {
+  if (event === 'SessionStart') return registerSession(input, context);
+  if (event === 'SubagentStart') {
     await recordStart(input, context);
-  } else if ((event === 'SubagentStop' || event === 'StopFailure') && isPlaceTakingAgent) {
+  } else if (event === 'SubagentStop' || event === 'StopFailure') {
     if (agentId !== '') {
       await recordInLedger(context.directory, sessionId, { kind: 'stop', agentId, at });
     }
@@ -922,7 +1123,7 @@ export async function releasePlace(
     }
     const [session] = sessions;
     if (session !== undefined) {
-      const held = sessionPlaces(session.state);
+      const held = ledgerPlaces(session);
       await removeLedger(directory, session.directory);
       return [`released session ${session.sessionId}: ${held} place(s)`];
     }
@@ -931,27 +1132,69 @@ export async function releasePlace(
       const after = applySessionEvent(ledger.state, event);
       if (after === ledger.state) continue;
       await appendEvent(directory, ledger.sessionId, event);
-      const freed = sessionPlaces(ledger.state) - sessionPlaces(after);
+      const freed =
+        sessionPlaces(ledger.state, ledger.registered) - sessionPlaces(after, ledger.registered);
       return [`released ${target} in session ${ledger.sessionId}: ${freed} place(s)`];
     }
     throw new Error(`no session, pending dispatch or running agent is named ${target}`);
   });
 }
 
+/** The places directory every worktree shares, in the Git common directory. */
+export async function hostPlacesDirectory(): Promise<string> {
+  return join(await gitCommonDirectory(), placesDirectoryName);
+}
+
 async function placesDirectory(argumentsList: readonly string[]): Promise<string> {
   const flag = argumentsList.find((argument) => argument.startsWith('--directory='));
   if (flag !== undefined) return flag.slice('--directory='.length);
-  return join(await gitCommonDirectory(), placesDirectoryName);
+  return hostPlacesDirectory();
+}
+
+/** The `model:` line of a Markdown file's front matter, if it has one. */
+export function frontmatterModel(markdown: string): string | undefined {
+  const match = /^---\r?\n([\s\S]*?)\r?\n---/.exec(markdown);
+  const line = match?.[1]?.split(/\r?\n/).find((each) => /^model\s*:/.test(each));
+  const value = line?.slice(line.indexOf(':') + 1).trim();
+  return value === undefined || value === '' ? undefined : value.replaceAll(/^["']|["']$/g, '');
+}
+
+/**
+ * Reads an agent type's `model:` from the project's `.claude/agents/<type>.md`, then the user's.
+ * A type that is not a plain file name is never turned into a path.
+ */
+function agentModelReader(
+  projectDirectory: string,
+): (agentType: string) => string | undefined {
+  return (agentType) => {
+    if (!/^[\w.-]+$/.test(agentType) || agentType.startsWith('.')) return undefined;
+    for (const root of [projectDirectory, homedir()]) {
+      try {
+        const model = frontmatterModel(
+          readFileSync(join(root, '.claude', 'agents', `${agentType}.md`), 'utf8'),
+        );
+        if (model !== undefined) return model;
+      } catch (error) {
+        // No definition there: the next directory, and then no model on record.
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+      }
+    }
+    return undefined;
+  };
 }
 
 async function runHook(argumentsList: readonly string[]): Promise<void> {
   let output: HookOutput | undefined;
   try {
     const input = JSON.parse(await Bun.stdin.text()) as HookInput;
+    const environment = rootScriptEnvironment();
     output = await handleHookEvent(input, {
       directory: await placesDirectory(argumentsList),
       hookPid: process.pid,
-      environment: rootScriptEnvironment(),
+      environment,
+      readAgentModel: agentModelReader(
+        environment['CLAUDE_PROJECT_DIR'] ?? (typeof input.cwd === 'string' ? input.cwd : '.'),
+      ),
       readProcessTable,
       now: () => Date.now(),
       sleep: (milliseconds) => Bun.sleep(milliseconds),

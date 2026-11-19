@@ -21,6 +21,10 @@ export type Dispatch = {
   /** The agent that dispatched it, empty for the session's main agent. */
   readonly dispatcher: string;
   readonly bypass: boolean;
+  /** The dispatch's `subagent_type`, when the admission recorded it. */
+  readonly agentType?: string;
+  /** Whether the dispatch runs on Opus, which the host runs one of at a time. */
+  readonly opus?: boolean;
   readonly status: DispatchStatus;
   /** The agent that started for it, or the one its `PostToolUse` named before that agent started. */
   readonly agentId?: string | undefined;
@@ -30,6 +34,8 @@ export type Dispatch = {
 
 export type Agent = {
   readonly agentId: string;
+  /** The agent's type from its `SubagentStart`; it picks the same-type pending dispatch. */
+  readonly agentType?: string;
   readonly startedAt: number;
   readonly running: boolean;
   /** How many runs started: more than one once `SendMessage` resumed it. */
@@ -54,10 +60,14 @@ export type SessionEvent =
       readonly issue?: string;
       readonly dispatcher: string;
       readonly bypass?: boolean;
+      /** Optional, so a checkout without these fields folds the same ledger unchanged. */
+      readonly agentType?: string;
+      readonly opus?: boolean;
     }
   | {
       readonly kind: 'start';
       readonly agentId: string;
+      readonly agentType?: string;
       readonly at: number;
       readonly overCap?: boolean;
     }
@@ -106,14 +116,19 @@ function update<T>(map: Map<string, T>, key: string, change: Partial<T>): void {
 
 /** The oldest pending dispatch no `PostToolUse` has named for another agent. */
 function unclaimedPending(state: Draft, agentId: string): Dispatch | undefined {
+  const type = state.agents.get(agentId)?.agentType;
   let oldest: Dispatch | undefined;
+  let oldestOfType: Dispatch | undefined;
   for (const dispatch of state.dispatches.values()) {
     if (dispatch.status !== 'pending') continue;
     if (dispatch.agentId === agentId) return dispatch;
     if (dispatch.agentId !== undefined) continue;
-    if (oldest === undefined) oldest = dispatch;
+    oldest ??= dispatch;
+    // An agent takes the oldest pending dispatch of its own type, so an Opus place is never
+    // given to a Sonnet agent that merely started first.
+    if (type !== undefined && dispatch.agentType === type) oldestOfType ??= dispatch;
   }
-  return oldest;
+  return oldestOfType ?? oldest;
 }
 
 /**
@@ -191,6 +206,8 @@ export function applySessionEvent(state: SessionState, event: SessionEvent): Ses
         ...(event.issue === undefined ? {} : { issue: event.issue }),
         dispatcher: event.dispatcher,
         bypass: event.bypass === true,
+        ...(event.agentType === undefined ? {} : { agentType: event.agentType }),
+        ...(event.opus === true ? { opus: true } : {}),
         status: 'pending',
         linked: false,
       });
@@ -211,6 +228,7 @@ export function applySessionEvent(state: SessionState, event: SessionEvent): Ses
       }
       next.agents.set(event.agentId, {
         agentId: event.agentId,
+        ...(event.agentType === undefined ? {} : { agentType: event.agentType }),
         startedAt: event.at,
         running: true,
         runs: 1,
@@ -293,9 +311,26 @@ export function workerPlaces(state: SessionState): number {
 }
 
 /** The session's places: its workers', and its coordinator's while it has any worker. */
-export function sessionPlaces(state: SessionState): number {
+export function sessionPlaces(state: SessionState, registered = false): number {
   const workers = workerPlaces(state);
-  return workers + (workers > 0 ? 1 : 0);
+  return workers + (workers > 0 || registered ? 1 : 0);
+}
+
+/**
+ * The Opus agents the session holds: one for each pending Opus dispatch and one for each running
+ * agent that took an Opus dispatch's place. An agent that took none (a resume, say) has no model
+ * on record and counts none.
+ */
+export function opusPlaces(state: SessionState): number {
+  let held = 0;
+  for (const dispatch of state.dispatches.values()) {
+    if (dispatch.opus === true && dispatch.status === 'pending') held += 1;
+  }
+  for (const agent of state.agents.values()) {
+    if (!agent.running || agent.toolUseId === undefined) continue;
+    if (state.dispatches.get(agent.toolUseId)?.opus === true) held += 1;
+  }
+  return held;
 }
 
 /** The pending dispatches admitted at least `limit` before `now`, which the next admission expires. */

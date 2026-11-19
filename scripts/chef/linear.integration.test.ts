@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { hostname, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -1672,7 +1672,64 @@ const leaseScenario10 = await (async () => {
   return true;
 })();
 
+sandbox = mkdtempSync(join(tmpdir(), 'linear-durable-'));
+const leaseMarkerScenario = await (async () => {
+  const fake = fakeLinear();
+  const leaseDirectory = join(sandbox, 'places');
+  const markerFile = (id: string) => join(leaseDirectory, 'leases', `${id}.json`);
+  const withSession = (environment: Record<string, string>) => ({
+    ...leaseWithClock(fake),
+    environment: { LINEAR_API_KEY: SECRET, ...environment },
+    leaseDirectory,
+  });
+  // The session id comes from the environment Claude Code sets, and `--session` outranks it.
+  const written = await run(
+    ['lease', 'Alpha', '--run', 'run-a'],
+    withSession({ CLAUDE_CODE_SESSION_ID: 'session-env' }),
+  );
+  const fromEnvironment = JSON.parse(readFileSync(markerFile('session-env'), 'utf8'));
+  await run(
+    ['lease', 'Alpha', '--run', 'run-a', '--session', 'session-flag'],
+    withSession({ CLAUDE_CODE_SESSION_ID: 'session-env' }),
+  );
+  const fromFlag = JSON.parse(readFileSync(markerFile('session-flag'), 'utf8'));
+  // A refused lease writes no marker; with no session id the lease stands and says so.
+  const refused = await run(
+    ['lease', 'Alpha', '--run', 'run-b'],
+    withSession({ CLAUDE_CODE_SESSION_ID: 'session-other' }),
+  );
+  const noSession = await run(['lease', 'proj-2', '--run', 'run-c'], withSession({}));
+  const released = await run(
+    ['lease', 'Alpha', '--release', '--run', 'run-a', '--generation', '1', '--session', 'session-flag'],
+    withSession({}),
+  );
+  expect(written.code).toBe(0);
+  expect(fromEnvironment).toEqual({
+    sessionId: 'session-env',
+    project: 'Alpha',
+    run: 'run-a',
+    leasedAt: '2026-11-09T12:00:00.000Z',
+  });
+  expect(fromFlag).toMatchObject({ sessionId: 'session-flag', run: 'run-a' });
+  expect(refused.code).toBe(1);
+  expect(noSession.output).toContain('No lease marker was written');
+  expect(released.code).toBe(0);
+  return {
+    refusedWroteNone: !existsSync(markerFile('session-other')),
+    releaseRemoved: !existsSync(markerFile('session-flag')),
+    environmentMarkerKept: existsSync(markerFile('session-env')),
+  };
+})();
+
 describe('lease', () => {
+  test('writes the session lease marker the start_session hook reads, and removes it on release', () => {
+    expect(leaseMarkerScenario).toEqual({
+      refusedWroteNone: true,
+      releaseRemoved: true,
+      environmentMarkerKept: true,
+    });
+  });
+
   test('records the lease as a project update whose first line is the marker, and project-read shows it', () => {
     expect(leaseScenario1).toBe(true);
   });
