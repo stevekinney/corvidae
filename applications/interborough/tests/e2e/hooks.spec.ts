@@ -1903,6 +1903,29 @@ for (const width of [320, ...WIDTHS] as const) {
       'reports:digest-ready@1.0.0',
       'archive:digest-ready@2.0.0',
     ]);
+    // B5: every row has one shape, and Remove sits at the same end edge on each, beside its text.
+    const removeNamed = (name: string) =>
+      chosen.getByRole('button', { name: copy.event.remove(name), exact: true });
+    const boxes = await readBoxes(page, {
+      first: chosen.nth(0),
+      second: chosen.nth(1),
+      firstRemove: removeNamed('Weekly reports: digest ready'),
+      secondRemove: removeNamed('Archive: digest ready'),
+      firstKind: chosen.nth(0).locator('.ib-hook-events__kind'),
+      secondKind: chosen.nth(1).locator('.ib-hook-events__kind'),
+    });
+    const end = (box: { x: number; width: number }): number => box.x + box.width;
+    expect(Math.abs(end(boxes.firstRemove) - end(boxes.secondRemove))).toBeLessThanOrEqual(1);
+    expect(Math.abs(boxes.first.x - boxes.second.x)).toBeLessThanOrEqual(1);
+    for (const [row, remove, kind] of [
+      [boxes.first, boxes.firstRemove, boxes.firstKind],
+      [boxes.second, boxes.secondRemove, boxes.secondKind],
+    ] as const) {
+      // Within its row, beside the text and never on a line of its own under it.
+      expect(remove.y).toBeGreaterThanOrEqual(row.y);
+      expect(remove.y + remove.height).toBeLessThanOrEqual(row.y + row.height);
+      expect(end(kind)).toBeLessThanOrEqual(remove.x);
+    }
     await captureForDesignReview(page, {
       route: '/hooks/new',
       state: 'new-hook-plugin-event-chosen',

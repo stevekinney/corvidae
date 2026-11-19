@@ -273,7 +273,6 @@ export const HOOKS_COPY = {
       none: 'No event is chosen yet.',
       loadFailed: 'The events could not be read.',
       remove: (name: string): string => `Remove ${name}`,
-      removeAction: 'Remove',
       areaOther: 'Other',
       /**
        * A plugin kind the hook lists that fires nothing now (COR-2226, row R5): the status word and

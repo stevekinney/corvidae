@@ -5,7 +5,7 @@
    * beside two events that would otherwise read the same (R10-23). It matches what a person types
    * against the words, the raw kind, the area, and what the event means. An event the chosen action
    * cannot listen to is listed but cannot be chosen, with the reason beside it. The events chosen are
-   * listed under the field, each with a button that removes it.
+   * listed under the field as Cinder rows, each with an icon button at its end edge that removes it.
    *
    * A hook that is saved keeps its events: the field then reads them as plain text (Cinder's
    * read-only Select, with a lock) and says they cannot be changed, so a different event is a new
@@ -18,8 +18,8 @@
    * is pinned to: the version the Bureau lists while the hook is new, and the pin once it is saved
    * (row R4). Without a plugin kind the field is what it always was (row R7).
    */
-  import { Button, Combobox, Select } from '@lostgradient/cinder';
-  import { Lock } from '@lucide/svelte';
+  import { Button, Combobox, DataList, Select, StackedListItem, Tooltip } from '@lostgradient/cinder';
+  import { Lock, X } from '@lucide/svelte';
 
   import type { HookActionType, HookEventKind } from '../../lib/bureau-hooks.ts';
   import { humanizeName } from '../settings/plugins/plugin-presentation.ts';
@@ -82,6 +82,11 @@
     if (plugin === undefined) return undefined;
     return plugin.version ?? kinds.find((kind) => kind.kind === plugin.kind)?.version;
   }
+  /** An entry's raw kind with its pin as text, the tooltip over a chosen row's line two. */
+  function kindText(entry: string): string {
+    const version = versionOf(entry);
+    return version === undefined ? eventKindOf(entry) : `${eventKindOf(entry)}@${version}`;
+  }
   /** The picker holds no value: choosing an event adds it to the list and clears the field. */
   let picked = $state('');
 
@@ -99,6 +104,47 @@
         >@{version}</span
       >{/if}</code
   >
+{/snippet}
+
+{#snippet chosenRow(kind: string)}
+  {@const label = labelOf(kind)}
+  {@const removeLabel = copy.remove(label)}
+  {#snippet remove()}
+    <Tooltip text={removeLabel} describe={false}>
+      <Button
+        variant="ghost"
+        size="sm"
+        iconOnly
+        aria-label={removeLabel}
+        onclick={() => (events = events.filter((chosen) => chosen !== kind))}
+      >
+        <X aria-hidden="true" size={16} />
+      </Button>
+    </Tooltip>
+  {/snippet}
+  {#if showsKind(kind)}
+    <StackedListItem
+      lines
+      class="ib-hook-events__item"
+      data-event={kind}
+      tooltip={label}
+      metaTooltip={kindText(kind)}
+      trailing={remove}
+    >
+      {#snippet title()}<span class="ib-hook-events__name">{label}</span>{/snippet}
+      {#snippet description()}{@render rawKind(kind)}{/snippet}
+    </StackedListItem>
+  {:else}
+    <StackedListItem
+      lines
+      class="ib-hook-events__item"
+      data-event={kind}
+      tooltip={label}
+      trailing={remove}
+    >
+      {#snippet title()}<span class="ib-hook-events__name">{label}</span>{/snippet}
+    </StackedListItem>
+  {/if}
 {/snippet}
 
 <div class="ib-hook-events" data-testid="hook-events">
@@ -140,23 +186,13 @@
     />
     {#if events.length > 0}
       <h3 class="ib-hook-events__heading">{copy.chosenHeading}</h3>
-      <ul class="ib-hook-events__list">
-        {#each events as kind (kind)}
-          <li class="ib-hook-events__item" data-event={kind}>
-            <span class="ib-hook-events__name">{labelOf(kind)}</span>
-            {#if showsKind(kind)}
-              {@render rawKind(kind)}
-            {/if}
-            <Button
-              variant="ghost"
-              size="sm"
-              aria-label={copy.remove(labelOf(kind))}
-              onclick={() => (events = events.filter((chosen) => chosen !== kind))}
-              >{copy.removeAction}</Button
-            >
-          </li>
-        {/each}
-      </ul>
+      <!-- One row per event (B5): its name, its raw kind with its pin under it, and Remove at the
+           row's end edge, where it sits on every row at every width. -->
+      <DataList items={events} key={(kind) => kind} class="ib-hook-events__list">
+        {#snippet children(kind)}
+          {@render chosenRow(kind)}
+        {/snippet}
+      </DataList>
     {/if}
   {/if}
 </div>
@@ -188,27 +224,6 @@
     margin: var(--cinder-space-2) 0 0;
     font-size: var(--cinder-text-sm);
     font-weight: 600;
-  }
-
-  .ib-hook-events__list {
-    display: flex;
-    flex-direction: column;
-    gap: var(--cinder-space-1);
-    margin: 0;
-    padding: 0;
-    list-style: none;
-  }
-
-  .ib-hook-events__item {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: var(--cinder-space-1) var(--cinder-space-3);
-    min-width: 0;
-  }
-
-  .ib-hook-events__name {
-    overflow-wrap: anywhere;
   }
 
   .ib-hook-events__kind {

@@ -175,6 +175,20 @@ describe('the event picker (COR-2226, rows R1, R2, R7)', () => {
       'reports:digest-ready@1.0.0',
     );
     expect(item.querySelector('.ib-hook-events__version')?.textContent).toBe('@1.0.0');
+    // One Cinder row (B5): the name is its title, the raw kind its line two, and Remove an icon
+    // button named for the event in the row's trailing region, at its end edge.
+    expect(item.classList.contains('cinder-stacked-list-item')).toBe(true);
+    expect(
+      item.querySelector('.cinder-stacked-list-item__title .ib-hook-events__name'),
+    ).not.toBeNull();
+    expect(
+      item.querySelector('.cinder-stacked-list-item__description .ib-hook-events__kind'),
+    ).not.toBeNull();
+    const remove = within(item).getByRole('button', {
+      name: HOOKS_COPY.editor.event.remove('Weekly reports: digest ready'),
+    });
+    expect(remove.closest('.cinder-stacked-list-item__trailing')).not.toBeNull();
+    expect(remove.textContent?.trim()).toBe('');
 
     // Another plugin's kind of the same name, chosen too: the Check line joins two events, each
     // named with its plugin's title first, so a comma falls only between them (B2, row R10).
