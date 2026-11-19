@@ -191,3 +191,16 @@ export type SharedGtGteLt_d9a61361 = {
   readonly lt?: number;
   readonly lte?: number;
 };
+export type SharedIndexLabelOperationType_df45e9c7 = {
+  readonly index: number;
+  readonly label: string;
+  readonly operationType: string;
+  readonly status: 'running' | 'completed' | 'failed' | 'cancelled' | 'timed-out';
+};
+export type SharedInputLabelOperationType_dfed1127 = {
+  readonly input: string;
+  readonly label: string;
+  readonly operationType: string;
+  readonly output?: string;
+  readonly status: 'running' | 'completed' | 'failed' | 'cancelled' | 'timed-out';
+};

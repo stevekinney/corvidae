@@ -49,12 +49,15 @@ import {
   type CancelWorkflowResult,
   type CheckpointState,
   type CheckpointSummary,
+  type CompareOptions,
   type CoordinatedUpdateResult,
   type DefaultActivityTypes,
   type DefaultWorkflowRegistry,
   type EnginePatch,
   type EngineReconfigureResult,
+  type ForkComparison,
   type ForkOptions,
+  type ForkPreview,
   type InferActivityEntries,
   type InferActivityEntry,
   type InferWorkflowEntries,
@@ -159,6 +162,7 @@ import {
   replayTo as replayWorkflowToCheckpoint,
 } from './checkpoint-reads.ts';
 import { pollChildOutcomes } from './child-outcome-poll.ts';
+import { compareFork as compareForkFromInternals } from './compare-fork.ts';
 import {
   copyWorkflowDefinition,
   createActivityWorkerDispatcher,
@@ -261,6 +265,7 @@ import {
   type StartOrSignalCallbacks,
   type StartOrSignalResult,
 } from './lifecycle.ts';
+import { previewFork as previewForkFromLifecycle } from './lifecycle/fork-preview.ts';
 import {
   addTags as addWorkflowTags,
   getAttributes as getWorkflowAttributes,
@@ -2991,6 +2996,35 @@ export class Engine<
       options,
       this.#createLifecycleCallbacks(),
     );
+  }
+  /**
+   * What {@link Engine.fork} would do with the same arguments, without doing it: the checkpoint
+   * step it would start from, the steps it would keep and the steps it would run again, and
+   * whether it would run on another revision. Nothing is written. A fork that would be refused is
+   * refused here with the same error.
+   */
+  async previewFork(sourceWorkflowId: string, options?: ForkOptions): Promise<ForkPreview> {
+    if (!isWorkflowCatalogReady(this as unknown as Engine)) {
+      await ensureWorkflowCatalogReady(this as unknown as Engine);
+    }
+    return previewForkFromLifecycle(
+      getInternals(this),
+      sourceWorkflowId,
+      options,
+      this.#createLifecycleCallbacks(),
+    );
+  }
+  /**
+   * A fork and its source aligned step by step: for each durable step, the operation, label,
+   * status, input and output on each side, with a step before the fork point marked `shared` and
+   * carrying the source's entry on both sides. Pages by step (100 a page by default) with
+   * `nextCursor`. Payload fields are redacted as `getTimeline` redacts them.
+   *
+   * Throws `CompareRequiresForkError` for a run that is not a fork, and the not-found error of
+   * `get` when the fork or its source is gone.
+   */
+  async compare(forkWorkflowId: string, options?: CompareOptions): Promise<ForkComparison> {
+    return compareForkFromInternals(getInternals(this), forkWorkflowId, options);
   }
   /**
    * Re-drive a workflow from its persisted checkpoint and return a live handle.

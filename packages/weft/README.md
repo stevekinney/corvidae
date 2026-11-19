@@ -565,7 +565,7 @@ The scope each operation requires:
 
 | Operations | Required scope |
 | --- | --- |
-| `weft.workflows.get`, `weft.workflows.list`, `weft.workflows.aggregate`, `weft.workflows.timeline.get`, `weft.workflows.result.get`, `weft.workflows.checkpoints.get`, `weft.workflows.checkpoints.list`, `weft.workflows.scheduleprovenance.get`, `weft.workflows.finalizer.get`, `weft.updates.result.get`, `weft.workflows.updates.list`, `weft.workflows.logs.list` | `workflows:read` |
+| `weft.workflows.get`, `weft.workflows.list`, `weft.workflows.aggregate`, `weft.workflows.timeline.get`, `weft.workflows.compare`, `weft.workflows.result.get`, `weft.workflows.checkpoints.get`, `weft.workflows.checkpoints.list`, `weft.workflows.scheduleprovenance.get`, `weft.workflows.finalizer.get`, `weft.updates.result.get`, `weft.workflows.updates.list`, `weft.workflows.logs.list` | `workflows:read` |
 | `weft.workflows.start`, `weft.workflows.fork`, `weft.workflows.cancel`, `weft.workflows.suspend`, `weft.workflows.resume`, `weft.workflows.timeout` | `workflows:write` |
 | `weft.workflows.signal` | `signals:write` |
 | `weft.workflows.startorsignal` | `workflows:write` and `signals:write` (both) |

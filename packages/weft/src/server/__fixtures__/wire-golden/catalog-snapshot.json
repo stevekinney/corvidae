@@ -14679,6 +14679,168 @@
       "access": {
         "kind": "scoped",
         "scopes": [
+          "workflows:read"
+        ]
+      },
+      "description": "Take the id of a workflow made by `weft.workflows.fork` and return its source run, the fork point, and the two timelines aligned by durable step: for each step the operation type, label, status, input and output on each side. A step before the fork point is `shared` and carries the source entry on both sides. Payload fields are redacted as the timeline read redacts them. Pages by step (`limit`, 100 by default) with `nextCursor`. Read-only. Faults with NotFound when the fork or its source is not visible, and with Unprocessable, naming what to do, when the workflow is not a fork.",
+      "destructive": false,
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "cursor": {
+            "description": "The nextCursor of the previous page; omit it for the first page.",
+            "minLength": 1,
+            "type": "string"
+          },
+          "limit": {
+            "description": "Steps in a page. Defaults to 100; at most 1000.",
+            "maximum": 1000,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "workflowId": {
+            "description": "Id of the fork to compare with its source.",
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "workflowId"
+        ],
+        "type": "object"
+      },
+      "kind": "unary",
+      "name": "weft.workflows.compare",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "forkPoint": {
+            "type": "number"
+          },
+          "nextCursor": {
+            "type": "string"
+          },
+          "sourceWorkflowId": {
+            "type": "string"
+          },
+          "steps": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "fork": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "input": {
+                      "type": "string"
+                    },
+                    "label": {
+                      "type": "string"
+                    },
+                    "operationType": {
+                      "type": "string"
+                    },
+                    "output": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "enum": [
+                        "running",
+                        "completed",
+                        "failed",
+                        "cancelled",
+                        "timed-out"
+                      ],
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "operationType",
+                    "label",
+                    "status",
+                    "input"
+                  ],
+                  "type": "object"
+                },
+                "index": {
+                  "type": "number"
+                },
+                "shared": {
+                  "type": "boolean"
+                },
+                "source": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "input": {
+                      "type": "string"
+                    },
+                    "label": {
+                      "type": "string"
+                    },
+                    "operationType": {
+                      "type": "string"
+                    },
+                    "output": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "enum": [
+                        "running",
+                        "completed",
+                        "failed",
+                        "cancelled",
+                        "timed-out"
+                      ],
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "operationType",
+                    "label",
+                    "status",
+                    "input"
+                  ],
+                  "type": "object"
+                }
+              },
+              "required": [
+                "index",
+                "shared"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "workflowId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "workflowId",
+          "sourceWorkflowId",
+          "forkPoint",
+          "steps"
+        ],
+        "type": "object"
+      },
+      "producibleFaults": [
+        "NotFound",
+        "Unprocessable"
+      ],
+      "summary": "Compare a fork with its source, step by step",
+      "tags": [
+        "Workflows"
+      ],
+      "transports": {
+        "http": true,
+        "jsonRpcHttp": true,
+        "jsonRpcStdio": true,
+        "jsonRpcWebSocket": true
+      }
+    },
+    {
+      "access": {
+        "kind": "scoped",
+        "scopes": [
           "system:read",
           "workflows:read"
         ]
@@ -15481,11 +15643,15 @@
           "workflows:write"
         ]
       },
-      "description": "Start a new workflow from a checkpoint of an existing one, leaving the source untouched, and return the new workflow `id`. Forks from `fromStep` or the latest checkpoint, optionally onto a different installed `revision`. Faults with NotFound for a missing workflow or checkpoint, InvalidParams for a bad step, and Conflict for an unavailable or version-incompatible revision.",
+      "description": "Start a new workflow from a checkpoint of an existing one, leaving the source untouched, and return the new workflow `id`. Forks from `fromStep` or the latest checkpoint, optionally onto a different installed `revision`. With `dryRun: true` it writes nothing and instead answers the steps the fork would keep, the steps it would run again, and whether the revision would change. Faults with NotFound for a missing workflow or checkpoint, InvalidParams for a bad step, and Conflict for an unavailable or version-incompatible revision.",
       "destructive": false,
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
+          "dryRun": {
+            "description": "When true, answer what the fork would keep and run again, and whether the revision would change, and write nothing.",
+            "type": "boolean"
+          },
           "fromStep": {
             "description": "Checkpoint step to fork from, as a non-negative integer. Omit it to fork from the latest checkpoint."
           },
@@ -15508,16 +15674,121 @@
       "kind": "unary",
       "name": "weft.workflows.fork",
       "outputSchema": {
-        "additionalProperties": false,
-        "properties": {
-          "id": {
-            "type": "string"
+        "anyOf": [
+          {
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "dryRun": {
+                "const": true,
+                "type": "boolean"
+              },
+              "forkPoint": {
+                "type": "number"
+              },
+              "forkRevision": {
+                "type": "string"
+              },
+              "keptSteps": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "index": {
+                      "type": "number"
+                    },
+                    "label": {
+                      "type": "string"
+                    },
+                    "operationType": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "enum": [
+                        "running",
+                        "completed",
+                        "failed",
+                        "cancelled",
+                        "timed-out"
+                      ],
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "index",
+                    "operationType",
+                    "label",
+                    "status"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "rerunSteps": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "index": {
+                      "type": "number"
+                    },
+                    "label": {
+                      "type": "string"
+                    },
+                    "operationType": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "enum": [
+                        "running",
+                        "completed",
+                        "failed",
+                        "cancelled",
+                        "timed-out"
+                      ],
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "index",
+                    "operationType",
+                    "label",
+                    "status"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "revisionWouldChange": {
+                "type": "boolean"
+              },
+              "sourceRevision": {
+                "type": "string"
+              },
+              "workflowId": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "dryRun",
+              "workflowId",
+              "forkPoint",
+              "keptSteps",
+              "rerunSteps",
+              "revisionWouldChange"
+            ],
+            "type": "object"
           }
-        },
-        "required": [
-          "id"
-        ],
-        "type": "object"
+        ]
       },
       "producibleFaults": [
         "Conflict",

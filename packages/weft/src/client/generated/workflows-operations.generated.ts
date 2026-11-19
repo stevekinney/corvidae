@@ -3,8 +3,11 @@ import type {
   SharedActionAffectedCountConfi_6a0b3afc,
   SharedActionConfirmationTokenC_7756c689,
   SharedAttributesBulkConcurrenc_0f0d07d6,
+  SharedCursorLimitWorkflowId_6c8c3edc,
   SharedGtGteKey_e658e64c,
   SharedGtGteLt_d9a61361,
+  SharedIndexLabelOperationType_df45e9c7,
+  SharedInputLabelOperationType_dfed1127,
 } from './shared-operation-types.generated.ts';
 export type WorkflowsOperationTypes = {
   'weft.workflows.aggregate': {
@@ -71,6 +74,22 @@ export type WorkflowsOperationTypes = {
         };
     readonly faults: 'Conflict' | 'NotFound';
   };
+  'weft.workflows.compare': {
+    readonly input: SharedCursorLimitWorkflowId_6c8c3edc;
+    readonly output: {
+      readonly forkPoint: number;
+      readonly nextCursor?: string;
+      readonly sourceWorkflowId: string;
+      readonly steps: ReadonlyArray<{
+        readonly fork?: SharedInputLabelOperationType_dfed1127;
+        readonly index: number;
+        readonly shared: boolean;
+        readonly source?: SharedInputLabelOperationType_dfed1127;
+      }>;
+      readonly workflowId: string;
+    };
+    readonly faults: 'NotFound' | 'Unprocessable';
+  };
   'weft.workflows.finalizer.get': {
     readonly input: { readonly workflowId: string };
     readonly output:
@@ -88,11 +107,23 @@ export type WorkflowsOperationTypes = {
   };
   'weft.workflows.fork': {
     readonly input: {
+      readonly dryRun?: boolean;
       readonly fromStep?: unknown;
       readonly revision?: string;
       readonly workflowId: string;
     };
-    readonly output: { readonly id: string };
+    readonly output:
+      | { readonly id: string }
+      | {
+          readonly dryRun: true;
+          readonly forkPoint: number;
+          readonly forkRevision?: string;
+          readonly keptSteps: ReadonlyArray<SharedIndexLabelOperationType_df45e9c7>;
+          readonly rerunSteps: ReadonlyArray<SharedIndexLabelOperationType_df45e9c7>;
+          readonly revisionWouldChange: boolean;
+          readonly sourceRevision?: string;
+          readonly workflowId: string;
+        };
     readonly faults: 'Conflict' | 'NotFound';
   };
   'weft.workflows.get': {

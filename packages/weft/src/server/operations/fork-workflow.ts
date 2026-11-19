@@ -9,6 +9,7 @@ import {
 import { ForkSourceReplacedError } from '../../core/engine/errors.ts';
 import type { ForkOptions } from '../../core/types.ts';
 import { VersionMismatchError } from '../../core/versioning.ts';
+import { negotiatedResponse } from '../handler/response-helpers.ts';
 import { assertOperationEngineMethods, workerVersionRemovedFault } from './operation-helpers.ts';
 import { mapRevisionUnavailableToFault } from './revision-unavailable-fault.ts';
 
@@ -37,11 +38,34 @@ const forkWorkflowInput = z.object({
     .describe(
       "Installed revision to fork onto instead of the source run's own revision. Omit it to keep the source revision; an unresolvable or version-incompatible revision faults with Conflict.",
     ),
+  dryRun: z
+    .boolean()
+    .optional()
+    .describe(
+      'When true, answer what the fork would keep and run again, and whether the revision would change, and write nothing.',
+    ),
 });
 
-const forkWorkflowOutput = z.object({
-  id: z.string(),
+const forkStepSchema = z.object({
+  index: z.number(),
+  operationType: z.string(),
+  label: z.string(),
+  status: z.enum(['running', 'completed', 'failed', 'cancelled', 'timed-out']),
 });
+
+/** What `dryRun: true` answers (COR-2536): what the fork would keep and run again; nothing was written. */
+const forkPreviewSchema = z.object({
+  dryRun: z.literal(true),
+  workflowId: z.string(),
+  forkPoint: z.number(),
+  keptSteps: z.array(forkStepSchema),
+  rerunSteps: z.array(forkStepSchema),
+  revisionWouldChange: z.boolean(),
+  sourceRevision: z.string().exactOptional(),
+  forkRevision: z.string().exactOptional(),
+});
+
+const forkWorkflowOutput = z.union([z.object({ id: z.string() }), forkPreviewSchema]);
 
 export type ForkWorkflowInput = z.infer<typeof forkWorkflowInput>;
 export type ForkWorkflowOutput = z.infer<typeof forkWorkflowOutput>;
@@ -181,7 +205,9 @@ export const forkWorkflowOperation = defineOperation({
   description:
     'Start a new workflow from a checkpoint of an existing one, leaving the source ' +
     'untouched, and return the new workflow `id`. Forks from `fromStep` or the latest ' +
-    'checkpoint, optionally onto a different installed `revision`. Faults with ' +
+    'checkpoint, optionally onto a different installed `revision`. With `dryRun: true` it ' +
+    'writes nothing and instead answers the steps the fork would keep, the steps it would ' +
+    'run again, and whether the revision would change. Faults with ' +
     'NotFound for a missing workflow or checkpoint, InvalidParams for a bad step, and ' +
     'Conflict for an unavailable or version-incompatible revision.',
   destructive: false,
@@ -194,11 +220,12 @@ export const forkWorkflowOperation = defineOperation({
   transports: { http: true, jsonRpcHttp: true, jsonRpcWebSocket: true, jsonRpcStdio: true },
   unknownKeyPolicy: { http: 'strip', jsonRpc: 'reject' },
   invoke: async ({ input, host: engine }): Promise<ForkWorkflowOutput> => {
-    assertOperationEngineMethods(engine, ['fork']);
+    assertOperationEngineMethods(engine, ['fork', 'previewFork']);
     const typedEngine = engine;
     const options = validateForkInput(input);
 
     try {
+      if (input.dryRun === true) return await typedEngine.previewFork(input.workflowId, options);
       const handle = await typedEngine.fork(input.workflowId, options);
       return { id: handle.id };
     } catch (error) {
@@ -216,6 +243,7 @@ export const forkWorkflowRestBinding: UnknownRestBinding = {
     workflowId: { kind: 'path', pathParam: 'id' },
     fromStep: { kind: 'body-field', bodyField: 'fromStep' },
     revision: { kind: 'body-field', bodyField: 'revision' },
+    dryRun: { kind: 'body-field', bodyField: 'dryRun' },
   },
   extractInput: async (request, pathParams, context) => {
     const rawBody = await readRestTextBody(request, context);
@@ -242,7 +270,11 @@ export const forkWorkflowRestBinding: UnknownRestBinding = {
       workflowId: pathParams['id'] ?? '',
       fromStep: record['fromStep'],
       revision: record['revision'],
+      dryRun: record['dryRun'],
     };
   },
   success: { kind: 'json', status: 201 },
+  // A fork is created (201); a dry run creates nothing, so it answers 200.
+  shapeSuccess: (output: ForkWorkflowOutput, request: Request) =>
+    negotiatedResponse(request, output, 'dryRun' in output ? 200 : 201),
 };

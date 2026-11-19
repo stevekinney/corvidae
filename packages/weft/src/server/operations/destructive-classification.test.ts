@@ -84,6 +84,7 @@ const EXPECTED_DESTRUCTIVE: Readonly<Record<string, boolean>> = {
   'weft.workflows.tags.remove': false,
   'weft.workflows.checkpoints.get': false,
   'weft.workflows.checkpoints.list': false,
+  'weft.workflows.compare': false,
   // WFT-11: workflow catalog promotion — install/get/list are read/write
   // metadata, not workflow-affecting; activate flips which revision the
   // registry advertises as active, so it is destructive.
