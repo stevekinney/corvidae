@@ -16280,7 +16280,7 @@
           "workflows:admin"
         ]
       },
-      "description": "Permanently delete terminal workflows (completed, failed, cancelled, or timed out) that match the filter, removing every record they own, and report how many were removed. Irreversible; with no filter it matches every terminal workflow. Run it first with `dryRun: true` to preview the matches and receive a `confirmationToken`, then repeat the same filter with that token to commit; the commit deletes the previewed workflows and is refused when the filter no longer produces the token. Requires workflows:admin.",
+      "description": "Permanently delete terminal workflows (completed, failed, cancelled, or timed out) that match the filter, removing every record they own, and report how many were removed. Irreversible; with no filter it matches every terminal workflow. Run it first with `dryRun: true` to preview the matches and receive a `confirmationToken`, then repeat the same filter with that token to commit; the commit deletes the previewed workflows and is refused with `Conflict` when the filter no longer produces the token; run the preview again. Requires workflows:admin.",
       "destructive": true,
       "inputSchema": {
         "additionalProperties": false,
@@ -17323,7 +17323,9 @@
           }
         ]
       },
-      "producibleFaults": [],
+      "producibleFaults": [
+        "Conflict"
+      ],
       "summary": "Purge terminal workflows",
       "tags": [
         "Workflows"

@@ -157,7 +157,7 @@ export type WorkflowsOperationTypes = {
     readonly output:
       | { readonly auditEvent?: SharedActionAffectedCountConfi_6a0b3afc; readonly deleted: number }
       | SharedActionConfirmationTokenC_7756c689;
-    readonly faults: never;
+    readonly faults: 'Conflict';
   };
   'weft.workflows.query': {
     readonly input: {

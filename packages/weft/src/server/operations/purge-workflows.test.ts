@@ -4,8 +4,11 @@
 
 import { describe, expect, it } from 'bun:test';
 
-import { type OperationFault, defineOperation } from '@lostgradient/backchannel';
-import { createOperationRegistry } from '@lostgradient/backchannel/internals';
+import { type OperationFault, defineOperation, principalFromApiKey } from '@lostgradient/backchannel';
+import {
+  createOperationRegistry,
+  handleJsonRpcHttpRequest,
+} from '@lostgradient/backchannel/internals';
 import { MemoryStorage } from '@lostgradient/storage';
 import { Engine } from '../../core/engine.ts';
 import { type WorkflowContext, workflow } from '../../core/types.ts';
@@ -145,9 +148,49 @@ describe('weft.workflows.purge', () => {
       engine,
       { operationRegistry: registry, restBindings: bindings },
     );
-    expect(stale.status).toBe(400);
+    // A stale token is a conflict with the state the preview described, not malformed input.
+    expect(stale.status).toBe(409);
+    const staleBody = (await stale.json()) as { error: string };
+    expect(staleBody.error).toContain('Run the preview again');
     expect(await stores()).toEqual(before);
     expect(await engine.get('purge-named-late')).not.toBeNull();
+  });
+
+  it('answers a stale confirmation token over JSON-RPC as Conflict, apart from invalid input, and deletes nothing', async () => {
+    await using engine = createEngine();
+    await startAndSettle(engine, 'echo', 'keep', 'purge-rpc-a');
+    const principal = principalFromApiKey({ subject: 'purge-admin', scopes: ['workflows:admin'] });
+    const call = async (params: unknown, id: number) =>
+      (
+        await handleJsonRpcHttpRequest(
+          new Request('http://localhost/jsonrpc', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ jsonrpc: '2.0', method: 'weft.workflows.purge', params, id }),
+          }),
+          { registry, host: engine, principal },
+        )
+      ).json() as Promise<{
+        result?: { confirmationToken: string };
+        error?: { code: number; message: string; data: { weftCode: string; httpStatus: number } };
+      }>;
+
+    const preview = await call({ status: 'completed', dryRun: true }, 1);
+    await startAndSettle(engine, 'echo', 'late', 'purge-rpc-late');
+    const stale = await call(
+      { status: 'completed', confirmationToken: preview.result?.confirmationToken },
+      2,
+    );
+
+    expect(stale.error?.code).toBe(-32021);
+    expect(stale.error?.data).toMatchObject({ weftCode: 'Conflict', httpStatus: 409 });
+    expect(stale.error?.message).toContain('Run the preview again');
+    expect(await engine.get('purge-rpc-a')).not.toBeNull();
+    expect(await engine.get('purge-rpc-late')).not.toBeNull();
+
+    // Input a caller got wrong stays InvalidParams, so the two never share a code.
+    const missingToken = await call({ status: 'completed' }, 3);
+    expect(missingToken.error?.data.weftCode).toBe('InvalidParams');
   });
 
   it('refuses a commit that carries no confirmation token', async () => {
