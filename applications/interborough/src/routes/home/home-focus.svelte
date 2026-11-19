@@ -8,8 +8,8 @@
    *
    * The Spotlight is the title of the Needs you list under it, so "Open Reviews ›" (Cinder's `Link`
    * in its `more` form) sits beside it as that section's action, and the list draws no heading of
-   * its own: the page says "needs you" once. With nothing waiting the Spotlight stands alone with
-   * its link. It reads the same list as Needs you (`waitingReviewsQuery`), so the two cannot
+   * its own: the page says "needs you" once. With nothing waiting there is no Spotlight, only one
+   * quiet line, "Nothing needs you." (`lib/quiet-line.svelte`, owner 2026-11-19). It reads the same list as Needs you (`waitingReviewsQuery`), so the two cannot
    * disagree. While that read has not answered a placeholder holds the Spotlight's place; when it
    * fails the Spotlight is left out, and the Needs you section takes its heading back and says it
    * could not load.
@@ -17,6 +17,7 @@
   import { Link, Skeleton, Spotlight } from '@lostgradient/cinder';
 
   import { HOME_COPY } from '../../app/copy/home.ts';
+  import QuietLine from '../../lib/quiet-line.svelte';
   import { router } from '../../lib/router.svelte.ts';
   import { waitingReviewsQuery } from '../reviews/reviews-data.ts';
   import { openInApplication } from './home-navigation.ts';
@@ -39,7 +40,11 @@
 {/if}
 
 {#snippet spotlight()}
-  {#if waiting !== undefined}
+  {#if waiting === 0}
+    <!-- Nothing waits: no Spotlight and no card says nothing, only one quiet line (owner,
+         2026-11-19), and the space goes to what has content. -->
+    <QuietLine text={HOME_COPY.needsYou.nothing} data-testid="home-nothing-needs-you" />
+  {:else if waiting !== undefined}
     <!-- The Spotlight is the title of the reviews under it, so the way out to Reviews is its
          action, at the end of its line as a section's action sits beside its heading. -->
     <Spotlight value={HOME_COPY.needsYou.spotlight(waiting)} data-testid="home-spotlight">

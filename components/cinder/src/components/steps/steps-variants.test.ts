@@ -282,6 +282,21 @@ describe('Steps checklist variant', () => {
     expect(current.get('background')).toBe('var(--cinder-accent-solid)');
     expect(stepsCss).toContain('@container cinder-steps (max-width: 28rem)');
   });
+
+  // Owner, 2026-11-19: step 1 was a filled circle and steps 2 and 3 bare numbers. Every open step is
+  // a numbered circle: an upcoming one draws its edge.
+  test('draws every open step as a numbered circle, an upcoming one with its edge', () => {
+    const upcoming = declarationsFor(
+      stepsCss,
+      ".cinder-steps[data-cinder-variant='checklist'] [data-cinder-state='upcoming'] .cinder-steps__marker",
+    );
+    expect(upcoming.get('box-shadow')).toBe('inset 0 0 0 1px var(--cinder-border-control)');
+    const { container } = render(Steps, { steps: checklistSteps, variant: 'checklist' });
+    const markers = itemsOf(container).map((item) => item.querySelector('.cinder-steps__marker'));
+    expect(
+      markers.map((marker) => marker?.querySelector('.cinder-steps__index')?.textContent),
+    ).toEqual(['1', '2', '3']);
+  });
 });
 
 describe('Steps status variant', () => {

@@ -7,19 +7,13 @@
    *
    * It reads what the chat list reads: the recent runs, so a chat whose latest run failed says
    * Failed here too, and the reviews waiting, so a chat that waits on you says what it asks. When
-   * either read fails the rows still show, without it. Before the first message is sent the section
-   * is a compact empty state with an accent chat disc, and its link to All chats waits for a chat. A
-   * list that cannot be read says so in place, with a Try again and no link; while it has not
-   * answered the section holds Cinder's grouped placeholder rows.
+   * either read fails the rows still show, without it. A latest message that only repeats the
+   * chat's title (a chat titled by its first message) is not said twice: the row says its status
+   * alone. With no chat to list the section draws nothing (owner, 2026-11-19): Recent chats appears
+   * once a chat exists. A list that cannot be read says so in place, with a Try again and no link;
+   * while it has not answered the section holds Cinder's grouped placeholder rows.
    */
-  import {
-    EmptyState,
-    GroupedList,
-    GroupedListItem,
-    Skeleton,
-    StatusDot,
-  } from '@lostgradient/cinder';
-  import { MessageSquare } from '@lucide/svelte';
+  import { GroupedList, GroupedListItem, Skeleton, StatusDot } from '@lostgradient/cinder';
   import { createQuery } from '@tanstack/svelte-query';
 
   import { HOME_COPY } from '../../app/copy/home.ts';
@@ -27,6 +21,7 @@
   import { chatSessionPath } from '../../lib/identifier-paths.ts';
   import { chatsWithFailedRun, recentTasksQuery } from '../../lib/recent-tasks.ts';
   import { router } from '../../lib/router.svelte.ts';
+  import { listIsClear } from '../../lib/worth-showing.ts';
   import { pendingQuestions } from '../chat/session-groups.ts';
   import { bureauReviewsQuery } from '../reviews/reviews-data.ts';
   import { useMinuteClock } from './home-clock.svelte.ts';
@@ -51,40 +46,30 @@
   );
 </script>
 
-<HomeCard
-  title={copy.title}
-  link={chats.data === undefined || rows.length === 0
-    ? undefined
-    : { label: copy.link, href: '/chats' }}
->
-  {#if chats.data === undefined && chats.isError}
-    <HomeCardError
-      title={HOME_COPY.states.cardFailed.recent}
-      onRetry={() => void chats.refetch()}
-    />
-  {:else if chats.data === undefined}
-    <Skeleton variant="grouped" rows={3} />
-  {:else if rows.length === 0}
-    <EmptyState
-      kind="first-use"
-      size="compact"
-      headingLevel={3}
-      title={copy.empty.title}
-      description={copy.empty.description}
-    >
-      {#snippet icon()}<MessageSquare aria-hidden="true" />{/snippet}
-    </EmptyState>
-  {:else}
-    <div {@attach followLinks}>
-      <GroupedList aria-label={copy.listLabel}>
-        {#each rows as row (row.id)}
-          <GroupedListItem data-chat={row.id} href={router.href(chatSessionPath(row.id))}>
-            {#snippet title()}{row.title}{/snippet}
-            {#snippet subtitle()}<StatusDot word={row.status} />, {row.latest}{/snippet}
-            {#snippet trailing()}{row.time}{/snippet}
-          </GroupedListItem>
-        {/each}
-      </GroupedList>
-    </div>
-  {/if}
-</HomeCard>
+{#if !(chats.data !== undefined && listIsClear(rows))}
+  <HomeCard
+    title={copy.title}
+    link={chats.data === undefined ? undefined : { label: copy.link, href: '/chats' }}
+  >
+    {#if chats.data === undefined && chats.isError}
+      <HomeCardError
+        title={HOME_COPY.states.cardFailed.recent}
+        onRetry={() => void chats.refetch()}
+      />
+    {:else if chats.data === undefined}
+      <Skeleton variant="grouped" rows={3} />
+    {:else}
+      <div {@attach followLinks}>
+        <GroupedList aria-label={copy.listLabel}>
+          {#each rows as row (row.id)}
+            <GroupedListItem data-chat={row.id} href={router.href(chatSessionPath(row.id))}>
+              {#snippet title()}{row.title}{/snippet}
+              {#snippet subtitle()}<StatusDot word={row.status} />{#if row.latest !== undefined}, {row.latest}{/if}{/snippet}
+              {#snippet trailing()}{row.time}{/snippet}
+            </GroupedListItem>
+          {/each}
+        </GroupedList>
+      </div>
+    {/if}
+  </HomeCard>
+{/if}

@@ -1,16 +1,17 @@
 <script lang="ts">
   /**
    * Home while its first reads are out: the page's own layout with placeholders where the data
-   * goes, so nothing moves when it arrives. The date line, the count's label and the section
-   * headings are real text; the Spotlight, the count's value, the rows and the composer are
-   * placeholders, the rows in Cinder's grouped shape. The Needs you rows have no heading, as the
+   * goes. The date line and the section headings are real text; the Spotlight, the rows and the
+   * composer are placeholders, the rows in Cinder's grouped shape. The count has no placeholder: a
+   * count is shown only when it is not zero (owner, 2026-11-19), so a placeholder would most often
+   * be taken away again. The Needs you rows have no heading, as the
    * loaded ones do: the Spotlight is their title. Cinder's `skeleton` owns the timing: nothing
    * is drawn for the first 300 ms, so a load that is quick never flashes a placeholder, and after
    * 10 s its own status line says the load is slow, with a ghost Cancel, in the Spotlight
    * placeholder's place, so the page does not move when it appears. The placeholders shimmer,
    * and are still under `prefers-reduced-motion`.
    */
-  import { Skeleton, Stack, Statistic, StatisticGroup } from '@lostgradient/cinder';
+  import { Skeleton, Stack } from '@lostgradient/cinder';
 
   import { HOME_COPY } from '../../app/copy/home.ts';
   import { dateLine, timesShowIn } from '../../lib/format/clock.ts';
@@ -52,17 +53,6 @@
       <div data-home-card={HOME_COPY.needsYou.title}>
         <Skeleton variant="grouped" rows={2} action />
       </div>
-    {/snippet}
-    {#snippet counts()}
-      <!-- The count follows the list, as the loaded count does. -->
-      <StatisticGroup
-        label={HOME_COPY.countsLabel}
-        columns={1}
-        variant="plain"
-        data-testid="home-loading-counts"
-      >
-        <Statistic label={HOME_COPY.counts.failed} value="" loading />
-      </StatisticGroup>
     {/snippet}
     {#snippet attention()}
       <HomeCard title={HOME_COPY.attention.title}>

@@ -113,30 +113,21 @@ describe('Home while it loads (02c, 02d)', () => {
     expect(words(getByTestId('home-date'))).toBe(
       'Monday, Nov 2. Times show in Central time (CST).',
     );
-    // The Spotlight is a placeholder block, and the count under it a label over a placeholder.
-    // It holds the slow-load line, so the line takes its place after 10 s and nothing moves.
+    // The Spotlight is a placeholder block. It holds the slow-load line, so the line takes its
+    // place after 10 s and nothing moves.
     const focus = getByTestId('home-loading-focus');
     expect(focus.firstElementChild?.classList.contains('cinder-skeleton-status-place')).toBe(true);
     expect(focus.firstElementChild?.querySelector('.cinder-skeleton')).not.toBeNull();
-    const stats = [...getByTestId('home-loading-counts').querySelectorAll('.cinder-statistic')];
-    expect(
-      stats.map((stat) => words(stat.querySelector('.cinder-statistic__label') as Element)),
-    ).toEqual(['Failed in 24 hours']);
-    // The value is a placeholder, and no number is read before it is.
-    expect(stats.every((stat) => stat.querySelector('.cinder-skeleton') !== null)).toBe(true);
-    expect(
-      stats.every(
-        (stat) => words(stat.querySelector('.cinder-statistic__value') as Element) === '',
-      ),
-    ).toBe(true);
+    // The count has no placeholder: it is shown only when it is not zero (owner, 2026-11-19).
+    expect(container.querySelector('.cinder-statistic')).toBeNull();
     expect(
       [...container.querySelectorAll('h2')].map((heading) => heading.textContent?.trim()),
     ).toEqual([
       'Needs attention',
-      'Start a chat',
-      'Recent chats',
       'Workflow activity',
       'Agent activity',
+      'Start a chat',
+      'Recent chats',
     ]);
     // The Needs you rows have no heading, as the loaded ones do: the Spotlight is their title.
     expect(cardOf(container, 'Needs you').querySelector('h2')).toBeNull();
@@ -146,6 +137,8 @@ describe('Home while it loads (02c, 02d)', () => {
       ...container.querySelectorAll('.cinder-skeleton-group[data-cinder-variant="grouped"]'),
     ];
     expect(placeholders).toHaveLength(5);
+    // In document order: Needs you, Needs attention and the two bands in the wide column, then
+    // Recent chats under the box that starts a chat in the narrow one.
     expect(
       placeholders.map((group) => group.querySelectorAll('.cinder-skeleton-action-bar').length),
     ).toEqual([2, 3, 0, 0, 0]);
@@ -153,15 +146,15 @@ describe('Home while it loads (02c, 02d)', () => {
       placeholders.map(
         (group) => group.querySelectorAll('.cinder-skeleton-grouped-leading').length,
       ),
-    ).toEqual([0, 0, 0, 3, 3]);
+    ).toEqual([0, 0, 3, 3, 0]);
     expect(
       placeholders.map((group) => group.querySelectorAll('.cinder-skeleton-trailing-bar').length),
-    ).toEqual([0, 0, 0, 3, 3]);
+    ).toEqual([0, 0, 3, 3, 0]);
     expect(
       placeholders.map(
         (group) => group.querySelectorAll('.cinder-skeleton-trailing-bar--chevron-column').length,
       ),
-    ).toEqual([0, 0, 0, 3, 3]);
+    ).toEqual([0, 0, 3, 3, 0]);
     // Each band is its own wrapper's one Section: two adjacent Sections take Cinder's space
     // between sections as a margin on top of the region's gap (the design review's 32px misalignment).
     const region = container.querySelector('[data-testid="home-activity"]');
@@ -182,7 +175,6 @@ describe('Home while it loads (02c, 02d)', () => {
     hold.release();
     await waitFor(() => expect(container.querySelector('[data-mode="overview"]')).not.toBeNull());
     expect(container.querySelector('[data-page="home"]')?.hasAttribute('aria-busy')).toBe(false);
-    expect(container.querySelector('[data-testid="home-loading-counts"]')).toBeNull();
   });
 
   // COR-2489: the message box's placeholder was 4.75rem against a 96px Textarea, so everything under
@@ -271,12 +263,16 @@ describe('Home while it loads (02c, 02d)', () => {
     });
     const { container } = render(HomeHarness, { props: { client: installed.client } } as never);
     await waitFor(() => expect(container.querySelector('[data-mode="loading"]')).not.toBeNull());
-    expect(container.querySelector('.ib-home__columns .ib-home__main')).not.toBeNull();
-    expect(container.querySelector('.ib-home__columns > .ib-home__start-chat')).not.toBeNull();
+    expect(container.querySelector('.ib-home__columns > .ib-home__main')).not.toBeNull();
+    expect(
+      container.querySelector('.ib-home__columns > .ib-home__aside > .ib-home__start-chat'),
+    ).not.toBeNull();
     expect(container.querySelector('.ib-home__needs-attention')).not.toBeNull();
     hold.release();
     await waitFor(() => expect(container.querySelector('[data-mode="overview"]')).not.toBeNull());
-    expect(container.querySelector('.ib-home__columns > .ib-home__start-chat')).not.toBeNull();
+    expect(
+      container.querySelector('.ib-home__columns > .ib-home__aside > .ib-home__start-chat'),
+    ).not.toBeNull();
   });
 });
 
@@ -377,17 +373,11 @@ describe('One card that cannot be read (01n, 01o)', () => {
     expect(within(card).getByRole('button', { name: CONNECTION_RETRY_LABEL })).not.toBeNull();
     // The failed card draws no link to Health and no row, and never claims all is well.
     expect(within(card).queryByRole('link')).toBeNull();
-    expect(container.querySelector('[data-testid="attention-clear"]')).toBeNull();
-    // The Spotlight and the count have reads of their own: they are unchanged.
+    // The Spotlight has a read of its own: it is unchanged.
     await waitFor(() =>
       expect(
         words(getByTestId('home-spotlight').querySelector('.cinder-spotlight__value') as Element),
       ).toBe('2 need you'),
-    );
-    await waitFor(() =>
-      expect(
-        [...getByTestId('home-counts').querySelectorAll('.cinder-statistic')].map(words),
-      ).toEqual(['Failed in 24 hours 0']),
     );
     // Needs you, Start a chat and Recent chats render normally.
     expect(within(cardOf(container, 'Needs you')).getAllByRole('listitem')).toHaveLength(2);
