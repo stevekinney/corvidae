@@ -120,16 +120,57 @@ describe('BulkPurgeDialog', () => {
     expect(queryByRole('button', { name: /^Purge / })).toBeNull();
   });
 
-  test('a stale confirmation token (InvalidParams) offers "Refresh preview" and runs a fresh dry run', async () => {
+  test('a stale confirmation token (Conflict) says the matching workflows changed, never the server message, and offers one "Refresh preview"', async () => {
     let dryRunCalls = 0;
-    const { getByRole, getByLabelText, getByText } = render(BulkPurgeDialog, {
-      props: {
-        runDryRun: async () => {
-          dryRunCalls += 1;
-          return preview();
+    const { getByRole, getAllByRole, getByLabelText, getByText, queryByText } = render(
+      BulkPurgeDialog,
+      {
+        props: {
+          runDryRun: async () => {
+            dryRunCalls += 1;
+            return preview();
+          },
+          runPurge: async () => {
+            throw new HttpClientError(409, 'Bulk confirmation token does not match', {
+              faultCode: 'Conflict',
+            });
+          },
+          onClose: () => {},
         },
+      },
+    );
+
+    await waitFor(() => {
+      expect(getByLabelText(PHRASE_LABEL)).not.toBeNull();
+    });
+    await fireEvent.input(getByLabelText(PHRASE_LABEL), {
+      target: { value: 'purge 47 workflows' },
+    });
+    await fireEvent.click(getByRole('button', { name: 'Purge 47 workflows' }));
+
+    await waitFor(() => {
+      expect(getByText('The matching workflows changed')).not.toBeNull();
+    });
+    expect(getByText(/Check the new count before you purge\./)).not.toBeNull();
+    // Nothing was deleted: the server checks the token before it touches a workflow.
+    expect(getByText(/Nothing was purged\./)).not.toBeNull();
+    expect(queryByText(/does not match/)).toBeNull();
+    // The callout carries the one Refresh action; the footer does not repeat it.
+    expect(getAllByRole('button', { name: 'Refresh preview' })).toHaveLength(1);
+    expect(dryRunCalls).toBe(1);
+
+    await fireEvent.click(getByRole('button', { name: 'Refresh preview' }));
+    await waitFor(() => {
+      expect(dryRunCalls).toBe(2);
+    });
+  });
+
+  test('invalid input (InvalidParams) is not read as a stale preview: it shows the fault, never the changed-workflows callout', async () => {
+    const { getByRole, getByLabelText, getByText, queryByText } = render(BulkPurgeDialog, {
+      props: {
+        runDryRun: async () => preview(),
         runPurge: async () => {
-          throw new HttpClientError(400, 'Bulk confirmation token does not match', {
+          throw new HttpClientError(400, 'Field "filter.tags" must be an array', {
             faultCode: 'InvalidParams',
           });
         },
@@ -146,14 +187,10 @@ describe('BulkPurgeDialog', () => {
     await fireEvent.click(getByRole('button', { name: 'Purge 47 workflows' }));
 
     await waitFor(() => {
-      expect(getByText(/changed since the preview/)).not.toBeNull();
+      expect(getByText('Field "filter.tags" must be an array')).not.toBeNull();
     });
-    expect(dryRunCalls).toBe(1);
-
-    await fireEvent.click(getByRole('button', { name: 'Refresh preview' }));
-    await waitFor(() => {
-      expect(dryRunCalls).toBe(2);
-    });
+    expect(queryByText('The matching workflows changed')).toBeNull();
+    expect(queryByText(/Nothing was purged\./)).toBeNull();
   });
 
   test('a failed dry run offers Retry, which runs the dry run again', async () => {

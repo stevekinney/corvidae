@@ -29,14 +29,17 @@
    * a sample of the matched ids, filter chip, type-to-confirm) → `committing`
    * (non-dismissible) → `result` | `fault`. The commit carries the dry run's
    * confirmation token, and the server deletes exactly the workflows that dry
-   * run named. A commit fault classified `invalid` means the token no longer
+   * run named. A commit fault with the `Conflict` code means the token no longer
    * matches (the matched set changed since the preview), so the response is a
-   * fresh preview, never a generic error; any other fault retries with the
-   * same token. Both mirror `bulk-action-dialog.svelte`.
+   * warning callout with one "Refresh preview" action, never the server's
+   * message; any other fault retries with the same token. `bulk-action-dialog.svelte`
+   * still reads the whole `invalid` bucket, because the other bulk operations
+   * still answer a stale token as `InvalidParams`.
    */
-  import { Badge, Button, Input, Modal, Progress, Skeleton } from '@lostgradient/cinder';
-  import type { BulkOperationDryRunResult } from '@lostgradient/weft';
+  import { Badge, Button, Callout, Input, Modal, Progress, Skeleton } from '@lostgradient/cinder';
+  import { HttpClientError, type BulkOperationDryRunResult } from '@lostgradient/weft';
 
+  import { BULK_PURGE_COPY } from '../../../app/copy/bulk-purge.ts';
   import { faultTreatment } from '../../../lib/faults.ts';
   import { confirmPhrase, confirmPhraseMatches, filterSummaryChip } from './bulk-preview-format.ts';
   import type { BulkCommitSummary } from './bulk-result-summary.ts';
@@ -102,7 +105,9 @@
       const treatment = faultTreatment(error);
       faultMessage = treatment.message;
       faultOrigin = 'committing';
-      faultMeansStalePreview = treatment.kind === 'invalid';
+      // Only the server's `Conflict` means the matching workflows moved after the preview. Other
+      // `invalid` faults (a malformed filter, a missing token) are input the preview cannot fix.
+      faultMeansStalePreview = error instanceof HttpClientError && error.faultCode === 'Conflict';
       phase = 'fault';
     }
   }
@@ -179,11 +184,20 @@
         {result.headline}
       </p>
     {:else if phase === 'fault'}
-      <p class="weft-bulk-dialog__fault" role="alert">{faultMessage}</p>
       {#if faultMeansStalePreview}
-        <p class="weft-bulk-dialog__note">
-          The set of matching workflows changed since the preview. Run the preview again.
-        </p>
+        <!-- The result of the person's action, so it is announced; the callout is static. -->
+        <div role="alert">
+          <Callout variant="warning" semantic="note" title={BULK_PURGE_COPY.stale.title}>
+            {#snippet action()}
+              <Button variant="secondary" size="sm" onclick={retryFromFault}>
+                {BULK_PURGE_COPY.stale.refreshAction}
+              </Button>
+            {/snippet}
+            {BULK_PURGE_COPY.stale.body}
+          </Callout>
+        </div>
+      {:else}
+        <p class="weft-bulk-dialog__fault" role="alert">{faultMessage}</p>
       {/if}
     {/if}
   {/snippet}
@@ -200,9 +214,10 @@
       <Button variant="primary" size="sm" onclick={onClose}>Close</Button>
     {:else if phase === 'fault'}
       <Button variant="ghost" size="sm" onclick={onClose}>Close</Button>
-      <Button variant="secondary" size="sm" onclick={retryFromFault}>
-        {faultMeansStalePreview ? 'Refresh preview' : 'Retry'}
-      </Button>
+      <!-- A stale preview carries its own Refresh action in the callout. -->
+      {#if !faultMeansStalePreview}
+        <Button variant="secondary" size="sm" onclick={retryFromFault}>Retry</Button>
+      {/if}
     {/if}
   {/snippet}
 </Modal>
