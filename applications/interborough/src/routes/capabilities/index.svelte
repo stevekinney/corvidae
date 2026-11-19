@@ -19,10 +19,12 @@
   import { CAPABILITIES_COPY } from '../../app/copy/capabilities.ts';
   import { getAgentCatalog } from '../../lib/agent-definitions.ts';
   import { listSkillCatalog } from '../../lib/bureau-skills.ts';
+  import { getPlugins } from '../../lib/host-plugins.ts';
   import { getToolSources } from '../../lib/host-tool-sources.ts';
   import { queryKeys } from '../../lib/query.ts';
   import { router } from '../../lib/router.svelte.ts';
   import { CONNECT_TOOLS_PATH } from '../../lib/tool-source-form.ts';
+  import { lostTools } from './capability-presentation.ts';
   import SkillsPanel from './skills-panel.svelte';
   import SourcesPanel from './sources-panel.svelte';
   import ToolsPanel from './tools-panel.svelte';
@@ -67,7 +69,23 @@
   function countOf(length: number | undefined): string {
     return length === undefined ? copy.tabCountPending : String(length);
   }
-  const toolCount = $derived(countOf(tools.data?.tools.length));
+  // The plugins are read for the tools of one that is off, which the Tools tab lists too (COR-2435).
+  const plugins = createQuery(
+    () => ({
+      queryKey: queryKeys.hostPlugins(),
+      queryFn: ({ signal }) => getPlugins({ signal }),
+      retry: false,
+    }),
+    undefined,
+  );
+  const toolCount = $derived(
+    countOf(
+      tools.data === undefined
+        ? undefined
+        : tools.data.tools.length +
+            lostTools(tools.data.tools, sources.data?.sources, plugins.data?.plugins).length,
+    ),
+  );
   const skillCount = $derived(countOf(skills.data?.skills.length));
   const sourceCount = $derived(countOf(sources.data?.sources.length));
 

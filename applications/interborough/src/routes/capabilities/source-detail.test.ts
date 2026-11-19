@@ -172,8 +172,25 @@ describe('the header of a source', () => {
       'default',
       'danger',
     ]);
-    // Only Remove source is destructive, and the Connect tools page does not read a saved source yet.
-    expect(items[0]?.getAttribute('aria-disabled')).toBe('true');
+    // Only Remove source is destructive, and Edit connection opens Connect tools on this source.
+    expect(items[0]?.getAttribute('aria-disabled')).not.toBe('true');
+    await fireEvent.click(items[0]!);
+    expect(router.pathname).toBe('/capabilities/connect');
+    expect(router.search.get('source')).toBe('github');
+  });
+
+  test('keeps Edit connection off for a source that runs a command on this machine', async () => {
+    serve({ sources: [source('local', { localCommand: true })] });
+    landAt('/capabilities?tab=sources&source=local');
+    const { findByTestId } = mount();
+    await findByTestId('source-detail');
+
+    await fireEvent.click(buttonNamed(document.body, copy.source.menu.label));
+    await waitFor(() =>
+      expect(document.body.querySelectorAll('[role="menuitem"]').length).toBeGreaterThan(0),
+    );
+    const [edit] = [...document.body.querySelectorAll<HTMLElement>('[role="menuitem"]')];
+    expect(edit?.getAttribute('aria-disabled')).toBe('true');
   });
 
   test('tests the source from the menu as it does from the button', async () => {
@@ -235,6 +252,78 @@ describe('a source that needs a sign-in', () => {
       expect(control.hasAttribute('disabled')).toBe(true);
     }
     expect(textIn(detail, '[data-testid="tools-paused"]')).toBe(copy.source.tools.paused);
+  });
+
+  test('keeps the rows the host remembers when the source lists nothing now, paused (row 31u, COR-2435)', async () => {
+    // The host as it answers after a restart: the source loaded nothing, and its last listing stays.
+    const remembered = {
+      ...sourceTool('ledger', 'post_entry', { tier: 'mutating' }),
+      title: 'Post entry',
+      description: 'Posts an entry to the ledger.',
+      shortDescription: null,
+      tier: 'mutating' as const,
+      inputSchema: null,
+    };
+    serve({
+      sources: [
+        source('ledger', {
+          state: 'needs-authorization',
+          authorized: false,
+          tools: [],
+          lastListing: {
+            listedAt: '2026-11-16T08:00:00.000Z',
+            truncated: false,
+            tools: [remembered],
+          },
+        }),
+      ],
+    });
+    landAt('/capabilities?tab=sources&source=ledger');
+    const { findByTestId } = mount();
+    const detail = await findByTestId('source-detail');
+
+    const table = await findByTestId('source-tool-table');
+    expect(table.hasAttribute('data-paused')).toBe(true);
+    expect(rowOf(detail, 'ledger__post_entry').querySelector('select')?.value).toBe('on-changes');
+    expect(textIn(detail, '[data-testid="tools-paused"]')).toBe(copy.source.tools.paused);
+    // The need to sign in is said by the status and the line under the table, not a third time by a
+    // sentence that says the server cannot list its tools above a table that lists them.
+    expect(detail.querySelector('[data-testid="source-state-description"]')).toBeNull();
+    expect(detail.textContent).not.toContain(copy.source.stateDescriptions['needs-authorization']);
+  });
+
+  test('a source that failed shows its last listing, paused, and says the tools wait for it', async () => {
+    const remembered = {
+      ...sourceTool('github', 'create_issue', { tier: 'mutating' }),
+      title: 'Create issue',
+      description: 'Opens an issue in a GitHub repository.',
+      shortDescription: null,
+      tier: 'mutating' as const,
+      inputSchema: null,
+    };
+    serve({
+      sources: [
+        source('github', {
+          name: 'GitHub',
+          state: 'failed',
+          message: 'The source could not be reached.',
+          tools: [],
+          lastListing: {
+            listedAt: '2026-11-16T08:00:00.000Z',
+            truncated: false,
+            tools: [remembered],
+          },
+        }),
+      ],
+    });
+    landAt('/capabilities?tab=sources&source=github');
+    const { findByTestId } = mount();
+    const detail = await findByTestId('source-detail');
+
+    const table = await findByTestId('source-tool-table');
+    expect(table.hasAttribute('data-paused')).toBe(true);
+    expect(rowOf(detail, 'github__create_issue')).not.toBeNull();
+    expect(textIn(detail, '[data-testid="tools-paused"]')).toBe(copy.source.tools.pausedFailed);
   });
 
   test('draws no paused line while the source is signed in', async () => {

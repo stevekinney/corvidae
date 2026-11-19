@@ -9,6 +9,7 @@
   import type { SchemaViewFact, SchemaViewField } from './schema-view-fields.ts';
   import type { SchemaViewProps } from './schema-view.types.ts';
 
+  import CodeBlock from '../code-block/code-block.svelte';
   import Collapsible from '../collapsible/collapsible.svelte';
   import JsonViewer from '../json-viewer/json-viewer.svelte';
   import { classNames } from '../../utilities/class-names.ts';
@@ -25,9 +26,14 @@
     rawLabel = 'JSON schema',
     emptyLabel = 'This schema takes no fields, so there is nothing to fill in.',
     caption,
+    layout = 'table',
+    raw = 'collapsed',
     class: className,
     ...rest
   }: SchemaViewProps = $props();
+
+  /** The raw document as the code block shows it: indented JSON, read only when it is shown. */
+  const rawText = $derived(raw === 'beside' ? (JSON.stringify(schema, null, 2) ?? 'null') : '');
 
   /** One row of the grid: a field, how deep it sits, and the labels of the fields above it. */
   type Row = {
@@ -92,8 +98,95 @@
   </span>
 {/snippet}
 
-<section {...rest} class={classNames('cinder-schema-view', className)} aria-label={label}>
-  {#if rows.length > 0}
+{#snippet foldControl(field: SchemaViewField)}
+  {@const shown = !folded.has(field.path)}
+  <button
+    type="button"
+    class="cinder-schema-view__fold"
+    aria-expanded={shown}
+    aria-label={`${shown ? 'Hide' : 'Show'} the fields of ${field.label}`}
+    onclick={() => toggleFold(field.path)}
+  >
+    <ChevronRight size={14} strokeWidth={2.25} aria-hidden="true" />
+  </button>
+{/snippet}
+
+{#snippet about(field: SchemaViewField, textId: string)}
+  {@const open = expanded.has(field.path)}
+  {#if field.summary}
+    <span id={textId} class="cinder-schema-view__description"
+      >{open && field.detail ? `${field.summary} ${field.detail}` : field.summary}</span
+    >
+    {#if field.detail}
+      {' '}<button
+        type="button"
+        class="cinder-schema-view__toggle"
+        aria-expanded={open}
+        aria-controls={textId}
+        aria-label={`${open ? 'Less' : 'More'} about ${field.label}`}
+        onclick={() => toggle(field.path)}>{open ? 'Less' : 'More'}</button
+      >
+    {/if}
+  {/if}
+  {#if field.facts.length > 0}
+    <span class="cinder-schema-view__facts">
+      {#each field.facts as fact, factIndex (factIndex)}
+        {@render factText(fact)}{' '}
+      {/each}
+    </span>
+  {/if}
+  {#if field.truncated}
+    <p class="cinder-schema-view__truncated">
+      Nested fields are not shown here. They are in the raw schema.
+    </p>
+  {/if}
+{/snippet}
+
+{#snippet fieldRows()}
+  <!-- One unframed row per field: the name flush with the text above, the word Required, the type in
+       plain words, and the description and rules on the line below. -->
+  <ul class="cinder-schema-view__list" aria-label={label}>
+    {#each rows as row, index (row.field.path)}
+      {@const field = row.field}
+      <li
+        class="cinder-schema-view__item"
+        data-cinder-depth={row.depth}
+        data-cinder-required={field.required || undefined}
+        data-cinder-group-start={row.startsOptional || undefined}
+        style:--_cinder-schema-view-depth={row.depth}
+      >
+        <div class="cinder-schema-view__name-line">
+          {#if row.ancestors.length > 0}
+            <span class="cinder-sr-only">{`${row.ancestors.join(' › ')} › `}</span>
+          {/if}
+          <span class="cinder-schema-view__label" title={field.label}>{field.label}</span>
+          {#if field.required}
+            <span class="cinder-schema-view__required-word">Required</span>
+          {/if}
+          <span class="cinder-schema-view__kind-word" data-cinder-kind={field.kind}
+            >{SCHEMA_VIEW_KIND_WORDS[field.kind]}</span
+          >
+          {#if field.fields.length > 0}
+            {@render foldControl(field)}
+          {/if}
+        </div>
+        {#if field.summary || field.facts.length > 0 || field.truncated}
+          <div class="cinder-schema-view__item-about">
+            {@render about(field, `${baseId}-${index}`)}
+          </div>
+        {/if}
+      </li>
+    {/each}
+  </ul>
+  {#if caption}
+    <p class="cinder-schema-view__caption">{caption}</p>
+  {/if}
+{/snippet}
+
+{#snippet fields()}
+  {#if rows.length > 0 && layout === 'rows'}
+    {@render fieldRows()}
+  {:else if rows.length > 0}
     <div class="cinder-schema-view__frame">
       <div class="cinder-schema-view__grid" role="table" aria-label={label}>
         <div class="cinder-schema-view__group" role="rowgroup">
@@ -106,8 +199,6 @@
         <div class="cinder-schema-view__group" role="rowgroup">
           {#each rows as row, index (row.field.path)}
             {@const field = row.field}
-            {@const open = expanded.has(field.path)}
-            {@const textId = `${baseId}-${index}`}
             <div
               class="cinder-schema-view__row"
               role="row"
@@ -118,16 +209,7 @@
             >
               <div class="cinder-schema-view__cell cinder-schema-view__field" role="rowheader">
                 {#if field.fields.length > 0}
-                  {@const shown = !folded.has(field.path)}
-                  <button
-                    type="button"
-                    class="cinder-schema-view__fold"
-                    aria-expanded={shown}
-                    aria-label={`${shown ? 'Hide' : 'Show'} the fields of ${field.label}`}
-                    onclick={() => toggleFold(field.path)}
-                  >
-                    <ChevronRight size={14} strokeWidth={2.25} aria-hidden="true" />
-                  </button>
+                  {@render foldControl(field)}
                 {/if}
                 {#if row.ancestors.length > 0}
                   <span class="cinder-sr-only">{`${row.ancestors.join(' › ')} › `}</span>
@@ -144,35 +226,7 @@
                 >
               </div>
               <div class="cinder-schema-view__cell cinder-schema-view__about" role="cell">
-                {#if field.summary}
-                  <span id={textId} class="cinder-schema-view__description"
-                    >{open && field.detail
-                      ? `${field.summary} ${field.detail}`
-                      : field.summary}</span
-                  >
-                  {#if field.detail}
-                    {' '}<button
-                      type="button"
-                      class="cinder-schema-view__toggle"
-                      aria-expanded={open}
-                      aria-controls={textId}
-                      aria-label={`${open ? 'Less' : 'More'} about ${field.label}`}
-                      onclick={() => toggle(field.path)}>{open ? 'Less' : 'More'}</button
-                    >
-                  {/if}
-                {/if}
-                {#if field.facts.length > 0}
-                  <span class="cinder-schema-view__facts">
-                    {#each field.facts as fact, factIndex (factIndex)}
-                      {@render factText(fact)}{' '}
-                    {/each}
-                  </span>
-                {/if}
-                {#if field.truncated}
-                  <p class="cinder-schema-view__truncated">
-                    Nested fields are not shown here. They are in the raw schema.
-                  </p>
-                {/if}
+                {@render about(field, `${baseId}-${index}`)}
               </div>
             </div>
           {/each}
@@ -185,9 +239,47 @@
   {:else}
     <p class="cinder-schema-view__empty">{emptyLabel}</p>
   {/if}
-  <Collapsible variant="flat" animated={false} trigger={rawLabel} class="cinder-schema-view__raw">
-    <div class="cinder-schema-view__document">
-      <JsonViewer value={schema} initialDepth={2} />
+{/snippet}
+
+<section
+  {...rest}
+  class={classNames('cinder-schema-view', className)}
+  aria-label={label}
+  data-cinder-layout={layout}
+  data-cinder-raw={raw}
+>
+  {#if raw === 'beside'}
+    <!-- The fields and the document side by side when the view is wide, stacked when it is not; the
+         document is open either way. -->
+    <div class="cinder-schema-view__split">
+      <div class="cinder-schema-view__fields">
+        {@render fields()}
+      </div>
+      <div class="cinder-schema-view__source">
+        <p class="cinder-schema-view__source-title">{rawLabel}</p>
+        <CodeBlock
+          code={rawText}
+          language="json"
+          languageLabelVisible={false}
+          copyable
+          copyFloating
+          class="cinder-schema-view__code"
+        />
+      </div>
     </div>
-  </Collapsible>
+  {:else}
+    {@render fields()}
+    {#if raw === 'collapsed'}
+      <Collapsible
+        variant="flat"
+        animated={false}
+        trigger={rawLabel}
+        class="cinder-schema-view__raw"
+      >
+        <div class="cinder-schema-view__document">
+          <JsonViewer value={schema} initialDepth={2} />
+        </div>
+      </Collapsible>
+    {/if}
+  {/if}
 </section>

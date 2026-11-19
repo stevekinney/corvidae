@@ -80,6 +80,7 @@ describe('parseArguments', () => {
       'tests/e2e/run-page-states.spec.ts',
       'tests/e2e/run-page-live-states.spec.ts',
       'tests/e2e/goal-page-states.spec.ts',
+      'tests/e2e/capabilities-states.spec.ts',
       'tests/e2e/goals-list-states.spec.ts',
       // The view states are a showcase specification too, run once where first listed.
       'tests/e2e/15-view-states.spec.ts',
@@ -154,6 +155,7 @@ describe('parseArguments', () => {
       'tests/e2e/run-page-states.spec.ts',
       'tests/e2e/run-page-live-states.spec.ts',
       'tests/e2e/goal-page-states.spec.ts',
+      'tests/e2e/capabilities-states.spec.ts',
       'tests/e2e/goals-list-states.spec.ts',
       'tests/e2e/15-view-states.spec.ts',
       'tests/e2e/agents-reviews-design-states.spec.ts',
@@ -212,6 +214,7 @@ describe('parseArguments', () => {
       'tests/e2e/run-page-states.spec.ts',
       'tests/e2e/run-page-live-states.spec.ts',
       'tests/e2e/goal-page-states.spec.ts',
+      'tests/e2e/capabilities-states.spec.ts',
       'tests/e2e/goals-list-states.spec.ts',
       'tests/e2e/15-view-states.spec.ts',
       'tests/e2e/agents-reviews-design-states.spec.ts',
