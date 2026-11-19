@@ -6,6 +6,7 @@
  * real one is exercised by the Playwright suite (`tests/e2e/health-overview.spec.ts`). The engine
  * answers nothing here, so its counts read as unavailable, which is also a state worth proving.
  */
+import { waitUntil } from '@lostgradient/testing/wait-until';
 import { HttpClient } from '@lostgradient/weft';
 import { cleanup, fireEvent, render, waitFor } from '@testing-library/svelte';
 import { afterEach, describe, expect, jest, test } from 'bun:test';
@@ -232,9 +233,12 @@ describe('loading (rows 76w and 76x)', () => {
   test('a read that is quick never flashes a placeholder', async () => {
     jest.useFakeTimers();
     const view = open();
-    // Answered before 300 ms: the first thing drawn is the real list.
-    await waitFor(() =>
-      expect(view.getByTestId('needs-attention').querySelectorAll('li').length).toBe(3),
+    // Answered before 300 ms: the first thing drawn is the real list. The wait turns the event
+    // loop itself: testing-library's waitFor drives fake timers through a global `jest` Bun does
+    // not define.
+    await waitUntil(
+      () => view.queryByTestId('needs-attention')?.querySelectorAll('li').length === 3,
+      { message: 'the real list', fakeTimersActive: () => true },
     );
     expect(view.container.querySelector('.cinder-skeleton-row')).toBeNull();
   });
