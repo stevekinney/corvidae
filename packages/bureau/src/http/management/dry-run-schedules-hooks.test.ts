@@ -77,7 +77,8 @@ describe('bureau.schedules.cancel with dryRun', () => {
       );
       expect(real.error?.data?.httpStatus).toBe(409);
       expect(dry.error).toEqual(real.error);
-      expect((await opened.bureau.schedules.get(scheduleId))?.status).toBe('active');
+      const schedule = await opened.bureau.schedules.get(scheduleId);
+      expect(schedule?.status).toBe('active');
     });
   });
 

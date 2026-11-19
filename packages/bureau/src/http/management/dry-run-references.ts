@@ -84,7 +84,8 @@ export function dryRunEffectsOf(bureau: Source): BureauDryRunHost['dryRun'] {
           summary.status !== 'cancelled' &&
           (await bureau.schedules.agentName(summary.id)) === agentName,
       );
-      const goals = (await bureau.goals.list()).filter(
+      const everyGoal = await bureau.goals.list();
+      const goals = everyGoal.filter(
         (goal) => !isTerminalGoalStatus(goal.status) && goal.objective.agentName === agentName,
       ).length;
       const chats = await countMatching(

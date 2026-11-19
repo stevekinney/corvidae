@@ -111,7 +111,7 @@ export function dryRunResult(
   target: DryRunResult['target'],
   effects: readonly DryRunEffect[],
 ): DryRunResult {
-  return { dryRun: true, target, effects: effects.map((effect) => ({ ...effect })) };
+  return { dryRun: true, target, effects: effects.map((counted) => ({ ...counted })) };
 }
 
 /** An effect that counts exactly `count` things. */

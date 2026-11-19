@@ -430,6 +430,11 @@ describe('bureau.contexts.forgetgrants with dryRun', () => {
   });
 });
 
+async function goalStatusOf(opened: OpenedBureau, goalRunId: string) {
+  const goal = await opened.bureau.goals.get(goalRunId);
+  return goal?.status;
+}
+
 describe('bureau.goals.cancel with dryRun', () => {
   const NEW_GOAL = {
     agentName: 'worker',
@@ -458,10 +463,10 @@ describe('bureau.goals.cancel with dryRun', () => {
         );
         expect(created.error).toBeUndefined();
         const goalRunId = (created.result!['goal'] as { goalRunId: string }).goalRunId;
-        await waitForCondition(
-          async () => ((await opened.bureau.goals.get(goalRunId))?.attempts.length ?? 0) > 0,
-          'the goal starts an attempt',
-        );
+        await waitForCondition(async () => {
+          const goal = await opened.bureau.goals.get(goalRunId);
+          return (goal?.attempts.length ?? 0) > 0;
+        }, 'the goal starts an attempt');
         return body(opened, subject, goalRunId);
       },
     );
@@ -477,7 +482,7 @@ describe('bureau.goals.cancel with dryRun', () => {
         target: { kind: 'goal', id: goalRunId },
         effects: [{ kind: 'runs-in-progress', count: 1 }],
       });
-      expect((await opened.bureau.goals.get(goalRunId))?.status).toBe('running');
+      expect(await goalStatusOf(opened, goalRunId)).toBe('running');
     });
   });
 
@@ -502,7 +507,7 @@ describe('bureau.goals.cancel with dryRun', () => {
         'alice-key',
       );
       expect(real.result).toMatchObject({ receipt: 'rejected', reason: 'owned-by-goal' });
-      expect((await opened.bureau.goals.get(goalRunId))?.status).toBe('running');
+      expect(await goalStatusOf(opened, goalRunId)).toBe('running');
     });
   });
 
@@ -518,7 +523,7 @@ describe('bureau.goals.cancel with dryRun', () => {
       );
       expect(real.error?.data?.httpStatus).toBe(409);
       expect(dry.error).toEqual(real.error);
-      expect((await opened.bureau.goals.get(goalRunId))?.status).toBe('running');
+      expect(await goalStatusOf(opened, goalRunId)).toBe('running');
     });
   });
 

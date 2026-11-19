@@ -212,10 +212,8 @@ describe('bureau.memory.embedding.cancel with dryRun', () => {
         target: { kind: 'memory-embedding-switch', id: 'hashing' },
         effects: [{ kind: 'running-switches', count: 1 }],
       });
-      expect((await opened.memory.embedding.status()).job).toMatchObject({
-        target: 'hashing',
-        state: 'running',
-      });
+      const status = await opened.memory.embedding.status();
+      expect(status.job).toMatchObject({ target: 'hashing', state: 'running' });
 
       // The real call then cancels it.
       const real = await rpc(

@@ -53,6 +53,7 @@ type BureauClient = {
 /** The client every Bureau call in the browser goes through: one method per operation name. */
 // The assertion narrows the answer by the input, which a deferred conditional type cannot be shown
 // assignable to: the client is the generated one and the call is the same call.
+// oxlint-disable-next-line typescript/no-unsafe-type-assertion
 export const bureauClient = createBureauClient({ baseUrl: '' }) as unknown as BureauClient;
 
 /** What the Bureau operation `Name` takes. */

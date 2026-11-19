@@ -35,10 +35,10 @@ async function serve() {
     steps: [AGENT_STEP],
   });
   await served.bureau.durableEngine()!.start('digest', null, { id: 'digest-run' });
-  await waitForCondition(
-    async () => ((await served.bureau.workflows!.runCounts('digest'))?.active ?? 0) === 1,
-    'the digest instance is in progress',
-  );
+  await waitForCondition(async () => {
+    const counts = await served.bureau.workflows!.runCounts('digest');
+    return counts?.active === 1;
+  }, 'the digest instance is in progress');
   return {
     served,
     hash: created.hash,
@@ -81,9 +81,8 @@ describe('bureau.workflows.delete with dryRun', () => {
       'workflows-writer-key',
     );
     expect(real.error).toBeUndefined();
-    expect((await served.bureau.schedules.get('bureau-workflow-schedule:digest:1'))?.status).toBe(
-      'cancelled',
-    );
+    const cancelled = await served.bureau.schedules.get('bureau-workflow-schedule:digest:1');
+    expect(cancelled?.status).toBe('cancelled');
   });
 
   it('answers the fault the real call answers for a workflow that is missing, at another hash, or not the caller’s', async () => {
@@ -126,9 +125,8 @@ describe('bureau.schedules.cancel with dryRun, on the schedule of a workflow fil
       { scheduleId: 'bureau-workflow-schedule:digest:1' },
       'schedules-writer-key',
     );
-    expect((await served.bureau.schedules.get('bureau-workflow-schedule:digest:1'))?.status).toBe(
-      'active',
-    );
+    const schedule = await served.bureau.schedules.get('bureau-workflow-schedule:digest:1');
+    expect(schedule?.status).toBe('active');
   });
 });
 
@@ -150,7 +148,8 @@ describe('bureau.workflows.runs.cancel with dryRun', () => {
       target: { kind: 'workflow-run', id: 'digest-run' },
       effects: [{ kind: 'running-instances', count: 1 }],
     });
-    expect((await served.bureau.workflows!.getRun('digest-run'))?.status).toBe('running');
+    const run = await served.bureau.workflows!.getRun('digest-run');
+    expect(run?.status).toBe('running');
 
     // The real call then requests the cancellation.
     const real = await rpc(
