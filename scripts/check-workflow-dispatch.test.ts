@@ -49,7 +49,8 @@ describe('main.yml dispatch guard', () => {
   test('passes an agent definition that names targeted-run.ts, and the dispatcher itself', () => {
     const root = fixture({
       '.claude/agents/worker.md': 'Run `bun scripts/chef/targeted-run.ts`.\n',
-      'scripts/chef/targeted-run.ts': "return ['gh', 'workflow', 'run', 'main.yml', '--ref', ref];\n",
+      'scripts/chef/targeted-run.ts':
+        "return ['gh', 'workflow', 'run', 'main.yml', '--ref', ref];\n",
     });
     expect(scanForRawDispatch(root)).toEqual([]);
   });

@@ -444,7 +444,10 @@ function fixtureSpecsFor(names: ReadonlySet<string>, context: EvidenceContext): 
   );
   const selected = new Set<string>();
   for (const spec of files.filter((path) => FIXTURE_SPEC_PATH.test(path))) {
-    if (spec.endsWith('/components.playwright.ts') || spec.endsWith('/components-sweep.playwright.ts'))
+    if (
+      spec.endsWith('/components.playwright.ts') ||
+      spec.endsWith('/components-sweep.playwright.ts')
+    )
       continue;
     const source = context.read(spec) ?? '';
     const imported = [...source.matchAll(/from\s+['"]\.\/([\w.-]+?)(?:\.ts)?['"]/g)].map(

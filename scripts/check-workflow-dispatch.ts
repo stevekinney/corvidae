@@ -31,13 +31,10 @@ export const EXEMPT_FILES = new Set([
 ]);
 
 const DISPATCH =
-  "\\bgh\\s+workflow\\s+run\\s+['\"]?main\\.yml\\b|['\"]workflow['\"]\\s*,\\s*['\"]run['\"]\\s*,\\s*['\"]main\\.yml['\"]";
+  '\\bgh\\s+workflow\\s+run\\s+[\'"]?main\\.yml\\b|[\'"]workflow[\'"]\\s*,\\s*[\'"]run[\'"]\\s*,\\s*[\'"]main\\.yml[\'"]';
 const RAW_DISPATCH = new RegExp(DISPATCH, 'u');
 // A prohibition covers a dispatch only in its own sentence: no full stop between the two.
-const PROHIBITED = new RegExp(
-  `\\b(?:never|do not|don't|not use)\\b[^.\\n]*?(?:${DISPATCH})`,
-  'iu',
-);
+const PROHIBITED = new RegExp(`\\b(?:never|do not|don't|not use)\\b[^.\\n]*?(?:${DISPATCH})`, 'iu');
 
 /** The 1-based lines of `source` that dispatch `main.yml` directly without saying not to. */
 export function rawDispatches(source: string): number[] {
