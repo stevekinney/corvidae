@@ -97,10 +97,17 @@ async function installFleetHarness(page: Page): Promise<void> {
 function runningValue(page: Page) {
   const tile = page.locator('[data-count="running"]');
   return {
-    toHaveText: async (value: string) =>
-      value === '0'
-        ? await expect(tile).toHaveCount(0)
-        : await expect(tile.locator(RUNNING_VALUE)).toHaveText(value),
+    toHaveText: async (value: string) => {
+      if (value !== '0') {
+        await expect(tile.locator(RUNNING_VALUE)).toHaveText(value);
+        return;
+      }
+      // No tile is only zero once the page has drawn its overview, not before it has loaded.
+      await expect(
+        page.getByTestId('needs-attention').or(page.getByTestId('needs-attention-clear')),
+      ).toBeVisible();
+      await expect(tile).toHaveCount(0);
+    },
   };
 }
 

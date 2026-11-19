@@ -77,7 +77,8 @@ test.describe('Health › Storage on the sample world', () => {
 
     // 80c: the storage line names the backend and does not count keys.
     const backend = main.getByTestId('storage-backend');
-    await expect(backend).toContainText('Running on SQLite in');
+    await expect(backend).toContainText('Running on SQLite');
+    await expect(backend).not.toContainText('/');
     await expect(backend.getByRole('button', { name: 'Storage details' })).toBeVisible();
     await expect(backend).not.toContainText(/\d keys/);
 
@@ -200,11 +201,15 @@ test.describe('Health › Storage on the sample world', () => {
     await row.click();
     await expect(main.getByTestId('storage-key-name')).toHaveText(key);
 
-    // Starts with is a prefix: every row starts with the text, and the footer counts that prefix.
-    for (const [rowKey] of await firstRows(page, 5)) {
-      expect(rowKey?.startsWith('durable-run:')).toBe(true);
-    }
-    await expect(main.getByTestId('storage-count')).toHaveText(/^Showing \d+ of \d+ keys\.$/);
+    // Starts with is a prefix: every row's key starts with the text (the Key column leaves out the
+    // group's prefix, owner 2026-11-19, so the row's id is read), and the count counts that prefix.
+    const ids = await main
+      .locator('tbody tr[data-cinder-row-id]')
+      .evaluateAll((rows) => rows.slice(0, 5).map((row) => row.getAttribute('data-cinder-row-id')));
+    for (const rowKey of ids) expect(rowKey?.startsWith('durable-run:')).toBe(true);
+    await expect(main.getByTestId('storage-count')).toHaveText(
+      /^(?:\d+ keys?|Showing \d+ of \d+ keys\. Scroll to load more\.)$/,
+    );
 
     // A chosen group and typed text that part ways match nothing.
     await main.getByLabel('Group', { exact: true }).selectOption({ label: 'Chat sessions' });
@@ -1055,10 +1060,11 @@ test.describe('Health › Storage with the design’s own keys', () => {
     await range.getByLabel('Range end').fill('audit:2026-11-02');
     await expect(main.locator('tbody tr[data-cinder-row-id]')).toHaveCount(3);
     // 80q: the keys, their sizes, and their times in Central time.
+    // The Key column leaves out the prefix its Group column gives (owner, 2026-11-19).
     expect(await firstRows(page, 3)).toEqual([
-      ['audit:2026-11-01T22:12:31Z', 'Audit log', '210 B', 'Sun Nov 1, 4:12 PM'],
-      ['audit:2026-11-02T15:00:02Z', 'Audit log', '224 B', 'Today, 9:00 AM'],
-      ['audit:2026-11-02T16:33:08Z', 'Audit log', '220 B', 'Today, 10:33 AM'],
+      ['2026-11-01T22:12:31Z', 'Audit log', '210 B', 'Sun Nov 1, 4:12 PM'],
+      ['2026-11-02T15:00:02Z', 'Audit log', '224 B', 'Today, 9:00 AM'],
+      ['2026-11-02T16:33:08Z', 'Audit log', '220 B', 'Today, 10:33 AM'],
     ]);
     await main.locator('tbody tr[data-cinder-row-id]').nth(1).click();
     await expect(main.locator('tbody tr[aria-current="true"]')).toHaveCount(1);

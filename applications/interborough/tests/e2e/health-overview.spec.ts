@@ -19,6 +19,7 @@ import { answerRecentActivityAsDesigned } from './board-activity-world.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
 import { E2E_FIRST_RUN_URL, E2E_SHOWCASE_URL } from './e2e-constants.ts';
 import { expect, test } from './fixtures.ts';
+import { touchHeight } from './hit-area.ts';
 import { readBoxes } from './read-boxes.ts';
 import { expectTabOpen } from './workflow-support.ts';
 
@@ -292,9 +293,12 @@ test.describe('the sample world', () => {
         .all();
       // The groups select, the Starts with / Range switch and the search field.
       expect(controls).toHaveLength(3);
+      // 44px to a finger: a compact control (the switch, COR-2489 AC5) paints at a Button's height
+      // and reaches 44px through its hit area.
       for (const control of controls) {
-        const box = await control.boundingBox();
-        expect(box?.height).toBeGreaterThanOrEqual(44);
+        const parts = [control, ...(await control.locator('button, input, select').all())];
+        const heights = await Promise.all(parts.map(async (part) => touchHeight(part)));
+        expect(Math.max(...heights)).toBeGreaterThanOrEqual(44);
       }
 
       // 06p: the columns, the absolute times, and the table in its own box with no sideways page scroll.
