@@ -758,6 +758,72 @@ describe('captureDesignReview', () => {
     expect(calls.commands).toEqual([]);
   });
 
+  test('runs a shard whose specification titles its tests as templates, whatever the filter says', async () => {
+    // The view states title most tests `${view} is ${outcome}…`, which only exists once it runs, so
+    // a shard holding that file runs Playwright for any filter (the shard once skipped itself for
+    // '/capabilities' and the run captured nothing of what it named).
+    const { calls, environment } = standIn({ manifestLines: 2 });
+    const shardOfStates = [1, 2, 3, 4, 5, 6].find((index) => {
+      const options = parseArguments(['--shard', `${index}/6`]);
+      return (
+        typeof options !== 'string' &&
+        options.specifications.includes('tests/e2e/15-view-states.spec.ts')
+      );
+    });
+    expect(
+      await captureDesignReview(
+        [
+          '--out',
+          directory,
+          '--scheme',
+          'light',
+          '--shard',
+          `${shardOfStates}/6`,
+          '--grep',
+          'Skills tab',
+        ],
+        environment,
+      ),
+    ).toBe(0);
+    expect(calls.commands).toHaveLength(1);
+  });
+
+  test('exits 0 for a shard of a filtered run that captured nothing, and records it', async () => {
+    const { environment } = standIn({ exitCodes: [1] });
+    expect(
+      await captureDesignReview(
+        [
+          '--out',
+          directory,
+          '--scheme',
+          'light',
+          '--shard',
+          '1/6',
+          '--grep',
+          'nothing-has-this-title',
+        ],
+        environment,
+      ),
+    ).toBe(0);
+    const summary = JSON.parse(await readFile(join(directory, 'summary.json'), 'utf8'));
+    expect(summary.captures).toBe(0);
+    expect(summary.shard).toEqual({ index: 1, count: 6 });
+  });
+
+  test('still exits 1 for a whole run, or an unfiltered shard, that captured nothing', async () => {
+    const { environment } = standIn({ exitCodes: [1, 1] });
+    expect(await captureDesignReview(['--out', directory, '--scheme', 'light'], environment)).toBe(
+      1,
+    );
+    const second = standIn({ exitCodes: [1] });
+    expect(
+      await captureDesignReview(
+        ['--out', directory, '--scheme', 'light', '--shard', '2/6'],
+        second.environment,
+      ),
+    ).toBe(1);
+  });
+
   test('runs Playwright once per scheme with the capture variables and writes a clean summary', async () => {
     const { calls, environment } = standIn({ manifestLines: 3 });
     const out = join(directory, 'nested', 'capture');

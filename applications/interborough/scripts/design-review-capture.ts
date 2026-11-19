@@ -486,15 +486,24 @@ export async function captureDesignReview(
   environment.standardOutput(
     `design review: ${captures} captures in ${options.out}${summary.clean ? '' : ' (a specification failed; see summary.json)'}\n`,
   );
-  return captures > 0 && !ranNothing ? 0 : 1;
+  if (captures > 0 && !ranNothing) return 0;
+  // A shard of a filtered run may hold none of the tests the filter matches (Playwright says "No
+  // tests found" and exits 1). Its exit codes are in `summary.json`; whether the run captured
+  // anything at all is the merge's verdict.
+  if (options.shard !== undefined && options.grep !== undefined && captures === 0) return 0;
+  return 1;
 }
 
 /** Whether any listed specification has a test whose title path the filter matches (all do without one). */
 function shardHasTests(options: Options): boolean {
   if (options.grep === undefined) return options.specifications.length > 0;
   const filter = new RegExp(options.grep);
+  // A title written as a template (`${view} is ${state}…`) is only known once it runs, so it may be
+  // one the filter reaches: only a title that is plain text can be ruled out from the source.
   return options.specifications.some((specification) =>
-    testsOf(readSourceOf(specification)).some((test) => filter.test(test.path)),
+    testsOf(readSourceOf(specification)).some(
+      (test) => test.path.includes('${') || filter.test(test.path),
+    ),
   );
 }
 
