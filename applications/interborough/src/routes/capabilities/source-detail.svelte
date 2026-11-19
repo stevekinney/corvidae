@@ -54,6 +54,7 @@
   } from '../../lib/host-tool-sources.ts';
   import { queryKeys } from '../../lib/query.ts';
   import { router } from '../../lib/router.svelte.ts';
+  import { CONNECT_TOOLS_PATH } from '../../lib/tool-source-form.ts';
   import {
     riskLabel,
     sourceHeading,
@@ -64,6 +65,7 @@
     sourceToolApproval,
     sourceToolHeading,
     sourceToolTier,
+    sourceTableTools,
     sourceToolWaitsForRestart,
   } from './capability-presentation.ts';
   import RemoveSourceDialog from './remove-source-dialog.svelte';
@@ -98,7 +100,7 @@
   // itself: the shell holds a marked control while the server does not answer. The spread on each
   // component is what the guard reads (`changing-controls.guard.test.ts`).
   $effect(() => {
-    void source.tools.length;
+    void table.tools.length;
     for (const control of toolTable?.querySelectorAll(
       '[role="switch"], input[type="checkbox"], select, [role="combobox"]',
     ) ?? []) {
@@ -203,8 +205,13 @@
   // tools; `authorized` is only present for an OAuth source.
   const signInFirst = $derived(source.state === 'pending-restart' && source.authorized === false);
   const canSignIn = $derived(source.state === 'needs-authorization' || signInFirst);
-  /** A source that needs a sign-in keeps its rows, muted and inert, until it has one. */
-  const paused = $derived(source.state === 'needs-authorization');
+  /**
+   * The rows of the tool table: what the source offers, or, for one that is not loaded, the tools
+   * it listed last, which the host kept across restarts (row 31u, COR-2435).
+   */
+  const table = $derived(sourceTableTools(source));
+  /** A source that needs a sign-in, or shows its last listing, keeps its rows, muted and inert. */
+  const paused = $derived(source.state === 'needs-authorization' || table.remembered);
   const stateWords = $derived(
     signInFirst
       ? copy.signIn.savedFirst
@@ -220,7 +227,7 @@
   );
   // Read again each time the source is, so "last tested 1 h ago" follows a test that just ran.
   const statusFacts = $derived(sourceStatusFacts(source, Date.now()));
-  const count = $derived(toolsOnCount(source));
+  const count = $derived(toolsOnCount({ tools: table.tools }));
 </script>
 
 <article
@@ -264,7 +271,15 @@
           <VisuallyHidden>{copy.menu.label}</VisuallyHidden>
         </Dropdown.Trigger>
         <Dropdown.Menu>
-          <Dropdown.Item disabled title={copy.menu.editUnavailable}>{copy.menu.edit}</Dropdown.Item>
+          <!-- Edit connection opens Connect tools on this source (COR-2436). A local command's
+          line never reaches a page, so it is changed in configuration.json. -->
+          <Dropdown.Item
+            disabled={locked || source.localCommand}
+            {...source.localCommand ? { title: copy.menu.editUnavailable } : {}}
+            onclick={() =>
+              router.navigate(`${CONNECT_TOOLS_PATH}?source=${encodeURIComponent(source.id)}`)}
+            >{copy.menu.edit}</Dropdown.Item
+          >
           <Dropdown.Item data-changes onclick={() => testConnection.mutate()}
             >{copy.menu.test}</Dropdown.Item
           >
@@ -312,7 +327,10 @@
         >
       </div>
     </Alert>
-  {:else}
+  {:else if !(source.state === 'needs-authorization' && table.remembered && stateWords === sourceStateDescription(source.state))}
+    <!-- A kept listing is shown under the status, and the line under its table says the tools are
+         paused until the sign-in: saying "sign in so it can list its tools" above a table that
+         lists them is false and a third mention of the same need. -->
     <p class="ib-capability__prose" data-testid="source-state-description">{stateWords}</p>
   {/if}
 
@@ -365,7 +383,7 @@
 
   <section class="ib-capability__section" data-testid="source-tools">
     <SectionHeading level={4} title={copy.tools.heading} />
-    {#if source.tools.length === 0}
+    {#if table.tools.length === 0}
       <EmptyState
         kind="first-use"
         size="compact"
@@ -398,7 +416,7 @@
             </Table.Row>
           </Table.Header>
           <Table.Body>
-            {#each source.tools as tool (tool.name)}
+            {#each table.tools as tool (tool.name)}
               {@const tier = sourceToolTier(tool)}
               {@const asks = sourceToolApproval(tool)}
               {@const busy = locked || paused || saving.has(tool.tool)}
@@ -493,7 +511,9 @@
           {#if saved}{copy.tools.saved}{/if}
         </p>
         {#if paused}
-          <p class="ib-source__help" data-testid="tools-paused">{copy.tools.paused}</p>
+          <p class="ib-source__help" data-testid="tools-paused">
+            {source.state === 'needs-authorization' ? copy.tools.paused : copy.tools.pausedFailed}
+          </p>
         {/if}
         <p class="ib-source__help" data-testid="tools-note">
           {copy.tools.note(count.on, count.total)}

@@ -9,6 +9,7 @@ import { describe, expect, test } from 'bun:test';
 import { AGENT_EDITOR_COPY } from '../../app/copy/agents.ts';
 import type { Effort } from '../../lib/agent-definitions.ts';
 import { catalogFixture, readyAgent } from '../../lib/bureau-stub.test-support.ts';
+import { defaultAsks } from '../capabilities/capability-presentation.ts';
 import { restrictionsOf } from './agent-editor-models.ts';
 import { AgentEditorState, FIELD_IDS, slugify, wordCount } from './agent-editor-state.svelte.ts';
 
@@ -350,6 +351,30 @@ describe('the Asks level a new agent sets (row 41l)', () => {
     expect(form.toDefinition().approvals).toEqual({ 'lookup-order': 'always' });
     form.setApproval('lookup-order', 'never', 'never');
     expect(form.approvalOf('lookup-order')).toBeUndefined();
+    expect('approvals' in form.toDefinition()).toBe(false);
+  });
+});
+
+describe('the Asks level against a dangerous tool a source picked Never (COR-2436 review)', () => {
+  test('writes Always for the agent, because the enforced default is Never and not Always', () => {
+    const picked = {
+      tier: 'dangerous' as const,
+      defaultApproval: 'allow' as const,
+      defaultAsks: 'never' as const,
+    };
+    const form = AgentEditorState.create(catalogFixture());
+    form.name = 'Branch cleaner';
+    form.setTool('lookup-order', true);
+
+    // The editor compares with the level the hook enforces (what `defaultAsks` reads from the
+    // catalog), so choosing Always is written and the agent's own entry replaces the source's Never.
+    form.setApproval('lookup-order', 'always', defaultAsks(picked));
+
+    expect(defaultAsks(picked)).toBe('never');
+    expect(form.toDefinition().approvals).toEqual({ 'lookup-order': 'always' });
+    // A dangerous tool with no pick is enforced at Always, so choosing it needs no entry.
+    const unpicked = { tier: 'dangerous' as const, defaultApproval: 'ask' as const };
+    form.setApproval('lookup-order', 'always', defaultAsks(unpicked));
     expect('approvals' in form.toDefinition()).toBe(false);
   });
 });

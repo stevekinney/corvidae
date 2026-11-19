@@ -1,0 +1,194 @@
+/**
+ * The stubs `tests/e2e/capabilities-states.spec.ts` answers the host with are read here through the
+ * page's own client functions, which parse them with the client schemas: a stub the page would
+ * reject (a wrong enum value, a missing field) fails here, in a unit test, not as a missing detail
+ * in the browser (CI run 44112222921: `approval: 'allow'` made the whole sources read fail).
+ */
+import { describe, expect, test } from 'bun:test';
+
+import {
+  BLOCKED_AGENT_LIST,
+  DELETE_BRANCH_TOOL,
+  DEMO_PLUGIN,
+  githubNotLoaded,
+  githubWithAddress,
+  LEDGER_EDITING,
+  LEDGER_PROBE,
+  paymentsSource,
+  RELEASE_NOTES_INSTRUCTIONS,
+  RELEASE_NOTES_SKILLS,
+  SIGN_IN_START,
+  SKILL_AGENT_DETAIL,
+  SKILL_AGENTS,
+  USED_BY_DEFINITIONS,
+  USED_BY_TOOL_FIELDS,
+} from '../../../tests/e2e/capabilities-states-stubs.ts';
+import {
+  getAgentCatalog,
+  getAgentDefinition,
+  listAgentDefinitions,
+} from '../../lib/agent-definitions.ts';
+import { agentSummaryOf, type AgentSummary } from '../../lib/bureau-client.ts';
+import { getSkillInstructions, listSkillCatalog } from '../../lib/bureau-skills.ts';
+import { getPlugins } from '../../lib/host-plugins.ts';
+import {
+  getToolSourceEditing,
+  getToolSources,
+  probeToolSource,
+  startToolSourceSignIn,
+} from '../../lib/host-tool-sources.ts';
+
+/** A fetch that answers every request with `body`. */
+const answering = (body: unknown) => async () => Response.json(body);
+
+/** A fetch that answers a Bureau call with `result`. */
+const bureauAnswering = (result: unknown) => async () =>
+  Response.json({ jsonrpc: '2.0', id: 1, result });
+
+/** The sample world's GitHub source before a stub changes it: loaded, saved without a name. */
+const SAMPLE_GITHUB = {
+  id: 'github',
+  kind: 'mcp',
+  localCommand: true,
+  state: 'loaded',
+  tools: [],
+  skipped: [],
+  unmatchedSettings: [],
+  credentials: [],
+};
+
+/** A stubbed agent row read as the Agents list reads one. */
+const summaryOf = (agent: unknown): AgentSummary => agentSummaryOf(agent as never);
+
+describe('the stubs of the capabilities states spec', () => {
+  for (const state of ['failed', 'needs-authorization'] as const) {
+    test(`a GitHub source that is ${state} is a source the page reads, with its last listing`, async () => {
+      const snapshot = await getToolSources({
+        fetch: answering({
+          configurationRevision: null,
+          sources: [githubNotLoaded(SAMPLE_GITHUB, state, 'The source could not be reached.')],
+        }),
+      });
+      const [github] = snapshot.sources;
+      expect(github?.name).toBe('GitHub');
+      expect(github?.lastListing?.tools.map((tool) => tool.name)).toEqual([
+        'github__list_issues',
+        'github__create_issue',
+      ]);
+    });
+  }
+
+  test('a disabled plugin is a plugin the page reads, with its last listing', async () => {
+    const snapshot = await getPlugins({
+      fetch: answering({ configurationRevision: null, plugins: [DEMO_PLUGIN], unloaded: [] }),
+    });
+    expect(snapshot.plugins[0]?.lastListing?.tools.map((tool) => tool.name)).toEqual([
+      'demo__draft-release-notes',
+    ]);
+  });
+
+  test('the skill and its instructions are read by the page', async () => {
+    const catalog = await listSkillCatalog({ fetch: bureauAnswering(RELEASE_NOTES_SKILLS) });
+    expect(catalog.skills.map((skill) => skill.name)).toEqual(['release-notes']);
+    const read = await getSkillInstructions('release-notes', {
+      fetch: bureauAnswering(RELEASE_NOTES_INSTRUCTIONS),
+    });
+    expect(read.instructions?.size).toBe(1229);
+  });
+
+  test('the edit read, the probe and the start of a sign-in are read by the page', async () => {
+    const editing = await getToolSourceEditing('ledger', { fetch: answering(LEDGER_EDITING) });
+    expect(editing.credentials).toEqual(['token']);
+    const probe = await probeToolSource(
+      'ledger',
+      { source: LEDGER_EDITING.source, credentials: {} },
+      { fetch: answering(LEDGER_PROBE) },
+    );
+    expect(probe.outcome).toBe('listed');
+    const started = await startToolSourceSignIn('github', LEDGER_EDITING.source, {
+      fetch: answering(SIGN_IN_START),
+    });
+    expect(started.authorized).toBe(false);
+  });
+
+  test('the agents that use a tool, the agent list and the code agent are read by the page', async () => {
+    const catalog = await getAgentCatalog({
+      fetch: bureauAnswering({
+        models: [],
+        tools: [
+          {
+            name: 'github__create_issue',
+            description: 'Opens an issue.',
+            shortDescription: null,
+            title: 'Create issue',
+            inputSchema: null,
+            tier: 'mutating',
+            defaultApproval: 'ask',
+            source: 'host',
+            plugin: null,
+            ...USED_BY_TOOL_FIELDS,
+          },
+        ],
+      }),
+    });
+    const dangerous = await getAgentCatalog({
+      fetch: bureauAnswering({ models: [], tools: [DELETE_BRANCH_TOOL] }),
+    });
+    expect(dangerous.tools[0]?.userApprovals).toEqual({ 'branch-cleaner': 'blocked' });
+    expect(summaryOf(BLOCKED_AGENT_LIST.agents[0]).displayName).toBe(
+      'An agent allowed Delete branch',
+    );
+    expect(catalog.tools[0]?.users).toHaveLength(4);
+    expect(catalog.tools[0]?.userApprovals).toEqual({
+      'release-writer': 'always',
+      'former-intern': 'blocked',
+    });
+    const definitions = await listAgentDefinitions({ fetch: bureauAnswering(USED_BY_DEFINITIONS) });
+    expect(definitions.filter((agent) => agent.source === 'code').map((agent) => agent.id)).toEqual(
+      ['code-assistant'],
+    );
+    const agents = SKILL_AGENTS.agents.map(summaryOf);
+    expect(agents.map((agent) => agent.name)).toEqual(['workflow-author']);
+    const detail = await getAgentDefinition('workflow-author', {
+      fetch: bureauAnswering(SKILL_AGENT_DETAIL),
+    });
+    expect(detail.codeDefinition?.skills).toEqual(['release-notes']);
+  });
+
+  test('the GitHub source with an address and the Payments API are sources the page reads', async () => {
+    const snapshot = await getToolSources({
+      fetch: answering({
+        configurationRevision: null,
+        sources: [githubWithAddress(SAMPLE_GITHUB), paymentsSource('2026-11-17T09:00:00.000Z')],
+      }),
+    });
+    expect(snapshot.sources.map((source) => [source.id, source.address])).toEqual([
+      ['github', 'https://mcp.github.example/mcp'],
+      ['payments', 'https://api.example.com/openapi.json'],
+    ]);
+    expect(snapshot.sources[1]?.kind).toBe('openapi');
+  });
+
+  test('a stub the schema does not accept fails here', async () => {
+    const wrong = githubNotLoaded(SAMPLE_GITHUB, 'failed');
+    const lastListing = wrong['lastListing'] as { tools: Record<string, unknown>[] };
+    const rejected = await getToolSources({
+      fetch: answering({
+        configurationRevision: null,
+        sources: [
+          {
+            ...wrong,
+            lastListing: {
+              ...lastListing,
+              tools: [{ ...lastListing.tools[0], approval: 'allow' }],
+            },
+          },
+        ],
+      }),
+    }).then(
+      () => 'read',
+      () => 'rejected',
+    );
+    expect(rejected).toBe('rejected');
+  });
+});

@@ -111,12 +111,16 @@ export const queryKeys = {
     list: () => ['tool-sources', 'list'] as const,
     /** The agent files a removal of one source would leave invalid. */
     removal: (id: string) => ['tool-sources', 'removal', id] as const,
+    /** A saved source as Edit connection reads it (COR-2436). */
+    editing: (id: string) => ['tool-sources', 'editing', id] as const,
   },
   /** The executable skills the host discovered (`bureau.skills.list`). */
   skills: {
     list: () => ['skills', 'list'] as const,
     /** The agents that name each skill, read from the code-defined agents' own statements. */
     users: () => ['skills', 'users'] as const,
+    /** One skill's SKILL.md (`bureau.skills.get`, COR-2435). */
+    instructions: (name: string) => ['skills', 'instructions', name] as const,
   },
   /** The guardrails installed in the Bureau (`bureau.guardrails.list`). */
   guardrails: {

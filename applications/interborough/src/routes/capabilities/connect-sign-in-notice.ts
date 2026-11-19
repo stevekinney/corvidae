@@ -1,0 +1,10 @@
+/**
+ * What a sign-in has to say, for Connect tools to draw under its Sign in choice (rows 34k, 34l,
+ * 34y): a cancel, a declined sign-in or a blocked window as a note, and a refusal as an error,
+ * which the page gives its Try again. The waiting line is the button's own and is not here.
+ */
+export type SignInNotice = {
+  readonly description?: string;
+  readonly note?: string;
+  readonly error?: string;
+};
