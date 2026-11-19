@@ -86,6 +86,7 @@ export type GoalsOperationTypes = {
         readonly completedAt: string | null;
         readonly feedback?: string | null;
         readonly finishReason: string | null;
+        readonly reason?: string | null;
         readonly runId: string;
         readonly sessionId: string;
         readonly startedAt: string;
