@@ -7,7 +7,7 @@
    * one link to the run's page; the list around it follows the link in place (`followLinks`). A
    * running row keeps its place: its duration follows `now`, and its word changes where it stands.
    */
-  import { StackedListItem, StatusDot } from '@lostgradient/cinder';
+  import { StackedListItem, StatusDot, type StackedListItemPhoneWidth } from '@lostgradient/cinder';
 
   import { TASK_COPY } from '../../../app/copy/tasks.ts';
   import { clockTime } from '../../../lib/format/clock.ts';
@@ -28,6 +28,15 @@
     /** When a schedule runs, by its identifier, which a schedule's chat run says (row 53l). */
     scheduleCadence?: ((scheduleId: string) => string | undefined) | undefined;
     /**
+     * Which width decides the row's phone form (Cinder's `phoneWidth`): the Runs list, which fills
+     * the page's content column, follows the window, so on a tablet beside the navigation rail the
+     * status still leads in its column (05x). Default `row`, the row's own width.
+     */
+    phoneWidth?: StackedListItemPhoneWidth;
+    /** What holds a schedule from starting its due run, which that run's row says (row 10h). */
+    scheduleHolds?:
+      ((scheduleId: string, agentName: string | null) => readonly string[]) | undefined;
+    /**
      * Where the row leads, when not to the run's own page: a workflow's Runs tab opens each run
      * under the workflow it belongs to.
      */
@@ -46,6 +55,8 @@
     agentLabel,
     pluginTitle = undefined,
     scheduleCadence = undefined,
+    scheduleHolds = undefined,
+    phoneWidth = 'row',
     href = undefined,
     readable = true,
   }: Props = $props();
@@ -58,6 +69,7 @@
       agentLabel,
       ...(pluginTitle === undefined ? {} : { pluginTitle }),
       ...(scheduleCadence === undefined ? {} : { scheduleCadence }),
+      ...(scheduleHolds === undefined ? {} : { scheduleHolds }),
     }),
   );
   // Line two keeps what the run was; why the row does not open is the row's own description, so a
@@ -70,6 +82,7 @@
 <StackedListItem
   data-run={row.id}
   data-status={word}
+  {phoneWidth}
   {...readable ? {} : { description: lockedNote }}
   {...readable ? { href: router.href(href ?? workflowDetailPath(row.id)) } : {}}
   tooltip={row.title}

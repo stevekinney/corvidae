@@ -377,7 +377,14 @@ describe('the showcase goal checks (COR-2117)', () => {
         input('The notes mention the Staging Fix.', SHOWCASE_GOAL_CHECKS.stagingFix.configuration),
         signal,
       ),
-    ).toMatchObject({ kind: 'pass' });
+    ).toMatchObject({ kind: 'pass', reason: 'Reply said staging fix' });
+    // Say hello's met check says why, as its goal page reads it (row 67v).
+    expect(
+      await validator?.validate(
+        input('Hello!', SHOWCASE_GOAL_CHECKS.sayHello.configuration),
+        signal,
+      ),
+    ).toMatchObject({ kind: 'pass', reason: 'Reply said hello' });
     expect(
       await validator?.validate(
         input('Nothing about it.', SHOWCASE_GOAL_CHECKS.stagingFix.configuration),
