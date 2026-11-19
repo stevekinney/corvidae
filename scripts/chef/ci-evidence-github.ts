@@ -15,6 +15,7 @@ import {
 } from './evidence-provider.ts';
 
 interface GitHubObject {
+  object?: unknown;
   id?: unknown;
   total_count?: unknown;
   workflow_runs?: unknown;
@@ -25,6 +26,8 @@ interface GitHubObject {
   path?: unknown;
   display_title?: unknown;
   run_attempt?: unknown;
+  status?: unknown;
+  conclusion?: unknown;
   pull_requests?: unknown;
   head?: unknown;
   base?: unknown;
@@ -50,6 +53,8 @@ export interface GitReader {
 
 export interface GitHubCiEvidenceProviderOptions {
   repository: string;
+  /** A published branch or tag, never an arbitrary SHA, used for workflow dispatch. */
+  dispatchRef?: string;
   raw?: RawCommandTransport;
   git?: GitReader;
   cwd?: string;
@@ -271,6 +276,7 @@ export function createGitHubCiEvidenceProvider(
   const raw = options.raw ?? defaultRaw();
   const git = options.git ?? defaultGit(options.cwd ?? process.cwd());
   const transport = createGitHubEvidenceTransport(options.repository, raw, options.cwd);
+  const dispatchRef = options.dispatchRef;
   return {
     async findRuns(request) {
       if (request.repository !== options.repository)
@@ -299,6 +305,9 @@ export function createGitHubCiEvidenceProvider(
         const attempt = integer(run.run_attempt);
         if (id === undefined || id < 1 || attempt === undefined || attempt < 1)
           throw new CiEvidenceError('authenticated CI run has invalid identity');
+        const runDetail = transport.run(id);
+        if (runDetail.status !== 'completed' || runDetail.conclusion !== 'success')
+          throw new CiEvidenceError('authenticated CI run did not complete successfully');
         const metadata = transport.artifact(id, `ci-evidence-receipt-${attempt}`);
         if (!metadata.present || metadata.expired || metadata.id === undefined)
           throw new CiEvidenceError('authenticated CI run has no usable receipt artifact');
@@ -323,11 +332,21 @@ export function createGitHubCiEvidenceProvider(
           throw new CiEvidenceError(
             'authenticated CI receipt does not bind the requested candidate',
           );
-        const jobs = pages(raw, request.repository, `actions/runs/${id}/jobs`, 'jobs')
-          .map((job) => text(job.name))
-          .filter(Boolean);
+        const jobRecords = pages(raw, request.repository, `actions/runs/${id}/jobs`, 'jobs');
+        const jobs = jobRecords.map((job) => text(job.name)).filter(Boolean);
         if (jobs.length === 0 || new Set(jobs).size !== jobs.length)
           throw new CiEvidenceError('authenticated CI run has invalid job inventory');
+        const aggregate = jobRecords.filter((job) => text(job.name) === 'Evidence aggregate');
+        if (
+          aggregate.length !== 1 ||
+          text(aggregate[0]?.status) !== 'completed' ||
+          text(aggregate[0]?.conclusion) !== 'success'
+        )
+          throw new CiEvidenceError(
+            'authenticated CI Evidence aggregate did not complete successfully',
+          );
+        if (Object.values(receipt.jobs).some((status) => status !== 'success'))
+          throw new CiEvidenceError('CI receipt declares a required job not successful');
         const evidenceRun: CiEvidenceRun = {
           id,
           repository: request.repository,
@@ -352,6 +371,18 @@ export function createGitHubCiEvidenceProvider(
       });
     },
     async dispatch(request) {
+      if (dispatchRef === undefined || !/^[A-Za-z0-9._/-]+$/.test(dispatchRef))
+        throw new CiEvidenceError('CI evidence dispatch requires a named branch or tag ref');
+      const reference = query(raw, [
+        'gh',
+        'api',
+        `repos/${request.repository}/git/ref/heads/${encodeURIComponent(dispatchRef)}`,
+      ]);
+      const published = object(reference.object).sha;
+      if (!sha(published) || published !== request.candidate)
+        throw new CiEvidenceError(
+          'CI evidence dispatch ref does not publish the requested candidate',
+        );
       const result: RawCommandResponse = raw.run([
         'gh',
         'workflow',
@@ -360,7 +391,7 @@ export function createGitHubCiEvidenceProvider(
         '--repo',
         request.repository,
         '--ref',
-        request.candidate,
+        dispatchRef,
         '-f',
         `verification_request=${request.requestKey}`,
         '-f',

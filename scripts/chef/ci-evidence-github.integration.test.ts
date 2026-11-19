@@ -43,7 +43,7 @@ function request(overrides: Partial<CiEvidenceRequest> = {}): CiEvidenceRequest 
 
 function fixture(
   input: CiEvidenceRequest,
-  options: { pullRequest?: boolean; invalidParents?: boolean } = {},
+  options: { pullRequest?: boolean; invalidParents?: boolean; failedJob?: boolean } = {},
 ) {
   const checkedRevision = options.pullRequest ? 'f'.repeat(40) : input.candidate;
   const produced = createCiEvidenceWorkflowReceipt({
@@ -87,6 +87,7 @@ function fixture(
   };
   const provider = createGitHubCiEvidenceProvider({
     repository: input.repository,
+    dispatchRef: 'candidate-branch',
     git,
     raw: {
       run(argv) {
@@ -127,6 +128,8 @@ function fixture(
             event: input.event,
             run_attempt: 2,
           });
+        if (path.endsWith('/git/ref/heads/candidate-branch'))
+          return encode({ object: { sha: input.candidate } });
         if (path.endsWith('/runs/17/artifacts?per_page=100&page=1'))
           return encode({
             total_count: 1,
@@ -142,7 +145,17 @@ function fixture(
         if (path.endsWith('/artifacts/51/zip'))
           return { exitCode: 0, stdout: archive, stderr: new Uint8Array() };
         if (path.endsWith('/runs/17/jobs?per_page=100&page=1'))
-          return encode({ total_count: 1, jobs: [{ id: 9, name: 'Aggregate evidence' }] });
+          return encode({
+            total_count: 1,
+            jobs: [
+              {
+                id: 9,
+                name: 'Evidence aggregate',
+                status: 'completed',
+                conclusion: options.failedJob ? 'failure' : 'success',
+              },
+            ],
+          });
         throw new Error(`unexpected GitHub command: ${argv.join(' ')}`);
       },
     },
@@ -161,7 +174,7 @@ scenarios.scenario(
         id: 17,
         checkedRevision: input.candidate,
         checkedTree: input.integrationTree,
-        jobs: ['Aggregate evidence'],
+        jobs: ['Evidence aggregate'],
       }),
     ]);
     await provider.dispatch(input);
@@ -173,7 +186,7 @@ scenarios.scenario(
       '--repo',
       input.repository,
       '--ref',
-      input.candidate,
+      'candidate-branch',
       '-f',
       `verification_request=${input.requestKey}`,
       '-f',
@@ -181,6 +194,21 @@ scenarios.scenario(
       '-f',
       `verification_base=${input.base}`,
     ]);
+  },
+);
+
+scenarios.scenario(
+  'refuses a passing receipt when the authenticated aggregate job failed',
+  async () => {
+    const input = request();
+    const { provider } = fixture(input, { failedJob: true });
+    let error: unknown;
+    try {
+      await provider.findRuns(input);
+    } catch (reason) {
+      error = reason;
+    }
+    expect((error as Error).message).toContain('aggregate');
   },
 );
 
