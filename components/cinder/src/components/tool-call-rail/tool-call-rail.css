@@ -1,6 +1,7 @@
 @layer cinder.tokens, cinder.foundation, cinder.components, cinder.utilities;
 /* The rail's running marker and summary spinner are Spinner arcs, and its rows sit on Timeline's
  * `rows` variant, so the styles travel with it. */
+@import '../badge/badge.css';
 @import '../spinner/spinner.css';
 @import '../timeline/timeline.css';
 @layer cinder.components {
@@ -227,12 +228,34 @@
 
   .cinder-tool-call-rail__name {
     grid-column: 1;
+    display: flex;
+    align-items: center;
+    gap: var(--cinder-space-1-5);
     min-inline-size: 0;
-    overflow: hidden;
     color: var(--cinder-text-default);
     font-weight: var(--cinder-font-medium);
-    text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  .cinder-tool-call-rail__name-text {
+    min-inline-size: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* "Waiting on you" is a warning Badge right after the name (COR-2438). The name and its badge
+     take the name and input columns, so the badge is never cut off, and the key input moves to the
+     result column, which a waiting call leaves empty. */
+  .cinder-tool-call-rail__name > .cinder-badge {
+    flex: none;
+  }
+
+  .cinder-tool-call-rail__name[data-cinder-badged] {
+    grid-column: 1 / 3;
+  }
+
+  .cinder-tool-call-rail__item[data-cinder-status='waiting'] .cinder-tool-call-rail__input {
+    grid-column: 3;
   }
 
   /* Wide: input and result are cells of the row's grid. Narrow: they are one line under the name. */
@@ -388,9 +411,13 @@
     }
   }
 
-  /* What sits under a row: the approval a waiting call is waiting on. */
+  /* What sits under a row: the approval a waiting call is waiting on. It bleeds exactly as the row
+     does, back over the marker column and past the rail's end, so the row and the card under it
+     share one leading edge and one trailing edge at every width (COR-2438). */
   .cinder-tool-call-rail__nested {
-    margin: var(--cinder-space-1) 0;
+    margin: var(--cinder-space-1) calc(-1 * var(--_cinder-tool-call-rail-bleed))
+      var(--cinder-space-1)
+      calc(-1 * (var(--_cinder-tool-call-rail-indent) + var(--_cinder-tool-call-rail-bleed)));
     min-inline-size: 0;
   }
 
@@ -516,7 +543,8 @@
       padding-block: var(--cinder-space-1-5);
     }
 
-    .cinder-tool-call-rail__name {
+    .cinder-tool-call-rail__name,
+    .cinder-tool-call-rail__name[data-cinder-badged] {
       grid-column: 1;
       grid-row: 1;
     }

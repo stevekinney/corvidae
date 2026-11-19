@@ -22,6 +22,7 @@
 
   import { classNames } from '../../utilities/class-names.ts';
   import { planFold, summarizeFoldedNames } from '../../utilities/fold-middle.ts';
+  import Badge from '../badge/badge.svelte';
   import Spinner from '../spinner/spinner.svelte';
   import Timeline from '../timeline/timeline.svelte';
   import type { TimelineEntry } from '../timeline/timeline.types.ts';
@@ -230,15 +231,24 @@
 {/snippet}
 
 {#snippet cells(call: ToolCallRailCall)}
-  <span class="cinder-tool-call-rail__name">
-    {#if statusWord(call) !== ''}<span class="cinder-sr-only">{statusWord(call)}:</span
-      >{' '}{/if}{call.name}
+  <!-- A call waiting on a person says so in a warning Badge right after its name, at every width,
+       never in the result column where it floats away from the name (COR-2438). -->
+  <span
+    class="cinder-tool-call-rail__name"
+    data-cinder-badged={call.status === 'waiting' || undefined}
+  >
+    <span class="cinder-tool-call-rail__name-text"
+      >{#if statusWord(call) !== ''}<span class="cinder-sr-only">{statusWord(call)}:</span
+        >{' '}{/if}{call.name}</span
+    >{#if call.status === 'waiting'}{' '}<Badge variant="warning" size="sm"
+        >{resultText(call)}</Badge
+      >{/if}
   </span>
   <span class="cinder-tool-call-rail__detail">
     {#if call.input !== undefined && call.input !== ''}
       <span class="cinder-tool-call-rail__input" title={call.input}>{call.input}</span>
     {/if}
-    {#if resultText(call) !== ''}
+    {#if resultText(call) !== '' && call.status !== 'waiting'}
       <span class="cinder-tool-call-rail__result" title={resultText(call)}
         >{@render resultCell(call)}</span
       >

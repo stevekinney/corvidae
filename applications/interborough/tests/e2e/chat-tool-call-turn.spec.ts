@@ -366,7 +366,10 @@ test.describe('the shipped turn display is B’s rail with E’s panel (21a, 21b
     await expect(rail(page).locator('.cinder-chip, [data-cinder-chip]')).toHaveCount(0);
     await rail(page).locator('.cinder-tool-call-rail__more').click();
     const shown = await railRows(page).evaluateAll((rows) =>
-      rows.map((row) => row.querySelector('.cinder-tool-call-rail__name')?.textContent?.trim()),
+      // The name's own words, without the Waiting on you badge after it (COR-2438).
+      rows.map((row) =>
+        row.querySelector('.cinder-tool-call-rail__name-text')?.textContent?.trim(),
+      ),
     );
     // A call's state is written before its name for a screen reader ("Failed: Send email").
     const names = shown.map((name) => name?.replace(/^(Failed|Approved|Denied|Interrupted): /, ''));
