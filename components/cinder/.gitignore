@@ -1,0 +1,8 @@
+# Token artifacts `tokens:generate` writes. They stay out of version control so a Cinder commit never
+# re-adds files another branch deletes; `prepare` and the `metadata` task generate them, and
+# `scripts/tokens/generator-outputs.integration.test.ts` fails when one is tracked.
+src/styles/tokens-base.css
+src/tokens/resolved/
+src/tokens/registry.generated.json
+src/tokens/registry.generated.ts
+src/tokens/runtime/*.generated.*

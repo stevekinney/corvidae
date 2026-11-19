@@ -3,9 +3,10 @@ import { fileURLToPath } from 'node:url';
 import babelPlugin from 'prettier/plugins/babel';
 import estreePlugin from 'prettier/plugins/estree';
 import postcssPlugin from 'prettier/plugins/postcss';
-import { tokenRoot } from './load.ts';
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 export const packageRoot = join(scriptDirectory, '..', '..');
+/** The token corpus; defined here, not in `load.ts`, so the validator seed never imports validation. */
+export const tokenRoot = join(packageRoot, 'src', 'tokens');
 export const schemaDirectory = join(scriptDirectory, 'schemas');
 export const tokensBaseCssPath = join(packageRoot, 'src', 'styles', 'tokens-base.css');
 export const resolvedDirectory = join(tokenRoot, 'resolved');
