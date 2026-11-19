@@ -72,6 +72,7 @@ describe('Turborepo cache in the workflows', () => {
         'main.yml:tests-slow',
         'browser-suites.yml:fixtures',
         'browser-suites.yml:packages',
+        'browser-suites.yml:interborough',
         'pull-request.yml:static',
         'pull-request.yml:tests',
         'targeted-checks.yml:checks',
@@ -148,5 +149,73 @@ describe('Turborepo cache in the workflows', () => {
       'test-output/junit/browser-fixtures.xml',
     );
     expect(turbo.tasks['test']?.outputs).toContain('test-output/junit/**');
+  });
+
+  // The two most expensive suites: each shard replays only when its inputs, its slice and its
+  // renderer are the same, so the shard and the image must stay in the task's hash.
+  describe.each([
+    { job: 'fixtures', task: '//#ci:browser-fixtures', script: 'ci:browser-fixtures' },
+    {
+      job: 'interborough',
+      task: '//#ci:browser-interborough',
+      script: 'ci:browser-interborough',
+    },
+  ])('the $job browser suite', ({ job, task, script }) => {
+    const turbo = JSON.parse(readFileSync(resolve(root, 'turbo.json'), 'utf8')) as {
+      tasks: Record<
+        string,
+        { env?: string[]; passThroughEnv?: string[]; outputs?: string[]; dependsOn?: string[] }
+      >;
+    };
+    const definition = turbo.tasks[task];
+    const manifest = JSON.parse(readFileSync(resolve(root, 'package.json'), 'utf8')) as {
+      scripts: Record<string, string>;
+    };
+    const workflowText = readFileSync(resolve(workflowDirectory, 'browser-suites.yml'), 'utf8');
+    const jobBody = jobs().find(
+      (entry) => entry.workflow === 'browser-suites.yml' && entry.id === job,
+    );
+
+    test('runs through its Turborepo task, not Playwright directly', () => {
+      expect(jobBody?.lines.some((line) => line.includes(`bunx turbo run ${task}`))).toBe(true);
+      expect(
+        jobBody?.lines.filter((line) => /playwright test|run-gated-browser-suite/u.test(line)),
+      ).toEqual([]);
+    });
+
+    test('hashes the shard, the image tag and the dependency closure', () => {
+      expect(definition?.env).toEqual(
+        expect.arrayContaining(['PLAYWRIGHT_SHARD', 'PLAYWRIGHT_BASE_IMAGE']),
+      );
+      // Never a pass-through: a pass-through is not hashed, so another shard would replay this one.
+      expect(definition?.passThroughEnv ?? []).not.toContain('PLAYWRIGHT_SHARD');
+      expect(definition?.passThroughEnv ?? []).not.toContain('PLAYWRIGHT_BASE_IMAGE');
+      expect(definition?.dependsOn).toContain(
+        `@lostgradient/${job === 'fixtures' ? 'browser-fixtures' : 'interborough'}#transit`,
+      );
+    });
+
+    test('sets the shard and the image the job runs in, and the script uses the shard', () => {
+      const body = jobBody?.lines.join('\n') ?? '';
+      expect(body).toContain('PLAYWRIGHT_SHARD: ${{ matrix.shard }}/4');
+      const image = /^\s+image: (.+)$/mu.exec(body)?.[1];
+      expect(image).toBeDefined();
+      expect(body).toContain(`PLAYWRIGHT_BASE_IMAGE: ${image}`);
+      expect(manifest.scripts[script]).toContain('--shard=$PLAYWRIGHT_SHARD');
+      expect(workflowText).toContain('name: browser-' + job + '-${{ matrix.shard }}');
+    });
+
+    test('declares the reports the artifact upload reads as outputs', () => {
+      expect(definition?.outputs).toContain('playwright-output/**');
+    });
+  });
+
+  test('the fixtures suite hashes its visual-diff mode and component selection', () => {
+    const turbo = JSON.parse(readFileSync(resolve(root, 'turbo.json'), 'utf8')) as {
+      tasks: Record<string, { env?: string[] }>;
+    };
+    expect(turbo.tasks['//#ci:browser-fixtures']?.env).toEqual(
+      expect.arrayContaining(['CINDER_VISUAL_DIFF', 'CINDER_TEST_COMPONENTS']),
+    );
   });
 });

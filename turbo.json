@@ -198,6 +198,89 @@
         "test-output/junit/browser-fixtures.xml"
       ]
     },
+    "//#ci:browser-fixtures": {
+      "dependsOn": [
+        "@lostgradient/browser-fixtures#transit",
+        "@lostgradient/browser-fixtures#metadata"
+      ],
+      "env": [
+        "PLAYWRIGHT_SHARD",
+        "PLAYWRIGHT_BASE_IMAGE",
+        "CINDER_VISUAL_DIFF",
+        "CINDER_TEST_COMPONENTS",
+        "CINDER_UPDATE_SNAPSHOTS",
+        "CINDER_UPDATE_SEAM_AUDIT",
+        "FIXTURE_HOST_MODE",
+        "BROWSER_FIXTURE_MANIFEST",
+        "CURATED_HIGHLIGHTER_OUTPUT_DIRECTORY"
+      ],
+      "passThroughEnv": [
+        "CI",
+        "HOME",
+        "LANG",
+        "LC_ALL",
+        "PLAYWRIGHT_BROWSERS_PATH",
+        "TMPDIR",
+        "TZ"
+      ],
+      "inputs": [
+        "$TURBO_ROOT$/scripts/browser-fixtures/**",
+        "!$TURBO_ROOT$/scripts/browser-fixtures/**/{node_modules,.playwright,.turbo,.svelte-kit,coverage,playwright-report,test-output,test-results,tmp}/**",
+        "!$TURBO_ROOT$/scripts/browser-fixtures/**/{.DS_Store,*.log,*.lcov,*.pem,.env,.env.*,local.env}",
+        "$TURBO_ROOT$/bun.lock",
+        "$TURBO_ROOT$/bunfig.toml",
+        "$TURBO_ROOT$/package.json",
+        "$TURBO_ROOT$/tsconfig.json",
+        "$TURBO_ROOT$/scripts/*.ts",
+        "!$TURBO_ROOT$/scripts/*.test.ts",
+        "$TURBO_ROOT$/.github/workflows/browser-suites.yml"
+      ],
+      "outputs": [
+        "playwright-output/**",
+        "scripts/browser-fixtures/test-results/**",
+        "scripts/browser-fixtures/.playwright/manifest.json",
+        "scripts/browser-fixtures/.playwright/fixture-modules.ts",
+        "scripts/browser-fixtures/.playwright/manifest-inputs.sha256"
+      ]
+    },
+    "//#ci:browser-interborough": {
+      "dependsOn": ["@lostgradient/interborough#transit", "@lostgradient/interborough#metadata"],
+      "env": [
+        "PLAYWRIGHT_SHARD",
+        "PLAYWRIGHT_BASE_IMAGE",
+        "CORVIDAE_EXPECTED_RELEASE_SHA",
+        "CORVIDAE_PLUGIN_IDENTITY_BASE",
+        "INTERBOROUGH_BUILD_DIRECTORY",
+        "INTERBOROUGH_DESIGN_REVIEW_CAPTURE",
+        "INTERBOROUGH_DESIGN_REVIEW_COLOR_SCHEME",
+        "INTERBOROUGH_HOME",
+        "INTERBOROUGH_PORT"
+      ],
+      "passThroughEnv": [
+        "CI",
+        "HOME",
+        "INTERBOROUGH_E2E_PORT",
+        "INTERBOROUGH_E2E_FRESH_SERVER",
+        "LANG",
+        "LC_ALL",
+        "PLAYWRIGHT_BROWSERS_PATH",
+        "TMPDIR",
+        "TZ"
+      ],
+      "inputs": [
+        "$TURBO_ROOT$/applications/interborough/**",
+        "!$TURBO_ROOT$/applications/interborough/**/{node_modules,.turbo,.svelte-kit,build,coverage,playwright-report,test-output,test-results,tmp}/**",
+        "!$TURBO_ROOT$/applications/interborough/**/{.DS_Store,*.log,*.lcov,*.pem,.env,.env.*,local.env}",
+        "$TURBO_ROOT$/bun.lock",
+        "$TURBO_ROOT$/bunfig.toml",
+        "$TURBO_ROOT$/package.json",
+        "$TURBO_ROOT$/tsconfig.json",
+        "$TURBO_ROOT$/scripts/*.ts",
+        "!$TURBO_ROOT$/scripts/*.test.ts",
+        "$TURBO_ROOT$/.github/workflows/browser-suites.yml"
+      ],
+      "outputs": ["playwright-output/**", "applications/interborough/test-results/**"]
+    },
     "//#dev:browser-fixtures": {
       "persistent": true,
       "cache": false,
