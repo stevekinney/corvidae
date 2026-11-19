@@ -354,3 +354,134 @@ describe('math-plugin loader is called only on math input', () => {
     expect(calls).toBe(1);
   });
 });
+
+describe("Pandoc's dollar rule for inline math", () => {
+  let restore: () => void;
+  let loaderCalls: number;
+
+  beforeEach(() => {
+    loaderCalls = 0;
+    restore = setMathPluginLoaderForTests(async () => {
+      loaderCalls += 1;
+      const [m, k] = await Promise.all([import('remark-math'), import('rehype-katex')]);
+      return { remarkMath: m.default, rehypeKatex: k.default };
+    });
+    clearRenderCache();
+  });
+
+  afterEach(() => {
+    restore();
+  });
+
+  const literalCases: Array<[string, string, string]> = [
+    ['an en dash price range', 'Refunds of $25–$100 need approval', '$25–$100'],
+    ['two slash-separated prices and a hyphen range', '$18.00/$20.00 and later $5-$10', '$5-$10'],
+    ['a single currency amount', 'Every refund over $25 needs approval.', '$25'],
+    ['an escaped dollar', 'Pay \\$5 today', '$5 today'],
+    ['a dollar before a space', 'The $ sign and the $ sign', 'The $ sign and the $ sign'],
+    ['a closing dollar after a space', 'Use $x $ here', '$x $'],
+  ];
+  for (const [name, input, expectedText] of literalCases) {
+    it(`renders ${name} literally and never loads the math chunk: ${JSON.stringify(input)}`, async () => {
+      const result = await renderMarkdownWithMath(input);
+
+      expect(result.html).not.toContain('katex');
+      expect(result.html).toContain(expectedText);
+      expect(result.html).not.toContain('\\$');
+      expect(result.rawMarkdown).toBe(input);
+      expect(probablyHasMath(input)).toBe(false);
+      expect(loaderCalls).toBe(0);
+    });
+  }
+
+  const mathCases: Array<[string, string]> = [
+    ['a superscript', '$x^2$'],
+    ['math inside a sentence', 'Area is $\\pi r^2$ here'],
+    ['spaces inside the body', '$a + b$'],
+    ['a Greek letter', '$\\alpha$'],
+    ['display math', '$$E = mc^2$$'],
+    ['math before a digit-free boundary', 'costs ($x$)'],
+  ];
+  for (const [name, input] of mathCases) {
+    it(`still renders ${name} as math: ${JSON.stringify(input)}`, async () => {
+      const result = await renderMarkdownWithMath(input);
+
+      expect(result.html).toContain('katex');
+      expect(result.rawMarkdown).toBe(input);
+      expect(probablyHasMath(input)).toBe(true);
+      expect(loaderCalls).toBe(1);
+    });
+  }
+
+  it('renders $5 literally and x as math on a mixed line', async () => {
+    const input = 'Costs $5 and $x$ is the unknown';
+    const result = await renderMarkdownWithMath(input);
+
+    expect(result.html).toContain('Costs $5 and ');
+    expect(result.html).toContain('katex');
+    expect(result.html).not.toContain('\\$');
+    expect(result.rawMarkdown).toBe(input);
+    expect(probablyHasMath(input)).toBe(true);
+  });
+
+  it('keeps math that spans a line break inside one paragraph', async () => {
+    const result = await renderMarkdownWithMath('We have $a +\nb$ here');
+    expect(result.html).toContain('katex');
+  });
+
+  it('does not pair dollars across a blank line', async () => {
+    const input = 'Costs $5\n\nand $x';
+    const result = await renderMarkdownWithMath(input);
+    expect(result.html).not.toContain('katex');
+    expect(probablyHasMath(input)).toBe(false);
+  });
+
+  describe('code is untouched', () => {
+    it('leaves dollars in inline code, with math beside it', async () => {
+      const result = await renderMarkdownWithMath('Run `echo $5-$10` for $x$');
+      expect(result.html).toContain('<code>echo $5-$10</code>');
+      expect(result.html).toContain('katex');
+    });
+
+    it('leaves dollars in a backtick fence', async () => {
+      const input = 'Prices $5-$10\n\n```sh\necho "$5-$10"\n```\n';
+      const result = await renderMarkdownWithMath(input);
+      // Syntax highlighting wraps tokens in spans once another file has
+      // initialised the highlighter, so compare the text without tags.
+      const text = result.html.replace(/<[^>]*>/g, '').replace(/&quot;/g, '"');
+      expect(text).toContain('echo "$5-$10"');
+      expect(text).not.toContain('\\$');
+      expect(result.html).not.toContain('katex');
+      expect(probablyHasMath(input)).toBe(false);
+    });
+
+    it('leaves dollars in a tilde fence and in a longer fence holding a shorter one', async () => {
+      const result = await renderMarkdownWithMath(
+        '~~~\n$5-$10\n~~~\n\n````\n```\n$5-$10\n```\n````',
+      );
+      expect(result.html).not.toContain('\\$');
+      expect(result.html.match(/\$5-\$10/g)?.length).toBe(2);
+    });
+
+    it('leaves dollars in an indented code block', async () => {
+      const result = await renderMarkdownWithMath('Intro\n\n    cost = $5-$10\n\nafter');
+      expect(result.html).toContain('cost = $5-$10');
+      expect(result.html).not.toContain('\\$');
+    });
+
+    it('does not let a dollar inside a code span open math', async () => {
+      const input = '`$a` and `b$`';
+      const result = await renderMarkdownWithMath(input);
+      expect(result.html).not.toContain('katex');
+      expect(probablyHasMath(input)).toBe(false);
+    });
+  });
+
+  it('keeps dollars in bare URLs and autolinks intact', async () => {
+    const result = await renderMarkdownWithMath(
+      'See https://example.com/a?price=$5-$10 and <https://example.com/$5-$10>',
+    );
+    expect(result.html).not.toContain('%5C');
+    expect(result.html).not.toContain('\\$');
+  });
+});
