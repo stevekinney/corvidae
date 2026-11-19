@@ -146,6 +146,30 @@ describe('PageHeader', () => {
     ).toBe('true');
   });
 
+  test('clamps the title to two lines by default, and to one line that lets an inline status drop under it with titleLines 1 (COR-2438)', () => {
+    const plain = render(PageHeader, { props: { title: 'Runs' } });
+    expect(
+      plain.container.querySelector('.cinder-page-header')?.hasAttribute('data-cinder-title-lines'),
+    ).toBe(false);
+    cleanup();
+    const single = render(PageHeader, { props: { title: 'Runs', titleLines: 1 } });
+    expect(
+      single.container
+        .querySelector('.cinder-page-header')
+        ?.getAttribute('data-cinder-title-lines'),
+    ).toBe('1');
+    const line =
+      stylesheet.match(
+        /\.cinder-page-header\[data-cinder-title-lines='1'\] \.cinder-page-header__title-line\s*\{[^}]*\}/,
+      )?.[0] ?? '';
+    expect(line).toContain('flex-wrap: wrap;');
+    const title =
+      stylesheet.match(
+        /\.cinder-page-header\[data-cinder-title-lines='1'\] \.cinder-page-header__title\s*\{[^}]*\}/,
+      )?.[0] ?? '';
+    expect(title).toContain('line-clamp: 1;');
+  });
+
   test('is flush with the content below by default, and insets only when asked (COR-2448)', () => {
     const { container } = render(PageHeader, { props: { title: 'Allowed models' } });
     const root = () => container.querySelector('.cinder-page-header');

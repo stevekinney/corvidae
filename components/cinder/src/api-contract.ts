@@ -709,6 +709,9 @@ export const CONTRACT: Record<string, ComponentContract> = {
       statusPlacement: { optional: true, type_kind: 'TSTypeReference', default: L('below') },
       narrowActions: { optional: true, type_kind: 'TSTypeReference', default: L('own-row') },
       titleText: { optional: true, type_kind: 'TSStringKeyword', default: NO_DEFAULT },
+      // COR-2438: a title of one line, ending in an ellipsis, with an inline status that drops under
+      // it when there is no room beside it (a chat's conversation pane).
+      titleLines: { optional: true, type_kind: 'TSUnionType', default: L(2) },
       // COR-2423: a short caption under the actions' row (`string | Snippet`, as `description`
       // is), and the id a button's `aria-describedby` names it by.
       actionsNote: { optional: true, type_kind: 'TSUnionType', default: NO_DEFAULT },

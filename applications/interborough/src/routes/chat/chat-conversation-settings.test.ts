@@ -209,10 +209,11 @@ describe('the composer’s settings', () => {
     await waitFor(() => expect(shown(container, 'weft-chat-permission')).toBe('On changes asks'));
 
     expect(note(container)).toBe('');
-    expect(hint(container)).toBe('Enter to send. Shift and Enter for a new line.');
+    // No line of help under the composer: Send's tooltip names the key (COR-2438).
+    expect(container.querySelector('.chat-input-hint')).toBeNull();
   });
 
-  test('holds no field: the header has the title and the ring', async () => {
+  test('holds no field and no context meter: the header has the title and the More menu', async () => {
     serve();
     const { container, findByRole } = mount();
 
@@ -221,6 +222,11 @@ describe('the composer’s settings', () => {
     const header = container.querySelector('[data-testid="chat-header"]');
     expect(header?.querySelector('input, select')).toBeNull();
     expect(container.querySelector('[data-testid="chat-settings"]')).toBeNull();
+    // One meter, in the composer by Send (COR-2438).
+    await waitFor(() =>
+      expect(container.querySelectorAll('.weft-context-meter, .weft-context-ring')).toHaveLength(1),
+    );
+    expect(header?.querySelector('.weft-context-meter, .weft-context-ring')).toBeNull();
   });
 
   test('draws a scripted agent’s composer with Permissions only', async () => {
@@ -238,38 +244,24 @@ describe('the composer’s settings', () => {
 });
 
 describe('the context meter', () => {
-  test('reads how full the window is, named Context 42%, with the tokens behind it as a tooltip', async () => {
-    serve();
-    const { container } = mount();
-
-    const meter = await waitFor(() => {
-      const found = container.querySelector<HTMLElement>('.weft-context-meter [role="meter"]');
-      if (found === null) throw new Error('The meter did not render.');
-      return found;
-    });
-    expect(meter.getAttribute('aria-label')).toBe('Context 42%');
-    expect(container.querySelector('.weft-context-meter__reading')?.textContent).toBe('42%');
-    expect(container.querySelector('.chat-input-footer-right .weft-context-meter')).not.toBeNull();
-    expect(document.body.textContent).toContain('84K of 200K tokens');
-  });
-});
-
-describe('the context-window ring', () => {
-  test('reads how full the window is, and opens to what fills it', async () => {
+  test('reads how full the window is by Send, as a percentage with the tokens behind it as a tooltip, and opens to what fills it', async () => {
     const served = serve();
     const { container, findByTestId } = mount();
 
-    const ring = await waitFor(() => {
-      const found = container.querySelector<HTMLElement>('.weft-context-ring');
-      if (found === null) throw new Error('The ring did not render.');
+    const meter = await waitFor(() => {
+      const found = container.querySelector<HTMLElement>('.weft-context-meter');
+      if (found === null) throw new Error('The meter did not render.');
       return found;
     });
-    expect(ring.textContent).toContain('42%');
+    expect(container.querySelector('.weft-context-meter__reading')?.textContent).toBe('42%');
+    expect(container.querySelector('.chat-input-footer-right .weft-context-meter')).not.toBeNull();
+    await fireEvent.focus(meter);
+    await waitFor(() => expect(document.body.textContent).toContain('84K of 200K tokens'));
     expect(served.calls.find((call) => call.method === 'bureau.contexts.window')?.params).toEqual({
       contextId: 'session-1',
     });
 
-    await fireEvent.click(ring);
+    await fireEvent.click(meter);
     const panel = await findByTestId('context-window');
     expect(panel.querySelectorAll('[data-category]')).toHaveLength(5);
   });
@@ -490,6 +482,6 @@ describe('changing a setting from the composer', () => {
 
     expect(await findByText(SETTINGS.permissionNotices.denied)).not.toBeNull();
     expect(note(container)).toBe('');
-    expect(hint(container)).toBe('Enter to send. Shift and Enter for a new line.');
+    expect(hint(container)).toBe('');
   });
 });

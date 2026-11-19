@@ -79,6 +79,19 @@
     overflow-wrap: anywhere;
   }
 
+  /* `titleLines={1}`: the title keeps one line, ending in an ellipsis, and takes the free space
+     first. The title line wraps, so an inline status that no longer fits beside the title's words
+     moves under them instead of squeezing the title to a fragment (COR-2438). */
+  .cinder-page-header[data-cinder-title-lines='1'] .cinder-page-header__title-line {
+    flex-wrap: wrap;
+    row-gap: var(--cinder-space-1);
+  }
+
+  .cinder-page-header[data-cinder-title-lines='1'] .cinder-page-header__title {
+    -webkit-line-clamp: 1;
+    line-clamp: 1;
+  }
+
   .cinder-page-header__status {
     display: flex;
     flex-wrap: wrap;

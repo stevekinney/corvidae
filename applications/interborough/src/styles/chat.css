@@ -82,13 +82,11 @@
   padding-block-start: var(--cinder-space-1);
 }
 
-/* The composer's context meter: a short bar and its percentage, on the control row beside Send. */
+/* The chat's one context meter (COR-2438): a ghost button on the composer's control row beside
+ * Send, holding a short bar and its percentage, which opens the breakdown. */
 .weft-context-meter {
-  display: inline-flex;
-  align-items: center;
   gap: var(--cinder-space-2);
   color: var(--cinder-text-muted);
-  font-size: var(--cinder-text-sm);
   font-variant-numeric: tabular-nums;
 }
 
@@ -96,47 +94,17 @@
   inline-size: 2.25rem;
 }
 
+/* The bar's track carries Cinder's contrast rule (`border.contrast`, the edge of an indicator with
+ * no other boundary), so its edge clears the 3:1 a graphic needs against the composer in both
+ * themes and an empty window still reads as a meter: the inset fill alone was a near-black bar on
+ * a near-black ground in the dark theme. */
+.weft-context-meter .cinder-meter__track {
+  box-shadow: inset 0 0 0 1px var(--cinder-border-contrast);
+}
+
 .weft-context-meter__unavailable {
   color: var(--cinder-text-muted);
   font-size: var(--cinder-text-xs);
-}
-
-/* The context window's ring: a button with a ring and a reading. */
-.weft-context-ring {
-  gap: var(--cinder-space-2);
-}
-
-.weft-context-ring__svg {
-  inline-size: 1.25rem;
-  block-size: 1.25rem;
-  flex: none;
-}
-
-.weft-context-ring__track,
-.weft-context-ring__fill {
-  fill: none;
-  stroke-width: 3;
-}
-
-.weft-context-ring__track {
-  stroke: var(--cinder-border-muted);
-}
-
-.weft-context-ring__fill {
-  stroke: var(--cinder-accent-solid);
-}
-
-.weft-context-ring[data-tone='warning'] .weft-context-ring__fill {
-  stroke: var(--cinder-status-warning-solid);
-}
-
-.weft-context-ring[data-tone='danger'] .weft-context-ring__fill {
-  stroke: var(--cinder-status-danger-solid);
-}
-
-.weft-context-ring__unavailable {
-  color: var(--cinder-text-muted);
-  font-size: var(--cinder-text-sm);
 }
 
 .weft-context-window {
@@ -215,6 +183,12 @@
   box-sizing: border-box;
   padding-block: var(--cinder-space-3);
   padding-inline: max(var(--_ib-chat-inset), calc((100% - 47.5rem) / 2 + var(--_ib-chat-inset)));
+}
+
+/* No box around the header: one quiet rule under the band, edge to edge of the conversation pane,
+ * never inset with the column (COR-2438). A new chat's empty band draws none. */
+.weft-chat-head:has(*) {
+  border-block-end: 1px solid var(--cinder-border-muted);
 }
 
 /* The errors of the conversation lie over its top, directly under the header band, in the same

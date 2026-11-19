@@ -46,12 +46,12 @@
 
   import {
     Alert,
+    Badge,
     Banner,
     Button,
     Chip,
     ConfirmDialog,
     PageHeader,
-    StatusDot,
     ToolCallPanel,
     VisuallyHidden,
     type ApprovalResolution,
@@ -153,7 +153,6 @@
   import AgentSelect from './agent-select.svelte';
   import ComposerSettings from './composer-settings.svelte';
   import ContextMeter from './context-meter.svelte';
-  import ContextWindowRing from './context-window-ring.svelte';
   import SettingSelect from './setting-select.svelte';
   import RestartDialog from '../../app/restart/restart-dialog.svelte';
   import { RestartFlow } from '../settings/plugins/restart-flow.svelte.ts';
@@ -1522,6 +1521,14 @@
     if (retryNoteId !== undefined) return CHAT_COPY.status.failed;
     return CHAT_COPY.status.done;
   });
+  /** The Badge tone of each status word beside the title. */
+  function chatStatusTone(word: string): 'warning' | 'info' | 'danger' | 'neutral' | 'success' {
+    if (word === CHAT_COPY.status.waiting) return 'warning';
+    if (word === CHAT_COPY.status.running) return 'info';
+    if (word === CHAT_COPY.status.failed) return 'danger';
+    if (word === CHAT_COPY.status.ended) return 'neutral';
+    return 'success';
+  }
   // What holds Archive back in the More menu, in the order and the words of the status: the
   // person's turn first (an approval, or else a question), then a run going. The Bureau refuses to
   // archive a chat in either state, so the menu says why before it is pressed.
@@ -2087,12 +2094,13 @@
 
 {#snippet headerStatus()}
   {#if chatStatus !== undefined}
-    <StatusDot word={chatStatus} />
+    <!-- A Badge, as on the tool-call row: "Waiting on you" is the warning one (COR-2438). -->
+    <Badge variant={chatStatusTone(chatStatus)} size="sm">{chatStatus}</Badge>
   {/if}
 {/snippet}
 
+<!-- The context meter is the composer's alone, by Send (COR-2438): one meter in one place. -->
 {#snippet headerActions()}
-  <ContextWindowRing report={contextWindow.data} failed={contextWindow.isError} />
   <ChatMoreMenu
     {sessionId}
     title={displayTitle}
@@ -2138,6 +2146,8 @@
         <PageHeader
           data-testid="chat-header"
           title={markdownTitle}
+          titleText={displayTitle}
+          titleLines={1}
           headingLevel={1}
           narrowActions="beside-status"
           {...context.data?.parentContextId ? { description: details } : {}}
@@ -2255,6 +2265,7 @@
             }
           : { summary: CHAT_COPY.notSent.online }}
         disabled={session.disconnected || gone || answerHeld}
+        composerHint={false}
         composerPlaceholder={answering
           ? pickable
             ? CHAT_COPY.composer.answerPlaceholder

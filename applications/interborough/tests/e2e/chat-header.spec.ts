@@ -13,6 +13,7 @@ import { MODEL_SWITCHER_MODELS } from '@lostgradient/plugin-demo';
 import { CHAT_COPY } from '../../src/app/copy/chat.ts';
 import { UPLOAD_CHUNK_BYTES } from '../../src/lib/bureau-assets.ts';
 import { hideModelPicker, newThreadId, revealSettings, runToEnd } from './chat-support.ts';
+import { captureForDesignReview } from './design-review-capture.ts';
 import { E2E_BASE_URL } from './e2e-constants.ts';
 import { IMAGE_ECHO_AGENT_NAME } from './echo-agent.ts';
 import { expect, test } from './fixtures.ts';
@@ -95,11 +96,14 @@ for (const viewport of VIEWPORTS) {
     await page.setViewportSize(viewport);
     await open(page, request, 'demo:model-switcher');
 
-    const ring = page.locator('.weft-context-ring');
-    await expect(ring).toBeVisible();
-    await expect(ring).toHaveAttribute('aria-label', /^Context window: .* Opens the breakdown$/);
+    // One meter, by Send in the composer, reading a percentage (COR-2438); the header has none.
+    await expect(page.locator('[data-testid="chat-header"] .weft-context-meter')).toHaveCount(0);
+    const meter = page.locator('.chat-input-footer-right .weft-context-meter');
+    await expect(meter).toBeVisible();
+    await expect(meter).toHaveAttribute('aria-label', /^Context window: .* Opens the breakdown$/);
+    await expect(meter.locator('.weft-context-meter__reading')).toHaveText(/^\d+%$/);
 
-    await ring.click();
+    await meter.click();
     const panel = page.getByTestId('context-window');
     await expect(panel).toBeVisible();
     await expect(panel.locator('[data-category]')).toHaveCount(5);
@@ -223,43 +227,66 @@ for (const viewport of VIEWPORTS) {
 
 /**
  * In one layout: the vertical centre of the first line box of the chat's title, measured on its
- * words rather than the h1, how many lines it wraps to, and the centre of each header control.
+ * words rather than the h1, how many lines show and whether words are cut off, the More menu's
+ * centre, the status Badge's box and tone, and the header band's rule against the route's edges.
  */
-async function headerCentres(
-  page: Page,
-): Promise<{ title: number; lines: number; controls: Record<string, number> }> {
+async function headerCentres(page: Page) {
   return header(page).evaluate((root, moreLabel) => {
     const heading = root.querySelector('h1');
     if (heading === null) throw new Error('The header has no title.');
+    const headingBox = heading.getBoundingClientRect();
     const range = document.createRange();
     range.selectNodeContents(heading);
     const rects = [...range.getClientRects()].filter((rect) => rect.height > 0);
     const first = rects[0];
     if (first === undefined) throw new Error('The title has no line boxes.');
-    const centreOf = (element: Element | null): number => {
-      if (element === null) throw new Error('A header control is missing.');
-      const box = element.getBoundingClientRect();
-      return box.top + box.height / 2;
-    };
+    // A clamped title lays out its hidden lines too: only the lines inside the heading show.
+    const shown = rects.filter((rect) => rect.bottom <= headingBox.bottom + 0.5);
+    const more = [...root.querySelectorAll('button')].find(
+      (button) => button.textContent?.trim() === moreLabel,
+    );
+    if (more === undefined) throw new Error('The More menu is missing.');
+    const moreBox = more.getBoundingClientRect();
+    const badge = root.querySelector('.cinder-page-header__status .cinder-badge');
+    const badgeBox = badge?.getBoundingClientRect();
+    const band = root.closest('.weft-chat-head');
+    const route = root.closest('.weft-chat-route');
+    const bandBox = band?.getBoundingClientRect();
+    const routeBox = route?.getBoundingClientRect();
     return {
       title: first.top + first.height / 2,
-      lines: new Set(rects.map((rect) => Math.round(rect.top))).size,
-      controls: {
-        more: centreOf(
-          [...root.querySelectorAll('button')].find(
-            (button) => button.textContent?.trim() === moreLabel,
-          ) ?? null,
-        ),
-        ring: centreOf(root.querySelector('.weft-context-ring')),
-      },
+      titleBottom: first.bottom,
+      headingBottom: headingBox.bottom,
+      lines: new Set(shown.map((rect) => Math.round(rect.top))).size,
+      cut: rects.length > shown.length || heading.scrollWidth > heading.clientWidth + 0.5,
+      more: moreBox.top + moreBox.height / 2,
+      status:
+        badgeBox === undefined
+          ? undefined
+          : {
+              centre: badgeBox.top + badgeBox.height / 2,
+              top: badgeBox.top,
+              tone: badge?.getAttribute('data-cinder-variant') ?? '',
+              dot: root.querySelector('.cinder-page-header__status .cinder-status-dot') !== null,
+            },
+      rule:
+        band === null || route === null || bandBox === undefined || routeBox === undefined
+          ? undefined
+          : {
+              width: getComputedStyle(band).borderBottomWidth,
+              left: bandBox.left - routeBox.left,
+              right: routeBox.right - bandBox.right,
+            },
+      boxed: getComputedStyle(root).borderTopWidth !== '0px',
     };
   }, MORE.label);
 }
 
-// COR-2438: the title's first line and the controls at the header's inline end share one centre
-// line, and keep it when the title wraps.
-for (const width of [1280, 1920]) {
-  test(`centres the More menu and the context ring on the title's first line, at ${width} pixels`, async ({
+// COR-2438: the title keeps one line and takes the free space first; the More menu shares the
+// centre of its line, and the status Badge does too while it fits beside the title, or else sits
+// under it. No box frames the header, and its rule runs edge to edge of the conversation pane.
+for (const width of [1280, 1920, 900]) {
+  test(`keeps the title to one line, the More menu and the status on its centre line or the status under it, at ${width} pixels`, async ({
     page,
     request,
   }) => {
@@ -274,19 +301,40 @@ for (const width of [1280, 1920]) {
     await page.goto(`/chats/${threadId}`);
     await expect(page.locator('[data-view="chat"]')).toHaveAttribute('data-state', 'ready');
     await expect(moreButton(page)).toBeVisible();
-    await expect(page.locator('.weft-context-ring')).toBeVisible();
 
     const measured = await headerCentres(page);
+    // 18a: one line, cut with an ellipsis, the full title in its tooltip.
+    expect(measured.lines).toBe(1);
+    expect(measured.cut).toBe(true);
+    // 18f and 15: the More menu centres on the title's first line.
     expect(
-      measured.lines,
-      'the title wraps, so the first line is what is measured',
-    ).toBeGreaterThan(1);
-    for (const [name, centre] of Object.entries(measured.controls)) {
-      expect(
-        Math.abs(centre - measured.title),
-        `${name} at ${centre}, the title's first line at ${measured.title}`,
-      ).toBeLessThanOrEqual(2);
+      Math.abs(measured.more - measured.title),
+      `More at ${measured.more}, the title's first line at ${measured.title}`,
+    ).toBeLessThanOrEqual(2);
+    // 18b: the status is a Badge, never a dot; beside the title it shares the line, or it is under.
+    expect(measured.status).toBeDefined();
+    expect(measured.status!.dot).toBe(false);
+    expect(measured.status!.tone).toBe('success');
+    if (measured.status!.top < measured.titleBottom) {
+      expect(Math.abs(measured.status!.centre - measured.title)).toBeLessThanOrEqual(2);
+    } else {
+      expect(measured.status!.top).toBeGreaterThanOrEqual(measured.headingBottom - 0.5);
     }
+    // 18e: no box, and the rule spans the pane.
+    expect(measured.boxed).toBe(false);
+    expect(measured.rule).toBeDefined();
+    expect(measured.rule!.width).toBe('1px');
+    expect(Math.abs(measured.rule!.left)).toBeLessThanOrEqual(0.5);
+    expect(Math.abs(measured.rule!.right)).toBeLessThanOrEqual(0.5);
+    // 18d and 19: one meter, by Send, reading a percentage.
+    await expect(header(page).locator('.weft-context-meter, .weft-context-ring')).toHaveCount(0);
+    await expect(page.locator('.chat-input-footer-right .weft-context-meter')).toHaveCount(1);
+    await expect(page.locator('.chat-input-hint')).toHaveCount(0);
+    await captureForDesignReview(page, {
+      route: '/chats/:chat',
+      state: `header with a long title at ${width} pixels`,
+      source: 'tests/e2e/chat-header.spec.ts',
+    });
   });
 }
 

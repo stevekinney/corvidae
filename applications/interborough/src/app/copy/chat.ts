@@ -461,9 +461,6 @@ export const CHAT_COPY = {
       percent === null || max === null
         ? `Context window: about ${used} tokens in use, window size unknown. Opens the breakdown`
         : `Context window: ${String(percent)}% used, about ${used} of ${max} tokens. Opens the breakdown`,
-    /** The visible reading beside the ring. */
-    reading: (percent: number | null, used: string) =>
-      percent === null ? `${used} tokens` : `${String(percent)}%`,
     summary: (used: string, max: string | null) =>
       max === null
         ? `About ${used} tokens, in a window of unknown size.`
@@ -555,18 +552,20 @@ export const CHAT_COPY = {
       label: 'Settings: Model, Effort and Permissions',
     },
   },
-  /** The context meter in the composer: a bar and a reading of how full the window is. */
+  /**
+   * The chat's one context meter, in the composer beside Send (COR-2438): a bar and its percentage,
+   * the tokens in its tooltip. Its button's name and the breakdown it opens are `contextWindow`'s.
+   */
   contextMeter: {
-    /** The meter's accessible name; `percent` is `null` when the model's window is not known. */
+    /** The bar's own name; `percent` is `null` when the model's window is not known. */
     label: (percent: number | null, used: string) =>
       percent === null ? `Context ${used} tokens` : `Context ${String(percent)}%`,
-    /** The visible reading beside the bar. */
+    /** The visible reading beside the bar: the percentage, or the tokens when there is no window. */
     reading: (percent: number | null, used: string) =>
-      percent === null ? used : `${String(percent)}%`,
+      percent === null ? `${used} tokens` : `${String(percent)}%`,
     /** The tooltip: tokens in use of the window, as short numbers. */
     tooltip: (used: string, max: string | null) =>
       max === null ? `About ${used} tokens` : `${used} of ${max} tokens`,
-    unavailable: 'Context unavailable',
   },
   /** Branching a chat from one of an agent's replies. */
   /** What a message that was not sent says in the popover its red icon opens. */

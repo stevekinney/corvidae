@@ -250,8 +250,11 @@ test.describe('the long turn beside the chat list (21o, 21p, 21q)', () => {
     const heading = page.getByRole('heading', { level: 1, name: TOOL_CALL_TURN_TITLE });
     await expect(heading).toBeVisible();
     await expect(heading.locator('..')).toContainText('Waiting on you');
-    const status = heading.locator('..').locator('.cinder-status-dot').first();
-    await expect(status).toHaveAttribute('data-cinder-status', 'warning');
+    // A warning Badge, as on the tool-call row (COR-2438).
+    const status = page.locator(
+      '[data-testid="chat-header"] .cinder-page-header__status .cinder-badge',
+    );
+    await expect(status).toHaveAttribute('data-cinder-variant', 'warning');
 
     const conversation = openChat(page);
     const message = conversation.locator('.chat-message--user, [data-role="user"]').first();

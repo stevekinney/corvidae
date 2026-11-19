@@ -63,10 +63,13 @@ const rail = (page: Page) => page.locator('.cinder-tool-call-rail');
 const railRow = (page: Page, tool: string): Locator =>
   rail(page).locator('[data-cinder-tool-call-row]').filter({ hasText: tool });
 
-/** The status word beside a chat's title, and the dot that comes with it. */
+/**
+ * The status word beside a chat's title, and the tone of the Badge it is drawn as (COR-2438: a
+ * Badge, as on the tool-call row; `dot` keeps its name for the tone).
+ */
 async function statusOf(page: Page): Promise<{ word: string; dot: string | null }> {
   const heading = header(page);
-  const dot = heading.locator('.cinder-status-dot').first();
+  const dot = heading.locator('.cinder-page-header__status .cinder-badge').first();
   const shown = await heading.innerText();
   const text = shown.replace(/\s+/g, ' ');
   return {
@@ -74,7 +77,7 @@ async function statusOf(page: Page): Promise<{ word: string; dot: string | null 
       ['Waiting on you', 'Running', 'Failed', 'Ended', 'Done'].find((word) =>
         text.includes(word),
       ) ?? '',
-    dot: (await dot.count()) === 0 ? null : await dot.getAttribute('data-cinder-status'),
+    dot: (await dot.count()) === 0 ? null : await dot.getAttribute('data-cinder-variant'),
   };
 }
 

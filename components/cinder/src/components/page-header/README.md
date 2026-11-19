@@ -30,7 +30,7 @@ A list page's create action is a `createAction`: a secondary icon-only "+" with 
 
 While a full-page `ErrorState` shows under the header, pass `error` so the header's primary buttons draw as secondary and Try again is the only primary.
 
-`status` takes the page's status as a snippet and `statusPlacement` puts it beside the title (`inline`, on its first line) or under it (`below`, the default). An inline status and the actions are each one line box of the title's own size with their content centred in it, so they share the centre of the title's first line however the title wraps and whatever a control's height. The title wraps to two lines and then ends in an ellipsis; its tooltip carries the full text, from `title` or, when `title` is a snippet, from `titleText`.
+`status` takes the page's status as a snippet and `statusPlacement` puts it beside the title (`inline`, on its first line) or under it (`below`, the default). An inline status and the actions are each one line box of the title's own size with their content centred in it, so they share the centre of the title's first line however the title wraps and whatever a control's height. The title wraps to two lines and then ends in an ellipsis; its tooltip carries the full text, from `title` or, when `title` is a snippet, from `titleText`. In a narrow pane, such as a chat's conversation, pass `titleLines={1}`: the title keeps one line and takes the free space first, and an inline status that no longer fits beside it moves under it.
 
 In a narrow header (a phone) the actions drop to a row of their own under the title and the status. Pass `narrowActions="beside-status"` to put them at the inline end of the status's row instead, which gives that row's height back to the page; it suits a few compact actions above content that needs the room, such as a chat's context ring and More menu. With no status they sit beside the title instead, so they never take a row alone. A wide header is the same either way.
 
@@ -205,6 +205,7 @@ Below 720px of the hero's own width the focal value comes first and the copy fol
 | `statusPlacement` | `"inline"` \| `"below"` | no | `"below"` | Where `status` sits: `inline` beside the title on its first line, or `below` the title. |
 | `title` | `string` | yes | — | Page-level heading text rendered inside the `headingLevel` heading; the runtime API also accepts a template-only snippet. |
 | `titleSoft` | `string` | no | — | A lighter phrase drawn straight after the title, in the same heading at the same size, such as ", made easier" after a brand name. Include any leading space or punctuation. |
+| `titleLines` | `1` \| `2` | no | `2` | How many lines the title may take before it ends in an ellipsis; with `1` an inline status that no longer fits beside the title moves under it. |
 | `titleText` | `string` | no | — | The title's plain text, for the full-title tooltip when `title` is a snippet. |
 | `tone` | `"plain"` \| `"tint"` \| `"accent"` \| `"night"` | no | `"plain"` | The band a `hero` header draws: `plain`, `tint`, `accent` or `night`. The other variants ignore it. |
 | `variant` | `"default"` \| `"large"` \| `"hero"` | no | `"default"` | The header's layout: `default`, `large` (a large title that collapses into a sticky bar on scroll) or `hero` (a full-bleed band). |
