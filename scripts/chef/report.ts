@@ -2,7 +2,8 @@
 // Chef worker reports as files: the writer a `chef-worker` runs before it stops, and the owner
 // feedback intake a coordinator runs while a worker is working.
 //
-//   bun scripts/chef/report.ts write <issue> --file <json> [--worktree <dir>] [--branch <name>]
+//   bun scripts/chef/report.ts write <issue> --file <json> --brief-version <version> [--worktree <dir>] [--branch <name>]
+//   bun scripts/chef/report.ts check <issue> --head <sha>
 //   bun scripts/chef/report.ts amend <issue> --branch <name> --text <text>
 //   bun scripts/chef/report.ts attach <issue> <image file>
 //

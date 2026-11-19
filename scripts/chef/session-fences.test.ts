@@ -107,7 +107,8 @@ describe('a chef-worker stop', () => {
     expect(() => report(setting, {}, { briefVersion: 'aaaaaaaaaaaa' })).toThrow(
       /amended after you read it[\s\S]*c1: criterion 16/,
     );
-    expect((await handleHookEvent(stop(path), context(setting)))?.decision).toBe('block');
+    const stillBlocked = await handleHookEvent(stop(path), context(setting));
+    expect(stillBlocked?.decision).toBe('block');
     // Omitting the version is refused too: the report records what was read, never the disk.
     expect(() => report(setting, {}, { briefVersion: undefined as unknown as string })).toThrow(
       /--brief-version/,
