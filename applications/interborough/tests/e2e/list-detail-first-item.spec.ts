@@ -178,7 +178,9 @@ for (const item of CASES) {
                 ).length,
             ),
         ).toBe(1);
-        await expect(page.locator('.cinder-list-detail__detail')).not.toContainText(/^Choose /);
+        await expect(
+          page.locator('.cinder-list-detail__detail-body > .cinder-empty-state'),
+        ).toHaveCount(0);
 
         // The open item replaced the address: Back goes to the page before.
         await page.goBack();
@@ -261,10 +263,10 @@ test.describe('a deep link is never overridden', () => {
 
 /** The list-and-detail pages the sweep found boxed, and the element their tabs are drawn in. */
 const FLAT_PAGES = [
-  { name: 'Capabilities', path: '/capabilities' },
-  { name: 'an agent’s Memory', path: '/agents/tool-runner/memory' },
-  { name: 'Health, Workers', path: '/health/workers' },
-  { name: 'Settings, Plugins', path: '/settings/plugins' },
+  { name: 'Capabilities', path: '/capabilities', underTabs: true },
+  { name: 'an agent’s Memory', path: '/agents/tool-runner/memory', underTabs: true },
+  { name: 'Health, Workers', path: '/health/workers', underTabs: true },
+  { name: 'Settings, Plugins', path: '/settings/plugins', underTabs: false },
 ] as const;
 
 for (const flat of FLAT_PAGES) {
@@ -306,7 +308,7 @@ for (const flat of FLAT_PAGES) {
       const tabs = page
         .locator('main [role="tablist"]:not(.cinder-list-detail [role="tablist"])')
         .first();
-      if ((await tabs.count()) > 0) {
+      if (flat.underTabs) {
         const { tabsBox, listBox } = await readBoxes(page, { tabsBox: tabs, listBox: listDetail });
         expect(Math.abs(listBox.x - tabsBox.x)).toBeLessThanOrEqual(1);
       }

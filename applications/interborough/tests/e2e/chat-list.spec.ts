@@ -69,7 +69,9 @@ test.describe('the chat list on the sample world', () => {
   }) => {
     await openChats(page);
     const header = list(page).locator('header');
-    await expect(header.getByRole('heading', { level: 1, name: 'Chats' })).toBeVisible();
+    // Beside the list the latest chat opens (COR-2445), whose title is the page's level-one
+    // heading, so the list's own heading is a level below it.
+    await expect(header.getByRole('heading', { name: 'Chats' })).toBeVisible();
     const plus = header.getByRole('link', { name: 'New chat' });
     await expect(plus).toHaveAttribute('data-cinder-variant', 'secondary');
     await expect(plus).toHaveAttribute('href', '/chats/new');
