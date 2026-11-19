@@ -1,11 +1,12 @@
 <script lang="ts">
   /**
-   * The plugin kinds a saved hook lists that are missing (COR-2226, row R5): each by its name,
-   * "Missing" in Cinder's status shape, and the one line that says why, "Plugin not loaded" or
-   * "Pinned to 1.0.0, 1.1.0 is loaded". The hook stays on and still saves; the others still fire.
-   * Nothing is drawn when no kind is missing.
+   * The plugin kinds a saved hook lists that are missing (COR-2226, row R5): each a Cinder row, the
+   * row the chosen events take, with its name as the title, "Missing" in the row's status, and the
+   * one line that says why as its line two, "Plugin not loaded" or "Pinned to 1.0.0, 1.1.0 is
+   * loaded". The hook stays on and still saves; the others still fire. Nothing is drawn when no kind
+   * is missing.
    */
-  import { StatusDot } from '@lostgradient/cinder';
+  import { DataList, StackedListItem, StatusDot } from '@lostgradient/cinder';
 
   import { humanizeName } from '../settings/plugins/plugin-presentation.ts';
   import { HOOKS_COPY } from './hook-copy.ts';
@@ -19,59 +20,30 @@
   }
 
   let { missing, titleOf = humanizeName }: Props = $props();
+
+  const word = HOOKS_COPY.editor.event.missing.word;
 </script>
 
 {#if missing.length > 0}
-  <ul class="ib-hook-missing" data-testid="hook-missing-events">
-    {#each missing as entry (entry.kind)}
-      <li class="ib-hook-missing__item" data-event={entry.kind}>
-        <span class="ib-hook-missing__line">
-          <span class="ib-hook-missing__name">{eventChosenLabel(entry.kind, titleOf)}</span>
-          <StatusDot
-            word={HOOKS_COPY.editor.event.missing.word}
-            size="sm"
-            data-status-word={HOOKS_COPY.editor.event.missing.word}
-          />
-        </span>
-        <span class="ib-hook-missing__cause">{missingEventCause(entry)}</span>
-      </li>
-    {/each}
-  </ul>
+  <DataList
+    items={[...missing]}
+    key={(entry) => entry.kind}
+    class="ib-hook-missing"
+    data-testid="hook-missing-events"
+  >
+    {#snippet children(entry)}
+      {@const label = eventChosenLabel(entry.kind, titleOf)}
+      {@const cause = missingEventCause(entry)}
+      <StackedListItem
+        class="ib-hook-missing__item"
+        data-event={entry.kind}
+        tooltip={label}
+        metaTooltip={cause}
+      >
+        {#snippet status()}<StatusDot {word} size="sm" data-status-word={word} />{/snippet}
+        {#snippet title()}{label}{/snippet}
+        {#snippet description()}{cause}{/snippet}
+      </StackedListItem>
+    {/snippet}
+  </DataList>
 {/if}
-
-<style>
-  .ib-hook-missing {
-    display: flex;
-    flex-direction: column;
-    gap: var(--cinder-space-2);
-    min-width: 0;
-    margin: 0;
-    padding: 0;
-    list-style: none;
-  }
-
-  .ib-hook-missing__item {
-    display: flex;
-    flex-direction: column;
-    gap: var(--cinder-space-1);
-    min-width: 0;
-  }
-
-  .ib-hook-missing__line {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: var(--cinder-space-1) var(--cinder-space-3);
-    min-width: 0;
-  }
-
-  .ib-hook-missing__name {
-    overflow-wrap: anywhere;
-  }
-
-  .ib-hook-missing__cause {
-    color: var(--cinder-text-muted);
-    font-size: var(--cinder-text-sm);
-    overflow-wrap: anywhere;
-  }
-</style>
