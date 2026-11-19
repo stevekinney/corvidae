@@ -36,6 +36,7 @@ interface Recorded {
   built?: boolean;
 }
 let setup: { code: number; output: string } | undefined;
+let freshMissing: string[] = [];
 let buildResult: Recorded | undefined;
 let testResult: Recorded | undefined;
 
@@ -52,14 +53,14 @@ const scenario = await outcomeOf(async () => {
     if (installed.code !== 0) return void (setup = installed);
     setup = { code: 0, output: '' };
     // Fresh checkout: nothing generated yet.
-    const beforeBuild = missing();
+    freshMissing = missing();
     const build = await run(
       ['bun', 'scripts/build.ts', '--outdir', join(scratch, 'build')],
       join(copy, 'applications/interborough'),
     );
     buildResult = {
       ...build,
-      missing: [...beforeBuild.filter((path) => missing().includes(path))],
+      missing: missing(),
       built: existsSync(join(scratch, 'build/index.html')),
     };
     // Remove the files again, so the Cinder test starts from a fresh checkout as well.
@@ -86,6 +87,8 @@ const scenario = await outcomeOf(async () => {
 test('the isolated checkout is created and installed', () => {
   rethrow(scenario);
   expect(setup?.code, setup?.output).toBe(0);
+  // The copy starts as a fresh checkout: every generated file is absent.
+  expect(freshMissing).toEqual(CINDER_GENERATED_OUTPUTS);
 });
 
 test("Interborough's build entry regenerates Cinder's files and builds", () => {
