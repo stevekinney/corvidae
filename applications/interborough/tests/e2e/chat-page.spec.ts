@@ -92,31 +92,88 @@ test.describe('an open chat on the sample world', () => {
     });
   });
 
-  test('opens the details popover from the breadcrumb: session, agent, started and As run (16u, 16v)', async ({
+  test('opens the compact details popover from the breadcrumb: agent, started, settings and Copy session ID inside it (16u, 16v, COR-2438 16a to 16f)', async ({
     page,
   }) => {
+    await page.setViewportSize({ width: 1280, height: 800 });
     await openRefundChat(page);
     await trail(page).getByRole('button', { name: TITLE }).click();
     const details = page.getByTestId('chat-details');
     await expect(details).toBeVisible();
 
-    await expect(details.getByTestId('chat-details-session')).toHaveText(
-      SAMPLE_WORLD_THREADS.refund,
-    );
-    await expect(details.getByRole('button', { name: 'Copy session ID' })).toBeVisible();
+    const copy = details.getByRole('button', { name: 'Copy session ID' });
+    await expect(copy).toBeVisible();
     const agent = details.getByRole('link', { name: 'Tool runner' });
     await expect(agent).toHaveAttribute('href', '/agents/tool-runner');
-    await expect(details.locator('code', { hasText: /^tool-runner$/ })).toBeVisible();
-    await expect(details).toContainText(/Started\s*Today, 10:30 AM, last active 10:4\d AM/);
+    // No machine identifier beside a name, and no middle dot.
+    await expect(details.locator('code')).toHaveCount(0);
+    await expect(details).not.toContainText(SAMPLE_WORLD_THREADS.refund);
+    expect(await details.textContent()).not.toContain(String.fromCodePoint(0xb7));
+    await expect(details).toContainText(/Started\s*Today, 10:30 AM/);
+    await expect(details).toContainText(/Last active\s*10:4\d AM/);
 
-    const asRun = details.getByRole('region', { name: 'As run' });
-    await expect(asRun).toContainText('Claude Sonnet 5.5');
-    await expect(asRun.locator('code', { hasText: /^claude-sonnet-5-5$/ })).toBeVisible();
-    await expect(asRun).toContainText(/Effort\s*Medium/);
-    await expect(asRun).toContainText(/Permissions\s*On changes asks/);
+    const settings = details.getByTestId('chat-details-settings');
+    await expect(settings).not.toContainText('As run');
+    await expect(settings).toContainText(/Model\s*Claude Sonnet 5\.5/);
+    await expect(settings).toContainText(/Effort\s*Medium/);
+    await expect(settings).toContainText(/Permissions\s*On changes asks/);
+
+    // 16a: every control sits inside the popover's padding; 16b: the popover is as wide as its
+    // content, at most about 360px; 16c: labels muted, values in the body colour.
+    const measured = await page.evaluate(() => {
+      const list = document.querySelector('[data-testid="chat-details"]');
+      const panel = list?.closest('.cinder-popover');
+      if (!list || !panel) return undefined;
+      const box = panel.getBoundingClientRect();
+      const style = getComputedStyle(panel);
+      const inner = {
+        left: box.left + parseFloat(style.paddingLeft) + parseFloat(style.borderLeftWidth) - 0.5,
+        right:
+          box.right - parseFloat(style.paddingRight) - parseFloat(style.borderRightWidth) + 0.5,
+      };
+      const controls = [...list.querySelectorAll('a, button')].map((control) => {
+        const rect = control.getBoundingClientRect();
+        return { left: rect.left, right: rect.right };
+      });
+      const term = list.querySelector('dt');
+      const value = list.querySelector('dd');
+      return {
+        inner,
+        controls,
+        width: box.width,
+        term: term ? getComputedStyle(term).color : '',
+        value: value ? getComputedStyle(value).color : '',
+      };
+    });
+    expect(measured).toBeDefined();
+    for (const control of measured!.controls) {
+      expect(control.left).toBeGreaterThanOrEqual(measured!.inner.left);
+      expect(control.right).toBeLessThanOrEqual(measured!.inner.right);
+    }
+    expect(measured!.width).toBeLessThanOrEqual(400);
+    expect(measured!.term).not.toBe(measured!.value);
     await captureForDesignReview(page, {
       route: '/chats/:chat',
       state: 'details popover open',
+      source: SOURCE,
+    });
+  });
+
+  test('opens the details as a bottom sheet with Copy session ID inside it at 375 pixels (COR-2438 16g)', async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 375, height: 812 });
+    await openRefundChat(page);
+    await trail(page).getByRole('button', { name: TITLE }).click();
+    const details = page.getByTestId('chat-details');
+    await expect(details).toBeVisible();
+    const copy = await details.getByRole('button', { name: 'Copy session ID' }).boundingBox();
+    expect(copy).not.toBeNull();
+    expect(copy!.x).toBeGreaterThanOrEqual(0);
+    expect(copy!.x + copy!.width).toBeLessThanOrEqual(375);
+    await captureForDesignReview(page, {
+      route: '/chats/:chat',
+      state: 'details sheet at 375',
       source: SOURCE,
     });
   });

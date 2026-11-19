@@ -25,21 +25,49 @@
   align-self: flex-start;
 }
 
-/* The details popover of an open chat (the last breadcrumb): the session, its agent, when it
- * started, and an "As run" group of what it ran with. */
+/* The details popover of an open chat (the last breadcrumb): a compact list as wide as its content
+ * (at most 360px), a muted label beside each value in the body colour at the compact list pitch,
+ * then the quiet Copy session ID action. Every control sits inside the popover's padding. */
 .weft-chat-details {
   display: flex;
   flex-direction: column;
-  gap: var(--cinder-space-3);
-  /* Wide enough that the terms sit beside their values: Cinder's list stacks them under 28rem. */
-  min-inline-size: min(32rem, calc(100vw - 4rem));
+  gap: var(--cinder-space-2);
+  inline-size: max-content;
+  max-inline-size: min(22.5rem, 100%);
+  min-inline-size: 0;
   font-size: var(--cinder-text-sm);
 }
 
-.weft-chat-details__identifier {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--cinder-space-1);
+.weft-chat-details__list {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  column-gap: var(--cinder-space-4);
+  row-gap: var(--cinder-space-1);
+  margin: 0;
+}
+
+/* The settings follow under a quiet rule, with no heading of their own. */
+.weft-chat-details__list + .weft-chat-details__list {
+  padding-block-start: var(--cinder-space-2);
+  border-block-start: 1px solid var(--cinder-border-muted);
+}
+
+.weft-chat-details__row {
+  display: grid;
+  grid-template-columns: subgrid;
+  grid-column: 1 / -1;
+  align-items: baseline;
+}
+
+.weft-chat-details__row dt {
+  color: var(--cinder-text-muted);
+  font-weight: var(--cinder-font-normal);
+}
+
+.weft-chat-details__row dd {
+  margin: 0;
+  min-inline-size: 0;
+  color: var(--cinder-text-default);
   overflow-wrap: anywhere;
 }
 
@@ -48,24 +76,10 @@
   text-decoration: none;
 }
 
-.weft-chat-details__small {
-  color: var(--cinder-text-muted);
-  font-size: var(--cinder-text-xs);
-}
-
-.weft-chat-details__group {
+.weft-chat-details__actions {
   display: flex;
-  flex-direction: column;
-  gap: var(--cinder-space-2);
-  padding-block-start: var(--cinder-space-3);
-  border-block-start: 1px solid var(--cinder-border-muted);
-}
-
-.weft-chat-details__heading {
-  margin: 0;
-  padding-inline: var(--cinder-space-3);
-  font-size: var(--cinder-text-sm);
-  font-weight: 600;
+  min-inline-size: 0;
+  padding-block-start: var(--cinder-space-1);
 }
 
 /* The composer's context meter: a short bar and its percentage, on the control row beside Send. */

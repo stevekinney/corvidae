@@ -584,22 +584,27 @@ export const CHAT_COPY = {
     done: 'Done',
   },
   /**
-   * The details popover the last breadcrumb opens (board ChatPage frame b): the session, its agent,
-   * when it started, and what the chat ran with.
+   * The details popover the last breadcrumb opens (board ChatPage frame b): the agent, when the chat
+   * started and was last active, its settings, and a quiet action that copies the session ID.
    */
   details: {
     /** The popover's accessible name, before the chat's title. */
     label: 'Chat details',
-    sessionId: 'Session ID',
+    /** The quiet action at the bottom of the popover, and what it says once it copied. */
     copySessionId: 'Copy session ID',
+    sessionIdCopied: 'Session ID copied',
     agent: 'Agent',
     started: 'Started',
-    /** What follows when the chat started, naming the last time it changed. */
-    lastActive: (when: string): string => `last active ${when}`,
-    /** The group of what the chat ran with. */
-    asRun: 'As run',
+    /** Its own row, shown only when the chat changed after the minute it started. */
+    lastActive: 'Last active',
     model: 'Model',
     effort: 'Effort',
+    /** The effort a chat left unset, as the agent's file names it ("Medium, the agent's default"). */
+    agentEffort: (effort: string): string => `${effort}, the agent’s default`,
+    /** The agent's file names no effort, so the model's own applies. */
+    modelEffort: 'The model’s default',
+    /** The agent's definition has not been read, or could not be. */
+    unknownEffort: 'The agent’s default',
     permissions: 'Permissions',
   },
   branch: {
