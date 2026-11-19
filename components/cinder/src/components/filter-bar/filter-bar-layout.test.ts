@@ -342,7 +342,7 @@ describe('FilterBar layout by its measured width', () => {
     setViewport(768);
     needs = { wide: 1100, medium: 657, 'medium:1': 596, narrow: 300 };
     const facets = [
-      FACETS[0],
+      ...FACETS.slice(0, 1),
       {
         type: 'choice' as const,
         key: 'workflow',
@@ -350,7 +350,7 @@ describe('FilterBar layout by its measured width', () => {
         multiple: false,
         options: [{ value: 'release-notes', label: 'Release notes' }],
       },
-      FACETS[1],
+      ...FACETS.slice(1),
     ];
     const { container } = render(FilterBar, {
       segments: SEGMENTS,
