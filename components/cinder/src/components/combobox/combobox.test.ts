@@ -137,6 +137,38 @@ describe('Combobox', () => {
     });
   });
 
+  test('a click on the field that kept focus after a pick opens the list again, and a click on an open list leaves it open', async () => {
+    // A multi-pick field (the hooks event picker) clears itself after each pick and keeps focus, so
+    // focus alone never reopens it: the second click must.
+    const { container } = render(Combobox, { id: 'editable-fruit', options: fruits });
+    const input = requiredInstance(container.querySelector('#editable-fruit'), HTMLInputElement);
+    input.focus();
+    await fireEvent.focus(input);
+    await fireEvent.mouseDown(await findOption('Apple'));
+    await waitFor(() => expect(input.getAttribute('aria-expanded')).toBe('false'));
+    expect(container.querySelector('[role="listbox"]')).toBeNull();
+
+    await fireEvent.click(input);
+    await waitFor(() => expect(input.getAttribute('aria-expanded')).toBe('true'));
+    // The field still reads "Apple", which the list is narrowed by.
+    await findOption('Apple');
+
+    // Not a toggle: a click on a field whose list is open keeps it open.
+    await fireEvent.click(input);
+    expect(input.getAttribute('aria-expanded')).toBe('true');
+  });
+
+  test('a click on a disabled field opens nothing', async () => {
+    const { container } = render(Combobox, {
+      id: 'editable-fruit',
+      options: fruits,
+      disabled: true,
+    });
+    const input = requiredInstance(container.querySelector('#editable-fruit'), HTMLInputElement);
+    await fireEvent.click(input);
+    expect(input.getAttribute('aria-expanded')).toBe('false');
+  });
+
   test('user can select a different option after the first selection', async () => {
     const { container } = render(Combobox, { id: 'editable-fruit', options: fruits });
     const input = requiredInstance(container.querySelector('#editable-fruit'), HTMLInputElement);
@@ -951,6 +983,21 @@ describe('Combobox keyboard', () => {
     expect(rule('\\.cinder-combobox__panel\\.cinder-popover')).not.toMatch(/overflow(-y)?:\s*auto/);
     // The surface's viewport limit is kept, so a short screen still fits the panel.
     expect(rule('\\.cinder-combobox__content')).toMatch(/100vh/);
+  });
+
+  test('a raw identifier that does not fit beside its label drops under it, and only it wraps anywhere', () => {
+    // happy-dom lays nothing out, so the rules are read here and the 320-pixel row is measured in
+    // a browser (Interborough's hooks.spec.ts, `new-hook-plugin-event-long`).
+    const styles = readComboboxStyles();
+    const rule = (selector: string): string =>
+      styles.match(new RegExp(`(?:^|\\n)\\s*${selector}\\s*\\{([^}]*)\\}`))?.[1] ?? '';
+    const heading = rule('\\.cinder-combobox__option-heading');
+    expect(heading).toMatch(/flex-wrap:\s*wrap/);
+    // No gap between the label's line and the identifier's.
+    expect(heading).toMatch(/gap:\s*0 var\(--cinder-space-2\)/);
+    const code = rule('\\.cinder-combobox__option-code');
+    expect(code).toMatch(/min-inline-size:\s*0/);
+    expect(code).toMatch(/overflow-wrap:\s*anywhere/);
   });
 
   test('hovering a disabled option does not clear the keyboard-active option', async () => {

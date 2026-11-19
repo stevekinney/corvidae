@@ -690,14 +690,31 @@ for (const width of [320, 375] as const) {
       if ((await word.count()) > 0) {
         const { lines } = await textLines(word);
         expect(lines, `${id}: the status word is one line`).toBe(1);
-        // A narrow row draws a leading status inline on line two (`__status-inline`, an
-        // inline-flex box) instead of in the status column (`__status`).
-        const status = row.locator(
-          '.cinder-stacked-list-item__status, .cinder-stacked-list-item__status-inline',
-        );
-        await expect(status, `${id}: the row renders one status`).toHaveCount(1);
-        const clipped = await status.evaluate((cell) => cell.scrollWidth > cell.clientWidth + 0.5);
-        expect(clipped, `${id}: the status word is not cut`).toBe(false);
+        await expect(
+          row.locator(
+            '.cinder-stacked-list-item__status, .cinder-stacked-list-item__status-inline',
+          ),
+          `${id}: the row renders one status`,
+        ).toHaveCount(1);
+        // A phone draws the word inline at the start of line two (no column cell); it does not
+        // clip, so its box must lie inside line two's box. A column cell must not clip it.
+        const whole = await word.evaluate((element) => {
+          const column = element.closest('.cinder-stacked-list-item__status');
+          if (column !== null) return column.scrollWidth <= column.clientWidth + 0.5;
+          const lineTwo = element
+            .closest('.cinder-stacked-list-item')
+            ?.querySelector('.cinder-stacked-list-item__line-two');
+          if (!lineTwo) return false;
+          const box = element.getBoundingClientRect();
+          const frame = lineTwo.getBoundingClientRect();
+          return (
+            box.left >= frame.left - 0.5 &&
+            box.right <= frame.right + 0.5 &&
+            box.top >= frame.top - 0.5 &&
+            box.bottom <= frame.bottom + 0.5
+          );
+        });
+        expect(whole, `${id}: the status word is whole`).toBe(true);
       }
       for (const part of await row.locator('.cinder-stacked-list-item__time-part').all()) {
         const { lines } = await textLines(part);
@@ -1725,3 +1742,366 @@ for (const width of [320, ...WIDTHS] as const) {
     await checkA11y(`hooks — a new hook that runs a plugin’s action at ${width}px`);
   });
 }
+
+// ─── Plugin event kinds (COR-2226, critique rows R1 to R10) ────────────────────────────────────────
+//
+// The Bureau's catalog is stubbed with a few of its own kinds and the kinds two plugins declare, one
+// name in both, so the picker's plugin groups, a chosen kind with its pin, and a saved hook whose
+// kind is missing are drawn without a plugin that publishes. The plugins' titles come from the host.
+
+/** A kind of the Bureau's catalog, or one a plugin declares when `source` and `version` are given. */
+function catalogKind(kind: string, source?: string, version?: string) {
+  return {
+    kind,
+    description: `What ${kind} means.`,
+    origin: source === undefined ? 'run' : 'unattributed',
+    payload: [],
+    scopes: [],
+    ...(source === undefined ? {} : { source, version }),
+  };
+}
+
+const PLUGIN_EVENT_CATALOG = () => ({
+  events: [
+    catalogKind('review.requested'),
+    catalogKind('run.settled'),
+    catalogKind('schedule.missed'),
+    catalogKind('reports:digest-ready', 'reports', '1.0.0'),
+    catalogKind('reports:summary-sent', 'reports', '1.0.0'),
+    catalogKind('archive:digest-ready', 'archive', '2.0.0'),
+  ],
+});
+
+/** Slack as every state has it, and the two plugins that declare the kinds, under their titles. */
+const EVENT_PLUGINS = () => [
+  ...PLUGINS(),
+  pluginStanding('reports', 'Weekly reports', 'running'),
+  pluginStanding('archive', 'Archive', 'running'),
+];
+
+const DIGEST_HOOK = hookRecord('owner-digest', {
+  name: 'Tell me when the digest is ready',
+  action: { type: 'notify', title: null },
+  events: ['reports:digest-ready@1.0.0', 'review.requested'],
+  declaredBy: null,
+});
+
+// R1, R2, R8, R9: the picker open on the plugins' groups, at the smallest phone and on a desktop.
+for (const width of [320, ...WIDTHS] as const) {
+  test(`[new-hook-plugin-event-picker] /hooks/new: the event picker groups each plugin’s kinds under its title, after the Bureau’s areas, at ${width} pixels`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await openHooks(
+      page,
+      '/hooks/new',
+      [],
+      { 'bureau.events.catalog': PLUGIN_EVENT_CATALOG },
+      EVENT_PLUGINS,
+    );
+    const picker = page.getByRole('combobox', { name: copy.event.label });
+    await picker.click();
+    const reports = page.getByRole('group', { name: /^Weekly reports/ });
+    await expect(reports).toBeVisible();
+    await expect(reports.getByRole('option')).toHaveCount(2);
+    await expect(page.getByRole('group', { name: /^Archive/ }).getByRole('option')).toHaveCount(1);
+    // The raw kind wraps rather than pushing the page sideways (R9).
+    expect(
+      await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
+    ).toBe(true);
+    await captureForDesignReview(page, {
+      route: '/hooks/new',
+      state: 'new-hook-plugin-event-picker',
+      source: SOURCE,
+    });
+    // R8: typing the plugin's title finds its kinds alone.
+    await picker.fill('weekly');
+    await expect(page.locator('[role="option"]')).toHaveCount(2);
+    await captureForDesignReview(page, {
+      route: '/hooks/new',
+      state: 'new-hook-plugin-event-search',
+      source: SOURCE,
+    });
+    await page.keyboard.press('Escape');
+  });
+}
+
+/** A kind longer than a 320-pixel panel is wide (62 characters), under the Weekly reports title. */
+const LONG_KIND = 'reports:weekly-digest-ready-for-every-workspace-member-to-read';
+
+// R9: a raw kind longer than the phone's panel drops under its words and wraps there, whole words
+// in its label, and nothing pushes the page sideways.
+test('[new-hook-plugin-event-long] /hooks/new: a raw kind too long for the phone’s panel drops under its words, which stay whole, at 320 pixels', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 320, height: 900 });
+  await openHooks(
+    page,
+    '/hooks/new',
+    [],
+    {
+      'bureau.events.catalog': () => ({
+        events: [...PLUGIN_EVENT_CATALOG().events, catalogKind(LONG_KIND, 'reports', '1.0.0')],
+      }),
+    },
+    EVENT_PLUGINS,
+  );
+  const picker = page.getByRole('combobox', { name: copy.event.label });
+  await picker.click();
+  await picker.fill('every workspace');
+  const option = page.getByRole('option', { name: /^Weekly digest ready for every workspace/ });
+  await expect(option).toBeVisible();
+  const geometry = await option.evaluate((row) => {
+    const label = row.querySelector('.cinder-combobox__option-label');
+    const code = row.querySelector('.cinder-combobox__option-code');
+    if (label === null || code === null) throw new Error('The option has no label or code.');
+    const labelBox = label.getBoundingClientRect();
+    const codeBox = code.getBoundingClientRect();
+    // Each word of the label sits on one line: none is broken across two.
+    const text = label.firstChild;
+    const words: boolean[] = [];
+    if (text !== null && text.nodeType === Node.TEXT_NODE) {
+      for (const match of (text.textContent ?? '').matchAll(/\S+/g)) {
+        const range = document.createRange();
+        range.setStart(text, match.index);
+        range.setEnd(text, match.index + match[0].length);
+        words.push(
+          new Set([...range.getClientRects()].map((rect) => Math.round(rect.top))).size === 1,
+        );
+      }
+    }
+    return {
+      codeBelowLabel: codeBox.top >= labelBox.bottom - 1,
+      codeAtLabelStart: Math.abs(codeBox.left - labelBox.left) <= 1,
+      labelWordsWhole: words.length > 0 && words.every(Boolean),
+      rowRight: row.getBoundingClientRect().right,
+      codeRight: codeBox.right,
+    };
+  });
+  expect(geometry.codeBelowLabel).toBe(true);
+  expect(geometry.codeAtLabelStart).toBe(true);
+  expect(geometry.labelWordsWhole).toBe(true);
+  expect(geometry.codeRight).toBeLessThanOrEqual(geometry.rowRight);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
+    true,
+  );
+  await captureForDesignReview(page, {
+    route: '/hooks/new',
+    state: 'new-hook-plugin-event-long',
+    source: SOURCE,
+  });
+  await page.keyboard.press('Escape');
+});
+
+// R3, R4: a chosen plugin kind reads with its plugin's title first, and its raw kind carries its pin,
+// muted; the Check line joins the chosen events, a comma only between two (B2).
+for (const width of [320, ...WIDTHS] as const) {
+  test(`[new-hook-plugin-event-chosen] /hooks/new: two plugins’ kinds of one name, chosen, never read the same, at ${width} pixels`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await openHooks(
+      page,
+      '/hooks/new',
+      [],
+      { 'bureau.events.catalog': PLUGIN_EVENT_CATALOG },
+      EVENT_PLUGINS,
+    );
+    const picker = page.getByRole('combobox', { name: copy.event.label });
+    for (const group of ['Weekly reports', 'Archive']) {
+      await picker.click();
+      await page
+        .getByRole('group', { name: new RegExp(`^${group}`) })
+        .getByRole('option', { name: /^Digest ready/ })
+        .click();
+    }
+    const chosen = page.getByTestId('hook-events').locator('li.ib-hook-events__item');
+    await expect(chosen.locator('.ib-hook-events__name')).toHaveText([
+      'Weekly reports: digest ready',
+      'Archive: digest ready',
+    ]);
+    await expect(chosen.locator('.ib-hook-events__kind')).toHaveText([
+      'reports:digest-ready@1.0.0',
+      'archive:digest-ready@2.0.0',
+    ]);
+    // B5: every row has one shape, and Remove sits at the same end edge on each, beside its text.
+    const removeNamed = (name: string) =>
+      chosen.getByRole('button', { name: copy.event.remove(name), exact: true });
+    const boxes = await readBoxes(page, {
+      first: chosen.nth(0),
+      second: chosen.nth(1),
+      firstRemove: removeNamed('Weekly reports: digest ready'),
+      secondRemove: removeNamed('Archive: digest ready'),
+      firstKind: chosen.nth(0).locator('.ib-hook-events__kind'),
+      secondKind: chosen.nth(1).locator('.ib-hook-events__kind'),
+    });
+    const end = (box: { x: number; width: number }): number => box.x + box.width;
+    expect(Math.abs(end(boxes.firstRemove) - end(boxes.secondRemove))).toBeLessThanOrEqual(1);
+    expect(Math.abs(boxes.first.x - boxes.second.x)).toBeLessThanOrEqual(1);
+    for (const [row, remove, kind] of [
+      [boxes.first, boxes.firstRemove, boxes.firstKind],
+      [boxes.second, boxes.secondRemove, boxes.secondKind],
+    ] as const) {
+      // Within its row, beside the text and never on a line of its own under it.
+      expect(remove.y).toBeGreaterThanOrEqual(row.y);
+      expect(remove.y + remove.height).toBeLessThanOrEqual(row.y + row.height);
+      expect(end(kind)).toBeLessThanOrEqual(remove.x);
+    }
+    await captureForDesignReview(page, {
+      route: '/hooks/new',
+      state: 'new-hook-plugin-event-chosen',
+      source: SOURCE,
+    });
+    const check = page.getByTestId('hook-check-events');
+    await expect(check).toHaveText('Weekly reports: digest ready, Archive: digest ready');
+    await check.scrollIntoViewIfNeeded();
+    await captureForDesignReview(page, {
+      route: '/hooks/new',
+      state: 'new-hook-plugin-event-check',
+      source: SOURCE,
+    });
+  });
+}
+
+// R4, R10: a saved hook on a plugin's kind, in its row and on its page.
+for (const width of WIDTHS) {
+  test(`[hook-plugin-event] /hooks and /hooks/:hook: a saved hook on a plugin’s kind names the plugin in its sentence and its pin on the locked When row, at ${width} pixels`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await openHooks(
+      page,
+      '/hooks',
+      [DIGEST_HOOK],
+      { 'bureau.events.catalog': PLUGIN_EVENT_CATALOG },
+      EVENT_PLUGINS,
+    );
+    const row = page.locator(`li[data-hook="${DIGEST_HOOK.id}"]`);
+    await expect(row).toContainText(
+      'When Weekly reports: digest ready or a review is waiting, notify me',
+    );
+    await expect(row).not.toContainText('@1.0.0');
+    await captureForDesignReview(page, {
+      route: '/hooks',
+      state: 'hook-plugin-event',
+      source: SOURCE,
+    });
+
+    await page.goto(`/hooks/${DIGEST_HOOK.id}`);
+    // A phone folds a saved hook's When step to a summary; Edit opens it on the locked row.
+    if (width < 640) {
+      await page
+        .getByTestId('hook-step-summary-when')
+        .getByRole('button', { name: copy.steps.edit })
+        .click();
+    }
+    const locked = page.getByTestId('hook-event-locked');
+    await expect(locked.locator('.ib-hook-events__kind')).toHaveText('reports:digest-ready@1.0.0');
+    // Two events read as two: the plugin's title leads its kind (B2), and a Bureau event after the
+    // first is lower-cased (N6).
+    await expect(locked).toContainText('Weekly reports: digest ready, a review is waiting');
+    await expect(page.getByTestId('hook-missing-events')).toHaveCount(0);
+    await captureForDesignReview(page, {
+      route: '/hooks/:hook',
+      state: 'hook-plugin-event',
+      source: SOURCE,
+    });
+  });
+}
+
+// R5, R6: a saved hook whose plugin kind is missing, its plugin gone or loaded at another version.
+for (const width of WIDTHS) {
+  for (const [state, loadedVersion, cause] of [
+    ['hook-event-missing', null, copy.event.missing.notLoaded],
+    ['hook-event-other-version', '1.1.0', copy.event.missing.otherVersion('1.0.0', '1.1.0')],
+  ] as const) {
+    test(`[${state}] /hooks and /hooks/:hook: a saved hook whose plugin kind is missing says Missing and why on its page, and why on line two of its row, at ${width} pixels`, async ({
+      page,
+    }) => {
+      await page.setViewportSize({ width, height: 900 });
+      const problem = { code: 'event-missing', kind: 'reports:digest-ready@1.0.0', loadedVersion };
+      await openHooks(
+        page,
+        '/hooks',
+        [DIGEST_HOOK],
+        {
+          'bureau.events.catalog': PLUGIN_EVENT_CATALOG,
+          'bureau.hooks.list': () => ({
+            hooks: [{ ...DIGEST_HOOK, lastDelivery: DELIVERED, problems: [problem] }],
+          }),
+        },
+        EVENT_PLUGINS,
+      );
+      const row = page.locator(`li[data-hook="${DIGEST_HOOK.id}"]`);
+      await expect(row.locator('.ib-hooks__line')).toContainText(cause);
+      // No badge on line one: the hook is on, and its word is its last delivery's.
+      await expect(row.locator('[data-status-word]')).toHaveAttribute(
+        'data-status-word',
+        'Delivered',
+      );
+      await captureForDesignReview(page, { route: '/hooks', state, source: SOURCE });
+
+      await page.goto(`/hooks/${DIGEST_HOOK.id}`);
+      const missing = page.getByTestId('hook-missing-events');
+      await expect(missing).toContainText('Weekly reports: digest ready');
+      await expect(missing.locator('[data-status-word="Missing"]')).toBeVisible();
+      await expect(missing).toContainText(cause);
+      // The cause is whole on line two, wrapped rather than ended in an ellipsis (B7).
+      const causeText = missing.locator('.cinder-stacked-list-item__meta');
+      await expect(causeText).toHaveText(cause);
+      const cut = await causeText.evaluate(
+        (cell) =>
+          cell.scrollWidth > cell.clientWidth + 0.5 || cell.scrollHeight > cell.clientHeight + 0.5,
+      );
+      expect(cut, `${state}: the cause is not cut at ${width}`).toBe(false);
+      await captureForDesignReview(page, { route: '/hooks/:hook', state, source: SOURCE });
+    });
+  }
+}
+
+// B6: on a phone the When step's Edit stays at the top inline end beside its summary and the
+// Missing line, where the Then step's Edit sits, however long the text it sits beside.
+test('[hook-event-missing-edit] /hooks/:hook: at 320 pixels the When step’s Edit sits at the top inline end, beside Missing, where the Then step’s Edit sits', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 320, height: 900 });
+  const problem = {
+    code: 'event-missing',
+    kind: 'reports:digest-ready@1.0.0',
+    loadedVersion: null,
+  };
+  await openHooks(
+    page,
+    `/hooks/${DIGEST_HOOK.id}`,
+    [DIGEST_HOOK],
+    {
+      'bureau.events.catalog': PLUGIN_EVENT_CATALOG,
+      'bureau.hooks.list': () => ({
+        hooks: [{ ...DIGEST_HOOK, lastDelivery: DELIVERED, problems: [problem] }],
+      }),
+    },
+    EVENT_PLUGINS,
+  );
+  const when = page.getByTestId('hook-step-summary-when');
+  const then = page.getByTestId('hook-step-summary-then');
+  await expect(when.getByTestId('hook-missing-events')).toContainText(copy.event.missing.notLoaded);
+  const whenEdit = when.getByRole('button', { name: copy.steps.edit });
+  const thenEdit = then.getByRole('button', { name: copy.steps.edit });
+  await expect(whenEdit).toBeVisible();
+  await expect(thenEdit).toBeVisible();
+
+  // Read together, from one layout.
+  const boxes = await readBoxes(page, {
+    summary: when,
+    text: when.locator('.ib-hook-step__summary-text'),
+    whenEdit,
+    thenEdit,
+  });
+  const end = (box: { x: number; width: number }): number => box.x + box.width;
+  // At the summary's inline end, and at the same edge as the Then step's Edit.
+  expect(Math.abs(end(boxes.whenEdit) - end(boxes.summary))).toBeLessThanOrEqual(1);
+  expect(Math.abs(end(boxes.whenEdit) - end(boxes.thenEdit))).toBeLessThanOrEqual(1);
+  // At the top, beside the first line, never on a line of its own under the text.
+  expect(Math.abs(boxes.whenEdit.y - boxes.summary.y)).toBeLessThanOrEqual(1);
+  expect(end(boxes.text)).toBeLessThanOrEqual(boxes.whenEdit.x);
+});

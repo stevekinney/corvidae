@@ -447,6 +447,32 @@ describe('SideNavigationGroup static section (collapsible={false})', () => {
     expect(container.querySelector('li')?.hasAttribute('data-cinder-expanded')).toBe(false);
   });
 
+  test("labelVisibility='hidden' names the list in the accessibility tree and renders no header", () => {
+    const { container, getByRole } = render(SideNavigationGroup, {
+      props: {
+        label: 'Work',
+        collapsible: false,
+        labelVisibility: 'hidden',
+        children: itemSnippet(),
+      },
+    });
+    expect(container.querySelector('.cinder-side-navigation-group__heading')).toBeNull();
+    expect(container.querySelector('.cinder-side-navigation-group__trigger')).toBeNull();
+    expect(container.textContent).not.toContain('Work');
+    const list = getByRole('list', { name: 'Work' });
+    expect(list.getAttribute('aria-label')).toBe('Work');
+    expect(list.hasAttribute('aria-labelledby')).toBe(false);
+    expect(container.querySelector('li')?.hasAttribute('data-cinder-label-hidden')).toBe(true);
+  });
+
+  test("labelVisibility='hidden' does nothing on a collapsible group", () => {
+    const { container } = render(SideNavigationGroup, {
+      props: { label: 'Projects', labelVisibility: 'hidden', children: itemSnippet() },
+    });
+    expect(container.querySelector('button.cinder-side-navigation-group__trigger')).not.toBeNull();
+    expect(container.querySelector('li')?.hasAttribute('data-cinder-label-hidden')).toBe(false);
+  });
+
   test('a collapsible group is unchanged', () => {
     const { container } = render(SideNavigationGroup, {
       props: { label: 'Projects', children: itemSnippet() },

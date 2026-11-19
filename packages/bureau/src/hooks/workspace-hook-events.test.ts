@@ -43,6 +43,19 @@ test('hook privacy rejects foreign and unknown event owners regardless of admini
   expect(await project('owner-a', event('invented', { runId: 'run-a' }))).toBeUndefined();
 });
 
+test('a plugin’s event reaches no workspace hook, though its payload names a run the owner owns: no delivery and no leak (COR-2226)', async () => {
+  const project = workspaceHookEvents(workspace, async ({ kind, ...resource }) =>
+    kind === 'run' && 'id' in resource && resource.id === 'run-a' ? 'owner-a' : undefined,
+  );
+  const published: HookEventToDeliver = {
+    ...event('reports:digest-ready', { runId: 'run-a', digest: 'PRIVATE-SENTINEL' }),
+    source: 'reports',
+  };
+  for (const owner of ['owner-a', 'owner-b']) {
+    expect(await project(owner, published)).toBeUndefined();
+  }
+});
+
 test('the run outcome kinds are in the catalog, so a workspace hook gets its own run’s and no other’s (COR-2095)', async () => {
   const project = workspaceHookEvents(workspace, async ({ kind, ...resource }) =>
     kind === 'run' && 'id' in resource && resource.id === 'run-a' ? 'owner-a' : undefined,
