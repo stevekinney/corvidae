@@ -37,8 +37,8 @@
 
   .cinder-data-grid[data-cinder-column-overflow] {
     --_cinder-data-grid-overflow-shadow:
-      inset 1rem 0 1rem -1rem color-mix(in srgb, var(--cinder-text-default) 14%, transparent),
-      inset -1rem 0 1rem -1rem color-mix(in srgb, var(--cinder-text-default) 14%, transparent);
+      inset 1rem 0 1rem -1rem var(--cinder-scroll-shadow-color),
+      inset -1rem 0 1rem -1rem var(--cinder-scroll-shadow-color);
   }
 
   .cinder-data-grid:focus-visible {
@@ -342,8 +342,7 @@
   .cinder-data-grid__header-cell[data-cinder-pin='left'],
   .cinder-data-grid__cell[data-cinder-pin='left'] {
     --_cinder-data-grid-pin-shadow:
-      inset -1px 0 0 var(--cinder-border),
-      2px 0 6px color-mix(in srgb, var(--cinder-text-default) 8%, transparent);
+      inset -1px 0 0 var(--cinder-border), 2px 0 6px var(--cinder-scroll-shadow-color);
 
     inset-inline-start: var(--_cinder-data-grid-pin-left-offset, 0px);
   }
@@ -351,8 +350,7 @@
   .cinder-data-grid__header-cell[data-cinder-pin='right'],
   .cinder-data-grid__cell[data-cinder-pin='right'] {
     --_cinder-data-grid-pin-shadow:
-      inset 1px 0 0 var(--cinder-border),
-      -2px 0 6px color-mix(in srgb, var(--cinder-text-default) 8%, transparent);
+      inset 1px 0 0 var(--cinder-border), -2px 0 6px var(--cinder-scroll-shadow-color);
 
     inset-inline-end: var(--_cinder-data-grid-pin-right-offset, 0px);
   }
