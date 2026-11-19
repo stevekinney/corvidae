@@ -1767,7 +1767,7 @@ const DIGEST_HOOK = hookRecord('owner-digest', {
 
 // R1, R2, R8, R9: the picker open on the plugins' groups, at the smallest phone and on a desktop.
 for (const width of [320, ...WIDTHS] as const) {
-  test(`[new-hook-plugin-event-picker] the event picker groups each plugin’s kinds under its title, after the Bureau’s areas, at ${width} pixels`, async ({
+  test(`[new-hook-plugin-event-picker] /hooks/new: the event picker groups each plugin’s kinds under its title, after the Bureau’s areas, at ${width} pixels`, async ({
     page,
   }) => {
     await page.setViewportSize({ width, height: 900 });
@@ -1810,7 +1810,7 @@ const LONG_KIND = 'reports:weekly-digest-ready-for-every-workspace-member-to-rea
 
 // R9: a raw kind longer than the phone's panel drops under its words and wraps there, whole words
 // in its label, and nothing pushes the page sideways.
-test('[new-hook-plugin-event-long] a raw kind too long for the phone’s panel drops under its words, which stay whole, at 320 pixels', async ({
+test('[new-hook-plugin-event-long] /hooks/new: a raw kind too long for the phone’s panel drops under its words, which stay whole, at 320 pixels', async ({
   page,
 }) => {
   await page.setViewportSize({ width: 320, height: 900 });
@@ -1875,7 +1875,7 @@ test('[new-hook-plugin-event-long] a raw kind too long for the phone’s panel d
 // R3, R4: a chosen plugin kind reads with its plugin's title first, and its raw kind carries its pin,
 // muted; the Check line joins the chosen events, a comma only between two (B2).
 for (const width of [320, ...WIDTHS] as const) {
-  test(`[new-hook-plugin-event-chosen] two plugins’ kinds of one name, chosen, never read the same, at ${width} pixels`, async ({
+  test(`[new-hook-plugin-event-chosen] /hooks/new: two plugins’ kinds of one name, chosen, never read the same, at ${width} pixels`, async ({
     page,
   }) => {
     await page.setViewportSize({ width, height: 900 });
@@ -1944,7 +1944,7 @@ for (const width of [320, ...WIDTHS] as const) {
 
 // R4, R10: a saved hook on a plugin's kind, in its row and on its page.
 for (const width of WIDTHS) {
-  test(`[hook-plugin-event] a saved hook on a plugin’s kind names the plugin in its sentence and its pin on the locked When row, at ${width} pixels`, async ({
+  test(`[hook-plugin-event] /hooks and /hooks/:hook: a saved hook on a plugin’s kind names the plugin in its sentence and its pin on the locked When row, at ${width} pixels`, async ({
     page,
   }) => {
     await page.setViewportSize({ width, height: 900 });
@@ -1994,7 +1994,7 @@ for (const width of WIDTHS) {
     ['hook-event-missing', null, copy.event.missing.notLoaded],
     ['hook-event-other-version', '1.1.0', copy.event.missing.otherVersion('1.0.0', '1.1.0')],
   ] as const) {
-    test(`[${state}] a saved hook whose plugin kind is missing says Missing and why on its page, and why on line two of its row, at ${width} pixels`, async ({
+    test(`[${state}] /hooks and /hooks/:hook: a saved hook whose plugin kind is missing says Missing and why on its page, and why on line two of its row, at ${width} pixels`, async ({
       page,
     }) => {
       await page.setViewportSize({ width, height: 900 });
