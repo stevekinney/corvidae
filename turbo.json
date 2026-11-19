@@ -61,6 +61,15 @@
       "dependsOn": ["transit", "^types"],
       "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/scripts/typecheck-contracts.ts"]
     },
+    "@lostgradient/cinder#types": {
+      "outputs": [".types/**"],
+      "dependsOn": ["transit", "^types", "metadata"]
+    },
+    "@lostgradient/cinder#typecheck": {
+      "outputs": [],
+      "dependsOn": ["transit", "^types", "metadata"],
+      "inputs": ["$TURBO_DEFAULT$"]
+    },
     "release:check": {
       "outputs": [],
       "dependsOn": ["transit", "^types"],
@@ -127,6 +136,7 @@
       "dependsOn": ["^transit"]
     },
     "//#test:self": {
+      "dependsOn": ["@lostgradient/cinder#metadata"],
       "env": ["CODEX_CI", "NODE_ENV", "CORVIDAE_TEST_SELECTION"],
       "outputs": ["test-output/junit/self.xml"],
       "inputs": [
@@ -144,6 +154,7 @@
       ]
     },
     "//#test:self:slow": {
+      "dependsOn": ["@lostgradient/cinder#metadata"],
       "env": ["CODEX_CI", "NODE_ENV", "CORVIDAE_TEST_SELECTION"],
       "outputs": [],
       "inputs": [

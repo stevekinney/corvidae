@@ -33,6 +33,11 @@ const ignoredOutputs = allOutputs.filter(
   (path) => !isVersionControlledOutput(join(packageRoot, path)),
 );
 
+// Both git commands run at module scope, like the generator above, and the tests assert on the result.
+const tracked = await command(['git', 'ls-files', '--', ...ignoredOutputs]);
+// `--no-index` asks the ignore rules alone, so the answer does not depend on what is tracked.
+const ignored = await command(['git', 'check-ignore', '--no-index', '--', ...ignoredOutputs]);
+
 test('the generator lists its outputs, and most of them are ignored', () => {
   expect(listed.code).toBe(0);
   expect(allOutputs).toContain('documentation/tokens.md');
@@ -42,14 +47,10 @@ test('the generator lists its outputs, and most of them are ignored', () => {
   expect(ignoredOutputs.length).toBeGreaterThanOrEqual(14);
 });
 
-test('git ls-files lists none of the token generator outputs that are not version controlled', async () => {
-  const { stdout } = await command(['git', 'ls-files', '--', ...ignoredOutputs]);
-  expect(stdout.split('\n').filter(Boolean)).toEqual([]);
+test('git ls-files lists none of the token generator outputs that are not version controlled', () => {
+  expect(tracked.stdout.split('\n').filter(Boolean)).toEqual([]);
 });
 
-test('every such output is ignored by git', async () => {
-  for (const path of ignoredOutputs) {
-    const { code } = await command(['git', 'check-ignore', '--quiet', '--no-index', path]);
-    expect(code, `${path} is not ignored`).toBe(0);
-  }
+test('every such output is ignored by git', () => {
+  expect(ignored.stdout.split('\n').filter(Boolean).toSorted()).toEqual(ignoredOutputs.toSorted());
 });

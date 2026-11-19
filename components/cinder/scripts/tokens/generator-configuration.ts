@@ -20,8 +20,7 @@ export const tokensDocPath = join(packageRoot, 'documentation', 'tokens.md');
  * The generator outputs that stay in version control, because a person edits them or the generator
  * reads them back: the token sources it normalizes (`*.tokens.json`) and `documentation/tokens.md`,
  * whose authored sections it preserves. Every other output is ignored by git (`.gitignore` beside
- * this package's `package.json`), written by `tokens:prepare` at install and by the `metadata`
- * task, and checked by `generator-outputs.integration.test.ts`.
+ * this package's `package.json`), written by the `metadata` task (`tokens:seed`), and checked by `generator-outputs.integration.test.ts`.
  */
 export function isVersionControlledOutput(path: string): boolean {
   return path === tokensDocPath || path.endsWith('.tokens.json');

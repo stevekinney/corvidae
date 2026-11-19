@@ -247,7 +247,7 @@ async function main(): Promise<void> {
   }
 
   await mkdir(resolvedDirectory, { recursive: true });
-  // `--ignored-only` (`tokens:prepare`, run by install and `metadata`) writes just the outputs git
+  // `--ignored-only` (`tokens:seed`, run by the `metadata` task) writes just the outputs git
   // ignores. The version-controlled ones stay for `tokens:generate` and `--check`, so a stale
   // source still fails the drift check instead of being rewritten silently.
   const ignoredOnly = process.argv.includes('--ignored-only');

@@ -1,6 +1,6 @@
 # Execution record
 
-A run keeps one note at `<main checkout>/tmp/chef/<YYYY-MM-DD-HHMMSS>-<work-name>.md` and sibling log, and its batches in `<same name>-batch.json` (each batch's `paths`, `waitsOn` and `state`): `scripts/chef/dispatch-check.ts start` refuses a batch that overlaps a building batch it does not wait on, and `land` records the landing order. At landing, `scripts/chef/land-queue.ts` returns `REDISPATCH` only when commits on `main` since the evidence touch the plan's scope. Derive the main checkout from `git rev-parse --path-format=absolute --git-common-dir`; worktree `tmp/` vanishes with it. Persist the run identifier before dispatch and reconcile resumes with workers and Linear.
+A run keeps one note at `<main checkout>/tmp/chef/<YYYY-MM-DD-HHMMSS>-<work-name>.md` and sibling log. Derive the main checkout from `git rev-parse --path-format=absolute --git-common-dir`; worktree `tmp/` vanishes with it. Persist the run identifier before dispatch and reconcile resumes with workers and Linear.
 
 ## The note
 

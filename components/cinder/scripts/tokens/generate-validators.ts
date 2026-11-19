@@ -3,8 +3,8 @@
  *
  * `tokens:generate` loads and validates the token corpus, and that validation imports these
  * validators, so a checkout with no generated files cannot run it until they exist. This script is
- * the seed: it depends on the vendored schemas and Ajv alone, never on the corpus. The workspace's
- * `prepare` step and `metadata` task run it first, then `tokens:generate` writes everything else.
+ * the seed: it depends on the vendored schemas and Ajv alone, never on the corpus. The `metadata`
+ * task (`tokens:seed`) runs it first, then `tokens:generate` writes everything else.
  */
 
 import { mkdir } from 'node:fs/promises';

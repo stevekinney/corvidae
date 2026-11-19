@@ -1,5 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 
+import { rejectionOf } from '../../testing/testing/src/helpers/promise-outcome.ts';
+
 import { inScope, landQueueVerdict, planScope, run, UsageError } from './land-queue.ts';
 import type { Runner } from './process-runner.ts';
 import type { EvidencePlan } from './verification-plan.ts';
@@ -189,7 +191,11 @@ describe('land-queue command', () => {
   });
 
   test('requires --evidence and --plan', async () => {
-    await expect(run(['--plan', 'plan.json'], dependencies({}))).rejects.toThrow(UsageError);
-    await expect(run(['--evidence', EVIDENCE], dependencies({}))).rejects.toThrow(UsageError);
+    expect(await rejectionOf(run(['--plan', 'plan.json'], dependencies({})))).toBeInstanceOf(
+      UsageError,
+    );
+    expect(await rejectionOf(run(['--evidence', EVIDENCE], dependencies({})))).toBeInstanceOf(
+      UsageError,
+    );
   });
 });
