@@ -259,6 +259,29 @@ scenarios.scenario(
     expect(result.leftOpen).toEqual(['COR-2']);
     expect(remote.writes).toEqual(['comment:COR-1', 'state:COR-1', 'comment:COR-2']);
     expect(readExecutionSnapshot(context.fixture.state).pendingCloseout).toContain('operation');
+
+    writeFileSync(context.options.commentFile!, 'confirmed');
+    let mergeCalls = 0;
+    const recovered = await deliver(context.options, {
+      ...dependencies,
+      merge: async () => {
+        mergeCalls++;
+        return {
+          pr: context.options.pr!,
+          head: context.fixture.request.revision,
+          base: context.fixture.request.base,
+          mergeable: 'MERGEABLE',
+          threads: { seen: 0, total: 0, unresolved: 0 },
+          merged: true,
+          mergeCommit,
+          treesMatch: true,
+          failedStep: null,
+          detail: null,
+        };
+      },
+    });
+    expect(recovered.failedStep).toBeNull();
+    expect(mergeCalls).toBe(0);
   },
 );
 
