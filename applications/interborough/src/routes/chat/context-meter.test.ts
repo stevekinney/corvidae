@@ -103,10 +103,10 @@ describe('the context meter', () => {
 
   test('draws its track with the contrast rule, so an empty window still reads as a meter in both themes (18c)', async () => {
     const css = await Bun.file(new URL('../../styles/chat.css', import.meta.url)).text();
-    const start = css.indexOf('.weft-context-meter .cinder-meter__track {');
+    const start = css.indexOf('.weft-context-meter__bar {');
     expect(start).toBeGreaterThanOrEqual(0);
     expect(css.slice(start, css.indexOf('}', start))).toContain(
-      'box-shadow: inset 0 0 0 1px var(--cinder-border-contrast);',
+      'outline: 1px solid var(--cinder-border-contrast);',
     );
     const tokens = await Bun.file(
       new URL('../../../../../components/cinder/src/styles/tokens-base.css', import.meta.url),

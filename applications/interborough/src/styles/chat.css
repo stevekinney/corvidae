@@ -90,16 +90,15 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* The bar carries Cinder's contrast rule (`border.contrast`, the edge of an indicator with no other
+ * boundary) as an outline around the Meter, so its edge clears the 3:1 a graphic needs against the
+ * composer in both themes and an empty window still reads as a meter: the inset fill alone was a
+ * near-black bar on a near-black ground in the dark theme. */
 .weft-context-meter__bar {
+  display: flex;
   inline-size: 2.25rem;
-}
-
-/* The bar's track carries Cinder's contrast rule (`border.contrast`, the edge of an indicator with
- * no other boundary), so its edge clears the 3:1 a graphic needs against the composer in both
- * themes and an empty window still reads as a meter: the inset fill alone was a near-black bar on
- * a near-black ground in the dark theme. */
-.weft-context-meter .cinder-meter__track {
-  box-shadow: inset 0 0 0 1px var(--cinder-border-contrast);
+  border-radius: var(--cinder-radius-full);
+  outline: 1px solid var(--cinder-border-contrast);
 }
 
 .weft-context-meter__unavailable {
