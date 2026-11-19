@@ -128,7 +128,12 @@ export const productOracles: Record<string, ProductOracle> = {
     text: 'Confusion matrix — Animal classifier',
   },
   message: { selector: `[class*="cinder-message"]`, text: 'Ada Lovelace' },
-  'page-header': { selector: `[class*="cinder-page-header"]`, text: 'Approvals' },
+  // The default-variant header's root: the large variant also renders a hidden sticky bar
+  // (`cinder-page-header__bar`) before its root, which a substring match finds first.
+  'page-header': {
+    selector: `.cinder-page-header:not([data-cinder-variant])`,
+    text: 'Approvals',
+  },
   'app-bar': { selector: `[class*="cinder-app-bar"]`, text: 'Death & Co' },
   pagination: { selector: `[class*="cinder-pagination"]`, descendant: 'button' },
   'payload-inspector': {
