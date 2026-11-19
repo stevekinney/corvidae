@@ -44,6 +44,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { ensureCinderGenerated } from '../../../scripts/ensure-cinder-generated.ts';
 import { withHostSlots, withMemoryAdmission, type HostSlots } from '../../../scripts/host-slots.ts';
 import { runInProcessGroup } from '../../../scripts/run-exclusively.ts';
 import { auditGeometry } from './design-review-geometry.ts';
@@ -484,6 +485,8 @@ export function underHostSlots<Environment extends { run: CaptureEnvironment['ru
 // The specifications run one Playwright worker, so one browser at a time: one host slot. The host
 // is checked for memory before the capture starts (`documentation/repository/host-admission.md`).
 if (import.meta.main) {
+  // The capture builds Interborough, which imports Cinder's generated files.
+  ensureCinderGenerated();
   process.exitCode = await withMemoryAdmission(() =>
     withHostSlots(1, (slots) =>
       captureDesignReview(undefined, underHostSlots(hostEnvironment, slots)),

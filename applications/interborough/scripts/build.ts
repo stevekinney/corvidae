@@ -27,6 +27,8 @@ import { fileURLToPath } from 'node:url';
 
 import { sveltePlugin } from '@lostgradient/testing';
 
+import { ensureCinderGenerated } from '../../../scripts/ensure-cinder-generated.ts';
+
 /** The `@lostgradient/interborough` package root. */
 export const PACKAGE_DIRECTORY = fileURLToPath(new URL('..', import.meta.url));
 
@@ -341,8 +343,14 @@ export async function buildApplication(
     readonly development?: boolean;
     /** The bundler. `Bun.build` by default; a test supplies a fake so it need not bundle. */
     readonly bundle?: (configuration: Bun.BuildConfig) => Promise<Bun.BuildOutput>;
+    /**
+     * Makes sure Cinder's generated files exist before the bundler imports them. Every caller,
+     * Turbo or not, goes through here; a test supplies a no-op.
+     */
+    readonly ensureGenerated?: () => void;
   } = {},
 ): Promise<ApplicationBuild> {
+  (options.ensureGenerated ?? ensureCinderGenerated)();
   const development = options.development ?? false;
   const directory =
     options.outdir === undefined

@@ -8,7 +8,8 @@
     },
     "dev": {
       "persistent": true,
-      "cache": false
+      "cache": false,
+      "dependsOn": ["^metadata"]
     },
     "metadata": {
       "dependsOn": ["transit", "^metadata"],
@@ -203,7 +204,7 @@
       "dependsOn": ["@lostgradient/browser-fixtures#metadata"]
     },
     "@lostgradient/chat#test:browser": {
-      "dependsOn": ["transit"],
+      "dependsOn": ["transit", "^metadata"],
       "env": ["CINDER_TEST_COMPONENTS", "CINDER_UPDATE_SNAPSHOTS", "CINDER_VISUAL_DIFF"],
       "passThroughEnv": [
         "CI",
@@ -225,7 +226,7 @@
       "outputs": []
     },
     "@lostgradient/editor#test:browser": {
-      "dependsOn": ["transit"],
+      "dependsOn": ["transit", "^metadata"],
       "env": ["CINDER_TEST_COMPONENTS", "CINDER_UPDATE_SNAPSHOTS", "CINDER_VISUAL_DIFF"],
       "passThroughEnv": [
         "CI",
@@ -247,7 +248,7 @@
       "outputs": []
     },
     "@lostgradient/terminal#test:browser": {
-      "dependsOn": ["transit"],
+      "dependsOn": ["transit", "^metadata"],
       "env": ["CINDER_TEST_COMPONENTS", "CINDER_UPDATE_SNAPSHOTS", "CINDER_VISUAL_DIFF"],
       "passThroughEnv": [
         "CI",
@@ -269,13 +270,15 @@
       "outputs": []
     },
     "@lostgradient/interborough#build": {
-      "dependsOn": ["transit"],
+      "dependsOn": ["transit", "^metadata"],
+      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/scripts/ensure-cinder-generated.ts"],
       "outputs": ["build/**"],
       "env": ["NODE_ENV"]
     },
     "@lostgradient/interborough#dev": {
       "persistent": true,
       "cache": false,
+      "dependsOn": ["^metadata"],
       "passThroughEnv": [
         "INTERBOROUGH_HOME",
         "INTERBOROUGH_PORT",
@@ -879,7 +882,7 @@
       ]
     },
     "@lostgradient/chat#test:coverage": {
-      "dependsOn": ["transit"],
+      "dependsOn": ["transit", "^metadata"],
       "outputs": ["coverage/**"],
       "env": ["CODEX_CI", "NODE_ENV"],
       "inputs": [
@@ -895,7 +898,7 @@
       ]
     },
     "@lostgradient/interborough#test:coverage": {
-      "dependsOn": ["transit"],
+      "dependsOn": ["transit", "^metadata"],
       "inputs": [
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/scripts/test-watchdog.ts",
@@ -910,7 +913,7 @@
       "env": ["CODEX_CI", "NODE_ENV"]
     },
     "@lostgradient/terminal#test:coverage": {
-      "dependsOn": ["transit"],
+      "dependsOn": ["transit", "^metadata"],
       "outputs": ["coverage/**"],
       "env": ["CODEX_CI", "NODE_ENV"],
       "inputs": [
