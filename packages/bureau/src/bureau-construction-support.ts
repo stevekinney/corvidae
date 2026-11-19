@@ -454,6 +454,8 @@ export function composeHooks(input: {
   readonly subjects: HookSubjectSources;
   /** Publishes a delivery's `hook.delivery.failed` and `hook.delivery.gave-up` on the Bureau's emitter (COR-2099). */
   readonly publish: NonNullable<HooksDependencies['publish']>;
+  /** The event kinds running plugins declare, each at its version, which a hook may list (COR-2226). */
+  readonly declaredEvents?: HooksDependencies['declaredEvents'];
 }): CreatedHooks | undefined {
   const { options, engine, kv, diagnose } = input;
   if (options === undefined || engine === undefined || kv === undefined) return undefined;
@@ -470,6 +472,7 @@ export function composeHooks(input: {
     urlPolicy: options.urlPolicy,
     requestTimeoutMilliseconds: options.requestTimeoutMilliseconds,
     actionKinds: options.actionKinds,
+    declaredEvents: input.declaredEvents,
     workflows: input.workflows,
     notifications: input.notifications,
     startedByHook: input.startedByHook,

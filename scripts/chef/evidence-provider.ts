@@ -22,10 +22,12 @@ interface GitHubObject {
   name?: unknown;
   repository?: unknown;
   run_attempt?: unknown;
+  workflow_id?: unknown;
   path?: unknown;
   runner_name?: unknown;
   status?: unknown;
   steps?: unknown;
+  size_in_bytes?: unknown;
   total_count?: unknown;
 }
 export interface RawCommandResponse {
@@ -112,12 +114,22 @@ export function createGitHubEvidenceTransport(
       const cached = runs.get(id);
       if (cached !== undefined) return cached;
       const value = query(repository, `actions/runs/${id}`, raw);
+      const workflowId = integer(value.workflow_id);
+      let workflow = string(value.name);
+      if (value.event === 'workflow_dispatch' && /^P07 [0-9a-f]{64}$/.test(workflow)) {
+        if (workflowId === undefined || workflowId < 1)
+          throw new EvidenceRequestError('authenticated workflow run has no workflow ID');
+        const definition = query(repository, `actions/workflows/${workflowId}`, raw);
+        if (definition.id !== workflowId || definition.path !== value.path)
+          throw new EvidenceRequestError('authenticated workflow definition differs from the run');
+        workflow = string(definition.name);
+      }
       const run: ProviderRun = {
         repository: string(object(value.repository).full_name),
         revision: string(value.head_sha),
         status: string(value.status),
         conclusion: string(value.conclusion),
-        workflow: string(value.name),
+        workflow,
         workflowPath: string(value.path),
         event: string(value.event),
         attempt: integer(value.run_attempt) ?? 0,
@@ -157,6 +169,7 @@ export function createGitHubEvidenceTransport(
       if (matches.length === 0) return { present: false, expired: false, runId: id };
       const artifact = unique(matches, 'artifact mapping');
       const artifactId = integer(artifact.id);
+      const sizeBytes = integer(artifact.size_in_bytes);
       const digest = string(artifact.digest);
       const run = runs.get(id) ?? this.run(id);
       return {
@@ -164,6 +177,7 @@ export function createGitHubEvidenceTransport(
         expired: artifact.expired === true,
         ...(artifactId === undefined ? {} : { id: artifactId }),
         ...(digest === '' ? {} : { digest }),
+        ...(sizeBytes === undefined ? {} : { sizeBytes }),
         runId: id,
         revision: run.revision,
       };

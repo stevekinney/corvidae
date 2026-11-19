@@ -1,7 +1,50 @@
 import { describe, expect, test } from 'bun:test';
 import { EventEmitter } from 'node:events';
 
-import { waitForStop } from './smoke-claude-desktop-panels.ts';
+import { rejectionOf } from '@lostgradient/testing';
+
+import { buildThenStart, guideText, waitForStop } from './smoke-claude-desktop-panels.ts';
+
+describe('guideText', () => {
+  test('asks for the record as a comment on COR-2220, not in a pull request', () => {
+    const text = guideText('http://127.0.0.1:1/bureau/mcp');
+    expect(text).toContain('Paste this record as a comment on COR-2220');
+    expect(text).not.toContain('pull request');
+    expect(text).toContain('Endpoint tested: http://127.0.0.1:1/bureau/mcp');
+  });
+});
+
+describe('buildThenStart', () => {
+  test('builds the browser bundle before it starts the host', async () => {
+    const order: string[] = [];
+    const host = await buildThenStart({
+      build: async () => {
+        order.push('build');
+      },
+      start: async () => {
+        order.push('start');
+        return 'host';
+      },
+    });
+    expect(order).toEqual(['build', 'start']);
+    expect(host).toBe('host');
+  });
+
+  test('does not start the host, and says why, when the build fails', async () => {
+    let started = false;
+    const failing = buildThenStart({
+      build: async () => {
+        throw new Error('the production build exited with code 1');
+      },
+      start: async () => {
+        started = true;
+        return 'host';
+      },
+    });
+    expect(String(await rejectionOf(failing))).toMatch(/browser build failed.*exited with code 1/);
+    expect(started).toBe(false);
+  });
+});
 
 describe('waitForStop', () => {
   for (const signal of ['SIGINT', 'SIGTERM'] as const) {

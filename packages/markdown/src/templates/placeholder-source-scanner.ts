@@ -9,7 +9,10 @@
  * `node.value`, so escaped and entity-encoded braces stay literal.
  *
  * Boundary: this module imports no rendering, KaTeX, Shiki, DOM, Svelte or
- * editor code from Corvidae source. `remark-math@6.0.0` depends on
+ * editor code from Corvidae source, except `utilities/dollar-math.ts`, a pure
+ * string scanner shared with the renderer. Before parsing, it swaps every `$` that cannot delimit math
+ * (`$5-$10`) for a same-length character, so currency never hides a placeholder
+ * and offsets still map one to one. `remark-math@6.0.0` depends on
  * `micromark-extension-math@3.1.0`, whose entry statically re-exports an HTML
  * extension that imports `katex@0.16.47`. `remark-math` and
  * `micromark-extension-math` declare `sideEffects: false`, so a bundler that
@@ -26,11 +29,19 @@ import remarkMath from 'remark-math';
 import remarkParse from 'remark-parse';
 import { unified } from 'unified';
 
+import { analyzeDollarMath } from '../utilities/dollar-math.js';
 import { templateFrontMatterPrefixLength } from './placeholder-front-matter.js';
 import { parsePlaceholderTokens } from './placeholder-token-scanner.js';
 import type { PlaceholderToken } from './types.js';
 
 const BYTE_ORDER_MARK = 0xfeff;
+
+/**
+ * Stands in for a `$` that cannot delimit math. A currency sign is punctuation
+ * to CommonMark, as `$` is, and has no Markdown or math meaning. It is one
+ * UTF-16 unit, so parse offsets still map one to one onto the source.
+ */
+const LITERAL_DOLLAR = '¤';
 
 /** Parses only; math nodes exist so their content can be excluded. */
 const templateProcessor = unified().use(remarkParse).use(remarkGfm).use(remarkMath);
@@ -104,7 +115,9 @@ function bodyStartOffset(source: string): number {
 export function parseMarkdownPlaceholderTokens(source: string): PlaceholderToken[] {
   const base = bodyStartOffset(source);
   const body = source.slice(base);
-  const tree = templateProcessor.parse(body);
+  // Apply the renderer's dollar rule so `$5-{{a}}-$10` is not read as math.
+  // The replacement keeps lengths, and token text is sliced from `body`.
+  const tree = templateProcessor.parse(analyzeDollarMath(body, LITERAL_DOLLAR).source);
   const tokens: PlaceholderToken[] = [];
   for (const [start, end] of eligibleTextRanges(tree, body)) {
     for (const token of parsePlaceholderTokens(body.slice(start, end))) {
