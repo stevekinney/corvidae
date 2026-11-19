@@ -44,8 +44,8 @@
 // Workers never run a browser suite on the host (owner decision, 2026-11-13). The planned tiers
 // never run the Playwright suites (`test:browser`), and the real-browser smoke tests skip unless
 // `WEFT_BROWSER_SMOKE=1`, but a few `*.integration.test.ts` files launch Chromium unconditionally.
-// When the direct set holds one, no lane runs it, and a warning line names it and
-// `bun scripts/chef/targeted-run.ts`, the one dispatcher of `main.yml`, to run after the push.
+// When the direct set holds one, no lane runs it, and a warning line names it: only the full
+// `main.yml` CI run does.
 //
 // Each step runs in a process group of its own. The hang guard, SIGTERM and SIGINT end the whole
 // group (SIGTERM, then SIGKILL after a grace), so no turbo or `bun test` worker outlives its step
@@ -247,9 +247,6 @@ export function directManifest(
   for (const entry of Object.values(manifest.workspaces)) entry.files.sort();
   return { manifest, filters: filters.toSorted(), root, isolated };
 }
-
-/** The CI command a skipped browser lane points to, named in the line printed in its place. */
-export const BROWSER_CI_COMMAND = 'bun scripts/chef/targeted-run.ts';
 
 /** Whether a test's source launches a browser itself, with no environment gate in front of it. */
 export function launchesBrowser(source: string): boolean {
@@ -637,7 +634,7 @@ export function broaderObligations(browserTests: readonly string[]): string[] {
   ];
   if (browserTests.length > 0)
     obligations.push(
-      `${browserTests.join(', ')} require provider browser execution: ${BROWSER_CI_COMMAND}.`,
+      `${browserTests.join(', ')} require provider browser execution: the full \`main.yml\` CI run.`,
     );
   return obligations;
 }
@@ -730,7 +727,7 @@ export async function runChecks(
   });
   if (browserTests.length > 0)
     warnings.push(
-      `${browserTests.join(', ')} launch a browser, which workers never run on the host, so no lane runs them; after pushing, run \`${BROWSER_CI_COMMAND}\`.`,
+      `${browserTests.join(', ')} launch a browser, which workers never run on the host, so no lane runs them; only the full \`main.yml\` CI run does.`,
     );
   const broader = broaderObligations(browserTests);
   const results: StepResult[] = [];

@@ -81,6 +81,9 @@ const SAFE_PATH = /^[\w@./-]+$/;
  */
 const UNIT_PATH_BUDGET = 30_000;
 
+/** The most test files a workspace's whole suite may name and still run as a targeted lane. */
+export const WHOLE_SUITE_FILE_LIMIT = 40;
+
 /** The rule a plan carries when its unit lanes do not fit one targeted dispatch. */
 export const OVERSIZE_RULE = 'plan exceeds one targeted dispatch';
 
@@ -168,7 +171,11 @@ export function inputsFromPlan(plan: EvidencePlan): {
       undispatchable.push(`${workspace}: a workspace the targeted workflow cannot enter`);
       continue;
     }
-    if (lane.full) undispatchable.push(`${workspace}: its whole suite`);
+    // `full` means the selection is every test file of the workspace, named in `paths`. A small
+    // suite runs file by file inside a targeted job's 30 minutes; a large one (Cinder's takes 47)
+    // wants the sharded full run.
+    if (lane.full && (lane.paths.length === 0 || lane.paths.length > WHOLE_SUITE_FILE_LIMIT))
+      undispatchable.push(`${workspace}: its whole suite`);
     if (workspace !== 'applications/interborough') {
       if (lane.paths.length > 0) lanes.push({ workspace, config: '', paths: lane.paths });
       continue;
@@ -392,6 +399,9 @@ export function run(
     const result = runner(command);
     if (result.code !== 0)
       throw new UsageError(`gh workflow run failed: ${result.stderr.trim().split('\n')[0] ?? ''}`);
+    // What `gh` prints (the run's URL or id) is the receipt a worker records.
+    const printed = `${result.stdout}${result.stderr}`.trim();
+    if (printed !== '') notes.push(`dispatched: ${printed.split('\n')[0] ?? ''}`);
   }
   return {
     code: 0,

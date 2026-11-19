@@ -113,7 +113,7 @@ jobs:
       - run: |
           specs="$FIXTURE_SPECS"
           if [ -n "$CINDER_TEST_COMPONENTS" ]; then
-            specs="$specs scripts/browser-fixtures/tests/components-sweep.playwright.ts"
+            specs="$specs scripts/browser-fixtures/tests/components.playwright.ts scripts/browser-fixtures/tests/components-sweep.playwright.ts"
           fi
           PLAYWRIGHT_HTML_OUTPUT_DIR="$GITHUB_WORKSPACE/playwright-output/report" \
           PLAYWRIGHT_JSON_OUTPUT_FILE="$GITHUB_WORKSPACE/playwright-output/results.json" \

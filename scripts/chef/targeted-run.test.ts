@@ -12,7 +12,12 @@ import { join } from 'node:path';
 
 import { defaultManifestLayout } from '../browser-fixtures/scripts/prepare-manifest.ts';
 
-import { MANIFEST_PATH, manifestSlugs } from './evidence-plan.ts';
+import {
+  MANIFEST_PATH,
+  manifestSlugs,
+  REPOSITORY_ROOT,
+  repositoryContext,
+} from './evidence-plan.ts';
 import { landingPlan } from './landing-plan.ts';
 import type { Runner } from './process-runner.ts';
 import {
@@ -22,6 +27,7 @@ import {
   OVERSIZE_RULE,
   run,
   UsageError,
+  WHOLE_SUITE_FILE_LIMIT,
   WORKSPACE,
   type TargetedDependencies,
 } from './targeted-run.ts';
@@ -428,6 +434,38 @@ describe('run', () => {
         ['gh', 'workflow', 'run', 'main.yml', '--ref', 'b'],
       ]);
     }
+  });
+
+  test('a real plan reaching scripts/groom dispatches targeted-checks.yml, not main.yml', () => {
+    const { dependencies } = fake(['scripts/groom/groom.ts']);
+    const real: TargetedDependencies = {
+      ...dependencies,
+      exists: (path) => existsSync(join(REPOSITORY_ROOT, path)),
+      context: (slugs) => repositoryContext(REPOSITORY_ROOT, slugs),
+    };
+    const json = JSON.parse(run(['--dry-run', '--json'], real).output);
+    expect(json.command.slice(0, 4)).toEqual(['gh', 'workflow', 'run', 'targeted-checks.yml']);
+    expect(json.requiresFullRun).toBe(false);
+    expect(json.inputs.unitLanes.map((lane: { workspace: string }) => lane.workspace)).toContain(
+      'scripts/groom',
+    );
+  });
+
+  test('a whole suite of a few files stays targeted; a large one wants the full run', () => {
+    const lane = (count: number) => ({
+      ...planOf([]),
+      unit_tests: [
+        {
+          workspace: 'plugins/demo',
+          paths: Array.from({ length: count }, (_, index) => `src/${index}.test.ts`),
+          full: true,
+        },
+      ],
+    });
+    expect(inputsFromPlan(lane(WHOLE_SUITE_FILE_LIMIT)).undispatchable).toEqual([]);
+    expect(inputsFromPlan(lane(WHOLE_SUITE_FILE_LIMIT + 1)).undispatchable).toEqual([
+      'plugins/demo: its whole suite',
+    ]);
   });
 
   test('a plan without requires_full_run still dispatches targeted-checks.yml', () => {
