@@ -237,7 +237,7 @@
         "components": [0.2, 0.02, 255],
         "alpha": 0.16
       },
-      "$description": "Structural edge for containers: cards, dialogs, drawers, popovers, panels, tables, toasts. A 9% alpha step over `border.ink` in light mode and 12% in dark mode. Quiet on purpose and exempt from WCAG 1.4.11 (the container is identified by its surface and content); a control boundary uses `border.control` instead.",
+      "$description": "Structural edge for containers: cards, dialogs, drawers, popovers, panels, tables, toasts. A 16% alpha step over `border.ink` in light mode (owner, 2026-11-19: at 9% the panels and the page read as one pale grey) and 12% in dark mode. Quiet on purpose and exempt from WCAG 1.4.11 (the container is identified by its surface and content); a control boundary uses `border.control` instead.",
       "$extensions": {
         "com.lostgradient.cinder": {
           "cssProperty": "--cinder-border",
@@ -254,7 +254,7 @@
           "components": [0.2, 0.02, 255],
           "alpha": 0.5
         },
-        "$description": "Control boundary: the resting edge of every text-entry control and bordered button. A 32% alpha step over `border.ink` in light (owner decision, 2026-11-11): quiet by default, heavier than every structural tier so a control still reads as the interactive thing, and deliberately under WCAG 1.4.11's 3:1, because a control is also identified by its fill, its label, and its focus ring. In dark it is a 38% step (owner decision, 2026-11-17: controls only), which reads 3.4:1 or better on the raised surface a control paints, resting and hovered, so a dark input, composer or secondary button has an edge that clears 3:1 while structural borders stay quiet. Under `prefers-contrast: more` it becomes `border.contrast`, which clears 3:1. Never fill an indicator with it, and never draw a control that is only its edge with it: an unchecked checkbox, an unselected radio, and an indicator with no other boundary use `border.contrast`.",
+        "$description": "Control boundary: the resting edge of every text-entry control and bordered button. A 50% alpha step over `border.ink` in light (owner decision, 2026-11-19, light mode read faded; it was 32%): heavier than every structural tier so a control reads as the interactive thing, and at or above WCAG 1.4.11's 3:1 on the canvas and every panel (`text-on-surface-contrast.test.ts`). In dark it is a 38% step (owner decision, 2026-11-17: controls only), which reads 3.4:1 or better on the raised surface a control paints, resting and hovered, so a dark input, composer or secondary button has an edge that clears 3:1 while structural borders stay quiet. Under `prefers-contrast: more` it becomes `border.contrast`, which clears 3:1. Never fill an indicator with it, and never draw a control that is only its edge with it: an unchecked checkbox, an unselected radio, and an indicator with no other boundary use `border.contrast`.",
         "$extensions": {
           "com.lostgradient.cinder": {
             "cssProperty": "--cinder-border-control",
@@ -270,7 +270,7 @@
           "components": [0.2, 0.02, 255],
           "alpha": 0.6
         },
-        "$description": "Hovered control boundary, one step heavier than `border.control`. A 42% alpha step over `border.ink`; becomes `border.contrast.hover` under `prefers-contrast: more`.",
+        "$description": "Hovered control boundary, one step heavier than `border.control`. A 60% alpha step over `border.ink` in light, 44% in dark; becomes `border.contrast.hover` under `prefers-contrast: more`.",
         "$extensions": {
           "com.lostgradient.cinder": {
             "cssProperty": "--cinder-border-control-hover",
@@ -288,7 +288,7 @@
           "components": [0.2, 0.02, 255],
           "alpha": 0.66
         },
-        "$description": "The neutral edge that clears WCAG 1.4.11's 3:1 against every surface a control sits on. It does two jobs: it is what `border.control` becomes under `prefers-contrast: more`, it is the edge of a control that is nothing but its edge (an unchecked checkbox, an unselected radio), and it fills neutral indicators that have no other boundary (a toggle's off track, a slider's rail, a drag handle, an empty rating star), which must stay visible on their own. Light arm: a 48% alpha step over `border.ink` (the ink at 52% transparency, about oklch(66% .006 255) over white). Dark arm: the opaque oklch(64% .03 265), which reads about 5.5:1 on the surfaces; it sits above the 38% dark control edge so `prefers-contrast: more` still means a heavier edge, and the contrast pairs hold it above the 3:1 floor on `surface.raised`.",
+        "$description": "The neutral edge that clears WCAG 1.4.11's 3:1 against every surface a control sits on. It does two jobs: it is what `border.control` becomes under `prefers-contrast: more`, it is the edge of a control that is nothing but its edge (an unchecked checkbox, an unselected radio), and it fills neutral indicators that have no other boundary (a toggle's off track, a slider's rail, a drag handle, an empty rating star), which must stay visible on their own. Light arm: a 66% alpha step over `border.ink` (the ink at 34% transparency), above the 50% light control edge so `prefers-contrast: more` still means a heavier edge. Dark arm: the opaque oklch(64% .03 265), which reads about 5.5:1 on the surfaces; it sits above the 38% dark control edge so `prefers-contrast: more` still means a heavier edge, and the contrast pairs hold it above the 3:1 floor on `surface.raised`.",
         "$extensions": {
           "com.lostgradient.cinder": {
             "cssProperty": "--cinder-border-contrast",
@@ -305,7 +305,7 @@
           "components": [0.2, 0.02, 255],
           "alpha": 0.76
         },
-        "$description": "Hovered form of `border.contrast`, one step heavier. A 58% alpha step over `border.ink`; clears 3:1 against every supported surface.",
+        "$description": "Hovered form of `border.contrast`, one step heavier. A 76% alpha step over `border.ink` in light, 58% in dark; clears 3:1 against every supported surface.",
         "$extensions": {
           "com.lostgradient.cinder": {
             "cssProperty": "--cinder-border-contrast-hover",
@@ -342,7 +342,7 @@
         "components": [0.2, 0.02, 255],
         "alpha": 0.09
       },
-      "$description": "Interior divider: rules between rows, table cells, list items, and under tab lists, and the Divider component. A 5% alpha step over `border.ink` in light mode and 8% in dark mode; structural, so exempt from 3:1, and always lighter than `border`.",
+      "$description": "Interior divider: rules between rows, table cells, list items, and under tab lists, and the Divider component. A 9% alpha step over `border.ink` in light mode and 8% in dark mode; structural, so exempt from 3:1, and always lighter than `border`.",
       "$extensions": {
         "com.lostgradient.cinder": {
           "cssProperty": "--cinder-border-muted",
