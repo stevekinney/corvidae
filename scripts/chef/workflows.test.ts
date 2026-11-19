@@ -71,7 +71,13 @@ const cleanResponses: Responses = {
     regressionTest: { path: 'scripts/chef/x.test.ts', failsOn: 'abc', passesOn: 'def' },
     entryPoints: ['entry point a', 'entry point b'],
   },
-  pin: { priorExitCode: 1, priorHead: 'abc', newExitCode: 0, newHead: 'def' },
+  pin: {
+    priorExitCode: 1,
+    priorHead: 'abc',
+    newExitCode: 0,
+    newHead: 'def',
+    priorOutput: 'scripts/chef/x.test.ts:\n(fail) a > b [1ms]\n',
+  },
 };
 
 /** The head of round `count`: the worker pushes `abc`, and its one correction pushes `def`. */
@@ -89,19 +95,34 @@ const perRound = (fields: Record<string, unknown>) => (count: number) => ({
  * whose key is the longest prefix of that call's label, a function of the call number for that key.
  */
 async function runDelivery(arguments_: Record<string, unknown> = {}, stubs: Responses = {}) {
-  const source = readFileSync(join(workflowsDirectory, 'deliver-issue.js'), 'utf8').replace(
+  const run = await runWorkflow(
+    'deliver-issue.js',
+    cleanResponses,
+    { issues: ['COR-7'], run: 'run-1', ...arguments_ },
+    stubs,
+  );
+  return { ...run, result: run.result as DeliveryResult[] };
+}
+
+async function runWorkflow(
+  file: string,
+  base: Responses,
+  workflowArguments: Record<string, unknown>,
+  stubs: Responses,
+) {
+  const source = readFileSync(join(workflowsDirectory, file), 'utf8').replace(
     /^export const meta = \{[\s\S]*?^};\n/m,
     '',
   );
   const calls: Call[] = [];
   const counts = new Map<string, number>();
-  const responses = { ...cleanResponses, ...stubs };
+  const responses = { ...base, ...stubs };
   const AsyncFunction = Object.getPrototypeOf(async () => undefined).constructor as new (
     ...arguments_: string[]
   ) => (...arguments_: unknown[]) => Promise<unknown>;
   const run = new AsyncFunction('args', 'agent', 'phase', 'log', 'parallel', 'pipeline', source);
   const result = (await run(
-    { issues: ['COR-7'], run: 'run-1', ...arguments_ },
+    workflowArguments,
     async (prompt: string, options: Call['options']) => {
       calls.push({ prompt, label: options.label, options });
       const key = Object.keys(responses)
@@ -121,7 +142,7 @@ async function runDelivery(arguments_: Record<string, unknown> = {}, stubs: Resp
     async () => {
       throw new Error('deliver-issue.js does not use pipeline');
     },
-  )) as DeliveryResult[];
+  )) as unknown;
   const labels = calls.map((call) => call.label.split(' ')[0]);
   return { calls, labels, result };
 }
@@ -614,7 +635,7 @@ describe('workflow scripts', () => {
   // One correction path: a coordinator-requested correction skips the brief and the build, and
   // runs classify, correction, pin, checks, evidence, compare and review at the new head.
   const regression = { path: 'scripts/chef/x.test.ts', failsOn: 'abc', passesOn: 'def' };
-  const pinned = { priorExitCode: 1, priorHead: 'abc', newExitCode: 0, newHead: 'def' };
+  const pinned = cleanResponses['pin'] as Record<string, unknown>;
   const afterFix = {
     checks: { exitCode: 0, line: 'focused checks: ok', head: 'def' },
     dispatch: { ...(cleanResponses['dispatch'] as object), headSha: 'def' },
@@ -712,7 +733,29 @@ describe('workflow scripts', () => {
     ['reports none', { correct: { ...afterFix.correct, regressionTest: undefined } }],
     [
       'names a different pre-fix head',
-      { correct: { ...afterFix.correct, regressionTest: { ...regression, failsOn: 'zzz' } } },
+      {
+        correct: { ...afterFix.correct, regressionTest: { ...regression, failsOn: 'zzz' } },
+        pin: { ...pinned, priorHead: 'zzz' },
+      },
+    ],
+    [
+      'names a post-fix head that is not the new head',
+      {
+        correct: { ...afterFix.correct, regressionTest: { ...regression, passesOn: 'zzz' } },
+        pin: { ...pinned, newHead: 'zzz' },
+      },
+    ],
+    ['was run at another pre-fix commit', { pin: { ...pinned, priorHead: 'zzz' } }],
+    [
+      'comes with a fix that left the head unchanged',
+      {
+        correct: {
+          ...afterFix.correct,
+          head: 'abc',
+          regressionTest: { ...regression, passesOn: 'abc' },
+        },
+        pin: { ...pinned, newHead: 'abc' },
+      },
     ],
     [
       'is not a test file',
@@ -729,6 +772,31 @@ describe('workflow scripts', () => {
       expect(delivery.result[0]?.status).toBe('NEEDS_JUDGMENT');
       expect(delivery.result[0]?.reason).toContain('regression test');
       expect(delivery.result[0]?.evidenceRequest).toBeNull();
+    });
+  }
+
+  // Exit 75 (busy pool) and 70 (hang guard) are not test results, and a failure that names no test
+  // in the pinned file is a setup failure: each is "pin did not run", never "pinned".
+  for (const [name, pin] of [
+    ['a busy pool (75) at the pre-fix head', { ...pinned, priorExitCode: 75 }],
+    ['the hang guard (70) at the pre-fix head', { ...pinned, priorExitCode: 70 }],
+    ['a busy pool (75) at the new head', { ...pinned, newExitCode: 75 }],
+    ['a setup failure (exit 2) at the pre-fix head', { ...pinned, priorExitCode: 2 }],
+    [
+      'exit 1 with no (fail) line',
+      { ...pinned, priorOutput: 'scripts/chef/x.test.ts:\nerror: Cannot find module\n' },
+    ],
+    ['exit 1 with no output at all', { ...pinned, priorOutput: '' }],
+    [
+      'a (fail) line in another file',
+      { ...pinned, priorOutput: '(fail) a > b [1ms]\nscripts/chef/other.test.ts:\n' },
+    ],
+  ] as [string, Record<string, unknown>][]) {
+    test(`a pin that saw ${name} did not run, so the correction is refused`, async () => {
+      const delivery = await runDelivery(requested(), { ...afterFix, pin });
+      expect(delivery.labels).not.toContain('checks');
+      expect(delivery.result[0]?.status).toBe('NEEDS_JUDGMENT');
+      expect(delivery.result[0]?.reason).toContain('pin did not run');
     });
   }
 
@@ -754,6 +822,143 @@ describe('workflow scripts', () => {
     ).classes.map((entry) => entry.name);
     const listed = /const CLASS_NAMES = \[([^\]]*)\]/.exec(source)?.[1] ?? '';
     expect([...listed.matchAll(/'([^']+)'/g)].map((match) => match[1])).toEqual(names);
+  });
+});
+
+describe('answer-threads.js corrections', () => {
+  const answerPin = {
+    priorExitCode: 1,
+    priorHead: 'abc',
+    newExitCode: 0,
+    newHead: 'def',
+    priorOutput: 'scripts/chef/x.test.ts:\n(fail) a > b [1ms]\n',
+  };
+  const answerResponses: Responses = {
+    triage: {
+      threads: [
+        { id: 'T1', triage: 'fix' },
+        { id: 'T2', triage: 'decline' },
+      ],
+    },
+    classify: { head: 'abc', repeating: [] },
+    answer: {
+      round: 1,
+      answered: ['T1', 'T2'],
+      fixedHead: 'def',
+      open: [],
+      replyFile: 'tmp/replies.tsv',
+      regressionTest: { path: 'scripts/chef/x.test.ts', failsOn: 'abc', passesOn: 'def' },
+    },
+    pin: answerPin,
+    resolve: { exitCode: 0, resolved: ['T1', 'T2'] },
+  };
+  const answerRound = (stubs: Responses = {}) =>
+    runWorkflow(
+      'answer-threads.js',
+      answerResponses,
+      { pr: 7, worktree: '/worktree', round: 1 },
+      stubs,
+    );
+  const asRecord = (value: unknown) => value as Record<string, unknown>;
+
+  test('proves the test, then resolves the threads, and returns the fixed head', async () => {
+    const round = await answerRound();
+    expect(round.labels).toEqual(['triage', 'classify', 'answer', 'pin', 'resolve']);
+    expect(asRecord(round.result)['fixedHead']).toBe('def');
+    expect(round.calls.find((call) => call.label.startsWith('answer'))?.prompt).toContain(
+      'never run `resolve` yourself',
+    );
+  });
+
+  test('a round that pushed no fix resolves its threads without a pin', async () => {
+    const round = await answerRound({
+      answer: { round: 1, answered: ['T1'], fixedHead: 'abc', open: [], replyFile: 'r.tsv' },
+    });
+    expect(round.labels).toEqual(['triage', 'classify', 'answer', 'resolve']);
+  });
+
+  for (const [name, stubs] of [
+    [
+      'no regression test',
+      { answer: { ...(answerResponses['answer'] as object), regressionTest: undefined } },
+    ],
+    [
+      'a regression test that fails on another pre-fix head',
+      {
+        answer: {
+          ...(answerResponses['answer'] as object),
+          regressionTest: { path: 'scripts/chef/x.test.ts', failsOn: 'zzz', passesOn: 'def' },
+        },
+      },
+    ],
+    [
+      'a regression test that is not a test file',
+      {
+        answer: {
+          ...(answerResponses['answer'] as object),
+          regressionTest: { path: 'scripts/chef/x.ts', failsOn: 'abc', passesOn: 'def' },
+        },
+      },
+    ],
+    [
+      'a regression test that passes on another head than the pushed one',
+      {
+        answer: {
+          ...(answerResponses['answer'] as object),
+          regressionTest: { path: 'scripts/chef/x.test.ts', failsOn: 'abc', passesOn: 'zzz' },
+        },
+      },
+    ],
+    ['a test that passes on the pre-fix head', { pin: { ...answerPin, priorExitCode: 0 } }],
+    ['a test that fails on the new head', { pin: { ...answerPin, newExitCode: 1 } }],
+    ['a pin run at another commit', { pin: { ...answerPin, newHead: 'zzz' } }],
+    ['a pin that exited 75 (busy pool)', { pin: { ...answerPin, priorExitCode: 75 } }],
+    ['a pin that exited 70 (hang guard)', { pin: { ...answerPin, newExitCode: 70 } }],
+    ['a pin whose failure names no test in the file', { pin: { ...answerPin, priorOutput: '' } }],
+    [
+      'answered threads with no reply file',
+      { answer: { ...(answerResponses['answer'] as object), replyFile: undefined } },
+    ],
+  ] as [string, Responses][]) {
+    test(`refuses ${name}: no thread is resolved, and fixedHead is null`, async () => {
+      const round = await answerRound(stubs);
+      expect(round.labels).not.toContain('resolve');
+      expect(round.result).toMatchObject({
+        status: 'NEEDS_JUDGMENT',
+        fixedHead: null,
+        pushedHead: 'def',
+        answered: [],
+        open: ['T1', 'T2'],
+      });
+      expect(asRecord(round.result)['reason']).toEqual(expect.any(String));
+    });
+  }
+
+  test('a pin that exited 75 is reported as not run', async () => {
+    const round = await answerRound({ pin: { ...answerPin, priorExitCode: 75 } });
+    expect(asRecord(round.result)['reason']).toContain('pin did not run');
+  });
+
+  test('a repeated class runs CLASS_FIX, and refuses a fix that lists no entry points', async () => {
+    const repeated = { classify: { head: 'abc', repeating: ['state-machine'] } };
+    const refused = await answerRound(repeated);
+    const prompt = refused.calls.find((call) => call.label.startsWith('answer'))?.prompt;
+    expect(prompt).toContain('CLASS_FIX');
+    expect(prompt).toContain('every entry point');
+    expect(refused.labels).not.toContain('resolve');
+    expect(asRecord(refused.result)['reason']).toContain('entry point');
+    const accepted = await answerRound({
+      ...repeated,
+      answer: {
+        ...(answerResponses['answer'] as object),
+        entryPoints: ['hook a', 'hook b'],
+      },
+    });
+    expect(accepted.labels).toContain('resolve');
+    const pointFix = await answerRound();
+    expect(pointFix.calls.find((call) => call.label.startsWith('answer'))?.prompt).not.toContain(
+      'CLASS_FIX',
+    );
   });
 });
 
