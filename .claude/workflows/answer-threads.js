@@ -51,6 +51,7 @@ const ANSWER_SCHEMA = {
       required: ['path', 'failsOn', 'passesOn'],
     },
     entryPoints: { type: 'array', items: { type: 'string' } },
+    replyFile: { type: 'string' },
   },
   required: ['round', 'answered', 'fixedHead', 'open'],
 };
@@ -71,11 +72,43 @@ const PIN_SCHEMA = {
     priorHead: { type: 'string' },
     newExitCode: { type: 'integer' },
     newHead: { type: 'string' },
+    priorOutput: { type: 'string' },
   },
-  required: ['priorExitCode', 'priorHead', 'newExitCode', 'newHead'],
+  required: ['priorExitCode', 'priorHead', 'newExitCode', 'newHead', 'priorOutput'],
+};
+
+const RESOLVE_SCHEMA = {
+  type: 'object',
+  properties: {
+    exitCode: { type: 'integer' },
+    resolved: { type: 'array', items: { type: 'string' } },
+  },
+  required: ['exitCode'],
 };
 
 const TEST_FILE = /\.(test|spec)\.[cm]?[jt]sx?$/;
+
+// scripts/bun-test.ts exits 75 when the test pool is busy and 70 when the hang guard fires: neither
+// says anything about the test, so only exit 1 with a (fail) line under the pinned file counts.
+// Kept equal to the same function in deliver-issue.js.
+const NOT_A_RESULT = [70, 75];
+
+/** null when the pin ran and proved the test; else the reason it did not. */
+function pinProblem(pin, test) {
+  if (pin.priorHead !== test.failsOn || pin.newHead !== test.passesOn)
+    return 'regression test was proven at the wrong commits';
+  if (NOT_A_RESULT.includes(pin.priorExitCode) || NOT_A_RESULT.includes(pin.newExitCode))
+    return `pin did not run: regression test exited ${pin.priorExitCode} then ${pin.newExitCode} (busy pool or hang guard)`;
+  if (pin.priorExitCode === 0)
+    return `regression test passes on the pre-fix head ${test.failsOn}, so it pins nothing`;
+  const output = typeof pin.priorOutput === 'string' ? pin.priorOutput : '';
+  const at = output.indexOf(test.path);
+  if (pin.priorExitCode !== 1 || at < 0 || !/^\(fail\) /m.test(output.slice(at)))
+    return `pin did not run: regression test at ${test.failsOn} gave exit ${pin.priorExitCode} and no (fail) line under ${test.path}`;
+  if (pin.newExitCode !== 0)
+    return `regression test fails on the new head ${test.passesOn} (exit ${pin.newExitCode})`;
+  return null;
+}
 
 const pr = args && args.pr;
 const worktree = args && args.worktree;
@@ -157,9 +190,7 @@ const answered = await agent(
       : 'No brief was given: read the pull request body for the acceptance criteria before fixing.',
     'Threads and triage:',
     JSON.stringify(triaged.threads),
-    'Fix every thread triaged fix, using your own judgment on each. Answer every thread under AGENTS.md "Review guidelines": fixed (name the commit), declined (one-line reason), or tracked (name the issue). Write the reply file `review-threads.ts resolve` takes and run `bun scripts/chef/review-threads.ts resolve --pr ' +
-      pr +
-      ' --file <tsv>` after the push.',
+    'Fix every thread triaged fix, using your own judgment on each. Answer every thread under AGENTS.md "Review guidelines": fixed (name the commit), declined (one-line reason), or tracked (name the issue). Write the reply file `review-threads.ts resolve` takes (a tsv under tmp/) and return its path as replyFile; never run `resolve` yourself: the script resolves the threads only after it has proven your regression test.',
     classFix
       ? `CLASS_FIX: the class ${classified.repeating.join(', ')} already repeated across rounds, so a point fix is refused. For the threads of that class the criterion is a test that enumerates every entry point of the class (every route, exported boundary or hook it can reach), not the one instance; return entryPoints, the entry points it covers.`
       : 'Fix each instance the threads name.',
@@ -183,14 +214,26 @@ if (answered === null) {
     error: 'answer failed',
   };
 }
+// A refusal leaves every thread open and reports no fixed head, in the shape deliver-issue.js gives.
+const refuse = (reason) => {
+  log(`PR ${pr}: NEEDS_JUDGMENT: ${reason}`);
+  return {
+    round,
+    status: 'NEEDS_JUDGMENT',
+    reason,
+    error: reason,
+    answered: [],
+    fixedHead: null,
+    pushedHead: answered.fixedHead || null,
+    open: triaged.threads.map((t) => t.id),
+  };
+};
+// Nothing is resolved until the correction is proven: the answer step only writes the reply file.
 if (answered.fixedHead && answered.fixedHead !== classified.head) {
   const test = answered.regressionTest;
-  const refuse = (error) => {
-    log(`PR ${pr}: ${error}`);
-    return { ...answered, error };
-  };
   if (
     !test ||
+    typeof test.path !== 'string' ||
     !TEST_FILE.test(test.path) ||
     test.failsOn !== classified.head ||
     test.passesOn !== answered.fixedHead
@@ -202,7 +245,7 @@ if (answered.fixedHead && answered.fixedHead !== classified.head) {
     [
       `Prove the regression test ${test.path} of pull request ${pr} fails before the fix and passes after it. Invoke no skills. Change nothing in the repository.`,
       `cd ${worktree}. Do this once for ${test.failsOn} and once for ${test.passesOn}: \`git worktree add --detach <a new path under tmp/> <sha>\`; in it run \`bun install --frozen-lockfile\`; for the pre-fix sha copy the test file from the new sha with \`git show ${test.passesOn}:${test.path}\`; run \`CORVIDAE_TEST_POOL_WAIT_SECONDS=300 bun scripts/bun-test.ts ${test.path}\` there, and record its exit code and \`git rev-parse HEAD\` there; then \`git worktree remove --force\` that path.`,
-      `Return priorExitCode and priorHead (the run at ${test.failsOn}) and newExitCode and newHead (the run at ${test.passesOn}).`,
+      `Return priorExitCode and priorHead (the run at ${test.failsOn}), priorOutput (that run's output, verbatim: the file header line and every (fail) line) and newExitCode and newHead (the run at ${test.passesOn}). Report a setup failure as its real exit code; never turn it into 1.`,
     ].join('\n'),
     {
       label: `pin PR ${pr}`,
@@ -212,16 +255,24 @@ if (answered.fixedHead && answered.fixedHead !== classified.head) {
       effort: 'low',
     },
   );
-  if (
-    pin === null ||
-    pin.priorHead !== test.failsOn ||
-    pin.newHead !== test.passesOn ||
-    pin.priorExitCode === 0 ||
-    pin.newExitCode !== 0
-  )
-    return refuse(
-      'correction refused: its regression test is not proven to fail before and pass after',
-    );
+  if (pin === null) return refuse('pin did not run: the pin step failed');
+  const problem = pinProblem(pin, test);
+  if (problem !== null) return refuse(problem);
+}
+if (answered.answered.length > 0) {
+  if (!answered.replyFile) return refuse('answer returned answered threads but no reply file');
+  const resolved = await agent(
+    `cd ${worktree}. Invoke no skills. Run \`bun scripts/chef/review-threads.ts resolve --pr ${pr} --file ${answered.replyFile} --json\` once and return its exit code and the thread ids it resolved.`,
+    {
+      label: `resolve PR ${pr}`,
+      phase: 'answer',
+      schema: RESOLVE_SCHEMA,
+      model: 'haiku',
+      effort: 'low',
+    },
+  );
+  if (resolved === null || resolved.exitCode !== 0)
+    return { ...answered, error: 'resolve failed: threads are still open' };
 }
 log(`PR ${pr}: round ${round} answered ${answered.answered.length}, ${answered.open.length} open`);
 return answered;

@@ -166,11 +166,33 @@ const PIN_SCHEMA = {
     priorHead: { type: 'string' },
     newExitCode: { type: 'integer' },
     newHead: { type: 'string' },
+    priorOutput: { type: 'string' },
   },
-  required: ['priorExitCode', 'priorHead', 'newExitCode', 'newHead'],
+  required: ['priorExitCode', 'priorHead', 'newExitCode', 'newHead', 'priorOutput'],
 };
 
 const TEST_FILE = /\.(test|spec)\.[cm]?[jt]sx?$/;
+
+// scripts/bun-test.ts exits 75 when the test pool is busy and 70 when the hang guard fires: neither
+// says anything about the test, so only exit 1 with a (fail) line under the pinned file counts.
+const NOT_A_RESULT = [70, 75];
+
+/** null when the pin ran and proved the test; else the reason it did not. */
+function pinProblem(pin, test) {
+  if (pin.priorHead !== test.failsOn || pin.newHead !== test.passesOn)
+    return 'regression test was proven at the wrong commits';
+  if (NOT_A_RESULT.includes(pin.priorExitCode) || NOT_A_RESULT.includes(pin.newExitCode))
+    return `pin did not run: regression test exited ${pin.priorExitCode} then ${pin.newExitCode} (busy pool or hang guard)`;
+  if (pin.priorExitCode === 0)
+    return `regression test passes on the pre-fix head ${test.failsOn}, so it pins nothing`;
+  const output = typeof pin.priorOutput === 'string' ? pin.priorOutput : '';
+  const at = output.indexOf(test.path);
+  if (pin.priorExitCode !== 1 || at < 0 || !/^\(fail\) /m.test(output.slice(at)))
+    return `pin did not run: regression test at ${test.failsOn} gave exit ${pin.priorExitCode} and no (fail) line under ${test.path}`;
+  if (pin.newExitCode !== 0)
+    return `regression test fails on the new head ${test.passesOn} (exit ${pin.newExitCode})`;
+  return null;
+}
 
 const NO_MERGE = 'Never merge and never run deliver.ts; the coordinator lands the branch.';
 
@@ -420,7 +442,7 @@ function pinRegression(issue, where, regressionTest) {
     [
       `Prove the regression test ${regressionTest.path} of ${issue} fails before the fix and passes after it. Invoke no skills. Change nothing in the repository.`,
       `cd ${where.worktree} and run \`git fetch origin ${where.branch}\`. Do this once for ${regressionTest.failsOn} and once for ${regressionTest.passesOn}: \`git worktree add --detach <a new path under tmp/> <sha>\`; in it run \`bun install --frozen-lockfile\`; for the pre-fix sha copy the test file from the new sha with \`git show ${regressionTest.passesOn}:${regressionTest.path}\`; run \`CORVIDAE_TEST_POOL_WAIT_SECONDS=300 bun scripts/bun-test.ts ${regressionTest.path}\` there, and record its exit code and \`git rev-parse HEAD\` there; then \`git worktree remove --force\` that path.`,
-      `Return priorExitCode and priorHead (the run at ${regressionTest.failsOn}) and newExitCode and newHead (the run at ${regressionTest.passesOn}).`,
+      `Return priorExitCode and priorHead (the run at ${regressionTest.failsOn}), priorOutput (that run's output, verbatim: the file header line and every (fail) line) and newExitCode and newHead (the run at ${regressionTest.passesOn}). Report a setup failure as its real exit code; never turn it into 1.`,
     ].join('\n'),
     {
       label: `pin ${issue}`,
@@ -477,11 +499,8 @@ async function runCorrection(context, where, findings, key) {
   const pin = await pinRegression(issue, where, test);
   if (pin === null) return stop('regression test pin step failed');
   record.pin = pin;
-  if (pin.priorHead !== test.failsOn || pin.newHead !== test.passesOn)
-    return stop('regression test was proven at the wrong commits');
-  if (pin.priorExitCode === 0)
-    return stop(`regression test passes on the pre-fix head ${where.head}, so it pins nothing`);
-  if (pin.newExitCode !== 0) return stop(`regression test fails on the new head ${fixed.head}`);
+  const problem = pinProblem(pin, test);
+  if (problem !== null) return stop(problem);
   return { head: fixed.head };
 }
 
