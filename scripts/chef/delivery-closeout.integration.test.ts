@@ -212,6 +212,8 @@ async function setup(pendingMember = false, trackedPending = true, missingArtifa
     worktree: fixture.directory,
     commentFile: join(fixture.directory, 'comment.md'),
     keepWorktree: true,
+    run: 'run',
+    project: 'Widgets',
     verification: fixture.verification,
   };
   const record = (entry: Parameters<typeof recordDelivery>[1]) =>

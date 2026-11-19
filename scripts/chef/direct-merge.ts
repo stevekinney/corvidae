@@ -53,12 +53,14 @@ import {
   loadDeliveryVerification,
   recordDeliveryMergeObservation,
   validateDeliveryApproval,
+  validateDeliveryCiEvidence,
   validateDeliveryVerification,
   type DeliveryVerification,
   type DeliveryVerificationDependencies,
 } from './delivery-verification.ts';
 import { readExecutionSnapshot, withProviderTransitionLock } from './execution-state.ts';
 import { fetchWithRetry } from './fetch-retry.ts';
+import { validateLandingEvidence } from './landing-evidence.ts';
 import { mainCiComparisonWarning, mainCiHealth, mainCiWarning } from './main-ci.ts';
 import { withMergeLock } from './merge-gate.ts';
 import { defaultRunner, UsageError, type Runner } from './process-runner.ts';
@@ -274,6 +276,20 @@ async function directMergeCore(
     partial.verification,
   );
   if (verificationProblem !== undefined) return fail('verification', verificationProblem);
+  const ciEvidenceProblem = await validateDeliveryCiEvidence(verification, partial.verification);
+  if (ciEvidenceProblem !== undefined) return fail('verification', ciEvidenceProblem);
+  const landingProblem = await validateLandingEvidence(
+    verification,
+    { route: 'branch', defaultBranch },
+    {
+      runner,
+      ...(partial.verification?.ciProvider === undefined
+        ? {}
+        : { ciProvider: partial.verification.ciProvider }),
+    },
+  );
+  if (landingProblem !== undefined) return fail('verification', landingProblem);
+
   const created = git('commit-tree', tree, '-p', base, '-F', options.messageFile);
   const commit = created.stdout.trim();
   if (created.code !== 0 || !/^[0-9a-f]{40,64}$/.test(commit))
