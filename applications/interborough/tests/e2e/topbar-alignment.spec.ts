@@ -63,10 +63,17 @@ async function readTopbar(page: Page) {
         const words = [...range.getClientRects()].filter((rect) => rect.height > 0);
         const top = Math.min(...words.map((rect) => rect.top));
         const bottom = Math.max(...words.map((rect) => rect.bottom));
+        const style = getComputedStyle(element);
+        // Two Cinder boxes clip on purpose past their line box, so their line box and scroll
+        // height say nothing about the words: a crumb link clips at its hit area's overhang
+        // (`overflow-clip-margin`, the pseudo-element's 24px target past its 20px line), and a
+        // `text-box-trim`med label is trimmed to its capitals, with block padding for the
+        // ascenders and descenders that its negative margin hands back.
+        const clipsPastItsBox = style.getPropertyValue('overflow-clip-margin') !== '0px';
+        const trimmed = !['', 'none', 'normal'].includes(style.getPropertyValue('text-box-trim'));
         const cut =
-          element.scrollHeight > element.clientHeight ||
-          top < box.top - 0.5 ||
-          bottom > box.bottom + 0.5;
+          (!clipsPastItsBox && !trimmed && element.scrollHeight > element.clientHeight) ||
+          (!trimmed && (top < box.top - 0.5 || bottom > box.bottom + 0.5));
         return cut
           ? [
               `${element.className}: words ${top}-${bottom}, box ${box.top}-${box.bottom}, scroll ${element.scrollHeight} of ${element.clientHeight}`,
