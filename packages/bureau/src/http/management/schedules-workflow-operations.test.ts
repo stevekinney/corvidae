@@ -458,6 +458,30 @@ describe('a fire on cadence of a schedule whose workflow can no longer be starte
     expect(await statusOf(served, id)).toBe('active');
   });
 
+  it('does not release a hold the owner changed the schedule after, even when the change lands before the hold reads back what it committed', async () => {
+    const served = await serve({ maintenance: 'manual' });
+    const id = await created(served, { workflowType: 'digest' });
+    const engine = served.bureau.durableEngine()!;
+    const pause = engine.pauseSchedule.bind(engine);
+    const pausing = spyOn(engine, 'pauseSchedule').mockImplementation(
+      async (scheduleId, options) => {
+        await pause(scheduleId, options);
+        // The owner edits the held schedule after the hold's pause committed and before it is read.
+        if (scheduleId === id) await engine.updateSchedule(id, { every: '2h' });
+      },
+    );
+
+    const detail = await served.bureau.workflows!.get('digest');
+    await served.bureau.workflows!.pause('digest', { expectedHash: detail!.hash! });
+    pausing.mockRestore();
+    expect(await statusOf(served, id)).toBe('paused');
+
+    const paused = await served.bureau.workflows!.get('digest');
+    await served.bureau.workflows!.resume('digest', { expectedHash: paused!.hash! });
+
+    expect(await statusOf(served, id)).toBe('paused');
+  });
+
   it('starts nothing once the workflow file is deleted, and holds the schedule paused', async () => {
     const served = await serve({ maintenance: 'manual' });
     const id = await created(served, { workflowType: 'digest', workflowInput: { n: 1 } });
@@ -755,6 +779,10 @@ describe('changing what a schedule runs', () => {
     });
     await completes(engine, agentRunId);
     expect(await served.bureau.ownerOf({ kind: 'run', id: agentRunId })).toBe('api-key:operator');
+    // The runs the schedule started as a workflow keep their owner once it runs an agent, and never
+    // fall to the deployment.
+    expect(await served.bureau.ownerOf({ kind: 'run', id: ranId })).toBe('api-key:operator');
+    expect(await served.bureau.ownerOf({ kind: 'run', id: fileRunId })).toBe('api-key:operator');
   });
 
   it('moves an agent schedule that continues a chat onto a workflow that overlaps, as the chat is no part of the workflow', async () => {

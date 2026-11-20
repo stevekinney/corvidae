@@ -170,12 +170,18 @@ export function createRunOwnership<D extends AgentDefinitions>(
   }
 
   /**
-   * COR-2546 — the owner of a schedule a caller made for a workflow, from its metadata, or
-   * `undefined` for any other schedule, including a workflow file's own.
+   * COR-2546 — the owner of a schedule a caller made for a workflow, from its metadata, or from the
+   * principal of its agent input once an update has moved it to run an agent (which keeps the owner
+   * and clears the metadata), so the runs it started as a workflow keep their owner. `undefined` for
+   * any other schedule, including a workflow file's own.
    */
   async function callerScheduleOwner(scheduleId: string): Promise<string | undefined> {
     const record = await storedScheduleRecord(scheduleId);
-    return record === undefined ? undefined : workflowScheduleOwnerOf(record);
+    if (record === undefined) return undefined;
+    const workflowOwner = workflowScheduleOwnerOf(record);
+    if (workflowOwner !== undefined) return workflowOwner;
+    const agentInput = storedAgentInputOf(record);
+    return agentInput === undefined ? undefined : ownerOrLocal(agentInput.principal);
   }
 
   /** COR-718 — the owner a schedule recorded in its `ScheduledAgentRunInput.principal`. */

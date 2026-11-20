@@ -157,7 +157,8 @@ export function workflowScheduleOwnerOf(record: {
   if (typeof metadata !== 'object' || metadata === null || Array.isArray(metadata)) {
     return undefined;
   }
-  const owner: unknown = Reflect.get(metadata, 'owner');
+  // An own data property only: a getter or an inherited `owner` is no record of who owns it.
+  const owner: unknown = Object.getOwnPropertyDescriptor(metadata, 'owner')?.value;
   return typeof owner === 'string' && owner !== '' ? owner : undefined;
 }
 

@@ -1225,8 +1225,10 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
       if (summary.status !== 'active') return;
       await (options.scheduleTransitions?.pause(summary.id, summary.revision) ??
         engine.pauseSchedule(summary.id, { expectedRevision: summary.revision }));
-      const paused = await engine.getSchedule(summary.id);
-      if (paused !== null) await scheduleHolds.hold(key, summary.id, paused.revision);
+      // The pause of an active schedule at `summary.revision` commits the next one, exactly: the
+      // fence refuses it at any other. A read of the schedule here could be an owner's later edit,
+      // whose revision would then pass for the hold's and let its release undo the edit.
+      await scheduleHolds.hold(key, summary.id, summary.revision + 1);
       return;
     }
     if (held === undefined) return;
