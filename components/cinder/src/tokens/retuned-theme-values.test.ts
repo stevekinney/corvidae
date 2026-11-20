@@ -19,7 +19,7 @@
  *
  * The owner then found the grey surface made every panel read as a grey slab (2026-11-15) and
  * chose the consumer ladder for the default light arm too: the surface is pure white like raised,
- * the canvas a grey page at 97.6% (3.51:1 for the focus ring; 97.0% would read 3.45:1), and the well
+ * the canvas a grey page at 97.1% (the light focus ring is tuned to retain the 3.5:1 floor), and the well
  * 95.5%. The hover, pressed and soft accent washes now mix from white, so they follow.
  *
  * COR-2450 made the light well neutral: chroma 0.005 read as a blue-grey band inside a white
@@ -64,11 +64,11 @@ function expectColor(arm: 'light' | 'dark', [property, components, alpha]: Expec
 // `hue-travel.test.ts` fails any OKLCH mix whose operands are more than 40° apart, and the hover
 // and pressed washes mix it toward the accent at hue 272.
 const LIGHT_VALUES: readonly ExpectedColor[] = [
-  ['--cinder-surface-canvas', [0.976, 0.004, 265]],
+  ['--cinder-surface-canvas', [0.971, 0.006, 265]],
   ['--cinder-surface', [1, 0, 255]],
   ['--cinder-surface-raised', [1, 0, 255]],
   ['--cinder-surface-inset', [0.955, 0.002, 265]],
-  ['--cinder-surface-hover', [0.9712, 0.0144, 256.02]],
+  ['--cinder-surface-hover', [0.9664, 0.0168, 256.19]],
   ['--cinder-surface-pressed', [0.9424, 0.0288, 257.04]],
   ['--cinder-surface-raised-hover', [0.9664, 0.0168, 256.19]],
   ['--cinder-text-muted', [0.44, 0.01, 265]],
@@ -278,7 +278,7 @@ describe('COR-2010: the dark arm moves the inset, inverse chip, control edge and
   });
 
   test('the focus ring is the accent hue at 62% lightness in both arms', () => {
-    expectColor('light', ['--cinder-ring-color', [0.62, 0.16, 272]]);
+    expectColor('light', ['--cinder-ring-color', [0.612, 0.16, 272]]);
     expectColor('dark', ['--cinder-ring-color', [0.62, 0.16, 270]]);
   });
 });

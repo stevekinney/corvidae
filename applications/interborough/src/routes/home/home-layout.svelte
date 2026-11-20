@@ -7,9 +7,9 @@
    * attention; the narrow one holds the chat sections, the box that starts a chat over the chats
    * you were last in (owner, 2026-11-19: with Recent chats across the full width under both
    * columns, a short Start a chat left a dead band above it; with both chat sections in one column
-   * the two columns come out close in height). On a phone every section is a row of one column, in
-   * the order the Spotlight, Needs you, the count, Running now, the box that starts a chat, Needs
-   * attention, Recent chats, Workflow activity, Agent activity.
+   * the columns can align at their ends while keeping one gap). On a phone the order is the
+   * Spotlight, Needs you, the count, Running now, Start a chat, Needs attention, Recent chats,
+   * Workflow activity and Agent activity.
    *
    * The sections draw no box (Cinder's `Section`), so space alone separates them, and the space
    * between any two is one value, Cinder's own space between sections (`--cinder-space-8`). A
@@ -204,7 +204,7 @@
       display: grid;
       grid-template-columns: minmax(0, 1fr) 23.75rem;
       column-gap: var(--ib-home-gap);
-      align-items: start;
+      align-items: end;
     }
 
     /* The Spotlight is the title of the Needs you list in the wide column, so its line, and the

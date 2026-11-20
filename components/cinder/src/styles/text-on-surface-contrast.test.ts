@@ -75,12 +75,11 @@ describe('the edges that must read at a glance, in both themes', () => {
 describe('light mode is not faded', () => {
   const light = (token: string) => readOklchToken(token).light;
 
-  // The ground can go only so dark before the focus ring stops reading 3.5:1 on it and a hovered
-  // row meets it, so the white panels part from it by a step and an edge that reads.
+  // The light canvas is one step below the white panels. The focus ring has its own contrast test.
   test('the content surface is white against a page ground a step darker, outlined by an edge that reads', () => {
     expect(light('--cinder-surface').l).toBeGreaterThanOrEqual(0.995);
     expect(light('--cinder-surface').l - light('--cinder-surface-canvas').l).toBeGreaterThanOrEqual(
-      0.02,
+      0.028,
     );
     expect(paint('--cinder-border', 'light').alpha).toBeGreaterThanOrEqual(0.16);
   });

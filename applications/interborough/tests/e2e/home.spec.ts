@@ -151,8 +151,8 @@ test.describe('Home on the sample world, with something waiting on you', () => {
   // Owner, 2026-11-19: the left column and Start a chat ended at different heights with a dead
   // band before Recent chats. Recent chats follows Start a chat in the narrow column, so no section
   // waits under a short Start a chat, and the gaps are one value.
-  for (const width of [1280, 1920] as const) {
-    test(`puts Recent chats right under Start a chat in the narrow column at ${width} pixels`, async ({
+  for (const width of [1920, 1280] as const) {
+    test(`aligns both columns with Recent chats under Start a chat at ${width} pixels`, async ({
       page,
     }) => {
       await openHome(page, width);
@@ -172,6 +172,9 @@ test.describe('Home on the sample world, with something waiting on you', () => {
       const gapMain = boxes.attention.y - (boxes.needsYou.y + boxes.needsYou.height);
       expect(Math.abs(gapAside - 32)).toBeLessThanOrEqual(1);
       expect(Math.abs(gapMain - 32)).toBeLessThanOrEqual(1);
+      const mainEnd = boxes.attention.y + boxes.attention.height;
+      const asideEnd = boxes.recent.y + boxes.recent.height;
+      expect(Math.abs(mainEnd - asideEnd)).toBeLessThanOrEqual(1);
     });
   }
 

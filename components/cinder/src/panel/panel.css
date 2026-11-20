@@ -16,7 +16,7 @@
 :root {
   --cinder-surface-canvas: var(
     --color-background-primary,
-    light-dark(oklch(97.6% 0.004 265), oklch(14.5% 0.022 265))
+    light-dark(oklch(97.1% 0.006 265), oklch(14.5% 0.022 265))
   );
   --cinder-surface: var(
     --color-background-secondary,
@@ -118,7 +118,10 @@
   );
   --cinder-ring-color: var(
     --color-ring-primary,
-    oklch(from var(--cinder-accent-solid) 0.62 0.16 h)
+    light-dark(
+      oklch(from var(--cinder-accent-solid) 0.612 0.16 h),
+      oklch(from var(--cinder-accent-solid) 0.62 0.16 h)
+    )
   );
   --cinder-ring-offset-color: var(--color-ring-secondary, var(--cinder-surface-raised));
   --cinder-font-sans: var(

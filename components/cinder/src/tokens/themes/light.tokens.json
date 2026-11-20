@@ -47,11 +47,11 @@
     "hover": {
       "$value": {
         "colorSpace": "oklch",
-        "components": [0.9712, 0.0144, 256.02]
+        "components": [0.9664, 0.0168, 256.19]
       },
       "$extensions": {
         "com.lostgradient.cinder": {
-          "cssRecipe": "color-mix(in oklch, var(--cinder-surface), var(--cinder-accent-solid) 6%)"
+          "cssRecipe": "color-mix(in oklch, var(--cinder-surface), var(--cinder-accent-solid) 7%)"
         }
       }
     },
@@ -76,14 +76,14 @@
       "$type": "color",
       "$value": {
         "colorSpace": "oklch",
-        "components": [0.976, 0.004, 265]
+        "components": [0.971, 0.006, 265]
       }
     },
     "translucent": {
       "$type": "color",
       "$value": {
         "colorSpace": "oklch",
-        "components": [0.976, 0.004, 265],
+        "components": [0.971, 0.006, 265],
         "alpha": 0.9
       },
       "$extensions": {
@@ -371,11 +371,11 @@
       "$type": "color",
       "$value": {
         "colorSpace": "oklch",
-        "components": [0.62, 0.16, 272]
+        "components": [0.612, 0.16, 272]
       },
       "$extensions": {
         "com.lostgradient.cinder": {
-          "cssRecipe": "oklch(from var(--cinder-accent-solid) 0.62 0.16 h)"
+          "cssRecipe": "oklch(from var(--cinder-accent-solid) 0.612 0.16 h)"
         }
       }
     },
