@@ -1417,7 +1417,7 @@ export const askSummarizerDurably = createPeerCallTool({
 
 ### MCP adapter (COR-839, COR-910)
 
-`createBureauHandler(bureau, { mcp: {} })` mounts Bureau's `mcpExposable` management operations as MCP tools, at `/mcp` unless `mcp.pathPrefix` says otherwise. It is a thin wrapper over Weft's [`createOperationMcpMount`](../weft/README.md#mcp-for-an-operation-catalog), so it serves both protocol eras (2026-07-28 and 2025-11-25) statelessly, and every call runs through the catalog pipeline as the caller the handler authenticated: the same access policy, owner predicate, and scopes as `POST /jsonrpc`. A caller sees only what it could already read there. Omit `mcp` and nothing is mounted.
+`createBureauHandler(bureau, { mcp: {} })` mounts Bureau's `mcpExposable` management operations as MCP tools, at `/mcp` unless `mcp.pathPrefix` says otherwise. It wraps [`createOperationMcpMount`](../backchannel-mcp/README.md), so it serves both protocol eras (2026-07-28 and 2025-11-25) statelessly, and every call runs through the catalog pipeline as the caller the handler authenticated: the same access policy, owner predicate, and scopes as `POST /jsonrpc`. A caller sees only what it could already read there. Omit `mcp` and nothing is mounted.
 
 The target is an AI host that observes and steers existing work: Claude Desktop and Claude Code, over Streamable HTTP. Interborough mounts the adapter at `/bureau/mcp` (not `/mcp`, which is the engine's own endpoint) and its on-demand `smoke:claude-code-mcp` script connects a real Claude Code to it. Other hosts that speak Streamable HTTP MCP should work, but none is tested or supported.
 

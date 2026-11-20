@@ -24,7 +24,10 @@ const goldenPath = join(FAULT_ENVELOPE_GOLDEN_DIRECTORY, 'fault-envelopes.json')
 
 type GoldenEnvelopes = Record<
   keyof typeof GOLDEN_FAULTS,
-  { jsonRpc: unknown; http: { status: number; body: unknown } }
+  {
+    jsonRpc: { code: number; message: string; data: unknown };
+    http: { status: number; body: unknown };
+  }
 >;
 
 const throwGoldenFault = (code: keyof typeof GOLDEN_FAULTS): never => {

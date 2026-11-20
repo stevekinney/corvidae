@@ -42,7 +42,7 @@ it('uses each host’s vocabulary for credentials and local principals', async (
     'inventory:write',
   ]);
   expect(b.authenticated && [...(b.principal?.scopes ?? [])]).toEqual(['reports:read']);
-  expect([...principalFromStdioLocal(inventory).scopes]).toEqual(inventory.scopes);
-  expect([...principalFromUnauthenticatedLocal(reports).scopes]).toEqual(reports.scopes);
+  expect([...principalFromStdioLocal(inventory).scopes]).toEqual([...inventory.scopes]);
+  expect([...principalFromUnauthenticatedLocal(reports).scopes]).toEqual([...reports.scopes]);
   expect([...principalFromUnauthenticatedLocal().scopes]).toEqual([]);
 });

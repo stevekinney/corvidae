@@ -50,6 +50,7 @@
     "@lostgradient/storage-postgres": "workspace:*",
     "@lostgradient/testing": "workspace:*",
     "@lostgradient/backchannel": "workspace:*",
+    "@lostgradient/backchannel-mcp": "workspace:*",
     "@lostgradient/weft": "workspace:*",
     "@lucide/svelte": "catalog:",
     "@modelcontextprotocol/ext-apps": "catalog:",
