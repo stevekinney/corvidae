@@ -286,7 +286,7 @@ describe('Markdown node spacing', () => {
   test('a node wrapper takes the paragraph block-end space, so a table never sits against the next sentence', async () => {
     const css = await Bun.file(new URL('../../styles/utilities.css', import.meta.url)).text();
     const paragraphRule =
-      /\.cinder-markdown-content :where\(p, ul, ol, blockquote, pre, table\) \{\s*margin-block: 0 (var\(--cinder-space-\d+\));/.exec(
+      /\.cinder-markdown-content :where\(p, ul, ol, blockquote, pre:not\(\.cinder-code-block pre\), table\) \{\s*margin-block: 0 (var\(--cinder-space-\d+\));/.exec(
         css,
       );
     const nodeRule =

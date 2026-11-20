@@ -338,6 +338,7 @@ function assertBulkOperationInvariants(
 
 function bulkRestFaultCodeFromStatus(status: number): string {
   if (status === 400) return 'InvalidParams';
+  if (status === 409) return 'Conflict';
   if (status === 401) return 'Unauthorized';
   if (status === 403) return 'Forbidden';
   if (status === 422) return 'Unprocessable';
@@ -885,10 +886,10 @@ async function invokeBulkRestPreviewStaleCommit(
     headers: bulkJsonHeaders(),
     body: JSON.stringify(staleBody(confirmationToken)),
   });
-  expect(staleResponse.status).toBe(400);
+  expect(staleResponse.status).toBe(409);
   await staleResponse.json();
   const staleFaultCode = bulkRestFaultCodeFromStatus(staleResponse.status);
-  expect(staleFaultCode).toBe('InvalidParams');
+  expect(staleFaultCode).toBe('Conflict');
 
   const response = await fetch(`${server.url}${route.path}`, {
     method: route.method,
@@ -924,7 +925,7 @@ async function invokeBulkJsonRpcPreviewStaleCommit(
     bulkJsonHeaders(),
   );
   const staleFaultCode = String(staleError.data?.['weftCode']);
-  expect(staleFaultCode).toBe('InvalidParams');
+  expect(staleFaultCode).toBe('Conflict');
 
   return {
     result: await postJsonRpc(
@@ -993,7 +994,7 @@ async function invokeBulkWebSocketPreviewStaleCommit(
       staleParameters(confirmationToken),
     );
     const staleFaultCode = String(staleResponse.error?.data?.['weftCode']);
-    expect(staleFaultCode).toBe('InvalidParams');
+    expect(staleFaultCode).toBe('Conflict');
 
     const response = await sendWebSocketJsonRpc(
       webSocket,
@@ -1031,7 +1032,7 @@ async function invokeBulkStdioPreviewStaleCommit(
     staleParameters(confirmationToken),
   );
   const staleFaultCode = String(staleError.data?.['weftCode']);
-  expect(staleFaultCode).toBe('InvalidParams');
+  expect(staleFaultCode).toBe('Conflict');
 
   return {
     result: await invokeStdioJsonRpc(engine, operationName, commitParameters(confirmationToken)),

@@ -113,6 +113,11 @@ export const OPERATION_MAP = {
   'bureau.tasks.get': { workspaceClass: 'private-owned', member: 'tasks.get' },
   'bureau.tasks.cancel': { workspaceClass: 'private-owned', member: 'tasks.cancel' },
   'bureau.tasks.inspect': { workspaceClass: 'private-owned', member: 'tasks.inspect' },
+  'bureau.runs.timeline': {
+    workspaceClass: 'private-owned',
+    exempt:
+      'composed from the task registry, the workflow runtime’s run read, and the durable engine’s timeline',
+  },
   'bureau.tasks.events': { workspaceClass: 'private-owned', member: 'tasks.events' },
   'bureau.tasks.respond': { workspaceClass: 'private-owned', member: 'tasks.respond' },
 

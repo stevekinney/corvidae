@@ -325,7 +325,7 @@
   collapses a selection made meanwhile, so a caller that selects text waits for `rendered` first.
 -->
 <div
-  class={classNames('cinder-markdown-content', className)}
+  class={classNames('cinder-markdown', 'cinder-markdown-content', className)}
   data-state={(math ? renderCurrent : synchronousSegments !== undefined) ? 'rendered' : 'pending'}
   {...rest}
 >

@@ -15,6 +15,7 @@ import { bulkSignalWorkflowsRestBinding } from './bulk-signal-workflows.ts';
 import { cancelScheduleRestBinding } from './cancel-schedule.ts';
 import { cancelWorkflowRestBinding } from './cancel-workflow.ts';
 import { clearTaskDeadLetterRestBinding } from './clear-task-dead-letter.ts';
+import { compareWorkflowRestBinding } from './compare-workflow.ts';
 import { createScheduleRestBinding } from './create-schedule.ts';
 import { fleetEventsSseRestBinding } from './fleet-events-sse.ts';
 import { forkWorkflowRestBinding } from './fork-workflow.ts';
@@ -157,6 +158,7 @@ export const STATIC_REST_BINDINGS: ReadonlyArray<UnknownRestBinding> = [
   listCheckpointsRestBinding,
   getCheckpointAtRestBinding,
   getWorkflowTimelineRestBinding,
+  compareWorkflowRestBinding,
   addWorkflowTagsRestBinding,
   removeWorkflowTagsRestBinding,
   submitReviewDecisionRestBinding,

@@ -14,8 +14,30 @@
  * entry exists; its end is then the next entry's start, which is when the run moved on, and with no
  * later entry it is a point in time. A step with no usable start time has no bar at all, and the row says so
  * rather than drawing one at the origin.
+ *
+ * It lives here, in the package both the Interborough app and a plugin's panel depend on, so the run
+ * page and a panel lay a run out with one function (`@lostgradient/interborough-plugin/step-waterfall`).
+ * The module imports nothing, so a panel's bundle takes none of this package's server code.
+ *
+ * @module step-waterfall
  */
-import type { WorkflowTimelineEntry } from '@lostgradient/weft';
+
+/**
+ * What the layout reads of a step: its number, when it started, how long it ran, and its status.
+ * A Weft `WorkflowTimelineEntry` satisfies it, and so does an entry of `bureau.runs.timeline`, which
+ * leaves a step's input and output out, so a panel lays out what Bureau serves with the function the
+ * run page lays out the engine's entries with.
+ */
+export interface WaterfallEntry {
+  /** The step's number; the order the run took its steps in. */
+  readonly step: number;
+  /** When the step started, in epoch milliseconds. */
+  readonly timestamp: number;
+  /** How long the step ran, in milliseconds; absent while it runs and for a point in time. */
+  readonly duration?: number | undefined;
+  /** `running`, `completed`, `failed`, `cancelled` or `timed-out`. */
+  readonly status: string;
+}
 
 const FINISHED_RUN_STATUSES: ReadonlySet<string> = new Set([
   'completed',
@@ -46,7 +68,7 @@ function usable(value: number | undefined): value is number {
 }
 
 /** The entries in the order the run took them. */
-function inStepOrder(entries: readonly WorkflowTimelineEntry[]): WorkflowTimelineEntry[] {
+function inStepOrder(entries: readonly WaterfallEntry[]): WaterfallEntry[] {
   return entries.toSorted((a, b) => a.step - b.step);
 }
 
@@ -56,7 +78,7 @@ function inStepOrder(entries: readonly WorkflowTimelineEntry[]): WorkflowTimelin
  * the last one, since a run that has moved past a step has left it.
  */
 export function openStepNumbers(
-  entries: readonly WorkflowTimelineEntry[],
+  entries: readonly WaterfallEntry[],
   runStatus?: string,
 ): ReadonlySet<number> {
   const open = new Set<number>();
@@ -69,10 +91,7 @@ export function openStepNumbers(
 }
 
 /** The length of a step that is not open: its duration, or the time until the run moved on from it. */
-function closedLength(
-  entry: WorkflowTimelineEntry,
-  nextStart: number | undefined,
-): number | undefined {
+function closedLength(entry: WaterfallEntry, nextStart: number | undefined): number | undefined {
   if (usable(entry.duration)) return Math.max(0, entry.duration);
   if (entry.status === 'running' && usable(entry.timestamp) && usable(nextStart)) {
     return Math.max(0, nextStart - entry.timestamp);
@@ -82,7 +101,7 @@ function closedLength(
 
 /** The run's origin: its start, or the earliest step when that came first. `undefined` with nothing to measure. */
 export function waterfallOrigin(
-  entries: readonly WorkflowTimelineEntry[],
+  entries: readonly WaterfallEntry[],
   runStartedAt: number | undefined,
 ): number | undefined {
   const starts = entries.map((entry) => entry.timestamp).filter(usable);
@@ -95,7 +114,7 @@ export function waterfallOrigin(
  * page or a filtered list, so a bar means the same thing wherever the step is shown.
  */
 export function stepWaterfall(
-  entries: readonly WorkflowTimelineEntry[],
+  entries: readonly WaterfallEntry[],
   options: {
     readonly runStartedAt?: number | undefined;
     readonly now: number;

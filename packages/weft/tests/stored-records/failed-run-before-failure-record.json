@@ -1,0 +1,33 @@
+{
+  "description": "The stored `wf:` record and the summary of a failed run, written by the engine as it was before COR-2529 (origin/main d30524a6e): no errorCode, no failedStep.",
+  "workflowId": "wf-failed-run",
+  "workflowRecord": "jqJpZK13Zi1mYWlsZWQtcnVupHR5cGWqZmFpbGVkLXJ1bqZzdGF0dXOmZmFpbGVkpWlucHV0wKx2ZXJzaW9uVHVwbGWBr3dvcmtmbG93VmVyc2lvbqExqHJldmlzaW9u2UdzaGEyNTY6ODk3M2NkOGFiMjQxZWNiM2RmNTI5Y2RjNzdhODQ5ODUxN2JkNzE1ZmFjYzYyMzVmZDg5ODlmNDdlMWM2MTIyYrZ3b3JrZmxvd0V4ZWN1dGlvblRva2Vu2SQwMDAwMDAwMC0wMDAwLTQwMDAtODAwMC0wMDAwMDAwMDAwMDG1ZXhlY3V0aW9uU3RhdGVPd25lcklkrXdmLWZhaWxlZC1ydW6pY3JlYXRlZEF0AKlzdGFydGVkQXQAqXVwZGF0ZWRBdAClZXJyb3K8V29ya2Zsb3cgIm9yZGVyLTciIG5vdCBmb3VuZK9mYWlsdXJlQ2F0ZWdvcnmrYXBwbGljYXRpb26qZXJyb3JTdGFja9kzV29ya2Zsb3dOb3RGb3VuZEVycm9yOiBXb3JrZmxvdyAib3JkZXItNyIgbm90IGZvdW5k",
+  "state": {
+    "id": "wf-failed-run",
+    "type": "failed-run",
+    "status": "failed",
+    "input": null,
+    "versionTuple": {
+      "workflowVersion": "1"
+    },
+    "revision": "sha256:8973cd8ab241ecb3df529cdc77a8498517bd715facc6235fd8989f47e1c6122b",
+    "workflowExecutionToken": "00000000-0000-4000-8000-000000000001",
+    "executionStateOwnerId": "wf-failed-run",
+    "createdAt": 0,
+    "startedAt": 0,
+    "updatedAt": 0,
+    "error": "Workflow \"order-7\" not found",
+    "failureCategory": "application",
+    "errorStack": "WorkflowNotFoundError: Workflow \"order-7\" not found"
+  },
+  "summary": {
+    "id": "wf-failed-run",
+    "type": "failed-run",
+    "status": "failed",
+    "version": "1",
+    "revision": "sha256:8973cd8ab241ecb3df529cdc77a8498517bd715facc6235fd8989f47e1c6122b",
+    "createdAt": 0,
+    "updatedAt": 0,
+    "failureCategory": "application"
+  }
+}

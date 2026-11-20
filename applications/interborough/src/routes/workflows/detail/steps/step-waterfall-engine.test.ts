@@ -7,9 +7,9 @@ import { afterEach, describe, expect, it } from 'bun:test';
 
 import { Engine } from '@lostgradient/weft';
 
+import { openStepNumbers, stepWaterfall } from '@lostgradient/interborough-plugin/step-waterfall';
 import { waitUntil } from '@lostgradient/testing/wait-until';
 import { workflows } from '../../../../../fixtures/workflows.ts';
-import { openStepNumbers, stepWaterfall } from './step-waterfall.ts';
 
 let engines: AsyncDisposable[] = [];
 

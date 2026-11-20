@@ -309,6 +309,15 @@ describe('engine state utilities', () => {
     }
   });
 
+  it('getTimelineOperationLabel returns a string for a load reference whose key is not one', () => {
+    const operation = {
+      type: 'load',
+      reference: { workflowId: 'w', key: 123, sizeBytes: 1 },
+    } as unknown as ContextOperationRequest;
+
+    expect(getTimelineOperationLabel(operation)).toBe('123');
+  });
+
   it('getTimelineBasicInputSummary returns a summary for every ContextOperationRequest kind', () => {
     // All these should return a non-empty string (not throw).
     const operations: ContextOperationRequest[] = [

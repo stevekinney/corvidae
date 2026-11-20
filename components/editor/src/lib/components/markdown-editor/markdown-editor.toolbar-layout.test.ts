@@ -205,7 +205,7 @@ describe('MarkdownEditor toolbar layout CSS ownership', () => {
     );
 
     const requiredSelectors = [
-      '.cinder-markdown-content :where(p, ul, ol, blockquote, pre, table)',
+      '.cinder-markdown-content :where(p, ul, ol, blockquote, pre:not(.cinder-code-block pre), table)',
       '.cinder-markdown-content :where(h1, h2, h3, h4, h5, h6)',
       '.cinder-markdown-content :where(ul, ol)',
       ".cinder-markdown-content :where( ul[data-type='taskList'], ul.contains-task-list, ol.contains-task-list, ul:has(> li[data-item-type='task']), ol:has(> li[data-item-type='task']) )",
@@ -215,7 +215,7 @@ describe('MarkdownEditor toolbar layout CSS ownership', () => {
       ".cinder-markdown-content :where(li[data-item-type='task'])::before",
       ".cinder-markdown-content :where(li[data-item-type='task'][data-checked='true'])::before",
       '.cinder-markdown-content :where(blockquote)',
-      '.cinder-markdown-content :where(pre)',
+      '.cinder-markdown-content :where(pre:not(.cinder-code-block pre))',
       '.cinder-markdown-content :where(pre > code)',
       '.cinder-markdown-content :where(:not(pre) > code)',
       '.cinder-markdown-content :where(table)',

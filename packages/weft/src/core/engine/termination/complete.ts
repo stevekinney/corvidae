@@ -2,6 +2,7 @@
 import type { BatchOperation } from '@lostgradient/storage';
 import { KEYS } from '../../../storage/keys.ts';
 import { decode, encode } from '../../codec.ts';
+import { errorCodeOf } from '../../error-code-of.ts';
 import {
   ActivityCompletedEvent,
   WorkflowCancelledEvent,
@@ -31,6 +32,7 @@ import { takeCancelHandlers, type CancelHandler } from '../cancel-handlers.ts';
 import { pendingAtomicWorkflowCommitSideEffectsStagePut } from '../checkpoint-side-effects.ts';
 import type { WorkflowResultWaiter } from '../engine-internal-types.ts';
 import { staleFailureGuard, type FailureOrigin } from '../execution-attempts.ts';
+import { failedStepOf } from '../failure-record.ts';
 import {
   fileWorkflowTerminalOperations,
   prepareFileWorkflowTerminalHistory as prepareTerminalHistory,
@@ -624,6 +626,12 @@ export async function failWorkflow(
   if (error.stack !== undefined) {
     stateUpdate.errorStack = error.stack;
   }
+  // The code and the step ride the failure write itself (COR-2529). The step is the pending
+  // timeline entry this write finalizes as `failed` below, so the two always agree.
+  const errorCode = errorCodeOf(error);
+  if (errorCode !== undefined) stateUpdate.errorCode = errorCode;
+  const failedStep = failedStepOf(internals.pendingTimelineEntries.get(workflowId)?.entry);
+  if (failedStep !== undefined) stateUpdate.failedStep = failedStep;
   if (terminalCleanupToken !== undefined) {
     stateUpdate.terminalCleanupToken = terminalCleanupToken;
   }
