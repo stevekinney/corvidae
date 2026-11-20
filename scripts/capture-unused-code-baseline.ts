@@ -5,7 +5,9 @@ import { resolve } from 'node:path';
 
 const [input, output] = process.argv.slice(2);
 if (input === undefined || output === undefined)
-  throw new Error('Usage: bun scripts/capture-unused-code-baseline.ts <knip-report.json> <baseline.json>');
+  throw new Error(
+    'Usage: bun scripts/capture-unused-code-baseline.ts <knip-report.json> <baseline.txt>',
+  );
 
 const report = await Bun.file(resolve(input)).json();
 if (typeof report !== 'object' || report === null || !Array.isArray(report.issues))

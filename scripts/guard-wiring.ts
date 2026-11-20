@@ -13,7 +13,9 @@ export function missingRequiredGuards(scripts: Readonly<Record<string, string>>)
 }
 
 function main(): void {
-  const manifest = JSON.parse(readFileSync(join(import.meta.dir, '..', 'package.json'), 'utf8')) as {
+  const manifest = JSON.parse(
+    readFileSync(join(import.meta.dir, '..', 'package.json'), 'utf8'),
+  ) as {
     scripts: Record<string, string>;
   };
   const missing = missingRequiredGuards(manifest.scripts);

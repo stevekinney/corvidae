@@ -17,46 +17,80 @@ export function findingsFromReport(value: unknown): Finding[] {
   if (!Array.isArray(report.issues)) throw new Error('Knip report must contain an issues array.');
   return report.issues.flatMap((entry, index) => {
     const issue = object(entry, `Knip issue ${index}`);
-    if (typeof issue.file !== 'string') throw new Error(`Knip issue ${index} must name a file.`);
+    if (typeof issue.file !== 'string' || issue.file === '')
+      throw new Error(`Knip issue ${index} must name a file.`);
     return Object.entries(issue).flatMap(([category, findings]) => {
-      if (category === 'file' || !Array.isArray(findings)) return [];
+      if (category === 'file') return [];
+      if (!Array.isArray(findings))
+        throw new Error(`Malformed ${category} findings in ${issue.file}.`);
       return findings.map((finding) => {
-        if (Array.isArray(finding))
-          return { category, file: issue.file, name: JSON.stringify(finding) };
-        const item = object(finding, `${category} finding in ${issue.file}`);
-        if (typeof item.name !== 'string')
-          throw new Error(`${category} finding in ${issue.file} must name a symbol.`);
-        return { category, file: issue.file, name: item.name };
+        const nameOf = (value: unknown) => {
+          const item = object(value, `${category} finding in ${issue.file}`);
+          if (typeof item.name !== 'string' || item.name === '')
+            throw new Error(`${category} finding in ${issue.file} must name a symbol.`);
+          return item.name;
+        };
+        const name = Array.isArray(finding)
+          ? JSON.stringify(finding.map(nameOf).toSorted())
+          : nameOf(finding);
+        return { category, file: issue.file, name };
       });
     });
   });
 }
 
-export function unexpectedFindings(report: readonly Finding[], baseline: readonly Finding[]): Finding[] {
+export function unexpectedFindings(
+  report: readonly Finding[],
+  baseline: readonly Finding[],
+): Finding[] {
   const accepted = new Set(baseline.map((finding) => JSON.stringify(finding)));
   return report.filter((finding) => !accepted.has(JSON.stringify(finding)));
 }
 
 function baselineFindings(text: string): Finding[] {
-  return text.trimEnd().split('\n').map((line, index) => {
-    let value: unknown;
-    try { value = JSON.parse(line); } catch { throw new Error(`Baseline row ${index + 1} is invalid JSON.`); }
-    if (!Array.isArray(value) || value.length !== 3 || !value.every((part) => typeof part === 'string'))
-      throw new Error(`Baseline row ${index + 1} must be [category, file, name].`);
-    return { category: value[0], file: value[1], name: value[2] };
-  });
+  if (text.trim() === '') return [];
+  return text
+    .trimEnd()
+    .split('\n')
+    .map((line, index) => {
+      let value: unknown;
+      try {
+        value = JSON.parse(line);
+      } catch {
+        throw new Error(`Baseline row ${index + 1} is invalid JSON.`);
+      }
+      if (
+        !Array.isArray(value) ||
+        value.length !== 3 ||
+        !value.every((part) => typeof part === 'string')
+      )
+        throw new Error(`Baseline row ${index + 1} must be [category, file, name].`);
+      return { category: value[0], file: value[1], name: value[2] };
+    });
 }
 
-function main(): void {
+async function main(): Promise<void> {
   const [reportPath, baselinePath] = process.argv.slice(2);
   if (reportPath === undefined || baselinePath === undefined)
-    throw new Error('Usage: bun scripts/check-unused-code.ts <knip-report.json> <baseline.json>');
+    throw new Error('Usage: bun scripts/check-unused-code.ts <knip-report.json> <baseline.txt>');
   const report = findingsFromReport(JSON.parse(readFileSync(resolve(reportPath), 'utf8')));
   const baseline = baselineFindings(readFileSync(resolve(baselinePath), 'utf8'));
   const unexpected = unexpectedFindings(report, baseline);
+  const additions = new Set(unexpected.map((finding) => JSON.stringify(finding)));
+  const retained = report.filter((finding) => !additions.has(JSON.stringify(finding)));
+  const inventoryPath = `${reportPath}.retained.jsonl`;
+  await Bun.write(
+    inventoryPath,
+    retained.map((finding) => JSON.stringify(finding)).join('\n') + '\n',
+  );
+  process.stdout.write(
+    `check-unused-code — ${retained.length} retained findings in ${inventoryPath}.\n`,
+  );
   for (const finding of unexpected)
-    process.stderr.write(`check-unused-code — ${finding.category} ${finding.file}: ${finding.name}\n`);
+    process.stderr.write(
+      `check-unused-code — ${finding.category} ${finding.file}: ${finding.name}\n`,
+    );
   if (unexpected.length > 0) process.exitCode = 1;
 }
 
-if (import.meta.main) main();
+if (import.meta.main) await main();
