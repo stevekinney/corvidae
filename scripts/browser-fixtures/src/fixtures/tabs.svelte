@@ -9,7 +9,7 @@
   ];
 </script>
 
-<div class="tabs-focus-fixture">
+<div class="tabs-focus-fixture gap-8">
   <Tabs value="design" activateOnFocus>
     <Tabs.List label="Workflow stages">
       {#each tabItems as item}
@@ -38,7 +38,6 @@
 <style>
   .tabs-focus-fixture {
     display: grid;
-    gap: 2rem;
     max-inline-size: 36rem;
   }
 </style>

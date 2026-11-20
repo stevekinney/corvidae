@@ -2,8 +2,8 @@ import type { WorkflowTimelineEntry } from '@lostgradient/weft';
 import { fireEvent, render } from '@testing-library/svelte';
 import { describe, expect, test } from 'bun:test';
 
+import type { WaterfallBar } from '@lostgradient/interborough-plugin/step-waterfall';
 import StepRow from './step-row.svelte';
-import type { WaterfallBar } from './step-waterfall.ts';
 
 type EntryOverrides = { [K in keyof WorkflowTimelineEntry]?: WorkflowTimelineEntry[K] | undefined };
 

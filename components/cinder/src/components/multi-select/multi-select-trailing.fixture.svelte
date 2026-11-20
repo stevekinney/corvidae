@@ -102,15 +102,15 @@
   .multi-select-trailing {
     display: flex;
     flex-direction: column;
-    gap: 1.5rem;
-    padding: 1rem;
+    gap: var(--cinder-space-6);
+    padding: var(--cinder-space-4);
   }
 
   .multi-select-trailing__size,
   .multi-select-trailing__states {
     display: grid;
     grid-template-columns: repeat(3, 16rem);
-    gap: 1rem;
+    gap: var(--cinder-space-4);
   }
 
   .multi-select-trailing__narrow {

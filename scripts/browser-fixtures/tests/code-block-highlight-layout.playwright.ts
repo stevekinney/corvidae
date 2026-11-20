@@ -55,21 +55,39 @@ async function readLayoutMetrics(page: Page): Promise<LayoutMetrics> {
   }, EXAMPLE);
 }
 
-test('CodeBlock highlighting does not move surrounding layout', async ({ page }) => {
+// Rendered Markdown styles a bare `pre` from the utilities layer, which is later than CodeBlock's
+// components layer, so a CodeBlock inside `.cinder-markdown-content` is measured as well.
+for (const insideMarkdown of [false, true]) {
+  const where = insideMarkdown ? ' inside rendered Markdown' : '';
+  test(`CodeBlock highlighting does not move surrounding layout${where}`, async ({ page }) => {
+    await assertHighlightKeepsLayout(page, insideMarkdown);
+  });
+}
+
+async function assertHighlightKeepsLayout(page: Page, insideMarkdown: boolean): Promise<void> {
   await page.goto(CODE_BLOCK_ROUTE, { waitUntil: 'domcontentloaded' });
   const block = page.locator(`${EXAMPLE} .cinder-code-block`).first();
   await expect(block.locator('.cinder-code-block__pre')).toBeVisible();
   await page.waitForFunction(() => Boolean(window.cinderCodeBlockLayoutHighlighterReady));
 
-  await block.evaluate((element) => {
+  await block.evaluate((element, wrap) => {
+    if (wrap) {
+      const content = document.createElement('div');
+      content.className = 'cinder-markdown-content';
+      element.before(content);
+      content.append(element);
+    }
     element.style.inlineSize = '240px';
     const sentinel = document.createElement('div');
     sentinel.dataset['testid'] = 'code-block-sentinel';
     sentinel.style.marginBlockStart = '16px';
     sentinel.style.blockSize = '24px';
     sentinel.style.background = 'var(--cinder-accent-solid)';
-    element.after(sentinel);
-  });
+    (element.parentElement?.classList.contains('cinder-markdown-content')
+      ? element.parentElement
+      : element
+    ).after(sentinel);
+  }, insideMarkdown);
   await block.locator('.cinder-code-block__viewport').evaluate((viewport) => {
     viewport.setAttribute('data-stable-viewport', 'before-highlight');
   });
@@ -101,4 +119,4 @@ test('CodeBlock highlighting does not move surrounding layout', async ({ page })
   expect(after.prePaddingBlockEnd).toBe(before.prePaddingBlockEnd);
   expect(Math.abs(after.blockHeight - before.blockHeight)).toBeLessThanOrEqual(0.5);
   expect(Math.abs(after.sentinelY - before.sentinelY)).toBeLessThanOrEqual(0.5);
-});
+}

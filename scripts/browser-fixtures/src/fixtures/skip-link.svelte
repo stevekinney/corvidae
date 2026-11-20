@@ -2,18 +2,24 @@
   import { SkipLink } from '@lostgradient/cinder';
 </script>
 
-<div
-  style="position: relative; min-height: 80px; border: 1px dashed var(--cinder-border); border-radius: 4px; padding: 1rem;"
->
+<div class="example-content rounded-small padding-block-4 padding-inline-4">
   <SkipLink target="main" />
 
   <nav aria-label="Example navigation">
-    <a href="#main" style="margin-right: 1rem;">Home</a>
-    <a href="#main" style="margin-right: 1rem;">About</a>
+    <span class="margin-inline-end-4"><a href="#main">Home</a></span>
+    <span class="margin-inline-end-4"><a href="#main">About</a></span>
     <a href="#main">Contact</a>
   </nav>
 
-  <main id="main" style="margin-top: 1rem;">
+  <main id="main" class="margin-block-start-4">
     <p>Main content area. Focus lands here when the skip link is activated.</p>
   </main>
 </div>
+
+<style>
+  .example-content {
+    position: relative;
+    min-height: var(--cinder-space-20);
+    border: 1px dashed var(--cinder-border);
+  }
+</style>

@@ -21,13 +21,13 @@ Load a reference when its step comes up: [capture](references/capture.md), [the 
 ## Gotchas
 
 - Screenshots come from the end-to-end harness, not from driving a browser by hand. `bun scripts/design-review-capture.ts` (in `applications/interborough`) reuses `showcase.spec.ts`, `responsive.spec.ts` and `15-view-states.spec.ts`, which seed every route and force every view state, and writes `manifest.jsonl` beside the images. Use Chrome only for a quick look at one page on the dev server (`bun run dev -- --showcase` fills it with the same believable content), never for a sweep.
-- A reviewer cannot read alignment, padding or border weight off a screenshot, so every capture also measures each page and writes `geometry-report.md` beside the manifest: near-miss left edges, gaps off the spacing scale, button padding ratios, oversized and undersized targets, type sizes and line heights, border weights, rows with an empty leading side, drawn size against hit area on a touch screen, hit areas that take layout space, hit areas a tap does not reach, icon rows spaced too far apart, covered controls, uneven insets, and fixed chrome crowding a phone, each held to a threshold in the [rubric](references/rubric.md)'s "Craft" section. Give the reviewer the report with every dispatch, and the captures in `review-order.jsonl`'s order: 1280 and 1920 first, then 768 and 375, each in light and dark (owner, 2026-11-19), then the 320 by 640 captures; every phone capture is taken with a touch pointer and repeated at that size. Its lines are measured facts for the reviewer to confirm on a screenshot, not findings, and `bun scripts/design-review-geometry.ts --capture <capture directory>` writes it again after a threshold changes.
+- A reviewer cannot read alignment, padding or border weight off a screenshot, so every capture also measures each page and writes `geometry-report.md` beside the manifest: near-miss left edges, gaps off the spacing scale, button padding ratios, oversized and undersized targets, type sizes and line heights, border weights, rows with an empty leading side, drawn size against hit area on a touch screen, hit areas that take layout space, hit areas a tap does not reach, icon rows spaced too far apart, covered controls, uneven insets, and fixed chrome crowding a phone, each held to a threshold in the [rubric](references/rubric.md)'s "Craft" section. Give the reviewer the report with every dispatch, and the captures in `review-order.jsonl`'s order: 1920 and 1280 first, then 768 and 375, each in light and dark (owner, 2026-11-19), then the 320 by 640 captures; every 1280 capture is repeated at 1920 by 1080, and every phone capture is taken with a touch pointer and repeated at 320 by 640. Its lines are measured facts for the reviewer to confirm on a screenshot, not findings, and `bun scripts/design-review-geometry.ts --capture <capture directory>` writes it again after a threshold changes.
 - There are two data sets, chosen with `--data`. Showcase (`showcase.spec.ts`, `fixtures/sample-world-seed.ts`) is the boards' sample world: judge layout, hierarchy and density from it. Stress (`responsive.spec.ts`) is deliberately pathological: 300-character unbroken words, a 2,000-character storage key, review titles like "Refund wwww…". Judge overflow and truncation from it, and nothing else. Tell the reviewer which set each image came from (the manifest's `source` says).
 - The capture holds the host lock in no way and runs the whole Playwright suite's server. Run at most one capture at a time on the host, in the background, and count it against the AGENTS.md "Parallel runs" limit. An implementation review narrows with `--grep` and `--scheme`; only a sweep runs everything.
 - Another session's end-to-end server may already hold port 7399, and Playwright would capture it instead of this tree. The capture refuses to start when the port is taken; set `INTERBOROUGH_E2E_PORT` to a free port rather than stopping someone else's server.
 - Rows are the unit of agreement. When design rows are given (a rows file from the issue, the chef brief, or the design ledger), the result is one verdict per row in `row-verdicts.txt`, checked by `bun scripts/design-review-rows.ts` before anyone reads it ([findings](references/findings.md) "Row verdicts"). A review that skips a row has failed; `unverified` is never a pass.
 - A row says what should be true, never only what was wrong. Rows written from an audit or from the owner's complaints state the wanted result with a tolerance and keep the old defect in a trailing `Was:` clause ([findings](references/findings.md) "Row verdicts"); reviewers handed bare defects read them as the specification and ask for the defect back.
-- "The capture passed" is not a verdict. Before relaying `approve`, open the 1280 and 1920 pixel captures of each changed screen yourself, then the 768, 375 and 320 by 640 ones, in both themes, and read the reviewer's `COMPLAINTS` lines against them; send an approval with an unanswered complaint back to the same reviewer.
+- "The capture passed" is not a verdict. Before relaying `approve`, open the 1920 and 1280 pixel captures of each changed screen yourself, then the 768, 375 and 320 by 640 ones, in both themes, and read the reviewer's `COMPLAINTS` lines against them; send an approval with an unanswered complaint back to the same reviewer.
 - Before capturing a branch that was just rebased or merged, run the nearest tests of every file that conflicted. Two tests asserting opposite contracts in one file means the merge kept both sides; `main`'s merged contract wins unless the issue says otherwise. A review branch that lives for more than one round merges `main` before each round, so a parallel change to the same component is met while a round is left to judge the result. Run prettier and lint on every file the merge touched, including the ones Git merged without a conflict: one such file came out with the same import twice.
 - A component's behaviour is tested by the Chromium fixture specs (`scripts/browser-fixtures/tests`), which no worker gate runs. Before dispatching the reviewer for a Cinder, Chat or Editor component change, run `bun scripts/chef/focused-checks.ts --dry-run` in the change's worktree and run the command its fixture warning prints: the specs that name the changed component, or the whole suite for a change to Cinder's styles, tokens or shared code. On one fix run thirteen of these specs failed after every worker gate and the capture had passed, three of them real defects.
 - A change that answers the owner's own complaints or marked-up screenshots is shown to him before it merges, never after: a page that sets each of his screenshots, or the before capture, beside the after capture of the same screen at the same width. On one fix run his comments on that page reversed 17 calls three reviewer rounds had accepted, after the merge.
@@ -38,11 +38,44 @@ Load a reference when its step comes up: [capture](references/capture.md), [the 
 - The user's visual report outranks any capture. If the owner says something looks wrong, find it; never answer with a screenshot from a different environment.
 - Findings are not tickets. A sweep writes `report.md` in the capture directory; filing it in Linear is the owner's call, and each Interborough issue that depends on a Cinder change is blocked by the Cinder issue.
 
+## Before dispatching the reviewer
+
+The review starts from the capture's artifact, never from a path the reviewer cannot read. The reviewer is read-only on a worktree that holds no captures, so a dispatch that names a run and not a directory cannot start (2026-11-19: one was dispatched that way).
+
+- A capture on GitHub Actions uploads one merged artifact, `design-review-capture-<run id>` (the shards upload their own for a day and the last job merges them). Download it first, once the run is finished, and check that the merge job passed (a red merge names the missing shard, the shared file or the screen one theme lacks):
+
+  ```sh
+  gh run download <run id> -n design-review-capture-<run id> -D tmp/design-review/<run id>
+  ```
+
+- Pass the directory in the dispatch: its path, `manifest.jsonl`, `summary.json` and `geometry-report.md`. Every name in the manifest's `viewport` is relative to it, and says the specification and the world (`<spec>--<world>--<route>--<tab>--<state>--<width>--<scheme>.png`: sample world, stress, first run), so two captures of one route are never mistaken for each other.
+- Tell the reviewer the order: open 1920 and 1280 first, in both themes, then 768, then 375 and 320 by 640, and name any screen with no 1920 capture as a gap.
+- Give it the owner's standing rules below as its checklist, and the data caveat.
+
+## The owner's standing rules
+
+The review checklist. Each is something the owner has corrected more than once, so a screen is read against every line, wide first, and a finding names the rule it breaks:
+
+- No middle dot (U+00B7) between pieces of copy.
+- Sidebar headings are headings: the sidebar's groups read as groups.
+- Badges say something a word beside them does not already say, and are one shape.
+- Actions sit at the inline end on a wide layout, never left or stranded under the content.
+- No box inside a box: no well, bordered field or card inside a card; flat rows and editable titles.
+- One empty state per list, never two, and no controls (filters, sorts, a search) over an empty list.
+- No paths, ids or slugs where a name will do.
+- A readable measure: a line of text never runs past about ninety characters, at 1920 above all.
+- Shared edges and centre lines: things that sit together share a left edge and a centre line.
+- No clipping: no text, focus ring or shadow cut off, and nothing scrolls sideways.
+- No card that says nothing: a frame around one value, or a tile that repeats its heading, goes.
+- No bright shadows in dark: a shadow in dark is deeper than the surface, never a light halo.
+- Light mode is not faded: contrast and colour hold in light as in dark.
+- Bright, not drab: palettes are saturated and friendly, never grey on grey.
+
 ## Sweep
 
 Run a sweep when the owner asks for a design audit, before a design milestone, or after a large Cinder change.
 
-Start the capture in the background: `bun scripts/design-review-capture.ts` from `applications/interborough`, or, when the host is loaded, `gh workflow run design-review-capture.yml --ref <branch>` and `gh run download <run id>` ([capture](references/capture.md) "On GitHub Actions"). Meanwhile, gather the agreed design reference if one exists ([design references](references/design-references.md)).
+Start the capture in the background: `bun scripts/design-review-capture.ts` from `applications/interborough`, or, when the host is loaded, `gh workflow run design-review-capture.yml --ref <branch>`, then download the merged artifact as "Before dispatching the reviewer" says ([capture](references/capture.md) "On GitHub Actions"). Meanwhile, gather the agreed design reference if one exists ([design references](references/design-references.md)).
 
 Group the manifest by area: chat; agents and memory; capabilities; workflows and runs; schedules; reviews, hooks and goals; health, workers, storage and audit; settings; shell and not-found. Dispatch `design-reviewer` in sweep mode per area, at most two at a time, each with its manifest lines, the run's `summary.json` and `geometry-report.md`, the reference images for that area, and the data caveat.
 

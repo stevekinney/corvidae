@@ -15,7 +15,7 @@
   .chip-suggested-fixture {
     display: flex;
     flex-wrap: wrap;
-    gap: 0.75rem;
+    gap: var(--cinder-space-3);
     align-items: center;
   }
 </style>

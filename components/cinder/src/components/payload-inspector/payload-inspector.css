@@ -18,7 +18,7 @@
     display: flex;
     flex-direction: column;
     min-inline-size: 0;
-    border: 1px solid var(--cinder-border);
+    border: var(--cinder-border-width) solid var(--cinder-border);
     border-radius: var(--cinder-radius-lg);
     background: var(--cinder-surface);
     color: var(--cinder-text-default);
@@ -54,7 +54,7 @@
     gap: var(--cinder-space-3);
     flex-wrap: wrap;
     padding: var(--cinder-space-2) var(--cinder-space-3);
-    border-block-end: 1px solid var(--cinder-border-muted);
+    border-block-end: var(--cinder-border-width) solid var(--cinder-border-muted);
   }
 
   /* The label, with the count as a muted line under it at the start; the switch and the copy
@@ -166,7 +166,7 @@
     .cinder-payload-inspector__fields[data-cinder-layout='rows']
     > .cinder-payload-inspector__field {
     padding-block: var(--cinder-space-2);
-    border-block-end: 1px solid var(--cinder-border-muted);
+    border-block-end: var(--cinder-border-width) solid var(--cinder-border-muted);
   }
 
   /* A code field and the JSON tree take the card's whole width, under the divider. */

@@ -28,7 +28,7 @@
   }
 </script>
 
-<div id="fixture-a2ui-a2a-part" style="max-inline-size: 32rem;">
+<div id="fixture-a2ui-a2a-part" class="fixture-a2ui-a2a-part-layout">
   <A2uiSurface
     surfaceId={part.metadata.surfaceId}
     surfaceRevision={part.metadata.a2uiSurfaceRevision}
@@ -38,3 +38,9 @@
   />
   <output data-testid="a2ui-sent">{sent}</output>
 </div>
+
+<style>
+  .fixture-a2ui-a2a-part-layout {
+    max-inline-size: 32rem;
+  }
+</style>

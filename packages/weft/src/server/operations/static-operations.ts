@@ -13,6 +13,7 @@ import { bulkSignalWorkflowsOperation } from './bulk-signal-workflows.ts';
 import { cancelScheduleOperation } from './cancel-schedule.ts';
 import { cancelWorkflowOperation } from './cancel-workflow.ts';
 import { clearTaskDeadLetterOperation } from './clear-task-dead-letter.ts';
+import { compareWorkflowOperation } from './compare-workflow.ts';
 import { createScheduleOperation } from './create-schedule.ts';
 import { fleetEventsSseOperation } from './fleet-events-sse.ts';
 import { fleetEventsSubscriptionOperation } from './fleet-events-subscription.ts';
@@ -155,6 +156,7 @@ export const STATIC_OPERATIONS: ReadonlyArray<RegistrableOperation> = [
   listCheckpointsOperation,
   getCheckpointAtOperation,
   getWorkflowTimelineOperation,
+  compareWorkflowOperation,
   addWorkflowTagsOperation,
   removeWorkflowTagsOperation,
   submitReviewDecisionOperation,

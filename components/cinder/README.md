@@ -22,6 +22,10 @@ Import components, utilities, types, and metadata from this one entry point. Com
 
 [Editor](../editor/README.md) and [Markdown](../../packages/markdown/README.md) own their respective product APIs in separate workspaces. Syntax highlighting dependencies used by Cinder's `CodeBlock` are declared directly by Cinder.
 
+## Token utilities
+
+Import `@lostgradient/cinder/utilities.css` alongside Cinder's base styles to opt into unprefixed classes such as `gap-3`, `padding-inline-3`, `margin-block-start-4`, `text-muted`, `background-surface-raised`, and `rounded-medium`. The stylesheet is generated with Cinder's metadata and uses the same CSS variables as its components. A theme override applies anywhere the variable is in scope.
+
 ## Maintainer tool
 
 The component tooling owns `internal/component-tooling/scripts/export-names.ts`, a manual export-inventory CLI for reviewing a TypeScript barrel's runtime and type names. From this workspace, run `bun ../../internal/component-tooling/scripts/export-names.ts src/index.ts`; it prints sorted `runtime` and `types` lists for a review diff.

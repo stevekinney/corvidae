@@ -73,13 +73,15 @@ describe('handleRequest edge coverage', () => {
   it('accepts purge body filters with array statuses, numeric bounds, and attribute arrays', async () => {
     engine = createEngine();
     let capturedFilter: unknown;
-    engine.purge = async (filter) => {
+    // `purge` is overloaded (dry run or commit); the stub answers the commit shape.
+    engine.purge = (async (filter?: unknown) => {
       capturedFilter = filter;
       return { deleted: 0 };
-    };
+    }) as typeof engine.purge;
 
     const response = await handleRequest(
       request('POST', '/v1/workflows/purge', {
+        confirmationToken: 'token-from-a-preview',
         filter: {
           status: ['running', 'failed'],
           type: 'echo',

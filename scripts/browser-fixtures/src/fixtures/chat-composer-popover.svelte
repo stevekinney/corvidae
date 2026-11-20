@@ -58,7 +58,7 @@
 
 <ChatComposerPopover id="slash-command" bind:value items={commands} onSelect={handleSelect}>
   {#snippet composer(composerProps)}
-    <div style="height: 28rem;">
+    <div class="composer-div">
       <Chat
         bind:this={chat}
         id="chat"
@@ -79,3 +79,9 @@
 </ChatComposerPopover>
 
 <p>Selected: {selectedCommand}</p>
+
+<style>
+  .composer-div {
+    height: 28rem;
+  }
+</style>

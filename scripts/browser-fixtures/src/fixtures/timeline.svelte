@@ -53,10 +53,16 @@
 </Timeline>
 
 <button id="before-horizontal-timeline" type="button">Before horizontal timeline</button>
-<div id="example-mount-horizontal" style:inline-size="20rem">
+<div id="example-mount-horizontal" class="horizontal-layout">
   <Timeline {entries} orientation="horizontal" label="Horizontal incident timeline">
     {#snippet children(entry)}
       {details[entry.id]}
     {/snippet}
   </Timeline>
 </div>
+
+<style>
+  .horizontal-layout {
+    inline-size: 20rem;
+  }
+</style>

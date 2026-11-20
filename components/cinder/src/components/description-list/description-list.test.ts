@@ -114,7 +114,7 @@ describe('DescriptionList', () => {
     expect(row?.lastElementChild?.tagName).toBe('DD');
     const css = readFileSync(new URL('./description-list.css', import.meta.url), 'utf8');
     expect(css).toMatch(
-      /\[data-cinder-variant='fields'\] \.cinder-description-list__row\s*\{[^}]*border-block-end: 1px solid/s,
+      /\[data-cinder-variant='fields'\] \.cinder-description-list__row\s*\{[^}]*border-block-end: var\(--cinder-border-width\) solid/s,
     );
     expect(css).toMatch(
       /\[data-cinder-variant='fields'\] dt\s*\{[^}]*font-weight: var\(--cinder-font-normal\)/s,
@@ -246,7 +246,7 @@ describe('DescriptionList', () => {
   test('default variant row dividers are scoped away from striped rows', async () => {
     const css = await Bun.file(`${import.meta.dir}/description-list.css`).text();
     expect(css).toMatch(
-      /\.cinder-description-list\[data-cinder-variant='default'\][\s\S]*?\.cinder-description-list__row:not\(:first-child\)[\s\S]*?border-block-start:\s*1px solid var\(--cinder-border-muted\)/,
+      /\.cinder-description-list\[data-cinder-variant='default'\][\s\S]*?\.cinder-description-list__row:not\(:first-child\)[\s\S]*?border-block-start:\s*var\(--cinder-border-width\) solid var\(--cinder-border-muted\)/,
     );
     expect(css).not.toMatch(
       /\.cinder-description-list\[data-cinder-variant='striped'\][\s\S]*?border-block-start/,

@@ -26,6 +26,7 @@
     FormField,
     Image,
     Input,
+    Markdown,
     Modal,
     MultiSelect,
     NumberInput,
@@ -46,7 +47,6 @@
 
   import { untrack } from 'svelte';
 
-  import MarkdownPreview from '../components/chat/message/markdown-preview.svelte';
   import A2uiAsset from './a2ui-asset.svelte';
   // A node renders its children as nodes: the recursion is the component tree itself.
   // oxlint-disable-next-line import/no-cycle, import/no-self-import
@@ -452,7 +452,13 @@
         <span class="a2ui-inline-text">{plainText(content)}</span>
       {:else if variant === 'body' || variant === 'caption'}
         <Text {variant} as="div" class="a2ui-text"
-          ><MarkdownPreview {content} images={false} links={false} /></Text
+          ><Markdown
+            {content}
+            images={false}
+            links={false}
+            math
+            class="message-content-preview"
+          /></Text
         >
       {:else}
         <Text {variant} class="a2ui-text">{plainText(content)}</Text>

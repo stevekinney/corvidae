@@ -1,9 +1,9 @@
 /// <reference lib="dom" />
 
 /**
- * Chat markdown-preview SSR-safety contract.
+ * Markdown SSR-safety contract.
  *
- * The chat surface renders message bodies through `markdown-preview.svelte`,
+ * The Markdown component renders its content through `markdown.svelte`,
  * which is where `@lostgradient/markdown`'s rendering pipeline (shiki/rehype/katex)
  * enters the component tree. That pipeline is SSR-safe at module-evaluation
  * time (see `packages/markdown/src/ssr-import.integration.test.ts`), so the only remaining
@@ -11,7 +11,7 @@
  * `renderMarkdownWithMath` and touches the DOM via `{@html}` — must not run on
  * the server.
  *
- * markdown-preview.svelte satisfies this by:
+ * markdown.svelte satisfies this by:
  *   - requesting the cached rendering-pipeline import inside a `$effect`, never
  *     at module evaluation — `$effect` bodies never run during SSR, so the import
  *     is never evaluated on the server, and the heavy rendering graph stays out
@@ -24,7 +24,7 @@
  * branch pulls in ProseMirror runtime and so cannot be exercised by
  * `renderThenHydrate` (the recompiled SSR module resolves that import
  * against a missing "node"-conditional dist, producing `effect_orphan`) —
- * markdown-preview has no child components and no static markdown/editor import.
+ * markdown.svelte has no static markdown/editor import.
  * Its only heavy dependency is reached through the cached loader inside an
  * `$effect`, which never runs during SSR. We therefore verify the SSR contract by
  * actually rendering on the server via `renderThenHydrate` and asserting on the
@@ -41,10 +41,10 @@ import {
 } from '@lostgradient/testing';
 import { tick } from 'svelte';
 
-const markdownPreviewModule = await import('./markdown-preview.svelte');
-const { default: MarkdownPreview, segmentRenderedMarkdown } = markdownPreviewModule;
+const markdownModule = await import('./markdown.svelte');
+const { default: Markdown, segmentRenderedMarkdown } = markdownModule;
 
-const sourcePath = new URL('./markdown-preview.svelte', import.meta.url).pathname;
+const sourcePath = new URL('./markdown.svelte', import.meta.url).pathname;
 
 await prepareSvelteServerSource(sourcePath);
 
@@ -60,12 +60,12 @@ const serverHtml = new Map(
 );
 
 async function hydrateMessage(content: (typeof contents)[number]) {
-  const result = hydrateServerHtml(MarkdownPreview, serverHtml.get(content) ?? '', { content });
+  const result = hydrateServerHtml(Markdown, serverHtml.get(content) ?? '', { content });
   await tick();
   return result;
 }
 
-describe('Chat markdown-preview SSR contract', () => {
+describe('Markdown SSR contract', () => {
   test('preserves ancestors while extracting nested override placeholders', () => {
     const segments = segmentRenderedMarkdown(
       '<blockquote><p>Before</p><cinder-markdown-node data-cinder-markdown-kind="table" data-cinder-markdown-index="4"><table><tbody><tr><td>Cell</td></tr></tbody></table></cinder-markdown-node></blockquote>',
@@ -107,9 +107,9 @@ describe('Chat markdown-preview SSR contract', () => {
 
     try {
       expect(result.ssrHtml).toContain(
-        '<div class="cinder-markdown-content message-content-preview" data-state="pending">',
+        '<div class="cinder-markdown cinder-markdown-content" data-state="pending">',
       );
-      expect(result.ssrHtml).toContain('<p>hello world</p>');
+      expect(result.ssrHtml).toContain('<p class="cinder-markdown-pending">hello world</p>');
     } finally {
       await result.cleanup();
     }
@@ -123,7 +123,7 @@ describe('Chat markdown-preview SSR contract', () => {
     const result = await hydrateMessage('**bold**');
 
     try {
-      expect(result.ssrHtml).toContain('<p>**bold**</p>');
+      expect(result.ssrHtml).toContain('<p class="cinder-markdown-pending">**bold**</p>');
       expect(result.ssrHtml).not.toContain('<strong>');
     } finally {
       await result.cleanup();
@@ -145,14 +145,16 @@ describe('Chat markdown-preview SSR contract', () => {
     }
   });
 
-  test('hydrates the server markup without warnings', async () => {
-    // A clean hydrate (no mismatch warnings) confirms the SSR output and the
-    // client's first render agree: both produce the raw-text fallback, and the
-    // dynamic-import effect only swaps in formatted HTML on a later frame.
-    const result = await hydrateMessage('hello world');
+  test('hydrates the server markup without warnings, then shows the formatted result', async () => {
+    // Without `math` the client renders synchronously, so its first render is the formatted
+    // result while the server emitted the raw-text fallback. Svelte repairs the differing branch
+    // without a mismatch warning, and the formatted markup replaces the server's paragraph.
+    const result = await hydrateMessage('**bold**');
 
     try {
       expect(result.warnings).toEqual([]);
+      expect(result.container.querySelector('strong')?.textContent).toBe('bold');
+      expect(result.container.querySelector('.cinder-markdown-pending')).toBeNull();
     } finally {
       await result.cleanup();
     }

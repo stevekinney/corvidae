@@ -15,8 +15,8 @@
   } from '@lostgradient/cinder';
 </script>
 
-<main class="theme-surfaces-fixture">
-  <section aria-label="Theme controls">
+<main class="theme-surfaces-fixture gap-4">
+  <section class="gap-3" aria-label="Theme controls">
     <Button label="Primary action" variant="primary" data-testid="primary-button" />
     <Button label="Secondary action" variant="secondary" data-testid="secondary-button" />
     <Card title="Theme card">Card content</Card>
@@ -47,7 +47,6 @@
 <style>
   .theme-surfaces-fixture {
     display: grid;
-    gap: 1rem;
     max-inline-size: 48rem;
     margin-inline: auto;
   }
@@ -55,7 +54,6 @@
   section {
     display: flex;
     flex-wrap: wrap;
-    gap: 0.75rem;
     align-items: center;
   }
 </style>

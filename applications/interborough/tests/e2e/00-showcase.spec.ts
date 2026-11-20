@@ -21,8 +21,9 @@ import { readSampleWorldRecords } from '../../fixtures/sample-world-records.ts';
 import { designReviewCaptureDirectory } from '../../scripts/environment-configuration.ts';
 import { routes } from '../../src/app/routes.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
-import { E2E_SHOWCASE_URL } from './e2e-constants.ts';
+import { E2E_BASE_URL, E2E_SHOWCASE_URL } from './e2e-constants.ts';
 import { expect, goOffline, test } from './fixtures.ts';
+import { listEngineReviews } from './review-support.ts';
 import {
   SHOWCASE_ROUTES_WITHOUT_CONTENT,
   showcaseAddresses,
@@ -309,5 +310,72 @@ for (const width of [375, 1280] as const) {
 
     await context.setOffline(false);
     await expect(banner, `home at ${width}px back online`).toHaveCount(0);
+  });
+}
+
+/**
+ * The review pane's Markdown artifact, from the default fixture host's `markdown-review` specimen
+ * (`fixtures/reviews.ts`): a heading, a table and a highlighted code block, so `ArtifactView`'s
+ * Markdown branch is on a screen at 375 (and 320) and 1280 pixels. The code block also pins
+ * CodeBlock's `light-dark()` colours: a highlighted token takes its `--shiki-dark` colour in a dark
+ * scheme and its `--shiki-light` colour in a light one.
+ */
+for (const width of [375, 1280] as const) {
+  test(`/reviews shows a Markdown artifact with its table and highlighted code at ${width} pixels`, async ({
+    page,
+    request,
+  }) => {
+    await page.setViewportSize({ width, height: HEIGHT });
+    // The engine's reviews reach the inbox list through the same route `02-approve-review-partial`
+    // uses (`review-support.ts`).
+    await listEngineReviews(page, request);
+    // Opened by its address, which works at every width: on a phone, opening a row replaces the
+    // list, so the review is never found by clicking through the rows in turn.
+    const pending = await request.get(`${E2E_BASE_URL}/v1/reviews`, {
+      params: { status: 'pending' },
+    });
+    const items = (
+      (await pending.json()) as {
+        items: { reviewId: string; artifact: unknown }[];
+      }
+    ).items;
+    const markdownReview = items.find(
+      (item) =>
+        typeof item.artifact === 'object' && item.artifact !== null && 'markdown' in item.artifact,
+    );
+    expect(markdownReview, 'the fixture engine holds the markdown-review specimen').toBeDefined();
+    await page.goto(
+      `/reviews?review=${encodeURIComponent(`engine:${markdownReview?.reviewId ?? ''}`)}`,
+    );
+    const pane = page.locator('.ib-review-pane');
+    await expect(pane.getByRole('heading', { name: 'Refund policy update' })).toBeVisible();
+    await expect(pane.locator('[data-cinder-markdown-node="table"] td').first()).toHaveText(
+      'Up to $25',
+    );
+    const token = pane.locator('.cinder-code-block .line span[style*="--shiki-dark"]').first();
+    await expect(token).toBeVisible();
+    await untilQuiet(page);
+    await captureForDesignReview(page, {
+      route: '/reviews',
+      state: 'markdown artifact',
+      source: '00-showcase.spec.ts',
+    });
+
+    const colours = async (scheme: 'light' | 'dark') => {
+      await page.emulateMedia({ colorScheme: scheme });
+      return await token.evaluate((span, wanted) => {
+        const probe = document.createElement('span');
+        probe.style.color = span.style.getPropertyValue(`--shiki-${wanted}`).trim();
+        span.after(probe);
+        const expected = getComputedStyle(probe).color;
+        probe.remove();
+        return { actual: getComputedStyle(span).color, expected };
+      }, scheme);
+    };
+    const dark = await colours('dark');
+    const light = await colours('light');
+    expect(dark.actual).toBe(dark.expected);
+    expect(light.actual).toBe(light.expected);
+    expect(dark.actual).not.toBe(light.actual);
   });
 }

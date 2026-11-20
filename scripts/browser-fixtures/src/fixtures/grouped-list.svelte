@@ -10,7 +10,7 @@
   } from '@lostgradient/cinder';
 </script>
 
-<div style="position: relative; max-inline-size: 28rem;">
+<div class="example-frame">
   <GroupedList header="Runs" footer="Runs older than a week are archived.">
     <GroupedListItem href="/runs/1">
       {#snippet lead()}45 min left{/snippet}
@@ -76,7 +76,7 @@
   <!-- COR-2443 AC4, COR-2503 AC5 and AC6: time-led rows in a 390px phone and a 360px pane, with a
        long meta value. The name leads; the meta shares its line, or takes one of its own, before
        the name is squeezed. -->
-  <div style="inline-size: 390px;" data-testid="grouped-list-timed-phone">
+  <div class="grouped-list-timed-phone-layout" data-testid="grouped-list-timed-phone">
     <GroupedList header="Open now">
       <GroupedListItem
         href="/places/widest"
@@ -111,7 +111,7 @@
         {#snippet photo()}<span
             role="img"
             aria-label="Photo of Larimer Lantern"
-            style="display: block; inline-size: 100%; block-size: 100%; background: var(--cinder-accent-solid);"
+            class="sample-photo"
           ></span>{/snippet}
       </GroupedListItem>
     </GroupedList>
@@ -121,10 +121,7 @@
        distance in a trailing column, two deals at once, a stale row past midnight with its
        distance, and a photo at the end. It stands beside the column, at the top, so the desktop
        screenshot shows all three rows; the 28rem column would cap it and push it below the fold. -->
-  <div
-    style="position: absolute; inset-block-start: 0; inset-inline-start: calc(100% + 1.5rem); inline-size: 570px;"
-    data-testid="grouped-list-timed-wide"
-  >
+  <div class="grouped-list-timed-wide-layout" data-testid="grouped-list-timed-wide">
     <GroupedList header="Open now">
       <GroupedListItem
         href="/places/two"
@@ -159,7 +156,7 @@
         {#snippet photo()}<span
             role="img"
             aria-label="Photo of Larimer Lantern"
-            style="display: block; inline-size: 100%; block-size: 100%; background: var(--cinder-accent-solid);"
+            class="sample-photo"
           ></span>{/snippet}
       </GroupedListItem>
     </GroupedList>
@@ -217,3 +214,28 @@
     />
   </div>
 </div>
+
+<style>
+  .example-frame {
+    position: relative;
+    max-inline-size: 28rem;
+  }
+
+  .grouped-list-timed-phone-layout {
+    inline-size: 390px;
+  }
+
+  .sample-photo {
+    display: block;
+    inline-size: 100%;
+    block-size: 100%;
+    background: var(--cinder-accent-solid);
+  }
+
+  .grouped-list-timed-wide-layout {
+    position: absolute;
+    inset-block-start: 0;
+    inset-inline-start: calc(100% + var(--cinder-space-6));
+    inline-size: 570px;
+  }
+</style>

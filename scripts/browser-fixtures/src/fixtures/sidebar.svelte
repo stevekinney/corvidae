@@ -7,6 +7,8 @@
     SideNavigationItem,
     SIDEBAR_MOBILE_MEDIA_QUERY,
     Sidebar,
+    Stack,
+    Surface,
   } from '@lostgradient/cinder';
   import { MediaQuery } from 'svelte/reactivity';
 
@@ -18,7 +20,7 @@
   });
 </script>
 
-<div style="display: flex; flex-direction: column; gap: 1rem;">
+<Stack>
   <div>
     <Button
       label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
@@ -26,9 +28,7 @@
     />
   </div>
 
-  <div
-    style="display: flex; min-height: 24rem; border: 1px solid #e5e7eb; border-radius: 0.5rem; overflow: hidden;"
-  >
+  <Surface class="sidebar-fixture-surface">
     <Sidebar bind:collapsed label="Workspace">
       {#snippet navigation()}
         <SideNavigation ariaLabel="Workspace sections">
@@ -60,16 +60,13 @@
       {/snippet}
     </Sidebar>
 
-    <main style="flex: 1; padding: 1rem;">
+    <main class="main padding-block-4 padding-inline-4">
       <p>Main content area.</p>
       <p>Resize the viewport below 640px to see the mobile drawer behavior.</p>
     </main>
-  </div>
+  </Surface>
 
-  <div
-    data-testid="sidebar-rail-labels"
-    style="display: flex; min-height: 20rem; border: 1px solid #e5e7eb; border-radius: 0.5rem; overflow: hidden;"
-  >
+  <Surface data-testid="sidebar-rail-labels" class="sidebar-fixture-sidebar-rail-labels-layout">
     <Sidebar collapsed railLabels label="Labelled rail">
       {#snippet navigation()}
         <SideNavigation ariaLabel="Labelled rail sections">
@@ -92,5 +89,23 @@
         </SideNavigation>
       {/snippet}
     </Sidebar>
-  </div>
-</div>
+  </Surface>
+</Stack>
+
+<style>
+  :global(.sidebar-fixture-surface) {
+    display: flex;
+    min-height: 24rem;
+    overflow: hidden;
+  }
+
+  .main {
+    flex: 1;
+  }
+
+  :global(.sidebar-fixture-sidebar-rail-labels-layout) {
+    display: flex;
+    min-height: 20rem;
+    overflow: hidden;
+  }
+</style>

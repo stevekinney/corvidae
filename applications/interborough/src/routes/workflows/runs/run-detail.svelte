@@ -28,7 +28,6 @@
   import { onMount, untrack } from 'svelte';
 
   import { ErrorState, Section, Skeleton } from '@lostgradient/cinder';
-  import { renderMarkdown } from '@lostgradient/markdown';
   import { createQuery, useQueryClient } from '@tanstack/svelte-query';
 
   import { usePageLabel } from '../../../app/breadcrumbs.svelte.ts';
@@ -294,7 +293,6 @@
   );
 
   const answer = $derived(follower.artifact?.text);
-  const answerHtml = $derived(answer === undefined ? '' : renderMarkdown(answer).html);
 
   // What the page knows of the run, from the first source that has it: the task, a goal's attempt,
   // the workflow engine, or the Bureau's record of a workflow file's run.
@@ -939,7 +937,7 @@
             task={task.data}
             threadId={goalTask ? attemptThreadId : undefined}
             startedAt={summary.startedAt}
-            answerHtml={answer === undefined ? undefined : answerHtml}
+            {answer}
             answerTruncated={follower.artifact?.truncated === true}
             followState={follower.state}
             {workflow}

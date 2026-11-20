@@ -1,11 +1,11 @@
 <script lang="ts">
-  import { Backdrop, Button, Spinner } from '@lostgradient/cinder';
+  import { Backdrop, Button, Spinner, Stack } from '@lostgradient/cinder';
 
   let open = $state(false);
   let invisible = $state(false);
 </script>
 
-<div style="display: flex; gap: 0.75rem; flex-wrap: wrap;">
+<Stack direction="row" gap="var(--cinder-space-3)" wrap>
   <Button
     label="Show dimmed backdrop"
     onclick={() => {
@@ -21,13 +21,22 @@
       open = true;
     }}
   />
-</div>
+</Stack>
 
 <Backdrop {open} {invisible} onclick={() => (open = false)}>
-  <div
-    style="display: flex; flex-direction: column; align-items: center; gap: 1rem; color: white; pointer-events: none;"
-  >
+  <Stack align="center" class="backdrop-fixture-stack text-default">
     <Spinner size="lg" label="Loading" />
-    <span style="font-size: 1rem; font-weight: 500;">Loading… click anywhere to dismiss</span>
-  </div>
+    <span class="label-layout">Loading… click anywhere to dismiss</span>
+  </Stack>
 </Backdrop>
+
+<style>
+  :global(.backdrop-fixture-stack) {
+    pointer-events: none;
+  }
+
+  .label-layout {
+    font-size: var(--cinder-text-lg);
+    font-weight: 500;
+  }
+</style>

@@ -28,7 +28,7 @@
     position: absolute;
     inset-block-end: 0;
     inset-inline: var(--cinder-space-4) 0;
-    border-block-end: 1px solid var(--cinder-border-faint);
+    border-block-end: var(--cinder-border-width) solid var(--cinder-border-faint);
     pointer-events: none;
   }
 

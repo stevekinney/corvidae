@@ -1,20 +1,11 @@
 <script lang="ts" module>
-  import type { HTMLAttributes } from 'svelte/elements';
-  import type { ChatMarkdownNode, MarkdownNodeOverride } from './chat-message-parts.ts';
+  import type { MarkdownNode } from './markdown.types.ts';
 
-  export type ChatMarkdownPreviewProps = Omit<HTMLAttributes<HTMLDivElement>, 'class'> & {
-    content: string;
-    class?: string;
-    markdownNode?: MarkdownNodeOverride | undefined;
-    /** `false` renders each image as its alt text, so the content loads nothing. Default `true`. */
-    images?: boolean | undefined;
-    /** `false` renders each link as its text, so the content navigates nowhere. Default `true`. */
-    links?: boolean | undefined;
-  };
+  export type { MarkdownNode, MarkdownNodeOverride, MarkdownProps } from './markdown.types.ts';
 
   export type MarkdownSegment =
     | { kind: 'html'; html: string }
-    | { kind: 'node'; node: ChatMarkdownNode }
+    | { kind: 'node'; node: MarkdownNode }
     | {
         kind: 'element';
         tag: string;
@@ -39,7 +30,7 @@
       return {
         kind: 'node',
         node: {
-          kind: element.dataset['cinderMarkdownKind'] as ChatMarkdownNode['kind'],
+          kind: element.dataset['cinderMarkdownKind'] as MarkdownNode['kind'],
           html: element.innerHTML,
           text: element.textContent ?? '',
           language: element.dataset['language'],
@@ -92,19 +83,23 @@
 </script>
 
 <script lang="ts">
-  import { classNames } from '../../../utilities/class-names.ts';
-  import { CodeBlock } from '@lostgradient/cinder';
+  import { renderMarkdown } from '@lostgradient/markdown';
+
+  import { classNames } from '../../utilities/class-names.ts';
+  import CodeBlock from '../code-block/code-block.svelte';
   import { preloadMarkdownPipeline } from './markdown-pipeline.ts';
   import MarkdownTableScroller from './markdown-table-scroller.svelte';
+  import type { MarkdownProps } from './markdown.types.ts';
 
   let {
     content,
     markdownNode,
     images = true,
     links = true,
+    math = false,
     class: className,
     ...rest
-  }: ChatMarkdownPreviewProps = $props();
+  }: MarkdownProps = $props();
 
   /** One committed render: the source it was made from, the policy it obeyed, and its output. */
   type RenderedMarkdown = {
@@ -116,6 +111,16 @@
   };
 
   let rendered = $state<RenderedMarkdown | undefined>(undefined);
+
+  // Without math the renderer is synchronous, so the formatted result is derived from the content
+  // and shows on first mount: no frame of delay and no pending state. Segmenting needs a DOM, so
+  // the server keeps the escaped plain text.
+  const synchronousSegments = $derived.by(() => {
+    if (math || typeof document === 'undefined') return undefined;
+    const { html } = renderMarkdown(content, { nodePlaceholders: true, stripLinks: !links });
+    if (html === '') return undefined;
+    return segmentRenderedMarkdown(html, document, { images, links });
+  });
 
   // Plain bookkeeping, never read by the template or tracked by an effect. Each effect run takes
   // the next generation before its render awaits; a result commits only when no newer generation
@@ -144,6 +149,7 @@
     if (rendered.images !== images || rendered.links !== links) return undefined;
     return extendsSource(content, rendered.source) ? rendered : undefined;
   });
+  const shownSegments = $derived(math ? visibleRender?.segments : synchronousSegments);
   const renderCurrent = $derived(visibleRender !== undefined && visibleRender.source === content);
 
   function commitRender(
@@ -169,6 +175,14 @@
   }
 
   $effect(() => {
+    if (!math) {
+      // The synchronous path owns the output. Forget any lazy render, so turning math on starts
+      // from the plain text and no render already in flight for the old setting can land.
+      epoch += 1;
+      rendered = undefined;
+      previousSnapshot = undefined;
+      return;
+    }
     // Capture the snapshot and the policy for this run synchronously, so a change to any of the
     // three runs the effect again.
     const snapshot = content;
@@ -195,7 +209,7 @@
     // Defer the rendering-pipeline import past first paint via a single
     // animation frame. requestAnimationFrame fires before the next paint,
     // which is a predictable upper bound (~16 ms at 60 Hz). We
-    // intentionally do not use requestIdleCallback here: a chat UI is on
+    // intentionally do not use requestIdleCallback here: a streaming UI is on
     // the user's critical visual path, and an idle deadline of even a
     // few hundred milliseconds would leave raw markdown source visible
     // for that whole window.
@@ -245,10 +259,10 @@
   });
 </script>
 
-{#snippet renderDefaultNode(node: ChatMarkdownNode)}
-  <div class="message-content-wide" data-cinder-markdown-node={node.kind}>
+{#snippet renderDefaultNode(node: MarkdownNode)}
+  <div data-cinder-markdown-node={node.kind}>
     {#if node.kind === 'code-block'}
-      <!-- Chat code is always copyable: a floating Copy named for its language, no header row,
+      <!-- Code is always copyable: a floating Copy named for its language, no header row,
            and a fade at the inline end while a long line continues. -->
       {#if node.language}
         <CodeBlock
@@ -304,21 +318,22 @@
 {/snippet}
 
 <!--
-  `data-state` is `rendered` once the async pipeline has swapped in the formatted HTML for the
-  current content, and `pending` while the raw-text fallback shows or while an earlier render
-  stands in for an append that is still rendering. The swap replaces the DOM nodes, which
+  `data-state` is `rendered` once the formatted HTML for the current content shows, and `pending`
+  while the raw-text fallback shows or while an earlier render stands in for an append that is
+  still rendering. Without `math` it is `rendered` from the first mount in a browser; with `math`
+  the async pipeline swaps the formatted HTML in. The swap replaces the DOM nodes, which
   collapses a selection made meanwhile, so a caller that selects text waits for `rendered` first.
 -->
 <div
-  class={classNames('cinder-markdown-content message-content-preview', className)}
-  data-state={renderCurrent ? 'rendered' : 'pending'}
+  class={classNames('cinder-markdown', 'cinder-markdown-content', className)}
+  data-state={(math ? renderCurrent : synchronousSegments !== undefined) ? 'rendered' : 'pending'}
   {...rest}
 >
-  {#if visibleRender}
-    {#each visibleRender.segments as segment, index (`${segment.kind}:${index}`)}
+  {#if shownSegments}
+    {#each shownSegments as segment, index (`${segment.kind}:${index}`)}
       {@render renderSegment(segment)}
     {/each}
   {:else}
-    <p>{content}</p>
+    <p class="cinder-markdown-pending">{content}</p>
   {/if}
 </div>

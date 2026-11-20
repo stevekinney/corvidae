@@ -72,7 +72,7 @@
   import RemoteTaskStep from './remote-task-step.svelte';
   import StepDetail from './steps/step-detail.svelte';
   import StepRow from './steps/step-row.svelte';
-  import { openStepNumbers, stepWaterfall } from './steps/step-waterfall.ts';
+  import { openStepNumbers, stepWaterfall } from '@lostgradient/interborough-plugin/step-waterfall';
   import StreamChunksView from './streams/stream-chunks-view.svelte';
   import type { StreamChunksClient } from './streams/stream-chunks-data.ts';
   import FinalizerStrip from './timeline/finalizer-strip.svelte';

@@ -153,48 +153,13 @@ describe('scoped theme tokens', () => {
     expect(foundationCss).toContain("[data-theme='dark'],\n[data-theme='light']");
     expect(foundationCss).not.toContain('@scope');
     expect(foundationCss).toContain("[data-theme='dark']");
-    expect(foundationCss).toContain("[data-theme='dark']\n      [data-theme='light']");
-    expect(foundationCss).toContain(
-      "[data-theme='light']\n      [data-theme='dark']\n      [data-theme='light']",
-    );
-    expect(foundationCss).toContain(
-      "[data-theme='light']\n  [data-theme='dark']\n  [data-theme='light']\n  [data-theme='dark']",
-    );
-    expect(codeBlockCss).toContain(
-      "[data-cinder-theme='dark']\n        [data-theme='light']\n        [data-theme='dark']\n        [data-theme='light']",
-    );
-    expect(codeBlockCss).toContain(
-      "[data-cinder-theme='dark']\n    [data-theme='light']\n    [data-theme='dark']\n    [data-theme='light']\n    [data-theme='dark']",
-    );
-    expect(codeBlockCss).toContain(
-      "[data-cinder-theme='system'] [data-theme='light'] .cinder-code-block",
-    );
-    expect(codeBlockCss).toContain(
-      "[data-cinder-theme='system']\n      [data-theme='light']\n      [data-theme='dark']\n      [data-theme='light']",
-    );
-    expect(foundationCss).toContain(
-      "span[style*='--shiki-dark'] {\n  color: var(--shiki-dark, inherit) !important;",
-    );
+    // Token colors follow the `color-scheme` in effect through `light-dark()`, so a nested
+    // `[data-theme]` island, the root attribute and the OS preference all resolve the same way and
+    // no theme-attribute selector chain is needed.
+    expect(codeBlockCss).toContain('color: light-dark(var(--shiki-light), var(--shiki-dark));');
+    expect(codeBlockCss).not.toContain("[data-cinder-theme='dark']\n    .cinder-code-block");
+    expect(foundationCss).not.toContain('--shiki');
     expect(foundationCss).not.toContain('revert-layer');
-    expect(foundationCss).not.toContain('--shiki-light');
-  });
-
-  test('a page that names no theme swaps Shiki to its dark colours on a dark system', async () => {
-    const foundationCss = await readFile(FOUNDATION_CSS_PATH, 'utf8');
-    // Interborough writes no theme attribute while it follows the system, so neither the
-    // `[data-theme='dark']` swap nor code-block.css's `[data-cinder-theme]` swap reached its code
-    // blocks, and a dark system drew Shiki's near-black light colours (design review, 2026-11-19).
-    const media = foundationCss.indexOf('@media (prefers-color-scheme: dark) {');
-    expect(media).toBeGreaterThan(-1);
-    const block = foundationCss.slice(media, foundationCss.indexOf('\n}\n', media));
-    expect(block).toContain(
-      ":root:not([data-theme])\n    .cinder-code-block\n    :where(pre.shiki)\n    span[style*='--shiki-dark']:not(",
-    );
-    // A light scope inside the page keeps its light colours.
-    expect(block).toContain(
-      ":root:not([data-theme]) [data-theme='light'] .cinder-code-block :where(pre.shiki) span",
-    );
-    expect(block).toContain('color: var(--shiki-dark, inherit) !important;');
   });
 
   test('an explicit reduced-motion preference disables component animation and transitions', async () => {

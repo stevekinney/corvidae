@@ -16,12 +16,12 @@
     <Tooltip text="This is a helpful explanation."
       ><Button variant="secondary">Hover me</Button></Tooltip
     >
-    <div style="transform: translate3d(32px, 0, 0); padding: 1rem;">
+    <div class="example-content padding-block-4 padding-inline-4">
       <div
         data-testid="transformed-scroll-container"
-        style="overflow: auto; width: 28rem; height: 18rem; padding: 1.5rem;"
+        class="transformed-scroll-container-layout padding-block-6 padding-inline-6"
       >
-        <div style="width: 48rem; height: 30rem; padding-top: 10rem; padding-left: 12rem;">
+        <div class="example-frame">
           <Tooltip text="Transformed ancestor tooltip anchor" placement="bottom"
             ><span data-testid="transformed-tooltip-trigger"
               ><Button variant="secondary">Hover for anchored tooltip</Button></span
@@ -73,3 +73,22 @@
     />
   </div>
 </section>
+
+<style>
+  .example-content {
+    transform: translate3d(32px, 0, 0);
+  }
+
+  .transformed-scroll-container-layout {
+    overflow: auto;
+    width: 28rem;
+    height: 18rem;
+  }
+
+  .example-frame {
+    width: 48rem;
+    height: 30rem;
+    padding-top: 10rem;
+    padding-left: 12rem;
+  }
+</style>

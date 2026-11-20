@@ -1038,6 +1038,39 @@ describe('WorkerExecutionStrategy', () => {
 
     it('does not surface unhandled rejections when an async message handler fails', () =>
       rethrow(scenario1));
+
+    it('emits the error code and stack a worker sent with its failed message', async () => {
+      setup();
+
+      strategy.startWorkflow({
+        workflowId: 'wf-coded',
+        workflowType: 'test',
+        input: null,
+        checkpoint: new ArrayBuffer(0),
+      });
+
+      await settleStrategy();
+
+      const failedMessage: WorkerOutboundMessage = {
+        type: 'failed',
+        workflowId: 'wf-coded',
+        error: 'no such workflow',
+        failureCategory: 'application',
+        errorStack: 'WorkflowNotFoundError: no such workflow\n    at handler',
+        errorCode: 'WorkflowNotFoundError',
+      };
+      dispatchToMockWorker(
+        firstWorker(),
+        'message',
+        new MessageEvent('message', { data: failedMessage }),
+      );
+
+      expect(firstMessage()).toMatchObject({
+        type: 'failed',
+        errorCode: 'WorkflowNotFoundError',
+        errorStack: failedMessage.type === 'failed' ? failedMessage.errorStack : undefined,
+      });
+    });
   });
 
   describe('hardened worker turns', () => {

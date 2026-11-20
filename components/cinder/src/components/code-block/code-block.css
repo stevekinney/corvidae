@@ -129,12 +129,17 @@
 
   /* github-light's orange (parameters, attributes and other variables) is under AA on any ground
    * this field has had: 3.49:1 on white and 3.06:1 on the inset. It takes Cinder's warning text, the same hue at
-   * a contrast-safe lightness. Shiki writes the colour inline, so the override needs `!important`;
-   * the dark-theme swap below is more specific and still wins in a dark theme. A dual-theme span
-   * carries the colour before its `--shiki-dark` (`E36209;`); a single-theme span ends with it. */
-  .cinder-code-block :where(pre.shiki) span[style*='E36209;' i],
-  .cinder-code-block :where(pre.shiki) span[style$='E36209' i] {
+   * a contrast-safe lightness. A single-theme span writes the colour inline as `color:`, so its
+   * override needs `!important`. A dual-theme span writes it as `--shiki-light`, which the lift
+   * reassigns, so the dark value is untouched. */
+  /* cinder-allow-raw-color: domain-rendering — matches the colour Shiki writes inline, never paints it */
+  .cinder-code-block :where(pre.shiki) span[style*='color:#E36209' i] {
     color: var(--cinder-status-warning-text) !important;
+  }
+
+  /* cinder-allow-raw-color: domain-rendering — matches the colour Shiki writes inline, never paints it */
+  .cinder-code-block :where(pre.shiki) span[style*='--shiki-light:#E36209' i] {
+    --shiki-light: var(--cinder-status-warning-text) !important;
   }
 
   /* On the light inset field (`--cinder-surface-inset`, oklch(95.5% 0.002 265)) three more
@@ -142,11 +147,15 @@
    * inserted-line green #22863a (4.06:1) and the comment grey #6a737d (4.22:1). Each takes the
    * Cinder text role of its hue, which clears AA on the inset; `check-token-contrast-code-block.test.ts`
    * measures every github-light colour against the resolved inset, so a ground change that breaks
-   * AA fails there. The selector anchors on the inline `color:` so it never matches a `--shiki-dark`
-   * value, and the dark-theme swap below is more specific, so a dark theme is unchanged. */
+   * AA fails there. A single-theme span is matched on its inline `color:`; a dual-theme span on its
+   * `--shiki-light` value, so a dark value is never touched. */
   /* cinder-allow-raw-color: domain-rendering — matches the colour Shiki writes inline, never paints it */
   .cinder-code-block :where(pre.shiki) span[style*='color:#d73a49' i] {
     color: var(--cinder-status-danger-text) !important;
+  }
+  /* cinder-allow-raw-color: domain-rendering — matches the colour Shiki writes inline, never paints it */
+  .cinder-code-block :where(pre.shiki) span[style*='--shiki-light:#d73a49' i] {
+    --shiki-light: var(--cinder-status-danger-text) !important;
   }
 
   /* cinder-allow-raw-color: domain-rendering — matches the colour Shiki writes inline, never paints it */
@@ -155,110 +164,32 @@
   }
 
   /* cinder-allow-raw-color: domain-rendering — matches the colour Shiki writes inline, never paints it */
+  .cinder-code-block :where(pre.shiki) span[style*='--shiki-light:#22863a' i] {
+    --shiki-light: var(--cinder-status-success-text) !important;
+  }
+
+  /* cinder-allow-raw-color: domain-rendering — matches the colour Shiki writes inline, never paints it */
   .cinder-code-block :where(pre.shiki) span[style*='color:#6a737d' i] {
     color: var(--cinder-text-subtle) !important;
   }
 
-  /* ── Dark-theme Shiki dual-theme fix ─────────────────────────────────────
-   * Shiki's dual-theme output emits inline styles on every token span with
-   * BOTH the light value (`color: #24292E`) and the dark value
-   * (`--shiki-dark: #E1E4E8`). Without a CSS rule that swaps `color` to
-   * `var(--shiki-dark)` in dark mode, token spans show their light color
-   * (#24292e near-black, #d73a49 keyword red) against a dark surface — ratios
-   * as low as 1.38 — failing axe color-contrast.
-   *
-   * Cover the two cases in which a cinder dark theme is active. Both anchor on
-   * `[data-cinder-theme=…]` — the authoritative signal cinder sets on the
-   * document element (render-shell.ts) and the only theme anchor the
-   * component-CSS-sidecar lint accepts (`:root`/`[data-theme]` are
-   * foundation-layer selectors it rejects):
-   *   1. An explicit dark choice: `[data-cinder-theme="dark"]`.
-   *   2. The system choice resolving to dark: `[data-cinder-theme="system"]`
-   *      under `@media (prefers-color-scheme: dark)`.
-   * ──────────────────────────────────────────────────────────────────────── */
-
-  /* `!important` is required: Shiki writes the light color as an INLINE style
-   * (`style="color:#24292E"`) on every span, and an inline declaration beats a
-   * stylesheet rule on specificity. Without `!important` the light color wins in
-   * dark mode and the override is silently a no-op (contrast as low as 1.38).
-   * We override ONLY the foreground — the span background stays transparent so
-   * the dark `--cinder-surface-inset` forced on the <pre> shows through. (An
-   * earlier attempt set `background-color: var(--shiki-dark-bg)` here, which
-   * repainted each span with Shiki's own dark bg `#24292e` and re-broke contrast
-   * against the github-dark red — dropped.)
-   *
-   * The selectors anchor on `[data-cinder-theme=...]` — the authoritative theme
-   * signal cinder sets on the document element (see render-shell.ts). That
-   * `data-cinder-` namespace is also what the component-CSS-sidecar lint accepts
-   * as a scope anchor; a `:root`/`[data-theme]` prefix is a foundation-layer
-   * selector and is (correctly) rejected here. */
-
-  /* Explicit dark choice. */
-  [data-cinder-theme='dark']
-    .cinder-code-block
-    :where(pre.shiki)
-    span:not(
-      [data-cinder-theme='dark'] [data-theme='light'] .cinder-code-block :where(pre.shiki) span
-    ),
-  [data-cinder-theme='dark']
-    [data-theme='light']
-    [data-theme='dark']
-    .cinder-code-block
-    :where(pre.shiki)
-    span:not(
-      [data-cinder-theme='dark']
-        [data-theme='light']
-        [data-theme='dark']
-        [data-theme='light']
-        .cinder-code-block
-        :where(pre.shiki)
-        span
-    ),
-  [data-cinder-theme='dark']
-    [data-theme='light']
-    [data-theme='dark']
-    [data-theme='light']
-    [data-theme='dark']
-    .cinder-code-block
-    :where(pre.shiki)
-    span {
-    color: var(--shiki-dark, inherit) !important;
+  /* cinder-allow-raw-color: domain-rendering — matches the colour Shiki writes inline, never paints it */
+  .cinder-code-block :where(pre.shiki) span[style*='--shiki-light:#6a737d' i] {
+    --shiki-light: var(--cinder-text-subtle) !important;
   }
 
-  /* System choice that resolves to dark via the OS preference. cinder sets
-   * `data-cinder-theme="system"` and leaves `color-scheme: light dark` to follow
-   * `prefers-color-scheme`, so we mirror that here for the inline-style swap. */
-  @media (prefers-color-scheme: dark) {
-    [data-cinder-theme='system']
-      .cinder-code-block
-      :where(pre.shiki)
-      span:not(
-        [data-cinder-theme='system'] [data-theme='light'] .cinder-code-block :where(pre.shiki) span
-      ),
-    [data-cinder-theme='system']
-      [data-theme='light']
-      [data-theme='dark']
-      .cinder-code-block
-      :where(pre.shiki)
-      span:not(
-        [data-cinder-theme='system']
-          [data-theme='light']
-          [data-theme='dark']
-          [data-theme='light']
-          .cinder-code-block
-          :where(pre.shiki)
-          span
-      ),
-    [data-cinder-theme='system']
-      [data-theme='light']
-      [data-theme='dark']
-      [data-theme='light']
-      [data-theme='dark']
-      .cinder-code-block
-      :where(pre.shiki)
-      span {
-      color: var(--shiki-dark, inherit) !important;
-    }
+  /* ── Dual-theme token colors ─────────────────────────────────────────────
+   * The Shiki adapter writes a dual-theme block with `defaultColor: false`, so every token span
+   * carries both values as custom properties (`--shiki-light`, `--shiki-dark`) and no inline
+   * `color`. The span paints whichever the color scheme in effect selects. `light-dark()` reads
+   * the element's own `color-scheme`, so it follows every way a scheme is set: `color-scheme` on
+   * the root, `[data-theme]` on the root or on a nested island, `[data-cinder-theme]`, and the
+   * operating system's preference. No attribute selector or `!important` is needed, because
+   * nothing inline competes with the rule. We set ONLY the foreground: the span background stays
+   * transparent so the inset surface forced on the <pre> shows through. */
+  .cinder-code-block :where(pre.shiki) span[style*='--shiki-light'][style*='--shiki-dark'] {
+    /* cinder-allow-raw-color: domain-rendering — paints the two theme colours Shiki writes as variables */
+    color: light-dark(var(--shiki-light), var(--shiki-dark));
   }
 
   /* Shiki's `github-dark` comment color (#6A737D) reads 4.24:1 on the old 11% dark inset and 3.90:1

@@ -69,7 +69,7 @@
 
 <style>
   .schema-view-anatomy {
-    padding: 1rem;
+    padding: var(--cinder-space-4);
     max-inline-size: 56rem;
   }
 </style>

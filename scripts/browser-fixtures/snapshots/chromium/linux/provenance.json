@@ -36,6 +36,10 @@
       "renderedSourceSha": "1f67af3141c057b52134c578aff3a9e26e13e930",
       "suiteExitCode": 0
     },
+    "copy-button": {
+      "renderedSourceSha": "e82a0e20638e642ec7a91da8de31fe30f27ce056",
+      "suiteExitCode": 0
+    },
     "description-list": {
       "renderedSourceSha": "1f67af3141c057b52134c578aff3a9e26e13e930",
       "suiteExitCode": 0
@@ -48,8 +52,20 @@
       "renderedSourceSha": "2c1dd08e6818d3f33badb9148af72c4e85aa60a5",
       "suiteExitCode": 0
     },
+    "sidebar": {
+      "renderedSourceSha": "e82a0e20638e642ec7a91da8de31fe30f27ce056",
+      "suiteExitCode": 0
+    },
+    "skip-link": {
+      "renderedSourceSha": "e82a0e20638e642ec7a91da8de31fe30f27ce056",
+      "suiteExitCode": 0
+    },
     "stacked-list-item": {
       "renderedSourceSha": "b89a8de7628a80a3e4eccc96c941761633368743",
+      "suiteExitCode": 0
+    },
+    "surface": {
+      "renderedSourceSha": "e82a0e20638e642ec7a91da8de31fe30f27ce056",
       "suiteExitCode": 0
     }
   }

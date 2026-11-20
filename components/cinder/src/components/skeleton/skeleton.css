@@ -91,7 +91,7 @@
    * line, then lines of text. */
   .cinder-skeleton-group[data-cinder-variant='card'] > .cinder-skeleton-lines {
     padding: var(--cinder-density-pad-card);
-    border: 1px solid var(--cinder-border-muted);
+    border: var(--cinder-border-width) solid var(--cinder-border-muted);
     border-radius: var(--cinder-radius-surface);
     background: var(--cinder-surface);
   }
@@ -105,7 +105,7 @@
    * does, so the frame is the opt-in (`framed`). */
   .cinder-skeleton-list[data-cinder-framed] {
     overflow: hidden;
-    border: 1px solid var(--cinder-border-muted);
+    border: var(--cinder-border-width) solid var(--cinder-border-muted);
     border-radius: var(--cinder-radius-lg);
     background: var(--cinder-surface);
   }
@@ -115,7 +115,7 @@
     padding-inline: var(--cinder-space-3-5);
     /* A tint toward the inset, quieter than the inset itself, so the band stays a band. */
     background: color-mix(in oklch, var(--cinder-surface), var(--cinder-surface-inset) 40%);
-    border-block-end: 1px solid var(--cinder-border-muted);
+    border-block-end: var(--cinder-border-width) solid var(--cinder-border-muted);
   }
 
   /* A band that carries the day's real text is the real group header (`DataList`'s): the day at the
@@ -215,7 +215,7 @@
     min-block-size: 2.75rem;
     padding-block: var(--cinder-space-2-5);
     padding-inline-end: var(--cinder-space-2);
-    border-block-end: 1px solid var(--cinder-border-faint);
+    border-block-end: var(--cinder-border-width) solid var(--cinder-border-faint);
   }
 
   .cinder-skeleton-grouped-row:last-child > .cinder-skeleton-grouped-content {

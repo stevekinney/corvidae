@@ -6,7 +6,7 @@
   const operation = { kind: 'command' as const, command: 'bun test' };
 </script>
 
-<div class="card-fixture">
+<div class="card-fixture gap-8">
   <section id="example-mount-flush-body">
     <Card title="Flush body" padding="none">
       Body content
@@ -28,7 +28,6 @@
 <style>
   .card-fixture {
     display: grid;
-    gap: 2rem;
     max-inline-size: 42rem;
   }
 </style>

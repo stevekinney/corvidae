@@ -62,6 +62,22 @@ export type FocusTrapOptions = {
    * focus, so this changes the order rather than discarding a candidate.
    */
   preferRestoreFallback?: boolean | (() => boolean);
+  /**
+   * Where focus goes when the element that held it inside the trap is removed from the DOM while
+   * the trap is active — a control that replaces itself (a "Refresh" button that starts a reload
+   * and unmounts) or a region that re-renders. Browsers fire no `blur` for a removal and drop
+   * focus to `<body>`, outside the overlay, which reads as "the dialog closed" to a keyboard user
+   * and as nowhere to a screen reader.
+   *
+   * Resolved against the trap root like {@link initialFocus}, and consulted only when focus was
+   * actually lost (`document.activeElement` is `<body>`): a removal while focus sits on another
+   * control, or a focus move the host made itself, is left alone. When it resolves nothing the
+   * trap root itself takes focus, so recovery never leaves focus on `<body>`. Only the top trap
+   * of the stack recovers.
+   *
+   * Recovery is opt-in: a host that does not pass this keeps the browser's behavior.
+   */
+  recoveryFocus?: FocusTargetInput;
 };
 
 type TrapInstance = {
@@ -236,8 +252,12 @@ export function createFocusTrap(options: FocusTrapOptions = {}): Attachment<HTML
     const restoreFallback = options.restoreFallback ?? null;
     const preferRestoreFallback = options.preferRestoreFallback ?? false;
     const manageInitialFocus = options.manageInitialFocus ?? true;
+    const recoveryFocus = options.recoveryFocus ?? null;
 
     let activated = false;
+    // The element that last took focus inside the trap. A removal fires no `blur`, so the only
+    // way to know the focused element left is to remember it and ask whether it is still there.
+    let lastFocusedInside: HTMLElement | null = null;
     // Bumped on every `activate()`. The deferred `focusTrapTarget` microtask snapshots this value
     // and bails if it no longer matches, so a deactivate (or deactivate→reactivate) that lands
     // before the microtask drains can't let a stale activation steal focus into the trap.
@@ -347,6 +367,33 @@ export function createFocusTrap(options: FocusTrapOptions = {}): Attachment<HTML
 
     node.addEventListener('keydown', handleKeydown);
 
+    function handleFocusIn(event: FocusEvent) {
+      if (event.target instanceof HTMLElement) lastFocusedInside = event.target;
+    }
+
+    // Runs after the DOM mutation that removed the focused element, once the browser has already
+    // dropped focus to `<body>`.
+    function recoverLostFocus() {
+      const lost = lastFocusedInside;
+      if (lost === null || lost.isConnected) return;
+      lastFocusedInside = null;
+      if (!activated || !isActive() || !isTopTrap(trapId)) return;
+      // Focus already went somewhere: the host moved it, or another control took it.
+      if (document.activeElement !== null && document.activeElement !== document.body) return;
+
+      const target = resolveScopedTarget(node, recoveryFocus);
+      if (target && isProgrammaticallyFocusable(target) && tryFocus(target)) return;
+      restoreRootFocusability = ensureRootFocusable(node);
+      node.focus();
+    }
+
+    node.addEventListener('focusin', handleFocusIn);
+    const removalObserver =
+      recoveryFocus !== null && typeof MutationObserver !== 'undefined'
+        ? new MutationObserver(recoverLostFocus)
+        : null;
+    removalObserver?.observe(node, { childList: true, subtree: true });
+
     // Reactive activation: a getter-form `active` flipping true→false (or vice versa) must call
     // `activate()` / `deactivate()` immediately, not only on unmount. Otherwise an inactive trap
     // lingers on `trapStack`, blocking lower traps' Tab handling via `isTopTrap`, and focus is
@@ -361,6 +408,9 @@ export function createFocusTrap(options: FocusTrapOptions = {}): Attachment<HTML
 
     return () => {
       node.removeEventListener('keydown', handleKeydown);
+      node.removeEventListener('focusin', handleFocusIn);
+      removalObserver?.disconnect();
+      lastFocusedInside = null;
       // `$effect` cleanup above already ran `deactivate()` when active flipped false; this final
       // call is a defensive no-op in that case (guarded by the `activated` flag) and ensures
       // restoration when the trap is still active at unmount.

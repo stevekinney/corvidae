@@ -653,6 +653,18 @@
   "color": {
     "$type": "color"
   },
+  "table": {
+    "header": {
+      "foreground": {
+        "$type": "color",
+        "$value": "{text.muted}"
+      },
+      "sorted-foreground": {
+        "$type": "color",
+        "$value": "{text.default}"
+      }
+    }
+  },
   "button": {
     "background": {
       "$type": "color",

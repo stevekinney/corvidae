@@ -89,7 +89,7 @@ describe('BulkActionDialog — type-to-confirm', () => {
 });
 
 describe('BulkActionDialog — commit fault treatment', () => {
-  test('a stale confirmation token (InvalidParams) offers "Refresh preview", not a generic retry', async () => {
+  test('a stale confirmation token (Conflict) offers "Refresh preview", not a generic retry', async () => {
     let dryRunCalls = 0;
 
     const { getByRole, getByLabelText, getByText } = render(BulkActionDialog, {
@@ -102,9 +102,9 @@ describe('BulkActionDialog — commit fault treatment', () => {
         },
         runCommit: async () => {
           throw new HttpClientError(
-            400,
+            409,
             'Bulk confirmation token does not match the current dry-run scope',
-            { faultCode: 'InvalidParams' },
+            { faultCode: 'Conflict' },
           );
         },
         onClose: () => {},
@@ -134,7 +134,45 @@ describe('BulkActionDialog — commit fault treatment', () => {
     });
   });
 
-  test('a transient commit fault (not InvalidParams) offers a same-token Retry', async () => {
+  test('an InvalidParams commit fault is input the preview cannot fix, so it offers a same-token Retry, not "Refresh preview"', async () => {
+    const { getByRole, getByLabelText, getByText, queryByRole, queryByText } = render(
+      BulkActionDialog,
+      {
+        props: {
+          title: 'Bulk cancel',
+          verb: 'cancel',
+          runDryRun: async () => preview(),
+          runCommit: async () => {
+            throw new HttpClientError(
+              400,
+              'Field "confirmationToken" is required after a dry run',
+              {
+                faultCode: 'InvalidParams',
+              },
+            );
+          },
+          onClose: () => {},
+        },
+      },
+    );
+
+    await waitFor(() => {
+      expect(getByLabelText('Type "cancel 47 workflows" to confirm')).not.toBeNull();
+    });
+    await fireEvent.input(getByLabelText('Type "cancel 47 workflows" to confirm'), {
+      target: { value: 'cancel 47 workflows' },
+    });
+    await fireEvent.click(getByRole('button', { name: 'Cancel 47 workflows' }));
+
+    await waitFor(() => {
+      expect(getByText('Field "confirmationToken" is required after a dry run')).not.toBeNull();
+    });
+    expect(getByRole('button', { name: 'Retry' })).not.toBeNull();
+    expect(queryByRole('button', { name: 'Refresh preview' })).toBeNull();
+    expect(queryByText(/changed since the preview/)).toBeNull();
+  });
+
+  test('a transient commit fault (not Conflict) offers a same-token Retry', async () => {
     let commitCalls = 0;
 
     const { getByRole, getByLabelText, getByText } = render(BulkActionDialog, {

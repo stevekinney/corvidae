@@ -4,7 +4,7 @@ cinder ships its design tokens as plain CSS custom properties on `:root`. Every 
 
 The token tables below are generated from the DTCG token corpus at [`src/tokens/`](../src/tokens/) — everything between a `<!-- BEGIN GENERATED TOKEN TABLE: <slug> -->` / `<!-- END GENERATED TOKEN TABLE -->` marker pair is rewritten by `bun run --filter=@lostgradient/cinder tokens:generate`; edit the corpus, not the tables. The rest of this file — this intro, the callouts, and the explanatory prose between sections — is hand-maintained. A drift test in [`tokens-doc-drift.test.ts`](../src/styles/tokens-doc-drift.test.ts) keeps the generated tables in sync with the corpus, and `tokens:generate -- --check` fails if they have drifted; add a new token by adding it to the corpus and to the matching section in [`generate-artifacts.ts`](../scripts/tokens/generate-artifacts.ts), or the local drift check will fail.
 
-Root-declared tokens are emitted in [`tokens-base.css`](../src/styles/tokens-base.css). A small set of component-owned aliases is intentionally consume-only: it is deferred to the component's consumption site so scoped ancestor overrides continue to flow through the referenced token instead of being masked by a root declaration. The aggregator [`tokens.css`](../src/styles/tokens.css) imports the base file and is the entry point components consume.
+Root-declared tokens are emitted in [`tokens-base.css`](../src/styles/tokens-base.css). A small set of component-owned non-color aliases is intentionally consume-only: it is deferred to the component's consumption site so scoped ancestor overrides continue to flow through the referenced token instead of being masked by a root declaration. The aggregator [`tokens.css`](../src/styles/tokens.css) imports the base file and is the entry point components consume.
 
 > [!NOTE] Color tokens use [`light-dark()`](https://developer.mozilla.org/en-US/docs/Web/CSS/color_value/light-dark) keyed off `color-scheme`. The default `:root` sets `color-scheme: light dark`, which means the browser picks based on the user's OS preference. Force a whole-page scheme with `data-theme="light"` or `data-theme="dark"` on `:root`. For scoped theme islands, put `[data-theme='light']` or `[data-theme='dark']` on the subtree; cinder redeclares the core semantic surface, text, border, overlay, interaction, status, and control tokens there so components inherit concrete local values instead of requiring consumer token pinning.
 
@@ -292,6 +292,7 @@ Foreground colors keyed to readability against the surface tokens. `--cinder-tex
 
 | Token | Default | Description |
 | --- | --- | --- |
+| `--cinder-border-width` | `1px` | Default stroke width for structural frames and dividers. |
 | `--cinder-border-ink` | `light-dark(oklch(20% 0.02 255), oklch(100% 0 0))` | The single polarity-aware ink every neutral border tier is mixed from: a dark cool ink in light mode, neutral white in dark mode. The tiers do three different jobs. STRUCTURAL tiers (`border.muted` 5% light and 8% dark, `border` 9% light and 12% dark, `border.strong` 15%) separate regions and outline containers; they are deliberately quiet and exempt from WCAG 1.4.11 because the region they bound is identified by its content and surface. CONTROL tiers (`border.control` 32% light and 38% dark, `border.control.hover` 42% light and 44% dark) are the resting edge of an input or bordered button: heavier than every structural tier, quiet in light by owner decision (2026-11-11) and at least 3:1 in dark by owner decision (2026-11-17, controls only: structural borders stay quiet in both themes). CONTRAST tiers (`border.contrast` 48%, `border.contrast.hover` 58%) clear 3:1 against every surface; they are what the control tiers become under `prefers-contrast: more`, and what draws an unchecked checkbox, an unselected radio, and a neutral indicator with no other boundary. All seven are alpha steps over this ink (the dark arm of `border.contrast` is the one opaque literal), so each tier tracks the surface underneath it and one override re-tints them together; the generator re-declares each tier inside every [data-theme] block, so overriding this token on a themed element re-derives them there. The four HUED status borders (info, success, warning, danger) are deliberately NOT derived from it and stay opaque, because a translucent status border would take its hue from whatever it happened to sit on. |
 | `--cinder-border-muted` | `light-dark(color-mix(in oklch, var(--cinder-border-ink), transparent 91%), color-mix(in oklch, var(--cinder-border-ink), transparent 92%))` | Interior divider: rules between rows, table cells, list items, and under tab lists, and the Divider component. A 9% alpha step over `border.ink` in light mode and 8% in dark mode; structural, so exempt from 3:1, and always lighter than `border`. |
 | `--cinder-border` | `light-dark(color-mix(in oklch, var(--cinder-border-ink), transparent 84%), color-mix(in oklch, var(--cinder-border-ink), transparent 88%))` | Structural edge for containers: cards, dialogs, drawers, popovers, panels, tables, toasts. A 16% alpha step over `border.ink` in light mode (owner, 2026-11-19: at 9% the panels and the page read as one pale grey) and 12% in dark mode. Quiet on purpose and exempt from WCAG 1.4.11 (the container is identified by its surface and content); a control boundary uses `border.control` instead. |
@@ -959,6 +960,24 @@ Component-owned custom-property theming surfaces, one section per component (bes
 | --- | --- | --- |
 | `--cinder-status-dot-color` | `var(--cinder-text-muted)` | Dot fill color (default, no status set). |
 | `--cinder-status-dot-size` | `0.625rem` | Dot diameter (md default; 10px). |
+
+<!-- END GENERATED TOKEN TABLE -->
+
+### Table Header
+
+<!-- BEGIN GENERATED TOKEN TABLE: table-header -->
+
+| Token | Default | Description |
+| --- | --- | --- |
+| `--cinder-table-header-background` | `transparent` | Fill painted by header cells over the table header surface. The default is transparent, so sticky headers retain their opaque backdrop. |
+| `--cinder-table-header-foreground` | `var(--cinder-text-muted)` | Text color in unsorted header cells. |
+| `--cinder-table-header-sorted-foreground` | `var(--cinder-text-default)` | Text color in the currently sorted header cell. |
+| `--cinder-table-header-font-size` | `var(--cinder-text-xs)` | Font size of a column header and its sort button. |
+| `--cinder-table-header-padding-block` | `var(--cinder-space-2)` | Block padding of a comfortable header cell. |
+| `--cinder-table-header-padding-inline` | `var(--cinder-space-3)` | Inline padding of a comfortable or condensed header cell. |
+| `--cinder-table-header-padding-block-condensed` | `var(--cinder-space-1)` | Block padding of a condensed header cell. |
+| `--cinder-table-header-padding-block-spacious` | `var(--cinder-space-3)` | Block padding of a spacious header cell. |
+| `--cinder-table-header-padding-inline-spacious` | `var(--cinder-space-4)` | Inline padding of a spacious header cell. |
 
 <!-- END GENERATED TOKEN TABLE -->
 
