@@ -14,6 +14,7 @@
 import type { Locator, Page } from '@playwright/test';
 
 import { SAMPLE_NOW, SAMPLE_TIME_ZONE } from '../../fixtures/sample-now.ts';
+import { rewriteBureauAnswer } from './bureau-answer-support.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
 import { E2E_SHOWCASE_URL } from './e2e-constants.ts';
 import { expect, test } from './fixtures.ts';
@@ -422,22 +423,34 @@ test.describe('on a phone', () => {
   test('on a tablet the current page gives way before the ancestor does, so Runs is never cut to nothing (03l)', async ({
     page,
   }) => {
+    // The run's page is named by its chat. The sample world's chat titles are short (rows 56k, 01l),
+    // so this one's chat answers with the long title a request can carry, and the leaf is the
+    // trail's longest.
+    const longTitle = 'Please refund order 4471, it arrived damaged and the box was open';
+    await rewriteBureauAnswer(page, 'bureau.contexts.get', (context) => ({
+      ...context,
+      title: longTitle,
+    }));
     await open(page, '/runs', 768);
-    // A run's identifier is long, so its page has the trail's longest leaf. The run is the sample
-    // world's own refund, never the newest row: a specification before this one may leave a run on
-    // the showcase host whose chat it has since deleted, and that run's page reads 404s.
+    // The run is the sample world's own refund, never the newest row: a specification before this
+    // one may leave a run on the showcase host whose chat it has since deleted, and that run's page
+    // reads 404s.
     const href = await page
       .locator('main a[href^="/runs/run-"]')
-      .filter({ hasText: 'Please refund order 4471' })
+      .filter({ hasText: 'Refund order 4471' })
       .first()
       .getAttribute('href');
     await page.goto(href ?? '/runs');
     const trail = page.getByRole('banner').getByRole('navigation', { name: 'Breadcrumb' });
     const runs = trail.getByRole('link', { name: 'Runs' });
     await expect(runs).toBeVisible();
+    // The leaf reads the run's identifier until the chat's title arrives, and the trail keys each
+    // crumb by its label, so the leaf is a new element then: measure only once it holds the title,
+    // or the read can land on the identifier's crumb as it is removed.
+    const leaf = trail.locator('[aria-current="page"]');
+    await expect(leaf).toHaveText(longTitle);
     expect(await runs.evaluate((link) => link.scrollWidth <= link.clientWidth)).toBe(true);
     // The leaf is the one that ends in an ellipsis, and it starts inside the trail.
-    const leaf = trail.locator('[aria-current="page"]');
     expect(await leaf.evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(true);
     const leafBox = await boxOf(leaf);
     const trailBox = await boxOf(trail);

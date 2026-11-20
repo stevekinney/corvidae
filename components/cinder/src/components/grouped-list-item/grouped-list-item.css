@@ -88,7 +88,7 @@
     min-inline-size: 0;
     padding-block: var(--cinder-space-2-5);
     padding-inline-end: var(--cinder-space-2);
-    border-block-end: 1px solid var(--cinder-border-faint);
+    border-block-end: var(--cinder-border-width) solid var(--cinder-border-faint);
   }
 
   .cinder-grouped-list-item:last-child > .cinder-grouped-list-item__content {

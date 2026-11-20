@@ -1,8 +1,7 @@
-import { readFileSync } from 'node:fs';
-
 import { loadManifest, VIEWPORTS } from '@lostgradient/testing';
 
 import { expect, test } from '@lostgradient/testing/playwright/component-page-fixture';
+import { fixtureRoute } from '@lostgradient/testing/playwright/overlay-fixture';
 
 const entries = loadManifest();
 
@@ -12,118 +11,134 @@ function assertionHash(entry: (typeof entries)[number]): string {
   return hash;
 }
 
-test.describe('table scroll recipe', () => {
-  test('keeps the semantic table in a horizontally scrollable wrapper with sticky header', async ({
-    page,
-  }) => {
-    const tableCss = readFileSync(
-      new URL('../../../components/cinder/src/components/table/table.css', import.meta.url),
-      'utf8',
-    ).replaceAll(/^@import\s+[^;]+;\s*$/gm, '');
+const tableHeaderFixture = `${fixtureRoute('table')}&header-tokens=1`;
 
-    await page.setContent(`
-      <style>
-        :root {
-          --cinder-text-sm: 14px;
-          --cinder-text-default: #111827;
-          --cinder-text-muted: #4b5563;
-          --cinder-surface: #ffffff;
-          --cinder-surface-inset: #f9fafb;
-          --cinder-border-muted: #d1d5db;
-          --cinder-space-1: 0.25rem;
-          --cinder-space-2: 0.5rem;
-          --cinder-space-3: 0.75rem;
-          --cinder-font-medium: 500;
-        }
-        ${tableCss}
-        .fixture-scroll {
-          inline-size: 260px;
-          block-size: 140px;
-          overflow: auto;
-          border: 1px solid var(--cinder-border-muted);
-        }
-        .fixture-scroll .cinder-table {
-          inline-size: 720px;
-        }
-        .fixture-scroll th,
-        .fixture-scroll td {
-          min-inline-size: 180px;
-        }
-      </style>
-      <div class="fixture-scroll cinder-table-scroll" data-testid="table-scroll">
-        <table class="cinder-table" data-cinder-sticky-header>
-          <caption class="cinder-table__caption">Builds</caption>
-          <thead class="cinder-table__header">
-            <tr class="cinder-table__row">
-              <th class="cinder-table__header-cell" scope="col">Project</th>
-              <th class="cinder-table__header-cell" scope="col">Owner</th>
-              <th class="cinder-table__header-cell" scope="col">Status</th>
-              <th class="cinder-table__header-cell" scope="col">Updated</th>
-            </tr>
-          </thead>
-          <tbody class="cinder-table__body">
-            ${Array.from(
-              { length: 16 },
-              (_, index) => `
-                <tr class="cinder-table__row">
-                  <td class="cinder-table__cell">Package ${index}</td>
-                  <td class="cinder-table__cell">Design Systems</td>
-                  <td class="cinder-table__cell">Passing</td>
-                  <td class="cinder-table__cell">Today</td>
-                </tr>
-              `,
-            ).join('')}
-          </tbody>
-        </table>
-      </div>
-    `);
+test('the Table wrapper scrolls both ways while keeping the semantic header pinned', async ({
+  page,
+}) => {
+  await page.goto(tableHeaderFixture, { waitUntil: 'load' });
+  const wrapper = page.getByRole('region', { name: 'Contributors (comfortable)' });
+  const table = wrapper.getByRole('table');
+  const header = table.locator('thead');
+  const firstRow = table.getByRole('row', { name: /Ada Lovelace/ });
+  await expect(table).toHaveJSProperty('tagName', 'TABLE');
+  await expect(header).toHaveCSS('position', 'sticky');
 
-    const wrapper = page.getByTestId('table-scroll');
-    const table = wrapper.locator('table.cinder-table');
-    await expect(table).toHaveJSProperty('tagName', 'TABLE');
-
-    const wrapperSizes = await wrapper.evaluate((element) => ({
+  const dimensions = await wrapper.evaluate((element) => {
+    // Constrain the viewport enough to overflow independently of the theme's row heights.
+    element.style.maxBlockSize = `${element.clientHeight / 2}px`;
+    return {
       clientWidth: element.clientWidth,
       scrollWidth: element.scrollWidth,
       clientHeight: element.clientHeight,
       scrollHeight: element.scrollHeight,
-    }));
-
-    expect(wrapperSizes.scrollWidth).toBeGreaterThan(wrapperSizes.clientWidth);
-    expect(wrapperSizes.scrollHeight).toBeGreaterThan(wrapperSizes.clientHeight);
-
-    const header = wrapper.locator('.cinder-table__header');
-    await expect(header).toHaveCSS('position', 'sticky');
-    // The caption names the table for assistive technology but occupies no height (COR-1823), so
-    // the header starts flush with the top of the scroll area. Scrolling therefore moves the body
-    // rows and leaves the sticky header where it was, instead of moving the header up as it did
-    // when a visible caption sat above it.
-    const firstRow = wrapper.locator('.cinder-table__body .cinder-table__row').first();
-    const wrapperBox = await wrapper.boundingBox();
-    const before = await header.boundingBox();
-    const rowBefore = await firstRow.boundingBox();
-    await wrapper.evaluate((element) => {
-      element.scrollTop = 80;
-      element.scrollLeft = 120;
-    });
-    await expect
-      .poll(
-        async () => {
-          const box = await firstRow.boundingBox();
-          return box?.y ?? 0;
-        },
-        { message: 'scrolling moves the body rows up' },
-      )
-      .toBeLessThan(rowBefore?.y ?? 0);
-    const after = await header.boundingBox();
-
-    expect(wrapperBox).not.toBeNull();
-    expect(before).not.toBeNull();
-    expect(after).not.toBeNull();
-    expect(Math.abs((after?.y ?? 0) - (before?.y ?? 0))).toBeLessThan(2);
-    expect(Math.abs((after?.y ?? 0) - (wrapperBox?.y ?? 0))).toBeLessThan(2);
+    };
   });
+  expect(dimensions.scrollWidth).toBeGreaterThan(dimensions.clientWidth);
+  expect(dimensions.scrollHeight).toBeGreaterThan(dimensions.clientHeight);
+
+  const wrapperBox = (await wrapper.boundingBox())!;
+  const before = (await header.boundingBox())!;
+  const rowBefore = (await firstRow.boundingBox())!;
+  await wrapper.evaluate((element) => element.scrollTo(element.scrollWidth, element.scrollHeight));
+  await expect.poll(async () => (await firstRow.boundingBox())!.y).toBeLessThan(rowBefore.y);
+
+  const after = (await header.boundingBox())!;
+  expect(Math.abs(after.y - before.y)).toBeLessThan(2);
+  // The accessible caption does not add a visible row above the sticky header.
+  expect(Math.abs(after.y - wrapperBox.y)).toBeLessThan(2);
 });
+
+for (const [density, blockToken, inlineToken, bodyBlockToken, bodyInlineToken] of [
+  ['comfortable', 'space-3', 'space-5', 'space-2', 'space-3'],
+  ['condensed', 'space-2', 'space-5', 'space-1', 'space-3'],
+  ['spacious', 'space-4', 'space-6', 'space-3', 'space-4'],
+] as const) {
+  test(`the ${density} Table header follows scoped aliases independently of the body`, async ({
+    page,
+  }) => {
+    await page.goto(tableHeaderFixture, { waitUntil: 'load' });
+    const wrapper = page.getByRole('region', { name: `Contributors (${density})` });
+    const header = wrapper.locator('thead');
+    const cell = header.getByRole('columnheader', { name: 'Name' });
+    const body = wrapper.getByRole('cell', { name: 'Ada Lovelace' });
+    const sort = cell.getByRole('button', { name: 'Name' });
+    const indicator = sort.locator('.cinder-table__sort-indicator');
+    const defaults = await cell.evaluate((element) => {
+      const { backgroundColor, fontSize, paddingInlineStart } = getComputedStyle(element);
+      return { backgroundColor, fontSize, paddingInlineStart };
+    });
+
+    const expected = await wrapper.evaluate(
+      (element, { blockToken, inlineToken, bodyBlockToken, bodyInlineToken }) => {
+        const overrides = {
+          background: 'surface-inset',
+          foreground: 'text-default',
+          'sorted-foreground': 'accent-text',
+          'font-size': 'text-lg',
+          'padding-block': 'space-3',
+          'padding-inline': 'space-5',
+          'padding-block-condensed': 'space-2',
+          'padding-block-spacious': 'space-4',
+          'padding-inline-spacious': 'space-6',
+        };
+        for (const [token, alias] of Object.entries(overrides)) {
+          element.style.setProperty(`--cinder-table-header-${token}`, `var(--cinder-${alias})`);
+        }
+
+        const probe = document.createElement('span');
+        element.append(probe);
+        const resolve = (property: string, token: string) => {
+          probe.style.setProperty(property, `var(--cinder-${token})`);
+          return getComputedStyle(probe).getPropertyValue(property);
+        };
+        const values = {
+          backdrop: resolve('background-color', 'surface'),
+          defaultFontSize: resolve('font-size', 'text-xs'),
+          background: resolve('background-color', overrides.background),
+          foreground: resolve('color', overrides.foreground),
+          sorted: resolve('color', overrides['sorted-foreground']),
+          fontSize: resolve('font-size', overrides['font-size']),
+          block: resolve('padding-block-start', blockToken),
+          inline: resolve('padding-inline-start', inlineToken),
+          bodyFontSize: resolve('font-size', 'text-sm'),
+          bodyBlock: resolve('padding-block-start', bodyBlockToken),
+          bodyInline: resolve('padding-inline-start', bodyInlineToken),
+        };
+        probe.remove();
+        return values;
+      },
+      { blockToken, inlineToken, bodyBlockToken, bodyInlineToken },
+    );
+
+    expect(defaults.backgroundColor).toBe('rgba(0, 0, 0, 0)');
+    expect(defaults.fontSize).toBe(expected.defaultFontSize);
+    expect(defaults.paddingInlineStart).toBe(expected.bodyInline);
+    await expect(cell).toHaveCSS('background-color', expected.background);
+    await expect(cell).toHaveCSS('color', expected.foreground);
+    await expect(cell).toHaveCSS('font-size', expected.fontSize);
+    await expect(sort).toHaveCSS('font-size', expected.fontSize);
+    await expect(cell).toHaveCSS('padding-block-start', expected.block);
+    await expect(cell).toHaveCSS('padding-inline-start', expected.inline);
+    await expect(indicator).toHaveCSS('color', expected.foreground);
+    await expect(body).toHaveCSS('font-size', expected.bodyFontSize);
+    await expect(body).toHaveCSS('padding-block-start', expected.bodyBlock);
+    await expect(body).toHaveCSS('padding-inline-start', expected.bodyInline);
+    await expect(header).toHaveCSS('background-color', expected.backdrop);
+
+    await sort.hover();
+    const hover = await sort.evaluate((element) => getComputedStyle(element).backgroundColor);
+    await wrapper.evaluate((element) => {
+      element.style.setProperty('--cinder-table-header-background', 'var(--cinder-surface-raised)');
+    });
+    await expect(sort).not.toHaveCSS('background-color', hover);
+
+    await sort.click();
+    await expect(cell).toHaveAttribute('aria-sort', 'ascending');
+    await expect(cell).toHaveCSS('color', expected.sorted);
+    await expect(indicator).toHaveCSS('color', expected.sorted);
+  });
+}
 
 test.describe('number input resting geometry', () => {
   test('desktop steppers fill the grouped control without dead spacing', async ({

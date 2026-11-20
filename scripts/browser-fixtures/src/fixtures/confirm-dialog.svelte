@@ -6,7 +6,9 @@
   let lastAction = $state('');
 </script>
 
-<div style="display: flex; flex-direction: column; gap: 1rem; align-items: flex-start;">
+<div
+  style="display: flex; flex-direction: column; gap: var(--cinder-space-4); align-items: flex-start;"
+>
   <Button
     label="Delete item"
     variant="danger"

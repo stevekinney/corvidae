@@ -57,7 +57,13 @@ const ownGenerate: GenerateFunction = async ({ conversation, toolbox }) => {
     system: typeof system === 'string' ? system : undefined,
   });
   const result = conversation.getMessages().findLast((message) => message.toolResult)?.toolResult;
-  if (result !== undefined) return { content: JSON.stringify(result), toolCalls: [] };
+  // The call's id is left out: it carries a random UUID, and the default output guardrail reads a
+  // UUID whose digits happen to run ten or more in a row as a phone number and trips the run, so
+  // the same run answers `""` about one time in a few hundred (the tripwire, not the tool).
+  if (result !== undefined) {
+    const { callId: _callId, ...echoed } = result;
+    return { content: JSON.stringify(echoed), toolCalls: [] };
+  }
   return { content: '', toolCalls: [{ name: 'issue-refund', arguments: {} }] };
 };
 
@@ -104,7 +110,9 @@ describe('a built-in agent with saved overrides', () => {
     const result = await runTask(harness.bureau, 'refunder', 'Refund order 4471.');
 
     expect(executed).toEqual(['issue-refund']);
-    expect(result.content).toContain('"ok":"issue-refund"');
+    // Exactly the tool's answer, with no random id in it for the output guardrail to misread as a
+    // phone number: the run's content is the same on every run, whatever the id would have been.
+    expect(result.content).toBe('{"outcome":"success","content":{"ok":"issue-refund"}}');
     expect(seen[0]).toEqual({
       tools: ['issue-refund', 'lookup-order'],
       system: 'You refund orders.',

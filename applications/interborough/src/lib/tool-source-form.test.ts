@@ -7,6 +7,8 @@ import {
   buildToolSourceRequest,
   chosenToolCount,
   connectedTools,
+  descriptionOfInstructions,
+  editingForm,
   effectiveAuthentication,
   EMPTY_TOOL_SOURCE_FORM,
   fieldOfHostField,
@@ -382,5 +384,46 @@ describe('splitCommandLine', () => {
 
   test('runs a quote left open to the end of the line', () => {
     expect(splitCommandLine('tool "two words')).toEqual(['tool', 'two words']);
+  });
+});
+
+describe('the sentence a server’s instructions give (COR-2436)', () => {
+  test('is their first line, with every control character a space, within the saved limit', () => {
+    expect(descriptionOfInstructions('An MCP server\tfor issues.\nMore lines.')).toBe(
+      'An MCP server for issues.',
+    );
+    expect(descriptionOfInstructions('x'.repeat(900))).toHaveLength(500);
+    expect(descriptionOfInstructions(null)).toBe('');
+    expect(descriptionOfInstructions('\u0007\u0000')).toBe('');
+  });
+});
+
+describe('Edit connection (COR-2436)', () => {
+  test('fills in a saved source, and keeps a stored token left blank out of the request', () => {
+    const filled = editingForm({
+      id: 'github',
+      name: 'GitHub',
+      source: {
+        id: 'github',
+        kind: 'mcp',
+        transport: {
+          type: 'http',
+          url: 'https://mcp.github.example/mcp',
+          authentication: { type: 'bearer', credential: 'token' },
+        },
+      },
+    });
+    expect(filled).toMatchObject({
+      id: 'github',
+      kind: 'mcp',
+      transport: 'http',
+      url: 'https://mcp.github.example/mcp',
+      authentication: 'bearer',
+      secret: '',
+    });
+    const built = buildToolSourceRequest(filled, ['token']);
+    expect('request' in built && built.request.credentials).toEqual({});
+    // With no token stored, a blank one is still asked for.
+    expect('errors' in buildToolSourceRequest(filled)).toBe(true);
   });
 });

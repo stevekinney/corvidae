@@ -20,7 +20,7 @@
   }
 </script>
 
-<div style="display: flex; flex-direction: column; gap: 2rem;">
+<div style="display: flex; flex-direction: column; gap: var(--cinder-space-8);">
   <ChoiceGrid ariaLabel="What is the capital of France?" bind:value={selected}>
     <ChoiceGrid.Item value="london">London</ChoiceGrid.Item>
     <ChoiceGrid.Item value="berlin">Berlin</ChoiceGrid.Item>

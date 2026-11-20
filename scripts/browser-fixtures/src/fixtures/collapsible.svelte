@@ -10,7 +10,7 @@
      by default (a box inside a box reads as clutter), and beside it the `framed` opt-in. -->
 <div
   data-testid="collapsible-nested"
-  style="display: grid; gap: 1.5rem; margin-block-start: 1.5rem;"
+  style="display: grid; gap: var(--cinder-space-6); margin-block-start: var(--cinder-space-6);"
 >
   <div data-testid="collapsible-nested-flat">
     <Collapsible trigger="Order 1042" open>

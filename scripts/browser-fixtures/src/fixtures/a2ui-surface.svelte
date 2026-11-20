@@ -1,5 +1,6 @@
 <script lang="ts">
   import { A2uiSurface, type A2uiComponent } from '@lostgradient/chat';
+  import { Container } from '@lostgradient/cinder';
 
   // Three Modals: one opened by a Button trigger, as A2UI's own modal example
   // does; one whose trigger is plain Text, which the renderer wraps in a
@@ -28,6 +29,6 @@
   ];
 </script>
 
-<div id="fixture-a2ui-surface" style="max-inline-size: 40rem;">
+<Container id="fixture-a2ui-surface" maxWidth="narrow" centered={false} padded={false}>
   <A2uiSurface surfaceId="fixture-surface" {components} />
-</div>
+</Container>

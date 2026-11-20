@@ -92,6 +92,7 @@ export const WORKSPACE_CONFORMANCE_GROUPS = [
       ['bureau.guardrails.list', 'shared'],
       ['bureau.validators.list', 'shared'],
       ['bureau.skills.list', 'shared'],
+      ['bureau.skills.get', 'shared'],
     ],
   },
   {

@@ -424,7 +424,12 @@ describe('bureau.agents.catalog', () => {
     await served.put(
       'support.md',
       agentFileText(
-        { name: 'Support', model: KNOWN_MODEL, tools: '[lookup-order, issue-refund]' },
+        {
+          name: 'Support',
+          model: KNOWN_MODEL,
+          tools: '[lookup-order, issue-refund]',
+          approvals: '{ issue-refund: blocked, lookup-order: never }',
+        },
         'Help.\n',
       ),
     );
@@ -476,6 +481,12 @@ describe('bureau.agents.catalog', () => {
       defaultApproval: 'ask',
       users: [],
     });
+    // What each file states for a tool is told by agent (COR-2435): a user whose file states none, and
+    // a code agent, have no entry, so they follow the default.
+    expect(byName['lookup-order']?.['userApprovals']).toEqual({ support: 'never' });
+    expect(byName['issue-refund']?.['userApprovals']).toEqual({ support: 'blocked' });
+    expect(byName['wipe-orders']?.['userApprovals']).toEqual({});
+    for (const tool of tools) expect(typeof tool['userApprovals']).toBe('object');
     // Bureau's own tools are in the catalog, as Bureau's.
     expect(byName['settings-update']).toMatchObject({ source: 'bureau', users: [] });
     expect(byName['settings-get']).toMatchObject({ source: 'bureau' });
@@ -580,6 +591,63 @@ describe('bureau.agents.catalog', () => {
 
     const tool = listOf(response, 'tools').find((entry) => entry['name'] === 'plain-tool');
     expect(tool).toMatchObject({ tier: null, defaultApproval: 'ask' });
+  });
+
+  it('reports the Default asks level a tool carries as its default approval (COR-2436)', async () => {
+    const picked = (name: string, level: string, metadata: Record<string, unknown>) =>
+      createTool({
+        name,
+        description: 'A tool whose source set its Default asks',
+        input: z.object({}),
+        metadata: { ...metadata, defaultApproval: level },
+        execute: async () => 'done',
+      });
+    const tools = {
+      'quiet-write': picked('quiet-write', 'never', { mutates: true }),
+      'careful-read': picked('careful-read', 'always', { readOnly: true }),
+      'not-a-level': picked('not-a-level', 'blocked', { mutates: true }),
+      'risky-never': picked('risky-never', 'never', { dangerous: true }),
+      'risky-unpicked': createTool({
+        name: 'risky-unpicked',
+        description: 'Dangerous, with no pick',
+        input: z.object({}),
+        metadata: { dangerous: true },
+        execute: async () => 'done',
+      }),
+    };
+    const directory = await mkdtemp(join(tmpdir(), 'bureau-tool-catalog-picked-'));
+    roots.push(directory);
+    const served = await serve({
+      directory,
+      overrides: { agentSource: agentFileDirectory(directory, { tools }) },
+    });
+
+    const response = await callAs(served.local, 'bureau.agents.catalog', {});
+
+    const byName = Object.fromEntries(
+      listOf(response, 'tools').map((entry) => [String(entry['name']), entry]),
+    );
+    expect(byName['quiet-write']).toMatchObject({ tier: 'mutating', defaultApproval: 'allow' });
+    expect(byName['careful-read']).toMatchObject({ tier: 'read-only', defaultApproval: 'ask' });
+    // Blocked is no tool's default: the tier's rule stands.
+    expect(byName['not-a-level']).toMatchObject({ tier: 'mutating', defaultApproval: 'ask' });
+    // The three-level value the hook enforces, for every reader to show: a dangerous tool picked
+    // Never reads Never, not Always; one with no pick reads Always.
+    expect(byName['quiet-write']).toMatchObject({ defaultAsks: 'never' });
+    expect(byName['careful-read']).toMatchObject({ defaultAsks: 'always' });
+    expect(byName['not-a-level']).toMatchObject({ defaultAsks: 'on-changes' });
+    expect(byName['risky-never']).toMatchObject({
+      tier: 'dangerous',
+      defaultApproval: 'allow',
+      defaultAsks: 'never',
+    });
+    // A tool that carries no pick is enforced as the hook always has (On changes); a saved
+    // source's tools always carry one, so a dangerous one of those reads and asks at Always.
+    expect(byName['risky-unpicked']).toMatchObject({
+      tier: 'dangerous',
+      defaultApproval: 'ask',
+      defaultAsks: 'on-changes',
+    });
   });
 
   it('drops a user when the agent file is gone', async () => {

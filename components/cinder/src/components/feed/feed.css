@@ -30,7 +30,7 @@
   .cinder-feed-log {
     display: flex;
     flex-direction: column;
-    border: 1px solid var(--cinder-border);
+    border: var(--cinder-border-width) solid var(--cinder-border);
     border-radius: var(--cinder-radius-lg);
     background: var(--cinder-surface-raised);
     overflow: hidden;
@@ -47,7 +47,7 @@
     justify-content: space-between;
     gap: var(--cinder-space-2);
     padding: var(--cinder-space-2) var(--cinder-space-3);
-    border-block-end: 1px solid var(--cinder-border-muted);
+    border-block-end: var(--cinder-border-width) solid var(--cinder-border-muted);
     background: var(--cinder-surface-inset);
     flex-shrink: 0;
   }
@@ -79,7 +79,7 @@
     align-items: center;
     gap: var(--cinder-space-1);
     padding: var(--cinder-space-0-5) var(--cinder-space-2);
-    border: 1px solid var(--cinder-border);
+    border: var(--cinder-border-width) solid var(--cinder-border);
     border-radius: var(--cinder-radius-full);
     background: var(--cinder-surface);
     color: var(--cinder-text-default);
@@ -117,7 +117,7 @@
     background: var(--cinder-surface-inset);
     color: var(--cinder-status-warning-text);
     font-size: var(--cinder-text-xs);
-    border-block-end: 1px solid var(--cinder-border-muted);
+    border-block-end: var(--cinder-border-width) solid var(--cinder-border-muted);
     flex-shrink: 0;
   }
 

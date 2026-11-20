@@ -122,7 +122,7 @@
        distance, and a photo at the end. It stands beside the column, at the top, so the desktop
        screenshot shows all three rows; the 28rem column would cap it and push it below the fold. -->
   <div
-    style="position: absolute; inset-block-start: 0; inset-inline-start: calc(100% + 1.5rem); inline-size: 570px;"
+    style="position: absolute; inset-block-start: 0; inset-inline-start: calc(100% + var(--cinder-space-6)); inline-size: 570px;"
     data-testid="grouped-list-timed-wide"
   >
     <GroupedList header="Open now">

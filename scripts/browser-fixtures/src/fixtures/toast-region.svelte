@@ -69,7 +69,7 @@
           })}
       />
     </div>
-    <p style="margin-top: 0.75rem; font-size: 0.875rem;">
+    <p style="margin-top: var(--cinder-space-3); font-size: var(--cinder-text-base);">
       <strong>Undo fired:</strong>
       {undoCount} <strong>Pause fired:</strong>
       {pauseCount}
@@ -81,11 +81,13 @@
       >
         <div
           data-testid="docked-page-scroll"
-          style="flex: 1; min-block-size: 0; overflow-y: auto; display: flex; flex-direction: column; padding: 0.75rem 0.75rem 0;"
+          style="flex: 1; min-block-size: 0; overflow-y: auto; display: flex; flex-direction: column; padding: var(--cinder-space-3) var(--cinder-space-3) 0;"
         >
-          <h2 style="margin: 0 0 0.5rem;">Release notes for 2.4</h2>
+          <h2 style="margin: 0 0 var(--cinder-space-2);">Release notes for 2.4</h2>
           {#each Array.from({ length: 24 }, (_, index) => index) as line (line)}
-            <p style="margin: 0 0 0.5rem;">Line {line + 1} of the draft the workflow asks about.</p>
+            <p style="margin: 0 0 var(--cinder-space-2);">
+              Line {line + 1} of the draft the workflow asks about.
+            </p>
           {/each}
           <DockedActionBar label="Decision">
             <p style="margin: 0;">The workflow continues as soon as you answer.</p>
@@ -94,7 +96,7 @@
               <Button variant="primary" label="Approve" />
             {/snippet}
           </DockedActionBar>
-          <div aria-hidden="true" style="flex: none; block-size: 0.75rem;"></div>
+          <div aria-hidden="true" style="flex: none; block-size: var(--cinder-space-3);"></div>
         </div>
         {@render tabBar()}
       </div>
@@ -109,7 +111,7 @@
         {#if dockedSurface}
           <div
             data-testid="docked-surface"
-            style="display: grid; gap: 0.5rem; padding: 0.75rem; border-top: 1px solid var(--cinder-border); background: var(--cinder-surface);"
+            style="display: grid; gap: var(--cinder-space-2); padding: var(--cinder-space-3); border-top: var(--cinder-border-width) solid var(--cinder-border); background: var(--cinder-surface);"
             {@attach dockedToBottom()}
           >
             <p style="margin: 0;">An approval is waiting above.</p>

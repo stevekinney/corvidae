@@ -281,6 +281,36 @@ describe('saved tool sources', () => {
     expect(names(second)).toContain('files__wipe');
   });
 
+  test('keeps the name and description a connection gives the source, as Capabilities reads them back (COR-2022)', async () => {
+    const path = await home();
+    const mcp = await track(startMcpServer(BEARER));
+    const first = await startAt(path);
+
+    const connected = await send(first, 'PUT', '/host/tool-sources/files', {
+      source: mcpSource(`${mcp.origin}/`),
+      credentials: { token: BEARER },
+      create: true,
+      name: 'Files',
+      description: 'The shared drive.',
+    });
+    expect(connected.status).toBe(200);
+
+    const listed: { sources: { id: string; name: string | null; description: string | null }[] } =
+      await jsonOf(send(first, 'GET', '/host/tool-sources'));
+    expect(listed.sources[0]).toMatchObject({
+      id: 'files',
+      name: 'Files',
+      description: 'The shared drive.',
+    });
+    // A name that is not text is refused, naming the field, and changes nothing.
+    const refused = await send(first, 'PUT', '/host/tool-sources/files', {
+      source: mcpSource(`${mcp.origin}/`),
+      name: 7,
+    });
+    expect(refused.status).toBe(400);
+    expect(JSON.stringify(await refused.json())).toContain('name');
+  });
+
   test('reads an OpenAPI spec before it is connected, and says what is wrong with one that is not (COR-2009)', async () => {
     const first = await startAt(await home());
 

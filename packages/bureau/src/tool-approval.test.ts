@@ -18,7 +18,10 @@ import { z } from 'zod';
 
 import {
   createToolApprovalHooks,
+  defaultToolApproval,
+  enforcedDefaultApproval,
   grantLoosensTool,
+  readToolDefaultApproval,
   TOOL_APPROVAL_DEFAULT_MODE,
   TOOL_APPROVAL_MODES,
   type ToolApprovalMode,
@@ -114,6 +117,153 @@ describe('createToolApprovalHooks', () => {
       expect(await outcomeOf(readOnly, 'subject')).toBe('success');
       expect(await outcomeOf(mutating, 'subject')).toBe('action_required');
     }
+  });
+
+  describe('the level a tool is enforced at, with and without a pick (COR-2436 review)', () => {
+    const allowAll = async (): Promise<'allow-all'> => 'allow-all';
+    const TIERS = ['read-only', 'mutating', 'dangerous', undefined] as const;
+    const PICKS = [undefined, 'never', 'on-changes', 'always'] as const;
+    const metadataOf = (tier: (typeof TIERS)[number], pick: (typeof PICKS)[number]) => ({
+      ...(tier === 'read-only' ? { readOnly: true } : {}),
+      ...(tier === 'mutating' ? { mutates: true } : {}),
+      ...(tier === 'dangerous' ? { dangerous: true } : {}),
+      ...(pick === undefined ? {} : { defaultApproval: pick }),
+    });
+
+    it('is the pick, else Never for a read and On changes for the rest', () => {
+      for (const tier of TIERS) {
+        for (const pick of PICKS) {
+          // With no pick the hook's own default (the precedence table, COR-1936): the host attaches
+          // the tier's level to every tool of a saved source, so a dangerous one carries Always.
+          const expected = pick ?? (tier === 'read-only' ? 'never' : 'on-changes');
+          expect(enforcedDefaultApproval(metadataOf(tier, pick), tier)).toBe(expected);
+        }
+      }
+    });
+
+    it('asks about a dangerous tool at Always, which the host attaches when no pick is stored, in an allow-all chat and after a remembered grant', async () => {
+      const dangerous = metadataOf('dangerous', 'always');
+      const inAllowAll = createToolbox([subject(dangerous)], {
+        policy: createToolApprovalHooks({}, { permissionMode: allowAll }),
+      });
+      const remembered = createToolbox([subject(dangerous)], {
+        policy: createToolApprovalHooks({}, { remembered: async () => true }),
+      });
+
+      expect(await outcomeOf(inAllowAll)).toBe('action_required');
+      expect(await outcomeOf(remembered)).toBe('action_required');
+    });
+
+    it('enforces what the table says for every tier and pick: Never runs, Always asks in an allow-all chat', async () => {
+      for (const tier of TIERS) {
+        for (const pick of PICKS) {
+          if (tier === undefined) continue;
+          const level = enforcedDefaultApproval(metadataOf(tier, pick), tier);
+          const toolbox = createToolbox([subject(metadataOf(tier, pick))], {
+            policy: createToolApprovalHooks({}, { permissionMode: allowAll }),
+          });
+          const outcome = await outcomeOf(toolbox);
+          if (level === 'always') expect(outcome).toBe('action_required');
+          if (level === 'never') expect(outcome).toBe('success');
+        }
+      }
+    });
+
+    it('tells a person a grant loosens a tool only when the enforced level lets it', () => {
+      const tool = (pick: string | undefined) => subject(metadataOf('mutating', pick as never));
+      const input = (pick: string | undefined) => ({
+        toolApproval: undefined,
+        tools: { subject: tool(pick) },
+        reportedName: 'subject',
+        mode: 'on-changes' as const,
+      });
+
+      expect(grantLoosensTool(input(undefined))).toBe(true);
+      expect(grantLoosensTool(input('always'))).toBe(false);
+      expect(grantLoosensTool(input('never'))).toBe(true);
+    });
+
+    it('gives a code agent with no approvals override the same hook, so a pick and a dangerous tier hold for it too', async () => {
+      // `compose-plugins.ts` builds a plugin's code agent's policy as `createToolApprovalHooks(undefined, { tools })`,
+      // and `code-agent-effective.ts` as `createToolApprovalHooks(overrides.approvals, { tools })`.
+      const tools = {
+        subject: subject(metadataOf('dangerous', 'always')),
+        quiet: createTool({
+          name: 'quiet',
+          description: 'A change a source picked Never for',
+          input: z.object({}),
+          metadata: metadataOf('mutating', 'never'),
+          execute: async () => ({ ran: true }),
+        }),
+      };
+      const toolbox = createToolbox(Object.values(tools), {
+        policy: createToolApprovalHooks(undefined, {
+          tools,
+          permissionMode: allowAll,
+        }),
+      });
+
+      expect(await outcomeOf(toolbox, 'subject')).toBe('action_required');
+      expect(await outcomeOf(toolbox, 'quiet')).toBe('success');
+    });
+
+    it('lets an agent’s own Always replace a Never the source picked, so the tool asks', async () => {
+      const toolbox = createToolbox([subject(metadataOf('dangerous', 'never'))], {
+        policy: createToolApprovalHooks({ subject: 'always' }),
+      });
+
+      expect(await outcomeOf(toolbox)).toBe('action_required');
+    });
+  });
+
+  describe('a tool that carries its own Default asks level (COR-2436)', () => {
+    const own = (level: string, kind: Kind = 'mutating') => ({
+      ...METADATA[kind],
+      defaultApproval: level,
+    });
+
+    it('runs a changing tool without asking when its default is never, asks a read when it is always', async () => {
+      const never = createToolbox([subject(own('never'))], {
+        policy: createToolApprovalHooks({}),
+      });
+      const always = createToolbox([subject(own('always', 'read-only'))], {
+        policy: createToolApprovalHooks({}),
+      });
+
+      expect(await outcomeOf(never)).toBe('success');
+      expect(await outcomeOf(always)).toBe('action_required');
+    });
+
+    it('lets an agent’s own approvals entry replace it in either direction, Blocked included', async () => {
+      const loosened = createToolbox([subject(own('always'))], {
+        policy: createToolApprovalHooks({ subject: 'never' }),
+      });
+      const tightened = createToolbox([subject(own('never'))], {
+        policy: createToolApprovalHooks({ subject: 'blocked' }),
+      });
+
+      expect(await outcomeOf(loosened)).toBe('success');
+      expect(await outcomeOf(tightened)).toBe('error');
+    });
+
+    it('ignores a default that is not never, on-changes or always, and follows the hook’s own default', async () => {
+      for (const level of ['blocked', 'sometimes', 7]) {
+        const toolbox = createToolbox([subject({ ...METADATA.mutating, defaultApproval: level })], {
+          policy: createToolApprovalHooks({}),
+        });
+        expect(await outcomeOf(toolbox)).toBe('action_required');
+      }
+    });
+
+    it('is the level the catalog reports for the tool', () => {
+      expect(defaultToolApproval('mutating', 'never')).toBe('allow');
+      expect(defaultToolApproval('read-only', 'always')).toBe('ask');
+      expect(defaultToolApproval('mutating', 'on-changes')).toBe('ask');
+      expect(defaultToolApproval('read-only', undefined)).toBe('allow');
+      expect(readToolDefaultApproval({ defaultApproval: 'always' })).toBe('always');
+      expect(readToolDefaultApproval({ defaultApproval: 'blocked' })).toBeUndefined();
+      expect(readToolDefaultApproval(undefined)).toBeUndefined();
+    });
   });
 
   it('takes another default for a tool the map leaves out when it is given one', async () => {

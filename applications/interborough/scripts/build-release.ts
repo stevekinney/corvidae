@@ -22,7 +22,7 @@ import {
 } from '../src/host/panel-build.ts';
 import { prebuiltPanelFile } from '../src/host/panel-mounts.ts';
 import { workspacePlugins } from '../src/host/plugins.ts';
-import { buildApplication } from './build.ts';
+import { buildCheckoutApplication, type buildApplication } from './build.ts';
 
 const PACKAGE_DIRECTORY = fileURLToPath(new URL('..', import.meta.url));
 const REPOSITORY_ROOT = resolve(PACKAGE_DIRECTORY, '..', '..');
@@ -529,7 +529,7 @@ export async function buildRelease(
     await mkdir(join(root, 'bin'), { recursive: true });
     await mkdir(join(root, 'share', 'interborough'), { recursive: true });
     await compile(join(root, 'bin', 'interborough'), options.version, command);
-    await (operations.buildApplication ?? buildApplication)({
+    await (operations.buildApplication ?? buildCheckoutApplication)({
       outdir: join(root, 'share', 'interborough', 'browser'),
     });
     const prebuilt = await prebuildPanels(

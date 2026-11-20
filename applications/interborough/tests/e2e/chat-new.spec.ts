@@ -176,7 +176,7 @@ test.describe('New chat on the sample world (23a, 23b, 23c, 23e, 23g, 23j)', () 
     await expect(bands.nth(1)).toHaveText(/^Yesterday, Sunday, Nov 1\s*Central time$/);
     await expect(bands.last()).toHaveText(/^Thursday, Oct 29\s*Central time$/);
     const row = (title: string) => list.locator('[data-chat]').filter({ hasText: title });
-    const refund = row('Please refund order 4471, it arrived damaged.');
+    const refund = row('Refund order 4471');
     await expect(refund).toContainText('10:42 AM');
     await expect(refund).toContainText('Waiting on you');
     await expect(refund).toContainText(

@@ -17,7 +17,7 @@
   let verticalValue = $state<(typeof views)[number]['value']>('editor');
 </script>
 
-<div style="display: grid; gap: 1rem; justify-items: start;">
+<div style="display: grid; gap: var(--cinder-space-4); justify-items: start;">
   <SegmentedControl
     id="segmented-sizing-sm"
     size="sm"

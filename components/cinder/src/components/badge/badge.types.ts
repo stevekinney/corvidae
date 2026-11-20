@@ -16,6 +16,8 @@ export type BadgeSubscriptionState =
 export type BadgeProps =
   | (HTMLAttributes<HTMLSpanElement> & {
       variant?: BadgeVariant;
+      /** Controls whether the badge draws a visible outline around its tinted fill. @default "soft" */
+      appearance?: 'soft' | 'outlined';
       size?: BadgeSize;
       /** Render the badge label in a monospace font. */
       monospace?: boolean;
@@ -33,6 +35,8 @@ export type BadgeProps =
     })
   | (HTMLAttributes<HTMLSpanElement> & {
       variant?: BadgeVariant;
+      /** Controls whether the badge draws a visible outline around its tinted fill. @default "soft" */
+      appearance?: 'soft' | 'outlined';
       size?: BadgeSize;
       /** Render the badge label in a monospace font. */
       monospace?: boolean;
@@ -58,6 +62,8 @@ export interface BadgeSchemaProps {
    * @default "neutral"
    */
   variant?: BadgeVariant;
+  /** Controls whether the badge draws a visible outline around its tinted fill. @default "soft" */
+  appearance?: 'soft' | 'outlined';
   /**
    * Size of the badge.
    * @default "md"

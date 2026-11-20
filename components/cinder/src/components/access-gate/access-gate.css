@@ -106,7 +106,7 @@
     box-sizing: border-box;
     padding-block: var(--cinder-space-5);
     padding-inline: var(--cinder-space-6);
-    border: 1px solid var(--cinder-border);
+    border: var(--cinder-border-width) solid var(--cinder-border);
     border-radius: var(--cinder-radius-lg);
     background: var(--cinder-surface-raised);
   }

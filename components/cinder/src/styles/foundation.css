@@ -272,6 +272,21 @@
   color: var(--shiki-dark, inherit) !important;
 }
 
+/* A page that names no theme follows the system (`color-scheme: light dark`), so on a dark system
+ * its tokens are dark while Shiki's inline light colours stay near-black: an unreadable block. The
+ * swap follows the same preference. A `[data-theme='light']` scope inside keeps its light colours,
+ * and a `[data-theme='dark']` scope is the rule above's. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme])
+    .cinder-code-block
+    :where(pre.shiki)
+    span[style*='--shiki-dark']:not(
+      :root:not([data-theme]) [data-theme='light'] .cinder-code-block :where(pre.shiki) span
+    ) {
+    color: var(--shiki-dark, inherit) !important;
+  }
+}
+
 :focus-visible {
   /* Strategy A is sanctioned ONLY here — the bare global default that paints a
      baseline ring for any element a component CSS file does not own. See
@@ -391,7 +406,7 @@
 
 :where(hr) {
   border: none;
-  border-top: 1px solid var(--cinder-border-muted);
+  border-top: var(--cinder-border-width) solid var(--cinder-border-muted);
   margin: var(--cinder-space-6) 0;
 }
 
@@ -409,7 +424,7 @@
 
 :where(td) {
   padding: var(--cinder-space-2) var(--cinder-space-3);
-  border-bottom: 1px solid var(--cinder-border-muted);
+  border-bottom: var(--cinder-border-width) solid var(--cinder-border-muted);
 }
 
 :where(input, button, textarea, select) {

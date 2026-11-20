@@ -130,13 +130,13 @@
 <style>
   .slider-fixture {
     display: grid;
-    gap: 2rem;
+    gap: var(--cinder-space-8);
     max-inline-size: 32rem;
   }
 
   .slider-fixture__row {
     display: grid;
     grid-template-columns: 1fr;
-    gap: 1rem;
+    gap: var(--cinder-space-4);
   }
 </style>

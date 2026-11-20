@@ -9,6 +9,7 @@ import { isAliasReference } from './value-formatters.ts';
 
 export function isRootDeclaredEntry(entry: CorpusEntry): boolean {
   return !(
+    entry.type !== 'color' &&
     entry.component &&
     DEFERRED_COMPONENT_ALIAS_FAMILIES.has(entry.component) &&
     !entry.cssRecipe &&
@@ -25,7 +26,7 @@ export function renderBaseDeclarations(
     if (!entry.cssProperty) {
       throw new Error(`Base corpus token at "${entry.path}" has no cssProperty extension.`);
     }
-    // Component aliases are defaults at their consumption sites, not root
+    // Deferred non-color aliases are defaults at their consumption sites, not root
     // declarations. Deferring them lets both the public component property and
     // its referenced foundation token respond to scoped ancestor overrides.
     if (!isRootDeclaredEntry(entry)) continue;

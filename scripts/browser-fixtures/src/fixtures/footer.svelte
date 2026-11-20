@@ -36,7 +36,7 @@
 
 <style>
   :global(html) {
-    font-size: 16px;
+    font-size: var(--cinder-text-lg);
   }
   :global(.cinder-footer) {
     box-sizing: content-box;

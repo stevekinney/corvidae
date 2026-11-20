@@ -12668,7 +12668,7 @@
       }
     },
     {
-      "description": "Returns the deployment’s selectable `models`, the rows of its model catalog an agent can choose, unfiltered by policy (a row that only decides is left out) and each reduced to the `general` audience whoever asks (pricing and `endpointAmbiguous` are never returned), and its `tools`, by the name an agent file lists them under, each with its model-facing `description`, a `shortDescription` (one line for a person, or `null` when the tool declares none), its `title` (the tool’s name for a person, such as “Issue refund”, from `metadata.title` or an MCP tool’s own title; `null` when it has none), its `inputSchema` (JSON Schema, or `null`), its capability `tier` (`read-only`, `mutating` or `dangerous`; `null` when it declares none), its `defaultApproval` (`allow` for a read-only tool, `ask` for a tool that changes something, is dangerous or is unclassified: the `on-changes` rule a file agent’s tool follows when its `approvals` says nothing (COR-1913), applied to the tier; a file’s own `approvals` entry replaces it for that agent), its `source` (`skill` for a tool a skill brings, whose `metadata.skill` names it, with that skill as `skill`; otherwise `bureau` for the settings and workflow tools Bureau adds, `plugin` for a tool a plugin contributes, with that plugin’s name as `plugin`, `host` for tools the host provides) and its `users`, the identifiers of the agents that use it now. A definition’s `model` is written `<provider>/<model-or-alias>` and its `tools` are names from this list. Requires `bureau.agents:read` unless the caller owns the deployment’s agents; anyone else is refused with `Forbidden`.",
+      "description": "Returns the deployment’s selectable `models`, the rows of its model catalog an agent can choose, unfiltered by policy (a row that only decides is left out) and each reduced to the `general` audience whoever asks (pricing and `endpointAmbiguous` are never returned), and its `tools`, by the name an agent file lists them under, each with its model-facing `description`, a `shortDescription` (one line for a person, or `null` when the tool declares none), its `title` (the tool’s name for a person, such as “Issue refund”, from `metadata.title` or an MCP tool’s own title; `null` when it has none), its `inputSchema` (JSON Schema, or `null`), its capability `tier` (`read-only`, `mutating` or `dangerous`; `null` when it declares none), its `defaultApproval` (`allow` for a read-only tool, `ask` for a tool that changes something, is dangerous or is unclassified: the `on-changes` rule a file agent’s tool follows when its `approvals` says nothing (COR-1913), applied to the tier, or the level a tool source gives the tool as its Default asks, which an agent’s approval hook enforces too; a file’s own `approvals` entry replaces it for that agent), its `defaultAsks` (`never`, `on-changes` or `always`: the level it is enforced at when a file states none, which is the level a tool source picked or its tier gives (a saved source’s tools all carry one: `always` for a dangerous tool, `never` for a read, `on-changes` for the rest), else `never` for a tool that only reads and `on-changes` for the rest), its `source` (`skill` for a tool a skill brings, whose `metadata.skill` names it, with that skill as `skill`; otherwise `bureau` for the settings and workflow tools Bureau adds, `plugin` for a tool a plugin contributes, with that plugin’s name as `plugin`, `host` for tools the host provides) its `users`, the identifiers of the agents that use it now, and its `userApprovals`, what each of those agent files states for the tool in its `approvals` (`never`, `on-changes`, `always` or `blocked`), keyed by agent identifier, with no entry for a user whose file states none, which follows `defaultApproval`, and none for a code agent. A definition’s `model` is written `<provider>/<model-or-alias>` and its `tools` are names from this list. Requires `bureau.agents:read` unless the caller owns the deployment’s agents; anyone else is refused with `Forbidden`.",
       "errors": [
         {
           "$ref": "#/components/errors/Unauthorized"
@@ -13009,6 +13009,14 @@
                     ],
                     "type": "string"
                   },
+                  "defaultAsks": {
+                    "enum": [
+                      "never",
+                      "on-changes",
+                      "always"
+                    ],
+                    "type": "string"
+                  },
                   "description": {
                     "type": "string"
                   },
@@ -13077,6 +13085,21 @@
                       "null"
                     ]
                   },
+                  "userApprovals": {
+                    "additionalProperties": {
+                      "enum": [
+                        "never",
+                        "on-changes",
+                        "always",
+                        "blocked"
+                      ],
+                      "type": "string"
+                    },
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "type": "object"
+                  },
                   "users": {
                     "items": {
                       "type": "string"
@@ -13092,10 +13115,12 @@
                   "inputSchema",
                   "tier",
                   "defaultApproval",
+                  "defaultAsks",
                   "source",
                   "plugin",
                   "skill",
-                  "users"
+                  "users",
+                  "userApprovals"
                 ],
                 "type": "object"
               },
@@ -27104,7 +27129,7 @@
       }
     },
     {
-      "description": "Returns one of the caller’s own goals; a caller holding `bureau.goals:read` reads any owner’s. Another owner’s goal answers as a missing one does. The view carries the goal’s `revision`, to pass back as `expectedRevision`, its `validator`, and its attempts. For the goal’s owner, and no one else (`bureau.goals:read` and `bureau.goals:content` do not widen it), it also carries the goal’s `prompt` and each attempt’s validator `feedback`, which an edit form shows; every other caller reads the view without those two keys. It never carries the goal’s instructions.",
+      "description": "Returns one of the caller’s own goals; a caller holding `bureau.goals:read` reads any owner’s. Another owner’s goal answers as a missing one does. The view carries the goal’s `revision`, to pass back as `expectedRevision`, its `validator`, and its attempts. For the goal’s owner, and no one else (`bureau.goals:read` and `bureau.goals:content` do not widen it), it also carries the goal’s `prompt`, each attempt’s validator `feedback`, which an edit form shows, and each attempt’s `reason`, why a passing attempt met its check when the validator said; every other caller reads the view without those three keys. It never carries the goal’s instructions.",
       "errors": [
         {
           "$ref": "#/components/errors/Unauthorized"
@@ -27174,6 +27199,13 @@
                     ]
                   },
                   "finishReason": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "reason": {
+                    "description": "Why the attempt met its check, when the validator said (“Reply said hello”); `null` for an attempt that did not pass, one whose validator said nothing, and one checked before a pass could say. Present for the goal’s owner only.",
                     "type": [
                       "string",
                       "null"
@@ -27654,7 +27686,7 @@
               "type": "string"
             },
             "reason": {
-              "description": "Why the verdict is `unavailable` or `indeterminate`; `null` otherwise.",
+              "description": "Why the verdict is `unavailable` or `indeterminate`, or why a `pass` met the check when the validator said (absent from a verdict recorded before a pass could say); `null` otherwise.",
               "type": [
                 "string",
                 "null"
@@ -34143,6 +34175,123 @@
       "x-weft-paramsSchema": {
         "additionalProperties": false,
         "properties": {},
+        "type": "object"
+      }
+    },
+    {
+      "description": "Returns one executable skill’s SKILL.md as the host catalogued it, named by the skill’s `name` (never a path): `instructions` holds the file’s `text` (frontmatter and body), cut at 65536 bytes (`truncated`), and its whole `size` in bytes. It reads only the catalog record’s own SKILL.md, refusing a symbolic link that leaves the skill’s directory and a file that changed since it was catalogued. `instructions` is `null` with `unavailableReason` `not-found` for a name no skill has, `changed` for files that changed since discovery, and `unavailable` for files that cannot be read back. A read is never an activation: an untrusted skill’s file is shown too, and nothing enters a run. Requires `bureau.agents:read` unless the caller owns the deployment’s agents; anyone else is refused with `Forbidden`.",
+      "errors": [
+        {
+          "$ref": "#/components/errors/Unauthorized"
+        },
+        {
+          "$ref": "#/components/errors/Forbidden"
+        },
+        {
+          "$ref": "#/components/errors/InvalidParams"
+        },
+        {
+          "$ref": "#/components/errors/EngineFailure"
+        }
+      ],
+      "name": "bureau.skills.get",
+      "paramStructure": "by-name",
+      "params": [
+        {
+          "name": "name",
+          "required": true,
+          "schema": {
+            "description": "The skill’s `name`, as `bureau.skills.list` lists it. Never a path.",
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "required": true,
+        "schema": {
+          "additionalProperties": false,
+          "properties": {
+            "instructions": {
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "size": {
+                      "maximum": 9007199254740991,
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "text": {
+                      "type": "string"
+                    },
+                    "truncated": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "text",
+                    "size",
+                    "truncated"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "name": {
+              "type": "string"
+            },
+            "unavailableReason": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "not-found",
+                    "changed",
+                    "unavailable"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "name",
+            "instructions",
+            "unavailableReason"
+          ],
+          "type": "object"
+        }
+      },
+      "summary": "Read one skill’s SKILL.md",
+      "tags": [
+        {
+          "name": "Agents"
+        }
+      ],
+      "x-weft-access": {
+        "kind": "authenticated"
+      },
+      "x-weft-paramsSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "description": "The skill’s `name`, as `bureau.skills.list` lists it. Never a path.",
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
         "type": "object"
       }
     },

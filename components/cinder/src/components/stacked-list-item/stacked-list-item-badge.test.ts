@@ -77,7 +77,7 @@ describe('StackedListItem badge (R10-01)', () => {
     // title that wrapped would keep its box's width and strand the mark after a short first line.
     // The browser measures it on /hooks at both widths (hooks.spec.ts, [default-hooks]).
     const phoneTitle =
-      /@container cinder-stacked-list-item \(max-width: 639\.98px\)\s*\{\s*\.cinder-stacked-list-item__title-row > \.cinder-stacked-list-item__title\s*\{([^}]*)\}/.exec(
+      /@container cinder-stacked-list-item \(max-width: 639\.98px\)\s*\{\s*\.cinder-stacked-list-item:not\(\[data-cinder-phone-width='viewport'\]\)\s*\.cinder-stacked-list-item__title-row\s*> \.cinder-stacked-list-item__title\s*\{([^}]*)\}/.exec(
         stylesheet,
       )?.[1] ?? '';
     expect(phoneTitle).toMatch(/display:\s*block;/);
