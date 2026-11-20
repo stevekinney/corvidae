@@ -16,10 +16,10 @@
     <Tooltip text="This is a helpful explanation."
       ><Button variant="secondary">Hover me</Button></Tooltip
     >
-    <div style="transform: translate3d(32px, 0, 0); padding: 1rem;">
+    <div style="transform: translate3d(32px, 0, 0); padding: var(--cinder-space-4);">
       <div
         data-testid="transformed-scroll-container"
-        style="overflow: auto; width: 28rem; height: 18rem; padding: 1.5rem;"
+        style="overflow: auto; width: 28rem; height: 18rem; padding: var(--cinder-space-6);"
       >
         <div style="width: 48rem; height: 30rem; padding-top: 10rem; padding-left: 12rem;">
           <Tooltip text="Transformed ancestor tooltip anchor" placement="bottom"

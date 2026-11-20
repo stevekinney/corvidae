@@ -62,7 +62,7 @@
   .run-step-timeline-connectors {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr));
-    gap: 2rem;
-    padding: 1rem;
+    gap: var(--cinder-space-8);
+    padding: var(--cinder-space-4);
   }
 </style>

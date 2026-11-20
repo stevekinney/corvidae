@@ -29,7 +29,7 @@
 
   .cinder-description-list[data-cinder-variant='default']
     .cinder-description-list__row:not(:first-child) {
-    border-block-start: 1px solid var(--cinder-border-muted);
+    border-block-start: var(--cinder-border-width) solid var(--cinder-border-muted);
   }
 
   /* <dd> hosts both definition and optional actions. */
@@ -167,7 +167,7 @@
     min-block-size: 2.75rem;
     padding-block: var(--cinder-space-2-5);
     padding-inline: 0 var(--cinder-space-3);
-    border-block-end: 1px solid var(--cinder-border-faint);
+    border-block-end: var(--cinder-border-width) solid var(--cinder-border-faint);
   }
 
   .cinder-description-list[data-cinder-variant='fields'] .cinder-description-list__row:last-child {
@@ -311,7 +311,7 @@
     grid-template-columns: repeat(auto-fit, minmax(7rem, 1fr));
     gap: var(--cinder-space-3) var(--cinder-space-4);
     padding-block: var(--cinder-space-3);
-    border-block: 1px solid var(--cinder-border-muted);
+    border-block: var(--cinder-border-width) solid var(--cinder-border-muted);
   }
 
   .cinder-description-list[data-cinder-variant='facts'] .cinder-description-list__row {

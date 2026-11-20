@@ -117,20 +117,20 @@
 
   .modal-fixture__trigger {
     border: 1px solid var(--cinder-border);
-    border-radius: 0.375rem;
+    border-radius: var(--cinder-radius-sm);
     background: var(--cinder-surface);
     color: var(--cinder-text-default);
     font: inherit;
-    padding: 0.5rem 0.75rem;
+    padding: var(--cinder-space-2) var(--cinder-space-3);
   }
 
   .modal-fixture__action {
     border: 1px solid var(--cinder-border);
-    border-radius: 0.375rem;
+    border-radius: var(--cinder-radius-sm);
     background: var(--cinder-surface);
     color: var(--cinder-text-default);
     font: inherit;
-    padding: 0.5rem 0.75rem;
+    padding: var(--cinder-space-2) var(--cinder-space-3);
   }
 
   .modal-fixture__action--primary {
@@ -141,6 +141,6 @@
   .modal-fixture__overlay-content {
     min-width: 18rem;
     max-width: 24rem;
-    padding: 1rem;
+    padding: var(--cinder-space-4);
   }
 </style>

@@ -23,7 +23,7 @@
 
   /* A bordered state draws its own box, for a list or page body with no container. */
   .cinder-empty-state[data-cinder-bordered] {
-    border: 1px solid var(--cinder-border);
+    border: var(--cinder-border-width) solid var(--cinder-border);
     border-radius: var(--cinder-radius-lg);
     background: var(--cinder-surface);
   }

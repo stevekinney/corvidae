@@ -88,7 +88,7 @@ LIMIT 10;`;
 <style>
   .functional-residual-fixture {
     display: grid;
-    gap: 1rem;
+    gap: var(--cinder-space-4);
     max-inline-size: 48rem;
     margin-inline: auto;
   }

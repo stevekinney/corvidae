@@ -35,7 +35,10 @@
   }
 </script>
 
-<div id="adaptive-overscan-example" style="display: flex; flex-direction: column; gap: 0.75rem;">
+<div
+  id="adaptive-overscan-example"
+  style="display: flex; flex-direction: column; gap: var(--cinder-space-3);"
+>
   <p
     style="color: var(--cinder-text-muted); font-size: var(--cinder-text-sm);"
     data-testid="adaptive-overscan-status"
@@ -59,7 +62,7 @@
   >
     {#snippet row(item, context)}
       <div
-        style="display: flex; align-items: center; gap: 0.75rem; block-size: 120px; padding-inline: 0.75rem; border-block-end: 1px solid var(--cinder-border);"
+        style="display: flex; align-items: center; gap: var(--cinder-space-3); block-size: 120px; padding-inline: var(--cinder-space-3); border-block-end: 1px solid var(--cinder-border);"
         data-index={context.index}
       >
         <span>{item.label}</span>

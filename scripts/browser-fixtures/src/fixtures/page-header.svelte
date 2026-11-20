@@ -1,5 +1,12 @@
 <script lang="ts">
-  import { Button, Breadcrumbs, PageHeader, Segment, SegmentedControl } from '@lostgradient/cinder';
+  import {
+    Button,
+    Breadcrumbs,
+    Container,
+    PageHeader,
+    Segment,
+    SegmentedControl,
+  } from '@lostgradient/cinder';
 
   // COR-2327 B2: a narrow header's actions beside the status (`narrowActions="beside-status"`),
   // next to the default, drawn only behind a query parameter so the default fixture, its
@@ -9,6 +16,7 @@
   // A caption under the actions (`actionsNote`), at a wide and a narrow header width, behind its
   // own query parameter for the same reason.
   const actionsNote = new URLSearchParams(globalThis.location.search).get('actions-note') === '1';
+  const actionSizes = new URLSearchParams(globalThis.location.search).get('action-sizes') === '1';
 
   // The collapsed large title (COR-2445): the header sets `collapsed` from an IntersectionObserver
   // on its title, against the viewport, and a scroll container clips what the observer sees. So this
@@ -165,5 +173,27 @@
         {/snippet}
       </PageHeader>
     </div>
+  {/each}
+{/if}
+
+{#if actionSizes}
+  {#each [true, false] as compact (compact)}
+    <Container
+      data-testid={compact ? 'compact-actions' : 'regular-actions'}
+      maxWidth="narrow"
+      centered={false}
+      padded={false}
+    >
+      <PageHeader
+        title="Releases"
+        compactActions={compact}
+        createAction={{ label: 'New release' }}
+        overflow={[{ label: 'Archive' }]}
+      >
+        {#snippet actions()}
+          <Button variant="primary" size="lg" label="Publish" />
+        {/snippet}
+      </PageHeader>
+    </Container>
   {/each}
 {/if}

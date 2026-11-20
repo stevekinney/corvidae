@@ -4,10 +4,10 @@
   import { getActionEmphasisContext, setActionEmphasisContext } from './action-emphasis-context.ts';
 
   /**
-   * Scope for a header's actions: every Button rendered inside draws at the `xs` control height,
-   * so the header is never taller than its title. Renders no element of its own.
+   * Scope for a header's actions. In compact mode each Button draws at the `xs` control height.
+   * Renders no element of its own.
    */
-  let { children }: { children: Snippet } = $props();
+  let { children, compact = true }: { children: Snippet; compact?: boolean } = $props();
 
   // Inherit the enclosing emphasis (a `<PageHeader error>` demotes primaries) and add only
   // `compact`. The getter keeps the read reactive.
@@ -17,7 +17,9 @@
     get demotePrimary() {
       return enclosing?.demotePrimary ?? false;
     },
-    compact: true,
+    get compact() {
+      return compact;
+    },
   });
 </script>
 

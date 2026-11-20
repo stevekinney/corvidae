@@ -5,6 +5,7 @@
   import type { PageHeaderStatusPlacement } from './page-header.types.ts';
 
   let {
+    compactActions,
     error = false,
     stale = false,
     createHref,
@@ -16,6 +17,7 @@
     title = 'Agents',
     titleText,
   }: {
+    compactActions?: boolean;
     error?: boolean;
     stale?: boolean;
     createHref?: string;
@@ -45,6 +47,7 @@
     title={titleText === undefined ? title : markdownTitle}
     {...titleText === undefined ? {} : { titleText }}
     description="Agents run your chats, goals and schedules."
+    {...compactActions === undefined ? {} : { compactActions }}
     {error}
     {...withStatus ? { status: statusSnippet } : {}}
     {...statusPlacement === undefined ? {} : { statusPlacement }}

@@ -60,7 +60,7 @@ describe('Card CSS contract', () => {
   test('a resting card draws no edge, and transitions border/shadow/background', async () => {
     const css = await Bun.file(new URL('./card.css', import.meta.url)).text();
     const baseBlock = css.match(/\.cinder-card\s*\{[^}]*\}/)?.[0] ?? '';
-    expect(baseBlock).toContain('border: 1px solid transparent');
+    expect(baseBlock).toContain('border: var(--cinder-border-width) solid transparent');
     expect(baseBlock).toContain('box-shadow: none');
     expect(baseBlock).toMatch(/transition:[^;]*border-color var\(--cinder-duration-fast\)/s);
     expect(baseBlock).toMatch(/transition:[^;]*box-shadow var\(--cinder-duration-fast\)/s);
@@ -126,7 +126,9 @@ describe('Card CSS contract', () => {
     ]);
 
     // The default edge is none: a transparent border holds the box, and there is no shadow.
-    expect(declarations('.cinder-card').get('border')).toBe('1px solid transparent');
+    expect(declarations('.cinder-card').get('border')).toBe(
+      'var(--cinder-border-width) solid transparent',
+    );
     expect(declarations('.cinder-card').get('box-shadow')).toBe('none');
     // The border edge: a visible border and no shadow.
     expect(border.get('border-color')).toBe('var(--cinder-border)');
@@ -155,7 +157,9 @@ describe('Card CSS contract', () => {
     const divider =
       css.match(/\.cinder-card__header\[data-cinder-divider\]\s*\{[^}]*\}/)?.[0] ?? '';
     expect(header).not.toContain('border');
-    expect(divider).toContain('border-bottom: 1px solid var(--cinder-border-muted)');
+    expect(divider).toContain(
+      'border-bottom: var(--cinder-border-width) solid var(--cinder-border-muted)',
+    );
     expect(css).not.toMatch(
       /\.cinder-card\[data-cinder-tone='danger'\] > \.cinder-card__header\s*\{[^}]*border-bottom/s,
     );

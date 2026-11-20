@@ -1,5 +1,6 @@
 <script lang="ts">
   import { untrack } from 'svelte';
+  import Container from '../container/container.svelte';
   import JsonEditor from './json-editor.svelte';
   import type { JsonEditorDiagnostic } from './json-editor.types.ts';
 
@@ -24,7 +25,7 @@
   let source = $state(untrack(() => (entries > 0 ? longDocument(entries) : value)));
 </script>
 
-<div class="json-editor-fixture">
+<Container maxWidth="narrow" centered={false} padded={false}>
   <JsonEditor
     id="fixture-json-editor"
     label="Request payload"
@@ -33,10 +34,4 @@
     {...diagnostics === undefined ? {} : { diagnostics }}
     onValueChange={(next) => (source = next)}
   />
-</div>
-
-<style>
-  .json-editor-fixture {
-    max-inline-size: 40rem;
-  }
-</style>
+</Container>

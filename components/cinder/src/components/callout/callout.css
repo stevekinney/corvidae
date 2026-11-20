@@ -39,7 +39,7 @@
     container-type: inline-size;
     /* An icon beside text is never larger than that text's line: 16px beside 14px text. */
     --_cinder-callout-icon-size: 1rem;
-    border: 1px solid var(--cinder-border);
+    border: var(--cinder-border-width) solid var(--cinder-border);
     /* One edge on every side: a status surface is a tint and an icon, never an accent stripe
    * (COR-1821). */
     border-radius: var(--cinder-radius-md);

@@ -113,7 +113,7 @@
   .cinder-form-section[data-grouped='true'] .cinder-form-section__grid {
     gap: 0;
     margin-block-start: var(--cinder-space-2);
-    border: 1px solid var(--cinder-border);
+    border: var(--cinder-border-width) solid var(--cinder-border);
     border-radius: var(--cinder-radius-lg);
     background: var(--cinder-surface-raised);
     overflow: hidden;
@@ -124,6 +124,6 @@
   }
 
   .cinder-form-section[data-grouped='true'] .cinder-form-section__grid > * + * {
-    border-block-start: 1px solid var(--cinder-border-muted);
+    border-block-start: var(--cinder-border-width) solid var(--cinder-border-muted);
   }
 }

@@ -38,8 +38,8 @@
   {#snippet row(item, context)}
     <div
       style={item.isHeader
-        ? 'display: flex; align-items: center; block-size: 40px; padding-inline: 0.75rem; background: var(--cinder-surface-raised); font-weight: 600; border-block-end: 1px solid var(--cinder-border);'
-        : 'display: flex; align-items: center; block-size: 40px; padding-inline: 1.5rem; border-block-end: 1px solid var(--cinder-border);'}
+        ? 'display: flex; align-items: center; block-size: 40px; padding-inline: var(--cinder-space-3); background: var(--cinder-surface-raised); font-weight: 600; border-block-end: 1px solid var(--cinder-border);'
+        : 'display: flex; align-items: center; block-size: 40px; padding-inline: var(--cinder-space-6); border-block-end: 1px solid var(--cinder-border);'}
       data-index={context.index}
     >
       <span>{item.label}</span>

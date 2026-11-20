@@ -27,13 +27,13 @@
 </FormField>
 
 {#if acceptedNames.length > 0}
-  <p style="margin-top: 0.5rem; color: var(--cinder-status-success-text);">
+  <p style="margin-top: var(--cinder-space-2); color: var(--cinder-status-success-text);">
     Accepted: {acceptedNames.join(', ')}
   </p>
 {/if}
 
 {#if rejectedMessages.length > 0}
-  <p style="margin-top: 0.5rem; color: var(--cinder-status-danger-text);">
+  <p style="margin-top: var(--cinder-space-2); color: var(--cinder-status-danger-text);">
     {rejectedMessages.join('; ')}
   </p>
 {/if}

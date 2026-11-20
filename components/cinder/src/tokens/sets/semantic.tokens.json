@@ -212,6 +212,22 @@
   },
   "border": {
     "$type": "color",
+    "width": {
+      "$type": "dimension",
+      "$value": {
+        "value": 1,
+        "unit": "px"
+      },
+      "$description": "Default stroke width for structural frames and dividers.",
+      "$extensions": {
+        "com.lostgradient.cinder": {
+          "cssProperty": "--cinder-border-width",
+          "public": true,
+          "category": "size",
+          "cssRecipe": null
+        }
+      }
+    },
     "ink": {
       "$value": {
         "colorSpace": "oklch",

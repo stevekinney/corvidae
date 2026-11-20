@@ -29,7 +29,7 @@
 >
   {#snippet row(event, context)}
     <div
-      style="display: grid; grid-template-columns: 11rem 7rem minmax(0, 1fr); gap: 0.75rem; align-items: center; min-block-size: 36px; padding-inline: 0.75rem; border-block-end: 1px solid var(--cinder-border); font-size: var(--cinder-text-sm);"
+      style="display: grid; grid-template-columns: 11rem 7rem minmax(0, 1fr); gap: var(--cinder-space-3); align-items: center; min-block-size: 36px; padding-inline: var(--cinder-space-3); border-block-end: 1px solid var(--cinder-border); font-size: var(--cinder-text-sm);"
       data-index={context.index}
     >
       <span>{event.timestamp}</span>
