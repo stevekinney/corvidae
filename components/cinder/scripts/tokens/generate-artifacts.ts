@@ -7,6 +7,7 @@
  */
 
 import { mkdir, readFile } from 'node:fs/promises';
+import { relative } from 'node:path';
 
 import { assertPrettierResolvesToRoot } from '@lostgradient/component-tooling/scripts/lib/prettier-resolution.ts';
 import { format } from 'prettier';
@@ -28,11 +29,14 @@ import { createValueResolver } from '../../src/tokens/runtime/resolve.ts';
 import type { TokenDocument } from '../../src/tokens/runtime/types.ts';
 import { serializeAuthoringCatalogue } from './authoring-catalogue-output.ts';
 import { buildBaseCorpusMetadata } from './base-corpus-metadata.ts';
+import { buildTokenUtilitiesCss } from './css-generator.ts';
 import { buildTokensDocMarkdown, validateDocSections } from './docs.ts';
 import { buildGeneratedOutputs, findDriftedPaths, loadCorpus, readExisting } from './generate.ts';
 import {
   authoringCataloguePath,
+  isVersionControlledOutput,
   JSON_PLUGINS,
+  packageRoot,
   PRETTIER_OPTIONS,
   REGENERATE_COMMAND,
   registryJsonPath,
@@ -40,6 +44,7 @@ import {
   resolvedDirectory,
   tokenIndexPath,
   tokensDocPath,
+  tokenUtilitiesCssPath,
 } from './generator-configuration.ts';
 import { buildSchemaValidatorOutputs } from './schema-validators.ts';
 
@@ -206,6 +211,7 @@ async function buildAllGeneratedOutputs(): Promise<Map<string, string>> {
   ]);
 
   const generated = new Map(cssAndResolved);
+  generated.set(tokenUtilitiesCssPath, buildTokenUtilitiesCss(baseIndex));
   generated.set(registryJsonPath, registryJson);
   generated.set(tokensDocPath, docMarkdown);
   generated.set(registryModulePath, registryModule);
@@ -224,6 +230,12 @@ async function main(): Promise<void> {
   const check = process.argv.includes('--check');
   const generated = await buildAllGeneratedOutputs();
 
+  if (process.argv.includes('--list')) {
+    // The output paths from the package root, for `generator-outputs.integration.test.ts`.
+    for (const path of generated.keys()) console.log(relative(packageRoot, path));
+    return;
+  }
+
   if (check) {
     const existing = await readExisting(generated.keys());
     const drifted = findDriftedPaths(generated, existing);
@@ -238,7 +250,12 @@ async function main(): Promise<void> {
   }
 
   await mkdir(resolvedDirectory, { recursive: true });
-  for (const [path, content] of generated) await Bun.write(path, content);
+  // `--ignored-only` (`tokens:seed`, run by the `metadata` task) writes just the outputs git
+  // ignores. The version-controlled ones stay for `tokens:generate` and `--check`, so a stale
+  // source still fails the drift check instead of being rewritten silently.
+  const ignoredOnly = process.argv.includes('--ignored-only');
+  for (const [path, content] of generated)
+    if (!ignoredOnly || !isVersionControlledOutput(path)) await Bun.write(path, content);
 }
 
 if (import.meta.main) await main();

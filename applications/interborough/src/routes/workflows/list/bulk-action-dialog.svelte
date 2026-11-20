@@ -3,8 +3,9 @@
    * Shared Tier-3 type-to-confirm dialog for the five filter-scoped bulk
    * workflow operations (cancel, signal, retry-failed, delete, mutate tags —
    * plan §9.2/§10.6 T8.1; design `Weft Patterns.dc.html` Tier-3 mock).
-   * `bulk-purge-dialog.svelte` is separate — purge has no dry-run/
-   * confirmation-token protocol at all (see that file's module doc).
+   * `bulk-purge-dialog.svelte` is separate — purge follows the same dry-run/
+   * confirmation-token protocol but previews what it would remove, with a
+   * sample of the ids (see that file's module doc).
    *
    * ## Why this composes `Modal` directly rather than `ConfirmDialog`
    *
@@ -34,19 +35,20 @@
    * `preview` (matched count + filter chip + type-to-confirm) → `committing`
    * (non-dismissible, indeterminate progress) → `result` | `fault`.
    *
-   * A commit fault classified `invalid` (plan §10.4) means the confirmation
-   * token no longer matches the current dry-run scope — weft's
+   * A commit fault with the `Conflict` code means the confirmation token no
+   * longer matches the current dry-run scope — weft's
    * `BulkOperationConfirmationError` (`weft/src/core/engine/errors.ts`),
-   * content-based, not time-based: it fires when the matched set changed
-   * between preview and commit, not on a clock. The UI response is to run a
-   * fresh preview, not to show a generic error — `retryMeansPreview` below
-   * drives that branch. Any OTHER fault kind at commit time (network,
-   * `EngineFailure`, …) offers a same-token retry instead, since the token
-   * itself is still valid.
+   * which every bulk operation answers as `Conflict`
+   * (`staleConfirmationFault`), content-based, not time-based: it fires when
+   * the matched set changed between preview and commit, not on a clock. The
+   * UI response is to run a fresh preview, not to show a generic error —
+   * `faultMeansStalePreview` below drives that branch. Any OTHER fault at
+   * commit time (a malformed request, network, `EngineFailure`, …) offers a
+   * same-token retry instead, since the token itself is still valid.
    */
   import { Badge, Button, Input, Modal, Progress, Skeleton } from '@lostgradient/cinder';
-  import type { Snippet } from 'svelte';
-  import type { BulkOperationDryRunResult } from '@lostgradient/weft';
+  import { onMount, type Snippet } from 'svelte';
+  import { HttpClientError, type BulkOperationDryRunResult } from '@lostgradient/weft';
 
   import { faultTreatment } from '../../../lib/faults.ts';
   import { confirmPhrase, confirmPhraseMatches, filterSummaryChip } from './bulk-preview-format.ts';
@@ -75,8 +77,8 @@
      * the params/preview phase's "Cancel"), where invalidating queries is
      * harmless but clearing the caller's row selection would not be — the
      * caller might want to retry a DIFFERENT action against the same
-     * selection. Optional so `bulk-purge-dialog.svelte`'s equivalent single-
-     * phase flow isn't forced to declare an unused prop.
+     * selection. Optional so a caller with nothing to do on success isn't forced
+     * to declare an unused prop.
      */
     readonly onSuccess?: () => void;
   }
@@ -128,7 +130,12 @@
   /** `true` when the commit fault means "re-run the preview", not "retry the same token" (module doc). Only meaningful when `faultOrigin === 'committing'`. */
   let faultMeansStalePreview = $state(false);
 
-  $effect(() => {
+  // Once, when the dialog opens, never from an effect: an effect would track `runDryRun`, and the
+  // selection bar builds it as a closure over its filter, so every list refresh that handed the bar
+  // a new filter object would run the preview again and clear the phrase being typed. A change of
+  // filter does not change what this open dialog was asked to act on; "Refresh preview" is the one
+  // way to count again. A dialog with a `parameters` form runs its dry run from "Continue" instead.
+  onMount(() => {
     if (!parameters) void loadPreview();
   });
 
@@ -168,7 +175,9 @@
       const treatment = faultTreatment(error);
       faultMessage = treatment.message;
       faultOrigin = 'committing';
-      faultMeansStalePreview = treatment.kind === 'invalid';
+      // Only the server's `Conflict` means the matching workflows moved after the preview. Other
+      // `invalid` faults (a malformed filter, a missing token) are input the preview cannot fix.
+      faultMeansStalePreview = error instanceof HttpClientError && error.faultCode === 'Conflict';
       phase = 'fault';
     }
   }

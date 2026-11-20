@@ -185,6 +185,7 @@ export const FOUNDATION_DOC_SECTIONS: readonly DocSection[] = ([] = [
     slug: 'borders',
     headings: ['## Borders'],
     cssProperties: [
+      '--cinder-border-width',
       '--cinder-border-ink',
       '--cinder-border-muted',
       '--cinder-border',
@@ -287,6 +288,7 @@ export const FOUNDATION_DOC_SECTIONS: readonly DocSection[] = ([] = [
       '--cinder-scrollbar-track',
       '--cinder-scrollbar-thumb',
       '--cinder-scrollbar-thumb-hover',
+      '--cinder-scroll-shadow-color',
     ],
   },
 ]);

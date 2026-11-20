@@ -212,6 +212,22 @@
   },
   "border": {
     "$type": "color",
+    "width": {
+      "$type": "dimension",
+      "$value": {
+        "value": 1,
+        "unit": "px"
+      },
+      "$description": "Default stroke width for structural frames and dividers.",
+      "$extensions": {
+        "com.lostgradient.cinder": {
+          "cssProperty": "--cinder-border-width",
+          "public": true,
+          "category": "size",
+          "cssRecipe": null
+        }
+      }
+    },
     "ink": {
       "$value": {
         "colorSpace": "oklch",
@@ -892,6 +908,26 @@
           "public": true,
           "category": "color",
           "cssRecipe": "color-mix(in oklch, var(--cinder-polarity-ink), transparent 35%)"
+        }
+      }
+    }
+  },
+  "scroll-shadow": {
+    "$description": "The edge shadow that marks a scrollable region (data grid, permission matrix, transfer list) and a pinned data-grid column.",
+    "color": {
+      "$type": "color",
+      "$value": {
+        "colorSpace": "oklch",
+        "components": [0, 0, 0],
+        "alpha": 0.14
+      },
+      "$description": "The color of a scroll-edge or sticky-column shadow. Black in both themes, never text ink; the dark arm is denser, because a shadow has to be to read against a dark surface.",
+      "$extensions": {
+        "com.lostgradient.cinder": {
+          "cssProperty": "--cinder-scroll-shadow-color",
+          "public": true,
+          "category": "color",
+          "cssRecipe": "light-dark(oklch(0% 0 0 / 0.14), oklch(0% 0 0 / 0.5))"
         }
       }
     }

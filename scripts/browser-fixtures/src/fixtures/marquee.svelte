@@ -26,10 +26,16 @@
 </div>
 
 <button id="before-scrolling-marquee" type="button">Before scrolling announcements</button>
-<div id="example-mount-overflow" style:inline-size="20rem">
+<div id="example-mount-overflow" class="overflow-layout">
   <Marquee label="Scrollable announcements">
     <span>Scheduled maintenance for all regions.</span>
     <span>New team members joining this month.</span>
     <span>Product updates and release announcements.</span>
   </Marquee>
 </div>
+
+<style>
+  .overflow-layout {
+    inline-size: 20rem;
+  }
+</style>

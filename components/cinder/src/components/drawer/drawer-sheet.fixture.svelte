@@ -77,6 +77,6 @@
 <style>
   .drawer-sheet-fixture {
     min-block-size: 20rem;
-    padding: 1rem;
+    padding: var(--cinder-space-4);
   }
 </style>

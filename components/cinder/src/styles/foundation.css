@@ -240,38 +240,6 @@
   }
 }
 
-[data-theme='dark']
-  .cinder-code-block
-  :where(pre.shiki)
-  span[style*='--shiki-dark']:not(
-    [data-theme='dark']
-      [data-theme='light']
-      .cinder-code-block
-      :where(pre.shiki)
-      span[style*='--shiki-dark']
-  ),
-[data-theme='light']
-  [data-theme='dark']
-  .cinder-code-block
-  :where(pre.shiki)
-  span[style*='--shiki-dark']:not(
-    [data-theme='light']
-      [data-theme='dark']
-      [data-theme='light']
-      .cinder-code-block
-      :where(pre.shiki)
-      span[style*='--shiki-dark']
-  ),
-[data-theme='light']
-  [data-theme='dark']
-  [data-theme='light']
-  [data-theme='dark']
-  .cinder-code-block
-  :where(pre.shiki)
-  span[style*='--shiki-dark'] {
-  color: var(--shiki-dark, inherit) !important;
-}
-
 :focus-visible {
   /* Strategy A is sanctioned ONLY here — the bare global default that paints a
      baseline ring for any element a component CSS file does not own. See
@@ -391,7 +359,7 @@
 
 :where(hr) {
   border: none;
-  border-top: 1px solid var(--cinder-border-muted);
+  border-top: var(--cinder-border-width) solid var(--cinder-border-muted);
   margin: var(--cinder-space-6) 0;
 }
 
@@ -409,7 +377,7 @@
 
 :where(td) {
   padding: var(--cinder-space-2) var(--cinder-space-3);
-  border-bottom: 1px solid var(--cinder-border-muted);
+  border-bottom: var(--cinder-border-width) solid var(--cinder-border-muted);
 }
 
 :where(input, button, textarea, select) {

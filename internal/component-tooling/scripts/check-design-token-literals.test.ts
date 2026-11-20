@@ -10,6 +10,11 @@
 import { describe, expect, test } from 'bun:test';
 
 import {
+  findFixtureLiterals,
+  inspectFixtureStyles,
+  newFixtureLiterals,
+} from './check-browser-fixture-token-literals.ts';
+import {
   FONT_WEIGHT_LITERAL_PATTERN,
   TIMING_LITERAL_PATTERN,
   durationLiterals,
@@ -77,5 +82,108 @@ describe('FONT_WEIGHT_LITERAL_PATTERN', () => {
   test('pairs each weight with its own token rather than a fixed pair', () => {
     expect(fontWeightTokens().get('400')).toBe('--cinder-font-normal');
     expect(fontWeightTokens().get('700')).toBe('--cinder-font-bold');
+  });
+});
+
+describe('browser fixture literals', () => {
+  test('rejects inline fixture styles even when they use tokens or dynamic values', () => {
+    const source = [
+      '<div style="gap: var(--cinder-space-2)"></div>',
+      '<div style:inline-size={width}></div>',
+      '<Stack style={layout}><div class="gap-2">Example</div></Stack>',
+      '<Table scrollContainerProps={{ style: tableLayout }} />',
+      '<!-- <div style="width: 12rem"></div> -->',
+      '<style>.narrow { inline-size: 12rem; }</style>',
+    ].join('\n');
+
+    expect(inspectFixtureStyles(source, 'fixture.svelte').inlineStyleLines).toEqual([1, 2, 3, 4]);
+  });
+
+  test('finds paint and dimensions in inline, directive, and block styles', () => {
+    const source = [
+      '<Container style="max-inline-size: 40rem; padding: var(--cinder-space-2) 8px;">',
+      '  <div style:background-color={"rebeccapurple"}>Sample</div>',
+      '</Container>',
+      '<style>',
+      '  .sample { gap: calc(var(--cinder-space-2) + 3px); color: #abc8; }',
+      '  .sample { background: linear-gradient(rgb(2 3 4), var(--cinder-surface)); }',
+      '</style>',
+    ].join('\n');
+
+    expect(findFixtureLiterals(source, 'fixture.svelte')).toEqual([
+      { line: 1, property: 'max-inline-size', value: '40rem' },
+      { line: 1, property: 'padding', value: 'var(--cinder-space-2) 8px' },
+      { line: 2, property: 'background-color', value: 'rebeccapurple' },
+      { line: 5, property: 'gap', value: 'calc(var(--cinder-space-2) + 3px)' },
+      { line: 5, property: 'color', value: '#abc8' },
+      {
+        line: 6,
+        property: 'background',
+        value: 'linear-gradient(rgb(2 3 4), var(--cinder-surface))',
+      },
+    ]);
+  });
+
+  test('checks static fragments of authored template and object styles', () => {
+    const source = [
+      '<Table scrollContainerProps={{ style: "height: 12rem" }} />',
+      '<div style={`inline-size: ${width}px; gap: 12px;`}></div>',
+      '<div style={active ? "color: white;" : "color: var(--cinder-text-default)"}></div>',
+    ].join('\n');
+
+    expect(findFixtureLiterals(source, 'fixture.svelte')).toEqual([
+      { line: 1, property: 'height', value: '12rem' },
+      { line: 2, property: 'gap', value: '12px' },
+      { line: 3, property: 'color', value: 'white' },
+    ]);
+  });
+
+  test('checks CSS sidecars and literal SVG paint but permits sample component props', () => {
+    expect(
+      findFixtureLiterals(
+        '@media (min-width: 40rem) { .fixture { font-size: 13px; border-radius: 4px; } }',
+        'fixture.css',
+      ),
+    ).toEqual([
+      { line: 1, property: 'font-size', value: '13px' },
+      { line: 1, property: 'border-radius', value: '4px' },
+    ]);
+    expect(
+      findFixtureLiterals(
+        '<ColorPicker value="red" /><svg><path fill="red" stroke="currentColor" /></svg>',
+        'fixture.svelte',
+      ),
+    ).toEqual([{ line: 1, property: 'fill', value: 'red' }]);
+  });
+
+  test('allows sample colors, comments, responsive thresholds, fluid sizes, and theme colors', () => {
+    const source = [
+      '<script>const sample = "width: 15px";</script>',
+      '<ColorPicker value="#ffffff" />',
+      '<!-- <div style="width: 15px"></div> -->',
+      '<style>',
+      '  /* gap: 7px */',
+      '  @container (max-width: 40rem) {',
+      '    .sample::before { content: "120px"; color: currentColor; }',
+      '    .sample {',
+      '      width: 100%; padding: 0 var(--cinder-space-3, 12px);',
+      '      background: color-mix(in oklch, var(--cinder-surface), transparent 30%);',
+      '      background-image: url("/sample/#aaa");',
+      '    }',
+      '  }',
+      '</style>',
+    ].join('\n');
+
+    expect(findFixtureLiterals(source, 'fixture.svelte')).toEqual([]);
+  });
+
+  test('rejects new or repeated declarations within a baselined file', () => {
+    const previous = [{ line: 1, property: 'gap', value: '8px' }];
+    expect(newFixtureLiterals([{ ...previous[0]!, line: 10 }], ['gap: 8px'])).toEqual([]);
+    const extra = [
+      { line: 11, property: 'gap', value: '8px' },
+      { line: 12, property: 'gap', value: '9px' },
+    ];
+    expect(newFixtureLiterals([...previous, ...extra], ['gap: 8px'])).toEqual(extra);
   });
 });

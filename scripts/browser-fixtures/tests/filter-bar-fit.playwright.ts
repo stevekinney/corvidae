@@ -114,6 +114,30 @@ test.describe('FilterBar folds by its measured width', () => {
     expect(await rowOverflow(bar)).toBeLessThanOrEqual(0);
   });
 
+  // Row 52x: the third bar holds three chips, two applied, in a column the medium form cannot hold.
+  // The unapplied Workflow chip moves into the Filter menu before the bar folds to narrow, and the
+  // applied Started by and Agent chips stay in the row with their remove buttons.
+  test('a medium bar that cannot hold its chips moves the unapplied one into the Filter menu and keeps the applied ones in the row', async ({
+    page,
+  }) => {
+    const bar = page.getByRole('search', { name: 'Run filters with chips folded in order' });
+    await expect(bar).toHaveAttribute('data-cinder-layout', 'medium');
+    await expect(
+      bar.getByRole('button', { name: 'Remove filter: Started by: Chats' }),
+    ).toBeVisible();
+    await expect(
+      bar.getByRole('button', { name: 'Remove filter: Agent: Tool runner' }),
+    ).toBeVisible();
+    await expect(bar.getByRole('button', { name: 'Workflow', exact: true })).toHaveCount(0);
+    await bar.locator('.cinder-filter-bar__menu-button').click();
+    await expect(
+      page.locator('.cinder-filter-bar__menu .cinder-filter-bar__menu-label', {
+        hasText: 'Workflow',
+      }),
+    ).toBeVisible();
+    expect(await rowOverflow(bar)).toBeLessThanOrEqual(0);
+  });
+
   test('a folded bar unfolds once a removed chip makes room, with focus on the chip that is left', async ({
     page,
   }) => {

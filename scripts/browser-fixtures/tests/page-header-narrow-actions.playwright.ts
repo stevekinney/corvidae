@@ -10,6 +10,18 @@
 import { fixtureRoute } from '@lostgradient/testing/playwright/overlay-fixture';
 import { expect, test } from '@playwright/test';
 
+test('spacing utilities resolve scoped theme values', async ({ page }) => {
+  await page.goto(fixtureRoute('page-header'), { waitUntil: 'load' });
+  const largeTitle = page.getByTestId('large-title-rest');
+  const hero = page.getByTestId('hero-accent');
+  await expect(largeTitle).toHaveCSS('margin-block-start', '16px');
+  await page.addStyleTag({
+    content: '[data-testid="large-title-rest"] { --cinder-space-4: 27px; }',
+  });
+  await expect(largeTitle).toHaveCSS('margin-block-start', '27px');
+  await expect(hero).toHaveCSS('margin-block-start', '16px');
+});
+
 test('a narrow header puts its actions beside the status only when asked, and is shorter for it', async ({
   page,
 }) => {
@@ -81,5 +93,40 @@ test('a narrow header with no status puts its actions beside the title, not alon
   const headerHeight = header!.bottom - header!.top;
   expect(headerHeight).toBeLessThanOrEqual(
     Math.max(title!.bottom - title!.top, actions!.bottom - actions!.top) + 1,
+  );
+});
+
+test('regular header actions follow their own size tokens', async ({ page }) => {
+  await page.goto(`${fixtureRoute('page-header')}&action-sizes=1`, { waitUntil: 'load' });
+  const compact = page.getByTestId('compact-actions');
+  const regular = page.getByTestId('regular-actions');
+  const heights = await regular.evaluate((element) => {
+    const probe = document.createElement('div');
+    element.append(probe);
+    const resolve = (token: string) => {
+      probe.style.height = `var(${token})`;
+      return getComputedStyle(probe).height;
+    };
+    const values = {
+      compact: resolve('--_cinder-compact-control-height'),
+      medium: resolve('--cinder-button-height-md'),
+      large: resolve('--cinder-button-height-lg'),
+    };
+    probe.remove();
+    return values;
+  });
+
+  for (const label of ['Publish', 'New release', 'More actions']) {
+    await expect(compact.getByRole('button', { name: label })).toHaveCSS('height', heights.compact);
+  }
+
+  await expect(regular.getByRole('button', { name: 'Publish' })).toHaveCSS('height', heights.large);
+  await expect(regular.getByRole('button', { name: 'New release' })).toHaveCSS(
+    'height',
+    heights.medium,
+  );
+  await expect(regular.getByRole('button', { name: 'More actions' })).toHaveCSS(
+    'height',
+    heights.medium,
   );
 });

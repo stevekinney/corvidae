@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import {
   existsSync,
+  mkdirSync,
   mkdtempSync,
   readdirSync,
   readFileSync,
@@ -305,7 +306,7 @@ describe('charter rules', () => {
     expect(rule).toContain('never to `main`');
     expect(rule).toContain('do not wait for the focused checks before that push');
     expect(rule).toContain('still gate ready-for-review');
-    expect(rule).toContain('record its returned run ID in the ready-for-review receipt');
+    expect(rule).toContain('record the dispatch it prints in the ready-for-review receipt');
     for (const path of ['.claude/agents/chef-worker.md', '.codex/agents/chef-worker.toml']) {
       const text = readFileSync(join(import.meta.dir, '../..', path), 'utf8');
       expect(text).toContain(`${pushRule.charAt(0).toUpperCase()}${pushRule.slice(1)}`);
@@ -314,11 +315,11 @@ describe('charter rules', () => {
 
   test('requires every rendered brief to record one final branch CI receipt', () => {
     expect(pushRule).toContain(
-      'After the final push run `gh workflow run main.yml --ref <branch>` once per batch',
+      'After the final push run `bun scripts/chef/targeted-run.ts` once per batch',
     );
     expect(pushRule).not.toContain('When the brief requires branch CI');
     expect(renderBrief(issue(description), { paths: [], verify: [], model: 'Sonnet' })).toContain(
-      'record its returned run ID in the ready-for-review receipt',
+      'record the dispatch it prints in the ready-for-review receipt',
     );
   });
 
@@ -365,12 +366,6 @@ describe('charter rules', () => {
       agents,
       'never `git reset --soft` onto a newer `main`',
     ],
-    ['`bun scripts/chef/revert-check.ts`', agents, '`bun scripts/chef/revert-check.ts`'],
-    [
-      '`git diff --name-only origin/main...head`',
-      agents,
-      '`git diff --name-only origin/main...head`',
-    ],
     ['there is no context ceiling', agents, 'a worker has no context ceiling'],
     ['never poll', agents, 'never poll'],
     ['answer every thread before merge', agents, 'answer every thread before merge'],
@@ -406,7 +401,7 @@ describe('charter rules', () => {
       'interborough end-to-end suite',
       'design-review capture',
       '`validate` or `harden` on this host',
-      '`gh workflow run main.yml --ref <branch>`',
+      '`bun scripts/chef/targeted-run.ts`',
       'do not wait on it',
       'read the failing test names',
       "download the failing shard's artifact",
@@ -440,7 +435,7 @@ describe('charter rules', () => {
       '.agents/skills/chef/references/execution-record.md',
     ]) {
       const text = read(path);
-      expect(text, path).toContain('gh workflow run main.yml --ref <branch>');
+      expect(text, path).toContain('bun scripts/chef/targeted-run.ts');
       expect(text, path).toContain('browser suite');
     }
   });
@@ -450,6 +445,21 @@ describe('charter rules', () => {
     for (const [charter, document, rule] of governing) {
       expect(rules, charter).toContain(normalize(charter));
       expect(read(document), `${document}: ${rule}`).toContain(normalize(rule));
+    }
+  });
+
+  // The revert check is the charter's alone: the other copies of the sequence were deleted, and
+  // `scripts/process-docs-budget.test.ts` fails when a governed document holds both commands again.
+  test('state the revert check once, in the Branch rule, and AGENTS.md points at it', () => {
+    const branch = normalize(
+      charterRules.find((candidate) => candidate.startsWith('**Branch:**')) ?? '',
+    );
+    expect(branch).toContain('`bun scripts/chef/revert-check.ts`');
+    expect(branch).toContain('`git diff --name-only origin/main...head`');
+    expect(read(agents)).toContain(normalize('`charterRules` (`scripts/chef/brief.ts`)'));
+    for (const path of ['.claude/agents/chef-worker.md', '.codex/agents/chef-worker.toml']) {
+      expect(read(path), path).toContain("brief's branch rule");
+      expect(read(path), path).toContain("brief's checks rule");
     }
   });
 
@@ -479,16 +489,33 @@ describe('charter rules', () => {
 describe('report rule', () => {
   const rule = charterRules.find((candidate) => candidate.startsWith('**Report:**'));
 
-  test('makes the final message the report and keeps files out of it', () => {
+  test('makes the final message the report, after the structured report file the stop hook checks', () => {
     expect(rule).toBeDefined();
     expect(rule).toContain('final message is the report');
     expect(rule).toContain('at most 15 lines');
-    expect(rule).toContain('do not create a `report.md`');
+    expect(rule).toContain('create no `report.md`');
+    expect(rule).toContain('bun scripts/chef/report.ts write <brief stem>');
     expect(rule).toContain('tmp/chef/<package>/round-<n>/');
   });
 
-  test('no charter rule requires writing a report file', () => {
-    expect(charterRules.join('\n')).not.toMatch(/write (?:the )?(?:full )?report/i);
+  test('no charter rule requires a prose report file', () => {
+    expect(charterRules.join('\n')).not.toMatch(/write (?:the )?(?:full )?report(?!\.ts)/i);
+  });
+
+  test('a brief carries a version that changes with the issue, and refuses a volatile image path', () => {
+    const first = renderBrief(issue(description), { paths: [], verify: [], model: 'Sonnet' });
+    const amended = renderBrief(issue(`${description}\n\n16. A new criterion.`), {
+      paths: [],
+      verify: [],
+      model: 'Sonnet',
+    });
+    const version = (text: string) => /^Brief version: ([0-9a-f]{12})$/m.exec(text)?.[1];
+    expect(version(first)).toBeDefined();
+    expect(version(amended)).toBeDefined();
+    expect(version(amended)).not.toBe(version(first));
+    expect(
+      version(renderBrief(issue(description), { paths: [], verify: [], model: 'Sonnet' })),
+    ).toBe(version(first));
   });
 
   test('the brief a worker receives carries the report rule', () => {
@@ -851,6 +878,31 @@ describe('run', () => {
   test('a batch of repeated or malformed IDs is a UsageError', async () => {
     expect(await rejectionOf(run(['COR-7', 'COR-7'], dependencies))).toBeInstanceOf(UsageError);
     expect(await rejectionOf(run(['COR-7', 'nope'], dependencies))).toBeInstanceOf(UsageError);
+  });
+
+  test('refuses a brief that points at an image in a temporary folder', async () => {
+    const volatile: FetchLike = async (url, init) => {
+      const { query } = JSON.parse(init.body as string) as { query: string };
+      if (query.includes('IssueRelations') || query.includes('IssueComments'))
+        return fetchIssue(url, init);
+      return new Response(
+        JSON.stringify({
+          data: {
+            issue: issue(
+              description.replace(
+                '- It works.',
+                '- It works, as /private/tmp/claude/images/shot.png shows.',
+              ),
+            ),
+          },
+        }),
+        { status: 200 },
+      );
+    };
+    const result = await run(['COR-7', '--stdout'], { ...dependencies, fetch: volatile });
+    expect(result.code).not.toBe(0);
+    expect(result.output).toContain('report.ts attach');
+    expect(result.output).toContain('/private/tmp/claude/images/shot.png');
   });
 
   test('a read-only --stdout brief creates and names no scratch directory', async () => {
@@ -1317,5 +1369,146 @@ describe('the delivery rule', () => {
       expect(text, path).toContain("brief's Delivery rule");
       expect(text, path).not.toMatch(/open no pull request unless/i);
     }
+  });
+});
+
+describe('design rows need rows.resolved.json', () => {
+  const designDescription = [
+    '## Execution brief',
+    'Build the Runs list.',
+    '',
+    '## Acceptance criteria',
+    '- [ ] 11a: Runs reads as cards below 700px (board Runs).',
+    '',
+    '## Design source',
+    'Prototypes: [canvas](https://claude.ai/artifact/GDeC387KnFkpSQoLz86jLw). Index rows:',
+    '* **11a** (Runs): Runs list as cards',
+  ].join('\n');
+  const fetcher =
+    (text: string): FetchLike =>
+    async (_url, init) => {
+      const { query } = JSON.parse(init.body as string) as { query: string };
+      const data = query.includes('IssueRelations')
+        ? {
+            issue: {
+              id: 'uuid-7',
+              identifier: 'COR-7',
+              relations: { nodes: [], pageInfo: { hasNextPage: false } },
+              inverseRelations: { nodes: [], pageInfo: { hasNextPage: false } },
+            },
+          }
+        : query.includes('IssueComments')
+          ? {
+              issue: { comments: { nodes: [], pageInfo: { hasNextPage: false, endCursor: null } } },
+            }
+          : { issue: issue(text) };
+      return new Response(JSON.stringify({ data }), { status: 200 });
+    };
+  const runner: Runner = (command) => {
+    if (command.join(' ') === 'git rev-parse --show-toplevel')
+      return { code: 0, stdout: '/checkout\n', stderr: '' };
+    if (command.join(' ') === 'git config --get remote.origin.url')
+      return { code: 0, stdout: 'git@github.com:stevekinney/corvidae.git\n', stderr: '' };
+    if (command.join(' ') === `git rev-parse --verify ${pinnedBase}^{commit}`)
+      return { code: 0, stdout: `${pinnedBase}\n`, stderr: '' };
+    return { code: 1, stdout: '', stderr: 'unknown git command' };
+  };
+  const command = (text: string) => ({
+    argv: [
+      'COR-7',
+      '--out-dir',
+      sandbox,
+      '--repository',
+      'stevekinney/corvidae',
+      '--base',
+      pinnedBase,
+      '--context',
+      (() => {
+        const context = join(sandbox, 'design-context.json');
+        writeFileSync(
+          context,
+          JSON.stringify([
+            {
+              locator: 'https://claude.ai/artifact/GDeC387KnFkpSQoLz86jLw',
+              content: 'verified design',
+            },
+          ]),
+        );
+        return context;
+      })(),
+      '--json',
+    ],
+    dependencies: {
+      fetch: fetcher(text),
+      environment: { LINEAR_API_KEY: 'lin_api_test_value' },
+    },
+  });
+  const resolvedFile = (overrides: Record<string, unknown> = {}) =>
+    JSON.stringify({
+      version: 1,
+      issue: 'COR-7',
+      rows: [
+        {
+          id: '11a',
+          board: 'Runs',
+          text: 'Runs as cards',
+          states: [
+            { route: '/runs', state: 'ready', kind: 'ready' },
+            { route: '/runs', state: 'empty', kind: 'empty' },
+          ],
+        },
+      ],
+      checked: [{ literal: '700px', result: 'conflict' }],
+      conflicts: [
+        {
+          criterion: 'Runs reads as cards below 700px',
+          rows: ['11a'],
+          resolution: 'decision',
+          reason: 'the board draws cards at 640px; the issue threshold of 700px wins',
+        },
+      ],
+      ...overrides,
+    });
+
+  test('an issue with rows and no resolved file exits 1 and writes no brief', async () => {
+    const { argv, dependencies } = command(designDescription);
+    const result = await run(argv, dependencies, runner);
+    expect(result.code).toBe(1);
+    const parsed = JSON.parse(result.output) as {
+      ok: boolean;
+      error: string;
+      needsResolvedRows: boolean;
+    };
+    expect(parsed.ok).toBe(false);
+    expect(parsed.needsResolvedRows).toBe(true);
+    expect(parsed.error).toContain('design rows are not resolved');
+    expect(parsed.error).toContain('rows.resolved.json');
+    expect(existsSync(join(sandbox, 'COR-7.md'))).toBe(false);
+  });
+
+  test('refuses a resolved file that leaves a literal criterion unchecked', async () => {
+    mkdirSync(join(sandbox, 'COR-7'), { recursive: true });
+    writeFileSync(join(sandbox, 'COR-7', 'rows.resolved.json'), resolvedFile({ checked: [] }));
+    const { argv, dependencies } = command(designDescription);
+    const result = await run(argv, dependencies, runner);
+    expect(result.code).toBe(1);
+    expect(result.output).toContain('literal criterion 700px was not checked');
+  });
+
+  test('writes the brief, and renders the decisions and declared states, once the file is valid', async () => {
+    mkdirSync(join(sandbox, 'COR-7'), { recursive: true });
+    writeFileSync(join(sandbox, 'COR-7', 'rows.resolved.json'), resolvedFile());
+    const { argv, dependencies } = command(designDescription);
+    const result = await run(argv, dependencies, runner);
+    expect(result.code).toBe(0);
+    const text = readFileSync(join(sandbox, 'COR-7.md'), 'utf8');
+    expect(text).toContain('Decision (rows 11a): Runs reads as cards below 700px.');
+    expect(text).toContain('Row 11a is captured in: /runs "ready" (ready); /runs "empty" (empty)');
+  });
+
+  test('an issue without design rows needs no resolved file', async () => {
+    const { argv, dependencies } = command(description);
+    const result = await run(argv, dependencies, runner);
+    expect(result.code).toBe(0);
   });
 });

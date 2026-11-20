@@ -92,6 +92,7 @@ export const WORKSPACE_CONFORMANCE_GROUPS = [
       ['bureau.guardrails.list', 'shared'],
       ['bureau.validators.list', 'shared'],
       ['bureau.skills.list', 'shared'],
+      ['bureau.skills.get', 'shared'],
     ],
   },
   {
@@ -137,6 +138,12 @@ export const WORKSPACE_CONFORMANCE_GROUPS = [
       ['bureau.tasks.events', 'owner'],
       ['bureau.tasks.respond', 'owner'],
     ],
+  },
+  {
+    testFile: 'management/runs-timeline-operation.test.ts',
+    inputFixture: 'An owned agent run and a workflow instance with private step input',
+    sentinel: 'PRIVATE-TIMELINE-INPUT-7c31',
+    operations: [['bureau.runs.timeline', 'owner']],
   },
   {
     testFile: 'workspace-context-privacy.test.ts',

@@ -398,15 +398,19 @@ describe('buildApplication', () => {
       [`${BUILD_ASSET_DIRECTORY}/main-aaaaaaaa.js`]: 'main',
     });
 
-    const result = await buildApplication({ outdir, bundle });
+    const source = { commit: 'b'.repeat(40), changes: '' };
+    const result = await buildApplication({ outdir, bundle, source });
 
     expect(result.directory).toBe(resolve(outdir));
-    expect(result.files).toEqual(['assets/main-aaaaaaaa.js', 'index.html']);
+    expect(result.files).toEqual(['assets/main-aaaaaaaa.js', 'build-info.json', 'index.html']);
+    // The build records its commit, and the page is given the short one.
+    expect(JSON.parse(await Bun.file(join(outdir, 'build-info.json')).text())).toEqual(source);
+    expect(calls[0]?.define?.['INTERBOROUGH_BUILD_COMMIT']).toBe('"bbbbbbb"');
     expect(result.metafile).toEqual({ inputs: {}, outputs: {} });
     expect(calls).toHaveLength(1);
     expect(calls[0]?.entrypoints).toEqual([ENTRY_HTML_PATH]);
     expect(calls[0]?.minify).toBe(true);
-    expect(calls[0]?.define).toEqual({ 'process.env.NODE_ENV': '"production"' });
+    expect(calls[0]?.define?.['process.env.NODE_ENV']).toBe('"production"');
     expect(await Bun.file(join(outdir, 'index.html')).text()).toBe('page');
     // The staging directory is gone: only the build remains beside it.
     expect(readdirSync(join(outdir, '..'))).toEqual(['build']);
@@ -462,9 +466,7 @@ describe('buildApplication', () => {
     await buildApplication({ outdir, development: true, bundle: development.bundle });
     expect(existsSync(planted)).toBe(true);
     expect(development.calls[0]?.minify).toBe(false);
-    expect(development.calls[0]?.define).toEqual({
-      'process.env.NODE_ENV': '"development"',
-    });
+    expect(development.calls[0]?.define?.['process.env.NODE_ENV']).toBe('"development"');
     expect(existsSync(join(outdir, RETAINED_ASSETS_FILE))).toBe(true);
 
     await buildApplication({ outdir, bundle: fakeBundle(files).bundle });
@@ -538,6 +540,7 @@ describe('stylesheets', () => {
       'assets/lazy-bbbbbbbb.js',
       'assets/page-aaaaaaaa.css',
       'assets/page-aaaaaaaa.css.map',
+      'build-info.json',
       'index.html',
     ]);
     expect(readdirSync(join(outdir, 'assets')).toSorted()).toEqual([

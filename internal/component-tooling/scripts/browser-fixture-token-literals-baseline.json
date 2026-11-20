@@ -1,0 +1,244 @@
+{
+  "components/cinder/src/components/accordion/accordion.fixture.svelte": ["max-inline-size: 42rem"],
+  "components/cinder/src/components/banner/banner-actions.fixture.svelte": ["inline-size: 24rem"],
+  "components/cinder/src/components/capability-gate/capability-gate-actions.fixture.svelte": [
+    "max-inline-size: 28rem"
+  ],
+  "components/cinder/src/components/card/card-footer.fixture.svelte": ["max-inline-size: 32rem"],
+  "components/cinder/src/components/card/card-suggested.fixture.svelte": ["max-inline-size: 28rem"],
+  "components/cinder/src/components/checkbox/checkbox.fixture.svelte": ["inline-size: 16rem"],
+  "components/cinder/src/components/code-block/code-block-bar.fixture.svelte": [
+    "inline-size: 6rem",
+    "max-inline-size: 36rem"
+  ],
+  "components/cinder/src/components/drawer/drawer-sheet.fixture.svelte": ["min-block-size: 20rem"],
+  "components/cinder/src/components/drawer/drawer.fixture.svelte": ["min-block-size: 20rem"],
+  "components/cinder/src/components/dropdown/dropdown.fixture.svelte": ["min-block-size: 12rem"],
+  "components/cinder/src/components/grouped-list-item/grouped-list-item-suggested.fixture.svelte": [
+    "max-inline-size: 28rem"
+  ],
+  "components/cinder/src/components/inspector-row/inspector-row-suggested.fixture.svelte": [
+    "max-inline-size: 28rem"
+  ],
+  "components/cinder/src/components/inspector/inspector.fixture.svelte": [
+    "grid-template-columns: minmax(0, 1fr) 20rem"
+  ],
+  "components/cinder/src/components/list-detail/list-detail-groups.fixture.svelte": [
+    "block-size: 22rem",
+    "border: 1px solid var(--cinder-border-muted)"
+  ],
+  "components/cinder/src/components/modal/modal.fixture.svelte": [
+    "border: 1px solid var(--cinder-border)",
+    "border: 1px solid var(--cinder-border)",
+    "max-width: 24rem",
+    "min-block-size: 12rem",
+    "min-width: 18rem"
+  ],
+  "components/cinder/src/components/multi-select/multi-select-trailing.fixture.svelte": [
+    "grid-template-columns: repeat(3, 16rem)",
+    "inline-size: 12rem"
+  ],
+  "components/cinder/src/components/phone-input/phone-input-sizing.fixture.svelte": [
+    "inline-size: 15rem",
+    "max-inline-size: 28rem"
+  ],
+  "components/cinder/src/components/radio-group/radio-group.fixture.svelte": ["inline-size: 16rem"],
+  "components/cinder/src/components/run-step-timeline/run-step-timeline-connectors.fixture.svelte": [
+    "grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr))"
+  ],
+  "components/cinder/src/components/schema-view/schema-view-anatomy.fixture.svelte": [
+    "max-inline-size: 56rem"
+  ],
+  "components/cinder/src/components/segmented-control/segmented-control.fixture.svelte": [
+    "inline-size: 280px"
+  ],
+  "components/cinder/src/components/side-navigation/side-navigation.fixture.svelte": [
+    "inline-size: 18rem"
+  ],
+  "components/cinder/src/components/stacked-list-item/stacked-list-item-meta-compact.fixture.svelte": [
+    "inline-size: min(38rem, 100%)"
+  ],
+  "components/cinder/src/components/stacked-list-item/stacked-list-item-trailing.fixture.svelte": [
+    "inline-size: 20rem",
+    "inline-size: 360px"
+  ],
+  "components/cinder/src/components/stacked-list-item/stacked-list-item-wrap-meta.fixture.svelte": [
+    "inline-size: 20rem"
+  ],
+  "components/cinder/src/components/stacked-list-item/stacked-list-item.fixture.svelte": [
+    "inline-size: 20rem"
+  ],
+  "components/cinder/src/components/table/table.fixture.svelte": ["max-inline-size: 42rem"],
+  "components/cinder/src/components/tabs/tabs.fixture.svelte": ["max-inline-size: 36rem"],
+  "components/cinder/src/components/toggle/toggle-alignment.fixture.svelte": ["inline-size: 16rem"],
+  "scripts/browser-fixtures/src/fixtures/a2ui-a2a-part.svelte": ["max-inline-size: 32rem"],
+  "scripts/browser-fixtures/src/fixtures/action-row.svelte": ["max-inline-size: 28rem"],
+  "scripts/browser-fixtures/src/fixtures/app-bar.svelte": [
+    "block-size: 14rem",
+    "block-size: 3rem",
+    "border: 1px solid var(--cinder-border-muted)"
+  ],
+  "scripts/browser-fixtures/src/fixtures/aspect-ratio.svelte": [
+    "border: 1px dashed var(--cinder-border-muted)"
+  ],
+  "scripts/browser-fixtures/src/fixtures/calendar.svelte": ["max-inline-size: 22rem"],
+  "scripts/browser-fixtures/src/fixtures/capability-gate.svelte": ["max-width: 28rem"],
+  "scripts/browser-fixtures/src/fixtures/card.svelte": ["max-inline-size: 42rem"],
+  "scripts/browser-fixtures/src/fixtures/chat-composer-popover.svelte": ["height: 28rem"],
+  "scripts/browser-fixtures/src/fixtures/chat-stress.svelte": ["inline-size: 360px"],
+  "scripts/browser-fixtures/src/fixtures/choice-grid.svelte": [
+    "max-width: 20rem",
+    "max-width: 24rem"
+  ],
+  "scripts/browser-fixtures/src/fixtures/color-field.svelte": ["max-width: 20rem"],
+  "scripts/browser-fixtures/src/fixtures/command-menu/slash-in-textarea.svelte": [
+    "max-inline-size: 42rem"
+  ],
+  "scripts/browser-fixtures/src/fixtures/copyable-value.svelte": ["inline-size: 11rem"],
+  "scripts/browser-fixtures/src/fixtures/data-grid/virtualized.svelte": ["max-block-size: 420px"],
+  "scripts/browser-fixtures/src/fixtures/description-list.svelte": ["flex: 1 1 16rem"],
+  "scripts/browser-fixtures/src/fixtures/drawer.svelte": ["max-width: 32rem"],
+  "scripts/browser-fixtures/src/fixtures/filter-bar.svelte": [
+    "inline-size: 600px",
+    "inline-size: 880px"
+  ],
+  "scripts/browser-fixtures/src/fixtures/functional-residual.svelte": [
+    "border: 1px solid var(--cinder-border)",
+    "max-block-size: 7rem",
+    "max-inline-size: 48rem"
+  ],
+  "scripts/browser-fixtures/src/fixtures/grid.svelte": ["min-inline-size: 48rem"],
+  "scripts/browser-fixtures/src/fixtures/grouped-list.svelte": [
+    "inline-size: 390px",
+    "inline-size: 570px",
+    "max-inline-size: 28rem"
+  ],
+  "scripts/browser-fixtures/src/fixtures/key-value-editor.svelte": ["max-inline-size: 16rem"],
+  "scripts/browser-fixtures/src/fixtures/link.svelte": [
+    "max-inline-size: 24rem",
+    "max-inline-size: 24rem"
+  ],
+  "scripts/browser-fixtures/src/fixtures/marquee.svelte": ["inline-size: 20rem"],
+  "scripts/browser-fixtures/src/fixtures/navigation-bar.svelte": [
+    "border: 1px solid var(--cinder-border-muted)",
+    "inline-size: 20rem"
+  ],
+  "scripts/browser-fixtures/src/fixtures/number-input.svelte": ["inline-size: 12rem"],
+  "scripts/browser-fixtures/src/fixtures/page-header.svelte": [
+    "block-size: 12rem",
+    "block-size: 40rem",
+    "inline-size: 20rem",
+    "inline-size: 80rem"
+  ],
+  "scripts/browser-fixtures/src/fixtures/payload-inspector.svelte": ["inline-size: 20rem"],
+  "scripts/browser-fixtures/src/fixtures/popover.svelte": [
+    "height: 18rem",
+    "height: 30rem",
+    "padding-left: 12rem",
+    "padding-top: 10rem",
+    "width: 28rem",
+    "width: 48rem"
+  ],
+  "scripts/browser-fixtures/src/fixtures/portal.svelte": [
+    "border: 1px solid var(--cinder-border)",
+    "max-width: 18rem"
+  ],
+  "scripts/browser-fixtures/src/fixtures/pricing-card.svelte": [
+    "grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr))",
+    "max-inline-size: 60ch"
+  ],
+  "scripts/browser-fixtures/src/fixtures/resizable-panels.svelte": [
+    "border: 1px solid var(--cinder-border)",
+    "min-block-size: 18rem"
+  ],
+  "scripts/browser-fixtures/src/fixtures/section.svelte": ["block-size: 10rem", "block-size: 3rem"],
+  "scripts/browser-fixtures/src/fixtures/selection-popover.svelte": [
+    "max-inline-size: 36rem",
+    "max-inline-size: 56rem"
+  ],
+  "scripts/browser-fixtures/src/fixtures/share-card.svelte": ["max-width: 22rem"],
+  "scripts/browser-fixtures/src/fixtures/side-navigation.svelte": ["inline-size: 18rem"],
+  "scripts/browser-fixtures/src/fixtures/sidebar.svelte": [
+    "min-height: 20rem",
+    "min-height: 24rem"
+  ],
+  "scripts/browser-fixtures/src/fixtures/skip-link.svelte": [
+    "border: 1px dashed var(--cinder-border)"
+  ],
+  "scripts/browser-fixtures/src/fixtures/slider.svelte": ["max-inline-size: 32rem"],
+  "scripts/browser-fixtures/src/fixtures/sparkbar.svelte": ["max-width: 28rem"],
+  "scripts/browser-fixtures/src/fixtures/speed-dial.svelte": ["min-height: 12rem"],
+  "scripts/browser-fixtures/src/fixtures/spotlight.svelte": ["inline-size: 20rem"],
+  "scripts/browser-fixtures/src/fixtures/table-of-contents.svelte": [
+    "grid-template-columns: 16rem 1fr"
+  ],
+  "scripts/browser-fixtures/src/fixtures/table.svelte": [
+    "max-inline-size: 42rem",
+    "min-inline-size: 48rem"
+  ],
+  "scripts/browser-fixtures/src/fixtures/tabs.svelte": ["max-inline-size: 36rem"],
+  "scripts/browser-fixtures/src/fixtures/theme-surfaces.svelte": ["max-inline-size: 48rem"],
+  "scripts/browser-fixtures/src/fixtures/timeline.svelte": ["inline-size: 20rem"],
+  "scripts/browser-fixtures/src/fixtures/token-computation.svelte": ["max-inline-size: 48rem"],
+  "scripts/browser-fixtures/src/fixtures/tooltip.svelte": [
+    "height: 18rem",
+    "height: 30rem",
+    "padding-left: 12rem",
+    "padding-top: 10rem",
+    "width: 28rem",
+    "width: 48rem"
+  ],
+  "scripts/browser-fixtures/src/fixtures/tree/virtualized.svelte": [
+    "border: 1px solid var(--cinder-border)"
+  ],
+  "scripts/browser-fixtures/src/fixtures/virtual-list/adaptive-overscan-dynamic-size.svelte": [
+    "block-size: 90px"
+  ],
+  "scripts/browser-fixtures/src/fixtures/virtual-list/adaptive-overscan.svelte": [
+    "block-size: 120px",
+    "border-block-end: 1px solid var(--cinder-border)"
+  ],
+  "scripts/browser-fixtures/src/fixtures/virtual-list/horizontal-rtl.svelte": [
+    "block-size: 12rem",
+    "border-inline-end: 1px solid var(--cinder-border)",
+    "inline-size: 160px"
+  ],
+  "scripts/browser-fixtures/src/fixtures/virtual-list/horizontal-sticky-header-clip.svelte": [
+    "block-size: 64px",
+    "block-size: 96px",
+    "border-inline-end: 1px solid var(--cinder-border)",
+    "inline-size: 120px"
+  ],
+  "scripts/browser-fixtures/src/fixtures/virtual-list/horizontal-sticky-headers.svelte": [
+    "block-size: 64px",
+    "block-size: 96px",
+    "border-inline-end: 1px solid var(--cinder-border)",
+    "inline-size: 120px"
+  ],
+  "scripts/browser-fixtures/src/fixtures/virtual-list/horizontal.svelte": [
+    "block-size: 12rem",
+    "border-inline-end: 1px solid var(--cinder-border)",
+    "inline-size: 160px"
+  ],
+  "scripts/browser-fixtures/src/fixtures/virtual-list/sticky-headers-smooth-scroll.svelte": [
+    "block-size: 40px",
+    "border-block-end: 1px solid var(--cinder-border)"
+  ],
+  "scripts/browser-fixtures/src/fixtures/virtual-list/sticky-headers-window-scroll.svelte": [
+    "block-size: 40px",
+    "border-block-end: 1px solid var(--cinder-border)"
+  ],
+  "scripts/browser-fixtures/src/fixtures/virtual-list/sticky-headers.svelte": [
+    "block-size: 36px",
+    "border-block-end: 1px solid var(--cinder-border)"
+  ],
+  "scripts/browser-fixtures/src/fixtures/virtual-list/ten-thousand.svelte": [
+    "border-block-end: 1px solid var(--cinder-border)",
+    "grid-template-columns: 11rem 7rem minmax(0, 1fr)",
+    "min-block-size: 36px"
+  ],
+  "scripts/browser-fixtures/src/fixtures/zoom-pan-viewer.svelte": [
+    "min-height: 12rem",
+    "min-width: 36rem"
+  ]
+}

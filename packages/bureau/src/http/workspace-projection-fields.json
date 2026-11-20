@@ -135,6 +135,7 @@
     "$.models[].tools",
     "$.tools",
     "$.tools[].defaultApproval",
+    "$.tools[].defaultAsks",
     "$.tools[].description",
     "$.tools[].inputSchema",
     "$.tools[].inputSchema|anyOf[0].*",
@@ -146,6 +147,8 @@
     "$.tools[].source",
     "$.tools[].tier",
     "$.tools[].title",
+    "$.tools[].userApprovals",
+    "$.tools[].userApprovals.*",
     "$.tools[].users"
   ],
   "output:bureau.agents.definitions.create": ["$.hash", "$.id"],
@@ -1143,6 +1146,7 @@
     "$.attempts[].completedAt",
     "$.attempts[].feedback",
     "$.attempts[].finishReason",
+    "$.attempts[].reason",
     "$.attempts[].runId",
     "$.attempts[].sessionId",
     "$.attempts[].startedAt",
@@ -2124,6 +2128,19 @@
     "$.receipt",
     "$.remembered"
   ],
+  "output:bureau.runs.timeline": [
+    "$.entries",
+    "$.entries[].duration",
+    "$.entries[].label",
+    "$.entries[].operationType",
+    "$.entries[].status",
+    "$.entries[].step",
+    "$.entries[].timestamp",
+    "$.entries[].tries",
+    "$.kind",
+    "$.runId",
+    "$.truncated"
+  ],
   "output:bureau.schedules.cancel": [
     "$|anyOf[0].dryRun",
     "$|anyOf[0].effects",
@@ -2262,6 +2279,14 @@
   ],
   "output:bureau.settings.schema": ["$.schema", "$.schema.*", "$.schema.*.*"],
   "output:bureau.settings.update": ["$.pendingRestart", "$.revision"],
+  "output:bureau.skills.get": [
+    "$.instructions",
+    "$.instructions|anyOf[0].size",
+    "$.instructions|anyOf[0].text",
+    "$.instructions|anyOf[0].truncated",
+    "$.name",
+    "$.unavailableReason"
+  ],
   "output:bureau.skills.list": [
     "$.revision",
     "$.skills",

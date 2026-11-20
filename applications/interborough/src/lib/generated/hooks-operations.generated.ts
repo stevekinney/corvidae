@@ -36,7 +36,7 @@ export type HooksOperationTypes = {
     readonly input: { readonly dryRun?: boolean; readonly hookId: string };
     readonly output:
       SharedDryRunEffectsTarget_b07628bd | { readonly deleted: boolean; readonly hookId: string };
-    readonly faults: 'NotFound' | 'UnsupportedCapability';
+    readonly faults: 'InvalidParams' | 'NotFound' | 'UnsupportedCapability';
   };
   'bureau.hooks.deliveries': {
     readonly input: { readonly hookId: string; readonly limit?: number };

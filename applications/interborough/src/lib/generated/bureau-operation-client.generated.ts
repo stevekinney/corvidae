@@ -14,6 +14,7 @@ import type { MemoryOperationTypes } from './memory-operations.generated.ts';
 import type { NotificationsOperationTypes } from './notifications-operations.generated.ts';
 import type { PluginsOperationTypes } from './plugins-operations.generated.ts';
 import type { ReviewsOperationTypes } from './reviews-operations.generated.ts';
+import type { RunsOperationTypes } from './runs-operations.generated.ts';
 import type { SchedulesOperationTypes } from './schedules-operations.generated.ts';
 import type { SettingsOperationTypes } from './settings-operations.generated.ts';
 import type { SubscriptionOperationTypes } from './subscription-operations.generated.ts';
@@ -138,6 +139,7 @@ export const CATALOG_OPERATION_NAMES = [
   'bureau.reviews.get',
   'bureau.reviews.list',
   'bureau.reviews.resolve',
+  'bureau.runs.timeline',
   'bureau.schedules.cancel',
   'bureau.schedules.create',
   'bureau.schedules.get',
@@ -152,6 +154,7 @@ export const CATALOG_OPERATION_NAMES = [
   'bureau.settings.get',
   'bureau.settings.schema',
   'bureau.settings.update',
+  'bureau.skills.get',
   'bureau.skills.list',
   'bureau.tasks.cancel',
   'bureau.tasks.get',
@@ -310,6 +313,7 @@ export const CLIENT_OPERATION_NAMES = [
   'bureau.reviews.get',
   'bureau.reviews.list',
   'bureau.reviews.resolve',
+  'bureau.runs.timeline',
   'bureau.schedules.cancel',
   'bureau.schedules.create',
   'bureau.schedules.get',
@@ -324,6 +328,7 @@ export const CLIENT_OPERATION_NAMES = [
   'bureau.settings.get',
   'bureau.settings.schema',
   'bureau.settings.update',
+  'bureau.skills.get',
   'bureau.skills.list',
   'bureau.tasks.cancel',
   'bureau.tasks.get',
@@ -428,6 +433,7 @@ export type ClientOperationTypes = AgentsOperationTypes &
   NotificationsOperationTypes &
   PluginsOperationTypes &
   ReviewsOperationTypes &
+  RunsOperationTypes &
   SchedulesOperationTypes &
   SettingsOperationTypes &
   SystemOperationTypes &

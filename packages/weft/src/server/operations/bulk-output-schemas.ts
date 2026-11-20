@@ -2,7 +2,15 @@ import { z } from 'zod';
 import { workflowStatusSchema } from '../../core/list-filter-validation.ts';
 
 const workflowIds = z.array(z.string());
-const action = z.enum(['cancel', 'signal', 'delete', 'tag:add', 'tag:remove', 'retry-failed']);
+const action = z.enum([
+  'cancel',
+  'signal',
+  'delete',
+  'tag:add',
+  'tag:remove',
+  'retry-failed',
+  'purge',
+]);
 const scalar = z.union([z.string(), z.number(), z.boolean(), z.date()]);
 const attribute = z.looseObject({
   key: z.string(),
@@ -82,4 +90,7 @@ export const bulkSignalOutputSchema = z.union([
   z.looseObject({ signalled: z.number(), failed: z.number(), auditEvent }),
   preview,
 ]);
-export const purgeOutputSchema = z.looseObject({ deleted: z.number() });
+export const purgeOutputSchema = z.union([
+  z.looseObject({ deleted: z.number(), auditEvent }),
+  preview,
+]);

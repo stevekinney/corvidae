@@ -104,11 +104,20 @@ export const OPERATION_MAP = {
     workspaceClass: 'member-shared-read',
     exempt: 'the host discovers skills and decides their trust; the handler only reports it',
   },
+  'bureau.skills.get': {
+    workspaceClass: 'member-shared-read',
+    exempt: 'reads a catalogued skill’s SKILL.md back through the host’s artifact loader',
+  },
 
   'bureau.tasks.list': { workspaceClass: 'private-owned', member: 'tasks.list' },
   'bureau.tasks.get': { workspaceClass: 'private-owned', member: 'tasks.get' },
   'bureau.tasks.cancel': { workspaceClass: 'private-owned', member: 'tasks.cancel' },
   'bureau.tasks.inspect': { workspaceClass: 'private-owned', member: 'tasks.inspect' },
+  'bureau.runs.timeline': {
+    workspaceClass: 'private-owned',
+    exempt:
+      'composed from the task registry, the workflow runtime’s run read, and the durable engine’s timeline',
+  },
   'bureau.tasks.events': { workspaceClass: 'private-owned', member: 'tasks.events' },
   'bureau.tasks.respond': { workspaceClass: 'private-owned', member: 'tasks.respond' },
 

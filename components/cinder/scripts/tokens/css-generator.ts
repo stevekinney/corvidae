@@ -1,6 +1,7 @@
 import { assertPrettierResolvesToRoot } from '@lostgradient/component-tooling/scripts/lib/prettier-resolution.ts';
 import { format } from 'prettier';
 import { scopeIndexFromDocuments } from '../../src/tokens/runtime/context-order.ts';
+import type { CorpusEntry } from '../../src/tokens/runtime/corpus.ts';
 import {
   assertUniqueOverrideCssProperties,
   renderBaseDeclarations,
@@ -13,6 +14,50 @@ import { renderStylesheetSkeleton } from '../../src/tokens/runtime/stylesheet-sk
 import type { ResolverDocument, TokenDocument } from '../../src/tokens/runtime/types.ts';
 import { prepareCss } from './css-preparation.ts';
 import { CSS_PLUGINS, PRETTIER_OPTIONS, REGENERATE_COMMAND } from './generator-configuration.ts';
+
+const spacingProperties = [
+  'gap',
+  'padding-block',
+  'padding-inline',
+  'margin-block-start',
+  'margin-block-end',
+  'margin-inline-start',
+  'margin-inline-end',
+];
+
+const semanticUtilities = [
+  ['text-default', 'color', 'text.default'],
+  ['text-muted', 'color', 'text.muted'],
+  ['text-subtle', 'color', 'text.subtle'],
+  ['background-surface', 'background-color', 'surface.base'],
+  ['background-surface-raised', 'background-color', 'surface.raised'],
+  ['background-surface-inset', 'background-color', 'surface.inset'],
+  ['rounded-small', 'border-radius', 'radius.small'],
+  ['rounded-medium', 'border-radius', 'radius.medium'],
+  ['rounded-large', 'border-radius', 'radius.large'],
+  ['rounded-full', 'border-radius', 'radius.full'],
+] as const;
+
+/** Emits opt-in classes that resolve each token where the class is applied. */
+export function buildTokenUtilitiesCss(baseIndex: ReadonlyMap<string, CorpusEntry>): string {
+  const rules: string[] = [];
+  function appendRule(className: string, property: string, tokenPath: string): void {
+    const cssProperty = baseIndex.get(tokenPath)?.cssProperty;
+    if (!cssProperty)
+      throw new Error(`Utility "${className}" references missing token "${tokenPath}".`);
+    rules.push(`  .${className} {\n    ${property}: var(${cssProperty});\n  }`);
+  }
+
+  for (const path of baseIndex.keys()) {
+    const step = path === 'space.one' ? '1' : /^space\.(\d+(?:-\d+)?)$/u.exec(path)?.[1];
+    if (step === undefined) continue;
+    for (const property of spacingProperties) appendRule(`${property}-${step}`, property, path);
+  }
+  for (const [className, property, path] of semanticUtilities)
+    appendRule(className, property, path);
+
+  return `/* GENERATED FILE. Regenerate: ${REGENERATE_COMMAND} */\n@layer cinder.tokens, cinder.foundation, cinder.components, cinder.utilities;\n\n@layer cinder.utilities {\n${rules.join('\n\n')}\n}\n`;
+}
 
 export async function buildTokensBaseCss(
   resolver: ResolverDocument,

@@ -11,7 +11,7 @@
        16px (COR-2310). */
     border-radius: var(--cinder-radius-surface);
     background: var(--cinder-surface-raised);
-    border: 1px solid transparent;
+    border: var(--cinder-border-width) solid transparent;
     background-clip: padding-box;
     color: var(--cinder-text-default);
     box-shadow: none;
@@ -47,7 +47,7 @@
   }
 
   /* One edge per surface (COR-1821): a card draws a border or a shadow, never both. The default
-   * edge is none. The shadow edge keeps the 1px border in the box, so the card does not
+   * edge is none. The shadow edge keeps the border width in the box, so the card does not
    * change size, and paints it transparent. These rules sit after the tone rules below so the
    * danger border colour cannot bring a second edge back. */
   @media (hover: hover) {
@@ -202,7 +202,7 @@
 
   /* The divider under the header is opt-in (`headerDivider`). */
   .cinder-card__header[data-cinder-divider] {
-    border-bottom: 1px solid var(--cinder-border-muted);
+    border-bottom: var(--cinder-border-width) solid var(--cinder-border-muted);
   }
 
   .cinder-card[data-cinder-tone='danger'] > .cinder-card__header[data-cinder-divider] {

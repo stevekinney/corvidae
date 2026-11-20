@@ -16,6 +16,6 @@
 
 <style>
   .toggle-fixture {
-    min-block-size: 4rem;
+    min-block-size: var(--cinder-space-16);
   }
 </style>

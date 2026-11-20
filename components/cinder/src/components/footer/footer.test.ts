@@ -174,7 +174,9 @@ describe('Footer', () => {
     // divider above the only content in the footer.
     const boundaryBlock =
       css.match(/\.cinder-footer__main \+ \.cinder-footer__legal\s*\{([^}]*)\}/)?.[1] ?? '';
-    expect(boundaryBlock).toContain('border-top: 1px solid var(--cinder-border-muted)');
+    expect(boundaryBlock).toContain(
+      'border-top: var(--cinder-border-width) solid var(--cinder-border-muted)',
+    );
     expect(boundaryBlock).toContain('padding-top: var(--cinder-space-2)');
 
     // And the bare legal rule must NOT carry them, or the sibling scoping is moot.

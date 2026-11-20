@@ -100,7 +100,16 @@ export interface ValidatorEvidence {
 }
 
 export type ValidatorOutcome =
-  | { readonly kind: 'pass'; readonly evidence: readonly ValidatorEvidence[] }
+  | {
+      readonly kind: 'pass';
+      readonly evidence: readonly ValidatorEvidence[];
+      /**
+       * Why the attempt met the check, in a sentence a person reads beside it ("Reply said
+       * hello"). Optional: a validator that says nothing leaves it out. A durable layer keeps it
+       * only when it is a string, and bounds its length as it bounds a failing verdict's feedback.
+       */
+      readonly reason?: string | undefined;
+    }
   | {
       readonly kind: 'fail';
       readonly feedback: string;
@@ -619,10 +628,19 @@ function isEvidenceList(value: unknown): value is readonly ValidatorEvidence[] {
 export function normalizeValidatorOutcome(value: unknown): ValidatorOutcome {
   if (!isRecord(value)) return malformedOutput('expected an object');
   switch (value['kind']) {
-    case 'pass':
-      return isEvidenceList(value['evidence'])
-        ? { kind: 'pass', evidence: value['evidence'] }
-        : malformedOutput('pass requires an evidence array of objects with a string source');
+    case 'pass': {
+      if (!isEvidenceList(value['evidence'])) {
+        return malformedOutput('pass requires an evidence array of objects with a string source');
+      }
+      // The reason is what a person reads beside the attempt, never part of the verdict: one that
+      // is not text is dropped, so a validator's stray value never turns a met check into an error.
+      const reason = value['reason'];
+      return {
+        kind: 'pass',
+        evidence: value['evidence'],
+        ...(typeof reason === 'string' ? { reason } : {}),
+      };
+    }
     case 'fail':
       return typeof value['feedback'] === 'string' &&
         isEvidenceList(value['evidence']) &&
@@ -773,7 +791,12 @@ export interface ProjectedValidatorEvidence {
 }
 
 export type ProjectedValidatorOutcome =
-  | { readonly kind: 'pass'; readonly evidence: readonly ProjectedValidatorEvidence[] }
+  | {
+      readonly kind: 'pass';
+      readonly evidence: readonly ProjectedValidatorEvidence[];
+      /** Why the attempt met the check, when the validator said; absent on a record written before it. */
+      readonly reason?: string;
+    }
   | {
       readonly kind: 'fail';
       readonly feedback: string;
@@ -837,8 +860,16 @@ const projectEvidence = (
 
 export function projectValidatorOutcome(outcome: ValidatorOutcome): ProjectedValidatorOutcome {
   switch (outcome.kind) {
-    case 'pass':
-      return { kind: 'pass', evidence: projectEvidence(outcome.evidence) };
+    case 'pass': {
+      // A reason is kept only as a string with something in it: a validator is caller code, and
+      // anything else it hands back here is dropped, never persisted.
+      const reason: unknown = outcome.reason;
+      return {
+        kind: 'pass',
+        evidence: projectEvidence(outcome.evidence),
+        ...(typeof reason === 'string' && reason.trim() !== '' ? { reason } : {}),
+      };
+    }
     case 'fail':
       return {
         kind: 'fail',

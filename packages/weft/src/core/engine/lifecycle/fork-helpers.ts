@@ -1,9 +1,8 @@
 import type { BatchOperation, ConditionalBatchCondition } from '@lostgradient/storage';
 import { KEYS } from '../../../storage/keys.ts';
-import { inheritWorkflowWorkerBinding } from '../../../worker/binding-helpers.ts';
-import { assertInheritedWorkerBuildNotRemoved } from '../../../worker/inherited-worker-build.ts';
 import { deserializeCheckpoint } from '../../checkpoint.ts';
 import { encode } from '../../codec.ts';
+import { withoutRetryingActivityNames } from '../../context/activity-retry-state.ts';
 import { buildIndexOperations } from '../../search-attributes.ts';
 import type { Checkpoint, ForkLineage, SearchAttributeValue, WorkflowState } from '../../types.ts';
 import type { ForkOptions } from '../../types/options.ts';
@@ -272,13 +271,16 @@ export function reserveLegacyForkTargetRevision(
 
 export function createForkLineage(
   _internals: EngineInternals,
-  sourceWorkflowId: string,
+  sourceState: WorkflowState,
   checkpoint: Checkpoint,
   _callbacks: LifecycleCallbacks,
 ): ForkLineage {
   return {
-    workflowId: sourceWorkflowId,
+    workflowId: sourceState.id,
     step: checkpoint.step,
+    ...(sourceState.workflowExecutionToken === undefined
+      ? {}
+      : { workflowExecutionToken: sourceState.workflowExecutionToken }),
   };
 }
 
@@ -345,59 +347,6 @@ export function createForkedWorkflowState(
     updatedAt: forkedAt,
     forkedFrom: lineage,
   };
-}
-
-export function applyForkWorkerBindingInheritance(
-  state: WorkflowState,
-  sourceState: WorkflowState,
-  options: Readonly<{
-    persistedRevision: string | undefined;
-    forkedAt: number;
-    checkpointId: string;
-  }>,
-): void {
-  if (sourceState.workerBinding === undefined || sourceState.workerVersioningPolicy === undefined) {
-    return;
-  }
-  const currentBinding = sourceState.workerBinding.current;
-  if (
-    options.persistedRevision !== undefined &&
-    options.persistedRevision !== currentBinding.workflowRevision
-  ) {
-    return;
-  }
-  state.workerVersioningPolicy = sourceState.workerVersioningPolicy;
-  state.workerBinding = {
-    current: inheritWorkflowWorkerBinding(currentBinding, {
-      workflowId: state.id,
-      boundAt: options.forkedAt,
-      checkpointId: options.checkpointId,
-    }),
-    history: sourceState.workerBinding.history,
-  };
-}
-
-/**
- * {@link applyForkWorkerBindingInheritance}, after checking the build the fork would inherit. A
- * terminal source's binding is not counted by a build's removal, so a build removed since the
- * source ran is refused here rather than bound to a new run.
- */
-export async function inheritForkWorkerBinding(
-  internals: EngineInternals,
-  state: WorkflowState,
-  sourceState: WorkflowState,
-  options: Parameters<typeof applyForkWorkerBindingInheritance>[2],
-): Promise<void> {
-  const inherited = sourceState.workerBinding?.current;
-  if (
-    inherited !== undefined &&
-    sourceState.workerVersioningPolicy !== undefined &&
-    (options.persistedRevision === undefined ||
-      options.persistedRevision === inherited.workflowRevision)
-  ) {
-    await assertInheritedWorkerBuildNotRemoved(internals.storage, inherited);
-  }
-  applyForkWorkerBindingInheritance(state, sourceState, options);
 }
 
 export function buildForkBatchOperations(
@@ -481,6 +430,8 @@ export function buildForkCheckpoint(
     .filter((step) => !settledSteps.has(step));
   return {
     ...sourceCheckpointForFork,
+    // A fork reports nothing as retrying until it retries something itself (COR-2529).
+    locals: withoutRetryingActivityNames(sourceCheckpointForFork.locals),
     // The signatures the source had no outcome for are evidence about the source's execution.
     ...(copiedSignatureSteps.length > 0 && { forkCopiedSignatureSteps: copiedSignatureSteps }),
     createdAt: forkedAt,

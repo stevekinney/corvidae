@@ -537,6 +537,9 @@
             active: () => open && !dialogState.isClosing,
             restoreFocus: false,
             manageInitialFocus: false,
+            // A control that replaces itself (a "Refresh" button that starts a reload) drops focus
+            // to <body>; the body container is where initial focus lands, so recovery lands there.
+            recoveryFocus: () => bodyElement,
           })}
         >
           {@render sheetParts()}

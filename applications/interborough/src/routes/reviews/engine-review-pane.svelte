@@ -15,6 +15,7 @@
   import ReviewDecisionForm, { type ReviewDecisionSubmission } from './review-decision-form.svelte';
   import WorkflowReviewBar from './workflow-review-bar.svelte';
   import {
+    classifyArtifactValue,
     extractReviewMetadataEntries,
     extractReviewSections,
     humanizeKey,
@@ -55,6 +56,9 @@
     if (typeof artifact !== 'object' || artifact === null || Array.isArray(artifact)) {
       return undefined;
     }
+    // A `{ markdown }`, `{ imageUrl }` or `{ htmlContent }` artifact is a document, not a record:
+    // ArtifactView renders it, so its source is never shown as a field row.
+    if (classifyArtifactValue(artifact).kind !== 'inspector') return undefined;
     const entries = Object.entries(artifact);
     if (entries.length === 0) return undefined;
     const flat = entries.every(

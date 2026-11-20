@@ -2,8 +2,15 @@
   import { Divider } from '@lostgradient/cinder';
 </script>
 
-<div style="display: flex; flex-direction: column; gap: 12px; padding: 16px;">
+<div class="example-layout gap-3 padding-block-4 padding-inline-4">
   <span>Section A</span>
   <Divider />
   <span>Section B</span>
 </div>
+
+<style>
+  .example-layout {
+    display: flex;
+    flex-direction: column;
+  }
+</style>

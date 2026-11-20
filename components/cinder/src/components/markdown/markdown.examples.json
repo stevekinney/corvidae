@@ -1,0 +1,25 @@
+{
+  "$schema": "../../../../../internal/component-tooling/src/schemas/examples.schema.json",
+  "component": "markdown",
+  "import": "@lostgradient/cinder",
+  "examples": [
+    {
+      "id": "basic",
+      "title": "Formatted Markdown",
+      "description": "Rendered synchronously on first mount, so `data-state` is `rendered` at once and dollar amounts stay literal.",
+      "code": "<script lang=\"ts\">\n  import { Markdown } from '@lostgradient/cinder';\n\n  const content = `## Release notes\\n\\nThe **nightly digest** now runs at _6 a.m._\\n\\n- Faster delivery\\n- Fewer retries`;\n</script>\n\n<Markdown {content} />\n"
+    },
+    {
+      "id": "math",
+      "title": "Equations",
+      "description": "With `math`, the math renderer loads after first paint and `$$…$$` renders as KaTeX; the raw text shows, with its line breaks, until it lands.",
+      "code": "<script lang=\"ts\">\n  import { Markdown } from '@lostgradient/cinder';\n\n  const content = `The area is:\\n\\n$$a = \\\\pi r^2$$`;\n</script>\n\n<Markdown {content} math />\n"
+    },
+    {
+      "id": "untrusted",
+      "title": "Untrusted content",
+      "description": "With `images` and `links` off, each image renders as its alt text and each link as its text, so the content loads and navigates nothing.",
+      "code": "<script lang=\"ts\">\n  import { Markdown } from '@lostgradient/cinder';\n\n  const content = `See [the docs](https://example.com) and ![a chart](https://example.com/chart.png).`;\n</script>\n\n<Markdown {content} images={false} links={false} />\n"
+    }
+  ]
+}

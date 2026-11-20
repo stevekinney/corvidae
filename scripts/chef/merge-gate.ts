@@ -83,6 +83,7 @@ import {
 } from './delivery-verification.ts';
 import { readExecutionSnapshot, withProviderTransitionLock } from './execution-state.ts';
 import { fetchWithRetry } from './fetch-retry.ts';
+import { validateLandingEvidence } from './landing-evidence.ts';
 import { mainCiComparisonWarning, mainCiHealth, mainCiWarning } from './main-ci.ts';
 import {
   defaultRunner,
@@ -338,6 +339,17 @@ async function mergeGateCore(
   if (verificationProblem !== undefined) return fail('verification', verificationProblem);
   const ciEvidenceProblem = await validateDeliveryCiEvidence(verification, partial.verification);
   if (ciEvidenceProblem !== undefined) return fail('verification', ciEvidenceProblem);
+  const landingProblem = await validateLandingEvidence(
+    verification,
+    { route: 'pull-request', defaultBranch },
+    {
+      runner,
+      ...(partial.verification?.ciProvider === undefined
+        ? {}
+        : { ciProvider: partial.verification.ciProvider }),
+    },
+  );
+  if (landingProblem !== undefined) return fail('verification', landingProblem);
 
   if (options.dryRun) return report;
 

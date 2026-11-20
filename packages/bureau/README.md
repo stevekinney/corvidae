@@ -717,6 +717,8 @@ const supervisor = createSupervisor({
 console.log(supervisor !== undefined);
 ```
 
+A `pass` may say why the attempt met the check, as its optional `reason` (`{ kind: 'pass', evidence: [], reason: 'Reply said hello' }`, COR-2425). The goal's record keeps it on the attempt's verdict, held to 1,024 characters; a reason that is not a string, or holds nothing but white space, is dropped and the check is still met, and a verdict recorded before a pass could say has none. The owner's `bureau.goals.get` serves it as `attempts[].reason`, as owner-only as a failing attempt's `feedback`, and `bureau.goals.verdict` as `reason`.
+
 ### Settings (`bureau.settings`)
 
 `bureau.settings` is the part of a deployment's configuration you can change while it runs, by a person through a control-plane caller or by an agent through a tool. The code options you pass to `createBureau` are the defaults; a stored value overrides them, and `settings: { locked: { key: reason } }` names the keys the store may not override and why: `deployment` for a key the deployment's own code holds, `shared-storage` for a key that processes sharing one store must agree on (Interborough's remote mode locks its ownership and maintenance settings so). `get()` reports each key's `locked` state and, for a locked one, its `lockReason`. Each key is a dotted name and takes the value its code option takes, except that every duration is a number of milliseconds.
@@ -1418,16 +1420,19 @@ export const askSummarizerDurably = createPeerCallTool({
 
 The target is an AI host that observes and steers existing work: Claude Desktop and Claude Code, over Streamable HTTP. Interborough mounts the adapter at `/bureau/mcp` (not `/mcp`, which is the engine's own endpoint) and its on-demand `smoke:claude-code-mcp` script connects a real Claude Code to it. Other hosts that speak Streamable HTTP MCP should work, but none is tested or supported.
 
-Twenty-one operations are exposed, as tools of the same name:
+Twenty-three operations are exposed, as tools of the same name:
 
-| Area             | Tools                                                                |
-| ---------------- | -------------------------------------------------------------------- |
-| Tasks            | `bureau.tasks.list`, `get`, `events`, `inspect`, `respond`, `cancel` |
-| Reviews          | `bureau.reviews.list`, `get`, `resolve`                              |
-| Contexts         | `bureau.contexts.list`, `get`, `input`                               |
-| Goals, schedules | `bureau.goals.list`, `get`; `bureau.schedules.list`, `get`           |
-| Workflows        | `bureau.workflows.list`, `get`; `bureau.workflows.runs.list`, `get`  |
-| Agents           | `bureau.agents.list`                                                 |
+| Area | Tools |
+| --- | --- |
+| Tasks | `bureau.tasks.list`, `get`, `events`, `inspect`, `respond`, `cancel` |
+| Runs | `bureau.runs.timeline` |
+| Reviews | `bureau.reviews.list`, `get`, `resolve` |
+| Contexts | `bureau.contexts.list`, `get`, `input` |
+| Goals, schedules | `bureau.goals.list`, `get`; `bureau.schedules.list`, `get` |
+| Workflows | `bureau.workflows.list`, `get`, `validate`; `bureau.workflows.runs.list`, `get` |
+| Agents | `bureau.agents.list` |
+
+`bureau.runs.timeline` reads one run's steps in the order the run took them, for a waterfall: each entry's `label`, `operationType`, `status`, `timestamp` (its start), `duration` and `tries`, with no step's input or output. The run is an agent run's task id or a workflow instance's id, and `kind` says which; it is read with the access `bureau.tasks.get` or `bureau.workflows.runs.get` asks, and any other run, or one the caller may not read, is `NotFound`. The layout that turns the entries into bars is `stepWaterfall` in `@lostgradient/interborough-plugin/step-waterfall`, which the Interborough run page and a plugin's panel share.
 
 `bureau.tasks.events` is the one subscription: a call answers with the events recorded after its `fromCursor`, up to `maxEvents`, and the cursor to resume from, so a client polls it rather than holding a stream. `respond`, `cancel`, `resolve`, and `input` change state and carry the matching tool annotations. Nothing here starts a run, creates or edits a goal, schedule, or workflow, reads memory or assets, or touches agent definitions: those stay on the management plane, and `bureau.surfaces` commands have no MCP tool.
 

@@ -31,7 +31,7 @@ import { SAMPLE_TIME_ZONE } from '../../fixtures/sample-now.ts';
 import { seedSampleWorld } from '../../fixtures/sample-world-seed.ts';
 import { seedWorkflowRevisions } from '../../fixtures/workflow-revisions.ts';
 import { seed, workflows } from '../../fixtures/workflows.ts';
-import { buildApplication } from '../../scripts/build.ts';
+import { buildCheckoutApplication } from '../../scripts/build.ts';
 import { bindHome, enableDemoPlugin } from '../../src/host/demo-plugin-home.ts';
 import { startHost, type Host } from '../../src/host/host.ts';
 import { workspacePlugins } from '../../src/host/plugins.ts';
@@ -118,7 +118,9 @@ const reportStartupPhase = (phase: string): void => {
 };
 const buildDirectory = join(scratch, 'build');
 reportStartupPhase('building-application');
-await buildApplication({ outdir: buildDirectory });
+// Recorded with the checkout's commit, because the connect host serves it through `serve`, which
+// refuses a build that does not match the checkout.
+await buildCheckoutApplication({ outdir: buildDirectory });
 reportStartupPhase('application-built');
 
 // The host's model catalog holds a model, so the agent editor can save an agent: the home names the

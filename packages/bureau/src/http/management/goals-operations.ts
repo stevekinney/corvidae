@@ -15,8 +15,9 @@
  *
  * What a goal's views leave out: its prompt and instructions (the objective's text, like a task's
  * message), each attempt's validator feedback and evidence, and its audit log. The one exception is
- * `get` for the goal's owner and no one else (COR-2425): it adds the prompt and each attempt's
- * feedback, so the goal's edit form and page can show them; `list`, `create` and every other
+ * `get` for the goal's owner and no one else (COR-2425): it adds the prompt, each attempt's
+ * feedback, and the reason a passing attempt met its check, so the goal's edit form and page can
+ * show them; `list`, `create` and every other
  * caller's `get` still leave them out. An attempt's
  * feedback and evidence are content, behind their own read (COR-2112): `verdict` serves them, with
  * what judged the attempt, to the goal's owner or to a caller holding `bureau.goals:content`.
@@ -172,8 +173,9 @@ type GoalView = z.infer<typeof goalViewSchema>;
 
 /**
  * What `bureau.goals.get` adds to the view for the goal's owner and no one else (COR-2425): the
- * goal's prompt, and each attempt's validator feedback. A caller that is not the owner (a holder of
- * `bureau.goals:read` included) reads the same view as before, with neither key present.
+ * goal's prompt, and each attempt's validator feedback and the reason a passing attempt met its
+ * check. A caller that is not the owner (a holder of `bureau.goals:read` included) reads the same
+ * view as before, with none of those keys present.
  */
 const goalDetailSchema = goalViewSchema.extend({
   prompt: z
@@ -189,13 +191,20 @@ const goalDetailSchema = goalViewSchema.extend({
         .describe(
           'What the validator said was wrong with the attempt, `null` when it said nothing. Present for the goal’s owner only.',
         ),
+      reason: z
+        .string()
+        .nullable()
+        .optional()
+        .describe(
+          'Why the attempt met its check, when the validator said (“Reply said hello”); `null` for an attempt that did not pass, one whose validator said nothing, and one checked before a pass could say. Present for the goal’s owner only.',
+        ),
     }),
   ),
 });
 
 type GoalDetail = z.infer<typeof goalDetailSchema>;
 
-/** The view with the owner-only content: the prompt, and each attempt's validator feedback. */
+/** The view with the owner-only content: the prompt, and each attempt's validator feedback and pass reason. */
 function detailOf(goal: GoalState): GoalDetail {
   const view = viewOf(goal);
   return {
@@ -209,6 +218,8 @@ function detailOf(goal: GoalState): GoalDetail {
       return {
         ...attempt,
         feedback: recorded?.feedback ?? (outcome?.kind === 'fail' ? outcome.feedback : null),
+        // What a met check said, as owner-only as a missed check's feedback (COR-2425, row 67v).
+        reason: outcome?.kind === 'pass' ? (outcome.reason ?? null) : null,
       };
     }),
   };
@@ -355,7 +366,7 @@ export const goalsGetOperation = defineOperation<
   mcpExposable: true,
   summary: 'Read one goal',
   description:
-    'Returns one of the caller’s own goals; a caller holding `bureau.goals:read` reads any owner’s. Another owner’s goal answers as a missing one does. The view carries the goal’s `revision`, to pass back as `expectedRevision`, its `validator`, and its attempts. For the goal’s owner, and no one else (`bureau.goals:read` and `bureau.goals:content` do not widen it), it also carries the goal’s `prompt` and each attempt’s validator `feedback`, which an edit form shows; every other caller reads the view without those two keys. It never carries the goal’s instructions.',
+    'Returns one of the caller’s own goals; a caller holding `bureau.goals:read` reads any owner’s. Another owner’s goal answers as a missing one does. The view carries the goal’s `revision`, to pass back as `expectedRevision`, its `validator`, and its attempts. For the goal’s owner, and no one else (`bureau.goals:read` and `bureau.goals:content` do not widen it), it also carries the goal’s `prompt`, each attempt’s validator `feedback`, which an edit form shows, and each attempt’s `reason`, why a passing attempt met its check when the validator said; every other caller reads the view without those three keys. It never carries the goal’s instructions.',
   destructive: false,
   tags: ['Goals'],
   inputSchema: getInput,
@@ -400,7 +411,9 @@ const verdictOutput = z.object({
   reason: z
     .string()
     .nullable()
-    .describe('Why the verdict is `unavailable` or `indeterminate`; `null` otherwise.'),
+    .describe(
+      'Why the verdict is `unavailable` or `indeterminate`, or why a `pass` met the check when the validator said (absent from a verdict recorded before a pass could say); `null` otherwise.',
+    ),
   error: z
     .object({ kind: z.string(), code: z.string(), message: z.string() })
     .nullable()
@@ -499,7 +512,11 @@ export const goalsVerdictOperation = defineOperation<
           ? outcome.evidence.map(({ source, detail }) => ({ source, detail }))
           : [],
       reason:
-        outcome.kind === 'unavailable' || outcome.kind === 'indeterminate' ? outcome.reason : null,
+        outcome.kind === 'unavailable' || outcome.kind === 'indeterminate'
+          ? outcome.reason
+          : outcome.kind === 'pass'
+            ? (outcome.reason ?? null)
+            : null,
       error,
       validator: { name: validation.identity.name, version: validation.identity.version },
       configuration: judgedBy?.configuration ?? null,

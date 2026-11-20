@@ -80,7 +80,7 @@
   }
 </script>
 
-<div class="selection-fixture">
+<div class="selection-fixture gap-4">
   <article bind:this={surfaceElement} class="selection-surface">
     <p>
       The SelectionPopover appears near highlighted text — its position is derived from the selected
@@ -117,7 +117,7 @@
     {#if activeComment}<h4>{activeComment.quote}</h4>
       <p>{activeComment.body}</p>{/if}
   </aside>
-  <div class="external-controls">
+  <div class="external-controls gap-2">
     <p>
       The comment action anchors to <mark data-testid="external-trigger-anchor"
         >this visible phrase</mark
@@ -170,7 +170,6 @@
 <style>
   .selection-fixture {
     display: grid;
-    gap: 1rem;
     max-inline-size: 56rem;
     padding-block-end: 120vh;
   }
@@ -181,7 +180,7 @@
     cursor: text;
   }
   .selection-surface p {
-    margin: 0 0 0.75rem;
+    margin: 0 0 var(--cinder-space-3);
   }
   .selection-surface a {
     color: inherit;
@@ -192,7 +191,6 @@
   }
   .external-controls {
     display: grid;
-    gap: 0.5rem;
   }
   .external-controls p {
     margin: 0;

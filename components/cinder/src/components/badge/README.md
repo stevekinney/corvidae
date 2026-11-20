@@ -6,6 +6,8 @@ Use Badge for a status or a short tag only: an attached count, a status word, a 
 
 A badge belongs with the metadata in a row's content column and never in its trailing action column, so it cannot change where an action button lands (see [`StackedListItem`](../stacked-list-item/README.md#trailing-actions)). Show a status only when it is actionable, and never beside a button that says the same thing.
 
+Pass `appearance="outlined"` to add a status-colored edge around the tinted fill.
+
 ## Usage
 
 ```svelte
@@ -22,6 +24,7 @@ A badge belongs with the metadata in a row's content column and never in its tra
 
 | Prop | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
+| `appearance` | `"soft"` \| `"outlined"` | no | `"soft"` | Controls whether the badge draws a visible outline around its tinted fill. |
 | `class` | `string` | no | — | Custom class merged with `.cinder-badge`. |
 | `monospace` | `boolean` | no | `false` | Render the badge label in a monospace font. Useful for version strings, error codes, or other technical labels. |
 | `severity` | `"info"` \| `"low"` \| `"medium"` \| `"high"` \| `"critical"` | no | — | Ordered severity preset; critical uses the dedicated critical token. |

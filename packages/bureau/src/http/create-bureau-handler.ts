@@ -225,6 +225,10 @@ import {
   bureauSettingsOperations,
 } from './management/settings-operations.ts';
 import {
+  createSkillArtifactLoader,
+  type SkillArtifactLoader,
+} from '../skills/client/artifact-loader.ts';
+import {
   type BureauSkillsOperationHost,
   bureauSkillsOperations,
   type SkillsStanding,
@@ -249,6 +253,10 @@ import {
   type BureauTasksInspectOperationHost,
   tasksInspectOperation,
 } from './management/tasks-inspect-operation.ts';
+import {
+  type BureauRunsTimelineOperationHost,
+  runsTimelineOperation,
+} from './management/runs-timeline-operation.ts';
 import {
   type BureauEventsCatalogOperationHost,
   eventsCatalogOperation,
@@ -420,6 +428,7 @@ export type BureauHandlerHost = BureauEventsOperationHost &
   BureauAttentionOperationHost &
   BureauTasksOperationHost &
   BureauTasksInspectOperationHost &
+  BureauRunsTimelineOperationHost &
   BureauTaskEventsOperationHost &
   BureauTasksRespondOperationHost &
   BureauContextsOperationHost &
@@ -481,6 +490,13 @@ export type BureauHandlerOptions = {
    */
   readonly skills?: {
     readonly standing: () => SkillsStanding | Promise<SkillsStanding>;
+    /**
+     * Reads a catalogued skill's files back for `bureau.skills.get` (COR-2435). Defaults to the
+     * loader a run activates skills with (`createSkillArtifactLoader`, the filesystem), which
+     * refuses a symbolic link that leaves a skill's directory and files that changed since
+     * discovery.
+     */
+    readonly loadArtifact?: SkillArtifactLoader;
   };
   /**
    * The handler's public URL, which mounts A2A 1.0.1 (`a2a-mount.ts`): every agent that opts in is
@@ -839,6 +855,7 @@ export const BUREAU_HANDLER_OPERATIONS = [
   tasksListOperation,
   tasksGetOperation,
   tasksInspectOperation,
+  runsTimelineOperation,
   tasksCancelOperation,
   tasksEventsOperation,
   tasksRespondOperation,
@@ -1331,6 +1348,8 @@ export function buildBureauHandlerHost(
     },
     tasks: bureau.internals.taskRegistry,
     inspect: (id, options) => bureau.tasks.inspect(id, options),
+    // The engine's own timeline of a run, read by `bureau.runs.timeline` after it has authorized.
+    runTimeline: async (runId) => bureau.durableEngine()?.getTimeline(runId),
     taskHistory: bureau.tasks,
     contexts: {
       list: (listOptions) => bureau.contexts.list(listOptions),
@@ -1388,7 +1407,11 @@ export function buildBureauHandlerHost(
         await bureau.internals.auditTrail?.record(entry);
       },
     },
-    skills: { standing: () => skills?.standing(), tools: () => bureau.agents.tools() },
+    skills: {
+      standing: () => skills?.standing(),
+      tools: () => bureau.agents.tools(),
+      loadArtifact: skills?.loadArtifact ?? createSkillArtifactLoader({}),
+    },
     dryRun: dryRunEffectsOf(bureau),
     workflows: bureau.workflows,
     codeWorkflow: (id) => {

@@ -27,6 +27,16 @@ import { fileURLToPath } from 'node:url';
 
 import { sveltePlugin } from '@lostgradient/testing';
 
+import { ensureCinderGenerated } from '../../../scripts/ensure-cinder-generated.ts';
+import {
+  BUILD_COMMIT_VARIABLE,
+  BUILD_INFO_FILE,
+  displayedCommit,
+  readSourceInfo,
+  UNKNOWN_COMMIT,
+  type BuildInfo,
+} from '../src/host/build-info.ts';
+
 /** The `@lostgradient/interborough` package root. */
 export const PACKAGE_DIRECTORY = fileURLToPath(new URL('..', import.meta.url));
 
@@ -104,6 +114,8 @@ export function browserBuildOptions(options: {
   readonly entrypoints: string[];
   readonly outdir: string;
   readonly development: boolean;
+  /** What the page shows as the commit it was built from (`displayedCommit`); omitted, it shows none. */
+  readonly commit?: string;
 }): Bun.BuildConfig & { readonly metafile: true } {
   return {
     entrypoints: options.entrypoints,
@@ -111,6 +123,9 @@ export function browserBuildOptions(options: {
     conditions: ['browser', 'svelte', 'unwasm'],
     define: {
       'process.env.NODE_ENV': JSON.stringify(options.development ? 'development' : 'production'),
+      ...(options.commit === undefined
+        ? {}
+        : { [BUILD_COMMIT_VARIABLE]: JSON.stringify(options.commit) }),
     },
     format: 'esm',
     publicPath: '/',
@@ -339,10 +354,21 @@ export async function buildApplication(
   options: {
     readonly outdir?: string;
     readonly development?: boolean;
+    /**
+     * The source being built, which the build records. The command-line entry reads it from the
+     * checkout; a caller that gives none records an unknown commit, which every server refuses.
+     */
+    readonly source?: BuildInfo;
     /** The bundler. `Bun.build` by default; a test supplies a fake so it need not bundle. */
     readonly bundle?: (configuration: Bun.BuildConfig) => Promise<Bun.BuildOutput>;
+    /**
+     * Makes sure Cinder's generated files exist before the bundler imports them. Every caller,
+     * Turbo or not, goes through here; a test supplies a no-op.
+     */
+    readonly ensureGenerated?: () => void;
   } = {},
 ): Promise<ApplicationBuild> {
+  (options.ensureGenerated ?? ensureCinderGenerated)();
   const development = options.development ?? false;
   const directory =
     options.outdir === undefined
@@ -354,11 +380,13 @@ export async function buildApplication(
   const staging = mkdtempSync(join(parent, '.build-staging-'));
   stagingDirectories.add(staging);
   try {
+    const source = options.source ?? { commit: UNKNOWN_COMMIT, changes: '' };
     const result = await (options.bundle ?? Bun.build)({
       ...browserBuildOptions({
         entrypoints: [ENTRY_HTML_PATH],
         outdir: staging,
         development,
+        commit: displayedCommit(source),
       }),
       minify: !development,
     });
@@ -379,9 +407,11 @@ export async function buildApplication(
         ),
       ),
     };
+    // The record of the source the build was made from, which the servers check (`build-info.ts`).
+    await writeFile(join(staging, BUILD_INFO_FILE), `${JSON.stringify(source)}\n`);
     if (development) await retainPreviousAssets(staging, directory);
     await replaceDirectory(staging, directory);
-    return { directory, files, metafile };
+    return { directory, files: [...files, BUILD_INFO_FILE].toSorted(), metafile };
   } finally {
     await rm(staging, { recursive: true, force: true });
     stagingDirectories.delete(staging);
@@ -524,4 +554,16 @@ export async function runBuildMain(
   if (exitWithParent) exit(0);
 }
 
-if (import.meta.main) await runBuildMain(process.argv.slice(2));
+/**
+ * Build the application and record the checkout's current source in it. Every build made inside a
+ * checkout goes through this (the command line, the end-to-end server, the release build), so a
+ * server accepts it; {@link buildApplication} alone records an unknown commit, which a server
+ * inside a checkout refuses.
+ */
+export const buildCheckoutApplication: typeof buildApplication = (options) =>
+  buildApplication({ ...options, source: readSourceInfo(PACKAGE_DIRECTORY) });
+
+if (import.meta.main) {
+  // Only the command line reads the checkout's commit, so no unit test starts Git.
+  await runBuildMain(process.argv.slice(2), undefined, undefined, buildCheckoutApplication);
+}
