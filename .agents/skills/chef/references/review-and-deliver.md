@@ -19,6 +19,15 @@ A `ready-for-review` return is accepted only after `bun scripts/chef/leftovers.t
 - A filtered gate speaks only for the workspaces it names; require evidence for every repository-level gate the change can reach. A green result can be a false witness (a replayed cache, an assertion whose subject no longer renders): assert on a captured exit status, and say whether it came from a fresh run or a replay.
 - If a worker crosses its authority boundary, stop it, inspect the actual effects, and record the incident before recovery.
 
+## Delivery requests
+
+`deliver.ts` lands only from a coordinator-approved request, a digest-pinned file, and `bun scripts/chef/delivery-request.ts` is its writer and its dry check (its header is the full usage).
+
+- Prepare once per accepted head: `bun scripts/chef/delivery-request.ts prepare --branch <branch> --head <sha> --worktree <path> --base <sha> --run <id> --project <name> --issue <ID> [--issue <ID> ...] [--route pull-request]`. The branch is pushed and contains `--base` (the current `origin/main`), and the run holds the project's Linear lease until `deliver.ts` finishes (the lease's execution-state authority is the request's). It prints the file under the main checkout's `tmp/chef/requests/`, its digest and the run id. Members are tracked and closed on delivery; `--no-close`, `--no-track` and `--leave-open <ID>` change that. If it says a run has no runner yet, run the same command again: it dispatches nothing twice. A red or cancelled bound run cannot be replaced for the same head: push a new head and prepare again.
+- Check before landing: `bun scripts/chef/delivery-request.ts check --file <json> --digest <sha256>`, from a checkout that has the head fetched, prints each refusal and exits 0 only when `deliver.ts` would proceed past verification. Then land with the `deliver.ts` command of the skill, using that file and digest.
+- What it attests: the criteria come from Linear, the coordinator's acceptance is the approval `prepare` records, and the one `main.yml` run on the head is the evidence for every criterion (no criterion has a test of its own). A criterion's own proof stays the worker's report.
+- The report ledger (`report.ts write`, `documentation/criteria-ledger/`) belongs to the worker's stop hook; neither `deliver.ts` nor landing reads it. A brief written before `Brief version:` existed gets one by running `brief.ts` again for the same issues with the same flags, which hashes each issue's current `updatedAt` and description; write the report only when those are what the worker read, and commit the ledger it writes before `prepare`, since a new commit is a new head.
+
 ## Exit codes
 
 `bun scripts/chef/deliver.ts` exits 0 merged, 1 at a named step, and 2 on usage; its header defines every step. The skill covers `threads`, `conflict`, `revert`, `guards`, `head`, and `merge`. The rest:
