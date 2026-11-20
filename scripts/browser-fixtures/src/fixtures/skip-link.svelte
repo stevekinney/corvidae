@@ -5,9 +5,9 @@
 <div class="example-content rounded-small padding-block-4 padding-inline-4">
   <SkipLink target="main" />
 
-  <nav aria-label="Example navigation">
-    <a href="#main" class="a">Home</a>
-    <a href="#main" class="a">About</a>
+  <nav class="example-navigation" aria-label="Example navigation">
+    <a href="#main">Home</a>
+    <a href="#main">About</a>
     <a href="#main">Contact</a>
   </nav>
 
@@ -23,7 +23,7 @@
     border: 1px dashed var(--cinder-border);
   }
 
-  .a {
-    margin-right: var(--cinder-space-4);
+  .example-navigation :global(a + a) {
+    margin-inline-start: var(--cinder-space-4);
   }
 </style>
