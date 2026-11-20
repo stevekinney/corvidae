@@ -35,9 +35,12 @@ export function verdictWord(outcome: GoalVerdict['outcome']): StatusDotWordLabel
  * paragraph and the evidence its own section, so none is a fact here.
  */
 export function verdictFacts(
-  verdict: Pick<GoalVerdict, 'reason' | 'error' | 'validator' | 'judgedBy' | 'configuration'>,
+  verdict: Pick<GoalVerdict, 'reason' | 'error' | 'validator' | 'judgedBy' | 'configuration'> &
+    Partial<Pick<GoalVerdict, 'outcome'>>,
 ): VerdictFact[] {
-  const detail = verdict.error?.message ?? verdict.reason;
+  // A pass's reason is why it met the check, which the panel says as its paragraph (row 67v); it
+  // is never a detail of what the check could not do.
+  const detail = verdict.error?.message ?? (verdict.outcome === 'pass' ? null : verdict.reason);
   const judge = verdict.judgedBy;
   const configuration = judge === null ? verdict.configuration : judge.configuration;
   return [

@@ -647,6 +647,18 @@
   "color": {
     "$type": "color"
   },
+  "table": {
+    "header": {
+      "foreground": {
+        "$type": "color",
+        "$value": "{text.muted}"
+      },
+      "sorted-foreground": {
+        "$type": "color",
+        "$value": "{text.default}"
+      }
+    }
+  },
   "button": {
     "background": {
       "$type": "color",
@@ -1296,20 +1308,13 @@
       }
     }
   },
-  "kanban-board": {
-    "board": {
-      "scroll-edge": {
-        "$type": "color",
-        "$value": {
-          "colorSpace": "oklch",
-          "components": [0.95, 0.01, 265],
-          "alpha": 0.12
-        },
-        "$extensions": {
-          "com.lostgradient.cinder": {
-            "cssRecipe": "color-mix(in oklch, var(--cinder-text-default), transparent 88%)"
-          }
-        }
+  "scroll-shadow": {
+    "color": {
+      "$type": "color",
+      "$value": {
+        "colorSpace": "oklch",
+        "components": [0, 0, 0],
+        "alpha": 0.5
       }
     }
   },

@@ -13,6 +13,7 @@
   import type { Skill } from '../../lib/bureau-skills.ts';
   import { router } from '../../lib/router.svelte.ts';
   import AgentUsers from './agent-users.svelte';
+  import SkillInstructions from './skill-instructions.svelte';
   import {
     asksWord,
     isUntrusted,
@@ -130,6 +131,8 @@
     </section>
   {/if}
 
+  <SkillInstructions name={skill.name} {heading} />
+
   <dl class="ib-capability__facts">
     <div>
       <dt>{copy.trust}</dt>
@@ -167,6 +170,12 @@
   {:else if usersFailed}
     <Alert variant="warning">{copy.usersFailed}</Alert>
   {:else}
-    <AgentUsers heading={copy.users} {users} empty={copy.noUsers} />
+    <!-- When each agent loads it, in the skill's own words: no reason is stored per agent (row 31m). -->
+    <AgentUsers
+      heading={copy.users}
+      {users}
+      note={() => copy.loadsWhen(skill.description)}
+      empty={copy.noUsers}
+    />
   {/if}
 </article>

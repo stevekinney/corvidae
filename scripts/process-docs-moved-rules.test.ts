@@ -30,7 +30,7 @@ const movedRules: [rule: string, destination: string, phrase: string][] = [
   [
     'one full validate per session',
     `${chef}/coordination.md`,
-    "An exception's full suite runs on GitHub, `gh workflow run main.yml --ref <branch>`, one at a time.",
+    "An exception's full suite runs on GitHub, `bun scripts/chef/targeted-run.ts`, one at a time.",
   ],
   ['one review fix pass', `${chef}/coordination.md`, 'plus one review fix pass'],
   ['bots need not go quiet', `${chef}/coordination.md`, 'Do not wait for bots to go quiet'],

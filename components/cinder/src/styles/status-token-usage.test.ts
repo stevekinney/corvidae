@@ -95,8 +95,23 @@ describe('status token usage', () => {
     expect(unspaced(declarationValue(criticalBody, 'border-color'))).toBe(
       unspaced(declarationValue(criticalBody, 'background')),
     );
-    // Neither the status border tokens nor the accent border token is read by a Badge any more.
-    expect(badgeSource).not.toMatch(/--cinder-(?:status-[a-z]+|accent|severity-critical)-border\b/);
+    for (const variant of ['neutral', 'accent', 'success', 'warning', 'danger', 'info']) {
+      const outline = badgeSource.match(
+        new RegExp(
+          `\\.cinder-badge\\[data-cinder-appearance='outlined'\\]\\[data-cinder-variant='${variant}'\\][^{}]*\\{([^}]*)\\}`,
+        ),
+      );
+      expect(declarationValue(outline?.[1] ?? '', 'border-color')).toBe(
+        `var(${painted(variant)}-border)`,
+      );
+    }
+
+    const criticalOutline = badgeSource.match(
+      /\.cinder-badge\[data-cinder-appearance='outlined'\]\[data-cinder-severity='critical'\]\s*\{([^}]*)\}/,
+    );
+    expect(declarationValue(criticalOutline?.[1] ?? '', 'border-color')).toBe(
+      'var(--cinder-status-danger-border)',
+    );
   });
 
   test('derived status tiers retain the polarity-aware relative-color formula', async () => {

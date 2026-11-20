@@ -64,6 +64,15 @@ verdicts file:  row-id | verdict | evidence
   - `unverified`: no capture shows the row (the state was not captured, or the flow cannot run on the host), so it cannot be judged. It is never a pass, and the evidence says what would make it checkable.
 - **evidence**: semicolon-separated, at most 300 characters, never a `|`: the screenshot path or paths relative to the capture directory, then the source `file:line` where it helps, then, for anything but `matches`, the difference in a short sentence. A `matches` line may leave it empty.
 
+- **owner-rule rows**: after the issue's rows, every verdicts file ends with these seven rows, in this order, which `design-review-rows.ts` adds itself (a rows file that uses one of the ids is refused). `matches` says the rule holds on every capture; `drifted` that a capture breaks it, naming the capture; `unverified` that no capture can show it. A review that omits one is invalid, and `--checklist` prints the template.
+  - `rule-middle-dots`: no middle dot (U+00B7) separates pieces of visible copy.
+  - `rule-sidebar-headings`: the sidebar carries no section headings.
+  - `rule-surfaces`: light mode is not faded, and dark mode has no bright shadows or glows.
+  - `rule-visible-identifiers`: no file path, ULID or secret reference appears in visible text.
+  - `rule-empty-state`: every empty state uses the one EmptyState layout.
+  - `rule-wide-widths`: nothing is stretched across the page at 1920 and 1280 pixels.
+  - `rule-aligned-headers`: page headers and top-bar controls share one centre line.
+
 The implementation review's overall verdict follows from its rows: `changes required` when any row is `drifted`, `partial`, `missing` or `unverified`; otherwise `approve`, or `approve with notes` when the report has notes. `bun scripts/design-review-rows.ts` checks the file and prints that verdict. A departure from an agreed row is a defect, not taste, and it blocks.
 
 ## The design critique

@@ -120,7 +120,7 @@ describe('AccessGate section layouts', () => {
       'inline',
     );
     const card = declarationsFor(css, ".cinder-access-gate[data-cinder-variant='section']");
-    expect(card.get('border')).toBe('1px solid var(--cinder-border)');
+    expect(card.get('border')).toBe('var(--cinder-border-width) solid var(--cinder-border)');
     expect(card.get('border-radius')).toBe('var(--cinder-radius-lg)');
     expect(card.get('align-items')).toBe('center');
   });

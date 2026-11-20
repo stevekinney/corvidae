@@ -132,15 +132,16 @@ describe('the Tools tab', () => {
       container
         .querySelector(`[data-tool-row="${name}"] [data-testid="tool-row-source"]`)
         ?.textContent?.trim();
-    // The row says where a tool comes from by the name of its source: the plugin, Built in, or the server.
-    expect(sourceOf('gemini:search')).toBe('Gemini');
+    // The row says where a tool comes from in the page's own badge words: the plugin, Built in, or
+    // the server (owner report, 2026-11-19: one set, the same words in the row and the page).
+    expect(sourceOf('gemini:search')).toBe('From the Gemini plugin');
     expect(sourceOf('run-shell')).toBe('Built in');
-    expect(sourceOf('read-file')).toBe('MCP server');
+    expect(sourceOf('read-file')).toBe('From an MCP server');
 
     await fireEvent.click(container.querySelector('[data-tool-row="gemini:search"]')!);
     await waitFor(() =>
       expect(container.querySelector('[data-testid="tool-source"]')?.textContent?.trim()).toBe(
-        'From the gemini plugin',
+        'From the Gemini plugin',
       ),
     );
   });
@@ -156,23 +157,39 @@ describe('the Tools tab', () => {
     const row = (name: string) => container.querySelector(`[data-tool-row="${name}"]`);
     const part = (name: string, testId: string) =>
       row(name)?.querySelector(`[data-testid="${testId}"]`)?.textContent?.trim();
-    // Two lines: the name for a person and the muted risk word, then the source and the sentence.
+    // The page's order: the name for a person, the sentence, then the page's one badge set.
     expect(part('read-file', 'tool-row-name')).toBe('Read file');
     expect(part('read-file', 'tool-row-risk')).toBe('Reads');
-    expect(part('read-file', 'tool-row-source')).toBe('MCP server');
+    expect(part('read-file', 'tool-row-asks')).toBe('Asks: Never');
+    expect(part('read-file', 'tool-row-source')).toBe('From an MCP server');
     expect(part('read-file', 'tool-row-summary')).toBe('Reads one file');
     // A tool that declares no tier is not classified, which is never read as read-only.
     expect(part('run-shell', 'tool-row-risk')).toBe('Not classified');
     expect(part('run-shell', 'tool-row-summary')).toBe('Runs a shell command.');
     expect(part('gemini:search', 'tool-row-name')).toBe('Search');
-    // Source, then sentence, in that order on the second line.
+    // Sentence, then the set; the set's three chips sit together in the page's order, on one line
+    // of their own, never split across the name's line and the sentence's (owner report, 2026-11-19).
     const line = row('read-file')?.querySelector('.ib-capabilities__row-line');
     expect([...(line?.children ?? [])].map((child) => child.getAttribute('data-testid'))).toEqual([
-      'tool-row-source',
       'tool-row-summary',
+      'tool-row-badges',
     ]);
-    // The risk word is plain muted text: no badge, so Dangerous is never red.
-    expect(row('read-file')?.querySelector('[data-cinder-variant]')).toBeNull();
+    const set = row('read-file')?.querySelector('[data-testid="tool-row-badges"]');
+    expect([...(set?.children ?? [])].map((child) => child.getAttribute('data-testid'))).toEqual([
+      'tool-row-risk',
+      'tool-row-asks',
+      'tool-row-source',
+    ]);
+    expect(
+      row('read-file')?.querySelector('.ib-capabilities__row-title [data-cinder-variant]'),
+    ).toBeNull();
+    // The badges are the page's own neutral chips, so Dangerous is never red, and a row, which is
+    // itself the control, holds nothing focusable of its own.
+    const variants = [...(row('read-file')?.querySelectorAll('[data-cinder-variant]') ?? [])].map(
+      (chip) => chip.getAttribute('data-cinder-variant'),
+    );
+    expect(variants).toEqual(['neutral', 'neutral', 'neutral']);
+    expect(row('read-file')?.querySelector('[tabindex="0"]')).toBeNull();
 
     await fireEvent.click(row('read-file')!);
     await waitFor(() =>
@@ -197,18 +214,72 @@ describe('the Tools tab', () => {
     expect(detail.querySelector('[data-testid="tool-input-schema"]')?.textContent).toContain(
       'Where the file is.',
     );
-    expect(getByRole('link', { name: 'assistant' }).getAttribute('href')).toBe('/agents/assistant');
+    expect(getByRole('link', { name: 'Assistant' }).getAttribute('href')).toBe('/agents/assistant');
     // The open tool is in the address, and the router has read it back.
     expect(router.search.get('tool')).toBe('read-file');
 
     // A user opens its page in the application; a modified click is left to the browser.
-    await fireEvent.click(getByRole('link', { name: 'assistant' }), { ctrlKey: true });
+    await fireEvent.click(getByRole('link', { name: 'Assistant' }), { ctrlKey: true });
     expect(router.pathname).toBe('/capabilities');
-    await fireEvent.click(getByRole('link', { name: 'assistant' }));
+    await fireEvent.click(getByRole('link', { name: 'Assistant' }));
     expect(router.pathname).toBe('/agents/assistant');
   });
 
-  test('says a tool no agent uses with the action that gives it a user, and a tool without a described input in words', async () => {
+  test('says what each agent asks for the tool beside its link, and a blocked agent in words with the Allow all note (rows 30c, 30d, 31j, 31w, 31x)', async () => {
+    const tools = TOOLS.map((tool) =>
+      tool.name === 'read-file'
+        ? {
+            ...tool,
+            users: ['assistant', 'planner', 'writer'],
+            userApprovals: { planner: 'always', writer: 'blocked' },
+          }
+        : tool,
+    );
+    restore = serve(tools).restore;
+    landAt('/capabilities?tool=read-file');
+    const { container } = mount();
+
+    const detail = await waitFor(() => {
+      const found = container.querySelector('[data-testid="tool-detail"]');
+      if (found === null) throw new Error('the tool is not open yet');
+      return found;
+    });
+    const notes = [...detail.querySelectorAll('[data-testid="capability-user-note"]')].map(
+      (note) => note.textContent,
+    );
+    // Sorted as the host sends them: a default is marked as one, a stated level is not, Blocked is
+    // said as belonging to that agent.
+    expect(notes).toEqual(['Asks: Never (default)', 'Asks: Always', 'Blocked on this agent']);
+    // Each agent is a Cinder Link named as the Agents list names it, never by its identifier.
+    const links = [...detail.querySelectorAll<HTMLElement>('[data-testid="capability-users"] a')];
+    expect(links.map((link) => link.dataset['agent'])).toEqual(['assistant', 'planner', 'writer']);
+    expect(links[0]?.textContent?.trim()).toBe(AGENT.displayName);
+    expect(links[1]?.textContent?.trim()).toBe('Planner');
+    expect(links.every((link) => link.className.includes('cinder-link'))).toBe(true);
+    // The note is about the one blocked agent and names it; the agents that are not blocked get none.
+    const blockedNotes = [...detail.querySelectorAll('[data-testid="tool-blocked-note"]')];
+    expect(blockedNotes.map((note) => note.textContent?.trim())).toEqual([
+      copy.tool.blockedNote('Writer'),
+    ]);
+    // Blocked is never a property of the tool: the chip still says its default.
+    expect(detail.querySelector('[data-testid="tool-approval"]')?.textContent?.trim()).toBe(
+      'Asks: Never',
+    );
+  });
+
+  test('draws no Blocked note when no agent has the tool blocked', async () => {
+    restore = serve().restore;
+    landAt('/capabilities?tool=read-file');
+    const { container } = mount();
+    const detail = await waitFor(() => {
+      const found = container.querySelector('[data-testid="tool-detail"]');
+      if (found === null) throw new Error('the tool is not open yet');
+      return found;
+    });
+    expect(detail.querySelector('[data-testid="tool-blocked-note"]')).toBeNull();
+  });
+
+  test('says a tool no agent uses in one line, with Add to an agent as the header’s button, and a tool without a described input in words', async () => {
     restore = serve().restore;
     landAt('/capabilities?tool=run-shell');
     const { container, findByText } = mount();
@@ -219,15 +290,23 @@ describe('the Tools tab', () => {
       return found;
     });
     await findByText(copy.tool.noUsers.line, { exact: false });
-    // One muted line with an inline link, never a centred empty state (rows 30e and 32j).
+    // One muted line, never a centred empty state (rows 30e and 32j), and no link in it: the
+    // action is the header's button (owner report, 2026-11-19).
     expect(detail.querySelector('[data-testid="capability-users"] [data-cinder-kind]')).toBeNull();
     const line = detail.querySelector('[data-testid="capability-users-empty"]');
-    expect(line?.textContent).toContain(copy.tool.noUsers.line);
-    expect(
-      line?.querySelector(`a[href="${copy.tool.noUsers.action.href}"]`)?.textContent,
-    ).toContain(copy.tool.noUsers.action.label);
+    expect(line?.textContent?.trim()).toBe('No agent uses this tool yet.');
+    expect(line?.querySelector('a')).toBeNull();
+    const add = detail.querySelector('header [data-testid="tool-add-to-agent"]');
+    expect(add?.tagName).toBe('A');
+    expect(add?.getAttribute('href')).toBe(copy.tool.addToAgent.href);
+    expect(add?.textContent?.trim()).toBe(copy.tool.addToAgent.label);
+    expect(add?.classList.contains('cinder-button')).toBe(true);
+    // Without a described input there are no fields and no document to show.
     expect(detail.querySelector('[data-testid="tool-input-schema"]')?.textContent).toContain(
       copy.tool.noSchema,
+    );
+    expect(detail.querySelector('[data-testid="tool-input-schema"]')?.textContent).not.toContain(
+      'JSON schema',
     );
     // A tool that declares no tier asks On changes by default, and its risk is not classified.
     expect(detail.querySelector('[data-testid="tool-risk"]')?.textContent?.trim()).toBe(
@@ -344,17 +423,21 @@ const openTool = async (path: string) => {
 };
 
 describe('a tool’s page', () => {
-  test('opens with its name for a person and its identifier beside it, then the sentence, the chips, Used by and Inputs', async () => {
+  test('opens with what it does, then who can use it and whether it asks, then its inputs beside the open schema', async () => {
     restore = serve([...TOOLS, DELETE_BRANCH]).restore;
     const { detail } = await openTool('/capabilities?tool=github__delete_branch');
 
     expect(detail.querySelector('h3')?.textContent).toBe('Delete branch');
-    expect(detail.querySelector('[data-testid="tool-identifier"]')?.textContent).toBe(
-      'github__delete_branch',
-    );
+    // No raw identifier beside the name: Copy tool ID holds it (owner report, 2026-11-19).
+    expect(detail.querySelector('header')?.textContent).not.toContain('github__delete_branch');
+    expect(detail.querySelector('[data-testid="tool-identifier"]')).toBeNull();
+    const copyIdentifier = detail.querySelector('header [data-testid="tool-copy-identifier"]');
+    expect(copyIdentifier?.getAttribute('aria-label')).toBe(copy.tool.copyIdentifier.label);
+    // The sentence is said once, under the name.
     expect(detail.querySelector('[data-testid="tool-summary"]')?.textContent).toBe(
       'Deletes a branch from a GitHub repository.',
     );
+    expect(detail.textContent?.split('Deletes a branch from a GitHub repository.').length).toBe(2);
     // A dangerous tool defaults to Always, and says so in words rather than in red.
     expect(detail.querySelector('[data-testid="tool-risk"]')?.textContent?.trim()).toBe(
       'Dangerous',
@@ -363,16 +446,22 @@ describe('a tool’s page', () => {
       'Asks: Always',
     );
     expect(detail.querySelector('[data-testid="tool-source"]')?.textContent?.trim()).toBe(
-      'From github',
+      'From Github',
     );
-    expect(
-      detail.querySelector('[data-testid="tool-risk"]')?.getAttribute('data-cinder-variant'),
-    ).toBe('neutral');
+    // One set: each badge the same neutral chip with a glyph, so all three share one baseline.
+    for (const testId of ['tool-risk', 'tool-approval', 'tool-source']) {
+      const chip = detail.querySelector(`[data-testid="${testId}"]`);
+      expect(chip?.getAttribute('data-cinder-variant')).toBe('neutral');
+      expect(chip?.getAttribute('data-cinder-size')).toBe('sm');
+      expect(chip?.querySelectorAll('svg')).toHaveLength(1);
+    }
     // Only the dangerous chip has a shield: the risk chip carries the one icon that means risk.
     expect(detail.querySelectorAll('.lucide-shield')).toHaveLength(1);
 
     const order = [
-      detail.querySelector('header'),
+      detail.querySelector('h3'),
+      detail.querySelector('[data-testid="tool-summary"]'),
+      detail.querySelector('header [data-testid="tool-copy-identifier"]'),
       detail.querySelector('ul[aria-label="About this tool"]'),
       detail.querySelector('[data-testid="capability-users"]'),
       detail.querySelector('[data-testid="tool-input-schema"]'),
@@ -386,10 +475,22 @@ describe('a tool’s page', () => {
         ).toBeTruthy();
       }
     }
-    // The raw schema is the quiet disclosure SchemaView ends with, closed until it is asked for.
-    expect(detail.querySelector('[data-testid="tool-input-schema"]')?.textContent).toContain(
+    // The inputs are unframed rows: the name, the word Required, the type in words, and the
+    // document is open in a code block beside them, never behind a disclosure.
+    const inputs = detail.querySelector('[data-testid="tool-input-schema"]')!;
+    expect(inputs.getAttribute('data-cinder-layout')).toBe('rows');
+    expect(inputs.getAttribute('data-cinder-raw')).toBe('beside');
+    expect(inputs.querySelector('[role="table"]')).toBeNull();
+    expect(inputs.querySelector('.cinder-schema-view__required-word')?.textContent).toBe(
+      'Required',
+    );
+    expect(inputs.querySelector('.cinder-schema-view__source')?.textContent).toContain(
       'JSON schema',
     );
+    expect(inputs.querySelector('.cinder-schema-view__source code')?.textContent).toContain(
+      '"branch"',
+    );
+    expect(inputs.querySelector('.cinder-schema-view__raw')).toBeNull();
   });
 
   test('reads a tool with no title of its own by its identifier as words, and ends the breadcrumb with it', async () => {
@@ -397,7 +498,6 @@ describe('a tool’s page', () => {
     const { detail } = await openTool('/capabilities?tool=read-file');
 
     expect(detail.querySelector('h3')?.textContent).toBe('Read file');
-    expect(detail.querySelector('[data-testid="tool-identifier"]')?.textContent).toBe('read-file');
     await waitFor(() =>
       expect(breadcrumbTrail('/capabilities')).toEqual([
         { label: 'Capabilities', href: '/capabilities' },
@@ -439,6 +539,32 @@ describe('a tool’s page', () => {
     await fireEvent.click(await findByRole('link', { name: copy.tool.page.notFound.back }));
     expect(router.pathname).toBe('/capabilities');
     expect(router.search.get('tool')).toBeNull();
+  });
+
+  test('says a missing tool is missing on a narrow page too, where the list is the only pane', async () => {
+    restore = serve().restore;
+    const measure = Element.prototype.getBoundingClientRect;
+    // A phone's width: ListDetail shows one pane at a time and its empty pane is never reached.
+    Element.prototype.getBoundingClientRect = function (this: Element): DOMRect {
+      const rect = measure.call(this);
+      return this.classList.contains('ib-capabilities__frame')
+        ? new DOMRect(rect.x, rect.y, 400, rect.height)
+        : rect;
+    };
+    try {
+      landAt('/capabilities?tool=no-such-tool');
+      const { container, findByRole, findByText } = mount();
+
+      await findByText(copy.tool.page.notFound.title);
+      expect(container.querySelector('[data-testid="tool-not-found"]')).not.toBeNull();
+      expect(container.querySelector('[data-testid="tool-detail"]')).toBeNull();
+      await fireEvent.click(await findByRole('link', { name: copy.tool.page.notFound.back }));
+      expect(router.search.get('tool')).toBeNull();
+      // With nothing missing the list is back.
+      await waitFor(() => expect(container.querySelector('[data-tool-row]')).not.toBeNull());
+    } finally {
+      Element.prototype.getBoundingClientRect = measure;
+    }
   });
 
   test('Cancel on the slow-loading line leaves the catalog loading, so the list still arrives', async () => {
@@ -532,7 +658,7 @@ describe('the Skills tab', () => {
     landAt('/capabilities?tab=skills&skill=home%2Fsummarize');
     const { container, findByRole } = mount();
 
-    const link = await findByRole('link', { name: 'assistant' });
+    const link = await findByRole('link', { name: 'Assistant' });
     expect(link.getAttribute('href')).toBe('/agents/assistant');
     const detail = container.querySelector('[data-testid="skill-detail"]')!;
     expect(detail.querySelector('[data-testid="skill-unavailable"]')).toBeNull();
@@ -604,7 +730,7 @@ describe('the Skills tab', () => {
     );
     expect(container.textContent).not.toContain(copy.skill.noUsers.title);
     release?.();
-    await findByRole('link', { name: 'assistant' });
+    await findByRole('link', { name: 'Assistant' });
 
     await fireEvent.click(container.querySelectorAll('[data-skill-row="summarize"]')[1]!);
     await waitFor(() => {
@@ -900,6 +1026,104 @@ const metaOf = (detail: Element) =>
   );
 
 describe('a skill’s page', () => {
+  test('shows what it tells the agent: the SKILL.md rendered in a card with its size, Show all, and the raw file last (rows 31m, 31n)', async () => {
+    const file = [
+      '---',
+      'name: summarize',
+      'description: Summarizes a document.',
+      '---',
+      '',
+      'Group the merged pull requests by what changed for a customer.',
+      '',
+      '- Lead with the change, not the pull request number.',
+      '- Keep each entry to one sentence.',
+      '',
+      '<script>window.injected = true</script>',
+      '',
+    ].join('\n');
+    const calls = bureau({
+      'bureau.agents.catalog': () => ({ models: [], tools: TOOLS }),
+      'bureau.skills.list': () => ({ revision: 1, skills: SKILLS, sources: [], trustLocked: null }),
+      'bureau.agents.list': () => ({ agents: [AGENT] }),
+      'bureau.agents.definitions.get': (params) => codeDetail(String(params['id']), ['summarize']),
+      'bureau.skills.get': (params) => ({
+        name: String(params['name']),
+        instructions: { text: file, size: 1229, truncated: false },
+        unavailableReason: null,
+      }),
+    });
+    restore = calls.restore;
+    const { detail } = await openSkill('/capabilities?tab=skills&skill=home%2Fsummarize');
+
+    const section = await waitFor(() => {
+      const found = detail.querySelector('[data-testid="skill-instructions-body"]');
+      if (found === null) throw new Error('the instructions are not read yet');
+      return found;
+    });
+    expect(calls.calls.find((call) => call.method === 'bureau.skills.get')?.params).toEqual({
+      name: 'summarize',
+    });
+    expect(
+      detail.querySelector('[data-testid="skill-instructions-title"]')?.textContent?.trim(),
+    ).toMatch(/^Instructions\s+SKILL\.md 1\.2 KB$/);
+    // The body, not the frontmatter, is rendered; the file is untrusted, so no script survives.
+    expect(section.querySelector('p')?.textContent).toBe(
+      'Group the merged pull requests by what changed for a customer.',
+    );
+    expect([...section.querySelectorAll('li')].map((item) => item.textContent)).toEqual([
+      'Lead with the change, not the pull request number.',
+      'Keep each entry to one sentence.',
+    ]);
+    expect(section.textContent).not.toContain('name: summarize');
+    expect(section.querySelector('script')).toBeNull();
+    // Show all opens the rest of the rendered file.
+    const toggle = detail.querySelector<HTMLElement>('[data-testid="skill-instructions-toggle"]')!;
+    expect(toggle.textContent?.trim()).toBe(copy.skill.instructions.showAll);
+    expect(section.hasAttribute('data-clamped')).toBe(true);
+    await fireEvent.click(toggle);
+    expect(section.hasAttribute('data-clamped')).toBe(false);
+    // The raw file is a disclosure, last in the section.
+    expect(detail.querySelector('[data-testid="skill-instructions-raw"]')).not.toBeNull();
+    // A flat disclosure, as SchemaView's is, not a bordered box inside the detail.
+    expect(
+      detail
+        .querySelector('[data-testid="skill-instructions-raw"]')
+        ?.closest('[data-cinder-variant]')
+        ?.getAttribute('data-cinder-variant') ??
+        detail
+          .querySelector('[data-testid="skill-instructions-raw"]')
+          ?.getAttribute('data-cinder-variant'),
+    ).toBe('flat');
+    // Used by says when the agent loads it, in the skill's own words.
+    await waitFor(() =>
+      expect(
+        detail.querySelector('[data-testid="capability-user-note"]')?.textContent?.trim(),
+      ).toBe(copy.skill.loadsWhen('Summarizes a document.')),
+    );
+  });
+
+  test('says why a skill’s SKILL.md is not shown when the host does not serve it', async () => {
+    restore = bureau({
+      'bureau.agents.catalog': () => ({ models: [], tools: TOOLS }),
+      'bureau.skills.list': () => ({ revision: 1, skills: SKILLS, sources: [], trustLocked: null }),
+      'bureau.agents.list': () => ({ agents: [AGENT] }),
+      'bureau.agents.definitions.get': (params) => codeDetail(String(params['id']), ['summarize']),
+      'bureau.skills.get': () => ({
+        name: 'summarize',
+        instructions: null,
+        unavailableReason: 'changed',
+      }),
+    }).restore;
+    const { detail } = await openSkill('/capabilities?tab=skills&skill=home%2Fsummarize');
+
+    await waitFor(() =>
+      expect(
+        detail.querySelector('[data-testid="skill-instructions-unavailable"]')?.textContent?.trim(),
+      ).toBe(copy.skill.instructions.unavailable['changed']),
+    );
+    expect(detail.querySelector('[data-testid="skill-instructions-toggle"]')).toBeNull();
+  });
+
   test('opens with its name for a person, its identifier beside it, the sentence and the muted line', async () => {
     restore = serve().restore;
     const { detail } = await openSkill('/capabilities?tab=skills&skill=home%2Fsummarize');
@@ -949,6 +1173,163 @@ describe('a skill’s page', () => {
     );
   });
 
+  test('lists a disconnected source’s tool from its last listing, with the warning, Reconnect and Used by keeping the asks level (rows 30n, 30o)', async () => {
+    const createIssue = {
+      name: 'github__create_issue',
+      tool: 'create_issue',
+      acceptsSecrets: false,
+      savedAcceptsSecrets: false,
+      enabled: true,
+      savedEnabled: true,
+      tier: 'mutating',
+      approval: 'on-changes',
+      approvalSaved: false,
+      title: 'Create issue',
+      description: 'Opens an issue in a GitHub repository.',
+      shortDescription: null,
+      inputSchema: null,
+    };
+    const github = {
+      id: 'github',
+      kind: 'mcp',
+      name: 'GitHub',
+      localCommand: false,
+      state: 'failed',
+      message: 'The source could not be reached.',
+      tools: [],
+      skipped: [],
+      unmatchedSettings: [],
+      credentials: [],
+      lastListing: { listedAt: '2026-11-16T08:00:00.000Z', truncated: false, tools: [createIssue] },
+    };
+    restore = bureau(
+      {
+        'bureau.agents.catalog': () => ({ models: [], tools: TOOLS }),
+        'bureau.skills.list': () => ({ revision: 1, skills: [], sources: [], trustLocked: null }),
+      },
+      (url) =>
+        new URL(url, 'http://localhost').pathname === '/host/tool-sources'
+          ? Response.json({ configurationRevision: null, sources: [github] })
+          : undefined,
+    ).restore;
+    landAt('/capabilities?tool=github__create_issue');
+    const { container } = mount();
+
+    const detail = await waitFor(() => {
+      const found = container.querySelector('[data-testid="tool-detail"]');
+      if (found === null) throw new Error('the tool is not open yet');
+      return found;
+    });
+    expect(detail.querySelector('h3')?.textContent?.trim()).toBe('Create issue');
+    // Every chip stays, the asks level among them.
+    expect(detail.querySelector('[data-testid="tool-approval"]')?.textContent?.trim()).toBe(
+      'Asks: On changes',
+    );
+    expect(detail.querySelector('[data-testid="tool-lost-text"]')?.textContent).toBe(
+      'GitHub is disconnected. Agents can’t use this tool until it is reconnected.',
+    );
+    const reconnect = detail.querySelector('[data-testid="tool-lost-reconnect"]');
+    expect(reconnect?.textContent?.trim()).toBe('Reconnect');
+    expect(
+      detail.querySelector('[data-testid="capability-users-empty"]')?.textContent?.trim(),
+    ).toBe(copy.tool.lost.noUsers);
+    // The count rule: the Tools tab lists the catalog's tools and then the lost ones, each once,
+    // and its count is that many. A lost row is marked, and is never one the catalog holds.
+    const rows = [...container.querySelectorAll<HTMLElement>('[data-tool-row]')];
+    const lostRows = rows.filter((row) => row.hasAttribute('data-lost'));
+    expect(lostRows.map((row) => row.dataset['toolRow'])).toEqual(['github__create_issue']);
+    expect(rows.length - lostRows.length).toBe(TOOLS.length);
+    // A lost row says so in its own muted word; a tool that runs does not.
+    expect(lostRows[0]?.querySelector('[data-testid="tool-row-paused"]')?.textContent?.trim()).toBe(
+      copy.tool.lost.paused,
+    );
+    expect(
+      rows.filter((row) => row.querySelector('[data-testid="tool-row-paused"]') !== null),
+    ).toHaveLength(1);
+    // And its chip names the source as a person does.
+    expect(container.querySelector('[data-testid="tool-source"]')?.textContent?.trim()).toBe(
+      'From GitHub',
+    );
+    expect(container.querySelector('[data-testid="tab-count-tools"]')?.textContent?.trim()).toBe(
+      String(TOOLS.length + lostRows.length),
+    );
+    await fireEvent.click(reconnect!);
+    expect(router.search.get('tab')).toBe('sources');
+    expect(router.search.get('source')).toBe('github');
+  });
+
+  test('lists a disabled plugin’s tool from its last listing, with Enable and restart behind the shared restart question (row 30p)', async () => {
+    const demo = {
+      descriptor: {
+        name: 'demo',
+        title: 'Demo',
+        version: '1.0.0',
+        description: 'Drafts release notes.',
+        required: false,
+        enabledByDefault: true,
+      },
+      source: 'package',
+      location: '@fixture/demo',
+      status: 'disabled',
+      problems: [],
+      contributions: [],
+      enabled: false,
+      configuration: {},
+      configurationSchema: null,
+      running: { enabled: false, configuration: {} },
+      secrets: [],
+      restartRequired: false,
+      lastListing: {
+        listedAt: '2026-11-16T08:00:00.000Z',
+        truncated: false,
+        tools: [
+          {
+            name: 'draft-release-notes',
+            tool: 'draft-release-notes',
+            title: 'Draft release notes',
+            description: 'Writes release notes from merged changes.',
+            shortDescription: null,
+            tier: 'mutating',
+            inputSchema: null,
+          },
+        ],
+      },
+    };
+    restore = bureau(
+      {
+        'bureau.agents.catalog': () => ({ models: [], tools: TOOLS }),
+        'bureau.skills.list': () => ({ revision: 1, skills: [], sources: [], trustLocked: null }),
+      },
+      (url) =>
+        new URL(url, 'http://localhost').pathname === '/host/plugins'
+          ? Response.json({
+              configurationRevision: null,
+              plugins: [demo],
+              unloaded: [],
+            })
+          : undefined,
+    ).restore;
+    landAt('/capabilities?tool=draft-release-notes');
+    const { container, getByRole } = mount();
+
+    const detail = await waitFor(() => {
+      const found = container.querySelector('[data-testid="tool-detail"]');
+      if (found === null) throw new Error('the tool is not open yet');
+      return found;
+    });
+    expect(detail.querySelector('[data-testid="tool-source"]')?.textContent?.trim()).toBe(
+      'From the Demo plugin',
+    );
+    expect(detail.querySelector('[data-testid="tool-lost-text"]')?.textContent).toBe(
+      'The Demo plugin is disabled. Enabling it restarts the server.',
+    );
+    await fireEvent.click(detail.querySelector('[data-testid="tool-lost-enable"]')!);
+    // The shared restart question names the effect on running work before anything is written.
+    await waitFor(() => expect(getByRole('dialog')).not.toBeNull());
+    // The tab count holds the tools that cannot run too.
+    expect(container.querySelector('[data-testid="tab-count-tools"]')?.textContent).toBe('4');
+  });
+
   test('shows a tool a skill brings on the Tools tab with the skill as its source', async () => {
     restore = serve([...TOOLS, ...CUSTOMER_TOOLS], [...SKILLS, CUSTOMER_LOOKUP]).restore;
     landAt('/capabilities');
@@ -959,7 +1340,7 @@ describe('a skill’s page', () => {
     );
     const row = container.querySelector('[data-tool-row="find_customer"]')!;
     expect(row.querySelector('[data-testid="tool-row-source"]')?.textContent?.trim()).toBe(
-      'Customer lookup',
+      'From the Customer lookup skill',
     );
     expect(row.querySelector('[data-testid="tool-row-name"]')?.textContent?.trim()).toBe(
       'Find customer',

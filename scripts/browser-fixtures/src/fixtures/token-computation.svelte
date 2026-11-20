@@ -69,13 +69,13 @@
 <style>
   .token-fixture {
     display: grid;
-    gap: 1rem;
+    gap: var(--cinder-space-4);
     max-inline-size: 48rem;
     margin-inline: auto;
   }
   section {
     display: flex;
-    gap: 0.75rem;
+    gap: var(--cinder-space-3);
     align-items: center;
   }
 </style>

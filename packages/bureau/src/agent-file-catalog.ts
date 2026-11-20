@@ -125,7 +125,12 @@ import {
   ownerCopiesNamedBy,
   withOwnerGuardrails,
 } from './owner-guardrails';
-import { createToolApprovalHooks, defaultToolApproval } from './tool-approval';
+import {
+  createToolApprovalHooks,
+  defaultToolApproval,
+  enforcedDefaultApproval,
+  type ToolApprovalMode,
+} from './tool-approval';
 import { type AgentRevisionRecord, createAgentRevisionStore } from './agent-revision-store';
 import {
   type AgentFileSaveOptions,
@@ -262,10 +267,20 @@ export interface AgentToolDescription {
    * What happens by default when an agent calls the tool: the rule a file agent's tool follows
    * when its `approvals` says nothing (COR-1913, `TOOL_APPROVAL_DEFAULT_MODE`, `on-changes`)
    * applied to {@link AgentToolDescription.tier}, so `allow` for a read-only tool and `ask` for a
-   * tool that changes something, is dangerous, or declares nothing. A file's own `approvals`
-   * entry for the tool replaces it for that agent: this is the default, not any one agent's setting.
+   * tool that changes something, is dangerous, or declares nothing. A tool that carries its own
+   * Default asks level in its metadata (`defaultApproval`: `never`, `on-changes` or `always`, which
+   * the host sets from a tool source's saved setting, COR-2436) follows that level instead, and the
+   * agent hooks enforce it the same way. A file's own `approvals` entry for the tool replaces it
+   * for that agent: this is the default, not any one agent's setting.
    */
   readonly defaultApproval: Exclude<ApprovalStatus, 'deny'>;
+  /**
+   * The level the tool is enforced at when an agent's file states none, one value every reader
+   * and the approval hook share (`enforcedDefaultApproval`): the pick its source stored (the host
+   * gives every tool of a saved source one, Always for a dangerous tool), else Never for a tool
+   * that only reads and On changes for the rest.
+   */
+  readonly defaultAsks: Exclude<ToolApprovalMode, 'blocked'>;
   /**
    * Where the tool comes from: `skill` for a tool a skill brings (its `metadata.skill` names the
    * skill, COR-2009), whoever registered it; otherwise `bureau` for a tool Bureau adds itself (the
@@ -287,6 +302,14 @@ export interface AgentToolDescription {
    * so it changes when a file does.
    */
   readonly users: readonly string[];
+  /**
+   * What an agent's own file states for the tool in its `approvals`, by agent identifier, for the
+   * users whose file states one: a user with no entry follows {@link
+   * AgentToolDescription.defaultApproval}. A code-defined agent never appears, because its
+   * approvals are a function the catalog cannot read. Read from the definitions as they stand,
+   * never stored.
+   */
+  readonly userApprovals: Readonly<Record<string, ToolApprovalMode>>;
 }
 
 /**
@@ -296,8 +319,9 @@ export interface AgentToolDescription {
  */
 export function describeToolCapability(
   tool: Pick<Tool, 'metadata' | 'tags' | 'toJSON'>,
-): Pick<AgentToolDescription, 'inputSchema' | 'tier' | 'defaultApproval'> {
+): Pick<AgentToolDescription, 'inputSchema' | 'tier' | 'defaultApproval' | 'defaultAsks'> {
   const tier = resolveCapabilityTier(tool.metadata, tool.tags);
+  const asks = enforcedDefaultApproval(tool.metadata, tier);
   let inputSchema: Readonly<Record<string, unknown>> | null;
   try {
     inputSchema = { ...tool.toJSON().input };
@@ -307,7 +331,9 @@ export function describeToolCapability(
   return {
     inputSchema,
     tier: tier ?? null,
-    defaultApproval: defaultToolApproval(tier),
+    // What the enforced level means for an ordinary call, and the level itself (COR-2436).
+    defaultApproval: defaultToolApproval(tier, asks),
+    defaultAsks: asks,
   };
 }
 
@@ -1944,10 +1970,17 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
 
     tools() {
       const users = new Map<string, string[]>();
+      const userApprovals = new Map<string, Record<string, ToolApprovalMode>>();
       for (const entry of directoryWatcher.entries().values()) {
         if (entry.agent === undefined || entry.definition === undefined) continue;
+        const stated = entry.definition.approvals;
         for (const name of entry.definition.tools) {
           users.set(name, [...(users.get(name) ?? []), entry.id]);
+          const mode =
+            stated !== undefined && Object.hasOwn(stated, name) ? stated[name] : undefined;
+          if (mode !== undefined) {
+            userApprovals.set(name, { ...userApprovals.get(name), [entry.id]: mode });
+          }
         }
       }
       return Object.entries(options.tools)
@@ -1959,6 +1992,7 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
           ...describeToolCapability(tool),
           ...toolOrigin(name, tool, options),
           users: (users.get(name) ?? []).toSorted(),
+          userApprovals: userApprovals.get(name) ?? {},
         }))
         .toSorted((left, right) => (left.name < right.name ? -1 : left.name > right.name ? 1 : 0));
     },

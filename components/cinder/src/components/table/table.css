@@ -26,7 +26,7 @@
      * container, so a sticky header still pins to the real scroll parent. */
     border-collapse: separate;
     border-spacing: 0;
-    border: 1px solid var(--cinder-border-muted);
+    border: var(--cinder-border-width) solid var(--cinder-border-muted);
     border-radius: var(--cinder-radius-lg);
     overflow: clip;
     font-size: var(--cinder-text-sm);
@@ -36,10 +36,11 @@
      * text and a hairline, never by a darker band, and a hovered row takes a faint accent tint
      * of the same fill (a translucent tint when the fill is transparent). */
     --_cinder-table-fill: var(--cinder-surface);
+    --_cinder-table-hover-accent-share: 3%;
     --_cinder-table-row-hover: color-mix(
       in oklch,
       var(--_cinder-table-fill),
-      var(--cinder-accent-solid) 3%
+      var(--cinder-accent-solid) var(--_cinder-table-hover-accent-share)
     );
     background: var(--_cinder-table-fill);
     /* Longest a truncating cell's text may grow before it ellipsizes. */
@@ -66,7 +67,7 @@
     overflow-x: auto;
     overscroll-behavior-inline: contain;
     -webkit-overflow-scrolling: touch;
-    border: 1px solid var(--cinder-border-muted);
+    border: var(--cinder-border-width) solid var(--cinder-border-muted);
     border-radius: var(--cinder-radius-lg);
     background: var(--cinder-surface);
     /* The fade is opaque in the surface color; see _scroll-fade.css rule 1. */
@@ -197,13 +198,15 @@
   }
 
   .cinder-table__header-cell {
-    padding-block: var(--cinder-space-2);
-    padding-inline: var(--cinder-space-3);
+    padding-block: var(--cinder-table-header-padding-block, var(--cinder-space-2));
+    padding-inline: var(--cinder-table-header-padding-inline, var(--cinder-space-3));
     text-align: left;
-    font-size: var(--cinder-text-xs);
+    font-size: var(--cinder-table-header-font-size, var(--cinder-text-xs));
     font-weight: var(--cinder-font-medium);
-    color: var(--cinder-text-muted);
-    border-bottom: 1px solid var(--cinder-border-muted);
+    /* Paint above the header surface, which stays opaque when sticky. */
+    background-color: var(--cinder-table-header-background);
+    color: var(--cinder-table-header-foreground, var(--cinder-text-muted));
+    border-bottom: var(--cinder-border-width) solid var(--cinder-border-muted);
     /* A header never wraps (COR-2311): a table that does not fit scrolls sideways in its wrapper. */
     white-space: nowrap;
     text-wrap: nowrap;
@@ -211,7 +214,7 @@
 
   .cinder-table__header-cell[aria-sort='ascending'],
   .cinder-table__header-cell[aria-sort='descending'] {
-    color: var(--cinder-text-default);
+    color: var(--cinder-table-header-sorted-foreground, var(--cinder-text-default));
   }
 
   /* ----------------------------------------
@@ -221,16 +224,23 @@
  * falls back gracefully to comfortable padding.
  * ---------------------------------------- */
 
-  .cinder-table[data-cinder-density='condensed'] .cinder-table__cell,
-  .cinder-table[data-cinder-density='condensed'] .cinder-table__header-cell {
+  .cinder-table[data-cinder-density='condensed'] .cinder-table__cell {
     padding-block: var(--cinder-space-1);
     padding-inline: var(--cinder-space-3);
   }
 
-  .cinder-table[data-cinder-density='spacious'] .cinder-table__cell,
-  .cinder-table[data-cinder-density='spacious'] .cinder-table__header-cell {
+  .cinder-table[data-cinder-density='condensed'] .cinder-table__header-cell {
+    padding-block: var(--cinder-table-header-padding-block-condensed, var(--cinder-space-1));
+  }
+
+  .cinder-table[data-cinder-density='spacious'] .cinder-table__cell {
     padding-block: var(--cinder-space-3);
     padding-inline: var(--cinder-space-4);
+  }
+
+  .cinder-table[data-cinder-density='spacious'] .cinder-table__header-cell {
+    padding-block: var(--cinder-table-header-padding-block-spacious, var(--cinder-space-3));
+    padding-inline: var(--cinder-table-header-padding-inline-spacious, var(--cinder-space-4));
   }
 
   /* ----------------------------------------
@@ -310,18 +320,22 @@
 
   @media (hover: hover) {
     .cinder-table__sort-button:hover {
-      background: var(--_cinder-table-row-hover);
+      background: color-mix(
+        in oklch,
+        var(--cinder-table-header-background, transparent),
+        var(--cinder-accent-solid) var(--_cinder-table-hover-accent-share)
+      );
     }
   }
 
   .cinder-table__sort-indicator {
     display: inline-flex;
-    color: var(--cinder-text-subtle);
+    color: var(--cinder-table-header-foreground, var(--cinder-text-subtle));
   }
 
   .cinder-table__sort-indicator[data-cinder-direction='ascending'],
   .cinder-table__sort-indicator[data-cinder-direction='descending'] {
-    color: var(--cinder-text-default);
+    color: var(--cinder-table-header-sorted-foreground, var(--cinder-text-default));
   }
 
   .cinder-table__sort-indicator[data-cinder-direction='ascending'] .cinder-table__sort-chevron-down,
@@ -346,7 +360,7 @@
   .cinder-table__cell {
     padding-block: var(--cinder-space-2);
     padding-inline: var(--cinder-space-3);
-    border-bottom: 1px solid var(--cinder-border-muted);
+    border-bottom: var(--cinder-border-width) solid var(--cinder-border-muted);
   }
 
   /* The frame draws the bottom edge, so the last row adds none of its own. */
@@ -506,7 +520,7 @@
     row-gap: var(--cinder-space-2);
     padding-block: var(--cinder-space-3);
     padding-inline: var(--cinder-space-3);
-    border-bottom: 1px solid var(--cinder-border-muted);
+    border-bottom: var(--cinder-border-width) solid var(--cinder-border-muted);
   }
 
   .cinder-table[data-cinder-stacked] .cinder-table__body .cinder-table__row:last-child {

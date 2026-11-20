@@ -25,7 +25,7 @@
     padding: var(--cinder-space-2);
     list-style: none;
     overflow: auto;
-    border: 1px solid var(--cinder-border);
+    border: var(--cinder-border-width) solid var(--cinder-border);
     border-radius: var(--cinder-radius-md);
     background: var(--cinder-surface);
     box-shadow: var(--_cinder-transfer-list-scroll-shadow, none);
@@ -33,8 +33,8 @@
 
   .cinder-transfer-list__list[data-cinder-overflows-block] {
     --_cinder-transfer-list-scroll-shadow:
-      inset 0 1rem 1rem -1rem color-mix(in srgb, var(--cinder-text-default) 20%, transparent),
-      inset 0 -1rem 1rem -1rem color-mix(in srgb, var(--cinder-text-default) 20%, transparent);
+      inset 0 1rem 1rem -1rem var(--cinder-scroll-shadow-color),
+      inset 0 -1rem 1rem -1rem var(--cinder-scroll-shadow-color);
   }
 
   .cinder-transfer-list__list:focus-visible {

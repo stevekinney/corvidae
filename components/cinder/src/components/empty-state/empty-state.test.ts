@@ -392,7 +392,7 @@ describe('EmptyState bordered', () => {
     const bordered = render(EmptyState, { props: { title: 'Empty', bordered: true } });
     expect(rootOf(bordered.container)?.hasAttribute('data-cinder-bordered')).toBe(true);
     const rule = declarationsFor(emptyStateCss, '.cinder-empty-state[data-cinder-bordered]');
-    expect(rule.get('border')).toBe('1px solid var(--cinder-border)');
+    expect(rule.get('border')).toBe('var(--cinder-border-width) solid var(--cinder-border)');
     expect(rule.get('border-radius')).toBe('var(--cinder-radius-lg)');
   });
 });

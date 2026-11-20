@@ -1,14 +1,19 @@
 import { describe, expect, test } from 'bun:test';
 
+import { AGENT_PAGE_COPY } from '../../app/copy/agents.ts';
+import { CAPABILITIES_COPY } from '../../app/copy/capabilities.ts';
 import type { Skill } from '../../lib/bureau-skills.ts';
 import type { ToolSourceStanding, ToolSourceTool } from '../../lib/host-tool-sources.ts';
 import {
   asksLabel,
   asksTooltip,
   asksWord,
+  blockedUsers,
   defaultAsks,
   groupToolsBySource,
   isUntrusted,
+  lostTools,
+  lostToolWarning,
   matchesFilter,
   matchesSkillFilter,
   matchesSourceFilter,
@@ -21,11 +26,13 @@ import {
   skillSourceLabel,
   sourceHeading,
   sourceKindLabel,
+  sourceNamesOf,
   sourceStateDescription,
   sourceStateLabel,
   sourceStateVariant,
   sourceStatusFacts,
   sourceStatusTone,
+  sourceTableTools,
   sourceToolApproval,
   sourceToolHeading,
   sourceToolStanding,
@@ -43,8 +50,11 @@ import {
   toolSummary,
   trustLabel,
   unavailableText,
+  userAsks,
   type CatalogTool,
 } from './capability-presentation.ts';
+
+const TOOL_COPY = CAPABILITIES_COPY.tool;
 
 const TOOL: CatalogTool = {
   name: 'read-file',
@@ -132,13 +142,28 @@ describe('a tool’s default asks level', () => {
 describe('a tool’s source chip and heading', () => {
   test('says Built in, From the server its name leads with, From the plugin, or From the skill', () => {
     expect(toolSourceChip({ ...TOOL, source: 'bureau' })).toBe('Built in');
-    expect(toolSourceChip({ ...TOOL, name: 'github__create_issue' })).toBe('From github');
+    // An identifier with no saved name reads as words, as the list's group label reads it.
+    expect(toolSourceChip({ ...TOOL, name: 'github__create_issue' })).toBe('From Github');
+    // A source that has a name is called by it, as a plugin is by its title.
+    const names = sourceNamesOf([
+      { id: 'github', name: 'GitHub' },
+      { id: 'files', name: null },
+    ]);
+    expect(toolSourceChip({ ...TOOL, name: 'github__create_issue' }, names)).toBe('From GitHub');
+    expect(toolSourceChip({ ...TOOL, name: 'files__read' }, names)).toBe('From Files');
+    expect(
+      toolSourceChip({
+        ...TOOL,
+        name: 'github__create_issue',
+        lost: { kind: 'source', id: 'github', name: 'GitHub', state: 'failed' },
+      }),
+    ).toBe('From GitHub');
     expect(toolSourceChip(TOOL)).toBe('From an MCP server');
     expect(toolSourceChip({ ...TOOL, source: 'plugin', plugin: 'demo' })).toBe(
-      'From the demo plugin',
+      'From the Demo plugin',
     );
-    expect(toolSourceChip({ ...TOOL, source: 'skill', skill: 'lookup' })).toBe(
-      'From the lookup skill',
+    expect(toolSourceChip({ ...TOOL, source: 'skill', skill: 'customer-lookup' })).toBe(
+      'From the Customer lookup skill',
     );
     expect(toolSourceTooltip({ source: 'bureau' })).toBe(
       'Ships with Interborough, not from a plugin.',
@@ -175,6 +200,26 @@ describe('a tool’s row', () => {
   test('names its source: Built in, or the server, plugin or skill read as words', () => {
     expect(toolRowSource({ ...TOOL, source: 'bureau' })).toBe('Built in');
     expect(toolRowSource({ ...TOOL, name: 'github__list_branches' })).toBe('Github');
+    // A dangerous tool a source picked Never for reads Never, as the hook enforces it, in the chip,
+    // the word and Used by alike; with no pick it reads Always.
+    const never = { ...TOOL, tier: 'dangerous' as const, defaultApproval: 'allow' as const };
+    expect(defaultAsks({ ...never, defaultAsks: 'never' })).toBe('never');
+    expect(asksLabel({ ...never, defaultAsks: 'never' })).toBe('Asks: Never');
+    expect(asksWord({ ...never, defaultAsks: 'never' })).toBe('Never');
+    expect(userAsks({ ...never, defaultAsks: 'never', userApprovals: {} }, 'writer').text).toBe(
+      'Asks: Never (default)',
+    );
+    expect(defaultAsks({ ...TOOL, tier: 'dangerous', defaultApproval: 'ask' })).toBe('always');
+    // A saved name wins over the identifier read as words: the row says "GitHub", as the chip does.
+    const names = sourceNamesOf([{ id: 'github', name: 'GitHub' }]);
+    expect(toolRowSource({ ...TOOL, name: 'github__list_branches' }, names)).toBe('GitHub');
+    expect(
+      toolRowSource({
+        ...TOOL,
+        name: 'github__create_issue',
+        lost: { kind: 'source', id: 'github', name: 'GitHub', state: 'failed' },
+      }),
+    ).toBe('GitHub');
     expect(toolRowSource(TOOL)).toBe('MCP server');
     expect(toolRowSource({ ...TOOL, source: 'plugin', plugin: 'gemini' })).toBe('Gemini');
     expect(toolRowSource({ ...TOOL, source: 'skill', skill: 'customer-lookup' })).toBe(
@@ -346,7 +391,16 @@ describe('a tool source', () => {
     const tested = '2026-11-11T09:00:00.000Z';
     expect(
       sourceStatusFacts({ kind: 'openapi', credentials: ['key'], lastTested: tested }, now),
-    ).toEqual(['Credential stored', 'last tested 1 h ago', 'OpenAPI spec']);
+    ).toEqual(['API key', 'last tested 1 h ago', 'OpenAPI spec']);
+    // The credential's name says which kind it is; one this form did not store is only "stored".
+    expect(sourceStatusFacts({ kind: 'mcp', credentials: ['token'] }, now)).toEqual([
+      'Bearer token',
+      'MCP server',
+    ]);
+    expect(sourceStatusFacts({ kind: 'mcp', credentials: ['other'] }, now)).toEqual([
+      'Credential stored',
+      'MCP server',
+    ]);
     // An OAuth source says so, whether or not it holds tokens; one with nothing stored and no test says only what it is.
     expect(sourceStatusFacts({ kind: 'mcp', credentials: [], authorized: false }, now)).toEqual([
       'OAuth sign-in',
@@ -383,5 +437,124 @@ describe('a tool source', () => {
     );
     // A host that reports nothing about it reads the tool as on, and nothing waits.
     expect(sourceToolWaitsForRestart({ ...SOURCE_TOOL, savedEnabled: true })).toBe(false);
+  });
+});
+
+describe('the tools that cannot run now (COR-2435)', () => {
+  const remembered = {
+    name: 'github__create_issue',
+    tool: 'create_issue',
+    acceptsSecrets: false,
+    savedAcceptsSecrets: false,
+    enabled: true,
+    savedEnabled: true,
+    tier: 'mutating' as const,
+    title: 'Create issue',
+    description: 'Opens an issue in a GitHub repository.',
+    shortDescription: null,
+    inputSchema: null,
+  };
+  const github = (state: ToolSourceStanding['state']): ToolSourceStanding => ({
+    id: 'github',
+    kind: 'mcp',
+    name: 'GitHub',
+    localCommand: false,
+    state,
+    tools: [],
+    skipped: [],
+    unmatchedSettings: [],
+    credentials: [],
+    lastListing: {
+      listedAt: '2026-11-16T08:00:00.000Z',
+      truncated: false,
+      tools: [
+        remembered,
+        {
+          ...remembered,
+          name: 'github__delete_branch',
+          tool: 'delete_branch',
+          savedEnabled: false,
+        },
+      ],
+    },
+  });
+
+  test('lists a source’s last listing while it is not loaded, the tools that are on, with no user', () => {
+    const [lost, ...rest] = lostTools([TOOL], [github('failed')], []);
+    expect(rest).toEqual([]);
+    expect(lost).toMatchObject({
+      name: 'github__create_issue',
+      title: 'Create issue',
+      tier: 'mutating',
+      source: 'host',
+      users: [],
+      lost: { kind: 'source', id: 'github', name: 'GitHub', state: 'failed' },
+    });
+    expect(asksLabel(lost!)).toBe('Asks: On changes');
+    expect(lostToolWarning(lost!.lost!)).toBe(
+      'GitHub is disconnected. Agents can’t use this tool until it is reconnected.',
+    );
+    // A loaded source's tools are the catalog's, and a tool the catalog holds is never listed twice.
+    expect(lostTools([TOOL], [github('loaded')], [])).toEqual([]);
+    expect(lostTools([{ ...TOOL, name: 'github__create_issue' }], [github('failed')], [])).toEqual(
+      [],
+    );
+  });
+
+  test('lists a disabled plugin’s last listing with Enable and restart’s warning', () => {
+    const [lost] = lostTools(
+      [],
+      [],
+      [
+        {
+          descriptor: { name: 'demo', title: 'Demo' },
+          status: 'disabled',
+          lastListing: {
+            listedAt: '2026-11-16T08:00:00.000Z',
+            truncated: false,
+            tools: [{ ...remembered, name: 'draft-release-notes', tool: 'draft-release-notes' }],
+          },
+        },
+      ],
+    );
+    expect(lost).toMatchObject({ source: 'plugin', plugin: 'demo', lost: { kind: 'plugin' } });
+    expect(lostToolWarning(lost!.lost!)).toBe(
+      'The Demo plugin is disabled. Enabling it restarts the server.',
+    );
+  });
+
+  test('a source’s table shows its last listing only when it lists nothing now', () => {
+    expect(sourceTableTools(github('needs-authorization'))).toMatchObject({ remembered: true });
+    const loaded: ToolSourceTool = {
+      ...remembered,
+      name: 'github__list_issues',
+      tool: 'list_issues',
+    };
+    expect(sourceTableTools({ ...github('loaded'), tools: [loaded] })).toEqual({
+      tools: [loaded],
+      remembered: false,
+    });
+  });
+});
+
+describe('an agent defined in code in Used by', () => {
+  test('reads “Set in code” rather than claiming the default, which its code may not use', () => {
+    expect(userAsks(TOOL, 'assistant', new Set(['assistant'])).text).toBe('Asks: Set in code');
+    expect(userAsks(TOOL, 'writer', new Set(['assistant'])).text).toBe('Asks: Never (default)');
+  });
+
+  test('the default suffix is the Access tab’s own word, in the same case', () => {
+    const accessSuffix = AGENT_PAGE_COPY.access.approvals.never;
+    expect(`${accessSuffix} (default)`).toBe('Never (default)');
+    expect(userAsks(TOOL, 'writer').text).toBe(`Asks: ${accessSuffix} (default)`);
+  });
+
+  test('the blocked note belongs to each blocked agent alone', () => {
+    expect(blockedUsers({ userApprovals: { planner: 'always', writer: 'blocked' } })).toEqual([
+      'writer',
+    ]);
+    expect(blockedUsers({ userApprovals: { planner: 'always' } })).toEqual([]);
+    expect(blockedUsers({})).toEqual([]);
+    expect(TOOL_COPY.blockedNote('Writer')).toContain('Writer can’t run this tool');
   });
 });

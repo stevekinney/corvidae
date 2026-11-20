@@ -6,7 +6,11 @@
    */
   import { Button, EmptyState, Link, SectionHeading } from '@lostgradient/cinder';
 
+  import { createQuery } from '@tanstack/svelte-query';
+
+  import { agentLabel } from '../../lib/agent-label.ts';
   import { agentPath } from '../../lib/agent-paths.ts';
+  import { agentsListQuery } from '../../lib/agent-queries.ts';
   import { router } from '../../lib/router.svelte.ts';
 
   /** The action that fills an empty list: a label and where it goes. */
@@ -17,6 +21,8 @@
     heading: string;
     /** The identifiers of the agents that use the capability. */
     users: readonly string[];
+    /** What sits muted beside an agent's link (its asks level on a tool); nothing when absent. */
+    note?: ((user: string) => string) | undefined;
     /**
      * What an empty list says, and the action that fills it: a `title` and `description` draw a
      * compact empty state, and a `line` draws one muted line with the action inline.
@@ -27,10 +33,14 @@
           readonly description: string;
           readonly action: EmptyAction;
         }
-      | { readonly line: string; readonly action: EmptyAction };
+      | { readonly line: string; readonly action?: EmptyAction | undefined };
   }
 
-  let { heading, users, empty }: Props = $props();
+  let { heading, users, note, empty }: Props = $props();
+
+  // The names the Agents list shows, from the same query and helper the shell's bell and the search
+  // palette use; an agent the list does not hold reads as its identifier in words.
+  const agents = createQuery(agentsListQuery, undefined);
 
   function go(event: MouseEvent, path: string): void {
     if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
@@ -47,12 +57,15 @@
     {#if 'line' in empty}
       <p class="ib-capability__line" data-testid="capability-users-empty">
         {empty.line}
-        <!-- In a line of text, so underlined: colour alone does not mark it (axe link-in-text-block). -->
-        <Link
-          underline="always"
-          href={router.href(empty.action.href)}
-          onclick={(event) => go(event, empty.action.href)}>{empty.action.label}</Link
-        >
+        {#if empty.action !== undefined}
+          {@const action = empty.action}
+          <!-- In a line of text, so underlined: colour alone does not mark it (axe link-in-text-block). -->
+          <Link
+            underline="always"
+            href={router.href(action.href)}
+            onclick={(event) => go(event, action.href)}>{action.label}</Link
+          >
+        {/if}
       </p>
     {:else}
       <EmptyState
@@ -76,11 +89,17 @@
     <ul class="ib-capability__users">
       {#each users as user (user)}
         <li>
-          <a
-            class="ib-capability__identifier"
+          <!-- The agent's name as the Agents list shows it ("Workflow author"), never its identifier. -->
+          <Link
             href={router.href(agentPath(user))}
-            onclick={(event) => go(event, agentPath(user))}>{user}</a
+            onclick={(event) => go(event, agentPath(user))}
+            data-agent={user}>{agentLabel(user, agents.data)}</Link
           >
+          {#if note !== undefined}
+            <span class="ib-capability__user-note" data-testid="capability-user-note"
+              >{note(user)}</span
+            >
+          {/if}
         </li>
       {/each}
     </ul>

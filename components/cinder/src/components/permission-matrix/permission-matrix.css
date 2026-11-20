@@ -44,8 +44,8 @@
 
   .cinder-permission-matrix__scroll[data-cinder-overflows-inline] {
     --_cinder-permission-matrix-scroll-shadow:
-      inset 1rem 0 1rem -1rem color-mix(in srgb, var(--cinder-text-default) 28%, transparent),
-      inset -1rem 0 1rem -1rem color-mix(in srgb, var(--cinder-text-default) 28%, transparent);
+      inset 1rem 0 1rem -1rem var(--cinder-scroll-shadow-color),
+      inset -1rem 0 1rem -1rem var(--cinder-scroll-shadow-color);
   }
 
   .cinder-permission-matrix__table {

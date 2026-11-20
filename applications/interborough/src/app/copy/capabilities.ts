@@ -43,10 +43,51 @@ export const CAPABILITIES_COPY = {
     noInputs: 'This tool takes no inputs.',
     noSchema: 'This tool does not describe its inputs.',
     users: 'Used by',
-    /** Used by when no agent has the tool: one muted line with a link inline, never a centred empty state (rows 30e, 30h, 32j). */
-    noUsers: {
-      line: 'No agent has this tool yet.',
-      action: { label: 'Add to an agent', href: '/agents' },
+    /**
+     * What sits beside an agent in Used by (rows 30c, 31j, 31w): its asks level, "(the default)"
+     * when its file states none, or "Blocked on this agent", since Blocked belongs to one agent.
+     */
+    userAsks: {
+      level: (level: string): string => `Asks: ${level}`,
+      /** The suffix is the Access tab's own: "Always (default)" there, "Asks: Always (default)" here. */
+      defaulted: (level: string): string => `Asks: ${level} (default)`,
+      blocked: 'Blocked on this agent',
+      /** An agent defined in code: its code sets the level, which the catalog does not carry. */
+      inCode: 'Asks: Set in code',
+    },
+    /**
+     * The note under the detail for an agent that has the tool blocked (row 31x): Allow all never
+     * overrides Blocked. It names the one agent it is about, and shows for no other.
+     */
+    blockedNote: (agent: string): string =>
+      `${agent} can’t run this tool, even in a chat that allows all. Change it on ${agent}’s Access tab.`,
+    /**
+     * Used by when no agent has the tool: one muted line, never a centred empty state (rows 30e, 30h,
+     * 32j). Add to an agent is the header's own button, so the line holds no link (owner report,
+     * 2026-11-19).
+     */
+    noUsers: { line: 'No agent uses this tool yet.' },
+    /** The header's action at its inline end: where a person gives the tool to an agent. */
+    addToAgent: { label: 'Add to an agent', href: '/agents' },
+    /** The icon button that copies the tool's identifier, which the page no longer prints by its name. */
+    copyIdentifier: { label: 'Copy tool ID', copied: 'Tool ID copied' },
+    /**
+     * A tool whose source is not connected or whose plugin is off (rows 30n to 30p, COR-2435): the
+     * warning row under the chips, its one action, and Used by, which keeps the asks level.
+     */
+    lost: {
+      source: (source: string): string =>
+        `${source} is disconnected. Agents can’t use this tool until it is reconnected.`,
+      signIn: (source: string): string =>
+        `${source} needs a sign-in. Agents can’t use this tool until you sign in again.`,
+      /** The muted word in a lost tool's row in the list. */
+      paused: 'Paused',
+      reconnect: 'Reconnect',
+      plugin: (plugin: string): string =>
+        `The ${plugin} plugin is disabled. Enabling it restarts the server.`,
+      enable: 'Enable and restart',
+      enableFailed: 'The plugin could not be enabled',
+      noUsers: 'No agent yet. The asks level is kept; the tool simply can’t run.',
     },
     tier: {
       'read-only': 'Reads only',
@@ -156,6 +197,31 @@ export const CAPABILITIES_COPY = {
       caption: (skill: string): string => `Tools the ${skill} skill brings`,
       columns: { tool: 'Tool', risk: 'Risk', asks: 'Asks' },
     },
+    /**
+     * What the skill tells an agent (row 31n, COR-2435): its SKILL.md rendered in a card headed
+     * with the file's name and size, then the raw file in a collapsed disclosure last.
+     */
+    instructions: {
+      heading: 'What it tells the agent',
+      showAll: 'Show all',
+      showLess: 'Show less',
+      cardTitle: 'Instructions',
+      cardFile: (size: string): string => `SKILL.md ${size}`,
+      raw: 'SKILL.md',
+      rawLabel: (skill: string): string => `The SKILL.md file of ${skill}`,
+      loading: 'Reading SKILL.md',
+      empty: 'The SKILL.md file says nothing besides its name and description.',
+      truncated: 'The file is longer than the host shows here; this is its beginning.',
+      unavailable: {
+        'not-found': 'The host no longer lists this skill.',
+        changed:
+          'Its files changed since the host read them, so they are not shown. Restart Interborough to read them again.',
+        unavailable: 'The host could not read its files.',
+      } as Readonly<Record<string, string>>,
+      failed: 'What this skill tells the agent could not be read.',
+    },
+    /** Beside an agent in Used by (row 31m): when the agent loads it, in the skill's own words. */
+    loadsWhen: (description: string): string => `Loads it when relevant: ${description}`,
     trust: 'Trust',
     source: 'Where it comes from',
     allowedTools: 'Asks to keep these tools',
@@ -266,11 +332,15 @@ export const CAPABILITIES_COPY = {
         `${String(on)} of ${String(total)} ${total === 1 ? 'tool is' : 'tools are'} on. A source offers On or Off and a default Asks level; Blocked is a per-agent override. Agents get tools on each agent’s Access tab.`,
       /** Under the table of a source that needs a sign-in (row 31u): its rows stay, muted. */
       paused: 'Tools are paused until you sign in again.',
+      /** Under the last listing of a source that failed to load (COR-2435): its rows stay, muted. */
+      pausedFailed:
+        'Tools are paused until the source answers again. These are the ones it listed last.',
       acceptsSecrets: 'Accepts secrets',
       acceptsSecretsLabel: (tool: string): string => `Accepts secrets: ${tool}`,
       acceptsSecretsHelp:
         'A tool that accepts secrets may receive the plaintext of an answer a person marks secret. Leave it off unless the tool needs the secret.',
-      takesEffect: 'Takes effect when Interborough starts again',
+      takesEffect:
+        'Takes effect when Interborough starts again, which is also when a Default asks level picked before now begins to be enforced',
       saveFailed: 'The setting could not be saved',
       locked: 'This host keeps its configuration in its deployment, so it cannot be changed here.',
     },
@@ -282,6 +352,8 @@ export const CAPABILITIES_COPY = {
       'not-found': 'The host has no such source.',
       invalid: 'The host did not accept the value.',
       partial: 'The host made only part of the change.',
+      'not-editable': 'This source can’t be edited here. Change it in configuration.json.',
+      stale: 'This source was changed somewhere else while you were editing it. Nothing was saved.',
       failed: 'The host could not make the change.',
     },
     skipped: {
@@ -300,6 +372,19 @@ export const CAPABILITIES_COPY = {
       title: 'Connect tools',
       intro:
         'Add an MCP server or an OpenAPI spec. Its tools are available to agents straight away, with no restart.',
+      /** Edit connection (row 32m, COR-2436): the same page, filled in from the saved source. */
+      edit: {
+        title: 'Edit connection',
+        intro:
+          'Change where the source is and how it signs in. A token or key left blank keeps the one stored, and each tool keeps its settings.',
+        save: 'Save',
+        loading: 'Reading the saved source',
+        back: 'Back to sources',
+        stale:
+          'This source was changed somewhere else while you were editing it. Nothing was saved. Reload to see what is saved now, then make your change again.',
+        reload: 'Reload the source',
+        secretKept: 'Leave it blank to keep the one stored.',
+      },
       /** The page's sections, in order (row 33d). */
       sections: {
         source: 'Source',
@@ -379,6 +464,52 @@ export const CAPABILITIES_COPY = {
         'api-key': 'API key in a header',
         oauthHelp:
           'You sign in to the provider from the source’s page once it is connected. Interborough keeps the tokens it receives.',
+        /**
+         * Signing in before the source is saved (rows 33g, 34k, 34l, 34y, COR-2436): the provider
+         * is named by the source's name, or "the provider" before it has one.
+         */
+        signIn: {
+          provider: 'the provider',
+          action: (provider: string): string => `Sign in to ${provider}`,
+          waiting: (provider: string): string => `Waiting for ${provider}…`,
+          cancel: 'Cancel',
+          approve: (provider: string): string =>
+            `Approve in the ${provider} window. Closing it cancels the sign-in.`,
+          signedIn: 'Signed in as you',
+          canceled: (provider: string): string =>
+            `Sign-in canceled. You closed the ${provider} window before approving. Nothing was saved.`,
+          declined: (provider: string): string =>
+            `Sign-in canceled. You declined in the ${provider} window. Nothing was saved.`,
+          refused: (provider: string, why: string): string =>
+            `Couldn’t sign in. ${provider} refused the request: ${why}. Check the OAuth app’s settings, then try again.`,
+          failed: (why: string): string => `Couldn’t sign in: ${why}. Nothing was saved.`,
+          tryAgain: 'Try again',
+          blocked:
+            'Your browser blocked the sign-in window. Allow pop-ups for this page, then try again.',
+          notNeeded: 'This server asks for no sign-in.',
+          /**
+           * Why a provider refused, from the closed set the host reports; never its own words. Row
+           * 34l's refused-redirect text is amended to this set's wording (owner decision,
+           * 2026-11-19), since the host reports a reason code and not the provider's message.
+           */
+          reasons: {
+            invalid_request: 'the redirect address or the request wasn’t allowed',
+            unauthorized_client: 'this app isn’t allowed to sign in that way',
+            unsupported_response_type: 'it doesn’t offer this kind of sign-in',
+            invalid_scope: 'it didn’t accept the access asked for',
+            server_error: 'it had a problem of its own',
+            temporarily_unavailable: 'it is busy right now',
+            'provider-error': 'it answered with an error',
+          } as Readonly<Record<string, string>>,
+          /** Why the host could not finish a sign-in. */
+          failures: {
+            'exchange-failed': 'the sign-in couldn’t be finished',
+            'not-allowed': 'you may no longer manage this workspace',
+            expired: 'the sign-in took too long',
+            used: 'the sign-in was already used',
+            unknown: 'the host didn’t say why',
+          } as Readonly<Record<string, string>>,
+        },
       },
       secret: {
         bearer: { label: 'Token' },
@@ -562,15 +693,21 @@ export const CAPABILITIES_COPY = {
     status: {
       label: 'Source status',
       /** How the source signs in, when the host says: an OAuth source, or one that holds a stored credential. */
-      auth: { oauth: 'OAuth sign-in', credentials: 'Credential stored' },
+      auth: {
+        oauth: 'OAuth sign-in',
+        apiKey: 'API key',
+        bearer: 'Bearer token',
+        credentials: 'Credential stored',
+      },
       lastTested: (ago: string): string => `last tested ${ago}`,
     },
     /** The ⋯ menu beside Test connection (row 32m): its button's name, and its entries in order. */
     menu: {
       label: 'More about this source',
       edit: 'Edit connection',
-      /** Editing a saved connection happens on the Connect tools page, which does not read a saved source yet. */
-      editUnavailable: 'Editing a saved connection is not available yet.',
+      /** Editing a saved connection happens on the Connect tools page; a local command is not edited there. */
+      editUnavailable:
+        'This source runs a command on this machine, which is changed in configuration.json.',
       test: 'Test connection',
       remove: 'Remove source…',
     },

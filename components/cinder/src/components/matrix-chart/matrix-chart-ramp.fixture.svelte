@@ -47,6 +47,6 @@
 <style>
   .matrix-chart-ramp {
     display: grid;
-    gap: 1.5rem;
+    gap: var(--cinder-space-6);
   }
 </style>

@@ -519,6 +519,11 @@ export const SHOWCASE_GOAL_CHECKS = {
   waitingRefunds: { ...SHOWCASE_PHRASE_CHECK, configuration: { phrase: 'waiting for approval' } },
 } as const;
 
+/** Why an answer met the `contains-phrase` check: "Reply said hello" for the phrase "hello". */
+export function showcasePassReason(phrase: string): string {
+  return `Reply said ${phrase}`;
+}
+
 /**
  * The goal checks of {@link SHOWCASE_GOAL_CHECKS} as one validator: an attempt whose answer holds
  * the configured phrase passes, and one that doesn't fails with a retryable "Check not met", so the
@@ -536,8 +541,10 @@ export function createShowcaseValidators(pacing: ShowcasePacing = {}): Validator
         const passed = answer.toLowerCase().includes(phrase.toLowerCase());
         await pacing.check?.({ check: SHOWCASE_PHRASE_CHECK.name, phrase, attemptIndex, passed });
         const evidence = [{ source: SHOWCASE_PHRASE_CHECK.name, detail: { answer } }];
+        // A met check says why, as the goal's page reads it beside the attempt ("Reply said
+        // hello", row 67v); a missed one says what was missing.
         return passed
-          ? { kind: 'pass', evidence }
+          ? { kind: 'pass', evidence, reason: showcasePassReason(phrase) }
           : {
               kind: 'fail',
               feedback: `The answer doesn’t mention “${phrase}”.`,

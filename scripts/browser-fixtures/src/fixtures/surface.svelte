@@ -2,22 +2,24 @@
   import { Surface } from '@lostgradient/cinder';
 </script>
 
-<div style="display: grid; gap: 0.75rem;">
-  <Surface style="padding: 1rem;">
+<div style="display: grid; gap: var(--cinder-space-3);">
+  <Surface style="padding: var(--cinder-space-4);">
     <strong>Default</strong>
-    <p style="margin: 0.35rem 0 0; color: var(--cinder-text-muted);">Standard content surface.</p>
+    <p style="margin: var(--cinder-space-1-5) 0 0; color: var(--cinder-text-muted);">
+      Standard content surface.
+    </p>
   </Surface>
 
-  <Surface tone="raised" style="padding: 1rem;">
+  <Surface tone="raised" style="padding: var(--cinder-space-4);">
     <strong>Raised</strong>
-    <p style="margin: 0.35rem 0 0; color: var(--cinder-text-muted);">
+    <p style="margin: var(--cinder-space-1-5) 0 0; color: var(--cinder-text-muted);">
       Elevated surface for overlays and panels.
     </p>
   </Surface>
 
-  <Surface tone="inset" style="padding: 1rem;">
+  <Surface tone="inset" style="padding: var(--cinder-space-4);">
     <strong>Inset</strong>
-    <p style="margin: 0.35rem 0 0; color: var(--cinder-text-muted);">
+    <p style="margin: var(--cinder-space-1-5) 0 0; color: var(--cinder-text-muted);">
       Quiet container for nested content.
     </p>
   </Surface>

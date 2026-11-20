@@ -8,7 +8,11 @@
     TableHeader,
     TableHeaderCell,
     TableRow,
+    type TableDensity,
   } from '@lostgradient/cinder';
+
+  const headerTokens = new URLSearchParams(globalThis.location.search).get('header-tokens') === '1';
+  const densities = ['comfortable', 'condensed', 'spacious'] as const satisfies TableDensity[];
 
   const contributors = [
     { name: 'Ada Lovelace', role: 'Mathematician', commits: 142 },
@@ -23,6 +27,31 @@
     { key: 'settings', size: '1 KB' },
   ];
 </script>
+
+{#if headerTokens}
+  {#each densities as density (density)}
+    <Table caption={`Contributors (${density})`} {density} stickyHeader>
+      <TableHeader>
+        <TableRow>
+          <TableHeaderCell column="name" sortable>Name</TableHeaderCell>
+          <TableHeaderCell>Role</TableHeaderCell>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {#each contributors as contributor (contributor.name)}
+          <TableRow>
+            <TableCell>{contributor.name}</TableCell>
+            <TableCell>{contributor.role}</TableCell>
+          </TableRow>
+        {/each}
+        <TableRow>
+          <TableCell>Automation</TableCell>
+          <TableCell>{longKey}</TableCell>
+        </TableRow>
+      </TableBody>
+    </Table>
+  {/each}
+{/if}
 
 <div class="table-fixture">
   <Table caption="Recent contributors">
@@ -137,7 +166,7 @@
 
   .table-in-card {
     display: grid;
-    gap: 1.5rem;
-    margin-block-start: 1.5rem;
+    gap: var(--cinder-space-6);
+    margin-block-start: var(--cinder-space-6);
   }
 </style>

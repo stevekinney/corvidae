@@ -241,8 +241,16 @@ export const CLASSIFIED: Record<string, readonly Classification[]> = {
     { declaration: 'var(--cinder-border) 55%,', category: 'area', audit: 'color-field' },
   ],
   'components/cinder/src/components/data-grid/data-grid.css': [
-    { declaration: 'inset -1px 0 0 var(--cinder-border),', category: 'hairline' },
-    { declaration: 'inset 1px 0 0 var(--cinder-border),', category: 'hairline' },
+    {
+      declaration:
+        'inset -1px 0 0 var(--cinder-border), 2px 0 6px var(--cinder-scroll-shadow-color);',
+      category: 'hairline',
+    },
+    {
+      declaration:
+        'inset 1px 0 0 var(--cinder-border), -2px 0 6px var(--cinder-scroll-shadow-color);',
+      category: 'hairline',
+    },
   ],
   'components/cinder/src/components/divider/divider.css': [
     { declaration: 'background-color: var(--cinder-border-muted);', category: 'hairline' },

@@ -369,6 +369,31 @@ describe('the message in and the reply out of a chat run', () => {
     expect(view.queryByText(/^Sent in the chat, /)).toBeNull();
   });
 
+  test('a goal’s attempt reads the goal’s Prompt, from the goal, never from you or sent in a chat', async () => {
+    serveThread('Summarize open refunds.');
+    landAt('/runs/run-1');
+    const view = render(Harness, {
+      props: {
+        task: taskFixture({
+          id: 'run-1',
+          contextId: 'session-1',
+          status: 'completed',
+          origin: { kind: 'goal', goalRunId: 'goal-1', attemptId: 'attempt-1' },
+        }),
+        startedAt: Date.parse('2026-10-19T08:00:00.000Z'),
+      },
+    });
+
+    await waitFor(() =>
+      expect(view.getByTestId('run-message-in').textContent).toBe('Summarize open refunds.'),
+    );
+    expect(view.getByRole('heading', { level: 3, name: copy.prompt })).not.toBeNull();
+    expect(view.getByText(copy.fromGoal)).not.toBeNull();
+    expect(view.getByText(copy.goalDescription)).not.toBeNull();
+    expect(view.queryByText(copy.fromYou)).toBeNull();
+    expect(view.queryByText(/^Sent in the chat, /)).toBeNull();
+  });
+
   test('a task’s answer is shown as the Markdown it was rendered to, and says when it was cut short', () => {
     landAt('/runs/run-1');
     const view = render(Harness, {
