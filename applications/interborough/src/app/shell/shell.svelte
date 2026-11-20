@@ -296,6 +296,7 @@
           shiftKey: event.shiftKey,
           editable,
           repeat: event.repeat,
+          timeStamp: event.timeStamp,
         },
         {
           routePattern: router.current.route?.pattern ?? null,
