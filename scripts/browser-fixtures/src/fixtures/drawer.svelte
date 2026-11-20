@@ -21,8 +21,8 @@
   ];
 </script>
 
-<div style="display: flex; flex-direction: column; gap: var(--cinder-space-4); max-width: 32rem;">
-  <div style="display: flex; flex-wrap: wrap; gap: var(--cinder-space-4); align-items: flex-end;">
+<div class="example-frame gap-4">
+  <div class="example-layout gap-4">
     <Select id="placement" bind:value={placement} options={placementOptions} label="Placement" />
     <Select id="size" bind:value={size} options={sizeOptions} label="Size" />
     <Checkbox id="use-trigger-ref" bind:checked={useTriggerRef} label="Use triggerRef" />
@@ -48,9 +48,27 @@
   <p>Current settings: placement={placement}, size={size}.</p>
 
   {#snippet footer()}
-    <div style="display: flex; gap: var(--cinder-space-2);">
+    <div class="footer-div gap-2">
       <Button variant="secondary" label="Cancel" onclick={() => (open = false)} />
       <Button label="Confirm" onclick={() => (open = false)} />
     </div>
   {/snippet}
 </Drawer>
+
+<style>
+  .example-frame {
+    display: flex;
+    flex-direction: column;
+    max-width: 32rem;
+  }
+
+  .example-layout {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+  }
+
+  .footer-div {
+    display: flex;
+  }
+</style>

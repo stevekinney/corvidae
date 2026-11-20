@@ -1,7 +1,7 @@
 /**
  * LRU cache for rendered Mermaid SVGs.
  *
- * DEP-95: Mermaid diagram support for MarkdownPreview.
+ * DEP-95: Mermaid diagram support for Cinder's Markdown component.
  *
  * Separate from the HTML render cache because:
  * - Different invalidation patterns (theme changes require re-render)

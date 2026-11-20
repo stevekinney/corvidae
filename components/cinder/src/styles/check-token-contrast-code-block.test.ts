@@ -77,6 +77,12 @@ function liftedLightColors(): ReadonlyMap<string, string> {
   for (const match of css.matchAll(rule)) {
     lifted.set(`#${(match[1] ?? '').toLowerCase()}`, match[2] ?? '');
   }
+  // A dual-theme span carries its light value as `--shiki-light`, which the rule reassigns.
+  const dualRule =
+    /span\[style\*='--shiki-light:#([0-9a-f]{6})' i\]\s*\{\s*--shiki-light:\s*var\((--cinder-[a-z-]+)\)\s*!important;/gi;
+  for (const match of css.matchAll(dualRule)) {
+    lifted.set(`#${(match[1] ?? '').toLowerCase()}`, match[2] ?? '');
+  }
   return lifted;
 }
 

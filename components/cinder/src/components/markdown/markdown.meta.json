@@ -1,0 +1,18 @@
+{
+  "$schema": "../../../../../internal/component-tooling/src/schemas/component-meta.schema.json",
+  "category": "typography",
+  "status": "beta",
+  "purpose": "Renders Markdown source as formatted content, synchronously by default, with opt-in lazy math, code blocks, scrolling tables, and optional link and image policies.",
+  "tags": ["markdown", "prose", "streaming", "rich-text"],
+  "useWhen": [
+    "Showing Markdown that a person or a model wrote, such as a message, an instruction or an artifact.",
+    "Rendering Markdown that grows as it streams, without the raw source flashing between updates (set `math`).",
+    "Showing Markdown with equations: set `math`; without it, dollar signs such as \"$25–$100\" stay literal."
+  ],
+  "avoidWhen": [
+    { "reason": "Editing Markdown — use the markdown editor in the editor package." },
+    { "reason": "Showing a single snippet of source code — use code-block." }
+  ],
+  "related": ["code-block", "copyable-value"],
+  "rationale": "Nearest alternative: an `{@html}` of the rendered output — that shows no code block controls or table scroller, loads the renderer synchronously, and cannot keep a streamed render on screen while the next one lands."
+}

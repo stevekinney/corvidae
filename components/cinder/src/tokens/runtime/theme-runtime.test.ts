@@ -20,7 +20,9 @@ import { buildAuthoringCatalogue } from './authoring-catalogue.ts';
 import { CINDER_BASE } from './base-corpus.ts';
 import { authoringContexts, authoringLayerStack } from './context-stack.ts';
 import { cinderExtensions } from './corpus.ts';
+import { isRootDeclaredEntry } from './css-support.ts';
 import { evaluateTheme, type ThemeEvaluation, type ThemeSources } from './evaluate.ts';
+import { buildBaseIndex } from './registry.ts';
 import { resolveDocuments } from './resolve.ts';
 import { computeSourceDigest } from './source-digest.ts';
 import {
@@ -59,6 +61,7 @@ function expectOk(result: ThemeEvaluation) {
 async function expectRuntimeMatchesCss(
   result: Extract<ThemeEvaluation, { ok: true }>,
   css: string,
+  componentDefaults: ReadonlyMap<string, string> = new Map(),
 ): Promise<number> {
   let compared = 0;
   for (const context of result.contexts) {
@@ -68,10 +71,15 @@ async function expectRuntimeMatchesCss(
       new Map(Object.entries(result.properties[context.id]!)),
     );
     for (const [property, value] of runtime) {
-      expect(cascaded.get(property), `${context.id} ${property}`).toBe(value);
+      const componentDefault = componentDefaults.get(property);
+      if (componentDefault !== undefined) {
+        expect(cascaded.has(property), `${context.id} ${property} is scoped to its consumer`).toBe(
+          false,
+        );
+      }
+      expect(componentDefault ?? cascaded.get(property), `${context.id} ${property}`).toBe(value);
       compared++;
     }
-    for (const property of runtime.keys()) expect(cascaded.has(property)).toBe(true);
   }
   return compared;
 }
@@ -106,7 +114,23 @@ describe('runtime evaluation of the bundled Cinder base', () => {
 
   test('agrees with the generated stylesheet across all six contexts', async () => {
     const css = readFileSync(tokensBaseCssPath, 'utf8');
-    const compared = await expectRuntimeMatchesCss(result, css);
+    const { resolver, documentsByPath } = await loadCorpus();
+    const componentDefaults = new Map<string, string>();
+    for (const entry of buildBaseIndex(resolver, documentsByPath).values()) {
+      if (!entry.public || isRootDeclaredEntry(entry)) continue;
+      const { component, cssProperty } = entry;
+      if (!component || !cssProperty) throw new Error(`Missing component for ${entry.path}`);
+      const stylesheet = readFileSync(
+        new URL(`../../components/${component}/${component}.css`, import.meta.url),
+        'utf8',
+      );
+      const fallback = new RegExp(`var\\(${cssProperty},\\s*(var\\(--[\\w-]+\\))\\)`, 'u').exec(
+        stylesheet,
+      )?.[1];
+      if (fallback === undefined) throw new Error(`Missing component fallback for ${cssProperty}`);
+      componentDefaults.set(cssProperty, fallback);
+    }
+    const compared = await expectRuntimeMatchesCss(result, css, componentDefaults);
     expect(compared).toBe(
       SIX_CONTEXTS.length * new Set(publicEntries.map((e) => e.cssProperty)).size,
     );

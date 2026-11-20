@@ -20,7 +20,6 @@
    * difference between staying well under the adaptive ceiling and saturating
    * it.
    */
-  const measuredRowHeight = 90;
   const rowCount = 400;
 
   const rows: Row[] = Array.from({ length: rowCount }, (_, index) => ({
@@ -41,9 +40,15 @@
     aria-label="Adaptive overscan feed with measured rows"
   >
     {#snippet row(item, context)}
-      <div style={`block-size: ${measuredRowHeight}px;`} data-index={context.index}>
+      <div class="measured-row" data-index={context.index}>
         {item.label}
       </div>
     {/snippet}
   </VirtualList>
 </div>
+
+<style>
+  .measured-row {
+    block-size: 90px;
+  }
+</style>

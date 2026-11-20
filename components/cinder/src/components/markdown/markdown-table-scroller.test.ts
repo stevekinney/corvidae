@@ -49,18 +49,18 @@ function setScrollMetrics(
 describe('MarkdownTableScroller', () => {
   test('a table that fits adds no region, no tab stop, and no cue', () => {
     const { container } = render(MarkdownTableScroller, { props: { html: tableHtml } });
-    const scroller = container.querySelector('.message-markdown-table-scroller');
+    const scroller = container.querySelector('.cinder-markdown-table-scroller');
 
     expect(scroller?.querySelector('table')).not.toBeNull();
     expect(scroller?.getAttribute('role')).toBeNull();
     expect(scroller?.getAttribute('aria-label')).toBeNull();
     expect(scroller?.hasAttribute('tabindex')).toBe(false);
-    expect(container.querySelector('.message-markdown-table-cue')).toBeNull();
+    expect(container.querySelector('.cinder-markdown-table-cue')).toBeNull();
   });
 
   test('an overflowing table makes its scroller a named region with a column cue', async () => {
     const { container } = render(MarkdownTableScroller, { props: { html: tableHtml } });
-    const scroller = container.querySelector<HTMLElement>('.message-markdown-table-scroller');
+    const scroller = container.querySelector<HTMLElement>('.cinder-markdown-table-scroller');
     if (scroller === null) throw new Error('The table scroller did not render.');
 
     setLayout(scroller, { left: 0, right: 254 });
@@ -81,12 +81,12 @@ describe('MarkdownTableScroller', () => {
     // The table itself keeps its own semantics; the region is the scroller around it.
     expect(scroller.querySelector('table')?.getAttribute('role')).toBeNull();
 
-    const cue = container.querySelector('.message-markdown-table-cue');
+    const cue = container.querySelector('.cinder-markdown-table-cue');
     expect(cue?.textContent).toContain('+2 columns');
     expect(cue?.textContent).toContain('Scroll to see all columns');
     expect(scroller.getAttribute('aria-describedby')).toBe(cue?.id ?? 'missing');
     expect(
-      container.querySelector('.message-markdown-table-frame')?.hasAttribute('data-fade-end'),
+      container.querySelector('.cinder-markdown-table-frame')?.hasAttribute('data-fade-end'),
     ).toBe(true);
 
     // Scrolled to the end, the cue stays while the table still overflows, and the fade clears.
@@ -94,17 +94,17 @@ describe('MarkdownTableScroller', () => {
     await fireEvent.scroll(scroller);
     await waitFor(() =>
       expect(
-        container.querySelector('.message-markdown-table-frame')?.hasAttribute('data-fade-end'),
+        container.querySelector('.cinder-markdown-table-frame')?.hasAttribute('data-fade-end'),
       ).toBe(false),
     );
-    expect(container.querySelector('.message-markdown-table-cue')).not.toBeNull();
+    expect(container.querySelector('.cinder-markdown-table-cue')).not.toBeNull();
 
     // Widened past the threshold, the region and its tab stop go away again.
     setScrollMetrics(scroller, { scrollWidth: 460, clientWidth: 460 });
     await fireEvent.scroll(scroller);
     await waitFor(() => expect(scroller.hasAttribute('tabindex')).toBe(false));
     expect(scroller.getAttribute('role')).toBeNull();
-    expect(container.querySelector('.message-markdown-table-cue')).toBeNull();
+    expect(container.querySelector('.cinder-markdown-table-cue')).toBeNull();
   });
 
   test('counts the columns outside the visible span on either side', () => {

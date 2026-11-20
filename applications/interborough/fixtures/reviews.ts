@@ -42,16 +42,61 @@ export const contentReview = workflow({ name: 'content-review' }).execute(async 
   return { decision };
 });
 
+interface MarkdownReviewInput {
+  markdown: string;
+}
+
+/**
+ * A review whose whole artifact is Markdown (`{ markdown }`), so the review pane's `ArtifactView`
+ * mounts Cinder's `Markdown` for it: a heading, prose, a table, a fenced code block and a dollar
+ * range that must stay literal.
+ */
+export const markdownReview = workflow({ name: 'markdown-review' }).execute(async function* (
+  ctx,
+  input: MarkdownReviewInput,
+) {
+  const decision = yield* ctx.review({
+    artifact: { markdown: input.markdown },
+    reviewType: 'content',
+    reviewers: ['ops@example.com'],
+    timeout: 24 * 60 * 60 * 1000,
+  });
+  return { decision };
+});
+
 /** Registerable workflow map — merged into `fixtures/workflows.ts`'s registry. */
 export const reviewWorkflows = {
   'content-review': contentReview,
+  'markdown-review': markdownReview,
 };
+
+/** The Markdown the `markdown-review` specimen asks a person to approve. */
+export const MARKDOWN_REVIEW_ARTIFACT = [
+  '## Refund policy update',
+  '',
+  'Refunds of $25–$100 need **one approval**; anything above goes to a manager.',
+  '',
+  '| Amount | Approver |',
+  '| --- | --- |',
+  '| Up to $25 | Tool runner |',
+  '| $25–$100 | A person |',
+  '| Over $100 | A manager |',
+  '',
+  '```json',
+  '{ "tool": "issue-refund", "approval": "always" }',
+  '```',
+].join('\n');
 
 /** Narrow structural interface — see `fixtures/workflows.ts` for the pattern. */
 export interface ReviewsEngine {
   start(
     name: 'content-review',
     input: ContentReviewInput,
+    options?: { defer?: boolean },
+  ): Promise<WorkflowHandle>;
+  start(
+    name: 'markdown-review',
+    input: MarkdownReviewInput,
     options?: { defer?: boolean },
   ): Promise<WorkflowHandle>;
   listReviews(filter: { workflowId: string }): Promise<Array<{ reviewId: string }>>;
@@ -95,11 +140,12 @@ async function waitForPendingReview(
 }
 
 /**
- * Seeds three review specimens: one pending sectioned/partial review, one
- * completed with a partial (mixed approve/reject) section decision, and one
- * pending review with a comparatively short timeout. The completed run is
- * awaited so its terminal state is durably committed before the dev server
- * starts serving; the two pending runs are deliberately left undecided.
+ * Seeds four review specimens: one pending sectioned/partial review, one
+ * completed with a partial (mixed approve/reject) section decision, one
+ * pending review with a comparatively short timeout, and one pending review
+ * whose artifact is Markdown. The completed run is awaited so its terminal
+ * state is durably committed before the dev server starts serving; the three
+ * pending runs are deliberately left undecided.
  */
 export async function seedReviews(engine: ReviewsEngine): Promise<void> {
   await engine.start(
@@ -149,4 +195,6 @@ export async function seedReviews(engine: ReviewsEngine): Promise<void> {
     },
     { defer: false },
   );
+
+  await engine.start('markdown-review', { markdown: MARKDOWN_REVIEW_ARTIFACT }, { defer: false });
 }

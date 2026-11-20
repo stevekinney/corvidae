@@ -17,9 +17,7 @@
   }
 </script>
 
-<div
-  style="display: flex; flex-direction: column; gap: var(--cinder-space-4); align-items: flex-start;"
->
+<div class="example-layout gap-4">
   <Button
     label="Open palette"
     onclick={(event) => {
@@ -29,7 +27,7 @@
   />
 
   {#if lastSelected}
-    <p style="font-size: var(--cinder-text-base); color: var(--cinder-text-muted);">
+    <p class="note text-muted">
       Selected: <strong>{lastSelected}</strong>
     </p>
   {/if}
@@ -55,3 +53,15 @@
     No commands found.
   {/snippet}
 </CommandPalette>
+
+<style>
+  .example-layout {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .note {
+    font-size: var(--cinder-text-base);
+  }
+</style>

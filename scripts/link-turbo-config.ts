@@ -10,7 +10,6 @@
 // link or a checkout outside Git changes nothing.
 import { copyFileSync, existsSync, mkdirSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
-
 import { rootScriptEnvironment } from './environment-configuration.ts';
 
 const CONFIG = join('.turbo', 'config.json');
