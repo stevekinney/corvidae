@@ -45,6 +45,13 @@
  * writes. The ten earlier snapshots were not regenerated, for the reason COR-1988 gives: each reads
  * as written, with the new fields absent. `engine/failed-run-record.test.ts` reads a record
  * captured from the engine as it was before the change.
+ *
+ * COR-2536 (`ForkLineage.workflowExecutionToken`, the source run's token when it was forked) added
+ * one field to the `forkedFrom` of a fork's `wf:` record, and the replay JSON of
+ * `fork-from-checkpoint` was regenerated for it: the diff is that record's bytes and that one field
+ * in its decoded state, and nothing else. The snapshots, `fork-from-checkpoint.bin` included, were
+ * not regenerated, for the reason COR-1988 gives: the snapshot holds a fork whose lineage has no
+ * token, which is the shape `engine.compare` must keep reading, and it still reads.
  */
 
 import { afterEach, describe, expect, it } from 'bun:test';

@@ -9,7 +9,7 @@ import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { KEYS } from '../../storage/keys.ts';
 import { startAndSettle } from '../../testing/run-observation.test-support.ts';
 import { decode, encode } from '../codec.ts';
-import type { WorkflowContext, WorkflowTimelineEntry } from '../types.ts';
+import type { WorkflowContext, WorkflowState, WorkflowTimelineEntry } from '../types.ts';
 import { activity, workflow } from '../types.ts';
 import { CompareRequiresForkError } from './compare-fork.ts';
 import { WorkflowNotFoundError } from './errors.ts';
@@ -236,6 +236,21 @@ describe('engine.compare', () => {
 
     expect(refusal).toBeInstanceOf(WorkflowNotFoundError);
     expect(refusal.message).toContain('five');
+  });
+
+  it('still compares a fork recorded before its lineage named the source run', async () => {
+    const { engine, storage } = await engineWithFiveSteps();
+    await using _engine = engine;
+    const fork = await engine.fork('five', { fromStep: 3 });
+    await fork.result();
+    const stored = decode<WorkflowState>((await storage.get(KEYS.workflow(fork.id)))!);
+    expect(stored.forkedFrom?.workflowExecutionToken).toBeString();
+    delete stored.forkedFrom?.workflowExecutionToken;
+    await storage.put(KEYS.workflow(fork.id), encode(stored));
+
+    const comparison = await engine.compare(fork.id);
+
+    expect(comparison).toMatchObject({ workflowId: fork.id, sourceWorkflowId: 'five' });
   });
 
   it('pages a 250-step comparison by step, 100 to a page, with a cursor', async () => {
