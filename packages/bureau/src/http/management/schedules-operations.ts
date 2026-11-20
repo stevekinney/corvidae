@@ -54,6 +54,7 @@ import {
   UnknownScheduleWorkflowError,
 } from '../../bureau-errors.ts';
 import { bureauNameOf } from '../../namespaced-identifier.ts';
+import { AGENT_SCHEDULE_WORKFLOW_TYPE } from '../../workflow-schedule.ts';
 import { scheduleInputPreview } from '../../schedule-input-preview.ts';
 import type { BureauSchedules } from '../../bureau-types/schedules.ts';
 import { WorkflowInputInvalidError } from '../../workflow-schema.ts';
@@ -1151,7 +1152,12 @@ export const schedulesUpdateOperation = defineOperation<
       if (stored === null || stored === undefined) {
         throw resourceNotFound('schedule', input.scheduleId);
       }
-      workflowsForSchedule(host, principal, bureauNameOf(stored.workflowType));
+      // A schedule that runs an agent names no workflow to judge: the update answers it as a bad
+      // request, whatever the caller may start.
+      const workflowType = bureauNameOf(stored.workflowType);
+      if (workflowType !== AGENT_SCHEDULE_WORKFLOW_TYPE) {
+        workflowsForSchedule(host, principal, workflowType);
+      }
     }
     // An agent the caller may not name (COR-1904) is as unknown to it as one the catalog lacks.
     if (

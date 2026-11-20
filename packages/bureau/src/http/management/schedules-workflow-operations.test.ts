@@ -840,6 +840,10 @@ describe('changing what a schedule runs', () => {
     expect(status(await update(agentId, { workflowType: 'agentRun' }, 'operator-key'))).toBe(404);
     // A workflow input on an agent schedule that names no workflow.
     expect(status(await update(agentId, { workflowInput: { n: 1 } }, 'operator-key'))).toBe(400);
+    // An agent schedule names no workflow to judge, so the caller's lack of one changes nothing.
+    expect(status(await update(agentId, { workflowInput: { n: 1 } }, 'schedules-writer-key'))).toBe(
+      400,
+    );
     // Text for a schedule that runs a workflow, without naming an agent.
     expect(status(await update(workflowId, { input: 'text' }, STARTER))).toBe(400);
     // A schedule scope without the workflow scope may not move a schedule onto a workflow.
