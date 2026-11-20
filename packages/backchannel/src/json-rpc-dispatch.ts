@@ -50,9 +50,9 @@ export type DispatchJsonRpcContext = {
    */
   readonly acceptSubscription?: (subscription: JsonRpcSubscription) => void;
   /**
-   * The abort signal of the request that carried the body, when the transport has one (JSON-RPC
-   * over HTTP passes the `Request`'s signal). Every call in the body reads it as
-   * `OperationContext.signal`; it is absent for the WebSocket and stdio transports.
+   * The abort signal for a request or subscription, when the transport supplies one. HTTP
+   * forwards the `Request` signal, and framed sessions supply a signal for subscriptions.
+   * Operations read it as `OperationContext.signal`.
    */
   readonly signal?: AbortSignal;
   /**

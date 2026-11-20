@@ -191,7 +191,7 @@ export function createJsonRpcWebSocketSession(
 
     await startSubscription(
       request,
-      () =>
+      (signal) =>
         startLegacySubscription(
           request,
           executeSubscription(
@@ -209,6 +209,7 @@ export function createJsonRpcWebSocketSession(
               // availability checks enforce stdio-only and websocket-only policies.
               transport,
               registry,
+              signal,
             },
           ),
         ),
@@ -222,7 +223,7 @@ export function createJsonRpcWebSocketSession(
   ): Promise<void> {
     await startSubscription(
       request,
-      () =>
+      (signal) =>
         startLegacySubscription(
           request,
           executeSubscription(FLEET_EVENTS_OPERATION_NAME, params ?? {}, {
@@ -230,6 +231,7 @@ export function createJsonRpcWebSocketSession(
             host: { fleetFeed },
             transport,
             registry,
+            signal,
           }),
         ),
       acquireFleetSubscription,
