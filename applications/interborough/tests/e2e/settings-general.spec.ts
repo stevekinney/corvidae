@@ -64,6 +64,7 @@ test.describe('Settings › General', () => {
       'Models',
       'Allowed models',
       'A2A',
+      'MCP',
       'Plugins',
       'Data and retention',
       'API reference',

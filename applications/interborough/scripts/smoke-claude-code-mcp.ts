@@ -19,6 +19,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { startHost } from '../src/host/host.ts';
+import { claudeCodeAddArguments, mcpEndpoint } from '../src/lib/mcp-connection.ts';
 
 type CliResult = { readonly exitCode: number; readonly output: string };
 
@@ -47,13 +48,14 @@ async function main(): Promise<number> {
   const configDirectory = await mkdtemp(join(tmpdir(), 'interborough-mcp-smoke-claude-'));
   const host = await startHost({ environment: { INTERBOROUGH_HOME: home }, port: 0 });
   const serverName = `interborough-bureau-${crypto.randomUUID().slice(0, 8)}`;
-  const endpoint = new URL('/bureau/mcp', host.url).href;
+  const endpoint = mcpEndpoint(host.url);
   const problems: string[] = [];
   try {
     const version = await claude(['--version'], configDirectory);
     console.log(`[smoke:claude-code-mcp] claude --version -> ${version.output.trim()}`);
+    // The arguments Settings and `interborough mcp` show, from the one function (COR-2539).
     const added = await claude(
-      ['mcp', 'add', '--transport', 'http', serverName, endpoint, '-s', 'local'],
+      claudeCodeAddArguments(serverName, endpoint, 'local'),
       configDirectory,
     );
     if (added.exitCode !== 0)

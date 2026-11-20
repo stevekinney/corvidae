@@ -72,10 +72,17 @@ export type CodeBlockProps = {
   copyable?: boolean;
   /**
    * Float the copy button (and the language label, when shown) over the top inline-end corner of
-   * the code instead of giving them a row above it. The copy button is named for the language it
-   * copies, such as "Copy sql code". Defaults to `false`. @default false
+   * the code instead of giving them a row above it. Unset, the copy button floats whenever no
+   * language label is visible, so a block with only Copy has no header row; with a visible
+   * language label it shares a row with it. Pass `true` or `false` to choose either way.
    */
   copyFloating?: boolean;
+  /**
+   * The accessible name of the copy button, also its tooltip. Defaults to "Copy code", or "Copy
+   * SQL code" when `language` is set, an acronym such as JSON or SQL in its canonical spelling.
+   * Say what is copied when the page has more than one block ("Copy the Claude Code command").
+   */
+  copyLabel?: string;
   /**
    * Whether to render the language label above the code. Default `true`.
    * Pass `false` to keep `language`-driven highlighting without the visible
