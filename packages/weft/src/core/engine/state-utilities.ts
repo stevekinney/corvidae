@@ -171,7 +171,10 @@ export function getTimelineOperationLabel(operation: ContextOperationRequest): s
     case 'child-workflow':
       return operation.workflowType;
     case 'load':
-      return operation.reference.key;
+      // A reference is caller-built, so its key can be any value until `processLoadOperation`
+      // refuses it. The label is read before that, by the timeline entry and by the failure
+      // record's failed step, and both need a string.
+      return String(operation.reference.key);
     default:
       return operation.type;
   }
