@@ -392,11 +392,11 @@
   padding: var(--cinder-space-6) var(--cinder-space-4);
 }
 
-/* No chat at all: one empty state centred in the page, with no list pane (COR-2438). */
+/* No chat at all: one empty state centred in the page, with no list pane (COR-2438). The outlet
+ * pads the page, so this root adds no padding of its own (37-visual-system). */
 .ib-chats--first-use {
   display: grid;
   place-items: center;
-  padding: var(--cinder-space-6) var(--cinder-space-4);
 }
 
 /* With chats listed and none open, the pane says so quietly, centred, with no disc and no action. */
