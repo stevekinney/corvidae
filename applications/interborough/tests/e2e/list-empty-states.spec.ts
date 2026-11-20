@@ -246,19 +246,25 @@ for (const width of WIDTHS) {
     test(`every list's empty state starts the same distance under its header, at ${String(width)} pixels, ${theme}`, async ({
       page,
     }) => {
-      const offsets: Record<string, number> = {};
       for (const list of LIST_PAGES) {
         await openEmpty(page, list, width, theme);
-        const { header, state } = await readBoxes(page, {
-          header:
-            list.view === 'capabilities'
-              ? page.getByRole('tablist')
-              : page.locator('main .cinder-page-header').first(),
-          state: page.locator(`main [data-list-empty="${list.view}"]`),
-        });
-        offsets[list.path] = Math.round(state.y - (header.y + header.height));
+        // Reviews learns that both lists are empty before it removes the filters.
+        await expect(page.locator('main .cinder-filter-bar')).toHaveCount(0);
+        const header =
+          list.view === 'capabilities'
+            ? page.getByRole('tablist')
+            : page.locator('main .cinder-page-header').first();
+        const state = page.locator(`main [data-list-empty="${list.view}"]`);
+        await expect
+          .poll(
+            async () => {
+              const boxes = await readBoxes(page, { header, state });
+              return Math.round(boxes.state.y - (boxes.header.y + boxes.header.height));
+            },
+            { message: `${list.path} shares the list header spacing` },
+          )
+          .toBe(16);
       }
-      expect(new Set(Object.values(offsets)).size, JSON.stringify(offsets)).toBe(1);
     });
   }
 }

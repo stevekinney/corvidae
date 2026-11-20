@@ -139,8 +139,12 @@
         >{@render tabName(copy.tabs.sources, 'sources', sourceCount)}</Tabs.Trigger
       >
     </Tabs.List>
-    <Tabs.Panel value="tools"><ToolsPanel onConnect={openConnect} {locked} /></Tabs.Panel>
+    <Tabs.Panel value="tools" class="ib-capabilities__tab">
+      <ToolsPanel onConnect={openConnect} {locked} />
+    </Tabs.Panel>
     <Tabs.Panel value="skills"><SkillsPanel /></Tabs.Panel>
-    <Tabs.Panel value="sources"><SourcesPanel onConnect={openConnect} /></Tabs.Panel>
+    <Tabs.Panel value="sources" class="ib-capabilities__tab">
+      <SourcesPanel onConnect={openConnect} />
+    </Tabs.Panel>
   </Tabs>
 </section>
