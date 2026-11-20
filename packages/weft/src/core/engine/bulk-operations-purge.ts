@@ -143,15 +143,28 @@ export async function shouldPurgeWorkflowState(
   return deadline !== null && deadline <= now;
 }
 
-/** Purge one terminal workflow by its exact id (COR-1934), as `Engine.purgeById` documents it. */
+/**
+ * Purge one terminal workflow by its exact id (COR-1934), as `Engine.purgeById` documents it.
+ * `expectedRun` is the run a confirmed bulk purge previewed: a run stored under the id with any
+ * other execution token (a `start-new` replacement that already ended) was never previewed, so it
+ * is skipped, whatever status it ended in. Omitted, the caller means whichever run holds the id.
+ */
 export async function purgeWorkflowById(
   internals: EngineInternals,
   workflowId: string,
   cleanupWaiters: CleanupWaiters,
+  expectedRun?: { readonly workflowExecutionToken: string | undefined },
 ): Promise<boolean> {
   const state = await loadWorkflowState(internals, workflowId);
+  if (state === null) return false;
+  if (
+    expectedRun !== undefined &&
+    state.workflowExecutionToken !== expectedRun.workflowExecutionToken
+  ) {
+    return false;
+  }
   // Not `expiredOnly`, so `now` is never read: the caller means this run whatever its age.
-  if (state === null || !(await shouldPurgeWorkflowState(internals, state, false, 0))) return false;
+  if (!(await shouldPurgeWorkflowState(internals, state, false, 0))) return false;
   return purgeWorkflow(internals, state, cleanupWaiters);
 }
 

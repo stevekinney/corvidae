@@ -122,12 +122,19 @@ async function runBulkPurge(
   if (options.dryRun === true) return preparation.preview;
 
   validateBulkConfirmation(options, preparation);
+  // The run each id held when it was previewed: the delete is fenced on it, not on a fresh read.
+  const previewedRuns = new Map(
+    candidates.map((candidate) => [candidate.id, candidate.workflowExecutionToken] as const),
+  );
   const results = await runBulkWorkflowPool(
     preparation.workflowIds,
     resolveBulkOperationConcurrency(options),
     // `false` is a run that moved after the preview (replaced by a `start-new`, reactivated, or
     // purged by someone else, or one that now owes a finalizer): skipped, never deleted.
-    (workflowId) => purgeWorkflowById(internals, workflowId, cleanupWaiters),
+    (workflowId) =>
+      purgeWorkflowById(internals, workflowId, cleanupWaiters, {
+        workflowExecutionToken: previewedRuns.get(workflowId),
+      }),
   );
   const failures = results.flatMap((result) =>
     result.status === 'rejected' ? [result.reason] : [],

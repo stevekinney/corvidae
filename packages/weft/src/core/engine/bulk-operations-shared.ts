@@ -78,6 +78,13 @@ export type BulkWorkflowSnapshot = {
   type: string;
   status: WorkflowStatus;
   updatedAt: number;
+  /**
+   * The run the snapshot describes ({@link WorkflowState.workflowExecutionToken}). A stable id
+   * reused with `onTerminalConflict: 'start-new'` keeps its id and can end in the same status, so
+   * the confirmation token names the run as well, and a commit refuses a token whose run was
+   * replaced. Absent on a run stored before the token existed.
+   */
+  workflowExecutionToken?: string;
 };
 
 export type BulkOperationPreparation = {
@@ -262,6 +269,8 @@ function deriveBulkConfirmationToken(
     workflows: snapshots.map((snapshot) => ({
       id: snapshot.id,
       status: snapshot.status,
+      // `null` for a run stored before the token existed, so the hash never reads `undefined`.
+      run: snapshot.workflowExecutionToken ?? null,
     })),
   })}`;
 }
@@ -432,6 +441,9 @@ export function workflowStateToBulkSnapshot(state: WorkflowState): BulkWorkflowS
     type: state.type,
     status: state.status,
     updatedAt: state.updatedAt,
+    ...(state.workflowExecutionToken === undefined
+      ? {}
+      : { workflowExecutionToken: state.workflowExecutionToken }),
   };
 }
 
