@@ -15,7 +15,11 @@ import { z } from 'zod';
 
 import { TaskListingTokenError } from '../../task-list-snapshots.ts';
 import { TASK_ORIGIN_KINDS } from '../../task-origin.ts';
-import type { TaskRegistry } from '../../task-registry.ts';
+import {
+  TASK_ATTENTION_KINDS,
+  type TaskAttention,
+  type TaskRegistry,
+} from '../../task-registry.ts';
 import type { BureauScope } from '../bureau-scopes.ts';
 import {
   mayUseCrossOwnerScope,
@@ -106,6 +110,12 @@ const tasksListInput = z.object({
     .describe(
       'Only the tasks that ran on this workflow type: `agentRun`, `goalRun`, `scheduleTick`, or the identifier of a workflow file for its instances. A task’s `workflow.type` says which.',
     ),
+  attention: z
+    .enum(TASK_ATTENTION_KINDS as [TaskAttention, ...TaskAttention[]])
+    .optional()
+    .describe(
+      'Only the tasks whose `attention` lists this kind: `stalled` for a run that is alive but making no progress outside a declared wait, `looping` for a run whose toolbox reported a loop. A task that has ended lists neither, and the schedule tick’s runs and the instances of workflow files, which have no record to hold one, match nothing.',
+    ),
   engineRuns: z
     .boolean()
     .optional()
@@ -155,7 +165,7 @@ export const tasksListOperation = defineOperation<
   mcpExposable: true,
   summary: 'List tasks',
   description:
-    'Lists the caller’s own tasks, most recently changed first (by status timestamp, then task id ascending); a caller holding `bureau.tasks:read` lists every owner’s. `contextId` returns only that context’s tasks in its current incarnation, `origin` only the tasks recorded with an origin of that kind (`chat`, `person`, `schedule`, `api`, `agent`, `goal`, or `parent`), `parentRunId` only the subordinate tasks of that run (the children it started, the attempts of a goal, the steps of a workflow instance), `parentContextId` only the child runs started from any run in that context (a reloaded chat lists the children of every run in its thread this way), `siblingsOf` only the tasks that share a parent run with the named task, that task excluded, `workflow` only the tasks that ran on that workflow type (`workflow.type` on each task says which), and `statusTimestampAfter` (ISO 8601) only tasks whose status timestamp is strictly later. Pages with `limit` (1 to 100, default 50, free to change between pages) and `pageToken`; `nextPageToken` is `null` when no entries remain. The first page of a listing with a next page records the listing, and every later page returns the tasks exactly as they matched then, so a task that changes mid-enumeration keeps its place and appears once; a task removed since is skipped, so a page can hold fewer than `limit` tasks. A token is opaque, valid for 15 minutes from the first page, and only with the principal, reach, wire projection (never the one of A2A `ListTasks`), and filters (`contextId`, `agentName`, `status`, `origin`, `parentRunId`, `parentContextId`, `siblingsOf`, `workflow`, `engineRuns`, `statusTimestampAfter`) it was issued for, and only while the context is the incarnation it was issued for; any other token is `InvalidParams`. The schedule tick’s runs and the instances of workflow files are listed too, read from the engine, for a caller that may read the deployment’s workflows. A principal holds at most 16 live listings, and starting another ends its oldest.',
+    'Lists the caller’s own tasks, most recently changed first (by status timestamp, then task id ascending); a caller holding `bureau.tasks:read` lists every owner’s. `contextId` returns only that context’s tasks in its current incarnation, `origin` only the tasks recorded with an origin of that kind (`chat`, `person`, `schedule`, `api`, `agent`, `goal`, or `parent`), `parentRunId` only the subordinate tasks of that run (the children it started, the attempts of a goal, the steps of a workflow instance), `parentContextId` only the child runs started from any run in that context (a reloaded chat lists the children of every run in its thread this way), `siblingsOf` only the tasks that share a parent run with the named task, that task excluded, `workflow` only the tasks that ran on that workflow type (`workflow.type` on each task says which), `attention` only the tasks whose `attention` lists that kind (`stalled` or `looping`), and `statusTimestampAfter` (ISO 8601) only tasks whose status timestamp is strictly later. Pages with `limit` (1 to 100, default 50, free to change between pages) and `pageToken`; `nextPageToken` is `null` when no entries remain. The first page of a listing with a next page records the listing, and every later page returns the tasks exactly as they matched then, so a task that changes mid-enumeration keeps its place and appears once; a task removed since is skipped, so a page can hold fewer than `limit` tasks. A token is opaque, valid for 15 minutes from the first page, and only with the principal, reach, wire projection (never the one of A2A `ListTasks`), and filters (`contextId`, `agentName`, `status`, `origin`, `parentRunId`, `parentContextId`, `siblingsOf`, `workflow`, `attention`, `engineRuns`, `statusTimestampAfter`) it was issued for, and only while the context is the incarnation it was issued for; any other token is `InvalidParams`. The schedule tick’s runs and the instances of workflow files are listed too, read from the engine, for a caller that may read the deployment’s workflows. A principal holds at most 16 live listings, and starting another ends its oldest.',
   destructive: false,
   tags: ['Tasks'],
   inputSchema: tasksListInput,
@@ -182,6 +192,7 @@ export const tasksListOperation = defineOperation<
         ...(input.parentContextId === undefined ? {} : { parentContextId: input.parentContextId }),
         ...(input.siblingsOf === undefined ? {} : { siblingsOf: input.siblingsOf }),
         ...(input.workflow === undefined ? {} : { workflow: input.workflow }),
+        ...(input.attention === undefined ? {} : { attention: input.attention }),
         // The schedule tick and the instances of workflow files are the deployment's workflows' runs:
         // a caller lists them as it reads `bureau.workflows.runs.list`, and `bureau.tasks:read`
         // alone does not show them.
@@ -195,7 +206,11 @@ export const tasksListOperation = defineOperation<
         limit: input.limit ?? DEFAULT_PAGE_LIMIT,
       });
       return {
-        tasks: page.tasks.map((task) => ({ ...task, openWaits: [...task.openWaits] })),
+        tasks: page.tasks.map((task) => ({
+          ...task,
+          openWaits: [...task.openWaits],
+          attention: [...task.attention],
+        })),
         nextPageToken: page.nextPageToken,
       };
     } catch (error) {
@@ -243,7 +258,7 @@ export const tasksGetOperation = defineOperation<
     }
     const task = await host.tasks.get(input.taskId);
     if (task === undefined) throw resourceNotFound('task', input.taskId);
-    return { ...task, openWaits: [...task.openWaits] };
+    return { ...task, openWaits: [...task.openWaits], attention: [...task.attention] };
   },
 });
 
@@ -323,6 +338,9 @@ export const tasksCancelOperation = defineOperation<
     if (!(await mayAccessTask(host, principal, input.taskId, 'bureau.tasks:read'))) return receipt;
     const task = await host.tasks.get(input.taskId);
     if (task === undefined) throw resourceNotFound('task', input.taskId);
-    return { ...receipt, task: { ...task, openWaits: [...task.openWaits] } };
+    return {
+      ...receipt,
+      task: { ...task, openWaits: [...task.openWaits], attention: [...task.attention] },
+    };
   },
 });

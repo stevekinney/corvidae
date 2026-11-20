@@ -1946,7 +1946,7 @@
       }
     },
     {
-      "description": "Lists the caller’s own tasks, most recently changed first (by status timestamp, then task id ascending); a caller holding `bureau.tasks:read` lists every owner’s. `contextId` returns only that context’s tasks in its current incarnation, `origin` only the tasks recorded with an origin of that kind (`chat`, `person`, `schedule`, `api`, `agent`, `goal`, or `parent`), `parentRunId` only the subordinate tasks of that run (the children it started, the attempts of a goal, the steps of a workflow instance), `parentContextId` only the child runs started from any run in that context (a reloaded chat lists the children of every run in its thread this way), `siblingsOf` only the tasks that share a parent run with the named task, that task excluded, `workflow` only the tasks that ran on that workflow type (`workflow.type` on each task says which), and `statusTimestampAfter` (ISO 8601) only tasks whose status timestamp is strictly later. Pages with `limit` (1 to 100, default 50, free to change between pages) and `pageToken`; `nextPageToken` is `null` when no entries remain. The first page of a listing with a next page records the listing, and every later page returns the tasks exactly as they matched then, so a task that changes mid-enumeration keeps its place and appears once; a task removed since is skipped, so a page can hold fewer than `limit` tasks. A token is opaque, valid for 15 minutes from the first page, and only with the principal, reach, wire projection (never the one of A2A `ListTasks`), and filters (`contextId`, `agentName`, `status`, `origin`, `parentRunId`, `parentContextId`, `siblingsOf`, `workflow`, `engineRuns`, `statusTimestampAfter`) it was issued for, and only while the context is the incarnation it was issued for; any other token is `InvalidParams`. The schedule tick’s runs and the instances of workflow files are listed too, read from the engine, for a caller that may read the deployment’s workflows. A principal holds at most 16 live listings, and starting another ends its oldest.",
+      "description": "Lists the caller’s own tasks, most recently changed first (by status timestamp, then task id ascending); a caller holding `bureau.tasks:read` lists every owner’s. `contextId` returns only that context’s tasks in its current incarnation, `origin` only the tasks recorded with an origin of that kind (`chat`, `person`, `schedule`, `api`, `agent`, `goal`, or `parent`), `parentRunId` only the subordinate tasks of that run (the children it started, the attempts of a goal, the steps of a workflow instance), `parentContextId` only the child runs started from any run in that context (a reloaded chat lists the children of every run in its thread this way), `siblingsOf` only the tasks that share a parent run with the named task, that task excluded, `workflow` only the tasks that ran on that workflow type (`workflow.type` on each task says which), `attention` only the tasks whose `attention` lists that kind (`stalled` or `looping`), and `statusTimestampAfter` (ISO 8601) only tasks whose status timestamp is strictly later. Pages with `limit` (1 to 100, default 50, free to change between pages) and `pageToken`; `nextPageToken` is `null` when no entries remain. The first page of a listing with a next page records the listing, and every later page returns the tasks exactly as they matched then, so a task that changes mid-enumeration keeps its place and appears once; a task removed since is skipped, so a page can hold fewer than `limit` tasks. A token is opaque, valid for 15 minutes from the first page, and only with the principal, reach, wire projection (never the one of A2A `ListTasks`), and filters (`contextId`, `agentName`, `status`, `origin`, `parentRunId`, `parentContextId`, `siblingsOf`, `workflow`, `attention`, `engineRuns`, `statusTimestampAfter`) it was issued for, and only while the context is the incarnation it was issued for; any other token is `InvalidParams`. The schedule tick’s runs and the instances of workflow files are listed too, read from the engine, for a caller that may read the deployment’s workflows. A principal holds at most 16 live listings, and starting another ends its oldest.",
       "errors": [
         {
           "$ref": "#/components/errors/Unauthorized"
@@ -1970,6 +1970,18 @@
           "schema": {
             "description": "Only the tasks run by this agent.",
             "minLength": 1,
+            "type": "string"
+          }
+        },
+        {
+          "name": "attention",
+          "required": false,
+          "schema": {
+            "description": "Only the tasks whose `attention` lists this kind: `stalled` for a run that is alive but making no progress outside a declared wait, `looping` for a run whose toolbox reported a loop. A task that has ended lists neither, and the schedule tick’s runs and the instances of workflow files, which have no record to hold one, match nothing.",
+            "enum": [
+              "stalled",
+              "looping"
+            ],
             "type": "string"
           }
         },
@@ -2119,6 +2131,16 @@
                       "string",
                       "null"
                     ]
+                  },
+                  "attention": {
+                    "items": {
+                      "enum": [
+                        "stalled",
+                        "looping"
+                      ],
+                      "type": "string"
+                    },
+                    "type": "array"
                   },
                   "cleanup": {
                     "anyOf": [
@@ -2434,6 +2456,12 @@
                   "owner": {
                     "type": "string"
                   },
+                  "stalledSince": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
                   "status": {
                     "enum": [
                       "submitted",
@@ -2458,6 +2486,40 @@
                   },
                   "updatedAt": {
                     "type": "string"
+                  },
+                  "usage": {
+                    "anyOf": [
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "completionTokens": {
+                            "type": "number"
+                          },
+                          "costUsd": {
+                            "type": [
+                              "number",
+                              "null"
+                            ]
+                          },
+                          "promptTokens": {
+                            "type": "number"
+                          },
+                          "totalTokens": {
+                            "type": "number"
+                          }
+                        },
+                        "required": [
+                          "promptTokens",
+                          "completionTokens",
+                          "totalTokens",
+                          "costUsd"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
                   },
                   "wakeAt": {
                     "type": [
@@ -2591,7 +2653,10 @@
                   "cleanup",
                   "openWaits",
                   "wakeAt",
-                  "workflow"
+                  "workflow",
+                  "usage",
+                  "attention",
+                  "stalledSince"
                 ],
                 "type": "object"
               },
@@ -2620,6 +2685,14 @@
           "agentName": {
             "description": "Only the tasks run by this agent.",
             "minLength": 1,
+            "type": "string"
+          },
+          "attention": {
+            "description": "Only the tasks whose `attention` lists this kind: `stalled` for a run that is alive but making no progress outside a declared wait, `looping` for a run whose toolbox reported a loop. A task that has ended lists neither, and the schedule tick’s runs and the instances of workflow files, which have no record to hold one, match nothing.",
+            "enum": [
+              "stalled",
+              "looping"
+            ],
             "type": "string"
           },
           "contextId": {
@@ -2749,6 +2822,16 @@
                 "string",
                 "null"
               ]
+            },
+            "attention": {
+              "items": {
+                "enum": [
+                  "stalled",
+                  "looping"
+                ],
+                "type": "string"
+              },
+              "type": "array"
             },
             "cleanup": {
               "anyOf": [
@@ -3064,6 +3147,12 @@
             "owner": {
               "type": "string"
             },
+            "stalledSince": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
             "status": {
               "enum": [
                 "submitted",
@@ -3088,6 +3177,40 @@
             },
             "updatedAt": {
               "type": "string"
+            },
+            "usage": {
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "completionTokens": {
+                      "type": "number"
+                    },
+                    "costUsd": {
+                      "type": [
+                        "number",
+                        "null"
+                      ]
+                    },
+                    "promptTokens": {
+                      "type": "number"
+                    },
+                    "totalTokens": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "promptTokens",
+                    "completionTokens",
+                    "totalTokens",
+                    "costUsd"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ]
             },
             "wakeAt": {
               "type": [
@@ -3221,7 +3344,10 @@
             "cleanup",
             "openWaits",
             "wakeAt",
-            "workflow"
+            "workflow",
+            "usage",
+            "attention",
+            "stalledSince"
           ],
           "type": "object"
         }
@@ -3804,6 +3930,16 @@
                     "null"
                   ]
                 },
+                "attention": {
+                  "items": {
+                    "enum": [
+                      "stalled",
+                      "looping"
+                    ],
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
                 "cleanup": {
                   "anyOf": [
                     {
@@ -4118,6 +4254,12 @@
                 "owner": {
                   "type": "string"
                 },
+                "stalledSince": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
                 "status": {
                   "enum": [
                     "submitted",
@@ -4142,6 +4284,40 @@
                 },
                 "updatedAt": {
                   "type": "string"
+                },
+                "usage": {
+                  "anyOf": [
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "completionTokens": {
+                          "type": "number"
+                        },
+                        "costUsd": {
+                          "type": [
+                            "number",
+                            "null"
+                          ]
+                        },
+                        "promptTokens": {
+                          "type": "number"
+                        },
+                        "totalTokens": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "promptTokens",
+                        "completionTokens",
+                        "totalTokens",
+                        "costUsd"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
                 },
                 "wakeAt": {
                   "type": [
@@ -4275,7 +4451,10 @@
                 "cleanup",
                 "openWaits",
                 "wakeAt",
-                "workflow"
+                "workflow",
+                "usage",
+                "attention",
+                "stalledSince"
               ],
               "type": "object"
             },
@@ -4657,6 +4836,16 @@
                         "null"
                       ]
                     },
+                    "attention": {
+                      "items": {
+                        "enum": [
+                          "stalled",
+                          "looping"
+                        ],
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
                     "cleanup": {
                       "anyOf": [
                         {
@@ -4971,6 +5160,12 @@
                     "owner": {
                       "type": "string"
                     },
+                    "stalledSince": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
                     "status": {
                       "enum": [
                         "submitted",
@@ -4995,6 +5190,40 @@
                     },
                     "updatedAt": {
                       "type": "string"
+                    },
+                    "usage": {
+                      "anyOf": [
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "completionTokens": {
+                              "type": "number"
+                            },
+                            "costUsd": {
+                              "type": [
+                                "number",
+                                "null"
+                              ]
+                            },
+                            "promptTokens": {
+                              "type": "number"
+                            },
+                            "totalTokens": {
+                              "type": "number"
+                            }
+                          },
+                          "required": [
+                            "promptTokens",
+                            "completionTokens",
+                            "totalTokens",
+                            "costUsd"
+                          ],
+                          "type": "object"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
                     },
                     "wakeAt": {
                       "type": [
@@ -5128,7 +5357,10 @@
                     "cleanup",
                     "openWaits",
                     "wakeAt",
-                    "workflow"
+                    "workflow",
+                    "usage",
+                    "attention",
+                    "stalledSince"
                   ],
                   "type": "object"
                 },
@@ -22870,6 +23102,8 @@
                       "run.tripwire",
                       "run.guardrail",
                       "budget.threshold",
+                      "run.stalled",
+                      "run.looping",
                       "tool.policy-denied",
                       "tool.error",
                       "multiagent.child-workflow.started",
@@ -22972,6 +23206,8 @@
                         "run.tripwire",
                         "run.guardrail",
                         "budget.threshold",
+                        "run.stalled",
+                        "run.looping",
                         "tool.policy-denied",
                         "tool.error",
                         "multiagent.child-workflow.started",
@@ -23132,6 +23368,8 @@
                       "run.tripwire",
                       "run.guardrail",
                       "budget.threshold",
+                      "run.stalled",
+                      "run.looping",
                       "tool.policy-denied",
                       "tool.error",
                       "multiagent.child-workflow.started",
@@ -23234,6 +23472,8 @@
                         "run.tripwire",
                         "run.guardrail",
                         "budget.threshold",
+                        "run.stalled",
+                        "run.looping",
                         "tool.policy-denied",
                         "tool.error",
                         "multiagent.child-workflow.started",

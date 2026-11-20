@@ -154,9 +154,10 @@ export type SharedActionTypeAttemptsCreate_605da491 = {
     readonly workflowId: string | null;
   } | null;
 };
-export type SharedActorAgentNameCleanup_04ef488e = {
+export type SharedActorAgentNameAttention_31615024 = {
   readonly actor: string | null;
   readonly agentName: string | null;
+  readonly attention: ReadonlyArray<'stalled' | 'looping'>;
   readonly cleanup:
     | 'cancel-requested'
     | 'canceled'
@@ -188,9 +189,16 @@ export type SharedActorAgentNameCleanup_04ef488e = {
     | SharedKindPluginWorkflowId_b0296d57
     | null;
   readonly owner: string;
+  readonly stalledSince: string | null;
   readonly status: 'submitted' | 'working' | 'input-required' | 'completed' | 'failed' | 'canceled';
   readonly statusMessage: string | null;
   readonly updatedAt: string;
+  readonly usage: {
+    readonly completionTokens: number;
+    readonly costUsd: number | null;
+    readonly promptTokens: number;
+    readonly totalTokens: number;
+  } | null;
   readonly wakeAt: string | null;
   readonly workflow: {
     readonly awaitingSignal: string | null;

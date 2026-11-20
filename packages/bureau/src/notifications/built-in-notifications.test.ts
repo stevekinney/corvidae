@@ -33,6 +33,9 @@ const task = (change: Partial<TaskView> = {}): TaskView => ({
   openWaits: [],
   wakeAt: null,
   workflow: PLAIN_TASK_WORKFLOW,
+  usage: null,
+  attention: [],
+  stalledSince: null,
   ...change,
 });
 

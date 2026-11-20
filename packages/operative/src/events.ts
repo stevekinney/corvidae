@@ -633,11 +633,19 @@ export class UsageAccumulatedEvent extends Event {
   readonly stepCacheHitRate?: number | undefined;
   /** Prompt-cache hit rate across the run so far, from `totalUsage`. */
   readonly totalCacheHitRate?: number | undefined;
-  constructor(step: number, totalUsage: TokenUsage, stepUsage?: TokenUsage) {
+  /**
+   * What the run has cost so far, in the currency of its `costEstimation` pricing, summed over
+   * every request priced on its own usage (the figure the run's `costEstimate` ends on). Absent,
+   * never `0`, when the run has no `costEstimation` or no request has been priced: a missing price
+   * is not read as free.
+   */
+  readonly totalCost?: number | undefined;
+  constructor(step: number, totalUsage: TokenUsage, stepUsage?: TokenUsage, totalCost?: number) {
     super(UsageAccumulatedEvent.type);
     this.step = step;
     this.stepUsage = stepUsage;
     this.totalUsage = totalUsage;
+    if (totalCost !== undefined) this.totalCost = totalCost;
     const stepCacheHitRate = stepUsage ? estimateCacheHitRate(stepUsage) : undefined;
     const totalCacheHitRate = estimateCacheHitRate(totalUsage);
     if (stepCacheHitRate !== undefined) this.stepCacheHitRate = stepCacheHitRate;
