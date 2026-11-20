@@ -52,13 +52,14 @@ type ScenarioRun = {
 type ScenarioRunner = (fixture: TraceFixture) => Promise<ScenarioRun>;
 
 const replayFixtureDirectory = 'tests/replay-fixtures';
-const expectedFixtureCount = 10;
+const expectedFixtureCount = 11;
 const glob = new Bun.Glob('*.json');
 const fixtureFiles = [...glob.scanSync(replayFixtureDirectory)]
   .filter((file) => file !== 'replay-fixtures.test.ts' && !file.endsWith('.test.ts'))
   .toSorted();
 const replayableScenarioFiles = [
   'child-workflow.json',
+  'failed-run.json',
   'fork-from-checkpoint.json',
   'pipe-three-stages.json',
   'race-takes-first.json',
@@ -197,6 +198,18 @@ async function runForkFromCheckpointFixture(fixture: TraceFixture): Promise<Scen
   return { engine, workflowId };
 }
 
+async function runFailedRunFixture(fixture: TraceFixture): Promise<ScenarioRun> {
+  const engine = new TestEngine({ startTime: 0 });
+  registerScenarioHandlers(engine, 'failed-run');
+
+  const workflowId = fixture.finalState.id;
+  const handle = await engine.start(fixture.scenario, fixture.finalState.input, { id: workflowId });
+  // The run fails by design; the fixture holds the failure it stored.
+  await handle.result().catch(() => undefined);
+
+  return { engine, workflowId };
+}
+
 const scenarioRunners: Record<string, ScenarioRunner> = {
   'simple-sequential': runFixtureWorkflow,
   'two-parallel': runFixtureWorkflow,
@@ -208,6 +221,7 @@ const scenarioRunners: Record<string, ScenarioRunner> = {
   'pipe-three-stages': runFixtureWorkflow,
   'fork-from-checkpoint': runForkFromCheckpointFixture,
   'recovery-after-crash': runRecoveryAfterCrashFixture,
+  'failed-run': runFailedRunFixture,
 };
 
 // withDeterministicRuntime mutates global crypto.randomUUID and Date.now for the

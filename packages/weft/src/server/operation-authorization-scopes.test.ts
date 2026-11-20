@@ -34,6 +34,7 @@ const REQUIRED_SCOPE_BY_OPERATION: Readonly<Record<string, AuthorizationScope>> 
   'weft.workflows.result.get': 'workflows:read',
   'weft.workflows.checkpoints.get': 'workflows:read',
   'weft.workflows.checkpoints.list': 'workflows:read',
+  'weft.workflows.compare': 'workflows:read',
   'weft.workflows.scheduleprovenance.get': 'workflows:read',
   'weft.workflows.finalizer.get': 'workflows:read',
   'weft.updates.result.get': 'workflows:read',

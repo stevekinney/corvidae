@@ -45,15 +45,19 @@ import {
   type BulkSignalAllDryRunOptions,
   type BulkSignalResult,
   type BulkTagResult,
+  type CancelWorkflowDryRunResult,
   type CancelWorkflowResult,
   type CheckpointState,
   type CheckpointSummary,
+  type CompareOptions,
   type CoordinatedUpdateResult,
   type DefaultActivityTypes,
   type DefaultWorkflowRegistry,
   type EnginePatch,
   type EngineReconfigureResult,
+  type ForkComparison,
   type ForkOptions,
+  type ForkPreview,
   type InferActivityEntries,
   type InferActivityEntry,
   type InferWorkflowEntries,
@@ -126,11 +130,11 @@ import {
   recoverPendingAsyncActivities,
 } from './async-activity-records.ts';
 import { broadcast as broadcastFromInternals, type BroadcastCallbacks } from './broadcast.ts';
+import { purge as purgeWorkflows } from './bulk-operations-purge-commit.ts';
 import { purgeWorkflowById } from './bulk-operations-purge.ts';
 import {
   cancelAll as cancelAllWorkflows,
   deleteAll as deleteAllWorkflows,
-  purge as purgeWorkflows,
   retryFailedAll as retryFailedAllWorkflows,
   signalAll as signalAllWorkflows,
   tagAll as tagAllWorkflows,
@@ -158,6 +162,7 @@ import {
   replayTo as replayWorkflowToCheckpoint,
 } from './checkpoint-reads.ts';
 import { pollChildOutcomes } from './child-outcome-poll.ts';
+import { compareFork as compareForkFromInternals } from './compare-fork.ts';
 import {
   copyWorkflowDefinition,
   createActivityWorkerDispatcher,
@@ -260,6 +265,7 @@ import {
   type StartOrSignalCallbacks,
   type StartOrSignalResult,
 } from './lifecycle.ts';
+import { previewFork as previewForkFromLifecycle } from './lifecycle/fork-preview.ts';
 import {
   addTags as addWorkflowTags,
   getAttributes as getWorkflowAttributes,
@@ -366,6 +372,7 @@ import {
   timeoutWorkflow as timeoutWorkflowFromTermination,
   type TerminationCallbacks,
 } from './termination.ts';
+import { previewCancelWorkflow } from './termination/cancel-preview.ts';
 import {
   deliverCoordinatedUpdateToWaiterIfAvailable as deliverCoordinatedUpdateToWaiterIfAvailableFromInternals,
   getUpdateResult as getUpdateResultFromInternals,
@@ -2294,13 +2301,35 @@ export class Engine<
   runConcurrency(): RunConcurrencySnapshot | null {
     return runConcurrencySnapshot(getInternals(this));
   }
-  async purge(filter?: ListFilter): Promise<PurgeResult> {
-    return purgeWorkflows(getInternals(this), filter, (workflowId) =>
-      cleanupWaitersFromTermination(
-        getInternals(this),
-        workflowId,
-        this.#createTerminationCallbacks(),
-      ),
+  /**
+   * Permanently delete the terminal workflows that match `filter` (every terminal workflow when
+   * it is omitted) and report how many were removed. Called with no `options` it deletes at once.
+   *
+   * With `options` it follows the confirmation-token protocol of the other bulk operations:
+   * `{ dryRun: true }` returns the bulk dry-run result (`matched`, `scope`, a sample of ids, a
+   * `confirmationToken`) and writes nothing, and `{ confirmationToken }` deletes exactly the runs
+   * that preview named, throwing `BulkOperationConfirmationError` when the filter no longer
+   * produces the token.
+   */
+  async purge(
+    filter: ListFilter | undefined,
+    options: BulkOperationDryRunOptions,
+  ): Promise<BulkOperationDryRunResult>;
+  async purge(filter?: ListFilter, options?: BulkOperationCommitOptions): Promise<PurgeResult>;
+  async purge(
+    filter?: ListFilter,
+    options?: BulkOperationDryRunOptions | BulkOperationCommitOptions,
+  ): Promise<PurgeResult | BulkOperationDryRunResult> {
+    return purgeWorkflows(
+      getInternals(this),
+      filter,
+      (workflowId) =>
+        cleanupWaitersFromTermination(
+          getInternals(this),
+          workflowId,
+          this.#createTerminationCallbacks(),
+        ),
+      options,
     );
   }
   /**
@@ -2974,6 +3003,35 @@ export class Engine<
     );
   }
   /**
+   * What {@link Engine.fork} would do with the same arguments, without doing it: the checkpoint
+   * step it would start from, the steps it would keep and the steps it would run again, and
+   * whether it would run on another revision. Nothing is written. A fork that would be refused is
+   * refused here with the same error.
+   */
+  async previewFork(sourceWorkflowId: string, options?: ForkOptions): Promise<ForkPreview> {
+    if (!isWorkflowCatalogReady(this as unknown as Engine)) {
+      await ensureWorkflowCatalogReady(this as unknown as Engine);
+    }
+    return previewForkFromLifecycle(
+      getInternals(this),
+      sourceWorkflowId,
+      options,
+      this.#createLifecycleCallbacks(),
+    );
+  }
+  /**
+   * A fork and its source aligned step by step: for each durable step, the operation, label,
+   * status, input and output on each side, with a step before the fork point marked `shared` and
+   * carrying the source's entry on both sides. Pages by step (100 a page by default) with
+   * `nextCursor`. Payload fields are redacted as `getTimeline` redacts them.
+   *
+   * Throws `CompareRequiresForkError` for a run that is not a fork, and the not-found error of
+   * `get` when the fork or its source is gone.
+   */
+  async compare(forkWorkflowId: string, options?: CompareOptions): Promise<ForkComparison> {
+    return compareForkFromInternals(getInternals(this), forkWorkflowId, options);
+  }
+  /**
    * Re-drive a workflow from its persisted checkpoint and return a live handle.
    * Accepts a workflow left `'running'` (e.g. recovered after a process restart)
    * or one explicitly `'suspended'` via {@link Engine.suspend} — a suspended
@@ -3151,6 +3209,15 @@ export class Engine<
       workflowId,
       this.#createTerminationCallbacks(),
     );
+  }
+  /**
+   * What {@link Engine.cancel} would do for a workflow, without doing it: the run's current status
+   * and whether a cancel would take effect (it is `pending`, `running` or `suspended`). Nothing is
+   * written, no cancel handler runs and the run is not disturbed. Throws, as a cancel does, when
+   * no workflow has the id.
+   */
+  async previewCancel(workflowId: string): Promise<CancelWorkflowDryRunResult> {
+    return await previewCancelWorkflow(getInternals(this), workflowId);
   }
   /**
    * Suspend a running workflow without terminating it. The workflow transitions

@@ -253,6 +253,10 @@ import {
   tasksInspectOperation,
 } from './management/tasks-inspect-operation.ts';
 import {
+  type BureauRunsTimelineOperationHost,
+  runsTimelineOperation,
+} from './management/runs-timeline-operation.ts';
+import {
   type BureauEventsCatalogOperationHost,
   eventsCatalogOperation,
 } from './management/events-catalog-operation.ts';
@@ -423,6 +427,7 @@ export type BureauHandlerHost = BureauEventsOperationHost &
   BureauAttentionOperationHost &
   BureauTasksOperationHost &
   BureauTasksInspectOperationHost &
+  BureauRunsTimelineOperationHost &
   BureauTaskEventsOperationHost &
   BureauTasksRespondOperationHost &
   BureauContextsOperationHost &
@@ -848,6 +853,7 @@ export const BUREAU_HANDLER_OPERATIONS = [
   tasksListOperation,
   tasksGetOperation,
   tasksInspectOperation,
+  runsTimelineOperation,
   tasksCancelOperation,
   tasksEventsOperation,
   tasksRespondOperation,
@@ -1340,6 +1346,8 @@ export function buildBureauHandlerHost(
     },
     tasks: bureau.internals.taskRegistry,
     inspect: (id, options) => bureau.tasks.inspect(id, options),
+    // The engine's own timeline of a run, read by `bureau.runs.timeline` after it has authorized.
+    runTimeline: async (runId) => bureau.durableEngine()?.getTimeline(runId),
     taskHistory: bureau.tasks,
     contexts: {
       list: (listOptions) => bureau.contexts.list(listOptions),

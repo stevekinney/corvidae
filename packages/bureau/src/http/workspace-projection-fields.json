@@ -2046,6 +2046,19 @@
     "$.receipt",
     "$.remembered"
   ],
+  "output:bureau.runs.timeline": [
+    "$.entries",
+    "$.entries[].duration",
+    "$.entries[].label",
+    "$.entries[].operationType",
+    "$.entries[].status",
+    "$.entries[].step",
+    "$.entries[].timestamp",
+    "$.entries[].tries",
+    "$.kind",
+    "$.runId",
+    "$.truncated"
+  ],
   "output:bureau.schedules.cancel": ["$.id", "$.revision", "$.status"],
   "output:bureau.schedules.create": [
     "$.agentName",

@@ -9070,7 +9070,7 @@
           "workflows:admin"
         ]
       },
-      "description": "Cancel every workflow that matches the filter. Run it first with `dryRun: true` to preview the matches and receive a `confirmationToken`, then repeat the same filter with that token to commit. Requires workflows:admin.",
+      "description": "Cancel every workflow that matches the filter. Run it first with `dryRun: true` to preview the matches and receive a `confirmationToken`, then repeat the same filter with that token to commit; a commit whose token no longer matches is refused with `Conflict`, so run the preview again. Requires workflows:admin.",
       "destructive": true,
       "inputSchema": {
         "additionalProperties": false,
@@ -9411,7 +9411,8 @@
                       "delete",
                       "tag:add",
                       "tag:remove",
-                      "retry-failed"
+                      "retry-failed",
+                      "purge"
                     ],
                     "type": "string"
                   },
@@ -9879,7 +9880,8 @@
                   "delete",
                   "tag:add",
                   "tag:remove",
-                  "retry-failed"
+                  "retry-failed",
+                  "purge"
                 ],
                 "type": "string"
               },
@@ -10135,7 +10137,9 @@
           }
         ]
       },
-      "producibleFaults": [],
+      "producibleFaults": [
+        "Conflict"
+      ],
       "summary": "Cancel workflows in bulk",
       "tags": [
         "Workflows"
@@ -10154,7 +10158,7 @@
           "workflows:admin"
         ]
       },
-      "description": "Delete every terminal workflow that matches the filter. Irreversible. Run it first with `dryRun: true` to preview the matches and receive a `confirmationToken`, then repeat the same filter with that token to commit. Requires workflows:admin.",
+      "description": "Delete every terminal workflow that matches the filter. Irreversible. Run it first with `dryRun: true` to preview the matches and receive a `confirmationToken`, then repeat the same filter with that token to commit; a commit whose token no longer matches is refused with `Conflict`, so run the preview again. Requires workflows:admin.",
       "destructive": true,
       "inputSchema": {
         "additionalProperties": false,
@@ -10495,7 +10499,8 @@
                       "delete",
                       "tag:add",
                       "tag:remove",
-                      "retry-failed"
+                      "retry-failed",
+                      "purge"
                     ],
                     "type": "string"
                   },
@@ -10945,7 +10950,8 @@
                   "delete",
                   "tag:add",
                   "tag:remove",
-                  "retry-failed"
+                  "retry-failed",
+                  "purge"
                 ],
                 "type": "string"
               },
@@ -11202,6 +11208,7 @@
         ]
       },
       "producibleFaults": [
+        "Conflict",
         "Unprocessable"
       ],
       "summary": "Delete terminal workflows in bulk",
@@ -11222,7 +11229,7 @@
           "workflows:admin"
         ]
       },
-      "description": "Retry every failed workflow that matches the filter. Run it first with `dryRun: true` to preview the matches and receive a `confirmationToken`, then repeat the same filter with that token to commit. Requires workflows:admin.",
+      "description": "Retry every failed workflow that matches the filter. Run it first with `dryRun: true` to preview the matches and receive a `confirmationToken`, then repeat the same filter with that token to commit; a commit whose token no longer matches is refused with `Conflict`, so run the preview again. Requires workflows:admin.",
       "destructive": true,
       "inputSchema": {
         "additionalProperties": false,
@@ -11563,7 +11570,8 @@
                       "delete",
                       "tag:add",
                       "tag:remove",
-                      "retry-failed"
+                      "retry-failed",
+                      "purge"
                     ],
                     "type": "string"
                   },
@@ -12031,7 +12039,8 @@
                   "delete",
                   "tag:add",
                   "tag:remove",
-                  "retry-failed"
+                  "retry-failed",
+                  "purge"
                 ],
                 "type": "string"
               },
@@ -12287,7 +12296,9 @@
           }
         ]
       },
-      "producibleFaults": [],
+      "producibleFaults": [
+        "Conflict"
+      ],
       "summary": "Retry failed workflows in bulk",
       "tags": [
         "Workflows"
@@ -12306,7 +12317,7 @@
           "workflows:admin"
         ]
       },
-      "description": "Deliver the signal `name` with an optional `payload` to every workflow that matches the filter. Run it first with `dryRun: true` to preview the matches and receive a `confirmationToken`, then repeat the same request with that token to commit. Requires workflows:admin.",
+      "description": "Deliver the signal `name` with an optional `payload` to every workflow that matches the filter. Run it first with `dryRun: true` to preview the matches and receive a `confirmationToken`, then repeat the same request with that token to commit; a commit whose token no longer matches is refused with `Conflict`, so run the preview again. Requires workflows:admin.",
       "destructive": true,
       "inputSchema": {
         "additionalProperties": false,
@@ -12658,7 +12669,8 @@
                       "delete",
                       "tag:add",
                       "tag:remove",
-                      "retry-failed"
+                      "retry-failed",
+                      "purge"
                     ],
                     "type": "string"
                   },
@@ -13106,7 +13118,8 @@
                   "delete",
                   "tag:add",
                   "tag:remove",
-                  "retry-failed"
+                  "retry-failed",
+                  "purge"
                 ],
                 "type": "string"
               },
@@ -13362,7 +13375,9 @@
           }
         ]
       },
-      "producibleFaults": [],
+      "producibleFaults": [
+        "Conflict"
+      ],
       "summary": "Signal workflows in bulk",
       "tags": [
         "Workflows"
@@ -13381,7 +13396,7 @@
           "workflows:admin"
         ]
       },
-      "description": "Add or remove `tags` on every workflow that matches `filter`, which must name at least one scope (status, type, scheduleId, tags, attributes, an idPrefix of 3 or more characters, or failureCategory together with status); an unscoped filter is rejected with InvalidParams. Run it first with `dryRun: true` to preview the matches and receive a `confirmationToken`, then repeat the same request with that token to commit. Requires workflows:admin.",
+      "description": "Add or remove `tags` on every workflow that matches `filter`, which must name at least one scope (status, type, scheduleId, tags, attributes, an idPrefix of 3 or more characters, or failureCategory together with status); an unscoped filter is rejected with InvalidParams. Run it first with `dryRun: true` to preview the matches and receive a `confirmationToken`, then repeat the same request with that token to commit; a commit whose token no longer matches is refused with `Conflict`, so run the preview again. Requires workflows:admin.",
       "destructive": true,
       "inputSchema": {
         "additionalProperties": false,
@@ -13748,7 +13763,8 @@
                       "delete",
                       "tag:add",
                       "tag:remove",
-                      "retry-failed"
+                      "retry-failed",
+                      "purge"
                     ],
                     "type": "string"
                   },
@@ -14192,7 +14208,8 @@
                   "delete",
                   "tag:add",
                   "tag:remove",
-                  "retry-failed"
+                  "retry-failed",
+                  "purge"
                 ],
                 "type": "string"
               },
@@ -14448,7 +14465,9 @@
           }
         ]
       },
-      "producibleFaults": [],
+      "producibleFaults": [
+        "Conflict"
+      ],
       "summary": "Add or remove workflow tags in bulk",
       "tags": [
         "Workflows"
@@ -14467,11 +14486,15 @@
           "workflows:write"
         ]
       },
-      "description": "Request cancellation of a running workflow by `id`. Cancellation is cooperative: the workflow observes a cancellation signal and unwinds via its own cleanup logic, so this is irreversible from the caller perspective. Faults with NotFound when the workflow is not visible.",
+      "description": "Request cancellation of a running workflow by `id`. Cancellation is cooperative: the workflow observes a cancellation signal and unwinds via its own cleanup logic, so this is irreversible from the caller perspective. Pass `dryRun: true` to learn the workflow's status and whether a cancel would take effect, without cancelling. Faults with NotFound when the workflow is not visible.",
       "destructive": true,
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
+          "dryRun": {
+            "description": "When true, report the workflow status and whether a cancel would take effect, and change nothing.",
+            "type": "boolean"
+          },
           "workflowId": {
             "description": "Id of the workflow to cancel.",
             "minLength": 1,
@@ -14486,7 +14509,7 @@
       "kind": "unary",
       "name": "weft.workflows.cancel",
       "outputSchema": {
-        "oneOf": [
+        "anyOf": [
           {
             "additionalProperties": false,
             "properties": {
@@ -14528,6 +14551,40 @@
               "workflowId",
               "status",
               "terminalStatus"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "cancellable": {
+                "type": "boolean"
+              },
+              "dryRun": {
+                "const": true,
+                "type": "boolean"
+              },
+              "status": {
+                "enum": [
+                  "pending",
+                  "running",
+                  "completed",
+                  "failed",
+                  "cancelled",
+                  "timed-out",
+                  "suspended"
+                ],
+                "type": "string"
+              },
+              "workflowId": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "dryRun",
+              "workflowId",
+              "status",
+              "cancellable"
             ],
             "type": "object"
           }
@@ -14625,6 +14682,168 @@
       "summary": "List checkpoint history for a workflow",
       "tags": [
         "Checkpoints"
+      ],
+      "transports": {
+        "http": true,
+        "jsonRpcHttp": true,
+        "jsonRpcStdio": true,
+        "jsonRpcWebSocket": true
+      }
+    },
+    {
+      "access": {
+        "kind": "scoped",
+        "scopes": [
+          "workflows:read"
+        ]
+      },
+      "description": "Take the id of a workflow made by `weft.workflows.fork` and return its source run, the fork point, and the two timelines aligned by durable step: for each step the operation type, label, status, input and output on each side. A step before the fork point is `shared` and carries the source entry on both sides. Payload fields are redacted as the timeline read redacts them. Pages by step (`limit`, 100 by default) with `nextCursor`. Read-only. Faults with NotFound when the fork or its source is not visible, and with Unprocessable, naming what to do, when the workflow is not a fork.",
+      "destructive": false,
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "cursor": {
+            "description": "The nextCursor of the previous page; omit it for the first page.",
+            "minLength": 1,
+            "type": "string"
+          },
+          "limit": {
+            "description": "Steps in a page. Defaults to 100; at most 1000.",
+            "maximum": 1000,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "workflowId": {
+            "description": "Id of the fork to compare with its source.",
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "workflowId"
+        ],
+        "type": "object"
+      },
+      "kind": "unary",
+      "name": "weft.workflows.compare",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "forkPoint": {
+            "type": "number"
+          },
+          "nextCursor": {
+            "type": "string"
+          },
+          "sourceWorkflowId": {
+            "type": "string"
+          },
+          "steps": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "fork": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "input": {
+                      "type": "string"
+                    },
+                    "label": {
+                      "type": "string"
+                    },
+                    "operationType": {
+                      "type": "string"
+                    },
+                    "output": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "enum": [
+                        "running",
+                        "completed",
+                        "failed",
+                        "cancelled",
+                        "timed-out"
+                      ],
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "operationType",
+                    "label",
+                    "status",
+                    "input"
+                  ],
+                  "type": "object"
+                },
+                "index": {
+                  "type": "number"
+                },
+                "shared": {
+                  "type": "boolean"
+                },
+                "source": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "input": {
+                      "type": "string"
+                    },
+                    "label": {
+                      "type": "string"
+                    },
+                    "operationType": {
+                      "type": "string"
+                    },
+                    "output": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "enum": [
+                        "running",
+                        "completed",
+                        "failed",
+                        "cancelled",
+                        "timed-out"
+                      ],
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "operationType",
+                    "label",
+                    "status",
+                    "input"
+                  ],
+                  "type": "object"
+                }
+              },
+              "required": [
+                "index",
+                "shared"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "workflowId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "workflowId",
+          "sourceWorkflowId",
+          "forkPoint",
+          "steps"
+        ],
+        "type": "object"
+      },
+      "producibleFaults": [
+        "NotFound",
+        "Unprocessable"
+      ],
+      "summary": "Compare a fork with its source, step by step",
+      "tags": [
+        "Workflows"
       ],
       "transports": {
         "http": true,
@@ -15439,11 +15658,15 @@
           "workflows:write"
         ]
       },
-      "description": "Start a new workflow from a checkpoint of an existing one, leaving the source untouched, and return the new workflow `id`. Forks from `fromStep` or the latest checkpoint, optionally onto a different installed `revision`. Faults with NotFound for a missing workflow or checkpoint, InvalidParams for a bad step, and Conflict for an unavailable or version-incompatible revision.",
+      "description": "Start a new workflow from a checkpoint of an existing one, leaving the source untouched, and return the new workflow `id`. Forks from `fromStep` or the latest checkpoint, optionally onto a different installed `revision`. With `dryRun: true` it writes nothing and instead answers the steps the fork would keep, the steps it would run again, and whether the revision would change. Faults with NotFound for a missing workflow or checkpoint, InvalidParams for a bad step, and Conflict for an unavailable or version-incompatible revision.",
       "destructive": false,
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
+          "dryRun": {
+            "description": "When true, answer what the fork would keep and run again, and whether the revision would change, and write nothing.",
+            "type": "boolean"
+          },
           "fromStep": {
             "description": "Checkpoint step to fork from, as a non-negative integer. Omit it to fork from the latest checkpoint."
           },
@@ -15466,16 +15689,121 @@
       "kind": "unary",
       "name": "weft.workflows.fork",
       "outputSchema": {
-        "additionalProperties": false,
-        "properties": {
-          "id": {
-            "type": "string"
+        "anyOf": [
+          {
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "dryRun": {
+                "const": true,
+                "type": "boolean"
+              },
+              "forkPoint": {
+                "type": "number"
+              },
+              "forkRevision": {
+                "type": "string"
+              },
+              "keptSteps": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "index": {
+                      "type": "number"
+                    },
+                    "label": {
+                      "type": "string"
+                    },
+                    "operationType": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "enum": [
+                        "running",
+                        "completed",
+                        "failed",
+                        "cancelled",
+                        "timed-out"
+                      ],
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "index",
+                    "operationType",
+                    "label",
+                    "status"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "rerunSteps": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "index": {
+                      "type": "number"
+                    },
+                    "label": {
+                      "type": "string"
+                    },
+                    "operationType": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "enum": [
+                        "running",
+                        "completed",
+                        "failed",
+                        "cancelled",
+                        "timed-out"
+                      ],
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "index",
+                    "operationType",
+                    "label",
+                    "status"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "revisionWouldChange": {
+                "type": "boolean"
+              },
+              "sourceRevision": {
+                "type": "string"
+              },
+              "workflowId": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "dryRun",
+              "workflowId",
+              "forkPoint",
+              "keptSteps",
+              "rerunSteps",
+              "revisionWouldChange"
+            ],
+            "type": "object"
           }
-        },
-        "required": [
-          "id"
-        ],
-        "type": "object"
+        ]
       },
       "producibleFaults": [
         "Conflict",
@@ -15967,7 +16295,7 @@
           "workflows:admin"
         ]
       },
-      "description": "Permanently delete terminal workflows (completed, failed, cancelled, or timed out) that match the filter, removing every record they own, and report how many were removed. Irreversible; with no filter it matches every terminal workflow. Requires workflows:admin.",
+      "description": "Permanently delete terminal workflows (completed, failed, cancelled, or timed out) that match the filter, removing every record they own, and report how many were removed. Irreversible; with no filter it matches every terminal workflow. Run it first with `dryRun: true` to preview the matches and receive a `confirmationToken`, then repeat the same filter with that token to commit; the commit deletes the previewed workflows and is refused with `Conflict` when the filter no longer produces the token; run the preview again. Requires workflows:admin.",
       "destructive": true,
       "inputSchema": {
         "additionalProperties": false,
@@ -16091,6 +16419,18 @@
             },
             "type": "array"
           },
+          "bulkConcurrency": {
+            "description": "Number of matched workflows to process at once.",
+            "maximum": 9007199254740991,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "confirmationToken": {
+            "description": "Token returned by the dry run of the same request; required to commit.",
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          },
           "createdAt": {
             "additionalProperties": false,
             "description": "Return only workflows created within this time range.",
@@ -16113,6 +16453,10 @@
               }
             },
             "type": "object"
+          },
+          "dryRun": {
+            "description": "When true, preview the matching workflows and return a confirmationToken without changing anything.",
+            "type": "boolean"
           },
           "executionDeadline": {
             "additionalProperties": false,
@@ -16194,6 +16538,12 @@
             "minLength": 1,
             "type": "string"
           },
+          "requestId": {
+            "description": "Caller-chosen id that identifies this bulk request.",
+            "maxLength": 200,
+            "minLength": 1,
+            "type": "string"
+          },
           "scheduleId": {
             "description": "Return only workflows started by the schedule with this id.",
             "minLength": 1,
@@ -16272,18 +16622,725 @@
       "kind": "unary",
       "name": "weft.workflows.purge",
       "outputSchema": {
-        "additionalProperties": {},
-        "properties": {
-          "deleted": {
-            "type": "number"
+        "anyOf": [
+          {
+            "additionalProperties": {},
+            "properties": {
+              "auditEvent": {
+                "additionalProperties": {},
+                "properties": {
+                  "action": {
+                    "enum": [
+                      "cancel",
+                      "signal",
+                      "delete",
+                      "tag:add",
+                      "tag:remove",
+                      "retry-failed",
+                      "purge"
+                    ],
+                    "type": "string"
+                  },
+                  "affectedCount": {
+                    "type": "number"
+                  },
+                  "confirmationToken": {
+                    "type": "string"
+                  },
+                  "filterSummary": {
+                    "additionalProperties": {},
+                    "properties": {
+                      "attributes": {
+                        "items": {
+                          "additionalProperties": {},
+                          "properties": {
+                            "gt": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "number"
+                                },
+                                {
+                                  "type": "boolean"
+                                },
+                                {}
+                              ]
+                            },
+                            "gte": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "number"
+                                },
+                                {
+                                  "type": "boolean"
+                                },
+                                {}
+                              ]
+                            },
+                            "key": {
+                              "type": "string"
+                            },
+                            "lt": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "number"
+                                },
+                                {
+                                  "type": "boolean"
+                                },
+                                {}
+                              ]
+                            },
+                            "lte": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "number"
+                                },
+                                {
+                                  "type": "boolean"
+                                },
+                                {}
+                              ]
+                            },
+                            "value": {
+                              "anyOf": [
+                                {
+                                  "anyOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "number"
+                                    },
+                                    {
+                                      "type": "boolean"
+                                    },
+                                    {}
+                                  ]
+                                },
+                                {
+                                  "items": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "number"
+                                      },
+                                      {
+                                        "type": "boolean"
+                                      },
+                                      {}
+                                    ]
+                                  },
+                                  "type": "array"
+                                }
+                              ]
+                            }
+                          },
+                          "required": [
+                            "key"
+                          ],
+                          "type": "object"
+                        },
+                        "type": "array"
+                      },
+                      "limit": {
+                        "type": "number"
+                      },
+                      "offset": {
+                        "type": "number"
+                      },
+                      "scheduleId": {
+                        "type": "string"
+                      },
+                      "status": {
+                        "anyOf": [
+                          {
+                            "enum": [
+                              "pending",
+                              "running",
+                              "completed",
+                              "failed",
+                              "cancelled",
+                              "timed-out",
+                              "suspended"
+                            ],
+                            "type": "string"
+                          },
+                          {
+                            "items": {
+                              "enum": [
+                                "pending",
+                                "running",
+                                "completed",
+                                "failed",
+                                "cancelled",
+                                "timed-out",
+                                "suspended"
+                              ],
+                              "type": "string"
+                            },
+                            "type": "array"
+                          }
+                        ]
+                      },
+                      "tags": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
+                      },
+                      "type": {
+                        "type": "string"
+                      }
+                    },
+                    "type": "object"
+                  },
+                  "principal": {
+                    "additionalProperties": {},
+                    "properties": {
+                      "method": {
+                        "type": "string"
+                      },
+                      "subject": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "method"
+                    ],
+                    "type": "object"
+                  },
+                  "requestId": {
+                    "type": "string"
+                  },
+                  "sampleWorkflowIds": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "scope": {
+                    "additionalProperties": {},
+                    "properties": {
+                      "filter": {
+                        "additionalProperties": {},
+                        "properties": {
+                          "attributes": {
+                            "items": {
+                              "additionalProperties": {},
+                              "properties": {
+                                "gt": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "number"
+                                    },
+                                    {
+                                      "type": "boolean"
+                                    },
+                                    {}
+                                  ]
+                                },
+                                "gte": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "number"
+                                    },
+                                    {
+                                      "type": "boolean"
+                                    },
+                                    {}
+                                  ]
+                                },
+                                "key": {
+                                  "type": "string"
+                                },
+                                "lt": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "number"
+                                    },
+                                    {
+                                      "type": "boolean"
+                                    },
+                                    {}
+                                  ]
+                                },
+                                "lte": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "number"
+                                    },
+                                    {
+                                      "type": "boolean"
+                                    },
+                                    {}
+                                  ]
+                                },
+                                "value": {
+                                  "anyOf": [
+                                    {
+                                      "anyOf": [
+                                        {
+                                          "type": "string"
+                                        },
+                                        {
+                                          "type": "number"
+                                        },
+                                        {
+                                          "type": "boolean"
+                                        },
+                                        {}
+                                      ]
+                                    },
+                                    {
+                                      "items": {
+                                        "anyOf": [
+                                          {
+                                            "type": "string"
+                                          },
+                                          {
+                                            "type": "number"
+                                          },
+                                          {
+                                            "type": "boolean"
+                                          },
+                                          {}
+                                        ]
+                                      },
+                                      "type": "array"
+                                    }
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "key"
+                              ],
+                              "type": "object"
+                            },
+                            "type": "array"
+                          },
+                          "limit": {
+                            "type": "number"
+                          },
+                          "offset": {
+                            "type": "number"
+                          },
+                          "scheduleId": {
+                            "type": "string"
+                          },
+                          "status": {
+                            "anyOf": [
+                              {
+                                "enum": [
+                                  "pending",
+                                  "running",
+                                  "completed",
+                                  "failed",
+                                  "cancelled",
+                                  "timed-out",
+                                  "suspended"
+                                ],
+                                "type": "string"
+                              },
+                              {
+                                "items": {
+                                  "enum": [
+                                    "pending",
+                                    "running",
+                                    "completed",
+                                    "failed",
+                                    "cancelled",
+                                    "timed-out",
+                                    "suspended"
+                                  ],
+                                  "type": "string"
+                                },
+                                "type": "array"
+                              }
+                            ]
+                          },
+                          "tags": {
+                            "items": {
+                              "type": "string"
+                            },
+                            "type": "array"
+                          },
+                          "type": {
+                            "type": "string"
+                          }
+                        },
+                        "type": "object"
+                      },
+                      "matched": {
+                        "type": "number"
+                      },
+                      "sampleLimit": {
+                        "type": "number"
+                      },
+                      "sampleWorkflowIds": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
+                      },
+                      "statuses": {
+                        "items": {
+                          "enum": [
+                            "pending",
+                            "running",
+                            "completed",
+                            "failed",
+                            "cancelled",
+                            "timed-out",
+                            "suspended"
+                          ],
+                          "type": "string"
+                        },
+                        "type": "array"
+                      },
+                      "workflowTypes": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
+                      }
+                    },
+                    "required": [
+                      "matched",
+                      "filter",
+                      "statuses",
+                      "workflowTypes",
+                      "sampleWorkflowIds",
+                      "sampleLimit"
+                    ],
+                    "type": "object"
+                  },
+                  "timestamp": {
+                    "type": "number"
+                  },
+                  "type": {
+                    "const": "bulk-operation:audit",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "type",
+                  "action",
+                  "requestId",
+                  "timestamp",
+                  "principal",
+                  "filterSummary",
+                  "scope",
+                  "affectedCount",
+                  "sampleWorkflowIds",
+                  "confirmationToken"
+                ],
+                "type": "object"
+              },
+              "deleted": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "deleted"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": {},
+            "properties": {
+              "action": {
+                "enum": [
+                  "cancel",
+                  "signal",
+                  "delete",
+                  "tag:add",
+                  "tag:remove",
+                  "retry-failed",
+                  "purge"
+                ],
+                "type": "string"
+              },
+              "confirmationToken": {
+                "type": "string"
+              },
+              "confirmationTokenVersion": {
+                "const": 1,
+                "type": "number"
+              },
+              "dryRun": {
+                "const": true,
+                "type": "boolean"
+              },
+              "matched": {
+                "type": "number"
+              },
+              "requestId": {
+                "type": "string"
+              },
+              "sampleWorkflowIds": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "scope": {
+                "additionalProperties": {},
+                "properties": {
+                  "filter": {
+                    "additionalProperties": {},
+                    "properties": {
+                      "attributes": {
+                        "items": {
+                          "additionalProperties": {},
+                          "properties": {
+                            "gt": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "number"
+                                },
+                                {
+                                  "type": "boolean"
+                                },
+                                {}
+                              ]
+                            },
+                            "gte": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "number"
+                                },
+                                {
+                                  "type": "boolean"
+                                },
+                                {}
+                              ]
+                            },
+                            "key": {
+                              "type": "string"
+                            },
+                            "lt": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "number"
+                                },
+                                {
+                                  "type": "boolean"
+                                },
+                                {}
+                              ]
+                            },
+                            "lte": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "number"
+                                },
+                                {
+                                  "type": "boolean"
+                                },
+                                {}
+                              ]
+                            },
+                            "value": {
+                              "anyOf": [
+                                {
+                                  "anyOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "number"
+                                    },
+                                    {
+                                      "type": "boolean"
+                                    },
+                                    {}
+                                  ]
+                                },
+                                {
+                                  "items": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "number"
+                                      },
+                                      {
+                                        "type": "boolean"
+                                      },
+                                      {}
+                                    ]
+                                  },
+                                  "type": "array"
+                                }
+                              ]
+                            }
+                          },
+                          "required": [
+                            "key"
+                          ],
+                          "type": "object"
+                        },
+                        "type": "array"
+                      },
+                      "limit": {
+                        "type": "number"
+                      },
+                      "offset": {
+                        "type": "number"
+                      },
+                      "scheduleId": {
+                        "type": "string"
+                      },
+                      "status": {
+                        "anyOf": [
+                          {
+                            "enum": [
+                              "pending",
+                              "running",
+                              "completed",
+                              "failed",
+                              "cancelled",
+                              "timed-out",
+                              "suspended"
+                            ],
+                            "type": "string"
+                          },
+                          {
+                            "items": {
+                              "enum": [
+                                "pending",
+                                "running",
+                                "completed",
+                                "failed",
+                                "cancelled",
+                                "timed-out",
+                                "suspended"
+                              ],
+                              "type": "string"
+                            },
+                            "type": "array"
+                          }
+                        ]
+                      },
+                      "tags": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
+                      },
+                      "type": {
+                        "type": "string"
+                      }
+                    },
+                    "type": "object"
+                  },
+                  "matched": {
+                    "type": "number"
+                  },
+                  "sampleLimit": {
+                    "type": "number"
+                  },
+                  "sampleWorkflowIds": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "statuses": {
+                    "items": {
+                      "enum": [
+                        "pending",
+                        "running",
+                        "completed",
+                        "failed",
+                        "cancelled",
+                        "timed-out",
+                        "suspended"
+                      ],
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "workflowTypes": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "matched",
+                  "filter",
+                  "statuses",
+                  "workflowTypes",
+                  "sampleWorkflowIds",
+                  "sampleLimit"
+                ],
+                "type": "object"
+              },
+              "skippedTeardownPending": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "dryRun",
+              "action",
+              "matched",
+              "requestId",
+              "scope",
+              "sampleWorkflowIds",
+              "confirmationToken",
+              "confirmationTokenVersion"
+            ],
+            "type": "object"
           }
-        },
-        "required": [
-          "deleted"
-        ],
-        "type": "object"
+        ]
       },
-      "producibleFaults": [],
+      "producibleFaults": [
+        "Conflict"
+      ],
       "summary": "Purge terminal workflows",
       "tags": [
         "Workflows"

@@ -565,7 +565,7 @@ The scope each operation requires:
 
 | Operations | Required scope |
 | --- | --- |
-| `weft.workflows.get`, `weft.workflows.list`, `weft.workflows.aggregate`, `weft.workflows.timeline.get`, `weft.workflows.result.get`, `weft.workflows.checkpoints.get`, `weft.workflows.checkpoints.list`, `weft.workflows.scheduleprovenance.get`, `weft.workflows.finalizer.get`, `weft.updates.result.get`, `weft.workflows.updates.list`, `weft.workflows.logs.list` | `workflows:read` |
+| `weft.workflows.get`, `weft.workflows.list`, `weft.workflows.aggregate`, `weft.workflows.timeline.get`, `weft.workflows.compare`, `weft.workflows.result.get`, `weft.workflows.checkpoints.get`, `weft.workflows.checkpoints.list`, `weft.workflows.scheduleprovenance.get`, `weft.workflows.finalizer.get`, `weft.updates.result.get`, `weft.workflows.updates.list`, `weft.workflows.logs.list` | `workflows:read` |
 | `weft.workflows.start`, `weft.workflows.fork`, `weft.workflows.cancel`, `weft.workflows.suspend`, `weft.workflows.resume`, `weft.workflows.timeout` | `workflows:write` |
 | `weft.workflows.signal` | `signals:write` |
 | `weft.workflows.startorsignal` | `workflows:write` and `signals:write` (both) |
@@ -585,6 +585,8 @@ The scope each operation requires:
 | `weft.system.principal` | none (public) |
 
 Mutual TLS currently admits a principal that holds no scopes, so an mTLS caller reaches only `weft.system.principal`: every other operation in this table requires a scope, and the two workflow event feeds refuse a caller that holds neither `events:read` nor `streams:read`. Scopes are flat: `workflows:admin` does not imply `workflows:read`. Operations outside this table, such as the registry, storage, worker, and diagnostic operations, declare their own scopes through the same mechanism.
+
+`serve({ authorizeWorkflowRead })` narrows `weft.workflows.compare` beyond its scope. The hook receives `{ principal, workflowId }` and returns `true` to allow or `false` to deny; `compare` asks it for the fork and then for the fork's source, after the `workflows:read` check, and answers `NotFound` when either is denied. The fault names only the fork and reads exactly like a missing fork, so a caller cleared for a fork learns nothing about its source, and a denied caller is not told a run is not a fork. With no hook configured the scope alone decides. A hook that throws is an internal error, never a denial.
 
 ### MCP Over HTTP
 

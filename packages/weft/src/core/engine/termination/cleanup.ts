@@ -341,6 +341,8 @@ async function sweepUnfenced(
   // The "expects services" marker is per-run bookkeeping, not an output artifact,
   // so drop it on every terminal cleanup regardless of `includeOutputArtifacts`.
   await internals.storage.delete(KEYS.workflowHasServices(workflowId));
+  // The retrying-activity record is meaningful only while the run is running (COR-2529).
+  await internals.storage.delete(KEYS.activityRetrying(workflowId));
   // The finalizer-state payload (#446) is per-run bookkeeping written by
   // `ctx.setFinalizerState`. A completed/failed workflow never runs its finalizer,
   // so the recorded value would otherwise leak permanently — sweep it here. But a

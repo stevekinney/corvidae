@@ -21,6 +21,7 @@ import type {
   WorkflowState,
   WorkflowStatus,
 } from '../types.ts';
+import { reactivationRetryingOperation } from './activity-retrying-record.ts';
 import { buildTerminalWorkflowIndexOperations } from './attributes-tags.ts';
 import {
   buildActionableBulkWorkflowFilter,
@@ -34,6 +35,7 @@ import {
   withBulkAuditEvent,
 } from './bulk-operations-shared.ts';
 import { bindReactivation, throwIfReactivationLostToRemoval } from './bulk-retry-build-binding.ts';
+import { assertBulkRunNotReplaced, type ScannedRuns } from './bulk-scanned-runs.ts';
 import { ensureWorkflowCatalogReady, isWorkflowCatalogReady } from './catalog-readiness.ts';
 import { resolveExecutableRegistrationForRetry } from './dynamic-source-execution.ts';
 import {
@@ -112,7 +114,7 @@ export async function runBulkFailedWorkflowRetry(
     preparation.workflowIds,
     bulkConcurrency,
     async (workflowId) => {
-      await retryFailedWorkflow(internals, workflowId, callbacks);
+      await retryFailedWorkflow(internals, workflowId, callbacks, preparation.runs);
       return { status: 'retried' as const };
     },
   );
@@ -135,11 +137,13 @@ async function retryFailedWorkflow(
   internals: EngineInternals,
   workflowId: string,
   callbacks: LifecycleCallbacks | undefined,
+  runs: ScannedRuns,
 ): Promise<void> {
   const state = await loadWorkflowState(internals, workflowId);
   if (state === null) {
     throw new Error('Workflow no longer exists');
   }
+  assertBulkRunNotReplaced(runs, workflowId, state);
   if (state.status !== 'failed') {
     throw new Error(`Workflow is ${state.status}, not failed`);
   }
@@ -421,6 +425,8 @@ function buildReactivationBatchOperations(
   return [
     ...buildTerminalWorkflowIndexOperations(currentState, reactivatedState),
     { type: 'put', key: KEYS.workflow(workflowId), value: encode(reactivatedState) },
+    // The re-run resumes from this checkpoint, so its retry state says what is retrying (COR-2529).
+    reactivationRetryingOperation(workflowId, checkpoint, reactivatedState),
     ...visibilityIndexOperations(internals, currentState, reactivatedState),
     ...buildRetrySearchAttributeOperations(
       workflowId,
