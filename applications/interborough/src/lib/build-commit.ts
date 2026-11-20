@@ -6,6 +6,7 @@
  */
 declare const INTERBOROUGH_BUILD_COMMIT: string | undefined;
 
+/** Read the commit label embedded in the browser build. */
 export function buildCommit(): string {
   return typeof INTERBOROUGH_BUILD_COMMIT === 'string' ? INTERBOROUGH_BUILD_COMMIT : '';
 }

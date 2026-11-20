@@ -1,4 +1,3 @@
-import { AUTHORIZATION_SCOPES, WEFT_SCOPE_VOCABULARY } from '@lostgradient/weft';
 import { OPERATION_MAP, type WorkspaceOperationClass } from './operation-map.ts';
 import {
   classifyWorkspaceMount,
@@ -33,7 +32,14 @@ import {
   workspaceOwnerAuthority,
   type WorkspaceMembershipOptions,
 } from './workspace-principal.ts';
-import { encode, type Outbox, VERSION as WEFT_VERSION, weftFaultPolicy } from '@lostgradient/weft';
+import {
+  AUTHORIZATION_SCOPES,
+  WEFT_SCOPE_VOCABULARY,
+  encode,
+  type Outbox,
+  VERSION as WEFT_VERSION,
+  weftFaultPolicy,
+} from '@lostgradient/weft';
 import {
   type AuthConfig,
   type AuthorizationScope,

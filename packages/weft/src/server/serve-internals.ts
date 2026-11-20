@@ -174,22 +174,11 @@ function authenticationRequiredByEnvironment(rawValue: string | undefined): bool
   );
 }
 
-/**
- * Refuse to start a server whose static API keys would admit callers holding no
- * recognized scope. This belongs to `serve()` alone: Weft's own catalog is what
- * makes such a key useless, because every operation except
- * `weft.system.principal` requires a scope. A generic authenticator
- * (`createAuthenticator`, `createOperationHandlerAuthenticator`) may serve a
- * catalog whose operations are authenticated-only, and for those an unscoped
- * key is valid. A `resolveApiKeyPrincipal` resolver is authoritative for the
- * key space and supplies each key's scopes itself. A default scope the server
- * does not recognize grants nothing, so it does not count.
- */
+/** Weft's scoped catalog requires each static API key to hold a recognized scope. */
 function assertStaticApiKeysHaveScopes(
   auth: NonNullable<ServeOptions['auth']>,
   additionalScopes: AdditionalScopeSet,
 ): void {
-  if (auth.verifiers !== undefined) return;
   if (auth.apiKeys === undefined || auth.apiKeys.length === 0) return;
   if (auth.resolveApiKeyPrincipal !== undefined) return;
   const granted = filterRecognizedScopes(

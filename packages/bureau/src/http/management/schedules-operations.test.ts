@@ -1,4 +1,3 @@
-import { WEFT_SCOPE_VOCABULARY } from '@lostgradient/weft';
 import { workspaceAdministratorDirectory } from '../workspace-privacy-fixtures.test-support.ts';
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 /**
@@ -9,7 +8,7 @@ import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { join } from 'node:path';
 
 import { createAgent } from '@lostgradient/operative';
-import { decode, handleRequest, KEYS } from '@lostgradient/weft';
+import { WEFT_SCOPE_VOCABULARY, decode, handleRequest, KEYS } from '@lostgradient/weft';
 import { unauthenticatedLocalAuthContext } from '@lostgradient/backchannel';
 import { MemoryStorage, type Storage } from '@lostgradient/storage';
 import { afterEach, describe, expect, it } from 'bun:test';

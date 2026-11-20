@@ -1,4 +1,3 @@
-import { AUTHORIZATION_SCOPES as UPSTREAM_AUTHORIZATION_SCOPES } from '@lostgradient/weft';
 /**
  * Truth-table tests for principal + scope gating (plan §6, §11.1, T1.2).
  * Pure logic, no DOM: exercises `PrincipalStore` directly rather than
@@ -8,7 +7,10 @@ import { AUTHORIZATION_SCOPES as UPSTREAM_AUTHORIZATION_SCOPES } from '@lostgrad
  */
 import { describe, expect, test } from 'bun:test';
 
-import { HttpClient } from '@lostgradient/weft';
+import {
+  HttpClient,
+  AUTHORIZATION_SCOPES as UPSTREAM_AUTHORIZATION_SCOPES,
+} from '@lostgradient/weft';
 
 import {
   AUTHORIZATION_SCOPES,

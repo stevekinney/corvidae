@@ -1,4 +1,3 @@
-import { AUTHORIZATION_SCOPES } from '@lostgradient/weft';
 /**
  * Integration coverage for `resolvePrincipal()` against REAL `serve()`
  * instances (plan §11.3: no mock server) — the three-way boot contract in
@@ -25,7 +24,7 @@ import { AUTHORIZATION_SCOPES } from '@lostgradient/weft';
  * the other integration suites without collisions.
  */
 
-import { Engine, HttpClient, serve } from '@lostgradient/weft';
+import { AUTHORIZATION_SCOPES, Engine, HttpClient, serve } from '@lostgradient/weft';
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 
 import { workflows } from '../../fixtures/workflows.ts';

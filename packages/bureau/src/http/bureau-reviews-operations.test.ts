@@ -1,6 +1,5 @@
-import { WEFT_SCOPE_VOCABULARY } from '@lostgradient/weft';
 import { createAgent, type GenerateFunction, stopWhen } from '@lostgradient/operative';
-import { Engine, workflow } from '@lostgradient/weft';
+import { WEFT_SCOPE_VOCABULARY, Engine, workflow } from '@lostgradient/weft';
 import {
   createOperationHandler,
   createOperationHandlerAuthenticator,

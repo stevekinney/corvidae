@@ -130,7 +130,8 @@ Paths are relative to `packages/weft/src/`. The split is clean: everything that 
 // src/server/handler/index.ts → src/server/handler.ts → src/index.ts.
 import {
   createOperationHandler,
-  getPrincipalOperation,
+  createGetPrincipalOperation,
+  createScopeVocabulary,
   unauthenticatedLocalAuthContext,
   type OperationHandler,
   type OperationHandlerOptions,
@@ -158,10 +159,11 @@ const create: <Host>(options: ProposedOperationHandlerOptions<Host>) => Operatio
   createOperationHandler;
 
 // A single-user host admits every request as the local principal.
+const vocabulary = createScopeVocabulary(['inventory:read']);
 const handler = create({
-  operations: [getPrincipalOperation],
+  operations: [createGetPrincipalOperation(vocabulary)],
   host: {},
-  authenticate: async () => unauthenticatedLocalAuthContext(),
+  authenticate: async () => unauthenticatedLocalAuthContext(vocabulary),
 });
 const response = await handler(new Request('http://localhost/v1/health'));
 console.log(response.status); // 200
@@ -227,7 +229,11 @@ const context: OperationContext<{ bureauId: string }, FeedHost> = {
 
 // DispatchContext<Host = unknown>: the same `host` slot, plus the registry and an optional trace.
 declare const dispatchContext: DispatchContext<FeedHost>;
-const host: FeedHost = dispatchContext.host;
+const source = dispatchContext.host;
+const host: FeedHost =
+  typeof source === 'function'
+    ? await source({ principal: dispatchContext.principal, transport: dispatchContext.transport })
+    : source;
 const transport: TransportKind = dispatchContext.transport;
 console.log(context.host.bureauFeeds.size, host, transport, dispatchContext.registry);
 console.log(dispatchContext.pipelineTrace); // optional
