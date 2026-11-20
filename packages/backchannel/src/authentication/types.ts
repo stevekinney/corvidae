@@ -1,6 +1,7 @@
 import type { AuthorizationScope } from '../authorization-scope.ts';
 import type { AuthenticatedPrincipal } from '../principal.ts';
 import type { AuthAuditSink } from './audit.ts';
+import type { CredentialVerifier } from './credential-verifiers.ts';
 
 // ---------------------------------------------------------------------------
 // JWT algorithm types
@@ -147,6 +148,8 @@ export type MTLSConfig = {
  * ```
  */
 export type AuthConfig = {
+  /** Ordered verifiers to use in place of the legacy API-key, JWT and mTLS admission checks. */
+  verifiers?: readonly CredentialVerifier[];
   /** Allowed API keys. Checked against `Authorization: Bearer <key>` and `X-API-Key` headers. */
   apiKeys?: string[];
   /** JWT verification configuration. */

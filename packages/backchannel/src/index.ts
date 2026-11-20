@@ -10,21 +10,28 @@ export {
   type AuthAuditSink,
 } from './authentication/audit.ts';
 export {
+  createApiKeyVerifier,
   createAuthenticator,
+  createJwtVerifier,
+  createMutualTlsVerifier,
   validateAuthConfig,
   type CreateAuthenticatorOptions,
+  type CredentialVerification,
+  type CredentialVerifier,
 } from './authentication/index.ts';
 export {
   createRateLimiter,
   validateRateLimitConfig,
   type RateLimitConfig,
   type RateLimitDecision,
+  type RateLimitStore,
   type RateLimiter,
 } from './authentication/rate-limiter.ts';
 export { isSensitiveHeader, redactCredential, redactHeaders } from './authentication/redaction.ts';
 export {
   createRotatingApiKeyStore,
   type ApiKeyRegistration,
+  type ApiKeyStore,
   type RotatingApiKeyStore,
 } from './authentication/rotating-api-key-store.ts';
 export type {

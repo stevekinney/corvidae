@@ -10,29 +10,23 @@
  * @module server/authentication
  */
 
-import {
-  createAdditionalScopeSet,
-  filterRecognizedScopes,
-  type AdditionalScopeSet,
-  type AuthorizationScope,
-  type PackageAuthorizationScope,
-} from '../authorization-scope.ts';
-import { principalFromJwtClaims } from '../principal.ts';
-import { tryAdmitApiKey } from './api-key.ts';
+import { createAdditionalScopeSet } from '../authorization-scope.ts';
 import { defaultAuthAuditSink, emitAuthAuditEvent, type AuthAuditSink } from './audit.ts';
 import {
-  createConstantTimeApiKeyMatcher,
-  type ConstantTimeApiKeyEntry,
-} from './constant-time-api-key.ts';
-import { importJWTKey, verifyJWT } from './crypto.ts';
+  createApiKeyVerifier,
+  createJwtVerifier,
+  createMutualTlsVerifier,
+  extractApiKey,
+  validateJwtConfig,
+  type CreateAuthenticatorOptions,
+  type CredentialVerifier,
+} from './credential-verifiers.ts';
 import {
   DEFAULT_PUBLIC_PATHS,
   normalizeRequestPathname,
   type AuthConfig,
   type Authenticator,
   type AuthResult,
-  type JWTConfig,
-  type MTLSConfig,
 } from './types.ts';
 
 export {
@@ -49,11 +43,13 @@ export {
   type RateLimitConfig,
   type RateLimitDecision,
   type RateLimiter,
+  type RateLimitStore,
 } from './rate-limiter.ts';
 export { isSensitiveHeader, redactCredential, redactHeaders } from './redaction.ts';
 export {
   createRotatingApiKeyStore,
   type ApiKeyRegistration,
+  type ApiKeyStore,
   type RotatingApiKeyStore,
 } from './rotating-api-key-store.ts';
 export {
@@ -69,32 +65,6 @@ export {
   type JWTPayload,
   type MTLSConfig,
 } from './types.ts';
-
-function extractBearerToken(request: Request): string | null {
-  const authorization = request.headers.get('Authorization');
-  if (authorization?.startsWith('Bearer ')) {
-    return authorization.slice(7);
-  }
-  return null;
-}
-
-function extractApiKey(request: Request): string | null {
-  const headerKey = request.headers.get('X-API-Key');
-  if (headerKey) return headerKey;
-  return extractBearerToken(request);
-}
-
-function validateJwtConfig(config: JWTConfig | undefined): void {
-  if (config === undefined) return;
-
-  const algorithm = config.algorithm ?? 'HS256';
-  if (algorithm.startsWith('HS') && !config.secret) {
-    throw new Error('JWT configuration requires "secret" for HMAC algorithms');
-  }
-  if ((algorithm.startsWith('RS') || algorithm.startsWith('ES')) && !config.publicKey) {
-    throw new Error('JWT configuration requires "publicKey" for RSA/ECDSA algorithms');
-  }
-}
 
 function assertAtLeastOneMethod(config: AuthConfig): void {
   const hasMethod =
@@ -120,119 +90,14 @@ function assertNoConflictingMethods(config: AuthConfig): void {
   }
 }
 
-type ApiKeyAdmissionOptions = {
-  resolver: AuthConfig['resolveApiKeyPrincipal'];
-  apiKeyEntries: ReadonlyArray<ConstantTimeApiKeyEntry<undefined>> | null;
-  defaultApiKeyScopes: ReadonlyArray<AuthorizationScope>;
-  additionalScopes: AdditionalScopeSet;
-};
-
-type AuthAttempt = {
-  explicitAuthAttempted: boolean;
-  result: AuthResult | null;
-};
-
-async function authenticateViaApiKey(
-  request: Request,
-  options: ApiKeyAdmissionOptions,
-): Promise<AuthAttempt> {
-  const presentedKey = extractApiKey(request);
-  const hasApiKeyPath = options.resolver !== undefined || options.apiKeyEntries !== null;
-  if (!presentedKey || !hasApiKeyPath) {
-    return { explicitAuthAttempted: false, result: null };
-  }
-
-  const result = await tryAdmitApiKey(
-    presentedKey,
-    options.resolver,
-    options.apiKeyEntries,
-    options.defaultApiKeyScopes,
-    options.additionalScopes,
-  );
-  return {
-    explicitAuthAttempted: true,
-    result: result === 'continue' ? null : result,
-  };
-}
-
-async function authenticateViaJwt(
-  request: Request,
-  jwtKey: CryptoKey | null,
-  jwtConfig: JWTConfig | undefined,
-  additionalScopes: AdditionalScopeSet,
-): Promise<AuthAttempt> {
-  if (!jwtKey || !jwtConfig) {
-    return { explicitAuthAttempted: false, result: null };
-  }
-
-  const token = extractBearerToken(request);
-  if (!token) {
-    return { explicitAuthAttempted: false, result: null };
-  }
-
-  if (!token.includes('.')) {
-    return { explicitAuthAttempted: true, result: null };
-  }
-
-  try {
-    const claims = await verifyJWT(token, jwtKey, jwtConfig);
-    // Shape the principal here, where this handler's registered scopes are
-    // known: every transport forwards `principal` verbatim, so scope parsing
-    // never falls back to a vocabulary shared across handlers.
-    const principal = principalFromJwtClaims(claims, { additionalScopes });
-    return {
-      explicitAuthAttempted: true,
-      result: { authenticated: true, method: 'jwt', claims, principal },
-    };
-  } catch (error) {
-    console.warn('JWT verification failed:', error instanceof Error ? error.message : error);
-    return { explicitAuthAttempted: true, result: null };
-  }
-}
-
-async function clientCertificateVerified(
-  request: Request,
-  mtlsConfig: MTLSConfig,
-  transportVerifiesClientCertificates: boolean,
-): Promise<boolean> {
-  const verify = mtlsConfig.verifyClientCertificate;
-  if (verify === undefined) return transportVerifiesClientCertificates;
-  try {
-    // Untyped hosts can return any value; only a literal `true` is evidence.
-    const verified: unknown = await verify(request);
-    return verified === true;
-  } catch (error) {
-    console.warn(
-      'Client certificate verification failed:',
-      error instanceof Error ? error.message : error,
-    );
-    return false;
-  }
-}
-
-/**
- * Options supplied by the code that owns the transport, not by `AuthConfig`.
- */
-export type CreateAuthenticatorOptions = {
-  /**
-   * Attests that the listener carrying these requests requested a client
-   * certificate and refused every connection without a verified one, so a
-   * request reaching the authenticator is evidence of a verified certificate.
-   * `serve()` sets this from the TLS options it builds; leave it unset
-   * whenever TLS terminates anywhere else.
-   */
-  transportVerifiesClientCertificates?: boolean;
-  /**
-   * Package scopes this authenticator recognizes beyond Weft's built-in
-   * vocabulary, such as `bureau.tasks:read`. They are retained from JWT
-   * `scope`, `scp`, and `permissions` claims, from `defaultApiKeyScopes`, and
-   * from the principal `resolveApiKeyPrincipal` returns; any other unknown
-   * scope, including one in the reserved `weft` namespace, is dropped. The set belongs to this
-   * authenticator alone. An entry that is not `<namespace>.<resource>:<action>`
-   * or that uses the reserved `weft` namespace rejects construction.
-   */
-  additionalScopes?: readonly PackageAuthorizationScope[];
-};
+export {
+  createApiKeyVerifier,
+  createJwtVerifier,
+  createMutualTlsVerifier,
+  type CreateAuthenticatorOptions,
+  type CredentialVerification,
+  type CredentialVerifier,
+} from './credential-verifiers.ts';
 
 /**
  * Whether TLS options built by {@link buildTLSOptions} refuse every
@@ -261,6 +126,12 @@ export function tlsOptionsVerifyClientCertificates(
  * ```
  */
 export function validateAuthConfig(config: AuthConfig): void {
+  if (config.verifiers !== undefined) {
+    if (config.verifiers.length === 0) {
+      throw new Error('AuthConfig must specify at least one authentication method');
+    }
+    return;
+  }
   validateJwtConfig(config.jwt);
   assertAtLeastOneMethod(config);
   assertNoConflictingMethods(config);
@@ -297,57 +168,47 @@ export async function createAuthenticator(
   options: CreateAuthenticatorOptions = {},
 ): Promise<Authenticator> {
   validateAuthConfig(config);
-  const additionalScopes = createAdditionalScopeSet(options.additionalScopes);
-  const transportVerifiesClientCertificates = options.transportVerifiesClientCertificates === true;
-
-  // Read everything the caller owns before the first `await`: the digests and
-  // the JWT import below are asynchronous.
-  const { apiKeys, jwt, mtls } = config;
-  const resolver = config.resolveApiKeyPrincipal;
-  const defaultApiKeyScopes = filterRecognizedScopes(
-    config.defaultApiKeyScopes ?? [],
-    additionalScopes,
-  );
+  // Validate the scope registration even when the configured verifiers do not use scopes.
+  createAdditionalScopeSet(options.additionalScopes);
   const publicPaths = new Set(config.publicPaths ?? DEFAULT_PUBLIC_PATHS);
-  const auditSink: AuthAuditSink = config.auditSink ?? defaultAuthAuditSink;
-
-  // Both start before either settles, so each reads its input synchronously.
-  const [apiKeyMatcher, jwtKey] = await Promise.all([
-    apiKeys?.length ? createConstantTimeApiKeyMatcher(apiKeys) : null,
-    jwt ? importJWTKey(jwt) : null,
-  ]);
-  const apiKeyEntries = apiKeyMatcher === null ? null : apiKeyMatcher.entries;
+  const auditSink = config.auditSink ?? defaultAuthAuditSink;
+  const verifiers =
+    config.verifiers === undefined
+      ? await legacyVerifiers(config, options)
+      : config.verifiers.map((verifier) => ({
+          method: verifier.method,
+          verify: verifier.verify.bind(verifier),
+        }));
 
   return async (request: Request): Promise<AuthResult> => {
-    // Public-path bypass is not an authentication decision — no credential is
-    // examined — so it is intentionally not audited.
     if (publicPaths.has(normalizeRequestPathname(request))) {
       return { authenticated: true, method: 'public' };
     }
 
-    const apiKeyAttempt = await authenticateViaApiKey(request, {
-      resolver,
-      apiKeyEntries,
-      defaultApiKeyScopes,
-      additionalScopes,
-    });
-    if (apiKeyAttempt.result !== null) {
-      return auditDecision(auditSink, request, apiKeyAttempt.result);
-    }
-
-    const jwtAttempt = await authenticateViaJwt(request, jwtKey, jwt, additionalScopes);
-    if (jwtAttempt.result !== null) {
-      return auditDecision(auditSink, request, jwtAttempt.result);
-    }
-
-    const explicitAuthAttempted =
-      apiKeyAttempt.explicitAuthAttempted || jwtAttempt.explicitAuthAttempted;
-    if (
-      mtls &&
-      !explicitAuthAttempted &&
-      (await clientCertificateVerified(request, mtls, transportVerifiesClientCertificates))
-    ) {
-      return auditDecision(auditSink, request, { authenticated: true, method: 'mtls' });
+    let explicitCredentialAttempted = false;
+    for (const verifier of verifiers) {
+      try {
+        const outcome = await verifier.verify(request, { explicitCredentialAttempted });
+        if (outcome.kind === 'admit') {
+          return auditDecision(
+            auditSink,
+            request,
+            {
+              ...outcome.authentication,
+              authenticated: true,
+            },
+            verifier.method,
+          );
+        }
+        if (outcome.kind === 'reject') break;
+        if (outcome.kind === 'unrecognized') explicitCredentialAttempted = true;
+      } catch (error) {
+        console.warn(
+          'Credential verification failed:',
+          error instanceof Error ? error.message : error,
+        );
+        break;
+      }
     }
 
     return auditDecision(auditSink, request, {
@@ -357,6 +218,23 @@ export async function createAuthenticator(
   };
 }
 
+async function legacyVerifiers(
+  config: AuthConfig,
+  options: CreateAuthenticatorOptions,
+): Promise<CredentialVerifier[]> {
+  // Start both async preparations before either settles so they snapshot the configuration together.
+  const apiKey =
+    config.apiKeys?.length || config.resolveApiKeyPrincipal !== undefined
+      ? createApiKeyVerifier(config, options)
+      : Promise.resolve(undefined);
+  const jwt =
+    config.jwt === undefined ? Promise.resolve(undefined) : createJwtVerifier(config.jwt, options);
+  const mtls =
+    config.mtls === undefined ? undefined : createMutualTlsVerifier(config.mtls, options);
+  const verifiers = [...(await Promise.all([apiKey, jwt])), mtls];
+  return verifiers.filter((verifier) => verifier !== undefined);
+}
+
 /**
  * Emit one audit event for a finalized authentication decision and return the
  * result unchanged. Centralizes the success/failure mapping so every terminal
@@ -364,11 +242,16 @@ export async function createAuthenticator(
  * credential in cleartext — only its one-way fingerprint, derived inside
  * `emitAuthAuditEvent`.
  */
-function auditDecision(sink: AuthAuditSink, request: Request, result: AuthResult): AuthResult {
+function auditDecision(
+  sink: AuthAuditSink,
+  request: Request,
+  result: AuthResult,
+  verifierMethod?: string,
+): AuthResult {
   if (result.authenticated) {
     emitAuthAuditEvent(sink, {
       outcome: 'success',
-      method: result.method,
+      method: verifierMethod ?? result.method,
       subject: subjectFromResult(result),
       request,
     });
