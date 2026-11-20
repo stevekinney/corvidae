@@ -128,45 +128,11 @@ describe('Turborepo cache in the workflows', () => {
     expect(restore).toContain('RUNNER_OS');
     expect(save).toContain('path: .turbo/cache');
     expect(save).toContain('key: ${{ env.TURBO_CACHE_PREFIX }}${{ github.sha }}');
-    // Pinned by full commit SHA, as every action is. The remote cache token belongs to the
-    // workflow (below), never to the action, which a fork's pull request runs without secrets.
+    // Pinned by full commit SHA, as every action is. The remote cache credentials belong to the
+    // workflows (below), never to the action.
     for (const text of [restore, save]) {
       expect(text).toMatch(/uses: actions\/cache\/(restore|save)@[0-9a-f]{40} # v\d/u);
       expect(text).not.toMatch(/TURBO_TOKEN|TURBO_TEAM|TURBO_API/u);
-    }
-  });
-
-  test('every workflow that runs Turborepo shares the remote cache with developer machines', () => {
-    const turbo = JSON.parse(readFileSync(resolve(root, 'turbo.json'), 'utf8')) as {
-      remoteCache?: { teamSlug?: string };
-    };
-    // The team lives in `turbo.json`, so a machine that ran `turbo login` reaches the same cache
-    // as CI and as `with-turborepo-cache`, with no environment of its own.
-    expect(turbo.remoteCache?.teamSlug).toBe('kinney');
-    const workflows = new Set(
-      jobs()
-        .filter(runsTurbo)
-        .map((job) => job.workflow),
-    );
-    expect(workflows.size).toBeGreaterThan(0);
-    for (const workflow of workflows) {
-      const text = readFileSync(resolve(workflowDirectory, workflow), 'utf8');
-      const environment = /\nenv:\n((?: {2}.*\n)+)/u.exec(text)?.[1] ?? '';
-      expect({
-        workflow,
-        token: environment.includes('  TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}\n'),
-      }).toEqual({
-        workflow,
-        token: true,
-      });
-      // A run-scoped override would split CI's entries away from every other machine's.
-      expect({
-        workflow,
-        override: /TURBO_(TEAM|TEAMID|API|CACHE|REMOTE_ONLY)\b/u.test(text),
-      }).toEqual({
-        workflow,
-        override: false,
-      });
     }
   });
 
@@ -257,5 +223,59 @@ describe('Turborepo cache in the workflows', () => {
     expect(turbo.tasks['//#ci:browser-fixtures']?.env).toEqual(
       expect.arrayContaining(['CINDER_VISUAL_DIFF', 'CINDER_TEST_COMPONENTS']),
     );
+  });
+});
+
+describe('the remote cache shared with the owner', () => {
+  const turbo = JSON.parse(readFileSync(resolve(root, 'turbo.json'), 'utf8')) as {
+    tasks: Record<string, { cache?: boolean; env?: string[] }>;
+  };
+  const workflowsRunningTurbo = [
+    ...new Set(
+      jobs()
+        .filter(runsTurbo)
+        .map((job) => job.workflow),
+    ),
+  ];
+
+  test('every workflow that runs Turborepo hands it the token and team', () => {
+    const missing = workflowsRunningTurbo.filter((workflow) => {
+      const text = readFileSync(resolve(workflowDirectory, workflow), 'utf8');
+      return (
+        !text.includes('TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}') ||
+        !text.includes('TURBO_TEAM: ${{ vars.TURBO_TEAM }}')
+      );
+    });
+    expect(missing).toEqual([]);
+  });
+
+  test('a call to a workflow that runs Turborepo passes the secrets on', () => {
+    const missing: string[] = [];
+    for (const workflow of readdirSync(workflowDirectory).filter((name) => name.endsWith('.yml'))) {
+      const text = readFileSync(resolve(workflowDirectory, workflow), 'utf8');
+      for (const match of text.matchAll(
+        /uses: \.\/\.github\/workflows\/([\w.-]+)\n([\s\S]*?)\n\n/gu,
+      ))
+        if (workflowsRunningTurbo.includes(match[1]!) && !match[2]!.includes('secrets: inherit'))
+          missing.push(`${workflow} -> ${match[1]}`);
+    }
+    expect(missing).toEqual([]);
+  });
+
+  // `turbo.json` names the team too, so a machine that ran `turbo login` reaches the same cache
+  // with no environment of its own. CI's `TURBO_TEAM` must name the same team, since an empty or
+  // different value wins over the file.
+  test('turbo.json names the team every machine shares', () => {
+    const configuration = turbo as { remoteCache?: { teamSlug?: string } };
+    expect(configuration.remoteCache?.teamSlug).toBe('kinney');
+  });
+
+  // Shared across platforms on purpose (owner decision, 2026-11-19): no task hashes the platform,
+  // so a macOS run and a Linux CI run replay each other's results.
+  test('no task hashes a platform discriminator', () => {
+    const keyed = Object.entries(turbo.tasks)
+      .filter(([, task]) => task.env?.some((name) => /PLATFORM/u.test(name)) ?? false)
+      .map(([name]) => name);
+    expect(keyed).toEqual([]);
   });
 });
