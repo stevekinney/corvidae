@@ -13,6 +13,13 @@ import { authorizeWorkspaceOperation } from '../workspace-authorization.ts';
  * exist, because `bureau.workflows.*` is the only way to change it. `create` makes a schedule the
  * caller owns, so it needs no scope; the owner comes from the caller's credential.
  *
+ * A schedule runs one target (COR-2546): a catalog agent, or a workflow that
+ * `bureau.workflows.start` could start (a code workflow a plugin contributed, or a workflow file),
+ * which the caller needs the same authorization to name. A workflow schedule is owned by its
+ * creator like an agent schedule, but its owner is kept in the Weft schedule's `metadata`, because
+ * the workflow receives its input as the caller wrote it. The view's `target` says which kind a
+ * schedule is.
+ *
  * Every schedule carries a `revision` that Weft keeps: `1` when it is created, then one more for
  * each change to the schedule itself (an update, a pause, a resume, a cancel; the automatic pause
  * after a timer failure counts, a fire or a call that changes nothing does not). Each write takes
@@ -44,13 +51,18 @@ import {
   BureauError,
   ScheduleLocatorUnavailableError,
   UnknownScheduleAgentError,
+  UnknownScheduleWorkflowError,
 } from '../../bureau-errors.ts';
+import { bureauNameOf } from '../../namespaced-identifier.ts';
+import { AGENT_SCHEDULE_WORKFLOW_TYPE } from '../../workflow-schedule.ts';
 import { scheduleInputPreview } from '../../schedule-input-preview.ts';
 import type { BureauSchedules } from '../../bureau-types/schedules.ts';
-import type { WorkflowScheduleBlocker } from '../../workflow-runtime.ts';
+import { WorkflowInputInvalidError } from '../../workflow-schema.ts';
+import type { BureauWorkflows, WorkflowScheduleBlocker } from '../../workflow-runtime.ts';
 import type { BureauScope } from '../bureau-scopes.ts';
 import { type BureauOwnershipHost, ownerOfPrincipal } from '../owner-predicate.ts';
 import type { BureauAgentVisibilityHost } from './deployment-operations.ts';
+import { mayAccessWorkflows } from './workflows-operations.ts';
 import {
   DEFAULT_PAGE_LIMIT,
   pageFields,
@@ -63,9 +75,12 @@ import { dryRunField, dryRunResult, effect, orDryRun } from './dry-run.ts';
 /** What the schedule operations read from the handler's `host`. */
 export type BureauSchedulesOperationHost = BureauOwnershipHost &
   BureauAgentVisibilityHost & {
+    /** The workflows a schedule may run, judged as `bureau.workflows.start` judges them. */
+    readonly workflows: BureauWorkflows | undefined;
     readonly schedules: Pick<
       BureauSchedules,
       | 'create'
+      | 'createWorkflow'
       | 'get'
       | 'list'
       | 'pause'
@@ -104,6 +119,16 @@ const scheduleViewSchema = z.object({
   owner: z.string(),
   /** The catalog agent each fire runs; `null` for a schedule that runs none, a workflow file's. */
   agentName: z.string().nullable(),
+  /**
+   * What each fire runs (COR-2546): `{ kind: 'agent', agentName }` for a catalog agent, or
+   * `{ kind: 'workflow', workflowType }` for a workflow, named as `bureau.workflows.*` names it (the
+   * `plugin:name` of a code workflow, the identifier of a workflow file), which is not always the
+   * engine's `workflowType` below.
+   */
+  target: z.discriminatedUnion('kind', [
+    z.object({ kind: z.literal('agent'), agentName: z.string() }),
+    z.object({ kind: z.literal('workflow'), workflowType: z.string() }),
+  ]),
   /** The start of the text each fire sends, at most 500 characters; `null` when the schedule sends none. */
   inputPreview: z.string().nullable(),
   /** Whether every fire continues one chat; `false` when each fire is a fresh one, and for a workflow file's schedule. The chat's own id is never served. */
@@ -179,6 +204,10 @@ function viewOf(
     id: summary.id,
     owner,
     agentName: agentName ?? null,
+    target:
+      agentName === undefined
+        ? { kind: 'workflow', workflowType: bureauNameOf(summary.workflowType) }
+        : { kind: 'agent', agentName },
     inputPreview: redactPrivateProjection ? null : (inputPreview ?? null),
     continuesChat: redactPrivateProjection ? false : (continuesChat ?? false),
     workflowType: summary.workflowType,
@@ -273,6 +302,23 @@ function faultOf(error: unknown, scheduleId: string): never {
     } satisfies OperationFault;
   }
   if (error instanceof UnknownScheduleAgentError) throw resourceNotFound('agent', error.agentName);
+  if (error instanceof UnknownScheduleWorkflowError) {
+    throw resourceNotFound('workflow', error.workflowType);
+  }
+  // The input a workflow schedule is given breaks the workflow's schema, as a start's would.
+  if (error instanceof WorkflowInputInvalidError) {
+    throw {
+      code: 'InvalidParams',
+      message: error.message,
+      data: {
+        issues: error.issues.map((issue) => ({
+          path: ['workflowInput', ...issue.path],
+          message: issue.message,
+          code: 'custom',
+        })),
+      },
+    } satisfies OperationFault;
+  }
   if (error instanceof BureauError) {
     if (error.code === 'NOT_FOUND') throw resourceNotFound('schedule', scheduleId);
     if (error.code === 'BAD_REQUEST') throw invalidParams('schedule', error.message);
@@ -471,14 +517,102 @@ export const schedulesGetOperation = defineOperation<
   },
 });
 
+/** Which workflow-only and agent-only fields a call names, for the one-target check of `create` and `update`. */
+function refuseMixedTarget(
+  input: {
+    readonly agentName?: string | undefined;
+    readonly workflowType?: string | undefined;
+    readonly workflowInput?: unknown;
+    readonly input?: string | undefined;
+    readonly sessionId?: string | null | undefined;
+    readonly continueChat?: boolean | undefined;
+  },
+  agentOnly: readonly string[],
+): void {
+  if (input.agentName !== undefined && input.workflowType !== undefined) {
+    throw invalidParams('workflowType', 'Name one target: `agentName` or `workflowType`, not both');
+  }
+  if (input.workflowType !== undefined || input.workflowInput !== undefined) {
+    const named = agentOnly.filter((field) => Reflect.get(input, field) !== undefined);
+    if (named.length > 0) {
+      throw invalidParams(
+        named[0]!,
+        `\`${named.map(String).join('`, `')}\` apply only to an agent; a workflow takes \`workflowInput\``,
+      );
+    }
+  }
+}
+
+/**
+ * The workflows a caller may start schedules of: the authorization `bureau.workflows.start` applies,
+ * and a workflow the caller could not start is as unknown to it as one that is not there.
+ */
+function workflowsForSchedule(
+  host: BureauSchedulesOperationHost,
+  principal: Principal,
+  workflowType: string,
+): void {
+  const workspaceMember =
+    principal.method !== 'unauthenticated' && principal.workspace !== undefined;
+  if (
+    !mayAccessWorkflows(
+      host,
+      principal,
+      workspaceMember ? 'bureau.workflows:read' : 'bureau.workflows:write',
+    )
+  ) {
+    throw resourceNotFound('workflow', workflowType);
+  }
+  if (host.workflows === undefined) {
+    throw {
+      code: 'UnsupportedCapability',
+      message: 'This Bureau has no workflow directory, so it has no workflows',
+      data: { capability: 'workflow-directory' },
+    } satisfies OperationFault;
+  }
+  if (workspaceMember) {
+    throw {
+      code: 'Conflict',
+      message: 'A workspace Bureau does not schedule workflows',
+      data: { reason: 'workflow-schedules-unavailable-in-workspace' },
+    } satisfies OperationFault;
+  }
+}
+
 const createInput = z.object({
-  agentName: z.string().min(1).max(256).describe('The catalog agent each fire runs.'),
+  agentName: z
+    .string()
+    .min(1)
+    .max(256)
+    .optional()
+    .describe(
+      'The catalog agent each fire runs. Name exactly one target: `agentName` or `workflowType`.',
+    ),
+  workflowType: z
+    .string()
+    .min(1)
+    .max(256)
+    .optional()
+    .describe(
+      'The workflow each fire starts: a `plugin:name` code workflow, or a ready, unpaused workflow file, named as `bureau.workflows.start` names it. A code workflow receives `workflowInput` as its input, and a workflow file the trigger envelope `{ kind: "schedule", scheduleId, input }` with `workflowInput` as its `input`. Name exactly one target: `agentName` or `workflowType`.',
+    ),
+  workflowInput: z
+    .json()
+    .optional()
+    .describe(
+      'The JSON input each fire starts the workflow with, which its `inputSchema` must accept; `null` when omitted. Only with `workflowType`.',
+    ),
   spec: z
     .string()
     .min(1)
     .max(256)
     .describe('A cron expression, or a duration such as `30s`, `6h`, or `1d`.'),
-  input: z.string().min(1).max(100_000).describe('The text delivered to the agent each fire.'),
+  input: z
+    .string()
+    .min(1)
+    .max(100_000)
+    .optional()
+    .describe('The text delivered to the agent each fire. Required with `agentName`.'),
   description: z.string().max(2_000).optional().describe('A description of the schedule.'),
   sessionId: z
     .string()
@@ -511,7 +645,7 @@ export const schedulesCreateOperation = defineOperation<
   mcpExposable: false,
   summary: 'Create a schedule',
   description:
-    'Creates a schedule that runs the catalog agent `agentName` with the text `input` on `spec`, a cron expression or a duration. The caller owns it, so no scope is needed; every fire is a task the owner can list, read, observe, and cancel. `sessionId` makes each fire continue one session, and `continueChat: true` starts a new chat for it that the Bureau names itself (`overlap: "allow"` is refused with either), and `overlap` defaults to `skip`. An agent that is not in the catalog is `NotFound`; a `spec` that is not a cadence, a `timeZone` that is not an IANA zone (or is given with an interval, where only `UTC` is accepted), or a combination Bureau refuses, is `InvalidParams`. Answers the schedule’s view, whose `revision` is `1`.',
+    'Creates a schedule that runs one target on `spec`, a cron expression or a duration: the catalog agent `agentName` with the text `input` (required with it), or the workflow `workflowType` with the JSON `workflowInput`. Naming both targets, or neither, is `InvalidParams`, as are `input`, `sessionId`, and `continueChat` with a workflow and `workflowInput` with an agent. A workflow is a `plugin:name` code workflow, which receives `workflowInput` as its input, or a ready, unpaused workflow file, which receives the trigger envelope `{ kind: "schedule", scheduleId, input }` with `workflowInput` as its `input`, as its own schedule’s fires do; the caller must be able to start it with `bureau.workflows.start`, and a workflow that is not there, or that the caller could not start, is `NotFound`, while an input its schema refuses is `InvalidParams`. A workspace Bureau does not schedule workflows (`Conflict`). The caller owns the schedule, so no scope is needed; the owner is kept in the schedule’s metadata, never in what the workflow receives; every fire of an agent is a task the owner can list, read, observe, and cancel. `sessionId` makes each fire continue one session, and `continueChat: true` starts a new chat for it that the Bureau names itself (`overlap: "allow"` is refused with either), and `overlap` defaults to `skip`. An agent that is not in the catalog is `NotFound`; a `spec` that is not a cadence, a `timeZone` that is not an IANA zone (or is given with an interval, where only `UTC` is accepted), or a combination Bureau refuses, is `InvalidParams`. Answers the schedule’s view, whose `revision` is `1`.',
   destructive: true,
   tags: ['Schedules'],
   inputSchema: createInput,
@@ -520,6 +654,7 @@ export const schedulesCreateOperation = defineOperation<
     'InvalidParams',
     'Forbidden',
     'NotFound',
+    'Conflict',
     'Unavailable',
     'UnsupportedCapability',
   ],
@@ -535,6 +670,38 @@ export const schedulesCreateOperation = defineOperation<
         message: 'A schedule needs an owner, and this credential names none',
         data: { reason: 'no owner of record' },
       } satisfies OperationFault;
+    }
+    refuseMixedTarget(input, ['input', 'sessionId', 'continueChat']);
+    if (input.workflowType !== undefined) {
+      workflowsForSchedule(host, principal, input.workflowType);
+      assertKnownTimeZone(input.timeZone);
+      try {
+        const summary = await host.schedules.createWorkflow({
+          workflowType: input.workflowType,
+          spec: input.spec,
+          ...(input.workflowInput === undefined ? {} : { workflowInput: input.workflowInput }),
+          ...(input.description === undefined ? {} : { description: input.description }),
+          ...(input.overlap === undefined ? {} : { overlap: input.overlap }),
+          ...(input.timeZone === undefined ? {} : { timeZone: input.timeZone }),
+          principal: owner,
+        });
+        if (summary === undefined) throw unsupported();
+        return viewOf(summary, owner, undefined, undefined, false, undefined, principal);
+      } catch (error) {
+        return faultOf(error, input.workflowType);
+      }
+    }
+    if (input.agentName === undefined) {
+      throw invalidParams('agentName', 'Name one target: `agentName` or `workflowType`');
+    }
+    if (input.input === undefined) {
+      throw invalidParams(
+        'input',
+        '`input`, the text each fire sends, is required with `agentName`',
+      );
+    }
+    if (input.workflowInput !== undefined) {
+      throw invalidParams('workflowInput', '`workflowInput` applies only with `workflowType`');
     }
     // An agent the caller may not name (COR-1904) is as unknown to it as one the catalog lacks.
     if (
@@ -846,7 +1013,7 @@ export const schedulesRunNowOperation = defineOperation<
   mcpExposable: false,
   summary: 'Run a schedule now',
   description:
-    'Starts one run of a schedule now, under its overlap policy, and answers what the policy did: `started` (with the task it started as), `queued` behind the running one, or `skipped` because a run was still going and the policy is `skip`. The task’s origin is `schedule` with `manual: true`, and it belongs to the schedule’s owner. The run is not a fire of the cadence: the schedule’s `nextFireAt`, `lastFireAt`, and `revision` do not change. A paused schedule can be run; a cancelled one is a `Conflict`. Requires `bureau.schedules:write` unless the caller owns the schedule; anyone else is answered `NotFound`, as is the schedule of a workflow file, which only `bureau.workflows.*` changes.',
+    'Starts one run of a schedule now, under its overlap policy, and answers what the policy did: `started` (with the task it started as), `queued` behind the running one, or `skipped` because a run was still going and the policy is `skip`. The task’s origin is `schedule` with `manual: true`, and it belongs to the schedule’s owner, and so does the run of a schedule a caller made for a workflow (the owner is read from the schedule’s metadata, never the deployment’s); a workflow that can no longer be started (its file was deleted or paused) makes the schedule `NotFound` and starts nothing. The run is not a fire of the cadence: the schedule’s `nextFireAt`, `lastFireAt`, and `revision` do not change. A paused schedule can be run; a cancelled one is a `Conflict`. Requires `bureau.schedules:write` unless the caller owns the schedule; anyone else is answered `NotFound`, as is the schedule of a workflow file, which only `bureau.workflows.*` changes.',
   destructive: true,
   tags: ['Schedules'],
   inputSchema: runNowInput,
@@ -965,6 +1132,20 @@ const updateInput = z.object({
     .max(256)
     .optional()
     .describe('The catalog agent each fire runs from now on; left as it was when omitted.'),
+  workflowType: z
+    .string()
+    .min(1)
+    .max(256)
+    .optional()
+    .describe(
+      'The workflow each fire starts from now on, judged as `bureau.schedules.create` judges it; left as it was when omitted. Given to a schedule that runs an agent, it changes the schedule to run the workflow.',
+    ),
+  workflowInput: z
+    .json()
+    .optional()
+    .describe(
+      'The JSON input the workflow receives from now on, which its `inputSchema` must accept; `null` is a value. Left as it was when omitted, except that a different `workflowType` starts with `null`.',
+    ),
   input: z
     .string()
     .min(1)
@@ -1000,20 +1181,43 @@ export const schedulesUpdateOperation = defineOperation<
   authorize: authorizeWorkspaceOperation('bureau.schedules.update'),
   mcpExposable: false,
   summary:
-    'Change a schedule’s cadence, description, overlap policy, time zone, agent, text, or session',
-  description: `Replaces a schedule’s cadence with \`spec\` (a cron expression or a duration; an interval counts from now), and changes its \`description\`, \`overlap\`, and \`timeZone\` when they are given (a zone left out is kept; an unknown one, or one other than \`UTC\` given with an interval, is \`InvalidParams\` on \`timeZone\`). It also changes the run each fire starts when it is named: \`agentName\` (a catalog agent; one that is not there is \`NotFound\`), \`input\` (the text each fire sends), and \`sessionId\` (the session each fire continues, or \`null\` for a fresh one each time). What is left out is kept, the owner is never changed, and \`overlap: "allow"\` is refused for a schedule with a recurring session. An update always counts as a change. ${STALE_NOTE}`,
+    'Change a schedule’s cadence, description, overlap policy, time zone, target, text, workflow input, or session',
+  description: `Replaces a schedule’s cadence with \`spec\` (a cron expression or a duration; an interval counts from now), and changes its \`description\`, \`overlap\`, and \`timeZone\` when they are given (a zone left out is kept; an unknown one, or one other than \`UTC\` given with an interval, is \`InvalidParams\` on \`timeZone\`). It also changes the run each fire starts when it is named: \`agentName\` (a catalog agent; one that is not there is \`NotFound\`), \`input\` (the text each fire sends), and \`sessionId\` (the session each fire continues, or \`null\` for a fresh one each time). \`workflowType\` and \`workflowInput\` change a schedule to start a workflow, or the workflow it starts, as \`bureau.schedules.create\` describes them; the workflow is judged as \`bureau.workflows.start\` judges it, so one that is not there or that the caller could not start is \`NotFound\`. A schedule changes between an agent and a workflow in one write with the new cadence, fenced by \`expectedRevision\`: to a workflow with \`workflowType\` (and \`workflowInput\`; a different workflow starts with \`null\` when it is left out), and to an agent with \`agentName\` and its \`input\`. \`workflowType\` and \`workflowInput\` are refused (\`InvalidParams\`) with \`agentName\`, \`input\`, \`sessionId\`, and \`continueChat\`. What is left out is kept, the owner is never changed, and \`overlap: "allow"\` is refused for a schedule with a recurring session. An update always counts as a change. ${STALE_NOTE}`,
   destructive: true,
   tags: ['Schedules'],
   inputSchema: updateInput,
   outputSchema: receiptSchema,
-  producibleFaults: ['InvalidParams', 'NotFound', 'StaleRevision', 'UnsupportedCapability'],
+  producibleFaults: [
+    'InvalidParams',
+    'NotFound',
+    'Conflict',
+    'StaleRevision',
+    'UnsupportedCapability',
+  ],
   access: { kind: 'authenticated' },
   discoverable: true,
   transports,
   unknownKeyPolicy,
   invoke: async ({ input, host, principal }) => {
     await ownerFor(host, principal, input.scheduleId, 'bureau.schedules:write');
+    refuseMixedTarget(input, ['input', 'sessionId', 'continueChat']);
     assertKnownTimeZone(input.timeZone);
+    // A workflow target is judged as `bureau.workflows.start` judges it, for the one that is named
+    // and for a `workflowInput` given to the workflow a schedule already runs.
+    if (input.workflowType !== undefined) {
+      workflowsForSchedule(host, principal, input.workflowType);
+    } else if (input.workflowInput !== undefined) {
+      const stored = await host.schedules.get(input.scheduleId);
+      if (stored === null || stored === undefined) {
+        throw resourceNotFound('schedule', input.scheduleId);
+      }
+      // A schedule that runs an agent names no workflow to judge: the update answers it as a bad
+      // request, whatever the caller may start.
+      const workflowType = bureauNameOf(stored.workflowType);
+      if (workflowType !== AGENT_SCHEDULE_WORKFLOW_TYPE) {
+        workflowsForSchedule(host, principal, workflowType);
+      }
+    }
     // An agent the caller may not name (COR-1904) is as unknown to it as one the catalog lacks.
     if (
       input.agentName !== undefined &&
@@ -1027,6 +1231,8 @@ export const schedulesUpdateOperation = defineOperation<
         input.scheduleId,
         {
           spec: input.spec,
+          ...(input.workflowType === undefined ? {} : { workflowType: input.workflowType }),
+          ...(input.workflowInput === undefined ? {} : { workflowInput: input.workflowInput }),
           ...(input.description === undefined ? {} : { description: input.description }),
           ...(input.overlap === undefined ? {} : { overlap: input.overlap }),
           ...(input.timeZone === undefined ? {} : { timeZone: input.timeZone }),

@@ -46,6 +46,7 @@ const DAILY_SUMMARY: BureauSchedule = {
   id: 'daily-summary',
   owner: 'anonymous:local',
   agentName: 'assistant',
+  target: { kind: 'agent', agentName: 'assistant' },
   inputPreview: 'Summarize what happened yesterday.',
   continuesChat: false,
   workflowType: 'agentRun',

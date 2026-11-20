@@ -250,7 +250,7 @@ Every write to a workflow file that changed it is appended to the audit trail, w
 
 ## Owner
 
-Every workflow file belongs to the deployment's owner of record (`anonymous:local` in Interborough), and the file has no owner field: an `owner` key is an unknown key and makes the file `invalid`, which this Bureau cannot tell from a key a newer Bureau added, so it treats the file as unrecognized (see the problem codes). An `agent` step starts its run as that owner. Bureau's `ownerOf` resolves a workflow's schedule, and any instance of a workflow file, to that owner, so `bureau.schedules.*`, `bureau.workflows.runs.list`, and `bureau.workflows.runs.get` apply the owner predicate to them.
+Every workflow file belongs to the deployment's owner of record (`anonymous:local` in Interborough), and the file has no owner field: an `owner` key is an unknown key and makes the file `invalid`, which this Bureau cannot tell from a key a newer Bureau added, so it treats the file as unrecognized (see the problem codes). An `agent` step starts its run as that owner. Bureau's `ownerOf` resolves a workflow file's schedule, and any instance of a workflow file, to that owner, except an instance that a schedule a caller made for a workflow fired, which belongs to that schedule's owner (COR-2546), so `bureau.schedules.*`, `bureau.workflows.runs.list`, and `bureau.workflows.runs.get` apply the owner predicate to them.
 
 ## Operations
 

@@ -1520,8 +1520,35 @@ describe('createAuditTrail', () => {
       expect(createdRecords[0]?.detail).toEqual({
         scheduleId: 'schedule-created-1',
         agentName: 'researcher',
+        target: { kind: 'agent', agentName: 'researcher' },
         spec: { every: '1h' },
         sessionId: 'session-1',
+      });
+
+      trail.dispose();
+    });
+
+    it('sinks the schedule.created of a schedule of a workflow with its target and no agentName (COR-2546)', async () => {
+      const kv = textValueStore(new MemoryStorage());
+      const { bureau, emit } = createStubBureau();
+      const trail = createAuditTrail(bureau, kv);
+
+      emit(
+        new AgentScheduledEvent({
+          scheduleId: 'schedule-created-2',
+          workflowType: 'kit:echo',
+          spec: { every: '1h' },
+        }),
+      );
+      // load-proof: the work this lets finish runs on in-memory storage and doubles and settles through promise continuations only, so a microtask drain completes it (checked by replacing the turn with one); no timer or I/O is pending
+      await yieldToPortableEventLoop();
+
+      const createdRecords = await trail.query({ runId: 'schedule:schedule-created-2' });
+      expect(createdRecords).toHaveLength(1);
+      expect(createdRecords[0]?.detail).toEqual({
+        scheduleId: 'schedule-created-2',
+        target: { kind: 'workflow', workflowType: 'kit:echo' },
+        spec: { every: '1h' },
       });
 
       trail.dispose();

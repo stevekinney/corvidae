@@ -15,6 +15,7 @@ export type SharedScheduleRestFields = {
   readonly jitter: unknown;
   readonly timeZone: unknown;
   readonly revisionPolicy: unknown;
+  readonly metadata: unknown;
 };
 
 function isJsonObjectLikeRecord(value: unknown): value is Record<string, unknown> {
@@ -76,5 +77,6 @@ export function extractSharedScheduleRestFields(
     jitter: record['jitter'],
     timeZone: record['timeZone'],
     revisionPolicy: record['revisionPolicy'],
+    metadata: record['metadata'],
   };
 }
