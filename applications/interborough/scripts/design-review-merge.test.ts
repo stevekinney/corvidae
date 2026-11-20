@@ -53,8 +53,18 @@ describe('schemeGaps', () => {
     expect(gaps[0]).toContain('no dark capture');
   });
 
-  test('has no gap when a run captured one scheme only', () => {
-    expect(schemeGaps([entry(), entry({ state: 'b', viewport: 'screens/b.png' })])).toEqual([]);
+  test('has no gap when a run asked for one scheme only', () => {
+    expect(
+      schemeGaps([entry(), entry({ state: 'b', viewport: 'screens/b.png' })], ['light']),
+    ).toEqual([]);
+  });
+
+  test('names a requested scheme that captured nothing, as when its server failed to start', () => {
+    const gaps = schemeGaps(
+      [entry(), entry({ state: 'b', viewport: 'screens/b.png' })],
+      ['light', 'dark'],
+    );
+    expect(gaps).toEqual(['no dark capture: every dark shard captured nothing']);
   });
 });
 

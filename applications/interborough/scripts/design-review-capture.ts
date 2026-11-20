@@ -535,7 +535,13 @@ export async function captureDesignReview(
 /** Whether any listed specification has a test whose title path the filter matches (all do without one). */
 function shardHasTests(options: Options): boolean {
   if (options.grep === undefined) return options.specifications.length > 0;
-  const filter = new RegExp(options.grep);
+  let filter: RegExp;
+  try {
+    filter = new RegExp(options.grep);
+  } catch {
+    // A pattern JavaScript cannot read is not ruled out here: Playwright runs and reports it.
+    return options.specifications.length > 0;
+  }
   // A title written as a template (`${view} is ${state}…`) is only known once it runs, so it may be
   // one the filter reaches: only a title that is plain text can be ruled out from the source.
   return options.specifications.some((specification) =>

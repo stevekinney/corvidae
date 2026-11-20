@@ -55,16 +55,23 @@ function screenKey(entry: MergedEntry): string {
 
 /**
  * The screens one scheme has and the other lacks, as readable names with the scheme they are
- * missing from. Empty when the run captured one scheme only.
+ * missing from. A scheme the run asked for and captured nothing of is a gap of its own; with one
+ * scheme asked for there is nothing to compare.
  */
-export function schemeGaps(entries: readonly MergedEntry[]): string[] {
+export function schemeGaps(
+  entries: readonly MergedEntry[],
+  schemes: readonly string[] = ['light', 'dark'],
+): string[] {
   const light = new Set(
     entries.filter((entry) => entry.colorScheme === 'light').map((entry) => screenKey(entry)),
   );
   const dark = new Set(
     entries.filter((entry) => entry.colorScheme === 'dark').map((entry) => screenKey(entry)),
   );
-  if (light.size === 0 || dark.size === 0) return [];
+  if (!schemes.includes('light') || !schemes.includes('dark')) return [];
+  if (light.size === 0 && dark.size === 0) return [];
+  if (light.size === 0) return ['no light capture: every light shard captured nothing'];
+  if (dark.size === 0) return ['no dark capture: every dark shard captured nothing'];
   const gaps: string[] = [];
   for (const [have, lack, missing] of [
     [light, dark, 'dark'],
@@ -177,7 +184,7 @@ export async function mergeShards(options: {
   for (const [path, count] of duplicatePaths(entries)) {
     problems.push(`${path} is claimed by ${String(count)} captures`);
   }
-  for (const gap of schemeGaps(entries)) problems.push(gap);
+  for (const gap of schemeGaps(entries, options.schemes)) problems.push(gap);
   const geometry = await auditGeometry(options.out);
   const result: MergeResult = {
     captures: entries.length,

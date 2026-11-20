@@ -969,6 +969,16 @@ describe('captureDesignReview', () => {
     expect(summary.grep).toBeNull();
   });
 
+  test('runs a shard whose --grep JavaScript cannot read, rather than throwing', async () => {
+    const { environment } = standIn({ manifestLines: 2 });
+    expect(
+      await captureDesignReview(
+        ['--out', directory, '--scheme', 'light', '--shard', '1/6', '--grep', '('],
+        environment,
+      ),
+    ).toBe(0);
+  });
+
   test('answers 1 when nothing was captured', async () => {
     const { environment } = standIn({ manifestLines: 0 });
     expect(await captureDesignReview(['--out', directory, '--scheme', 'dark'], environment)).toBe(
