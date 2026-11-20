@@ -450,6 +450,27 @@ const values = await (async () => {
     integrationTree: releaseRequest.integrationTree,
     environment: Bun.version,
   }).ok;
+  const sameArchive = reuseLocalEvidence(releaseEvidence, releaseRequest, fixture);
+  const replacementArchive = 'replacement.tar.gz';
+  const replacementBytes = 'different archive for the same source revision';
+  writeFileSync(join(fixture, replacementArchive), replacementBytes);
+  const replacementArchiveEvidence = reuseLocalEvidence(
+    releaseEvidence,
+    {
+      ...releaseRequest,
+      localRuns: [
+        {
+          ...releaseRun!,
+          installedRelease: {
+            ...releaseRun!.installedRelease,
+            archivePath: replacementArchive,
+            archiveDigest: createHash('sha256').update(replacementBytes).digest('hex'),
+          },
+        },
+      ],
+    },
+    fixture,
+  );
   unlinkSync(releaseReceipt);
   const wrongReleaseEvidence = collectLocalEvidence(
     releaseRequest,
@@ -510,6 +531,8 @@ const values = await (async () => {
     releaseEvidence,
     releaseValidation,
     wrongReleaseEvidence,
+    sameArchive,
+    replacementArchiveEvidence,
     mismatchedReleaseInvocations,
     mismatchedReleaseError,
     reportDigest: createHash('sha256').update(readFileSync(report)).digest('hex'),
@@ -588,6 +611,10 @@ test('collects a fresh installed-release receipt only when its declared archive 
   expect(values.releaseValidation).toBe(true));
 test('rejects an altered installed-release receipt through local collection', () =>
   expect(values.wrongReleaseEvidence.records[0]?.status).toBe('fail'));
+test('reuses installed release evidence only for the original archive obligation', () => {
+  expect(values.sameArchive.records[0]?.status).toBe('reused-pass');
+  expect(values.replacementArchiveEvidence.records[0]?.status).toBe('pending');
+});
 test('rejects release source not equal to the candidate before launch', () => {
   expect(values.mismatchedReleaseError).toContain('invalid or stale receipt');
   expect(values.mismatchedReleaseInvocations).toBe(0);

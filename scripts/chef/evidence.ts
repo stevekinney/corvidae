@@ -31,6 +31,7 @@ export interface EvidenceRecord {
   reports?: { path: string; digest: string }[] | undefined;
   artifacts?: { path: string; digest: string }[] | undefined;
   localRoot?: string | undefined;
+  installedReleaseIdentity?: string | undefined;
   provider?: {
     runId: number;
     attempt: number;
@@ -156,6 +157,27 @@ export function compareInstalledReleaseReceipt(
   return problems;
 }
 
+interface InstalledReleaseRun extends InstalledReleaseReceiptExpectation {
+  receiptPath: string;
+  archivePath: string;
+}
+
+function installedReleaseIdentity(release: InstalledReleaseRun): string {
+  return sha256(
+    JSON.stringify([
+      release.sourceRevision,
+      release.target,
+      release.archivePath,
+      release.archiveDigest,
+      release.receiptPath,
+      release.configuration.map(({ path, sha256: configurationDigest }) => [
+        path,
+        configurationDigest,
+      ]),
+    ]),
+  );
+}
+
 export interface VerificationRequest {
   repository: string;
   revision: string;
@@ -179,14 +201,7 @@ export interface VerificationRequest {
     argv: string[];
     reportPaths: string[];
     artifactPaths?: string[];
-    installedRelease?: {
-      receiptPath: string;
-      archivePath: string;
-      archiveDigest: string;
-      sourceRevision: string;
-      target: 'darwin-arm64';
-      configuration: { path: string; sha256: string }[];
-    };
+    installedRelease?: InstalledReleaseRun;
   }[];
 }
 
@@ -628,6 +643,9 @@ export function collectLocalEvidence(
         sourceRevision: before.revision,
         inputIdentity: after.inputIdentity,
         localRoot: safeCwd,
+        ...(run.installedRelease === undefined
+          ? {}
+          : { installedReleaseIdentity: installedReleaseIdentity(run.installedRelease) }),
         ...(reports.length === 0 ? {} : { reports }),
         ...(artifacts.length === 0 ? {} : { artifacts }),
       };
@@ -747,8 +765,20 @@ export function reuseLocalEvidence(
         return false;
       }
     });
+    const matchingRuns = request.localRuns?.filter(
+      (run) => run.obligation === obligationKey(obligation),
+    );
+    const requestedRelease = matchingRuns?.[0]?.installedRelease;
+    const sameRelease =
+      obligation.risk === 'installed-artifacts'
+        ? matchingRuns?.length === 1 &&
+          requestedRelease !== undefined &&
+          requestedRelease.sourceRevision === request.revision &&
+          prior.installedReleaseIdentity === installedReleaseIdentity(requestedRelease)
+        : prior.installedReleaseIdentity === undefined && requestedRelease === undefined;
     const reusable =
       prior.status === 'pass' &&
+      sameRelease &&
       prior.command === obligation.commandOrProviderJob &&
       prior.inputIdentity === current.inputIdentity &&
       prior.environment === current.runtime &&
