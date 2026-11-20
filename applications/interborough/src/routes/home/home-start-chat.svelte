@@ -105,8 +105,6 @@
            box whose Send does nothing. -->
       <EmptyState
         kind="first-use"
-        size="compact"
-        layout="row"
         headingLevel={3}
         title={CHAT_COPY.readiness[missing].title}
         description={CHAT_COPY.readiness[missing].description}
