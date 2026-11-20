@@ -7,7 +7,7 @@ import {
 } from './workspace-privacy-fixtures.test-support.ts';
 /**
  * COR-839 — Bureau's v1 MCP adapter: the official MCP SDK client, in both
- * protocol eras, lists the twenty-two "observe and steer" tools and calls them as
+ * protocol eras, lists the twenty-three "observe and steer" tools and calls them as
  * the authenticated caller, through the catalog pipeline and each operation's
  * owner predicate.
  */
@@ -36,6 +36,7 @@ const V1_TOOLS = [
   'bureau.reviews.get',
   'bureau.reviews.list',
   'bureau.reviews.resolve',
+  'bureau.runs.timeline',
   'bureau.schedules.get',
   'bureau.schedules.list',
   'bureau.tasks.cancel',
@@ -99,7 +100,7 @@ async function startRun(opened: OpenedBureau, principal: string) {
 }
 
 describe.each(eras)('the Bureau MCP adapter ($era era)', ({ mode, version }) => {
-  it('lists exactly the twenty-two v1 tools', async () => {
+  it('lists exactly the twenty-three v1 tools', async () => {
     const opened = await open();
     const client = await connect(opened.handler, 'alice-key', mode);
     expect(client.getNegotiatedProtocolVersion()).toBe(version);
