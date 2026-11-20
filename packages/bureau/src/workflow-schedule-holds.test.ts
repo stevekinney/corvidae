@@ -37,7 +37,7 @@ describe('a hold', () => {
   it('reads a record with no revision, or one that is not a whole number, as having none', async () => {
     const store = textValueStore(new MemoryStorage());
     const holds = createWorkflowScheduleHolds({ store, nowISO: () => NOW });
-    const record = { schemaVersion: 1, scheduleId: 's', heldAt: NOW };
+    const record = { schemaVersion: 1 as const, scheduleId: 's', heldAt: NOW };
     await store.set(`${WORKFLOW_SCHEDULE_HOLD_KEY_PREFIX}a`, JSON.stringify(record));
     await store.set(
       `${WORKFLOW_SCHEDULE_HOLD_KEY_PREFIX}b`,

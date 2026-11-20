@@ -166,7 +166,7 @@ export function createRunOwnership<D extends AgentDefinitions>(
     if (!bytes) return undefined;
     const state: unknown = decode(bytes);
     if (typeof state !== 'object' || state === null) return undefined;
-    return state as { workflowType?: unknown; input?: unknown; metadata?: unknown };
+    return state;
   }
 
   /**

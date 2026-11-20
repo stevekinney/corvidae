@@ -291,17 +291,31 @@ async function runsOf(engine: DurableEngine, type: string): Promise<number> {
 
 /** How many runs of `type` schedule `id` fired, by Weft's own record of each fire. */
 async function firedBy(engine: DurableEngine, type: string, id: string): Promise<number> {
+  const fired = await runsFiredBy(engine, type, id);
+  return fired.length;
+}
+
+/** The ids of the runs of `type` schedule `id` fired, by Weft's own record of each fire. */
+async function runsFiredBy(engine: DurableEngine, type: string, id: string): Promise<string[]> {
   const page = await engine.list({ type, limit: 100 });
-  let fired = 0;
+  const fired: string[] = [];
   for (const run of page.items) {
-    if ((await engine.getScheduleProvenance(run.id))?.scheduleId === id) fired += 1;
+    const provenance = await engine.getScheduleProvenance(run.id);
+    if (provenance?.scheduleId === id) fired.push(run.id);
   }
   return fired;
 }
 
+/** The types of the audit records of schedule `id`'s pauses and resumes, as they were written. */
+async function transitionsOf(served: Served, id: string): Promise<string[]> {
+  const records = await served.bureau.internals.auditTrail!.query({ runId: `schedule:${id}` });
+  return records.map((record) => record.type);
+}
+
 /** The status schedule `id` reads back with, as the Bureau reports it. */
 async function statusOf(served: Served, id: string): Promise<string | undefined> {
-  return (await served.bureau.schedules.get(id))?.status;
+  const view = await served.bureau.schedules.get(id);
+  return view?.status;
 }
 
 describe('a fire on cadence of a schedule whose workflow can no longer be started', () => {
@@ -327,6 +341,8 @@ describe('a fire on cadence of a schedule whose workflow can no longer be starte
     // What main does for the file's own schedule is what the caller's gets.
     expect(await statusOf(served, 'bureau-workflow-schedule:digest:1')).toBe('paused');
     expect(await statusOf(served, id)).toBe('paused');
+    // The hold is recorded in the schedule's audit trail as its owner's own pause would be.
+    expect(await transitionsOf(served, id)).toEqual(['schedule.paused']);
     await fireOnCadence(served, id);
     await quietFor(200);
     expect(await runsOf(engine, 'digest')).toBe(runsBefore);
@@ -339,14 +355,50 @@ describe('a fire on cadence of a schedule whose workflow can no longer be starte
     const paused = await served.bureau.workflows!.get('digest');
     await served.bureau.workflows!.resume('digest', { expectedHash: paused!.hash! });
     expect(await statusOf(served, id)).toBe('active');
+    expect(await transitionsOf(served, id)).toEqual(['schedule.paused', 'schedule.resumed']);
     await fireOnCadence(served, id);
     await waitUntil(async () => (await firedBy(engine, 'digest', id)) === 1);
+  });
+
+  it('resumes a schedule that has fired, though the run it started settles while it is held', async () => {
+    const served = await serve({ maintenance: 'manual' });
+    // A workflow whose run waits for a signal, so it can settle while its schedule is held.
+    await served.bureau.workflows!.create('waiter', {
+      agent: 'writer',
+      trigger: { kind: 'manual' },
+      steps: [{ kind: 'await-signal', signal: 'go' }],
+    });
+    const id = await created(served, { workflowType: 'waiter' });
+    const engine = served.bureau.durableEngine()!;
+    await fireOnCadence(served, id);
+    await waitUntil(async () => (await firedBy(engine, 'waiter', id)) === 1);
+    const [runId] = await runsFiredBy(engine, 'waiter', id);
+
+    const detail = await served.bureau.workflows!.get('waiter');
+    await served.bureau.workflows!.pause('waiter', { expectedHash: detail!.hash! });
+    expect(await statusOf(served, id)).toBe('paused');
+    // The run ends while the schedule is held, and what its end writes to the schedule does not
+    // keep the hold from being released.
+    await waitUntil(async () => {
+      const run = await engine.get(runId!);
+      return run?.status === 'suspended' || run?.status === 'running';
+    });
+    await engine.signal(runId!, 'go', null);
+    await waitUntil(async () => {
+      const run = await engine.get(runId!);
+      return run?.status === 'completed';
+    });
+
+    const paused = await served.bureau.workflows!.get('waiter');
+    await served.bureau.workflows!.resume('waiter', { expectedHash: paused!.hash! });
+    expect(await statusOf(served, id)).toBe('active');
   });
 
   it('leaves a schedule its owner paused paused when its workflow is held and released', async () => {
     const served = await serve({ maintenance: 'manual' });
     const id = await created(served, { workflowType: 'digest' });
-    expect((await call(served, 'pause', { scheduleId: id })).error).toBeUndefined();
+    const pausedByOwner = await call(served, 'pause', { scheduleId: id });
+    expect(pausedByOwner.error).toBeUndefined();
 
     const detail = await served.bureau.workflows!.get('digest');
     await served.bureau.workflows!.pause('digest', { expectedHash: detail!.hash! });

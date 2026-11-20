@@ -876,6 +876,18 @@ export interface WorkflowRuntimeOptions {
    * lasts as long as the process when omitted.
    */
   readonly scheduleHolds?: WorkflowScheduleHolds | undefined;
+  /**
+   * How a schedule a caller made for a workflow is held and released (COR-2546): the Bureau's own
+   * `pause` and `resume`, which commit the transition with its history and audit record, as a
+   * pause by the schedule's owner is. When omitted the engine's own pause and resume are used, and
+   * nothing is recorded.
+   */
+  readonly scheduleTransitions?:
+    | {
+        readonly pause: (scheduleId: string, expectedRevision: number) => Promise<unknown>;
+        readonly resume: (scheduleId: string, expectedRevision: number) => Promise<unknown>;
+      }
+    | undefined;
   readonly runtime: RuntimeServices;
   readonly diagnose: (message: string, cause: unknown) => void;
   /**
@@ -1199,14 +1211,16 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
     const held = await scheduleHolds.held(key);
     if (!startable) {
       if (summary.status !== 'active') return;
-      await engine.pauseSchedule(summary.id, { expectedRevision: summary.revision });
+      await (options.scheduleTransitions?.pause(summary.id, summary.revision) ??
+        engine.pauseSchedule(summary.id, { expectedRevision: summary.revision }));
       const paused = await engine.getSchedule(summary.id);
       if (paused !== null) await scheduleHolds.hold(key, summary.id, paused.revision);
       return;
     }
     if (held === undefined) return;
     if (summary.status === 'paused' && held.revision === summary.revision) {
-      await engine.resumeSchedule(summary.id, { expectedRevision: summary.revision });
+      await (options.scheduleTransitions?.resume(summary.id, summary.revision) ??
+        engine.resumeSchedule(summary.id, { expectedRevision: summary.revision }));
     }
     await scheduleHolds.release(key);
   }

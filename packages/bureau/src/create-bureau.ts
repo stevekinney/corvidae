@@ -2647,8 +2647,10 @@ async function constructBureau<const D extends AgentDefinitions>(
       kv: runtime.kv,
       workflowOf: async (runId) => runtime.durable?.engine.get(runId),
       // COR-2546: Weft's record of the fire, never the run's input, which a schedule's caller writes.
-      scheduleOfFire: async (runId) =>
-        (await runtime.durable?.engine.getScheduleProvenance(runId))?.scheduleId,
+      scheduleOfFire: async (runId) => {
+        const provenance = await runtime.durable?.engine.getScheduleProvenance(runId);
+        return provenance?.scheduleId;
+      },
       taskOriginOf: async (runId) => {
         const record = await tasks.record(runId);
         return record?.origin;
@@ -3288,6 +3290,14 @@ async function constructBureau<const D extends AgentDefinitions>(
               store: runtime.kv,
               nowISO: runtimeServices.clock.nowISO,
             }),
+            // COR-2546: a schedule a caller made is held and released as its owner's own pause and
+            // resume are, with the history and audit record of each.
+            scheduleTransitions: {
+              pause: (scheduleId, expectedRevision) =>
+                pauseSchedule(scheduleId, { expectedRevision }),
+              resume: (scheduleId, expectedRevision) =>
+                resumeSchedule(scheduleId, { expectedRevision }),
+            },
             runtime: runtimeServices,
             onPinnedUnavailable: (activity, runId) =>
               pluginRegistry.notePinnedUnavailable(activity, runId),

@@ -124,7 +124,8 @@ describe('the schedule a run was fired by (COR-2546)', () => {
         { 'run-1': 'people-schedule' },
       );
       expect(await origins.startedByHook('run-1')).toBeUndefined();
-      expect((await origins.subjectsOfRun('run-1')).schedules).toEqual(['people-schedule']);
+      const subjects = await origins.subjectsOfRun('run-1');
+      expect(subjects.schedules).toEqual(['people-schedule']);
     });
   }
 
@@ -134,6 +135,7 @@ describe('the schedule a run was fired by (COR-2546)', () => {
       { 'run-1': 'hooked-schedule' },
     );
     expect(await origins.startedByHook('run-1')).toBe('hook-1');
-    expect((await origins.subjectsOfRun('run-1')).schedules).toEqual(['hooked-schedule']);
+    const subjects = await origins.subjectsOfRun('run-1');
+    expect(subjects.schedules).toEqual(['hooked-schedule']);
   });
 });
