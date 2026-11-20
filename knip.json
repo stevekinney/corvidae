@@ -1,0 +1,30 @@
+{
+  "$schema": "./node_modules/knip/schema.json",
+  "playwright": false,
+  "workspaces": {
+    ".": {
+      "entry": ["scripts/**/*.test.ts", "scripts/**/*.integration.test.ts", "scripts/**/*.slow.test.ts"],
+      "project": ["scripts/**/*.ts"]
+    },
+    "applications/*": {
+      "entry": ["**/*.test.ts", "**/*.integration.test.ts", "**/*.slow.test.ts"],
+      "project": ["src/**/*.{ts,svelte}", "scripts/**/*.ts"]
+    },
+    "components/*": {
+      "entry": ["**/*.test.ts", "**/*.integration.test.ts", "**/*.slow.test.ts"],
+      "project": ["src/**/*.{ts,svelte}", "scripts/**/*.ts"]
+    },
+    "packages/*": {
+      "entry": ["**/*.test.ts", "**/*.integration.test.ts", "**/*.slow.test.ts"],
+      "project": ["src/**/*.ts", "scripts/**/*.ts"]
+    },
+    "internal/*": {
+      "entry": ["**/*.test.ts", "**/*.integration.test.ts", "**/*.slow.test.ts"],
+      "project": ["src/**/*.ts", "scripts/**/*.ts"]
+    },
+    "plugins/*": {
+      "entry": ["**/*.test.ts", "**/*.integration.test.ts", "**/*.slow.test.ts"],
+      "project": ["src/**/*.{ts,svelte}", "scripts/**/*.ts"]
+    }
+  }
+}
