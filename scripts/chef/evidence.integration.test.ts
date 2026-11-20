@@ -404,13 +404,13 @@ const values = await (async () => {
             version: 1,
             outcome: 'pass',
             archive: {
-              sha256: releaseRequest.localRuns[0]!.installedRelease!.archiveDigest,
+              sha256: releaseRequest.localRuns[0]!.installedRelease.archiveDigest,
               target: 'darwin-arm64',
               manifest: { sourceSha: releaseBaseRequest.revision },
             },
             installedExecutable: 'interborough/bin/interborough',
             assertions: [{ exit: 0 }],
-            configuration: releaseRequest.localRuns[0]!.installedRelease!.configuration,
+            configuration: releaseRequest.localRuns[0]!.installedRelease.configuration,
             producer: { script: 'applications/interborough/scripts/test-installed-release.ts' },
           }),
         );
@@ -435,13 +435,13 @@ const values = await (async () => {
             version: 1,
             outcome: 'pass',
             archive: {
-              sha256: releaseRequest.localRuns[0]!.installedRelease!.archiveDigest,
+              sha256: releaseRequest.localRuns[0]!.installedRelease.archiveDigest,
               target: 'darwin-arm64',
               manifest: { sourceSha: 'f'.repeat(40) },
             },
             installedExecutable: 'interborough/bin/interborough',
             assertions: [{ exit: 0 }],
-            configuration: releaseRequest.localRuns[0]!.installedRelease!.configuration,
+            configuration: releaseRequest.localRuns[0]!.installedRelease.configuration,
             producer: { script: 'applications/interborough/scripts/test-installed-release.ts' },
           }),
         );
