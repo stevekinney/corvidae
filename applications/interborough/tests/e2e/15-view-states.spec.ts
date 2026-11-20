@@ -444,6 +444,11 @@ for (const view of VIEW_NAMES) {
             // heading, and the state's title is the level-two heading under it.
             await expect(frame.getByRole('heading', { level: 1 })).toHaveText(copy.label);
             await expect(frame.getByRole('heading', { level: 2, name: title ?? '' })).toBeVisible();
+          } else if (outcome === 'forbidden' && view === 'agents') {
+            await expect(frame.getByRole('heading', { level: 1 })).toHaveText(copy.label);
+            const state = frame.locator('.cinder-empty-state');
+            await expect(state.getByRole('heading', { level: 2, name: title ?? '' })).toBeVisible();
+            await expect(state).not.toContainText('agents:read');
           } else if (outcome !== 'forbidden' && frameHeaderOf(view, outcome) !== undefined) {
             // The frame keeps the page's heading above its loading and failed states, and the
             // state's title drops to the level-two heading under it: one level-one heading a page.
@@ -506,7 +511,8 @@ test('a view the principal lacks the scopes for is forbidden without a probe req
   await page.goto('/health/storage');
   const frame = page.locator('[data-view="storage"]');
   await expect(frame).toHaveAttribute('data-state', 'forbidden');
-  await expect(frame).toContainText('requires storage:admin');
+  await expect(frame.getByRole('link', { name: 'See your scopes' })).toBeVisible();
+  await expect(frame).not.toContainText('storage:admin');
 });
 
 /** The engine reads behind Health's runs counts and cards, which the faulted case refuses. */
@@ -1985,6 +1991,7 @@ test.describe('trigger state', () => {
       await page.setViewportSize({ width, height: 900 });
       await page.goto('/hooks/new');
       const picker = page.getByRole('combobox', { name: HOOKS_COPY.editor.event.label });
+      await expect(page.getByTestId('hook-deliveries')).toHaveCount(0);
       await picker.click();
       // Searching for the area narrows the list to the trigger events, under their group.
       await picker.fill('Triggers');

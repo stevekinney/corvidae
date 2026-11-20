@@ -34,6 +34,6 @@ describe('Recent activity with nothing in it', () => {
       },
     });
     expect(getByRole('heading', { level: 2 }).textContent).toContain(copy.title);
-    expect(getByRole('link').textContent).toContain('Open audit log');
+    expect(getByRole('link').textContent).toContain(copy.auditLink(1));
   });
 });

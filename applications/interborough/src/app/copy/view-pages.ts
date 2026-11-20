@@ -36,7 +36,7 @@ export const VIEW_COPY: Readonly<Record<ViewName, ViewCopy>> = {
       title: 'Chat is unavailable',
       description: 'The server did not answer. Check that the host is running, then try again.',
     },
-    forbidden: { title: FORBIDDEN_COPY.title('Chat'), requirement: 'bureau.contexts:read' },
+    forbidden: { title: FORBIDDEN_COPY.title('Chat') },
     // A chat that is gone has nothing old to show: the page offers a new chat and the way back
     // (board ChatStates frame g).
     notFound: {
@@ -88,7 +88,7 @@ export const VIEW_COPY: Readonly<Record<ViewName, ViewCopy>> = {
       title: 'Agents are unavailable',
       description: 'The server did not answer. Check that the host is running, then try again.',
     },
-    forbidden: { title: FORBIDDEN_COPY.title('Agents'), requirement: 'bureau.agents:read' },
+    forbidden: { title: FORBIDDEN_COPY.title('Agents') },
     notFound: {
       title: 'This agent doesn’t exist',
       description: NOT_FOUND_COPY.description,
@@ -159,7 +159,7 @@ export const VIEW_COPY: Readonly<Record<ViewName, ViewCopy>> = {
       title: 'Runs are unavailable',
       description: 'The server did not answer. Check that the host is running, then try again.',
     },
-    forbidden: { title: FORBIDDEN_COPY.title('Runs'), requirement: 'bureau.tasks:read' },
+    forbidden: { title: FORBIDDEN_COPY.title('Runs') },
   },
   checks: {
     label: CHECKS_COPY.title,
@@ -177,7 +177,6 @@ export const VIEW_COPY: Readonly<Record<ViewName, ViewCopy>> = {
     },
     forbidden: {
       title: FORBIDDEN_COPY.title(CHECKS_COPY.title),
-      requirement: CHECKS_COPY.forbiddenRequirement,
     },
   },
   schedules: {
@@ -200,7 +199,7 @@ export const VIEW_COPY: Readonly<Record<ViewName, ViewCopy>> = {
       title: 'Reviews are unavailable',
       description: 'The server did not answer. Check that the host is running, then try again.',
     },
-    forbidden: { title: FORBIDDEN_COPY.title('Reviews'), requirement: 'bureau.reviews:read' },
+    forbidden: { title: FORBIDDEN_COPY.title('Reviews') },
   },
   workers: {
     label: 'Workers',
@@ -241,7 +240,7 @@ export const VIEW_COPY: Readonly<Record<ViewName, ViewCopy>> = {
       title: 'The audit trail is unavailable',
       description: 'The server did not answer. Check that the host is running, then try again.',
     },
-    forbidden: { title: FORBIDDEN_COPY.title('the audit log'), requirement: 'bureau.audit:read' },
+    forbidden: { title: FORBIDDEN_COPY.title('the audit log') },
   },
   settings: {
     label: 'Settings',
@@ -253,7 +252,7 @@ export const VIEW_COPY: Readonly<Record<ViewName, ViewCopy>> = {
       title: 'Settings are unavailable',
       description: 'The server did not answer. Check that the host is running, then try again.',
     },
-    forbidden: { title: FORBIDDEN_COPY.title('Settings'), requirement: 'bureau.settings:read' },
+    forbidden: { title: FORBIDDEN_COPY.title('Settings') },
   },
   capabilities: {
     label: 'Capabilities',
@@ -280,7 +279,7 @@ export const VIEW_COPY: Readonly<Record<ViewName, ViewCopy>> = {
       title: 'Goals are unavailable',
       description: 'The server did not answer. Check that the host is running, then try again.',
     },
-    forbidden: { title: FORBIDDEN_COPY.title('Goals'), requirement: 'bureau.goals:read' },
+    forbidden: { title: FORBIDDEN_COPY.title('Goals') },
     notFound: {
       title: 'This goal doesn’t exist',
       description: NOT_FOUND_COPY.description,
@@ -297,7 +296,7 @@ export const VIEW_COPY: Readonly<Record<ViewName, ViewCopy>> = {
       title: HOOKS_COPY.list.loadFailed.title,
       description: HOOKS_COPY.list.loadFailed.noAnswer,
     },
-    forbidden: { title: FORBIDDEN_COPY.title('Hooks'), requirement: 'bureau.hooks:read' },
+    forbidden: { title: FORBIDDEN_COPY.title('Hooks') },
     // The editor says the same when the hook is deleted while its page is open.
     notFound: HOOKS_COPY.editor.notFound,
   },

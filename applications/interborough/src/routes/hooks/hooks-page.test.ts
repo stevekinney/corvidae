@@ -2079,19 +2079,17 @@ describe('a hook’s delivery log', () => {
     expect(within(deliveries).queryByRole('radio', { name: copy.failed })).toBeNull();
   });
 
-  test('is empty for a new hook, reads nothing, and a test event sent before the first save adds nothing', async () => {
+  test('the delivery log stays hidden while testing an unsaved hook', async () => {
     const { view, served } = open([], { path: '/hooks/new', draftTest: 'delivered' });
-    const deliveries = await view.findByTestId('hook-deliveries');
-    await within(deliveries).findByText(copy.none.title);
-
-    await fireEvent.input(await view.findByLabelText(HOOKS_COPY.editor.webhook.urlLabel), {
+    const url = await view.findByLabelText(HOOKS_COPY.editor.webhook.urlLabel);
+    expect(view.queryByTestId('hook-deliveries')).toBeNull();
+    await fireEvent.input(url, {
       target: { value: 'https://hooks.example.com/receive' },
     });
     await fireEvent.click(view.getByRole('button', { name: HOOKS_COPY.editor.check.test }));
     await view.findByTestId('hook-test-result');
 
-    expect(within(deliveries).queryByTestId('hook-delivery-list')).toBeNull();
-    expect(deliveries.textContent).toContain(copy.none.title);
+    expect(view.queryByTestId('hook-deliveries')).toBeNull();
     expect(served.deliveryReads).toEqual([]);
   });
 

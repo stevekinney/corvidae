@@ -497,7 +497,8 @@ describe('the states', () => {
     } as never);
 
     await view.findByRole('heading', { level: 1, name: VIEW_COPY.checks.forbidden.title });
-    expect(view.getByText('requires runs:read')).not.toBeNull();
+    expect(view.getByRole('link', { name: 'See your scopes' })).not.toBeNull();
+    expect(view.queryByText(/runs:read/)).toBeNull();
     expect(view.queryByRole('search', { name: CHECKS_COPY.filtersLabel })).toBeNull();
     expect(rowKinds(view.container)).toEqual([]);
   });

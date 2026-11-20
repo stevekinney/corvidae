@@ -53,7 +53,7 @@
   import { agentsListQuery } from '../../lib/agent-queries.ts';
   import { listAllContexts } from '../../lib/bureau-client.ts';
   import { followLinks } from '../../lib/follow-links.ts';
-  import { agentRelativePath } from '../../lib/host-paths.ts';
+  import { agentRelativePath, getHostPaths } from '../../lib/host-paths.ts';
   import { getPlugins } from '../../lib/host-plugins.ts';
   import { keyedByOccurrence } from '../../lib/list-keys.ts';
   import { phoneViewport } from '../../lib/phone-viewport.svelte.ts';
@@ -98,9 +98,6 @@
     undefined,
   );
   const invalid = $derived((definitions.data ?? []).filter((entry) => entry.state === 'invalid'));
-
-  // A broken file is named by its path relative to the Interborough home, as the editor names it:
-  // a host path never shows in a row (owner, 2026-11-19).
 
   // A model agent cannot answer while no provider is connected, so its New chat says so.
   const providers = useHostProviders();
@@ -196,6 +193,12 @@
   const nothing = $derived(
     agents.isSuccess && availableRows.length === 0 && heldRows.length === 0 && invalid.length === 0,
   );
+  const hostPaths = createQuery(() => ({
+    queryKey: queryKeys.hostPaths(),
+    queryFn: ({ signal }) => getHostPaths({ signal }),
+    enabled: nothing,
+  }));
+  const directory = $derived(hostPaths.data?.agentDirectory ?? AGENT_EDITOR_COPY.fallbackDirectory);
   const onlyHeld = $derived(agents.isSuccess && availableRows.length === 0 && heldRows.length > 0);
   const nothingShown = $derived(
     matchedAvailable.length === 0 && shownHeld.length === 0 && shownInvalid.length === 0,
