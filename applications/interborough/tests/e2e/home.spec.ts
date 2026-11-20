@@ -1235,6 +1235,34 @@ test.describe('Home on a tablet (05s)', () => {
 test.describe('Start a chat on the journey host', () => {
   test.use({ baseURL: E2E_JOURNEY_URL });
 
+  // The journey host starts with no chat, and Home on a host with none is the first-run checklist
+  // alone (owner, 2026-11-19), which holds Start a chat until its step. These two rows are about
+  // the overview's Start a chat card, so the host lists one earlier chat; sending still goes to the
+  // real host.
+  test.beforeEach(async ({ page }) => {
+    await answerBureau(page, {
+      'bureau.contexts.list': (result) => ({
+        ...(result as object),
+        contexts: [
+          {
+            id: 'an-earlier-chat',
+            owner: null,
+            agentName: 'assistant',
+            title: 'An earlier chat',
+            lastMessagePreview: 'An earlier chat',
+            parentContextId: null,
+            forkedFromMessageId: null,
+            messageCount: 1,
+            createdAt: '2026-10-23T14:00:00.000Z',
+            updatedAt: '2026-10-23T14:00:00.000Z',
+            activity: 'idle',
+          },
+        ],
+        nextOffset: null,
+      }),
+    });
+  });
+
   test('sends the typed message as the first message of a new chat with the chosen agent (01k)', async ({
     page,
   }) => {
