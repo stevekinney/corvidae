@@ -2,6 +2,7 @@ import { expect } from 'bun:test';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, relative } from 'node:path';
+import { runWithHangGuard } from '../../testing/testing/src/hang-guard.ts';
 import { rejectionOf } from '../../testing/testing/src/helpers/promise-outcome.ts';
 import { createDeliveryFixture, branchRunner as landingRunner } from './deliver.test-support.ts';
 import { deliver, renderDeliver, run, type DeliverOptions, type LeaseReading } from './deliver.ts';
@@ -32,7 +33,7 @@ import { UsageError, type Runner, type RunnerResult } from './process-runner.ts'
 import { createScenarios } from './scenario.test-support.ts';
 import type { GuardsResult } from './text-guards.ts';
 import type { UsageTotals } from './transcript-usage.ts';
-import { computeEvidencePlan, digest } from './verification-plan.ts';
+import { digest } from './verification-plan.ts';
 import { Refusal, type RemoveOptions } from './worktree.ts';
 
 const HEAD = 'a'.repeat(40);
@@ -106,8 +107,18 @@ async function approvedMembers<T extends Partial<DeliverOptions>>(
   return { ...base, verification: binding };
 }
 
+async function initializeCheckout(directory: string): Promise<void> {
+  const result = await runWithHangGuard(['git', 'init', '--quiet', directory]);
+  if (result.exitCode !== 0) throw new Error(result.stderr.toString());
+  writeFileSync(
+    join(directory, 'package.json'),
+    JSON.stringify({ name: 'widgets', workspaces: [] }),
+  );
+}
+
 async function setUp(): Promise<void> {
   sandbox = mkdtempSync(join(tmpdir(), 'deliver-'));
+  await initializeCheckout(sandbox);
   control = mkdtempSync(join(tmpdir(), 'deliver-control-'));
   const configPath = join(control, 'config.json');
   writeFileSync(
@@ -124,7 +135,6 @@ async function setUp(): Promise<void> {
     }),
   );
   writeFileSync(join(sandbox, 'comment.md'), 'Accepted.\n');
-  writeFileSync(join(sandbox, 'package.json'), JSON.stringify({ name: 'widgets' }));
   options = {
     configPath,
     pr: 12,
@@ -940,15 +950,6 @@ const EARLIER = '8'.repeat(40);
 
 const reply = (stdout = '', code = 0, stderr = ''): RunnerResult => ({ code, stdout, stderr });
 
-function fixtureEvidencePlan(changed: string[]) {
-  return computeEvidencePlan(changed, {
-    knownSlugs: new Set(),
-    paths: new Set(changed),
-    read: () => undefined,
-    selectUnitTests: () => [],
-  });
-}
-
 /** A fake `git` that answers a clean branch merge, with `answers` overriding single commands. */
 function branchWorld(answers: Record<string, RunnerResult> = {}) {
   const calls: string[] = [];
@@ -1020,13 +1021,7 @@ async function deliverBranch(
     {
       ...partial,
       directMerge: async (directOptions) =>
-        directMerge(directOptions, {
-          runner: world.runner,
-          guards,
-          verification,
-          evidencePlan: fixtureEvidencePlan,
-          ...usage,
-        }),
+        directMerge(directOptions, { runner: world.runner, guards, verification, ...usage }),
     },
   );
   return {
@@ -1627,7 +1622,7 @@ async function landBranch(landing: Landing = {}) {
   const directory = mkdtempSync(join(tmpdir(), 'deliver-landing-'));
   const controlDirectory = mkdtempSync(join(tmpdir(), 'deliver-landing-control-'));
   try {
-    writeFileSync(join(directory, 'package.json'), JSON.stringify({ name: 'widgets' }));
+    await initializeCheckout(directory);
     const configPath = join(controlDirectory, 'config.json');
     writeFileSync(
       configPath,
@@ -1683,7 +1678,6 @@ async function landBranch(landing: Landing = {}) {
             runner: world.runner,
             guards: guardsPass,
             verification: landed,
-            evidencePlan: fixtureEvidencePlan,
           }),
         verification: landed,
         readLease: async () =>
