@@ -220,6 +220,21 @@ async function verifyFrozenInstall(
   const archive = join(root, 'source.tar');
   await command(['git', 'archive', sourceSha, '-o', archive]);
   await command(['tar', '-xf', archive, '-C', source]);
+  // Cinder's generated token files are ignored by Git, and its generator needs the pinned
+  // development toolchain (including Prettier). This source is disposable; runtime staging below
+  // still comes only from the subsequent frozen production install.
+  await command(
+    [
+      process.execPath,
+      'install',
+      '--frozen-lockfile',
+      '--ignore-scripts',
+      '--no-progress',
+      '--no-summary',
+    ],
+    source,
+  );
+  await materializePanelRuntimeAssets(source, command);
   await command(
     [
       process.execPath,
@@ -541,7 +556,6 @@ export async function buildRelease(
   const staging = await mkdtemp(join(options.outdir, '.interborough-staging-'));
   const root = join(staging, 'interborough');
   try {
-    await materializePanelRuntimeAssets(productionInstall.source, command);
     await mkdir(join(root, 'bin'), { recursive: true });
     await mkdir(join(root, 'share', 'interborough'), { recursive: true });
     await compile(join(root, 'bin', 'interborough'), options.version, command);
