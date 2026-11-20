@@ -86,7 +86,10 @@ async function* readSubscription(
 ): AsyncGenerator<SubscriptionMessage<unknown>> {
   const iterator = iterable[Symbol.asyncIterator]();
   let closing: Promise<void> | undefined;
-  const closeOnce = (): Promise<void> => (closing ??= close().catch(() => {}));
+  const closeOnce = (): Promise<void> =>
+    (closing ??= Promise.resolve()
+      .then(close)
+      .catch(() => {}));
   const abort = (): void => {
     void closeOnce();
   };
@@ -100,10 +103,20 @@ async function* readSubscription(
       else if (item.result.done) return;
       else yield eventMessage(operationName, item.result.value);
     }
+  } catch (error) {
+    if (!isAborted(signal)) throw error;
   } finally {
     signal?.removeEventListener('abort', abort);
     await closeOnce();
+    await returnIterator(iterator);
+  }
+}
+
+async function returnIterator(iterator: AsyncIterator<unknown>): Promise<void> {
+  try {
     await iterator.return?.();
+  } catch {
+    // The feed has been closed. A cleanup failure cannot replace the original read outcome.
   }
 }
 

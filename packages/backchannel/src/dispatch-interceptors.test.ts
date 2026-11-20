@@ -196,3 +196,22 @@ it('resolves an authenticated caller’s host once for both authorization and in
   expect(results).toEqual(['alice', 'bob']);
   expect(calls.toSorted()).toEqual(['alice', 'bob']);
 });
+
+it('closes a subscription an interceptor abandons after invocation', async () => {
+  const fixture = createTransportConformanceFixture();
+  const { subscribe } = connectHttp(fixture, {
+    interceptors: [
+      async (_, next) => {
+        const started = await next();
+        expect(started.ok).toBe(true);
+        return { ok: false, fault: { code: 'Unavailable', message: 'busy', data: {} } };
+      },
+    ],
+  });
+  const stream = subscribe('probe.events', {});
+  const outcome = await stream[Symbol.asyncIterator]()
+    .next()
+    .catch((reason: unknown) => reason);
+  expect(outcome).toMatchObject({ code: 503 });
+  expect(fixture.host.closed.count).toBe(1);
+});

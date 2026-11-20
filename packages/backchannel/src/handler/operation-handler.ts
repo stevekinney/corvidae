@@ -83,9 +83,8 @@ export type OperationHandlerOptions<Host> = {
    * Weft's API-key and JWT schemes, including package `additionalScopes`.
    *
    * A host with exactly one caller, such as an embedded single-user app, can
-   * admit every request as the `unauthenticated-local` principal, which holds
-   * every built-in scope, as `serve()` with no `auth` does:
-   * `authenticate: async () => unauthenticatedLocalAuthContext()`.
+   * admit every request as the `unauthenticated-local` principal using
+   * `authenticate: async () => unauthenticatedLocalAuthContext(vocabulary)`.
    */
   readonly authenticate?: OperationHandlerAuthenticate;
   /** Vocabulary for fallback principals when an authenticator returns only claims. */

@@ -62,22 +62,15 @@ export function authContextToPrincipal(
 }
 
 /**
- * The context a host with exactly one caller attaches to every request: the
- * `unauthenticated-local` principal, which holds every built-in scope.
- *
- * `serve()` with no `auth` attaches it for you, and `setupServiceWorker()`
- * defaults to it. Use it as the recipe for any other single-user host, for
- * example `createOperationHandler({ authenticate: async () =>
- * unauthenticatedLocalAuthContext() })`. It identifies nobody and refuses no
- * built-in operation, so never attach it to requests from callers you do not
- * trust. It holds no package scope, so an operation that needs one registered
- * through `additionalScopes` still needs a credential that holds it.
+ * Give a trusted local caller the scopes from the supplied host vocabulary.
+ * A caller also needs an explicit credential for any additional package scope.
  *
  * @example
  * ```ts
- * import { authContextToPrincipal, unauthenticatedLocalAuthContext } from '@lostgradient/backchannel';
+ * import { authContextToPrincipal, createScopeVocabulary, unauthenticatedLocalAuthContext } from '@lostgradient/backchannel';
  *
- * const principal = authContextToPrincipal(unauthenticatedLocalAuthContext());
+ * const vocabulary = createScopeVocabulary(['inventory:read']);
+ * const principal = authContextToPrincipal(unauthenticatedLocalAuthContext(vocabulary));
  * console.log(principal.method); // 'unauthenticated-local'
  * ```
  */
