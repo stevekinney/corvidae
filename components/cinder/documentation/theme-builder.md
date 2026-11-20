@@ -240,7 +240,26 @@ Rename uses a `Modal` with the current name in its description. Empty, overlong,
 
 An IndexedDB record includes a monotonically increasing revision and base snapshot. If another tab changes the same draft, show a blocking conflict Callout with Reload latest and Save as copy; never overwrite silently. A storage error retains in-memory edits, labels the draft unsaved, and enables download recovery.
 
-Export remains in the toolbar on all tabs. It offers a lossless Cinder Theme v1 envelope, deployment CSS with explicit light/dark and motion behavior, one portable DTCG document per concrete context, and a validation report. Unsupported future drafts remain downloadable and are never rewritten.
+Export remains in the toolbar on all tabs. It offers a lossless Cinder Theme v1 envelope, deployment CSS with explicit light/dark and motion behavior, Tailwind v4 theme CSS, one portable DTCG document per concrete context, and a validation report. Unsupported future drafts remain downloadable and are never rewritten.
+
+### Use the theme with Tailwind v4
+
+Download **Tailwind v4 theme CSS** from Export and import it after Tailwind in your CSS entry point.
+
+```css
+@import 'tailwindcss';
+@import './theme.tailwind-theme.css';
+```
+
+The file includes the Cinder custom properties for all six contexts. Its `@theme inline` block points Tailwind utilities at those properties, so a class such as `bg-surface` reads the surface color from its active theme scope. Other examples include `text-text-default`, `font-sans`, `text-page-title`, `gap-stack`, `rounded-medium`, and `shadow-overlay`. Tailwind spacing classes such as `p-4` use the matching Cinder step where one exists. The same file supplies the theme variables to Cinder components.
+
+To regenerate the file with Bun, download **Cinder Theme v1 source (JSON)** from Export. With the repository dependencies installed, run this from the repository root.
+
+```sh
+bun applications/playground/scripts/export-tailwind-theme.ts --acknowledge theme.cinder-theme.json theme.tailwind-theme.css
+```
+
+Use `--acknowledge` after reviewing any advisory and needs-review findings. The CLI applies the same export checks as Theme Builder, including the requirement that its Cinder base matches the source JSON and that the theme passes accessibility error checks.
 
 ## Controls and Cinder primitive mapping
 
