@@ -17,25 +17,27 @@ export function findingsFromReport(value: unknown): Finding[] {
   if (!Array.isArray(report.issues)) throw new Error('Knip report must contain an issues array.');
   return report.issues.flatMap((entry, index) => {
     const issue = object(entry, `Knip issue ${index}`);
-    if (typeof issue.file !== 'string' || issue.file === '')
+    const { file } = issue;
+    if (typeof file !== 'string' || file === '')
       throw new Error(`Knip issue ${index} must name a file.`);
-    return Object.entries(issue).flatMap(([category, findings]) => {
+    const rows = Object.entries(issue).flatMap(([category, findings]) => {
       if (category === 'file') return [];
-      if (!Array.isArray(findings))
-        throw new Error(`Malformed ${category} findings in ${issue.file}.`);
+      if (!Array.isArray(findings)) throw new Error(`Malformed ${category} findings in ${file}.`);
       return findings.map((finding) => {
-        const nameOf = (value: unknown) => {
-          const item = object(value, `${category} finding in ${issue.file}`);
+        const nameOf = (reportedSymbol: unknown) => {
+          const item = object(reportedSymbol, `${category} finding in ${file}`);
           if (typeof item.name !== 'string' || item.name === '')
-            throw new Error(`${category} finding in ${issue.file} must name a symbol.`);
+            throw new Error(`${category} finding in ${file} must name a symbol.`);
           return item.name;
         };
         const name = Array.isArray(finding)
           ? JSON.stringify(finding.map(nameOf).toSorted())
           : nameOf(finding);
-        return { category, file: issue.file, name };
+        return { category, file, name };
       });
     });
+    if (rows.length === 0) throw new Error(`Knip issue in ${file} contains no findings.`);
+    return rows;
   });
 }
 
@@ -59,13 +61,12 @@ function baselineFindings(text: string): Finding[] {
       } catch {
         throw new Error(`Baseline row ${index + 1} is invalid JSON.`);
       }
-      if (
-        !Array.isArray(value) ||
-        value.length !== 3 ||
-        !value.every((part) => typeof part === 'string')
-      )
+      if (!Array.isArray(value) || value.length !== 3)
         throw new Error(`Baseline row ${index + 1} must be [category, file, name].`);
-      return { category: value[0], file: value[1], name: value[2] };
+      const [category, file, name]: unknown[] = value;
+      if (typeof category !== 'string' || typeof file !== 'string' || typeof name !== 'string')
+        throw new Error(`Baseline row ${index + 1} must contain three strings.`);
+      return { category, file, name };
     });
 }
 
