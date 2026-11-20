@@ -71,6 +71,14 @@ describe('failedStepOf', () => {
     expect(failedStepOf(entry({}))).toEqual({ index: 3, label: 'charge' });
   });
 
+  it('writes the text of a label that is not a string, rather than failing the failure write', () => {
+    const label = (value: unknown) =>
+      failedStepOf(entry({ operationLabel: value as string }))?.label;
+
+    expect(label(123)).toBe('123');
+    expect(label(undefined)).toBe('undefined');
+  });
+
   it('is undefined when the run started no step', () => {
     expect(failedStepOf(undefined)).toBeUndefined();
   });

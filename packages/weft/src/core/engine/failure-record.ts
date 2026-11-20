@@ -28,7 +28,12 @@ export function failedStepOf(
   entry: WorkflowTimelineEntry | undefined,
 ): WorkflowFailedStep | undefined {
   if (entry === undefined) return undefined;
-  return { index: entry.stepIndex ?? entry.step, label: truncateLabel(entry.operationLabel) };
+  // The label is derived from caller-built operation fields, so it is read as text here: a label
+  // that threw would abort the failure write, and the run would end abandoned instead of failed.
+  return {
+    index: entry.stepIndex ?? entry.step,
+    label: truncateLabel(String(entry.operationLabel)),
+  };
 }
 
 function isFailedStep(value: unknown): value is WorkflowFailedStep {
