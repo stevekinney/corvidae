@@ -220,6 +220,24 @@ describe('engine.compare', () => {
     expect(refusal.message).toContain('five');
   });
 
+  it('answers not-found for a fork whose source id now holds a replacement run', async () => {
+    const { engine } = await engineWithFiveSteps();
+    await using _engine = engine;
+    const fork = await engine.fork('five', { fromStep: 3 });
+    await fork.result();
+    expect((await engine.get(fork.id))?.forkedFrom?.workflowExecutionToken).toBeString();
+    const replacement = await engine.start('five', null, {
+      id: 'five',
+      onTerminalConflict: 'start-new',
+    });
+    await replacement.result();
+
+    const refusal = await errorOf(engine.compare(fork.id));
+
+    expect(refusal).toBeInstanceOf(WorkflowNotFoundError);
+    expect(refusal.message).toContain('five');
+  });
+
   it('pages a 250-step comparison by step, 100 to a page, with a cursor', async () => {
     const storage = new MemoryStorage();
     await using engine = new Engine({ storage });

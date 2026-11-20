@@ -276,10 +276,14 @@ export function createForkLineage(
   sourceWorkflowId: string,
   checkpoint: Checkpoint,
   _callbacks: LifecycleCallbacks,
+  sourceWorkflowExecutionToken?: string,
 ): ForkLineage {
   return {
     workflowId: sourceWorkflowId,
     step: checkpoint.step,
+    ...(sourceWorkflowExecutionToken === undefined
+      ? {}
+      : { workflowExecutionToken: sourceWorkflowExecutionToken }),
   };
 }
 

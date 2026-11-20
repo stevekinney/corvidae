@@ -405,7 +405,13 @@ export async function fork(
 
     const workflowId = crypto.randomUUID();
     const forkedAt = internals.options.getNow();
-    const lineage = createForkLineage(internals, sourceWorkflowId, sourceCheckpoint, callbacks);
+    const lineage = createForkLineage(
+      internals,
+      sourceWorkflowId,
+      sourceCheckpoint,
+      callbacks,
+      sourceState.workflowExecutionToken,
+    );
     const forkState = createForkedWorkflowState(
       internals,
       workflowId,

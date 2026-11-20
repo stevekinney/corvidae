@@ -57,6 +57,14 @@ export async function compareFork(
   if (lineage === undefined) throw new CompareRequiresForkError(forkWorkflowId);
   const sourceState = await loadWorkflowState(internals, lineage.workflowId);
   if (sourceState === null) throw new WorkflowNotFoundError(lineage.workflowId);
+  // The id is stable and a `start-new` reuses it, so a source replaced after the fork is a
+  // different run whose timeline the fork never read: the original source is gone.
+  if (
+    lineage.workflowExecutionToken !== undefined &&
+    sourceState.workflowExecutionToken !== lineage.workflowExecutionToken
+  ) {
+    throw new WorkflowNotFoundError(lineage.workflowId);
+  }
 
   const [sourceEntries, forkEntries] = await Promise.all([
     getTimeline(internals, lineage.workflowId),

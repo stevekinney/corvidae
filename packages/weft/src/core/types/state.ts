@@ -170,6 +170,13 @@ export interface RestartLineage {
 export interface ForkLineage {
   workflowId: WorkflowId;
   step: number;
+  /**
+   * The {@link WorkflowState.workflowExecutionToken} of the source run when it was forked. A stable
+   * id reused with `onTerminalConflict: 'start-new'` keeps the id and replaces the run, so
+   * `engine.compare` reads the source only while the run stored under `workflowId` is this one.
+   * Absent on a fork made before the field existed, and when the source had no token.
+   */
+  workflowExecutionToken?: string;
 }
 
 /**
