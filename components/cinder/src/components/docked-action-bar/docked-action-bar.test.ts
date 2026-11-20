@@ -272,12 +272,14 @@ describe('docked-action-bar.css', () => {
     const rule = cssText.slice(cssText.indexOf('.cinder-docked-action-bar {'));
     const block = rule.slice(0, rule.indexOf('}'));
     expect(block).toContain('border: 0;');
-    expect(block).toContain('border-block-start: 1px solid var(--cinder-border);');
+    expect(block).toContain(
+      'border-block-start: var(--cinder-border-width) solid var(--cinder-border);',
+    );
     expect(block).toContain('border-radius: 0;');
     expect(block).not.toContain('box-shadow');
     const cardStart = cssText.indexOf(".cinder-docked-action-bar[data-cinder-variant='card'] {");
     const card = cssText.slice(cardStart, cssText.indexOf('}', cardStart));
-    expect(card).toContain('border: 1px solid var(--cinder-border);');
+    expect(card).toContain('border: var(--cinder-border-width) solid var(--cinder-border);');
     expect(card).toContain('border-radius: var(--cinder-radius-lg);');
     expect(card).toContain('box-shadow:');
   });

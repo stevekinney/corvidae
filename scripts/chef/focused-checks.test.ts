@@ -561,7 +561,7 @@ describe('runChecks', () => {
     expect(result.output).toContain(
       'testing/testing/src/probe.integration.test.ts launch a browser',
     );
-    expect(result.output).toContain('`gh workflow run main.yml --ref <branch>`');
+    expect(result.output).toContain('only the full `main.yml` CI run does');
     expect(result.code).toBe(0);
   });
 

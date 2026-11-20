@@ -91,12 +91,14 @@
 >
   {#if verdict.data !== undefined}
     {@const found = verdict.data}
+    {@const said = found.outcome === 'pass' ? found.reason : found.feedback}
     <div class="ib-goal-verdict" data-testid="goal-verdict-body" data-outcome={found.outcome}>
       <!-- The verdict opens with what the attempt's row opens with: the dot and the word. -->
       <StatusDot word={verdictWord(found.outcome)} data-testid="goal-verdict-status" />
-      {#if found.feedback !== null && found.feedback !== ''}
+      <!-- What the check said: a missed check's feedback, or why a met one was met (row 67v). -->
+      {#if said !== null && said !== ''}
         <p class="ib-goal-verdict__feedback" data-testid="goal-verdict-feedback">
-          {found.feedback}
+          {said}
         </p>
       {/if}
       <DescriptionList items={facts} variant="fields" data-testid="goal-verdict-facts" />

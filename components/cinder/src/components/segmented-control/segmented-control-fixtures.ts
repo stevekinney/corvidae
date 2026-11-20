@@ -18,6 +18,16 @@ export default [
     interact: [{ action: 'click', target: { role: 'radio', name: 'Diff' } }],
   },
   {
+    name: 'described-narrow',
+    host: './segmented-control.fixture.svelte',
+    props: { message: 'description' },
+  },
+  {
+    name: 'error-narrow',
+    host: './segmented-control.fixture.svelte',
+    props: { message: 'error' },
+  },
+  {
     name: 'focused',
     host: './segmented-control.fixture.svelte',
     props: {

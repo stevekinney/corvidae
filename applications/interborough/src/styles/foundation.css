@@ -171,6 +171,25 @@
   white-space: nowrap;
 }
 
+/* The commit the build was made from sits after the name, quiet, and takes the room between the
+ * name and the fold button. Nothing is drawn when the build knows no commit. */
+.weft-shell-sidebar__commit {
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: hidden;
+  padding-inline: var(--cinder-space-2);
+  color: var(--cinder-text-muted);
+  font-size: var(--cinder-text-xs);
+  line-height: 1.25rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.weft-shell-sidebar__commit:empty,
+.weft-shell-sidebar--collapsed .weft-shell-sidebar__commit {
+  display: none;
+}
+
 .weft-shell-sidebar--collapsed .weft-shell-sidebar__brand {
   justify-content: center;
   padding-inline: 0;

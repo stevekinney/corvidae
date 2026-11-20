@@ -4,8 +4,10 @@
   let committed = $state('');
 </script>
 
-<div style="display: flex; flex-direction: column; gap: 0.5rem; max-width: 20rem;">
-  <label for="field" style="font-size: 0.875rem; font-weight: 500;"> Brand color </label>
+<div style="display: flex; flex-direction: column; gap: var(--cinder-space-2); max-width: 20rem;">
+  <label for="field" style="font-size: var(--cinder-text-base); font-weight: 500;">
+    Brand color
+  </label>
   <ColorField
     id="field"
     value="#3b82f6"
@@ -14,6 +16,8 @@
     }}
   />
   {#if committed}
-    <p style="font-size: 0.75rem; color: var(--cinder-text-muted);">Committed: {committed}</p>
+    <p style="font-size: var(--cinder-text-xs); color: var(--cinder-text-muted);">
+      Committed: {committed}
+    </p>
   {/if}
 </div>

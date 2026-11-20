@@ -118,9 +118,11 @@ describe('PayloadInspector', () => {
       expect(actions.querySelectorAll('.cinder-copy-button')).toHaveLength(1);
       expect(header.nextElementSibling?.className).toBe('cinder-payload-inspector__panel');
       expect(readCss()).toMatch(
-        /\.cinder-payload-inspector__header\s*\{[^}]*border-block-end:\s*1px solid/s,
+        /\.cinder-payload-inspector__header\s*\{[^}]*border-block-end:\s*var\(--cinder-border-width\) solid/s,
       );
-      expect(readCss()).toMatch(/\.cinder-payload-inspector\s*\{[^}]*border:\s*1px solid/s);
+      expect(readCss()).toMatch(
+        /\.cinder-payload-inspector\s*\{[^}]*border:\s*var\(--cinder-border-width\) solid/s,
+      );
     });
 
     test('renders no tabs', () => {

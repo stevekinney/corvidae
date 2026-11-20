@@ -27,6 +27,7 @@ import { existsSync } from 'node:fs';
 import { constants } from 'node:os';
 import { join, resolve as resolvePath } from 'node:path';
 
+import { runGit, staleBuildProblem, type GitRunner } from './build-info.ts';
 import { DEVELOPMENT_PLUGIN_FLAG } from './development-plugin-flag.ts';
 import { processEnvironment, resolveBuildDirectory } from './environment-configuration.ts';
 import {
@@ -160,6 +161,23 @@ export async function supervise(options: SuperviseOptions): Promise<number> {
   }
 }
 
+/**
+ * Why `serve` must not start on the build in `buildDirectory`, or `undefined` when it may: the
+ * build is missing, or it was made from a commit or an uncommitted tree that is no longer the
+ * checkout's (`build-info.ts`). Checked before every start, so a restart after a commit is refused too.
+ */
+export function serveProblem(
+  buildDirectory: string,
+  source: string = PACKAGE_DIRECTORY,
+  git: GitRunner = runGit,
+): string | undefined {
+  const page = join(buildDirectory, 'index.html');
+  if (!existsSync(page)) {
+    return `Interborough has not been built: ${page} does not exist. Run \`bun run build\` first.`;
+  }
+  return staleBuildProblem(buildDirectory, source, git);
+}
+
 const USAGE =
   'Usage: bun src/host/supervisor.ts <serve|dev> [--entry <path>] [--plugin <path>]… [--showcase] (--plugin and --showcase are for dev only)';
 
@@ -213,12 +231,7 @@ export async function runSupervisor(
   return supervise({
     command,
     environment: childEnvironment,
-    prepare: () => {
-      const page = join(resolveBuildDirectory(environment), 'index.html');
-      return existsSync(page)
-        ? undefined
-        : `Interborough has not been built: ${page} does not exist. Run \`bun run build\` first.`;
-    },
+    prepare: () => serveProblem(resolveBuildDirectory(environment)),
   });
 }
 

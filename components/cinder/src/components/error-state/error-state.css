@@ -24,7 +24,7 @@
    * and pads itself the way the empty state does, so the two read as one family when the box is
    * not in a region of known height. */
   .cinder-error-state[data-cinder-bordered] {
-    border: 1px solid var(--cinder-border);
+    border: var(--cinder-border-width) solid var(--cinder-border);
     border-radius: var(--cinder-radius-lg);
     background: var(--cinder-surface);
     padding-block: var(--cinder-space-12) calc(var(--cinder-space-12) + var(--cinder-space-2));

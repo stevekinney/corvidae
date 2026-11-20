@@ -8,18 +8,36 @@
     },
     "dev": {
       "persistent": true,
-      "cache": false
+      "cache": false,
+      "dependsOn": ["^metadata"]
     },
     "metadata": {
       "dependsOn": ["transit", "^metadata"],
-      "outputs": [".metadata/**"],
+      "outputs": [
+        ".metadata/**",
+        "src/styles/tokens-base.css",
+        "src/tokens/resolved/**",
+        "src/tokens/index.json",
+        "src/tokens/registry.generated.*",
+        "src/tokens/runtime/*.generated.*"
+      ],
       "inputs": [
         "$TURBO_DEFAULT$",
         "!**/*.test.ts",
+        "!src/styles/tokens-base.css",
+        "!src/tokens/resolved/**",
+        "!src/tokens/index.json",
+        "!src/tokens/registry.generated.*",
+        "!src/tokens/runtime/*.generated.*",
         "$TURBO_ROOT$/components/cinder/scripts/**",
         "!$TURBO_ROOT$/components/cinder/scripts/**/*.test.ts",
         "$TURBO_ROOT$/components/cinder/src/**",
         "!$TURBO_ROOT$/components/cinder/src/**/*.test.ts",
+        "!$TURBO_ROOT$/components/cinder/src/styles/tokens-base.css",
+        "!$TURBO_ROOT$/components/cinder/src/tokens/resolved/**",
+        "!$TURBO_ROOT$/components/cinder/src/tokens/index.json",
+        "!$TURBO_ROOT$/components/cinder/src/tokens/registry.generated.*",
+        "!$TURBO_ROOT$/components/cinder/src/tokens/runtime/*.generated.*",
         "$TURBO_ROOT$/internal/component-tooling/scripts/**",
         "!$TURBO_ROOT$/internal/component-tooling/scripts/**/*.test.ts",
         "$TURBO_ROOT$/internal/component-tooling/src/**",
@@ -44,6 +62,15 @@
       "dependsOn": ["transit", "^types"],
       "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/scripts/typecheck-contracts.ts"]
     },
+    "@lostgradient/cinder#types": {
+      "outputs": [".types/**"],
+      "dependsOn": ["transit", "^types", "metadata"]
+    },
+    "@lostgradient/cinder#typecheck": {
+      "outputs": [],
+      "dependsOn": ["transit", "^types", "metadata"],
+      "inputs": ["$TURBO_DEFAULT$"]
+    },
     "release:check": {
       "outputs": [],
       "dependsOn": ["transit", "^types"],
@@ -58,7 +85,7 @@
     "test": {
       "outputs": ["test-output/junit/**"],
       "dependsOn": ["transit", "metadata", "^metadata"],
-      "env": ["CODEX_CI", "NODE_ENV", "CORVIDAE_TEST_SELECTION"],
+      "env": ["CODEX_CI", "NODE_ENV", "CORVIDAE_TEST_SELECTION", "CORVIDAE_TEST_PLATFORM"],
       "inputs": [
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/scripts/bun-test-junit.ts",
@@ -80,7 +107,7 @@
     "test:slow": {
       "outputs": [],
       "dependsOn": ["transit", "metadata", "^metadata"],
-      "env": ["CODEX_CI", "NODE_ENV", "CORVIDAE_TEST_SELECTION"],
+      "env": ["CODEX_CI", "NODE_ENV", "CORVIDAE_TEST_SELECTION", "CORVIDAE_TEST_PLATFORM"],
       "inputs": [
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/scripts/affected-tests-manifest.ts",
@@ -110,7 +137,8 @@
       "dependsOn": ["^transit"]
     },
     "//#test:self": {
-      "env": ["CODEX_CI", "NODE_ENV", "CORVIDAE_TEST_SELECTION"],
+      "dependsOn": ["@lostgradient/cinder#metadata"],
+      "env": ["CODEX_CI", "NODE_ENV", "CORVIDAE_TEST_SELECTION", "CORVIDAE_TEST_PLATFORM"],
       "outputs": ["test-output/junit/self.xml"],
       "inputs": [
         "$TURBO_DEFAULT$",
@@ -127,7 +155,8 @@
       ]
     },
     "//#test:self:slow": {
-      "env": ["CODEX_CI", "NODE_ENV", "CORVIDAE_TEST_SELECTION"],
+      "dependsOn": ["@lostgradient/cinder#metadata"],
+      "env": ["CODEX_CI", "NODE_ENV", "CORVIDAE_TEST_SELECTION", "CORVIDAE_TEST_PLATFORM"],
       "outputs": [],
       "inputs": [
         "$TURBO_DEFAULT$",
@@ -141,7 +170,7 @@
         "@lostgradient/browser-fixtures#transit",
         "@lostgradient/browser-fixtures#metadata"
       ],
-      "env": ["CODEX_CI", "CORVIDAE_TEST_SELECTION"],
+      "env": ["CODEX_CI", "CORVIDAE_TEST_SELECTION", "CORVIDAE_TEST_PLATFORM"],
       "passThroughEnv": ["TMPDIR"],
       "inputs": [
         "scripts/browser-fixtures/**",
@@ -169,14 +198,105 @@
         "test-output/junit/browser-fixtures.xml"
       ]
     },
+    "//#ci:browser-fixtures": {
+      "dependsOn": [
+        "@lostgradient/browser-fixtures#transit",
+        "@lostgradient/browser-fixtures#metadata",
+        "@lostgradient/playground#transit"
+      ],
+      "env": [
+        "PLAYWRIGHT_SHARD",
+        "PLAYWRIGHT_BASE_IMAGE",
+        "CINDER_VISUAL_DIFF",
+        "CINDER_TEST_COMPONENTS",
+        "CINDER_UPDATE_SNAPSHOTS",
+        "CINDER_UPDATE_SEAM_AUDIT",
+        "FIXTURE_HOST_MODE",
+        "BROWSER_FIXTURE_MANIFEST",
+        "CURATED_HIGHLIGHTER_OUTPUT_DIRECTORY",
+        "CORVIDAE_TEST_PLATFORM"
+      ],
+      "passThroughEnv": [
+        "CI",
+        "HOME",
+        "LANG",
+        "LC_ALL",
+        "PLAYWRIGHT_BROWSERS_PATH",
+        "TMPDIR",
+        "TZ"
+      ],
+      "inputs": [
+        "$TURBO_ROOT$/scripts/browser-fixtures/**",
+        "!$TURBO_ROOT$/scripts/browser-fixtures/**/{node_modules,.playwright,.turbo,.svelte-kit,coverage,playwright-report,test-output,test-results,tmp}/**",
+        "!$TURBO_ROOT$/scripts/browser-fixtures/**/{.DS_Store,*.log,*.lcov,*.pem,.env,.env.*,local.env}",
+        "$TURBO_ROOT$/bun.lock",
+        "$TURBO_ROOT$/bunfig.toml",
+        "$TURBO_ROOT$/package.json",
+        "$TURBO_ROOT$/tsconfig.json",
+        "$TURBO_ROOT$/scripts/*.ts",
+        "!$TURBO_ROOT$/scripts/*.test.ts",
+        "$TURBO_ROOT$/.github/workflows/browser-suites.yml"
+      ],
+      "outputs": [
+        "playwright-output/**",
+        "scripts/browser-fixtures/test-results/**",
+        "scripts/browser-fixtures/.playwright/manifest.json",
+        "scripts/browser-fixtures/.playwright/fixture-modules.ts",
+        "scripts/browser-fixtures/.playwright/manifest-inputs.sha256"
+      ]
+    },
+    "//#ci:browser-interborough": {
+      "dependsOn": ["@lostgradient/interborough#transit", "@lostgradient/interborough#metadata"],
+      "env": [
+        "PLAYWRIGHT_SHARD",
+        "PLAYWRIGHT_BASE_IMAGE",
+        "CORVIDAE_EXPECTED_RELEASE_SHA",
+        "CORVIDAE_PLUGIN_IDENTITY_BASE",
+        "INTERBOROUGH_BUILD_DIRECTORY",
+        "INTERBOROUGH_DESIGN_REVIEW_CAPTURE",
+        "INTERBOROUGH_DESIGN_REVIEW_COLOR_SCHEME",
+        "INTERBOROUGH_HOME",
+        "INTERBOROUGH_PORT",
+        "CORVIDAE_TEST_PLATFORM"
+      ],
+      "passThroughEnv": [
+        "CI",
+        "HOME",
+        "INTERBOROUGH_E2E_PORT",
+        "INTERBOROUGH_E2E_FRESH_SERVER",
+        "LANG",
+        "LC_ALL",
+        "PLAYWRIGHT_BROWSERS_PATH",
+        "TMPDIR",
+        "TZ"
+      ],
+      "inputs": [
+        "$TURBO_ROOT$/applications/interborough/**",
+        "!$TURBO_ROOT$/applications/interborough/**/{node_modules,.turbo,.svelte-kit,build,coverage,playwright-report,test-output,test-results,tmp}/**",
+        "!$TURBO_ROOT$/applications/interborough/**/{.DS_Store,*.log,*.lcov,*.pem,.env,.env.*,local.env}",
+        "$TURBO_ROOT$/bun.lock",
+        "$TURBO_ROOT$/bunfig.toml",
+        "$TURBO_ROOT$/package.json",
+        "$TURBO_ROOT$/tsconfig.json",
+        "$TURBO_ROOT$/scripts/*.ts",
+        "!$TURBO_ROOT$/scripts/*.test.ts",
+        "$TURBO_ROOT$/.github/workflows/browser-suites.yml"
+      ],
+      "outputs": ["playwright-output/**", "applications/interborough/test-results/**"]
+    },
     "//#dev:browser-fixtures": {
       "persistent": true,
       "cache": false,
       "dependsOn": ["@lostgradient/browser-fixtures#metadata"]
     },
     "@lostgradient/chat#test:browser": {
-      "dependsOn": ["transit"],
-      "env": ["CINDER_TEST_COMPONENTS", "CINDER_UPDATE_SNAPSHOTS", "CINDER_VISUAL_DIFF"],
+      "dependsOn": ["transit", "^metadata"],
+      "env": [
+        "CINDER_TEST_COMPONENTS",
+        "CINDER_UPDATE_SNAPSHOTS",
+        "CINDER_VISUAL_DIFF",
+        "CORVIDAE_TEST_PLATFORM"
+      ],
       "passThroughEnv": [
         "CI",
         "HOME",
@@ -197,8 +317,13 @@
       "outputs": []
     },
     "@lostgradient/editor#test:browser": {
-      "dependsOn": ["transit"],
-      "env": ["CINDER_TEST_COMPONENTS", "CINDER_UPDATE_SNAPSHOTS", "CINDER_VISUAL_DIFF"],
+      "dependsOn": ["transit", "^metadata"],
+      "env": [
+        "CINDER_TEST_COMPONENTS",
+        "CINDER_UPDATE_SNAPSHOTS",
+        "CINDER_VISUAL_DIFF",
+        "CORVIDAE_TEST_PLATFORM"
+      ],
       "passThroughEnv": [
         "CI",
         "HOME",
@@ -219,8 +344,13 @@
       "outputs": []
     },
     "@lostgradient/terminal#test:browser": {
-      "dependsOn": ["transit"],
-      "env": ["CINDER_TEST_COMPONENTS", "CINDER_UPDATE_SNAPSHOTS", "CINDER_VISUAL_DIFF"],
+      "dependsOn": ["transit", "^metadata"],
+      "env": [
+        "CINDER_TEST_COMPONENTS",
+        "CINDER_UPDATE_SNAPSHOTS",
+        "CINDER_VISUAL_DIFF",
+        "CORVIDAE_TEST_PLATFORM"
+      ],
       "passThroughEnv": [
         "CI",
         "HOME",
@@ -241,13 +371,15 @@
       "outputs": []
     },
     "@lostgradient/interborough#build": {
-      "dependsOn": ["transit"],
+      "dependsOn": ["transit", "^metadata"],
+      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/scripts/ensure-cinder-generated.ts"],
       "outputs": ["build/**"],
       "env": ["NODE_ENV"]
     },
     "@lostgradient/interborough#dev": {
       "persistent": true,
       "cache": false,
+      "dependsOn": ["^metadata"],
       "passThroughEnv": [
         "INTERBOROUGH_HOME",
         "INTERBOROUGH_PORT",
@@ -266,7 +398,7 @@
     "@lostgradient/bureau#test": {
       "dependsOn": ["transit"],
       "outputs": ["test-output/junit/**"],
-      "env": ["CODEX_CI", "NODE_ENV", "CORVIDAE_TEST_SELECTION"],
+      "env": ["CODEX_CI", "NODE_ENV", "CORVIDAE_TEST_SELECTION", "CORVIDAE_TEST_PLATFORM"],
       "inputs": [
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/scripts/bun-test-junit.ts",
@@ -317,7 +449,8 @@
         "WEFT_COVERAGE_MODE",
         "NODE_V8_COVERAGE",
         "WEFT_KEEP_DURABILITY_FIXTURES",
-        "CORVIDAE_TEST_SELECTION"
+        "CORVIDAE_TEST_SELECTION",
+        "CORVIDAE_TEST_PLATFORM"
       ]
     },
     "@lostgradient/weft#test:slow": {
@@ -336,7 +469,8 @@
         "WEFT_EVENT_DISPATCH_ARCHITECTURE_BENCHMARK",
         "WEFT_COVERAGE_MODE",
         "NODE_V8_COVERAGE",
-        "WEFT_KEEP_DURABILITY_FIXTURES"
+        "WEFT_KEEP_DURABILITY_FIXTURES",
+        "CORVIDAE_TEST_PLATFORM"
       ],
       "inputs": [
         "$TURBO_DEFAULT$",
@@ -366,7 +500,8 @@
         "WEFT_EVENT_DISPATCH_ARCHITECTURE_BENCHMARK",
         "WEFT_COVERAGE_MODE",
         "NODE_V8_COVERAGE",
-        "WEFT_KEEP_DURABILITY_FIXTURES"
+        "WEFT_KEEP_DURABILITY_FIXTURES",
+        "CORVIDAE_TEST_PLATFORM"
       ],
       "inputs": [
         "$TURBO_DEFAULT$",
@@ -383,7 +518,13 @@
     "@lostgradient/storage#test": {
       "outputs": ["test-output/junit/**"],
       "dependsOn": ["transit"],
-      "env": ["CODEX_CI", "NODE_ENV", "WEFT_KEEP_DURABILITY_FIXTURES", "CORVIDAE_TEST_SELECTION"],
+      "env": [
+        "CODEX_CI",
+        "NODE_ENV",
+        "WEFT_KEEP_DURABILITY_FIXTURES",
+        "CORVIDAE_TEST_SELECTION",
+        "CORVIDAE_TEST_PLATFORM"
+      ],
       "inputs": [
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/scripts/bun-test-junit.ts",
@@ -404,7 +545,7 @@
     "@lostgradient/storage#test:coverage": {
       "dependsOn": ["transit"],
       "outputs": ["coverage/**"],
-      "env": ["CODEX_CI", "NODE_ENV", "WEFT_KEEP_DURABILITY_FIXTURES"],
+      "env": ["CODEX_CI", "NODE_ENV", "WEFT_KEEP_DURABILITY_FIXTURES", "CORVIDAE_TEST_PLATFORM"],
       "inputs": [
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/scripts/bun-test.ts",
@@ -420,7 +561,13 @@
     "@lostgradient/storage-bun-sqlite#test": {
       "outputs": ["test-output/junit/**"],
       "dependsOn": ["transit"],
-      "env": ["CODEX_CI", "NODE_ENV", "WEFT_KEEP_DURABILITY_FIXTURES", "CORVIDAE_TEST_SELECTION"],
+      "env": [
+        "CODEX_CI",
+        "NODE_ENV",
+        "WEFT_KEEP_DURABILITY_FIXTURES",
+        "CORVIDAE_TEST_SELECTION",
+        "CORVIDAE_TEST_PLATFORM"
+      ],
       "inputs": [
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/scripts/bun-test-junit.ts",
@@ -441,7 +588,13 @@
     "@lostgradient/storage-bun-sqlite#test:slow": {
       "outputs": [],
       "dependsOn": ["transit"],
-      "env": ["CODEX_CI", "NODE_ENV", "CORVIDAE_TEST_SELECTION", "WEFT_KEEP_DURABILITY_FIXTURES"],
+      "env": [
+        "CODEX_CI",
+        "NODE_ENV",
+        "CORVIDAE_TEST_SELECTION",
+        "WEFT_KEEP_DURABILITY_FIXTURES",
+        "CORVIDAE_TEST_PLATFORM"
+      ],
       "inputs": [
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/scripts/affected-tests-manifest.ts",
@@ -458,7 +611,7 @@
     "@lostgradient/storage-bun-sqlite#test:coverage": {
       "dependsOn": ["transit"],
       "outputs": ["coverage/**"],
-      "env": ["CODEX_CI", "NODE_ENV", "WEFT_KEEP_DURABILITY_FIXTURES"],
+      "env": ["CODEX_CI", "NODE_ENV", "WEFT_KEEP_DURABILITY_FIXTURES", "CORVIDAE_TEST_PLATFORM"],
       "inputs": [
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/scripts/bun-test.ts",
@@ -474,7 +627,13 @@
     "@lostgradient/storage-indexeddb#test": {
       "outputs": ["test-output/junit/**"],
       "dependsOn": ["transit"],
-      "env": ["CODEX_CI", "NODE_ENV", "WEFT_BROWSER_SMOKE", "CORVIDAE_TEST_SELECTION"],
+      "env": [
+        "CODEX_CI",
+        "NODE_ENV",
+        "WEFT_BROWSER_SMOKE",
+        "CORVIDAE_TEST_SELECTION",
+        "CORVIDAE_TEST_PLATFORM"
+      ],
       "inputs": [
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/scripts/bun-test-junit.ts",
@@ -495,7 +654,7 @@
     "@lostgradient/storage-indexeddb#test:coverage": {
       "dependsOn": ["transit"],
       "outputs": ["coverage/**"],
-      "env": ["CODEX_CI", "NODE_ENV", "WEFT_BROWSER_SMOKE"],
+      "env": ["CODEX_CI", "NODE_ENV", "WEFT_BROWSER_SMOKE", "CORVIDAE_TEST_PLATFORM"],
       "inputs": [
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/scripts/bun-test.ts",
@@ -511,7 +670,13 @@
     "@lostgradient/storage-neon#test": {
       "outputs": ["test-output/junit/**"],
       "dependsOn": ["transit"],
-      "env": ["CODEX_CI", "NODE_ENV", "WEFT_TEST_POSTGRES_URL", "CORVIDAE_TEST_SELECTION"],
+      "env": [
+        "CODEX_CI",
+        "NODE_ENV",
+        "WEFT_TEST_POSTGRES_URL",
+        "CORVIDAE_TEST_SELECTION",
+        "CORVIDAE_TEST_PLATFORM"
+      ],
       "inputs": [
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/scripts/bun-test-junit.ts",
@@ -532,7 +697,13 @@
     "@lostgradient/storage-neon#test:slow": {
       "outputs": [],
       "dependsOn": ["transit"],
-      "env": ["CODEX_CI", "NODE_ENV", "CORVIDAE_TEST_SELECTION", "WEFT_TEST_POSTGRES_URL"],
+      "env": [
+        "CODEX_CI",
+        "NODE_ENV",
+        "CORVIDAE_TEST_SELECTION",
+        "WEFT_TEST_POSTGRES_URL",
+        "CORVIDAE_TEST_PLATFORM"
+      ],
       "inputs": [
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/scripts/affected-tests-manifest.ts",
@@ -549,7 +720,7 @@
     "@lostgradient/storage-neon#test:coverage": {
       "dependsOn": ["transit"],
       "outputs": ["coverage/**"],
-      "env": ["CODEX_CI", "NODE_ENV", "WEFT_TEST_POSTGRES_URL"],
+      "env": ["CODEX_CI", "NODE_ENV", "WEFT_TEST_POSTGRES_URL", "CORVIDAE_TEST_PLATFORM"],
       "inputs": [
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/scripts/bun-test.ts",
@@ -565,7 +736,13 @@
     "@lostgradient/storage-node-sqlite#test": {
       "outputs": ["test-output/junit/**"],
       "dependsOn": ["transit"],
-      "env": ["CODEX_CI", "NODE_ENV", "WEFT_KEEP_DURABILITY_FIXTURES", "CORVIDAE_TEST_SELECTION"],
+      "env": [
+        "CODEX_CI",
+        "NODE_ENV",
+        "WEFT_KEEP_DURABILITY_FIXTURES",
+        "CORVIDAE_TEST_SELECTION",
+        "CORVIDAE_TEST_PLATFORM"
+      ],
       "inputs": [
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/scripts/bun-test-junit.ts",
@@ -586,7 +763,13 @@
     "@lostgradient/storage-node-sqlite#test:slow": {
       "outputs": [],
       "dependsOn": ["transit"],
-      "env": ["CODEX_CI", "NODE_ENV", "CORVIDAE_TEST_SELECTION", "WEFT_KEEP_DURABILITY_FIXTURES"],
+      "env": [
+        "CODEX_CI",
+        "NODE_ENV",
+        "CORVIDAE_TEST_SELECTION",
+        "WEFT_KEEP_DURABILITY_FIXTURES",
+        "CORVIDAE_TEST_PLATFORM"
+      ],
       "inputs": [
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/scripts/affected-tests-manifest.ts",
@@ -603,7 +786,7 @@
     "@lostgradient/storage-node-sqlite#test:coverage": {
       "dependsOn": ["transit"],
       "outputs": ["coverage/**"],
-      "env": ["CODEX_CI", "NODE_ENV", "WEFT_KEEP_DURABILITY_FIXTURES"],
+      "env": ["CODEX_CI", "NODE_ENV", "WEFT_KEEP_DURABILITY_FIXTURES", "CORVIDAE_TEST_PLATFORM"],
       "inputs": [
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/scripts/bun-test.ts",
@@ -619,7 +802,13 @@
     "@lostgradient/storage-postgres#test": {
       "outputs": ["test-output/junit/**"],
       "dependsOn": ["transit"],
-      "env": ["CODEX_CI", "NODE_ENV", "WEFT_TEST_POSTGRES_URL", "CORVIDAE_TEST_SELECTION"],
+      "env": [
+        "CODEX_CI",
+        "NODE_ENV",
+        "WEFT_TEST_POSTGRES_URL",
+        "CORVIDAE_TEST_SELECTION",
+        "CORVIDAE_TEST_PLATFORM"
+      ],
       "inputs": [
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/scripts/bun-test-junit.ts",
@@ -640,7 +829,13 @@
     "@lostgradient/storage-postgres#test:slow": {
       "outputs": [],
       "dependsOn": ["transit"],
-      "env": ["CODEX_CI", "NODE_ENV", "CORVIDAE_TEST_SELECTION", "WEFT_TEST_POSTGRES_URL"],
+      "env": [
+        "CODEX_CI",
+        "NODE_ENV",
+        "CORVIDAE_TEST_SELECTION",
+        "WEFT_TEST_POSTGRES_URL",
+        "CORVIDAE_TEST_PLATFORM"
+      ],
       "inputs": [
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/scripts/affected-tests-manifest.ts",
@@ -657,7 +852,7 @@
     "@lostgradient/storage-postgres#test:coverage": {
       "dependsOn": ["transit"],
       "outputs": ["coverage/**"],
-      "env": ["CODEX_CI", "NODE_ENV", "WEFT_TEST_POSTGRES_URL"],
+      "env": ["CODEX_CI", "NODE_ENV", "WEFT_TEST_POSTGRES_URL", "CORVIDAE_TEST_PLATFORM"],
       "inputs": [
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/scripts/bun-test.ts",
@@ -673,7 +868,13 @@
     "@lostgradient/storage-turso#test": {
       "outputs": ["test-output/junit/**"],
       "dependsOn": ["transit"],
-      "env": ["CODEX_CI", "NODE_ENV", "WEFT_KEEP_DURABILITY_FIXTURES", "CORVIDAE_TEST_SELECTION"],
+      "env": [
+        "CODEX_CI",
+        "NODE_ENV",
+        "WEFT_KEEP_DURABILITY_FIXTURES",
+        "CORVIDAE_TEST_SELECTION",
+        "CORVIDAE_TEST_PLATFORM"
+      ],
       "inputs": [
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/scripts/bun-test-junit.ts",
@@ -694,7 +895,13 @@
     "@lostgradient/storage-turso#test:slow": {
       "outputs": [],
       "dependsOn": ["transit"],
-      "env": ["CODEX_CI", "NODE_ENV", "CORVIDAE_TEST_SELECTION", "WEFT_KEEP_DURABILITY_FIXTURES"],
+      "env": [
+        "CODEX_CI",
+        "NODE_ENV",
+        "CORVIDAE_TEST_SELECTION",
+        "WEFT_KEEP_DURABILITY_FIXTURES",
+        "CORVIDAE_TEST_PLATFORM"
+      ],
       "inputs": [
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/scripts/affected-tests-manifest.ts",
@@ -711,7 +918,7 @@
     "@lostgradient/storage-turso#test:coverage": {
       "dependsOn": ["transit"],
       "outputs": ["coverage/**"],
-      "env": ["CODEX_CI", "NODE_ENV", "WEFT_KEEP_DURABILITY_FIXTURES"],
+      "env": ["CODEX_CI", "NODE_ENV", "WEFT_KEEP_DURABILITY_FIXTURES", "CORVIDAE_TEST_PLATFORM"],
       "inputs": [
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/scripts/bun-test.ts",
@@ -727,7 +934,13 @@
     "@lostgradient/storage-web-extension#test": {
       "outputs": ["test-output/junit/**"],
       "dependsOn": ["transit"],
-      "env": ["CODEX_CI", "NODE_ENV", "WEFT_BROWSER_SMOKE", "CORVIDAE_TEST_SELECTION"],
+      "env": [
+        "CODEX_CI",
+        "NODE_ENV",
+        "WEFT_BROWSER_SMOKE",
+        "CORVIDAE_TEST_SELECTION",
+        "CORVIDAE_TEST_PLATFORM"
+      ],
       "inputs": [
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/scripts/bun-test-junit.ts",
@@ -748,7 +961,7 @@
     "@lostgradient/storage-web-extension#test:coverage": {
       "dependsOn": ["transit"],
       "outputs": ["coverage/**"],
-      "env": ["CODEX_CI", "NODE_ENV", "WEFT_BROWSER_SMOKE"],
+      "env": ["CODEX_CI", "NODE_ENV", "WEFT_BROWSER_SMOKE", "CORVIDAE_TEST_PLATFORM"],
       "inputs": [
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/scripts/bun-test.ts",
@@ -764,7 +977,7 @@
     "@lostgradient/storage-cloudflare#test": {
       "outputs": ["test-output/junit/**"],
       "dependsOn": ["transit"],
-      "env": ["CODEX_CI", "NODE_ENV", "CORVIDAE_TEST_SELECTION"],
+      "env": ["CODEX_CI", "NODE_ENV", "CORVIDAE_TEST_SELECTION", "CORVIDAE_TEST_PLATFORM"],
       "inputs": [
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/scripts/bun-test-junit.ts",
@@ -785,7 +998,7 @@
     "@lostgradient/storage-cloudflare#test:coverage": {
       "dependsOn": ["transit"],
       "outputs": ["coverage/**"],
-      "env": ["CODEX_CI", "NODE_ENV"],
+      "env": ["CODEX_CI", "NODE_ENV", "CORVIDAE_TEST_PLATFORM"],
       "inputs": [
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/scripts/bun-test.ts",
@@ -801,7 +1014,7 @@
     "@lostgradient/storage-lmdb#test": {
       "outputs": ["test-output/junit/**"],
       "dependsOn": ["transit"],
-      "env": ["CODEX_CI", "NODE_ENV", "CORVIDAE_TEST_SELECTION"],
+      "env": ["CODEX_CI", "NODE_ENV", "CORVIDAE_TEST_SELECTION", "CORVIDAE_TEST_PLATFORM"],
       "inputs": [
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/scripts/bun-test-junit.ts",
@@ -822,7 +1035,7 @@
     "@lostgradient/storage-lmdb#test:coverage": {
       "dependsOn": ["transit"],
       "outputs": ["coverage/**"],
-      "env": ["CODEX_CI", "NODE_ENV"],
+      "env": ["CODEX_CI", "NODE_ENV", "CORVIDAE_TEST_PLATFORM"],
       "inputs": [
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/scripts/bun-test.ts",
@@ -848,12 +1061,13 @@
         "$TURBO_ROOT$/scripts/bun-test-pool.ts",
         "$TURBO_ROOT$/scripts/run-exclusively.ts",
         "$TURBO_ROOT$/scripts/environment-configuration.ts"
-      ]
+      ],
+      "env": ["CORVIDAE_TEST_PLATFORM"]
     },
     "@lostgradient/chat#test:coverage": {
-      "dependsOn": ["transit"],
+      "dependsOn": ["transit", "^metadata"],
       "outputs": ["coverage/**"],
-      "env": ["CODEX_CI", "NODE_ENV"],
+      "env": ["CODEX_CI", "NODE_ENV", "CORVIDAE_TEST_PLATFORM"],
       "inputs": [
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/scripts/bun-test.ts",
@@ -867,7 +1081,7 @@
       ]
     },
     "@lostgradient/interborough#test:coverage": {
-      "dependsOn": ["transit"],
+      "dependsOn": ["transit", "^metadata"],
       "inputs": [
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/scripts/test-watchdog.ts",
@@ -879,12 +1093,12 @@
         "$TURBO_ROOT$/testing/testing/src/hang-guard.ts"
       ],
       "outputs": ["coverage/**"],
-      "env": ["CODEX_CI", "NODE_ENV"]
+      "env": ["CODEX_CI", "NODE_ENV", "CORVIDAE_TEST_PLATFORM"]
     },
     "@lostgradient/terminal#test:coverage": {
-      "dependsOn": ["transit"],
+      "dependsOn": ["transit", "^metadata"],
       "outputs": ["coverage/**"],
-      "env": ["CODEX_CI", "NODE_ENV"],
+      "env": ["CODEX_CI", "NODE_ENV", "CORVIDAE_TEST_PLATFORM"],
       "inputs": [
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/scripts/bun-test.ts",
@@ -922,7 +1136,7 @@
     "@lostgradient/ventriloquist#test": {
       "outputs": ["test-results/**", "test-output/junit/**"],
       "dependsOn": ["transit"],
-      "env": ["CODEX_CI", "NODE_ENV", "CORVIDAE_TEST_SELECTION"],
+      "env": ["CODEX_CI", "NODE_ENV", "CORVIDAE_TEST_SELECTION", "CORVIDAE_TEST_PLATFORM"],
       "inputs": [
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/scripts/terminal/evidence.schema.json",
@@ -959,12 +1173,13 @@
         "$TURBO_ROOT$/scripts/bun-test-pool.ts",
         "$TURBO_ROOT$/scripts/run-exclusively.ts",
         "$TURBO_ROOT$/scripts/environment-configuration.ts"
-      ]
+      ],
+      "env": ["CORVIDAE_TEST_PLATFORM"]
     },
     "@lostgradient/component-tooling#test": {
       "outputs": ["test-output/junit/**"],
       "dependsOn": ["transit", "@lostgradient/cinder#metadata"],
-      "env": ["CODEX_CI", "NODE_ENV", "CORVIDAE_TEST_SELECTION"],
+      "env": ["CODEX_CI", "NODE_ENV", "CORVIDAE_TEST_SELECTION", "CORVIDAE_TEST_PLATFORM"],
       "inputs": [
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/package.json",
@@ -992,7 +1207,7 @@
     "@lostgradient/component-tooling#test:slow": {
       "outputs": [],
       "dependsOn": ["transit", "@lostgradient/cinder#metadata"],
-      "env": ["CODEX_CI", "NODE_ENV", "CORVIDAE_TEST_SELECTION"],
+      "env": ["CODEX_CI", "NODE_ENV", "CORVIDAE_TEST_SELECTION", "CORVIDAE_TEST_PLATFORM"],
       "inputs": [
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/package.json",
@@ -1025,7 +1240,7 @@
     "@lostgradient/cinder#test:coverage": {
       "dependsOn": ["transit", "metadata"],
       "outputs": ["coverage/**"],
-      "env": ["CODEX_CI", "NODE_ENV", "CINDER_SVG_DATA_URI_ROOTS"],
+      "env": ["CODEX_CI", "NODE_ENV", "CINDER_SVG_DATA_URI_ROOTS", "CORVIDAE_TEST_PLATFORM"],
       "inputs": [
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/components/editor/src/**",
@@ -1042,7 +1257,13 @@
     "@lostgradient/cinder#test": {
       "outputs": ["test-output/junit/**"],
       "dependsOn": ["transit", "metadata"],
-      "env": ["CODEX_CI", "NODE_ENV", "CINDER_SVG_DATA_URI_ROOTS", "CORVIDAE_TEST_SELECTION"],
+      "env": [
+        "CODEX_CI",
+        "NODE_ENV",
+        "CINDER_SVG_DATA_URI_ROOTS",
+        "CORVIDAE_TEST_SELECTION",
+        "CORVIDAE_TEST_PLATFORM"
+      ],
       "inputs": [
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/components/editor/src/**",
@@ -1064,7 +1285,13 @@
     "@lostgradient/cinder#test:slow": {
       "outputs": [],
       "dependsOn": ["transit", "metadata"],
-      "env": ["CODEX_CI", "NODE_ENV", "CORVIDAE_TEST_SELECTION", "CINDER_SVG_DATA_URI_ROOTS"],
+      "env": [
+        "CODEX_CI",
+        "NODE_ENV",
+        "CORVIDAE_TEST_SELECTION",
+        "CINDER_SVG_DATA_URI_ROOTS",
+        "CORVIDAE_TEST_PLATFORM"
+      ],
       "inputs": [
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/scripts/affected-tests-manifest.ts",
@@ -1087,7 +1314,7 @@
     "@lostgradient/playground#test": {
       "outputs": ["test-output/junit/**"],
       "dependsOn": ["transit", "metadata", "^metadata"],
-      "env": ["CODEX_CI", "NODE_ENV", "CORVIDAE_TEST_SELECTION"],
+      "env": ["CODEX_CI", "NODE_ENV", "CORVIDAE_TEST_SELECTION", "CORVIDAE_TEST_PLATFORM"],
       "inputs": [
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/scripts/bun-test-junit.ts",

@@ -16,7 +16,8 @@
 
 <div id="example-mount-basic">
   <SortableList {items} {getKey} {getItemLabel} onReorder={handleReorder} label="Task priority">
-    {#snippet children(item)}<span style="padding: 0.5rem 0.75rem; display: block;"
+    {#snippet children(item)}<span
+        style="padding: var(--cinder-space-2) var(--cinder-space-3); display: block;"
         >{item.label}</span
       >{/snippet}
   </SortableList>

@@ -29,7 +29,7 @@
   .card-suggested-fixture {
     display: flex;
     flex-direction: column;
-    gap: 1rem;
+    gap: var(--cinder-space-4);
     max-inline-size: 28rem;
   }
 

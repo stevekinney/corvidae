@@ -23,6 +23,12 @@
  *
  *   bun scripts/design-review-capture.ts [--out <dir>] [--scheme light|dark|both]
  *     [--data showcase|stress|both] [--specs all|responsive|states] [--grep <pattern>]
+ *     [--expect <expected-captures.json>]
+ *
+ * `--expect` holds the capture to the states its design rows declare (`design-review-rows.ts
+ * --manifest` writes the file from the issue's `rows.resolved.json`): after the run, each expected
+ * route, state, width and scheme that `manifest.jsonl` does not show is named on standard error,
+ * `summary.json` records the coverage, and the run exits 1. Without it nothing is held to a plan.
  *
  * `--data` chooses the content: `showcase` runs only the showcase specifications, `stress` runs the
  * responsive and view-states specifications, and `both` (the default) runs every one of them. `--specs`
@@ -44,9 +50,19 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { ensureCinderGenerated } from '../../../scripts/ensure-cinder-generated.ts';
 import { withHostSlots, withMemoryAdmission, type HostSlots } from '../../../scripts/host-slots.ts';
 import { runInProcessGroup } from '../../../scripts/run-exclusively.ts';
 import { auditGeometry } from './design-review-geometry.ts';
+import {
+  describeMissing,
+  missingCaptures,
+  parseCaptureManifest,
+  wideCaptureHint,
+  type CapturedLine,
+  type CaptureExpectation,
+  type CaptureManifest,
+} from './design-review-rows.ts';
 import { endToEndPort } from './environment-configuration.ts';
 
 const applicationDirectory = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -135,6 +151,10 @@ const SHOWCASE_SPECIFICATIONS = [
   'tests/e2e/run-page-live-states.spec.ts',
   // A working goal, Start again held, and Start again pressed (COR-2425).
   'tests/e2e/goal-page-states.spec.ts',
+  // Capabilities and Connect tools in the states the sample world does not hold (COR-2435, COR-2436).
+  'tests/e2e/capabilities-states.spec.ts',
+  // The Goals list while its goals are read (COR-2425, row 68k).
+  'tests/e2e/goals-list-states.spec.ts',
   // Every view loading, empty, failed and forbidden, which a route filter (`--grep '/runs'`) reaches
   // through each title's address, and the goal check's loading states.
   'tests/e2e/15-view-states.spec.ts',
@@ -154,6 +174,8 @@ interface Options {
   readonly schemes: readonly Scheme[];
   readonly specifications: readonly string[];
   readonly grep: string | undefined;
+  /** The expected-captures file (`design-review-rows.ts --manifest`) the capture is held to. */
+  readonly expect?: string;
 }
 
 /** Reads the command line, or answers the usage error to print. */
@@ -169,6 +191,7 @@ export function parseArguments(argv: readonly string[], now = new Date()): Optio
   let data: 'showcase' | 'stress' | 'both' | undefined;
   let specsGiven = false;
   let grep: string | undefined;
+  let expectFile: string | undefined;
   for (let index = 0; index < argv.length; index += 1) {
     const flag = argv[index];
     const value = argv[index + 1];
@@ -196,6 +219,9 @@ export function parseArguments(argv: readonly string[], now = new Date()): Optio
       case '--grep':
         grep = value;
         break;
+      case '--expect':
+        expectFile = resolve(value);
+        break;
       default:
         return `unknown flag ${flag ?? ''}`;
     }
@@ -211,7 +237,13 @@ export function parseArguments(argv: readonly string[], now = new Date()): Optio
       ...(data === 'showcase' ? [] : stress),
     ]),
   ];
-  return { out, schemes, specifications, grep };
+  return {
+    out,
+    schemes,
+    specifications,
+    grep,
+    ...(expectFile === undefined ? {} : { expect: expectFile }),
+  };
 }
 
 /** The showcase specifications, for the test that holds each one's titles to the routes it captures. */
@@ -377,6 +409,15 @@ export async function captureDesignReview(
     environment.standardError(`${options}\n`);
     return 2;
   }
+  let expected: CaptureManifest | undefined;
+  if (options.expect !== undefined) {
+    const read = parseCaptureManifest(await readFile(options.expect, 'utf8').catch(() => ''));
+    if (typeof read === 'string') {
+      environment.standardError(`design review: ${options.expect}: ${read}\n`);
+      return 2;
+    }
+    expected = read;
+  }
   const port = endToEndPort();
   if (!environment.portIsFree(port)) {
     environment.standardError(
@@ -424,6 +465,10 @@ export async function captureDesignReview(
   const captures = await captureCount(options.out);
   const geometry = await auditGeometry(options.out);
   const ranNothing = runs.some((run) => run.ranNothing.length > 0);
+  // Coverage comes before anything else counts: a declared state that no capture shows is named,
+  // and the run exits 1 (`design-rounds.ts` counts only a capture whose coverage is complete).
+  const coverage =
+    expected === undefined ? undefined : await coverageOf(options.out, expected, environment);
   const summary = {
     out: options.out,
     captures,
@@ -432,6 +477,7 @@ export async function captureDesignReview(
     runs,
     clean: runs.every((run) => run.exitCode === 0) && !ranNothing,
     geometry,
+    ...(coverage === undefined ? {} : { coverage }),
   };
   await writeFile(join(options.out, 'summary.json'), `${JSON.stringify(summary, null, 2)}\n`);
   if (geometry.measured > 0) {
@@ -442,7 +488,38 @@ export async function captureDesignReview(
   environment.standardOutput(
     `design review: ${captures} captures in ${options.out}${summary.clean ? '' : ' (a specification failed; see summary.json)'}\n`,
   );
-  return captures > 0 && !ranNothing ? 0 : 1;
+  return captures > 0 && !ranNothing && (coverage?.complete ?? true) ? 0 : 1;
+}
+
+/** What a capture covered of the captures a manifest expects. */
+export interface Coverage {
+  readonly expected: number;
+  readonly missing: readonly CaptureExpectation[];
+  readonly complete: boolean;
+}
+
+/** Holds the capture's `manifest.jsonl` to an expected-captures manifest, naming each one missing. */
+async function coverageOf(
+  out: string,
+  manifest: CaptureManifest,
+  environment: CaptureEnvironment,
+): Promise<Coverage> {
+  const text = await readFile(join(out, 'manifest.jsonl'), 'utf8').catch(() => '');
+  const lines: CapturedLine[] = [];
+  for (const line of text.split('\n')) {
+    if (line.trim() === '') continue;
+    try {
+      lines.push(JSON.parse(line) as CapturedLine);
+    } catch {
+      // A torn line shows nothing, so what it would have shown is reported missing.
+    }
+  }
+  const missing = missingCaptures(manifest.captures, lines);
+  for (const entry of missing)
+    environment.standardError(`design review: ${describeMissing(entry)}\n`);
+  const hint = wideCaptureHint(missing);
+  if (hint !== undefined) environment.standardError(`design review: ${hint}\n`);
+  return { expected: manifest.captures.length, missing, complete: missing.length === 0 };
 }
 
 /** Playwright's JSON report, or `undefined` when the run wrote none. */
@@ -487,6 +564,8 @@ export function underHostSlots<Environment extends { run: CaptureEnvironment['ru
 // The specifications run one Playwright worker, so one browser at a time: one host slot. The host
 // is checked for memory before the capture starts (`documentation/repository/host-admission.md`).
 if (import.meta.main) {
+  // The capture builds Interborough, which imports Cinder's generated files.
+  ensureCinderGenerated();
   process.exitCode = await withMemoryAdmission(() =>
     withHostSlots(1, (slots) =>
       captureDesignReview(undefined, underHostSlots(hostEnvironment, slots)),

@@ -510,7 +510,12 @@ describe('the tools of a removed source', () => {
       expect(gated).toBeDefined();
       expect(gated?.name).toBe(original.name);
       expect(gated?.configuration.description).toBe(original.configuration.description);
-      expect(gated?.configuration.metadata).toEqual(original.configuration.metadata);
+      // The loader's metadata, plus the Default asks level every saved source's tool now carries
+      // (what Sources reports, enforced by the agent hook, COR-2436).
+      expect(gated?.configuration.metadata).toEqual({
+        ...original.configuration.metadata,
+        defaultApproval: expect.stringMatching(/^(never|on-changes|always)$/),
+      });
       expect(gated?.configuration.tags).toEqual(original.configuration.tags);
       expect(z.toJSONSchema(gated?.configuration.input as z.ZodType)).toEqual(
         z.toJSONSchema(original.configuration.input),

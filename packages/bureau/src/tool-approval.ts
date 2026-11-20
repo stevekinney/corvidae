@@ -99,10 +99,46 @@ const ARMORER_MODE: Readonly<Record<ToolApprovalMode, ApprovalMode>> = {
  * with no tier (it declares none) asks, because Armorer never lets a call it cannot classify
  * through unasked. The tool catalog reports it as each tool's default approval.
  */
-export function defaultToolApproval(tier: CapabilityTier | undefined): 'allow' | 'ask' {
-  return evaluateApprovalStatus(tier, ARMORER_MODE[TOOL_APPROVAL_DEFAULT_MODE]) === 'allow'
-    ? 'allow'
-    : 'ask';
+export function defaultToolApproval(
+  tier: CapabilityTier | undefined,
+  level: Exclude<ToolApprovalMode, 'blocked'> = TOOL_APPROVAL_DEFAULT_MODE as Exclude<
+    ToolApprovalMode,
+    'blocked'
+  >,
+): 'allow' | 'ask' {
+  return evaluateApprovalStatus(tier, ARMORER_MODE[level]) === 'allow' ? 'allow' : 'ask';
+}
+
+/**
+ * The Default asks level a tool carries in its metadata (`never`, `on-changes` or `always`: the
+ * host sets it from a tool source's saved setting), or `undefined` when it carries none or a value
+ * that is not one of those. Blocked is never a tool's default: it belongs to one agent's file.
+ */
+export function readToolDefaultApproval(
+  metadata: Readonly<Record<string, unknown>> | undefined,
+): Exclude<ToolApprovalMode, 'blocked'> | undefined {
+  // A tool carries its own Default asks level in its metadata under `defaultApproval` (COR-2436).
+  const value = metadata?.['defaultApproval'];
+  return value === 'never' || value === 'on-changes' || value === 'always' ? value : undefined;
+}
+
+/**
+ * The level a tool asks at when an agent's `approvals` says nothing about it, the one value every
+ * reader shares (the hook, the catalog's `defaultAsks`, the grant check): the pick its source
+ * stored, else Never for a tool that only reads and On changes for the rest, which is what the hook
+ * does with a tool that carries none (the precedence table, COR-1936). A read at Never and at On
+ * changes both run, so only the words differ there. A dangerous tool is enforced at Always only
+ * when it carries that pick: the host attaches the level its tier gives (Always for a dangerous
+ * tool) to every tool of a saved source, so those ask even in an "allow all" chat and after a
+ * remembered grant.
+ */
+export function enforcedDefaultApproval(
+  metadata: Readonly<Record<string, unknown>> | undefined,
+  tier: CapabilityTier | undefined,
+): Exclude<ToolApprovalMode, 'blocked'> {
+  const picked = readToolDefaultApproval(metadata);
+  if (picked !== undefined) return picked;
+  return tier === 'read-only' ? 'never' : (TOOL_APPROVAL_DEFAULT_MODE as 'on-changes');
 }
 
 /** What {@link decideToolApproval} reads about one call. */
@@ -162,10 +198,13 @@ export function grantLoosensTool(input: GrantLoosensToolInput): boolean {
   const { toolApproval, tools, reportedName, mode } = input;
   const key = tools === undefined ? undefined : keysByReportedName(tools).get(reportedName);
   const tool = key === undefined ? undefined : new Map(Object.entries(tools ?? {})).get(key);
+  const tier = tool === undefined ? undefined : resolveCapabilityTier(tool.metadata, tool.tags);
+  // The agent's own entry, else the level the tool is enforced at: the hook's own order.
   const setting =
     (key === undefined ? undefined : new Map(Object.entries(toolApproval ?? {})).get(key)) ??
-    TOOL_APPROVAL_DEFAULT_MODE;
-  const tier = tool === undefined ? undefined : resolveCapabilityTier(tool.metadata, tool.tags);
+    (tool === undefined
+      ? TOOL_APPROVAL_DEFAULT_MODE
+      : enforcedDefaultApproval(tool.metadata, tier));
   return decideToolApproval({ mode, setting, tier, remembered: true }) === 'allow';
 }
 
@@ -522,10 +561,11 @@ export function createToolApprovalHooks(
     async beforeExecute(context: ToolPolicyContext): Promise<ToolPolicyDecision> {
       const key = governed === undefined ? context.toolName : governed.get(context.toolName);
       if (key === undefined) return { allow: true, status: 'allow' };
-      const setting = modes.get(key) ?? defaultMode;
+      const tier = resolveCapabilityTier(context.metadata, context.tags);
+      // The agent's own entry first, then the tool's pick, then the hook's own default.
+      const setting = modes.get(key) ?? readToolDefaultApproval(context.metadata) ?? defaultMode;
       const chat = chatPermissionOf(context);
       const { mode, unreadable } = chat ?? (await modeOfChat());
-      const tier = resolveCapabilityTier(context.metadata, context.tags);
       let status = decideToolApproval({ mode, setting, tier, remembered: false });
       // The grant is read only when it would change the answer.
       if (

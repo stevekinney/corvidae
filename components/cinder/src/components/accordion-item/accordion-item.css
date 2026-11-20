@@ -5,7 +5,7 @@
  * ======================================== */
 
   .cinder-accordion-item {
-    border-block-end: 1px solid var(--cinder-border-muted);
+    border-block-end: var(--cinder-border-width) solid var(--cinder-border-muted);
     background: var(--cinder-surface);
   }
 
@@ -143,7 +143,7 @@
  * ---------------------------------------- */
 
   .cinder-accordion-item__panel {
-    border-block-start: 1px solid var(--cinder-border-muted);
+    border-block-start: var(--cinder-border-width) solid var(--cinder-border-muted);
     background: var(--cinder-surface);
   }
 

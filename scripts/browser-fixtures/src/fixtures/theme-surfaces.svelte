@@ -47,7 +47,7 @@
 <style>
   .theme-surfaces-fixture {
     display: grid;
-    gap: 1rem;
+    gap: var(--cinder-space-4);
     max-inline-size: 48rem;
     margin-inline: auto;
   }
@@ -55,7 +55,7 @@
   section {
     display: flex;
     flex-wrap: wrap;
-    gap: 0.75rem;
+    gap: var(--cinder-space-3);
     align-items: center;
   }
 </style>

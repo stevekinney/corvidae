@@ -121,6 +121,8 @@ export const NAVIGATION_COPY = {
   expandSidebar: 'Expand sidebar',
   /** The product's name, as text at the top of the sidebar and of its drawer. */
   productName: 'Interborough',
+  /** The tooltip of the short commit beside the product's name: what this build was made from. */
+  builtFromCommit: 'The commit this build was made from',
   /** The names of the sidebar's sections; Home sits above them with none. */
   groups: { work: 'Work', build: 'Build', system: 'System' },
   /** The accessible name of the phone's bottom tab bar. */

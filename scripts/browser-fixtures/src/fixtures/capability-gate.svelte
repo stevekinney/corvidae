@@ -15,10 +15,10 @@
   ];
 </script>
 
-<div style="display: flex; flex-direction: column; gap: 1rem; max-width: 28rem;">
+<div style="display: flex; flex-direction: column; gap: var(--cinder-space-4); max-width: 28rem;">
   {#if needsAction}
     <CapabilityGate feature="Microphone" state={capabilityState}>
-      <p style="font-size: 0.875rem; color: var(--cinder-text-muted); margin: 0;">
+      <p style="font-size: var(--cinder-text-base); color: var(--cinder-text-muted); margin: 0;">
         Microphone access is needed for voice input. Your audio is never stored or shared.
       </p>
 
@@ -45,7 +45,7 @@
     <CapabilityGate feature="Microphone" state={capabilityState} />
   {/if}
 
-  <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+  <div style="display: flex; gap: var(--cinder-space-2); flex-wrap: wrap;">
     {#each states as s (s)}
       <Button
         size="sm"

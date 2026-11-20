@@ -25,7 +25,8 @@ import { readBoxes } from './read-boxes.ts';
 test.use({ baseURL: E2E_SHOWCASE_URL, timezoneId: SAMPLE_TIME_ZONE });
 
 const SOURCE = 'chat-page.spec.ts';
-const TITLE = 'Please refund order 4471, it arrived damaged.';
+/** The 4471 refund chat's title, as a generated title reads; its first message is the request. */
+const TITLE = 'Refund order 4471';
 
 /**
  * Answers the host's provider list as it would with a key in place. The sample world holds no key,
@@ -109,7 +110,8 @@ test.describe('an open chat on the sample world', () => {
     await expect(details.locator('code')).toHaveCount(0);
     await expect(details).not.toContainText(SAMPLE_WORLD_THREADS.refund);
     expect(await details.textContent()).not.toContain(String.fromCodePoint(0xb7));
-    await expect(details).toContainText(/Started\s*Today, 10:30 AM/);
+    // The 4471 refund is a chat of its own, started when it was asked at 10:42 AM.
+    await expect(details).toContainText(/Started\s*Today, 10:42 AM/);
     await expect(details).toContainText(/Last active\s*10:4\d AM/);
 
     const settings = details.getByTestId('chat-details-settings');
@@ -276,8 +278,8 @@ test.describe('an open chat while it loads (17j, 17y)', () => {
     await expect(crumbs).not.toContainText(SAMPLE_WORLD_THREADS.refund);
     // The slow notice is for a read that is slow.
     await expect(state).not.toHaveAttribute('data-slow');
-    // The list beside it is live.
-    await expect(page.locator('[data-chat]')).toHaveCount(5);
+    // The list beside it is live: the sample world's six chats.
+    await expect(page.locator('[data-chat]')).toHaveCount(6);
     await captureForDesignReview(page, {
       route: '/chats/:chat',
       state: 'loading',
@@ -452,7 +454,7 @@ test.describe('an open chat that cannot be loaded (17c, 17e)', () => {
     await expect(trail(page).getByRole('link', { name: 'Chat' })).toBeVisible();
     await expect(trail(page).getByText('This chat', { exact: true })).toBeVisible();
     await expect(trail(page)).not.toContainText(SAMPLE_WORLD_THREADS.refund);
-    await expect(page.locator('[data-chat]')).toHaveCount(5);
+    await expect(page.locator('[data-chat]')).toHaveCount(6);
     await expect(page.getByRole('searchbox', { name: 'Search chats' })).toBeEnabled();
     await captureForDesignReview(page, {
       route: '/chats/:chat',
@@ -520,7 +522,13 @@ test.describe('an open chat while the server does not answer (16y, 18e)', () => 
 
     // Full contrast: nothing of the list or the transcript is dimmed.
     expect(await opacityOf(page.locator('[data-chat]'))).toBe(1);
-    expect(await opacityOf(conversationArea(page).getByText('Please refund order 4472'))).toBe(1);
+    expect(
+      await opacityOf(
+        conversationArea(page).getByText('Please refund order 4471, it arrived damaged.', {
+          exact: true,
+        }),
+      ),
+    ).toBe(1);
     const approval = page.locator('[data-approval-decision]');
     expect(await opacityOf(approval.getByRole('heading', { level: 4 }))).toBe(1);
 
@@ -722,11 +730,17 @@ test.describe('an open chat whose approval is answered in Reviews (18i, 18j)', (
       const body = (await response.json()) as { messages: Array<Record<string, unknown>> };
       // The approved refund of order 4472 is the same tool's outcome, as the Bureau wrote it when
       // the person approved it at 10:33 AM: its row, for the one the person approves at 10:46 AM.
-      const approved = body.messages.find(
+      // It is in the 4472 refund's own chat.
+      const earlier = await page.request.get(
+        route.request().url().replace(SAMPLE_WORLD_THREADS.refund, SAMPLE_WORLD_THREADS.refund4472),
+      );
+      const earlierMessages = (
+        (await earlier.json()) as { messages: Array<Record<string, unknown>> }
+      ).messages;
+      // Its own chat's first turn, so its call carries the same turn identifier as this one's.
+      const approved = earlierMessages.find(
         (message) =>
-          message['role'] === 'tool' &&
-          message['toolCallId'] !== callId &&
-          JSON.stringify(message).includes('approvalDecision'),
+          message['role'] === 'tool' && JSON.stringify(message).includes('approvalDecision'),
       );
       expect(approved, 'the sample world holds the approved 4472 refund').toBeDefined();
       const outcome = JSON.parse(
@@ -841,8 +855,8 @@ test.describe('an open chat whose approval is answered in Reviews (18i, 18j)', (
         .filter({ hasText: '4471' }),
     ).toContainText(/Approved by you in Reviews 10:46 AM, running…/);
     await expect(conversationArea(page).getByTestId('chat-header')).toContainText('Running');
-    // The transcript holds the earlier 4472 turn above this one. The window is tall enough for both
-    // turns and rests at the top, so the first reply is read whole and not from its last line.
+    // The transcript rests at the top of the chat, so its first reply is read whole and not from
+    // its last line. (The 4472 refund, approved at 10:33 AM, is a chat of its own.)
     await page.setViewportSize({ width: 1280, height: 1400 });
     await conversationArea(page)
       .getByText('Please refund order 4471, it arrived damaged.', { exact: true })
@@ -853,7 +867,7 @@ test.describe('an open chat whose approval is answered in Reviews (18i, 18j)', (
         }
       });
     await expect(
-      conversationArea(page).getByText('You approved it. Refunded $18.50'),
+      conversationArea(page).getByText('I found order 4471 ($42.00).', { exact: false }).first(),
     ).toBeInViewport();
     for (const state of ['approved in Reviews', 'running after Reviews']) {
       await captureForDesignReview(page, { route: '/chats/:chat', state, source: SOURCE });

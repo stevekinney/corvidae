@@ -7,7 +7,7 @@
   let marketingEmails = $state(false);
 </script>
 
-<div style="display: flex; flex-direction: column; gap: 2rem;">
+<div style="display: flex; flex-direction: column; gap: var(--cinder-space-8);">
   <FormSection
     heading="Account"
     headingLevel={2}

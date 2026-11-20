@@ -20,7 +20,7 @@ import {
   taskFixture,
 } from '../../../lib/bureau-fixtures.test-support.ts';
 import type { BureauSchedule } from '../../../lib/bureau-schedules.ts';
-import { StubFault } from '../../../lib/bureau-stub.test-support.ts';
+import { readyAgent, StubFault } from '../../../lib/bureau-stub.test-support.ts';
 import type { TaskView } from '../../../lib/bureau-tasks.ts';
 import {
   emptyBureauWorld,
@@ -304,6 +304,11 @@ describe('the records page', () => {
         view.container.querySelector(`[data-run="${id ?? ''}"]`)?.textContent ?? '',
       ).not.toContain(String.fromCodePoint(0xb7));
     }
+    // The list fills the content column, so its rows take the phone form from the window: on a
+    // tablet beside the rail the status leads in its column (row 05x).
+    for (const row of view.container.querySelectorAll('li[data-run]')) {
+      expect(row.getAttribute('data-cinder-phone-width')).toBe('viewport');
+    }
   });
 
   test('shows ten runs, says how many there are, and Load more shows the rest', async () => {
@@ -330,6 +335,63 @@ describe('the records page', () => {
   });
 });
 
+describe('a schedule’s run that is due', () => {
+  test('says what holds its schedule before its agent: the file that cannot load and no provider (row 10h)', async () => {
+    const due = new Date(Date.now() + 3_600_000).toISOString();
+    const view = open('/runs', {
+      tasks: [
+        taskFixture({
+          id: 'audit-run',
+          contextId: 'audit-session',
+          kind: 'schedule-fire',
+          agentName: 'tool-runner',
+          status: 'working',
+          origin: { kind: 'schedule', scheduleId: 'weekly-audit', fireId: 'fire-1' },
+          wakeAt: due,
+        }),
+      ],
+      schedules: [
+        {
+          ...DAILY_SUMMARY,
+          id: 'weekly-audit',
+          description: 'Weekly refund audit',
+          workflowType: 'order-refund',
+          missedFireCount: 0,
+          blocker: { kind: 'workflow-cannot-load', workflow: 'order-refund', message: 'broken' },
+        },
+      ],
+    });
+    // No provider is connected, and Tool runner's definition names a model.
+    stub?.on('bureau.health.attention', () => ({
+      items: [{ kind: 'no-provider', severity: 'warning' }],
+    }));
+    stub?.on('bureau.agents.definitions.get', () =>
+      readyAgent({ id: 'tool-runner', name: 'Tool runner' }),
+    );
+
+    const row = await waitFor(() => {
+      const found = view.container.querySelector<HTMLElement>('[data-run="audit-run"]');
+      if (found === null) throw new Error('The due run is not listed yet.');
+      return found;
+    });
+    expect(row.getAttribute('data-status')).toBe('Scheduled');
+    const meta = () =>
+      view.container.querySelector('[data-run="audit-run"] .cinder-stacked-list-item__meta')
+        ?.textContent ?? '';
+    await waitFor(() =>
+      expect(meta()).toMatch(
+        /^Schedule, Order refund can’t load, no provider is connected, Tool runner, due /,
+      ),
+    );
+  });
+
+  test('asks whether a provider is connected only while a schedule’s run is due', async () => {
+    const view = open('/runs');
+    await waitFor(() => expect(rowIds(view.container).length).toBeGreaterThan(0));
+    expect(stub?.callsTo('bureau.health.attention')).toEqual([]);
+  });
+});
+
 describe('the runs a schedule missed', () => {
   test('are one collapsed row that opens onto its occurrences and a link to the schedule', async () => {
     const view = open('/runs', { schedules: [DAILY_SUMMARY] });
@@ -343,6 +405,11 @@ describe('the runs a schedule missed', () => {
     expect(row.textContent).toContain('Daily summary');
     expect(row.textContent).toContain('Missed runs');
     expect(row.textContent).toContain('missed 2 times since');
+    // It follows the window, leads its line two once with the status on a phone (`wrapMeta`), and
+    // keeps the whole line as its tooltip (rows 05w, 05x).
+    expect(row.getAttribute('data-cinder-phone-width')).toBe('viewport');
+    expect(row.classList.contains('cinder-stacked-list-item--wrap-meta')).toBe(true);
+    expect(row.querySelector('[title*="missed 2 times since"]')).not.toBeNull();
 
     await fireEvent.click(within(row).getByRole('button', { name: /Show/ }));
     const occurrences = within(row).getByRole('list', {

@@ -37,6 +37,7 @@
     description,
     breadcrumbs,
     actions,
+    compactActions = true,
     actionsNote,
     actionsNoteId,
     decisions,
@@ -76,6 +77,7 @@
     tone === 'tint' || tone === 'accent' || tone === 'night' ? tone : 'plain',
   );
   const hero = $derived(resolvedVariant === 'hero');
+  const useCompactActions = $derived(compactActions !== false);
   // The accent and night bands are dark whatever the page's theme, so they are dark theme islands:
   // every Cinder token inside resolves to its dark value, and the band redeclares the few a button
   // and a segmented control read (page-header.css).
@@ -335,6 +337,7 @@
   class={classNames('cinder-page-header', className)}
   data-cinder-inset={inset ? 'true' : undefined}
   data-cinder-divider={divider ? 'true' : undefined}
+  data-cinder-regular-actions={!useCompactActions && !hero ? '' : undefined}
   data-cinder-narrow-actions={narrowActions === 'beside-status' ? 'beside-status' : undefined}
   data-cinder-title-lines={titleLines === 1 ? '1' : undefined}
   data-cinder-variant={resolvedVariant === 'default' ? undefined : resolvedVariant}
@@ -398,14 +401,14 @@
           role={hasActionsNote ? 'group' : undefined}
           aria-describedby={hasActionsNote ? resolvedActionsNoteId : undefined}
         >
-          <CompactActions>
+          <CompactActions compact={useCompactActions}>
             {@render actionGroups()}
           </CompactActions>
         </div>
       {/if}
       {#if createAction}
         <div class="cinder-page-header__actions cinder-page-header__create-slot">
-          <CompactActions>
+          <CompactActions compact={useCompactActions}>
             {@render createActionButton()}
           </CompactActions>
         </div>

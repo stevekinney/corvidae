@@ -4,8 +4,8 @@
  * 10q, 10r, 12r to 12v, 14m, 14n, 14p, 14s, 15d, 52v to 52z, 53b, 05t to 05y, 06w and 07j): the list
  * on a phone, a tablet and in the dark, and each state of it that is not a list of rows (first use,
  * filtered to nothing, loading, still loading, canceled, failing, and a server that stopped
- * answering). The sample world's run list is All 19 = Waiting on you 2 + Done 14 + Failed 1 +
- * Canceled 2, and a chat another spec runs on the shared showcase host adds a Done run (and one to
+ * answering). The sample world's run list is All 19 = Waiting on you 2 + Done 15 + Failed 1 +
+ * Canceled 1, and a chat another spec runs on the shared showcase host adds a Done run (and one to
  * All), so the Done count is read from the page and All is checked against it. A state the sample world does not hold is made by answering the Bureau's own operation
  * with what a different world would answer, and each is captured for the design review under its own
  * name. The timings the placeholders keep (nothing for 300 ms, a status line at 10 s) are driven with
@@ -18,10 +18,13 @@ import {
   SAMPLE_NOW_MILLISECONDS,
   SAMPLE_TIME_ZONE,
 } from '../../fixtures/sample-now.ts';
+import { readSampleWorldRecords } from '../../fixtures/sample-world-records.ts';
+import { SIGNAL_WAIT_WORD } from '../../src/app/copy/tasks.ts';
 import { rewriteBureauAnswer } from './bureau-answer-support.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
 import { E2E_SHOWCASE_URL } from './e2e-constants.ts';
 import { expect, loggedFailedResponse, test } from './fixtures.ts';
+import { readBoxes } from './read-boxes.ts';
 import { textLines } from './text-lines.ts';
 
 test.use({ baseURL: E2E_SHOWCASE_URL, timezoneId: SAMPLE_TIME_ZONE });
@@ -31,14 +34,18 @@ const WIDTHS = [1280, 375] as const;
 /** Every request the page makes of the host, which a test takes away to make the server stop answering. */
 const HOST_REQUESTS = /\/(v1|bureau|api)\/|\/jsonrpc$/;
 
-/** The runs the sample world holds, as the segments count them (Nov 3 correction). */
+/**
+ * The runs the sample world holds, as the segments count them and PageRuns draws them (owner
+ * decision, COR-2423, 2026-11-19): All 19, the 4472 refund one row (its approval starts no run), and
+ * the goal attempt's the one canceled run (the billing chat a restart ended has no run).
+ */
 const SEGMENTS = [
   ['All', 19],
   ['Waiting on you', 2],
   ['Running', 0],
-  ['Done', 14],
+  ['Done', 15],
   ['Failed', 1],
-  ['Canceled', 2],
+  ['Canceled', 1],
 ] as const;
 
 /**
@@ -51,7 +58,7 @@ async function expectSegmentCounts(scope: Page | Locator): Promise<void> {
   await expect(done).toBeVisible();
   const doneText = (await done.textContent()) ?? '';
   const doneCount = Number(/(\d+)\s*$/.exec(doneText)?.[1]);
-  expect(doneCount).toBeGreaterThanOrEqual(14);
+  expect(doneCount).toBeGreaterThanOrEqual(15);
   let total = doneCount;
   for (const [word, count] of SEGMENTS) {
     if (word === 'All' || word === 'Done') continue;
@@ -142,6 +149,18 @@ test.describe('/runs: the list on a phone, a tablet and in the dark', () => {
       () => document.documentElement.scrollWidth > document.documentElement.clientWidth,
     );
     expect(scrolls, 'the page never scrolls sideways').toBe(false);
+    // The missed runs read "Schedule, since Oct 30" on line two, led once by the status, with the
+    // date and Show on line one (05w). Line two's parts are blocks with white space between them,
+    // which a regular expression reads as written (Playwright normalizes only a string).
+    const missed = main.locator('li[data-missed-schedule]');
+    await expect(missed.locator('.cinder-stacked-list-item__line-two')).toHaveText(
+      /^\s*Missed runs,?\s*4\s*Schedule, since Oct 30\s*$/,
+    );
+    await expect(missed.locator('.cinder-stacked-list-item__status-inline')).toHaveCount(1);
+    await expect(missed.locator('.cinder-stacked-list-item__time')).toContainText('Oct 30');
+    await expect(
+      missed.locator('.cinder-stacked-list-item__time').getByRole('button', { name: /Show/ }),
+    ).toBeVisible();
     await expectGroupRowOnOneLine(page);
     await captureForDesignReview(page, { route: '/runs', state: 'ready', source: SOURCE });
     await checkA11y('runs on a phone');
@@ -166,8 +185,55 @@ test.describe('/runs: the list on a phone, a tablet and in the dark', () => {
     await expect(bar.getByRole('button', { name: 'Agent', exact: true })).toBeVisible();
     await expect(bar.getByRole('button', { name: 'Search runs' })).toBeVisible();
     await expect(headerCreate(page)).toHaveAttribute('data-cinder-variant', 'secondary');
+    // The status leads each row in its fixed column, never on line two (05x): the rows follow the
+    // window, which is no phone, though the rail leaves each row under 640px.
+    const main = page.locator('main');
+    const rows = main.locator('li[data-run], li[data-missed-schedule]');
+    await expect(rows.first()).toBeVisible();
+    await expect(main.locator('.cinder-stacked-list-item__status-inline')).toHaveCount(0);
+    const { status, title } = await readBoxes(page, {
+      status: rows.first().locator('.cinder-stacked-list-item__status'),
+      title: rows.first().locator('.cinder-stacked-list-item__title'),
+    });
+    expect(status.x + status.width).toBeLessThanOrEqual(title.x + 1);
+    // The missed runs' line two leaves the cadence out (05x).
+    await expect(
+      main.locator('li[data-missed-schedule] .cinder-stacked-list-item__line-two'),
+    ).toHaveText('Schedule, Assistant, missed 4 times since Oct 30');
     await captureForDesignReview(page, { route: '/runs', state: 'ready', source: SOURCE });
     await checkA11y('runs on a tablet');
+  });
+
+  test('on a tablet with a Started by and an Agent filter applied, those chips stay in the row and the unapplied Workflow chip folds into the Filter menu (52x)', async ({
+    page,
+  }) => {
+    // Filtered to nothing by Model switcher and a goal, as row 52x draws it: the row cannot hold
+    // the two applied chips beside the Workflow chip. (Shorter chips, Agent: Assistant, fit the
+    // row at 768 pixels, and then nothing folds.)
+    await page.setViewportSize({ width: 768, height: 900 });
+    await page.goto('/runs?agent=model-switcher&startedBy=goal');
+    const bar = filterBar(page);
+    await expect(bar).toBeVisible();
+    await expect(bar).toHaveAttribute('data-cinder-layout', 'medium');
+    await expect(bar).toHaveAttribute('data-cinder-folded', '1');
+    await expect(bar.getByRole('button', { name: /^Remove filter: Started by/ })).toBeVisible();
+    await expect(bar.getByRole('button', { name: /^Remove filter: Agent/ })).toBeVisible();
+    await expect(bar.getByRole('button', { name: 'Workflow', exact: true })).toHaveCount(0);
+    await expect(bar.locator('.cinder-filter-bar__menu-button')).toBeVisible();
+    await captureForDesignReview(page, {
+      route: '/runs',
+      state: 'filtered, tablet',
+      source: SOURCE,
+    });
+  });
+
+  test('wide, the missed runs say the schedule’s cadence before how many runs it missed (09q)', async ({
+    page,
+  }) => {
+    await openRuns(page, 1280);
+    await expect(
+      page.locator('main li[data-missed-schedule] .cinder-stacked-list-item__line-two'),
+    ).toHaveText(/^\s*Schedule, Assistant, every day at .+, missed 4 times since Oct 30\s*$/);
   });
 
   test('in the dark keeps every segment with its count, the day bands and the rows legible (07j)', async ({
@@ -400,6 +466,34 @@ function instanceTask(
   };
 }
 
+/**
+ * A schedule's own run, as `bureau.tasks.list` answers it: started by the scheduler for the
+ * schedule `scheduleId`, and asleep until `wakeAt`, so the list reads it Scheduled (row 10h).
+ */
+function scheduleRunTask(
+  id: string,
+  scheduleId: string,
+  fields: { readonly createdAt: string; readonly wakeAt: string; readonly agentName: string },
+) {
+  return {
+    id,
+    contextId: id,
+    agentName: fields.agentName,
+    owner: 'anonymous:local',
+    actor: 'system:scheduler',
+    kind: 'schedule-fire',
+    origin: { kind: 'schedule', scheduleId, fireId: `${id}-fire` },
+    status: 'working',
+    finishReason: null,
+    statusMessage: null,
+    createdAt: fields.createdAt,
+    updatedAt: fields.createdAt,
+    cleanup: null,
+    openWaits: [],
+    wakeAt: fields.wakeAt,
+  };
+}
+
 /** The task of the step an instance is at, which names the agent the step runs as. */
 function stepTask(instance: ReturnType<typeof instanceTask>, agentName: string) {
   return {
@@ -433,20 +527,19 @@ for (const width of WIDTHS) {
         awaitingSignal: 'notes-approved',
         agentName: 'assistant',
       }),
-      instanceTask('row-states-scheduled', 'weekly-refund-audit', {
+    ];
+    // Each instance with the task of the step it is at, which names the agent that step runs as,
+    // and the Weekly refund audit schedule's own run, due at 11:00 AM: a schedule's row, which says
+    // what holds the schedule (its Order refund file can't load, and no provider is connected).
+    const world = await readSampleWorldRecords(E2E_SHOWCASE_URL);
+    const extra = [
+      ...instances.flatMap((instance) => [instance, stepTask(instance, instance.agentName)]),
+      scheduleRunTask('row-states-scheduled', world.schedules.weeklyRefundAudit, {
         createdAt: '2026-11-02T16:40:00.000Z',
-        status: 'working',
-        steps: { total: 3, at: 1 },
         wakeAt: '2026-11-02T17:00:00.000Z',
-        scheduleName: 'Weekly refund audit',
         agentName: 'tool-runner',
       }),
     ];
-    // Each instance with the task of the step it is at, which names the agent that step runs as.
-    const extra = instances.flatMap((instance) => [
-      instance,
-      stepTask(instance, instance.agentName),
-    ]);
     await rewriteBureauAnswer(page, 'bureau.tasks.list', (listing) => {
       const tasks = (listing['tasks'] as unknown[] | undefined) ?? [];
       return { ...listing, tasks: [...tasks, ...extra] };
@@ -462,11 +555,16 @@ for (const width of WIDTHS) {
     );
     await expect(main.locator('li[data-run="row-states-waiting"]')).toHaveAttribute(
       'data-status',
-      'Waiting',
+      SIGNAL_WAIT_WORD,
     );
-    await expect(main.locator('li[data-run="row-states-scheduled"]')).toHaveAttribute(
-      'data-status',
-      'Scheduled',
+    const scheduled = main.locator('li[data-run="row-states-scheduled"]');
+    await expect(scheduled).toHaveAttribute('data-status', 'Scheduled');
+    // A schedule's row, as 10h draws it: named by the schedule, and what holds it before its agent.
+    await expect(scheduled.locator('.cinder-stacked-list-item__title')).toHaveText(
+      'Weekly refund audit',
+    );
+    await expect(scheduled.locator('.cinder-stacked-list-item__line-two')).toContainText(
+      'Schedule, Order refund can’t load, no provider is connected, Tool runner, due today at 11:00 AM',
     );
     await captureForDesignReview(page, { route: '/runs', state: 'row states', source: SOURCE });
   });
@@ -529,14 +627,29 @@ test.describe('/runs: a read in progress (10k, 10l, 14m, 14n, 14p, 52z)', () => 
   test('in the narrow bar form is skeleton rows under the real day band, with a Status select and a Filter button (52z)', async ({
     page,
   }) => {
-    const release = await openLoading(page, 768);
+    // A phone's width, where the bar takes its narrow form; the capture repeats it at 320 pixels.
+    const release = await openLoading(page, 375);
     const main = page.locator('main');
+    await expect(main.locator('.cinder-skeleton-row')).toHaveCount(0);
     await page.clock.runFor(300);
-    await expect(main.locator('.cinder-skeleton-list')).toBeVisible();
+    // Nothing is drawn for the first 300 ms: the capture waits for the skeleton rows, and proves
+    // them again after its own resize to 320 pixels.
+    const skeletonDrawn = async (shown: Page) => {
+      const shownMain = shown.locator('main');
+      await expect(shownMain.locator('.cinder-skeleton-row').first()).toBeVisible();
+      await expect(shownMain.locator('.cinder-skeleton-day-band')).toHaveCount(1);
+    };
+    await skeletonDrawn(page);
+    // The narrow bar: a Status select with no count, and a Filter button.
+    const bar = filterBar(page);
+    await expect(bar.getByRole('button', { name: /^Filter/ })).toBeVisible();
+    await expect(bar).toContainText('Status');
+    await expect(main.getByRole('heading', { level: 1, name: 'Runs' })).toBeVisible();
     await captureForDesignReview(page, {
       route: '/runs',
       state: 'loading, narrow bar',
       source: SOURCE,
+      ready: skeletonDrawn,
     });
     await page.clock.resume();
     release();

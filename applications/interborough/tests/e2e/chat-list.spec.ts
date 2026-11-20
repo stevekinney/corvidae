@@ -24,11 +24,11 @@ test.use({ baseURL: E2E_SHOWCASE_URL, timezoneId: SAMPLE_TIME_ZONE });
 const SOURCE = 'chat-list.spec.ts';
 
 /**
- * The chats the sample world holds: the refund, the release question, Say hello, Look up order
- * 4468 (the chat behind Runs' Friday row) and Rename the billing tables. The boards' chat list
- * draws four of them.
+ * The chats the sample world holds: the 4471 refund, the 4472 refund (a chat of its own), the
+ * release question, Say hello, Look up order 4468 (the chat behind Runs' Friday row) and Rename
+ * the billing tables. The boards' chat list draws four of them.
  */
-const CHAT_COUNT = 5;
+const CHAT_COUNT = 6;
 
 /** Where ListDetail remembers the divider (`storageKey` of the chat list). */
 const DIVIDER_KEY = 'interborough-chats';
@@ -94,7 +94,7 @@ test.describe('the chat list on the sample world', () => {
       /^Friday, Oct 30\s*Central time$/,
       /^Thursday, Oct 29\s*Central time$/,
     ]);
-    const refund = row(page, 'Please refund order 4471, it arrived damaged.');
+    const refund = row(page, 'Refund order 4471');
     await expect(refund).toContainText('10:42 AM');
     await expect(refund).toContainText('Waiting on you');
     // Line two is the agent's own last words, which is what it needs from you (16f); a chat that
@@ -116,24 +116,24 @@ test.describe('the chat list on the sample world', () => {
     await expect(billing).toContainText('The server restarted before I finished.');
     await expect(row(page, 'Look up order 4468')).toContainText('Done');
     // The rows are in order: the day bands newest first, and each day newest first.
-    await expect(page.locator('[data-chat] a').first()).toContainText('Please refund order 4471');
+    await expect(page.locator('[data-chat] a').first()).toContainText('Refund order 4471');
     await captureForDesignReview(page, { route: '/chats', state: 'ready', source: SOURCE });
   });
 
-  test('has the status segments All 5, Waiting on you 2 and Done 2, and Ended is under All only (11g)', async ({
+  test('has the status segments All 6, Waiting on you 2 and Done 3, and Ended is under All only (11g)', async ({
     page,
   }) => {
     await openChats(page);
     const segments = list(page).getByRole('radiogroup', { name: 'Status' });
     await expect(segments.getByRole('radio')).toHaveText([
-      /^\s*All\s*,?\s*5\s*$/,
+      /^\s*All\s*,?\s*6\s*$/,
       /^\s*Waiting on you\s*,?\s*2\s*$/,
-      /^\s*Done\s*,?\s*2\s*$/,
+      /^\s*Done\s*,?\s*3\s*$/,
     ]);
     await segments.locator('[data-cinder-segment-value="waiting"]').click();
     await expect(page.locator('[data-chat]')).toHaveCount(2);
     await segments.locator('[data-cinder-segment-value="done"]').click();
-    await expect(page.locator('[data-chat]')).toHaveCount(2);
+    await expect(page.locator('[data-chat]')).toHaveCount(3);
     await expect(row(page, 'Rename the billing tables')).toHaveCount(0);
     await segments.locator('[data-cinder-segment-value="all"]').click();
     await expect(page.locator('[data-chat]')).toHaveCount(CHAT_COUNT);
@@ -149,7 +149,7 @@ test.describe('the chat list on the sample world', () => {
       return Math.round(box!.x);
     };
     // The meta of each row starts under its title, and the status column ahead of it is one width.
-    const waiting = await left('Please refund order 4471, it arrived damaged.');
+    const waiting = await left('Refund order 4471');
     expect(await left('Say hello')).toBe(waiting);
     expect(await left('Rename the billing tables')).toBe(waiting);
   });
@@ -167,7 +167,8 @@ test.describe('the chat list on the sample world', () => {
     await row(page, 'Say hello').getByRole('link').click();
     await expect(page.getByRole('region', { name: 'Open chat' })).toContainText('Say hello');
     await list(page).getByRole('searchbox', { name: 'Search chats' }).fill('refund');
-    await expect(page.locator('[data-chat]')).toHaveCount(1);
+    // The two refund requests, each its own chat.
+    await expect(page.locator('[data-chat]')).toHaveCount(2);
     await expect(page.getByRole('region', { name: 'Open chat' })).toContainText('Say hello');
   });
 });
@@ -177,7 +178,7 @@ test.describe('the chat list hidden beside an open chat (COR-2327 AC1)', () => {
     page,
     checkA11y,
   }) => {
-    const refund = 'Please refund order 4471, it arrived damaged.';
+    const refund = 'Refund order 4471';
     await openChats(page);
     await row(page, refund).getByRole('link').first().click();
     const detail = page.getByRole('region', { name: 'Open chat' });
@@ -255,7 +256,7 @@ test.describe('the chat list hidden beside an open chat (COR-2327 AC1)', () => {
 });
 
 test.describe('one left edge for the open chat (COR-2327 B4)', () => {
-  const refund = 'Please refund order 4471, it arrived damaged.';
+  const refund = 'Refund order 4471';
 
   /**
    * The left edges of the title, the runs line and each alert when drawn, the transcript's content
@@ -398,7 +399,7 @@ test.describe('the chat list at other widths', () => {
     await expect(list(page).locator('.cinder-data-list-group__header').first()).toHaveText(
       /^Today, Monday, Nov 2\s*Central time$/,
     );
-    await expect(row(page, 'Please refund order 4471, it arrived damaged.')).toContainText(
+    await expect(row(page, 'Refund order 4471')).toContainText(
       'Tool runner, I found order 4471 ($42.00). I need your approval to refund it.',
     );
     await expect(row(page, 'Ship the release notes fix.')).toContainText(
@@ -438,7 +439,7 @@ test.describe('the chat list at other widths', () => {
 
   test('on a tablet sits beside the open chat', async ({ page }) => {
     await openChats(page, 768);
-    await row(page, 'Please refund order 4471, it arrived damaged.').getByRole('link').click();
+    await row(page, 'Refund order 4471').getByRole('link').click();
     await expect(page.getByRole('region', { name: 'Open chat' })).toBeVisible();
     await expect(list(page)).toBeVisible();
     // The capture is of the chat as it is, with its history in (COR-2327 B3): its waiting approval.

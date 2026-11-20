@@ -56,6 +56,18 @@ const toolSchema = z.object({
   approvalSaved: z.boolean().optional(),
 });
 
+/**
+ * What a remembered listing keeps of each tool besides its standing (COR-2435): what a person reads
+ * of it, as the host kept it when it last listed the tool.
+ */
+export const REMEMBERED_TOOL_FIELDS = {
+  title: z.string().nullable(),
+  description: z.string(),
+  shortDescription: z.string().nullable(),
+  tier: z.enum(['read-only', 'mutating', 'dangerous']).nullable(),
+  inputSchema: z.record(z.string(), z.unknown()).nullable(),
+};
+
 const sourceSchema = z.object({
   id: z.string(),
   kind: z.enum(TOOL_SOURCE_KINDS),
@@ -77,6 +89,17 @@ const sourceSchema = z.object({
   credentials: z.array(z.string()),
   authorized: z.boolean().optional(),
   tokensRejected: z.literal(true).optional(),
+  /**
+   * For a source that is not loaded: the tools it listed the last time it loaded as it is saved
+   * now, kept across restarts (COR-2435). None of them runs; absent when none is known.
+   */
+  lastListing: z
+    .object({
+      listedAt: z.string(),
+      truncated: z.boolean(),
+      tools: z.array(toolSchema.extend(REMEMBERED_TOOL_FIELDS)),
+    })
+    .optional(),
 });
 
 const snapshotSchema = z.object({
@@ -132,6 +155,10 @@ const probeSchema = z.discriminatedUnion('outcome', [
         passed: z.boolean(),
         message: z.string().optional(),
       })
+      .optional(),
+    /** What an MCP server said of itself (COR-2436): its name for a person and its instructions. */
+    server: z
+      .object({ name: z.string().nullable(), instructions: z.string().nullable() })
       .optional(),
   }),
   z.object({ outcome: z.literal('needs-authorization') }),
@@ -233,6 +260,11 @@ export type ToolSourceRequest = {
    * source; left out, a new source's tools are all on at the level their tier gives.
    */
   readonly tools?: Readonly<Record<string, ToolSourceToolSettings>>;
+  /**
+   * For a probe or a connect: a sign-in of this source that succeeded before it is saved
+   * (COR-2436), by reference. The host uses the tokens it holds for it; the page never has them.
+   */
+  readonly signIn?: string;
 };
 
 /**
@@ -293,6 +325,10 @@ export type HostToolSourceFaultKind =
   | 'invalid'
   /** The host applied part of the change; `message` says what is left. */
   | 'partial'
+  /** The page cannot edit the saved source (COR-2436); `message` says why and where to change it. */
+  | 'not-editable'
+  /** The source changed after the page read it, so the save was refused (a 409 on its revision). */
+  | 'stale'
   /** The host could not make the change, or did not answer in a form this page reads. */
   | 'failed';
 
@@ -345,12 +381,21 @@ async function faultOf(response: Response): Promise<HostToolSourceError> {
   const rawMessage: unknown = Reflect.get(record, 'message');
   const field: unknown = Reflect.get(record, 'field');
   const message = typeof rawMessage === 'string' ? rawMessage : '';
+  // A save fenced on the revision the page read is refused as a conflict, by the host's own
+  // `conflict` or by the stored configuration's (`failed` with the reason `conflict`).
+  if (
+    response.status === 409 &&
+    (error === 'conflict' || (error === 'failed' && Reflect.get(record, 'reason') === 'conflict'))
+  ) {
+    return new HostToolSourceError('stale', message);
+  }
   switch (error) {
     case 'locked':
     case 'exists':
     case 'owner-only':
     case 'not-found':
     case 'partial':
+    case 'not-editable':
       return new HostToolSourceError(error, message);
     case 'invalid':
       return new HostToolSourceError(
@@ -430,6 +475,33 @@ export async function inspectOpenApi(
  * @throws {HostToolSourceError} When the host refuses the request: no such source (`not-found`),
  * or a local command asked for by anyone but the owner.
  */
+const editingSchema = z.object({
+  id: z.string(),
+  source: z.record(z.string(), z.unknown()),
+  name: z.string().nullable(),
+  description: z.string().nullable(),
+  credentials: z.array(z.string()),
+  configurationRevision: z.string().nullable(),
+});
+
+/** A saved source as Edit connection reads it (COR-2436): no credential's value, only names. */
+export type ToolSourceEditing = z.infer<typeof editingSchema>;
+
+/**
+ * Reads a saved source for Connect tools to edit (COR-2436): its description, labels, the names
+ * of its credentials and the revision the edit is fenced on.
+ *
+ * @throws {HostToolSourceError} `not-editable` for a source the page cannot show exactly,
+ * `not-found` for one that is not saved, `locked` on a remote home.
+ */
+export async function getToolSourceEditing(
+  id: string,
+  options: Options = {},
+): Promise<ToolSourceEditing> {
+  const response = await send(sourcePath(id, '/editing'), { method: 'GET' }, options);
+  return readJson(response, editingSchema);
+}
+
 export async function testToolSource(id: string, options: Options = {}): Promise<ToolSourceProbe> {
   const response = await send(
     sourcePath(id, '/test'),
@@ -461,6 +533,7 @@ export async function connectToolSource(
         ...(request.name === undefined ? {} : { name: request.name }),
         ...(request.description === undefined ? {} : { description: request.description }),
         ...(request.tools === undefined ? {} : { tools: request.tools }),
+        ...(request.signIn === undefined ? {} : { signIn: request.signIn }),
       }),
     ),
   );
@@ -490,8 +563,76 @@ function jsonRequest(
       source: request.source,
       credentials: request.credentials,
       ...(request.create === true ? { create: true } : {}),
+      ...(request.signIn === undefined ? {} : { signIn: request.signIn }),
     }),
   };
+}
+
+/** The `type` of the message a sign-in's callback page posts to this page (COR-2436). */
+export const TOOL_SOURCE_SIGN_IN_MESSAGE = 'interborough:tool-source-sign-in';
+
+/** The route that starts a sign-in of a source that is not saved, and its reads. */
+export const HOST_TOOL_SOURCE_SIGN_INS_ROUTE = '/host/tool-source-sign-ins';
+
+const signInStartSchema = z.union([
+  z.object({ authorized: z.literal(true) }),
+  z.object({ authorized: z.literal(false), signIn: z.string(), authorizationUrl: z.string() }),
+]);
+
+const signInStandingSchema = z.object({
+  signIn: z.string(),
+  outcome: z.enum(['waiting', 'succeeded', 'canceled', 'refused', 'expired']),
+  reason: z.string().optional(),
+});
+
+/** What starting a sign-in of a source that is not saved answered. */
+export type ToolSourceSignInStart = z.infer<typeof signInStartSchema>;
+
+/** Where a sign-in of a source that is not saved stands, and why it did not succeed. */
+export type ToolSourceSignInStanding = z.infer<typeof signInStandingSchema>;
+
+/** The message a sign-in's callback page posts, when `data` is one. */
+export function signInMessageOf(data: unknown): ToolSourceSignInStanding | undefined {
+  if (typeof data !== 'object' || data === null) return undefined;
+  if (Reflect.get(data, 'type') !== TOOL_SOURCE_SIGN_IN_MESSAGE) return undefined;
+  const parsed = signInStandingSchema.safeParse(data);
+  return parsed.success ? parsed.data : undefined;
+}
+
+/**
+ * Starts an OAuth sign-in of a source that is not saved yet (COR-2436): the host answers the
+ * provider's address to open and the reference a probe and a save name. No token reaches the page.
+ *
+ * @throws {HostToolSourceError} When the host refuses it (a source already saved is `exists`).
+ */
+export async function startToolSourceSignIn(
+  id: string,
+  source: Readonly<Record<string, unknown>>,
+  options: Options = {},
+): Promise<ToolSourceSignInStart> {
+  const response = await send(
+    HOST_TOOL_SOURCE_SIGN_INS_ROUTE,
+    {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ operationId: crypto.randomUUID(), id, source }),
+    },
+    options,
+  );
+  return readJson(response, signInStartSchema);
+}
+
+/** Where the sign-in `signIn` stands, as the host holds it. */
+export async function getToolSourceSignIn(
+  signIn: string,
+  options: Options = {},
+): Promise<ToolSourceSignInStanding> {
+  const response = await send(
+    `${HOST_TOOL_SOURCE_SIGN_INS_ROUTE}/${encodeURIComponent(signIn)}`,
+    { method: 'GET' },
+    options,
+  );
+  return readJson(response, signInStandingSchema);
 }
 
 /**
@@ -637,6 +778,8 @@ export function toolSourceFaultTreatment(error: unknown): FaultTreatment {
       return { kind: 'not-found', message };
     case 'exists':
     case 'invalid':
+    case 'not-editable':
+    case 'stale':
       return { kind: 'invalid', message, fieldErrors: [] };
     case 'partial':
     case 'failed':

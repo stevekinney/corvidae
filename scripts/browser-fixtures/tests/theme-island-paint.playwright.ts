@@ -69,3 +69,28 @@ test('a dark island in a light page paints its own canvas and text', async ({ pa
   // The opt-out leaves the island transparent.
   expect(painted.optOut.background).toBe('rgba(0, 0, 0, 0)');
 });
+
+test('a scoped border width controls the Surface frame and Divider stroke', async ({ page }) => {
+  await page.goto(fixtureRoute('surface'), { waitUntil: 'load' });
+  const surface = page.locator('.cinder-surface').first();
+  const sibling = page.locator('.cinder-surface').nth(1);
+  await expect(surface).toHaveCSS('border-top-width', '1px');
+
+  const themedWidth = await surface.evaluate((element) => {
+    element.setAttribute('data-theme', 'dark');
+    element.style.setProperty('--cinder-border-width', '3px');
+    return getComputedStyle(element).borderTopWidth;
+  });
+  expect(themedWidth).toBe('3px');
+  await expect(sibling).toHaveCSS('border-top-width', '1px');
+
+  await page.goto(fixtureRoute('divider'), { waitUntil: 'load' });
+  const divider = page.locator('.cinder-divider[data-cinder-orientation="horizontal"]');
+  await expect(divider).toHaveCSS('height', '1px');
+
+  const themedThickness = await divider.evaluate((element) => {
+    element.parentElement?.style.setProperty('--cinder-border-width', '3px');
+    return getComputedStyle(element).height;
+  });
+  expect(themedThickness).toBe('3px');
+});

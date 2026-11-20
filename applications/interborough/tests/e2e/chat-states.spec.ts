@@ -202,9 +202,7 @@ test.describe('No model provider connected (frame b: 19f, 19h)', () => {
     await expect(page.locator('[data-approval-decision]')).toBeVisible();
 
     await expectTopBar(page);
-    await expect(
-      trail(page).getByRole('button', { name: /^Please refund order 4471/ }),
-    ).toBeVisible();
+    await expect(trail(page).getByRole('button', { name: /^Refund order 4471/ })).toBeVisible();
     expect(await statusOf(page)).toEqual({ word: 'Waiting on you', dot: 'warning' });
 
     const conversation = transcript(page);

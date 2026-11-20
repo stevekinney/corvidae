@@ -130,6 +130,28 @@
     );
   }
 
+  .cinder-badge[data-cinder-appearance='outlined'][data-cinder-variant='neutral'],
+  .cinder-badge[data-cinder-appearance='outlined'][data-cinder-variant='info'] {
+    border-color: var(--cinder-status-neutral-border);
+  }
+
+  .cinder-badge[data-cinder-appearance='outlined'][data-cinder-variant='success'] {
+    border-color: var(--cinder-status-success-border);
+  }
+
+  .cinder-badge[data-cinder-appearance='outlined'][data-cinder-variant='warning'] {
+    border-color: var(--cinder-status-warning-border);
+  }
+
+  .cinder-badge[data-cinder-appearance='outlined'][data-cinder-variant='accent'] {
+    border-color: var(--cinder-accent-border);
+  }
+
+  .cinder-badge[data-cinder-appearance='outlined'][data-cinder-variant='danger'],
+  .cinder-badge[data-cinder-appearance='outlined'][data-cinder-severity='critical'] {
+    border-color: var(--cinder-status-danger-border);
+  }
+
   /* ----------------------------------------
  * Monospace affordance
  * ---------------------------------------- */
