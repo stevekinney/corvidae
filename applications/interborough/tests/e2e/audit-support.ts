@@ -8,14 +8,18 @@ import type { Page } from '@playwright/test';
 import { VIEW_COPY } from '../../src/app/copy/view-pages.ts';
 import { expect } from './fixtures.ts';
 
-/** Waits for the first audit row or the empty state, then requires the audit path, with or without a record. */
+/**
+ * Requires the audit path, with or without a record, then waits for the first audit row or the
+ * empty state. The path comes first: another page can hold a table row too, so a row alone does not
+ * say the Audit log opened, and a wrong page then fails on its address.
+ */
 export async function expectAuditSettled(page: Page): Promise<void> {
-  const firstRow = page.locator('main tbody tr[data-cinder-row-id]').first();
-  const emptyState = page.getByRole('heading', { name: VIEW_COPY.audit.empty?.title ?? '' });
-  await expect(firstRow.or(emptyState)).toBeVisible();
   await expect(page).toHaveURL(
     (url) =>
       url.pathname === '/health/audit' &&
       [...url.searchParams.keys()].every((key) => key === 'record'),
   );
+  const firstRow = page.locator('main tbody tr[data-cinder-row-id]').first();
+  const emptyState = page.getByRole('heading', { name: VIEW_COPY.audit.empty?.title ?? '' });
+  await expect(firstRow.or(emptyState)).toBeVisible();
 }
