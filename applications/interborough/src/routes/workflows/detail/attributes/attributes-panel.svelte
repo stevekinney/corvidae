@@ -8,7 +8,7 @@
    * (`readAttributes`). A rejected `set` shows its fault in the page's fault banner and leaves what
    * the page displays as it was: the displayed values only ever come from a read.
    */
-  import { EmptyState, Skeleton } from '@lostgradient/cinder';
+  import { EmptyState, Section, Skeleton } from '@lostgradient/cinder';
   import { createQuery, useQueryClient } from '@tanstack/svelte-query';
 
   import { RUN_DETAIL_COPY } from '../../../../app/copy/runs.ts';
@@ -67,58 +67,44 @@
           ? 'ready'
           : 'empty',
   );
-  const headingId = $derived(`weft-attributes-${workflowId}-heading`);
 </script>
 
-{#if canRead}
-  <section
-    class="weft-attributes"
-    aria-labelledby={viewState === 'empty' ? undefined : headingId}
-    aria-label={viewState === 'empty' ? copy.heading : undefined}
+{#if canRead && viewState === 'empty'}
+  <EmptyState
+    kind="first-use"
+    headingLevel={3}
+    title={copy.empty}
     data-state={viewState}
-  >
-    <!-- With none, the empty state stands alone, under no heading saying the same thing (owner report, 2026-11-19). -->
-    {#if viewState !== 'empty'}
-      <h3 id={headingId} class="weft-attributes__heading">{copy.heading}</h3>
-    {/if}
-
-    {#if query.isError}
-      <RunFaultBanner treatment={faultTreatment(query.error)} />
-    {:else if query.isPending}
-      <div aria-busy="true" aria-label={copy.loading}><Skeleton height="3rem" /></div>
-    {:else if query.data?.kind === 'present'}
-      {#if saveFault !== null}
-        <RunFaultBanner treatment={saveFault} />
+    data-testid="attributes-panel"
+  />
+{:else if canRead}
+  <!-- Cinder's Section, as the run page's other blocks are, with no box or band of its own
+       (COR-2489). -->
+  <Section level={3} title={copy.heading} data-state={viewState} data-testid="attributes-panel">
+    <div class="weft-attributes">
+      {#if query.isError}
+        <RunFaultBanner treatment={faultTreatment(query.error)} />
+      {:else if query.isPending}
+        <div aria-busy="true" aria-label={copy.loading}><Skeleton height="3rem" /></div>
+      {:else if query.data?.kind === 'present'}
+        {#if saveFault !== null}
+          <RunFaultBanner treatment={saveFault} />
+        {/if}
+        <ul class="weft-attributes__list">
+          {#each query.data.entries as entry (entry.key)}
+            <AttributeRow {entry} {canWrite} onSave={save} />
+          {/each}
+        </ul>
       {/if}
-      <ul class="weft-attributes__list">
-        {#each query.data.entries as entry (entry.key)}
-          <AttributeRow {entry} {canWrite} onSave={save} />
-        {/each}
-      </ul>
-    {:else}
-      <EmptyState kind="first-use" headingLevel={3} title={copy.empty} />
-    {/if}
-  </section>
+    </div>
+  </Section>
 {/if}
 
 <style>
-  /* The same panel the Overview tab's other sections are. */
   .weft-attributes {
     display: flex;
     flex-direction: column;
     gap: 8px;
-    padding: 0 var(--cinder-density-pad-inline) var(--cinder-density-pad-block);
-    background: var(--cinder-surface-raised);
-    border: 1px solid var(--cinder-border);
-    border-radius: var(--cinder-radius-lg);
-  }
-
-  .weft-attributes__heading {
-    margin: 0 -15px;
-    padding: var(--cinder-density-pad-block) var(--cinder-density-pad-inline);
-    border-bottom: 1px solid var(--cinder-border-muted);
-    font-size: var(--cinder-text-sm);
-    font-weight: 600;
   }
 
   .weft-attributes__list {

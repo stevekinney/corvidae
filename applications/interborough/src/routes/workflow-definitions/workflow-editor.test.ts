@@ -146,8 +146,9 @@ describe('the editor', () => {
     // A file with no title is named by its identifier.
     expect(root.querySelector('h1')?.textContent).toContain(EDITOR.heading('digest'));
     expect(parsed(textarea(container).value)['name']).toBe('digest');
+    // Relative to the Interborough home: a host path never shows (owner, 2026-11-19).
     expect(root.querySelector('[data-testid="workflow-file-path"]')?.textContent).toBe(
-      `${STUB_WORKFLOW_DIRECTORY}/digest.json`,
+      'workflows/digest.json',
     );
     expect(getByRole('button', { name: EDITOR.saveAction })).not.toBeNull();
   });
@@ -526,7 +527,7 @@ describe('an invalid file', () => {
       'trigger.spec',
     );
     expect(root.querySelector('[data-testid="workflow-file-path"]')?.textContent).toBe(
-      `${STUB_WORKFLOW_DIRECTORY}/broken.json`,
+      'workflows/broken.json',
     );
     expect(textarea(container).value).toContain('"never"');
   });
@@ -846,14 +847,14 @@ describe('offline', () => {
     expect(container.textContent).toContain(
       'Your edits are kept in the form. Save is off until you’re back. Retrying in 60 s.',
     );
-    expect(container.textContent).toContain('Retry now');
+    expect(container.textContent).toContain('Try again');
     // What was typed stays in the form.
     expect(parsed(textarea(container).value)['name']).toBe('digest');
   });
 });
 
 describe.each(['local', 'remote'] as const)('the editor of a workflow on a %s host', (mode) => {
-  test('labels the file with the words of its mode, and shows the host’s location verbatim', async () => {
+  test('labels the file with the words of its mode, and names it relative to the home, never the host’s location', async () => {
     const { container } = open('/workflows/digest/edit', { hostMode: mode });
     const root = await ready(container);
 
@@ -866,10 +867,11 @@ describe.each(['local', 'remote'] as const)('the editor of a workflow on a %s ho
     expect(label).not.toBe(absent);
     await waitFor(() =>
       expect(root.querySelector('[data-testid="workflow-file-path"]')?.textContent).toBe(
-        mode === 'remote'
-          ? `${STUB_REMOTE_WORKFLOW_DIRECTORY}digest.json`
-          : `${STUB_WORKFLOW_DIRECTORY}/digest.json`,
+        'workflows/digest.json',
       ),
+    );
+    expect(root.textContent).not.toContain(
+      mode === 'remote' ? STUB_REMOTE_WORKFLOW_DIRECTORY : STUB_WORKFLOW_DIRECTORY,
     );
   });
 });

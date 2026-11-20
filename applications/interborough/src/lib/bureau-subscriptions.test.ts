@@ -96,6 +96,35 @@ describe('the generated subscription of a Bureau feed', () => {
     expect(withoutWords).toMatchObject({ status: 502, message: 'The task stream answered 502.' });
   });
 
+  test('a refusal keeps the fault’s retryable and remediation, which the treatment passes on', async () => {
+    const refusal = await rejectionOf(
+      collect(
+        open(() =>
+          Response.json(
+            {
+              error: 'The Bureau is draining',
+              retryable: true,
+              remediation: 'Wait for the restart, then follow the feed again.',
+            },
+            { status: 503 },
+          ),
+        ).events,
+      ),
+    );
+
+    expect(refusal).toMatchObject({
+      status: 503,
+      message: 'The Bureau is draining',
+      retryable: true,
+      remediation: 'Wait for the restart, then follow the feed again.',
+    });
+    expect(classifyFault(refusal)).toMatchObject({
+      kind: 'internal',
+      retryable: true,
+      remediation: 'Wait for the restart, then follow the feed again.',
+    });
+  });
+
   test('a stream that reports an error ends the events, without a fault, so the follower resumes it', async () => {
     const { events } = open(
       () =>

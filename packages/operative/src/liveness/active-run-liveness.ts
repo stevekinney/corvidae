@@ -164,6 +164,16 @@ export interface ActiveRunLiveness extends LivenessObservable<AgentRunLivenessSn
    */
   endWait(): void;
   /**
+   * COR-2526 — a child run this run dispatched has started and is not done: the run is parked on
+   * it, which is a declared wait (`'child'`) and not a stall, however long the tool call that
+   * awaits it goes without a pulse. The wait is declared while at least one child is outstanding
+   * and ended when the last settles; it never replaces a wait that is already declared, and it is
+   * dropped with the rest of the wait by an abort, a settlement, or the run's own next step.
+   */
+  beginChildWait(childRunId: string): void;
+  /** Counterpart of {@link beginChildWait}: the child settled, whichever way. Unknown ids are ignored. */
+  endChildWait(childRunId: string): void;
+  /**
    * Atomically attaches the terminal `result` and transitions `status` to
    * `'terminal'` as ONE revision (AB-214 review PRRT_kwDORvupsc6esZSx) — a
    * successful settlement must never publish an intermediate snapshot with
@@ -217,9 +227,16 @@ function deriveAssessment(
   if (status === 'terminal') return 'terminal';
   if (status === 'aborting') return 'aborting';
   if (status === 'cleaning-up') return 'cleaning-up';
-  if (reachability === 'unreachable') return 'unreachable';
+  // A declared wait outranks every silence (COR-2526): a run parked on a review, a signal or a
+  // wakeup is not stalled however long its tool-call watchdog has gone without a pulse.
   if (status === 'waiting') return 'legitimately-waiting';
+  // This process drives the run it observes, so a stalled progress dimension means the run is
+  // alive and has stopped making progress. Both dimensions of a tool-call watchdog cross their
+  // threshold on the same tick, and `unreachable` once won that tie, which made `alive-but-stalled`
+  // unreachable for an agent run: a stalled tool call read `unreachable`, a word for a subject the
+  // observer has lost.
   if (progress === 'stalled') return 'alive-but-stalled';
+  if (reachability === 'unreachable') return 'unreachable';
   return 'healthy';
 }
 
@@ -267,6 +284,8 @@ export function createActiveRunLiveness(options: ActiveRunLivenessOptions): Acti
   // AB-336 — paired with `status === 'waiting'` exclusively through
   // `beginWait`/`endWait`; see `ActiveRunLiveness`'s doc comments.
   let declaredWait: DeclaredWait | undefined;
+  // COR-2526 — the child runs this run dispatched and has not seen settle; see `beginChildWait`.
+  const childWaits = new Set<string>();
   let result: unknown;
   let hasResult = false;
   let disposed = false;
@@ -524,11 +543,45 @@ export function createActiveRunLiveness(options: ActiveRunLivenessOptions): Acti
 
     endWait(): void {
       if (declaredWait === undefined && status !== 'waiting') return;
+      // A wait ended through here is whatever wait there was, a child wait included: the
+      // outstanding children are no longer what the run is parked on.
+      childWaits.clear();
       declaredWait = undefined;
       if (status === 'waiting') {
         status = 'running';
         lastTransitionAt = runtime.clock.nowISO();
       }
+      advance();
+    },
+
+    beginChildWait(childRunId: string): void {
+      if (disposed) return;
+      childWaits.add(childRunId);
+      // The first outstanding child declares the wait, unless the run is not running (an abort is
+      // under way) or already declared another: that one stands, and the children are counted.
+      if (childWaits.size !== 1 || status !== 'running') return;
+      status = 'waiting';
+      declaredWait = {
+        reason: 'child',
+        owner: childRunId,
+        wakeCondition: `child:${childRunId}`,
+        startedAt: clock.now(),
+      };
+      lastTransitionAt = runtime.clock.nowISO();
+      advance();
+    },
+
+    endChildWait(childRunId: string): void {
+      if (!childWaits.delete(childRunId) || childWaits.size > 0) return;
+      // Only a wait this run declared for its children ends here.
+      if (declaredWait?.reason !== 'child' || status !== 'waiting') return;
+      // The child's end is the progress the tool call that awaited it was waiting for: the call
+      // is about to return the child's result, and the silence it kept while the child ran, which
+      // the declared wait excused, must not read as a stall the instant the wait ends.
+      toolWatchdog?.recordPulse('tool-progress', 0, { childRunId });
+      declaredWait = undefined;
+      status = 'running';
+      lastTransitionAt = runtime.clock.nowISO();
       advance();
     },
 

@@ -248,7 +248,7 @@ for (const width of WIDTHS) {
     const main = page.locator('main');
     await expect(main.locator('li[data-schedule]')).toHaveCount(4);
 
-    // The read keeps failing until Retry now is pressed, so the banner's own countdown cannot
+    // The read keeps failing until Try again is pressed, so the banner's own countdown cannot
     // recover it and remove the button under the click.
     let pressed: () => Promise<boolean> = async () => false;
     await page.route(SCHEDULES_READ, async (route) => {
@@ -266,8 +266,8 @@ for (const width of WIDTHS) {
     await expect(banner).toContainText('Can’t reach the Interborough server.');
     await expect(banner).toContainText('Showing what loaded as of');
     await expect(banner).toContainText(/Retrying in \d+ s \(attempt \d+ of \d+\)\./);
-    await expect(banner.getByRole('button', { name: 'Retry now' })).toBeVisible();
-    pressed = await pressRecorder(page, 'Retry now');
+    await expect(banner.getByRole('button', { name: 'Try again' })).toBeVisible();
+    pressed = await pressRecorder(page, 'Try again');
     // No dismiss, and the rows stay.
     await expect(banner.getByRole('button', { name: /dismiss/i })).toHaveCount(0);
     await expect(main.locator('li[data-schedule]')).toHaveCount(4);
@@ -285,7 +285,7 @@ for (const width of WIDTHS) {
     });
     await checkA11y(`schedules failed refresh at ${width}px`);
 
-    await banner.getByRole('button', { name: 'Retry now' }).click();
+    await banner.getByRole('button', { name: 'Try again' }).click();
     await expect(banner).toHaveCount(0);
     await expect(main.locator('li[data-schedule]')).toHaveCount(4);
   });
@@ -322,7 +322,7 @@ test('a server that stops answering over rows on screen keeps them, holds the he
   await expect(banner).toContainText('Changes are off until it’s back.');
   // The shared preset counts down to the next try and says which attempt it is (row 70u).
   await expect(banner).toContainText(/Retrying in \d+ s \(attempt \d+ of \d+\)\./);
-  await expect(banner.getByRole('button', { name: 'Retry now' })).toBeVisible();
+  await expect(banner.getByRole('button', { name: 'Try again' })).toBeVisible();
   await captureForDesignReview(page, { route: '/schedules', state: 'stale', source: SOURCE });
   await expect(page.getByRole('region', { name: 'Connection problem' })).toHaveCount(1);
   const header = await main.locator('.cinder-page-header').boundingBox();

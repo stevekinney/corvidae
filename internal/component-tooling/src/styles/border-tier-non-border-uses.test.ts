@@ -241,8 +241,16 @@ export const CLASSIFIED: Record<string, readonly Classification[]> = {
     { declaration: 'var(--cinder-border) 55%,', category: 'area', audit: 'color-field' },
   ],
   'components/cinder/src/components/data-grid/data-grid.css': [
-    { declaration: 'inset -1px 0 0 var(--cinder-border),', category: 'hairline' },
-    { declaration: 'inset 1px 0 0 var(--cinder-border),', category: 'hairline' },
+    {
+      declaration:
+        'inset -1px 0 0 var(--cinder-border), 2px 0 6px var(--cinder-scroll-shadow-color);',
+      category: 'hairline',
+    },
+    {
+      declaration:
+        'inset 1px 0 0 var(--cinder-border), -2px 0 6px var(--cinder-scroll-shadow-color);',
+      category: 'hairline',
+    },
   ],
   'components/cinder/src/components/divider/divider.css': [
     { declaration: 'background-color: var(--cinder-border-muted);', category: 'hairline' },
@@ -380,6 +388,11 @@ export const CLASSIFIED: Record<string, readonly Classification[]> = {
     { declaration: 'background: var(--cinder-border-muted);', category: 'hairline' },
     {
       declaration: 'box-shadow: inset 0 0 0 1px var(--cinder-border-muted);',
+      category: 'hairline',
+    },
+    // The 1px inset edge of a checklist's upcoming step marker, a circle's own border (COR-2489).
+    {
+      declaration: 'box-shadow: inset 0 0 0 1px var(--cinder-border-control);',
       category: 'hairline',
     },
   ],

@@ -119,12 +119,12 @@ describe('Workflow activity (AC7)', () => {
       'Worker connected',
     ]);
     const [failed, started, worker] = rowsOf(workflow(container));
-    expect(failed?.querySelector('.cinder-status-dot')?.getAttribute('data-cinder-status')).toBe(
+    expect(failed?.querySelector('.cinder-badge')?.getAttribute('data-cinder-variant')).toBe(
       'danger',
     );
     expect(failed?.querySelector('a')?.getAttribute('href')).toBe('/runs/wf-1');
     expect(failed?.querySelector('time')?.textContent).toBe('10:42 AM');
-    expect(started?.querySelector('.cinder-status-dot')).toBeNull();
+    expect(started?.querySelector('.cinder-badge')).toBeNull();
     expect(started?.querySelector('.cinder-grouped-list-item__subtitle')?.textContent?.trim()).toBe(
       'Release notes digest',
     );
@@ -136,7 +136,7 @@ describe('Workflow activity (AC7)', () => {
     ).toBeTruthy();
   });
 
-  test('a kind with no rule reads in plain words with its raw kind, and a live frame enters at the top', async () => {
+  test('a kind with no rule reads in plain words, and a live frame enters at the top', async () => {
     const { world, container } = open();
     await waitUntil(() => world.hub.opened('fleet') === 1);
     world.hub.write(
@@ -146,7 +146,7 @@ describe('Workflow activity (AC7)', () => {
     );
     await waitUntil(() => rowsOf(workflow(container)).length === 1);
     expect(titlesOf(workflow(container))).toEqual(['Realm state changed']);
-    expect(workflow(container).querySelector('code')?.textContent).toBe('realm:state-changed');
+    expect(workflow(container).textContent).not.toContain('realm:state-changed');
 
     world.hub.write(
       'fleet',

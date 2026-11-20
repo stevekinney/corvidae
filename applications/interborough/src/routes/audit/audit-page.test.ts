@@ -322,6 +322,19 @@ describe('the table', () => {
     const count = await findByTestId('audit-count');
     await waitFor(() => expect(count.textContent).toBe('1,240 events'));
   });
+
+  // Owner, 2026-11-19: a count is metadata outside the table, never one of its rows.
+  test('says what it has loaded outside the table, never as a row of it', async () => {
+    const { container, findByTestId } = open(() => ({
+      records: [KEY_REMOVED, STARTED],
+      nextCursor: null,
+      total: 2,
+    }));
+    const footer = await findByTestId('audit-footer');
+    const table = container.querySelector('table');
+    expect(table?.contains(footer)).toBe(false);
+    expect(footer.closest('table, tfoot, tbody')).toBeNull();
+  });
 });
 
 describe('the open event', () => {
@@ -971,7 +984,7 @@ describe('who may see it', () => {
 });
 
 describe('a refresh that fails over events on screen', () => {
-  test('keeps the events under the shared banner, holds only Export, and Retry now reads again', async () => {
+  test('keeps the events under the shared banner, holds only Export, and Try again reads again', async () => {
     let failing = false;
     stub = installBureauStub({
       'bureau.audit.query': (params) => {
@@ -1000,7 +1013,7 @@ describe('a refresh that fails over events on screen', () => {
     await queryClient?.invalidateQueries({ queryKey: ['audit', 'list'] });
     const banner = await view.findByRole('region', { name: 'Refresh problem' });
 
-    // Row 83a: the shared preset's words, with a Retry now and no dismiss.
+    // Row 83a: the shared preset's words, with a Try again and no dismiss.
     expect(banner.textContent).toContain('Couldn’t refresh this page.');
     expect(banner.textContent).toMatch(/Showing what loaded as of .+\./);
     expect(banner.textContent).not.toMatch(/Retrying in|attempt/);
@@ -1023,11 +1036,11 @@ describe('a refresh that fails over events on screen', () => {
       ),
     ).toBeNull();
     expect(
-      view.getByRole('button', { name: 'Retry now' }).getAttribute('aria-disabled'),
+      view.getByRole('button', { name: 'Try again' }).getAttribute('aria-disabled'),
     ).toBeNull();
 
     failing = false;
-    await fireEvent.click(view.getByRole('button', { name: 'Retry now' }));
+    await fireEvent.click(view.getByRole('button', { name: 'Try again' }));
     await waitFor(() =>
       expect(view.queryByRole('region', { name: 'Refresh problem' }) === null).toBe(true),
     );

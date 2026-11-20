@@ -165,6 +165,12 @@ await configureAsyncUtilityDeadline();
 // here; a test about the count itself sets the real one (`setAnswerUndoMilliseconds`).
 setAnswerUndoMilliseconds(0);
 
+// `@testing-library/dom`'s `waitFor` sees Bun's fake timers (`setTimeout.clock`) and then advances
+// them through a global `jest`, which Bun does not define: under `jest.useFakeTimers()` a wait whose
+// first check failed threw `ReferenceError: jest is not defined` instead of waiting (Health's quick
+// read, the run setup's slow line, the updates tab). Bun's own `jest` object is that global.
+(globalThis as Global)['jest'] ??= jest;
+
 // The router is a module-scope singleton over `window.location`, so a test that navigates (the
 // route tests' `landAt('/runs/run-1')`) would leave that address for every later test file in the
 // same process, because the coverage run shares one. A view that reads the route, such as

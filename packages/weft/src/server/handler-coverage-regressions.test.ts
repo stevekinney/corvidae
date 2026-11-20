@@ -151,7 +151,7 @@ describe('handleRequest coverage regressions', () => {
     });
 
     expect(response.status).toBe(500);
-    expect(await response.text()).toBe('{"error":"Internal server error"}');
+    expect(await response.text()).toBe('{"error":"Internal server error","retryable":false}');
   });
 
   it('maps schedule error messages to their canonical HTTP fault statuses', async () => {

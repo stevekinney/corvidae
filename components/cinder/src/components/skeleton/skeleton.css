@@ -91,7 +91,7 @@
    * line, then lines of text. */
   .cinder-skeleton-group[data-cinder-variant='card'] > .cinder-skeleton-lines {
     padding: var(--cinder-density-pad-card);
-    border: 1px solid var(--cinder-border-muted);
+    border: var(--cinder-border-width) solid var(--cinder-border-muted);
     border-radius: var(--cinder-radius-surface);
     background: var(--cinder-surface);
   }
@@ -105,7 +105,7 @@
    * does, so the frame is the opt-in (`framed`). */
   .cinder-skeleton-list[data-cinder-framed] {
     overflow: hidden;
-    border: 1px solid var(--cinder-border-muted);
+    border: var(--cinder-border-width) solid var(--cinder-border-muted);
     border-radius: var(--cinder-radius-lg);
     background: var(--cinder-surface);
   }
@@ -115,7 +115,7 @@
     padding-inline: var(--cinder-space-3-5);
     /* A tint toward the inset, quieter than the inset itself, so the band stays a band. */
     background: color-mix(in oklch, var(--cinder-surface), var(--cinder-surface-inset) 40%);
-    border-block-end: 1px solid var(--cinder-border-muted);
+    border-block-end: var(--cinder-border-width) solid var(--cinder-border-muted);
   }
 
   /* A band that carries the day's real text is the real group header (`DataList`'s): the day at the
@@ -215,7 +215,7 @@
     min-block-size: 2.75rem;
     padding-block: var(--cinder-space-2-5);
     padding-inline-end: var(--cinder-space-2);
-    border-block-end: 1px solid var(--cinder-border-faint);
+    border-block-end: var(--cinder-border-width) solid var(--cinder-border-faint);
   }
 
   .cinder-skeleton-grouped-row:last-child > .cinder-skeleton-grouped-content {
@@ -293,10 +293,14 @@
     margin-inline-end: calc(1rem + var(--cinder-space-3));
   }
 
+  /* The button's painted height, not its control height: a coarse pointer raises the control
+   * height to 44px while a Button is drawn 28px and reaches 44px through its hit area, so a 44px
+   * block made the placeholder taller than the row it stands for (COR-2489: Home moved 32px on a
+   * phone when its data arrived). */
   .cinder-skeleton-action-bar {
     flex: none;
     inline-size: 5.25rem;
-    block-size: var(--cinder-button-height-sm);
+    block-size: var(--_cinder-painted-height-sm);
     border-radius: var(--cinder-button-radius-sm);
   }
 
@@ -330,7 +334,9 @@
    * placeholder rather than being inserted above it, so nothing moves when it appears or when the
    * data arrives (COR-2329). In a grouped or list placeholder it lies over the first row, whose bars
    * give way to it; in a page's own placeholder the block marked `holdsStatusLine` draws it in its
-   * own box. A group of bars, a card or a form has no row tall enough, so its line leads it. */
+   * own box; in a group of bars, a card or a form it lies over the placeholder from its top and the
+   * bars give way to it (COR-2489: the line used to be inserted above them and pushed the page
+   * down). */
   .cinder-skeleton-group:is([data-cinder-variant='grouped'], [data-cinder-variant='list']) {
     display: grid;
     grid-template-columns: minmax(0, 1fr);
@@ -358,6 +364,19 @@
     padding-inline: var(--cinder-space-3-5);
   }
 
+  /* A list that leads with a day band keeps the band in view: the line lies over the first row,
+   * under the band (one xs line box, its block padding and its rule), never over the day's words
+   * (COR-2489: "Today, Monday, Nov 2" was painted over). */
+  .cinder-skeleton-group[data-cinder-variant='list']:has(
+      > .cinder-skeleton-list > .cinder-skeleton-day-band:first-child
+    )
+    > .cinder-skeleton-status {
+    margin-block-start: calc(
+      var(--cinder-text-xs) * var(--cinder-leading-normal) + 2 * var(--cinder-space-2) +
+        var(--cinder-border-width)
+    );
+  }
+
   .cinder-skeleton-group[data-cinder-variant='grouped']:has(> .cinder-skeleton-status:not(:empty))
     .cinder-skeleton-grouped-row:first-child
     .cinder-skeleton,
@@ -367,6 +386,52 @@
       .cinder-skeleton-list > .cinder-skeleton-day-band + .cinder-skeleton-row
     )
     .cinder-skeleton {
+    visibility: hidden;
+  }
+
+  /* Bars, a card and a form: the line and the placeholder share one cell, so the line takes the
+   * placeholder's place and the group is as tall as it was. A card keeps its surface and the line
+   * sits inside its padding and border, where the heading bar was. */
+  .cinder-skeleton-group:is(
+    [data-cinder-variant='row'],
+    [data-cinder-variant='card'],
+    [data-cinder-variant='form']
+  ) {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .cinder-skeleton-group:is(
+      [data-cinder-variant='row'],
+      [data-cinder-variant='card'],
+      [data-cinder-variant='form']
+    )
+    > :is(.cinder-skeleton-status, .cinder-skeleton-lines) {
+    grid-area: 1 / 1;
+  }
+
+  .cinder-skeleton-group:is(
+      [data-cinder-variant='row'],
+      [data-cinder-variant='card'],
+      [data-cinder-variant='form']
+    )
+    > .cinder-skeleton-status {
+    position: relative;
+    z-index: 1;
+    align-self: start;
+  }
+
+  .cinder-skeleton-group[data-cinder-variant='card'] > .cinder-skeleton-status {
+    padding: calc(var(--cinder-density-pad-card) + 1px);
+  }
+
+  .cinder-skeleton-group:is(
+      [data-cinder-variant='row'],
+      [data-cinder-variant='card'],
+      [data-cinder-variant='form']
+    ):has(> .cinder-skeleton-status:not(:empty))
+    > .cinder-skeleton-lines
+    > .cinder-skeleton {
     visibility: hidden;
   }
 
@@ -389,6 +454,18 @@
     font-size: var(--cinder-text-sm);
     line-height: var(--cinder-leading-normal);
     color: var(--cinder-text-muted);
+  }
+
+  /* The words give way and wrap; Cancel, the one way out of a slow load, never shrinks, so it is
+   * never cut to "Ca..." on a phone (COR-2489). */
+  .cinder-skeleton-status-label {
+    flex: 1 1 0;
+    min-inline-size: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .cinder-skeleton-status > .cinder-button {
+    flex: none;
   }
 
   .cinder-skeleton-status:empty {

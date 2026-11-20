@@ -5,13 +5,18 @@ Run every command from `applications/interborough` in the checkout or worktree u
 ## The command
 
 ```sh
-bun scripts/design-review-capture.ts [--out <dir>] [--scheme light|dark|both] [--data showcase|stress|both] [--specs all|responsive|states] [--grep <pattern>]
+bun scripts/design-review-capture.ts [--out <dir>] [--scheme light|dark|both] [--data showcase|stress|both] [--specs all|responsive|states] [--grep <pattern>] [--shard <index>/<count>]
 ```
+
+- `--shard` captures one shard of the specifications the other flags chose (whole files, planned by weight in `scripts/design-review-shards.ts`), for the workflow's matrix; a local run never needs it. A shard the filter does not reach exits 0 with nothing captured.
+- Every capture at 1280 is repeated at 1920 by 1080 (`tests/e2e/design-review-capture.ts`), as every phone capture is repeated at 320 by 640, so no specification lists 1920 itself.
+- Files are named `<spec>--<world>--<route>--<tab>--<state>--<width>--<scheme>.png`, where the world is `sample-world`, `stress`, `first-run`, `plugin-pages` or `e2e-host` (the main end-to-end host, as the view states read it). A capture that resolves to a name another capture of its process already wrote fails its test, and the merge fails on a file two captures claim.
 
 - `--out` defaults to `<repository>/tmp/design-review/<time stamp>`, which Git ignores.
 - `--scheme` defaults to `both`, which runs the specifications twice, once per color scheme, through Playwright's `colorScheme`.
 - `--data` chooses the content the pages hold. `showcase` captures every route with believable content (`tests/e2e/showcase.spec.ts`) and the shell's chrome in each form (`tests/e2e/shell-chrome.spec.ts`), the search palette (`tests/e2e/shell-search.spec.ts`) and Home on a fresh installation (`tests/e2e/first-run.spec.ts`); `stress` captures the pathological seed and the view states (`responsive.spec.ts` and `15-view-states.spec.ts`); `both`, the default, captures all six.
 - `--specs responsive` captures the stress-seeded pages on every tab and `--specs states` captures the view states. It narrows the stress data, so on its own it means `--data stress`, and it is refused with `--data showcase`.
+- `--expect <expected.json>` holds the run to the states an issue's design rows declare: `bun scripts/design-review-rows.ts --manifest <rows.resolved.json> --out <expected.json>` writes the plan (route, state, theme and width, widest first, 1920 included). Each planned capture that `manifest.jsonl` does not show is named on standard error, `summary.json` records `coverage`, and the run exits 1; `bun scripts/chef/design-rounds.ts dispatch` counts a round only when the coverage is complete. The specifications must capture at the plan's widths, so a plan with 1920 fails until a specification does.
 - `--grep` is Playwright's title filter. Responsive tests are titled by route pattern (`/agents/:agent fits at…`), and view-state tests by view name (`agents is empty at 375 pixels…`), so `--grep 'agents'` takes both for the agent pages. Playwright matches the full title, which begins with the file name, so never anchor a pattern with `^`; a filter that matches nothing exits 1 with no captures.
 
 The capture refuses (exit 2) when the end-to-end port, 7399 unless `INTERBOROUGH_E2E_PORT` says another, is already taken, because Playwright would otherwise reuse whatever server holds it, which on a shared host can be another checkout's build. Set `INTERBOROUGH_E2E_PORT` to a free port with six free after it, at least seven away from any other session's.
@@ -20,16 +25,16 @@ Exit 0 means at least one capture was written, 1 means none was, and 2 means bad
 
 ## On GitHub Actions
 
-When the host is loaded (the capture times out waiting for its web server), dispatch `.github/workflows/design-review-capture.yml` from the branch under review instead. It runs the same command in the Playwright image the end-to-end job uses, so fonts are Linux's, and uploads the output directory as an artifact kept three days:
+When the host is loaded (the capture times out waiting for its web server), dispatch `.github/workflows/design-review-capture.yml` from the branch under review instead. It runs the same command in the Playwright image the end-to-end job uses, so fonts are Linux's. An unfiltered capture is about a thousand tests per scheme, more than one runner has time for, so each scheme runs as six shards in parallel, each uploads its own artifact for a day, and a last job merges them (`scripts/design-review-merge.ts`) into one directory and uploads it for three days:
 
 ```sh
 gh workflow run design-review-capture.yml --ref <branch> -f grep='/agents' -f scheme=dark -f data=showcase
 gh run list --workflow design-review-capture.yml --branch <branch> --limit 1 --json databaseId,url
 bun scripts/chef/wait-run.ts <run id>
-gh run download <run id> --dir tmp/design-review/<run id>
+gh run download <run id> -n design-review-capture-<run id> -D tmp/design-review/<run id>
 ```
 
-The inputs are `grep` (empty by default: no `--grep`), `scheme` and `data` (both `both` by default). The artifact is named `design-review-capture-<run id>-<scheme>-<data>` and holds the screenshots, `manifest.jsonl`, `summary.json` and the geometry report. The job's conclusion follows the exit codes above, and the artifact is uploaded either way. Dispatching by name needs the workflow file on `main`.
+The inputs are `grep` (empty by default: no `--grep`), `scheme` and `data` (both `both` by default). The artifact is named `design-review-capture-<run id>`, and holds the screenshots, one `manifest.jsonl`, one `summary.json` and the geometry report, which covers every shard. The merge job's conclusion is the run's verdict: it fails when a planned shard is missing, nothing was captured, two captures share a file, or a screen exists in one scheme and not the other. A specification that fails its own assertion keeps its captures and shows as `clean: false` in `summary.json`, which does not fail the merge. Dispatching by name needs the workflow file on `main`.
 
 ## The two data sets
 

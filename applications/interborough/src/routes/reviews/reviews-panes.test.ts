@@ -9,6 +9,7 @@ import { cleanup, fireEvent, render, waitFor } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { Window } from 'happy-dom';
 
+import { RETRY_LABEL } from '../../app/copy/views.ts';
 import { humanWaitFixture, toolApprovalFixture } from '../../lib/bureau-fixtures.test-support.ts';
 import { StubFault } from '../../lib/bureau-stub.test-support.ts';
 import {
@@ -172,7 +173,7 @@ describe('a list that failed', () => {
     } as never);
     await findByText('The Bureau broke.');
     failing = false;
-    await fireEvent.click(await findByRole('button', { name: 'Retry' }));
+    await fireEvent.click(await findByRole('button', { name: RETRY_LABEL }));
     await waitFor(() => expect(rows(container).length).toBe(1));
   });
 });

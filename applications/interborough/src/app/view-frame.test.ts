@@ -422,7 +422,8 @@ describe('every view, in every state', () => {
       const { requests } = stub(view, 'content');
       const { container, unmount } = mount(view, { scopes: [] });
       expect(frame(container).dataset['state']).toBe('forbidden');
-      expect(container.textContent).toContain(`requires ${VIEWS[view].scopes.join(' or ')}`);
+      expect(container.textContent).toContain('See your scopes');
+      for (const scope of VIEWS[view].scopes) expect(container.textContent).not.toContain(scope);
       expect(requests).toEqual([]);
       unmount();
       restore?.();
@@ -456,11 +457,13 @@ describe('the Health view', () => {
     }
   });
 
-  test('is forbidden for a principal holding neither scope, and names both', () => {
+  test('is forbidden for a principal holding neither scope and links to the scopes page', () => {
     const { requests } = stub('health', 'content');
     const { container } = mount('health', { scopes: ['schedules:read'] });
     expect(frame(container).dataset['state']).toBe('forbidden');
-    expect(container.textContent).toContain('requires system:read or workflows:read');
+    expect(container.textContent).toContain('See your scopes');
+    expect(container.textContent).not.toContain('system:read');
+    expect(container.textContent).not.toContain('workflows:read');
     expect(requests).toEqual([]);
   });
 });
@@ -990,7 +993,8 @@ describe('the Workflows area', () => {
       const stub = world();
       const { container } = mount('workflows', { scopes: [], parameters, pattern });
       expect(frame(container).dataset['state']).toBe('forbidden');
-      expect(container.textContent).toContain('requires workflows:read');
+      expect(container.textContent).toContain('See your scopes');
+      expect(container.textContent).not.toContain('workflows:read');
       expect(stub.calls).toEqual([]);
     });
 

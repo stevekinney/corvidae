@@ -326,6 +326,21 @@ export interface MemoryExportResult extends MemoryOperationResult {
 }
 
 /**
+ * What {@link GovernedMemory.previewSourceDeletion} found: `would-delete` when a source deletion
+ * of the record would go ahead (`recordIds` names what it would remove, the record itself), or
+ * `refused` with the `status` the deletion would answer, and the `reason` of a `rejected` one. It
+ * is the answer {@link GovernedMemory.forget} in `source-deletion` mode would give, read without
+ * deleting or recording anything.
+ */
+export type MemoryDeletionPreview =
+  | { readonly outcome: 'would-delete'; readonly recordIds: readonly string[] }
+  | {
+      readonly outcome: 'refused';
+      readonly status: Extract<MemoryOperationStatus, 'not-found' | 'denied' | 'rejected'>;
+      readonly reason?: string;
+    };
+
+/**
  * What a deletion did to the record it names: `status` is `applied` only when
  * the record is gone, and `unchanged` whenever a receipt shows it still stored.
  */
@@ -782,6 +797,15 @@ export interface GovernedMemory {
   ): Promise<MemoryOperationResult>;
   delete(authority: MemoryAuthority, locator: MemoryRecordLocator): Promise<MemoryDeletionResult>;
   forget(authority: MemoryAuthority, request: MemoryForgetRequest): Promise<MemoryForgetResult>;
+  /**
+   * What `forget` in `source-deletion` mode would do to the record `locator` names, answered
+   * without doing it: the same access decision and lineage check, and no deletion, claim, receipt
+   * or event, including the `memory.access.denied` event a refused deletion records.
+   */
+  previewSourceDeletion(
+    authority: MemoryAuthority,
+    locator: MemoryRecordLocator,
+  ): Promise<MemoryDeletionPreview>;
   placeLegalHold(
     authority: MemoryAuthority,
     locator: MemoryRecordLocator,

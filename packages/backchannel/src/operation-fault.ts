@@ -35,7 +35,9 @@
  * serialized consistently across REST and JSON-RPC transports.
  */
 
-import type { FaultCode } from './fault-code.ts';
+import { type FaultCode } from './fault-code.ts';
+import { faultWireAdvice } from './fault-remediation.ts';
+import { usableRetryAfterSeconds, wireSafeFault } from './fault-wire-safety.ts';
 
 /** Transports `executeOperation` sees; `mcp` (a catalog MCP mount) admits `mcpExposable` ones. */
 export type TransportKind =
@@ -52,11 +54,10 @@ export type FlattenedZodIssue = {
 };
 
 /**
- * Transport-neutral fault returned by `executeOperation`. Each variant has a
- * typed `data` payload — transport adapters destructure on `code` to access
- * the shape they need.
+ * The faults `executeOperation` returns, each with its typed `data` payload.
+ * {@link OperationFault} adds the advice every fault may carry.
  */
-export type OperationFault =
+type OperationFaultVariant =
   | { code: 'Unauthorized'; message: string; data: { reason: string } }
   | { code: 'Forbidden'; message: string; data: { reason: string } }
   | {
@@ -160,6 +161,21 @@ export type OperationFault =
   | { code: 'EngineFailure'; message: string; data: Record<string, never> };
 
 /**
+ * Transport-neutral fault returned by `executeOperation`. Each variant has a
+ * typed `data` payload — transport adapters destructure on `code` to access
+ * the shape they need.
+ *
+ * Every fault may also carry `remediation`: one line of plain text saying what
+ * the caller can do next (`assertValidRemediation` in `fault-remediation.ts` states the limits).
+ * Whether repeating the identical call can help is not a field of the fault: it
+ * is a property of the code, in `FAULT_CODE_RETRYABLE`, and the wire projections
+ * add it as `retryable` ({@link faultWireAdvice}).
+ */
+export type OperationFault = OperationFaultVariant & {
+  remediation?: string | undefined;
+};
+
+/**
  * HTTP status code for each fault, used by `faultToHttpResponse`. Values
  * align with REST conventions; both `NotImplemented` and
  * `UnsupportedTransport` map to 501 because the caller asked for something
@@ -227,6 +243,10 @@ export type RestFaultBody = {
   readonly error: string;
   readonly weftCode?: string;
   readonly data?: Readonly<Record<string, unknown>>;
+  /** Whether repeating the identical call later can succeed; always present (see {@link faultWireAdvice}). */
+  readonly retryable: boolean;
+  /** One line saying what to do next, when the fault carries one. */
+  readonly remediation?: string;
 };
 
 type RestProjectableFault = Exclude<OperationFault, { code: 'EngineFailure' }>;
@@ -303,14 +323,14 @@ const REST_FAULT_DATA_EXTRACTORS: RestFaultDataExtractors = {
 
 /**
  * Map an `OperationFault` to the canonical additive REST body:
- * `{ error, weftCode?, data? }`. The existing string `error` and optional
+ * `{ error, weftCode?, data?, retryable, remediation? }`. The existing string `error` and optional
  * fine-grained `weftCode` (the host's error code, never a {@link FaultCode})
  * remain unchanged; `data` contains only fields from the audited allowlist
  * above. JSON-RPC uses its own broader projection, whose `data.weftCode` is the
  * coarse `FaultCode`.
  *
  * `EngineFailure` is a hard exception: its exact body remains
- * `{ "error": "Internal server error" }`, regardless of response overrides.
+ * `{ "error": "Internal server error", "retryable": false }`, regardless of response overrides.
  */
 export function shapeOperationFaultAsJson(
   fault: OperationFault,
@@ -353,86 +373,13 @@ function retryAfterHeaderValue(fault: OperationFault): string | undefined {
   return seconds === undefined ? undefined : String(Math.ceil(seconds));
 }
 
-/**
- * Refuse a fault whose `data` carries a number that JSON cannot represent.
- * `NaN` and `Infinity` serialize as `null`, so a `StaleRevision` with a
- * non-finite `currentRevision`, for one, would put a `null` on the wire where
- * the schema requires a revision. That is a programming error in whoever built
- * the fault, so it throws rather than producing a body that violates the
- * contract. The one exception is `retryAfterSeconds`, a hint a client can do
- * without: {@link usableRetryAfterSeconds} drops it from every projection.
- *
- * Called by the fault factories. The wire projections use {@link wireSafeFault}
- * instead, so a fault written as an object literal still gets a reply.
- */
-export function assertFiniteFaultData(fault: OperationFault): void {
-  const field = findNonFiniteFaultField(fault);
-  if (field !== undefined) {
-    throw new TypeError(
-      `The ${fault.code} fault's data.${field} must be a finite number, got ${String(faultDataValue(fault, field))}`,
-    );
-  }
-}
-
-/** The first `data` field (other than `retryAfterSeconds`) holding a non-finite number. */
-function findNonFiniteFaultField(fault: OperationFault): string | undefined {
-  for (const [field, value] of Object.entries(fault.data)) {
-    if (field === 'retryAfterSeconds') continue;
-    if (typeof value === 'number' && !Number.isFinite(value)) return field;
-  }
-  return undefined;
-}
-
-function faultDataValue(fault: OperationFault, field: string): unknown {
-  return (fault.data as Record<string, unknown>)[field];
-}
-
-/**
- * The fault a wire projection may send. A fault whose `data` holds a non-finite
- * number is a programming error that slipped past the factories (for example,
- * a fault written as an object literal). Throwing from a projection would leave
- * the request without a reply (a JSON-RPC WebSocket client would wait forever),
- * so the projection logs it and answers with the masked internal error instead,
- * keeping the request's id.
- */
-export function wireSafeFault(fault: OperationFault): OperationFault {
-  const field = findNonFiniteFaultField(fault);
-  if (field === undefined) return fault;
-  console.error(
-    `[weft] The ${fault.code} fault's data.${field} is not a finite number (${String(faultDataValue(fault, field))}); answering with an internal error instead.`,
-  );
-  return { code: 'EngineFailure', message: 'internal error', data: {} };
-}
-
-/**
- * Build a `StaleRevision` fault. Throws a `TypeError` when `currentRevision` or
- * `expectedRevision` is a non-finite number ({@link assertFiniteFaultData}).
- */
-export function staleRevisionFault(
-  message: string,
-  data: Extract<OperationFault, { code: 'StaleRevision' }>['data'],
-): Extract<OperationFault, { code: 'StaleRevision' }> {
-  const fault = { code: 'StaleRevision', message, data } as const;
-  assertFiniteFaultData(fault);
-  return fault;
-}
-
-/**
- * A `retryAfterSeconds` a client can act on: finite and not negative. `NaN`
- * and `Infinity` do not survive JSON (they serialize as `null`), and a
- * negative delay is meaningless, so every wire projection drops them.
- */
-export function usableRetryAfterSeconds(seconds: number | undefined): number | undefined {
-  if (seconds === undefined || !Number.isFinite(seconds) || seconds < 0) return undefined;
-  return seconds;
-}
-
 /** Build the audited canonical REST body. */
 function shapeRestFaultBody(
   fault: OperationFault,
   options: RestFaultResponseOptions,
 ): RestFaultBody {
-  if (fault.code === 'EngineFailure') return { error: 'Internal server error' };
+  const { retryable, remediation } = faultWireAdvice(fault);
+  if (fault.code === 'EngineFailure') return { error: 'Internal server error', retryable };
 
   const error = options.message ?? fault.message;
   const weftCode = weftCodeFromFaultData(fault.data, options.isKnownErrorCode);
@@ -441,6 +388,8 @@ function shapeRestFaultBody(
     error,
     ...(weftCode === undefined ? {} : { weftCode }),
     ...(Object.keys(data).length > 0 ? { data } : {}),
+    retryable,
+    ...(remediation === undefined ? {} : { remediation }),
   };
 }
 

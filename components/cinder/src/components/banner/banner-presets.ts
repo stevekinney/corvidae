@@ -2,7 +2,7 @@ import { formatDate, formatTimeOfDay, formatTimeZoneLabel } from '../../utilitie
 
 /**
  * The connection presets of {@link Banner}, in the order the design lists them. Every preset is
- * non-dismissible and labels its retry "Retry now".
+ * non-dismissible and labels its retry "Try again".
  */
 export const BANNER_PRESETS = [
   'offline',
@@ -22,7 +22,7 @@ export const BANNER_PRESETS = [
  *
  * - `offline` (warning): the browser is offline; clears itself when the connection returns.
  * - `unreachable` (warning): the server does not answer and retries back off, up to 8 tries.
- * - `stopped` (warning): the retries ran out; Retry now is the primary action.
+ * - `stopped` (warning): the retries ran out; Try again is the primary action.
  * - `out-of-date` (warning): the same stop as `stopped` for a page that is only read, such as Health:
  *   it leads with the lost connection and ends with "Retries stopped after 8 attempts.", and says
  *   nothing about changes being off.

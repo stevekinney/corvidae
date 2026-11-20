@@ -32,6 +32,8 @@ While a full-page `ErrorState` shows under the header, pass `error` so the heade
 
 `status` takes the page's status as a snippet and `statusPlacement` puts it beside the title (`inline`, on its first line) or under it (`below`, the default). The title wraps to two lines and then ends in an ellipsis; its tooltip carries the full text, from `title` or, when `title` is a snippet, from `titleText`.
 
+Default and large headers compact their actions to the extra-small control size. Set `compactActions={false}` when the header has room for each action’s own control size.
+
 In a narrow header (a phone) the actions drop to a row of their own under the title and the status. Pass `narrowActions="beside-status"` to put them at the inline end of the status's row instead, which gives that row's height back to the page; it suits a few compact actions above content that needs the room, such as a chat's context ring and More menu. With no status they sit beside the title instead, so they never take a row alone. A wide header is the same either way.
 
 ## Flush by default, inset on request
@@ -194,6 +196,7 @@ Below 720px of the hero's own width the focal value comes first and the copy fol
 | `class` | `string` | no | — | Additional class names merged with `.cinder-page-header`. |
 | `collapsed` | `boolean` | no | `false` | Whether a `large` title has scrolled away. Bind it to pair the header with an AppBar's `titleVisible`. |
 | `collapsedBar` | `boolean` | no | `true` | Whether a `large` header draws its own sticky bar with the title once the title scrolls away. Turn it off when an AppBar shows the title instead. |
+| `compactActions` | `boolean` | no | `true` | Set to false to draw default and large header actions at each control’s own size. |
 | `description` | `string` | no | — | Optional supporting text rendered below the title; the runtime API also accepts a template-only snippet. |
 | `divider` | `boolean` | no | `false` | Draws a rule under the header. Off by default: space separates the header from the page, and the rule is opt-in. |
 | `error` | `boolean` | no | `false` | A full-page error state shows under this header, so its primary buttons draw as secondary. |

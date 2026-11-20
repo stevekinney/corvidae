@@ -167,7 +167,7 @@
  * consumer ladder (COR-2308, owner decision 2026-11-10): a grey canvas under
  * white surfaces, a deeper well, and muted and subtle text at 42% and 50%.
  * Since 2026-11-15 the default light arm has the same shape (a white surface
- * on a 97.6% canvas over a 95.5% well); comfortable keeps the deeper steps.
+ * on a 97.1% canvas over a 95.5% well); comfortable keeps the deeper steps.
  * Dark mode does not change across densities, so each `light-dark()` repeats
  * the shipped dark value exactly; comfortable-density.test.ts holds the two in
  * step.
@@ -207,9 +207,9 @@
   --cinder-pad-card: var(--cinder-space-5);
   --cinder-density-pad-card: var(--cinder-space-5);
   --cinder-gap-stack: var(--cinder-space-4);
-  --cinder-surface-canvas: light-dark(oklch(95.5% 0.004 265), oklch(14.5% 0.012 265));
-  --cinder-surface: light-dark(oklch(100% 0 255), oklch(18.5% 0.012 265));
-  --cinder-surface-inset: light-dark(oklch(92.5% 0.005 265), oklch(21% 0.012 265));
+  --cinder-surface-canvas: light-dark(oklch(95.5% 0.004 265), oklch(14.5% 0.022 265));
+  --cinder-surface: light-dark(oklch(100% 0 255), oklch(18.5% 0.024 265));
+  --cinder-surface-inset: light-dark(oklch(92.5% 0.005 265), oklch(21% 0.026 265));
   --cinder-text-muted: light-dark(oklch(42% 0.01 265), oklch(78% 0.01 265));
   --cinder-text-subtle: light-dark(oklch(50% 0.01 265), oklch(68% 0.01 265));
 }
@@ -237,53 +237,6 @@
     --cinder-text-body: 1rem;
     --cinder-control-height-sm: var(--cinder-touch-target-min);
     --cinder-control-height-md: var(--cinder-touch-target-min);
-  }
-}
-
-[data-theme='dark']
-  .cinder-code-block
-  :where(pre.shiki)
-  span[style*='--shiki-dark']:not(
-    [data-theme='dark']
-      [data-theme='light']
-      .cinder-code-block
-      :where(pre.shiki)
-      span[style*='--shiki-dark']
-  ),
-[data-theme='light']
-  [data-theme='dark']
-  .cinder-code-block
-  :where(pre.shiki)
-  span[style*='--shiki-dark']:not(
-    [data-theme='light']
-      [data-theme='dark']
-      [data-theme='light']
-      .cinder-code-block
-      :where(pre.shiki)
-      span[style*='--shiki-dark']
-  ),
-[data-theme='light']
-  [data-theme='dark']
-  [data-theme='light']
-  [data-theme='dark']
-  .cinder-code-block
-  :where(pre.shiki)
-  span[style*='--shiki-dark'] {
-  color: var(--shiki-dark, inherit) !important;
-}
-
-/* A page that names no theme follows the system (`color-scheme: light dark`), so on a dark system
- * its tokens are dark while Shiki's inline light colours stay near-black: an unreadable block. The
- * swap follows the same preference. A `[data-theme='light']` scope inside keeps its light colours,
- * and a `[data-theme='dark']` scope is the rule above's. */
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme])
-    .cinder-code-block
-    :where(pre.shiki)
-    span[style*='--shiki-dark']:not(
-      :root:not([data-theme]) [data-theme='light'] .cinder-code-block :where(pre.shiki) span
-    ) {
-    color: var(--shiki-dark, inherit) !important;
   }
 }
 
@@ -406,7 +359,7 @@
 
 :where(hr) {
   border: none;
-  border-top: 1px solid var(--cinder-border-muted);
+  border-top: var(--cinder-border-width) solid var(--cinder-border-muted);
   margin: var(--cinder-space-6) 0;
 }
 
@@ -424,7 +377,7 @@
 
 :where(td) {
   padding: var(--cinder-space-2) var(--cinder-space-3);
-  border-bottom: 1px solid var(--cinder-border-muted);
+  border-bottom: var(--cinder-border-width) solid var(--cinder-border-muted);
 }
 
 :where(input, button, textarea, select) {

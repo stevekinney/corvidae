@@ -53,6 +53,7 @@ import {
   MAXIMUM_STEPS_CODE,
   type NativeTerminal,
   RECORDED,
+  recordedCostUsd,
   usageOf,
 } from './ag-ui-projection.ts';
 import { readSessionOwnedBy } from './ag-ui-session-owner.ts';
@@ -75,7 +76,7 @@ export const PEER_PARK_RECHECK_INTERVAL_MS = 500;
 
 /** What a peer's stream reads from the Bureau. */
 export type PeerStreamBureau = {
-  readonly tasks: Pick<BureauTasks, 'workflow' | 'wait' | 'events' | 'subscribeEvents'>;
+  readonly tasks: Pick<BureauTasks, 'get' | 'workflow' | 'wait' | 'events' | 'subscribeEvents'>;
 } & { readonly reviews: Pick<BureauReviews, 'pendingOf'> } & {
   readonly contexts: Pick<BureauContexts, 'get' | 'subscribeEvents'>;
 };
@@ -623,7 +624,11 @@ async function finishPeer(
     ),
   ]);
   if (context.isEnded()) return;
-  context.finish(terminalEvent(context, terminal, session, label), terminal.cursor);
+  // The record's own figure, for a terminal the stream read from the run's status, which carries
+  // tokens only (COR-2524).
+  const recordedCost = await recordedCostUsd(context.bureau.tasks, context.nativeRunId);
+  if (context.isEnded()) return;
+  context.finish(terminalEvent(context, terminal, session, label, recordedCost), terminal.cursor);
 }
 
 function terminalEvent(
@@ -631,6 +636,7 @@ function terminalEvent(
   terminal: PeerTerminal,
   session: AgentSession,
   label: { readonly durable: boolean; readonly cursor?: string; readonly tripwire?: true },
+  recordedCost: number | null,
 ): Event {
   const { threadId, runId, stampContext } = context;
   if (terminal.outcome === 'error') {
@@ -658,7 +664,7 @@ function terminalEvent(
         approvals.length > 0
           ? { type: 'interrupt', interrupts: approvals.map(toInterrupt) }
           : { type: 'success' },
-      usage: usageOf(terminal.detail),
+      usage: usageOf(terminal.detail, recordedCost),
     },
     stampContext,
     label,

@@ -1,7 +1,8 @@
 <script lang="ts">
   /**
    * Advanced: the diagnostics that are not on a tab (rows 76o, 77e, 77f). It is a disclosure row at
-   * the foot of Overview, collapsed, reading "Advanced, Metrics, alerts and checks". Opened, it
+   * the foot of Overview, Cinder's flat Collapsible with no box around it (owner, 2026-11-19: the
+   * boxed bar, here and on Workers, was a card that held one line), collapsed, reading "Advanced, Metrics, alerts and checks". Opened, it
    * lists Metrics, Alerts and System checks, each with its own link on the right, and the one that is
    * opened shows its panel beneath the list. A link from elsewhere ("Open Diagnostics") opens it
    * expanded: the address carries `?advanced=` (`open`, or the section's name), so the state is
@@ -108,6 +109,7 @@
   {open}
   onToggle={(next) => show(next ? 'open' : null)}
   chevron="start"
+  variant="flat"
   class="ib-advanced"
   data-testid="advanced-diagnostics"
 >

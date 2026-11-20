@@ -4,8 +4,8 @@
  * ("answers InvalidParams naming the field a configuration the schema refuses"), which asserts the
  * whole of it, so this copy cannot drift from the server's without that test failing.
  *
- * Where things sit: the JSON-RPC `error.code` is -32602; `error.data` holds `issues`, `weftCode` and
- * `httpStatus` (400, which the HTTP response carries too); each issue's `path` starts with
+ * Where things sit: the JSON-RPC `error.code` is -32602; `error.data` holds `issues`, `weftCode`,
+ * `httpStatus` (400, which the HTTP response carries too) and `retryable`; each issue's `path` starts with
  * `['validator', 'configuration']` and then names the field inside the configuration.
  */
 export const RECORDED_GOAL_REFUSAL = {
@@ -24,6 +24,7 @@ export const RECORDED_GOAL_REFUSAL = {
       ],
       weftCode: 'InvalidParams',
       httpStatus: 400,
+      retryable: false,
     },
   },
   id: 1,

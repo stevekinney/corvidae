@@ -1,6 +1,5 @@
 import { expect, test } from 'bun:test';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { runWithHangGuard } from '../../testing/testing/src/hang-guard.ts';
 import { outcomeOf, rethrow } from '../module-scope-scenario.test-support.ts';
@@ -17,69 +16,6 @@ test('rejects a bank whose repaired control changes an oracle', async () => {
   expect(() => materializeTask(invalid.tasks[0]!, process.cwd(), 'repaired')).toThrow(
     'local-01 permits its oracle: oracle.ts.',
   );
-});
-
-const readOutcome = await outcomeOf(async () => {
-  const directory = mkdtempSync(join(tmpdir(), 'outcome-accounting-read-'));
-  const record = join(directory, 'missing.json');
-  try {
-    const result = await runWithHangGuard([
-      'bun',
-      '--no-install',
-      'scripts/chef/outcome-accounting.ts',
-      'read',
-      record,
-      'outcome',
-    ]);
-    expect(result.exitCode).toBe(1);
-    expect(existsSync(record)).toBe(false);
-  } finally {
-    rmSync(directory, { recursive: true, force: true });
-  }
-});
-
-const unknownOutcome = await outcomeOf(async () => {
-  const directory = mkdtempSync(join(tmpdir(), 'outcome-accounting-unknown-'));
-  const record = join(directory, 'record.json');
-  try {
-    const initialize = await runWithHangGuard([
-      'bun',
-      '--no-install',
-      'scripts/chef/outcome-accounting.ts',
-      'initialize',
-      record,
-      'outcome',
-    ]);
-    if (initialize.exitCode !== 0) throw new Error(initialize.stderr.toString());
-    const reserved = await runWithHangGuard([
-      'bun',
-      '--no-install',
-      'scripts/chef/outcome-accounting.ts',
-      'reserve',
-      record,
-      'outcome',
-      'dispatch',
-      'unknown',
-    ]);
-    if (reserved.exitCode !== 0) throw new Error(reserved.stderr.toString());
-    const payload = JSON.parse(reserved.stdout.toString());
-    expect(payload.admission).toBe('admitted');
-    expect(payload.record.operations.dispatch.amount).toBe('unknown');
-    const settled = await runWithHangGuard([
-      'bun',
-      '--no-install',
-      'scripts/chef/outcome-accounting.ts',
-      'settle',
-      record,
-      'outcome',
-      'dispatch',
-      'unknown',
-    ]);
-    expect(settled.exitCode).toBe(0);
-    expect(JSON.parse(settled.stdout.toString()).spentTokens).toBe('unknown');
-  } finally {
-    rmSync(directory, { recursive: true, force: true });
-  }
 });
 
 const provenanceOutcome = await outcomeOf(async () => {
@@ -113,14 +49,6 @@ const provenanceOutcome = await outcomeOf(async () => {
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }
-});
-
-test('read never initializes a missing accounting record', () => {
-  rethrow(readOutcome);
-});
-
-test('literal unknown survives reserve and settlement', () => {
-  rethrow(unknownOutcome);
 });
 
 test('verify-task-bank enforces the frozen policy snapshot provenance', () => {

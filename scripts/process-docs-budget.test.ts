@@ -56,6 +56,24 @@ describe('process document word budgets', () => {
     expect(referenceFiles).toEqual([...referenceBudgets.keys()].toSorted());
   });
 
+  // The worker's checks and branch steps have one source, `charterRules` in `scripts/chef/brief.ts`.
+  // A governed document that names both the focused-checks and the revert-check command restates
+  // that sequence, and the copies drift: point at the brief's rule instead.
+  const governedDocuments = [
+    'AGENTS.md',
+    '.claude/agents/chef-worker.md',
+    '.codex/agents/chef-worker.toml',
+    '.agents/skills/chef/SKILL.md',
+    ...referenceFiles.map((name) => join(references, name)),
+  ];
+
+  for (const path of governedDocuments) {
+    test(`${path} does not restate the focused-checks and revert-check sequence`, () => {
+      const text = readFileSync(join(root, path), 'utf8');
+      expect(text.includes('focused-checks.ts') && text.includes('revert-check.ts')).toBe(false);
+    });
+  }
+
   for (const [name, budget] of referenceBudgets) {
     test(`${references}/${name} stays within ${budget.toLocaleString('en-US')} words`, () => {
       expect(wordsIn(join(references, name))).toBeLessThanOrEqual(budget);

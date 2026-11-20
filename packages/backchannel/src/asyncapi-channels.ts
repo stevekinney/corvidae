@@ -3,6 +3,7 @@ import type { z } from 'zod';
 import { compareStrings } from './json-schema-utilities.ts';
 import type { ErasedOperation } from './operation-catalog.ts';
 import { externalApiPath, JSON_RPC_PATH } from './route-model.ts';
+import { sseErrorPayloadSchema } from './sse-error-payload-schema.ts';
 import type { ZodJsonSchemaDirection } from './zod-json-schema.ts';
 
 const JSON_RPC_VERSION = '2.0';
@@ -371,18 +372,6 @@ function tokenSseMessageNames(operation: ErasedOperation): TokenSseMessageNames 
 
 function isTokenSseOperation(operation: ErasedOperation): boolean {
   return operation.name === 'weft.workflows.streams.sse';
-}
-
-function sseErrorPayloadSchema(): Record<string, unknown> {
-  return {
-    properties: {
-      code: { type: 'string' },
-      data: {},
-      message: { type: 'string' },
-    },
-    required: ['message'],
-    type: 'object',
-  };
 }
 
 function messageReferenceMap(

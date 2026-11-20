@@ -115,9 +115,7 @@ describe('a page of keys that fails to load', () => {
     await fireEvent.click(retry);
 
     await waitFor(() =>
-      expect(view.getByTestId('storage-count').textContent?.trim()).toBe(
-        'Showing 130 of 130 keys.',
-      ),
+      expect(view.getByTestId('storage-count').textContent?.trim()).toBe('130 keys'),
     );
   });
 });

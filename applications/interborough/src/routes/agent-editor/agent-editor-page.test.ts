@@ -182,15 +182,17 @@ describe('a new agent', () => {
       await findByRole('heading', { level: 2, name: AGENT_EDITOR_COPY.noProvider.title }),
     ).not.toBeNull();
     expect(container.textContent).toContain(AGENT_EDITOR_COPY.noProvider.description);
-    // The paths are the host's, not the page's: each one comes from `/host/paths`.
-    expect(getByTestId('provider-configuration-file').textContent).toBe(STUB_CONFIGURATION_FILE);
+    // The configuration file is the host's, from `/host/paths`, and shown only in a copy control.
+    const file = getByTestId('provider-configuration-file');
+    expect(file.classList.contains('cinder-copyable-value')).toBe(true);
+    expect(file.textContent).toContain(STUB_CONFIGURATION_FILE);
+    // Where or how a key is stored never renders (owner, 2026-11-19).
     for (const provider of STUB_PROVIDERS) {
-      const row = container.querySelector(`[data-provider="${provider.name}"]`);
-      expect(row?.textContent).toContain(provider.secretFile);
+      expect(container.textContent).not.toContain(provider.secretFile);
     }
     expect(container.textContent).toContain('"plugins"');
     expect(container.textContent).toContain('"enabled": true');
-    expect(container.textContent).toContain('chmod 600');
+    expect(container.textContent).toContain(AGENT_EDITOR_COPY.noProvider.secretStep);
     expect(getByRole('button', { name: AGENT_EDITOR_COPY.noProvider.reload })).not.toBeNull();
     // The card says nothing else works until a provider is connected (row 42b).
     expect(getByTestId('agent-no-provider-blocked').textContent?.trim()).toBe(
@@ -1110,15 +1112,12 @@ describe.each(['local', 'remote'] as const)('the agent editor on a %s host', (mo
     expect(text).toContain(words[mode].secretStep);
     expect(text).not.toContain(words[other].configurationStep);
     expect(text).not.toContain(words[other].secretStep);
-    // The chmod sentence is the local secret step's; it never appears in remote mode.
-    expect(text.includes('chmod 600')).toBe(mode === 'local');
-    expect(getByTestId('provider-configuration-file').textContent).toBe(
+    expect(getByTestId('provider-configuration-file').textContent).toContain(
       mode === 'remote' ? STUB_REMOTE_CONFIGURATION_FILE : STUB_CONFIGURATION_FILE,
     );
+    // No secret reference renders, in either mode (owner, 2026-11-19).
     for (const provider of mode === 'remote' ? STUB_REMOTE_PROVIDERS : STUB_PROVIDERS) {
-      expect(container.querySelector(`[data-provider="${provider.name}"]`)?.textContent).toContain(
-        provider.secretFile,
-      );
+      expect(text).not.toContain(provider.secretFile);
     }
   });
 });

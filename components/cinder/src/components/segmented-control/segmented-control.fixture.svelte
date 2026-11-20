@@ -50,7 +50,7 @@
 <style>
   .segmented-control-fixture {
     display: grid;
-    gap: 0.75rem;
+    gap: var(--cinder-space-3);
     justify-items: start;
   }
 

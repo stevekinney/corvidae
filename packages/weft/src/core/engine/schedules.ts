@@ -119,6 +119,17 @@ function resolveScheduleTimeZone(
   return named ?? current ?? 'UTC';
 }
 
+/** The description and metadata a schedule is created with, each only when the caller gave one. */
+function pickScheduleLabels(options: {
+  description?: string;
+  metadata?: Record<string, unknown>;
+}): Pick<ScheduleState, 'description' | 'metadata'> {
+  return {
+    ...(options.description !== undefined && { description: options.description }),
+    ...(options.metadata !== undefined && { metadata: options.metadata }),
+  };
+}
+
 export async function schedule(
   internals: EngineInternals,
   type: string,
@@ -155,9 +166,7 @@ export async function schedule(
       id: scheduleId,
       workflowType: type,
       input,
-      ...(normalizedOptions.description !== undefined && {
-        description: normalizedOptions.description,
-      }),
+      ...pickScheduleLabels(normalizedOptions),
       ...cadenceFields,
       timeZone,
       status: normalizedOptions.initialStatus ?? 'active',

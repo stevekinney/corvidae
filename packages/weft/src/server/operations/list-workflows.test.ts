@@ -243,6 +243,7 @@ describe('weft.workflows.list', () => {
           },
         ],
       },
+      retryable: false,
     });
 
     const repeatedResponse = await handleRequest(
@@ -268,6 +269,7 @@ describe('weft.workflows.list', () => {
           },
         ],
       },
+      retryable: false,
     });
   });
 
@@ -319,6 +321,6 @@ describe('weft.workflows.list', () => {
 
     expect(response.status).toBe(500);
     expect(response.headers.get('content-type')).toBe('application/json');
-    expect(await response.json()).toEqual({ error: 'Internal server error' });
+    expect(await response.json()).toEqual({ error: 'Internal server error', retryable: false });
   });
 });

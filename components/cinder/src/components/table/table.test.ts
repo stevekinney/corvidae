@@ -982,17 +982,21 @@ describe('CSS rule assertions — sort indicator and focus ring', () => {
     return rule;
   }
 
-  test('.cinder-table__sort-indicator declares neutral color: var(--cinder-text-subtle)', () => {
+  test('the unsorted indicator uses the header foreground with a subtle default', () => {
     const rule = injectTableCssAndFind('.cinder-table__sort-indicator');
-    expect(rule?.style.color).toBe('var(--cinder-text-subtle)');
+    expect(rule?.style.color).toBe(
+      'var(--cinder-table-header-foreground, var(--cinder-text-subtle))',
+    );
   });
 
-  test('active sort indicator declarations use full-strength text color', () => {
+  test('the active sort indicator follows the sorted header foreground', () => {
     const rule = injectTableCssAndFindContaining(
       ".cinder-table__sort-indicator[data-cinder-direction='ascending']",
       ".cinder-table__sort-indicator[data-cinder-direction='descending']",
     );
-    expect(rule?.style.color).toBe('var(--cinder-text-default)');
+    expect(rule?.style.color).toBe(
+      'var(--cinder-table-header-sorted-foreground, var(--cinder-text-default))',
+    );
   });
 
   test('inactive sort chevron remains visible', () => {
@@ -1224,7 +1228,9 @@ describe('Table data display', () => {
 
   test('the table is framed with a quiet header and a caption kept for screen readers', () => {
     const frame = ruleBody('.cinder-table');
-    expect(frame).toMatch(/border:\s*1px solid var\(--cinder-border-muted\)/);
+    expect(frame).toMatch(
+      /border:\s*var\(--cinder-border-width\) solid var\(--cinder-border-muted\)/,
+    );
     expect(frame).toMatch(/border-radius:\s*var\(--cinder-radius-lg\)/);
     expect(frame).toMatch(/border-collapse:\s*separate/);
     // The header sits on the table's own fill instead of a filled bar (table-fill.test.ts).

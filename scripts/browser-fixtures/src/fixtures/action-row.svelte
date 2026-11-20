@@ -10,7 +10,7 @@
   ];
 </script>
 
-<div style="display: grid; gap: var(--cinder-space-1); max-inline-size: 28rem;">
+<div class="example-frame gap-1">
   {#each runs as run (run.id)}
     <ActionRow
       selected={selectedRun === run.id}
@@ -25,3 +25,10 @@
     </ActionRow>
   {/each}
 </div>
+
+<style>
+  .example-frame {
+    display: grid;
+    max-inline-size: 28rem;
+  }
+</style>

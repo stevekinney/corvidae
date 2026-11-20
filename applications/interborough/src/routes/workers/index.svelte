@@ -751,6 +751,7 @@
         open={advancedOpen}
         onToggle={(next) => (advancedOpen = next)}
         chevron="start"
+        variant="flat"
         class="ib-workers-advanced"
         data-testid="workers-advanced"
       >

@@ -151,10 +151,10 @@ describe('Banner presets: tone, name and words', () => {
 });
 
 describe('Banner presets: actions', () => {
-  test('a retrying preset offers Retry now, with a refresh glyph, and calls onRetry', async () => {
+  test('a retrying preset offers Try again, with a refresh glyph, and calls onRetry', async () => {
     const onRetry = mock(() => {});
     const { root } = renderPreset('unreachable', { onRetry });
-    expect(actionLabels(root)).toEqual(['Retry now']);
+    expect(actionLabels(root)).toEqual(['Try again']);
     const button = root.querySelector<HTMLButtonElement>('.cinder-banner__actions button');
     expect(button?.getAttribute('data-cinder-variant')).toBe('secondary');
     expect(button?.querySelector('svg')?.getAttribute('aria-hidden')).toBe('true');
@@ -166,7 +166,7 @@ describe('Banner presets: actions', () => {
     expect(renderPreset('offline').root.querySelector('.cinder-banner__actions')).toBeNull();
   });
 
-  test('stopped makes Retry now the primary action', () => {
+  test('stopped makes Try again the primary action', () => {
     const { root } = renderPreset('stopped', { onRetry: () => {} });
     expect(
       root.querySelector('.cinder-banner__actions button')?.getAttribute('data-cinder-variant'),
@@ -180,9 +180,9 @@ describe('Banner presets: actions', () => {
     ).toBe('primary');
   });
 
-  test('reconnecting keeps Retry now', () => {
+  test('reconnecting keeps Try again', () => {
     expect(actionLabels(renderPreset('reconnecting', { onRetry: () => {} }).root)).toEqual([
-      'Retry now',
+      'Try again',
     ]);
   });
 
@@ -222,7 +222,7 @@ describe('Banner presets: actions', () => {
       onRetry: () => {},
       actions: createRawSnippet(() => ({ render: () => '<button>Details</button>' })),
     });
-    expect(actionLabels(root)).toEqual(['Retry now', 'Details']);
+    expect(actionLabels(root)).toEqual(['Try again', 'Details']);
   });
 });
 

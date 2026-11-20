@@ -20,6 +20,9 @@ type PIIRule =
  * previous email match (`a@b.co_c@d.ef` holds two), recognised by a bounded
  * lookbehind on a hostname of at most 253 characters. The leftmost match is
  * otherwise unchanged.
+ *
+ * The phone pattern refuses a match with a letter, digit, underscore or hyphen directly before or
+ * after it, so a digit run inside an identifier (a UUID, ULID, SHA or call id) is never a number.
  */
 export const PII_RULES = {
   email: {
@@ -28,7 +31,8 @@ export const PII_RULES = {
     replace: '[EMAIL_REDACTED]',
   },
   phone: {
-    regex: /\b(?:\+?\d{1,3}[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}\b/g,
+    regex:
+      /(?<![a-zA-Z0-9_-])(?:\+?\d{1,3}[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}(?![a-zA-Z0-9_-])/g,
     replace: '[PHONE_REDACTED]',
   },
   apiKey: {

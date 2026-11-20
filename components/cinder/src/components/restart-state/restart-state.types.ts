@@ -4,7 +4,7 @@ import type { Snippet } from 'svelte';
  * Where a restart stands, as the person sees it:
  *
  * - `'restarting'`: the host accepted the restart and is stopping and starting; progress by step.
- * - `'reconnecting'`: the host stopped and has not answered yet; the attempt count, with Retry now.
+ * - `'reconnecting'`: the host stopped and has not answered yet; the attempt count, with Try again.
  * - `'failed'`: the host never answered; what to check, the command to start it again, and Keep
  *   waiting.
  */
@@ -53,8 +53,9 @@ export type RestartStateProps = {
   /** Seconds until the next automatic attempt in `reconnecting`. Adds "Trying again in 4 s." */
   retryInSeconds?: number | undefined;
   /**
-   * Label of the button that tries at once in `reconnecting`.
-   * @default "Retry now"
+   * Label of the button that tries at once in `reconnecting`: "Try again", Cinder's one word for
+   * asking again.
+   * @default "Try again"
    */
   retryLabel?: string;
   /** Fired when the person asks to try at once. The button shows only when this is set. */

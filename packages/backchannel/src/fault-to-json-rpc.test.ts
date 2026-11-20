@@ -159,11 +159,40 @@ describe('faultToJsonRpcError', () => {
       code: 'EngineFailure',
       message: 'internal error',
       data: {},
+      remediation: 'Restart the server.',
     });
     expect(error.code).toBe(-32099);
     expect(error.data).toMatchObject({ weftCode: 'EngineFailure', httpStatus: 500 });
-    // Just the metadata pair — no leaked internals.
-    expect(Object.keys(error.data).toSorted()).toEqual(['httpStatus', 'weftCode']);
+    // Just the metadata, not retryable and with no remediation — no leaked internals.
+    expect(error.data).toEqual({ weftCode: 'EngineFailure', httpStatus: 500, retryable: false });
+  });
+
+  it('carries retryable always and remediation when the fault sets one', () => {
+    const limited = faultToJsonRpcError({
+      code: 'RateLimited',
+      message: 'slow down',
+      data: { retryAfterSeconds: 2 },
+      remediation: 'Wait two seconds, then send the same request.',
+    });
+    expect(limited.data).toEqual({
+      retryAfterSeconds: 2,
+      weftCode: 'RateLimited',
+      httpStatus: 429,
+      retryable: true,
+      remediation: 'Wait two seconds, then send the same request.',
+    });
+    const invalid = faultToJsonRpcError({
+      code: 'InvalidParams',
+      message: 'bad',
+      data: { issues: [] },
+      remediation: 'two\nlines',
+    });
+    expect(invalid.data).toEqual({
+      issues: [],
+      weftCode: 'InvalidParams',
+      httpStatus: 400,
+      retryable: false,
+    });
   });
 
   it('Conflict -> -32021', () => {
@@ -263,13 +292,13 @@ describe('faultToJsonRpcError', () => {
     }
   });
 
-  it('Timeout without operationName produces minimal data (only the metadata pair)', () => {
+  it('Timeout without operationName produces minimal data (only the metadata)', () => {
     const error = faultToJsonRpcError({
       code: 'Timeout',
       message: 'timed out',
       data: {},
     });
-    expect(Object.keys(error.data).toSorted()).toEqual(['httpStatus', 'weftCode']);
+    expect(Object.keys(error.data).toSorted()).toEqual(['httpStatus', 'retryable', 'weftCode']);
   });
 
   it('UnsupportedTransport `supported` array is copied (defensive against caller mutation)', () => {
@@ -330,7 +359,7 @@ describe('faultToJsonRpcError', () => {
       data: { operationName: undefined },
     };
     const error = faultToJsonRpcError(fault);
-    expect(Object.keys(error.data).toSorted()).toEqual(['httpStatus', 'weftCode']);
+    expect(Object.keys(error.data).toSorted()).toEqual(['httpStatus', 'retryable', 'weftCode']);
   });
 
   it('envelope keys (weftCode, httpStatus) cannot be overwritten by future payload fields', () => {

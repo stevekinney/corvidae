@@ -134,13 +134,37 @@ svg.cinder-icon-lg {
   line-height: var(--cinder-leading-relaxed);
 }
 
-.cinder-markdown-content :where(p, ul, ol, blockquote, pre, table) {
+/* A CodeBlock's own `pre` is excluded here and below; its node wrapper carries the space instead. */
+.cinder-markdown-content :where(p, ul, ol, blockquote, pre:not(.cinder-code-block pre), table) {
   margin-block: 0 var(--cinder-space-3);
+}
+
+/* Markdown wraps a code block, a table and a diagram in a node wrapper, so the rule above no longer
+ * reaches the element inside it. The wrapper takes the same space under it as a paragraph. */
+.cinder-markdown-content > [data-cinder-markdown-node]:not(:last-child) {
+  margin-block-end: var(--cinder-space-3);
 }
 
 .cinder-markdown-content :where(h1, h2, h3, h4, h5, h6) {
   margin-block: var(--cinder-space-4) var(--cinder-space-2);
   line-height: var(--cinder-leading-tight);
+}
+
+/* Rendered Markdown (the Markdown component's `.cinder-markdown`) sits inside a page that already
+ * has its own title, so its headings step down from the page scale: a document's `#` never
+ * competes with the heading that frames it. An editing surface keeps its own heading scale. The
+ * `:where()` keeps these at the specificity of the rules above. */
+.cinder-markdown-content:where(.cinder-markdown) :where(h1) {
+  font-size: var(--cinder-text-xl);
+}
+
+.cinder-markdown-content:where(.cinder-markdown) :where(h2) {
+  font-size: var(--cinder-text-lg);
+}
+
+.cinder-markdown-content:where(.cinder-markdown) :where(h3, h4, h5, h6) {
+  font-size: var(--cinder-text-base);
+  font-weight: var(--cinder-font-semibold);
 }
 
 .cinder-markdown-content
@@ -232,7 +256,11 @@ svg.cinder-icon-lg {
   color: var(--cinder-text-muted);
 }
 
-.cinder-markdown-content :where(pre) {
+/* A bare `pre` in rich editing surfaces. A CodeBlock's `pre`, plain or highlighted, is left to
+ * CodeBlock: this layer is later than the components layer, so the rule would otherwise give the
+ * plain fallback a different padding from the highlighted `pre`, and the block would move when
+ * highlighting arrives. */
+.cinder-markdown-content :where(pre:not(.cinder-code-block pre)) {
   padding: var(--cinder-space-3);
   overflow-x: auto;
   border-radius: var(--cinder-radius-md);
@@ -288,6 +316,32 @@ svg.cinder-icon-lg {
 .cinder-markdown-content :where(th) {
   background: var(--cinder-surface-inset);
   font-weight: var(--cinder-font-semibold);
+}
+
+/* A table inside the Markdown table scroller: the frame draws the outer border, the cells stay on
+ * one line, and the header row reads as one band, and the cue above it has no paragraph margin.
+ * These sit here, not in the scroller's own stylesheet, because the rules above are in this layer
+ * and a component layer would lose to them. */
+.cinder-markdown-table-scroller table {
+  margin: 0;
+  border-style: hidden;
+}
+
+.cinder-markdown-content .cinder-markdown-table-cue {
+  margin: 0;
+}
+
+/* Cell text starts at the same inset as a code block's text, so the two framed blocks in one
+ * document line their text up. */
+.cinder-markdown-table-scroller :is(th, td) {
+  padding-inline: var(--cinder-code-block-padding);
+  white-space: nowrap;
+  border: 0;
+}
+
+.cinder-markdown-table-scroller thead th {
+  background: var(--cinder-surface-inset);
+  border-block-end-color: var(--cinder-border-strong);
 }
 
 /* INTERNAL — used by Cinder components. Not a public API. May change without notice. */

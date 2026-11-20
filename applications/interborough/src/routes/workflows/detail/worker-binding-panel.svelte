@@ -13,7 +13,14 @@
    * declares no policy) gets its own empty state, in the style of the revision
    * row's "Unpinned (pre-revision record)".
    */
-  import { Badge, Callout, DescriptionList, EmptyState, Tooltip } from '@lostgradient/cinder';
+  import {
+    Badge,
+    Callout,
+    DescriptionList,
+    EmptyState,
+    Section,
+    Tooltip,
+  } from '@lostgradient/cinder';
   import type { WorkflowState } from '@lostgradient/weft';
   import { CircleAlert, Info } from '@lucide/svelte';
 
@@ -114,83 +121,93 @@
   });
 </script>
 
-<div class="weft-overview-tab__panel weft-worker-binding" data-testid="worker-binding-panel">
-  <!-- With nothing recorded, the empty state stands alone, under no heading (owner report, 2026-11-19). -->
-  {#if reading.kind !== 'absent'}
-    <h3 class="weft-panel-title">Worker versioning</h3>
-  {/if}
-
-  {#if reading.kind === 'absent'}
+<!-- Cinder's Section, as the run page's other blocks are, with no box or band of its own
+     (COR-2489). -->
+{#if reading.kind === 'absent'}
+  <div class="weft-worker-binding" data-testid="worker-binding-panel">
     <EmptyState
       kind="first-use"
       headingLevel={3}
       title="No worker version is recorded"
       description="This run predates worker versioning, or its workflow declares no worker versioning policy, so no deployment build is recorded for it."
     />
-  {:else if reading.kind === 'malformed'}
-    <Callout variant="danger" semantic="note" title="Worker version unreadable">
-      {#snippet icon()}
-        <CircleAlert aria-hidden="true" size={17} />
-      {/snippet}
-      The server returned worker versioning data this console cannot read ({reading.reason}), so
-      none of it is shown.
-    </Callout>
-  {:else}
-    <div class="weft-worker-binding__badges">
-      <Badge variant={reading.policy.mode === 'auto-upgrade' ? 'accent' : 'neutral'}>
-        {reading.policy.mode === 'auto-upgrade' ? 'Auto-upgrade' : 'Pinned'}
-      </Badge>
-      <Tooltip text={reading.record.current.buildId}>
-        <Badge variant="neutral" monospace>build {truncateId(reading.record.current.buildId)}</Badge
-        >
-      </Tooltip>
+    <WorkerInheritanceNote surface="activity" />
+  </div>
+{:else}
+  <Section level={3} title="Worker versioning" data-testid="worker-binding-panel">
+    <div class="weft-worker-binding">
+      {#if reading.kind === 'malformed'}
+        <Callout variant="danger" semantic="note" title="Worker version unreadable">
+          {#snippet icon()}
+            <CircleAlert aria-hidden="true" size={17} />
+          {/snippet}
+          The server returned worker versioning data this console cannot read ({reading.reason}), so
+          none of it is shown.
+        </Callout>
+      {:else}
+        <div class="weft-worker-binding__badges">
+          <Badge variant={reading.policy.mode === 'auto-upgrade' ? 'accent' : 'neutral'}>
+            {reading.policy.mode === 'auto-upgrade' ? 'Auto-upgrade' : 'Pinned'}
+          </Badge>
+          <Tooltip text={reading.record.current.buildId}>
+            <Badge variant="neutral" monospace
+              >build {truncateId(reading.record.current.buildId)}</Badge
+            >
+          </Tooltip>
+        </div>
+        <p class="weft-worker-binding__why" data-testid="worker-binding-why">
+          {explainWorkerBinding(reading)}
+        </p>
+
+        <DescriptionList items={policyItems} variant="default" />
+        <Section level={4} title="Current binding">
+          <DescriptionList items={bindingItems} variant="default" />
+        </Section>
+
+        {#if reading.record.history.length === 0}
+          <EmptyState
+            kind="done"
+            headingLevel={4}
+            title="No earlier versions"
+            description="This run has only ever been bound to the build above."
+          />
+        {:else}
+          <Section level={4} title="Binding history">
+            <ol
+              class="weft-worker-binding__history"
+              aria-label="Earlier worker versions, oldest first"
+            >
+              {#each historyOldestFirst as entry, index (`${index}-${entry.boundAt}`)}
+                <li>
+                  <span class="weft-worker-binding__history-build">
+                    build <code title={entry.buildId}>{truncateId(entry.buildId)}</code>
+                  </span>
+                  of {entry.deploymentName}, routing generation {entry.routingGeneration}, bound
+                  {formatRelativeTime(entry.boundAt)}
+                </li>
+              {/each}
+            </ol>
+          </Section>
+        {/if}
+
+        {#if !eligibility.eligible}
+          <p class="weft-worker-binding__override" data-testid="worker-binding-override-note">
+            <Info aria-hidden="true" size={13} />
+            {eligibility.reason}
+          </p>
+        {:else}
+          <p class="weft-worker-binding__override" data-testid="worker-binding-override-note">
+            <Info aria-hidden="true" size={13} />
+            This terminal run is auto-upgrade, so Restart can offer a worker override preview (it needs
+            the system:admin scope).
+          </p>
+        {/if}
+      {/if}
+
+      <WorkerInheritanceNote surface="activity" />
     </div>
-    <p class="weft-worker-binding__why" data-testid="worker-binding-why">
-      {explainWorkerBinding(reading)}
-    </p>
-
-    <DescriptionList items={policyItems} variant="default" />
-    <h4 class="weft-panel-title weft-worker-binding__subheader">Current binding</h4>
-    <DescriptionList items={bindingItems} variant="default" />
-
-    {#if reading.record.history.length === 0}
-      <EmptyState
-        kind="done"
-        headingLevel={4}
-        title="No earlier versions"
-        description="This run has only ever been bound to the build above."
-      />
-    {:else}
-      <h4 class="weft-panel-title weft-worker-binding__subheader">Binding history</h4>
-      <ol class="weft-worker-binding__history" aria-label="Earlier worker versions, oldest first">
-        {#each historyOldestFirst as entry, index (`${index}-${entry.boundAt}`)}
-          <li>
-            <span class="weft-worker-binding__history-build">
-              build <code title={entry.buildId}>{truncateId(entry.buildId)}</code>
-            </span>
-            of {entry.deploymentName}, routing generation {entry.routingGeneration}, bound
-            {formatRelativeTime(entry.boundAt)}
-          </li>
-        {/each}
-      </ol>
-    {/if}
-
-    {#if !eligibility.eligible}
-      <p class="weft-worker-binding__override" data-testid="worker-binding-override-note">
-        <Info aria-hidden="true" size={13} />
-        {eligibility.reason}
-      </p>
-    {:else}
-      <p class="weft-worker-binding__override" data-testid="worker-binding-override-note">
-        <Info aria-hidden="true" size={13} />
-        This terminal run is auto-upgrade, so Restart can offer a worker override preview (it needs the
-        system:admin scope).
-      </p>
-    {/if}
-  {/if}
-
-  <WorkerInheritanceNote surface="activity" />
-</div>
+  </Section>
+{/if}
 
 <style>
   .weft-worker-binding {
@@ -211,10 +228,6 @@
 
   .weft-worker-binding__why {
     font-size: var(--cinder-text-xs);
-  }
-
-  .weft-worker-binding__subheader {
-    margin-block-start: 4px;
   }
 
   .weft-worker-binding__history {

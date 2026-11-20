@@ -134,6 +134,16 @@ export const WORKFLOW_LIFECYCLE_KEYS_EXTENDED = {
   teardownSucceeded: (workflowId: string) =>
     `wf-teardown-succeeded:${encodeStorageKeyComponent(workflowId)}`,
   /**
+   * The activity a running workflow is retrying, as `{ activity, attempt }` (COR-2529): what
+   * `WorkflowSummary.retrying` reads, so a list answers it with one small read per running run and
+   * never loads a checkpoint. Staged as a pending atomic side effect, so it commits in the very
+   * checkpoint batch that records the retry decision and adds no write of its own; it is put when
+   * an activity reaches attempt 2 or later, replaced as the attempt advances, and deleted in the
+   * checkpoint that records the activity settling. Deleted too when the run is reactivated, on
+   * terminal cleanup, and on purge. It is not top level: the `wf:` listing skips it.
+   */
+  activityRetrying: (workflowId: string) => `wf:${encodeStorageKeyComponent(workflowId)}:retrying`,
+  /**
    * Durable audit record written when a workflow's finalizer permanently fails — the
    * retry horizon is reached, or the recorded resource state vanished so the finalizer
    * can never run (issue #446 Phase 2). Holds the `TeardownDeadLetterRecord` shape

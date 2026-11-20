@@ -16,6 +16,6 @@
 <style>
   .navigation-item-fixture {
     display: flex;
-    gap: 0.5rem;
+    gap: var(--cinder-space-2);
   }
 </style>

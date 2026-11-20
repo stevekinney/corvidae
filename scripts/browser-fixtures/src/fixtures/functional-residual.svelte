@@ -16,7 +16,7 @@ FROM users
 WHERE active = true
 ORDER BY created_at DESC
 LIMIT 10;`;
-  const highlightedHtml = `<pre class="shiki" style="background-color:#fff;color:#24292e"><code>${code}</code></pre>`;
+  const highlightedHtml = `<pre class="shiki"><code>${code}</code></pre>`;
   type LayoutHighlighterWindow = Window & {
     cinderCodeBlockLayoutHighlighterReady?: boolean;
     resolveCinderCodeBlockLayoutHighlight?: () => void;
@@ -41,7 +41,7 @@ LIMIT 10;`;
   }
 </script>
 
-<main class="functional-residual-fixture">
+<main class="functional-residual-fixture gap-4">
   <section aria-label="Feed log">
     <Feed kind="log" label="Deployment events" connectionState="connected">
       <Feed.Event variant="minimal" datetime="2026-05-12T14:30:00Z" timestamp="14:30:00" tone="info"
@@ -66,7 +66,7 @@ LIMIT 10;`;
     <Tree
       aria-label="Reorder files"
       onReorder={handleReorder}
-      style="max-block-size: 7rem; overflow: auto; border: 1px solid var(--cinder-border); border-radius: var(--cinder-radius-md);"
+      class="functional-residual-fixture-tree rounded-medium"
     >
       {#each treeItems as item (item.id)}
         <Tree.Item
@@ -88,11 +88,16 @@ LIMIT 10;`;
 <style>
   .functional-residual-fixture {
     display: grid;
-    gap: 1rem;
     max-inline-size: 48rem;
     margin-inline: auto;
   }
   section {
     min-inline-size: 0;
+  }
+
+  :global(.functional-residual-fixture-tree) {
+    max-block-size: 7rem;
+    overflow: auto;
+    border: 1px solid var(--cinder-border);
   }
 </style>

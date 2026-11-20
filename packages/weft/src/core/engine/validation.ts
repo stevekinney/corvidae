@@ -21,6 +21,7 @@ import { isWorkflowTagArray } from '../workflow-tags.ts';
 import type { WorkflowVersionTuple } from '../workflow-version-tuple.ts';
 import { sanitizeDecodedParentLineage, sanitizeDecodedRestartLineage } from './decode-lineage.ts';
 import { sanitizeDecodedRevision } from './decode-revision.ts';
+import { sanitizeDecodedFailureRecord } from './failure-record.ts';
 import { sanitizeDecodedSignalWaits } from './signal-wait-state.ts';
 import {
   MAX_TIMELINE_COORDINATOR_DETAILS,
@@ -59,6 +60,8 @@ const WORKFLOW_STATE_FIELD_NAMES = new Set<string>(
     'error',
     'errorStack',
     'failureCategory',
+    'errorCode',
+    'failedStep',
     'terminationReason',
     'versionTuple',
     'revision',
@@ -253,6 +256,7 @@ export function decodeWorkflowState(bytes: Uint8Array): WorkflowState {
   sanitizeDecodedRestartLineage(state);
   sanitizeDecodedRevision(state);
   sanitizeDecodedSignalWaits(state);
+  sanitizeDecodedFailureRecord(state);
   return decodedRecord === undefined
     ? state
     : stripUnknownWorkflowStateFields(state, decodedRecord);

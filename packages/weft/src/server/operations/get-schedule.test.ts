@@ -82,6 +82,34 @@ describe('weft.schedules.get', () => {
     expect(body.workflowType).toBe('echo');
   });
 
+  it('returns the schedule’s metadata, and none for a schedule created without (COR-2546)', async () => {
+    engine = createEngine();
+    await engine.schedule('echo', null, '0 * * * *', {
+      id: 'owned-schedule',
+      metadata: { owner: 'ada' },
+    });
+    await engine.schedule('echo', null, '0 * * * *', { id: 'plain-schedule' });
+
+    const read = async (scheduleId: string) => {
+      const response = await handleRequest(
+        new Request(`http://localhost/v1/schedules/${scheduleId}`, { method: 'GET' }),
+        engine!,
+        {
+          operationRegistry: registry,
+          restBindings: [getScheduleRestBinding],
+          ...apiKeyAuthContext(),
+        },
+      );
+      expect(response.status).toBe(200);
+      return (await response.json()) as Record<string, unknown>;
+    };
+
+    const owned = await read('owned-schedule');
+    const plain = await read('plain-schedule');
+    expect(owned['metadata']).toEqual({ owner: 'ada' });
+    expect('metadata' in plain).toBe(false);
+  });
+
   it('returns the schedule revision, and a pause moves it (COR-1482)', async () => {
     engine = createEngine();
     await engine.schedule('echo', {}, '0 * * * *', { id: 'revised-schedule' });
@@ -122,6 +150,7 @@ describe('weft.schedules.get', () => {
     expect(await response.json()).toEqual({
       error: 'Schedule "does-not-exist" not found',
       data: { resource: 'schedule', identifier: 'does-not-exist' },
+      retryable: false,
     });
   });
 
@@ -190,7 +219,7 @@ describe('weft.schedules.get', () => {
     );
 
     expect(response.status).toBe(500);
-    expect(await response.json()).toEqual({ error: 'Internal server error' });
+    expect(await response.json()).toEqual({ error: 'Internal server error', retryable: false });
   });
 
   it('shapes Unauthorized faults as 401', async () => {
@@ -218,7 +247,7 @@ describe('weft.schedules.get', () => {
     );
 
     expect(response.status).toBe(401);
-    expect(await response.json()).toEqual({ error: 'missing credentials' });
+    expect(await response.json()).toEqual({ error: 'missing credentials', retryable: false });
   });
 
   it('uses the fallback HTTP mapper for non-special-cased faults', async () => {
@@ -246,6 +275,6 @@ describe('weft.schedules.get', () => {
     );
 
     expect(response.status).toBe(409);
-    expect(await response.json()).toEqual({ error: 'schedule conflict' });
+    expect(await response.json()).toEqual({ error: 'schedule conflict', retryable: false });
   });
 });

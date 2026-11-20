@@ -234,8 +234,12 @@ test('shows a durable specialist child while held, then restores its completed c
     await childLink.click();
     await expect(page).toHaveURL(new RegExp(`/runs/${childRunId}$`));
     const details = page.getByRole('complementary', { name: 'Details' });
-    await expect(details.locator(`code[title="${childRunId}"]`)).toHaveCount(1);
+    await expect(details).not.toContainText(childRunId);
     await expect(details.getByRole('link', { name: 'Review the fixture workflow' })).toBeVisible();
+    await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+    await page.getByRole('button', { name: 'More actions', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'Copy run ID', exact: true }).click();
+    await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(childRunId);
     expect(childMessageRequests).toEqual([]);
 
     await page.goto(parentUrl);

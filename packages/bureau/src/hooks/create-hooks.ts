@@ -637,6 +637,19 @@ function invalid(path: string | readonly string[], message: string): never {
   });
 }
 
+/**
+ * The check a delete makes before it writes: a default hook (`declaredBy`) is refused with
+ * {@link HookError} `invalid` at `declaredBy`. The delete and its dry run both call this, so a
+ * dry run answers the fault the real call answers.
+ */
+export function assertHookDeletable(hook: {
+  readonly declaredBy?: HookDeclaredBy | undefined;
+}): void {
+  if (hook.declaredBy !== undefined) {
+    invalid('declaredBy', 'A default hook cannot be deleted; disable it instead');
+  }
+}
+
 const WORKFLOW_ID_MAXIMUM_LENGTH = 256;
 
 /** The key a contributed action kind is looked up by. Plugin and kind names contain no `/`. */
@@ -1812,9 +1825,7 @@ export function createHooks(dependencies: HooksDependencies): CreatedHooks {
         const stored = await store.getHook(hookId);
         if (stored === undefined) return false;
         // Nothing is written, aborted or audited: the plugin's hook stays, and the owner turns it off.
-        if (stored.record.declaredBy !== undefined) {
-          invalid('declaredBy', 'A default hook cannot be deleted; disable it instead');
-        }
+        assertHookDeletable(stored.record);
         if (!(await store.deleteHook(stored))) return false;
         deliveries.abortHook(hookId);
         if (stored.record.action.type === 'webhook') {

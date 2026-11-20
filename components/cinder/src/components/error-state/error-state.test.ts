@@ -250,7 +250,7 @@ describe('ErrorState actions', () => {
     const buttons = getAllByRole('button');
     expect(buttons.map((button) => button.textContent?.trim())).toEqual([
       'Open Health',
-      'Retry now',
+      'Try again',
     ]);
     const row = container.querySelector('.cinder-error-state-action');
     expect(buttons.every((button) => row?.contains(button))).toBe(true);
@@ -500,7 +500,7 @@ describe('ErrorState bordered', () => {
     ).toBe(true);
     const css = await Bun.file(new URL('./error-state.css', import.meta.url)).text();
     const rule = declarationsFor(css, '.cinder-error-state[data-cinder-bordered]');
-    expect(rule.get('border')).toBe('1px solid var(--cinder-border)');
+    expect(rule.get('border')).toBe('var(--cinder-border-width) solid var(--cinder-border)');
     expect(rule.get('border-radius')).toBe('var(--cinder-radius-lg)');
     expect(rule.get('padding-inline')).toBe('var(--cinder-space-8)');
   });

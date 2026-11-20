@@ -16,6 +16,7 @@ import {
   test,
 } from 'bun:test';
 import { Window } from 'happy-dom';
+import { readFileSync } from 'node:fs';
 
 import HomeHarness from './home-test-harness.test-harness.svelte';
 import {
@@ -108,20 +109,40 @@ describe('Home’s sections', () => {
     expect(page?.querySelector('.cinder-card')).toBeNull();
   });
 
-  test('says nothing needs attention as one line under its heading, with no box around it', async () => {
+  // Owner, 2026-11-19: no card says nothing; nothing needing the person is one quiet line.
+  test('says nothing needs you as one quiet line, in no section and no box, and draws no empty Needs attention', async () => {
     const base = sampleHomeWorld();
-    const { findByTestId } = await open(
+    const { container, findByTestId } = await open(
       sampleHomeWorld({
         world: { ...base.world, reviews: [] },
         attention: [],
         providerConnected: true,
       }),
     );
-    const line = await findByTestId('attention-clear');
+    const line = await findByTestId('home-nothing-needs-you');
     expect(line.closest('.cinder-card')).toBeNull();
-    expect(line.closest('[data-home-card]')?.getAttribute('data-home-card')).toBe(
-      'Needs attention',
+    expect(line.closest('[data-home-card]')).toBeNull();
+    await within(cardOf(container, 'Recent chats')).findByRole('list', { name: 'Recent chats' });
+    expect(container.querySelector('[data-home-card="Needs attention"]')).toBeNull();
+  });
+
+  // Owner, 2026-11-19: the left column and Start a chat ended at different heights, with a dead
+  // band before Recent chats, and the gaps between sections were two values.
+  test('puts Recent chats under Start a chat in the narrow column, and spaces every section by one value', async () => {
+    const { container } = await open();
+    await within(cardOf(container, 'Recent chats')).findByRole('list', { name: 'Recent chats' });
+    const aside = container.querySelector('.ib-home__aside');
+    expect(aside?.contains(cardOf(container, 'Start a chat'))).toBe(true);
+    expect(aside?.contains(cardOf(container, 'Recent chats'))).toBe(true);
+    // Only the activity bands, the last region (COR-2227), sit under the two columns.
+    const columns = container.querySelector('.ib-home__columns');
+    expect(columns?.nextElementSibling?.getAttribute('data-testid')).toBe('home-activity');
+    const layout = readFileSync(new URL('./home-layout.svelte', import.meta.url), 'utf8');
+    const gaps = new Set(
+      [...layout.matchAll(/^\s+(?:column-|row-)?gap: ([^;]+);/gm)].map((match) => match[1]),
     );
+    expect([...gaps]).toEqual(['var(--ib-home-gap)']);
+    expect(layout).toContain('--ib-home-gap: var(--cinder-space-8);');
   });
 });
 

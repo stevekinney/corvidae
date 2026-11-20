@@ -109,7 +109,8 @@ test.describe('the server stops answering while a page with data is open', () =>
     await expect(banner(page)).toContainText('Changes are off until it’s back.');
     await expect(banner(page)).toContainText('Showing what loaded as of');
     await expect(banner(page)).toContainText('Retrying in');
-    await expect(banner(page).getByRole('button', { name: 'Retry now' })).toBeVisible();
+    // The shell's banner says the app's one word for asking again (COR-2489).
+    await expect(banner(page).getByRole('button', { name: 'Try again' })).toBeVisible();
     await expect(frame).toHaveAttribute('data-stale', 'true');
     await expect(frame).toHaveAttribute('data-stale-since', /^\d{4}-\d{2}-\d{2}T/);
     await expect(frame).toHaveAttribute('data-state', 'ready');
@@ -147,7 +148,7 @@ test.describe('the server stops answering while a page with data is open', () =>
     // (Playwright reads `aria-disabled` as disabled, so the property is what says what the page set.)
     await expect(save).toHaveJSProperty('disabled', false);
     // What reads or moves is not held.
-    await expect(page.getByRole('button', { name: 'Retry' })).toBeEnabled();
+    await expect(page.getByRole('button', { name: 'Try again' })).toBeEnabled();
     await expect(page.getByRole('link', { name: 'Agents' }).first()).toBeVisible();
 
     await startHost(page);

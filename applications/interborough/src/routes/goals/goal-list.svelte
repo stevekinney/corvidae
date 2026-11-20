@@ -43,6 +43,7 @@
   import {
     CONNECTION_MAX_ATTEMPTS,
     ConnectionMonitor,
+    CONNECTION_RETRY_LABEL,
     connectionBannerPreset,
     getConnection,
   } from '../../app/connection.svelte.ts';
@@ -168,7 +169,7 @@
   // The shell leaves its banner to this page while it is on screen.
   $effect(() => connection.claimBanner());
 
-  /** Banner's Retry now: the connection's own tries again, or this read's, and the frame's probe of it. */
+  /** Banner's Try again: the connection's own tries again, or this read's, and the frame's probe of it. */
   function retryNow(): void {
     if (connection.unreachable) {
       void connection.retryNow();
@@ -262,6 +263,7 @@
     {#if stale && !restartActivity.active}
       <Banner
         preset={connectionBannerPreset(tries)}
+        retryLabel={CONNECTION_RETRY_LABEL}
         dataUpdatedAt={connection.unreachable ? connection.lastHealthyAt : goals.dataUpdatedAt}
         retryInSeconds={tries.retryInSeconds}
         attempt={tries.browserOffline || tries.attempt === 0 ? undefined : tries.attempt}

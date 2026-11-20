@@ -231,6 +231,7 @@ describe('weft.workflows.signal', () => {
       expect(await response.json()).toEqual({
         error: 'Workflow not found',
         data: { resource: 'workflow', identifier: 'missing' },
+        retryable: false,
       });
     } finally {
       engine.signal = originalSignal;
@@ -255,7 +256,7 @@ describe('weft.workflows.signal', () => {
       );
 
       expect(response.status).toBe(500);
-      expect(await response.json()).toEqual({ error: 'Internal server error' });
+      expect(await response.json()).toEqual({ error: 'Internal server error', retryable: false });
     } finally {
       engine.signal = originalSignal;
     }

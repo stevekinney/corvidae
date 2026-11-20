@@ -104,7 +104,9 @@
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    justify-content: center;
+    justify-content: flex-end;
+    inline-size: 100%;
+    max-inline-size: 60ch;
     gap: var(--cinder-space-2);
     margin-block-start: var(--cinder-space-3);
   }

@@ -21,7 +21,7 @@ Step indicator for multi-step wizards and onboarding flows, a first-run checklis
 
 ## Checklist
 
-`variant="checklist"` is a bordered card of rows for a first-run list. Steps complete in any order, so there is no `currentStep`: mark a step finished with `done`, and the current step is the first one that isn't. The `heading` sits at the start of the header row, and the counter ("0 of 3 done") at the end, which `progressLabel` can reword. Each step can carry an `action` snippet that receives the step's state, so the current step gets the primary button and the others a secondary one. A done step passes no action and swaps its description to say what happened.
+`variant="checklist"` is a grouped list of rows for a first-run list, drawn as GroupedList is drawn: no outer border and no header band, the rows one rounded surface with separators that start at the text. Steps complete in any order, so there is no `currentStep`: mark a step finished with `done`, and the current step is the first one that isn't. The `heading` sits at the start of the line above the rows, as a Section's title does, and the counter ("0 of 3 done") at the end, which `progressLabel` can reword. Each step can carry an `action` snippet that receives the step's state, so the current step gets the primary button and the others a secondary one. On a narrow container the actions drop under the text, and a quiet action that leads them is pulled back by its own padding so its words start on the text edge. A done step passes no action and swaps its description to say what happened.
 
 ```svelte
 <script lang="ts">
@@ -125,13 +125,13 @@ By default, state is derived from `currentStep`: earlier steps are complete, the
 | `completedLabel` | `string` | no | `"Completed"` | Visually-hidden text prepended to completed steps so screen readers announce state + label. Defaults to 'Completed'. |
 | `currentLabel` | `string` | no | `"In progress"` | Visually-hidden text announced for the step in progress in the `'status'` variant. |
 | `currentStep` | `number` | no | `0` | Zero-based index of the active step in the `'stepper'` variant. Steps with index < currentStep are "completed". Pass `steps.length` to mark every step as complete (terminal "done" state). The `'checklist'` and `'status'` variants ignore it and read each step's `done` instead. |
-| `heading` | `string` | no | — | Title of the `'checklist'` card, such as "Get started". It sits at the start of the card's header row, with the counter at the end, and names the section. |
+| `heading` | `string` | no | — | Title of the `'checklist'` list, such as "Get started". It sits at the start of the line above the rows, with the counter at the end, and names the section. |
 | `headingLevel` | `1` \| `2` \| `3` \| `4` \| `5` \| `6` | no | `3` | Heading level for `heading`. |
 | `label` | `string` | no | `"Progress"` | Accessible name for the wrapper: the nav landmark of the `'stepper'`, the status region of the `'status'` variant, and the section of a `'checklist'` that has no `heading`. Defaults to 'Progress'. |
 | `orientation` | `"horizontal"` \| `"vertical"` | no | `"horizontal"` | Layout direction of the `'stepper'` variant. The `'checklist'` and `'status'` variants are always vertical. Defaults to 'horizontal'. |
 | `pendingLabel` | `string` | no | `"Pending"` | Visually-hidden text announced for a step that hasn't started in the `'status'` variant. |
 | `skippedLabel` | `string` | no | `"Skipped"` | Visually-hidden text prepended to skipped steps so screen readers announce state + label. Defaults to 'Skipped'. |
-| `variant` | `"stepper"` \| `"checklist"` \| `"status"` | no | `"stepper"` | Which list the steps render as: `'stepper'` is the ordered wizard indicator, `'checklist'` is a card of rows that each carry an action, and `'status'` is a list of progress by step. |
+| `variant` | `"stepper"` \| `"checklist"` \| `"status"` | no | `"stepper"` | Which list the steps render as: `'stepper'` is the ordered wizard indicator, `'checklist'` is a grouped list of rows that each carry an action, and `'status'` is a list of progress by step. |
 | `progressLabel` | `(opaque)` | no | — | Text of the counter at the end of the `'checklist'` header, from how many steps are done and how many there are. Defaults to "N of M done". Not expressible in JSON Schema; see the component types for the signature. |
 | `steps` | `(opaque)` | yes | — | Ordered list of step entries from first to last. Not expressible in JSON Schema; see the component types for the signature. |
 

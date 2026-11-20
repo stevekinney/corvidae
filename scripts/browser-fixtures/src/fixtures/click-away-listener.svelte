@@ -9,18 +9,21 @@
 {#if open}
   <ClickAwayListener
     onClickAway={() => (open = false)}
-    style="
-      display: inline-flex;
-      flex-direction: column;
-      gap: var(--cinder-space-3);
-      margin-block-start: var(--cinder-space-4);
-      padding: var(--cinder-space-4);
-      border: 1px solid var(--cinder-border);
-      border-radius: var(--cinder-radius-lg);
-      background: var(--cinder-surface-raised);
-    "
+    class="click-away-fixture-panel gap-3 margin-block-start-4 padding-block-4 padding-inline-4 rounded-large background-surface-raised"
   >
-    <p style="margin: 0;">Click outside this box to dismiss it.</p>
+    <p class="paragraph">Click outside this box to dismiss it.</p>
     <Button variant="secondary" onclick={() => (open = false)}>Close</Button>
   </ClickAwayListener>
 {/if}
+
+<style>
+  :global(.click-away-fixture-panel) {
+    display: inline-flex;
+    flex-direction: column;
+    border: var(--cinder-border-width) solid var(--cinder-border);
+  }
+
+  .paragraph {
+    margin: 0;
+  }
+</style>

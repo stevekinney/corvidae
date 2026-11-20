@@ -4,6 +4,10 @@ import { type AdmissionTracker, createAdmissionTracker } from '../admission-trac
 
 import type { CombinedOperativeEventMap, OperativeEventEmitter } from '../events';
 import {
+  ChildWorkflowAbortedEvent,
+  ChildWorkflowCompletedEvent,
+  ChildWorkflowFailedEvent,
+  ChildWorkflowStartedEvent,
   HumanWaitParkedEvent,
   StepStartedEvent,
   ToolErrorBubbleEvent,
@@ -15,6 +19,36 @@ import {
 import type { ActiveRunLiveness } from '../liveness';
 import { createToolboxEventForwarder } from '../toolbox-event-forwarding';
 import type { DurableRunDeps } from './types';
+
+/**
+ * COR-2526 — declares a run's wait on the child runs it dispatched. A run whose tool call is a
+ * subagent (or a peer call) is parked on that child for as long as the child runs, and the tool
+ * call reports no progress of its own meanwhile: without the declaration, the tool-call watchdog
+ * would read every delegating run as stalled. The child announces its start and its end on the
+ * parent's emitter (`dispatchChildRun`), and the liveness holds the wait while any is outstanding.
+ * Returns the function that stops listening.
+ */
+export function wireChildWaitLiveness(
+  emitter: OperativeEventEmitter,
+  liveness: ActiveRunLiveness,
+): () => void {
+  const onStarted = (event: ChildWorkflowStartedEvent) => {
+    if (event.childRunId !== undefined) liveness.beginChildWait(event.childRunId);
+  };
+  const onEnded = (
+    event: ChildWorkflowCompletedEvent | ChildWorkflowFailedEvent | ChildWorkflowAbortedEvent,
+  ) => liveness.endChildWait(event.childRunId);
+  emitter.addEventListener(ChildWorkflowStartedEvent.type, onStarted);
+  emitter.addEventListener(ChildWorkflowCompletedEvent.type, onEnded);
+  emitter.addEventListener(ChildWorkflowFailedEvent.type, onEnded);
+  emitter.addEventListener(ChildWorkflowAbortedEvent.type, onEnded);
+  return () => {
+    emitter.removeEventListener(ChildWorkflowStartedEvent.type, onStarted);
+    emitter.removeEventListener(ChildWorkflowCompletedEvent.type, onEnded);
+    emitter.removeEventListener(ChildWorkflowFailedEvent.type, onEnded);
+    emitter.removeEventListener(ChildWorkflowAbortedEvent.type, onEnded);
+  };
+}
 
 export function wireHumanWaitLiveness(
   emitter: OperativeEventEmitter,

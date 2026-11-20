@@ -12,7 +12,7 @@
     inline-size: 100%;
     border-radius: var(--cinder-radius-lg);
     background: var(--cinder-surface-raised);
-    border: 1px solid var(--cinder-border);
+    border: var(--cinder-border-width) solid var(--cinder-border);
     color: var(--cinder-text-default);
     box-shadow: var(--cinder-shadow-sm);
     overflow: hidden;
@@ -37,7 +37,7 @@
     flex-direction: column;
     gap: var(--cinder-space-1);
     padding: var(--cinder-space-4) var(--cinder-space-4) var(--cinder-space-3);
-    border-bottom: 1px solid var(--cinder-border-muted);
+    border-bottom: var(--cinder-border-width) solid var(--cinder-border-muted);
   }
 
   .cinder-pricing-card[data-cinder-selected] .cinder-pricing-card__header {
@@ -158,7 +158,7 @@
 
   .cinder-pricing-card__footer {
     padding: var(--cinder-space-3) var(--cinder-space-4) var(--cinder-space-4);
-    border-top: 1px solid var(--cinder-border-muted);
+    border-top: var(--cinder-border-width) solid var(--cinder-border-muted);
   }
 
   /* ----------------------------------------

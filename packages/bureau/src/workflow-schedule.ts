@@ -1,4 +1,5 @@
 import { readRunWorkspaceAuthority, type RunWorkspaceAuthority } from 'armorer';
+import { isScheduledAgentRunInput, type ScheduledAgentRunInput } from '@lostgradient/operative';
 import type { WorkspaceRuntimeAuthority } from './http/workspace-principal.ts';
 import { captureRunWorkspaceAuthority, validateRunWorkspaceAuthority } from './run-authority.ts';
 /**
@@ -127,6 +128,53 @@ export function workflowScheduleBinding(
     ...(workspaceAuthority === undefined ? {} : { workspaceAuthority }),
     ...(hold === undefined ? {} : { authorityHold: hold }),
   };
+}
+
+/** The type an agent schedule runs: every fire starts the Bureau's own `agentRun` workflow. */
+export const AGENT_SCHEDULE_WORKFLOW_TYPE = 'agentRun';
+
+/**
+ * What a schedule a caller made for a workflow (COR-2546) records in Weft's schedule `metadata`: its
+ * owner. The owner cannot ride in the schedule's input, which a code workflow receives as the
+ * caller wrote it.
+ */
+export function workflowScheduleMetadata(owner: string): { readonly owner: string } {
+  return { owner };
+}
+
+/**
+ * The owner of a schedule a caller made for a workflow, read from its stored state or its summary:
+ * `undefined` for every other schedule, and for one whose metadata is malformed, so it fails closed.
+ * Never read from the input, whose shape a caller controls: a schedule is the workflow kind only
+ * when it runs something other than `agentRun` and its metadata names an owner.
+ */
+export function workflowScheduleOwnerOf(record: {
+  readonly workflowType?: unknown;
+  readonly metadata?: unknown;
+}): string | undefined {
+  if (record.workflowType === AGENT_SCHEDULE_WORKFLOW_TYPE) return undefined;
+  const metadata = record.metadata;
+  if (typeof metadata !== 'object' || metadata === null || Array.isArray(metadata)) {
+    return undefined;
+  }
+  // An own data property only: a getter or an inherited `owner` is no record of who owns it.
+  const owner: unknown = Object.getOwnPropertyDescriptor(metadata, 'owner')?.value;
+  return typeof owner === 'string' && owner !== '' ? owner : undefined;
+}
+
+/**
+ * The input of an agent schedule's stored state, or `undefined` when the state is not one. The kind
+ * comes from the type the schedule runs, never from the shape of the input alone: a code workflow's
+ * input is the caller's own, and can be shaped like an agent's, `principal` included.
+ */
+export function storedAgentInputOf(record: {
+  readonly workflowType?: unknown;
+  readonly input?: unknown;
+}): ScheduledAgentRunInput | undefined {
+  return record.workflowType === AGENT_SCHEDULE_WORKFLOW_TYPE &&
+    isScheduledAgentRunInput(record.input)
+    ? record.input
+    : undefined;
 }
 
 /** The `description` the schedule of workflow `identifier` carries when `want` is its file's. */

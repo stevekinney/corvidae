@@ -254,15 +254,7 @@
     wasCreating = now;
   });
 
-  // The title says which view is locked. The scope that would open it is named small beneath: the
-  // engine scopes the view is gated on (any one opens it), else the scope the Bureau needs for the
-  // view's data, else nothing, because a refusal that names no scope is not guessed at.
   const forbiddenTitle = $derived(forbiddenCopy?.title ?? copy.forbidden.title);
-  const forbiddenRequirement = $derived(
-    definition.scopes.length > 0
-      ? definition.scopes.join(' or ')
-      : (forbiddenCopy?.requirement ?? copy.forbidden.requirement),
-  );
 
   function navigateTo(event: MouseEvent, href: string): void {
     if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0)
@@ -396,6 +388,8 @@
   {:else if state === 'unreachable'}
     {@render failure(CONNECTION_COPY.page.title, CONNECTION_COPY.page.description)}
   {:else}
-    <ForbiddenState title={forbiddenTitle} requirement={forbiddenRequirement} />
+    {@const agentsList = initial.pattern === '/agents'}
+    {#if agentsList}<PageHeader title={copy.label} headingLevel={1} />{/if}
+    <ForbiddenState title={forbiddenTitle} headingLevel={agentsList ? 2 : 1} />
   {/if}
 </div>

@@ -533,6 +533,8 @@ describe('EmptyState restyle', () => {
     const action = declarationsFor(emptyStateCss, '.cinder-empty-state-action');
     expect(action.get('gap')).toBe('var(--cinder-space-2)');
     expect(action.get('flex-wrap')).toBe('wrap');
+    expect(action.get('justify-content')).toBe('flex-end');
+    expect(action.get('max-inline-size')).toBe('60ch');
   });
 
   test('names its group by the title', () => {

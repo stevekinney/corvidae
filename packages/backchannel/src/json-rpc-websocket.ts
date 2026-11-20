@@ -16,7 +16,7 @@
  */
 
 import type { ConnectionLease } from './connection-lease.ts';
-import { faultToJsonRpcError } from './fault-to-json-rpc.ts';
+import { faultErrorData, faultToJsonRpcError } from './fault-to-json-rpc.ts';
 import { dispatchJsonRpc } from './json-rpc-dispatch.ts';
 import { parseJsonRpcRequest } from './json-rpc-parse.ts';
 import { JSON_RPC_ERROR_CODES, JSON_RPC_VERSION, type JsonRpcId } from './json-rpc-protocol.ts';
@@ -228,11 +228,9 @@ export function createJsonRpcWebSocketSession(
         error: {
           code: JSON_RPC_ERROR_CODES.INVALID_REQUEST,
           message: `maximum concurrent subscriptions per session (${maxSubscriptions}) exceeded`,
-          data: {
-            weftCode: 'Unprocessable',
-            httpStatus: 422,
+          data: faultErrorData('Unprocessable', {
             reason: 'per-session subscription cap exceeded',
-          },
+          }),
         },
         id: request.id ?? null,
       });
@@ -308,7 +306,7 @@ export function createJsonRpcWebSocketSession(
         error: {
           code: JSON_RPC_ERROR_CODES.INVALID_PARAMS,
           message: 'params.subscriptionId must be a string',
-          data: { weftCode: 'InvalidParams', httpStatus: 400 },
+          data: faultErrorData('InvalidParams'),
         },
         id: request.id ?? null,
       });
@@ -321,12 +319,10 @@ export function createJsonRpcWebSocketSession(
         error: {
           code: JSON_RPC_ERROR_CODES.NOT_FOUND,
           message: 'subscription not found',
-          data: {
-            weftCode: 'NotFound',
-            httpStatus: 404,
+          data: faultErrorData('NotFound', {
             resource: 'subscription',
             identifier: subscriptionId,
-          },
+          }),
         },
         id: request.id ?? null,
       });

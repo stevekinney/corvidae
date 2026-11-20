@@ -1265,18 +1265,17 @@ describe('AgentRun worstChildAssessment rollup (AB-216)', () => {
     async () => {
       // `TOOL_CALL_POLICY` (AB-214) uses ONE `missedPulseThreshold` for
       // both `reachability` and `progress` — they cross into `unreachable`/
-      // `stalled` on the exact same tick, so `deriveAssessment`'s
-      // `reachability === 'unreachable'` branch always wins over the
-      // `progress === 'stalled'` branch for a real tool-call-only child:
-      // a genuinely stalled child's own top-level assessment is
-      // `'unreachable'`, never `'alive-but-stalled'`, under the shipped
-      // policy. This test proves the real end-to-end wiring with the
-      // assessment the system actually produces; the fold's
-      // `'alive-but-stalled'` case (and every other severity value) is
-      // exercised directly, against a controlled assessment, in
-      // `active-run-liveness.test.ts`'s "worstChildAssessment" suite —
-      // together they cover both "the fold is correct" and "the fold is
-      // wired to something real".
+      // `stalled` on the exact same tick. `deriveAssessment` reads a stalled
+      // progress as `'alive-but-stalled'` ahead of `reachability ===
+      // 'unreachable'` (COR-2526: the process that drives the run is the
+      // one observing it, so a silent tool call is a stall, not a lost
+      // subject), so a genuinely stalled child's own top-level assessment is
+      // `'alive-but-stalled'`. This test proves the real end-to-end wiring
+      // with the assessment the system actually produces; the fold's other
+      // severity values are exercised directly, against a controlled
+      // assessment, in `active-run-liveness.test.ts`'s
+      // "worstChildAssessment" suite — together they cover both "the fold
+      // is correct" and "the fold is wired to something real".
       const registry = createChildRunRegistry();
       const parent = makeLongLivedParent(registry);
       const parentBefore = parent.snapshot();
@@ -1309,7 +1308,7 @@ describe('AgentRun worstChildAssessment rollup (AB-216)', () => {
       childClock.advance(TOOL_STALL_ADVANCE_MS);
 
       const parentAfter = parent.snapshot();
-      expect(parentAfter.worstChildAssessment).toBe('unreachable');
+      expect(parentAfter.worstChildAssessment).toBe('alive-but-stalled');
       // The parent's own dimensions are exactly as they were BEFORE the
       // child stalled — its own never-resolving `generate()` call has by
       // now started (moving reachability/progress from 'unknown' to
@@ -1356,8 +1355,8 @@ describe('AgentRun worstChildAssessment rollup (AB-216)', () => {
       // evidence, it only reads the child's already-computed assessment
       // (AB-88's "delegated policy" obligation; AB-216's own acceptance
       // criteria).
-      expect(registry.children()[0]?.assessment).toBe('unreachable');
-      expect(parent.snapshot().worstChildAssessment).toBe('unreachable');
+      expect(registry.children()[0]?.assessment).toBe('alive-but-stalled');
+      expect(parent.snapshot().worstChildAssessment).toBe('alive-but-stalled');
 
       // The parent constructs no watchdog for the child and reads no
       // `StallPolicy` selection from it — the parent's OWN provider-turn

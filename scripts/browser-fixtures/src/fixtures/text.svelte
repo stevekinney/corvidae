@@ -4,7 +4,7 @@
 
 <div
   data-testid="text-container"
-  style="padding: 16px; color: var(--cinder-accent-text); background: var(--cinder-surface-raised);"
+  class="text-container-layout padding-block-4 padding-inline-4 background-surface-raised"
 >
   <Text variant="h1">Heading 1</Text>
   <Text variant="h2">Heading 2</Text>
@@ -15,7 +15,13 @@
   <Text variant="caption">Caption text</Text>
 </div>
 
-<div data-testid="text-themed-container" style="padding: 16px; color: var(--cinder-text-muted);">
+<div data-testid="text-themed-container" class="padding-block-4 padding-inline-4 text-muted">
   <Text variant="h2">Themed heading</Text>
   <Text variant="caption">Themed caption</Text>
 </div>
+
+<style>
+  .text-container-layout {
+    color: var(--cinder-accent-text);
+  }
+</style>

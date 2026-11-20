@@ -37,7 +37,7 @@
     gap: var(--cinder-space-1);
     margin: 0;
     padding: 0;
-    border: 1px solid var(--cinder-border);
+    border: var(--cinder-border-width) solid var(--cinder-border);
     border-radius: var(--cinder-radius-md);
     background: var(--cinder-surface);
     overflow: hidden;

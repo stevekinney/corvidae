@@ -14,6 +14,8 @@ export function buildReactivatedWorkflowState(
   delete reactivatedState.error;
   delete reactivatedState.errorStack;
   delete reactivatedState.failureCategory;
+  delete reactivatedState.errorCode;
+  delete reactivatedState.failedStep;
   delete reactivatedState.result;
   delete reactivatedState.terminationReason;
   delete reactivatedState.terminalCleanupToken;

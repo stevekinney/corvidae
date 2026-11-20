@@ -290,7 +290,7 @@ test.describe('/hooks: the hooks list states', () => {
       const main = page.locator('main');
       await expect(main.locator('li[data-hook]')).toHaveCount(5);
 
-      // The read keeps failing until Retry now is pressed, so the banner's own countdown cannot
+      // The read keeps failing until Try again is pressed, so the banner's own countdown cannot
       // recover it and remove the button under the click.
       let pressed: () => Promise<boolean> = async () => false;
       await answerList(page, { status: 500 }, () => pressed());
@@ -299,8 +299,8 @@ test.describe('/hooks: the hooks list states', () => {
       const banner = main.getByRole('region', { name: 'Refresh problem' });
       await expect(banner).toBeVisible();
       await expect(banner).toContainText('Showing what loaded as of');
-      await expect(banner.getByRole('button', { name: 'Retry now' })).toBeVisible();
-      pressed = await pressRecorder(page, 'Retry now');
+      await expect(banner.getByRole('button', { name: 'Try again' })).toBeVisible();
+      pressed = await pressRecorder(page, 'Try again');
       await expect(banner.getByRole('button', { name: /dismiss/i })).toHaveCount(0);
       // The rows stay at full contrast, links stay live, and what changes something is held.
       await expect(main.locator('li[data-hook]')).toHaveCount(5);
@@ -319,7 +319,7 @@ test.describe('/hooks: the hooks list states', () => {
       });
       await checkA11y(`hooks failed refresh at ${width}px`);
 
-      await banner.getByRole('button', { name: 'Retry now' }).click();
+      await banner.getByRole('button', { name: 'Try again' }).click();
       await expect(banner).toHaveCount(0);
     });
 

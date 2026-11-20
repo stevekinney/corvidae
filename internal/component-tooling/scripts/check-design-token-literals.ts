@@ -29,12 +29,16 @@
  *
  * Run via `bun run --filter=@lostgradient/cinder tokens:literals` (report) or
  * `tokens:literals --strict` (gate; wired into `lint`).
+ * Root lint also runs `--browser-fixtures --strict` to catch new raw colors and
+ * dimensions in browser fixture CSS and Svelte styles.
  */
 
 import { Glob } from 'bun';
 import { readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+
+import { checkBrowserFixtureLiterals } from './check-browser-fixture-token-literals.ts';
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const componentsRoot = resolve(scriptDirectory, '../../../components/cinder');
@@ -387,6 +391,13 @@ function renderReport(violations: LiteralViolation[]): string {
 
 async function main(): Promise<void> {
   const strict = process.argv.includes('--strict');
+  if (process.argv.includes('--browser-fixtures')) {
+    await checkBrowserFixtureLiterals({
+      strict,
+      update: process.argv.includes('--update-baseline'),
+    });
+    return;
+  }
   const violations = await scan();
 
   process.stdout.write(renderReport(violations));

@@ -27,10 +27,15 @@ import {
   humanInputAnsweredReply,
   toolRunnerRefundedReply,
 } from '../../src/host/showcase-sentences.ts';
-import { captureForDesignReview } from './design-review-capture.ts';
+import {
+  captureForDesignReview,
+  captureForDesignReviewWithPhone,
+  DESIGN_REVIEW_PHONE,
+} from './design-review-capture.ts';
 import { E2E_JOURNEY_URL, E2E_SHOWCASE_URL } from './e2e-constants.ts';
 import { expect, holdBureauFeed, test } from './fixtures.ts';
 import { touchHeight } from './hit-area.ts';
+import { readBoxes } from './read-boxes.ts';
 
 test.use({ baseURL: E2E_SHOWCASE_URL, timezoneId: SAMPLE_TIME_ZONE });
 
@@ -41,7 +46,8 @@ async function openHome(page: Page, width = 1280): Promise<void> {
   await page.clock.setFixedTime(SAMPLE_NOW);
   await page.setViewportSize({ width, height: 900 });
   await page.goto('/');
-  await expect(page.getByTestId('home-counts')).toBeVisible();
+  await expect(page.locator('[data-page="home"][data-mode="overview"]')).toBeVisible();
+  await expect(page.locator('[data-home-card="Recent chats"] li').first()).toBeVisible();
 }
 
 /**
@@ -128,32 +134,75 @@ test.describe('Home on the sample world, with something waiting on you', () => {
     );
   });
 
-  // COR-2329 reverses row 01d (owner, 2026-11-13): one Spotlight and one quiet count, not four tiles.
-  test('leads with one Spotlight, 2 need you, and one unframed count under it', async ({
+  // COR-2329 reverses row 01d (owner, 2026-11-13): one Spotlight, not four tiles. Owner,
+  // 2026-11-19: a count shows only when it is not zero, so the sample world's no failed runs is no
+  // tile at all.
+  test('leads with one Spotlight, 2 need you, its list under it, and no count at zero', async ({
     page,
   }) => {
     await openHome(page);
     const spotlight = page.getByTestId('home-spotlight').locator('.cinder-spotlight__value');
     await expect(spotlight).toHaveText('2 need you');
-    const counts = page.getByTestId('home-counts');
-    await expect(counts.locator('.cinder-statistic')).toHaveText([/Failed in 24 hours\s*0/]);
-    // The count draws no card: no border and no surface of its own.
-    await expect(counts.locator('.cinder-statistic')).toHaveCSS('border-top-width', '0px');
-    await expect(counts).toHaveCSS('border-top-width', '0px');
-    // The Spotlight is the largest text on the page, and the count sits under it.
-    const sizes = await page.evaluate(() => ({
-      spotlight: parseFloat(
-        getComputedStyle(document.querySelector('.cinder-spotlight__value')!).fontSize,
-      ),
-      count: parseFloat(
-        getComputedStyle(document.querySelector('.cinder-statistic__value')!).fontSize,
-      ),
-    }));
-    expect(sizes.spotlight).toBeGreaterThan(sizes.count);
-    const spotlightBox = await spotlight.boundingBox();
-    const countBox = await counts.boundingBox();
-    expect(countBox!.y).toBeGreaterThan(spotlightBox!.y + spotlightBox!.height - 1);
+    await expect(page.getByTestId('home-counts')).toHaveCount(0);
+    await expect(page.locator('main .cinder-statistic')).toHaveCount(0);
+    const boxes = await readBoxes(page, { spotlight, list: needsYou(page) });
+    expect(boxes.list.y).toBeGreaterThan(boxes.spotlight.y + boxes.spotlight.height - 1);
   });
+
+  test('shows the positive failed-run count after Needs you at wide and phone widths', async ({
+    page,
+  }) => {
+    await answerBureau(page, {
+      'weft.workflows.aggregate': () => ({ total: 3, groups: [], truncated: false }),
+    });
+    await openHome(page);
+    const ready = async (current: Page) => {
+      const counts = current.getByTestId('home-counts');
+      await expect(counts).toContainText('Failed in 24 hours');
+      await expect(counts).toContainText('3');
+      const boxes = await readBoxes(current, { list: needsYou(current), counts });
+      expect(boxes.counts.y).toBeGreaterThan(boxes.list.y + boxes.list.height);
+    };
+    await ready(page);
+    await captureForDesignReviewWithPhone(page, {
+      route: '/',
+      state: 'failed runs count',
+      source: SOURCE,
+      ready,
+    });
+    await page.setViewportSize(DESIGN_REVIEW_PHONE);
+    await ready(page);
+  });
+
+  // Owner, 2026-11-19: the left column and Start a chat ended at different heights with a dead
+  // band before Recent chats. Recent chats follows Start a chat in the narrow column, so no section
+  // waits under a short Start a chat, and the gaps are one value.
+  for (const width of [1920, 1280] as const) {
+    test(`aligns both columns with Recent chats under Start a chat at ${width} pixels`, async ({
+      page,
+    }) => {
+      await openHome(page, width);
+      const boxes = await readBoxes(page, {
+        main: page.locator('.ib-home__main'),
+        aside: page.locator('.ib-home__aside'),
+        start: page.getByTestId('home-start-chat'),
+        recent: page.locator('[data-home-card="Recent chats"]'),
+        needsYou: needsYou(page),
+        attention: page.locator('[data-home-card="Needs attention"]'),
+      });
+      // Two columns side by side, the chat sections in the narrow one.
+      expect(boxes.aside.x).toBeGreaterThan(boxes.main.x + boxes.main.width - 1);
+      expect(Math.abs(boxes.recent.x - boxes.start.x)).toBeLessThan(2);
+      // One gap between sections, 32px, in either column.
+      const gapAside = boxes.recent.y - (boxes.start.y + boxes.start.height);
+      const gapMain = boxes.attention.y - (boxes.needsYou.y + boxes.needsYou.height);
+      expect(Math.abs(gapAside - 32)).toBeLessThanOrEqual(1);
+      expect(Math.abs(gapMain - 32)).toBeLessThanOrEqual(1);
+      const mainEnd = boxes.attention.y + boxes.attention.height;
+      const asideEnd = boxes.recent.y + boxes.recent.height;
+      expect(Math.abs(mainEnd - asideEnd)).toBeLessThanOrEqual(1);
+    });
+  }
 
   test('lists the two reviews waiting on you, oldest first, kind first on line two (01f, 01g)', async ({
     page,
@@ -252,7 +301,7 @@ test.describe('Home on the sample world, with something waiting on you', () => {
     const start = await card.boundingBox();
     const waiting = await needsYou(page).boundingBox();
     expect(start!.x).toBeGreaterThan(waiting!.x + waiting!.width - 1);
-    await captureForDesignReview(page, {
+    await captureForDesignReviewWithPhone(page, {
       route: '/',
       state: 'something needs you',
       source: SOURCE,
@@ -321,17 +370,24 @@ test.describe('Home with nothing waiting and a provider connected', () => {
     });
   });
 
-  test('reads zero everywhere, says nothing is waiting, and Send is live (01s, 01t, 01u, 01v)', async ({
+  // Owner, 2026-11-19: no card says nothing and no tile reads zero. Nothing waiting is one quiet
+  // line, and the space goes to what has content.
+  test('says nothing is waiting in one quiet line, with no tile, no card and Send live (01s, 01t, 01u, 01v)', async ({
     page,
     checkA11y,
   }) => {
     await openHome(page);
-    await expect(page.getByTestId('home-spotlight').locator('.cinder-spotlight__value')).toHaveText(
-      'Nothing needs you',
-    );
-    const counts = page.getByTestId('home-counts');
-    await expect(counts.locator('.cinder-statistic')).toHaveText([/Failed in 24 hours\s*0/]);
-    await expect(counts.locator('[data-cinder-attention]')).toHaveCount(0);
+    await expect(page.getByTestId('home-nothing-needs-you')).toHaveText('Nothing needs you.');
+    const columns = page.locator('.ib-home__columns');
+    const chatColumn = columns.locator('.ib-home__aside');
+    const boxes = await readBoxes(page, { columns, chatColumn });
+    const contentCenter = boxes.columns.x + boxes.columns.width / 2;
+    const chatCenter = boxes.chatColumn.x + boxes.chatColumn.width / 2;
+    expect(Math.abs(contentCenter - chatCenter)).toBeLessThanOrEqual(1);
+    await expect(page.getByTestId('home-spotlight')).toHaveCount(0);
+    await expect(page.getByTestId('home-counts')).toHaveCount(0);
+    await expect(page.locator('main .cinder-statistic')).toHaveCount(0);
+    await expect(page.locator('[data-quiet-line]')).toHaveCount(1);
     await expect(
       page.getByRole('navigation', { name: 'Views' }).getByRole('link', { name: /^Reviews/ }),
     ).not.toContainText(/\d/);
@@ -342,30 +398,13 @@ test.describe('Home with nothing waiting and a provider connected', () => {
         .getByRole('link', { name: /^Health/ })
         .locator('.cinder-status-dot'),
     ).toHaveAttribute('data-cinder-status', 'success');
-    // "Nothing needs you" stands alone, with the link to Reviews beside it: no second line says it
-    // again (COR-2329).
-    await expect(
-      page.getByTestId('home-focus').getByRole('link', { name: 'Open Reviews' }),
-    ).toBeVisible();
+    // No second line says it again (COR-2329), and no Needs attention section says nothing.
     await expect(page.getByText('Nothing is waiting on you')).toHaveCount(0);
     await expect(needsYou(page)).toHaveCount(0);
-    const clear = page.getByTestId('attention-clear');
-    await expect(clear.getByRole('group', { name: 'Nothing needs attention' })).toContainText(
-      'Storage, schedules, providers and hooks are fine.',
-    );
-    await expect(clear.getByRole('link', { name: 'Open Health' })).toBeVisible();
-    // The empty section shows its empty state alone, the state's title its heading (owner report,
-    // 2026-11-19, which supersedes the heading over the clear line).
-    const attentionSection = page.locator('[data-home-card="Needs attention"]');
-    // Exact: a substring match would also find the state's own "Nothing needs attention".
+    await expect(page.locator('[data-home-card="Needs attention"]')).toHaveCount(0);
     await expect(
-      attentionSection.getByRole('heading', { name: 'Needs attention', exact: true }),
+      page.locator('main.weft-shell-outlet').getByText('Nothing needs attention'),
     ).toHaveCount(0);
-    await expect(
-      attentionSection.getByRole('heading', { level: 2, name: 'Nothing needs attention' }),
-    ).toBeVisible();
-    await expect(attentionSection.getByTestId('attention-clear')).toHaveCount(1);
-    await expect(attentionSection.getByRole('link', { name: 'Open Health' })).toHaveCount(1);
     const rows = page.getByRole('list', { name: 'Recent chats' }).getByRole('listitem');
     await expect(rows.nth(0)).toContainText('Done');
     await expect(rows.nth(0)).toContainText(
@@ -380,7 +419,11 @@ test.describe('Home with nothing waiting and a provider connected', () => {
     await expect(
       page.getByTestId('home-start-chat').getByRole('button', { name: 'Send' }),
     ).toBeEnabled();
-    await captureForDesignReview(page, { route: '/', state: 'nothing waiting', source: SOURCE });
+    await captureForDesignReviewWithPhone(page, {
+      route: '/',
+      state: 'nothing waiting',
+      source: SOURCE,
+    });
     await checkA11y('Home with nothing waiting');
   });
 });
@@ -420,19 +463,25 @@ test.describe('Home on a new installation that lists Assistant', () => {
     await asNewInstallation(page);
   });
 
-  test('is the three-step checklist under a welcome line, with Recent chats empty (01y, 01z, 02a, 02b, 13c, 13d, 13f, 13g, 13h, 13j, 14c, 14d, 14e)', async ({
+  // Owner, 2026-11-19: a first run is the steps alone, under one real heading at the page title's
+  // size and one sentence, at the reading width and centred; no welcome line, no "Get started"
+  // header, no counter, no Recent chats.
+  test('is the three-step checklist alone, under one heading and one sentence (01y, 01z, 02a, 02b, 13c, 13d, 13f, 13g, 13h, 13j, 14c, 14d, 14e)', async ({
     page,
     checkA11y,
   }) => {
     await openFirstRun(page);
-    await expect(page.getByTestId('home-date')).toHaveText(
-      'Welcome. Three steps to your first chat.',
+    await expect(
+      page.getByRole('heading', { level: 1, name: 'Set up Interborough' }),
+    ).toBeVisible();
+    await expect(page.locator('main').getByRole('heading')).toHaveCount(1);
+    await expect(checklist(page).locator('.ib-home-first-run__lead')).toHaveText(
+      'Connect a model, choose an agent, then say hello.',
     );
-    await expect(page.getByRole('heading', { level: 1, name: 'Home' })).toHaveClass(
-      /cinder-sr-only/,
-    );
-    await expect(page.getByRole('heading', { level: 2, name: 'Get started' })).toBeVisible();
-    await expect(checklist(page)).toContainText('0 of 3 done');
+    await expect(page.getByTestId('home-date')).toHaveCount(0);
+    await expect(page.getByText(/^Welcome\./)).toHaveCount(0);
+    await expect(page.getByText('Get started', { exact: true })).toHaveCount(0);
+    await expect(checklist(page)).not.toContainText('of 3 done');
     const steps = stepsOf(page);
     await expect(steps).toHaveCount(3);
     await expect(steps.nth(0)).toContainText('Connect a provider');
@@ -460,25 +509,21 @@ test.describe('Home on a new installation that lists Assistant', () => {
     await expect(start).toHaveAttribute('data-cinder-variant', 'secondary');
     await expect(start).not.toHaveAttribute('aria-disabled', 'true');
     await expect(start).toHaveAttribute('href', /^\/chats\/new\?agent=[^&]*assistant$/);
-    // The counts, Needs you, the composer and the provider row are not drawn, and no banner says it.
+    // Only the steps: no counts, Needs you, composer, Needs attention, Recent chats or empty state,
+    // and no banner.
     await expect(page.getByTestId('home-counts')).toHaveCount(0);
-    await expect(page.locator('[data-home-card="Needs you"]')).toHaveCount(0);
+    await expect(page.locator('[data-home-card]')).toHaveCount(0);
     await expect(page.getByTestId('home-start-chat')).toHaveCount(0);
-    await expect(page.locator('[data-home-card="Needs attention"]')).toHaveCount(0);
+    await expect(page.locator('main .cinder-empty-state')).toHaveCount(0);
     await expect(page.locator('main').getByRole('alert')).toHaveCount(0);
     await expect(page.getByText('Connect a model provider')).toHaveCount(0);
-    // Below the checklist, Recent chats is its empty state alone, with a chat disc: the state's
-    // title is the section's heading (owner report, 2026-11-19).
-    const recent = page.locator('[data-home-card="Recent chats"]');
-    await expect(recent.getByRole('heading', { level: 2, name: 'No chats yet' })).toBeVisible();
-    await expect(recent.getByRole('heading', { name: 'Recent chats', exact: true })).toHaveCount(0);
-    await expect(recent).toContainText('Your chats appear here once you send a first message.');
-    await expect(recent.locator('.cinder-empty-state-icon svg')).toBeVisible();
-    await expect(recent.getByRole('link', { name: 'All chats' })).toHaveCount(0);
-    const checklistBox = await checklist(page).boundingBox();
-    const recentBox = await recent.boundingBox();
-    expect(checklistBox!.y + checklistBox!.height).toBeLessThan(recentBox!.y);
-    expect(checklistBox!.width).toBeLessThan(recentBox!.width);
+    // Every open step is a numbered circle: the upcoming ones draw their edge.
+    for (const index of [1, 2]) {
+      await expect(steps.nth(index).locator('.cinder-steps__marker')).not.toHaveCSS(
+        'box-shadow',
+        'none',
+      );
+    }
     await captureForDesignReview(page, { route: '/', state: 'first run', source: SOURCE });
     await checkA11y('Home on a new installation');
     await start.click();
@@ -501,25 +546,18 @@ test.describe('Home on a new installation that lists Assistant', () => {
       });
     });
     await openFirstRun(page);
-    await expect(page.getByTestId('home-date')).toHaveText('Welcome. Two steps left.');
-    await expect(checklist(page)).toContainText('1 of 3 done');
     await expect(stepsOf(page).nth(0)).toContainText('Anthropic is connected.');
     await expect(
       stepsOf(page).nth(1).getByRole('link', { name: 'Create an agent' }),
     ).toHaveAttribute('data-cinder-variant', 'primary');
     await stepsOf(page).nth(1).getByRole('button', { name: 'Use Assistant' }).click();
-    await expect(page.getByTestId('home-date')).toHaveText('Welcome. One step left.');
-    await expect(checklist(page)).toContainText('2 of 3 done');
     await expect(stepsOf(page).nth(1)).toContainText('Assistant is ready to use.');
     await expect(stepsOf(page).nth(2).getByRole('link', { name: 'Start a chat' })).toHaveAttribute(
       'data-cinder-variant',
       'primary',
     );
-    // The box that starts a chat is back below the provider notice, with Assistant and a live Send.
-    const composer = page.getByTestId('home-start-chat');
-    await expect(composer.getByPlaceholder('Ask an agent to do something')).toBeVisible();
-    await expect(composer.getByRole('combobox', { name: 'Agent' })).toContainText('Assistant');
-    await expect(composer.getByRole('button', { name: 'Send' })).toBeEnabled();
+    // The steps stay the whole page: the current step's action is the way to the first chat.
+    await expect(page.getByTestId('home-start-chat')).toHaveCount(0);
     await expect(page.getByTestId('home-counts')).toHaveCount(0);
     await captureForDesignReview(page, {
       route: '/',
@@ -529,11 +567,49 @@ test.describe('Home on a new installation that lists Assistant', () => {
     await checkA11y('Home after steps 1 and 2');
   });
 
-  test('stacks the checklist over Recent chats on a phone', async ({ page }) => {
+  test('fits the checklist on a phone', async ({ page }) => {
     await openFirstRun(page, 390);
     await expect(stepsOf(page)).toHaveCount(3);
     await captureForDesignReview(page, { route: '/', state: 'first run', source: SOURCE });
   });
+
+  // Owner, 2026-11-19: the steps filled two thirds of the width and left the rest empty. They sit
+  // at the page's reading width, centred in the content area at every width from 768 up.
+  for (const width of [768, 1280, 1920] as const) {
+    test(`centres the first run at the reading width, with no box around it, at ${width} pixels`, async ({
+      page,
+    }) => {
+      await openFirstRun(page, width);
+      const geometry = await checklist(page).evaluate((block) => {
+        const outlet = block.closest('main') as HTMLElement;
+        const content = outlet.getBoundingClientRect();
+        const style = getComputedStyle(outlet);
+        const left = content.left + parseFloat(style.paddingLeft);
+        const right = content.right - parseFloat(style.paddingRight);
+        const box = block.getBoundingClientRect();
+        const reading = parseFloat(
+          getComputedStyle(document.documentElement).getPropertyValue(
+            '--cinder-content-width-reading',
+          ),
+        );
+        return {
+          leftGap: box.left - left,
+          rightGap: right - box.right,
+          width: box.width,
+          readingPixels: reading * parseFloat(getComputedStyle(document.documentElement).fontSize),
+          available: right - left,
+          border: getComputedStyle(block).borderTopWidth,
+          background: getComputedStyle(block).backgroundColor,
+        };
+      });
+      expect(Math.abs(geometry.leftGap - geometry.rightGap)).toBeLessThanOrEqual(2);
+      expect(geometry.width).toBeLessThanOrEqual(
+        Math.min(geometry.readingPixels, geometry.available) + 1,
+      );
+      expect(geometry.border).toBe('0px');
+      expect(geometry.background).toBe('rgba(0, 0, 0, 0)');
+    });
+  }
 
   test('shows neither activity band while the checklist shows (COR-2227, F7-07)', async ({
     page,
@@ -545,10 +621,8 @@ test.describe('Home on a new installation that lists Assistant', () => {
       await expect(page.getByTestId('home-activity')).toHaveCount(0);
       await expect(page.locator('[data-home-card="Workflow activity"]')).toHaveCount(0);
       await expect(page.locator('[data-home-card="Agent activity"]')).toHaveCount(0);
-      // Recent chats is the checklist page's last region.
-      await expect(
-        page.locator('[data-page="home"] > :last-child[data-home-card="Recent chats"]'),
-      ).toHaveCount(1);
+      // The checklist is the page's only region.
+      await expect(page.locator('[data-page="home"] > *')).toHaveCount(1);
     }
   });
 });
@@ -616,13 +690,12 @@ test.describe('Home with a run going', () => {
       '/runs/running-daily-summary',
     );
     await expect(card.getByRole('link', { name: 'Open Runs' })).toHaveAttribute('href', '/runs');
-    // It sits under the Spotlight (nothing waits, so no list is drawn under it) and above Needs
-    // attention.
+    // It sits under the one quiet line that says nothing waits (no list is drawn under it), and no
+    // Needs attention section says nothing below it (owner, 2026-11-19).
     const waiting = await page.getByTestId('home-focus').boundingBox();
     const running = await card.boundingBox();
-    const attention = await page.getByTestId('attention-clear').boundingBox();
     expect(waiting!.y + waiting!.height).toBeLessThan(running!.y);
-    expect(running!.y + running!.height).toBeLessThan(attention!.y);
+    await expect(page.locator('[data-home-card="Needs attention"]')).toHaveCount(0);
     // Needs you reads 0 and no chat waits on anything, so Recent chats says Done on every row.
     const chats = page.getByRole('list', { name: 'Recent chats' }).getByRole('listitem');
     await expect(chats).toHaveCount(3);
@@ -681,21 +754,19 @@ test.describe('Home while it loads (02c, 02d, 02e, 02f)', () => {
     await expect(body).toHaveAttribute('data-mode', 'loading');
     // The page region is marked busy.
     await expect(body).toHaveAttribute('aria-busy', 'true');
-    // The date line, the count's label and the section headings are real text.
+    // The date line and the section headings are real text.
     await expect(page.getByTestId('home-date')).toHaveText(
       'Monday, Nov 2. Times show in Central time (CST).',
     );
-    const counts = page.getByTestId('home-loading-counts').locator('.cinder-statistic');
-    await expect(counts.locator('.cinder-statistic__label')).toHaveText(['Failed in 24 hours']);
-    // The Spotlight, the value, the rows and the composer are placeholders.
+    // The Spotlight, the rows and the composer are placeholders; the count has none, since it is
+    // shown only when it is not zero (owner, 2026-11-19).
     await expect(
       page
         .getByTestId('home-loading-focus')
         .locator('> .cinder-skeleton-status-place > .cinder-skeleton')
         .first(),
     ).toBeVisible();
-    await expect(counts.locator('.cinder-statistic__value .cinder-skeleton')).toHaveCount(1);
-    await expect(counts.locator('.cinder-statistic__value')).toHaveText(['']);
+    await expect(body.locator('.cinder-statistic')).toHaveCount(0);
     // The Needs you rows have no heading, as the loaded ones do: the Spotlight is their title.
     await expect(body.getByRole('heading', { level: 2 })).toHaveText([
       'Needs attention',
@@ -721,7 +792,7 @@ test.describe('Home while it loads (02c, 02d, 02e, 02f)', () => {
     await page.emulateMedia({ reducedMotion: 'no-preference' });
     expect(await animation()).not.toBe('none');
     await page.emulateMedia({ reducedMotion: 'reduce' });
-    await captureForDesignReview(page, { route: '/', state: 'loading', source: SOURCE });
+    await captureForDesignReviewWithPhone(page, { route: '/', state: 'loading', source: SOURCE });
     // COR-2329: the Spotlight's and the count's placeholders were taller than the text they stand
     // for, so every section moved up about 7px when the data arrived. Measured while the clock is
     // still stopped, before the slow-load line can appear above the placeholders.
@@ -741,7 +812,6 @@ test.describe('Home while it loads (02c, 02d, 02e, 02f)', () => {
     // The page, once it has its answers, is laid out as the placeholders were.
     const before = await page.locator('[data-home-card="Start a chat"]').boundingBox();
     release();
-    await expect(page.getByTestId('home-counts')).toBeVisible();
     await expect(homeBody(page)).toHaveAttribute('data-mode', 'overview');
     await expect(homeBody(page)).not.toHaveAttribute('aria-busy', 'true');
     const after = await page.locator('[data-home-card="Start a chat"]').boundingBox();
@@ -767,12 +837,12 @@ test.describe('Home while it loads (02c, 02d, 02e, 02f)', () => {
     await expect(page.getByRole('heading', { level: 1, name: 'Home' })).toBeAttached();
     await page.clock.runFor(300);
     await expect(homeBody(page)).toHaveAttribute('data-mode', 'loading');
-    // Where the real content is before the line: the date line, the count's label and a heading.
+    // Where the real content is before the line: the date line and the section headings.
     const contentTops = async () =>
       Promise.all(
         [
           page.getByTestId('home-date'),
-          page.getByTestId('home-loading-counts').locator('.cinder-statistic__label'),
+          page.getByRole('heading', { level: 2, name: 'Start a chat' }),
           page.getByRole('heading', { level: 2, name: 'Needs attention' }),
         ].map(async (locator) => (await locator.boundingBox())!.y),
       );
@@ -792,7 +862,7 @@ test.describe('Home while it loads (02c, 02d, 02e, 02f)', () => {
     await expect(page.getByRole('region', { name: 'Connection problem' })).toHaveCount(0);
     await expect(status).toBeInViewport();
     const withLine = await contentTops();
-    for (const [index, name] of ['the date line', 'the count', 'Needs attention'].entries()) {
+    for (const [index, name] of ['the date line', 'Start a chat', 'Needs attention'].entries()) {
       expect(Math.abs(withLine[index]! - beforeLine[index]!), `${name} stays`).toBeLessThanOrEqual(
         1,
       );
@@ -803,7 +873,11 @@ test.describe('Home while it loads (02c, 02d, 02e, 02f)', () => {
     await expect(
       page.getByTestId('home-loading-focus').locator('.cinder-skeleton-status-place'),
     ).toContainText('Still loading Home.');
-    await captureForDesignReview(page, { route: '/', state: 'still loading', source: SOURCE });
+    await captureForDesignReviewWithPhone(page, {
+      route: '/',
+      state: 'still loading',
+      source: SOURCE,
+    });
 
     await status.getByRole('button', { name: 'Cancel' }).click();
     // The page keeps its date line, and says the load was canceled in place of the cards.
@@ -873,20 +947,21 @@ test.describe('Home when one card cannot be read (01n, 01o)', () => {
     await expect(card.getByRole('heading', { level: 2, name: 'Needs attention' })).toBeVisible();
     await expect(card.getByRole('link')).toHaveCount(0);
     await expect(card.getByRole('listitem')).toHaveCount(0);
-    // The Spotlight and the count have reads of their own and are unchanged.
+    // The Spotlight has a read of its own and is unchanged.
     await expect(page.getByTestId('home-spotlight').locator('.cinder-spotlight__value')).toHaveText(
       '2 need you',
     );
-    await expect(page.getByTestId('home-counts').locator('.cinder-statistic')).toHaveText([
-      /Failed in 24 hours\s*0/,
-    ]);
     // Needs you, Start a chat and Recent chats render normally.
     await expect(needsYou(page).getByRole('listitem')).toHaveCount(2);
     await expect(page.getByTestId('home-start-chat').getByRole('textbox')).toBeVisible();
     await expect(
       page.getByRole('list', { name: 'Recent chats' }).getByRole('listitem'),
     ).toHaveCount(3);
-    await captureForDesignReview(page, { route: '/', state: 'one card fails', source: SOURCE });
+    await captureForDesignReviewWithPhone(page, {
+      route: '/',
+      state: 'one card fails',
+      source: SOURCE,
+    });
     await checkA11y('Home with one card failing');
 
     // Try again asks that card's read again.
@@ -915,7 +990,6 @@ test.describe('Home when the server does not answer (02g, 02h, 02i, 02j)', () =>
     await page.clock.install({ time: SAMPLE_NOW_MILLISECONDS - 2 * 60_000 });
     await page.setViewportSize({ width: 1280, height: 900 });
     await page.goto('/');
-    await expect(page.getByTestId('home-counts')).toBeVisible();
     await expect(needsYou(page).getByRole('listitem')).toHaveCount(2);
     await expect(
       page.locator('[data-home-card="Needs attention"]').getByRole('listitem'),
@@ -938,7 +1012,8 @@ test.describe('Home when the server does not answer (02g, 02h, 02i, 02j)', () =>
     await expect(banner).toContainText(
       'Can’t reach the Interborough server. Showing what loaded as of 10:44 AM CST. Changes are off until it’s back. Retrying in 4 s (attempt 3 of 8).',
     );
-    await expect(banner.getByRole('button', { name: 'Retry now' })).toBeVisible();
+    // One word for asking again in the banner, the failed row and the full-page error (COR-2489).
+    await expect(banner.getByRole('button', { name: 'Try again' })).toBeVisible();
     // The banner sits under the top bar, above the page.
     const bannerBox = await banner.boundingBox();
     const topBar = await page.getByRole('banner').boundingBox();
@@ -950,9 +1025,6 @@ test.describe('Home when the server does not answer (02g, 02h, 02i, 02j)', () =>
     await expect(page.getByTestId('home-spotlight').locator('.cinder-spotlight__value')).toHaveText(
       '2 need you',
     );
-    await expect(page.getByTestId('home-counts').locator('.cinder-statistic')).toHaveText([
-      /Failed in 24 hours\s*0/,
-    ]);
     const opacity = (locator: Locator) =>
       locator.first().evaluate((element) => {
         let node: Element | null = element;
@@ -967,7 +1039,6 @@ test.describe('Home when the server does not answer (02g, 02h, 02i, 02j)', () =>
     expect(
       await opacity(needsYou(page).getByText('Which environment should the release go to?')),
     ).toBe(1);
-    expect(await opacity(page.getByTestId('home-counts'))).toBe(1);
     expect(await opacity(page.getByTestId('home-spotlight'))).toBe(1);
     // Only the controls that change something are inert. The row buttons only open a page, as
     // "Open Reviews" does, so they stay live (COR-2329: holding them drew grey chips beside a live
@@ -1033,7 +1104,7 @@ test.describe('Home when the server does not answer (02g, 02h, 02i, 02j)', () =>
     // The server is back: Try again reads again, and Home is drawn.
     await page.unroute(HOME_READS);
     await state.getByRole('button', { name: 'Try again' }).click();
-    await expect(page.getByTestId('home-counts')).toBeVisible();
+    await expect(page.locator('[data-page="home"][data-mode="overview"]')).toBeVisible();
     await expect(page.getByTestId('home-unreachable')).toHaveCount(0);
   });
 });
@@ -1041,7 +1112,7 @@ test.describe('Home when the server does not answer (02g, 02h, 02i, 02j)', () =>
 test.describe('Home on a phone (05c, 05o, 05p, 05q)', () => {
   test.use({ hasTouch: true, isMobile: true });
 
-  test('has a menu button, Home and three icon buttons, the Spotlight over one count, and 44px buttons at their own width under each review (05c, 05o, 05p, 05q)', async ({
+  test('has a menu button, Home and three icon buttons, the Spotlight with no count at zero, and 44px buttons at their own width under each review (05c, 05o, 05p, 05q)', async ({
     page,
     checkA11y,
   }) => {
@@ -1061,13 +1132,11 @@ test.describe('Home on a phone (05c, 05o, 05p, 05q)', () => {
     await expect(page.getByTestId('home-date')).toHaveText(
       'Monday, Nov 2. Times show in Central time (CST).',
     );
-    // The Spotlight, then one count under it with no dot while nothing failed.
+    // The Spotlight, and no count while nothing failed (owner, 2026-11-19: no tile reads zero).
     await expect(page.getByTestId('home-spotlight').locator('.cinder-spotlight__value')).toHaveText(
       '2 need you',
     );
-    const stats = page.getByTestId('home-counts').locator('.cinder-statistic');
-    await expect(stats).toHaveText([/Failed in 24 hours\s*0/]);
-    await expect(stats.locator('xpath=self::*[@data-cinder-attention]')).toHaveCount(0);
+    await expect(page.getByTestId('home-counts')).toHaveCount(0);
     // Needs you, oldest first: each button is 44px, under its text at its own width, from the
     // title's leading edge (COR-2329: a full-width button read as a page-wide pill).
     const rows = needsYou(page).getByRole('listitem');
@@ -1200,6 +1269,34 @@ test.describe('Home on a tablet (05s)', () => {
 // anyone counts.
 test.describe('Start a chat on the journey host', () => {
   test.use({ baseURL: E2E_JOURNEY_URL });
+
+  // The journey host starts with no chat, and Home on a host with none is the first-run checklist
+  // alone (owner, 2026-11-19), which holds Start a chat until its step. These two rows are about
+  // the overview's Start a chat card, so the host lists one earlier chat; sending still goes to the
+  // real host.
+  test.beforeEach(async ({ page }) => {
+    await answerBureau(page, {
+      'bureau.contexts.list': (result) => ({
+        ...(result as object),
+        contexts: [
+          {
+            id: 'an-earlier-chat',
+            owner: null,
+            agentName: 'assistant',
+            title: 'An earlier chat',
+            lastMessagePreview: 'An earlier chat',
+            parentContextId: null,
+            forkedFromMessageId: null,
+            messageCount: 1,
+            createdAt: '2026-10-23T14:00:00.000Z',
+            updatedAt: '2026-10-23T14:00:00.000Z',
+            activity: 'idle',
+          },
+        ],
+        nextOffset: null,
+      }),
+    });
+  });
 
   test('sends the typed message as the first message of a new chat with the chosen agent (01k)', async ({
     page,

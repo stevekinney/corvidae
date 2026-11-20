@@ -74,6 +74,7 @@ describe('fork-workflow — validation precedence', () => {
     expect(response.status).toBe(400);
     expect(await response.json()).toEqual({
       error: 'Field "fromStep" must be a non-negative safe integer',
+      retryable: false,
     });
   });
 
@@ -88,6 +89,7 @@ describe('fork-workflow — validation precedence', () => {
     expect(response.status).toBe(400);
     expect(await response.json()).toEqual({
       error: 'Field "fromStep" must be a non-negative safe integer',
+      retryable: false,
     });
   });
 
@@ -189,6 +191,7 @@ describe('fork-workflow — validation precedence', () => {
     expect(response.status).toBe(400);
     expect(await response.json()).toEqual({
       error: 'Field "fromStep" must be a non-negative safe integer',
+      retryable: false,
     });
   });
 });

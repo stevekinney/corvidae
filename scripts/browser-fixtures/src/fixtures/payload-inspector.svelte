@@ -30,7 +30,7 @@
 <PayloadInspector value={payload} label="Checkout payload" />
 
 {#if envelope}
-  <div data-testid="payload-envelope" style="inline-size: 20rem;">
+  <div data-testid="payload-envelope" class="payload-envelope-layout">
     <PayloadInspector
       value={stored}
       fieldsValue={{
@@ -44,3 +44,9 @@
     />
   </div>
 {/if}
+
+<style>
+  .payload-envelope-layout {
+    inline-size: 20rem;
+  }
+</style>

@@ -407,7 +407,7 @@ describe('a first load that failed (row 70w)', () => {
 });
 
 describe('a refresh that failed over rows on screen (row 70u)', () => {
-  test('keeps the rows and says so in a banner under the header, with Retry now and no dismiss', async () => {
+  test('keeps the rows and says so in a banner under the header, with Try again and no dismiss', async () => {
     const world = twoSchedules();
     const { container, queryClient } = open('/schedules', world);
     await waitFor(() => expect(rows(container)).toHaveLength(2));
@@ -431,7 +431,7 @@ describe('a refresh that failed over rows on screen (row 70u)', () => {
     expect(banner.compareDocumentPosition(bar) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 
     world.failSchedules = false;
-    await fireEvent.click(within(banner).getByRole('button', { name: 'Retry now' }));
+    await fireEvent.click(within(banner).getByRole('button', { name: 'Try again' }));
     await waitFor(() =>
       expect(within(container).queryByRole('region', { name: 'Connection problem' }) === null).toBe(
         true,

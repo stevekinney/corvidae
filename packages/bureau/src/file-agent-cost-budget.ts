@@ -73,6 +73,23 @@ export function costBudgetOptions(
   descriptor: BackendDescriptor,
   allowed: readonly BackendDescriptor[],
 ): Pick<RunOptions, 'costBudget' | 'costEstimation'> {
+  return {
+    costBudget: runCostBudgetOf(limit),
+    ...costEstimationOptions(descriptor, allowed),
+  };
+}
+
+/**
+ * The `costEstimation` of an agent's runs (COR-2524): the catalog's prices for its default model
+ * and the models a session may switch it to, which is what lets a run report what it cost whether
+ * or not its agent declares a budget. A model with no price in US dollars is entered as unpriced,
+ * so a run on it reports no cost (never a cost of `0`), and nothing here stops a run: only a
+ * `costBudget` ends a run on spend.
+ */
+export function costEstimationOptions(
+  descriptor: BackendDescriptor,
+  allowed: readonly BackendDescriptor[],
+): Pick<RunOptions, 'costEstimation'> {
   const customPricing: NonNullable<CostEstimationOptions['customPricing']> = {};
   for (const row of [descriptor, ...allowed]) {
     // A model with no USD price is entered as unpriced (`null`): left out, a model Operative's
@@ -86,10 +103,7 @@ export function costBudgetOptions(
     // a second provider serving the default's name never changes what the default is counted at.
     if (!Object.hasOwn(customPricing, row.model)) customPricing[row.model] = pricing;
   }
-  return {
-    costBudget: runCostBudgetOf(limit),
-    costEstimation: { model: descriptor.model, pricing: { customPricing } },
-  };
+  return { costEstimation: { model: descriptor.model, pricing: { customPricing } } };
 }
 
 /**

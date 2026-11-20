@@ -2,7 +2,7 @@
   /**
    * Home's Workflow activity band (COR-2227): the newest three events of the engine's fleet feed
    * (runs, steps and workers), each worded by `FLEET_EVENT_RULES`; a kind with no rule reads in
-   * plain words with its raw kind on line two, and the feed's telemetry is left out.
+   * plain words, and the feed's telemetry is left out.
    *
    * The band reads its window from the shell's fleet source (`FleetEventSource.recent`) when it
    * opens on a source that has caught up and each time the source catches up again, and follows the

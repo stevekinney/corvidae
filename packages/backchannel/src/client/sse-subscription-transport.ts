@@ -258,7 +258,13 @@ function streamError(operationName: string, data: string): CatalogClientError {
   return new CatalogClientError(operationName, {
     code: STREAM_ERROR_CODE,
     message,
-    data: { code: body['code'], data: body['data'] },
+    // The frame's `retryable` and `remediation` are the fault's advice, kept for the caller.
+    data: {
+      code: body['code'],
+      data: body['data'],
+      ...(typeof body['retryable'] === 'boolean' ? { retryable: body['retryable'] } : {}),
+      ...(typeof body['remediation'] === 'string' ? { remediation: body['remediation'] } : {}),
+    },
   });
 }
 

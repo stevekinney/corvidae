@@ -357,6 +357,7 @@ describe('weft.conformance.report — target selection and access', () => {
       expect(await response.json()).toEqual({
         error: 'No conformance target named "constructor" is registered on this server',
         data: { resource: 'conformanceTarget', identifier: 'constructor' },
+        retryable: false,
       });
     } finally {
       engine[Symbol.dispose]();

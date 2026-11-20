@@ -73,7 +73,10 @@
      about 945px (the controls run about 760px, a gap, then the search field at its 11rem basis);
      with the search as a 32px icon button it needs about 800px. 880px sits in the middle of the
      two, so a font that measures a little wider or narrower leaves the bar in the same form. -->
-<div data-testid="filter-bar-search-folded" style="inline-size: 880px; margin-block-start: 2rem;">
+<div
+  data-testid="filter-bar-search-folded"
+  class="filter-bar-search-folded-layout margin-block-start-8"
+>
   <FilterBar
     aria-label="Run filters in a narrower column"
     {segments}
@@ -95,7 +98,7 @@
      580px with Workflow folded). The unapplied Workflow chip moves into the Filter menu
      (`foldOrder`, least used first) and the applied Started by and Agent chips stay in the row,
      removable. -->
-<div data-testid="filter-bar-fold-order" style="inline-size: 600px; margin-block-start: 2rem;">
+<div data-testid="filter-bar-fold-order" class="filter-bar-fold-order-layout margin-block-start-8">
   <FilterBar
     aria-label="Run filters with chips folded in order"
     {segments}
@@ -123,3 +126,13 @@
     onFilterRemove={() => undefined}
   />
 </div>
+
+<style>
+  .filter-bar-search-folded-layout {
+    inline-size: 880px;
+  }
+
+  .filter-bar-fold-order-layout {
+    inline-size: 600px;
+  }
+</style>

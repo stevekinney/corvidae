@@ -1,7 +1,5 @@
 /**
- * The forbidden page (design rows 12z and 13a): Cinder's access gate as a page, with the title,
- * the sentence that points at the scopes, the missing scope small and monospaced, and two
- * secondary buttons. There is no request-access button.
+ * The forbidden page uses the shared empty state, with a lock icon and links to scopes and Home.
  */
 import { cleanup, fireEvent, render, waitFor } from '@testing-library/svelte';
 import { afterEach, describe, expect, test } from 'bun:test';
@@ -21,50 +19,31 @@ function landAt(path: string): void {
 }
 
 describe('the forbidden page', () => {
-  test('is an access gate with a lock disc, the title, the sentence and the missing scope', () => {
+  test('uses the shared layout, with a lock and a route to the scopes', () => {
     landAt('/hooks');
     const { container, getByRole } = render(ForbiddenState, {
-      props: { title: FORBIDDEN_COPY.title('Hooks'), requirement: 'hooks:read' },
+      props: { title: FORBIDDEN_COPY.title('Hooks') },
     });
 
     expect(getByRole('heading', { level: 1 }).textContent?.trim()).toBe(
       'Your sign-in can’t open Hooks',
     );
-    const gate = container.querySelector('.cinder-access-gate');
-    expect(gate?.getAttribute('data-cinder-variant')).toBe('section');
-    expect(gate?.getAttribute('data-cinder-layout')).toBe('page');
-    expect(gate?.querySelector('.cinder-access-gate__section-icon svg')).not.toBeNull();
+    const gate = container.querySelector('.cinder-empty-state');
+    expect(gate?.getAttribute('data-cinder-kind')).toBe('disabled');
+    expect(gate?.querySelector('.cinder-empty-state-icon svg.lucide-lock')).not.toBeNull();
     expect(gate?.textContent).toContain(
       'Settings › API reference › Your scopes shows what it can do.',
     );
-    expect(gate?.querySelector('code')?.textContent).toBe('requires hooks:read');
-  });
-
-  test('never says Bureau in the scope it names', () => {
-    landAt('/goals');
-    const { container } = render(ForbiddenState, {
-      props: { title: FORBIDDEN_COPY.title('Goals'), requirement: 'bureau.goals:read' },
-    });
-
-    expect(container.querySelector('code')?.textContent).toBe('requires goals:read');
-  });
-
-  test('names no scope when none is known, instead of guessing one', () => {
-    landAt('/hooks');
-    const { container } = render(ForbiddenState, {
-      props: { title: 'Your sign-in can’t open Home' },
-    });
-
-    expect(container.querySelector('code')).toBeNull();
+    expect(gate?.querySelector('code')).toBeNull();
   });
 
   test('has two secondary buttons, See your scopes and Back to Home, and no request-access button', () => {
     landAt('/hooks');
     const { container, getByRole, queryByRole } = render(ForbiddenState, {
-      props: { title: FORBIDDEN_COPY.title('Hooks'), requirement: 'hooks:read' },
+      props: { title: FORBIDDEN_COPY.title('Hooks') },
     });
 
-    const buttons = [...container.querySelectorAll('.cinder-access-gate__actions > *')];
+    const buttons = [...container.querySelectorAll('.cinder-empty-state-action > *')];
     expect(buttons.map((button) => button.textContent?.trim())).toEqual([
       'See your scopes',
       'Back to Home',

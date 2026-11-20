@@ -1341,9 +1341,11 @@
             {/if}
           </section>
         </form>
-        <aside id={LOG_ID} class="ib-hook-editor__aside" tabindex="-1">
-          <HookDeliveries hookId={isNew ? undefined : hookId} events={hook?.events ?? []} />
-        </aside>
+        {#if !isNew}
+          <aside id={LOG_ID} class="ib-hook-editor__aside" tabindex="-1">
+            <HookDeliveries {hookId} events={hook?.events ?? []} />
+          </aside>
+        {/if}
       </div>
     {/if}
   </section>

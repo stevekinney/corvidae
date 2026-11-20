@@ -21,13 +21,15 @@ import {
   test,
 } from 'bun:test';
 import { Window } from 'happy-dom';
+import { readFileSync } from 'node:fs';
 import { flushSync } from 'svelte';
 
-import { ConnectionMonitor } from '../../app/connection.svelte.ts';
-import { CONNECTION_COPY } from '../../app/copy/views.ts';
+import { CONNECTION_RETRY_LABEL, ConnectionMonitor } from '../../app/connection.svelte.ts';
+import { CONNECTION_COPY, RETRY_LABEL } from '../../app/copy/views.ts';
 import { holdChangingActions } from '../../app/shell/changing-actions.ts';
 import { StubFault } from '../../lib/bureau-stub.test-support.ts';
 import { installFetchImplementation } from '../../lib/live-source/fetch.test-support.ts';
+import { START_CHAT_MESSAGE_HEIGHT } from './home-start-chat.ts';
 import HomeHarness from './home-test-harness.test-harness.svelte';
 import {
   HOME_NOW,
@@ -111,22 +113,13 @@ describe('Home while it loads (02c, 02d)', () => {
     expect(words(getByTestId('home-date'))).toBe(
       'Monday, Nov 2. Times show in Central time (CST).',
     );
-    // The Spotlight is a placeholder block, and the count under it a label over a placeholder.
-    // It holds the slow-load line, so the line takes its place after 10 s and nothing moves.
+    // The Spotlight is a placeholder block. It holds the slow-load line, so the line takes its
+    // place after 10 s and nothing moves.
     const focus = getByTestId('home-loading-focus');
     expect(focus.firstElementChild?.classList.contains('cinder-skeleton-status-place')).toBe(true);
     expect(focus.firstElementChild?.querySelector('.cinder-skeleton')).not.toBeNull();
-    const stats = [...getByTestId('home-loading-counts').querySelectorAll('.cinder-statistic')];
-    expect(
-      stats.map((stat) => words(stat.querySelector('.cinder-statistic__label') as Element)),
-    ).toEqual(['Failed in 24 hours']);
-    // The value is a placeholder, and no number is read before it is.
-    expect(stats.every((stat) => stat.querySelector('.cinder-skeleton') !== null)).toBe(true);
-    expect(
-      stats.every(
-        (stat) => words(stat.querySelector('.cinder-statistic__value') as Element) === '',
-      ),
-    ).toBe(true);
+    // The count has no placeholder: it is shown only when it is not zero (owner, 2026-11-19).
+    expect(container.querySelector('.cinder-statistic')).toBeNull();
     expect(
       [...container.querySelectorAll('h2')].map((heading) => heading.textContent?.trim()),
     ).toEqual([
@@ -144,6 +137,8 @@ describe('Home while it loads (02c, 02d)', () => {
       ...container.querySelectorAll('.cinder-skeleton-group[data-cinder-variant="grouped"]'),
     ];
     expect(placeholders).toHaveLength(5);
+    // In document order: Needs you and Needs attention in the wide column, Recent chats under the
+    // box that starts a chat in the narrow one, then the two bands.
     expect(
       placeholders.map((group) => group.querySelectorAll('.cinder-skeleton-action-bar').length),
     ).toEqual([2, 3, 0, 0, 0]);
@@ -180,7 +175,81 @@ describe('Home while it loads (02c, 02d)', () => {
     hold.release();
     await waitFor(() => expect(container.querySelector('[data-mode="overview"]')).not.toBeNull());
     expect(container.querySelector('[data-page="home"]')?.hasAttribute('aria-busy')).toBe(false);
-    expect(container.querySelector('[data-testid="home-loading-counts"]')).toBeNull();
+  });
+
+  // COR-2489: the message box's placeholder was 4.75rem against a 96px Textarea, so everything under
+  // the box moved down when the data arrived.
+  test('the Start a chat placeholder is as tall as the message box, so nothing below moves', async () => {
+    installed = installHome(sampleHomeWorld());
+    const hold = holdOpen();
+    installed.stub.on('bureau.contexts.list', async () => {
+      await hold.released;
+      return { contexts: SAMPLE_CHATS, nextOffset: null };
+    });
+    const { container } = render(HomeHarness, { props: { client: installed.client } } as never);
+    await waitFor(() => expect(container.querySelector('[data-mode="loading"]')).not.toBeNull());
+    const placeholder = cardOf(container, 'Start a chat').querySelector<HTMLElement>(
+      '.cinder-skeleton',
+    );
+    expect(placeholder?.style.height).toBe(START_CHAT_MESSAGE_HEIGHT);
+
+    // The height is the Textarea's own: its least height in Cinder's stylesheet, which its three
+    // rows of 14px text at the normal leading and its padding stay inside.
+    const textareaCss = readFileSync(
+      new URL('./components/textarea/textarea.css', import.meta.resolve('@lostgradient/cinder')),
+      'utf8',
+    );
+    const control = /\n {2}\.cinder-textarea \{([^}]*)\}/.exec(textareaCss)?.[1] ?? '';
+    expect(control).toContain(`min-height: ${START_CHAT_MESSAGE_HEIGHT};`);
+    expect(START_CHAT_MESSAGE_HEIGHT).not.toBe('4.75rem');
+
+    hold.release();
+    await waitFor(() => expect(container.querySelector('[data-mode="overview"]')).not.toBeNull());
+    const box = cardOf(container, 'Start a chat').querySelector('textarea');
+    expect(box?.classList.contains('cinder-textarea')).toBe(true);
+    expect(box?.getAttribute('rows')).toBe('3');
+  });
+
+  // COR-2489 design round: Home moved 32px on a phone when its data arrived. The Needs you
+  // placeholder's button blocks were the 44px coarse control height while the loaded rows' buttons
+  // are drawn at their 28px painted height. Each placeholder takes the height its control is drawn
+  // at, through the same token, so nothing below moves at any pointer.
+  test('each placeholder is drawn at the height of the control it stands for', async () => {
+    installed = installHome(sampleHomeWorld());
+    const hold = holdOpen();
+    installed.stub.on('bureau.contexts.list', async () => {
+      await hold.released;
+      return { contexts: SAMPLE_CHATS, nextOffset: null };
+    });
+    const { container } = render(HomeHarness, { props: { client: installed.client } } as never);
+    await waitFor(() => expect(container.querySelector('[data-mode="loading"]')).not.toBeNull());
+    const cinder = (path: string) =>
+      readFileSync(new URL(path, import.meta.resolve('@lostgradient/cinder')), 'utf8').replace(
+        /\s+/g,
+        ' ',
+      );
+    // The row button blocks: a small Button's painted height, which a coarse pointer does not raise.
+    expect(
+      cardOf(container, 'Needs you').querySelectorAll('.cinder-skeleton-action-bar').length,
+    ).toBeGreaterThan(0);
+    expect(cinder('./components/skeleton/skeleton.css')).toMatch(
+      /\.cinder-skeleton-action-bar \{[^}]*block-size: var\(--_cinder-painted-height-sm\);/,
+    );
+    expect(cinder('./components/button/button.css')).toContain(
+      'min-height: var(--_cinder-painted-height-sm);',
+    );
+    // The agent picker: a small Select, drawn at the small control height, as its block is.
+    const blocks = [
+      ...cardOf(container, 'Start a chat').querySelectorAll<HTMLElement>('.cinder-skeleton'),
+    ];
+    expect(blocks.some((block) => block.style.height === 'var(--cinder-control-height-sm)')).toBe(
+      true,
+    );
+    expect(cinder('./components/select/select.css')).toMatch(
+      /\.cinder-select\[data-cinder-size='sm'\] \{ min-height: var\(--cinder-control-height-sm\);/,
+    );
+    hold.release();
+    await waitFor(() => expect(container.querySelector('[data-mode="overview"]')).not.toBeNull());
   });
 
   test('the placeholders have the layout of the page they stand for', async () => {
@@ -194,12 +263,16 @@ describe('Home while it loads (02c, 02d)', () => {
     });
     const { container } = render(HomeHarness, { props: { client: installed.client } } as never);
     await waitFor(() => expect(container.querySelector('[data-mode="loading"]')).not.toBeNull());
-    expect(container.querySelector('.ib-home__columns .ib-home__main')).not.toBeNull();
-    expect(container.querySelector('.ib-home__columns > .ib-home__start-chat')).not.toBeNull();
+    expect(container.querySelector('.ib-home__columns > .ib-home__main')).not.toBeNull();
+    expect(
+      container.querySelector('.ib-home__columns > .ib-home__aside > .ib-home__start-chat'),
+    ).not.toBeNull();
     expect(container.querySelector('.ib-home__needs-attention')).not.toBeNull();
     hold.release();
     await waitFor(() => expect(container.querySelector('[data-mode="overview"]')).not.toBeNull());
-    expect(container.querySelector('.ib-home__columns > .ib-home__start-chat')).not.toBeNull();
+    expect(
+      container.querySelector('.ib-home__columns > .ib-home__aside > .ib-home__start-chat'),
+    ).not.toBeNull();
   });
 });
 
@@ -296,19 +369,15 @@ describe('One card that cannot be read (01n, 01o)', () => {
       'Couldn’t load system problems. The rest of Home is live. Try again',
     );
     expect(within(card).getByRole('button', { name: 'Try again' })).not.toBeNull();
+    // The failed row's retry says what the banner and the full-page error say (COR-2489).
+    expect(within(card).getByRole('button', { name: CONNECTION_RETRY_LABEL })).not.toBeNull();
     // The failed card draws no link to Health and no row, and never claims all is well.
     expect(within(card).queryByRole('link')).toBeNull();
-    expect(container.querySelector('[data-testid="attention-clear"]')).toBeNull();
-    // The Spotlight and the count have reads of their own: they are unchanged.
+    // The Spotlight has a read of its own: it is unchanged.
     await waitFor(() =>
       expect(
         words(getByTestId('home-spotlight').querySelector('.cinder-spotlight__value') as Element),
       ).toBe('2 need you'),
-    );
-    await waitFor(() =>
-      expect(
-        [...getByTestId('home-counts').querySelectorAll('.cinder-statistic')].map(words),
-      ).toEqual(['Failed in 24 hours 0']),
     );
     // Needs you, Start a chat and Recent chats render normally.
     expect(within(cardOf(container, 'Needs you')).getAllByRole('listitem')).toHaveLength(2);
@@ -385,7 +454,10 @@ describe('Home when the server does not answer (02g to 02j)', () => {
     expect(container.querySelector('[data-mode="unreachable"]')).not.toBeNull();
     expect(words(state)).toContain(CONNECTION_COPY.page.title);
     expect(words(state)).toContain(CONNECTION_COPY.page.description);
-    // In place, the button says Try again (a banner says Retry now).
+    // In place, the button says the app's one word for asking again, as the shell's connection
+    // banner and a card that could not be read do (COR-2489: the banner said Retry now).
+    expect(within(state).getByRole('button', { name: RETRY_LABEL })).not.toBeNull();
+    expect(CONNECTION_RETRY_LABEL).toBe(RETRY_LABEL);
     expect(getByRole('button', { name: 'Try again' })).not.toBeNull();
     expect(container.querySelector('[data-home-card]')).toBeNull();
     expect(container.querySelector('[data-testid="home-counts"]')).toBeNull();

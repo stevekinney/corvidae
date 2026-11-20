@@ -114,18 +114,3 @@ export function createScheduleHookOrigins(kv: ConditionalTextValueStore): Schedu
     },
   };
 }
-
-/**
- * The schedule a workflow instance's input names, or `undefined`: the trigger `{ kind: 'schedule',
- * scheduleId }` a workflow file's schedule starts its instance with, or the input of an agent
- * schedule's fire, which carries its `scheduleId` beside the `agentName` it runs.
- */
-export function scheduleOfInstanceInput(input: unknown): string | undefined {
-  if (typeof input !== 'object' || input === null || Array.isArray(input)) return undefined;
-  const record = input as Readonly<Record<string, unknown>>;
-  const scheduleId = Object.hasOwn(record, 'scheduleId') ? record['scheduleId'] : undefined;
-  if (typeof scheduleId !== 'string' || scheduleId === '') return undefined;
-  const isTrigger = record['kind'] === 'schedule';
-  const isAgentFire = typeof record['agentName'] === 'string';
-  return isTrigger || isAgentFire ? scheduleId : undefined;
-}

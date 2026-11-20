@@ -227,8 +227,10 @@ describe('the card placeholder is as tall as a Card', () => {
     expect(declared(skeleton, lines, 'border-radius')).toBe(
       declared(card, '.cinder-card', 'border-radius'),
     );
-    expect(declared(skeleton, lines, 'border')).toMatch(/^1px solid /);
-    expect(declared(card, '.cinder-card', 'border')).toMatch(/^1px solid /);
+    expect(declared(skeleton, lines, 'border')).toMatch(/^var\(--cinder-border-width\) solid /);
+    expect(declared(card, '.cinder-card', 'border')).toMatch(
+      /^var\(--cinder-border-width\) solid /,
+    );
   });
 
   test('the heading bar is in a line of the title size, and lines of text have no gap between them', () => {

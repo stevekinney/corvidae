@@ -6,7 +6,6 @@ import { describe, expect, it } from 'bun:test';
 
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { createHookOriginLookup, hookOfTags, hookOriginTag, runOfPayload } from './hook-origin.ts';
-import { scheduleOfInstanceInput } from './schedule-hook-origins.ts';
 
 function lookupOver(
   tags: Readonly<Record<string, readonly string[]>>,
@@ -140,23 +139,5 @@ describe('the hook behind a run a schedule fired (COR-1952)', () => {
       { fire: [hookOriginTag('hook-1')] },
     );
     expect(await lookup('fire')).toBe('hook-1');
-  });
-});
-
-describe('the schedule a workflow instance’s input names', () => {
-  it('is the schedule of a workflow trigger or of an agent schedule’s fire, and nothing else', () => {
-    expect(scheduleOfInstanceInput({ kind: 'schedule', scheduleId: 's-1' })).toBe('s-1');
-    expect(scheduleOfInstanceInput({ agentName: 'scribe', input: 'x', scheduleId: 's-2' })).toBe(
-      's-2',
-    );
-    // Whatever a person or a signal supplied is not a schedule's.
-    expect(scheduleOfInstanceInput({ scheduleId: 's-3' })).toBeUndefined();
-    expect(
-      scheduleOfInstanceInput({ kind: 'signal', name: 'go', scheduleId: 's-4' }),
-    ).toBeUndefined();
-    expect(scheduleOfInstanceInput({ kind: 'schedule', scheduleId: '' })).toBeUndefined();
-    for (const input of [null, undefined, 'text', 4, ['s']]) {
-      expect(scheduleOfInstanceInput(input)).toBeUndefined();
-    }
   });
 });

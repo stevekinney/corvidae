@@ -37,6 +37,7 @@
     variant = 'default',
     appearance,
     tone = 'default',
+    flush = false,
     presentation = 'native',
     placeholder,
     valuePrefix,
@@ -233,6 +234,7 @@
   class={classNames('cinder-select-field', className)}
   data-cinder-variant={variant}
   data-cinder-tone={tone === 'default' ? undefined : tone}
+  data-cinder-flush={flush && variant === 'ghost' ? '' : undefined}
   labelClass="cinder-select-field__label"
   descriptionClass="cinder-select-field__description"
   errorClass="cinder-select-field__error"

@@ -179,6 +179,7 @@ describe('weft.workflows.bulk.delete', () => {
     expect(response.headers.get('content-type')).toBe('application/json');
     expect(await response.json()).toEqual({
       error: 'Field "confirmationToken" is required after a dry run',
+      retryable: false,
     });
     expect(await engine.get('bulk-delete-token-required')).not.toBeNull();
   });
@@ -208,6 +209,7 @@ describe('weft.workflows.bulk.delete', () => {
     expect(response.headers.get('content-type')).toBe('application/json');
     expect(await response.json()).toEqual({
       error: 'Bulk delete matches non-terminal workflows',
+      retryable: false,
     });
 
     await engine.cancel('bulk-delete-running');
@@ -225,6 +227,7 @@ describe('weft.workflows.bulk.delete', () => {
     expect(await response.json()).toEqual({
       error:
         'Field "filter" must include at least one of status, type, scheduleId, tags, attributes, idPrefix (≥3 chars), or failureCategory paired with status',
+      retryable: false,
     });
   });
 
@@ -239,6 +242,7 @@ describe('weft.workflows.bulk.delete', () => {
     expect(response.headers.get('content-type')).toBe('application/json');
     expect(await response.json()).toEqual({
       error: 'Field "filter.tags" must not contain empty tags',
+      retryable: false,
     });
   });
 
@@ -255,6 +259,7 @@ describe('weft.workflows.bulk.delete', () => {
     expect(response.headers.get('content-type')).toBe('application/json');
     expect(await response.json()).toEqual({
       error: 'Time-range bound "gt" must be a finite number',
+      retryable: false,
     });
   });
 
@@ -279,6 +284,6 @@ describe('weft.workflows.bulk.delete', () => {
 
     expect(response.status).toBe(500);
     expect(response.headers.get('content-type')).toBe('application/json');
-    expect(await response.json()).toEqual({ error: 'Internal server error' });
+    expect(await response.json()).toEqual({ error: 'Internal server error', retryable: false });
   });
 });

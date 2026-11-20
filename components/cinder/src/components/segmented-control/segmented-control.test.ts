@@ -1304,6 +1304,75 @@ describe('SegmentedControl — the selected segment is a raised surface pill', (
   });
 });
 
+// ── Size on a phone ─────────────────────────────────────────────────────────
+
+// COR-2489: on a phone the control was drawn at the coarse 44px control height, so each attached
+// option was 42px tall with 12px at its sides, a 0.9 to 1 padding ratio: a tall button with thin
+// side padding. It is drawn at a Button's painted height and reaches 44px through a hit area.
+describe('SegmentedControl — on a coarse pointer', () => {
+  const css = readFileSync(new URL('./segmented-control.css', import.meta.url), 'utf8');
+  const foundation = readFileSync(new URL('../../styles/foundation.css', import.meta.url), 'utf8');
+  const tokens = readFileSync(new URL('../../styles/tokens-base.css', import.meta.url), 'utf8');
+  const rem = (source: string, property: string): number => {
+    const value = new RegExp(`${property}:\\s*([\\d.]+)rem;`).exec(source)?.[1];
+    expect(value, property).toBeDefined();
+    return Number(value) * 16;
+  };
+
+  test('the option is drawn at the painted height, never the 44px coarse control height', () => {
+    const base = [...css.matchAll(/\.cinder-segmented-control \{([^}]*)\}/g)]
+      .map((match) => match[1] ?? '')
+      .join('\n');
+    expect(base).toContain('--_cinder-segmented-control-height: var(--_cinder-painted-height-md);');
+    expect(css).not.toMatch(/--_cinder-segmented-control-height:\s*var\(--cinder-control-height/);
+    // The painted heights live outside the coarse block, which raises only the control heights.
+    const coarse = foundation.slice(foundation.indexOf('@media (pointer: coarse)'));
+    expect(coarse).not.toContain('--_cinder-painted-height');
+
+    const optionBlockSize = rem(foundation, '--_cinder-painted-height-md') - 2;
+    expect(optionBlockSize).toBe(30);
+    expect(optionBlockSize).not.toBe(42);
+  });
+
+  test('its side padding is wider than the space above and below its label', () => {
+    const attached =
+      /\[data-cinder-size='md'\]\s*\.cinder-segmented-control-option \{\s*padding-inline: var\(--cinder-space-3, 0\.75rem\);/.test(
+        css,
+      );
+    expect(attached).toBe(true);
+    const inline = rem(tokens, '--cinder-space-3');
+    const label = rem(tokens, '--cinder-text-sm'); // at `line-height: 1`
+    const block = (rem(foundation, '--_cinder-painted-height-md') - 2 - label) / 2;
+    expect(inline / block).toBeGreaterThan(1.2);
+  });
+
+  test('a vertical or stacked option, whose hit area could not reach past its neighbours, keeps a list row’s minimum', () => {
+    const flat = css.replace(/\s+/g, ' ');
+    expect(flat).toContain(
+      ".cinder-segmented-control[data-cinder-orientation='vertical']:not([data-cinder-detached]) .cinder-segmented-control-option {",
+    );
+    expect(flat).toContain(
+      'min-block-size: max( calc(var(--_cinder-segmented-control-height) - 2px), var(--cinder-list-row-min-height) );',
+    );
+    expect(flat).toContain(
+      'min-block-size: max(var(--_cinder-segmented-control-height), var(--cinder-list-row-min-height));',
+    );
+  });
+
+  test('a horizontal option reaches 44px through a hit area that takes no layout space', () => {
+    const coarse = css.slice(css.indexOf('@media (any-pointer: coarse)'));
+    const rule = /::after \{([^}]*)\}/.exec(coarse)?.[1] ?? '';
+    expect(rule).toContain('position: absolute;');
+    expect(rule).toContain(
+      'inset-block: min(0px, calc((100% - var(--cinder-touch-target-min)) / 2));',
+    );
+    // The selected tab of a tablist keeps its indicator in that pseudo-element.
+    expect(coarse.slice(0, coarse.indexOf('{', coarse.indexOf('::after')))).toContain(
+      '.cinder-segmented-control-option:not([data-cinder-selected])::after',
+    );
+  });
+});
+
 // ── Messages under the control ──────────────────────────────────────────────
 
 describe('SegmentedControl — description, note and error', () => {

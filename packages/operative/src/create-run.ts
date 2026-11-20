@@ -17,6 +17,7 @@ import { snapshotPayload } from './agent-input';
 import { createClosedAcknowledgement } from './closed-acknowledgement';
 import type { DurableActiveRunContext } from './durable/active-run-adapter';
 import { createDurableActiveRun } from './durable/active-run-create';
+import { wireChildWaitLiveness } from './durable/active-run-event-surface';
 import type { DurableRunDeps, SessionInputPayload } from './durable/types';
 import type {
   CombinedOperativeEventMap,
@@ -392,6 +393,10 @@ export function createActiveRun(
   // parking when `context.durable` is `false` (see its own doc comment), and
   // this in-memory path never has a durable engine. No corresponding wiring
   // belongs here — see `createDurableActiveRun`/`reattachDurableActiveRun`.
+  //
+  // COR-2526 — a wait on a child run is not durable-only: an in-process run delegates to a
+  // subagent too, and the tool call awaiting it reports no progress of its own.
+  cleanups.push(wireChildWaitLiveness(emitter, liveness));
 
   // C3 — curated tool.* bubble events stamped with {agentName, runId, step}.
   // We track the current step by listening to StepStartedEvent (which fires at

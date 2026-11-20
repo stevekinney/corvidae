@@ -111,6 +111,12 @@ export type OpenHooksBureauOptions = {
   readonly plugins?: BureauOptions['plugins'];
   /** Replaces the instant backoff wait, for a test that holds a wait open. */
   readonly sleep?: (milliseconds: number) => Promise<void>;
+  /** Agents beside the `default` one, for a test that needs a run that holds or loops (COR-2526). */
+  readonly agents?: Partial<Parameters<typeof createBureau<AgentDefinitions>>[0]['agents']>;
+  /** The Bureau's own runtime, which a test moves by hand; the Bureau then sweeps on no timer of its own. */
+  readonly runtime?: BureauOptions['runtime'];
+  /** Whether runs go through the durable engine. Defaults to `true`. */
+  readonly durable?: boolean;
 };
 
 /** A Bureau with one agent that answers at once, hooks on, and delivery over the injected `fetch`. */
@@ -123,9 +129,13 @@ export async function openHooksBureau(options: OpenHooksBureauOptions): Promise<
         generate: async () => ({ content: 'done', toolCalls: [] }),
         toolbox: createToolbox([]),
       }),
+      ...options.agents,
     },
+    ...(options.runtime === undefined
+      ? {}
+      : { runtime: options.runtime, maintenance: 'manual' as const }),
     storage: options.storage,
-    durable: true,
+    durable: options.durable ?? true,
     durableOwnership: { ownership: 'none' },
     ...(options.withoutKey === true ? {} : { answerEncryption: { current: options.key } }),
     ...(options.onDiagnostic === undefined ? {} : { onDiagnostic: options.onDiagnostic }),

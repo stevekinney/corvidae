@@ -129,7 +129,10 @@ describe('weft.workflows.replay REST shaping', () => {
     );
 
     expect(response.status).toBe(400);
-    expect(await response.json()).toEqual({ error: 'Invalid step: not-a-number' });
+    expect(await response.json()).toEqual({
+      error: 'Invalid step: not-a-number',
+      retryable: false,
+    });
   });
 
   it('returns 404 when the replay step does not exist', async () => {
@@ -153,6 +156,7 @@ describe('weft.workflows.replay REST shaping', () => {
     expect(await response.json()).toEqual({
       error: `Replay not found at step 99 for workflow ${workflowId}`,
       data: { resource: 'replay', identifier: `${workflowId}@99` },
+      retryable: false,
     });
   });
 
@@ -186,7 +190,7 @@ describe('weft.workflows.replay REST shaping', () => {
     );
 
     expect(response.status).toBe(500);
-    expect(await response.json()).toEqual({ error: 'Internal server error' });
+    expect(await response.json()).toEqual({ error: 'Internal server error', retryable: false });
   });
 
   it('uses the fallback HTTP mapper for non-special-cased faults', async () => {
@@ -219,6 +223,6 @@ describe('weft.workflows.replay REST shaping', () => {
     );
 
     expect(response.status).toBe(409);
-    expect(await response.json()).toEqual({ error: 'replay conflict' });
+    expect(await response.json()).toEqual({ error: 'replay conflict', retryable: false });
   });
 });

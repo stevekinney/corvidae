@@ -6,7 +6,7 @@
    * `queries:read`): a caller without one sees the form disabled and told which scope it needs.
    * The signals and updates the run has already received are listed with their forms.
    */
-  import { Collapsible } from '@lostgradient/cinder';
+  import { Collapsible, Section } from '@lostgradient/cinder';
   import type { WorkflowState } from '@lostgradient/weft';
 
   import { RUN_PAGE_COPY } from '../../../app/copy/runs.ts';
@@ -33,9 +33,11 @@
   let queryOpen = $state(false);
 </script>
 
-<section class="ib-run__section" aria-labelledby="ib-run-change" data-section="change">
-  <h2 id="ib-run-change" class="ib-run__heading-2">{RUN_PAGE_COPY.changeHeading}</h2>
-  <p class="ib-run__note">{RUN_PAGE_COPY.changeIntro}</p>
+<Section
+  title={RUN_PAGE_COPY.changeHeading}
+  description={RUN_PAGE_COPY.changeIntro}
+  data-section="change"
+>
   <div class="ib-run__disclosures ib-run__change">
     <Collapsible bind:open={signalOpen} variant="flat" trigger={RUN_PAGE_COPY.signal.label}>
       <p class="ib-run__note">{RUN_PAGE_COPY.signal.hint}</p>
@@ -50,4 +52,4 @@
       <RunQuery onRunQuery={(name, input) => engine.runQuery(name, input)} gate={queryGate} />
     </Collapsible>
   </div>
-</section>
+</Section>

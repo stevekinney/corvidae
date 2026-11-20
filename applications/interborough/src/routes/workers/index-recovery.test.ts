@@ -7,6 +7,7 @@ import { fireEvent, render } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { Window } from 'happy-dom';
 
+import { RETRY_LABEL } from '../../app/copy/views.ts';
 import { createQueryClient, queryKeys } from '../../lib/query.ts';
 import { router } from '../../lib/router.svelte.ts';
 import {
@@ -69,7 +70,7 @@ describe('Workers route — a read that failed', () => {
       deployments: [],
       routingPolicy: 'least-loaded',
     });
-    await fireEvent.click(await view.findByRole('button', { name: 'Try again' }));
+    await fireEvent.click(await view.findByRole('button', { name: RETRY_LABEL }));
     const summary = await view.findByTestId('workers-summary');
     expect(summary.textContent).toContain('1 of 1 connected');
   });
@@ -90,7 +91,7 @@ describe('Workers route — a read that failed', () => {
 
     expect(await view.findByText('Not authorized')).not.toBeNull();
     scripted.routeJsonRpcMethod('weft.task.queues.list', { items: [] });
-    await fireEvent.click(await view.findByRole('button', { name: 'Retry' }));
+    await fireEvent.click(await view.findByRole('button', { name: RETRY_LABEL }));
     expect(await view.findByRole('tab', { name: 'Task queues', selected: true })).not.toBeNull();
   });
 });
@@ -114,7 +115,7 @@ describe('Workers route — a task ledger that failed to read', () => {
       ...taskLedgerDetailFixture(),
       operationId: 'op_1',
     });
-    await fireEvent.click(await view.findByRole('button', { name: 'Retry' }));
+    await fireEvent.click(await view.findByRole('button', { name: RETRY_LABEL }));
     expect(await view.findByText('Authoritative task ledger')).not.toBeNull();
   });
 });

@@ -7,6 +7,13 @@ export type DropdownTriggerProps = Omit<HTMLButtonAttributes, 'class'> & {
   /** Render the trailing disclosure caret. Defaults to true. */
   caretVisible?: boolean;
   /**
+   * The trigger shows only an icon (its name in visually hidden text): it is drawn square, as tall
+   * as it is wide, at its size, so a "More actions" menu in a row of buttons is a square, never a
+   * pill. Pair it with `caretVisible={false}`.
+   * @default false
+   */
+  iconOnly?: boolean;
+  /**
    * Draws the trigger as a Button of this variant. Inside a ButtonGroup (a split button) the
    * trigger is always drawn as a Button, and without this it takes the variant of the Button
    * beside it, so the two halves are one control with one seam; with neither it is `soft`,

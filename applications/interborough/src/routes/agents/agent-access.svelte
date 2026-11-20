@@ -49,6 +49,7 @@
 
   import {
     CONNECTION_MAX_ATTEMPTS,
+    CONNECTION_RETRY_LABEL,
     connectionBannerPreset,
     getConnection,
   } from '../../app/connection.svelte.ts';
@@ -525,6 +526,7 @@
   {#if connection.unreachable && !restartActivity.active}
     <Banner
       preset={connectionBannerPreset(connection)}
+      retryLabel={CONNECTION_RETRY_LABEL}
       subject={copy.offlineSubject}
       dataUpdatedAt={connection.lastHealthyAt}
       retryInSeconds={connection.retryInSeconds}

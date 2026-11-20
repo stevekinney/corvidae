@@ -4,6 +4,7 @@ import type {
   SharedAttemptsCostUsdDurationM_9b91e38e,
   SharedConfigurationNameVersion_aabcfdb8,
   SharedCostUsdStepsTokens_b79f227c,
+  SharedDryRunEffectsTarget_b07628bd,
   SharedKindNameVersion_10ff2d4d,
   SharedMaximumAttemptsMaximumTo_703052e7,
   SharedNameVersion_ad3a242e,
@@ -12,24 +13,27 @@ import type {
 export type GoalsOperationTypes = {
   'bureau.goals.cancel': {
     readonly input: {
+      readonly dryRun?: boolean;
       readonly expectedRevision?: number;
       readonly goalRunId: string;
       readonly reason?: string;
     };
-    readonly output: {
-      readonly goalRunId: string;
-      readonly outcome: 'canceled' | 'cancellation-pending' | 'already-terminal' | 'contended';
-      readonly revision: number;
-      readonly status:
-        | 'pending'
-        | 'running'
-        | 'evaluating'
-        | 'retrying'
-        | 'succeeded'
-        | 'exhausted'
-        | 'failed'
-        | 'canceled';
-    };
+    readonly output:
+      | SharedDryRunEffectsTarget_b07628bd
+      | {
+          readonly goalRunId: string;
+          readonly outcome: 'canceled' | 'cancellation-pending' | 'already-terminal' | 'contended';
+          readonly revision: number;
+          readonly status:
+            | 'pending'
+            | 'running'
+            | 'evaluating'
+            | 'retrying'
+            | 'succeeded'
+            | 'exhausted'
+            | 'failed'
+            | 'canceled';
+        };
     readonly faults: 'InvalidParams' | 'NotFound' | 'StaleRevision' | 'Unavailable';
   };
   'bureau.goals.create': {

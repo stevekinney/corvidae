@@ -256,6 +256,53 @@ describe('usage.accumulated event', () => {
     expect(second.totalUsage).toEqual({ prompt: 180, completion: 80, total: 260 });
   });
 
+  it('carries the run’s cost so far, absent until a request is priced and never 0 (COR-2524)', async () => {
+    const usage = { prompt: 1_000_000, completion: 500_000, total: 1_500_000 };
+    const priced = createMockGenerate([
+      toolCallResponse([weatherToolCall()], '', usage),
+      textResponse('Done', usage),
+    ]);
+    const pricedRun = createActiveRun({
+      generate: priced,
+      toolbox: createToolbox([weatherTool]),
+      conversation: new Conversation(),
+      stopWhen: noToolCalls(),
+      costEstimation: {
+        model: 'priced',
+        pricing: {
+          customPricing: {
+            priced: { promptCostPerMillionTokens: 2, completionCostPerMillionTokens: 4 },
+          },
+        },
+      },
+    });
+    const pricedEvents = createRunRecorder(pricedRun);
+    await pricedRun.result;
+    const costs = pricedEvents.events
+      .filter((e) => e.type === 'usage.accumulated')
+      .map((e) => (e.detail as UsageAccumulatedEvent).totalCost);
+    // Each request costs 2 + 2 dollars; the figure is the sum so far, the one the run ends on.
+    expect(costs).toEqual([4, 8]);
+
+    for (const costEstimation of [
+      undefined,
+      { model: 'unpriced', pricing: { customPricing: { unpriced: null } } },
+    ]) {
+      const run = createActiveRun({
+        generate: createMockGenerate([textResponse('Done', usage)]),
+        toolbox: createTestToolbox([]),
+        conversation: new Conversation(),
+        stopWhen: noToolCalls(),
+        ...(costEstimation === undefined ? {} : { costEstimation }),
+      });
+      const recorder = createRunRecorder(run);
+      await run.result;
+      const event = assertDefined(recorder.events.find((e) => e.type === 'usage.accumulated'))
+        .detail as UsageAccumulatedEvent;
+      expect(event.totalCost).toBeUndefined();
+    }
+  });
+
   it('stepUsage is undefined when generate returns no usage', async () => {
     const generate = createMockGenerate([textResponse('Hello')]);
 

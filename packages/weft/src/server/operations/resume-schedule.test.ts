@@ -70,6 +70,7 @@ describe('weft.schedules.resume', () => {
     expect(await response.json()).toEqual({
       error: 'Schedule "does-not-exist" not found',
       data: { resource: 'schedule', identifier: 'does-not-exist' },
+      retryable: false,
     });
   });
 
@@ -93,6 +94,7 @@ describe('weft.schedules.resume', () => {
       expect(response.status).toBe(409);
       expect(await response.json()).toEqual({
         error: 'Schedule cannot be resumed after cancellation',
+        retryable: false,
       });
     } finally {
       engine.resumeSchedule = originalResumeSchedule;
@@ -117,7 +119,7 @@ describe('weft.schedules.resume', () => {
       );
 
       expect(response.status).toBe(500);
-      expect(await response.json()).toEqual({ error: 'Internal server error' });
+      expect(await response.json()).toEqual({ error: 'Internal server error', retryable: false });
     } finally {
       engine.resumeSchedule = originalResumeSchedule;
     }

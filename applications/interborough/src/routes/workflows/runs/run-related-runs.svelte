@@ -6,6 +6,8 @@
    * schedule's run says whether it was the schedule's last and how many occurrences have been missed
    * since. A run with neither says nothing here; a chat's other runs are `run-chat-related.svelte`'s.
    */
+  import { Section } from '@lostgradient/cinder';
+
   import { RUN_DETAIL_COPY } from '../../../app/copy/runs.ts';
   import type { Goal } from '../../../lib/bureau-goals.ts';
   import type { BureauSchedule } from '../../../lib/bureau-schedules.ts';
@@ -57,27 +59,28 @@
 
 {#if goal !== undefined || sentence !== undefined}
   <!-- Under the engine's own Related runs this is not a region of its own, only more of its list. -->
-  <svelte:element
-    this={heading ? 'section' : 'div'}
-    class="ib-run-related"
-    aria-label={heading ? RUN_DETAIL_COPY.related.heading : undefined}
-    data-section="related-owner"
-  >
-    {#if heading}
-      <h2 class="ib-run__heading-2">{RUN_DETAIL_COPY.related.heading}</h2>
-    {/if}
-    {#if goal !== undefined && attempts.length === 0}
-      <p class="ib-run__note">{RUN_DETAIL_COPY.related.noOtherAttempts}</p>
-    {:else if attempts.length > 0}
-      <ul class="ib-run-related__list">
-        {#each attempts as attempt (attempt.runId)}
-          {@const path = workflowDetailPath(attempt.runId)}
-          <li>
-            <a href={router.href(path)} onclick={(event) => open(event, path)}>{attempt.label}</a>
-          </li>
-        {/each}
-      </ul>
-    {/if}
-    {#if sentence !== undefined}<p class="ib-run__note">{sentence}</p>{/if}
-  </svelte:element>
+  {#if heading}
+    <!-- Its own block in the rail: Cinder's Section, as the rail's other blocks are (COR-2489). -->
+    <Section title={RUN_DETAIL_COPY.related.heading} data-section="related-owner">
+      <div class="ib-run-related">{@render lines()}</div>
+    </Section>
+  {:else}
+    <div class="ib-run-related" data-section="related-owner">{@render lines()}</div>
+  {/if}
 {/if}
+
+{#snippet lines()}
+  {#if goal !== undefined && attempts.length === 0}
+    <p class="ib-run__note">{RUN_DETAIL_COPY.related.noOtherAttempts}</p>
+  {:else if attempts.length > 0}
+    <ul class="ib-run-related__list">
+      {#each attempts as attempt (attempt.runId)}
+        {@const path = workflowDetailPath(attempt.runId)}
+        <li>
+          <a href={router.href(path)} onclick={(event) => open(event, path)}>{attempt.label}</a>
+        </li>
+      {/each}
+    </ul>
+  {/if}
+  {#if sentence !== undefined}<p class="ib-run__note">{sentence}</p>{/if}
+{/snippet}

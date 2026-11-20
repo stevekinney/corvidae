@@ -95,6 +95,22 @@ describe('the Time to finish caption', () => {
   });
 });
 
+test('shows storage alone when no runs have started or finished', () => {
+  const view = render(MetricCards, {
+    props: {
+      storageBytes: GIGABYTE,
+      samples: [],
+      started: startedSummary([], new Map()),
+      finish: 'none',
+    },
+  });
+  expect(
+    [...view.container.querySelectorAll('[data-metric]')].map((card) =>
+      card.getAttribute('data-metric'),
+    ),
+  ).toEqual(['storage']);
+});
+
 describe('the metric cards while the page loads', () => {
   test('keep their headings and show the same bars in every card, even when a figure is known', () => {
     const view = render(MetricCards, {

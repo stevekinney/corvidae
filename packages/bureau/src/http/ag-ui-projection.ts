@@ -660,17 +660,53 @@ export function stepName(step: number): string {
   return `step-${step}`;
 }
 
-export function usageOf(detail: unknown): TokenUsage[] {
-  const usage = (detail as { usage?: Record<string, unknown> } | undefined)?.usage ?? {};
+/**
+ * The cost in US dollars a task's record holds for a run (COR-2524), or `null` when it holds none,
+ * the run was not priced, or the record cannot be read. Read when the terminal record the stream
+ * ended on carries no cost of its own: a run's state holds tokens only.
+ */
+export async function recordedCostUsd(
+  tasks: {
+    readonly get: (
+      id: string,
+    ) => Promise<{ readonly usage: { readonly costUsd: number | null } | null } | undefined>;
+  },
+  runId: string,
+): Promise<number | null> {
+  try {
+    const task = await tasks.get(runId);
+    return task?.usage?.costUsd ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * What AG-UI's `TokenUsage` carries, with the run's cost in US dollars beside the token counts
+ * (COR-2524). AG-UI's schema is open, so a reader that does not know the field ignores it.
+ */
+export type RunFinishedUsage = TokenUsage & { readonly costUsd: number | null };
+
+/**
+ * The `usage` of a run's `RUN_FINISHED` event. `costUsd` is the run's priced cost in US dollars
+ * (the terminal record's `costEstimate`), else `recorded` (what the task's record holds, for an end
+ * the stream read from the run's state, which carries tokens only), else `null`: a run with no
+ * priced request is unknown, never free.
+ */
+export function usageOf(detail: unknown, recorded?: number | null): RunFinishedUsage[] {
+  const read = detail as
+    { usage?: Record<string, unknown>; costEstimate?: { totalCost?: unknown } | null } | undefined;
+  const usage = read?.usage ?? {};
   const count = (value: unknown): number | undefined =>
     typeof value === 'number' && Number.isFinite(value) ? value : undefined;
   const prompt = count(usage['prompt']);
   const completion = count(usage['completion']);
   const total = count(usage['total']);
-  const entry: TokenUsage = {
+  const entry: RunFinishedUsage = {
     ...(prompt === undefined ? {} : { inputTokens: prompt }),
     ...(completion === undefined ? {} : { outputTokens: completion }),
     ...(total === undefined ? {} : { totalTokens: total }),
+    costUsd: count(read?.costEstimate?.totalCost) ?? recorded ?? null,
   };
   return [entry];
 }

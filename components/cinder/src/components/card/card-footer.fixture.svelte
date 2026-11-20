@@ -35,9 +35,9 @@
 <style>
   .card-footer-fixture {
     display: grid;
-    gap: 1.5rem;
+    gap: var(--cinder-space-6);
     max-inline-size: 32rem;
-    padding: 1rem;
+    padding: var(--cinder-space-4);
   }
 
   .card-footer-fixture__prose {

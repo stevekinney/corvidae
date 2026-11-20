@@ -35,6 +35,7 @@ export function buildScheduleBody(
   setIfDefined(body, 'jitter', options?.jitter);
   setIfDefined(body, 'timeZone', options?.timeZone);
   setIfDefined(body, 'revisionPolicy', options?.revisionPolicy);
+  setIfDefined(body, 'metadata', options?.metadata);
   return body;
 }
 

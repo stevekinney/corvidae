@@ -74,7 +74,7 @@
     gap: var(--cinder-space-2);
     min-block-size: 12rem;
     padding: var(--cinder-space-5);
-    border: 1px solid var(--cinder-border-muted);
+    border: var(--cinder-border-width) solid var(--cinder-border-muted);
     border-radius: var(--cinder-radius-surface);
     background: var(--cinder-surface-raised);
     box-shadow: var(--cinder-shadow-md);

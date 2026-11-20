@@ -267,7 +267,7 @@ describe('Enable and restart, from the list', () => {
     );
   });
 
-  test('keeps the list on screen under the shared restart banner, which offers Retry now once the host stopped answering', async () => {
+  test('keeps the list on screen under the shared restart banner, which offers Try again once the host stopped answering', async () => {
     const probing = { ...restartProbing };
     restartProbing.delayMs = 0;
     restartProbing.retryDelayMs = () => 60_000;
@@ -287,7 +287,7 @@ describe('Enable and restart, from the list', () => {
       await fireEvent.click(confirmButton(dialog) as HTMLElement);
 
       const banner = await findByTestId('agents-restart-banner');
-      await waitFor(() => expect(banner.textContent).toContain('Retry now'));
+      await waitFor(() => expect(banner.textContent).toContain('Try again'));
       expect(container.querySelector('[data-agent="assistant"]')).not.toBeNull();
       // The plugin was switched on before the host was asked to restart.
       expect(host.requests.some((request) => request.method === 'PUT')).toBe(true);

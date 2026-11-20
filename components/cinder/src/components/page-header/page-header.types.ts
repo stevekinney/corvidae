@@ -113,6 +113,8 @@ export type PageHeaderProps = Omit<
   breadcrumbs?: Snippet;
   /** Optional trailing actions (buttons, menus, controls). */
   actions?: Snippet;
+  /** Draws default and large header actions at the compact size. Set to false to use each control’s own size. @default true */
+  compactActions?: boolean;
   /**
    * A short caption for the actions, under their row: which version each button runs on, or a
    * "Connect a provider" link that says why a button is held. It sits at the inline end under the
@@ -256,6 +258,8 @@ export interface PageHeaderSchemaProps {
   description?: string;
   /** A short caption under the actions' row; the runtime API also accepts a template-only snippet. */
   actionsNote?: string;
+  /** Set to false to draw default and large header actions at each control’s own size. @default true */
+  compactActions?: boolean;
   /** The id of the `actionsNote` element, for a button that points its `aria-describedby` at it. */
   actionsNoteId?: string;
   /**
