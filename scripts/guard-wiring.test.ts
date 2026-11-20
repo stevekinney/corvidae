@@ -3,8 +3,8 @@ import { describe, expect, test } from 'bun:test';
 import { missingRequiredGuards } from './guard-wiring.ts';
 
 const WIRED_SCRIPTS = {
-  'lint:root': 'bun run lint:guards',
-  'lint:guards': 'bun run knip && bun scripts/guard-wiring.ts',
+  'lint:root': 'bun run lint:guards && bun run knip && bun scripts/guard-wiring.ts',
+  'lint:guards': 'bun scripts/check-light-shadows.ts',
   knip: 'bun scripts/run-knip.ts',
 };
 
@@ -13,8 +13,18 @@ describe('root guard wiring', () => {
     expect(missingRequiredGuards(WIRED_SCRIPTS)).toEqual([]);
   });
 
+  test('keeps the tracked root CI command wired', async () => {
+    const manifest = (await Bun.file(new URL('../package.json', import.meta.url)).json()) as {
+      scripts: Record<string, string>;
+    };
+    expect(missingRequiredGuards(manifest.scripts)).toEqual([]);
+  });
+
   test('reports a required guard disconnected from the executable lint graph', () => {
-    const scripts = { ...WIRED_SCRIPTS, 'lint:guards': 'bun scripts/guard-wiring.ts' };
+    const scripts = {
+      ...WIRED_SCRIPTS,
+      'lint:root': 'bun run lint:guards && bun scripts/guard-wiring.ts',
+    };
     expect(missingRequiredGuards(scripts)).toEqual(['scripts/run-knip.ts']);
   });
 });
