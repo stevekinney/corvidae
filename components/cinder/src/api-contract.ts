@@ -132,6 +132,7 @@ export const CONTRACT: Record<string, ComponentContract> = {
         html_attrs: 'HTMLAttributes',
         props: {
           variant: { optional: true, type_kind: 'TSTypeReference', default: L('neutral') },
+          appearance: { optional: true, type_kind: 'TSUnionType', default: L('soft') },
           size: { optional: true, type_kind: 'TSTypeReference', default: L('md') },
           monospace: { optional: true, type_kind: 'TSBooleanKeyword', default: L(false) },
           truncate: { optional: true, type_kind: 'TSBooleanKeyword', default: L(false) },
@@ -148,6 +149,7 @@ export const CONTRACT: Record<string, ComponentContract> = {
         html_attrs: 'HTMLAttributes',
         props: {
           variant: { optional: true, type_kind: 'TSTypeReference', default: L('neutral') },
+          appearance: { optional: true, type_kind: 'TSUnionType', default: L('soft') },
           size: { optional: true, type_kind: 'TSTypeReference', default: L('md') },
           monospace: { optional: true, type_kind: 'TSBooleanKeyword', default: L(false) },
           truncate: { optional: true, type_kind: 'TSBooleanKeyword', default: L(false) },
@@ -708,6 +710,7 @@ export const CONTRACT: Record<string, ComponentContract> = {
       error: { optional: true, type_kind: 'TSBooleanKeyword', default: L(false) },
       statusPlacement: { optional: true, type_kind: 'TSTypeReference', default: L('below') },
       narrowActions: { optional: true, type_kind: 'TSTypeReference', default: L('own-row') },
+      compactActions: { optional: true, type_kind: 'TSBooleanKeyword', default: L(true) },
       titleText: { optional: true, type_kind: 'TSStringKeyword', default: NO_DEFAULT },
       // COR-2423: a short caption under the actions' row (`string | Snippet`, as `description`
       // is), and the id a button's `aria-describedby` names it by.
