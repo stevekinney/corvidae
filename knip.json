@@ -119,6 +119,26 @@
     "scripts/groom": {
       "entry": ["**/*.test.ts"],
       "project": ["**/*.ts"]
+    },
+    "applications/playground": {
+      "entry": [
+        "**/*.test.ts",
+        "**/*.integration.test.ts",
+        "**/*.slow.test.ts",
+        "**/*.bench.ts",
+        "**/*.fixture.svelte",
+        "**/*.playwright.ts",
+        "**/*.spec.ts",
+        "scripts/export-tailwind-theme.ts!"
+      ],
+      "project": [
+        "src/**/*.{ts,svelte}!",
+        "scripts/**/*.ts",
+        "!src/**/*.test.ts!",
+        "!src/**/*.spec.ts!",
+        "!src/**/*.fixture.svelte!",
+        "!src/**/*.bench.ts!"
+      ]
     }
   }
 }
