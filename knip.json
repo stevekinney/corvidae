@@ -129,7 +129,12 @@
         "**/*.fixture.svelte",
         "**/*.playwright.ts",
         "**/*.spec.ts",
-        "scripts/export-tailwind-theme.ts!"
+        "scripts/export-tailwind-theme.ts!",
+        "scripts/static-export.ts!",
+        "src/shell-app/shell-entry.ts!",
+        "src/shell-app/shell-server-entry.ts!",
+        "src/shell-app/theme-builder-entry.ts!",
+        "src/shell-app/theme-preview-entry.ts!"
       ],
       "project": [
         "src/**/*.{ts,svelte}!",
