@@ -327,12 +327,12 @@ const HEALTH_ANSWERS: Readonly<Record<string, Readonly<Record<string, unknown>>>
 };
 
 /**
- * The tabs and sections the walk leaves out, each with why: they hold a form or a summary, never a
- * list that can be empty.
+ * Tabs and sections whose ready view has no empty state.
  */
 const NOT_LISTS_UNDER_A_PAGE: Readonly<Record<string, string>> = {
   '/agents/assistant/settings': 'the agent’s settings form',
   '/settings/data-and-retention': 'the retention windows form',
+  '/settings/mcp': 'the endpoint and client instructions are always available',
 };
 
 /**
@@ -360,7 +360,7 @@ const SUB_ROUTES: readonly { path: string; serve: () => void }[] = [
 ].filter((route) => !Object.hasOwn(NOT_LISTS_UNDER_A_PAGE, route.path));
 
 describe('every tab’s and section’s empty state', () => {
-  test('walks every Health tab, both Capabilities tabs, every agent tab and every Settings section', () => {
+  test('walks the Health, Capabilities, agent and Settings pages that have an empty state', () => {
     const walked = SUB_ROUTES.map((route) => route.path);
     expect(walked).toContain('/health/workers');
     expect(walked).toContain('/health/storage');
