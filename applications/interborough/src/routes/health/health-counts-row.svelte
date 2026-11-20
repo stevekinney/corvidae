@@ -34,12 +34,7 @@
 </script>
 
 {#if cards.length > 0}
-  <StatisticGroup
-    variant="cards"
-    columns={cards.length as 1 | 2 | 3 | 4}
-    label={copy.label}
-    data-testid="health-counts"
-  >
+  <StatisticGroup variant="cards" columns={4} label={copy.label} data-testid="health-counts">
     {#each cards as card (card.key)}
       <Statistic
         label={card.label}

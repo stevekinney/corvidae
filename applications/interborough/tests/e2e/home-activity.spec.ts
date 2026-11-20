@@ -297,11 +297,8 @@ test.describe('Home activity bands (COR-2227)', () => {
       'Worker connected',
     ]);
     const failed = rowsOf(workflow(page)).first();
-    await expect(failed.locator('.cinder-status-dot')).toHaveAttribute(
-      'data-cinder-status',
-      'danger',
-    );
-    await expect(failed.locator('.cinder-status-dot')).toHaveText('Critical');
+    await expect(failed.locator('.cinder-badge')).toHaveAttribute('data-cinder-variant', 'danger');
+    await expect(failed.locator('.cinder-badge')).toHaveText('Critical');
     await expect(failed.locator('time')).toHaveText('10:42 AM');
     await expect(failed.getByRole('link')).toHaveAttribute(
       'href',
@@ -315,8 +312,8 @@ test.describe('Home activity bands (COR-2227)', () => {
       rowsOf(workflow(page)).nth(2).locator('.cinder-grouped-list-item__chevron'),
     ).toHaveCount(0);
     const review = rowsOf(agents(page)).first();
-    await expect(review.locator('.cinder-status-dot')).toHaveText('Warning');
-    await expect(rowsOf(agents(page)).nth(1).locator('.cinder-status-dot')).toHaveCount(0);
+    await expect(review.locator('.cinder-badge')).toHaveText('Warning');
+    await expect(rowsOf(agents(page)).nth(1).locator('.cinder-badge')).toHaveCount(0);
     // F7-49: the clamped text reads in one tooltip on the row.
     await expect(review).toHaveAttribute('title', /^Tool runner asks to refund order 4471/);
 
@@ -504,11 +501,11 @@ test.describe('Home activity bands (COR-2227)', () => {
           const { borders, tinted } = drawn(element);
           if (borders.length > 0 || tinted) offenders.push(`around: ${nameOf(element)}`);
         }
-        // Inside a row, only the separator (the content's bottom edge) and the status dot's own
-        // dot are drawn: no bordered or tinted box.
+        // Inside a row, only the separator (the content's bottom edge) and the Cinder status
+        // badge are drawn: no bordered or tinted box.
         for (const row of region.querySelectorAll('.cinder-grouped-list-item')) {
           for (const element of [row, ...row.querySelectorAll('*')]) {
-            if (element.matches('.cinder-status-dot__indicator')) continue;
+            if (element.matches('.cinder-badge')) continue;
             const { borders, tinted } = drawn(element);
             const allowed = element.matches('.cinder-grouped-list-item__content') ? ['bottom'] : [];
             if (tinted || borders.some((side) => !allowed.includes(side))) {
@@ -644,22 +641,20 @@ test.describe('Home activity bands (COR-2227)', () => {
     // critical rows draw theirs.
     const failureWorded = rowsOf(agents(page)).filter({ hasText: 'Run failed to start' });
     await expect(failureWorded).toHaveCount(1);
-    await expect(failureWorded.locator('.cinder-status-dot')).toHaveCount(0);
+    await expect(failureWorded.locator('.cinder-badge')).toHaveCount(0);
     await expect(failureWorded).not.toContainText(/Warning|Critical/);
     await expect(
-      rowsOf(agents(page)).filter({ hasText: 'Goal failed' }).locator('.cinder-status-dot'),
+      rowsOf(agents(page)).filter({ hasText: 'Goal failed' }).locator('.cinder-badge'),
     ).toHaveText('Critical');
     await expect(
       rowsOf(agents(page))
         .filter({ hasText: 'Goal has not moved in a day' })
-        .locator('.cinder-status-dot'),
+        .locator('.cinder-badge'),
     ).toHaveText('Warning');
     await captureEachWidth(page, 'activity without glyphs', bandsReady);
   });
 
-  test('activity unclaimed: a kind no formatter claims reads in plain words with its raw kind', async ({
-    page,
-  }) => {
+  test('activity unclaimed: a kind no formatter claims reads in plain words', async ({ page }) => {
     await scriptFeeds(page, {
       fleet: {
         connections: [
@@ -695,14 +690,12 @@ test.describe('Home activity bands (COR-2227)', () => {
     await expect(unclaimed.locator('.cinder-grouped-list-item__title')).toHaveText(
       'Plugin github sync repository webhook delivery retried after backoff',
     );
-    await expect(unclaimed.locator('code')).toHaveText(
-      'plugin.github-sync.repository.webhook-delivery.retried-after-backoff',
-    );
+    await expect(unclaimed.locator('code')).toHaveCount(0);
     await expect(rowsOf(agents(page)).nth(1).getByRole('link')).toHaveAttribute(
       'href',
       '/runs/goal-run-3',
     );
-    await expect(rowsOf(workflow(page)).first().locator('code')).toHaveText('lease:health-changed');
+    await expect(rowsOf(workflow(page)).first().locator('code')).toHaveCount(0);
     const ready = async (current: Page) => {
       await expect(rowsOf(agents(current))).toHaveCount(3);
       await expect(rowsOf(workflow(current))).toHaveCount(2);
@@ -725,7 +718,7 @@ test.describe('Home activity bands (COR-2227)', () => {
       'Chat started',
       'Hook delivery retried',
     ]);
-    await expect(agents(page).locator('code')).toHaveCount(3);
+    await expect(agents(page).locator('code')).toHaveCount(0);
     await expect(rowsOf(agents(page)).first().getByRole('link')).toHaveAttribute(
       'href',
       '/runs/run-refund',

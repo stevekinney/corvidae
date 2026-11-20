@@ -112,7 +112,9 @@ test.describe('Settings › Plugins', () => {
     await expect(opened.getByRole('switch', { name: 'Enabled' })).toBeChecked();
     await expect(opened).toContainText('@lostgradient/plugin-guardrails');
     await expect(opened).toContainText('Package plugin, loaded at startup');
-    await expect(opened.getByTestId('plugin-adds')).toContainText('guardrails:code-safety');
+    const adds = opened.getByTestId('plugin-adds');
+    await expect(adds.locator('[data-contribution="guardrails:code-safety"]')).toBeVisible();
+    await expect(adds).not.toContainText('guardrails:code-safety');
 
     // The configuration is a form built from the plugin's own schema, with one explicit Save.
     const configuration = opened.getByTestId('plugin-configuration');

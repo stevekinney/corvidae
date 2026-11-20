@@ -217,10 +217,6 @@
         id: 'workflow',
         term: RUN_PAGE_COPY.facts.workflow,
         definition: workflowLink,
-        // A built-in workflow's identifier and "(built in)" under its name (row 54j).
-        ...(isBuiltInWorkflow(workflowType)
-          ? { noteCode: workflowType, note: RUN_DETAIL_COPY.builtIn }
-          : {}),
       });
     }
     const agentName = task?.agentName ?? goal?.agentName;
@@ -238,11 +234,6 @@
         definition: scheduleLink,
       });
     }
-    list.push({
-      id: 'run-id',
-      term: RUN_PAGE_COPY.facts.runId,
-      definition: { type: 'identifier', value: runId, visibleCharacters: 24 },
-    });
     // When the run started and how long it took are said once, in the header's status line, and the
     // rail does not say them again (rows 54j, 54p, 55d, 55m list its facts without them).
     if (showDeadline && deadlineRemaining !== null) {
@@ -296,7 +287,7 @@
 {#snippet startedBy()}
   {#if workflowOrigin?.kind === 'agent-run'}
     <span data-testid="run-lineage">
-      An agent's tool call, <span>{workflowOrigin.agentId}</span>,
+      An agent's tool call, <span>{agentLabel(workflowOrigin.agentId, undefined)}</span>,
       <a href={router.href(workflowDetailPath(workflowOrigin.runId))}>Calling run</a>
     </span>
   {:else}

@@ -81,9 +81,6 @@
 >
   <header class="ib-capability__name-line">
     <h3 class="ib-capability__name">{heading}</h3>
-    <code class="ib-capability__code ib-capability__identifier" data-testid="skill-identifier"
-      >{skill.name}</code
-    >
   </header>
 
   {#if unavailable !== undefined}

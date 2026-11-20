@@ -215,7 +215,6 @@
               <dt>{index === 0 ? group.label : ''}</dt>
               <dd>
                 <strong class="ib-plugin__add-title">{item.title}</strong>
-                <code class="ib-plugin__add-id">{item.id}</code>
               </dd>
             </div>
           {/each}
@@ -359,7 +358,6 @@
     color: var(--cinder-text-muted);
   }
 
-  .ib-plugin__add-id,
   .ib-plugin__secret-key {
     font-family: var(--cinder-font-mono);
     overflow-wrap: anywhere;
@@ -396,11 +394,6 @@
     gap: var(--cinder-space-2);
     align-items: baseline;
     margin: 0;
-  }
-
-  .ib-plugin__add-id {
-    color: var(--cinder-text-muted);
-    font-size: var(--cinder-text-xs);
   }
 
   .ib-plugin__secrets {

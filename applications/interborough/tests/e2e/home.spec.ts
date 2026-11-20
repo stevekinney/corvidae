@@ -30,6 +30,7 @@ import {
 import {
   captureForDesignReview,
   captureForDesignReviewWithPhone,
+  DESIGN_REVIEW_PHONE,
 } from './design-review-capture.ts';
 import { E2E_JOURNEY_URL, E2E_SHOWCASE_URL } from './e2e-constants.ts';
 import { expect, holdBureauFeed, test } from './fixtures.ts';
@@ -146,6 +147,31 @@ test.describe('Home on the sample world, with something waiting on you', () => {
     await expect(page.locator('main .cinder-statistic')).toHaveCount(0);
     const boxes = await readBoxes(page, { spotlight, list: needsYou(page) });
     expect(boxes.list.y).toBeGreaterThan(boxes.spotlight.y + boxes.spotlight.height - 1);
+  });
+
+  test('shows the positive failed-run count after Needs you at wide and phone widths', async ({
+    page,
+  }) => {
+    await answerBureau(page, {
+      'weft.workflows.aggregate': () => ({ total: 3, groups: [], truncated: false }),
+    });
+    await openHome(page);
+    const ready = async (current: Page) => {
+      const counts = current.getByTestId('home-counts');
+      await expect(counts).toContainText('Failed in 24 hours');
+      await expect(counts).toContainText('3');
+      const boxes = await readBoxes(current, { list: needsYou(current), counts });
+      expect(boxes.counts.y).toBeGreaterThan(boxes.list.y + boxes.list.height);
+    };
+    await ready(page);
+    await captureForDesignReviewWithPhone(page, {
+      route: '/',
+      state: 'failed runs count',
+      source: SOURCE,
+      ready,
+    });
+    await page.setViewportSize(DESIGN_REVIEW_PHONE);
+    await ready(page);
   });
 
   // Owner, 2026-11-19: the left column and Start a chat ended at different heights with a dead
@@ -352,6 +378,12 @@ test.describe('Home with nothing waiting and a provider connected', () => {
   }) => {
     await openHome(page);
     await expect(page.getByTestId('home-nothing-needs-you')).toHaveText('Nothing needs you.');
+    const columns = page.locator('.ib-home__columns');
+    const chatColumn = columns.locator('.ib-home__aside');
+    const boxes = await readBoxes(page, { columns, chatColumn });
+    const contentCenter = boxes.columns.x + boxes.columns.width / 2;
+    const chatCenter = boxes.chatColumn.x + boxes.chatColumn.width / 2;
+    expect(Math.abs(contentCenter - chatCenter)).toBeLessThanOrEqual(1);
     await expect(page.getByTestId('home-spotlight')).toHaveCount(0);
     await expect(page.getByTestId('home-counts')).toHaveCount(0);
     await expect(page.locator('main .cinder-statistic')).toHaveCount(0);

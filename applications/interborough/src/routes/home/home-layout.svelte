@@ -206,6 +206,21 @@
       column-gap: var(--ib-home-gap);
     }
 
+    /* With no work to show, let the chat sections take the reading column. */
+    .ib-home__columns:not(:has(.ib-home__main > div > :global(*))) {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .ib-home__main:not(:has(> div > :global(*))) {
+      display: none;
+    }
+
+    .ib-home__columns:not(:has(.ib-home__main > div > :global(*))) .ib-home__aside {
+      inline-size: 100%;
+      max-inline-size: var(--cinder-content-width-reading);
+      justify-self: center;
+    }
+
     /* When both lists have loaded, the final section in each column takes its remaining height.
      * Both columns keep their starting positions and the same gap between sections. */
     .ib-home__columns:has(.ib-home__needs-attention :global([data-home-column-list])):has(

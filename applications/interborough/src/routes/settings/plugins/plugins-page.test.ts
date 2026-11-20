@@ -346,13 +346,11 @@ describe('a plugin', () => {
     expect(detail.textContent).toContain(PLUGINS_COPY.sourceKind.folder);
     const adds = detail.querySelector('[data-testid="plugin-adds"]')!;
     expect(adds.textContent).toContain(PLUGINS_COPY.contributionKinds['tool']!);
-    // The title the plugin gave, with the identifier (and no version) small beside it.
+    // The contribution uses its display title.
     expect(adds.querySelector('[data-contribution="linear:create-issue"]')?.textContent).toContain(
       'Create an issue',
     );
-    expect(adds.querySelector('[data-contribution="linear:create-issue"]')?.textContent).toContain(
-      'linear:create-issue',
-    );
+    expect(adds.textContent).not.toContain('linear:create-issue');
     // A name with no title is the identifier as words.
     expect(adds.querySelector('[data-contribution="linear:sync-issue"]')?.textContent).toContain(
       'Sync issue',
