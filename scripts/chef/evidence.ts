@@ -72,6 +72,90 @@ export interface EvidenceValidation {
   records: EvidenceRecord[];
 }
 
+/** The coordinator's expected identity for a disposable installed-release verification. */
+export interface InstalledReleaseReceiptExpectation {
+  sourceRevision: string;
+  target: 'darwin-arm64';
+  archiveDigest: string;
+  configuration: readonly { readonly path: string; readonly sha256: string }[];
+}
+
+/**
+ * Compare the machine-written installed-release receipt with its accepted obligation. A receipt is
+ * not a completion claim: publication and deployment need their own authenticated evidence.
+ */
+export function compareInstalledReleaseReceipt(
+  receipt: unknown,
+  expected: InstalledReleaseReceiptExpectation,
+): string[] {
+  if (typeof receipt !== 'object' || receipt === null || Array.isArray(receipt))
+    return ['installed-release receipt is not an object'];
+  const value = receipt as Record<string, unknown>;
+  const archive = value['archive'];
+  const producer = value['producer'];
+  const configuration = value['configuration'];
+  const assertions = value['assertions'];
+  const problems: string[] = [];
+  if (value['version'] !== 1 || value['outcome'] !== 'pass')
+    problems.push('installed-release receipt is not a successful version 1 receipt');
+  if (typeof archive !== 'object' || archive === null || Array.isArray(archive))
+    problems.push('installed-release receipt has no archive identity');
+  else {
+    const manifest = (archive as Record<string, unknown>)['manifest'];
+    if ((archive as Record<string, unknown>)['sha256'] !== expected.archiveDigest)
+      problems.push('installed-release receipt archive digest does not match the obligation');
+    if ((archive as Record<string, unknown>)['target'] !== expected.target)
+      problems.push('installed-release receipt target does not match the obligation');
+    if (
+      typeof manifest !== 'object' ||
+      manifest === null ||
+      Array.isArray(manifest) ||
+      (manifest as Record<string, unknown>)['sourceSha'] !== expected.sourceRevision
+    )
+      problems.push('installed-release receipt source revision does not match the obligation');
+  }
+  if (typeof value['installedExecutable'] !== 'string' || value['installedExecutable'] === '')
+    problems.push('installed-release receipt has no installed executable');
+  if (!Array.isArray(assertions) || assertions.length === 0)
+    problems.push('installed-release receipt has no verification assertions');
+  else if (
+    assertions.some(
+      (assertion) =>
+        typeof assertion !== 'object' ||
+        assertion === null ||
+        Array.isArray(assertion) ||
+        (assertion as Record<string, unknown>)['exit'] !== 0,
+    )
+  )
+    problems.push('installed-release receipt has a failed verification assertion');
+  if (
+    typeof producer !== 'object' ||
+    producer === null ||
+    Array.isArray(producer) ||
+    (producer as Record<string, unknown>)['script'] !==
+      'applications/interborough/scripts/test-installed-release.ts'
+  )
+    problems.push('installed-release receipt has an unexpected producer');
+  if (!Array.isArray(configuration))
+    problems.push('installed-release receipt has no configuration');
+  else
+    for (const required of expected.configuration)
+      if (
+        !configuration.some(
+          (entry) =>
+            typeof entry === 'object' &&
+            entry !== null &&
+            !Array.isArray(entry) &&
+            (entry as Record<string, unknown>)['path'] === required.path &&
+            (entry as Record<string, unknown>)['sha256'] === required.sha256,
+        )
+      )
+        problems.push(
+          `installed-release receipt lacks configuration identity for ${required.path}`,
+        );
+  return problems;
+}
+
 export interface VerificationRequest {
   repository: string;
   revision: string;
