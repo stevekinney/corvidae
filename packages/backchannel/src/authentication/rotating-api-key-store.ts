@@ -45,7 +45,7 @@ import {
  *
  * const registration: ApiKeyRegistration = {
  *   subject: 'service-account-7',
- *   scopes: ['workflows:read', 'workflows:write'],
+ *   scopes: ['inventory:read', 'inventory:write'],
  *   expiresAt: Date.now() + 86_400_000,
  * };
  * void registration;
@@ -74,8 +74,8 @@ export type ApiKeyRegistration = {
  * import { createRotatingApiKeyStore, type RotatingApiKeyStore } from '@lostgradient/backchannel';
  *
  * const store: RotatingApiKeyStore = createRotatingApiKeyStore();
- * await store.add('key-old', { subject: 'svc', scopes: ['workflows:read'] });
- * await store.add('key-new', { subject: 'svc', scopes: ['workflows:read'] });
+ * await store.add('key-old', { subject: 'svc', scopes: ['inventory:read'] });
+ * await store.add('key-new', { subject: 'svc', scopes: ['inventory:read'] });
  * // Both authenticate during the overlap window.
  * await store.revoke('key-old');
  * ```
@@ -142,7 +142,7 @@ function isExpired(stored: StoredKey, currentTime: number): boolean {
  * import { MemoryStorage } from '@lostgradient/storage';
  *
  * const store = createRotatingApiKeyStore();
- * await store.add('initial-key', { subject: 'svc', scopes: ['workflows:read'] });
+ * await store.add('initial-key', { subject: 'svc', scopes: ['inventory:read'] });
  *
  * await using engine = new Engine({ storage: new MemoryStorage() });
  * await using server = serve({

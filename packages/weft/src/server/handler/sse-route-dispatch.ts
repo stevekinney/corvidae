@@ -12,6 +12,7 @@ import {
   type PipelineTrace,
   type UnknownRestBinding,
 } from '@lostgradient/backchannel/internals';
+import { WEFT_SCOPE_VOCABULARY } from '../../authorization-scopes.ts';
 import type { FleetEventFeed } from '../fleet-event-feed.ts';
 import { fleetEventsSseOperation } from '../operations/fleet-events-sse.ts';
 import {
@@ -86,7 +87,7 @@ function shapeMissingOperation(
 
 function principalForServerSentEvents(options: DispatchServerSentEventsBindingOptions): Principal {
   if (options.supportedAuthenticationSchemes?.size === 0 && !isAuthenticated(options.principal)) {
-    return principalFromStdioLocal();
+    return principalFromStdioLocal(WEFT_SCOPE_VOCABULARY);
   }
   return options.principal;
 }

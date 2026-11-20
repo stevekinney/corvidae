@@ -2,7 +2,7 @@ import { waitUntil } from '@lostgradient/testing/wait-until';
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 
-import faultEnvelopes from './__fixtures__/fault-envelope-golden/fault-envelopes.json';
+import { join } from 'node:path';
 import {
   CatalogClientError,
   createCatalogClient,
@@ -10,13 +10,22 @@ import {
   type CatalogTransport,
   type SubscriptionTransport,
 } from './client/index.ts';
-import { GOLDEN_FAULTS } from './fault-envelope-golden.test-support.ts';
+import {
+  FAULT_ENVELOPE_GOLDEN_DIRECTORY,
+  GOLDEN_FAULTS,
+} from './fault-envelope-golden.test-support.ts';
 import { createTestHost, testEventSchema } from './handler/operation-handler.test-support.ts';
 import { makeOperation } from './json-rpc-operation.test-support.ts';
 import type { OperationFault } from './operation-fault.ts';
 
 const faultCodes = Object.keys(GOLDEN_FAULTS) as Array<keyof typeof GOLDEN_FAULTS>;
 const faultCode = z.enum(faultCodes);
+const goldenPath = join(FAULT_ENVELOPE_GOLDEN_DIRECTORY, 'fault-envelopes.json');
+
+type GoldenEnvelopes = Record<
+  keyof typeof GOLDEN_FAULTS,
+  { jsonRpc: unknown; http: { status: number; body: unknown } }
+>;
 
 const throwGoldenFault = (code: keyof typeof GOLDEN_FAULTS): never => {
   throw { ...GOLDEN_FAULTS[code], remediation: 'golden' } satisfies OperationFault;
@@ -67,10 +76,13 @@ export function createTransportConformanceFixture() {
 
 /** A connected client/server pair, with an optional subscription channel. */
 export type TransportConformancePair = {
+  /** The connected unary client transport. */
   readonly call: CatalogTransport;
+  /** The connected subscription client transport, when offered. */
   readonly subscribe?: SubscriptionTransport;
   /** HTTP SSE reports faults at subscription start as HTTP responses. */
   readonly expectHttpSubscriptionFaults?: boolean;
+  /** Close the pair and release connected resources. */
   readonly close?: () => Promise<void>;
 };
 
@@ -121,7 +133,8 @@ export function describeTransportConformance(
     for (const code of faultCodes) {
       it(`preserves the ${code} envelope`, () =>
         withPair(async (pair) => {
-          const golden = faultEnvelopes[code];
+          const envelopes = (await Bun.file(goldenPath).json()) as GoldenEnvelopes;
+          const golden = envelopes[code];
           const error = await rejected(() => pair.call('probe.fault', { code }));
           expect({ code: error.code, message: error.message, data: error.data }).toEqual(
             golden.jsonRpc,

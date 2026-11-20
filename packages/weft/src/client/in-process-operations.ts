@@ -1,5 +1,6 @@
 import { principalFromStdioLocal } from '@lostgradient/backchannel';
 import { inProcessCatalogTransport, type CatalogTransport } from '@lostgradient/backchannel/client';
+import { WEFT_SCOPE_VOCABULARY } from '../authorization-scopes.ts';
 import type { Engine } from '../core/engine.ts';
 import { createLiveOperationRegistry } from '../server/rest-bindings.ts';
 
@@ -10,7 +11,7 @@ export function weftInProcessCatalogTransport(
 ): CatalogTransport {
   return inProcessCatalogTransport({
     registry: createLiveOperationRegistry(),
-    principal: principalFromStdioLocal(),
+    principal: principalFromStdioLocal(WEFT_SCOPE_VOCABULARY),
     host: engine,
     restOperationNames,
   });

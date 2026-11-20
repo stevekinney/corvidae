@@ -1,3 +1,4 @@
+import { WEFT_SCOPE_VOCABULARY } from '@lostgradient/weft';
 import { createAgent, type GenerateFunction, stopWhen } from '@lostgradient/operative';
 import { Engine, workflow } from '@lostgradient/weft';
 import {
@@ -128,6 +129,7 @@ function serve(
   host: Omit<BureauReviewsOperationHost, 'reviewContinuation'> &
     Partial<Pick<BureauReviewsOperationHost, 'reviewContinuation'>>,
   authenticate: OperationHandlerAuthenticate = createOperationHandlerAuthenticator(authentication, {
+    scopeVocabulary: WEFT_SCOPE_VOCABULARY,
     additionalScopes: BUREAU_SCOPES,
   }),
 ) {
@@ -190,7 +192,7 @@ describe('the parks of runs another process holds (COR-1579)', () => {
               ? principalFromApiKey({ subject: 'tester', scopes: ['reviews:read'] })
               : null,
         },
-        { additionalScopes: BUREAU_SCOPES },
+        { scopeVocabulary: WEFT_SCOPE_VOCABULARY, additionalScopes: BUREAU_SCOPES },
       ),
       {
         workspaceId: 'workspace-a',
@@ -289,7 +291,7 @@ describe('a human wait of a run with no session (COR-1577)', () => {
             ? principalFromApiKey({ subject: 'tester', scopes: ['bureau.reviews:read'] })
             : null,
       },
-      { additionalScopes: BUREAU_SCOPES },
+      { scopeVocabulary: WEFT_SCOPE_VOCABULARY, additionalScopes: BUREAU_SCOPES },
     );
 
     const hidden = await call(serve(owned), 'bureau.reviews.list', {});
@@ -539,7 +541,7 @@ describe('bureau.reviews.resolve', () => {
           principalFromApiKey({ subject: 'ops user/1:a', scopes: ['bureau.reviews:resolve'] }),
         auditSink: silent,
       },
-      { additionalScopes: BUREAU_SCOPES },
+      { scopeVocabulary: WEFT_SCOPE_VOCABULARY, additionalScopes: BUREAU_SCOPES },
     );
     const handler = serve(stubHost({}, record), authenticate);
 
@@ -814,7 +816,7 @@ describe('bureau.reviews.resolve', () => {
       method: 'jwt' as const,
       principal: principalFromJwtClaims(
         { sub: 'someone', scope: 'bureau.reviews:resolve' },
-        { additionalScopes: new Set(BUREAU_SCOPES) },
+        { scopeVocabulary: WEFT_SCOPE_VOCABULARY, additionalScopes: new Set(BUREAU_SCOPES) },
       ),
     });
     const handler = createOperationHandler({
@@ -1352,7 +1354,7 @@ describe('workspace privacy for reviews', () => {
                 : null,
             auditSink: silent,
           },
-          { additionalScopes: BUREAU_SCOPES },
+          { scopeVocabulary: WEFT_SCOPE_VOCABULARY, additionalScopes: BUREAU_SCOPES },
         ),
       });
       const controlResult = await call(control, 'bureau.reviews.list', {});
@@ -1403,7 +1405,7 @@ describe('workspace privacy for reviews', () => {
                 : null,
             auditSink: silent,
           },
-          { additionalScopes: BUREAU_SCOPES },
+          { scopeVocabulary: WEFT_SCOPE_VOCABULARY, additionalScopes: BUREAU_SCOPES },
         ),
       });
       const kept = {

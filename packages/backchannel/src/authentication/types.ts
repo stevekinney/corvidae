@@ -137,7 +137,7 @@ export type MTLSConfig = {
  *
  * const auth: AuthConfig = {
  *   apiKeys: [process.env['API_KEY'] ?? ''],
- *   defaultApiKeyScopes: ['workflows:read'],
+ *   defaultApiKeyScopes: ['inventory:read'],
  *   jwt: {
  *     secret: process.env['JWT_SECRET'] ?? '',
  *     issuer: 'https://auth.example.com',
@@ -222,7 +222,7 @@ export type AuthConfig = {
  *
  * const authenticate = await createAuthenticator({
  *   apiKeys: ['key-1'],
- *   defaultApiKeyScopes: ['workflows:read'],
+ *   defaultApiKeyScopes: ['inventory:read'],
  * });
  * const req = new Request('http://localhost/v1/workflows', {
  *   headers: { 'X-API-Key': 'key-1' },
@@ -275,7 +275,7 @@ export type AuthContext = {
  *
  * const authenticate = await createAuthenticator({
  *   apiKeys: ['s3cr3t'],
- *   defaultApiKeyScopes: ['workflows:read'],
+ *   defaultApiKeyScopes: ['inventory:read'],
  * });
  * const req = new Request('http://localhost/v1/workflows');
  * const result: AuthResult = await authenticate(req);
@@ -333,7 +333,7 @@ export type JWTPayload = Record<string, unknown>;
  *
  * const authenticate: Authenticator = await createAuthenticator({
  *   apiKeys: ['my-key'],
- *   defaultApiKeyScopes: ['workflows:read'],
+ *   defaultApiKeyScopes: ['inventory:read'],
  * });
  *
  * const request = new Request('http://localhost/v1/workflows', {

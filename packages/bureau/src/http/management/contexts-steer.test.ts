@@ -1,3 +1,4 @@
+import { WEFT_SCOPE_VOCABULARY } from '@lostgradient/weft';
 /**
  * COR-1559 — `bureau.contexts.steer` switches a context to a model its agent allows, by calling
  * `BureauContexts.steer`, and answers with Bureau's own admission outcome as data. Only a
@@ -215,7 +216,7 @@ describe('bureau.contexts.steer over a Bureau with a stubbed admission', () => {
       },
       authenticate: async () => ({
         method: 'unauthenticated-local' as const,
-        principal: unauthenticatedLocalAuthContext().principal!,
+        principal: unauthenticatedLocalAuthContext(WEFT_SCOPE_VOCABULARY).principal!,
       }),
       publicPaths: [],
     });

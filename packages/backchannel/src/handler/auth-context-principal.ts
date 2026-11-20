@@ -1,4 +1,5 @@
 import type { AuthContext } from '../authentication.ts';
+import { EMPTY_SCOPE_VOCABULARY, type ScopeVocabulary } from '../authorization-scope.ts';
 import {
   anonymousPrincipal,
   principalFromApiKey,
@@ -29,7 +30,10 @@ import {
  * console.log(principal.method); // 'api-key'
  * ```
  */
-export function authContextToPrincipal(authContext: AuthContext | undefined): Principal {
+export function authContextToPrincipal(
+  authContext: AuthContext | undefined,
+  scopeVocabulary: ScopeVocabulary = EMPTY_SCOPE_VOCABULARY,
+): Principal {
   if (authContext === undefined) return anonymousPrincipal();
   if (authContext.principal !== undefined) return authContext.principal;
   switch (authContext.method) {
@@ -40,14 +44,14 @@ export function authContextToPrincipal(authContext: AuthContext | undefined): Pr
             'authenticator contract violation',
         );
       }
-      return principalFromJwtClaims(authContext.claims);
+      return principalFromJwtClaims(authContext.claims, { scopeVocabulary });
     }
     case 'api-key':
       return principalFromApiKey({ subject: SHARED_API_KEY_SUBJECT, scopes: [] });
     case 'mtls':
       return principalFromMutualTls({ subject: SHARED_MUTUAL_TLS_SUBJECT, scopes: [] });
     case 'unauthenticated-local':
-      return principalFromUnauthenticatedLocal();
+      return principalFromUnauthenticatedLocal(scopeVocabulary);
     case 'public':
       return anonymousPrincipal();
     default: {
@@ -56,11 +60,6 @@ export function authContextToPrincipal(authContext: AuthContext | undefined): Pr
     }
   }
 }
-
-const UNAUTHENTICATED_LOCAL_AUTH_CONTEXT: AuthContext = Object.freeze({
-  method: 'unauthenticated-local',
-  principal: principalFromUnauthenticatedLocal(),
-});
 
 /**
  * The context a host with exactly one caller attaches to every request: the
@@ -82,6 +81,11 @@ const UNAUTHENTICATED_LOCAL_AUTH_CONTEXT: AuthContext = Object.freeze({
  * console.log(principal.method); // 'unauthenticated-local'
  * ```
  */
-export function unauthenticatedLocalAuthContext(): AuthContext {
-  return UNAUTHENTICATED_LOCAL_AUTH_CONTEXT;
+export function unauthenticatedLocalAuthContext(
+  scopeVocabulary: ScopeVocabulary = EMPTY_SCOPE_VOCABULARY,
+): AuthContext {
+  return Object.freeze({
+    method: 'unauthenticated-local',
+    principal: principalFromUnauthenticatedLocal(scopeVocabulary),
+  });
 }

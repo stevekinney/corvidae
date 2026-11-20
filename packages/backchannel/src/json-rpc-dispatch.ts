@@ -33,11 +33,15 @@ import {
 import { type OperationFault, type TransportKind } from './operation-fault.ts';
 import { type Principal } from './principal.ts';
 
+/** The registry, authenticated caller and adapter for one incoming frame. */
 export type DispatchJsonRpcContext = {
+  /** The caller admitted by the adapter. */
   readonly principal: Principal;
   /** See `OperationContext.host`. */
   readonly host: unknown;
+  /** Which JSON-RPC transport received the frame. */
   readonly transport: Extract<TransportKind, 'jsonRpcHttp' | 'jsonRpcWebSocket' | 'jsonRpcStdio'>;
+  /** The operation catalog for the adapter. */
   readonly registry: OperationRegistry;
   /**
    * Accept a subscription started by a single request. The adapter owns the
@@ -79,10 +83,15 @@ export type DispatchJsonRpcResult =
 
 /** A validated subscription that an adapter can deliver after acknowledging its start. */
 export type JsonRpcSubscription = {
+  /** Lifecycle identifier used by the adapter. */
   readonly subscriptionId: string;
+  /** The validated response that acknowledges startup. */
   readonly envelope: unknown;
+  /** The validated events in delivery order. */
   readonly iterable: AsyncIterable<unknown>;
+  /** Releases the subscription when delivery ends. */
   readonly close: () => Promise<void>;
+  /** Signals the end of replay when the operation distinguishes replay and live events. */
   readonly replayComplete?: Promise<void>;
 };
 

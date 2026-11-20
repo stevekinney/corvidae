@@ -2,8 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-
-import { getPrincipalOperation } from '@lostgradient/backchannel';
+import { getPrincipalOperation } from './server/operations/get-principal.ts';
 
 import * as root from './index.ts';
 import * as testing from './testing/index.ts';

@@ -1,3 +1,4 @@
+import { AUTHORIZATION_SCOPES, WEFT_SCOPE_VOCABULARY } from '@lostgradient/weft';
 import { OPERATION_MAP, type WorkspaceOperationClass } from './operation-map.ts';
 import {
   classifyWorkspaceMount,
@@ -35,11 +36,10 @@ import {
 import { encode, type Outbox, VERSION as WEFT_VERSION, weftFaultPolicy } from '@lostgradient/weft';
 import {
   type AuthConfig,
-  AUTHORIZATION_SCOPES,
   type AuthorizationScope,
   createOperationHandler,
   createOperationHandlerAuthenticator,
-  getPrincipalOperation,
+  createGetPrincipalOperation,
   type OperationHandler,
   type OperationHandlerMount,
   type OperationHandlerAuthenticate,
@@ -846,7 +846,7 @@ function assertPersistence(bureau: BureauHandlerSource): void {
  * owner-scoped (see their modules).
  */
 export const BUREAU_HANDLER_OPERATIONS = [
-  getPrincipalOperation,
+  createGetPrincipalOperation(WEFT_SCOPE_VOCABULARY),
   deploymentGetOperation,
   diagnosticsGetOperation,
   healthAttentionOperation,
@@ -907,7 +907,8 @@ export const BUREAU_HANDLER_OPERATIONS = [
  */
 function createLocalPrincipal(): AuthenticatedPrincipal {
   const scopes = new Set<AuthorizationScope>([
-    ...(unauthenticatedLocalAuthContext().principal?.scopes ?? AUTHORIZATION_SCOPES),
+    ...(unauthenticatedLocalAuthContext(WEFT_SCOPE_VOCABULARY).principal?.scopes ??
+      AUTHORIZATION_SCOPES),
     ...BUREAU_SCOPES,
   ]);
   return Object.freeze({
@@ -982,7 +983,7 @@ function createApiKeyAuthenticate(authentication: AuthConfig): OperationHandlerA
           : principal;
       },
     },
-    { additionalScopes: BUREAU_SCOPES },
+    { scopeVocabulary: WEFT_SCOPE_VOCABULARY, additionalScopes: BUREAU_SCOPES },
   );
 }
 
@@ -1587,6 +1588,7 @@ export function createBureauHandler(
   ];
   const handler = createOperationHandler({
     operations: BUREAU_HANDLER_OPERATIONS,
+    scopeVocabulary: WEFT_SCOPE_VOCABULARY,
     host,
     authenticate:
       options.workspace === undefined

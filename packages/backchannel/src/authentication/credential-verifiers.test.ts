@@ -1,4 +1,5 @@
 import { expect, it } from 'bun:test';
+import { TEST_SCOPE_VOCABULARY } from '../scope-vocabulary.test-support.ts';
 
 import {
   createApiKeyVerifier,
@@ -28,17 +29,20 @@ it('tries a fourth verifier in order and names it in the admission audit', async
       };
     },
   };
-  const authenticate = await createAuthenticator({
-    verifiers: [
-      await createApiKeyVerifier({ apiKeys: ['known-test-key'] }),
-      await createJwtVerifier({ secret: 'test-signing-key' }),
-      createMutualTlsVerifier({ verifyClientCertificate: () => true }),
-      testVerifier,
-    ],
-    auditSink: (event) => {
-      audit.push(event);
+  const authenticate = await createAuthenticator(
+    {
+      verifiers: [
+        await createApiKeyVerifier({ apiKeys: ['known-test-key'] }),
+        await createJwtVerifier({ secret: 'test-signing-key' }),
+        createMutualTlsVerifier({ verifyClientCertificate: () => true }),
+        testVerifier,
+      ],
+      auditSink: (event) => {
+        audit.push(event);
+      },
     },
-  });
+    { scopeVocabulary: TEST_SCOPE_VOCABULARY },
+  );
   const baseUrl = 'https://probe.test/jsonrpc';
   expect(
     await authenticate(

@@ -1,4 +1,5 @@
 import { expect } from 'bun:test';
+import { TEST_SCOPE_VOCABULARY } from './scope-vocabulary.test-support.ts';
 
 import { createOperationRegistry } from './index.ts';
 import { runStdioSession } from './stdio-session.ts';
@@ -16,6 +17,7 @@ describeTransportConformance('stdio', ({ operations, host }) =>
     const decoder = new TextDecoder();
     const encoder = new TextEncoder();
     const session = runStdioSession({
+      scopeVocabulary: TEST_SCOPE_VOCABULARY,
       input,
       output: new WritableStream({ write: (chunk) => receive(decoder.decode(chunk)) }),
       admission: { kind: 'allow-unauthenticated-local-admin' },

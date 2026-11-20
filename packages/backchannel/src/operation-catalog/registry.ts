@@ -105,7 +105,9 @@ function eraseHost<Host>(operation: RegistrableOperation<Host>): ErasedOperation
 
 /** Policies shared by every operation registered by this host. */
 export type OperationRegistryOptions = {
+  /** Classification and masking settings for operation faults. */
   readonly faultPolicy?: FaultPolicy | undefined;
+  /** Ordered interceptors for authorized operation invocations. */
   readonly interceptors?: readonly OperationInterceptor[] | undefined;
 };
 

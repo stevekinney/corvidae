@@ -120,13 +120,21 @@ export function tlsOptionsVerifyClientCertificates(
  * // Throws if config is invalid (e.g. missing secret for HS256)
  * validateAuthConfig({
  *   apiKeys: ['secret-key-1'],
- *   defaultApiKeyScopes: ['workflows:read'],
+ *   defaultApiKeyScopes: ['inventory:read'],
  * });
  * console.log('Config is valid');
  * ```
  */
 export function validateAuthConfig(config: AuthConfig): void {
   if (config.verifiers !== undefined) {
+    if (
+      config.apiKeys !== undefined ||
+      config.resolveApiKeyPrincipal !== undefined ||
+      config.jwt !== undefined ||
+      config.mtls !== undefined
+    ) {
+      throw new Error('AuthConfig.verifiers cannot be combined with legacy authentication methods');
+    }
     if (config.verifiers.length === 0) {
       throw new Error('AuthConfig must specify at least one authentication method');
     }
@@ -154,7 +162,7 @@ export function validateAuthConfig(config: AuthConfig): void {
  *
  * const authenticate = await createAuthenticator({
  *   apiKeys: ['my-secret-key'],
- *   defaultApiKeyScopes: ['workflows:read'],
+ *   defaultApiKeyScopes: ['inventory:read'],
  * });
  * const request = new Request('http://localhost/v1/workflows', {
  *   headers: { 'X-API-Key': 'my-secret-key' },

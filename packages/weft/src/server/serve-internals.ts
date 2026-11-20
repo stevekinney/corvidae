@@ -1,3 +1,4 @@
+import { WEFT_SCOPE_VOCABULARY } from '../authorization-scopes.ts';
 /**
  * Internal helpers extracted from `serve()` to reduce its cyclomatic complexity.
  * These are implementation details — do not import from outside `src/server/`.
@@ -188,9 +189,14 @@ function assertStaticApiKeysHaveScopes(
   auth: NonNullable<ServeOptions['auth']>,
   additionalScopes: AdditionalScopeSet,
 ): void {
+  if (auth.verifiers !== undefined) return;
   if (auth.apiKeys === undefined || auth.apiKeys.length === 0) return;
   if (auth.resolveApiKeyPrincipal !== undefined) return;
-  const granted = filterRecognizedScopes(auth.defaultApiKeyScopes ?? [], additionalScopes);
+  const granted = filterRecognizedScopes(
+    auth.defaultApiKeyScopes ?? [],
+    additionalScopes,
+    WEFT_SCOPE_VOCABULARY,
+  );
   if (granted.length > 0) return;
   throw new Error(STATIC_API_KEYS_WITHOUT_SCOPES_ERROR);
 }
@@ -256,6 +262,7 @@ export type ResolvedNetworkConfig = {
 function createServerAuthenticator(options: ServeOptions): Promise<Authenticator> | null {
   if (!options.auth) return null;
   return createAuthenticator(options.auth, {
+    scopeVocabulary: WEFT_SCOPE_VOCABULARY,
     transportVerifiesClientCertificates: tlsOptionsVerifyClientCertificates(
       buildTLSOptions(options.auth),
     ),

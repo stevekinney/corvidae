@@ -1,4 +1,5 @@
-import { AUTHORIZATION_SCOPES } from '@lostgradient/backchannel';
+import { AUTHORIZATION_SCOPES } from '@lostgradient/weft';
+
 import { MCP_LEGACY_PROTOCOL_VERSION } from '@lostgradient/weft';
 import { afterEach, describe, expect, spyOn, test } from 'bun:test';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';

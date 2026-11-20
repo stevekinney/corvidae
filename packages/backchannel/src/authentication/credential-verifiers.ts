@@ -1,7 +1,9 @@
 import {
   createAdditionalScopeSet,
+  EMPTY_SCOPE_VOCABULARY,
   filterRecognizedScopes,
   type PackageAuthorizationScope,
+  type ScopeVocabulary,
 } from '../authorization-scope.ts';
 import { principalFromJwtClaims } from '../principal.ts';
 import { tryAdmitApiKey } from './api-key.ts';
@@ -49,7 +51,9 @@ export type CredentialVerification =
  * admissions in audit records.
  */
 export type CredentialVerifier = {
+  /** The method recorded in the successful authentication audit. */
   readonly method: string;
+  /** Inspect the request using the verifier’s credential rules. */
   verify(
     request: Request,
     context: { readonly explicitCredentialAttempted: boolean },
@@ -63,7 +67,12 @@ export async function createApiKeyVerifier(
 ): Promise<CredentialVerifier> {
   const resolver = config.resolveApiKeyPrincipal;
   const additionalScopes = createAdditionalScopeSet(options.additionalScopes);
-  const defaultScopes = filterRecognizedScopes(config.defaultApiKeyScopes ?? [], additionalScopes);
+  const scopeVocabulary = options.scopeVocabulary ?? EMPTY_SCOPE_VOCABULARY;
+  const defaultScopes = filterRecognizedScopes(
+    config.defaultApiKeyScopes ?? [],
+    additionalScopes,
+    scopeVocabulary,
+  );
   const matcher = config.apiKeys?.length
     ? await createConstantTimeApiKeyMatcher(config.apiKeys)
     : null;
@@ -78,6 +87,7 @@ export async function createApiKeyVerifier(
         matcher?.entries ?? null,
         defaultScopes,
         additionalScopes,
+        scopeVocabulary,
       );
       if (admission === 'continue') return { kind: 'unrecognized' };
       return admission.authenticated
@@ -95,6 +105,7 @@ export async function createJwtVerifier(
   validateJwtConfig(config);
   const jwt = { ...config };
   const additionalScopes = createAdditionalScopeSet(options.additionalScopes);
+  const scopeVocabulary = options.scopeVocabulary ?? EMPTY_SCOPE_VOCABULARY;
   const key = await importJWTKey(jwt);
   return {
     method: 'jwt',
@@ -104,7 +115,7 @@ export async function createJwtVerifier(
       if (!token.includes('.')) return { kind: 'unrecognized' };
       try {
         const claims = await verifyJWT(token, key, jwt);
-        const principal = principalFromJwtClaims(claims, { additionalScopes });
+        const principal = principalFromJwtClaims(claims, { additionalScopes, scopeVocabulary });
         return { kind: 'admit', authentication: { method: 'jwt', claims, principal } };
       } catch (error) {
         console.warn('JWT verification failed:', error instanceof Error ? error.message : error);
@@ -145,6 +156,8 @@ export function createMutualTlsVerifier(
  * Options supplied by the code that owns the transport, not by `AuthConfig`.
  */
 export type CreateAuthenticatorOptions = {
+  /** Scopes issued by this host. */
+  scopeVocabulary?: ScopeVocabulary;
   /**
    * Attests that the listener carrying these requests requested a client
    * certificate and refused every connection without a verified one, so a

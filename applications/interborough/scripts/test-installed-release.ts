@@ -1,9 +1,10 @@
+import { AUTHORIZATION_SCOPES } from '@lostgradient/weft';
 import { createHash } from 'node:crypto';
 import { mkdir, mkdtemp, readFile, realpath, rename, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 
-import { AUTHORIZATION_SCOPES, principalFromApiKey } from '@lostgradient/backchannel';
+import { principalFromApiKey } from '@lostgradient/backchannel';
 import { openBungalow } from '@lostgradient/bungalow';
 import { BUREAU_SCOPES } from '@lostgradient/bureau';
 import { enableDemoPlugin } from '../src/host/demo-plugin-home.ts';

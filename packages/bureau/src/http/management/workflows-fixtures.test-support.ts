@@ -1,3 +1,4 @@
+import { AUTHORIZATION_SCOPES, WEFT_SCOPE_VOCABULARY } from '@lostgradient/weft';
 /**
  * A Bureau over a temporary workflow directory, served as the handler serves it to an API-key
  * caller and to the deployment's owner (COR-1527, COR-1528). The tests share it so the owner
@@ -9,7 +10,6 @@ import { join } from 'node:path';
 
 import { createAgent } from '@lostgradient/operative';
 import {
-  AUTHORIZATION_SCOPES,
   type AuthConfig,
   type AuthorizationScope,
   createOperationHandler,
@@ -106,9 +106,10 @@ export async function serveWorkflows(
     ...(options.workspace === undefined ? {} : { workspace: options.workspace }),
   });
   const noBureauScopes = new Set<AuthorizationScope>(
-    [...(unauthenticatedLocalAuthContext().principal?.scopes ?? AUTHORIZATION_SCOPES)].filter(
-      (scope) => !(BUREAU_SCOPES as readonly string[]).includes(scope),
-    ),
+    [
+      ...(unauthenticatedLocalAuthContext(WEFT_SCOPE_VOCABULARY).principal?.scopes ??
+        AUTHORIZATION_SCOPES),
+    ].filter((scope) => !(BUREAU_SCOPES as readonly string[]).includes(scope)),
   );
   const ownerPrincipal: AuthenticatedPrincipal = Object.freeze({
     method: 'unauthenticated-local',

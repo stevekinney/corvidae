@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import type { ScopeVocabulary } from '../authorization-scope.ts';
 
 import type { AuthContext } from '../authentication.ts';
 import type { DiscoveryInfo } from '../discovery-info.ts';
@@ -87,6 +88,8 @@ export type OperationHandlerOptions<Host> = {
    * `authenticate: async () => unauthenticatedLocalAuthContext()`.
    */
   readonly authenticate?: OperationHandlerAuthenticate;
+  /** Vocabulary for fallback principals when an authenticator returns only claims. */
+  readonly scopeVocabulary?: ScopeVocabulary;
   /** Same validation and defaults as `ServeOptions.cors`; omitted means no CORS headers. */
   readonly cors?: CorsOptions;
   /** Adapters that claim a path prefix ahead of catalog routing. */
@@ -252,6 +255,7 @@ export function createOperationHandler<Host>(
     readonly host: OperationHostFactory<Host>;
   },
 ): OperationHandler;
+/** Build a catalog handler with a host value or a per-dispatch factory. */
 export function createOperationHandler<Host>(
   options: OperationHandlerOptions<Host>,
 ): OperationHandler;
@@ -293,7 +297,7 @@ export function createOperationHandler<Host>(
       if (outcome instanceof Response) return outcome;
       authContext = outcome;
     }
-    const principal = authContextToPrincipal(authContext);
+    const principal = authContextToPrincipal(authContext, options.scopeVocabulary);
     const revalidate = createWorkspaceRevalidation(authenticate, request, principal);
 
     const mount = mounts.match(pathname);
@@ -344,7 +348,7 @@ export function createOperationHandler<Host>(
       if (outcome instanceof Response) return false;
       authContext = outcome;
     }
-    const principal = authContextToPrincipal(authContext);
+    const principal = authContextToPrincipal(authContext, options.scopeVocabulary);
     const revalidateWorkspace = createWorkspaceRevalidation(authenticate, request, principal);
     return server.upgrade(request, {
       data: {

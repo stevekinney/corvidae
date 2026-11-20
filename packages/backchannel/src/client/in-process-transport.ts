@@ -12,8 +12,11 @@ import type { SubscriptionMessage, SubscriptionTransport } from './subscription-
 
 /** The operation catalog, host and caller used to dispatch an embedded client's calls. */
 export type InProcessTransportOptions = {
+  /** The operation catalog used by the client. */
   readonly registry: OperationRegistry;
+  /** The host value or per-dispatch factory. */
   readonly host: unknown;
+  /** The local caller for each dispatch. */
   readonly principal: Principal;
   /** Select REST dispatch semantics for operations called through REST by the remote client. */
   readonly restOperationNames?: ReadonlySet<string>;

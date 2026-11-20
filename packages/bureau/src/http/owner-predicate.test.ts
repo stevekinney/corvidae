@@ -1,3 +1,4 @@
+import { WEFT_SCOPE_VOCABULARY } from '@lostgradient/weft';
 import {
   type WorkspaceIdentity,
   anonymousPrincipal,
@@ -33,7 +34,11 @@ describe('ownerOfPrincipal', () => {
 
   it('names no owner for a caller it cannot attribute', () => {
     expect(ownerOfPrincipal(anonymousPrincipal())).toBeUndefined();
-    expect(ownerOfPrincipal(principalFromJwtClaims({ sub: 'someone' }))).toBeUndefined();
+    expect(
+      ownerOfPrincipal(
+        principalFromJwtClaims({ sub: 'someone' }, { scopeVocabulary: WEFT_SCOPE_VOCABULARY }),
+      ),
+    ).toBeUndefined();
     expect(ownerOfPrincipal({ ...alice, subject: undefined })).toBeUndefined();
   });
 });
@@ -75,7 +80,10 @@ describe('mayAccessOwnedResource', () => {
     expect(
       mayAccessOwnedResource(
         request({
-          principal: principalFromJwtClaims({ sub: 'alice' }),
+          principal: principalFromJwtClaims(
+            { sub: 'alice' },
+            { scopeVocabulary: WEFT_SCOPE_VOCABULARY },
+          ),
           resourceOwner: 'api-key:alice',
         }),
       ),

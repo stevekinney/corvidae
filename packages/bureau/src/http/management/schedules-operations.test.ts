@@ -1,3 +1,4 @@
+import { WEFT_SCOPE_VOCABULARY } from '@lostgradient/weft';
 import { workspaceAdministratorDirectory } from '../workspace-privacy-fixtures.test-support.ts';
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 /**
@@ -870,7 +871,7 @@ describe('expectedRevision', () => {
         method: 'POST',
       }),
       opened.bureau.durableEngine()!,
-      { authContext: unauthenticatedLocalAuthContext() },
+      { authContext: unauthenticatedLocalAuthContext(WEFT_SCOPE_VOCABULARY) },
     );
     expect(paused.status).toBe(204);
 

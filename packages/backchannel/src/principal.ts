@@ -18,10 +18,11 @@
  */
 
 import {
-  AUTHORIZATION_SCOPES,
+  EMPTY_SCOPE_VOCABULARY,
   extractScopesFromClaims,
   type AdditionalScopeSet,
   type AuthorizationScope,
+  type ScopeVocabulary,
 } from './authorization-scope.ts';
 
 /**
@@ -37,7 +38,7 @@ import {
  *
  * const claims: JwtClaims = {
  *   sub: 'user-123',
- *   scope: 'workflows:read',
+ *   scope: 'inventory:read',
  * };
  * const principal = principalFromJwtClaims(claims);
  * console.log(principal.subject);
@@ -83,7 +84,7 @@ export type WorkspaceIdentity = {
  *
  * const principal: AuthenticatedPrincipal = principalFromApiKey({
  *   subject: 'local-tool',
- *   scopes: ['workflows:read'],
+ *   scopes: ['inventory:read'],
  * });
  * console.log(principal.method);
  * ```
@@ -146,16 +147,19 @@ export type Principal = AuthenticatedPrincipal | UnauthenticatedPrincipal;
  *
  * const principal = principalFromJwtClaims({
  *   sub: 'user-123',
- *   scope: 'workflows:read workflows:write',
+ *   scope: 'inventory:read inventory:write',
  * });
- * console.log(principal.hasScope('workflows:read'));
+ * console.log(principal.hasScope('inventory:read'));
  * ```
  */
 export function principalFromJwtClaims(
   claims: JwtClaims,
-  options: { readonly additionalScopes?: AdditionalScopeSet } = {},
+  options: {
+    readonly additionalScopes?: AdditionalScopeSet;
+    readonly scopeVocabulary?: ScopeVocabulary;
+  } = {},
 ): AuthenticatedPrincipal {
-  const scopes = extractScopesFromClaims(claims, options.additionalScopes);
+  const scopes = extractScopesFromClaims(claims, options.additionalScopes, options.scopeVocabulary);
   const subject = typeof claims['sub'] === 'string' ? claims['sub'] : undefined;
 
   return {
@@ -178,7 +182,7 @@ export function principalFromJwtClaims(
  *
  * const principal = principalFromApiKey({
  *   subject: 'automation',
- *   scopes: ['workflows:read'],
+ *   scopes: ['inventory:read'],
  * });
  * console.log(principal.subject);
  * ```
@@ -208,7 +212,7 @@ export function principalFromApiKey(options: {
  *
  * const principal = principalFromMutualTls({
  *   subject: 'client-cert-subject',
- *   scopes: ['system:read'],
+ *   scopes: ['settings:read'],
  * });
  * console.log(principal.method);
  * ```
@@ -258,11 +262,13 @@ export function anonymousPrincipal(): UnauthenticatedPrincipal {
  * import { principalFromStdioLocal } from '@lostgradient/backchannel';
  *
  * const principal = principalFromStdioLocal();
- * console.log(principal.hasScope('workflows:write'));
+ * console.log(principal.hasScope('inventory:write'));
  * ```
  */
-export function principalFromStdioLocal(): AuthenticatedPrincipal {
-  const scopes = new Set<AuthorizationScope>(AUTHORIZATION_SCOPES);
+export function principalFromStdioLocal(
+  vocabulary: ScopeVocabulary = EMPTY_SCOPE_VOCABULARY,
+): AuthenticatedPrincipal {
+  const scopes = new Set<AuthorizationScope>(vocabulary.scopes);
   return {
     method: 'stdio-local',
     scopes,
@@ -277,7 +283,7 @@ export function principalFromStdioLocal(): AuthenticatedPrincipal {
 /**
  * Build the principal a `serve()` with no authentication gives every request.
  * The server identifies no caller, so every caller is the one local user and
- * holds every built-in scope (`AUTHORIZATION_SCOPES`), so every built-in
+ * holds every scope supplied by the host, so every built-in
  * operation is reachable. It holds no package scope, as with `stdio-local`, so
  * an operation that needs a scope registered through `additionalScopes` still
  * needs a credential holding it. The same instance is returned every time, so
@@ -289,11 +295,18 @@ export function principalFromStdioLocal(): AuthenticatedPrincipal {
  *
  * const principal = principalFromUnauthenticatedLocal();
  * console.log(principal.method); // 'unauthenticated-local'
- * console.log(principal.hasScope('workflows:write')); // true
+ * console.log(principal.hasScope('inventory:write')); // true
  * ```
  */
-export function principalFromUnauthenticatedLocal(): AuthenticatedPrincipal {
-  return UNAUTHENTICATED_LOCAL;
+export function principalFromUnauthenticatedLocal(
+  vocabulary: ScopeVocabulary = EMPTY_SCOPE_VOCABULARY,
+): AuthenticatedPrincipal {
+  let principal = localPrincipals.get(vocabulary);
+  if (principal === undefined) {
+    principal = createUnauthenticatedLocalPrincipal(vocabulary);
+    localPrincipals.set(vocabulary, principal);
+  }
+  return principal;
 }
 
 const ANONYMOUS: UnauthenticatedPrincipal = { method: 'unauthenticated' };
@@ -372,8 +385,10 @@ class ImmutableScopeSet extends Set<AuthorizationScope> {
   }
 }
 
-const UNAUTHENTICATED_LOCAL: AuthenticatedPrincipal = (() => {
-  const scopes = new ImmutableScopeSet(AUTHORIZATION_SCOPES);
+const localPrincipals = new WeakMap<ScopeVocabulary, AuthenticatedPrincipal>();
+
+function createUnauthenticatedLocalPrincipal(vocabulary: ScopeVocabulary): AuthenticatedPrincipal {
+  const scopes = new ImmutableScopeSet(vocabulary.scopes);
   return Object.freeze({
     method: 'unauthenticated-local' as const,
     scopes,
@@ -383,4 +398,4 @@ const UNAUTHENTICATED_LOCAL: AuthenticatedPrincipal = (() => {
       return scopes.has(scope);
     },
   });
-})();
+}

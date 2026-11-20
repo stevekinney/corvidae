@@ -1,3 +1,4 @@
+import { AUTHORIZATION_SCOPES } from '@lostgradient/weft';
 /**
  * Integration coverage for `resolvePrincipal()` against REAL `serve()`
  * instances (plan §11.3: no mock server) — the three-way boot contract in
@@ -23,7 +24,7 @@
  * `port: 0` gives each server an ephemeral port so these can run alongside
  * the other integration suites without collisions.
  */
-import { AUTHORIZATION_SCOPES } from '@lostgradient/backchannel';
+
 import { Engine, HttpClient, serve } from '@lostgradient/weft';
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 

@@ -45,13 +45,13 @@ export type {
   MTLSConfig,
 } from './authentication/types.ts';
 export {
-  AUTHORIZATION_SCOPES,
   PACKAGE_AUTHORIZATION_SCOPE_PATTERN,
+  createScopeVocabulary,
   isAuthorizationScope,
   isPackageAuthorizationScope,
   type AuthorizationScope,
-  type BuiltInAuthorizationScope,
   type PackageAuthorizationScope,
+  type ScopeVocabulary,
 } from './authorization-scope.ts';
 export { bindFeedLifetime } from './bind-feed-lifetime.ts';
 export type { DiscoveryInfo } from './discovery-info.ts';
@@ -130,7 +130,10 @@ export {
   type ClosableAsyncIterable,
   type ReplayAwareClosableIterable,
 } from './operations/closable-iterable.ts';
-export { getPrincipalOperation, type GetPrincipalOutput } from './operations/get-principal.ts';
+export {
+  createGetPrincipalOperation,
+  type GetPrincipalOutput,
+} from './operations/get-principal.ts';
 export {
   anonymousPrincipal,
   principalFromApiKey,
