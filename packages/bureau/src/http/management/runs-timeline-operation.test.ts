@@ -165,4 +165,17 @@ describe('bureau.runs.timeline for a workflow run', () => {
     );
     expect(status(response)).toBe(404);
   });
+
+  it('answers a Bureau with a durable engine but no workflow directory with the workflow operations’ fault', async () => {
+    const { opened } = await openWithAgentRun();
+    expect(opened.bureau.durableEngine()).toBeDefined();
+    expect(opened.bureau.workflows).toBeUndefined();
+    const response = await rpc(
+      opened.handler,
+      'bureau.runs.timeline',
+      { runId: 'not-a-task' },
+      'workflows-reader-key',
+    );
+    expect(response.error?.data).toMatchObject({ capability: 'workflow-directory' });
+  });
 });

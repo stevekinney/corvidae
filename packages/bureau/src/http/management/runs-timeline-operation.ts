@@ -85,6 +85,15 @@ function unsupported(): OperationFault {
   };
 }
 
+/** The fault the workflow operations answer for a Bureau with no workflow directory. */
+function noWorkflowDirectory(): OperationFault {
+  return {
+    code: 'UnsupportedCapability',
+    message: 'This Bureau has no workflow directory, so it has no workflows',
+    data: { capability: 'workflow-directory' },
+  };
+}
+
 export const runsTimelineOperation = defineOperation<
   typeof timelineInput,
   typeof timelineOutput,
@@ -94,8 +103,7 @@ export const runsTimelineOperation = defineOperation<
   authorize: authorizeWorkspaceOperation('bureau.runs.timeline'),
   mcpExposable: true,
   summary: 'Read the step timeline of a run',
-  description:
-    'Returns the steps of one run in the order it took them, for drawing a waterfall: each entry’s `label`, `operationType`, `status`, `timestamp` (its start, in epoch milliseconds), `duration` (milliseconds, absent while it runs) and `tries` (how many attempts the engine made at the step, this one included). `runId` is an agent run’s task id or a workflow instance’s id, and `kind` says which. No step’s input or output is returned, only names and timings. An agent run is read with the access `bureau.tasks.get` asks and a workflow instance with the access `bureau.workflows.runs.get` asks; any other run, a run the caller may not read, and a run that does not exist are all `NotFound`. A run of more than 1000 entries is cut and `truncated` is true.',
+  description: `Returns the steps of one run in the order it took them, for drawing a waterfall: each entry’s \`label\`, \`operationType\`, \`status\`, \`timestamp\` (its start, in epoch milliseconds), \`duration\` (milliseconds, absent while it runs) and \`tries\` (how many attempts the engine made at the step, this one included). \`runId\` is an agent run’s task id or a workflow instance’s id, and \`kind\` says which. No step’s input or output is returned, only names and timings. An agent run is read with the access \`bureau.tasks.get\` asks and a workflow instance with the access \`bureau.workflows.runs.get\` asks; any other run, a run the caller may not read, and a run that does not exist are all \`NotFound\`. A run of more than ${String(RUN_TIMELINE_ENTRY_LIMIT)} entries is cut and \`truncated\` is true.`,
   destructive: false,
   tags: ['Runs'],
   inputSchema: timelineInput,
@@ -131,7 +139,7 @@ export const runsTimelineOperation = defineOperation<
       ) {
         throw resourceNotFound('run', runId);
       }
-      if (host.workflows === undefined) throw unsupported();
+      if (host.workflows === undefined) throw noWorkflowDirectory();
       // `getRun` is the one reading of "an instance of a workflow file"; anything else is no run here.
       if ((await host.workflows.getRun(runId)) === undefined) {
         throw resourceNotFound('run', runId);
