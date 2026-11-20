@@ -41,8 +41,6 @@
 
 <style>
   .empty-state-row-action {
-    --fixture-narrow-column: 22rem;
-
     display: flex;
     flex-direction: column;
     gap: var(--cinder-space-6);
@@ -56,6 +54,6 @@
   }
 
   .column[data-column='narrow'] {
-    max-inline-size: var(--fixture-narrow-column);
+    max-inline-size: calc(var(--cinder-content-width-narrow) / 2);
   }
 </style>
