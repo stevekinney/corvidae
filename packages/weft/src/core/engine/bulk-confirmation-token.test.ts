@@ -5,7 +5,10 @@
  */
 import { describe, expect, it } from 'bun:test';
 
-import { buildBulkOperationPreparation, type BulkWorkflowSnapshot } from './bulk-operations-shared.ts';
+import {
+  buildBulkOperationPreparation,
+  type BulkWorkflowSnapshot,
+} from './bulk-operations-shared.ts';
 
 function snapshot(workflowExecutionToken: string | undefined): BulkWorkflowSnapshot {
   return {
@@ -24,12 +27,16 @@ function tokenOver(snapshots: readonly BulkWorkflowSnapshot[], action: 'purge' |
 describe('the bulk confirmation token', () => {
   for (const action of ['purge', 'cancel'] as const) {
     it(`differs for a run replaced under the same id and status (${action})`, () => {
-      expect(tokenOver([snapshot('run-a')], action)).not.toBe(tokenOver([snapshot('run-b')], action));
+      expect(tokenOver([snapshot('run-a')], action)).not.toBe(
+        tokenOver([snapshot('run-b')], action),
+      );
     });
   }
 
   it('is stable for the same run, and differs from a run stored before the token existed', () => {
     expect(tokenOver([snapshot('run-a')], 'purge')).toBe(tokenOver([snapshot('run-a')], 'purge'));
-    expect(tokenOver([snapshot(undefined)], 'purge')).not.toBe(tokenOver([snapshot('run-a')], 'purge'));
+    expect(tokenOver([snapshot(undefined)], 'purge')).not.toBe(
+      tokenOver([snapshot('run-a')], 'purge'),
+    );
   });
 });
