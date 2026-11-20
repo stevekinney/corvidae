@@ -5,7 +5,7 @@
    * skill's SKILL.md rendered first in a card headed "Instructions" with the file's name and size,
    * and the raw file in a collapsed disclosure last. The body is read from the host
    * (`bureau.skills.get`) only while the skill is open; its Markdown is untrusted text, so it is
-   * rendered and sanitized by `@lostgradient/markdown`, never inserted raw. Until Show all, the
+   * rendered and sanitized by Cinder's `Markdown`, never inserted raw. Until Show all, the
    * rendered card is cut to a few lines.
    */
   import {
@@ -13,10 +13,10 @@
     Card,
     Collapsible,
     EmptyState,
+    Markdown,
     SectionHeading,
     Skeleton,
   } from '@lostgradient/cinder';
-  import { renderMarkdown } from '@lostgradient/markdown';
   import { createQuery } from '@tanstack/svelte-query';
 
   import { CAPABILITIES_COPY } from '../../app/copy/capabilities.ts';
@@ -47,7 +47,7 @@
   let expanded = $state(false);
   const instructions = $derived(read.data?.instructions ?? null);
   const body = $derived(instructions === null ? '' : skillBody(instructions.text));
-  const html = $derived(body === '' ? '' : renderMarkdown(body).html);
+  const hasBody = $derived(body.trim() !== '');
   const size = $derived(
     instructions === null ? '' : formatBytes(instructions.size).replace('.0 ', ' '),
   );
@@ -56,7 +56,7 @@
 <section class="ib-capability__section" data-testid="skill-instructions">
   <SectionHeading level={4} title={copy.heading}>
     {#snippet actions()}
-      {#if html !== ''}
+      {#if hasBody}
         <Button
           variant="ghost-accent"
           size="sm"
@@ -83,17 +83,16 @@
         <span class="ib-skill-instructions__name">{copy.cardTitle}</span>
         <span class="ib-skill-instructions__file">{copy.cardFile(size)}</span>
       </p>
-      {#if html === ''}
+      {#if !hasBody}
         <EmptyState kind="first-use" headingLevel={5} title={copy.empty} />
       {:else}
-        <!-- `renderMarkdown` sanitizes before it returns HTML: a skill's file is untrusted text. -->
-        <div
-          class="cinder-markdown-content ib-skill-instructions__body"
+        <!-- `Markdown` sanitizes before it renders: a skill's file is untrusted text. -->
+        <Markdown
+          content={body}
+          class="ib-skill-instructions__body"
           data-clamped={expanded ? undefined : ''}
           data-testid="skill-instructions-body"
-        >
-          {@html html}
-        </div>
+        />
       {/if}
     </Card>
     {#if instructions.truncated}
@@ -129,7 +128,7 @@
   }
 
   /* Until Show all, a few lines of the rendered file: the rest is one click away. */
-  .ib-skill-instructions__body[data-clamped] {
+  :global(.ib-skill-instructions__body[data-clamped]) {
     max-block-size: 12lh;
     overflow: hidden;
   }

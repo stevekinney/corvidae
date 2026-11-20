@@ -8,10 +8,16 @@
    * and the header holds Edit, so the body repeats neither (sweep S51). An agent defined in code has
    * no file to edit, so it says so and shows the instructions it states for itself when it states
    * any. The page's frame says when the agent is still being read or could not be
-   * (`agent-tab-state.svelte`). The Markdown is rendered and sanitized by `@lostgradient/markdown`.
+   * (`agent-tab-state.svelte`). The Markdown is rendered and sanitized by Cinder's `Markdown`.
    */
-  import { Button, Card, EmptyState, SectionHeading, Skeleton } from '@lostgradient/cinder';
-  import { renderMarkdown } from '@lostgradient/markdown';
+  import {
+    Button,
+    Card,
+    EmptyState,
+    Markdown,
+    SectionHeading,
+    Skeleton,
+  } from '@lostgradient/cinder';
   import { createQuery } from '@tanstack/svelte-query';
 
   import { AGENT_PAGE_COPY } from '../../app/copy/agents.ts';
@@ -62,7 +68,7 @@
       : (detail?.codeDefinition?.instructions ?? ''),
   );
   const references = $derived(detail?.definition?.references ?? []);
-  const html = $derived(body.trim() === '' ? '' : renderMarkdown(body).html);
+  const hasBody = $derived(body.trim() !== '');
   const editable = $derived(isFile && plugin === null);
 
   // The newest saved version, which is the one the file holds: the Versions list on Settings reads
@@ -133,7 +139,7 @@
       {#if overridable}
         <AgentPluginNote {plugin} title={pluginTitle} mode="editable" />
         <!-- With none to change, the empty state's own action is the way to Settings: one statement, not three. -->
-        {#if html !== ''}
+        {#if hasBody}
           <p class="ib-agent-note" data-testid="agent-instructions-settings">
             {copy.changeBefore}<a href={router.href(settingsPath)} onclick={goToSettings}
               >{copy.changeSettings}</a
@@ -152,7 +158,7 @@
       {#if isFile && version !== undefined}
         <p class="ib-agent-note" data-testid="agent-version">{version}</p>
       {/if}
-      {#if html === '' && editable}
+      {#if !hasBody && editable}
         <EmptyState
           kind="first-use"
           size="compact"
@@ -161,7 +167,7 @@
           description={copy.emptyDescription}
           action={addInstructions}
         />
-      {:else if html === '' && overridable}
+      {:else if !hasBody && overridable}
         <EmptyState
           kind="first-use"
           size="compact"
@@ -170,7 +176,7 @@
           description={copy.emptyDescription}
           action={addOnSettings}
         />
-      {:else if html === ''}
+      {:else if !hasBody}
         <EmptyState
           kind="first-use"
           size="compact"
@@ -180,13 +186,11 @@
         />
       {:else}
         <Card variant="card" edge="border">
-          <!-- `renderMarkdown` sanitizes before it returns HTML. -->
-          <div
-            class="cinder-markdown-content ib-agent-document"
+          <Markdown
+            content={body}
+            class="ib-agent-document"
             data-testid="agent-instructions-body"
-          >
-            {@html html}
-          </div>
+          />
         </Card>
       {/if}
     </section>

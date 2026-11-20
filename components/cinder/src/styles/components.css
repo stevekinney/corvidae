@@ -125,6 +125,7 @@
 @import '../components/link/link.css';
 @import '../components/list-detail/list-detail.css';
 @import '../components/load-more/load-more.css';
+@import '../components/markdown/markdown.css';
 @import '../components/marquee/marquee.css';
 @import '../components/masonry/masonry.css';
 @import '../components/matrix-chart/matrix-chart.css';

@@ -11,7 +11,7 @@ import { quietFor } from '@lostgradient/testing/wait-until';
 // setupHappyDom() MUST run before any `@testing-library/svelte` import.
 setupHappyDom();
 const { render, cleanup, waitFor } = await import('@testing-library/svelte');
-const { default: MarkdownPreview } = await import('./markdown-preview.svelte');
+const { default: Markdown } = await import('./markdown.svelte');
 const { preloadMarkdownPipeline } = await import('./markdown-pipeline.ts');
 
 const originalWindowDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'window');
@@ -23,7 +23,7 @@ afterEach(() => {
   }
 });
 
-describe('markdown preview data-state', () => {
+describe('Markdowndata-state', () => {
   test('is pending on the raw text, then rendered once the pipeline swaps in its HTML', async () => {
     // The preloader only loads in a real browser realm, so present this one as such.
     Object.defineProperty(globalThis, 'window', { configurable: true, value: globalThis });
@@ -33,8 +33,8 @@ describe('markdown preview data-state', () => {
       }),
     }));
 
-    const { container } = render(MarkdownPreview, { props: { content: 'hello' } });
-    const preview = container.querySelector('.message-content-preview');
+    const { container } = render(Markdown, { props: { content: 'hello', math: true } });
+    const preview = container.querySelector('.cinder-markdown-content');
     expect(preview?.getAttribute('data-state')).toBe('pending');
     // Bun runs every file in one process, and the preloader caches its first pipeline, so the
     // renderer in use may belong to another file. The state, not its HTML, is what is asserted.
@@ -47,7 +47,7 @@ describe('markdown preview data-state', () => {
  * newest one lands; a slower earlier render never replaces a newer one; replacement content or a
  * new link/image policy drops straight to the escaped plain text.
  */
-describe('markdown preview streamed appends', () => {
+describe('Markdownstreamed appends', () => {
   type DeferredRender = { content: string; resolve: (html: string) => void };
   type RenderMarkdown = (content: string) => Promise<{ html: string }>;
 
@@ -91,8 +91,8 @@ describe('markdown preview streamed appends', () => {
   test('keeps the previous formatted render visible while an append renders', async () => {
     const pending = await installDeferredRenderer();
     const first = 'Intro **bold**\n\n```ts\nconst a = 1;\n```';
-    const view = render(MarkdownPreview, { props: { content: first } });
-    const preview = view.container.querySelector('.message-content-preview');
+    const view = render(Markdown, { props: { content: first, math: true } });
+    const preview = view.container.querySelector('.cinder-markdown-content');
 
     await waitFor(() => expect(pending.some((entry) => entry.content === first)).toBe(true));
     renderFor(pending, first).resolve(
@@ -127,8 +127,8 @@ describe('markdown preview streamed appends', () => {
   test('a slower earlier render never replaces a newer one', async () => {
     const pending = await installDeferredRenderer();
     const base = 'Base **one**';
-    const view = render(MarkdownPreview, { props: { content: base } });
-    const preview = view.container.querySelector('.message-content-preview');
+    const view = render(Markdown, { props: { content: base, math: true } });
+    const preview = view.container.querySelector('.cinder-markdown-content');
 
     await waitFor(() => expect(pending.some((entry) => entry.content === base)).toBe(true));
     const middle = `${base} two`;
@@ -154,8 +154,8 @@ describe('markdown preview streamed appends', () => {
   test('replacement content shows its escaped plain text at once', async () => {
     const pending = await installDeferredRenderer();
     const first = 'First **message**';
-    const view = render(MarkdownPreview, { props: { content: first } });
-    const preview = view.container.querySelector('.message-content-preview');
+    const view = render(Markdown, { props: { content: first, math: true } });
+    const preview = view.container.querySelector('.cinder-markdown-content');
 
     await waitFor(() => expect(pending.some((entry) => entry.content === first)).toBe(true));
     renderFor(pending, first).resolve('<p>First <strong>message</strong></p>');
@@ -185,8 +185,8 @@ describe('markdown preview streamed appends', () => {
   test('a fenced code block is always copyable from a floating Copy named for its language', async () => {
     const pending = await installDeferredRenderer();
     const content = '```sql\nSELECT 1;\n```';
-    const view = render(MarkdownPreview, { props: { content } });
-    const preview = view.container.querySelector('.message-content-preview');
+    const view = render(Markdown, { props: { content, math: true } });
+    const preview = view.container.querySelector('.cinder-markdown-content');
 
     await waitFor(() => expect(pending.some((entry) => entry.content === content)).toBe(true));
     renderFor(pending, content).resolve(
@@ -206,8 +206,8 @@ describe('markdown preview streamed appends', () => {
   test('turning links or images off drops the old presentation for plain text', async () => {
     const pending = await installDeferredRenderer();
     const content = 'See [docs](https://example.test/) and ![pixel](https://example.test/p.png)';
-    const view = render(MarkdownPreview, { props: { content } });
-    const preview = view.container.querySelector('.message-content-preview');
+    const view = render(Markdown, { props: { content, math: true } });
+    const preview = view.container.querySelector('.cinder-markdown-content');
 
     await waitFor(() => expect(pending.some((entry) => entry.content === content)).toBe(true));
     renderFor(pending, content).resolve(
@@ -224,5 +224,76 @@ describe('markdown preview streamed appends', () => {
     expect(preview?.querySelector('a')).toBeNull();
     expect(preview?.querySelector('img')).toBeNull();
     expect(preview?.querySelector('p')?.textContent).toBe(content);
+  });
+});
+
+/**
+ * Math is opt-in. Without it the synchronous renderer shows the formatted result on first mount
+ * and leaves dollar signs literal; with it the lazy pipeline renders KaTeX.
+ */
+describe('Markdownmath', () => {
+  const prices = 'Refunds of $25–$100 need approval, and $18.00/$20.00 is the range.';
+
+  test('without math, renders on first mount and leaves two dollar amounts literal', () => {
+    const { container } = render(Markdown, { props: { content: `${prices}\n\n**Bold** text` } });
+    const preview = container.querySelector('.cinder-markdown-content');
+
+    // No animation frame, no pending state: the formatted result is there at once.
+    expect(preview?.getAttribute('data-state')).toBe('rendered');
+    expect(preview?.querySelector('strong')?.textContent).toBe('Bold');
+    expect(preview?.textContent).toContain('$25–$100');
+    expect(preview?.textContent).toContain('$18.00/$20.00');
+    expect(preview?.querySelector('.katex')).toBeNull();
+  });
+
+  test('without math, links off and images off still apply to the synchronous render', () => {
+    const { container } = render(Markdown, {
+      props: {
+        content: 'See [docs](https://example.test/) and ![pixel](https://example.test/p.png)',
+        links: false,
+        images: false,
+      },
+    });
+    const preview = container.querySelector('.cinder-markdown-content');
+
+    expect(preview?.querySelector('a')).toBeNull();
+    expect(preview?.querySelector('img')).toBeNull();
+    expect(preview?.textContent).toContain('docs');
+    expect(preview?.textContent).toContain('pixel');
+  });
+
+  test('with math, a display equation renders through the real pipeline', async () => {
+    Object.defineProperty(globalThis, 'window', { configurable: true, value: globalThis });
+    const pipeline = await preloadMarkdownPipeline(async () => ({
+      renderMarkdownWithMath: async (content: string) => ({ html: `<p>${content}</p>` }),
+    }));
+    if (pipeline === undefined) throw new Error('The markdown pipeline did not load.');
+    const { renderMarkdownWithMath } = await import('@lostgradient/markdown');
+    const original = pipeline.renderMarkdownWithMath;
+    pipeline.renderMarkdownWithMath = renderMarkdownWithMath;
+    try {
+      const { container } = render(Markdown, { props: { content: '$$x^2$$', math: true } });
+      const preview = container.querySelector('.cinder-markdown-content');
+      await waitFor(() => expect(preview?.querySelector('.katex')).not.toBeNull());
+      expect(preview?.getAttribute('data-state')).toBe('rendered');
+    } finally {
+      pipeline.renderMarkdownWithMath = original;
+    }
+  });
+});
+
+describe('Markdown node spacing', () => {
+  test('a node wrapper takes the paragraph block-end space, so a table never sits against the next sentence', async () => {
+    const css = await Bun.file(new URL('../../styles/utilities.css', import.meta.url)).text();
+    const paragraphRule =
+      /\.cinder-markdown-content :where\(p, ul, ol, blockquote, pre, table\) \{\s*margin-block: 0 (var\(--cinder-space-\d+\));/.exec(
+        css,
+      );
+    const nodeRule =
+      /\.cinder-markdown-content > \[data-cinder-markdown-node\]:not\(:last-child\) \{\s*margin-block-end: (var\(--cinder-space-\d+\));/.exec(
+        css,
+      );
+    expect(paragraphRule).not.toBeNull();
+    expect(nodeRule?.[1]).toBe(paragraphRule?.[1]);
   });
 });

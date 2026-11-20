@@ -1499,7 +1499,7 @@ describe('chat stress visual measurement', () => {
         const page = await browser.newPage({ viewport: { width: 700, height: 400 } });
         await page.setContent(`
           <style>
-            :root { --cinder-space-0-5: 2px; --cinder-space-2: 8px; --cinder-space-3: 12px; --cinder-text-sm: 13px; --cinder-leading-normal: 1.6; --cinder-leading-snug: 1.3; --cinder-border: #999; --cinder-radius-md: 6px; --cinder-surface: #fff; --cinder-text-default: #111; }
+            :root { --cinder-space-0-5: 2px; --cinder-space-2: 8px; --cinder-space-3: 12px; --cinder-text-sm: 13px; --cinder-leading-normal: 1.6; --cinder-leading-snug: 1.3; --cinder-border-width: 1px; --cinder-border: #999; --cinder-radius-md: 6px; --cinder-surface: #fff; --cinder-text-default: #111; }
             body { margin: 0; font-family: system-ui, sans-serif; }
             button { font: inherit; height: 28px; padding: 0 12px; box-sizing: border-box; }
             ${await stylesheet}

@@ -506,10 +506,14 @@ describe('Chat — scrollFadeVisible', () => {
       /\.cinder-chat \.message-content-preview\s*\{[\s\S]*?inline-size:\s*100%;[\s\S]*?max-inline-size:\s*100%;/,
     );
     expect(source).toMatch(
-      /\.cinder-chat \.message-content-preview > :not\(\.message-content-wide\)\s*\{[\s\S]*?max-inline-size:\s*min\(/,
+      /\.cinder-chat \.message-content-preview > :not\(\.message-content-wide, \[data-cinder-markdown-node\]\)\s*\{[\s\S]*?max-inline-size:\s*min\(/,
     );
+    // The wide block is Chat's own code block and the wrapper Cinder's Markdown draws around each
+    // of its nodes, which share one rule.
     const wideBlock =
-      source.match(/\.cinder-chat \.message-content-wide\s*\{([\s\S]*?)\n  \}/)?.[1] ?? '';
+      source.match(
+        /\.cinder-chat \.message-content-wide,\s*\.cinder-chat :where\(\.message-content-preview\) \[data-cinder-markdown-node\]\s*\{([\s\S]*?)\n  \}/,
+      )?.[1] ?? '';
     expect(wideBlock).toContain('inline-size: min(var(--cinder-content-width-wide), 100%);');
     expect(wideBlock).toContain('min-inline-size: 0;');
     expect(wideBlock).toContain('margin-inline: 0;');
