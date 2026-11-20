@@ -1,0 +1,69 @@
+{
+  "issue": "COR-2541_COR-2546",
+  "branch": "chef/b6c-workflow-schedules",
+  "checkedAt": "f2218778e530375665f4d17c358e4b1fd43b5f85",
+  "briefVersion": "14b3f659c9f8",
+  "status": "READY",
+  "criteria": [
+    {
+      "id": "COR-2541 AC1",
+      "status": "met-on-branch",
+      "evidence": "Earlier commit of the batch; unchanged by this review round; direct tests of the timeline operation passed in the focused-checks run."
+    },
+    {
+      "id": "COR-2541 AC2",
+      "status": "met-on-branch",
+      "evidence": "Earlier commit of the batch; unchanged by this review round (runs-timeline-operation.test.ts in the focused-checks test step)."
+    },
+    {
+      "id": "COR-2541 AC3",
+      "status": "met-on-branch",
+      "evidence": "Earlier commit of the batch; unchanged by this review round."
+    },
+    {
+      "id": "COR-2541 AC4",
+      "status": "met-on-branch",
+      "evidence": "Earlier commit of the batch; unchanged by this review round."
+    },
+    {
+      "id": "COR-2541 AC5",
+      "status": "met-on-branch",
+      "evidence": "Earlier commit of the batch; the wire goldens were regenerated this round with update-wire-golden.ts and wire-golden.test.ts passes."
+    },
+    {
+      "id": "COR-2546 AC1",
+      "status": "met-on-branch",
+      "evidence": "schedules-workflow-operations.test.ts passes, including the one-target and InvalidParams tests, at f2218778e5."
+    },
+    {
+      "id": "COR-2546 AC2",
+      "status": "met-on-branch",
+      "evidence": "schedules-workflow-operations.test.ts 'what a fire starts' tests pass at f2218778e5."
+    },
+    {
+      "id": "COR-2546 AC3",
+      "status": "met-on-branch",
+      "evidence": "schedules-workflow-operations.test.ts NotFound test passes at f2218778e5."
+    },
+    {
+      "id": "COR-2546 AC4",
+      "status": "met-on-branch",
+      "evidence": "schedules-workflow-operations.test.ts 'changing what a schedule runs' passes at f2218778e5."
+    },
+    {
+      "id": "COR-2546 AC5",
+      "status": "met-on-branch",
+      "evidence": "schedules-operations.test.ts passes in the focused-checks test step; its assertions are unchanged."
+    },
+    {
+      "id": "COR-2546 AC6",
+      "status": "met-on-branch",
+      "evidence": "schedules-workflow-operations.test.ts 'who owns and may change a workflow schedule' passes; the runnow description now states the schedule owner owns the run, matching run-ownership.ts and the test at line 649."
+    },
+    {
+      "id": "COR-2546 AC7",
+      "status": "met-on-branch",
+      "evidence": "wire-golden.test.ts passes (660 tests across 7 bureau files) after regenerating both goldens; workspace-projection-fields.json unchanged."
+    }
+  ]
+}
