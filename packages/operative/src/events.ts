@@ -1496,9 +1496,11 @@ export class AgentScheduledEvent extends Event {
   readonly agentName: string | undefined;
   /**
    * What each fire runs (COR-2546): the agent, or the workflow named as `bureau.workflows.*` names
-   * it. Always present, and derived from the constructor's `agentName` or `workflowType`.
+   * it. Always present, and derived from the constructor's `agentName` or `workflowType`. It is
+   * `scheduleTarget` because `target` is the DOM `Event`'s own property; the recorded and
+   * published payloads of the event carry it as `target`.
    */
-  readonly target: ScheduleEventTarget;
+  readonly scheduleTarget: ScheduleEventTarget;
   readonly scheduleId: string;
   readonly spec: { cron?: string | undefined; every?: (string | number) | undefined };
   readonly sessionId?: string | undefined;
@@ -1514,7 +1516,7 @@ export class AgentScheduledEvent extends Event {
   ) {
     super(AgentScheduledEvent.type);
     this.agentName = data.agentName;
-    this.target =
+    this.scheduleTarget =
       data.agentName === undefined
         ? { kind: 'workflow', workflowType: data.workflowType }
         : { kind: 'agent', agentName: data.agentName };

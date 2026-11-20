@@ -6,6 +6,7 @@
  * owner and scope rules an agent schedule follows.
  */
 import { definePlugin, type PluginWorkflow } from '@lostgradient/interborough-plugin';
+import type { AgentScheduledEvent } from '@lostgradient/operative';
 import { quietFor, waitUntil } from '@lostgradient/testing/wait-until';
 import { MemoryStorage } from '@lostgradient/storage';
 import { decode, KEYS, workflow } from '@lostgradient/weft';
@@ -174,13 +175,12 @@ describe('creating a schedule for a workflow', () => {
   it('announces schedule.created with its target, and records it in the schedule’s audit trail beside its pauses, resumes and cancels', async () => {
     const served = await serve();
     const announced: Array<{ type: string; scheduleId: string; target: unknown }> = [];
-    const listener = (event: {
-      type: string;
-      scheduleId: string;
-      target: unknown;
-      agentName?: string;
-    }): void => {
-      announced.push({ type: event.type, scheduleId: event.scheduleId, target: event.target });
+    const listener = (event: AgentScheduledEvent): void => {
+      announced.push({
+        type: event.type,
+        scheduleId: event.scheduleId,
+        target: event.scheduleTarget,
+      });
     };
     served.bureau.addEventListener('schedule.created', listener);
 
