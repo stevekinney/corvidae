@@ -22,6 +22,7 @@ export * from './types/payload-size-policy.ts';
 export * from './types/retry-retention.ts';
 export * from './types/reviews.ts';
 export * from './types/schedule-controls.ts';
+export * from './types/schedule-transition-options.ts';
 export * from './types/schedules.ts';
 export * from './types/search-attributes.ts';
 export * from './types/serializer.ts';

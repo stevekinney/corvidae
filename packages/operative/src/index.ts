@@ -578,6 +578,7 @@ export {
   ScheduleResumedEvent,
   ScheduleSkippedEvent,
   WakeupScheduledEvent,
+  type ScheduleEventTarget,
   type ScheduleTransitionRecord,
 } from './events';
 // AB-10 — workflow versioning for in-flight durable runs

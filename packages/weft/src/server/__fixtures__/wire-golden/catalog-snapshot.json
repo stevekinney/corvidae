@@ -1697,6 +1697,9 @@
           "jitter": {
             "description": "Deterministic delay spread over each occurrence, as milliseconds or a duration string such as \"30s\"."
           },
+          "metadata": {
+            "description": "A plain JSON object stored with the schedule and returned with it, such as who owns it. It is not passed to the runs the schedule starts. Runtime validation requires a JSON object."
+          },
           "overlap": {
             "description": "What to do when a tick fires while the previous run is still active: \"skip\", \"queue\", \"cancel-running\", or \"allow\"."
           },
@@ -2242,6 +2245,9 @@
           },
           "jitter": {
             "description": "Deterministic delay spread over each occurrence, as milliseconds or a duration string such as \"30s\"."
+          },
+          "metadata": {
+            "description": "A plain JSON object stored with the schedule and returned with it, replacing the stored metadata whole. Omitted, the schedule keeps its metadata. It is not passed to the runs the schedule starts."
           },
           "overlap": {
             "description": "What to do when a tick fires while the previous run is still active: \"skip\", \"queue\", \"cancel-running\", or \"allow\"."

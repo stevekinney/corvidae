@@ -149,11 +149,16 @@ test('shared configuration hook events copy only their explicit metadata fields'
     event('schedule.created', {
       scheduleId: 'schedule-a',
       agentName: 'writer',
+      target: { kind: 'agent', agentName: 'writer' },
       sessionId: 'PRIVATE-SENTINEL',
       input: 'PRIVATE-SENTINEL',
     }),
   );
-  expect(created?.payload).toEqual({ scheduleId: 'schedule-a', agentName: 'writer' });
+  expect(created?.payload).toEqual({
+    scheduleId: 'schedule-a',
+    agentName: 'writer',
+    target: { kind: 'agent', agentName: 'writer' },
+  });
   expect(JSON.stringify(created)).not.toContain('PRIVATE-SENTINEL');
   expect(
     await project('owner-b', event('schedule.missed', { scheduleId: 'missing' })),

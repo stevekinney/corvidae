@@ -2350,6 +2350,7 @@ async function constructBureau<const D extends AgentDefinitions>(
   const { recoverDurableRuns } = createDurableRecovery<D>(core, peers);
   const {
     createSchedule,
+    createWorkflowSchedule,
     recordScheduleTick,
     getSchedule,
     listSchedules,
@@ -2357,6 +2358,7 @@ async function constructBureau<const D extends AgentDefinitions>(
     pauseInvalidSchedule,
     pauseInvalidSchedules,
     pauseSchedule,
+    pauseScheduleOfHold,
     resumeSchedule,
     cancelSchedule,
     recordPendingScheduleTransitions,
@@ -2649,6 +2651,11 @@ async function constructBureau<const D extends AgentDefinitions>(
     createRunHookOrigins({
       kv: runtime.kv,
       workflowOf: async (runId) => runtime.durable?.engine.get(runId),
+      // COR-2546: Weft's record of the fire, never the run's input, which a schedule's caller writes.
+      scheduleOfFire: async (runId) => {
+        const provenance = await runtime.durable?.engine.getScheduleProvenance(runId);
+        return provenance?.scheduleId;
+      },
       taskOriginOf: async (runId) => {
         const record = await tasks.record(runId);
         return record?.origin;
@@ -3288,6 +3295,14 @@ async function constructBureau<const D extends AgentDefinitions>(
               store: runtime.kv,
               nowISO: runtimeServices.clock.nowISO,
             }),
+            // COR-2546: a schedule a caller made is held and released as its owner's own pause and
+            // resume are, with the history and audit record of each.
+            scheduleTransitions: {
+              pause: (scheduleId, expectedRevision) =>
+                pauseScheduleOfHold(scheduleId, { expectedRevision }),
+              resume: (scheduleId, expectedRevision) =>
+                resumeSchedule(scheduleId, { expectedRevision }),
+            },
             runtime: runtimeServices,
             onPinnedUnavailable: (activity, runId) =>
               pluginRegistry.notePinnedUnavailable(activity, runId),
@@ -4776,6 +4791,7 @@ async function constructBureau<const D extends AgentDefinitions>(
   const schedules = createSchedules({
     // Never the third, internal parameter: only a plugin's host API names a source.
     create: (definition, scheduleOptions) => createSchedule(definition, scheduleOptions),
+    createWorkflow: createWorkflowSchedule,
     get: getSchedule,
     list: listSchedules,
     pause: pauseSchedule,

@@ -368,7 +368,7 @@ export type SharedAgentNameAttemptsBounds_368afcde = {
   readonly validator: SharedNameVersion_ad3a242e;
   readonly validatorConfiguration: unknown;
 };
-export type SharedAgentNameBlockerContinue_89e36b6d = {
+export type SharedAgentNameBlockerContinue_57723630 = {
   readonly agentName: string | null;
   readonly blocker: {
     readonly kind: 'workflow-cannot-load';
@@ -391,6 +391,9 @@ export type SharedAgentNameBlockerContinue_89e36b6d = {
   readonly skippedCount: number | null;
   readonly skippedOccurrences: ReadonlyArray<string>;
   readonly status: 'active' | 'paused' | 'cancelled';
+  readonly target:
+    | { readonly agentName: string; readonly kind: 'agent' }
+    | { readonly kind: 'workflow'; readonly workflowType: string };
   readonly timeZone: string;
   readonly updatedAt: string;
   readonly workflowType: string;

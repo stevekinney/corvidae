@@ -343,9 +343,19 @@ describe('events', () => {
 
     expect(scheduled.type).toBe('schedule.created');
     expect(scheduled.agentName).toBe('assistant');
+    expect(scheduled.scheduleTarget).toEqual({ kind: 'agent', agentName: 'assistant' });
     expect(scheduled.scheduleId).toBe('schedule-1');
     expect(scheduled.spec).toEqual({ every: '1h' });
     expect(scheduled.sessionId).toBe('session-1');
+    // COR-2546: a schedule of a workflow names it as its target and runs no agent.
+    const ofWorkflow = new AgentScheduledEvent({
+      workflowType: 'kit:echo',
+      scheduleId: 'schedule-2',
+      spec: { every: '1h' },
+    });
+    expect(ofWorkflow.type).toBe('schedule.created');
+    expect(ofWorkflow.agentName).toBeUndefined();
+    expect(ofWorkflow.scheduleTarget).toEqual({ kind: 'workflow', workflowType: 'kit:echo' });
     expect(wakeup.type).toBe('schedule.wakeup');
     expect(wakeup.duration).toBe(5000);
     expect(wakeup.wakeAt).toBe(1_700_000_005_000);

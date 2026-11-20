@@ -584,6 +584,7 @@ const PROJECTIONS: readonly BureauEventProjection[] = [
   })),
   projection(AgentScheduledEvent.type, isInstance(AgentScheduledEvent), (event) => ({
     agentName: event.agentName,
+    target: event.scheduleTarget,
     scheduleId: event.scheduleId,
     sessionId: event.sessionId,
   })),

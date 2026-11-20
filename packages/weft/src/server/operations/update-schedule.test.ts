@@ -122,6 +122,45 @@ describe('weft.schedules.update', () => {
     );
   });
 
+  it('replaces the metadata when given, keeps it when omitted, and refuses one that is not a plain JSON object', async () => {
+    engine = createEngine();
+    await engine.schedule('echo', null, '0 * * * *', {
+      id: 'schedule-metadata',
+      metadata: { owner: 'ada' },
+    });
+    const update = (body: Record<string, unknown>) =>
+      handleRequest(
+        jsonRequest('PATCH', '/v1/schedules/schedule-metadata', {
+          cronExpression: '0 * * * *',
+          ...body,
+        }),
+        engine!,
+        { operationRegistry: registry, restBindings: bindings },
+      );
+
+    const metadataNow = async () => {
+      const summary = await engine!.getSchedule('schedule-metadata');
+      return summary?.metadata;
+    };
+    const renamed = await update({ description: 'renamed' });
+    expect(renamed.status).toBe(204);
+    expect(await metadataNow()).toEqual({ owner: 'ada' });
+
+    const replaced = await update({ metadata: { owner: 'grace' } });
+    expect(replaced.status).toBe(204);
+    expect(await metadataNow()).toEqual({ owner: 'grace' });
+
+    for (const metadata of ['grace', 7, ['a'], null]) {
+      const response = await update({ metadata });
+      expect(response.status).toBe(400);
+      expect(await response.json()).toEqual({
+        error: 'Field "metadata" must be a plain JSON object',
+        retryable: false,
+      });
+    }
+    expect(await metadataNow()).toEqual({ owner: 'grace' });
+  });
+
   it('changes the time zone when given, keeps it when omitted, and refuses an unknown one', async () => {
     engine = createEngine();
     await engine.schedule('echo', null, '0 9 * * *', {

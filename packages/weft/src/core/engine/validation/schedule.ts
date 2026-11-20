@@ -14,6 +14,7 @@ import { ScheduleReservedKeyError } from '../schedule-reserved-key-error.ts';
 import { SCHEDULE_OVERLAP_POLICIES, SCHEDULE_REVISION_POLICIES } from './schedule-options.ts';
 
 export {
+  normalizeScheduleMetadata,
   normalizeScheduleOptions,
   normalizeScheduleUpdateOptions,
   SCHEDULE_OVERLAP_POLICIES,

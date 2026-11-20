@@ -1,0 +1,69 @@
+{
+  "issue": "COR-2541_COR-2546",
+  "branch": "chef/b6c-workflow-schedules",
+  "checkedAt": "6cd5980417a0a4a3e1a9bf02da3b4db7841f93a3",
+  "briefVersion": "14b3f659c9f8",
+  "status": "READY",
+  "criteria": [
+    {
+      "id": "COR-2541 AC1",
+      "status": "met-on-branch",
+      "evidence": "Unchanged by the merge of main c987d740; the timeline operation tests pass in the focused-checks run at 6cd5980417 (exit 0)."
+    },
+    {
+      "id": "COR-2541 AC2",
+      "status": "met-on-branch",
+      "evidence": "Unchanged by the merge; runs-timeline-operation.test.ts passes in the focused-checks run at 6cd5980417."
+    },
+    {
+      "id": "COR-2541 AC3",
+      "status": "met-on-branch",
+      "evidence": "Unchanged by the merge; covered by the focused-checks run at 6cd5980417."
+    },
+    {
+      "id": "COR-2541 AC4",
+      "status": "met-on-branch",
+      "evidence": "Unchanged by the merge; covered by the focused-checks run at 6cd5980417."
+    },
+    {
+      "id": "COR-2541 AC5",
+      "status": "met-on-branch",
+      "evidence": "update-wire-golden.ts (bureau and weft) regenerated with no diff after the merge; wire-golden.test.ts passes for bureau and weft at 6cd5980417."
+    },
+    {
+      "id": "COR-2546 AC1",
+      "status": "met-on-branch",
+      "evidence": "schedules-workflow-operations.test.ts passes (one-target and InvalidParams tests) after merging main, at 6cd5980417."
+    },
+    {
+      "id": "COR-2546 AC2",
+      "status": "met-on-branch",
+      "evidence": "schedules-workflow-operations.test.ts 'what a fire starts' tests pass after merging main, at 6cd5980417."
+    },
+    {
+      "id": "COR-2546 AC3",
+      "status": "met-on-branch",
+      "evidence": "schedules-workflow-operations.test.ts NotFound test passes after merging main, at 6cd5980417."
+    },
+    {
+      "id": "COR-2546 AC4",
+      "status": "met-on-branch",
+      "evidence": "schedules-workflow-operations.test.ts 'changing what a schedule runs' passes after merging main, at 6cd5980417."
+    },
+    {
+      "id": "COR-2546 AC5",
+      "status": "met-on-branch",
+      "evidence": "schedules-operations tests and dry-run-schedules-hooks.test.ts pass after merging main, at 6cd5980417; weft create/get/list/update-schedule tests pass (retryable: false added to two metadata fault assertions)."
+    },
+    {
+      "id": "COR-2546 AC6",
+      "status": "met-on-branch",
+      "evidence": "schedules-workflow-operations.test.ts 'who owns and may change a workflow schedule' passes after merging main, at 6cd5980417."
+    },
+    {
+      "id": "COR-2546 AC7",
+      "status": "met-on-branch",
+      "evidence": "bureau wire-golden.test.ts and workspace-privacy.test.ts pass after regenerating the goldens (no diff); workspace-projection-fields.json matches the computed projection; interborough generated client regenerated with generate:bureau-client."
+    }
+  ]
+}

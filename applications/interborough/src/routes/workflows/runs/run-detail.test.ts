@@ -681,6 +681,7 @@ describe('a run a schedule started (COR-2424, rows 55i, 55j, 55m)', () => {
     id: 'daily-summary',
     owner: 'anonymous:local',
     agentName: 'assistant',
+    target: { kind: 'agent', agentName: 'assistant' },
     inputPreview: 'Summarize what happened yesterday.',
     continuesChat: false,
     workflowType: 'agentRun',

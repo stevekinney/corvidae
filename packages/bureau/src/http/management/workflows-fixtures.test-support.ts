@@ -67,7 +67,11 @@ export interface ServeOptions {
   readonly runtime?: BureauOptions<AgentDefinitions>['runtime'];
   /** `manual` leaves the engine's maintenance to the test, as a host that runs it on its own does. */
   readonly maintenance?: 'manual';
-  /** The store the Bureau writes to, for a test that reads what it holds. Defaults to a fresh one. */
+  /**
+   * The store the Bureau keeps its state in, for a test that reads what it holds. A test that
+   * serves a second Bureau over the first's store, as a restart does, passes the same one to both.
+   * Defaults to a fresh one.
+   */
   readonly storage?: Storage;
 }
 
