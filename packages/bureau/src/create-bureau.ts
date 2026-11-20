@@ -2358,6 +2358,7 @@ async function constructBureau<const D extends AgentDefinitions>(
     pauseInvalidSchedule,
     pauseInvalidSchedules,
     pauseSchedule,
+    pauseScheduleOfHold,
     resumeSchedule,
     cancelSchedule,
     recordPendingScheduleTransitions,
@@ -3294,7 +3295,7 @@ async function constructBureau<const D extends AgentDefinitions>(
             // resume are, with the history and audit record of each.
             scheduleTransitions: {
               pause: (scheduleId, expectedRevision) =>
-                pauseSchedule(scheduleId, { expectedRevision }),
+                pauseScheduleOfHold(scheduleId, { expectedRevision }),
               resume: (scheduleId, expectedRevision) =>
                 resumeSchedule(scheduleId, { expectedRevision }),
             },

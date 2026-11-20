@@ -38,7 +38,8 @@ export interface WorkflowScheduleHold {
   /**
    * The revision the schedule was at once the hold paused it (COR-2546), for a schedule a caller
    * made for a workflow: it is released to the file's owner only while it is still at that revision,
-   * so a pause, resume or update by its owner since the hold is never undone. Absent from a hold of
+   * so a resume or update by its owner since the hold is never undone. A pause by its owner does not
+   * move the revision of a schedule the hold paused, so it drops the record. Absent from a hold of
    * a workflow file's own schedule, which the file alone decides.
    */
   readonly revision?: number;

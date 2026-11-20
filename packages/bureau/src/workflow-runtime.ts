@@ -800,6 +800,15 @@ export interface WorkflowRuntime {
    * this process. Synchronous, for the services resolver.
    */
   readonly isRegisteredType: (type: string) => boolean;
+  /**
+   * COR-2546 — runs `pause`, the pause of schedule `scheduleId` that its owner asked for, as one step
+   * of the apply that holds and releases the schedules, after dropping the hold that paused it for
+   * its workflow. A schedule the hold already paused makes the owner's pause a no-op in the engine,
+   * which leaves its revision where the hold recorded it, so without the drop the release would
+   * resume a schedule its owner was told is paused. The release reads the hold in the same step, so
+   * it never resumes a schedule whose hold is gone. A pause that fails puts the hold back.
+   */
+  readonly pauseCallerSchedule: <T>(scheduleId: string, pause: () => Promise<T>) => Promise<T>;
   /** Whether `scheduleId` is a Bureau workflow schedule that exists. */
   readonly scheduleExists: (scheduleId: string) => Promise<boolean>;
   /**
@@ -1178,9 +1187,12 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
    *
    * A hold is recorded after the pause, with the revision the pause wrote: a crash between the two
    * leaves a schedule paused with no record, which stays paused, never one resumed against its
-   * owner's wish. A schedule is resumed only while it is still at that revision, so a pause, a
-   * resume or an update by its owner since the hold is left as it is. The schedules of a workflow
-   * whose file this host cannot read are left alone, as the file's own is.
+   * owner's wish. A schedule is resumed only while it is still at that revision, so a resume or an
+   * update by its owner since the hold is left as it is. An owner's pause of a schedule the hold
+   * already paused writes nothing and leaves the revision, so it drops the hold instead
+   * ({@link WorkflowRuntime.pauseCallerSchedule}), as a step of the same apply chain this runs in.
+   * The schedules of a workflow whose file this host cannot read are left alone, as the file's own
+   * is.
    */
   async function holdCallerSchedules(unreadable: ReadonlySet<string>): Promise<void> {
     for (let offset = 0; ;) {
@@ -3382,6 +3394,19 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
     isWorkflowType,
     isRegisteredType: (type) =>
       registeredTypes.has(bureauNameOf(type)) || codeWorkflows.has(bureauNameOf(type)),
+
+    pauseCallerSchedule: (scheduleId, pause) =>
+      exclusive(async () => {
+        const key = callerHoldKey(scheduleId);
+        const held = await scheduleHolds.held(key);
+        if (held !== undefined) await scheduleHolds.release(key);
+        try {
+          return await pause();
+        } catch (error) {
+          if (held !== undefined) await scheduleHolds.hold(key, held.scheduleId, held.revision);
+          throw error;
+        }
+      }),
 
     async revisionSteps(type, workflowVersion) {
       if (!(await isWorkflowType(type))) return undefined;

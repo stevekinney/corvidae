@@ -518,7 +518,39 @@ export function createScheduleOperations<D extends AgentDefinitions>(
     }
   }
 
+  /**
+   * A pause its owner asked for. A schedule a caller made for a workflow is paused as one step of the
+   * workflow runtime's apply, which drops the hold that may have paused it already (COR-2546): the
+   * engine's pause of a paused schedule writes nothing, so the revision the hold recorded would
+   * stay, and the release would resume a schedule whose owner was told it is paused.
+   */
   async function pauseSchedule(
+    scheduleId: string,
+    guard?: ScheduleRevisionGuard,
+  ): Promise<true | undefined> {
+    const durable = runtime.durable;
+    if (!durable) return undefined;
+    refuseWorkflowSchedule(scheduleId);
+    const snapshot = await durable.engine.getSchedule(scheduleId);
+    const workflowRuntime = core.workflowRuntime;
+    if (
+      snapshot !== null &&
+      workflowRuntime !== undefined &&
+      workflowScheduleOwnerOf(snapshot) !== undefined
+    ) {
+      return workflowRuntime.pauseCallerSchedule(scheduleId, () =>
+        pauseScheduleOfHold(scheduleId, guard),
+      );
+    }
+    return pauseScheduleOfHold(scheduleId, guard);
+  }
+
+  /**
+   * The engine's pause with its history and audit record, outside the workflow runtime's apply. The
+   * runtime holds a schedule through this, from inside the apply: {@link pauseSchedule} would wait
+   * for the apply it runs in.
+   */
+  async function pauseScheduleOfHold(
     scheduleId: string,
     guard?: ScheduleRevisionGuard,
   ): Promise<true | undefined> {
@@ -1046,6 +1078,7 @@ export function createScheduleOperations<D extends AgentDefinitions>(
     pauseInvalidSchedule,
     pauseInvalidSchedules,
     pauseSchedule,
+    pauseScheduleOfHold,
     resumeSchedule,
     cancelSchedule,
     recordPendingScheduleTransitions,

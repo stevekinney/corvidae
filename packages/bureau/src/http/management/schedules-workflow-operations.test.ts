@@ -408,6 +408,33 @@ describe('a fire on cadence of a schedule whose workflow can no longer be starte
     expect(await statusOf(served, id)).toBe('paused');
   });
 
+  it('leaves a schedule its owner paused while its workflow was held paused when the workflow is released, and starts nothing', async () => {
+    const served = await serve({ maintenance: 'manual' });
+    const id = await created(served, { workflowType: 'digest', workflowInput: { n: 1 } });
+    const engine = served.bureau.durableEngine()!;
+
+    const detail = await served.bureau.workflows!.get('digest');
+    await served.bureau.workflows!.pause('digest', { expectedHash: detail!.hash! });
+    expect(await statusOf(served, id)).toBe('paused');
+    // The schedule is paused already, so the owner's pause changes nothing in the engine and is
+    // answered as done: it is still the owner's pause, and the file's resume does not undo it.
+    const ownerPause = await call(served, 'pause', { scheduleId: id });
+    expect(ownerPause.error).toBeUndefined();
+
+    const paused = await served.bureau.workflows!.get('digest');
+    await served.bureau.workflows!.resume('digest', { expectedHash: paused!.hash! });
+
+    expect(await statusOf(served, id)).toBe('paused');
+    await fireOnCadence(served, id);
+    await quietFor(200);
+    // The file's own schedule fires with the file; only this schedule's runs are the finding.
+    expect(await firedBy(engine, 'digest', id)).toBe(0);
+    // The owner's own resume still works once the workflow can be started.
+    const ownerResume = await call(served, 'resume', { scheduleId: id });
+    expect(ownerResume.error).toBeUndefined();
+    expect(await statusOf(served, id)).toBe('active');
+  });
+
   it('starts nothing once the workflow file is deleted, and holds the schedule paused', async () => {
     const served = await serve({ maintenance: 'manual' });
     const id = await created(served, { workflowType: 'digest', workflowInput: { n: 1 } });
