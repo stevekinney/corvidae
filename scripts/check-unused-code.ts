@@ -14,8 +14,9 @@ function object(value: unknown, label: string): JsonRecord {
 
 export function findingsFromReport(value: unknown): Finding[] {
   const report = object(value, 'Knip report');
-  if (!Array.isArray(report.issues)) throw new Error('Knip report must contain an issues array.');
-  return report.issues.flatMap((entry, index) => {
+  if (!Array.isArray(report['issues']))
+    throw new Error('Knip report must contain an issues array.');
+  return report['issues'].flatMap((entry, index) => {
     const issue = object(entry, `Knip issue ${index}`);
     const { file } = issue;
     if (typeof file !== 'string' || file === '')
@@ -26,9 +27,9 @@ export function findingsFromReport(value: unknown): Finding[] {
       return findings.map((finding) => {
         const nameOf = (reportedSymbol: unknown) => {
           const item = object(reportedSymbol, `${category} finding in ${file}`);
-          if (typeof item.name !== 'string' || item.name === '')
+          if (typeof item['name'] !== 'string' || item['name'] === '')
             throw new Error(`${category} finding in ${file} must name a symbol.`);
-          return item.name;
+          return item['name'];
         };
         const name = Array.isArray(finding)
           ? JSON.stringify(finding.map(nameOf).toSorted())
