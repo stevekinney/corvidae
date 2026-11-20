@@ -1068,19 +1068,15 @@
     "board": {
       "scroll-edge": {
         "$type": "color",
-        "$value": {
-          "colorSpace": "oklch",
-          "components": [0.17, 0.018, 245],
-          "alpha": 0.12
-        },
-        "$description": "Horizontal scroll-edge fade gradient color -- `text-default` at 12% opacity, tracking whichever theme arm resolves.",
+        "$value": "{scroll-shadow.color}",
+        "$description": "Horizontal scroll-edge fade gradient color -- the scroll-shadow color, black in both themes, so the edge darkens what is under it instead of glowing.",
         "$extensions": {
           "com.lostgradient.cinder": {
             "cssProperty": "--cinder-kanban-board-scroll-edge",
             "public": true,
             "category": "color",
             "component": "kanban-board",
-            "cssRecipe": "color-mix(in oklch, var(--cinder-text-default), transparent 88%)"
+            "cssRecipe": "var(--cinder-scroll-shadow-color)"
           }
         }
       }

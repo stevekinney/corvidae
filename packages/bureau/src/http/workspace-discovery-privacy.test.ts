@@ -29,6 +29,7 @@ const cases = [
   { operation: 'bureau.guardrails.list', input: {} },
   { operation: 'bureau.validators.list', input: {} },
   { operation: 'bureau.skills.list', input: {} },
+  { operation: 'bureau.skills.get', input: { name: 'summarize' } },
 ] as const;
 
 for (const row of cases) {

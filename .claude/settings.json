@@ -82,7 +82,6 @@
         "hooks": [
           {
             "type": "command",
-            "if": "Agent(chef-worker)",
             "command": "bun \"$CLAUDE_PROJECT_DIR\"/scripts/host-sessions.ts hook"
           }
         ]
@@ -94,7 +93,6 @@
         "hooks": [
           {
             "type": "command",
-            "if": "Agent(chef-worker)",
             "command": "bun \"$CLAUDE_PROJECT_DIR\"/scripts/host-sessions.ts hook"
           }
         ]
@@ -106,8 +104,17 @@
         "hooks": [
           {
             "type": "command",
-            "if": "Agent(chef-worker)",
             "command": "bun \"$CLAUDE_PROJECT_DIR\"/scripts/host-sessions.ts hook"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bun \"$CLAUDE_PROJECT_DIR\"/scripts/check-prose-questions.ts"
           }
         ]
       }
@@ -122,9 +129,22 @@
         ]
       }
     ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bun \"$CLAUDE_PROJECT_DIR\"/scripts/host-sessions.ts hook"
+          },
+          {
+            "type": "command",
+            "command": "bun \"$CLAUDE_PROJECT_DIR\"/scripts/link-turbo-config.ts"
+          }
+        ]
+      }
+    ],
     "SubagentStart": [
       {
-        "matcher": "chef-worker",
         "hooks": [
           {
             "type": "command",
@@ -135,7 +155,6 @@
     ],
     "SubagentStop": [
       {
-        "matcher": "chef-worker",
         "hooks": [
           {
             "type": "command",
@@ -150,11 +169,28 @@
         "hooks": [
           {
             "type": "command",
-            "if": "Agent(chef-worker)",
             "command": "bun \"$CLAUDE_PROJECT_DIR\"/scripts/host-sessions.ts hook",
             "timeout": 1260,
             "onFailure": "block",
             "statusMessage": "Waiting for a host place if none is free (bun scripts/host-sessions.ts status lists the holders)"
+          }
+        ]
+      },
+      {
+        "matcher": "Workflow|AskUserQuestion",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bun \"$CLAUDE_PROJECT_DIR\"/scripts/host-sessions.ts hook"
+          }
+        ]
+      },
+      {
+        "matcher": "mcp__ccd_session__start_session",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bun \"$CLAUDE_PROJECT_DIR\"/scripts/host-sessions.ts hook"
           }
         ]
       },

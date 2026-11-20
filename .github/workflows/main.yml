@@ -9,12 +9,27 @@ name: Main
 
 on:
   workflow_dispatch:
+    inputs:
+      verification_request:
+        description: Immutable P07 verification request key.
+        required: false
+        type: string
+      verification_plan:
+        description: SHA-256 digest of the verification plan.
+        required: false
+        type: string
+      verification_base:
+        description: Candidate base commit.
+        required: false
+        type: string
   push:
     branches:
       - main
 
 permissions:
   contents: read
+
+run-name: ${{ github.event_name == 'workflow_dispatch' && inputs.verification_request != '' && format('P07 {0}', inputs.verification_request) || github.workflow }}
 
 # One group for every push: a running run finishes, and a newer pending run replaces the older pending one.
 # A manual dispatch (an exception validate on a branch, COR-2374) takes a group of its own per ref, so
@@ -27,6 +42,9 @@ concurrency:
 env:
   TURBO_TELEMETRY_DISABLED: '1'
   DO_NOT_TRACK: '1'
+  # Vercel Remote Cache, shared with the owner's machine; empty, remote caching is off.
+  TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
+  TURBO_TEAM: ${{ vars.TURBO_TEAM }}
 
 jobs:
   root:
@@ -43,28 +61,34 @@ jobs:
           bun-version-file: package.json
       - run: bun --version
       - run: bun install --frozen-lockfile
+      - uses: ./.github/actions/turbo-cache/restore
+        with:
+          name: main-root
       # Component packages' derived metadata (schemas, variables, manifests) is generated, not
       # committed: the steps below run tests and servers outside Turborepo, so make it first.
       - run: bunx turbo run metadata
       - run: bun run lint:root
       - run: bun run typecheck:root
         if: ${{ !cancelled() }}
-      - run: bun run test:self
+      # The two root tests go through their Turborepo tasks (`//#test:self`, `//#test:browser-fixtures`,
+      # which write `test-output/junit/{self,browser-fixtures}.xml` as outputs), so an unchanged
+      # run replays them from the cache and the JUnit upload below still finds the reports.
+      - run: bunx turbo run //#test:self
         if: ${{ !cancelled() }}
       - run: bunx playwright install --with-deps chromium
         if: ${{ !cancelled() }}
-      - run: bun run test:browser-fixtures
+      - run: bunx turbo run //#test:browser-fixtures
         if: ${{ !cancelled() }}
       - run: bun run format:check
         if: ${{ !cancelled() }}
       - run: bun run audit
         if: ${{ !cancelled() }}
-      # A failed report upload must not fail the tests' job.
+      # JUnit is required aggregate evidence, not a best-effort diagnostic upload.
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: ${{ !cancelled() }}
-        continue-on-error: true
         with:
           name: junit-root
+          overwrite: true
           path: |
             test-output/junit/*.xml
             applications/*/test-output/junit/*.xml
@@ -74,7 +98,9 @@ jobs:
             internal/*/test-output/junit/*.xml
             plugins/*/test-output/junit/*.xml
             scripts/browser-fixtures/test-output/junit/*.xml
-          if-no-files-found: ignore
+          if-no-files-found: error
+      - uses: ./.github/actions/turbo-cache/save
+        if: ${{ !cancelled() }}
 
   workspaces:
     name: Workspace lint and type-check
@@ -89,11 +115,16 @@ jobs:
           bun-version-file: package.json
       - run: bun --version
       - run: bun install --frozen-lockfile
+      - uses: ./.github/actions/turbo-cache/restore
+        with:
+          name: main-workspaces
       # Lint and type-check start no Bun test worker, so the test pool does not bound them; the
       # standard runner has 4 vCPUs and 16 GB (public repositories), so four tasks at a time. The
       # root `turbo.json` caps at 34%, which is one task here and is meant for the shared 12-core
       # development host.
       - run: bunx turbo run lint typecheck --continue --concurrency=4
+      - uses: ./.github/actions/turbo-cache/save
+        if: ${{ !cancelled() }}
 
   tests:
     name: Tests (${{ matrix.name }})
@@ -134,17 +165,20 @@ jobs:
           bun-version-file: package.json
       - run: bun --version
       - run: bun install --frozen-lockfile
+      - uses: ./.github/actions/turbo-cache/restore
+        with:
+          name: main-tests-${{ matrix.name }}
       # The Postgres suites start a disposable cluster with `initdb` and `pg_ctl` from PATH; the
       # runner image installs PostgreSQL but leaves its binaries off PATH.
-      - run: echo "$(ls -d /usr/lib/postgresql/*/bin | tail -1)" >> "$GITHUB_PATH"
+      - run: printf '%s\n' /usr/lib/postgresql/*/bin | tail -n 1 >> "$GITHUB_PATH"
       # The `test` task `bun run validate` runs for every workspace, not a coverage run.
       - run: bunx turbo run test --continue ${{ matrix.filter }}
-      # A failed report upload must not fail the tests' job.
+      # JUnit is required aggregate evidence, not a best-effort diagnostic upload.
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: ${{ !cancelled() }}
-        continue-on-error: true
         with:
           name: junit-tests-${{ strategy.job-index }}
+          overwrite: true
           path: |
             test-output/junit/*.xml
             applications/*/test-output/junit/*.xml
@@ -154,7 +188,9 @@ jobs:
             internal/*/test-output/junit/*.xml
             plugins/*/test-output/junit/*.xml
             scripts/browser-fixtures/test-output/junit/*.xml
-          if-no-files-found: ignore
+          if-no-files-found: error
+      - uses: ./.github/actions/turbo-cache/save
+        if: ${{ !cancelled() }}
 
   tests-slow:
     name: Slow and integration tests
@@ -170,7 +206,10 @@ jobs:
           bun-version-file: package.json
       - run: bun --version
       - run: bun install --frozen-lockfile
-      - run: echo "$(ls -d /usr/lib/postgresql/*/bin | tail -1)" >> "$GITHUB_PATH"
+      - uses: ./.github/actions/turbo-cache/restore
+        with:
+          name: main-tests-slow
+      - run: printf '%s\n' /usr/lib/postgresql/*/bin | tail -n 1 >> "$GITHUB_PATH"
       # Integration tests that measure real layout launch Chromium (the chat stress measurement and
       # the design-review geometry probe), as the isolated lane in `pull-request.yml` does.
       - run: bunx playwright install --with-deps chromium
@@ -179,10 +218,14 @@ jobs:
       - run: bun run test:slow --continue --filter=!@lostgradient/ventriloquist
       - run: bunx turbo run test:slow --concurrency=1 --filter=@lostgradient/ventriloquist
         if: ${{ !cancelled() }}
+      - uses: ./.github/actions/turbo-cache/save
+        if: ${{ !cancelled() }}
 
   browser:
     name: Browser suites
     uses: ./.github/workflows/browser-suites.yml
+    # The called workflow reads TURBO_TOKEN for the remote cache.
+    secrets: inherit
     with:
       fixtures: true
       interborough: true
@@ -215,3 +258,40 @@ jobs:
       # The check alone: `bun run check:test-durations` would run the whole fast lane again first.
       - run: bun scripts/check-test-durations.ts
         continue-on-error: true
+
+  evidence:
+    name: Evidence aggregate
+    needs: [root, workspaces, tests, tests-slow, browser, test-durations]
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version-file: package.json
+      - run: bun install --frozen-lockfile
+      # Keep one bundle per producing job within the run. A partial rerun replaces only the
+      # bundles it rebuilds. The receipt itself remains immutable and pinned to its attempt.
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        if: ${{ always() }}
+        with:
+          pattern: junit-*
+          path: ci-evidence-artifacts
+      - name: Record authenticated checkout identity
+        env:
+          VERIFICATION_REQUEST: ${{ inputs.verification_request }}
+          VERIFICATION_PLAN: ${{ inputs.verification_plan }}
+          VERIFICATION_BASE: ${{ inputs.verification_base }}
+          CI_EVIDENCE_NEEDS: ${{ toJSON(needs) }}
+          CI_EVIDENCE_EXPECTED_JOBS: '["root","workspaces","tests","tests-slow","browser","test-durations"]'
+          CI_EVIDENCE_ARTIFACT_DIRECTORY: ci-evidence-artifacts
+        run: bun scripts/chef/ci-evidence-workflow.ts ci-evidence-receipt.json
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: ${{ always() }}
+        with:
+          name: ci-evidence-receipt-${{ github.run_attempt }}
+          path: ci-evidence-receipt.json
+          if-no-files-found: error

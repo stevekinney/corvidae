@@ -118,7 +118,12 @@ describe('an instance of a workflow file opened from the Runs list', () => {
     expect(view.queryByText(TASK_COPY.loadFailed.title)).toBeNull();
   });
 
-  test('that failed says where: at step 2 of 4 beside Failed, the failing step’s block, and the version it ran (rows 54y, 14t, 55b, 55d)', async () => {
+  /**
+   * Serves Release notes' run `release-run` failed at step 2 on 1.2.0 (1.3.0 is current), with the
+   * history's two starts of step 2's activity and, when given, the engine's timeline.
+   */
+  function serveFailedReleaseNotes(timeline?: readonly unknown[]): void {
+    if (timeline !== undefined) fetchScript.routeUrl('/workflows/release-run/timeline', timeline);
     fetchScript.routeJsonRpcMethod('bureau.goals.list', { goals: [], nextOffset: null });
     const step = (kind: string, title?: string) => ({
       kind,
@@ -188,6 +193,36 @@ describe('an instance of a workflow file opened from the Runs list', () => {
           'Agent "assistant" failed (finish reason "error"): {"name":"AgentRunError","message":"GitHub did not answer (HTTP 503)"}',
       }),
     );
+  }
+
+  test('that failed after three tries says so in its heading, and how long the tries took (rows 14t, 55b)', async () => {
+    // The engine's timeline keeps one entry for each try of step 2's activity: 3.4 s from the
+    // first try's start to the last one's end.
+    const tried = (offset: number, duration: number) => ({
+      step: 1,
+      documentStep: 1,
+      operationType: 'activity',
+      operationLabel: 'agent',
+      inputSummary: '',
+      timestamp: 2_000 + offset,
+      duration,
+      status: 'failed',
+    });
+    serveFailedReleaseNotes([tried(0, 600), tried(1_200, 600), tried(2_800, 600)]);
+
+    const view = mount('release-run');
+
+    const block = await view.findByTestId('run-step-failure');
+    await waitFor(() =>
+      expect(block.textContent).toContain('Step 2, Collect merged changes, failed after 3 tries'),
+    );
+    expect(block.textContent).toContain('Interborough tried 3 times in 3.4 s.');
+    // The engine records no activity text for the step, so no "while …" clause is made up (55b).
+    expect(block.textContent).not.toContain(' while ');
+  });
+
+  test('that failed says where: at step 2 of 4 beside Failed, the failing step’s block, and the version it ran (rows 54y, 14t, 55b, 55d)', async () => {
+    serveFailedReleaseNotes();
 
     const view = mount('release-run');
 

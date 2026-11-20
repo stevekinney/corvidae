@@ -28,6 +28,7 @@
   } from '@lostgradient/cinder';
   import { PanelLeftClose, PanelLeftOpen } from '@lucide/svelte';
 
+  import { buildCommit } from '../../lib/build-commit.ts';
   import { usePluginPages } from '../../lib/plugin-page-queries.svelte.ts';
   import { router } from '../../lib/router.svelte.ts';
   import { usePendingReviewsCount } from '../../routes/reviews/pending-reviews-count.svelte.ts';
@@ -163,6 +164,9 @@
       {#snippet brandRow()}
         <div class="weft-shell-sidebar__brand">
           <span class="weft-shell-sidebar__name">{NAVIGATION_COPY.productName}</span>
+          <span class="weft-shell-sidebar__commit" title={NAVIGATION_COPY.builtFromCommit}
+            >{buildCommit()}</span
+          >
           <Button
             variant="ghost"
             iconOnly
@@ -260,6 +264,7 @@
             <SideNavigationGroup
               label={NAVIGATION_COPY.groups[group]}
               collapsible={false}
+              labelVisibility="hidden"
               class={group === 'system' ? 'weft-shell-nav-system' : ''}
             >
               {#each destinationsIn(group) as destination (destination.path)}

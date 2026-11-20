@@ -114,11 +114,14 @@
   } from './hook-form-state.svelte.ts';
   import HookOnlyFor from './hook-only-for.svelte';
   import { actionTitleOf, hookStanding, pluginTitleOf } from './hook-standing.ts';
+  import HookMissingEvents from './hook-missing-events.svelte';
   import {
-    eventOptionLabel,
     eventRefusal,
+    eventsChosenLine,
     eventWords,
     isScopeKind,
+    missingEventsOf,
+    pluginEventOf,
     scopeKindsFor,
   } from './hook-presentation.ts';
   import HookSecretField from './hook-secret-field.svelte';
@@ -189,6 +192,8 @@
   const listedProblems = $derived(
     availability.data?.find((listed) => listed.id === hookId)?.problems ?? [],
   );
+  /** The plugin kinds this hook lists that are missing, which its When step says (COR-2226, row R5). */
+  const missingEvents = $derived(isNew ? [] : missingEventsOf(listedProblems));
   /**
    * Whether the Bureau lists this hook's reaction as not registered (COR-2182, R10-17). Its header
    * says it can't run, so the page treats the action as not offered, whatever the contributions
@@ -224,17 +229,23 @@
    * The plugins the host loaded (COR-2181): the title of the plugin a saved plugin hook runs, whether
    * it is disabled, and which of its secrets are saved. A new hook reads it only for the titles its
    * action choices are grouped by. A host that cannot say leaves each of those unknown, and nothing
-   * is guessed from what is not known.
+   * is guessed from what is not known. A saved hook that lists a plugin's event kind reads it for
+   * that plugin's title too (COR-2226).
    */
   const plugins = createQuery(
     () => ({
       queryKey: queryKeys.hostPlugins(),
       queryFn: ({ signal }: { signal: AbortSignal }) => getPlugins({ signal }),
-      enabled: isNew || existing.data?.action.type === 'plugin',
+      enabled:
+        isNew ||
+        existing.data?.action.type === 'plugin' ||
+        (existing.data?.events.some((entry) => pluginEventOf(entry) !== undefined) ?? false),
       retry: false,
     }),
     undefined,
   );
+  /** A plugin's title by its name, its name in words until the plugins are read (COR-2226). */
+  const titleOfPlugin = (plugin: string): string => pluginTitleOf(plugin, plugins.data?.plugins);
   const workflows = createQuery(
     () => ({
       queryKey: queryKeys.hooks.workflows(),
@@ -379,15 +390,20 @@
         ? { events: form.events, action: hook.action, scope: form.draftScope }
         : { events: form.events, action: form.draftAction, scope: form.draftScope },
       anyScopeOf(allowedScopes),
+      titleOfPlugin,
     ),
   );
   /** The hook as it is saved, which the header says: it is not what is typed and not yet saved. */
   const savedScopes = $derived(scopeKindsFor(hook?.events ?? [], kinds.data ?? []));
   const savedSentence = $derived(
-    hook === undefined ? '' : editorSentence(hook, anyScopeOf(savedScopes)),
+    hook === undefined ? '' : editorSentence(hook, anyScopeOf(savedScopes), titleOfPlugin),
   );
   const title = $derived(
-    isNew ? copy.newTitle : hook === undefined ? '' : editorTitle(hook, anyScopeOf(savedScopes)),
+    isNew
+      ? copy.newTitle
+      : hook === undefined
+        ? ''
+        : editorTitle(hook, anyScopeOf(savedScopes), titleOfPlugin),
   );
   usePageLabel(() => ({
     path: hookPath(hookId),
@@ -680,7 +696,11 @@
     onSuccess: (saved, input) => {
       adopt(input.hook, saved);
       if (input.undoing) return;
-      const name = editorTitle(saved, anyScopeOf(scopeKindsFor(saved.events, kinds.data ?? [])));
+      const name = editorTitle(
+        saved,
+        anyScopeOf(scopeKindsFor(saved.events, kinds.data ?? [])),
+        titleOfPlugin,
+      );
       showToast(saved.enabled ? copy.toggled.on(name) : copy.toggled.off(name), {
         undo: () => switching.mutate({ hook: saved, enabled: input.hook.enabled, undoing: true }),
       });
@@ -991,16 +1011,23 @@
               {copy.steps.when.title}
             </h2>
             {#if compactWhen && hook !== undefined}
-              <p class="ib-hook-step__summary" data-testid="hook-step-summary-when">
-                <span>{whenSummary(hook, anyScopeOf(savedScopes))}</span>
+              <!-- A missing kind is said directly under the summary it qualifies, before Edit (N1). -->
+              <div class="ib-hook-step__summary" data-testid="hook-step-summary-when">
+                <div class="ib-hook-step__summary-text">
+                  <p class="ib-hook-step__summary-line">
+                    {whenSummary(hook, anyScopeOf(savedScopes), titleOfPlugin)}
+                  </p>
+                  <HookMissingEvents missing={missingEvents} titleOf={titleOfPlugin} />
+                </div>
                 <Button variant="ghost" size="sm" onclick={() => (whenOpen = true)}
                   >{copy.steps.edit}</Button
                 >
-              </p>
+              </div>
             {:else if isDefault && hook !== undefined}
               <p class="ib-hook-editor__plain" data-testid="hook-when-readonly">
-                {whenSummary(hook, anyScopeOf(savedScopes))}
+                {whenSummary(hook, anyScopeOf(savedScopes), titleOfPlugin)}
               </p>
+              <HookMissingEvents missing={missingEvents} titleOf={titleOfPlugin} />
             {:else}
               <HookEventPicker
                 kinds={kinds.data ?? []}
@@ -1008,7 +1035,9 @@
                 bind:events={form.events}
                 locked={!isNew}
                 error={problemOf('event')}
+                titleOf={titleOfPlugin}
               />
+              <HookMissingEvents missing={missingEvents} titleOf={titleOfPlugin} />
               {#if kinds.isError}
                 <Alert variant="danger">{copy.event.loadFailed}</Alert>
               {/if}
@@ -1232,7 +1261,7 @@
                   <span class="ib-hook-editor__sentence-label">{copy.check.eventLine}</span>
                   <!-- Row R10-23: the events in words, never their identifiers. -->
                   <span data-testid="hook-check-events"
-                    >{form.events.map((kind) => eventOptionLabel(kind)).join(', ')}</span
+                    >{eventsChosenLine(form.events, titleOfPlugin)}</span
                   >
                 </p>
                 <p class="ib-hook-editor__quiet-line">{copy.check.saveToStart}</p>
@@ -1401,15 +1430,30 @@
     font-size: var(--cinder-text-xs);
   }
 
-  /* A phone's summary of a step: one line that opens to the step's fields. */
+  /* A phone's summary of a step: one line that opens to the step's fields. The text wraps in its
+     own column and Edit never wraps under it, so every step's Edit sits at the top inline end (B6). */
   .ib-hook-step__summary {
     display: flex;
-    flex-wrap: wrap;
-    align-items: center;
+    flex-wrap: nowrap;
+    align-items: flex-start;
     justify-content: space-between;
     gap: var(--cinder-space-2);
     margin: 0;
     overflow-wrap: anywhere;
+  }
+
+  /* The When summary's text, with a missing kind's line directly under it and Edit after both. Its
+     basis is 0, not its longest line, so a long title or a missing kind never pushes Edit down. */
+  .ib-hook-step__summary-text {
+    display: flex;
+    flex: 1 1 0;
+    flex-direction: column;
+    gap: var(--cinder-space-2);
+    min-inline-size: 0;
+  }
+
+  .ib-hook-step__summary-line {
+    margin: 0;
   }
 
   /* The hook as a sentence, in plain muted text with no box: Save hook and Send a test event sit directly under it. */

@@ -135,6 +135,7 @@
     "$.models[].tools",
     "$.tools",
     "$.tools[].defaultApproval",
+    "$.tools[].defaultAsks",
     "$.tools[].description",
     "$.tools[].inputSchema",
     "$.tools[].inputSchema|anyOf[0].*",
@@ -146,6 +147,8 @@
     "$.tools[].source",
     "$.tools[].tier",
     "$.tools[].title",
+    "$.tools[].userApprovals",
+    "$.tools[].userApprovals.*",
     "$.tools[].users"
   ],
   "output:bureau.agents.definitions.create": ["$.hash", "$.id"],
@@ -1012,7 +1015,8 @@
     "$.events[].payload[].optional",
     "$.events[].payload[].type",
     "$.events[].scopes",
-    "$.events[].source"
+    "$.events[].source",
+    "$.events[].version"
   ],
   "output:bureau.events.format": [
     "$.events",
@@ -1089,6 +1093,7 @@
     "$.attempts[].completedAt",
     "$.attempts[].feedback",
     "$.attempts[].finishReason",
+    "$.attempts[].reason",
     "$.attempts[].runId",
     "$.attempts[].sessionId",
     "$.attempts[].startedAt",
@@ -1544,6 +1549,9 @@
     "$.hooks[].problems[]|oneOf[1].issues",
     "$.hooks[].problems[]|oneOf[1].issues[].code",
     "$.hooks[].problems[]|oneOf[1].issues[].path",
+    "$.hooks[].problems[]|oneOf[2].code",
+    "$.hooks[].problems[]|oneOf[2].kind",
+    "$.hooks[].problems[]|oneOf[2].loadedVersion",
     "$.hooks[].revision",
     "$.hooks[].scope",
     "$.hooks[].scope|anyOf[0].id",
@@ -2164,6 +2172,14 @@
   ],
   "output:bureau.settings.schema": ["$.schema", "$.schema.*", "$.schema.*.*"],
   "output:bureau.settings.update": ["$.pendingRestart", "$.revision"],
+  "output:bureau.skills.get": [
+    "$.instructions",
+    "$.instructions|anyOf[0].size",
+    "$.instructions|anyOf[0].text",
+    "$.instructions|anyOf[0].truncated",
+    "$.name",
+    "$.unavailableReason"
+  ],
   "output:bureau.skills.list": [
     "$.revision",
     "$.skills",

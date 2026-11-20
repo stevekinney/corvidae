@@ -117,6 +117,8 @@ describe('probing an MCP server', () => {
         expect.objectContaining({ name: 'notes__wipe', tool: 'wipe', tier: 'dangerous' }),
       ],
       skipped: [],
+      // What the server says of itself (COR-2436): Armorer's default `serverInfo`, no instructions.
+      server: { name: expect.any(String), instructions: null },
     });
     // Each tool comes with what Choose tools shows: its name for a person and its description.
     for (const tool of probe.outcome === 'listed' ? probe.tools : []) {

@@ -11,7 +11,7 @@
 import { z } from 'zod';
 
 import { RUN_DETAIL_COPY } from '../../../app/copy/runs.ts';
-import { clockTime } from '../../../lib/format/clock.ts';
+import { clockTime, clockTimeWithSeconds } from '../../../lib/format/clock.ts';
 import {
   formatCallDuration,
   keyInput,
@@ -133,7 +133,8 @@ export function happenedOfRun(input: HappenedInput): HappenedEntry[] {
   const entries: HappenedEntry[] = [
     {
       key: 'started',
-      title: copy.started(clockTime(startedAt, zone)),
+      // To the second, so the offsets after it add up (rows 55s, 06b, 06f: "Started 10:42:11 AM").
+      title: copy.started(clockTimeWithSeconds(startedAt, zone)),
       detail:
         times.messageInAt === undefined
           ? undefined

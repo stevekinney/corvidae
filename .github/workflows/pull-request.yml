@@ -19,6 +19,9 @@ env:
   TURBO_SCM_BASE: origin/${{ github.base_ref }}
   TURBO_TELEMETRY_DISABLED: '1'
   DO_NOT_TRACK: '1'
+  # Vercel Remote Cache, shared with the owner's machine; empty (a fork), remote caching is off.
+  TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
+  TURBO_TEAM: ${{ vars.TURBO_TEAM }}
 
 jobs:
   static:
@@ -35,10 +38,15 @@ jobs:
           bun-version-file: package.json
       - run: bun --version
       - run: bun install --frozen-lockfile
+      - uses: ./.github/actions/turbo-cache/restore
+        with:
+          name: pr-static
       - run: bun run format:check
       - run: bun run lint:root
         if: ${{ !cancelled() }}
       - run: bun run typecheck:root
+        if: ${{ !cancelled() }}
+      - uses: ./.github/actions/turbo-cache/save
         if: ${{ !cancelled() }}
 
   workspaces:
@@ -55,10 +63,15 @@ jobs:
           bun-version-file: package.json
       - run: bun --version
       - run: bun install --frozen-lockfile
+      - uses: ./.github/actions/turbo-cache/restore
+        with:
+          name: pr-workspaces
       # No Bun test worker starts here, so the test pool does not bound these tasks; the standard
       # runner has 4 vCPUs and 16 GB (public repositories). The root `turbo.json` caps at 34%, one
       # task here, for the shared 12-core development host.
       - run: bunx turbo run lint typecheck --affected --continue --concurrency=4
+      - uses: ./.github/actions/turbo-cache/save
+        if: ${{ !cancelled() }}
 
   tests:
     name: Affected fast-lane tests
@@ -76,6 +89,9 @@ jobs:
           bun-version-file: package.json
       - run: bun --version
       - run: bun install --frozen-lockfile
+      - uses: ./.github/actions/turbo-cache/restore
+        with:
+          name: pr-tests
       # A change that reaches the root workspace runs `test:browser-fixtures`, which needs Chromium.
       - run: bunx playwright install --with-deps chromium
       # Component packages' derived metadata (schemas, variables, manifests) is generated, not
@@ -83,12 +99,14 @@ jobs:
       - run: bunx turbo run metadata
       # The Postgres suites start a disposable cluster with `initdb` and `pg_ctl` from PATH; the
       # runner image installs PostgreSQL but leaves its binaries off PATH (as in `main.yml`).
-      - run: echo "$(ls -d /usr/lib/postgresql/*/bin | tail -1)" >> "$GITHUB_PATH"
+      - run: printf '%s\n' /usr/lib/postgresql/*/bin | tail -n 1 >> "$GITHUB_PATH"
       # `--isolated` adds the serial slow and integration lanes, narrowed to the selection: a
       # change that reaches no such test runs none, so a broken integration test fails before merge
       # at the cost of only the tests the change reaches. The `main` workflow's slow job runs them
       # all, but only after the merge.
       - run: bun scripts/affected-tests.ts run --isolated --base "$TURBO_SCM_BASE"
+      - uses: ./.github/actions/turbo-cache/save
+        if: ${{ !cancelled() }}
 
   # The browser suites run only when the change reaches them, by the selection the `workspaces` job
   # uses: Turborepo's affected packages, which include a workspace's dependents. Their own workflow
@@ -127,6 +145,37 @@ jobs:
     name: Browser suites
     needs: browser-selection
     uses: ./.github/workflows/browser-suites.yml
+    # The called workflow reads TURBO_TOKEN for the remote cache.
+    secrets: inherit
     with:
       fixtures: ${{ needs.browser-selection.outputs.fixtures == 'true' }}
       interborough: ${{ needs.browser-selection.outputs.interborough == 'true' }}
+
+  evidence:
+    name: Evidence aggregate
+    needs: [static, workspaces, tests, browser-selection, browser]
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version-file: package.json
+      - run: bun install --frozen-lockfile
+      # A pull-request receipt names the PR head and base from the authenticated event payload;
+      # the checked revision remains the merge checkout and is never presented as the PR head.
+      - name: Record pull-request checkout identity and planned job states
+        env:
+          CI_EVIDENCE_NEEDS: ${{ toJSON(needs) }}
+          CI_EVIDENCE_NOT_APPLICABLE: ${{ needs.browser-selection.outputs.fixtures != 'true' && needs.browser-selection.outputs.interborough != 'true' && '["browser"]' || '[]' }}
+          CI_EVIDENCE_EXPECTED_JOBS: '["static","workspaces","tests","browser-selection","browser"]'
+        run: bun scripts/chef/ci-evidence-workflow.ts ci-evidence-receipt.json
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: ${{ always() }}
+        with:
+          name: ci-evidence-receipt-${{ github.run_attempt }}
+          path: ci-evidence-receipt.json
+          if-no-files-found: error

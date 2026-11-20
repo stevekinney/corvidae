@@ -197,6 +197,12 @@
   }
 }
 
+/* The message bar's form draws no box, so its sticky bar docks inside the run's page and not
+ * inside a form exactly its own height (row 06b). */
+.ib-run-send-message {
+  display: contents;
+}
+
 /* What happened: one line per entry, its time after the start at the right, its detail under it. */
 .ib-run-happened {
   display: flex;

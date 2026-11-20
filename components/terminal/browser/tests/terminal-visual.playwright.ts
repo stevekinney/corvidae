@@ -13,7 +13,7 @@ import { TERMINAL_FIXTURE_NAMES } from '../fixtures/terminal/scenarios.ts';
  * The resting baselines of the terminal's visual fixtures (`documentation/terminal/experience.md`),
  * in both themes at the harness's three viewports. They run through the same sweep as every other
  * component, with the same screenshot tolerance and the same accessibility gate, and belong to
- * Chromium alone; `components.playwright.ts` leaves this entry to this file so each baseline has
+ * Chromium alone; `components-sweep.playwright.ts` leaves this entry to this file so each baseline has
  * one owner.
  */
 const entry = loadManifest().find((candidate) => candidate.slug === 'terminal');

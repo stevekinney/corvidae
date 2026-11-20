@@ -9,6 +9,16 @@
  * SEGMENTED CONTROL
  * ======================================== */
 
+  /* The frame drawn around a control that has a description, a note or an error. A grid cell (a
+     form section) gives its item an automatic minimum width, which is the options' unwrapped
+     width: the frame would grow past the room it has, the control would measure that grown frame
+     as its room, never overflow and never stack, and the message under it would be cut off. With
+     no minimum, the frame is as wide as its cell, so the control stacks and the message wraps. */
+  .cinder-segmented-control-field {
+    min-inline-size: 0;
+    max-inline-size: 100%;
+  }
+
   .cinder-segmented-control-container {
     display: inline-flex;
     flex-direction: column;
@@ -174,6 +184,35 @@
     .cinder-segmented-control
     .cinder-segmented-control-option[role='radio']:not(:disabled):not([aria-disabled='true']) {
     color: var(--cinder-text-default);
+  }
+
+  /* A stacked row is drawn at RadioGroup's rhythm: a row as tall as its label's line, a gap of
+     space-2 between rows. The touch target is the hit area (an invisible box 44px tall centred on
+     the row), never the drawn height, so a phone's list of choices reads like the RadioGroups
+     around it. Only the stacked form: the unstacked control keeps its own height. */
+  .cinder-segmented-control-container[data-cinder-stacked] .cinder-segmented-control {
+    gap: var(--cinder-space-2);
+  }
+
+  .cinder-segmented-control-container[data-cinder-stacked]
+    .cinder-segmented-control
+    .cinder-segmented-control-option[role='radio'] {
+    position: relative;
+    min-block-size: calc(var(--cinder-text-sm) * var(--cinder-leading-normal));
+    padding-block: 0;
+  }
+
+  @media (pointer: coarse) {
+    .cinder-segmented-control-container[data-cinder-stacked]
+      .cinder-segmented-control
+      .cinder-segmented-control-option[role='radio']::after {
+      content: '';
+      position: absolute;
+      inset-inline: 0;
+      inset-block-start: 50%;
+      block-size: max(100%, 44px);
+      transform: translateY(-50%);
+    }
   }
 
   /* ── Vertical orientation ───────────────────────────────────────────────── */

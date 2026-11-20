@@ -44,6 +44,11 @@ expect.extend(jestDomMatchers);
 
 type Global = typeof globalThis & Record<string, unknown>;
 
+// `@testing-library/dom`'s `waitFor` advances fake timers through a global named `jest` once it
+// sees them installed, and this Bun version's runner does not define that global. A test that
+// turns on `jest.useFakeTimers()` and then waits would otherwise throw `jest is not defined`.
+(globalThis as Global)['jest'] ??= jest;
+
 /**
  * Svelte's transitions dispatch `new CustomEvent('introstart')` on the element they animate, and
  * happy-dom refuses an event that is not an instance of its own `Event`. Bun already defines

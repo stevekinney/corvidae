@@ -456,6 +456,93 @@ describe('SchemaView', () => {
   });
 });
 
+describe('SchemaView with layout="rows"', () => {
+  test('draws each field as an unframed row: its name, the word Required, its type in words, and its rule below', () => {
+    const { container, queryByRole } = render(SchemaView, {
+      schema: {
+        type: 'object',
+        required: ['assetId'],
+        properties: { assetId: { type: 'string', minLength: 1 }, note: { type: 'string' } },
+      },
+      label: 'Inputs',
+      layout: 'rows',
+    });
+
+    // No table, no header row and no frame: one list of rows.
+    expect(queryByRole('table')).toBeNull();
+    expect(container.querySelector('.cinder-schema-view__frame')).toBeNull();
+    const items = Array.from(container.querySelectorAll('.cinder-schema-view__item'));
+    expect(items).toHaveLength(2);
+    const first = requiredInstance(items[0], HTMLElement);
+    expect(first.querySelector('.cinder-schema-view__label')?.textContent).toBe('Asset ID');
+    expect(first.querySelector('.cinder-schema-view__required-word')?.textContent).toBe('Required');
+    // The type is plain words, not the coloured mark, and there is no unexplained dot.
+    expect(first.querySelector('.cinder-schema-view__kind-word')?.textContent).toBe('text');
+    expect(first.querySelector('.cinder-schema-view__type')).toBeNull();
+    expect(first.querySelector('.cinder-schema-view__required')).toBeNull();
+    expect(first.querySelector('.cinder-schema-view__item-about')?.textContent).toContain(
+      'At least 1 character',
+    );
+    // A top-level field does not indent; the optional one starts the second group.
+    expect(first.getAttribute('data-cinder-depth')).toBe('0');
+    expect(items[1]?.hasAttribute('data-cinder-group-start')).toBe(true);
+    expect(items[1]?.querySelector('.cinder-schema-view__required-word')).toBeNull();
+  });
+
+  test('keeps nested fields folding under their parent', async () => {
+    const { container, getByRole } = render(SchemaView, {
+      schema: refundSchema,
+      label: 'Refund input',
+      layout: 'rows',
+    });
+    const labels = () =>
+      Array.from(
+        container.querySelectorAll('.cinder-schema-view__item .cinder-schema-view__label'),
+      ).map((label) => label.textContent);
+    expect(labels()).toEqual(['Order ID', 'Customer', 'Email', 'Loyalty tier', 'Refund amount']);
+    await fireEvent.click(getByRole('button', { name: 'Hide the fields of Customer' }));
+    expect(labels()).toEqual(['Order ID', 'Customer', 'Refund amount']);
+  });
+});
+
+describe('SchemaView raw placement', () => {
+  test('raw="beside" shows the document open in a JSON code block, with no disclosure', () => {
+    const { container, getByText } = render(SchemaView, {
+      schema: searchToolSchema,
+      label: 'Inputs',
+      layout: 'rows',
+      raw: 'beside',
+    });
+
+    expect(container.querySelector('.cinder-schema-view__raw')).toBeNull();
+    expect(getByText('JSON schema').classList.contains('cinder-schema-view__source-title')).toBe(
+      true,
+    );
+    const code = container.querySelector('.cinder-schema-view__source .cinder-code-block');
+    expect(code?.textContent).toContain('"searchText"');
+    // The fields and the document are the two halves of one split.
+    const split = requiredInstance(
+      container.querySelector('.cinder-schema-view__split'),
+      HTMLElement,
+    );
+    expect(split.children[0]?.classList.contains('cinder-schema-view__fields')).toBe(true);
+    expect(split.children[1]?.classList.contains('cinder-schema-view__source')).toBe(true);
+  });
+
+  test('puts the halves side by side from 38rem of the view’s own width, stacked below it', async () => {
+    const css = await Bun.file(new URL('./schema-view.css', import.meta.url)).text();
+    expect(css).toMatch(
+      /@container \(min-inline-size: 38rem\) \{\s*\.cinder-schema-view__split \{\s*grid-template-columns: minmax\(0, 1fr\) minmax\(0, 1fr\);/,
+    );
+  });
+
+  test('raw="none" leaves the document out', () => {
+    const { container } = render(SchemaView, { schema: searchToolSchema, raw: 'none' });
+    expect(container.querySelector('.cinder-schema-view__raw')).toBeNull();
+    expect(container.querySelector('.cinder-schema-view__source')).toBeNull();
+  });
+});
+
 describe('SchemaView on a tool page', () => {
   test('the tool input is the shared grid: a required Search text and an optional Limit', () => {
     const { container } = render(SchemaView, { schema: searchToolSchema, label: 'Inputs' });

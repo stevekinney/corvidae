@@ -13,7 +13,7 @@
   import { RUN_DETAIL_COPY } from '../../../app/copy/runs.ts';
   import { TASK_COPY } from '../../../app/copy/tasks.ts';
   import type { ScopeGate } from '../../../lib/scopes.svelte.ts';
-  import { clockTime } from '../../../lib/format/clock.ts';
+  import { clockTimeWithSeconds } from '../../../lib/format/clock.ts';
   import { router } from '../../../lib/router.svelte.ts';
   import {
     failureHeading,
@@ -135,7 +135,7 @@
   <ol class="ib-run-happened" aria-label={RUN_DETAIL_COPY.happened.listLabel}>
     <li class="ib-run-happened__entry" data-state="done">
       <span class="ib-run-happened__title"
-        >{RUN_DETAIL_COPY.happened.started(clockTime(startedAt))}</span
+        >{RUN_DETAIL_COPY.happened.started(clockTimeWithSeconds(startedAt))}</span
       >
     </li>
     {#each entries as entry (entry.key)}

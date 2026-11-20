@@ -327,10 +327,16 @@
      below that is "on a phone" sits in `@container cinder-stacked-list-item (max-width: 639.98px)`,
      which asks the row itself. `:not(.cinder-stacked-list-item--band)` is true of every two-line
      row (a band row is never one) and stands where the viewport attribute stood, so each rule
-     keeps the specificity it had. */
+     keeps the specificity it had.
+
+     A row that follows the window instead (`phoneWidth="viewport"`, marked
+     `data-cinder-phone-width="viewport"`) is passed by every one of those queries, and takes the
+     same rules from the script's phone mark, which it sets from the viewport: see "The phone form
+     by the window" below. */
   @container cinder-stacked-list-item (max-width: 639.98px) {
     .cinder-stacked-list-item--lines:not(
-        .cinder-stacked-list-item--band
+        .cinder-stacked-list-item--band,
+        [data-cinder-phone-width='viewport']
       ).cinder-stacked-list-item--status-leading
       .cinder-stacked-list-item__status::before {
       display: none;
@@ -342,11 +348,21 @@
      line, and leave the mark stranded beside a short first line (R10-01). The row's one tooltip is
      the whole name. */
   @container cinder-stacked-list-item (max-width: 639.98px) {
-    .cinder-stacked-list-item__title-row > .cinder-stacked-list-item__title {
+    .cinder-stacked-list-item:not([data-cinder-phone-width='viewport'])
+      .cinder-stacked-list-item__title-row
+      > .cinder-stacked-list-item__title {
       display: block;
       text-overflow: ellipsis;
       white-space: nowrap;
     }
+  }
+
+  .cinder-stacked-list-item[data-cinder-phone-width='viewport'][data-cinder-phone]
+    .cinder-stacked-list-item__title-row
+    > .cinder-stacked-list-item__title {
+    display: block;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   /* The dot centres on the word's line box while the word's baseline is the flex baseline. */
@@ -472,7 +488,10 @@
   }
 
   @container cinder-stacked-list-item (max-width: 639.98px) {
-    .cinder-stacked-list-item--lines:not(.cinder-stacked-list-item--band)
+    .cinder-stacked-list-item--lines:not(
+        .cinder-stacked-list-item--band,
+        [data-cinder-phone-width='viewport']
+      )
       .cinder-stacked-list-item__detail {
       grid-column: 2 / 5;
     }
@@ -527,7 +546,8 @@
 
   @container cinder-stacked-list-item (max-width: 639.98px) {
     .cinder-stacked-list-item--lines:not(
-        .cinder-stacked-list-item--band
+        .cinder-stacked-list-item--band,
+        [data-cinder-phone-width='viewport']
       ).cinder-stacked-list-item--status-leading
       > .cinder-stacked-list-item__layout {
       grid-template-columns:
@@ -558,7 +578,8 @@
      time give way instead (R10-02). */
   @container cinder-stacked-list-item (max-width: 639.98px) {
     .cinder-stacked-list-item--lines:not(
-        .cinder-stacked-list-item--band
+        .cinder-stacked-list-item--band,
+        [data-cinder-phone-width='viewport']
       ).cinder-stacked-list-item--status-leading
       > .cinder-stacked-list-item__layout {
       --_cinder-status-track: max-content;
@@ -581,7 +602,8 @@
     }
 
     .cinder-stacked-list-item--lines:not(
-        .cinder-stacked-list-item--band
+        .cinder-stacked-list-item--band,
+        [data-cinder-phone-width='viewport']
       ).cinder-stacked-list-item--status-leading
       .cinder-stacked-list-item__status {
       flex: none;
@@ -616,11 +638,54 @@
        comma and no dot (COR-2449). The space follows only a status that drew something
        (`:has(*)`), so a row whose status snippet drew nothing starts line two flush. */
     .cinder-stacked-list-item--lines:not(
-        .cinder-stacked-list-item--band
+        .cinder-stacked-list-item--band,
+        [data-cinder-phone-width='viewport']
       ).cinder-stacked-list-item--status-leading:not(.cinder-stacked-list-item--no-line-two)
       .cinder-stacked-list-item__status:has(*) {
       margin-inline-end: var(--cinder-space-1-5);
     }
+  }
+
+  /* The phone form by the window (`phoneWidth="viewport"`): the rules of the container queries
+     above, for a row the script marks as a phone while the viewport is below 640px. A
+     list that fills the page's content column follows the window, so a tablet whose navigation
+     rail narrows the row below 640px still leads with the status column (rows 05w, 05x). */
+  .cinder-stacked-list-item--lines[data-cinder-phone-width='viewport'][data-cinder-phone].cinder-stacked-list-item--status-leading
+    .cinder-stacked-list-item__status::before {
+    display: none;
+  }
+
+  .cinder-stacked-list-item--lines[data-cinder-phone-width='viewport'][data-cinder-phone]
+    .cinder-stacked-list-item__detail {
+    grid-column: 2 / 5;
+  }
+
+  .cinder-stacked-list-item--lines[data-cinder-phone-width='viewport'][data-cinder-phone].cinder-stacked-list-item--status-leading
+    > .cinder-stacked-list-item__layout {
+    --_cinder-status-track: max-content;
+    grid-template-columns:
+      [leading] auto [status] var(--_cinder-status-track) [title] minmax(0, 1fr) [time] auto
+      [trailing] auto;
+    grid-template-areas:
+      'leading title title time trailing'
+      'leading status line line trailing'
+      '. . details details .';
+  }
+
+  .cinder-stacked-list-item--lines[data-cinder-phone-width='viewport'][data-cinder-phone].cinder-stacked-list-item--status-leading
+    .cinder-stacked-list-item__status {
+    flex: none;
+    align-items: center;
+    min-inline-size: max-content;
+    min-block-size: calc(var(--cinder-text-xs) * var(--cinder-leading-normal));
+    padding-inline-end: 0;
+  }
+
+  .cinder-stacked-list-item--lines[data-cinder-phone-width='viewport'][data-cinder-phone].cinder-stacked-list-item--status-leading:not(
+      .cinder-stacked-list-item--no-line-two
+    )
+    .cinder-stacked-list-item__status:has(*) {
+    margin-inline-end: var(--cinder-space-1-5);
   }
 
   /* The chat list's line-two status gives up its fixed column on a phone only (COR-2016): the

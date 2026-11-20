@@ -201,9 +201,10 @@ export function attemptLineTwo(attempt: GoalAttempt, context: AttemptLineContext
     case 'passed':
     case 'failed': {
       if (took !== undefined) parts.push(copy.line.took(took));
-      // The owner's read carries what the check said, met or not ("Reply said hello", 67v); every
-      // other read leaves it out. The reason is said as it is, with no prefix (67l).
-      const said = checkReason(attempt.feedback);
+      // The owner's read carries what the check said, met or not: a met check's reason ("Reply said
+      // hello", 67v) and a missed one's feedback; every other read leaves both out. It is said as
+      // it is, with no prefix (67l).
+      const said = checkReason(attempt.status === 'passed' ? attempt.reason : attempt.feedback);
       if (said !== undefined) parts.push(reasonClause(said));
       break;
     }

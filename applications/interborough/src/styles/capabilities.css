@@ -52,10 +52,10 @@
   white-space: nowrap;
 }
 
-/* A row's first line: the name at the left, the muted word for what it may do at the right (rows 31e, 31g). */
+/* A row's first line: the name at the left, and Paused at the right while the tool cannot run. */
 .ib-capabilities__row-title {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
   gap: var(--cinder-space-3);
   min-width: 0;
@@ -73,20 +73,26 @@
   font-weight: 400;
 }
 
-/* A row's second line: where it comes from, then a line about it that ends with an ellipsis, never wrapping. */
+/* Under the name: a line about the tool that ends with an ellipsis, never wrapping, then the page's
+ * one badge set. The chips share one line and one centre; on a pane too narrow for all three the
+ * set wraps rather than pushing the row wider. */
 .ib-capabilities__row-line {
   display: flex;
-  align-items: baseline;
-  gap: var(--cinder-space-2);
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--cinder-space-1-5);
   min-width: 0;
 }
 
-.ib-capabilities__row-source {
-  flex: none;
+.ib-capabilities__row-badges {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--cinder-space-1-5);
+  min-width: 0;
 }
 
 .ib-capabilities__row-summary {
-  flex: 1 1 auto;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -172,6 +178,13 @@
   font-size: var(--cinder-text-sm);
 }
 
+/* What an agent asks for a tool, muted beside its link in Used by; the link carries the meaning, so no colour. */
+.ib-capability__user-note {
+  margin-inline-start: var(--cinder-space-2);
+  color: var(--cinder-text-muted);
+  font-size: var(--cinder-text-sm);
+}
+
 /* Names, paths and tool identifiers are unbroken strings of any length: they wrap, never scroll. A
  * name read as words can still hold one long word, since a skill's identifier is up to 64 characters. */
 .ib-capability__name,
@@ -226,6 +239,42 @@
   padding: 0;
   list-style: none;
   min-width: 0;
+}
+
+/* The badges sit on one centre line, so a chip's glyph never sets its baseline apart from the rest. */
+.ib-capability__chips {
+  align-items: center;
+}
+
+.ib-capability__chips > li,
+.ib-tool-badge {
+  display: flex;
+}
+
+/* The top of a tool's page: its name and its one sentence at the left, its actions at the inline
+ * end, as a source's page has them; on a narrow pane the actions wrap under the sentence. */
+.ib-capability__top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--cinder-space-2) var(--cinder-space-4);
+  min-width: 0;
+}
+
+.ib-capability__title {
+  display: flex;
+  flex: 1 1 16rem;
+  flex-direction: column;
+  gap: var(--cinder-space-1);
+  min-width: 0;
+}
+
+.ib-capability__actions {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: var(--cinder-space-2);
 }
 
 /* ── Sources: the tool sources the host saved ────────────────── */

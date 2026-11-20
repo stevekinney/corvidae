@@ -655,6 +655,17 @@ describe('normalizeValidatorOutcome (fail closed)', () => {
       kind: 'pass',
       evidence: [],
     });
+    // A pass may say why it met the check (COR-2425, row 67v).
+    expect(
+      normalizeValidatorOutcome({ kind: 'pass', evidence: [], reason: 'Reply said hello' }),
+    ).toEqual({ kind: 'pass', evidence: [], reason: 'Reply said hello' });
+    // A reason that is not text is dropped: the check was still met.
+    for (const reason of [7, null, { said: 'hello' }]) {
+      expect(normalizeValidatorOutcome({ kind: 'pass', evidence: [], reason })).toEqual({
+        kind: 'pass',
+        evidence: [],
+      });
+    }
     expect(normalizeValidatorOutcome({ kind: 'canceled' })).toEqual({ kind: 'canceled' });
     expect(normalizeValidatorOutcome({ kind: 'indeterminate', reason: 'r' })).toEqual({
       kind: 'indeterminate',
@@ -772,6 +783,14 @@ describe('validator projection', () => {
     expect(projectValidatorOutcome({ kind: 'pass', evidence })).toEqual({
       kind: 'pass',
       evidence: [{ source: 's', detail: { when: '1970-01-01T00:00:00.000Z', size: '5' } }],
+    });
+    // A pass keeps its reason when it gave one with words in it, and only then.
+    expect(
+      projectValidatorOutcome({ kind: 'pass', evidence: [], reason: 'Reply said hello' }),
+    ).toEqual({ kind: 'pass', evidence: [], reason: 'Reply said hello' });
+    expect(projectValidatorOutcome({ kind: 'pass', evidence: [], reason: '  ' })).toEqual({
+      kind: 'pass',
+      evidence: [],
     });
     expect(
       projectValidatorOutcome({ kind: 'fail', feedback: 'f', evidence, retryable: true }),

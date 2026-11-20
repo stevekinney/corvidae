@@ -14,6 +14,7 @@
 import type { Locator, Page } from '@playwright/test';
 
 import { SAMPLE_NOW, SAMPLE_TIME_ZONE } from '../../fixtures/sample-now.ts';
+import { rewriteBureauAnswer } from './bureau-answer-support.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
 import { E2E_SHOWCASE_URL } from './e2e-constants.ts';
 import { expect, test } from './fixtures.ts';
@@ -118,14 +119,12 @@ test.describe('on a desktop', () => {
     await expect(name.locator('svg, img')).toHaveCount(0);
     await expect(page.getByRole('button', { name: 'Collapse sidebar' })).toBeVisible();
 
-    await expect(navigation(page).locator('.cinder-side-navigation-group__heading')).toHaveText([
-      'Work',
-      'Build',
-      'System',
-    ]);
-    await expect(
-      navigation(page).locator('.cinder-side-navigation-group__heading').first(),
-    ).toHaveCSS('font-size', '11.5px');
+    // The sections have names for a screen reader and no heading on the page.
+    await expect(navigation(page).locator('.cinder-side-navigation-group__heading')).toHaveCount(0);
+    for (const name of ['Work', 'Build', 'System']) {
+      await expect(navigation(page).getByRole('list', { name, exact: true })).toBeVisible();
+      await expect(navigation(page).getByText(name, { exact: true })).toHaveCount(0);
+    }
 
     const rows = [
       navigation(page).getByRole('link', { name: 'Agents' }),
@@ -193,7 +192,6 @@ test.describe('on a desktop', () => {
     await expectWidth(sidebar(page), 56);
     await expect(page.getByRole('button', { name: 'Expand sidebar' })).toBeVisible();
 
-    // The group labels give way to hairlines: the words stay in the accessibility tree.
     const reviews = navigation(page).getByRole('link', { name: REVIEWS });
     // On the rail Reviews' count is a small round warning dot on the icon's corner (COR-2315: a
     // count is plain text, never a badge, and the rail has no room for the figure); the figure
@@ -207,7 +205,9 @@ test.describe('on a desktop', () => {
     const health = navigation(page).getByRole('link', { name: HEALTH });
     expect(await widthOf(health.locator('.cinder-status-dot'))).toBeGreaterThan(4);
     const groups = navigation(page).locator('.cinder-side-navigation-group');
-    await expect(groups.first()).toHaveCSS('border-top-width', '1px');
+    // No heading and no hairline: one gap sets the sections apart, and Home above them has none.
+    await expect(groups.first()).toHaveCSS('border-top-width', '0px');
+    await expect(groups.first()).toHaveCSS('padding-top', '12px');
 
     // Hovering a row names it in a tooltip, with its count.
     await reviews.hover();
@@ -356,11 +356,11 @@ test.describe('on a phone', () => {
     await expectWidth(panel.locator('.cinder-drawer__panel'), 280);
     await expect(panel.locator('.cinder-drawer__title')).toHaveText('Interborough');
     await expect(panel.getByRole('button', { name: 'Close navigation' })).toBeVisible();
-    await expect(panel.locator('.cinder-side-navigation-group__heading')).toHaveText([
-      'Work',
-      'Build',
-      'System',
-    ]);
+    await expect(panel.locator('.cinder-side-navigation-group__heading')).toHaveCount(0);
+    for (const name of ['Work', 'Build', 'System']) {
+      await expect(panel.getByRole('list', { name, exact: true })).toBeVisible();
+      await expect(panel.getByText(name, { exact: true })).toHaveCount(0);
+    }
     const rows = panel.locator('a.cinder-side-navigation-item');
     await expect(rows).toHaveCount(13);
     for (const row of await rows.all()) expect(await heightOf(row)).toBeGreaterThanOrEqual(44);
@@ -423,22 +423,34 @@ test.describe('on a phone', () => {
   test('on a tablet the current page gives way before the ancestor does, so Runs is never cut to nothing (03l)', async ({
     page,
   }) => {
+    // The run's page is named by its chat. The sample world's chat titles are short (rows 56k, 01l),
+    // so this one's chat answers with the long title a request can carry, and the leaf is the
+    // trail's longest.
+    const longTitle = 'Please refund order 4471, it arrived damaged and the box was open';
+    await rewriteBureauAnswer(page, 'bureau.contexts.get', (context) => ({
+      ...context,
+      title: longTitle,
+    }));
     await open(page, '/runs', 768);
-    // A run's identifier is long, so its page has the trail's longest leaf. The run is the sample
-    // world's own refund, never the newest row: a specification before this one may leave a run on
-    // the showcase host whose chat it has since deleted, and that run's page reads 404s.
+    // The run is the sample world's own refund, never the newest row: a specification before this
+    // one may leave a run on the showcase host whose chat it has since deleted, and that run's page
+    // reads 404s.
     const href = await page
       .locator('main a[href^="/runs/run-"]')
-      .filter({ hasText: 'Please refund order 4471' })
+      .filter({ hasText: 'Refund order 4471' })
       .first()
       .getAttribute('href');
     await page.goto(href ?? '/runs');
     const trail = page.getByRole('banner').getByRole('navigation', { name: 'Breadcrumb' });
     const runs = trail.getByRole('link', { name: 'Runs' });
     await expect(runs).toBeVisible();
+    // The leaf reads the run's identifier until the chat's title arrives, and the trail keys each
+    // crumb by its label, so the leaf is a new element then: measure only once it holds the title,
+    // or the read can land on the identifier's crumb as it is removed.
+    const leaf = trail.locator('[aria-current="page"]');
+    await expect(leaf).toHaveText(longTitle);
     expect(await runs.evaluate((link) => link.scrollWidth <= link.clientWidth)).toBe(true);
     // The leaf is the one that ends in an ellipsis, and it starts inside the trail.
-    const leaf = trail.locator('[aria-current="page"]');
     expect(await leaf.evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(true);
     const leafBox = await boxOf(leaf);
     const trailBox = await boxOf(trail);

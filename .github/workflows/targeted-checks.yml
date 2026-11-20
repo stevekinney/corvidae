@@ -8,7 +8,7 @@
 #     -f fixture_components='approval-card,description-list' \
 #     -f fixture_specs='scripts/browser-fixtures/tests/approval-card-input-rows.playwright.ts' \
 #     -f e2e_specs='tests/e2e/chat-responsive.spec.ts tests/e2e/chat-toast-clearance.spec.ts' \
-#     -f unit_workspace='components/cinder' -f unit_paths='src/components/approval-card'
+#     -f unit_lanes='[{"workspace":"components/cinder","paths":["src/components/approval-card"],"config":""}]'
 #
 # Every input is optional. The `checks` job always runs lint and type-check on the changed
 # workspaces; each other job runs only when its inputs name something. The browser jobs copy
@@ -37,21 +37,20 @@ on:
         type: string
         required: false
         default: ''
-      unit_workspace:
-        description: The workspace folder whose unit test files to run, for example components/cinder.
+      unit_lanes:
+        description: 'Every unit lane, as a JSON list of {workspace, paths, config}. Workspace "." is the repository root, run through scripts/bun-test.ts; paths are files or folders inside the workspace; config is a bunfig such as ./bunfig.ui.toml.'
         type: string
         required: false
         default: ''
-      unit_paths:
-        description: Test files or folders inside that workspace, space-separated.
+      plan_digest:
+        description: SHA-256 digest of the evidence plan (scripts/chef/landing-plan.ts), set by targeted-run.ts. Landing reads it from the run name.
         type: string
         required: false
         default: ''
-      unit_config:
-        description: A bunfig for the unit run, for example ./bunfig.ui.toml in applications/interborough.
-        type: string
-        required: false
-        default: ''
+
+# Landing (scripts/chef/landing-evidence.ts) accepts this run as coverage for a head only when the
+# name carries the digest of the plan it computes itself.
+run-name: ${{ inputs.plan_digest != '' && format('targeted {0}', inputs.plan_digest) || 'Targeted checks' }}
 
 permissions:
   contents: read
@@ -64,6 +63,9 @@ concurrency:
 env:
   TURBO_TELEMETRY_DISABLED: '1'
   DO_NOT_TRACK: '1'
+  # Vercel Remote Cache, shared with the owner's machine; empty, remote caching is off.
+  TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
+  TURBO_TEAM: ${{ vars.TURBO_TEAM }}
 
 jobs:
   # Lint and type-check the workspaces the branch changed against `origin/main`, as
@@ -84,7 +86,12 @@ jobs:
         with:
           bun-version-file: package.json
       - run: bun install --frozen-lockfile
+      - uses: ./.github/actions/turbo-cache/restore
+        with:
+          name: targeted-checks
       - run: bunx turbo run lint typecheck --affected --continue --concurrency=4
+      - uses: ./.github/actions/turbo-cache/save
+        if: ${{ !cancelled() }}
 
   fixtures:
     name: Chromium fixtures (targeted)
@@ -106,6 +113,9 @@ jobs:
         with:
           bun-version-file: package.json
       - run: bun install --frozen-lockfile
+      - uses: ./.github/actions/turbo-cache/restore
+        with:
+          name: targeted-fixtures
       # Component packages' derived metadata (schemas, variables, manifests) is generated, not
       # committed: the steps below run tests and servers outside Turborepo, so make it first.
       - run: bunx turbo run metadata
@@ -114,7 +124,7 @@ jobs:
       - run: |
           specs="$FIXTURE_SPECS"
           if [ -n "$CINDER_TEST_COMPONENTS" ]; then
-            specs="$specs scripts/browser-fixtures/tests/components.playwright.ts"
+            specs="$specs scripts/browser-fixtures/tests/components.playwright.ts scripts/browser-fixtures/tests/components-sweep.playwright.ts"
           fi
           PLAYWRIGHT_HTML_OUTPUT_DIR="$GITHUB_WORKSPACE/playwright-output/report" \
           PLAYWRIGHT_JSON_OUTPUT_FILE="$GITHUB_WORKSPACE/playwright-output/results.json" \
@@ -130,6 +140,8 @@ jobs:
             scripts/browser-fixtures/test-results/
           retention-days: 14
           if-no-files-found: ignore
+      - uses: ./.github/actions/turbo-cache/save
+        if: ${{ !cancelled() }}
 
   interborough:
     name: Interborough end-to-end (targeted)
@@ -149,6 +161,9 @@ jobs:
         with:
           bun-version-file: package.json
       - run: bun install --frozen-lockfile
+      - uses: ./.github/actions/turbo-cache/restore
+        with:
+          name: targeted-interborough
       # Component packages' derived metadata (schemas, variables, manifests) is generated, not
       # committed: the steps below run tests and servers outside Turborepo, so make it first.
       - run: bunx turbo run metadata
@@ -167,16 +182,23 @@ jobs:
             applications/interborough/test-results/
           retention-days: 14
           if-no-files-found: ignore
+      - uses: ./.github/actions/turbo-cache/save
+        if: ${{ !cancelled() }}
 
   unit:
-    name: Unit test files (targeted)
-    if: ${{ inputs.unit_workspace != '' && inputs.unit_paths != '' }}
+    name: Unit test files (${{ matrix.lane.workspace }})
+    if: ${{ inputs.unit_lanes != '' && inputs.unit_lanes != '[]' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    # One job per lane of the plan, so no lane is dropped: a failed lane never hides another.
+    strategy:
+      fail-fast: false
+      matrix:
+        lane: ${{ fromJSON(inputs.unit_lanes) }}
     env:
-      UNIT_WORKSPACE: ${{ inputs.unit_workspace }}
-      UNIT_PATHS: ${{ inputs.unit_paths }}
-      UNIT_CONFIG: ${{ inputs.unit_config }}
+      UNIT_WORKSPACE: ${{ matrix.lane.workspace }}
+      UNIT_PATHS: ${{ join(matrix.lane.paths, ' ') }}
+      UNIT_CONFIG: ${{ matrix.lane.config }}
       TZ: UTC
       LANG: en_US.UTF-8
     steps:
@@ -187,10 +209,27 @@ jobs:
         with:
           bun-version-file: package.json
       - run: bun install --frozen-lockfile
+      - uses: ./.github/actions/turbo-cache/restore
+        with:
+          name: targeted-unit-${{ matrix.lane.workspace }}
       # Component packages' derived metadata (schemas, variables, manifests) is generated, not
       # committed: the steps below run tests and servers outside Turborepo, so make it first.
       - run: bunx turbo run metadata
       - run: |
+          # The root lane runs the repository's own `scripts/` test files through the pooled,
+          # hang-guarded runner, as `test:self` does.
+          if [ "$UNIT_WORKSPACE" = . ]; then
+            bun scripts/bun-test.ts $UNIT_PATHS
+            exit
+          fi
+          # The browser-fixtures workspace runs as the root `test:browser-fixtures` does: its tests
+          # read the generated, gitignored manifest, and the curated build is verified after them.
+          if [ "$UNIT_WORKSPACE" = scripts/browser-fixtures ]; then
+            bun scripts/browser-fixtures/scripts/prepare-manifest.ts
+            (cd "$UNIT_WORKSPACE" && bun test --conditions browser --conditions svelte $UNIT_PATHS)
+            bun scripts/browser-fixtures/scripts/verify-curated-build.ts
+            exit
+          fi
           cd "$UNIT_WORKSPACE"
           config=""
           # Interborough runs every test outside src/host and fixtures under bunfig.ui.toml (its
@@ -205,3 +244,5 @@ jobs:
           fi
           if [ -n "$UNIT_CONFIG" ]; then config="--config=$UNIT_CONFIG"; fi
           bun test $config --conditions browser --conditions svelte $UNIT_PATHS
+      - uses: ./.github/actions/turbo-cache/save
+        if: ${{ !cancelled() }}
