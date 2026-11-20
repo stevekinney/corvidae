@@ -466,7 +466,6 @@
     ". Engine.listWorkflowDefinitions",
     ". Engine.pauseSchedule",
     ". Engine.prepare(overload 2)",
-    ". Engine.purge",
     ". Engine.query(overload 1)",
     ". Engine.query(overload 2)",
     ". Engine.query(overload 3)",
