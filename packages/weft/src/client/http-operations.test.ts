@@ -154,6 +154,42 @@ describe('generated REST operation transport', () => {
     expect(seen).toEqual([{ url: 'https://weft.example/v1/jsonrpc', signal: controller.signal }]);
   });
 
+  it('surfaces retryable and remediation from a JSON-RPC fault envelope', async () => {
+    const callFetch: CatalogFetch = async () =>
+      Response.json({
+        jsonrpc: '2.0',
+        id: 'weft.test.catalog',
+        error: {
+          code: -32027,
+          message: 'slow down',
+          data: {
+            retryAfterSeconds: 2,
+            weftCode: 'RateLimited',
+            httpStatus: 429,
+            retryable: true,
+            remediation: 'Wait two seconds, then send the same request.',
+          },
+        },
+      });
+
+    expect(
+      await rejectionOf(
+        httpClientCatalogTransport('https://weft.example', {})(
+          'weft.test.catalog',
+          {},
+          {
+            fetch: callFetch,
+          },
+        ),
+      ),
+    ).toMatchObject({
+      status: 429,
+      faultCode: 'RateLimited',
+      retryable: true,
+      remediation: 'Wait two seconds, then send the same request.',
+    });
+  });
+
   it('rejects malformed catalog responses as HttpClientError', async () => {
     spyOn(globalThis, 'fetch').mockResolvedValue(new Response('not json', { status: 502 }));
 

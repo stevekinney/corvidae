@@ -71,7 +71,7 @@ describe('weft.workflows.start', () => {
     });
 
     expect(response.status).toBe(400);
-    expect(await response.json()).toEqual({ error: 'Invalid JSON body' });
+    expect(await response.json()).toEqual({ error: 'Invalid JSON body', retryable: false });
   });
 
   it('rejects an oversized declared body before reading a body', async () => {
@@ -93,6 +93,7 @@ describe('weft.workflows.start', () => {
     expect(await response.json()).toEqual({
       error: 'Payload Too Large',
       data: { maxBytes: 8 },
+      retryable: false,
     });
   });
 
@@ -108,7 +109,10 @@ describe('weft.workflows.start', () => {
     });
 
     expect(response.status).toBe(400);
-    expect(await response.json()).toEqual({ error: 'Request body must be a JSON object' });
+    expect(await response.json()).toEqual({
+      error: 'Request body must be a JSON object',
+      retryable: false,
+    });
   });
 
   it('returns 400 with "Missing required field: type" when body is a JSON array', async () => {
@@ -125,7 +129,10 @@ describe('weft.workflows.start', () => {
     );
 
     expect(response.status).toBe(400);
-    expect(await response.json()).toEqual({ error: 'Missing required field: type' });
+    expect(await response.json()).toEqual({
+      error: 'Missing required field: type',
+      retryable: false,
+    });
   });
 
   it('returns 400 when startAt and startAfter are both provided', async () => {
@@ -142,7 +149,10 @@ describe('weft.workflows.start', () => {
     );
 
     expect(response.status).toBe(400);
-    expect(await response.json()).toEqual({ error: 'Provide only one of startAt or startAfter' });
+    expect(await response.json()).toEqual({
+      error: 'Provide only one of startAt or startAfter',
+      retryable: false,
+    });
   });
 
   it('enforces idempotencyKey over raw REST: a duplicate key returns the same id', async () => {
@@ -205,7 +215,10 @@ describe('weft.workflows.start', () => {
     );
 
     expect(response.status).toBe(400);
-    expect(await response.json()).toEqual({ error: 'Field "idempotencyKey" must not be empty' });
+    expect(await response.json()).toEqual({
+      error: 'Field "idempotencyKey" must not be empty',
+      retryable: false,
+    });
   });
 
   it('coerces date-time search attributes before starting from raw REST', async () => {
@@ -266,7 +279,10 @@ describe('weft.workflows.start', () => {
       );
 
       expect(response.status).toBe(400);
-      expect(await response.json()).toEqual({ error: 'Field "id" must be a string' });
+      expect(await response.json()).toEqual({
+        error: 'Field "id" must be a string',
+        retryable: false,
+      });
     } finally {
       engine.start = originalStart;
     }
@@ -359,7 +375,7 @@ describe('weft.workflows.start', () => {
       );
 
       expect(response.status).toBe(500);
-      expect(await response.json()).toEqual({ error: 'Internal server error' });
+      expect(await response.json()).toEqual({ error: 'Internal server error', retryable: false });
       expect(response.headers.get('Content-Type')).toContain('application/json');
     } finally {
       engine.start = originalStart;

@@ -1,0 +1,69 @@
+{
+  "issue": "COR-2517_COR-2522",
+  "branch": "chef/b2-fault-contract",
+  "checkedAt": "c8240b861730f454dc451a380f42e6e8cb00ab09",
+  "briefVersion": "95dea48a4614",
+  "status": "READY",
+  "criteria": [
+    {
+      "id": "COR-2517 AC1",
+      "status": "met-on-branch",
+      "evidence": "fault-code table and unit test in packages/backchannel; backchannel tests green"
+    },
+    {
+      "id": "COR-2517 AC2",
+      "status": "met-on-branch",
+      "evidence": "fault-remediation.ts and its tests"
+    },
+    {
+      "id": "COR-2517 AC3",
+      "status": "met-on-branch",
+      "evidence": "REST, JSON-RPC, MCP and SSE error frame carry retryable and remediation; fault-envelopes.json and weft and bureau wire goldens regenerated; wire-golden tests pass"
+    },
+    {
+      "id": "COR-2517 AC4",
+      "status": "met-on-branch",
+      "evidence": "EngineFailure pinned on REST, JSON-RPC, MCP and SSE frame (sse-stream.test.ts)"
+    },
+    {
+      "id": "COR-2517 AC5",
+      "status": "met-on-branch",
+      "evidence": "faults.ts reads data, retryable, remediation; subscription and storage clients keep a refusal's advice, new tests"
+    },
+    {
+      "id": "COR-2517 AC6",
+      "status": "met-on-branch",
+      "evidence": "api-errors.md documents both fields, names Backchannel files, adds a Server-Sent Events section; api-errors-documentation.test.ts passes"
+    },
+    {
+      "id": "COR-2517 AC7",
+      "status": "met-on-branch",
+      "evidence": "table doc comment states the rule; fault-code tests"
+    },
+    {
+      "id": "COR-2522 AC1",
+      "status": "met-on-branch",
+      "evidence": "bureau dry-run tests, 12698 pass after the merge"
+    },
+    {
+      "id": "COR-2522 AC2",
+      "status": "met-on-branch",
+      "evidence": "bureau dry-run tests"
+    },
+    {
+      "id": "COR-2522 AC3",
+      "status": "met-on-branch",
+      "evidence": "bureau dry-run tests"
+    },
+    {
+      "id": "COR-2522 AC4",
+      "status": "met-on-branch",
+      "evidence": "catalog dry-run classification test"
+    },
+    {
+      "id": "COR-2522 AC5",
+      "status": "met-on-branch",
+      "evidence": "bureau wire goldens regenerated after the merge; wire-golden test passes"
+    }
+  ]
+}

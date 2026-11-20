@@ -1,5 +1,5 @@
 import type { OperationFault } from '@lostgradient/backchannel';
-import { invalidParamsFault } from '@lostgradient/backchannel/internals';
+import { invalidParamsFault, withRemediation } from '@lostgradient/backchannel/internals';
 import { assertScopedBulkWorkflowFilter } from '../../core/bulk-workflow-filter.ts';
 import type { BulkOperationConfirmationError } from '../../core/engine/errors.ts';
 import { coerceStartWorkflowTags } from '../../core/start-workflow-validation.ts';
@@ -61,9 +61,12 @@ const STALE_PREVIEW_REMEDIATION =
  * The token is checked before any workflow is touched, so nothing has changed when this is thrown.
  */
 export function staleConfirmationFault(error: BulkOperationConfirmationError): OperationFault {
-  return {
-    code: 'Conflict',
-    message: `${error.message}. ${STALE_PREVIEW_REMEDIATION}`,
-    data: { reason: STALE_PREVIEW_REASON, weftCode: error.code },
-  };
+  return withRemediation(
+    {
+      code: 'Conflict',
+      message: `${error.message}. ${STALE_PREVIEW_REMEDIATION}`,
+      data: { reason: STALE_PREVIEW_REASON, weftCode: error.code },
+    },
+    STALE_PREVIEW_REMEDIATION,
+  );
 }

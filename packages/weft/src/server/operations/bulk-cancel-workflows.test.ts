@@ -150,6 +150,7 @@ describe('weft.workflows.bulk.cancel', () => {
     expect(response.status).toBe(400);
     expect(await response.json()).toEqual({
       error: 'Field "confirmationToken" is required after a dry run',
+      retryable: false,
     });
 
     const confirmedResponse = await handleRequest(
@@ -201,6 +202,7 @@ describe('weft.workflows.bulk.cancel', () => {
     expect(response.status).toBe(400);
     expect(await response.json()).toEqual({
       error: 'Field "bulkConcurrency" must be a positive integer',
+      retryable: false,
     });
   });
 
@@ -220,6 +222,7 @@ describe('weft.workflows.bulk.cancel', () => {
     expect(await response.json()).toEqual({
       error: 'Payload Too Large',
       data: { maxBytes: 8 },
+      retryable: false,
     });
   });
 
@@ -235,6 +238,7 @@ describe('weft.workflows.bulk.cancel', () => {
     expect(await response.json()).toEqual({
       error:
         'Field "filter" must include at least one of status, type, scheduleId, tags, attributes, idPrefix (≥3 chars), or failureCategory paired with status',
+      retryable: false,
     });
   });
 
@@ -255,6 +259,7 @@ describe('weft.workflows.bulk.cancel', () => {
     expect(response.headers.get('content-type')).toBe('application/json');
     expect(await response.json()).toEqual({
       error: 'Field "filter.attributes[0].key" must be a non-empty string',
+      retryable: false,
     });
   });
 
@@ -274,6 +279,7 @@ describe('weft.workflows.bulk.cancel', () => {
     expect(response.status).toBe(400);
     expect(await response.json()).toEqual({
       error: 'Field "requestId" must be at most 200 characters',
+      retryable: false,
     });
   });
 
@@ -300,7 +306,10 @@ describe('weft.workflows.bulk.cancel', () => {
     );
 
     expect(response.status).toBe(403);
-    expect(await response.json()).toEqual({ error: 'requires any of: workflows:admin' });
+    expect(await response.json()).toEqual({
+      error: 'requires any of: workflows:admin',
+      retryable: false,
+    });
   });
 
   it('masks EngineFailure faults to a 500 with a generic error body', async () => {
@@ -328,6 +337,6 @@ describe('weft.workflows.bulk.cancel', () => {
 
     expect(response.status).toBe(500);
     expect(response.headers.get('content-type')).toBe('application/json');
-    expect(await response.json()).toEqual({ error: 'Internal server error' });
+    expect(await response.json()).toEqual({ error: 'Internal server error', retryable: false });
   });
 });

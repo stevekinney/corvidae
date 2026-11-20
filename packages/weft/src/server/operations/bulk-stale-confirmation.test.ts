@@ -151,7 +151,11 @@ async function seed(engine: Engine, bulkCase: BulkCase, tag: string, workflowId:
 
 type RpcAnswer = {
   result?: { confirmationToken: string };
-  error?: { code: number; message: string; data: { weftCode: string; httpStatus: number } };
+  error?: {
+    code: number;
+    message: string;
+    data: { weftCode: string; httpStatus: number; remediation?: string };
+  };
 };
 
 function callJsonRpc(engine: Engine, operationName: string) {
@@ -202,8 +206,14 @@ describe('a stale bulk confirmation token', () => {
         const stale = await send(restBody(bulkCase, tag, { confirmationToken }));
 
         expect(stale.status).toBe(409);
-        const body = (await stale.json()) as { error: string };
+        const body = (await stale.json()) as {
+          error: string;
+          retryable: boolean;
+          remediation?: string;
+        };
         expect(body.error).toContain('Run the preview again');
+        expect(body.retryable).toBe(false);
+        expect(body.remediation).toContain('Run the preview again');
         expect(await stateOf(engine, 'stale-rest-first')).toEqual(before);
         expect(await stateOf(engine, 'stale-rest-late')).toEqual(lateBefore);
 
@@ -228,7 +238,12 @@ describe('a stale bulk confirmation token', () => {
         );
 
         expect(stale.error?.code).toBe(-32021);
-        expect(stale.error?.data).toMatchObject({ weftCode: 'Conflict', httpStatus: 409 });
+        expect(stale.error?.data).toMatchObject({
+          weftCode: 'Conflict',
+          httpStatus: 409,
+          retryable: false,
+        });
+        expect(stale.error?.data.remediation).toContain('Run the preview again');
         expect(stale.error?.message).toContain('Run the preview again');
         expect(await stateOf(engine, 'stale-rpc-first')).toEqual(before);
         expect(await stateOf(engine, 'stale-rpc-late')).toEqual(lateBefore);

@@ -24,6 +24,7 @@ function optionalMetadata(operation: OperationMetadata) {
   return {
     ...(operation.description === undefined ? {} : { description: operation.description }),
     ...(operation.discoverable === undefined ? {} : { discoverable: operation.discoverable }),
+    ...(operation.supportsDryRun === true ? { supportsDryRun: true } : {}),
     ...(operation.mcpTool === undefined ? {} : { mcpTool: frozenRecord(operation.mcpTool) }),
     ...(operation.producibleFaults === undefined
       ? {}

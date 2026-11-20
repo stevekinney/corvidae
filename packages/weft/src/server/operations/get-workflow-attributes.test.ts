@@ -76,6 +76,7 @@ describe('weft.workflows.attributes.get', () => {
     expect(await response.json()).toEqual({
       error: 'Attributes for workflow "does-not-exist" not found',
       data: { resource: 'attributes', identifier: 'does-not-exist' },
+      retryable: false,
     });
 
     engine[Symbol.dispose]();
@@ -107,7 +108,7 @@ describe('weft.workflows.attributes.get', () => {
 
     expect(response.status).toBe(500);
     expect(response.headers.get('content-type')).toBe('application/json');
-    expect(await response.json()).toEqual({ error: 'Internal server error' });
+    expect(await response.json()).toEqual({ error: 'Internal server error', retryable: false });
 
     engine[Symbol.dispose]();
   });

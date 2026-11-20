@@ -68,6 +68,45 @@ const missing = defineOperation<z.ZodObject<{ id: z.ZodString }>, z.ZodObject<{}
   },
 });
 
+/** An operation that raises the fault code its input names, each carrying a remediation. */
+const advised = defineOperation<
+  z.ZodObject<{
+    code: z.ZodEnum<{
+      NotFound: 'NotFound';
+      RateLimited: 'RateLimited';
+      EngineFailure: 'EngineFailure';
+    }>;
+  }>,
+  z.ZodObject<{}>,
+  TestHost
+>({
+  name: 'probe.advised',
+  mcpExposable: true,
+  summary: 'Raises a fault with advice',
+  destructive: false,
+  inputSchema: z.object({ code: z.enum(['NotFound', 'RateLimited', 'EngineFailure']) }),
+  outputSchema: z.object({}),
+  access: { kind: 'authenticated' },
+  producibleFaults: ['NotFound', 'RateLimited', 'EngineFailure'],
+  transports,
+  unknownKeyPolicy: { http: 'reject', jsonRpc: 'reject' },
+  invoke: async ({ input }) => {
+    const remediation = 'Create the thing first, then call again.';
+    if (input.code === 'NotFound') {
+      throw { code: 'NotFound', message: 'no thing', data: { resource: 'thing' }, remediation };
+    }
+    if (input.code === 'RateLimited') {
+      throw {
+        code: 'RateLimited',
+        message: 'slow down',
+        data: { retryAfterSeconds: 3 },
+        remediation,
+      };
+    }
+    throw { code: 'EngineFailure', message: 'internal error', data: {}, remediation };
+  },
+});
+
 const eventsInput = z.object({ fromCursor: z.string().min(1).optional() });
 const eventsEnvelope = z.object({ subscriptionId: z.string(), cursor: z.string() });
 
@@ -147,7 +186,7 @@ async function connect(
 ) {
   const host = createTestHost();
   const handler = createOperationHandler({
-    operations: [echo, hidden, missing, events, finite],
+    operations: [echo, hidden, missing, advised, events, finite],
     host,
     authenticate: async () => caller(),
     mounts: [createOperationMcpMount({ idleMs: 20, ...mountOptions })],
@@ -170,6 +209,7 @@ describe.each(eras)('catalog operations as MCP tools ($era era)', ({ mode, versi
     expect(client.getNegotiatedProtocolVersion()).toBe(version);
     const { tools } = await client.listTools();
     expect(tools.map((tool) => tool.name).toSorted()).toEqual([
+      'probe.advised',
       'probe.echo',
       'probe.events',
       'probe.finite',
@@ -207,6 +247,50 @@ describe.each(eras)('catalog operations as MCP tools ($era era)', ({ mode, versi
     const result = await client.callTool({ name: 'probe.missing', arguments: { id: 'x' } });
     expect(result.isError).toBe(true);
     expect(result.structuredContent).toMatchObject({ code: 'NotFound', data: { kind: 'thing' } });
+  });
+
+  it('carries retryable on every fault, and remediation when the fault sets one', async () => {
+    const { client } = await connect(mode);
+    const missingResult = await client.callTool({ name: 'probe.missing', arguments: { id: 'x' } });
+    expect(missingResult.structuredContent).toEqual({
+      code: 'NotFound',
+      message: 'no such thing: x',
+      data: { kind: 'thing' },
+      retryable: false,
+    });
+
+    const advice = 'Create the thing first, then call again.';
+    const notFound = await client.callTool({
+      name: 'probe.advised',
+      arguments: { code: 'NotFound' },
+    });
+    expect(notFound.structuredContent).toEqual({
+      code: 'NotFound',
+      message: 'no thing',
+      data: { resource: 'thing' },
+      retryable: false,
+      remediation: advice,
+    });
+    const limited = await client.callTool({
+      name: 'probe.advised',
+      arguments: { code: 'RateLimited' },
+    });
+    expect(limited.structuredContent).toMatchObject({ code: 'RateLimited', retryable: true });
+  });
+
+  it('never sends a remediation with an EngineFailure, and marks it not retryable', async () => {
+    const { client } = await connect(mode);
+    const result = await client.callTool({
+      name: 'probe.advised',
+      arguments: { code: 'EngineFailure' },
+    });
+    expect(result.isError).toBe(true);
+    expect(result.structuredContent).toEqual({
+      code: 'EngineFailure',
+      message: 'internal error',
+      data: {},
+      retryable: false,
+    });
   });
 
   it('does not serve an operation that is not mcpExposable', async () => {

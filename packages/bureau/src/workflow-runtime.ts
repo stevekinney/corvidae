@@ -546,9 +546,17 @@ export interface BureauWorkflows {
     id: string,
     options: { readonly expectedHash: string } & WorkflowWriteContext,
   ) => Promise<WorkflowFileWriteResult>;
+  /**
+   * Delete the workflow's file, if it still hashes to `expectedHash`. With `dryRun` it makes the
+   * checks the delete makes and refuses as it refuses, then removes nothing and writes no audit
+   * entry, event or schedule change.
+   */
   readonly delete: (
     id: string,
-    options: { readonly expectedHash: string } & WorkflowWriteContext,
+    options: {
+      readonly expectedHash: string;
+      readonly dryRun?: boolean | undefined;
+    } & WorkflowWriteContext,
   ) => Promise<WorkflowFileWriteResult>;
   /**
    * Start the failed listener of workflow `id`'s contributed trigger at once, with its backoff
@@ -607,9 +615,14 @@ export interface BureauWorkflows {
     readonly nextOffset: number | null;
   }>;
   readonly getRun: (runId: string) => Promise<WorkflowRunDetail | undefined>;
-  /** Request cancellation of one workflow-file run, returning once the request is recorded. */
+  /**
+   * Request cancellation of one workflow-file run, returning once the request is recorded. With
+   * `dryRun` it makes the check the cancel makes and refuses as it refuses (a run that is no
+   * instance of a workflow file is `NOT_FOUND`), then asks the engine for nothing.
+   */
   readonly cancel: (
     runId: string,
+    options?: { readonly dryRun?: boolean | undefined },
   ) => Promise<{ readonly runId: string; readonly status: 'cancel-requested' }>;
   /**
    * COR-2424 — run a failed instance again from the step it failed at, in place and on the version
@@ -2805,7 +2818,18 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
       );
     },
     delete: (id, guard) =>
-      write('workflow.deleted', guard, undefined, () => catalog.delete(id, guard), undefined, id),
+      // A dry run leaves the write pipeline out altogether: it records no audit entry, claims no
+      // hook origin and applies nothing.
+      guard.dryRun === true
+        ? catalog.delete(id, guard)
+        : write(
+            'workflow.deleted',
+            guard,
+            undefined,
+            () => catalog.delete(id, guard),
+            undefined,
+            id,
+          ),
 
     async revisions(id, mayReadRun) {
       if (mayReadRun !== undefined) {
@@ -3034,11 +3058,12 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
       };
     },
 
-    async cancel(runId) {
+    async cancel(runId, cancelOptions) {
       const state = await engine.get(runId);
       if (state === null || state === undefined || !(await isWorkflowType(state.type))) {
         throw options.createError(`Workflow run "${runId}" does not exist`, 'NOT_FOUND');
       }
+      if (cancelOptions?.dryRun === true) return { runId, status: 'cancel-requested' as const };
       const outcome = await engine.cancel(runId);
       if (outcome.status === 'already-terminal') {
         return { runId, status: 'cancel-requested' as const };

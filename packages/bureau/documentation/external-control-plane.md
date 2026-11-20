@@ -403,6 +403,28 @@ Each run's durable workflow is purged by its exact id (Weft's `engine.purgeById`
 
 `bureau.tasks.cancel` and `bureau.contexts.delete` take `waitMilliseconds` (default 0, at most 60,000), the longest they wait for a cleanup acknowledgement still outstanding; with the default the receipt is whatever has settled, and `bureau.tasks.get` carries the same cleanup state afterwards. `Bureau.contexts.delete` resolves a report of the tasks that were live in the session, each with its run's cleanup acknowledgement, so the operation reports without a second deletion method.
 
+### Dry run of a destructive operation (COR-2522)
+
+Twelve operations that cancel, delete, disable or forget something take the optional boolean `dryRun`: `bureau.tasks.cancel`, `bureau.workflows.runs.cancel`, `bureau.goals.cancel`, `bureau.schedules.cancel`, `bureau.contexts.delete`, `bureau.contexts.forgetgrants`, `bureau.agents.definitions.delete`, `bureau.agents.disable`, `bureau.hooks.delete`, `bureau.workflows.delete`, `bureau.memory.forget` and `bureau.memory.embedding.cancel`. The operation catalog marks each `supportsDryRun`, and `src/http/management/dry-run.test.ts` fails when an operation named `…cancel`, `…delete`, `…disable`, `…forget` or `…forgetgrants` is not marked, so a new one cannot ship without it.
+
+With `dryRun: true` the server makes the checks the real call makes up to its first write: the operation's own `authorize`, the validation of the input, the caller's access to the target, the load of the target, and the guard it carries (`expectedRevision`, `expectedHash`). It then writes nothing, publishes no event and appends no audit entry, and answers `{ dryRun: true, target: { kind, id }, effects }`. A target the real call would not find, a caller it would refuse and a stale guard answer the same fault the real call answers, so a dry run discloses nothing the call does not. Each of `effects` is `{ kind, count }`, plus `atLeast: true` when `count` is a floor because a listing was cut short; a kind with nothing to change is listed with a count of 0.
+
+| Operation | `target.kind` | `effects` |
+| --- | --- | --- |
+| `bureau.tasks.cancel` | `task` | `runs-in-progress`: 1 while the task has a run, 0 once it has finished and for a task that belongs to a goal or a workflow instance, whose cancel is `rejected` and stops nothing |
+| `bureau.workflows.runs.cancel` | `workflow-run` | `running-instances`: 1 while the instance has not finished |
+| `bureau.goals.cancel` | `goal` | `runs-in-progress`: the attempt runs the cancel would stop |
+| `bureau.schedules.cancel` | `schedule` | `queued-runs`: the occurrences waiting behind the fire in flight, which the cancel drops |
+| `bureau.contexts.delete` | `context` | `runs-in-progress`: the live tasks the delete would cancel, none once Bureau is shutting down, when the real call is `rejected` |
+| `bureau.contexts.forgetgrants` | `context-grants` | `tool-grants`: the grants the named tools match |
+| `bureau.agents.definitions.delete`, `bureau.agents.disable` | `agent` | `schedules`, `goals` and `open-chats`: the schedules, unfinished goals and unarchived chats that name the agent |
+| `bureau.hooks.delete` | `hook` | `delivery-records` and `deliveries-in-flight`, each a floor (`atLeast`) once the hook has 200 or more delivery records; a default hook (`declaredBy`) answers the `InvalidParams` fault the real call answers |
+| `bureau.workflows.delete` | `workflow` | `schedules` the delete would cancel, and `running-instances` that would finish on their own revision |
+| `bureau.memory.forget` | `memory` | `memories`: the record the deletion starts with, as a floor (`atLeast`): the summaries derived from it go with it and are not counted, and a legal hold keeps it stored |
+| `bureau.memory.embedding.cancel` | `memory-embedding-switch` | `running-switches`: 1 while a switch runs; the operation names no target, so `target.id` is the embedder the switch fills, or `none` |
+
+Every one of them is single-target (the embedding cancel acts on the one switch there is), so no confirmation token is involved: the target is named exactly. A dry run is not a reservation: the real call checks again when it runs. The MCP tool of an exposed operation (`bureau.tasks.cancel` is the only one) takes `dryRun` as its input does. An unknown key, or a `dryRun` that is not a boolean, is `InvalidParams`, so a misspelt flag never runs the real call.
+
 ## Command envelope
 
 Every command carries the same fields. On the A2A surface they map onto the message and the command-receipts extension's metadata; on the management plane they are the operation's input envelope.
@@ -582,6 +604,8 @@ Errors are versioned with the surface that returns them, machine-readable, and, 
 | Cancellation | `TaskNotCancelableError` (`-32002`) for a task that is `COMPLETED`, `FAILED`, or `REJECTED`; `CANCELED` (A2A 1.0.1 §3.1.5 names an already-canceled task as not cancelable, so a repeated cancel has the same effect and the same error), and `TaskNotFoundError` once the task is purged (§3.3.1) | `Conflict` (Weft keeps no cancellation category), for the A2A surface only: `bureau.tasks.cancel` reports a task that finished without being canceled as the `rejected` receipt, and a repeated cancel as its current cleanup receipt, so it raises no fault for either | 409 |
 | Unavailable dependency | JSON-RPC `-32603` with retry detail | `Unavailable` (new) | 503 |
 | Internal failure | JSON-RPC `-32603` | `EngineFailure` | 500 |
+
+Every fault the management plane answers also carries `retryable` (always: whether the identical call, repeated later and unchanged, can succeed, from one table per fault code) and `remediation` (when one is set: a single line saying what to do next) in `error.data`, and in the `structuredContent` of an MCP tool error; the fields are specified in Weft's [errors reference](../../weft/documentation/reference/api-errors.md).
 
 The HTTP column applies to the management plane. On the A2A JSON-RPC mounts, every application-level error is a JSON-RPC error envelope with HTTP 200, as the pinned SDK returns it; only authentication (401) and rate limiting (429), which are rejected before the JSON-RPC handler runs, use HTTP statuses there. `ErrorInfo` reasons are UPPER_SNAKE_CASE identifiers (`CONFLICT`, `STALE_REVISION`, `TIMEOUT`, `RATE_LIMITED`, `UNAVAILABLE`), as `google.rpc.ErrorInfo` requires, not Weft's fault names.
 

@@ -75,6 +75,7 @@ describe('weft.workflows.events.list', () => {
     expect(await response.json()).toEqual({
       error: 'Workflow "does-not-exist" not found',
       data: { resource: 'workflow', identifier: 'does-not-exist' },
+      retryable: false,
     });
 
     engine[Symbol.dispose]();
@@ -106,7 +107,7 @@ describe('weft.workflows.events.list', () => {
 
     expect(response.status).toBe(500);
     expect(response.headers.get('content-type')).toBe('application/json');
-    expect(await response.json()).toEqual({ error: 'Internal server error' });
+    expect(await response.json()).toEqual({ error: 'Internal server error', retryable: false });
 
     engine[Symbol.dispose]();
   });

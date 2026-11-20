@@ -8,10 +8,21 @@
           "properties": {
             "reason": {
               "type": "string"
+            },
+            "remediation": {
+              "description": "One line of plain text saying what to do next",
+              "maxLength": 500,
+              "minLength": 1,
+              "type": "string"
+            },
+            "retryable": {
+              "description": "Whether repeating the identical call later can succeed",
+              "type": "boolean"
             }
           },
           "required": [
-            "reason"
+            "reason",
+            "retryable"
           ],
           "type": "object"
         },
@@ -22,7 +33,21 @@
         "code": -32099,
         "data": {
           "additionalProperties": false,
-          "properties": {},
+          "properties": {
+            "remediation": {
+              "description": "One line of plain text saying what to do next",
+              "maxLength": 500,
+              "minLength": 1,
+              "type": "string"
+            },
+            "retryable": {
+              "description": "Whether repeating the identical call later can succeed",
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "retryable"
+          ],
           "type": "object"
         },
         "message": "EngineFailure",
@@ -35,10 +60,21 @@
           "properties": {
             "reason": {
               "type": "string"
+            },
+            "remediation": {
+              "description": "One line of plain text saying what to do next",
+              "maxLength": 500,
+              "minLength": 1,
+              "type": "string"
+            },
+            "retryable": {
+              "description": "Whether repeating the identical call later can succeed",
+              "type": "boolean"
             }
           },
           "required": [
-            "reason"
+            "reason",
+            "retryable"
           ],
           "type": "object"
         },
@@ -80,10 +116,21 @@
               },
               "readOnly": true,
               "type": "array"
+            },
+            "remediation": {
+              "description": "One line of plain text saying what to do next",
+              "maxLength": 500,
+              "minLength": 1,
+              "type": "string"
+            },
+            "retryable": {
+              "description": "Whether repeating the identical call later can succeed",
+              "type": "boolean"
             }
           },
           "required": [
-            "issues"
+            "issues",
+            "retryable"
           ],
           "type": "object"
         },
@@ -97,10 +144,21 @@
           "properties": {
             "method": {
               "type": "string"
+            },
+            "remediation": {
+              "description": "One line of plain text saying what to do next",
+              "maxLength": 500,
+              "minLength": 1,
+              "type": "string"
+            },
+            "retryable": {
+              "description": "Whether repeating the identical call later can succeed",
+              "type": "boolean"
             }
           },
           "required": [
-            "method"
+            "method",
+            "retryable"
           ],
           "type": "object"
         },
@@ -115,12 +173,23 @@
             "identifier": {
               "type": "string"
             },
+            "remediation": {
+              "description": "One line of plain text saying what to do next",
+              "maxLength": 500,
+              "minLength": 1,
+              "type": "string"
+            },
             "resource": {
               "type": "string"
+            },
+            "retryable": {
+              "description": "Whether repeating the identical call later can succeed",
+              "type": "boolean"
             }
           },
           "required": [
-            "resource"
+            "resource",
+            "retryable"
           ],
           "type": "object"
         },
@@ -131,7 +200,21 @@
         "code": -32025,
         "data": {
           "additionalProperties": false,
-          "properties": {},
+          "properties": {
+            "remediation": {
+              "description": "One line of plain text saying what to do next",
+              "maxLength": 500,
+              "minLength": 1,
+              "type": "string"
+            },
+            "retryable": {
+              "description": "Whether repeating the identical call later can succeed",
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "retryable"
+          ],
           "type": "object"
         },
         "message": "NotImplemented",
@@ -144,10 +227,21 @@
           "properties": {
             "maxBytes": {
               "type": "number"
+            },
+            "remediation": {
+              "description": "One line of plain text saying what to do next",
+              "maxLength": 500,
+              "minLength": 1,
+              "type": "string"
+            },
+            "retryable": {
+              "description": "Whether repeating the identical call later can succeed",
+              "type": "boolean"
             }
           },
           "required": [
-            "maxBytes"
+            "maxBytes",
+            "retryable"
           ],
           "type": "object"
         },
@@ -159,10 +253,23 @@
         "data": {
           "additionalProperties": false,
           "properties": {
+            "remediation": {
+              "description": "One line of plain text saying what to do next",
+              "maxLength": 500,
+              "minLength": 1,
+              "type": "string"
+            },
             "retryAfterSeconds": {
               "type": "number"
+            },
+            "retryable": {
+              "description": "Whether repeating the identical call later can succeed",
+              "type": "boolean"
             }
           },
+          "required": [
+            "retryable"
+          ],
           "type": "object"
         },
         "message": "RateLimited",
@@ -184,10 +291,21 @@
                 "string",
                 "number"
               ]
+            },
+            "remediation": {
+              "description": "One line of plain text saying what to do next",
+              "maxLength": 500,
+              "minLength": 1,
+              "type": "string"
+            },
+            "retryable": {
+              "description": "Whether repeating the identical call later can succeed",
+              "type": "boolean"
             }
           },
           "required": [
-            "currentRevision"
+            "currentRevision",
+            "retryable"
           ],
           "type": "object"
         },
@@ -202,13 +320,24 @@
             "droppedCount": {
               "type": "number"
             },
+            "remediation": {
+              "description": "One line of plain text saying what to do next",
+              "maxLength": 500,
+              "minLength": 1,
+              "type": "string"
+            },
+            "retryable": {
+              "description": "Whether repeating the identical call later can succeed",
+              "type": "boolean"
+            },
             "subscriptionId": {
               "type": "string"
             }
           },
           "required": [
             "subscriptionId",
-            "droppedCount"
+            "droppedCount",
+            "retryable"
           ],
           "type": "object"
         },
@@ -223,10 +352,23 @@
             "operationName": {
               "type": "string"
             },
+            "remediation": {
+              "description": "One line of plain text saying what to do next",
+              "maxLength": 500,
+              "minLength": 1,
+              "type": "string"
+            },
+            "retryable": {
+              "description": "Whether repeating the identical call later can succeed",
+              "type": "boolean"
+            },
             "updateId": {
               "type": "string"
             }
           },
+          "required": [
+            "retryable"
+          ],
           "type": "object"
         },
         "message": "Timeout",
@@ -239,10 +381,21 @@
           "properties": {
             "reason": {
               "type": "string"
+            },
+            "remediation": {
+              "description": "One line of plain text saying what to do next",
+              "maxLength": 500,
+              "minLength": 1,
+              "type": "string"
+            },
+            "retryable": {
+              "description": "Whether repeating the identical call later can succeed",
+              "type": "boolean"
             }
           },
           "required": [
-            "reason"
+            "reason",
+            "retryable"
           ],
           "type": "object"
         },
@@ -257,10 +410,23 @@
             "reason": {
               "type": "string"
             },
+            "remediation": {
+              "description": "One line of plain text saying what to do next",
+              "maxLength": 500,
+              "minLength": 1,
+              "type": "string"
+            },
             "retryAfterSeconds": {
               "type": "number"
+            },
+            "retryable": {
+              "description": "Whether repeating the identical call later can succeed",
+              "type": "boolean"
             }
           },
+          "required": [
+            "retryable"
+          ],
           "type": "object"
         },
         "message": "Unavailable",
@@ -273,10 +439,21 @@
           "properties": {
             "reason": {
               "type": "string"
+            },
+            "remediation": {
+              "description": "One line of plain text saying what to do next",
+              "maxLength": 500,
+              "minLength": 1,
+              "type": "string"
+            },
+            "retryable": {
+              "description": "Whether repeating the identical call later can succeed",
+              "type": "boolean"
             }
           },
           "required": [
-            "reason"
+            "reason",
+            "retryable"
           ],
           "type": "object"
         },
@@ -290,10 +467,21 @@
           "properties": {
             "capability": {
               "type": "string"
+            },
+            "remediation": {
+              "description": "One line of plain text saying what to do next",
+              "maxLength": 500,
+              "minLength": 1,
+              "type": "string"
+            },
+            "retryable": {
+              "description": "Whether repeating the identical call later can succeed",
+              "type": "boolean"
             }
           },
           "required": [
-            "capability"
+            "capability",
+            "retryable"
           ],
           "type": "object"
         },
@@ -305,6 +493,16 @@
         "data": {
           "additionalProperties": false,
           "properties": {
+            "remediation": {
+              "description": "One line of plain text saying what to do next",
+              "maxLength": 500,
+              "minLength": 1,
+              "type": "string"
+            },
+            "retryable": {
+              "description": "Whether repeating the identical call later can succeed",
+              "type": "boolean"
+            },
             "supported": {
               "items": {
                 "enum": [
@@ -332,7 +530,8 @@
           },
           "required": [
             "transport",
-            "supported"
+            "supported",
+            "retryable"
           ],
           "type": "object"
         },

@@ -8,10 +8,21 @@
           "properties": {
             "reason": {
               "type": "string"
+            },
+            "remediation": {
+              "description": "One line of plain text saying what to do next",
+              "maxLength": 500,
+              "minLength": 1,
+              "type": "string"
+            },
+            "retryable": {
+              "description": "Whether repeating the identical call later can succeed",
+              "type": "boolean"
             }
           },
           "required": [
-            "reason"
+            "reason",
+            "retryable"
           ],
           "type": "object"
         },
@@ -22,7 +33,21 @@
         "code": -32099,
         "data": {
           "additionalProperties": false,
-          "properties": {},
+          "properties": {
+            "remediation": {
+              "description": "One line of plain text saying what to do next",
+              "maxLength": 500,
+              "minLength": 1,
+              "type": "string"
+            },
+            "retryable": {
+              "description": "Whether repeating the identical call later can succeed",
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "retryable"
+          ],
           "type": "object"
         },
         "message": "EngineFailure",
@@ -35,10 +60,21 @@
           "properties": {
             "reason": {
               "type": "string"
+            },
+            "remediation": {
+              "description": "One line of plain text saying what to do next",
+              "maxLength": 500,
+              "minLength": 1,
+              "type": "string"
+            },
+            "retryable": {
+              "description": "Whether repeating the identical call later can succeed",
+              "type": "boolean"
             }
           },
           "required": [
-            "reason"
+            "reason",
+            "retryable"
           ],
           "type": "object"
         },
@@ -80,10 +116,21 @@
               },
               "readOnly": true,
               "type": "array"
+            },
+            "remediation": {
+              "description": "One line of plain text saying what to do next",
+              "maxLength": 500,
+              "minLength": 1,
+              "type": "string"
+            },
+            "retryable": {
+              "description": "Whether repeating the identical call later can succeed",
+              "type": "boolean"
             }
           },
           "required": [
-            "issues"
+            "issues",
+            "retryable"
           ],
           "type": "object"
         },
@@ -97,10 +144,21 @@
           "properties": {
             "method": {
               "type": "string"
+            },
+            "remediation": {
+              "description": "One line of plain text saying what to do next",
+              "maxLength": 500,
+              "minLength": 1,
+              "type": "string"
+            },
+            "retryable": {
+              "description": "Whether repeating the identical call later can succeed",
+              "type": "boolean"
             }
           },
           "required": [
-            "method"
+            "method",
+            "retryable"
           ],
           "type": "object"
         },
@@ -115,12 +173,23 @@
             "identifier": {
               "type": "string"
             },
+            "remediation": {
+              "description": "One line of plain text saying what to do next",
+              "maxLength": 500,
+              "minLength": 1,
+              "type": "string"
+            },
             "resource": {
               "type": "string"
+            },
+            "retryable": {
+              "description": "Whether repeating the identical call later can succeed",
+              "type": "boolean"
             }
           },
           "required": [
-            "resource"
+            "resource",
+            "retryable"
           ],
           "type": "object"
         },
@@ -131,7 +200,21 @@
         "code": -32025,
         "data": {
           "additionalProperties": false,
-          "properties": {},
+          "properties": {
+            "remediation": {
+              "description": "One line of plain text saying what to do next",
+              "maxLength": 500,
+              "minLength": 1,
+              "type": "string"
+            },
+            "retryable": {
+              "description": "Whether repeating the identical call later can succeed",
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "retryable"
+          ],
           "type": "object"
         },
         "message": "NotImplemented",
@@ -144,10 +227,21 @@
           "properties": {
             "maxBytes": {
               "type": "number"
+            },
+            "remediation": {
+              "description": "One line of plain text saying what to do next",
+              "maxLength": 500,
+              "minLength": 1,
+              "type": "string"
+            },
+            "retryable": {
+              "description": "Whether repeating the identical call later can succeed",
+              "type": "boolean"
             }
           },
           "required": [
-            "maxBytes"
+            "maxBytes",
+            "retryable"
           ],
           "type": "object"
         },
@@ -159,10 +253,23 @@
         "data": {
           "additionalProperties": false,
           "properties": {
+            "remediation": {
+              "description": "One line of plain text saying what to do next",
+              "maxLength": 500,
+              "minLength": 1,
+              "type": "string"
+            },
             "retryAfterSeconds": {
               "type": "number"
+            },
+            "retryable": {
+              "description": "Whether repeating the identical call later can succeed",
+              "type": "boolean"
             }
           },
+          "required": [
+            "retryable"
+          ],
           "type": "object"
         },
         "message": "RateLimited",
@@ -184,10 +291,21 @@
                 "string",
                 "number"
               ]
+            },
+            "remediation": {
+              "description": "One line of plain text saying what to do next",
+              "maxLength": 500,
+              "minLength": 1,
+              "type": "string"
+            },
+            "retryable": {
+              "description": "Whether repeating the identical call later can succeed",
+              "type": "boolean"
             }
           },
           "required": [
-            "currentRevision"
+            "currentRevision",
+            "retryable"
           ],
           "type": "object"
         },
@@ -202,13 +320,24 @@
             "droppedCount": {
               "type": "number"
             },
+            "remediation": {
+              "description": "One line of plain text saying what to do next",
+              "maxLength": 500,
+              "minLength": 1,
+              "type": "string"
+            },
+            "retryable": {
+              "description": "Whether repeating the identical call later can succeed",
+              "type": "boolean"
+            },
             "subscriptionId": {
               "type": "string"
             }
           },
           "required": [
             "subscriptionId",
-            "droppedCount"
+            "droppedCount",
+            "retryable"
           ],
           "type": "object"
         },
@@ -223,10 +352,23 @@
             "operationName": {
               "type": "string"
             },
+            "remediation": {
+              "description": "One line of plain text saying what to do next",
+              "maxLength": 500,
+              "minLength": 1,
+              "type": "string"
+            },
+            "retryable": {
+              "description": "Whether repeating the identical call later can succeed",
+              "type": "boolean"
+            },
             "updateId": {
               "type": "string"
             }
           },
+          "required": [
+            "retryable"
+          ],
           "type": "object"
         },
         "message": "Timeout",
@@ -239,10 +381,21 @@
           "properties": {
             "reason": {
               "type": "string"
+            },
+            "remediation": {
+              "description": "One line of plain text saying what to do next",
+              "maxLength": 500,
+              "minLength": 1,
+              "type": "string"
+            },
+            "retryable": {
+              "description": "Whether repeating the identical call later can succeed",
+              "type": "boolean"
             }
           },
           "required": [
-            "reason"
+            "reason",
+            "retryable"
           ],
           "type": "object"
         },
@@ -257,10 +410,23 @@
             "reason": {
               "type": "string"
             },
+            "remediation": {
+              "description": "One line of plain text saying what to do next",
+              "maxLength": 500,
+              "minLength": 1,
+              "type": "string"
+            },
             "retryAfterSeconds": {
               "type": "number"
+            },
+            "retryable": {
+              "description": "Whether repeating the identical call later can succeed",
+              "type": "boolean"
             }
           },
+          "required": [
+            "retryable"
+          ],
           "type": "object"
         },
         "message": "Unavailable",
@@ -273,10 +439,21 @@
           "properties": {
             "reason": {
               "type": "string"
+            },
+            "remediation": {
+              "description": "One line of plain text saying what to do next",
+              "maxLength": 500,
+              "minLength": 1,
+              "type": "string"
+            },
+            "retryable": {
+              "description": "Whether repeating the identical call later can succeed",
+              "type": "boolean"
             }
           },
           "required": [
-            "reason"
+            "reason",
+            "retryable"
           ],
           "type": "object"
         },
@@ -290,10 +467,21 @@
           "properties": {
             "capability": {
               "type": "string"
+            },
+            "remediation": {
+              "description": "One line of plain text saying what to do next",
+              "maxLength": 500,
+              "minLength": 1,
+              "type": "string"
+            },
+            "retryable": {
+              "description": "Whether repeating the identical call later can succeed",
+              "type": "boolean"
             }
           },
           "required": [
-            "capability"
+            "capability",
+            "retryable"
           ],
           "type": "object"
         },
@@ -305,6 +493,16 @@
         "data": {
           "additionalProperties": false,
           "properties": {
+            "remediation": {
+              "description": "One line of plain text saying what to do next",
+              "maxLength": 500,
+              "minLength": 1,
+              "type": "string"
+            },
+            "retryable": {
+              "description": "Whether repeating the identical call later can succeed",
+              "type": "boolean"
+            },
             "supported": {
               "items": {
                 "enum": [
@@ -332,7 +530,8 @@
           },
           "required": [
             "transport",
-            "supported"
+            "supported",
+            "retryable"
           ],
           "type": "object"
         },
@@ -4454,7 +4653,7 @@
       }
     },
     {
-      "description": "Cancels one of the caller’s own tasks; a caller holding `bureau.tasks:write` cancels any owner’s. The receipt says where the cancellation stands: `cancel-requested` (the run has not stopped), `canceled` (a durable run stopped with no cleanup evidence to report), `cleanup-pending`, `cleaned-up`, `cleanup-failed`, `cleanup-unresolved` (cleanup could not be confirmed and may still be running, so nothing is promised about external effects), `unknown-outcome` (an external effect may or may not have happened), or `rejected` (nothing is applied). A rejection carries a `reason`: `already-terminal` (the task had already finished without being canceled), `owned-by-goal` (the task is one attempt of a goal, which only cancelling the goal stops) or `owned-by-workflow` (the task is a step of a workflow instance, which is not cancelled on its own). Cancelling the task of a child run stops the child as `bureau.children.cancel` does. `waitMilliseconds` (default 0) waits that long for the cleanup acknowledgement; `bureau.tasks.get` carries the same state afterwards. A repeated cancel has the same effect.",
+      "description": "Cancels one of the caller’s own tasks; a caller holding `bureau.tasks:write` cancels any owner’s. The receipt says where the cancellation stands: `cancel-requested` (the run has not stopped), `canceled` (a durable run stopped with no cleanup evidence to report), `cleanup-pending`, `cleaned-up`, `cleanup-failed`, `cleanup-unresolved` (cleanup could not be confirmed and may still be running, so nothing is promised about external effects), `unknown-outcome` (an external effect may or may not have happened), or `rejected` (nothing is applied). A rejection carries a `reason`: `already-terminal` (the task had already finished without being canceled), `owned-by-goal` (the task is one attempt of a goal, which only cancelling the goal stops) or `owned-by-workflow` (the task is a step of a workflow instance, which is not cancelled on its own). Cancelling the task of a child run stops the child as `bureau.children.cancel` does. `waitMilliseconds` (default 0) waits that long for the cleanup acknowledgement; `bureau.tasks.get` carries the same state afterwards. A repeated cancel has the same effect. With `dryRun: true` nothing is cancelled: the answer is `{ dryRun: true, target, effects }`, whose `runs-in-progress` effect counts the run the cancel would stop (1 while the task is in progress, 0 once it has finished or when it belongs to a goal or a workflow instance, whose cancel is `rejected`), and a task the real call would not find is `NotFound` as well.",
       "errors": [
         {
           "$ref": "#/components/errors/Unauthorized"
@@ -4475,6 +4674,14 @@
       "name": "bureau.tasks.cancel",
       "paramStructure": "by-name",
       "params": [
+        {
+          "name": "dryRun",
+          "required": false,
+          "schema": {
+            "description": "When `true`, performs the authorization and validation of the call, writes nothing, publishes no event and appends no audit record, and answers `{ dryRun: true, target, effects }` naming what the call would change. A target the real call would not find, or a caller it would refuse, answers the same fault.",
+            "type": "boolean"
+          }
+        },
         {
           "name": "taskId",
           "required": true,
@@ -4499,581 +4706,675 @@
         "name": "result",
         "required": true,
         "schema": {
-          "additionalProperties": false,
-          "properties": {
-            "reason": {
-              "enum": [
-                "already-terminal",
-                "owned-by-goal",
-                "owned-by-workflow"
-              ],
-              "type": "string"
-            },
-            "receipt": {
-              "enum": [
-                "cancel-requested",
-                "canceled",
-                "cleanup-pending",
-                "cleaned-up",
-                "cleanup-failed",
-                "cleanup-unresolved",
-                "unknown-outcome",
-                "rejected"
-              ],
-              "type": "string"
-            },
-            "task": {
+          "anyOf": [
+            {
               "additionalProperties": false,
               "properties": {
-                "actor": {
-                  "type": [
-                    "string",
-                    "null"
-                  ]
+                "dryRun": {
+                  "const": true,
+                  "description": "Always `true`: nothing was changed.",
+                  "type": "boolean"
                 },
-                "agentName": {
-                  "type": [
-                    "string",
-                    "null"
-                  ]
-                },
-                "attention": {
+                "effects": {
+                  "description": "What else the real call would change, each with a count; a kind with nothing to change is listed with a count of 0.",
                   "items": {
-                    "enum": [
-                      "stalled",
-                      "looping"
-                    ],
-                    "type": "string"
-                  },
-                  "type": "array"
-                },
-                "cleanup": {
-                  "anyOf": [
-                    {
-                      "enum": [
-                        "cancel-requested",
-                        "canceled",
-                        "cleanup-pending",
-                        "cleaned-up",
-                        "cleanup-failed",
-                        "cleanup-unresolved",
-                        "unknown-outcome"
-                      ],
-                      "type": "string"
-                    },
-                    {
-                      "type": "null"
-                    }
-                  ]
-                },
-                "contextId": {
-                  "type": "string"
-                },
-                "createdAt": {
-                  "type": "string"
-                },
-                "finishReason": {
-                  "type": [
-                    "string",
-                    "null"
-                  ]
-                },
-                "id": {
-                  "type": "string"
-                },
-                "kind": {
-                  "enum": [
-                    "chat",
-                    "schedule-fire",
-                    "catalog"
-                  ],
-                  "type": "string"
-                },
-                "openWaits": {
-                  "items": {
-                    "oneOf": [
-                      {
-                        "additionalProperties": false,
-                        "properties": {
-                          "kind": {
-                            "const": "human-wait",
-                            "type": "string"
-                          },
-                          "reviewId": {
-                            "type": "string"
-                          },
-                          "signalName": {
-                            "type": "string"
-                          }
-                        },
-                        "required": [
-                          "kind",
-                          "reviewId",
-                          "signalName"
-                        ],
-                        "type": "object"
+                    "additionalProperties": false,
+                    "properties": {
+                      "atLeast": {
+                        "const": true,
+                        "description": "Present when `count` is a floor: more exist than one answer can count.",
+                        "type": "boolean"
                       },
-                      {
-                        "additionalProperties": false,
-                        "properties": {
-                          "callId": {
-                            "type": "string"
-                          },
-                          "kind": {
-                            "const": "tool-approval",
-                            "type": "string"
-                          },
-                          "reviewId": {
-                            "type": "string"
-                          }
-                        },
-                        "required": [
-                          "kind",
-                          "reviewId",
-                          "callId"
+                      "count": {
+                        "description": "How many of them the call would change.",
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "kind": {
+                        "description": "What is counted: the kind of thing the call would change besides its target.",
+                        "enum": [
+                          "runs-in-progress",
+                          "running-instances",
+                          "schedules",
+                          "goals",
+                          "open-chats",
+                          "queued-runs",
+                          "running-switches",
+                          "tool-grants",
+                          "delivery-records",
+                          "deliveries-in-flight",
+                          "memories"
                         ],
-                        "type": "object"
+                        "type": "string"
                       }
-                    ]
+                    },
+                    "required": [
+                      "kind",
+                      "count"
+                    ],
+                    "type": "object"
                   },
                   "type": "array"
                 },
-                "origin": {
-                  "anyOf": [
-                    {
-                      "oneOf": [
-                        {
-                          "additionalProperties": false,
-                          "properties": {
-                            "agentName": {
-                              "type": "string"
-                            },
-                            "contextId": {
-                              "type": "string"
-                            },
-                            "kind": {
-                              "const": "chat",
-                              "type": "string"
-                            },
-                            "principal": {
-                              "type": "string"
-                            }
-                          },
-                          "required": [
-                            "kind",
-                            "contextId",
-                            "agentName",
-                            "principal"
-                          ],
-                          "type": "object"
-                        },
-                        {
-                          "additionalProperties": false,
-                          "properties": {
-                            "kind": {
-                              "const": "person",
-                              "type": "string"
-                            },
-                            "principal": {
-                              "type": "string"
-                            },
-                            "surface": {
-                              "enum": [
-                                "web",
-                                "palette",
-                                "api"
-                              ],
-                              "type": "string"
-                            }
-                          },
-                          "required": [
-                            "kind",
-                            "principal",
-                            "surface"
-                          ],
-                          "type": "object"
-                        },
-                        {
-                          "additionalProperties": false,
-                          "properties": {
-                            "fireId": {
-                              "type": "string"
-                            },
-                            "kind": {
-                              "const": "schedule",
-                              "type": "string"
-                            },
-                            "manual": {
-                              "const": true,
-                              "type": "boolean"
-                            },
-                            "scheduleId": {
-                              "type": "string"
-                            }
-                          },
-                          "required": [
-                            "kind",
-                            "scheduleId",
-                            "fireId"
-                          ],
-                          "type": "object"
-                        },
-                        {
-                          "additionalProperties": false,
-                          "properties": {
-                            "kind": {
-                              "const": "api",
-                              "type": "string"
-                            }
-                          },
-                          "required": [
-                            "kind"
-                          ],
-                          "type": "object"
-                        },
-                        {
-                          "additionalProperties": false,
-                          "properties": {
-                            "agentName": {
-                              "type": "string"
-                            },
-                            "kind": {
-                              "const": "agent",
-                              "type": "string"
-                            },
-                            "parentContextId": {
-                              "type": "string"
-                            },
-                            "parentRunId": {
-                              "type": "string"
-                            },
-                            "toolCallId": {
-                              "type": "string"
-                            }
-                          },
-                          "required": [
-                            "kind",
-                            "parentRunId",
-                            "agentName"
-                          ],
-                          "type": "object"
-                        },
-                        {
-                          "additionalProperties": false,
-                          "properties": {
-                            "agentId": {
-                              "type": "string"
-                            },
-                            "kind": {
-                              "const": "agent-run",
-                              "type": "string"
-                            },
-                            "runId": {
-                              "type": "string"
-                            }
-                          },
-                          "required": [
-                            "kind",
-                            "runId",
-                            "agentId"
-                          ],
-                          "type": "object"
-                        },
-                        {
-                          "additionalProperties": false,
-                          "properties": {
-                            "attemptId": {
-                              "type": "string"
-                            },
-                            "goalRunId": {
-                              "type": "string"
-                            },
-                            "kind": {
-                              "const": "goal",
-                              "type": "string"
-                            }
-                          },
-                          "required": [
-                            "kind",
-                            "goalRunId",
-                            "attemptId"
-                          ],
-                          "type": "object"
-                        },
-                        {
-                          "additionalProperties": false,
-                          "properties": {
-                            "kind": {
-                              "const": "parent",
-                              "type": "string"
-                            },
-                            "parentRunId": {
-                              "type": "string"
-                            }
-                          },
-                          "required": [
-                            "kind",
-                            "parentRunId"
-                          ],
-                          "type": "object"
-                        },
-                        {
-                          "additionalProperties": false,
-                          "properties": {
-                            "kind": {
-                              "const": "system",
-                              "type": "string"
-                            }
-                          },
-                          "required": [
-                            "kind"
-                          ],
-                          "type": "object"
-                        },
-                        {
-                          "additionalProperties": false,
-                          "properties": {
-                            "kind": {
-                              "const": "trigger",
-                              "type": "string"
-                            },
-                            "plugin": {
-                              "type": "string"
-                            },
-                            "workflowId": {
-                              "type": "string"
-                            }
-                          },
-                          "required": [
-                            "kind",
-                            "plugin",
-                            "workflowId"
-                          ],
-                          "type": "object"
-                        }
-                      ]
-                    },
-                    {
-                      "type": "null"
-                    }
-                  ]
-                },
-                "owner": {
-                  "type": "string"
-                },
-                "stalledSince": {
-                  "type": [
-                    "string",
-                    "null"
-                  ]
-                },
-                "status": {
-                  "enum": [
-                    "submitted",
-                    "working",
-                    "input-required",
-                    "completed",
-                    "failed",
-                    "canceled"
-                  ],
-                  "type": "string"
-                },
-                "statusMessage": {
-                  "anyOf": [
-                    {
-                      "maxLength": 1000,
+                "target": {
+                  "additionalProperties": false,
+                  "description": "What the real call would act on.",
+                  "properties": {
+                    "id": {
+                      "description": "The identifier of the target.",
                       "type": "string"
                     },
-                    {
-                      "type": "null"
-                    }
-                  ]
-                },
-                "updatedAt": {
-                  "type": "string"
-                },
-                "usage": {
-                  "anyOf": [
-                    {
-                      "additionalProperties": false,
-                      "properties": {
-                        "completionTokens": {
-                          "type": "number"
-                        },
-                        "costUsd": {
-                          "type": [
-                            "number",
-                            "null"
-                          ]
-                        },
-                        "promptTokens": {
-                          "type": "number"
-                        },
-                        "totalTokens": {
-                          "type": "number"
-                        }
-                      },
-                      "required": [
-                        "promptTokens",
-                        "completionTokens",
-                        "totalTokens",
-                        "costUsd"
+                    "kind": {
+                      "description": "What the call acts on.",
+                      "enum": [
+                        "task",
+                        "workflow-run",
+                        "goal",
+                        "context",
+                        "context-grants",
+                        "agent",
+                        "hook",
+                        "memory",
+                        "workflow",
+                        "schedule",
+                        "memory-embedding-switch"
                       ],
-                      "type": "object"
-                    },
-                    {
-                      "type": "null"
-                    }
-                  ]
-                },
-                "wakeAt": {
-                  "type": [
-                    "string",
-                    "null"
-                  ]
-                },
-                "workflow": {
-                  "additionalProperties": false,
-                  "properties": {
-                    "awaitingSignal": {
-                      "type": [
-                        "string",
-                        "null"
-                      ]
-                    },
-                    "scheduleId": {
-                      "type": [
-                        "string",
-                        "null"
-                      ]
-                    },
-                    "scheduleName": {
-                      "type": [
-                        "string",
-                        "null"
-                      ]
-                    },
-                    "steps": {
-                      "anyOf": [
-                        {
-                          "additionalProperties": false,
-                          "properties": {
-                            "at": {
-                              "anyOf": [
-                                {
-                                  "maximum": 9007199254740991,
-                                  "minimum": -9007199254740991,
-                                  "type": "integer"
-                                },
-                                {
-                                  "type": "null"
-                                }
-                              ]
-                            },
-                            "total": {
-                              "maximum": 9007199254740991,
-                              "minimum": -9007199254740991,
-                              "type": "integer"
-                            }
-                          },
-                          "required": [
-                            "total",
-                            "at"
-                          ],
-                          "type": "object"
-                        },
-                        {
-                          "type": "null"
-                        }
-                      ]
-                    },
-                    "tick": {
-                      "anyOf": [
-                        {
-                          "additionalProperties": false,
-                          "properties": {
-                            "event": {
-                              "enum": [
-                                "came-due",
-                                "missed-runs"
-                              ],
-                              "type": "string"
-                            },
-                            "missedRuns": {
-                              "anyOf": [
-                                {
-                                  "maximum": 9007199254740991,
-                                  "minimum": -9007199254740991,
-                                  "type": "integer"
-                                },
-                                {
-                                  "type": "null"
-                                }
-                              ]
-                            },
-                            "whileStopped": {
-                              "type": "boolean"
-                            }
-                          },
-                          "required": [
-                            "event",
-                            "missedRuns",
-                            "whileStopped"
-                          ],
-                          "type": "object"
-                        },
-                        {
-                          "type": "null"
-                        }
-                      ]
-                    },
-                    "type": {
                       "type": "string"
                     }
                   },
                   "required": [
-                    "type",
-                    "scheduleId",
-                    "scheduleName",
-                    "tick",
-                    "steps",
-                    "awaitingSignal"
+                    "kind",
+                    "id"
                   ],
                   "type": "object"
                 }
               },
               "required": [
-                "id",
-                "contextId",
-                "agentName",
-                "owner",
-                "actor",
-                "kind",
-                "origin",
-                "status",
-                "finishReason",
-                "statusMessage",
-                "createdAt",
-                "updatedAt",
-                "cleanup",
-                "openWaits",
-                "wakeAt",
-                "workflow",
-                "usage",
-                "attention",
-                "stalledSince"
+                "dryRun",
+                "target",
+                "effects"
               ],
               "type": "object"
             },
-            "taskId": {
-              "type": "string"
+            {
+              "additionalProperties": false,
+              "properties": {
+                "reason": {
+                  "enum": [
+                    "already-terminal",
+                    "owned-by-goal",
+                    "owned-by-workflow"
+                  ],
+                  "type": "string"
+                },
+                "receipt": {
+                  "enum": [
+                    "cancel-requested",
+                    "canceled",
+                    "cleanup-pending",
+                    "cleaned-up",
+                    "cleanup-failed",
+                    "cleanup-unresolved",
+                    "unknown-outcome",
+                    "rejected"
+                  ],
+                  "type": "string"
+                },
+                "task": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "actor": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "agentName": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "attention": {
+                      "items": {
+                        "enum": [
+                          "stalled",
+                          "looping"
+                        ],
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "cleanup": {
+                      "anyOf": [
+                        {
+                          "enum": [
+                            "cancel-requested",
+                            "canceled",
+                            "cleanup-pending",
+                            "cleaned-up",
+                            "cleanup-failed",
+                            "cleanup-unresolved",
+                            "unknown-outcome"
+                          ],
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "contextId": {
+                      "type": "string"
+                    },
+                    "createdAt": {
+                      "type": "string"
+                    },
+                    "finishReason": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "kind": {
+                      "enum": [
+                        "chat",
+                        "schedule-fire",
+                        "catalog"
+                      ],
+                      "type": "string"
+                    },
+                    "openWaits": {
+                      "items": {
+                        "oneOf": [
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "kind": {
+                                "const": "human-wait",
+                                "type": "string"
+                              },
+                              "reviewId": {
+                                "type": "string"
+                              },
+                              "signalName": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "reviewId",
+                              "signalName"
+                            ],
+                            "type": "object"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "callId": {
+                                "type": "string"
+                              },
+                              "kind": {
+                                "const": "tool-approval",
+                                "type": "string"
+                              },
+                              "reviewId": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "reviewId",
+                              "callId"
+                            ],
+                            "type": "object"
+                          }
+                        ]
+                      },
+                      "type": "array"
+                    },
+                    "origin": {
+                      "anyOf": [
+                        {
+                          "oneOf": [
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "agentName": {
+                                  "type": "string"
+                                },
+                                "contextId": {
+                                  "type": "string"
+                                },
+                                "kind": {
+                                  "const": "chat",
+                                  "type": "string"
+                                },
+                                "principal": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "kind",
+                                "contextId",
+                                "agentName",
+                                "principal"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "kind": {
+                                  "const": "person",
+                                  "type": "string"
+                                },
+                                "principal": {
+                                  "type": "string"
+                                },
+                                "surface": {
+                                  "enum": [
+                                    "web",
+                                    "palette",
+                                    "api"
+                                  ],
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "kind",
+                                "principal",
+                                "surface"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "fireId": {
+                                  "type": "string"
+                                },
+                                "kind": {
+                                  "const": "schedule",
+                                  "type": "string"
+                                },
+                                "manual": {
+                                  "const": true,
+                                  "type": "boolean"
+                                },
+                                "scheduleId": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "kind",
+                                "scheduleId",
+                                "fireId"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "kind": {
+                                  "const": "api",
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "kind"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "agentName": {
+                                  "type": "string"
+                                },
+                                "kind": {
+                                  "const": "agent",
+                                  "type": "string"
+                                },
+                                "parentContextId": {
+                                  "type": "string"
+                                },
+                                "parentRunId": {
+                                  "type": "string"
+                                },
+                                "toolCallId": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "kind",
+                                "parentRunId",
+                                "agentName"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "agentId": {
+                                  "type": "string"
+                                },
+                                "kind": {
+                                  "const": "agent-run",
+                                  "type": "string"
+                                },
+                                "runId": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "kind",
+                                "runId",
+                                "agentId"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "attemptId": {
+                                  "type": "string"
+                                },
+                                "goalRunId": {
+                                  "type": "string"
+                                },
+                                "kind": {
+                                  "const": "goal",
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "kind",
+                                "goalRunId",
+                                "attemptId"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "kind": {
+                                  "const": "parent",
+                                  "type": "string"
+                                },
+                                "parentRunId": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "kind",
+                                "parentRunId"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "kind": {
+                                  "const": "system",
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "kind"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "kind": {
+                                  "const": "trigger",
+                                  "type": "string"
+                                },
+                                "plugin": {
+                                  "type": "string"
+                                },
+                                "workflowId": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "kind",
+                                "plugin",
+                                "workflowId"
+                              ],
+                              "type": "object"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "owner": {
+                      "type": "string"
+                    },
+                    "stalledSince": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "status": {
+                      "enum": [
+                        "submitted",
+                        "working",
+                        "input-required",
+                        "completed",
+                        "failed",
+                        "canceled"
+                      ],
+                      "type": "string"
+                    },
+                    "statusMessage": {
+                      "anyOf": [
+                        {
+                          "maxLength": 1000,
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "updatedAt": {
+                      "type": "string"
+                    },
+                    "usage": {
+                      "anyOf": [
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "completionTokens": {
+                              "type": "number"
+                            },
+                            "costUsd": {
+                              "type": [
+                                "number",
+                                "null"
+                              ]
+                            },
+                            "promptTokens": {
+                              "type": "number"
+                            },
+                            "totalTokens": {
+                              "type": "number"
+                            }
+                          },
+                          "required": [
+                            "promptTokens",
+                            "completionTokens",
+                            "totalTokens",
+                            "costUsd"
+                          ],
+                          "type": "object"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "wakeAt": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "workflow": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "awaitingSignal": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "scheduleId": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "scheduleName": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "steps": {
+                          "anyOf": [
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "at": {
+                                  "anyOf": [
+                                    {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "total": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                }
+                              },
+                              "required": [
+                                "total",
+                                "at"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "tick": {
+                          "anyOf": [
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "event": {
+                                  "enum": [
+                                    "came-due",
+                                    "missed-runs"
+                                  ],
+                                  "type": "string"
+                                },
+                                "missedRuns": {
+                                  "anyOf": [
+                                    {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "whileStopped": {
+                                  "type": "boolean"
+                                }
+                              },
+                              "required": [
+                                "event",
+                                "missedRuns",
+                                "whileStopped"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "type": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "type",
+                        "scheduleId",
+                        "scheduleName",
+                        "tick",
+                        "steps",
+                        "awaitingSignal"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "contextId",
+                    "agentName",
+                    "owner",
+                    "actor",
+                    "kind",
+                    "origin",
+                    "status",
+                    "finishReason",
+                    "statusMessage",
+                    "createdAt",
+                    "updatedAt",
+                    "cleanup",
+                    "openWaits",
+                    "wakeAt",
+                    "workflow",
+                    "usage",
+                    "attention",
+                    "stalledSince"
+                  ],
+                  "type": "object"
+                },
+                "taskId": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "taskId",
+                "receipt"
+              ],
+              "type": "object"
             }
-          },
-          "required": [
-            "taskId",
-            "receipt"
-          ],
-          "type": "object"
+          ]
         }
       },
       "summary": "Cancel a task",
@@ -5088,6 +5389,10 @@
       "x-weft-paramsSchema": {
         "additionalProperties": false,
         "properties": {
+          "dryRun": {
+            "description": "When `true`, performs the authorization and validation of the call, writes nothing, publishes no event and appends no audit record, and answers `{ dryRun: true, target, effects }` naming what the call would change. A target the real call would not find, or a caller it would refuse, answers the same fault.",
+            "type": "boolean"
+          },
           "taskId": {
             "description": "The identifier of the task to cancel.",
             "minLength": 1,
@@ -6039,7 +6344,7 @@
       }
     },
     {
-      "description": "Deletes one of the caller’s own contexts; a caller holding `bureau.contexts:write` deletes any owner’s. The deletion fences the context first, so a new task or session input for it reads as a context that does not exist, then cancels and awaits every live task in it, then removes the context and empties its tasks’ message histories. Once the context is gone and its runs have ended, its content is purged: the event history of the context and of each run, the runs’ workflows and checkpoints, their interactive surfaces, the context’s session input and A2A history, the records of their reviews, and the runs they delegated to go, and their audit entries are redacted (the entries stay, as proof the runs happened). A purge that fails is finished by the next maintenance pass or boot, and a second pass ten minutes after it removes what a late writer added. The deletion also records the context’s id, its owner and when it was deleted, and nothing else, under the thread’s lease before anything is removed, so an AG-UI start or resume on that id is refused as `THREAD_DELETED` rather than creating the chat again. The `receipt` is `applied` (no task was live), or the aggregate of the cancelled tasks’ cleanup, the least settled winning: `cleanup-pending`, `cleanup-unresolved`, `unknown-outcome`, `cleanup-failed`, `cleaned-up`; `tasks` lists each. `rejected` (reason `shutting-down`) means admission is closed and nothing was applied. `waitMilliseconds` (default 0) waits that long for outstanding cleanup acknowledgements.",
+      "description": "Deletes one of the caller’s own contexts; a caller holding `bureau.contexts:write` deletes any owner’s. The deletion fences the context first, so a new task or session input for it reads as a context that does not exist, then cancels and awaits every live task in it, then removes the context and empties its tasks’ message histories. Once the context is gone and its runs have ended, its content is purged: the event history of the context and of each run, the runs’ workflows and checkpoints, their interactive surfaces, the context’s session input and A2A history, the records of their reviews, and the runs they delegated to go, and their audit entries are redacted (the entries stay, as proof the runs happened). A purge that fails is finished by the next maintenance pass or boot, and a second pass ten minutes after it removes what a late writer added. The deletion also records the context’s id, its owner and when it was deleted, and nothing else, under the thread’s lease before anything is removed, so an AG-UI start or resume on that id is refused as `THREAD_DELETED` rather than creating the chat again. The `receipt` is `applied` (no task was live), or the aggregate of the cancelled tasks’ cleanup, the least settled winning: `cleanup-pending`, `cleanup-unresolved`, `unknown-outcome`, `cleanup-failed`, `cleaned-up`; `tasks` lists each. `rejected` (reason `shutting-down`) means admission is closed and nothing was applied. `waitMilliseconds` (default 0) waits that long for outstanding cleanup acknowledgements. With `dryRun: true` nothing is deleted, fenced, cancelled or recorded: the answer is `{ dryRun: true, target, effects }`, whose `runs-in-progress` effect counts the live tasks the delete would cancel (none once Bureau is shutting down, when the real call is `rejected`), and a context that is missing, not the caller’s or on a Bureau that keeps no sessions answers the fault the real call answers.",
       "errors": [
         {
           "$ref": "#/components/errors/Unauthorized"
@@ -6073,6 +6378,14 @@
           }
         },
         {
+          "name": "dryRun",
+          "required": false,
+          "schema": {
+            "description": "When `true`, performs the authorization and validation of the call, writes nothing, publishes no event and appends no audit record, and answers `{ dryRun: true, target, effects }` naming what the call would change. A target the real call would not find, or a caller it would refuse, answers the same fault.",
+            "type": "boolean"
+          }
+        },
+        {
           "name": "waitMilliseconds",
           "required": false,
           "schema": {
@@ -6087,61 +6400,155 @@
         "name": "result",
         "required": true,
         "schema": {
-          "additionalProperties": false,
-          "properties": {
-            "contextId": {
-              "type": "string"
-            },
-            "reason": {
-              "const": "shutting-down",
-              "type": "string"
-            },
-            "receipt": {
-              "enum": [
-                "applied",
-                "rejected",
-                "cleanup-pending",
-                "cleaned-up",
-                "cleanup-failed",
-                "cleanup-unresolved",
-                "unknown-outcome"
-              ],
-              "type": "string"
-            },
-            "tasks": {
-              "items": {
-                "additionalProperties": false,
-                "properties": {
-                  "cleanup": {
-                    "enum": [
-                      "cancel-requested",
-                      "canceled",
-                      "cleanup-pending",
-                      "cleaned-up",
-                      "cleanup-failed",
-                      "cleanup-unresolved",
-                      "unknown-outcome"
-                    ],
-                    "type": "string"
-                  },
-                  "taskId": {
-                    "type": "string"
-                  }
+          "anyOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "dryRun": {
+                  "const": true,
+                  "description": "Always `true`: nothing was changed.",
+                  "type": "boolean"
                 },
-                "required": [
-                  "taskId",
-                  "cleanup"
-                ],
-                "type": "object"
+                "effects": {
+                  "description": "What else the real call would change, each with a count; a kind with nothing to change is listed with a count of 0.",
+                  "items": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "atLeast": {
+                        "const": true,
+                        "description": "Present when `count` is a floor: more exist than one answer can count.",
+                        "type": "boolean"
+                      },
+                      "count": {
+                        "description": "How many of them the call would change.",
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "kind": {
+                        "description": "What is counted: the kind of thing the call would change besides its target.",
+                        "enum": [
+                          "runs-in-progress",
+                          "running-instances",
+                          "schedules",
+                          "goals",
+                          "open-chats",
+                          "queued-runs",
+                          "running-switches",
+                          "tool-grants",
+                          "delivery-records",
+                          "deliveries-in-flight",
+                          "memories"
+                        ],
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "count"
+                    ],
+                    "type": "object"
+                  },
+                  "type": "array"
+                },
+                "target": {
+                  "additionalProperties": false,
+                  "description": "What the real call would act on.",
+                  "properties": {
+                    "id": {
+                      "description": "The identifier of the target.",
+                      "type": "string"
+                    },
+                    "kind": {
+                      "description": "What the call acts on.",
+                      "enum": [
+                        "task",
+                        "workflow-run",
+                        "goal",
+                        "context",
+                        "context-grants",
+                        "agent",
+                        "hook",
+                        "memory",
+                        "workflow",
+                        "schedule",
+                        "memory-embedding-switch"
+                      ],
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "id"
+                  ],
+                  "type": "object"
+                }
               },
-              "type": "array"
+              "required": [
+                "dryRun",
+                "target",
+                "effects"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "contextId": {
+                  "type": "string"
+                },
+                "reason": {
+                  "const": "shutting-down",
+                  "type": "string"
+                },
+                "receipt": {
+                  "enum": [
+                    "applied",
+                    "rejected",
+                    "cleanup-pending",
+                    "cleaned-up",
+                    "cleanup-failed",
+                    "cleanup-unresolved",
+                    "unknown-outcome"
+                  ],
+                  "type": "string"
+                },
+                "tasks": {
+                  "items": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "cleanup": {
+                        "enum": [
+                          "cancel-requested",
+                          "canceled",
+                          "cleanup-pending",
+                          "cleaned-up",
+                          "cleanup-failed",
+                          "cleanup-unresolved",
+                          "unknown-outcome"
+                        ],
+                        "type": "string"
+                      },
+                      "taskId": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "taskId",
+                      "cleanup"
+                    ],
+                    "type": "object"
+                  },
+                  "type": "array"
+                }
+              },
+              "required": [
+                "contextId",
+                "receipt"
+              ],
+              "type": "object"
             }
-          },
-          "required": [
-            "contextId",
-            "receipt"
-          ],
-          "type": "object"
+          ]
         }
       },
       "summary": "Delete a context",
@@ -6160,6 +6567,10 @@
             "description": "The identifier of the context to delete.",
             "minLength": 1,
             "type": "string"
+          },
+          "dryRun": {
+            "description": "When `true`, performs the authorization and validation of the call, writes nothing, publishes no event and appends no audit record, and answers `{ dryRun: true, target, effects }` naming what the call would change. A target the real call would not find, or a caller it would refuse, answers the same fault.",
+            "type": "boolean"
           },
           "waitMilliseconds": {
             "description": "How long, in milliseconds, to wait for cleanup acknowledgements before answering, from 0 to 60000. Defaults to 0, which does not wait.",
@@ -6544,7 +6955,7 @@
       }
     },
     {
-      "description": "Forgets the “Allow for the rest of this chat” grant of each tool named in `tools`, in one of the caller’s own contexts, so the next call of that tool asks for approval again; a caller holding `bureau.contexts:write` reaches any owner’s. A name is read as the name a provider calls the tool by, as a stored call carries it (`shop__issue-refund`) or as a result reports it (`shop:issue-refund`), and matches the grants of every version of that tool; a name no grant matches changes nothing, so a retry is safe. Nothing else of the context changes: no row of its conversation is removed, and its `updatedAt` does not move. Answers `{ forgotten }`, the grants forgotten as they were stored. Another owner’s context and a missing one answer `NotFound`. A Bureau that keeps no sessions is `UnsupportedCapability`, and one that is shutting down is `Unavailable` with reason `shutting-down`.",
+      "description": "Forgets the “Allow for the rest of this chat” grant of each tool named in `tools`, in one of the caller’s own contexts, so the next call of that tool asks for approval again; a caller holding `bureau.contexts:write` reaches any owner’s. A name is read as the name a provider calls the tool by, as a stored call carries it (`shop__issue-refund`) or as a result reports it (`shop:issue-refund`), and matches the grants of every version of that tool; a name no grant matches changes nothing, so a retry is safe. Nothing else of the context changes: no row of its conversation is removed, and its `updatedAt` does not move. Answers `{ forgotten }`, the grants forgotten as they were stored. Another owner’s context and a missing one answer `NotFound`. A Bureau that keeps no sessions is `UnsupportedCapability`, and one that is shutting down is `Unavailable` with reason `shutting-down`. With `dryRun: true` nothing is forgotten: the answer is `{ dryRun: true, target, effects }`, whose `tool-grants` effect counts the grants the call would forget, and a context that is missing or not the caller’s, a Bureau that keeps no sessions, or one that is shutting down answers the fault the real call answers.",
       "errors": [
         {
           "$ref": "#/components/errors/Unauthorized"
@@ -6581,6 +6992,14 @@
           }
         },
         {
+          "name": "dryRun",
+          "required": false,
+          "schema": {
+            "description": "When `true`, performs the authorization and validation of the call, writes nothing, publishes no event and appends no audit record, and answers `{ dryRun: true, target, effects }` naming what the call would change. A target the real call would not find, or a caller it would refuse, answers the same fault.",
+            "type": "boolean"
+          }
+        },
+        {
           "name": "tools",
           "required": true,
           "schema": {
@@ -6600,19 +7019,113 @@
         "name": "result",
         "required": true,
         "schema": {
-          "additionalProperties": false,
-          "properties": {
-            "forgotten": {
-              "items": {
-                "type": "string"
+          "anyOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "dryRun": {
+                  "const": true,
+                  "description": "Always `true`: nothing was changed.",
+                  "type": "boolean"
+                },
+                "effects": {
+                  "description": "What else the real call would change, each with a count; a kind with nothing to change is listed with a count of 0.",
+                  "items": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "atLeast": {
+                        "const": true,
+                        "description": "Present when `count` is a floor: more exist than one answer can count.",
+                        "type": "boolean"
+                      },
+                      "count": {
+                        "description": "How many of them the call would change.",
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "kind": {
+                        "description": "What is counted: the kind of thing the call would change besides its target.",
+                        "enum": [
+                          "runs-in-progress",
+                          "running-instances",
+                          "schedules",
+                          "goals",
+                          "open-chats",
+                          "queued-runs",
+                          "running-switches",
+                          "tool-grants",
+                          "delivery-records",
+                          "deliveries-in-flight",
+                          "memories"
+                        ],
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "count"
+                    ],
+                    "type": "object"
+                  },
+                  "type": "array"
+                },
+                "target": {
+                  "additionalProperties": false,
+                  "description": "What the real call would act on.",
+                  "properties": {
+                    "id": {
+                      "description": "The identifier of the target.",
+                      "type": "string"
+                    },
+                    "kind": {
+                      "description": "What the call acts on.",
+                      "enum": [
+                        "task",
+                        "workflow-run",
+                        "goal",
+                        "context",
+                        "context-grants",
+                        "agent",
+                        "hook",
+                        "memory",
+                        "workflow",
+                        "schedule",
+                        "memory-embedding-switch"
+                      ],
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "id"
+                  ],
+                  "type": "object"
+                }
               },
-              "type": "array"
+              "required": [
+                "dryRun",
+                "target",
+                "effects"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "forgotten": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              },
+              "required": [
+                "forgotten"
+              ],
+              "type": "object"
             }
-          },
-          "required": [
-            "forgotten"
-          ],
-          "type": "object"
+          ]
         }
       },
       "summary": "Forget a context’s remembered tool grants",
@@ -6631,6 +7144,10 @@
             "description": "The identifier of the context whose grants to forget.",
             "minLength": 1,
             "type": "string"
+          },
+          "dryRun": {
+            "description": "When `true`, performs the authorization and validation of the call, writes nothing, publishes no event and appends no audit record, and answers `{ dryRun: true, target, effects }` naming what the call would change. A target the real call would not find, or a caller it would refuse, answers the same fault.",
+            "type": "boolean"
           },
           "tools": {
             "description": "The names of the tools whose \"Allow for the rest of this chat\" grant the context forgets, as a tool call carries them (`namespace__name`, `namespace:name`, or a bare name in the default namespace); each matches every version of its tool, and no other namespace’s tool of that name.",
@@ -11105,7 +11622,7 @@
       }
     },
     {
-      "description": "Deletes the agent’s file, if it still hashes to `expectedHash`, which removes the agent. A run keeps the definition it started on: the snapshots of runs that are still retained stay, and `bureau.agents.definitions.revisions` still lists them. A run waiting for an answer can still be resumed after the delete. Deleting a code-defined agent’s key is answered `NotFound` before any file is read, whether or not a same-named file exists. Requires `bureau.agents:write` unless the caller owns the deployment’s agents.",
+      "description": "Deletes the agent’s file, if it still hashes to `expectedHash`, which removes the agent. A run keeps the definition it started on: the snapshots of runs that are still retained stay, and `bureau.agents.definitions.revisions` still lists them. A run waiting for an answer can still be resumed after the delete. Deleting a code-defined agent’s key is answered `NotFound` before any file is read, whether or not a same-named file exists. Requires `bureau.agents:write` unless the caller owns the deployment’s agents. With `dryRun: true` nothing is deleted and no audit entry is written: the answer is `{ dryRun: true, target, effects }`, whose `schedules`, `goals` and `open-chats` effects count the schedules, unfinished goals and unarchived chats that name the agent, and an agent that is missing, a code-defined agent’s key or a file at another hash than `expectedHash` answers the fault the real call answers.",
       "errors": [
         {
           "$ref": "#/components/errors/Unauthorized"
@@ -11136,6 +11653,14 @@
       "paramStructure": "by-name",
       "params": [
         {
+          "name": "dryRun",
+          "required": false,
+          "schema": {
+            "description": "When `true`, performs the authorization and validation of the call, writes nothing, publishes no event and appends no audit record, and answers `{ dryRun: true, target, effects }` naming what the call would change. A target the real call would not find, or a caller it would refuse, answers the same fault.",
+            "type": "boolean"
+          }
+        },
+        {
           "name": "expectedHash",
           "required": true,
           "schema": {
@@ -11159,20 +11684,114 @@
         "name": "result",
         "required": true,
         "schema": {
-          "additionalProperties": false,
-          "properties": {
-            "hash": {
-              "type": "string"
+          "anyOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "dryRun": {
+                  "const": true,
+                  "description": "Always `true`: nothing was changed.",
+                  "type": "boolean"
+                },
+                "effects": {
+                  "description": "What else the real call would change, each with a count; a kind with nothing to change is listed with a count of 0.",
+                  "items": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "atLeast": {
+                        "const": true,
+                        "description": "Present when `count` is a floor: more exist than one answer can count.",
+                        "type": "boolean"
+                      },
+                      "count": {
+                        "description": "How many of them the call would change.",
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "kind": {
+                        "description": "What is counted: the kind of thing the call would change besides its target.",
+                        "enum": [
+                          "runs-in-progress",
+                          "running-instances",
+                          "schedules",
+                          "goals",
+                          "open-chats",
+                          "queued-runs",
+                          "running-switches",
+                          "tool-grants",
+                          "delivery-records",
+                          "deliveries-in-flight",
+                          "memories"
+                        ],
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "count"
+                    ],
+                    "type": "object"
+                  },
+                  "type": "array"
+                },
+                "target": {
+                  "additionalProperties": false,
+                  "description": "What the real call would act on.",
+                  "properties": {
+                    "id": {
+                      "description": "The identifier of the target.",
+                      "type": "string"
+                    },
+                    "kind": {
+                      "description": "What the call acts on.",
+                      "enum": [
+                        "task",
+                        "workflow-run",
+                        "goal",
+                        "context",
+                        "context-grants",
+                        "agent",
+                        "hook",
+                        "memory",
+                        "workflow",
+                        "schedule",
+                        "memory-embedding-switch"
+                      ],
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "id"
+                  ],
+                  "type": "object"
+                }
+              },
+              "required": [
+                "dryRun",
+                "target",
+                "effects"
+              ],
+              "type": "object"
             },
-            "id": {
-              "type": "string"
+            {
+              "additionalProperties": false,
+              "properties": {
+                "hash": {
+                  "type": "string"
+                },
+                "id": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "hash"
+              ],
+              "type": "object"
             }
-          },
-          "required": [
-            "id",
-            "hash"
-          ],
-          "type": "object"
+          ]
         }
       },
       "summary": "Delete an agent definition",
@@ -11187,6 +11806,10 @@
       "x-weft-paramsSchema": {
         "additionalProperties": false,
         "properties": {
+          "dryRun": {
+            "description": "When `true`, performs the authorization and validation of the call, writes nothing, publishes no event and appends no audit record, and answers `{ dryRun: true, target, effects }` naming what the call would change. A target the real call would not find, or a caller it would refuse, answers the same fault.",
+            "type": "boolean"
+          },
           "expectedHash": {
             "description": "The `hash` of the agent file the caller read; a file that has changed since is a `StaleRevision` fault and nothing is written.",
             "minLength": 1,
@@ -16175,7 +16798,7 @@
       }
     },
     {
-      "description": "Disables the agent `id` (a built-in agent the host defines, the agent of a running plugin, `plugin:name`, or an agent file) durably, without deleting anything, and returns `disabled: true`. A disabled agent is listed with state `disabled` by `bureau.agents.definitions.list` and `.get`, and can still be read: its definition, versions, overrides, chats and memory. No new chat, run, schedule, workflow step or hook can start on it, because every lookup of an agent by name consults the one gate this operation writes: `bureau.agents.list` leaves it out, a run that names it is refused as an unknown agent, and it opts into no A2A. `bureau.agents.enable` brings it back as it was. Disabling an agent that is already disabled changes nothing. The change is appended to the audit trail as `agent.disabled`. An identifier that is no agent, and the agent of a disabled plugin (state `unavailable`, which runs nothing already), is `NotFound`. Requires `bureau.agents:write` unless the caller owns the deployment’s agents; anyone else is answered `NotFound`.",
+      "description": "Disables the agent `id` (a built-in agent the host defines, the agent of a running plugin, `plugin:name`, or an agent file) durably, without deleting anything, and returns `disabled: true`. A disabled agent is listed with state `disabled` by `bureau.agents.definitions.list` and `.get`, and can still be read: its definition, versions, overrides, chats and memory. No new chat, run, schedule, workflow step or hook can start on it, because every lookup of an agent by name consults the one gate this operation writes: `bureau.agents.list` leaves it out, a run that names it is refused as an unknown agent, and it opts into no A2A. `bureau.agents.enable` brings it back as it was. Disabling an agent that is already disabled changes nothing. The change is appended to the audit trail as `agent.disabled`. An identifier that is no agent, and the agent of a disabled plugin (state `unavailable`, which runs nothing already), is `NotFound`. Requires `bureau.agents:write` unless the caller owns the deployment’s agents; anyone else is answered `NotFound`. With `dryRun: true` nothing is disabled and no audit entry is written: the answer is `{ dryRun: true, target, effects }`, whose `schedules`, `goals` and `open-chats` effects count the schedules, unfinished goals and unarchived chats that name the agent and so could no longer start on it, and an identifier the real call would not find answers `NotFound` as well.",
       "errors": [
         {
           "$ref": "#/components/errors/Unauthorized"
@@ -16197,6 +16820,14 @@
       "paramStructure": "by-name",
       "params": [
         {
+          "name": "dryRun",
+          "required": false,
+          "schema": {
+            "description": "When `true`, performs the authorization and validation of the call, writes nothing, publishes no event and appends no audit record, and answers `{ dryRun: true, target, effects }` naming what the call would change. A target the real call would not find, or a caller it would refuse, answers the same fault.",
+            "type": "boolean"
+          }
+        },
+        {
           "name": "id",
           "required": true,
           "schema": {
@@ -16211,20 +16842,114 @@
         "name": "result",
         "required": true,
         "schema": {
-          "additionalProperties": false,
-          "properties": {
-            "disabled": {
-              "type": "boolean"
+          "anyOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "dryRun": {
+                  "const": true,
+                  "description": "Always `true`: nothing was changed.",
+                  "type": "boolean"
+                },
+                "effects": {
+                  "description": "What else the real call would change, each with a count; a kind with nothing to change is listed with a count of 0.",
+                  "items": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "atLeast": {
+                        "const": true,
+                        "description": "Present when `count` is a floor: more exist than one answer can count.",
+                        "type": "boolean"
+                      },
+                      "count": {
+                        "description": "How many of them the call would change.",
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "kind": {
+                        "description": "What is counted: the kind of thing the call would change besides its target.",
+                        "enum": [
+                          "runs-in-progress",
+                          "running-instances",
+                          "schedules",
+                          "goals",
+                          "open-chats",
+                          "queued-runs",
+                          "running-switches",
+                          "tool-grants",
+                          "delivery-records",
+                          "deliveries-in-flight",
+                          "memories"
+                        ],
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "count"
+                    ],
+                    "type": "object"
+                  },
+                  "type": "array"
+                },
+                "target": {
+                  "additionalProperties": false,
+                  "description": "What the real call would act on.",
+                  "properties": {
+                    "id": {
+                      "description": "The identifier of the target.",
+                      "type": "string"
+                    },
+                    "kind": {
+                      "description": "What the call acts on.",
+                      "enum": [
+                        "task",
+                        "workflow-run",
+                        "goal",
+                        "context",
+                        "context-grants",
+                        "agent",
+                        "hook",
+                        "memory",
+                        "workflow",
+                        "schedule",
+                        "memory-embedding-switch"
+                      ],
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "id"
+                  ],
+                  "type": "object"
+                }
+              },
+              "required": [
+                "dryRun",
+                "target",
+                "effects"
+              ],
+              "type": "object"
             },
-            "id": {
-              "type": "string"
+            {
+              "additionalProperties": false,
+              "properties": {
+                "disabled": {
+                  "type": "boolean"
+                },
+                "id": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "disabled"
+              ],
+              "type": "object"
             }
-          },
-          "required": [
-            "id",
-            "disabled"
-          ],
-          "type": "object"
+          ]
         }
       },
       "summary": "Disable an agent until it is enabled again",
@@ -16239,6 +16964,10 @@
       "x-weft-paramsSchema": {
         "additionalProperties": false,
         "properties": {
+          "dryRun": {
+            "description": "When `true`, performs the authorization and validation of the call, writes nothing, publishes no event and appends no audit record, and answers `{ dryRun: true, target, effects }` naming what the call would change. A target the real call would not find, or a caller it would refuse, answers the same fault.",
+            "type": "boolean"
+          },
           "id": {
             "description": "The identifier of the agent: a built-in agent, a plugin’s, or an agent file.",
             "maxLength": 64,
@@ -17396,7 +18125,7 @@
       }
     },
     {
-      "description": "Deletes the workflow’s file, if it still hashes to `expectedHash`, and cancels its schedule before the call returns. Instances already running finish on the revision they began on, including after a restart; nothing new starts from the schedule. Requires `bureau.workflows:write` unless the caller owns the deployment’s workflows.",
+      "description": "Deletes the workflow’s file, if it still hashes to `expectedHash`, and cancels its schedule before the call returns. Instances already running finish on the revision they began on, including after a restart; nothing new starts from the schedule. Requires `bureau.workflows:write` unless the caller owns the deployment’s workflows. With `dryRun: true` nothing is deleted, no schedule is cancelled and no audit entry is written: the answer is `{ dryRun: true, target, effects }`, whose `schedules` effect counts the schedules the delete would cancel and whose `running-instances` effect counts the instances that would finish on their own revision, and a workflow that is missing, not the caller’s, or at another hash than `expectedHash` answers the fault the real call answers.",
       "errors": [
         {
           "$ref": "#/components/errors/Unauthorized"
@@ -17430,6 +18159,14 @@
       "paramStructure": "by-name",
       "params": [
         {
+          "name": "dryRun",
+          "required": false,
+          "schema": {
+            "description": "When `true`, performs the authorization and validation of the call, writes nothing, publishes no event and appends no audit record, and answers `{ dryRun: true, target, effects }` naming what the call would change. A target the real call would not find, or a caller it would refuse, answers the same fault.",
+            "type": "boolean"
+          }
+        },
+        {
           "name": "expectedHash",
           "required": true,
           "schema": {
@@ -17453,20 +18190,114 @@
         "name": "result",
         "required": true,
         "schema": {
-          "additionalProperties": false,
-          "properties": {
-            "hash": {
-              "type": "string"
+          "anyOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "dryRun": {
+                  "const": true,
+                  "description": "Always `true`: nothing was changed.",
+                  "type": "boolean"
+                },
+                "effects": {
+                  "description": "What else the real call would change, each with a count; a kind with nothing to change is listed with a count of 0.",
+                  "items": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "atLeast": {
+                        "const": true,
+                        "description": "Present when `count` is a floor: more exist than one answer can count.",
+                        "type": "boolean"
+                      },
+                      "count": {
+                        "description": "How many of them the call would change.",
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "kind": {
+                        "description": "What is counted: the kind of thing the call would change besides its target.",
+                        "enum": [
+                          "runs-in-progress",
+                          "running-instances",
+                          "schedules",
+                          "goals",
+                          "open-chats",
+                          "queued-runs",
+                          "running-switches",
+                          "tool-grants",
+                          "delivery-records",
+                          "deliveries-in-flight",
+                          "memories"
+                        ],
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "count"
+                    ],
+                    "type": "object"
+                  },
+                  "type": "array"
+                },
+                "target": {
+                  "additionalProperties": false,
+                  "description": "What the real call would act on.",
+                  "properties": {
+                    "id": {
+                      "description": "The identifier of the target.",
+                      "type": "string"
+                    },
+                    "kind": {
+                      "description": "What the call acts on.",
+                      "enum": [
+                        "task",
+                        "workflow-run",
+                        "goal",
+                        "context",
+                        "context-grants",
+                        "agent",
+                        "hook",
+                        "memory",
+                        "workflow",
+                        "schedule",
+                        "memory-embedding-switch"
+                      ],
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "id"
+                  ],
+                  "type": "object"
+                }
+              },
+              "required": [
+                "dryRun",
+                "target",
+                "effects"
+              ],
+              "type": "object"
             },
-            "id": {
-              "type": "string"
+            {
+              "additionalProperties": false,
+              "properties": {
+                "hash": {
+                  "type": "string"
+                },
+                "id": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "hash"
+              ],
+              "type": "object"
             }
-          },
-          "required": [
-            "id",
-            "hash"
-          ],
-          "type": "object"
+          ]
         }
       },
       "summary": "Delete a workflow file",
@@ -17481,6 +18312,10 @@
       "x-weft-paramsSchema": {
         "additionalProperties": false,
         "properties": {
+          "dryRun": {
+            "description": "When `true`, performs the authorization and validation of the call, writes nothing, publishes no event and appends no audit record, and answers `{ dryRun: true, target, effects }` naming what the call would change. A target the real call would not find, or a caller it would refuse, answers the same fault.",
+            "type": "boolean"
+          },
           "expectedHash": {
             "description": "The `hash` of the workflow file the caller read; a file that has changed since is a `StaleRevision` fault and nothing is written.",
             "minLength": 1,
@@ -21123,7 +21958,7 @@
       }
     },
     {
-      "description": "Requests cancellation of a Bureau workflow-file instance. Returns immediately with `cancel-requested`; read `bureau.workflows.runs.get` to observe the terminal status.",
+      "description": "Requests cancellation of a Bureau workflow-file instance. Returns immediately with `cancel-requested`; read `bureau.workflows.runs.get` to observe the terminal status. With `dryRun: true` nothing is cancelled: the answer is `{ dryRun: true, target, effects }`, whose `running-instances` effect is 1 while the instance has not finished and 0 once it has, and a run the real call would not find, or may not touch, is `NotFound` as well.",
       "errors": [
         {
           "$ref": "#/components/errors/Unauthorized"
@@ -21148,6 +21983,14 @@
       "paramStructure": "by-name",
       "params": [
         {
+          "name": "dryRun",
+          "required": false,
+          "schema": {
+            "description": "When `true`, performs the authorization and validation of the call, writes nothing, publishes no event and appends no audit record, and answers `{ dryRun: true, target, effects }` naming what the call would change. A target the real call would not find, or a caller it would refuse, answers the same fault.",
+            "type": "boolean"
+          }
+        },
+        {
           "name": "runId",
           "required": true,
           "schema": {
@@ -21161,21 +22004,115 @@
         "name": "result",
         "required": true,
         "schema": {
-          "additionalProperties": false,
-          "properties": {
-            "runId": {
-              "type": "string"
+          "anyOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "dryRun": {
+                  "const": true,
+                  "description": "Always `true`: nothing was changed.",
+                  "type": "boolean"
+                },
+                "effects": {
+                  "description": "What else the real call would change, each with a count; a kind with nothing to change is listed with a count of 0.",
+                  "items": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "atLeast": {
+                        "const": true,
+                        "description": "Present when `count` is a floor: more exist than one answer can count.",
+                        "type": "boolean"
+                      },
+                      "count": {
+                        "description": "How many of them the call would change.",
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "kind": {
+                        "description": "What is counted: the kind of thing the call would change besides its target.",
+                        "enum": [
+                          "runs-in-progress",
+                          "running-instances",
+                          "schedules",
+                          "goals",
+                          "open-chats",
+                          "queued-runs",
+                          "running-switches",
+                          "tool-grants",
+                          "delivery-records",
+                          "deliveries-in-flight",
+                          "memories"
+                        ],
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "count"
+                    ],
+                    "type": "object"
+                  },
+                  "type": "array"
+                },
+                "target": {
+                  "additionalProperties": false,
+                  "description": "What the real call would act on.",
+                  "properties": {
+                    "id": {
+                      "description": "The identifier of the target.",
+                      "type": "string"
+                    },
+                    "kind": {
+                      "description": "What the call acts on.",
+                      "enum": [
+                        "task",
+                        "workflow-run",
+                        "goal",
+                        "context",
+                        "context-grants",
+                        "agent",
+                        "hook",
+                        "memory",
+                        "workflow",
+                        "schedule",
+                        "memory-embedding-switch"
+                      ],
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "id"
+                  ],
+                  "type": "object"
+                }
+              },
+              "required": [
+                "dryRun",
+                "target",
+                "effects"
+              ],
+              "type": "object"
             },
-            "status": {
-              "const": "cancel-requested",
-              "type": "string"
+            {
+              "additionalProperties": false,
+              "properties": {
+                "runId": {
+                  "type": "string"
+                },
+                "status": {
+                  "const": "cancel-requested",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "runId",
+                "status"
+              ],
+              "type": "object"
             }
-          },
-          "required": [
-            "runId",
-            "status"
-          ],
-          "type": "object"
+          ]
         }
       },
       "summary": "Cancel a workflow run",
@@ -21190,6 +22127,10 @@
       "x-weft-paramsSchema": {
         "additionalProperties": false,
         "properties": {
+          "dryRun": {
+            "description": "When `true`, performs the authorization and validation of the call, writes nothing, publishes no event and appends no audit record, and answers `{ dryRun: true, target, effects }` naming what the call would change. A target the real call would not find, or a caller it would refuse, answers the same fault.",
+            "type": "boolean"
+          },
           "runId": {
             "description": "The identifier of the workflow instance to read.",
             "minLength": 1,
@@ -26068,7 +27009,7 @@
       }
     },
     {
-      "description": "Cancels a schedule for good: its record stays, as `cancelled`, and it starts no new fire. Cancelling a cancelled schedule changes nothing. `expectedRevision`, when given, is compared inside Weft’s serialized write: a schedule that has changed since is a `StaleRevision` fault whose `currentRevision` is the revision now current, and nothing is written. The receipt carries the revision after the change. Requires `bureau.schedules:write` unless the caller owns the schedule; anyone else is answered `NotFound`, as is the schedule of a workflow file, which only `bureau.workflows.*` changes.",
+      "description": "Cancels a schedule for good: its record stays, as `cancelled`, and it starts no new fire. Cancelling a cancelled schedule changes nothing. With `dryRun: true` nothing is cancelled: the answer is `{ dryRun: true, target, effects }`, whose `queued-runs` effect counts the occurrences waiting behind the fire in flight, which the cancel drops (the fire in flight finishes), and a schedule that is missing, not the caller’s or at another `revision` than `expectedRevision` answers the fault the real call answers. `expectedRevision`, when given, is compared inside Weft’s serialized write: a schedule that has changed since is a `StaleRevision` fault whose `currentRevision` is the revision now current, and nothing is written. The receipt carries the revision after the change. Requires `bureau.schedules:write` unless the caller owns the schedule; anyone else is answered `NotFound`, as is the schedule of a workflow file, which only `bureau.workflows.*` changes.",
       "errors": [
         {
           "$ref": "#/components/errors/Unauthorized"
@@ -26099,6 +27040,14 @@
       "paramStructure": "by-name",
       "params": [
         {
+          "name": "dryRun",
+          "required": false,
+          "schema": {
+            "description": "When `true`, performs the authorization and validation of the call, writes nothing, publishes no event and appends no audit record, and answers `{ dryRun: true, target, effects }` naming what the call would change. A target the real call would not find, or a caller it would refuse, answers the same fault.",
+            "type": "boolean"
+          }
+        },
+        {
           "name": "expectedRevision",
           "required": false,
           "schema": {
@@ -26123,31 +27072,125 @@
         "name": "result",
         "required": true,
         "schema": {
-          "additionalProperties": false,
-          "properties": {
-            "id": {
-              "type": "string"
-            },
-            "revision": {
-              "maximum": 9007199254740991,
-              "minimum": -9007199254740991,
-              "type": "integer"
-            },
-            "status": {
-              "enum": [
-                "active",
-                "paused",
-                "cancelled"
+          "anyOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "dryRun": {
+                  "const": true,
+                  "description": "Always `true`: nothing was changed.",
+                  "type": "boolean"
+                },
+                "effects": {
+                  "description": "What else the real call would change, each with a count; a kind with nothing to change is listed with a count of 0.",
+                  "items": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "atLeast": {
+                        "const": true,
+                        "description": "Present when `count` is a floor: more exist than one answer can count.",
+                        "type": "boolean"
+                      },
+                      "count": {
+                        "description": "How many of them the call would change.",
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "kind": {
+                        "description": "What is counted: the kind of thing the call would change besides its target.",
+                        "enum": [
+                          "runs-in-progress",
+                          "running-instances",
+                          "schedules",
+                          "goals",
+                          "open-chats",
+                          "queued-runs",
+                          "running-switches",
+                          "tool-grants",
+                          "delivery-records",
+                          "deliveries-in-flight",
+                          "memories"
+                        ],
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "count"
+                    ],
+                    "type": "object"
+                  },
+                  "type": "array"
+                },
+                "target": {
+                  "additionalProperties": false,
+                  "description": "What the real call would act on.",
+                  "properties": {
+                    "id": {
+                      "description": "The identifier of the target.",
+                      "type": "string"
+                    },
+                    "kind": {
+                      "description": "What the call acts on.",
+                      "enum": [
+                        "task",
+                        "workflow-run",
+                        "goal",
+                        "context",
+                        "context-grants",
+                        "agent",
+                        "hook",
+                        "memory",
+                        "workflow",
+                        "schedule",
+                        "memory-embedding-switch"
+                      ],
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "id"
+                  ],
+                  "type": "object"
+                }
+              },
+              "required": [
+                "dryRun",
+                "target",
+                "effects"
               ],
-              "type": "string"
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "revision": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "status": {
+                  "enum": [
+                    "active",
+                    "paused",
+                    "cancelled"
+                  ],
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "status",
+                "revision"
+              ],
+              "type": "object"
             }
-          },
-          "required": [
-            "id",
-            "status",
-            "revision"
-          ],
-          "type": "object"
+          ]
         }
       },
       "summary": "Cancel a schedule",
@@ -26162,6 +27205,10 @@
       "x-weft-paramsSchema": {
         "additionalProperties": false,
         "properties": {
+          "dryRun": {
+            "description": "When `true`, performs the authorization and validation of the call, writes nothing, publishes no event and appends no audit record, and answers `{ dryRun: true, target, effects }` naming what the call would change. A target the real call would not find, or a caller it would refuse, answers the same fault.",
+            "type": "boolean"
+          },
           "expectedRevision": {
             "description": "The schedule’s `revision` the caller read; when it has changed since, the call is a `StaleRevision` fault and nothing is written.",
             "maximum": 9007199254740991,
@@ -28782,7 +29829,7 @@
       }
     },
     {
-      "description": "Cancels one of the caller’s own goals; a caller holding `bureau.goals:write` cancels any owner’s, and anyone else is answered `NotFound`. The goal’s controller and its attempt’s run are stopped, and the receipt’s `outcome` says how far that has got: it is an answer about durable state read back, never about a request merely sent. `expectedRevision`, when given, is compared inside the store’s compare-and-swap that records the cancellation: a goal that has changed since is a `StaleRevision` fault whose `currentRevision` is the revision now current, and nothing is written. The write scope does not imply the read scope, so the receipt carries the status and revision and nothing else of the goal. A repeated cancel has the same effect.",
+      "description": "Cancels one of the caller’s own goals; a caller holding `bureau.goals:write` cancels any owner’s, and anyone else is answered `NotFound`. The goal’s controller and its attempt’s run are stopped, and the receipt’s `outcome` says how far that has got: it is an answer about durable state read back, never about a request merely sent. `expectedRevision`, when given, is compared inside the store’s compare-and-swap that records the cancellation: a goal that has changed since is a `StaleRevision` fault whose `currentRevision` is the revision now current, and nothing is written. The write scope does not imply the read scope, so the receipt carries the status and revision and nothing else of the goal. A repeated cancel has the same effect. With `dryRun: true` nothing is cancelled and no event or audit entry is written: the answer is `{ dryRun: true, target, effects }`, whose `runs-in-progress` effect counts the attempt runs the cancel would stop, and a goal that is missing, not the caller’s, or at another `revision` than `expectedRevision` answers the fault the real call answers.",
       "errors": [
         {
           "$ref": "#/components/errors/Unauthorized"
@@ -28809,6 +29856,14 @@
       "name": "bureau.goals.cancel",
       "paramStructure": "by-name",
       "params": [
+        {
+          "name": "dryRun",
+          "required": false,
+          "schema": {
+            "description": "When `true`, performs the authorization and validation of the call, writes nothing, publishes no event and appends no audit record, and answers `{ dryRun: true, target, effects }` naming what the call would change. A target the real call would not find, or a caller it would refuse, answers the same fault.",
+            "type": "boolean"
+          }
+        },
         {
           "name": "expectedRevision",
           "required": false,
@@ -28843,46 +29898,140 @@
         "name": "result",
         "required": true,
         "schema": {
-          "additionalProperties": false,
-          "properties": {
-            "goalRunId": {
-              "type": "string"
-            },
-            "outcome": {
-              "enum": [
-                "canceled",
-                "cancellation-pending",
-                "already-terminal",
-                "contended"
+          "anyOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "dryRun": {
+                  "const": true,
+                  "description": "Always `true`: nothing was changed.",
+                  "type": "boolean"
+                },
+                "effects": {
+                  "description": "What else the real call would change, each with a count; a kind with nothing to change is listed with a count of 0.",
+                  "items": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "atLeast": {
+                        "const": true,
+                        "description": "Present when `count` is a floor: more exist than one answer can count.",
+                        "type": "boolean"
+                      },
+                      "count": {
+                        "description": "How many of them the call would change.",
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "kind": {
+                        "description": "What is counted: the kind of thing the call would change besides its target.",
+                        "enum": [
+                          "runs-in-progress",
+                          "running-instances",
+                          "schedules",
+                          "goals",
+                          "open-chats",
+                          "queued-runs",
+                          "running-switches",
+                          "tool-grants",
+                          "delivery-records",
+                          "deliveries-in-flight",
+                          "memories"
+                        ],
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "count"
+                    ],
+                    "type": "object"
+                  },
+                  "type": "array"
+                },
+                "target": {
+                  "additionalProperties": false,
+                  "description": "What the real call would act on.",
+                  "properties": {
+                    "id": {
+                      "description": "The identifier of the target.",
+                      "type": "string"
+                    },
+                    "kind": {
+                      "description": "What the call acts on.",
+                      "enum": [
+                        "task",
+                        "workflow-run",
+                        "goal",
+                        "context",
+                        "context-grants",
+                        "agent",
+                        "hook",
+                        "memory",
+                        "workflow",
+                        "schedule",
+                        "memory-embedding-switch"
+                      ],
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "id"
+                  ],
+                  "type": "object"
+                }
+              },
+              "required": [
+                "dryRun",
+                "target",
+                "effects"
               ],
-              "type": "string"
+              "type": "object"
             },
-            "revision": {
-              "maximum": 9007199254740991,
-              "minimum": -9007199254740991,
-              "type": "integer"
-            },
-            "status": {
-              "enum": [
-                "pending",
-                "running",
-                "evaluating",
-                "retrying",
-                "succeeded",
-                "exhausted",
-                "failed",
-                "canceled"
+            {
+              "additionalProperties": false,
+              "properties": {
+                "goalRunId": {
+                  "type": "string"
+                },
+                "outcome": {
+                  "enum": [
+                    "canceled",
+                    "cancellation-pending",
+                    "already-terminal",
+                    "contended"
+                  ],
+                  "type": "string"
+                },
+                "revision": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "status": {
+                  "enum": [
+                    "pending",
+                    "running",
+                    "evaluating",
+                    "retrying",
+                    "succeeded",
+                    "exhausted",
+                    "failed",
+                    "canceled"
+                  ],
+                  "type": "string"
+                }
+              },
+              "required": [
+                "goalRunId",
+                "outcome",
+                "status",
+                "revision"
               ],
-              "type": "string"
+              "type": "object"
             }
-          },
-          "required": [
-            "goalRunId",
-            "outcome",
-            "status",
-            "revision"
-          ],
-          "type": "object"
+          ]
         }
       },
       "summary": "Cancel a goal",
@@ -28897,6 +30046,10 @@
       "x-weft-paramsSchema": {
         "additionalProperties": false,
         "properties": {
+          "dryRun": {
+            "description": "When `true`, performs the authorization and validation of the call, writes nothing, publishes no event and appends no audit record, and answers `{ dryRun: true, target, effects }` naming what the call would change. A target the real call would not find, or a caller it would refuse, answers the same fault.",
+            "type": "boolean"
+          },
           "expectedRevision": {
             "description": "The goal’s `revision` the caller read; when it has changed since, the call is a `StaleRevision` fault and nothing is written.",
             "maximum": 9007199254740991,
@@ -30080,7 +31233,7 @@
       }
     },
     {
-      "description": "Deletes one memory of the agent `agentId` as a source deletion, and answers the deletion `receipt` as data with `deletion`, the status of the receipt row that removes the record. Once `deletion` is `completed` the record never appears in a list, a search, a read or a recall. `exempt` means a legal hold keeps it stored and listed, and the deletion resumes when the hold is released; `failed` means the step that removes it failed, and forgetting it again retries; `pending` means it is not settled. The receipt’s other targets settle as Bureau’s maintenance pass runs: the copy of recalled text persisted in a conversation is not scrubbed, so that target stays pending until its deadline and then fails. Another owner’s memory and a missing one are answered `NotFound`; a memory derived from others is `Unprocessable`. Requires `bureau.memory:write`; a caller without it is `Forbidden`.",
+      "description": "Deletes one memory of the agent `agentId` as a source deletion, and answers the deletion `receipt` as data with `deletion`, the status of the receipt row that removes the record. Once `deletion` is `completed` the record never appears in a list, a search, a read or a recall. `exempt` means a legal hold keeps it stored and listed, and the deletion resumes when the hold is released; `failed` means the step that removes it failed, and forgetting it again retries; `pending` means it is not settled. The receipt’s other targets settle as Bureau’s maintenance pass runs: the copy of recalled text persisted in a conversation is not scrubbed, so that target stays pending until its deadline and then fails. Another owner’s memory and a missing one are answered `NotFound`; a memory derived from others is `Unprocessable`. Requires `bureau.memory:write`; a caller without it is `Forbidden`. With `dryRun: true` nothing is deleted and no memory event is recorded, not even the denial of a refused call: the answer is `{ dryRun: true, target, effects }`, whose `memories` effect counts the record the deletion starts with, as a floor (`atLeast`): the summaries derived from it are removed with it and are not counted, and a legal hold on it keeps it stored; a memory that is missing, another owner’s or derived from others answers the fault the real call answers.",
       "errors": [
         {
           "$ref": "#/components/errors/Unauthorized"
@@ -30118,6 +31271,14 @@
           }
         },
         {
+          "name": "dryRun",
+          "required": false,
+          "schema": {
+            "description": "When `true`, performs the authorization and validation of the call, writes nothing, publishes no event and appends no audit record, and answers `{ dryRun: true, target, effects }` naming what the call would change. A target the real call would not find, or a caller it would refuse, answers the same fault.",
+            "type": "boolean"
+          }
+        },
+        {
           "name": "id",
           "required": true,
           "schema": {
@@ -30132,163 +31293,257 @@
         "name": "result",
         "required": true,
         "schema": {
-          "additionalProperties": false,
-          "properties": {
-            "deletion": {
-              "enum": [
-                "completed",
-                "pending",
-                "exempt",
-                "failed",
-                "unknown"
-              ],
-              "type": "string"
-            },
-            "id": {
-              "type": "string"
-            },
-            "receipt": {
+          "anyOf": [
+            {
               "additionalProperties": false,
               "properties": {
-                "awaitingHoldRelease": {
+                "dryRun": {
+                  "const": true,
+                  "description": "Always `true`: nothing was changed.",
                   "type": "boolean"
                 },
-                "boundMilliseconds": {
-                  "type": "number"
-                },
-                "deletionId": {
-                  "type": "string"
-                },
-                "open": {
-                  "type": "boolean"
-                },
-                "record": {
-                  "additionalProperties": false,
-                  "properties": {
-                    "collection": {
-                      "type": "string"
-                    },
-                    "id": {
-                      "type": "string"
-                    },
-                    "memoryClass": {
-                      "enum": [
-                        "working",
-                        "episodic",
-                        "semantic",
-                        "procedural",
-                        "identity",
-                        "resource"
-                      ],
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "id",
-                    "collection",
-                    "memoryClass"
-                  ],
-                  "type": "object"
-                },
-                "requestedAt": {
-                  "type": "string"
-                },
-                "scope": {
-                  "enum": [
-                    "source",
-                    "projection"
-                  ],
-                  "type": "string"
-                },
-                "targets": {
+                "effects": {
+                  "description": "What else the real call would change, each with a count; a kind with nothing to change is listed with a count of 0.",
                   "items": {
                     "additionalProperties": false,
                     "properties": {
-                      "deadline": {
-                        "type": "string"
+                      "atLeast": {
+                        "const": true,
+                        "description": "Present when `count` is a floor: more exist than one answer can count.",
+                        "type": "boolean"
                       },
-                      "detail": {
-                        "type": "string"
+                      "count": {
+                        "description": "How many of them the call would change.",
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
                       },
-                      "lane": {
+                      "kind": {
+                        "description": "What is counted: the kind of thing the call would change besides its target.",
                         "enum": [
-                          "synchronous",
-                          "bounded-async"
-                        ],
-                        "type": "string"
-                      },
-                      "settledAt": {
-                        "type": "string"
-                      },
-                      "status": {
-                        "enum": [
-                          "completed",
-                          "pending",
-                          "exempt",
-                          "failed",
-                          "unknown"
-                        ],
-                        "type": "string"
-                      },
-                      "target": {
-                        "enum": [
-                          "source-evidence",
-                          "canonical-projections",
-                          "identity-views",
-                          "managed-asset-record",
-                          "indexes",
-                          "caches",
-                          "summaries",
-                          "managed-asset-bytes",
-                          "durable-snapshots",
-                          "exports",
-                          "external-processors"
+                          "runs-in-progress",
+                          "running-instances",
+                          "schedules",
+                          "goals",
+                          "open-chats",
+                          "queued-runs",
+                          "running-switches",
+                          "tool-grants",
+                          "delivery-records",
+                          "deliveries-in-flight",
+                          "memories"
                         ],
                         "type": "string"
                       }
                     },
                     "required": [
-                      "target",
-                      "lane",
-                      "status"
+                      "kind",
+                      "count"
                     ],
                     "type": "object"
                   },
                   "type": "array"
                 },
-                "trigger": {
-                  "enum": [
-                    "request",
-                    "retention-expiry",
-                    "hold-release"
+                "target": {
+                  "additionalProperties": false,
+                  "description": "What the real call would act on.",
+                  "properties": {
+                    "id": {
+                      "description": "The identifier of the target.",
+                      "type": "string"
+                    },
+                    "kind": {
+                      "description": "What the call acts on.",
+                      "enum": [
+                        "task",
+                        "workflow-run",
+                        "goal",
+                        "context",
+                        "context-grants",
+                        "agent",
+                        "hook",
+                        "memory",
+                        "workflow",
+                        "schedule",
+                        "memory-embedding-switch"
+                      ],
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "id"
                   ],
-                  "type": "string"
-                },
-                "updatedAt": {
-                  "type": "string"
+                  "type": "object"
                 }
               },
               "required": [
-                "deletionId",
-                "scope",
-                "trigger",
-                "record",
-                "requestedAt",
-                "boundMilliseconds",
-                "awaitingHoldRelease",
-                "open",
-                "updatedAt",
-                "targets"
+                "dryRun",
+                "target",
+                "effects"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "deletion": {
+                  "enum": [
+                    "completed",
+                    "pending",
+                    "exempt",
+                    "failed",
+                    "unknown"
+                  ],
+                  "type": "string"
+                },
+                "id": {
+                  "type": "string"
+                },
+                "receipt": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "awaitingHoldRelease": {
+                      "type": "boolean"
+                    },
+                    "boundMilliseconds": {
+                      "type": "number"
+                    },
+                    "deletionId": {
+                      "type": "string"
+                    },
+                    "open": {
+                      "type": "boolean"
+                    },
+                    "record": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "collection": {
+                          "type": "string"
+                        },
+                        "id": {
+                          "type": "string"
+                        },
+                        "memoryClass": {
+                          "enum": [
+                            "working",
+                            "episodic",
+                            "semantic",
+                            "procedural",
+                            "identity",
+                            "resource"
+                          ],
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "collection",
+                        "memoryClass"
+                      ],
+                      "type": "object"
+                    },
+                    "requestedAt": {
+                      "type": "string"
+                    },
+                    "scope": {
+                      "enum": [
+                        "source",
+                        "projection"
+                      ],
+                      "type": "string"
+                    },
+                    "targets": {
+                      "items": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "deadline": {
+                            "type": "string"
+                          },
+                          "detail": {
+                            "type": "string"
+                          },
+                          "lane": {
+                            "enum": [
+                              "synchronous",
+                              "bounded-async"
+                            ],
+                            "type": "string"
+                          },
+                          "settledAt": {
+                            "type": "string"
+                          },
+                          "status": {
+                            "enum": [
+                              "completed",
+                              "pending",
+                              "exempt",
+                              "failed",
+                              "unknown"
+                            ],
+                            "type": "string"
+                          },
+                          "target": {
+                            "enum": [
+                              "source-evidence",
+                              "canonical-projections",
+                              "identity-views",
+                              "managed-asset-record",
+                              "indexes",
+                              "caches",
+                              "summaries",
+                              "managed-asset-bytes",
+                              "durable-snapshots",
+                              "exports",
+                              "external-processors"
+                            ],
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "target",
+                          "lane",
+                          "status"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "trigger": {
+                      "enum": [
+                        "request",
+                        "retention-expiry",
+                        "hold-release"
+                      ],
+                      "type": "string"
+                    },
+                    "updatedAt": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "deletionId",
+                    "scope",
+                    "trigger",
+                    "record",
+                    "requestedAt",
+                    "boundMilliseconds",
+                    "awaitingHoldRelease",
+                    "open",
+                    "updatedAt",
+                    "targets"
+                  ],
+                  "type": "object"
+                }
+              },
+              "required": [
+                "id",
+                "deletion",
+                "receipt"
               ],
               "type": "object"
             }
-          },
-          "required": [
-            "id",
-            "deletion",
-            "receipt"
-          ],
-          "type": "object"
+          ]
         }
       },
       "summary": "Forget one memory",
@@ -30308,6 +31563,10 @@
             "maxLength": 256,
             "minLength": 1,
             "type": "string"
+          },
+          "dryRun": {
+            "description": "When `true`, performs the authorization and validation of the call, writes nothing, publishes no event and appends no audit record, and answers `{ dryRun: true, target, effects }` naming what the call would change. A target the real call would not find, or a caller it would refuse, answers the same fault.",
+            "type": "boolean"
           },
           "id": {
             "description": "The identifier of the memory.",
@@ -31596,7 +32855,7 @@
       }
     },
     {
-      "description": "Cancels the running switch to another embedder and deletes the profile it was filling; memory keeps the embedding it had, which the switch never touched. `cancelled` is `true` when this call cancelled a running switch, and `false` when none was running, when it had failed or been cancelled already, or when it completed (or another call cancelled it) first; cancelling is not an error then. The `memory.embedder` setting still names the cancelled embedder until the next maintenance pass sets it back to the active one. Requires `bureau.settings:write`; a caller without it is `Forbidden`, whatever the Bureau holds.",
+      "description": "Cancels the running switch to another embedder and deletes the profile it was filling; memory keeps the embedding it had, which the switch never touched. `cancelled` is `true` when this call cancelled a running switch, and `false` when none was running, when it had failed or been cancelled already, or when it completed (or another call cancelled it) first; cancelling is not an error then. The `memory.embedder` setting still names the cancelled embedder until the next maintenance pass sets it back to the active one. Requires `bureau.settings:write`; a caller without it is `Forbidden`, whatever the Bureau holds. The operation has no target to name: it acts on the one switch the Bureau may be running. With `dryRun: true` nothing is cancelled: the answer is `{ dryRun: true, target, effects }`, whose target is the embedder the running switch fills (`none` when no switch runs) and whose `running-switches` effect is 1 while a switch runs and 0 otherwise.",
       "errors": [
         {
           "$ref": "#/components/errors/Unauthorized"
@@ -31616,21 +32875,124 @@
       ],
       "name": "bureau.memory.embedding.cancel",
       "paramStructure": "by-name",
-      "params": [],
+      "params": [
+        {
+          "name": "dryRun",
+          "required": false,
+          "schema": {
+            "description": "When `true`, performs the authorization and validation of the call, writes nothing, publishes no event and appends no audit record, and answers `{ dryRun: true, target, effects }` naming what the call would change. A target the real call would not find, or a caller it would refuse, answers the same fault.",
+            "type": "boolean"
+          }
+        }
+      ],
       "result": {
         "name": "result",
         "required": true,
         "schema": {
-          "additionalProperties": false,
-          "properties": {
-            "cancelled": {
-              "type": "boolean"
+          "anyOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "dryRun": {
+                  "const": true,
+                  "description": "Always `true`: nothing was changed.",
+                  "type": "boolean"
+                },
+                "effects": {
+                  "description": "What else the real call would change, each with a count; a kind with nothing to change is listed with a count of 0.",
+                  "items": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "atLeast": {
+                        "const": true,
+                        "description": "Present when `count` is a floor: more exist than one answer can count.",
+                        "type": "boolean"
+                      },
+                      "count": {
+                        "description": "How many of them the call would change.",
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "kind": {
+                        "description": "What is counted: the kind of thing the call would change besides its target.",
+                        "enum": [
+                          "runs-in-progress",
+                          "running-instances",
+                          "schedules",
+                          "goals",
+                          "open-chats",
+                          "queued-runs",
+                          "running-switches",
+                          "tool-grants",
+                          "delivery-records",
+                          "deliveries-in-flight",
+                          "memories"
+                        ],
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "count"
+                    ],
+                    "type": "object"
+                  },
+                  "type": "array"
+                },
+                "target": {
+                  "additionalProperties": false,
+                  "description": "What the real call would act on.",
+                  "properties": {
+                    "id": {
+                      "description": "The identifier of the target.",
+                      "type": "string"
+                    },
+                    "kind": {
+                      "description": "What the call acts on.",
+                      "enum": [
+                        "task",
+                        "workflow-run",
+                        "goal",
+                        "context",
+                        "context-grants",
+                        "agent",
+                        "hook",
+                        "memory",
+                        "workflow",
+                        "schedule",
+                        "memory-embedding-switch"
+                      ],
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "id"
+                  ],
+                  "type": "object"
+                }
+              },
+              "required": [
+                "dryRun",
+                "target",
+                "effects"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "cancelled": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "cancelled"
+              ],
+              "type": "object"
             }
-          },
-          "required": [
-            "cancelled"
-          ],
-          "type": "object"
+          ]
         }
       },
       "summary": "Cancel the running switch to another embedder",
@@ -31644,7 +33006,12 @@
       },
       "x-weft-paramsSchema": {
         "additionalProperties": false,
-        "properties": {},
+        "properties": {
+          "dryRun": {
+            "description": "When `true`, performs the authorization and validation of the call, writes nothing, publishes no event and appends no audit record, and answers `{ dryRun: true, target, effects }` naming what the call would change. A target the real call would not find, or a caller it would refuse, answers the same fault.",
+            "type": "boolean"
+          }
+        },
         "type": "object"
       }
     },
@@ -36685,7 +38052,7 @@
       }
     },
     {
-      "description": "Deletes one of the caller’s hooks, its sealed signing secret and its delivery records; `bureau.hooks:write` deletes any owner’s, and anyone else is answered `NotFound`. A delivery in flight stops at its next attempt. Answers `{ hookId, deleted: true }`.",
+      "description": "Deletes one of the caller’s hooks, its sealed signing secret and its delivery records; `bureau.hooks:write` deletes any owner’s, and anyone else is answered `NotFound`. A default hook, one a plugin declares (`declaredBy`), is refused with `InvalidParams` on `declaredBy`: turn it off instead. A delivery in flight stops at its next attempt. Answers `{ hookId, deleted: true }`. With `dryRun: true` nothing is deleted, no event is published and no audit entry is written: the answer is `{ dryRun: true, target, effects }`, whose `delivery-records` effect counts the delivery records the delete would remove and whose `deliveries-in-flight` effect counts the deliveries that would stop at their next attempt (each a floor, marked `atLeast`, when the hook has 200 or more delivery records, since one read holds no more), and a hook that is missing, not the caller’s or a default hook answers the fault the real call answers.",
       "errors": [
         {
           "$ref": "#/components/errors/Unauthorized"
@@ -36710,6 +38077,14 @@
       "paramStructure": "by-name",
       "params": [
         {
+          "name": "dryRun",
+          "required": false,
+          "schema": {
+            "description": "When `true`, performs the authorization and validation of the call, writes nothing, publishes no event and appends no audit record, and answers `{ dryRun: true, target, effects }` naming what the call would change. A target the real call would not find, or a caller it would refuse, answers the same fault.",
+            "type": "boolean"
+          }
+        },
+        {
           "name": "hookId",
           "required": true,
           "schema": {
@@ -36724,20 +38099,114 @@
         "name": "result",
         "required": true,
         "schema": {
-          "additionalProperties": false,
-          "properties": {
-            "deleted": {
-              "type": "boolean"
+          "anyOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "dryRun": {
+                  "const": true,
+                  "description": "Always `true`: nothing was changed.",
+                  "type": "boolean"
+                },
+                "effects": {
+                  "description": "What else the real call would change, each with a count; a kind with nothing to change is listed with a count of 0.",
+                  "items": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "atLeast": {
+                        "const": true,
+                        "description": "Present when `count` is a floor: more exist than one answer can count.",
+                        "type": "boolean"
+                      },
+                      "count": {
+                        "description": "How many of them the call would change.",
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "kind": {
+                        "description": "What is counted: the kind of thing the call would change besides its target.",
+                        "enum": [
+                          "runs-in-progress",
+                          "running-instances",
+                          "schedules",
+                          "goals",
+                          "open-chats",
+                          "queued-runs",
+                          "running-switches",
+                          "tool-grants",
+                          "delivery-records",
+                          "deliveries-in-flight",
+                          "memories"
+                        ],
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "count"
+                    ],
+                    "type": "object"
+                  },
+                  "type": "array"
+                },
+                "target": {
+                  "additionalProperties": false,
+                  "description": "What the real call would act on.",
+                  "properties": {
+                    "id": {
+                      "description": "The identifier of the target.",
+                      "type": "string"
+                    },
+                    "kind": {
+                      "description": "What the call acts on.",
+                      "enum": [
+                        "task",
+                        "workflow-run",
+                        "goal",
+                        "context",
+                        "context-grants",
+                        "agent",
+                        "hook",
+                        "memory",
+                        "workflow",
+                        "schedule",
+                        "memory-embedding-switch"
+                      ],
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "id"
+                  ],
+                  "type": "object"
+                }
+              },
+              "required": [
+                "dryRun",
+                "target",
+                "effects"
+              ],
+              "type": "object"
             },
-            "hookId": {
-              "type": "string"
+            {
+              "additionalProperties": false,
+              "properties": {
+                "deleted": {
+                  "type": "boolean"
+                },
+                "hookId": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "hookId",
+                "deleted"
+              ],
+              "type": "object"
             }
-          },
-          "required": [
-            "hookId",
-            "deleted"
-          ],
-          "type": "object"
+          ]
         }
       },
       "summary": "Delete a hook",
@@ -36752,6 +38221,10 @@
       "x-weft-paramsSchema": {
         "additionalProperties": false,
         "properties": {
+          "dryRun": {
+            "description": "When `true`, performs the authorization and validation of the call, writes nothing, publishes no event and appends no audit record, and answers `{ dryRun: true, target, effects }` naming what the call would change. A target the real call would not find, or a caller it would refuse, answers the same fault.",
+            "type": "boolean"
+          },
           "hookId": {
             "description": "The identifier of the hook.",
             "maxLength": 256,

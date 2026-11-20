@@ -36,6 +36,7 @@ import {
   waitMillisecondsField,
 } from './management-schemas.ts';
 import { authorizeWorkspaceOperation } from '../workspace-authorization.ts';
+import { dryRunField, dryRunResult, effect, LIVE_TASK_STATUSES, orDryRun } from './dry-run.ts';
 import { mayAccessWorkflows } from './workflows-operations.ts';
 
 /** What the task operations read from the handler's `host`. */
@@ -275,6 +276,7 @@ export const taskCancelReceiptSchema = z.enum([
 const tasksCancelInput = z.object({
   taskId: z.string().min(1).describe('The identifier of the task to cancel.'),
   waitMilliseconds: waitMillisecondsField,
+  dryRun: dryRunField,
 });
 const tasksCancelOutput = z.object({
   taskId: z.string(),
@@ -287,21 +289,24 @@ const tasksCancelOutput = z.object({
   task: taskViewSchema.optional(),
 });
 
+const tasksCancelAnswer = orDryRun(tasksCancelOutput);
+
 export const tasksCancelOperation = defineOperation<
   typeof tasksCancelInput,
-  typeof tasksCancelOutput,
+  typeof tasksCancelAnswer,
   BureauTasksOperationHost
 >({
   name: 'bureau.tasks.cancel',
   authorize: authorizeWorkspaceOperation('bureau.tasks.cancel'),
   mcpExposable: true,
+  supportsDryRun: true,
   summary: 'Cancel a task',
   description:
-    'Cancels one of the caller’s own tasks; a caller holding `bureau.tasks:write` cancels any owner’s. The receipt says where the cancellation stands: `cancel-requested` (the run has not stopped), `canceled` (a durable run stopped with no cleanup evidence to report), `cleanup-pending`, `cleaned-up`, `cleanup-failed`, `cleanup-unresolved` (cleanup could not be confirmed and may still be running, so nothing is promised about external effects), `unknown-outcome` (an external effect may or may not have happened), or `rejected` (nothing is applied). A rejection carries a `reason`: `already-terminal` (the task had already finished without being canceled), `owned-by-goal` (the task is one attempt of a goal, which only cancelling the goal stops) or `owned-by-workflow` (the task is a step of a workflow instance, which is not cancelled on its own). Cancelling the task of a child run stops the child as `bureau.children.cancel` does. `waitMilliseconds` (default 0) waits that long for the cleanup acknowledgement; `bureau.tasks.get` carries the same state afterwards. A repeated cancel has the same effect.',
+    'Cancels one of the caller’s own tasks; a caller holding `bureau.tasks:write` cancels any owner’s. The receipt says where the cancellation stands: `cancel-requested` (the run has not stopped), `canceled` (a durable run stopped with no cleanup evidence to report), `cleanup-pending`, `cleaned-up`, `cleanup-failed`, `cleanup-unresolved` (cleanup could not be confirmed and may still be running, so nothing is promised about external effects), `unknown-outcome` (an external effect may or may not have happened), or `rejected` (nothing is applied). A rejection carries a `reason`: `already-terminal` (the task had already finished without being canceled), `owned-by-goal` (the task is one attempt of a goal, which only cancelling the goal stops) or `owned-by-workflow` (the task is a step of a workflow instance, which is not cancelled on its own). Cancelling the task of a child run stops the child as `bureau.children.cancel` does. `waitMilliseconds` (default 0) waits that long for the cleanup acknowledgement; `bureau.tasks.get` carries the same state afterwards. A repeated cancel has the same effect. With `dryRun: true` nothing is cancelled: the answer is `{ dryRun: true, target, effects }`, whose `runs-in-progress` effect counts the run the cancel would stop (1 while the task is in progress, 0 once it has finished or when it belongs to a goal or a workflow instance, whose cancel is `rejected`), and a task the real call would not find is `NotFound` as well.',
   destructive: true,
   tags: ['Tasks'],
   inputSchema: tasksCancelInput,
-  outputSchema: tasksCancelOutput,
+  outputSchema: tasksCancelAnswer,
   producibleFaults: ['InvalidParams', 'NotFound'],
   access: { kind: 'authenticated' },
   discoverable: true,
@@ -310,6 +315,16 @@ export const tasksCancelOperation = defineOperation<
   invoke: async ({ input, host, principal }) => {
     if (!(await mayAccessTask(host, principal, input.taskId, 'bureau.tasks:write'))) {
       throw resourceNotFound('task', input.taskId);
+    }
+    if (input.dryRun === true) {
+      const task = await host.tasks.get(input.taskId);
+      if (task === undefined) throw resourceNotFound('task', input.taskId);
+      // A goal's attempt and a workflow instance's step belong to what owns them: the real call
+      // answers `rejected` and stops nothing, so the preview counts no run either.
+      const ownedElsewhere = task.origin?.kind === 'goal' || task.origin?.kind === 'parent';
+      return dryRunResult({ kind: 'task', id: input.taskId }, [
+        effect('runs-in-progress', !ownedElsewhere && LIVE_TASK_STATUSES.has(task.status) ? 1 : 0),
+      ]);
     }
     const outcome = await host.tasks.cancel(input.taskId, input.waitMilliseconds ?? 0);
     if (outcome === undefined) throw resourceNotFound('task', input.taskId);

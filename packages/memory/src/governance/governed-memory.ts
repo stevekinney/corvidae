@@ -18,7 +18,7 @@ import {
   sweepRetention,
 } from './governed-administration';
 import { createGovernedEmbedding } from './governed-embedding';
-import { deleteLocated, forget } from './governed-forgetting';
+import { deleteLocated, forget, previewSourceDeletion } from './governed-forgetting';
 import type {
   CreateGovernedMemoryOptions,
   GovernedMemory,
@@ -172,6 +172,8 @@ export function createGovernedMemory(options: CreateGovernedMemoryOptions): Gove
     revoke: (authority, locator, reason) => revokeRecord(governance, authority, locator, reason),
     delete: (authority, locator) => deleteLocated(governance, deletion, authority, locator),
     forget: (authority, request) => forget(governance, deletion, authority, request),
+    previewSourceDeletion: (authority, locator) =>
+      previewSourceDeletion(governance, authority, locator),
     placeLegalHold: (authority, locator) =>
       changeLegalHold(governance, deletion, authority, locator, true),
     releaseLegalHold: (authority, locator) =>

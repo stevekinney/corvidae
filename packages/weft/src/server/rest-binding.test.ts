@@ -94,7 +94,7 @@ describe('RestBinding structural shape', () => {
     });
     expect(fault.status).toBe(500);
     expect(fault.headers.get('Content-Type')).toBe('application/json');
-    expect(await fault.text()).toBe('{"error":"Internal server error"}');
+    expect(await fault.text()).toBe('{"error":"Internal server error","retryable":false}');
   });
 
   it('is generic over Input and Output and carries extractInput + shapeSuccess', () => {

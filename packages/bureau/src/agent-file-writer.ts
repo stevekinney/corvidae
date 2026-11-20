@@ -92,7 +92,15 @@ export interface AgentFileWriter {
     definition: AgentFileDefinitionInput,
     options: { readonly expectedHash: string } & AgentFileSaveOptions,
   ): Promise<AgentFileWriteResult>;
-  delete(id: string, options: { readonly expectedHash: string }): Promise<AgentFileWriteResult>;
+  /**
+   * Delete the agent's file, if it still hashes to `expectedHash`. With `dryRun` it makes the same
+   * checks (the identifier, the file's presence and its hash) and so refuses as the real call
+   * refuses, then removes nothing and resolves as the real call does.
+   */
+  delete(
+    id: string,
+    options: { readonly expectedHash: string; readonly dryRun?: boolean | undefined },
+  ): Promise<AgentFileWriteResult>;
   /**
    * COR-1873 — copy the plugin agent `id` (`plugin:name`) into the owner's source as `name.md`,
    * an agent the owner can edit. A tool the file names with a pinned version (`plugin:tool@1.2.0`)
@@ -351,9 +359,21 @@ export function createAgentFileWriter(dependencies: AgentFileWriterDependencies)
       });
     },
 
-    delete(id, { expectedHash }) {
+    delete(id, { expectedHash, dryRun }) {
       return exclusive(async () => {
         checkIdentifier(id);
+        if (dryRun === true) {
+          // What the source checks before it removes anything: the file is there and holds the
+          // hash. An unreadable file is still deletable, so its problem is not a refusal here.
+          const entry = await dependencies.read(id);
+          if (entry === undefined) {
+            throw conflictOf(new SourceConflictError(id, expectedHash, null));
+          }
+          if (entry.hash !== expectedHash) {
+            throw conflictOf(new SourceConflictError(id, expectedHash, entry.hash));
+          }
+          return { id, hash: expectedHash };
+        }
         await throughSource(() => source.delete(id, { expectedHash }));
         await dependencies.refresh();
         return { id, hash: expectedHash };

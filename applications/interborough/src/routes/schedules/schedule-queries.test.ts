@@ -10,6 +10,7 @@ import { afterEach, describe, expect, test } from 'bun:test';
 
 import { HttpClientError, isWeftFault, type ScheduleSummary } from '@lostgradient/weft';
 
+import { classifyFault } from '../../lib/faults.ts';
 import { installFetchImplementation } from '../../lib/live-source/fetch.test-support.ts';
 
 import {
@@ -332,6 +333,36 @@ describe('the engine controls of a schedule', () => {
 
     expect(refused).toBeInstanceOf(HttpClientError);
     expect(refused).toMatchObject({ status: 409, message: 'Schedule is paused' });
+  });
+
+  test('skip next carries the retryable and remediation of the refusal’s body, for classifyFault to show', async () => {
+    restore = installFetchImplementation(() =>
+      Promise.resolve(
+        Response.json(
+          {
+            error: 'Schedule is paused',
+            weftCode: 'Conflict',
+            retryable: false,
+            remediation: 'Resume the schedule, then skip the run.',
+          },
+          { status: 409 },
+        ),
+      ),
+    );
+
+    const refused = await rejectionOf(
+      skipNextSchedule({ baseUrl: 'http://host', headers: {} }, 's-1', 1),
+    );
+
+    expect(refused).toMatchObject({
+      retryable: false,
+      remediation: 'Resume the schedule, then skip the run.',
+    });
+    expect(classifyFault(refused)).toMatchObject({
+      kind: 'conflict',
+      retryable: false,
+      remediation: 'Resume the schedule, then skip the run.',
+    });
   });
 
   test('skip next carries the weftCode of a skip refused for naming a run that is no longer the next', async () => {

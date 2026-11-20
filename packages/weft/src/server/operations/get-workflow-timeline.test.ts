@@ -132,6 +132,7 @@ describe('weft.workflows.timeline.get', () => {
     expect(await response.json()).toEqual({
       error: 'Workflow "does-not-exist" not found',
       data: { resource: 'workflow', identifier: 'does-not-exist' },
+      retryable: false,
     });
   });
 
@@ -162,6 +163,6 @@ describe('weft.workflows.timeline.get', () => {
     );
 
     expect(response.status).toBe(500);
-    expect(await response.json()).toEqual({ error: 'Internal server error' });
+    expect(await response.json()).toEqual({ error: 'Internal server error', retryable: false });
   });
 });

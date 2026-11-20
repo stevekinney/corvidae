@@ -136,7 +136,10 @@ describe('weft.workflows.bulk.signal', () => {
 
     expect(response.status).toBe(400);
     expect(response.headers.get('content-type')).toBe('application/json');
-    expect(await response.json()).toEqual({ error: 'Request body must be a JSON object' });
+    expect(await response.json()).toEqual({
+      error: 'Request body must be a JSON object',
+      retryable: false,
+    });
   });
 
   it('returns 400 for missing required fields and unscoped filters', async () => {
@@ -150,6 +153,7 @@ describe('weft.workflows.bulk.signal', () => {
     expect(await response.json()).toEqual({
       error:
         'Field "filter" must include at least one of status, type, scheduleId, tags, attributes, idPrefix (≥3 chars), or failureCategory paired with status',
+      retryable: false,
     });
 
     response = await handleRequest(
@@ -166,6 +170,7 @@ describe('weft.workflows.bulk.signal', () => {
     expect(response.status).toBe(400);
     expect(await response.json()).toEqual({
       error: 'Field "name" must be a non-empty string',
+      retryable: false,
     });
 
     response = await handleRequest(
@@ -182,6 +187,7 @@ describe('weft.workflows.bulk.signal', () => {
     expect(response.status).toBe(400);
     expect(await response.json()).toEqual({
       error: 'Field "confirmationToken" is required after a dry run',
+      retryable: false,
     });
   });
 
@@ -213,6 +219,6 @@ describe('weft.workflows.bulk.signal', () => {
 
     expect(response.status).toBe(500);
     expect(response.headers.get('content-type')).toBe('application/json');
-    expect(await response.json()).toEqual({ error: 'Internal server error' });
+    expect(await response.json()).toEqual({ error: 'Internal server error', retryable: false });
   });
 });

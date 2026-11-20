@@ -25,6 +25,7 @@
  * the JSON-RPC semantics come from the shared session.
  */
 
+import { faultErrorData } from './fault-to-json-rpc.ts';
 import { splitNewlineDelimitedBuffer } from './json-rpc-framing.ts';
 import { JSON_RPC_ERROR_CODES, JSON_RPC_VERSION, type JsonRpcId } from './json-rpc-protocol.ts';
 import {
@@ -210,7 +211,7 @@ async function runStartupTokenAdmission(
       error: {
         code: JSON_RPC_ERROR_CODES.INVALID_REQUEST,
         message: 'authenticate frame exceeds maxFrameBytes',
-        data: { weftCode: 'InvalidParams', httpStatus: 400 },
+        data: faultErrorData('InvalidParams'),
       },
       id: null,
     });
@@ -251,7 +252,7 @@ async function runStartupTokenAdmission(
       error: {
         code: JSON_RPC_ERROR_CODES.UNAUTHORIZED,
         message: 'startup token mismatch',
-        data: { weftCode: 'Unauthorized', httpStatus: 401 },
+        data: faultErrorData('Unauthorized'),
       },
       id,
     });
@@ -280,7 +281,7 @@ function classifyAuthenticateShape(
       error: {
         code: JSON_RPC_ERROR_CODES.UNAUTHORIZED,
         message: 'first frame must be weft.authenticate',
-        data: { weftCode: 'Unauthorized', httpStatus: 401 },
+        data: faultErrorData('Unauthorized'),
       },
       id,
     },
@@ -345,7 +346,7 @@ async function runMainReadLoop(
         error: {
           code: JSON_RPC_ERROR_CODES.INVALID_REQUEST,
           message: 'frame exceeds maxFrameBytes',
-          data: { weftCode: 'InvalidParams', httpStatus: 400 },
+          data: faultErrorData('InvalidParams'),
         },
         id: null,
       });

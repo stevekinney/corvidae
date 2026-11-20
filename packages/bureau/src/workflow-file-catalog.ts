@@ -163,9 +163,14 @@ export interface WorkflowFileCatalog {
     paused: boolean,
     options: { readonly expectedHash: string } & WorkflowWriteObserver,
   ) => Promise<WorkflowFileWriteResult>;
+  /**
+   * Delete the file, if it still hashes to `expectedHash`. With `dryRun` it makes the same checks
+   * (the identifier, the file's presence and its hash) and so refuses as the real call refuses,
+   * then removes nothing and resolves as the real call does.
+   */
   readonly delete: (
     id: string,
-    options: { readonly expectedHash: string },
+    options: { readonly expectedHash: string; readonly dryRun?: boolean | undefined },
   ) => Promise<WorkflowFileWriteResult>;
   /** Rescan the directory; resolves once the catalog reflects it. */
   readonly refresh: () => Promise<void>;
@@ -533,9 +538,21 @@ export function createWorkflowFileCatalog(
       });
     },
 
-    delete(id, { expectedHash }) {
+    delete(id, { expectedHash, dryRun }) {
       return exclusive(async () => {
         checkIdentifier(id);
+        if (dryRun === true) {
+          // What the source checks before it removes anything: the file is there and holds the
+          // hash. An unreadable file is still deletable, so its problem is not a refusal here.
+          const entry = await readFresh(id);
+          if (entry === undefined) {
+            throw conflictOf(new SourceConflictError(id, expectedHash, null));
+          }
+          if (entry.hash !== expectedHash) {
+            throw conflictOf(new SourceConflictError(id, expectedHash, entry.hash));
+          }
+          return { id, hash: expectedHash };
+        }
         await throughSource(() => source.delete(id, { expectedHash }));
         await watched.reload();
         return { id, hash: expectedHash };
