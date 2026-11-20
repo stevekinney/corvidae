@@ -1,4 +1,5 @@
 import { CompletableEventTarget, HookRegistry } from '@lostgradient/lifecycle';
+import { waitUntil } from '@lostgradient/testing/wait-until';
 import { createToolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 import { Conversation, type ConversationHistory } from 'conversationalist';
@@ -1568,6 +1569,42 @@ describe('createSubagentTool', () => {
       expect(registryA.children()).toHaveLength(1);
       expect(registryB.children()).toHaveLength(1);
       expect(registryA.children()[0]?.id).not.toBe(registryB.children()[0]?.id);
+    });
+
+    it('COR-2526: a run delegating through a tool with no parentContext is waiting on the child, not stalled', async () => {
+      // The tool dispatches into the run's own registry and puts no event on the run's emitter, so
+      // the run's child wait must come from the registry.
+      const { agent: child, settle } = makeControllableAgent();
+      const tool = createSubagentTool({
+        name: 'delegate',
+        description: 'Delegate',
+        agent: child,
+        agentName: 'child',
+        input: z.object({ q: z.string() }),
+      });
+      let generateCalls = 0;
+      const parent = createAgent({
+        generate: async () => {
+          generateCalls++;
+          return generateCalls === 1
+            ? {
+                content: '',
+                toolCalls: [{ id: 'call-1', name: 'delegate', arguments: { q: 'hi' } }],
+              }
+            : textResponse('done');
+        },
+        tools: { delegate: tool },
+      });
+      const registry = createChildRunRegistry();
+      const run = parent.run('go', { childRegistry: registry });
+
+      await waitUntil(() => registry.children().some((entry) => entry.status === 'running'));
+      expect(run.snapshot().declaredWait).toMatchObject({ reason: 'child' });
+      expect(run.snapshot().status).toBe('waiting');
+
+      settle(makeSuccessfulResult('child result'));
+      await run.result();
+      expect(run.snapshot().declaredWait).toBeUndefined();
     });
 
     it('AB-214: a bare createAgent().run() with no explicit runId still gives createSubagentTool a per-call parentRunId, via the minted standalone-run id', async () => {

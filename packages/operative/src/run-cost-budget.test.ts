@@ -389,6 +389,46 @@ describe('a step on a switched model', () => {
     expect(mixed.costEstimate?.totalCost).toBeCloseTo(2, 10);
   });
 
+  it('keeps an unpriced run unknown through a durable cursor: no cost, never $0 or the agent’s rate', async () => {
+    const storage = new MemoryStorage();
+    const checkpointStore = createCheckpointStore(
+      textValueStore(storage, { disposeUnderlyingStorage: false }),
+    );
+    const { engine } = await createRunEngine({
+      storage,
+      runWorkflow: createRunWorkflow(checkpointStore),
+      recover: false,
+    });
+    try {
+      const result = await startDurableRunResult(
+        { engine, checkpointStore },
+        {
+          runId: 'unpriced-durable',
+          sessionId: 'unpriced-durable',
+          options: options(
+            {
+              conversation: createConversationHistory(),
+              generate: scripted(3),
+              costBudget: undefined,
+            },
+            { steering: gate('unpriced'), runId: 'unpriced-durable' },
+          ),
+          prompt: 'go',
+        },
+      );
+
+      expect(result.finishReason).toBe('stop-condition');
+      expect(result.costEstimate).toBeUndefined();
+      // The cursor holds nothing known and says so, so a recovery does not price the run's tokens
+      // at the agent's model.
+      const checkpoint = await checkpointStore.loadCheckpoint('unpriced-durable');
+      expect(totalAccumulatedCost(checkpoint.cursor.cost)).toBe(0);
+      expect(checkpoint.cursor.cost?.unpriced).toBe(true);
+    } finally {
+      engine[Symbol.dispose]();
+    }
+  });
+
   it('prices a switched model it knows, and lets a run on an unpriced one finish without a budget', async () => {
     const priced = await executeLoop(
       options(
