@@ -301,12 +301,17 @@ describe('an approved subagent call under Bureau (COR-2106)', () => {
     expect(readBureauInvariants(unparked)).toBeInstanceOf(Function);
     expect(readBureauInvariants(approved)).toBeInstanceOf(Function);
     // Every other named field matches what the unparked call received (the symbol-keyed factory
-    // is each bureau's own, so it is compared by presence above).
+    // is each bureau's own, so it is compared by presence above). Only the step's own part is left
+    // out: the run's emitter a delegation announces its child on, which a resumed call, no longer
+    // inside that step, does not get (operative's `CHILD_EVENT_EMITTER_EXECUTION_KEY`, COR-2526).
+    const { childEventEmitter: stepEmitter, ...runScoped } = unparked ?? {};
+    expect(stepEmitter).toBeInstanceOf(EventTarget);
+    expect(approved?.['childEventEmitter']).toBeUndefined();
     const named = (context: Record<string, unknown> | undefined) => ({
       ...Object.fromEntries(Object.entries(context ?? {})),
       parentRunId: undefined,
     });
-    expect(named(approved)).toEqual(named(unparked));
+    expect(named(approved)).toEqual(named(runScoped));
   });
 });
 
