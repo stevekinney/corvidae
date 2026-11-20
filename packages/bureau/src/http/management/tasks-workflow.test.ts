@@ -4,6 +4,7 @@
  * with the schedule they belong to, what a tick recorded, how far an instance got, and the signal it
  * waits for. The Runs list names, groups and filters rows by these.
  */
+import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 import { createAgent } from '@lostgradient/operative';
 import { afterEach, describe, expect, it, spyOn } from 'bun:test';
 
@@ -194,11 +195,14 @@ describe('the Bureau’s own runs, listed as tasks', () => {
   });
 
   it('lists an instance a schedule fired with that schedule, and the response passes its schema (rows 09r, 52i)', async () => {
-    const served = await serveWorkflows(cleanups);
+    const runtime = createManualRuntimeServices();
+    const served = await serveWorkflows(cleanups, { runtime, maintenance: 'manual' });
     await served.bureau.workflows!.create('digest-flow', {
       trigger: FAST_SCHEDULE,
       steps: [{ kind: 'await-signal', signal: 'never-sent' }],
     });
+    await runtime.advance(1_000);
+    await served.bureau.maintain();
     let fired: ListedTask | undefined;
     await waitForCondition(async () => {
       const listed = await listTasks(served, { workflow: 'digest-flow' });

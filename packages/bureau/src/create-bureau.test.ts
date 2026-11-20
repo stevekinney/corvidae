@@ -21886,17 +21886,16 @@ describe('AB-390 — outbox claim lease', () => {
     const MAXIMUM_SETTIMEOUT_DELAY_MS = 2_147_483_647;
     const database = createSqliteStorageFixture();
     const runtime = createManualRuntimeServices();
+    const maintenanceTimers = createManualRuntimeServices().timers;
     const recordedDelays: number[] = [];
-    // Wraps ONLY `timers.setTimeout` to record the delay each call actually
-    // requests, while still delegating to the manual runtime's own timer
-    // queue (so `runtime.advance()` continues to drive it deterministically)
-    // — every other RuntimeServices surface (clock, identifiers, etc.) is
-    // the SAME shared instance the standalone session store below also
-    // uses, so both sides observe one consistent clock.
+    // Share the clock with the session store. Keep recurring maintenance on a separate queue
+    // so advancing a multi-week retry delay only fires the retry timers under test.
     const instrumentedRuntime = {
       ...runtime,
       timers: {
         ...runtime.timers,
+        setInterval: maintenanceTimers.setInterval,
+        clearInterval: maintenanceTimers.clearInterval,
         setTimeout: (callback: () => void, delayMs?: number): RuntimeTimeoutHandle => {
           recordedDelays.push(delayMs ?? 0);
           return runtime.timers.setTimeout(callback, delayMs);
