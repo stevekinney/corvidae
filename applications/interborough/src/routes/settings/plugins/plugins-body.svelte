@@ -13,13 +13,13 @@
    */
   import {
     Alert,
+    Badge,
     Banner,
     Button,
     EmptyState,
     Link,
     ListDetail,
     SelectableRow,
-    StatusDot,
   } from '@lostgradient/cinder';
   import { useQueryClient, type CreateQueryResult } from '@tanstack/svelte-query';
   import { onDestroy, tick, untrack } from 'svelte';
@@ -450,7 +450,7 @@
               {/snippet}
               {#snippet description()}
                 <span class="ib-plugins__row-line">
-                  <StatusDot status={status.dot} label={status.label} labelVisible size="sm" />
+                  <Badge variant={status.variant} size="sm">{status.label}</Badge>
                   <span class="ib-plugins__row-kind">{sourceWord(plugin.source)}</span>
                 </span>
               {/snippet}

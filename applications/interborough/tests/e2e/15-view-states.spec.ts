@@ -446,6 +446,8 @@ for (const view of VIEW_NAMES) {
             await expect(frame.getByRole('heading', { level: 2, name: title ?? '' })).toBeVisible();
           } else if (outcome === 'forbidden' && view === 'agents') {
             await expect(frame.getByRole('heading', { level: 1 })).toHaveText(copy.label);
+            await expect(frame.getByText(AGENTS_COPY.subtitle)).toBeVisible();
+            await expect(frame.getByRole('link', { name: 'New agent' })).toBeVisible();
             const state = frame.locator('.cinder-empty-state');
             await expect(state.getByRole('heading', { level: 2, name: title ?? '' })).toBeVisible();
             await expect(state).not.toContainText('agents:read');

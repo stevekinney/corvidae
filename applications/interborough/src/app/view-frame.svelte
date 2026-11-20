@@ -47,6 +47,7 @@
   import HealthFrame from '../routes/health/health-frame.svelte';
   import { getPrincipalStore } from '../lib/scopes.svelte.ts';
   import { getConnection } from './connection.svelte.ts';
+  import { AGENT_EDITOR_COPY, AGENTS_COPY } from './copy/agents.ts';
   import { CHAT_COPY } from './copy/chat.ts';
   import { CONNECTION_COPY, RETRY_LABEL, STALE_DATA_LABEL } from './copy/views.ts';
   import { VIEW_COPY } from './copy/view-pages.ts';
@@ -389,7 +390,18 @@
     {@render failure(CONNECTION_COPY.page.title, CONNECTION_COPY.page.description)}
   {:else}
     {@const agentsList = initial.pattern === '/agents'}
-    {#if agentsList}<PageHeader title={copy.label} headingLevel={1} />{/if}
+    {#if agentsList}
+      <PageHeader
+        title={copy.label}
+        description={AGENTS_COPY.subtitle}
+        headingLevel={1}
+        createAction={{
+          label: AGENT_EDITOR_COPY.newAction,
+          href: router.href('/agents/new'),
+          onclick: (event) => navigateTo(event, '/agents/new'),
+        }}
+      />
+    {/if}
     <ForbiddenState title={forbiddenTitle} headingLevel={agentsList ? 2 : 1} />
   {/if}
 </div>

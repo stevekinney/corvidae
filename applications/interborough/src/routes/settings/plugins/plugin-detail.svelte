@@ -2,7 +2,7 @@
   /**
    * One plugin (board PageSettingsSections, "Plugins, /settings/plugins", "Demo detail" and
    * "Anthropic detail"): its name and version, what it is, whether it is enabled, where it came from,
-   * what it adds under the names a person reads with the identifier beside each, its configuration
+   * what it adds under the names a person reads, its configuration
    * as a form with an explicit Save, its secrets, and what uses it. A plugin that is switched off
    * says what it holds back; one that needs a key says where the key goes and offers the one action.
    *
@@ -11,7 +11,7 @@
    * page's draft (`plugin-drafts.svelte.ts`). A secret is saved at once, because it needs no restart. A plugin
    * the host requires has no switch.
    */
-  import { Button, CopyableValue, SectionHeading, StatusDot, Toggle } from '@lostgradient/cinder';
+  import { Badge, Button, CopyButton, SectionHeading, Toggle } from '@lostgradient/cinder';
   import { createQuery } from '@tanstack/svelte-query';
 
   import { PLUGINS_COPY } from '../../../app/copy/plugins.ts';
@@ -160,7 +160,7 @@
     </div>
     <div class="ib-plugin__controls">
       {#if showStatus}
-        <StatusDot status={status.dot} label={status.label} labelVisible />
+        <Badge variant={status.variant} size="sm">{status.label}</Badge>
       {/if}
       {#if plugin.descriptor.required}
         <span class="ib-plugin__always-on">{copy.alwaysOn}</span>
@@ -199,10 +199,11 @@
   {/each}
 
   <p class="ib-plugin__source">
-    <span class="ib-plugin__source-term">{copy.sections.source}</span>
-    {sourceKind(plugin.source)}
-    <!-- A host path is shown only inside a copy control (owner, 2026-11-19). -->
-    <CopyableValue value={plugin.location} label={copy.copyLocation} />
+    <span
+      ><span class="ib-plugin__source-term">{copy.sections.source}</span>
+      {sourceKind(plugin.source)}</span
+    >
+    <CopyButton value={plugin.location} label={copy.copyLocation} />
   </p>
 
   {#if groups.length > 0}
@@ -233,13 +234,10 @@
       <ul class="ib-plugin__secrets">
         {#each secrets as secret (secret.key)}
           <li class="ib-plugin__secret" data-secret={secret.key}>
-            <code class="ib-plugin__secret-key">{secret.key}</code>
-            <StatusDot
-              status={secret.set ? 'success' : 'neutral'}
-              label={secret.set ? copy.secrets.set : copy.secrets.missing}
-              labelVisible
-              size="sm"
-            />
+            <span class="ib-plugin__secret-name">{copy.secrets.label(secret.key)}</span>
+            <Badge variant={secret.set ? 'success' : 'neutral'} size="sm">
+              {secret.set ? copy.secrets.set : copy.secrets.missing}
+            </Badge>
             <Button
               variant={secret.set ? 'secondary' : 'primary'}
               size="sm"
@@ -351,9 +349,11 @@
     color: var(--cinder-text-muted);
   }
 
-  .ib-plugin__secret-key {
-    font-family: var(--cinder-font-mono);
-    overflow-wrap: anywhere;
+  .ib-plugin__source {
+    display: flex;
+    align-items: center;
+    gap: var(--cinder-space-2);
+    justify-content: space-between;
   }
 
   .ib-plugin__section {
@@ -405,9 +405,10 @@
     padding: var(--cinder-space-2) 0;
   }
 
-  .ib-plugin__secret-key {
+  .ib-plugin__secret-name {
     flex: 0 1 auto;
     min-width: 0;
+    overflow-wrap: anywhere;
   }
 
   /* The row's one action sits at its inline end. */
