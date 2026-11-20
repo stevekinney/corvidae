@@ -106,12 +106,35 @@ export function normalizeScheduleUpdateOptions(
   };
 }
 
-/** A schedule's metadata: a plain JSON object, never an array, a class instance or a non-JSON value. */
+/**
+ * A schedule's metadata: a plain JSON object, never an array, a class instance or a non-JSON value.
+ * The result is a deep copy, validated as a copy: the engine awaits storage before it writes, and a
+ * caller that changes the object it passed meanwhile must not change what is stored.
+ */
 export function normalizeScheduleMetadata(metadata: unknown): Record<string, unknown> {
-  if (!isScheduleMetadata(metadata)) {
-    throw new Error('options.metadata must be a plain JSON object when provided');
+  if (isScheduleMetadata(metadata)) {
+    try {
+      const snapshot: unknown = structuredClone(metadata);
+      if (isScheduleMetadata(snapshot)) return snapshot;
+    } catch {
+      // A value the platform cannot copy is not JSON; the refusal below names it.
+    }
   }
-  return metadata;
+  throw new Error('options.metadata must be a plain JSON object when provided');
+}
+
+/**
+ * `options` with its metadata replaced by a validated copy, for an engine method to take before its
+ * first await. Without metadata, or with options that are not an object, they come back as they were
+ * (later validation refuses the latter).
+ */
+export function snapshotScheduleMetadata<TOptions extends { metadata?: unknown }>(
+  options: TOptions | undefined,
+): TOptions | undefined {
+  if (typeof options !== 'object' || options === null || options.metadata === undefined) {
+    return options;
+  }
+  return { ...options, metadata: normalizeScheduleMetadata(options.metadata) };
 }
 
 /** Whether `value` is a plain JSON object: not `null`, an array, a class instance or a non-JSON value. */

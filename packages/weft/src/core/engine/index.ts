@@ -375,6 +375,7 @@ import {
   type UpdateCallbacks,
 } from './updates.ts';
 import { isTerminalWorkflowStatus } from './validation.ts';
+import { snapshotScheduleMetadata } from './validation/schedule-options.ts';
 import { coerceScheduleId } from './validation/schedule.ts';
 import { confirmWakeOwnership } from './wake-ownership-guard.ts';
 import type {
@@ -2517,6 +2518,8 @@ export class Engine<
   ): Promise<ScheduleHandle> {
     const internals = getInternals(this);
     assertLeaseHeldForEngineWork(internals);
+    // Copy the metadata before the first await: the caller may change the object meanwhile.
+    const snapshottedOptions = snapshotScheduleMetadata(options);
     if (!isWorkflowCatalogReady(this as unknown as Engine)) {
       await ensureWorkflowCatalogReady(this as unknown as Engine);
     }
@@ -2528,7 +2531,7 @@ export class Engine<
         'A cron string or schedule spec must be provided when scheduling by workflow type.',
       );
     }
-    return scheduleFromInternals(internals, typeOrDefinition, input, spec, options);
+    return scheduleFromInternals(internals, typeOrDefinition, input, spec, snapshottedOptions);
   }
   async getSchedule(scheduleId: string): Promise<ScheduleSummary | null> {
     const normalizedScheduleId = coerceScheduleId(scheduleId, 'scheduleId');
@@ -2581,10 +2584,12 @@ export class Engine<
   ): Promise<void> {
     const internals = getInternals(this);
     assertLeaseHeldForEngineWork(internals);
+    // Copy the metadata before the first await: the caller may change the object meanwhile.
+    const snapshottedOptions = snapshotScheduleMetadata(options);
     if (!isWorkflowCatalogReady(this as unknown as Engine)) {
       await ensureWorkflowCatalogReady(this as unknown as Engine);
     }
-    return updateScheduleFromInternals(internals, scheduleId, newSpec, options);
+    return updateScheduleFromInternals(internals, scheduleId, newSpec, snapshottedOptions);
   }
   /**
    * Skip one upcoming run of a schedule (COR-1829, COR-2018): the next, or any after it. Without

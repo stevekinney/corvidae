@@ -160,6 +160,30 @@ describe('schedule metadata', () => {
     ).toThrow('options.metadata must be a plain JSON object');
   });
 
+  it('stores the metadata as it was validated, never as the caller changes it while the write is pending', async () => {
+    const opened = open();
+
+    const created = { owner: { id: 'ada' }, count: 1 };
+    const creating = opened.schedule('report', null, '0 9 * * *', {
+      id: 'owned',
+      metadata: created,
+    });
+    created.count = Number.NaN;
+    created.owner.id = 'mallory';
+    await creating;
+    expect(await metadataOf(opened, 'owned')).toEqual({ owner: { id: 'ada' }, count: 1 });
+
+    const updated = { owner: { id: 'grace' }, count: 2 };
+    const updating = opened.updateSchedule('owned', '0 10 * * *', { metadata: updated });
+    updated.count = Number.NaN;
+    updated.owner.id = 'mallory';
+    await updating;
+    expect(await metadataOf(opened, 'owned')).toEqual({ owner: { id: 'grace' }, count: 2 });
+    expect(await opened.listSchedules()).toMatchObject({
+      items: [{ id: 'owned', metadata: { owner: { id: 'grace' }, count: 2 } }],
+    });
+  });
+
   describe('a persisted record', () => {
     async function persistedRecord(): Promise<Record<string, unknown>> {
       const opened = open();
