@@ -2472,7 +2472,9 @@ export function createDurableEventProducer<D extends AgentDefinitions = AgentDef
       'schedule.created',
       {
         scheduleId: event.scheduleId,
-        agentName: event.agentName,
+        // COR-2546: a schedule of a workflow runs no agent, so it has no `agentName`.
+        ...(event.agentName !== undefined ? { agentName: event.agentName } : {}),
+        target: event.target,
         spec: event.spec,
         ...(event.sessionId !== undefined ? { sessionId: event.sessionId } : {}),
       },

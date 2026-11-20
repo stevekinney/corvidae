@@ -1421,7 +1421,9 @@ export class SessionTaintEvent extends Event {
  * `bureau.schedules.create` passes this bureau's own `emitter` into
  * `createAgentScheduler`, so `createAgentSchedule` (AB-298) dispatches
  * directly onto it, rather than `create-bureau.ts` dispatching a second copy
- * itself the way `pauseSchedule`/`resumeSchedule`/`cancelSchedule` do.
+ * itself the way `pauseSchedule`/`resumeSchedule`/`cancelSchedule` do. A schedule of a workflow
+ * (COR-2546) reaches it from `createWorkflowSchedule` instead, which dispatches the same event
+ * with a workflow `target` and no `agentName`.
  *
  * `session.deleted` (`SessionDeletedEvent`, AB-228) is the same shape of
  * bureau-level fact: `deleteSession` dispatches it directly onto this

@@ -23,6 +23,7 @@ import type {
   ScheduleRevisionGuard,
 } from '../bureau-types/schedules';
 import {
+  AgentScheduledEvent,
   InvalidScheduleError,
   ScheduleCancelledEvent,
   SchedulePausedEvent,
@@ -300,10 +301,11 @@ export function createScheduleOperations<D extends AgentDefinitions>(
     const kind = assertWorkflowTarget(definition.workflowType, workflowInput);
     const scheduleId = runtimeServices.identifiers.next('schedule');
     const engine = runtime.durable.engine;
+    const spec = toScheduleSpec(definition.spec);
     await engine.schedule(
       weftNameOf(definition.workflowType),
       scheduledWorkflowInput(kind, scheduleId, workflowInput),
-      toScheduleSpec(definition.spec),
+      spec,
       {
         id: scheduleId,
         ...(definition.description === undefined ? {} : { description: definition.description }),
@@ -311,6 +313,11 @@ export function createScheduleOperations<D extends AgentDefinitions>(
         ...(definition.timeZone === undefined ? {} : { timeZone: definition.timeZone }),
         metadata: workflowScheduleMetadata(owner),
       },
+    );
+    // The schedule exists from here, so its creation is announced before the locator read below
+    // can fail: its audit trail then has a creation beside its pause, resume and cancel.
+    emitter.dispatch(
+      new AgentScheduledEvent({ workflowType: definition.workflowType, scheduleId, spec }),
     );
     // The schedule is registered, so a read that fails or finds nothing loses only its locator.
     let summary;

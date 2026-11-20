@@ -453,9 +453,10 @@ export const BUREAU_EVENT_CATALOG: Readonly<
   'schedule.created': entry(
     'schedule.created',
     'unattributed',
-    'A schedule was created for an agent.',
+    'A schedule was created for an agent or a workflow.',
     [
-      ['agentName', 'string'],
+      ['agentName?', 'string'],
+      ['target', 'object'],
       ['scheduleId', 'string'],
       ['sessionId?', 'string'],
     ],

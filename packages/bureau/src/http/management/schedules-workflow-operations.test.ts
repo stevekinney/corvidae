@@ -171,6 +171,58 @@ describe('creating a schedule for a workflow', () => {
     }
   });
 
+  it('announces schedule.created with its target, and records it in the schedule’s audit trail beside its pauses, resumes and cancels', async () => {
+    const served = await serve();
+    const announced: Array<{ type: string; scheduleId: string; target: unknown }> = [];
+    const listener = (event: {
+      type: string;
+      scheduleId: string;
+      target: unknown;
+      agentName?: string;
+    }): void => {
+      announced.push({ type: event.type, scheduleId: event.scheduleId, target: event.target });
+    };
+    served.bureau.addEventListener('schedule.created', listener);
+
+    const code = await created(served, { workflowType: 'kit:echo' });
+    const file = await created(served, { workflowType: 'digest' });
+    await call(served, 'pause', { scheduleId: code });
+    await call(served, 'resume', { scheduleId: code });
+    await call(served, 'cancel', { scheduleId: file });
+
+    // The announcement names the workflow as `bureau.workflows.*` does, and no agent.
+    expect(announced).toEqual([
+      {
+        type: 'schedule.created',
+        scheduleId: code,
+        target: { kind: 'workflow', workflowType: 'kit:echo' },
+      },
+      {
+        type: 'schedule.created',
+        scheduleId: file,
+        target: { kind: 'workflow', workflowType: 'digest' },
+      },
+    ]);
+    const records = await served.bureau.internals.auditTrail!.query({ runId: `schedule:${code}` });
+    expect(records.map((record) => record.type)).toEqual([
+      'schedule.created',
+      'schedule.paused',
+      'schedule.resumed',
+    ]);
+    expect(records[0]!.detail).toEqual({
+      scheduleId: code,
+      target: { kind: 'workflow', workflowType: 'kit:echo' },
+      spec: { every: '1h' },
+    });
+    const cancelled = await served.bureau.internals.auditTrail!.query({
+      runId: `schedule:${file}`,
+    });
+    expect(cancelled.map((record) => record.type)).toEqual([
+      'schedule.created',
+      'schedule.cancelled',
+    ]);
+  });
+
   it('is InvalidParams when both targets are named, when neither is, and when a field belongs to the other', async () => {
     const served = await serve();
     const refused = async (params: object) => status(await create(served, params));
@@ -329,7 +381,7 @@ async function runsFiredBy(engine: DurableEngine, type: string, id: string): Pro
   return fired;
 }
 
-/** The types of the audit records of schedule `id`'s pauses and resumes, as they were written. */
+/** The types of the audit records of schedule `id`'s creation, pauses and resumes, as they were written. */
 async function transitionsOf(served: Served, id: string): Promise<string[]> {
   const records = await served.bureau.internals.auditTrail!.query({ runId: `schedule:${id}` });
   return records.map((record) => record.type);
@@ -365,7 +417,7 @@ describe('a fire on cadence of a schedule whose workflow can no longer be starte
     expect(await statusOf(served, 'bureau-workflow-schedule:digest:1')).toBe('paused');
     expect(await statusOf(served, id)).toBe('paused');
     // The hold is recorded in the schedule's audit trail as its owner's own pause would be.
-    expect(await transitionsOf(served, id)).toEqual(['schedule.paused']);
+    expect(await transitionsOf(served, id)).toEqual(['schedule.created', 'schedule.paused']);
     await fireOnCadence(served, id);
     await quietFor(200);
     expect(await runsOf(engine, 'digest')).toBe(runsBefore);
@@ -378,7 +430,11 @@ describe('a fire on cadence of a schedule whose workflow can no longer be starte
     const paused = await served.bureau.workflows!.get('digest');
     await served.bureau.workflows!.resume('digest', { expectedHash: paused!.hash! });
     expect(await statusOf(served, id)).toBe('active');
-    expect(await transitionsOf(served, id)).toEqual(['schedule.paused', 'schedule.resumed']);
+    expect(await transitionsOf(served, id)).toEqual([
+      'schedule.created',
+      'schedule.paused',
+      'schedule.resumed',
+    ]);
     await fireOnCadence(served, id);
     await waitUntil(async () => (await firedBy(engine, 'digest', id)) === 1);
   });
