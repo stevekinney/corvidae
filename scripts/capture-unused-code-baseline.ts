@@ -10,11 +10,8 @@ if (input === undefined || output === undefined)
 const report = await Bun.file(resolve(input)).json();
 if (typeof report !== 'object' || report === null || !Array.isArray(report.issues))
   throw new Error('Knip report must contain an issues array.');
-const issues = report.issues.toSorted((left, right) => {
-  if (typeof left !== 'object' || left === null || typeof right !== 'object' || right === null)
-    throw new Error('Knip report issues must be objects.');
-  return String((left as { file?: unknown }).file).localeCompare(
-    String((right as { file?: unknown }).file),
-  );
-});
-writeFileSync(resolve(output), `${JSON.stringify({ issues }, null, 2)}\n`);
+const { findingsFromReport } = await import('./check-unused-code.ts');
+const rows = findingsFromReport(report)
+  .map(({ category, file, name }) => JSON.stringify([category, file, name]))
+  .toSorted();
+writeFileSync(resolve(output), `${rows.join('\n')}\n`);

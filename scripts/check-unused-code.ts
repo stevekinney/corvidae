@@ -37,12 +37,22 @@ export function unexpectedFindings(report: readonly Finding[], baseline: readonl
   return report.filter((finding) => !accepted.has(JSON.stringify(finding)));
 }
 
+function baselineFindings(text: string): Finding[] {
+  return text.trimEnd().split('\n').map((line, index) => {
+    let value: unknown;
+    try { value = JSON.parse(line); } catch { throw new Error(`Baseline row ${index + 1} is invalid JSON.`); }
+    if (!Array.isArray(value) || value.length !== 3 || !value.every((part) => typeof part === 'string'))
+      throw new Error(`Baseline row ${index + 1} must be [category, file, name].`);
+    return { category: value[0], file: value[1], name: value[2] };
+  });
+}
+
 function main(): void {
   const [reportPath, baselinePath] = process.argv.slice(2);
   if (reportPath === undefined || baselinePath === undefined)
     throw new Error('Usage: bun scripts/check-unused-code.ts <knip-report.json> <baseline.json>');
   const report = findingsFromReport(JSON.parse(readFileSync(resolve(reportPath), 'utf8')));
-  const baseline = findingsFromReport(JSON.parse(readFileSync(resolve(baselinePath), 'utf8')));
+  const baseline = baselineFindings(readFileSync(resolve(baselinePath), 'utf8'));
   const unexpected = unexpectedFindings(report, baseline);
   for (const finding of unexpected)
     process.stderr.write(`check-unused-code — ${finding.category} ${finding.file}: ${finding.name}\n`);

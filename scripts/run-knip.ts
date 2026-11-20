@@ -9,7 +9,7 @@ const result = Bun.spawnSync(['bunx', 'knip', '--reporter', 'json', '--output-fi
   stderr: 'inherit',
 });
 if (result.exitCode !== 0 && result.exitCode !== 1) process.exit(result.exitCode);
-const comparison = Bun.spawnSync(['bun', 'scripts/check-unused-code.ts', reportPath, 'scripts/unused-code-baseline.json'], {
+const comparison = Bun.spawnSync(['bun', 'scripts/check-unused-code.ts', reportPath, 'scripts/unused-code-baseline.txt'], {
   stdout: 'inherit',
   stderr: 'inherit',
 });
