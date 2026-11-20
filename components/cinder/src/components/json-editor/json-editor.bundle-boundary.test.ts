@@ -1,4 +1,5 @@
 import { dirname, extname, resolve as resolvePath } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import { describe, expect, test } from 'bun:test';
 import { parse } from 'svelte/compiler';
@@ -141,6 +142,23 @@ describe('JsonEditor — bundle boundary', () => {
   const entryPath = resolvePath(import.meta.dir, 'index.ts');
   const componentPath = resolvePath(import.meta.dir, 'json-editor.svelte');
   const runtimePath = resolvePath(import.meta.dir, 'json-editor-enhancement.ts');
+
+  test('the stylesheet uses valid selectors for status and feedback icons', async () => {
+    const stylesheetPath = fileURLToPath(new URL('./json-editor.css', import.meta.url));
+    const result = await Bun.build({
+      entrypoints: [stylesheetPath],
+      target: 'browser',
+      write: false,
+    });
+    const output = await result.outputs.find((file) => file.path.endsWith('.css'))?.text();
+
+    expect(result.success).toBe(true);
+    expect(result.logs.filter((message) => message.level === 'warning')).toEqual([]);
+    expect(output).toMatch(/\.cinder-json-editor__status svg\s*\{[^}]*flex:\s*none;/s);
+    expect(output).toMatch(
+      /\.cinder-json-editor__feedback svg\s*\{[^}]*flex:\s*none;[^}]*margin-block-start:\s*\.2em;/s,
+    );
+  });
 
   test('the public entry reaches no code-editor module through a static import', async () => {
     const closure = await staticImportClosure(entryPath);

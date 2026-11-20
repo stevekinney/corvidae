@@ -131,7 +131,7 @@
     "shiki": "^3.21.0",
     "smol-toml": "^1.9.0",
     "standardwebhooks": "^1.1.1",
-    "svelte": "5.57.0",
+    "svelte": "5.57.1",
     "svelte-check": "4.7.6",
     "svelte2tsx": "^0.7.33",
     "tar": "^7.5.22",
@@ -147,7 +147,6 @@
     "velveteen": {
       "@types/node": "26.6.6",
       "prettier": "3.10.1",
-      "svelte": "5.57.1",
       "svelte-check": "4.7.8"
     }
   },
@@ -232,5 +231,8 @@
     "cookie": "0.7.2",
     "@ag-ui/client/zod": "^4.6.6",
     "@ag-ui/proto/zod": "^4.6.6"
+  },
+  "patchedDependencies": {
+    "@tanstack/svelte-query@6.2.1": "patches/@tanstack%2Fsvelte-query@6.2.1.patch"
   }
 }

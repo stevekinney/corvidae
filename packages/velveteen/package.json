@@ -67,7 +67,7 @@
     "typescript": "catalog:"
   },
   "peerDependencies": {
-    "svelte": "catalog:velveteen"
+    "svelte": "catalog:"
   },
   "peerDependenciesMeta": {
     "svelte": {
@@ -85,7 +85,7 @@
     "playwright": "catalog:",
     "prettier": "catalog:velveteen",
     "prettier-plugin-svelte": "catalog:",
-    "svelte": "catalog:velveteen",
+    "svelte": "catalog:",
     "svelte-check": "catalog:velveteen"
   },
   "files": [
