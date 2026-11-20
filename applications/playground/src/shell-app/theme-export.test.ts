@@ -1,5 +1,5 @@
 /**
- * Export snapshot, gating, the four artifacts and the clipboard fallback (COR-486). Evaluating
+ * Export snapshot, gating, artifacts and the clipboard fallback (COR-486). Evaluating
  * and planning a real theme happens at module scope, untimed.
  */
 
@@ -67,6 +67,7 @@ describe('the source envelope', () => {
     expect(artifact(plan, 'source').available).toBe(true);
     expect(artifact(plan, 'source').caveat).toBe('Unvalidated');
     expect(artifact(plan, 'css').available).toBe(false);
+    expect(artifact(plan, 'tailwind').available).toBe(false);
     expect(artifact(plan, 'portable-subset').available).toBe(false);
     expect(artifact(plan, 'report').available).toBe(true);
   });
@@ -83,10 +84,12 @@ describe('the source envelope', () => {
 });
 
 describe('gating', () => {
-  test('needs-review and advisory items hold CSS and portable until acknowledged', () => {
+  test('needs-review and advisory items hold both CSS formats and portable until acknowledged', () => {
     expect(held.acknowledgeable).toBeGreaterThan(0);
     expect(artifact(held, 'css').available).toBe(false);
     expect(artifact(held, 'css').blockedReason).toContain('acknowledgement');
+    expect(artifact(held, 'tailwind').blockedReason).toBe(artifact(held, 'css').blockedReason);
+    expect(artifact(held, 'tailwind').files).toEqual([]);
     expect(artifact(held, 'source').available).toBe(true);
     expect(artifact(held, 'report').available).toBe(true);
   });
@@ -109,7 +112,7 @@ describe('gating', () => {
     const snap = await takeExportSnapshot(bad, evaluator);
     expect(snap.readiness).toBe('blocked-accessibility-errors');
     const plan = planExports(snap, true);
-    for (const kind of ['css', 'portable', 'portable-subset'] as const) {
+    for (const kind of ['css', 'tailwind', 'portable', 'portable-subset'] as const) {
       expect(artifact(plan, kind).available).toBe(false);
       expect(artifact(plan, kind).blockedReason).toContain('accessibility');
       expect(artifact(plan, kind).files).toEqual([]);
@@ -128,6 +131,7 @@ describe('gating', () => {
     expect(snap.baseIsCurrent).toBe(false);
     expect(artifact(plan, 'source').caveat).toBe('Unvalidated');
     expect(artifact(plan, 'css').blockedReason).toContain('different Cinder base');
+    expect(artifact(plan, 'tailwind').blockedReason).toBe(artifact(plan, 'css').blockedReason);
     expect(artifact(plan, 'report').files[0]!.text).toContain('"matchesThisBuild": false');
   });
 
@@ -162,6 +166,44 @@ describe('deployment CSS', () => {
     expect(text).toContain('--cinder-carousel-slide-size: 80%;');
     expect(text).toContain(`Cinder ${CINDER_BASE.packageVersion} ${CINDER_BASE.sourceDigest}`);
     expect(text).toContain('environment');
+  });
+});
+
+describe('Tailwind v4 CSS', () => {
+  test('aliases each supported family to the same theme variables across contexts', () => {
+    const tailwind = artifact(released, 'tailwind');
+    expect(tailwind.available).toBe(true);
+    const file = tailwind.files[0]!;
+    expect(file.filename).toBe('edited-theme-theme-aa.tailwind-theme.css');
+    expect(file.mime).toBe('text/css');
+    const [theme, aliases] = file.text.split('@theme inline {\n');
+    const deployment = artifact(released, 'css').files[0]!.text;
+    expect(theme?.slice(theme.indexOf('@layer'))).toBe(
+      `${deployment.slice(deployment.indexOf('@layer'))}\n`,
+    );
+    expect(theme).toContain('--cinder-radius-md: 5px;');
+    expect(theme).toContain('--cinder-radius-lg: 14px;');
+    for (const alias of [
+      '--color-surface: var(--cinder-surface);',
+      '--color-text-default: var(--cinder-text-default);',
+      '--font-sans: var(--cinder-font-sans);',
+      '--font-weight-heading: var(--cinder-font-heading);',
+      '--text-medium: var(--cinder-text-md);',
+      '--text-page-title: var(--cinder-text-page-title);',
+      '--leading-normal: var(--cinder-leading-normal);',
+      '--tracking-display: var(--cinder-tracking-display);',
+      '--spacing-1: var(--cinder-space-1);',
+      '--spacing-stack: var(--cinder-gap-stack);',
+      '--spacing-card: var(--cinder-pad-card);',
+      '--radius-medium: var(--cinder-radius-md);',
+      '--shadow-overlay: var(--cinder-shadow-overlay);',
+    ]) {
+      expect(aliases).toContain(alias);
+    }
+    expect(aliases).not.toContain('--radius-md:');
+    expect(aliases).not.toContain('--cinder-button-');
+    expect(aliases).not.toContain('--color-specimen-accent:');
+    expect(aliases).toMatch(/^(?:  --[a-z0-9-]+: var\(--cinder-[a-z0-9-]+\);\n)+\}\n$/);
   });
 });
 
