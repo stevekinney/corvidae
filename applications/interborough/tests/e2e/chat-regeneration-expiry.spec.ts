@@ -500,6 +500,7 @@ for (const viewport of VIEWPORTS) {
       const threadId = decodeURIComponent(new URL(page.url()).pathname.split('/').at(-1) ?? '');
       let review:
         { id?: string; status?: string; requestedAt?: number; sessionId?: string } | undefined;
+      let pendingReviewCount: number | undefined;
       await expect
         .poll(async () => {
           const response = await request.post(`${E2E_BASE_URL}/bureau/jsonrpc`, {
@@ -507,11 +508,12 @@ for (const viewport of VIEWPORTS) {
               jsonrpc: '2.0',
               id: 'expiry-review-before',
               method: 'bureau.reviews.list',
-              params: {},
+              params: { status: 'pending' },
             },
           });
           const body = (await response.json()) as {
             result?: {
+              total?: number;
               reviews?: Array<{
                 id?: string;
                 status?: string;
@@ -520,6 +522,7 @@ for (const viewport of VIEWPORTS) {
               }>;
             };
           };
+          pendingReviewCount = body.result?.total ?? body.result?.reviews?.length;
           review = body.result?.reviews?.find(
             (candidate) => candidate.status === 'pending' && candidate.sessionId === threadId,
           );
@@ -536,9 +539,13 @@ for (const viewport of VIEWPORTS) {
       const approval = initialCall.card;
       await expect(approval).toBeVisible();
       await expect(approval).toHaveAttribute('data-cinder-state', 'pending');
-      const initialReviewsCount =
-        viewport.width >= 500 ? await reviewsNavigationCount(page) : undefined;
-      if (initialReviewsCount !== undefined) expect(initialReviewsCount).toBeGreaterThan(0);
+      const initialReviewsCount = viewport.width >= 500 ? pendingReviewCount : undefined;
+      // The card can render before the sidebar's pending query has counted the new approval.
+      // Use the server list that contained this approval as the baseline, then wait for the badge.
+      if (initialReviewsCount !== undefined) {
+        expect(initialReviewsCount).toBeGreaterThan(0);
+        await expect.poll(() => reviewsNavigationCount(page)).toBe(initialReviewsCount);
+      }
       const initialChatWaitingCount =
         viewport.width >= 500 ? await chatListWaitingCount(page) : undefined;
       // Leave the page open through the configured 20-second binding expiry, then reread the durable
