@@ -656,7 +656,9 @@ export class ChatSessionState {
   async #readAfterRefusedDecision(): Promise<void> {
     await Promise.resolve();
     if (this.#abort.signal.aborted) return;
-    await this.refresh();
+    // Nobody awaits this read (`void`), so a read that fails, or is cut off by leaving the page, is
+    // not an unhandled rejection: the next read of the chat says what became of it.
+    await this.refresh().catch(() => false);
   }
 
   async #readAgain(): Promise<boolean> {
