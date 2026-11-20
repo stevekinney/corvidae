@@ -32,7 +32,7 @@ import { UsageError, type Runner, type RunnerResult } from './process-runner.ts'
 import { createScenarios } from './scenario.test-support.ts';
 import type { GuardsResult } from './text-guards.ts';
 import type { UsageTotals } from './transcript-usage.ts';
-import { digest } from './verification-plan.ts';
+import { computeEvidencePlan, digest } from './verification-plan.ts';
 import { Refusal, type RemoveOptions } from './worktree.ts';
 
 const HEAD = 'a'.repeat(40);
@@ -124,6 +124,7 @@ async function setUp(): Promise<void> {
     }),
   );
   writeFileSync(join(sandbox, 'comment.md'), 'Accepted.\n');
+  writeFileSync(join(sandbox, 'package.json'), JSON.stringify({ name: 'widgets' }));
   options = {
     configPath,
     pr: 12,
@@ -939,6 +940,15 @@ const EARLIER = '8'.repeat(40);
 
 const reply = (stdout = '', code = 0, stderr = ''): RunnerResult => ({ code, stdout, stderr });
 
+function fixtureEvidencePlan(changed: string[]) {
+  return computeEvidencePlan(changed, {
+    knownSlugs: new Set(),
+    paths: new Set(changed),
+    read: () => undefined,
+    selectUnitTests: () => [],
+  });
+}
+
 /** A fake `git` that answers a clean branch merge, with `answers` overriding single commands. */
 function branchWorld(answers: Record<string, RunnerResult> = {}) {
   const calls: string[] = [];
@@ -1010,7 +1020,13 @@ async function deliverBranch(
     {
       ...partial,
       directMerge: async (directOptions) =>
-        directMerge(directOptions, { runner: world.runner, guards, verification, ...usage }),
+        directMerge(directOptions, {
+          runner: world.runner,
+          guards,
+          verification,
+          evidencePlan: fixtureEvidencePlan,
+          ...usage,
+        }),
     },
   );
   return {
@@ -1611,6 +1627,7 @@ async function landBranch(landing: Landing = {}) {
   const directory = mkdtempSync(join(tmpdir(), 'deliver-landing-'));
   const controlDirectory = mkdtempSync(join(tmpdir(), 'deliver-landing-control-'));
   try {
+    writeFileSync(join(directory, 'package.json'), JSON.stringify({ name: 'widgets' }));
     const configPath = join(controlDirectory, 'config.json');
     writeFileSync(
       configPath,
@@ -1666,6 +1683,7 @@ async function landBranch(landing: Landing = {}) {
             runner: world.runner,
             guards: guardsPass,
             verification: landed,
+            evidencePlan: fixtureEvidencePlan,
           }),
         verification: landed,
         readLease: async () =>
