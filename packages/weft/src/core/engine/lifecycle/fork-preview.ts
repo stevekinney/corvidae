@@ -7,8 +7,8 @@
  * @module core/engine/lifecycle/fork-preview
  */
 import type { ForkOptions, ForkPreview } from '../../types.ts';
-import { getTimeline } from '../checkpoint-reads.ts';
 import { resolveExecutableRegistrationOrRenamedNotFound } from '../dynamic-source-execution.ts';
+import { getEffectiveTimeline } from '../fork-effective-timeline.ts';
 import { splitStepsAtForkPoint } from '../fork-timeline-alignment.ts';
 import type { EngineInternals } from '../internals.ts';
 import { normalizeForkStep } from '../state-utilities.ts';
@@ -66,7 +66,7 @@ export async function previewFork(
   );
 
   const { keptSteps, rerunSteps } = splitStepsAtForkPoint(
-    await getTimeline(internals, sourceWorkflowId),
+    await getEffectiveTimeline(internals, sourceWorkflowId),
     sourceCheckpoint.step,
   );
   return {

@@ -239,6 +239,33 @@ describe('engine.compare', () => {
     expect(refusal.message).toContain('five');
   });
 
+  it('keeps the steps a source fork inherited from its own parent, in a fork of a fork', async () => {
+    const { engine } = await engineWithFiveSteps();
+    await using _engine = engine;
+    const first = await engine.fork('five', { fromStep: 3 });
+    await first.result();
+    const second = await engine.fork(first.id);
+    await second.result();
+
+    const comparison = await engine.compare(second.id);
+    const preview = await engine.previewFork(first.id);
+
+    // The first fork runs steps 2 to 4 itself and holds 0 and 1 from `five`, so the second fork's
+    // source has all five steps, and the two before the first fork's point are not lost.
+    expect(comparison.steps.map((step) => step.index)).toEqual([0, 1, 2, 3, 4]);
+    expect(comparison.steps[0]).toMatchObject({ shared: true, source: { label: 'alpha' } });
+    expect(comparison.steps[1]).toMatchObject({ shared: true, source: { label: 'bravo' } });
+    expect(
+      [...preview.keptSteps, ...preview.rerunSteps].map((step) => [step.index, step.label]),
+    ).toEqual([
+      [0, 'alpha'],
+      [1, 'bravo'],
+      [2, 'charlie'],
+      [3, 'delta'],
+      [4, 'echo'],
+    ]);
+  });
+
   it('still compares a fork recorded before its lineage named the source run', async () => {
     const { engine, storage } = await engineWithFiveSteps();
     await using _engine = engine;

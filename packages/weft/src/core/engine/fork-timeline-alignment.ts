@@ -68,6 +68,16 @@ function sideOf(entry: WorkflowTimelineEntry): ForkComparisonSide {
   };
 }
 
+/** The entries of the steps a fork made at `forkPoint` keeps: every step recorded before it. */
+export function entriesKeptAtForkPoint(
+  entries: readonly WorkflowTimelineEntry[],
+  forkPoint: number,
+): WorkflowTimelineEntry[] {
+  return [...groupByStepIndex(entries).values()]
+    .filter((group) => isBeforeForkPoint(group, forkPoint))
+    .flat();
+}
+
 /**
  * Split the source run's steps at `forkPoint` into those a fork keeps and those it runs again.
  * A step the source has not reached is in neither.

@@ -5,7 +5,8 @@
  * Both timelines are read through `getTimeline`, the read that redacts a payload field the way
  * `weft.workflows.timeline.get` does, and the alignment is made here, in the engine, so every
  * client, Weft's own CLI and a browser included, reads one answer. A fork copies no timeline, so a
- * step before the fork point is read from the source and shown on both sides.
+ * step before the fork point is read from the source and shown on both sides; a source that is
+ * itself a fork is read with the steps it inherited (`getEffectiveTimeline`).
  *
  * @module core/engine/compare-fork
  */
@@ -13,6 +14,7 @@ import type { CompareOptions, ForkComparison } from '../types.ts';
 import { WeftError } from '../weft-error.ts';
 import { getTimeline } from './checkpoint-reads.ts';
 import { WorkflowNotFoundError } from './errors.ts';
+import { getEffectiveTimeline } from './fork-effective-timeline.ts';
 import {
   alignForkTimelines,
   parseCompareCursor,
@@ -67,7 +69,7 @@ export async function compareFork(
   }
 
   const [sourceEntries, forkEntries] = await Promise.all([
-    getTimeline(internals, lineage.workflowId),
+    getEffectiveTimeline(internals, lineage.workflowId),
     getTimeline(internals, forkWorkflowId),
   ]);
   const { steps, nextCursor } = alignForkTimelines(sourceEntries, forkEntries, lineage.step, {
