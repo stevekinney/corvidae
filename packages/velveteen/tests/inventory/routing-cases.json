@@ -1,0 +1,73 @@
+{
+  "upstream": {
+    "repository": "sveltejs/kit",
+    "sha": "a58e0a92c35dbeee161e96c733464dc7397e073a",
+    "package": "3.3.0"
+  },
+  "selectedCases": [
+    {
+      "source": "packages/kit/src/utils/routing.spec.js",
+      "test": "parse_route_id and exec",
+      "cases": [
+        "static",
+        "dynamic",
+        "embedded parameters",
+        "optional present/absent",
+        "rest empty/multiple segments",
+        "encoded values"
+      ],
+      "port": "derived fixtures checked directly against pinned parse_route_id/exec/decode_pathname",
+      "candidate": "src/routing/routing.test.ts:C03: pinned oracle, actual HTTP and Chromium share selected route results",
+      "modes": ["Bun HTTP", "Chromium browser bundle"],
+      "evidence": ".velveteen/evidence/c03-routing-consumers.json"
+    },
+    {
+      "source": "packages/kit/src/core/sync/create_manifest_data/index.spec.js",
+      "test": "sorts routes correctly",
+      "cases": "literal 28-route expected order",
+      "port": "expected array preserved; deterministic reversed input replaces randomized input",
+      "candidate": "src/routing/route-order.test.ts:sortRoutes preserves pinned route precedence",
+      "modes": ["Bun unit"],
+      "boundary": "This Batch C case verifies ordering, including matcher and embedded-rest forms. Later Batch L and M runtime fixtures cover discovery and resolution of required, optional and rest-qualified matchers."
+    },
+    {
+      "source": "packages/kit/src/core/sync/create_manifest_data/index.spec.js",
+      "test": [
+        "prevents route conflicts between params",
+        "prevents route conflicts between groups",
+        "optional parameters adjacent to another route"
+      ],
+      "cases": [
+        "duplicate params",
+        "duplicate groups",
+        "trailing optional overlap",
+        "nonterminal optional permutations",
+        "required/rest distinction"
+      ],
+      "port": "derived minimal directory/ID fixtures preserving conflict acceptance",
+      "candidate": [
+        "src/routing/routing.test.ts:C04: unsupported syntax and file conflicts fail with source locations",
+        "src/routing/route-order.test.ts:rejectConflicts preserves Kit optional permutations and group normalization"
+      ],
+      "modes": ["Bun unit"]
+    },
+    {
+      "source": "packages/kit/src/core/sync/create_manifest_data/index.spec.js",
+      "test": [
+        "creates routes with layout",
+        "assigns deterministic node indices regardless of readdirSync order"
+      ],
+      "cases": [
+        "groups retain physical IDs",
+        "physical ancestors without route files",
+        "layout-only directories",
+        "separate page/layout/endpoint roles",
+        "aligned layout/error slots"
+      ],
+      "port": "derived fixture uses canonical directory-node API; runtime error handling is outside C",
+      "candidate": "src/routing/routing.test.ts:C02: canonical discovery preserves physical ancestry and removes private browser metadata",
+      "modes": ["Bun unit"]
+    }
+  ],
+  "scope": "Selected Batch C cases only. See runtime-cases.json for later routing comparisons; unlisted upstream cases have no coverage claim in this ledger."
+}
