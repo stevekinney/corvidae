@@ -428,8 +428,8 @@ mountPanel(Proof, { props: { label: 'external runtime' } });
     const giveUpTimer = setTimeout(() => giveUp.resolve(undefined), 20_000);
     const port = await Promise.race([reported.promise, giveUp.promise]);
     clearTimeout(giveUpTimer);
-    while (now() < deadline) {
-      // Without a reported port there is nothing to ask; `listing` stays undefined below.
+    // A host that reported its bound port gets one request. The startup clock only limits retries.
+    do {
       if (port === undefined) break;
       try {
         const response = await fetch(`http://127.0.0.1:${port}/host/plugins`);
@@ -448,8 +448,9 @@ mountPanel(Proof, { props: { label: 'external runtime' } });
       } catch {
         // The supervisor may not have bound its port yet.
       }
+      if (now() >= deadline) break;
       await sleep(100);
-    }
+    } while (now() < deadline);
     if (listing === undefined || Reflect.get(listing, 'status') !== 'running') {
       const exitBeforeCleanup = childProcess.exitCode;
       await stopChild();
