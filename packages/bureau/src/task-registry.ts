@@ -2031,7 +2031,7 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
     recordStall(taskId, stalledAt) {
       return queueLiveWrite(taskId, async () => {
         let changed = false;
-        await update(
+        const committed = await update(
           taskId,
           (record) => {
             // Re-judged on every compare-and-swap attempt: only the attempt that commits counts.
@@ -2049,14 +2049,15 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
           undefined,
           true,
         );
-        return changed;
+        // A takeover can fail the swap after the mutation judged a change: report only a committed one.
+        return committed && changed;
       });
     },
 
     recordLooping(taskId, at) {
       return queueLiveWrite(taskId, async () => {
         let changed = false;
-        await update(
+        const committed = await update(
           taskId,
           (record) => {
             changed = false;
@@ -2070,7 +2071,7 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
           undefined,
           true,
         );
-        return changed;
+        return committed && changed;
       });
     },
 

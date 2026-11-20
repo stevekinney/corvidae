@@ -2062,6 +2062,32 @@ describe('usage and cost (COR-2524)', () => {
     expect(await viewField(registry, 'run-1', 'usage')).toEqual(FIRST_STEP);
   });
 
+  it('(m) reports no stall or loop when a takeover fails the swap, so no attention event is published', async () => {
+    const { registry, held, kv } = build();
+    await admit(registry, 'run-1');
+
+    // The first attempt's mutation judges a change; the takeover fails its swap, and the retry
+    // sees the successor and writes nothing. Nothing committed, so nothing may be reported.
+    let reads = 0;
+    let takeovers = 0;
+    held.afterClaimRead = async (taskId) => {
+      reads += 1;
+      if (reads > 1) return;
+      takeovers += 1;
+      held.claimedElsewhere.add(taskId);
+      await kv.set(`claim-holder:${taskId}`, `successor-${String(takeovers)}`);
+    };
+    expect(await registry.recordStall('run-1', '2026-10-18T00:02:00.000Z')).toBe(false);
+    expect(reads).toBe(2);
+
+    reads = 0;
+    held.claimedElsewhere.delete('run-1');
+    expect(await registry.recordLooping('run-1', '2026-10-18T00:03:00.000Z')).toBe(false);
+    expect(reads).toBe(2);
+    expect(await viewField(registry, 'run-1', 'attention')).toEqual([]);
+    expect(await recordField(registry, 'run-1', 'attention')).toBeUndefined();
+  });
+
   it('writes nothing for a task with no record', async () => {
     const { registry } = build();
     await registry.recordUsage('missing', FIRST_STEP);
