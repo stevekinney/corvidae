@@ -71,19 +71,19 @@
   };
 </script>
 
-<div class="message-markdown-table" data-overflowing={overflowing || undefined}>
+<div class="cinder-markdown-table" data-overflowing={overflowing || undefined}>
   {#if overflowing}
-    <p class="message-markdown-table-cue" id={cueId} dir="auto">
+    <p class="cinder-markdown-table-cue" id={cueId} dir="auto">
       <span aria-hidden="true">+{hiddenColumns} {hiddenColumns === 1 ? 'column' : 'columns'}</span>
       <span class="cinder-sr-only">Scroll to see all columns</span>
     </p>
   {/if}
-  <div class="message-markdown-table-frame" data-fade-end={overflowing && !atEnd ? '' : undefined}>
+  <div class="cinder-markdown-table-frame" data-fade-end={overflowing && !atEnd ? '' : undefined}>
     <!-- The scroller is a named, focusable region only while the table overflows, so the arrow
          keys can scroll it; a table that fits adds no landmark and no tab stop. -->
     <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
     <div
-      class="message-markdown-table-scroller"
+      class="cinder-markdown-table-scroller"
       role={overflowing ? 'region' : undefined}
       aria-label={overflowing ? 'Scrollable table' : undefined}
       aria-describedby={overflowing ? cueId : undefined}
@@ -96,84 +96,3 @@
     </div>
   </div>
 </div>
-
-<style>
-  .message-markdown-table {
-    display: grid;
-    gap: var(--cinder-space-1);
-    min-inline-size: 0;
-  }
-
-  /* The cue sits outside the cells, at the inline end above the table, so it never covers text. */
-  .message-markdown-table-cue {
-    justify-self: end;
-    margin: 0;
-    color: var(--cinder-text-muted);
-    font-size: var(--_cinder-chat-text-xs, var(--cinder-text-xs));
-    text-align: start;
-  }
-
-  /* One hairline container: the table's own outer cell borders are hidden so they do not double it. */
-  .message-markdown-table-frame {
-    position: relative;
-    min-inline-size: 0;
-    border: 1px solid var(--cinder-border-muted);
-    border-radius: var(--cinder-radius-md);
-    overflow: hidden;
-  }
-
-  /* A fade at the inline end says the table continues; it clears once the end is in view. */
-  .message-markdown-table-frame[data-fade-end]::after {
-    content: '';
-    position: absolute;
-    inset-block: 0;
-    inset-inline-end: 0;
-    inline-size: var(--cinder-space-8);
-    background: linear-gradient(to right, transparent, var(--cinder-surface));
-    pointer-events: none;
-  }
-
-  .message-markdown-table-frame[data-fade-end]:dir(rtl)::after {
-    background: linear-gradient(to left, transparent, var(--cinder-surface));
-  }
-
-  .message-markdown-table-scroller {
-    overflow-x: auto;
-    overscroll-behavior-inline: contain;
-  }
-
-  /* The frame clips with `overflow: hidden`, so the ring is painted inset, on the frame's edge. */
-  .message-markdown-table-scroller:focus-visible {
-    outline: var(--cinder-ring-width) solid transparent;
-    box-shadow: inset 0 0 0 var(--cinder-ring-width) var(--cinder-ring-color);
-  }
-
-  @media (forced-colors: active) {
-    .message-markdown-table-scroller:focus-visible {
-      outline: var(--cinder-ring-width) solid ButtonText;
-      outline-offset: calc(var(--cinder-ring-width) * -1);
-    }
-  }
-
-  .message-markdown-table-scroller :global(table) {
-    margin: 0;
-    border-style: hidden;
-  }
-
-  .message-markdown-table-scroller :global(:is(th, td)) {
-    white-space: nowrap;
-    border: 0;
-  }
-
-  /* The header row reads as one band across every column. */
-  .message-markdown-table-scroller :global(thead th) {
-    background: var(--cinder-surface-inset);
-    border-block-end-color: var(--cinder-border-strong);
-  }
-
-  @media (forced-colors: active) {
-    .message-markdown-table-frame[data-fade-end]::after {
-      display: none;
-    }
-  }
-</style>

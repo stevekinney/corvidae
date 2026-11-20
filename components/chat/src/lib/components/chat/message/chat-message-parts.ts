@@ -7,7 +7,7 @@
  * outside the Svelte language service.
  */
 
-import type { ApprovalResolution } from '@lostgradient/cinder';
+import type { ApprovalResolution, MarkdownNodeOverride } from '@lostgradient/cinder';
 import type { Snippet } from 'svelte';
 
 import type { ChatLabels } from '../chat-labels.ts';
@@ -48,18 +48,6 @@ export type BodyMessagePart = Exclude<
  */
 export type MessagePartOverride = Snippet<
   [part: BodyMessagePart, renderDefault: Snippet<[BodyMessagePart]>]
->;
-
-export type ChatMarkdownNode = {
-  kind: 'code-block' | 'table' | 'mermaid';
-  html: string;
-  text: string;
-  language?: string | undefined;
-  index: number;
-};
-
-export type MarkdownNodeOverride = Snippet<
-  [node: ChatMarkdownNode, renderDefault: Snippet<[ChatMarkdownNode]>]
 >;
 
 /** Props for {@link ChatMessagePartsRenderer}. */
