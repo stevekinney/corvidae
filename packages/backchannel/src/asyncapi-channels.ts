@@ -1,9 +1,9 @@
 import type { z } from 'zod';
 
-import { MAX_REMEDIATION_LENGTH } from './fault-remediation.ts';
 import { compareStrings } from './json-schema-utilities.ts';
 import type { ErasedOperation } from './operation-catalog.ts';
 import { externalApiPath, JSON_RPC_PATH } from './route-model.ts';
+import { sseErrorPayloadSchema } from './sse-error-payload-schema.ts';
 import type { ZodJsonSchemaDirection } from './zod-json-schema.ts';
 
 const JSON_RPC_VERSION = '2.0';
@@ -372,28 +372,6 @@ function tokenSseMessageNames(operation: ErasedOperation): TokenSseMessageNames 
 
 function isTokenSseOperation(operation: ErasedOperation): boolean {
   return operation.name === 'weft.workflows.streams.sse';
-}
-
-function sseErrorPayloadSchema(): Record<string, unknown> {
-  return {
-    properties: {
-      code: { type: 'string' },
-      data: {},
-      message: { type: 'string' },
-      remediation: {
-        type: 'string',
-        minLength: 1,
-        maxLength: MAX_REMEDIATION_LENGTH,
-        description: 'One line of plain text saying what to do next; omitted when none is known',
-      },
-      retryable: {
-        type: 'boolean',
-        description: 'Whether repeating the identical call later can succeed',
-      },
-    },
-    required: ['message', 'retryable'],
-    type: 'object',
-  };
 }
 
 function messageReferenceMap(
