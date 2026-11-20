@@ -106,7 +106,9 @@ function retainsSubscription(
   return (
     result?.ok === true &&
     isSubscriptionInvocation(result.value) &&
-    result.value.close === started.close
+    (result.value.close === started.close ||
+      (result.value.subscriptionId === started.subscriptionId &&
+        result.value.iterable === started.iterable))
   );
 }
 

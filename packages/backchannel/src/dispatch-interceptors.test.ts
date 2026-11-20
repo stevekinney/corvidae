@@ -11,6 +11,7 @@ import {
   type OperationInterceptor,
 } from './index.ts';
 import { makeOperation } from './json-rpc-operation.test-support.ts';
+import { isSubscriptionInvocation } from './operation-catalog/subscription-lifecycle.ts';
 import { connectHttp } from './transport-conformance-http.test-support.ts';
 import { createTransportConformanceFixture } from './transport-conformance.test-support.ts';
 
@@ -213,5 +214,41 @@ it('closes a subscription an interceptor abandons after invocation', async () =>
     .next()
     .catch((reason: unknown) => reason);
   expect(outcome).toMatchObject({ code: 503 });
+  expect(fixture.host.closed.count).toBe(1);
+});
+
+it('preserves a subscription whose interceptor wraps its close hook', async () => {
+  const fixture = createTransportConformanceFixture();
+  let closeCalls = 0;
+  const { subscribe } = connectHttp(fixture, {
+    interceptors: [
+      async (_, next) => {
+        const started = await next();
+        if (!started.ok || !isSubscriptionInvocation(started.value)) return started;
+        const invocation = started.value;
+        return {
+          ok: true,
+          value: {
+            ...invocation,
+            close: async () => {
+              closeCalls += 1;
+              await invocation.close();
+            },
+          },
+        };
+      },
+    ],
+  });
+
+  fixture.host.feed.publish('available');
+  const stream = subscribe('probe.events', {});
+  const reader = stream[Symbol.asyncIterator]();
+  try {
+    expect(await reader.next()).toMatchObject({ done: false, value: { id: '1' } });
+    expect(fixture.host.closed.count).toBe(0);
+  } finally {
+    await reader.return?.();
+  }
+  expect(closeCalls).toBe(1);
   expect(fixture.host.closed.count).toBe(1);
 });
