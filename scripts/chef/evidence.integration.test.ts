@@ -394,6 +394,32 @@ const values = await (async () => {
       },
     ],
   };
+  const [releaseRun] = releaseRequest.localRuns;
+  let mismatchedReleaseInvocations = 0;
+  let mismatchedReleaseError = '';
+  try {
+    collectLocalEvidence(
+      {
+        ...releaseRequest,
+        localRuns: [
+          {
+            ...releaseRun!,
+            installedRelease: { ...releaseRun!.installedRelease, sourceRevision: 'f'.repeat(40) },
+          },
+        ],
+      },
+      {
+        run: () => {
+          mismatchedReleaseInvocations += 1;
+          return { exitCode: 0 };
+        },
+      },
+      fixture,
+    );
+  } catch (error) {
+    if (!(error instanceof Error)) throw error;
+    mismatchedReleaseError = error.message;
+  }
   const releaseEvidence = collectLocalEvidence(
     releaseRequest,
     {
@@ -484,6 +510,8 @@ const values = await (async () => {
     releaseEvidence,
     releaseValidation,
     wrongReleaseEvidence,
+    mismatchedReleaseInvocations,
+    mismatchedReleaseError,
     reportDigest: createHash('sha256').update(readFileSync(report)).digest('hex'),
   };
 })();
@@ -560,6 +588,10 @@ test('collects a fresh installed-release receipt only when its declared archive 
   expect(values.releaseValidation).toBe(true));
 test('rejects an altered installed-release receipt through local collection', () =>
   expect(values.wrongReleaseEvidence.records[0]?.status).toBe('fail'));
+test('rejects release source not equal to the candidate before launch', () => {
+  expect(values.mismatchedReleaseError).toContain('invalid or stale receipt');
+  expect(values.mismatchedReleaseInvocations).toBe(0);
+});
 test('validates an actual clean checkout receipt', () =>
   expect(
     validateEvidence(values.cleanRequest.plan, values.clean, {

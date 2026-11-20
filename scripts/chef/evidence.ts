@@ -536,7 +536,7 @@ export function collectLocalEvidence(
         !safeProviderInput(receipt.receiptPath) ||
         !safeProviderInput(receipt.archivePath) ||
         !/^[0-9a-f]{64}$/.test(receipt.archiveDigest) ||
-        !/^[0-9a-f]{40}$/.test(receipt.sourceRevision) ||
+        receipt.sourceRevision !== request.revision ||
         receipt.target !== 'darwin-arm64' ||
         !Array.isArray(receipt.configuration) ||
         !receipt.configuration.every(
