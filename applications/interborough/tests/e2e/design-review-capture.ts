@@ -18,7 +18,7 @@
  * at 320 by 640, the smallest phone the application supports, where fixed chrome crowds the content
  * and overlays cover it first; no specification opens that size itself.
  */
-import type { Page } from '@playwright/test';
+import { expect, type Page } from '@playwright/test';
 import { appendFile, mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
@@ -205,6 +205,40 @@ export function designReviewSlug(
     .join('--');
 }
 
+/**
+ * Waits until every visible rendered Markdown table and code block has painted its text. Long
+ * capture runs twice produced whole-page shots whose table and code frames were empty, a false
+ * witness on exactly the screens a Markdown change touches. Each node is scrolled into view, so a
+ * browser that defers offscreen paint renders it, given two frames, and then held to visible cell
+ * text or settled, non-empty code. The outlet's scroll position is put back afterwards, so the shot
+ * is of the page as its specification left it. A page with no Markdown node returns at once.
+ */
+export async function waitForMarkdownPaint(page: Page): Promise<void> {
+  const nodes = page.locator('[data-cinder-markdown-node]:visible');
+  const count = await nodes.count();
+  if (count === 0) return;
+  const outlet = page.locator('main.weft-shell-outlet');
+  const scrollTop = await outlet.evaluate((element) => element.scrollTop);
+  for (let index = 0; index < count; index += 1) {
+    const node = nodes.nth(index);
+    await node.scrollIntoViewIfNeeded();
+    await nextFrame(page);
+    const kind = await node.getAttribute('data-cinder-markdown-node');
+    if (kind === 'table') {
+      await expect(node.locator('td').filter({ hasText: /\S/ }).first()).toBeVisible();
+    } else if (kind === 'code-block') {
+      const block = node.locator('.cinder-code-block');
+      await expect(block).not.toHaveAttribute('data-cinder-highlight-state', 'pending');
+      await expect(block.locator('pre code').first()).toHaveText(/\S/);
+      await expect(block.locator('pre code').first()).toBeVisible();
+    }
+  }
+  await outlet.evaluate((element, top) => {
+    element.scrollTop = top;
+  }, scrollTop);
+  await nextFrame(page);
+}
+
 /** Screenshots the page for the design review when a capture directory is set; otherwise nothing. */
 export async function captureForDesignReview(
   page: Page,
@@ -272,6 +306,7 @@ async function captureViewport(
   await mkdir(join(directory, 'screens'), { recursive: true });
 
   await capture.ready?.(page);
+  await waitForMarkdownPaint(page);
 
   const viewport = `screens/${slug}.png`;
   await page.screenshot({
@@ -303,6 +338,7 @@ async function captureViewport(
     const height = Math.min(viewportSize.height + overflow, MAXIMUM_FULL_HEIGHT);
     await page.setViewportSize({ width: viewportSize.width, height });
     await capture.ready?.(page);
+    await waitForMarkdownPaint(page);
     await page.screenshot({ path: join(directory, full), animations: 'disabled', caret: 'hide' });
     await page.setViewportSize(viewportSize);
     await nextFrame(page);

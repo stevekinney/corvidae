@@ -4,6 +4,7 @@ import { createOperationRegistry } from '@lostgradient/backchannel/internals';
 import { MemoryStorage } from '@lostgradient/storage';
 import { Engine } from '../../core/engine.ts';
 import { type WorkflowContext, workflow } from '../../core/types.ts';
+import { statusOf } from '../../testing/run-observation.test-support.ts';
 import { handleRequestAsLocalUser as handleRequest } from '../local-user-request.test-support.ts';
 import { cancelWorkflowOperation, cancelWorkflowRestBinding } from './cancel-workflow.ts';
 import { waitForWorkflowStatus } from './operation-test-helpers.test-support.ts';
@@ -45,6 +46,101 @@ describe('weft.workflows.cancel', () => {
     });
     await resultPromise;
     await waitForWorkflowStatus(engine, handle.id, 'cancelled');
+  });
+
+  it('DELETE with dry_run=true reports the status and cancellable, and cancels nothing', async () => {
+    await using engine = createEngine();
+    const handle = await engine.start('hold', null, { id: 'cancel-dry-run' });
+    await waitForWorkflowStatus(engine, handle.id, 'running');
+
+    const response = await handleRequest(
+      new Request(`http://localhost/v1/workflows/${handle.id}?dry_run=true`, { method: 'DELETE' }),
+      engine,
+      { operationRegistry: registry, restBindings: bindings },
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      dryRun: true,
+      workflowId: handle.id,
+      status: 'running',
+      cancellable: true,
+    });
+    expect(await statusOf(engine, handle.id)).toBe('running');
+  });
+
+  it('DELETE with an unrecognised dry_run is a 400 and cancels nothing, never a real cancel', async () => {
+    await using engine = createEngine();
+    const handle = await engine.start('hold', null, { id: 'cancel-bad-dry-run' });
+    await waitForWorkflowStatus(engine, handle.id, 'running');
+
+    for (const value of ['1', 'TRUE', 'yes', '']) {
+      const response = await handleRequest(
+        new Request(`http://localhost/v1/workflows/${handle.id}?dry_run=${value}`, {
+          method: 'DELETE',
+        }),
+        engine,
+        { operationRegistry: registry, restBindings: bindings },
+      );
+
+      expect(response.status, `dry_run=${value}`).toBe(400);
+      expect(await statusOf(engine, handle.id)).toBe('running');
+    }
+  });
+
+  it('DELETE with dry_run=false is a real cancel', async () => {
+    await using engine = createEngine();
+    const handle = await engine.start('hold', null, { id: 'cancel-dry-run-false' });
+    await waitForWorkflowStatus(engine, handle.id, 'running');
+    const resultPromise = handle.result().catch(() => undefined);
+
+    const response = await handleRequest(
+      new Request(`http://localhost/v1/workflows/${handle.id}?dry_run=false`, { method: 'DELETE' }),
+      engine,
+      { operationRegistry: registry, restBindings: bindings },
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ workflowId: handle.id, status: 'cancel-requested' });
+    await resultPromise;
+    await waitForWorkflowStatus(engine, handle.id, 'cancelled');
+  });
+
+  it('a dry run of a finished workflow reports it cannot be cancelled', async () => {
+    await using engine = createEngine();
+    const completed = workflow({ name: 'completed-dry' }).execute(async function* () {
+      return 'done';
+    });
+    engine.register(completed);
+    const handle = await engine.start('completed-dry', null, { id: 'cancel-dry-completed' });
+    await handle.result();
+
+    const response = await handleRequest(
+      new Request(`http://localhost/v1/workflows/${handle.id}?dry_run=true`, { method: 'DELETE' }),
+      engine,
+      { operationRegistry: registry, restBindings: bindings },
+    );
+
+    expect(await response.json()).toEqual({
+      dryRun: true,
+      workflowId: handle.id,
+      status: 'completed',
+      cancellable: false,
+    });
+  });
+
+  it('a dry run of an unknown id is a 404', async () => {
+    await using engine = createEngine();
+
+    const response = await handleRequest(
+      new Request('http://localhost/v1/workflows/never-started?dry_run=true', {
+        method: 'DELETE',
+      }),
+      engine,
+      { operationRegistry: registry, restBindings: bindings },
+    );
+
+    expect(response.status).toBe(404);
   });
 
   it('returns the exact terminal status when cancellation loses the terminal race', async () => {

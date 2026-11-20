@@ -171,5 +171,9 @@ export function greenLandingAnswers(
     ...runsAnswer(repository, head, [{ head_sha: head }]),
     ...jobsAnswer(repository),
     ...changedAnswer(base, head),
+    [`diff -z --name-only --diff-filter=d ${base}...${head}`]: reply('a.ts\0'),
+    [`rev-parse --verify ${head}^{commit}`]: reply(`${head}\n`),
+    [`rev-parse --verify ${base}^{commit}`]: reply(`${base}\n`),
+    [`rev-list --reverse ${base}..${base}`]: reply(),
   };
 }

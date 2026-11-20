@@ -13,24 +13,35 @@
  * the process was awake (COR-1541). It is a uniform hang detector, set far above any healthy run on
  * a loaded host and never a performance bound. A scenario that had a larger budget as a test passes
  * it explicitly: the mirror end-to-end syncs keep their 300 seconds.
+ * A scenario made of independently guarded steps can report progress between them, so the guard
+ * measures time without progress.
  */
 
-import { afterAwakeTime, HANG_GUARD_MILLISECONDS } from '../testing/testing/src/hang-guard.ts';
+import {
+  afterAwakeTime,
+  afterAwakeTimeSinceProgress,
+  HANG_GUARD_MILLISECONDS,
+  type HangGuardProgress,
+} from '../testing/testing/src/hang-guard.ts';
 
 /** Runs `scenario` and returns what it threw, or `undefined` when it finished. */
 export async function outcomeOf(
   scenario: () => unknown,
   hangGuardMilliseconds = HANG_GUARD_MILLISECONDS,
+  progress?: HangGuardProgress,
 ): Promise<unknown> {
   let cancel: (() => void) | undefined;
   const hang = new Promise<Error>((resolve) => {
-    cancel = afterAwakeTime(hangGuardMilliseconds, () =>
+    const onElapsed = () =>
       resolve(
         new Error(
           `scenario did not settle within ${hangGuardMilliseconds} ms; it is hung, not slow`,
         ),
-      ),
-    );
+      );
+    cancel =
+      progress === undefined
+        ? afterAwakeTime(hangGuardMilliseconds, onElapsed)
+        : afterAwakeTimeSinceProgress(hangGuardMilliseconds, onElapsed, progress);
   });
   try {
     return await Promise.race([

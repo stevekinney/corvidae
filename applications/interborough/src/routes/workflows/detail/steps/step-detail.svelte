@@ -16,7 +16,7 @@
   import type { RunLogLine } from '../../runs/run-logs-data.ts';
   import { isDegradedCoordinationEntry } from '../timeline/timeline-mapping.ts';
   import { prettySummary, stepName, stepStatus } from './step-presentation.ts';
-  import type { WaterfallBar } from './step-waterfall.ts';
+  import type { WaterfallBar } from '@lostgradient/interborough-plugin/step-waterfall';
 
   interface StepDetailProps {
     readonly entry: WorkflowTimelineEntry;
