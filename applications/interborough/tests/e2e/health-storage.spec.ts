@@ -1024,7 +1024,7 @@ test.describe('Health › Storage with the design’s own keys', () => {
     });
     await captureForDesignReview(page, {
       route: '/health/storage',
-      state: 'key selected',
+      state: 'key selected with the design’s keys',
       source: SOURCE,
     });
     await checkA11y('health storage with the design’s keys');
@@ -1056,7 +1056,7 @@ test.describe('Health › Storage with the design’s own keys', () => {
     await expect(main.locator('tbody tr[aria-current="true"]')).toHaveCount(1);
     await captureForDesignReview(page, {
       route: '/health/storage',
-      state: 'range',
+      state: 'range with the design’s keys',
       source: SOURCE,
     });
     await checkA11y('health storage range with the design’s keys');
