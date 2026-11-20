@@ -6,7 +6,7 @@
   maxWidth="narrow"
   centered={false}
   padded={false}
-  style="display: flex; flex-direction: column; gap: var(--cinder-space-8);"
+  class="spotlight-fixture-container gap-8"
 >
   <Spotlight value="Ends in 45 min" status="online" statusLabel="Live">
     {#snippet caveat()}Updated 12 min ago{/snippet}
@@ -19,9 +19,20 @@
     </Spotlight>
   </div>
 
-  <div data-testid="spotlight-action-long" style="inline-size: 20rem;">
+  <div data-testid="spotlight-action-long" class="spotlight-action-long-layout">
     <Spotlight value="Nothing needs you">
       {#snippet action()}<Link href="/reviews" variant="more">Open Reviews</Link>{/snippet}
     </Spotlight>
   </div>
 </Container>
+
+<style>
+  :global(.spotlight-fixture-container) {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .spotlight-action-long-layout {
+    inline-size: 20rem;
+  }
+</style>

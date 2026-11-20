@@ -11,7 +11,7 @@
   let narrow = $state<KeyValueEntry[]>([{ id: 'region', key: 'REGION', value: 'eu-west-1' }]);
 </script>
 
-<div class="key-value-editor-fixture">
+<div class="key-value-editor-fixture gap-8">
   <KeyValueEditor bind:entries />
   <KeyValueEditor
     bind:entries={environment}
@@ -31,7 +31,6 @@
 <style>
   .key-value-editor-fixture {
     display: grid;
-    gap: var(--cinder-space-8);
   }
 
   /* Narrower than the editor's 20rem stacking width, so its row puts the key over the value. */

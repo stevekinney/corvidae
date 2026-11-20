@@ -29,6 +29,7 @@ import { createValueResolver } from '../../src/tokens/runtime/resolve.ts';
 import type { TokenDocument } from '../../src/tokens/runtime/types.ts';
 import { serializeAuthoringCatalogue } from './authoring-catalogue-output.ts';
 import { buildBaseCorpusMetadata } from './base-corpus-metadata.ts';
+import { buildTokenUtilitiesCss } from './css-generator.ts';
 import { buildTokensDocMarkdown, validateDocSections } from './docs.ts';
 import { buildGeneratedOutputs, findDriftedPaths, loadCorpus, readExisting } from './generate.ts';
 import {
@@ -43,6 +44,7 @@ import {
   resolvedDirectory,
   tokenIndexPath,
   tokensDocPath,
+  tokenUtilitiesCssPath,
 } from './generator-configuration.ts';
 import { buildSchemaValidatorOutputs } from './schema-validators.ts';
 
@@ -209,6 +211,7 @@ async function buildAllGeneratedOutputs(): Promise<Map<string, string>> {
   ]);
 
   const generated = new Map(cssAndResolved);
+  generated.set(tokenUtilitiesCssPath, buildTokenUtilitiesCss(baseIndex));
   generated.set(registryJsonPath, registryJson);
   generated.set(tokensDocPath, docMarkdown);
   generated.set(registryModulePath, registryModule);

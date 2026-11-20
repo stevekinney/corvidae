@@ -16,8 +16,8 @@
   let triggerRef = $state<HTMLElement | null>(null);
 </script>
 
-<main class="token-fixture">
-  <section aria-label="Buttons">
+<main class="token-fixture gap-4">
+  <section class="gap-3" aria-label="Buttons">
     <Button label="Animated button" />
     <Button
       disabled
@@ -69,13 +69,11 @@
 <style>
   .token-fixture {
     display: grid;
-    gap: var(--cinder-space-4);
     max-inline-size: 48rem;
     margin-inline: auto;
   }
   section {
     display: flex;
-    gap: var(--cinder-space-3);
     align-items: center;
   }
 </style>

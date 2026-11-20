@@ -9,7 +9,11 @@
 
 import { describe, expect, test } from 'bun:test';
 
-import { findFixtureLiterals, newFixtureLiterals } from './check-browser-fixture-token-literals.ts';
+import {
+  findFixtureLiterals,
+  inspectFixtureStyles,
+  newFixtureLiterals,
+} from './check-browser-fixture-token-literals.ts';
 import {
   FONT_WEIGHT_LITERAL_PATTERN,
   TIMING_LITERAL_PATTERN,
@@ -82,6 +86,19 @@ describe('FONT_WEIGHT_LITERAL_PATTERN', () => {
 });
 
 describe('browser fixture literals', () => {
+  test('rejects inline fixture styles even when they use tokens or dynamic values', () => {
+    const source = [
+      '<div style="gap: var(--cinder-space-2)"></div>',
+      '<div style:inline-size={width}></div>',
+      '<Stack style={layout}><div class="gap-2">Example</div></Stack>',
+      '<Table scrollContainerProps={{ style: tableLayout }} />',
+      '<!-- <div style="width: 12rem"></div> -->',
+      '<style>.narrow { inline-size: 12rem; }</style>',
+    ].join('\n');
+
+    expect(inspectFixtureStyles(source, 'fixture.svelte').inlineStyleLines).toEqual([1, 2, 3, 4]);
+  });
+
   test('finds paint and dimensions in inline, directive, and block styles', () => {
     const source = [
       '<Container style="max-inline-size: 40rem; padding: var(--cinder-space-2) 8px;">',

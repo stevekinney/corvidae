@@ -16,10 +16,7 @@
 
 <div id="example-mount-basic">
   <SortableList {items} {getKey} {getItemLabel} onReorder={handleReorder} label="Task priority">
-    {#snippet children(item)}<span
-        style="padding: var(--cinder-space-2) var(--cinder-space-3); display: block;"
-        >{item.label}</span
-      >{/snippet}
+    {#snippet children(item)}<span class="children-span">{item.label}</span>{/snippet}
   </SortableList>
   <div class="cinder-kanban-board__card">Kanban</div>
 </div>
@@ -28,5 +25,10 @@
   .cinder-kanban-board__card {
     display: flex;
     align-items: start;
+  }
+
+  .children-span {
+    padding: var(--cinder-space-2) var(--cinder-space-3);
+    display: block;
   }
 </style>

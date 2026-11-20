@@ -14,7 +14,13 @@
   description="Stored as a canonical 24-hour time string."
 />
 
-<p style="margin-block: 0; color: var(--cinder-text-muted);">
+<p class="note text-muted">
   Value: {time}
   {timezone}
 </p>
+
+<style>
+  .note {
+    margin-block: 0;
+  }
+</style>

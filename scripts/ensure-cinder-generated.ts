@@ -24,6 +24,7 @@ const REPOSITORY_ROOT = resolve(import.meta.dirname, '..');
 /** The generated outputs, relative to the Cinder package. The generator's own `--list` covers the same. */
 export const CINDER_GENERATED_OUTPUTS = [
   'src/styles/tokens-base.css',
+  'src/styles/token-utilities.css',
   'src/tokens/index.json',
   'src/tokens/registry.generated.json',
   'src/tokens/registry.generated.ts',

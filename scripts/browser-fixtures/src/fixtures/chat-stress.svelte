@@ -295,14 +295,22 @@
     return map;
   });
 
+  let safeAreaStylesheet: CSSStyleSheet | undefined;
+
   // What only a host does. A case calls these through a `hook` step.
   const hooks = {
     setSafeAreaInset(value: number): void {
       if (!Number.isFinite(value) || value < 0)
         throw new Error('Safe-area inset must be non-negative.');
-      document
-        .querySelector<HTMLElement>('.chat-container')
-        ?.style.setProperty('--_cinder-chat-safe-area-inset-bottom', `${value}px`);
+      if (safeAreaStylesheet === undefined) {
+        safeAreaStylesheet = new CSSStyleSheet();
+        document.adoptedStyleSheets = [...document.adoptedStyleSheets, safeAreaStylesheet];
+      }
+      safeAreaStylesheet.replaceSync(
+        `.stress-page > .stress-shell:first-child .chat-container {
+          --_cinder-chat-safe-area-inset-bottom: ${value}px;
+        }`,
+      );
     },
     startStream(): void {
       const started = appendStreamingMessage(conversation, 'assistant');
@@ -349,7 +357,12 @@
   $effect(() => {
     const host = window as Window & { corvidaeChatStress?: typeof hooks };
     host.corvidaeChatStress = hooks;
-    return () => delete host.corvidaeChatStress;
+    return () => {
+      delete host.corvidaeChatStress;
+      document.adoptedStyleSheets = document.adoptedStyleSheets.filter(
+        (stylesheet) => stylesheet !== safeAreaStylesheet,
+      );
+    };
   });
 
   // The host puts a saved draft back once, after the composer exists, as it does after a reload.
@@ -390,7 +403,7 @@
   <p data-chat-stress-error role="alert">{failure}</p>
 {:else}
   <div
-    class="stress-page"
+    class="stress-page background-surface"
     data-testid="chat-stress-shell"
     data-chat-stress-case={stressCase?.id}
     data-chat-stress-ready={ready ? 'true' : 'false'}
@@ -399,10 +412,7 @@
     data-chat-stress-stream-content={streamContent}
     data-two-chats={setup.secondChat ? 'true' : 'false'}
   >
-    <div
-      class="stress-shell"
-      style:inline-size={setup.shellWidth === undefined ? undefined : `${setup.shellWidth}px`}
-    >
+    <div class="stress-shell" class:narrow-shell={setup.narrowShell}>
       <Chat
         bind:this={chat}
         id="stress-chat"
@@ -486,7 +496,6 @@
     block-size: 100dvh;
     min-inline-size: 0;
     overflow: hidden;
-    background: var(--cinder-surface);
   }
 
   .stress-page[data-two-chats='true'] {
@@ -509,5 +518,9 @@
   [data-chat-stress-error] {
     margin: var(--cinder-space-4);
     color: var(--cinder-status-danger-text);
+  }
+
+  .narrow-shell {
+    inline-size: 360px;
   }
 </style>
