@@ -84,7 +84,7 @@
         <span class="ib-skill-instructions__file">{copy.cardFile(size)}</span>
       </p>
       {#if html === ''}
-        <EmptyState headingLevel={5} title={copy.empty} />
+        <EmptyState kind="first-use" headingLevel={5} title={copy.empty} />
       {:else}
         <!-- `renderMarkdown` sanitizes before it returns HTML: a skill's file is untrusted text. -->
         <div
