@@ -126,7 +126,12 @@ const FAULT_DATA_EXTRACTORS: FaultExtractors = {
   UnsupportedCapability: (data) => ({ capability: data.capability }),
 };
 
-function extractFaultDataPayload(fault: OperationFault): Record<string, unknown> {
+/**
+ * The fields of a fault's `data` a wire projection may send: the deny-by-default allowlist for its
+ * code. The JSON-RPC envelope and the Server-Sent Events error frame both build their `data` here,
+ * so a field is never sent by one transport and withheld by another.
+ */
+export function extractFaultDataPayload(fault: OperationFault): Record<string, unknown> {
   // The cast is sound because `FAULT_DATA_EXTRACTORS` is typed so each key
   // maps to an extractor for that fault's data — TypeScript cannot narrow
   // `fault.data` through the dynamic lookup, so we delegate to the table.

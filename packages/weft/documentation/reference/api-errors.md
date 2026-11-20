@@ -88,6 +88,10 @@ Because the envelope's `weftCode` is written last, a fine-grained `WeftErrorCode
 
 A catalog operation served as an MCP tool answers a fault as an error result (`isError: true`) whose `structuredContent` is `{ code, message, data?, retryable, remediation? }`, with the same `retryable` and `remediation` as the other two transports. Here `code` is the coarse `FaultCode`, and `data` is the fault's payload.
 
+### Server-Sent Events
+
+A stream that fails after it started ends with one `event: error` frame whose `data:` line is `{ code, message, data?, retryable, remediation? }`: the same `retryable` and `remediation` as the other transports, with `code` the coarse `FaultCode`. `data` holds only the fields the JSON-RPC envelope's `data` holds for that code, so no transport sends a field another withholds. A failure that is not a fault, or an `EngineFailure`, is `{ code: "EngineFailure", message: "Internal server error", retryable: false }`, never with a `remediation`. A request refused before the stream starts is an ordinary REST fault with the REST body above.
+
 ### What the client sees
 
 `HttpClient` normalizes both envelopes onto `HttpClientError`, with one exception: a REST `GET` that answers 404 resolves to `null` before its body is read, so no `HttpClientError` is thrown and none of these fields exist. A missing resource on a read surfaces as a `null` result, not a catchable fault.
