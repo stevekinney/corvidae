@@ -195,8 +195,113 @@ describe('CodeBlock — static structure', () => {
       copyable: true,
     });
     expect(container.querySelector('.cinder-copy-button')?.getAttribute('aria-label')).toBe(
-      'Copy sql code',
+      'Copy SQL code',
     );
+  });
+
+  test('the copy button names an acronym language in its canonical case', () => {
+    const { container } = render(CodeBlock, {
+      code: '{}',
+      language: 'json',
+      highlight: false,
+      copyable: true,
+    });
+    expect(container.querySelector('.cinder-copy-button')?.getAttribute('aria-label')).toBe(
+      'Copy JSON code',
+    );
+    const other = render(CodeBlock, {
+      code: 'x',
+      language: 'typescript',
+      highlight: false,
+      copyable: true,
+    });
+    expect(other.container.querySelector('.cinder-copy-button')?.getAttribute('aria-label')).toBe(
+      'Copy typescript code',
+    );
+  });
+
+  test('copyLabel names the copy button, ahead of the language', () => {
+    const { container } = render(CodeBlock, {
+      code: 'claude mcp add',
+      language: 'json',
+      highlight: false,
+      copyable: true,
+      copyLabel: 'Copy the Claude Code command',
+    });
+    expect(container.querySelector('.cinder-copy-button')?.getAttribute('aria-label')).toBe(
+      'Copy the Claude Code command',
+    );
+    const bare = render(CodeBlock, { code: 'x', copyable: true });
+    expect(bare.container.querySelector('.cinder-copy-button')?.getAttribute('aria-label')).toBe(
+      'Copy code',
+    );
+  });
+
+  test('a copyable block with no visible language label has no header row: its copy floats', async () => {
+    const { container } = render(CodeBlock, { code: 'claude mcp add', copyable: true });
+    const block = container.querySelector('.cinder-code-block');
+    expect(block?.classList.contains('cinder-code-block--floating-meta')).toBe(true);
+    expect(container.querySelector('.cinder-code-block__language')).toBeNull();
+    expect(container.querySelector('.cinder-copy-button')).not.toBeNull();
+
+    // The meta row is taken out of the flow and inset, so its 44px hit area is not clipped by the
+    // block's `overflow: hidden`.
+    const css = await Bun.file(new URL('./code-block.css', import.meta.url)).text();
+    expect(css).toMatch(
+      /\.cinder-code-block--floating-meta \.cinder-code-block__meta\s*\{[^}]*position:\s*absolute;[^}]*padding:\s*0 var\(--_cinder-code-block-float-inset\);/s,
+    );
+
+    // A language that is named but not shown has no label to share a row with either.
+    const hidden = render(CodeBlock, {
+      code: 'SELECT 1;',
+      language: 'sql',
+      highlight: false,
+      copyable: true,
+      languageLabelVisible: false,
+    });
+    expect(
+      hidden.container
+        .querySelector('.cinder-code-block')
+        ?.classList.contains('cinder-code-block--floating-meta'),
+    ).toBe(true);
+  });
+
+  test('a streaming block that is not copyable keeps its status in the header row', () => {
+    const { container } = render(CodeBlock, { code: 'SELECT id', streaming: true });
+    expect(container.querySelector('.cinder-code-block__status')).not.toBeNull();
+    expect(
+      container
+        .querySelector('.cinder-code-block')
+        ?.classList.contains('cinder-code-block--floating-meta'),
+    ).toBe(false);
+    // Copyable, it floats from the first token on, so Copy appears where the status was.
+    const copyable = render(CodeBlock, { code: 'SELECT id', streaming: true, copyable: true });
+    expect(
+      copyable.container
+        .querySelector('.cinder-code-block')
+        ?.classList.contains('cinder-code-block--floating-meta'),
+    ).toBe(true);
+  });
+
+  test('a visible language label keeps the header row it shares with copy, unless copyFloating asks', () => {
+    const shared = render(CodeBlock, {
+      code: 'SELECT 1;',
+      language: 'sql',
+      highlight: false,
+      copyable: true,
+    });
+    expect(
+      shared.container
+        .querySelector('.cinder-code-block')
+        ?.classList.contains('cinder-code-block--floating-meta'),
+    ).toBe(false);
+
+    const bare = render(CodeBlock, { code: 'x', copyable: true, copyFloating: false });
+    expect(
+      bare.container
+        .querySelector('.cinder-code-block')
+        ?.classList.contains('cinder-code-block--floating-meta'),
+    ).toBe(false);
   });
 
   test('copyFloating floats the copy button with no header row of its own', async () => {
@@ -231,7 +336,7 @@ describe('CodeBlock — static structure', () => {
       )?.[1];
     expect(reserve).toContain('min-block-size: var(--_cinder-code-block-float-reserve);');
     expect(css).toContain(
-      '--_cinder-code-block-float-reserve: calc( var(--_cinder-code-block-float-size) + 2 * var(--cinder-space-2) );',
+      '--_cinder-code-block-float-reserve: calc( var(--_cinder-code-block-float-size) + 2 * var(--_cinder-code-block-float-inset) );',
     );
     const button =
       /\.cinder-code-block--floating-meta \.cinder-code-block__meta \.cinder-copy-button \{([^}]*)\}/.exec(
@@ -240,18 +345,85 @@ describe('CodeBlock — static structure', () => {
     expect(button).toContain('inline-size: var(--_cinder-code-block-float-size);');
   });
 
-  test('copyFloating gives the viewport its own rail reservation and end cue', async () => {
+  test('the floating copy button is the same 24px box as the meta row copy button', async () => {
+    const source = await Bun.file(new URL('./code-block.css', import.meta.url)).text();
+    const css = source.replace(/\s+/g, ' ');
+    const metaRow =
+      /\.cinder-code-block \.cinder-code-block__meta \.cinder-copy-button \{([^}]*)\}/.exec(
+        css,
+      )?.[1];
+    expect(metaRow).toContain('inline-size: 1.5rem;');
+    expect(css).toContain('--_cinder-code-block-float-size: 1.5rem;');
+  });
+
+  // The coarse-pointer hit area is `touch-target-min` square and centred on the 24px face, so it
+  // overhangs by half the difference. The root clips its overflow, so an inset below the overhang
+  // cuts the target (a 42 by 44 one at an 8px inset).
+  test('the floating copy inset keeps the whole coarse hit area inside the clipped block', async () => {
     const source = await Bun.file(new URL('./code-block.css', import.meta.url)).text();
     const css = source.replace(/\s+/g, ' ');
     expect(css).toMatch(
-      /\.cinder-code-block--floating-meta:has\(> \.cinder-code-block__meta\) \.cinder-code-block__viewport\s*\{[^}]*scroll-padding-inline-end:\s*var\(--_cinder-code-block-float-reserve\);[^}]*margin-inline-end:\s*var\(--_cinder-code-block-float-reserve\);/,
+      /--_cinder-code-block-float-inset:\s*max\(\s*var\(--cinder-space-2\),\s*calc\(\s*\(var\(--cinder-touch-target-min\) - var\(--_cinder-code-block-float-size\)\) \/ 2\s*\)\s*\);/,
+    );
+    expect(css).toContain(
+      '--_cinder-code-block-float-reserve: calc( var(--_cinder-code-block-float-size) + 2 * var(--_cinder-code-block-float-inset) );',
+    );
+    const meta = /\.cinder-code-block--floating-meta \.cinder-code-block__meta \{([^}]*)\}/.exec(
+      css,
+    )?.[1];
+    expect(meta).toContain('padding: 0 var(--_cinder-code-block-float-inset);');
+  });
+
+  test('copyFloating gives a scrolling viewport its own rail reservation and end cue', async () => {
+    const source = await Bun.file(new URL('./code-block.css', import.meta.url)).text();
+    const css = source.replace(/\s+/g, ' ');
+    expect(css).toMatch(
+      /\.cinder-code-block--floating-meta:not\(\.cinder-code-block--wrap\):has\(> \.cinder-code-block__meta\) \.cinder-code-block__viewport\s*\{[^}]*scroll-padding-inline-end:\s*var\(--_cinder-code-block-float-reserve\);[^}]*margin-inline-end:\s*var\(--_cinder-code-block-float-reserve\);/,
     );
     expect(css).toMatch(
       /\.cinder-code-block--floating-meta \.cinder-code-block__viewport\.cinder-_scroll-fade-inline-end\[data-cinder-overflows-inline-end\]::after\s*\{[^}]*inset-inline-end:\s*var\(--_cinder-code-block-float-reserve\);/,
     );
   });
 
-  // The copy button keeps its 28px painted box on touch: CopyButton draws the 44px hit area with a
+  // Design correction round 3: the copy rail sits beside the first line only. A wrapping block
+  // reserves it with a float no taller than the first line, so every further row keeps the whole
+  // width (a margin on the viewport took the width from every row, and a URL broke mid-word at 320).
+  test('a wrapping floating block reserves the copy rail beside its first line only', async () => {
+    const source = await Bun.file(new URL('./code-block.css', import.meta.url)).text();
+    const css = source.replace(/\s+/g, ' ');
+    const rail =
+      /\.cinder-code-block--floating-meta\.cinder-code-block--wrap:has\(> \.cinder-code-block__meta\) \.cinder-code-block__viewport::before \{([^}]*)\}/.exec(
+        css,
+      )?.[1];
+    expect(rail).toBeDefined();
+    expect(rail).toContain("content: '';");
+    expect(rail).toContain('float: inline-end;');
+    expect(rail).toContain('inline-size: var(--_cinder-code-block-float-reserve);');
+    // It reaches no lower than the middle of the first line, so the second row is never shortened.
+    expect(rail).toContain('block-size: var(--_cinder-code-block-first-line-centre);');
+    // The same distance centres the button, so the rail and the button cannot drift apart.
+    const meta = /\.cinder-code-block--floating-meta \.cinder-code-block__meta \{([^}]*)\}/.exec(
+      css,
+    )?.[1];
+    expect(meta).toContain('inset-block-start: var(--_cinder-code-block-first-line-centre);');
+    // A wrapping block's viewport keeps the whole width, so no margin takes it from every row.
+    expect(css).not.toMatch(
+      /\.cinder-code-block--floating-meta:has\(> \.cinder-code-block__meta\) \.cinder-code-block__viewport\s*\{[^}]*margin-inline-end/,
+    );
+  });
+
+  test('the rail holds no markup or text, so the text a wrapping floating block shows and copies is its code', () => {
+    const code = 'claude mcp add --transport http interborough http://127.0.0.1:7234/bureau/mcp';
+    const { container } = render(CodeBlock, { code, copyable: true, wrap: true, highlight: false });
+    const block = container.querySelector('.cinder-code-block');
+    expect(block?.classList.contains('cinder-code-block--floating-meta')).toBe(true);
+    expect(block?.classList.contains('cinder-code-block--wrap')).toBe(true);
+    const viewport = container.querySelector('.cinder-code-block__viewport');
+    expect(viewport?.textContent).toBe(code);
+    expect(viewport?.children).toHaveLength(1);
+  });
+
+  // The copy button keeps its 24px painted box on touch: CopyButton draws the 44px hit area with a
   // pseudo-element, so the code block never grows or reserves more for a finger.
   test('the copy button is not resized on a coarse pointer, so its hit area adds no layout', async () => {
     const source = await Bun.file(new URL('./code-block.css', import.meta.url)).text();
@@ -271,9 +443,10 @@ describe('CodeBlock — static structure', () => {
     const meta = /\.cinder-code-block--floating-meta \.cinder-code-block__meta \{([^}]*)\}/.exec(
       css,
     )?.[1];
-    expect(meta).toMatch(
-      /inset-block-start: calc\( var\(--cinder-code-block-padding\) \+ var\(--cinder-code-block-font-size\) \* var\(--cinder-code-block-line-height\) \/ 2 \);/,
+    expect(css).toMatch(
+      /--_cinder-code-block-first-line-centre: calc\( var\(--cinder-code-block-padding\) \+ var\(--cinder-code-block-font-size\) \* var\(--cinder-code-block-line-height\) \/ 2 \);/,
     );
+    expect(meta).toContain('inset-block-start: var(--_cinder-code-block-first-line-centre);');
     expect(meta).toContain('transform: translateY(-50%);');
     // The strip behind Copy is the code's own surface, not the tinted block.
     expect(css).toMatch(
@@ -313,6 +486,113 @@ describe('CodeBlock — static structure', () => {
     expect(container.querySelector('pre code')?.textContent).toBe(code);
     const plain = render(CodeBlock, { code });
     expect(plain.container.querySelector('.cinder-code-block__flag')).toBeNull();
+  });
+
+  test('a wrapping block draws each line as one element and hangs its continuation rows', async () => {
+    const code = 'claude mcp add --transport http interborough http://127.0.0.1:7234/bureau/mcp';
+    const { container } = render(CodeBlock, { code, wrap: true });
+    const lines = container.querySelectorAll('.cinder-code-block__line');
+    expect(lines).toHaveLength(1);
+    // The copied text is the code as written, flags and all.
+    expect(container.querySelector('pre code')?.textContent).toBe(code);
+    expect(lines[0]?.querySelectorAll('.cinder-code-block__flag')).toHaveLength(1);
+
+    const two = render(CodeBlock, { code: 'first\nsecond', wrap: true });
+    expect(
+      Array.from(
+        two.container.querySelectorAll('.cinder-code-block__line'),
+        (line) => line.textContent,
+      ),
+    ).toEqual(['first', 'second']);
+
+    const css = await Bun.file(new URL('./code-block.css', import.meta.url)).text();
+    // Rows after the first are indented by the hang; the first row gives it back.
+    expect(css).toMatch(
+      /\.cinder-code-block--wrap \.cinder-code-block__line \{[^}]*--_cinder-code-block-hang: calc\([^;]*\*\s*1ch\s*\);[^}]*padding-inline-start: calc\(var\(--cinder-code-block-padding\) \+ var\(--_cinder-code-block-hang\)\);[^}]*text-indent: calc\(-1 \* var\(--_cinder-code-block-hang\)\);/s,
+    );
+    // The hang is two characters past the line's own indent, in spaces and in tabs.
+    const hang = /--_cinder-code-block-hang: calc\(([^;]*)\);/s.exec(css)?.[1] ?? '';
+    expect(hang).toContain('2 +');
+    expect(hang).toContain('var(--_cinder-code-block-indent-spaces, 0)');
+    expect(hang).toContain('var(--_cinder-code-block-indent-tabs, 0)');
+    expect(hang).toContain('var(--cinder-type-tab-size)');
+    // The gutter's number is not part of the line's text, so it does not hang with it.
+    expect(css).toMatch(
+      /\.cinder-code-block--numbered \.cinder-code-block__line::before \{[^}]*text-indent: 0;/s,
+    );
+    // A flag is a box of its own and does not inherit the indent.
+    expect(css).toMatch(
+      /\.cinder-code-block--wrap \.cinder-code-block__flag \{[^}]*text-indent: 0;/s,
+    );
+    // With line numbers the hang is added after the gutter, so the numbers keep their place.
+    expect(css).toMatch(
+      /\.cinder-code-block--wrap\.cinder-code-block--numbered \.cinder-code-block__line \{[^}]*var\(--_cinder-code-block-gutter-gap\) \+ var\(--_cinder-code-block-hang\)/s,
+    );
+  });
+
+  test('a wrapped line records its own indent, so its further rows hang under its text', () => {
+    const { container } = render(CodeBlock, {
+      code: 'top\n    four spaces\n\t\ttwo tabs\n  \tmixed',
+      wrap: true,
+    });
+    const indents = Array.from(
+      container.querySelectorAll<HTMLElement>('.cinder-code-block__line'),
+      (line) => [
+        line.style.getPropertyValue('--_cinder-code-block-indent-spaces'),
+        line.style.getPropertyValue('--_cinder-code-block-indent-tabs'),
+      ],
+    );
+    expect(indents).toEqual([
+      ['0', '0'],
+      ['4', '0'],
+      ['0', '2'],
+      ['2', '1'],
+    ]);
+    // A block that does not wrap carries no indent, since nothing hangs.
+    const unwrapped = render(CodeBlock, { code: '    indented', lineNumbers: true });
+    expect(
+      unwrapped.container
+        .querySelector<HTMLElement>('.cinder-code-block__line')
+        ?.style.getPropertyValue('--_cinder-code-block-indent-spaces'),
+    ).toBe('');
+  });
+
+  test('highlighted lines of a wrapping block record their indent too', async () => {
+    const lines = (code: string) =>
+      `<pre class="shiki"><code>${code
+        .split('\n')
+        .map((line) => `<span class="line">${line}</span>`)
+        .join('\n')}</code></pre>`;
+    const { container } = render(CodeBlock, {
+      code: 'a\n  b',
+      language: 'json',
+      wrap: true,
+      highlighter: (code: string) => lines(code),
+    });
+    await waitFor(() =>
+      expect(container.querySelectorAll('.cinder-code-block__line')).toHaveLength(2),
+    );
+    const second = container.querySelectorAll<HTMLElement>('.cinder-code-block__line')[1];
+    expect(second?.style.getPropertyValue('--_cinder-code-block-indent-spaces')).toBe('2');
+    expect(second?.style.getPropertyValue('--_cinder-code-block-indent-tabs')).toBe('0');
+  });
+
+  test('a streaming wrapping block stays one run of text, so the caret follows the last character', () => {
+    const { container } = render(CodeBlock, { code: 'run --now', wrap: true, streaming: true });
+    expect(container.querySelector('.cinder-code-block__line')).toBeNull();
+    expect(container.querySelector('pre code')?.lastElementChild?.className).toContain(
+      'cinder-code-block__caret',
+    );
+  });
+
+  test('a wrapping block still shows highlighted code from a highlighter that draws no lines', async () => {
+    const { container } = render(CodeBlock, {
+      code: 'x',
+      language: 'ts',
+      wrap: true,
+      highlighter: customHighlighter,
+    });
+    await waitFor(() => expect(container.querySelector('.custom-token')).not.toBeNull());
   });
 
   test('streaming withholds copy, shows its status, and puts the caret after the last character', () => {

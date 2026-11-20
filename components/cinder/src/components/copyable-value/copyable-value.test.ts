@@ -53,11 +53,31 @@ function endOf(container: HTMLElement): HTMLElement {
 }
 
 /**
- * The value as drawn: the text before the last character, then the last character. The root's own
- * `textContent` also holds the control's tooltip, which is not part of the value.
+ * The value as drawn: the text of every part, without the control. The root's own `textContent`
+ * also holds the control's tooltip, which is not part of the value.
  */
 function shown(container: HTMLElement): string {
-  return `${rootOf(container).firstChild?.textContent ?? ''}${endOf(container).firstChild?.textContent ?? ''}`;
+  const copy = rootOf(container).cloneNode(true) as HTMLElement;
+  for (const control of copy.querySelectorAll('.cinder-copyable-value__control')) control.remove();
+  return copy.textContent ?? '';
+}
+
+/** The parts of the value, outermost first, each as the pieces it holds (one when it has no dots). */
+function partsOf(container: HTMLElement): string[][] {
+  return Array.from(
+    rootOf(container).querySelectorAll<HTMLElement>(':scope > .cinder-copyable-value__part'),
+  ).map((part) => {
+    const pieces = Array.from(
+      part.querySelectorAll<HTMLElement>(':scope > .cinder-copyable-value__piece'),
+    );
+    const own = (element: HTMLElement) => {
+      const copy = element.cloneNode(true) as HTMLElement;
+      for (const control of copy.querySelectorAll('.cinder-copyable-value__control'))
+        control.remove();
+      return copy.textContent ?? '';
+    };
+    return pieces.length === 0 ? [own(part)] : pieces.map(own);
+  });
 }
 
 describe('CopyableValue', () => {
@@ -72,22 +92,109 @@ describe('CopyableValue', () => {
     const end = endOf(container);
     expect(end.firstChild?.textContent).toBe('t');
     expect(end.querySelector('button.cinder-copy-button')).toBeTruthy();
-    // Everything before the last character sits outside the stretch, so the value can break there.
-    expect(rootOf(container).firstChild?.textContent).toBe(ADDRESS.slice(0, -1));
-    expect(end.parentElement).toBe(rootOf(container));
+    // The stretch sits inside the value's last part, so a line can never end between the last
+    // character and the control, nor leave the character and the control alone on a row below the
+    // rest of the part.
+    const parts = rootOf(container).querySelectorAll(':scope > .cinder-copyable-value__part');
+    expect(end.closest('.cinder-copyable-value__part')).toBe(parts[parts.length - 1]!);
+    // Nothing follows the stretch but Svelte's own anchors, which are comments and empty text, and
+    // draw nothing.
+    for (let node = end.nextSibling; node !== null; node = node.nextSibling) {
+      expect(node.nodeType === Node.COMMENT_NODE || (node.textContent ?? '') === '').toBe(true);
+    }
   });
 
-  test('puts no whitespace anywhere between the value and the control, where a line could break', () => {
+  test('puts no whitespace anywhere between the parts or before the control, where a line could break', () => {
     const { container } = render(CopyableValue, { props: { value: ADDRESS } });
     const root = rootOf(container);
     const end = endOf(container);
     const control = end.querySelector('.cinder-copyable-value__control');
     expect(control).toBeTruthy();
-    // The head text, the stretch, the last character and the control are neighbours with nothing between.
-    expect(root.firstChild?.nextSibling).toBe(end);
     expect(end.firstChild?.nextSibling).toBe(control);
-    expect(root.firstChild?.nodeType).toBe(Node.TEXT_NODE);
     expect(end.firstChild?.nodeType).toBe(Node.TEXT_NODE);
+    // Every text node in the value holds a character: a space or a line break between two boxes
+    // would be a place to break that the value does not own.
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+      acceptNode: (node) =>
+        (node.parentElement as HTMLElement).closest('.cinder-copyable-value__control')
+          ? NodeFilter.FILTER_REJECT
+          : NodeFilter.FILTER_ACCEPT,
+    });
+    for (let node = walker.nextNode(); node !== null; node = walker.nextNode()) {
+      expect(/^\s+$/.test(node.textContent ?? '')).toBe(false);
+    }
+    expect(root.querySelectorAll('wbr')).toHaveLength(0);
+  });
+
+  test('breaks the A2A address by part first and by dot only inside a part, so no host or extension splits first', () => {
+    const value = 'http://127.0.0.1:7433/.well-known/agent-card.json';
+    const { container } = render(CopyableValue, { props: { value } });
+    expect(partsOf(container)).toEqual([
+      ['http://'],
+      ['127.', '0.', '0.', '1:'],
+      ['7433/'],
+      ['.well-known/'],
+      ['agent-card.', 'json'],
+    ]);
+    expect(shown(container)).toBe(value);
+  });
+
+  test('breaks the MCP address after its colon and each slash, with the host whole', () => {
+    const value = 'http://127.0.0.1:7234/bureau/mcp';
+    const { container } = render(CopyableValue, { props: { value } });
+    expect(partsOf(container).map((pieces) => pieces.join(''))).toEqual([
+      'http://',
+      '127.0.0.1:',
+      '7234/',
+      'bureau/',
+      'mcp',
+    ]);
+    expect(shown(container)).toBe(value);
+  });
+
+  test('draws each part and piece as a box that breaks inside itself only when it is longer than the line', () => {
+    const box =
+      /\.cinder-copyable-value__part,\s*\.cinder-copyable-value__piece \{([^}]*)\}/.exec(
+        css,
+      )?.[1] ?? '';
+    expect(box).toContain('display: inline-block;');
+    expect(box).toContain('max-inline-size: 100%;');
+    expect(box).toContain('overflow-wrap: anywhere;');
+    expect(css).toMatch(/\.cinder-copyable-value \{[^}]*overflow-wrap: anywhere;/);
+  });
+
+  test('a value with no punctuation to break at is one box, and copies unchanged', async () => {
+    const { container, getByRole } = render(CopyableValue, { props: { value: 'abcdefgh' } });
+    expect(partsOf(container)).toEqual([['abcdefgh']]);
+    expect(container.querySelectorAll('.cinder-copyable-value__piece')).toHaveLength(0);
+    expect(shown(container)).toBe('abcdefgh');
+    await fireEvent.click(getByRole('button'));
+    await waitFor(() => expect(written).toEqual(['abcdefgh']));
+  });
+
+  test('copies the value whole, whatever break opportunities it draws', async () => {
+    const value = 'http://127.0.0.1:7234/bureau/mcp?x=1&y=2';
+    const { getByRole } = render(CopyableValue, { props: { value } });
+    await fireEvent.click(getByRole('button'));
+    await waitFor(() => expect(written).toEqual([value]));
+  });
+
+  test('draws its control quiet and bare, as CodeBlock does, not as CopyButton’s bordered chip', () => {
+    const rule =
+      /\.cinder-copyable-value \.cinder-copyable-value__control \.cinder-copy-button \{([^}]*)\}/.exec(
+        css,
+      )?.[1] ?? '';
+    expect(rule).toContain('border: 1px solid transparent;');
+    expect(rule).toContain('background: transparent;');
+    expect(rule).toContain('color: var(--cinder-text-muted);');
+    expect(rule).toContain('inline-size: 1.5rem;');
+    // The hover wash and the copied colour are written at the same specificity, so they win.
+    expect(css).toMatch(
+      /\.cinder-copyable-value \.cinder-copyable-value__control \.cinder-copy-button:hover \{[^}]*background: var\(--cinder-surface-hover\);/,
+    );
+    expect(css).toMatch(
+      /\.cinder-copy-button\[data-cinder-copied\] \{[^}]*color: var\(--cinder-status-success-text\);/,
+    );
   });
 
   test('breaks the value anywhere, and never between its last character and the control', () => {

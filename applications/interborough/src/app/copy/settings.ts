@@ -5,6 +5,7 @@ export const SETTINGS_SECTION_COPY = {
   models: 'Models',
   modelPolicy: 'Allowed models',
   a2a: 'A2A',
+  mcp: 'MCP',
   plugins: 'Plugins',
   dataAndRetention: 'Data and retention',
   apiReference: 'API reference',

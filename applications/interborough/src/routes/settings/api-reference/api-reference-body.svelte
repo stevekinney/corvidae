@@ -10,13 +10,15 @@
    * Each tab reads for itself, so the row stays live while one is loading, and one that fails does
    * not take the others with it.
    */
-  import { Tabs } from '@lostgradient/cinder';
+  import { CopyableValue, Tabs } from '@lostgradient/cinder';
   import { useQueryClient } from '@tanstack/svelte-query';
   import { untrack } from 'svelte';
 
   import { API_REFERENCE_COPY } from '../../../app/copy/api-reference.ts';
-  import { router } from '../../../lib/router.svelte.ts';
   import type { SettingsSchema, SettingsSnapshot } from '../../../lib/bureau-settings.ts';
+  import { getClient } from '../../../lib/client.ts';
+  import { router } from '../../../lib/router.svelte.ts';
+  import { discoveryOrigin } from '../../system/discovery-client.ts';
   import SettingsRestartNotice from '../settings-restart-notice.svelte';
   import { SettingsSession } from '../settings-session.svelte.ts';
   import {
@@ -37,6 +39,9 @@
   }
 
   let { schema, snapshot }: Props = $props();
+
+  // Where the API is: the origin this page was served from, plus `/api`.
+  const apiAddress = `${discoveryOrigin(getClient())}/api`;
 
   const queryClient = useQueryClient();
   // The page edits no setting, but its restart notice counts, reverts and restarts the ones saved elsewhere.
@@ -68,6 +73,15 @@
 />
 
 <div class="ib-api-reference">
+  <p class="ib-api-reference__address" data-testid="api-address">
+    {API_REFERENCE_COPY.address.lead}
+    <CopyableValue
+      value={apiAddress}
+      label={API_REFERENCE_COPY.address.copy}
+      copiedLabel={API_REFERENCE_COPY.address.copied}
+      data-testid="api-address-value"
+    />
+  </p>
   <Tabs
     bind:value={active}
     onValueChange={onTabChange}
@@ -90,5 +104,12 @@
     grid-area: content;
     max-inline-size: var(--ib-settings-content-width);
     min-inline-size: 0;
+  }
+
+  .ib-api-reference__address {
+    margin: 0 0 var(--cinder-space-4);
+    font-size: var(--cinder-text-sm);
+    line-height: var(--cinder-leading-normal);
+    color: var(--cinder-text-muted);
   }
 </style>

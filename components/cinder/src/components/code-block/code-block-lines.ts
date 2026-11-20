@@ -106,6 +106,36 @@ export const keepFlagsWhole: Attachment<HTMLElement> = (container) => {
   }
 };
 
+/**
+ * How far a line is indented, in the two units a stylesheet can measure: spaces, and tabs (a tab is
+ * as wide as `--cinder-type-tab-size`). A wrapped line hangs its further rows from this, so they sit
+ * under the line's own text and not left of it.
+ */
+export function leadingIndent(text: string): { spaces: number; tabs: number } {
+  const indent = /^[ \t]*/.exec(text)?.[0] ?? '';
+  const tabs = indent.split('\t').length - 1;
+  return { spaces: indent.length - tabs, tabs };
+}
+
+/**
+ * An attachment that records the indent of each line of highlighted code, for the hanging indent of
+ * a wrapping block (plain code records its own, in the markup).
+ */
+export const hangWrappedLines: Attachment<HTMLElement> = (container) => {
+  const lines = [...container.querySelectorAll<HTMLElement>('pre code > .line, code > .line')];
+  for (const line of lines) {
+    const { spaces, tabs } = leadingIndent(line.textContent ?? '');
+    line.style.setProperty('--_cinder-code-block-indent-spaces', String(spaces));
+    line.style.setProperty('--_cinder-code-block-indent-tabs', String(tabs));
+  }
+  return () => {
+    for (const line of lines) {
+      line.style.removeProperty('--_cinder-code-block-indent-spaces');
+      line.style.removeProperty('--_cinder-code-block-indent-tabs');
+    }
+  };
+};
+
 /** The class a line takes when a note of this tone belongs to it. */
 export function lineToneClass(tone: CodeBlockAnnotationTone): string {
   return `cinder-code-block__line--${tone}`;

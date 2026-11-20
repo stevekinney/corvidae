@@ -358,12 +358,30 @@
   .cinder-code-block--wrap .cinder-code-block__flag {
     display: inline-block;
     max-inline-size: 100%;
+    /* The flag is a box of its own, so it does not inherit its line's hanging indent. */
+    text-indent: 0;
     white-space: pre-wrap;
     overflow-wrap: anywhere;
     vertical-align: top;
   }
 
+  /* A wrapped line hangs: the first row starts at the block's padding and every further row of the
+   * same line is indented two characters past the line's own text, so the eye finds where one line
+   * ends and the next begins. The line records how far its own text is indented (`code-block.svelte`
+   * and `code-block-lines.ts`), in spaces and tabs, and the hang is measured from there. The line's
+   * padding takes the hang and the negative text indent gives it back to the first row, which stays
+   * where an unwrapped line starts. The text is the same text; only the layout hangs. */
   .cinder-code-block--wrap .cinder-code-block__line {
+    --_cinder-code-block-hang: calc(
+      (
+          2 + var(--_cinder-code-block-indent-spaces, 0) +
+            var(--_cinder-code-block-indent-tabs, 0) * var(--cinder-type-tab-size)
+        ) *
+        1ch
+    );
+
+    padding-inline-start: calc(var(--cinder-code-block-padding) + var(--_cinder-code-block-hang));
+    text-indent: calc(-1 * var(--_cinder-code-block-hang));
     white-space: pre-wrap;
     overflow-wrap: break-word;
   }
@@ -372,6 +390,14 @@
     padding-inline-start: calc(
       var(--cinder-code-block-padding) + var(--_cinder-code-block-gutter) +
         var(--_cinder-code-block-gutter-gap)
+    );
+  }
+
+  /* Numbered and wrapped: the gutter keeps its place and the hang is added after it. */
+  .cinder-code-block--wrap.cinder-code-block--numbered .cinder-code-block__line {
+    padding-inline-start: calc(
+      var(--cinder-code-block-padding) + var(--_cinder-code-block-gutter) +
+        var(--_cinder-code-block-gutter-gap) + var(--_cinder-code-block-hang)
     );
   }
 
@@ -384,6 +410,8 @@
     position: absolute;
     inset-inline-start: var(--cinder-code-block-padding);
     inline-size: var(--_cinder-code-block-gutter);
+    /* A wrapped line's hanging indent is not the number's. */
+    text-indent: 0;
     text-align: end;
     color: var(--cinder-text-muted);
     font-variant-numeric: tabular-nums;
@@ -512,10 +540,25 @@
   .cinder-code-block--floating-meta {
     /* The width of the floating button and the inset around it. The block reserves it at its
      * inline end, so the viewport, its code and its overflow fade all stop before the button
-     * instead of running under it (C#5: on a one-line block the icon sat on the characters). */
-    --_cinder-code-block-float-size: 1.75rem;
+     * instead of running under it (C#5: on a one-line block the icon sat on the characters). The
+     * button is the same 24px box as the meta row's, so Copy looks the same size in either stack. */
+    --_cinder-code-block-float-size: 1.5rem;
+    /* The coarse-pointer hit area is `touch-target-min` square and centred on the face, so it
+     * overhangs the face by half the difference. The root clips its overflow, so the inset is at
+     * least that overhang and the whole target stays inside the block. */
+    --_cinder-code-block-float-inset: max(
+      var(--cinder-space-2),
+      calc((var(--cinder-touch-target-min) - var(--_cinder-code-block-float-size)) / 2)
+    );
     --_cinder-code-block-float-reserve: calc(
-      var(--_cinder-code-block-float-size) + 2 * var(--cinder-space-2)
+      var(--_cinder-code-block-float-size) + 2 * var(--_cinder-code-block-float-inset)
+    );
+    /* The distance from the block's top to the middle of the first line: the block's padding plus
+     * half a line box. The button is centred on it and, in a wrapping block, so is the end of the
+     * rail's reservation. */
+    --_cinder-code-block-first-line-centre: calc(
+      var(--cinder-code-block-padding) + var(--cinder-code-block-font-size) *
+        var(--cinder-code-block-line-height) / 2
     );
 
     position: relative;
@@ -530,12 +573,28 @@
     min-block-size: var(--_cinder-code-block-float-reserve);
   }
 
-  /* Keep the scrollport's actual inline size independent from the copy rail. Padding expands the
-   * scrollable content area; an end margin shrinks the scrollport itself, so long lines and their
-   * scroll cue can never run underneath the opaque copy surface. */
-  .cinder-code-block--floating-meta:has(> .cinder-code-block__meta) .cinder-code-block__viewport {
+  /* A scrolling block keeps the scrollport's actual inline size independent from the copy rail.
+   * Padding expands the scrollable content area; an end margin shrinks the scrollport itself, so
+   * long lines and their scroll cue can never run underneath the opaque copy surface. Every row
+   * scrolls, so every row gives up the rail. */
+  .cinder-code-block--floating-meta:not(.cinder-code-block--wrap):has(> .cinder-code-block__meta)
+    .cinder-code-block__viewport {
     scroll-padding-inline-end: var(--_cinder-code-block-float-reserve);
     margin-inline-end: var(--_cinder-code-block-float-reserve);
+  }
+
+  /* A wrapping block keeps the whole width for every row but the first. The button sits beside the
+   * first line only, so the rail is a float at the viewport's inline end that reaches the middle of
+   * the first line and no lower: it shortens the first row, and the second row, which starts below
+   * the middle of the first, runs the full width. It holds no text, so the copied text is
+   * unchanged, and it serves highlighted code as well as plain, because the viewport owns it and
+   * not the code. */
+  .cinder-code-block--floating-meta.cinder-code-block--wrap:has(> .cinder-code-block__meta)
+    .cinder-code-block__viewport::before {
+    content: '';
+    float: inline-end;
+    inline-size: var(--_cinder-code-block-float-reserve);
+    block-size: var(--_cinder-code-block-first-line-centre);
   }
 
   /* The shared fade normally hugs the scrollport edge. Stop it before the reserved copy rail so
@@ -550,15 +609,12 @@
    * half a line box, and the translation puts the control's own middle there. */
   .cinder-code-block--floating-meta .cinder-code-block__meta {
     position: absolute;
-    inset-block-start: calc(
-      var(--cinder-code-block-padding) + var(--cinder-code-block-font-size) *
-        var(--cinder-code-block-line-height) / 2
-    );
+    inset-block-start: var(--_cinder-code-block-first-line-centre);
     inset-inline-end: 0;
     z-index: 1;
-    /* The inset keeps the button's 44px hit area, 8px past its painted edge, inside the block's
-     * clipped box. */
-    padding: 0 var(--cinder-space-2);
+    /* The inset keeps the button's whole coarse hit area, which reaches past its painted edge,
+     * inside the block's clipped box. */
+    padding: 0 var(--_cinder-code-block-float-inset);
     transform: translateY(-50%);
   }
 

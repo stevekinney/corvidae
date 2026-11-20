@@ -4,6 +4,12 @@ type FormSectionSharedProps = {
   /** Optional descriptive paragraph rendered under the heading/legend. */
   description?: string;
   /**
+   * The description with markup in it, such as a file name in `code`. It takes the place of
+   * `description` inside the same paragraph and in the same style, so a page that needs one code
+   * span does not draw its own paragraph beside the others.
+   */
+  descriptionContent?: Snippet;
+  /**
    * A short muted note beside the heading, on its baseline ("Read with every chat", "3 of 9").
    * It says what the section is for or how much is in it; a sentence of guidance is the
    * `description`.

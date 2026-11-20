@@ -1,5 +1,5 @@
 /**
- * The sections of Settings (COR-1837): the section navigation lists General, Models, Allowed models, A2A, Plugins, Data and retention, and
+ * The sections of Settings (COR-1837): the section navigation lists General, Models, Allowed models, A2A, MCP, Plugins, Data and retention, and
  * API reference, marks the one that is open, and moves between them. Data and retention and API
  * reference are tested with their own pages (`retention/retention-page.test.ts`,
  * `api-reference/api-reference-page.test.ts`).
@@ -30,6 +30,7 @@ describe('the section navigation', () => {
       'Models',
       'Allowed models',
       'A2A',
+      'MCP',
       'Plugins',
       'Data and retention',
       'API reference',
@@ -42,6 +43,7 @@ describe('the section navigation', () => {
       '/settings/models',
       '/settings/allowed-models',
       '/settings/a2a',
+      '/settings/mcp',
       '/settings/plugins',
       '/settings/data-and-retention',
       '/settings/api-reference',
@@ -71,6 +73,7 @@ describe('the section navigation', () => {
         'Models',
         'Allowed models',
         'A2A',
+        'MCP',
         'Plugins',
         'Data and retention',
         'API reference',

@@ -116,6 +116,7 @@ export function responsiveAddresses(seed: ResponsiveSeed): Readonly<Record<strin
     '/settings/models': '/settings/models',
     '/settings/allowed-models': '/settings/allowed-models',
     '/settings/a2a': '/settings/a2a',
+    '/settings/mcp': '/settings/mcp',
     '/settings/plugins': '/settings/plugins',
     '/settings/data-and-retention': '/settings/data-and-retention',
     '/settings/api-reference': '/settings/api-reference',

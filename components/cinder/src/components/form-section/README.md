@@ -34,7 +34,7 @@ Groups related form fields under a heading with optional description and layout 
 
 ## Heading note
 
-`meta` puts a short muted note beside the heading on its baseline ("Read with every chat", "3 of 9"). It is outside the heading element, so the heading's accessible name stays the heading text; in a `fieldset` the note sits inside the legend after the text. Use `description` for a sentence of guidance.
+`meta` puts a short muted note beside the heading on its baseline ("Read with every chat", "3 of 9"). It is outside the heading element, so the heading's accessible name stays the heading text; in a `fieldset` the note sits inside the legend after the text. Use `description` for a sentence of guidance. When that sentence holds markup, such as a file name in `code`, pass `descriptionContent` instead: the snippet is drawn inside the same description paragraph, in the same style, in place of `description`.
 
 ## Grouped sections
 
@@ -69,6 +69,7 @@ A section with no children draws its heading and description alone, for a list t
 | `headingLevel` | `2` \| `3` \| `4` \| `5` \| `6` | no | — | Heading level. Default 2. |
 | `meta` | `string` | no | — | A short muted note beside the heading, on its baseline ("Read with every chat", "3 of 9"). It says what the section is for or how much is in it; a sentence of guidance is the `description`. |
 | `children` | `(opaque)` | no | — | Children (FormField instances or arbitrary content). Optional: a section with none draws its heading and description alone, for a list that is empty and says so in the page's own words. Not expressible in JSON Schema; see the component types for the signature. |
+| `descriptionContent` | `(opaque)` | no | — | The description with markup in it, such as a file name in `code`. It takes the place of `description` inside the same paragraph and in the same style, so a page that needs one code span does not draw its own paragraph beside the others. Not expressible in JSON Schema; see the component types for the signature. |
 
 <!-- generated:props:end -->
 

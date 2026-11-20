@@ -199,7 +199,7 @@ describe('Markdownstreamed appends', () => {
     expect(block?.classList.contains('cinder-code-block--floating-meta')).toBe(true);
     expect(block?.querySelector('.cinder-code-block__language')).toBeNull();
     expect(block?.querySelector('.cinder-copy-button')?.getAttribute('aria-label')).toBe(
-      'Copy sql code',
+      'Copy SQL code',
     );
   });
 
