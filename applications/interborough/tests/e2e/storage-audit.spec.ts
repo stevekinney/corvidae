@@ -208,6 +208,15 @@ test('G T opens Storage and G D opens the audit log', async ({ page }) => {
   await page.keyboard.press('t');
   await expect(page).toHaveURL(/\/health\/storage$/);
   await expect(page.locator('[data-view="storage"]')).toHaveAttribute('data-state', 'ready');
+  // `data-state="ready"` is the frame's probe, which settles before the explorer reads its keys and
+  // groups. Painting that table keeps the page's main thread busy for most of a second on a loaded
+  // host (COR-2549), and `press` waits for the page, so a chord pressed into it reaches its second
+  // key after the chord window (`CHORD_WINDOW_MS`, one second) has closed. Wait for the table and
+  // the groups, which are what the page is busy with, and press into a page that is at rest.
+  await expect(page.getByTestId('storage-count')).toBeVisible();
+  await expect(
+    page.getByLabel(STORAGE_COPY.groupLabel, { exact: true }).locator('option').nth(1),
+  ).toBeAttached();
 
   await page.keyboard.press('g');
   await page.keyboard.press('d');
