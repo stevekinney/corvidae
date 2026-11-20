@@ -1172,7 +1172,10 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
    * inside the queued write, immediately before its compare-and-swap, and a write from a process
    * that another live claim has replaced is dropped: `dropped` is the answer, and nothing is
    * written or announced. The read is not atomic with the write: a deposition inside that window
-   * lets one stale write through, which the successor's next change overwrites.
+   * (the record read and the compare-and-swap that follow the claim read) lets one stale write
+   * through, and it stands until the successor's next change of the same field or the run's
+   * settlement, which drops every attention mark. Fencing the write on the claim itself would need
+   * Weft to export the claim's fence; that is a published surface, not worth a race this narrow.
    */
   function queueHolderWrite<T>(taskId: string, dropped: T, write: () => Promise<T>): Promise<T> {
     return queueLiveWrite(taskId, async () => {

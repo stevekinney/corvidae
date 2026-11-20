@@ -1054,7 +1054,32 @@ describe('ChildRunRegistry.attachLiveness()/subscribeLiveness() (AB-216)', () =>
       dispatchChildRun(agent, 'go', { agentName: 'a', parentRunId: 'p', registry }),
     ).not.toThrow();
 
-    expect(calls).toEqual(['first', 'second']);
+    // Each change (the registration, the child's first snapshot, its settlement) reaches both
+    // listeners, the second after the first's throw.
+    expect(calls.length).toBeGreaterThan(0);
+    expect(calls.length % 2).toBe(0);
+    for (let index = 0; index < calls.length; index += 2) {
+      expect(calls.slice(index, index + 2)).toEqual(['first', 'second']);
+    }
+  });
+
+  it('notifies a liveness listener when a child is registered and when it settles (COR-2526)', () => {
+    const registry = createChildRunRegistry();
+    const statuses: string[][] = [];
+    registry.subscribeLiveness(() =>
+      statuses.push(registry.children().map((child) => child.status)),
+    );
+
+    registry.register({
+      id: 'child-1',
+      parentId: 'p',
+      agentName: 'a',
+      durable: false,
+      abort: () => undefined,
+    });
+    registry.settle('child-1', 'completed');
+
+    expect(statuses).toEqual([['running'], ['completed']]);
   });
 
   it('attachLiveness on an unknown id is a no-op, never throws, never subscribes', () => {

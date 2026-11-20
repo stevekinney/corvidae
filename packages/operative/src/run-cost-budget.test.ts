@@ -345,7 +345,51 @@ describe('a step on a switched model', () => {
     }
   });
 
-  it('prices a switched model it knows, and counts an unpriced one at the agent’s model without a budget', async () => {
+  it('counts a step on an unpriced switched model as unknown, never at the agent’s model rate', async () => {
+    // Without a budget nothing stops the run on the unpriced model, and a run that only ever used it
+    // has no cost to report: it is not free, and it did not cost what `cheap` charges.
+    const onlyUnpriced = await executeLoop(
+      options(
+        { generate: scripted(3), costBudget: undefined },
+        { steering: gate('unpriced'), runId: 'run-1' },
+      ),
+    );
+    expect(onlyUnpriced.finishReason).toBe('stop-condition');
+    expect(onlyUnpriced.costEstimate).toBeUndefined();
+
+    // A run that used a priced model first keeps what that cost and adds nothing for the unpriced steps.
+    let switched = false;
+    const scriptedSteps = scripted(4);
+    let calls = 0;
+    const generate: RunOptions['generate'] = async (...args) => {
+      calls += 1;
+      // The session is switched after the second request, so the third and fourth are unpriced.
+      if (calls >= 2) switched = true;
+      return scriptedSteps(...args);
+    };
+    const mixed = await executeLoop(
+      options(
+        { generate, costBudget: undefined },
+        {
+          steering: {
+            sessionId: 'session',
+            getDesiredState: () => ({
+              paused: false,
+              configVersion: 1,
+              model: switched ? 'unpriced' : 'pricey',
+            }),
+            awaitResume: async () => {},
+          },
+          runId: 'run-2',
+        },
+      ),
+    );
+    expect(mixed.finishReason).toBe('stop-condition');
+    // Two steps ran on `pricey` ($1.00 a step), two on the unpriced model: only the first two count.
+    expect(mixed.costEstimate?.totalCost).toBeCloseTo(2, 10);
+  });
+
+  it('prices a switched model it knows, and lets a run on an unpriced one finish without a budget', async () => {
     const priced = await executeLoop(
       options(
         { generate: scripted(2), costBudget: undefined },

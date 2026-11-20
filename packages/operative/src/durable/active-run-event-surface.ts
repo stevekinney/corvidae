@@ -2,6 +2,7 @@ import { CompletableEventTarget, createDefaultRuntimeServices } from '@lostgradi
 import type { AnyToolbox, ToolboxEventMap } from 'armorer';
 import { type AdmissionTracker, createAdmissionTracker } from '../admission-tracker';
 
+import type { ChildRunRegistry } from '../child-run';
 import type { CombinedOperativeEventMap, OperativeEventEmitter } from '../events';
 import {
   ChildWorkflowAbortedEvent,
@@ -26,11 +27,18 @@ import type { DurableRunDeps } from './types';
  * call reports no progress of its own meanwhile: without the declaration, the tool-call watchdog
  * would read every delegating run as stalled. The child announces its start and its end on the
  * parent's emitter (`dispatchChildRun`), and the liveness holds the wait while any is outstanding.
- * Returns the function that stops listening.
+ *
+ * A subagent tool built without a `parentContext` dispatches no event onto the run's emitter: it
+ * registers the child in the registry the run's per-execution context supplies, which is the run's
+ * own `childRegistry`. Given that `registry` and the run's id, the wiring also holds the wait for
+ * every child of this run that the registry reports running, so a delegation is a wait however the
+ * tool was built. A child known by both routes is one wait. Returns the function that stops
+ * listening.
  */
 export function wireChildWaitLiveness(
   emitter: OperativeEventEmitter,
   liveness: ActiveRunLiveness,
+  childRegistry?: { readonly registry: ChildRunRegistry | undefined; readonly runId: string },
 ): () => void {
   const onStarted = (event: ChildWorkflowStartedEvent) => {
     if (event.childRunId !== undefined) liveness.beginChildWait(event.childRunId);
@@ -42,7 +50,34 @@ export function wireChildWaitLiveness(
   emitter.addEventListener(ChildWorkflowCompletedEvent.type, onEnded);
   emitter.addEventListener(ChildWorkflowFailedEvent.type, onEnded);
   emitter.addEventListener(ChildWorkflowAbortedEvent.type, onEnded);
+
+  // The registry's running children of this run, as last folded into the wait.
+  const registryWaits = new Set<string>();
+  const registry = childRegistry?.registry;
+  const syncRegistryWaits = (): void => {
+    if (registry === undefined) return;
+    const running = new Set(
+      registry
+        .children()
+        .filter((child) => child.parentId === childRegistry?.runId && child.status === 'running')
+        .map((child) => child.id),
+    );
+    for (const id of running) {
+      if (registryWaits.has(id)) continue;
+      registryWaits.add(id);
+      liveness.beginChildWait(id);
+    }
+    for (const id of [...registryWaits]) {
+      if (running.has(id)) continue;
+      registryWaits.delete(id);
+      liveness.endChildWait(id);
+    }
+  };
+  const registrySubscription = registry?.subscribeLiveness(syncRegistryWaits);
+  syncRegistryWaits();
+
   return () => {
+    registrySubscription?.unsubscribe();
     emitter.removeEventListener(ChildWorkflowStartedEvent.type, onStarted);
     emitter.removeEventListener(ChildWorkflowCompletedEvent.type, onEnded);
     emitter.removeEventListener(ChildWorkflowFailedEvent.type, onEnded);

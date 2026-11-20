@@ -216,7 +216,9 @@ export interface ChildRunRegistry {
    * payload; a subscriber re-reads `children()` to fold the current set.
    * A parent's own liveness rollup (`packages/operative/src/liveness/`)
    * subscribes to this to recompute `LivenessSnapshot.worstChildAssessment`
-   * without polling.
+   * without polling. Also fired when a child is registered and when it settles, so a subscriber
+   * that reads each child's `status` (a parent's wait on its running children, COR-2526) hears
+   * both ends.
    */
   subscribeLiveness(observer: () => void): Subscription;
   /**
@@ -480,6 +482,8 @@ export function createChildRunRegistry(): MutableChildRunRegistry {
         },
         abort: entry.abort,
       });
+      // A child that is outstanding is a change a parent's liveness reads (COR-2526).
+      notifyLivenessChange();
     },
     updateRemote(id, remote): void {
       const existing = entries.get(id);
@@ -498,6 +502,8 @@ export function createChildRunRegistry(): MutableChildRunRegistry {
       // holding a `Subscription` object this registry no longer needs.
       existing.livenessSubscription?.unsubscribe();
       existing.livenessSubscription = undefined;
+      // A child that is no longer outstanding is a change a parent's liveness reads (COR-2526).
+      notifyLivenessChange();
     },
     attachLiveness(id, observable): void {
       const existing = entries.get(id);

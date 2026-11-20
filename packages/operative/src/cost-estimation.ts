@@ -55,6 +55,12 @@ export interface AccumulatedCost {
   completionCost: number;
   cacheWriteCost: number;
   cacheReadCost: number;
+  /**
+   * `true` once a request ran on a switched model with no price. Its cost is unknown and is not in
+   * these figures (it is never counted at another model's rate), and a run whose figures are all
+   * zero with this set has no known cost at all ({@link reportedAccumulatedCost}).
+   */
+  unpriced?: true | undefined;
 }
 
 export interface CostEstimationOptions {
@@ -209,5 +215,34 @@ export function accumulateRequestCost(
     completionCost: (current?.completionCost ?? 0) + request.completionCost,
     cacheWriteCost: (current?.cacheWriteCost ?? 0) + request.cacheWriteCost,
     cacheReadCost: (current?.cacheReadCost ?? 0) + request.cacheReadCost,
+    ...(current?.unpriced === true ? { unpriced: true as const } : {}),
   };
+}
+
+/**
+ * Records that a request ran on a model with no price: its cost is unknown, so nothing is added,
+ * and the accumulator is marked so the run is not priced afterwards as if every request had been
+ * (an absent accumulator reads as a checkpoint from before costs were accumulated, which
+ * {@link seedAccumulatedCost} and the terminal estimate price at the run's own model).
+ */
+export function accumulateUnpricedRequest(current: AccumulatedCost | undefined): AccumulatedCost {
+  return {
+    promptCost: current?.promptCost ?? 0,
+    completionCost: current?.completionCost ?? 0,
+    cacheWriteCost: current?.cacheWriteCost ?? 0,
+    cacheReadCost: current?.cacheReadCost ?? 0,
+    unpriced: true,
+  };
+}
+
+/**
+ * The accumulator a run reports its cost from, or `undefined` when no request of it was priced:
+ * an accumulator marked unpriced that holds no cost is a run with an unknown cost, not a free one.
+ */
+export function reportedAccumulatedCost(
+  cost: AccumulatedCost | undefined,
+): AccumulatedCost | undefined {
+  if (cost === undefined) return undefined;
+  const known = cost.promptCost + cost.completionCost + cost.cacheWriteCost + cost.cacheReadCost;
+  return cost.unpriced === true && known === 0 ? undefined : cost;
 }
