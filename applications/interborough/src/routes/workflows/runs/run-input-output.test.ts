@@ -399,7 +399,7 @@ describe('the message in and the reply out of a chat run', () => {
     const view = render(Harness, {
       props: {
         task: taskFixture({ id: 'run-1', status: 'working' }),
-        answerHtml: '<p>The release is <strong>ready</strong>.</p>',
+        answer: 'The release is **ready**.',
         answerTruncated: true,
       },
     });
@@ -419,7 +419,7 @@ describe('the message in and the reply out of a chat run', () => {
     const view = render(Harness, {
       props: {
         task: taskFixture({ id: 'run-1', status: 'completed' }),
-        answerHtml: `<p>${'Four refunds are waiting for approval. '.repeat(30)}</p>`,
+        answer: 'Four refunds are waiting for approval. '.repeat(30),
       },
     });
     const reply = view.container.querySelector('.ib-run__answer') as HTMLElement;
@@ -438,7 +438,7 @@ describe('the message in and the reply out of a chat run', () => {
     const view = render(Harness, {
       props: {
         task: taskFixture({ id: 'run-1', status: 'completed' }),
-        answerHtml: '<p>Done.</p>',
+        answer: 'Done.',
       },
     });
 
@@ -451,7 +451,7 @@ describe('the message in and the reply out of a chat run', () => {
     const view = render(Harness, {
       props: {
         task: taskFixture({ id: 'run-1', status: 'completed' }),
-        answerHtml: '<p>Done.</p>',
+        answer: 'Done.',
         onShowRaw: () => (opened += 1),
       },
     });

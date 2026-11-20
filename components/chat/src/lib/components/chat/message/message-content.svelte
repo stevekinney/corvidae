@@ -1,6 +1,6 @@
 <script lang="ts" module>
   import type { HTMLAttributes } from 'svelte/elements';
-  import type { MarkdownNodeOverride } from './chat-message-parts.ts';
+  import type { MarkdownNodeOverride } from '@lostgradient/cinder';
 
   export type MessageContentProps = Omit<HTMLAttributes<HTMLDivElement>, 'class'> & {
     /** Raw markdown/text content to render */
@@ -21,9 +21,8 @@
 </script>
 
 <script lang="ts">
-  import { CodeBlock } from '@lostgradient/cinder';
+  import { CodeBlock, Markdown } from '@lostgradient/cinder';
   import { classNames } from '../../../utilities/class-names.ts';
-  import MarkdownPreview from './markdown-preview.svelte';
 
   let {
     content,
@@ -124,7 +123,7 @@
   {...rest}
 >
   {#if displayContent}
-    <MarkdownPreview content={displayContent} {markdownNode} />
+    <Markdown content={displayContent} {markdownNode} math class="message-content-preview" />
   {/if}
   {#if openFence}
     <!-- The open fence's code renders as it arrives: a caret after its final character, a
@@ -156,7 +155,7 @@
 
 <style>
   .message-content {
-    /* Typography inherited from MarkdownPreview component */
+    /* Typography inherited from Cinder's Markdown component */
     display: block;
     text-align: start;
   }

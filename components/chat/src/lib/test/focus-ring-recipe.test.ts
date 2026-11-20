@@ -87,7 +87,7 @@ const styles = {
   message: loadSvelteStyle('../components/chat/message/chat-message.svelte'),
   attachmentPreview: loadSvelteStyle('../components/chat/input/chat-attachment-preview.svelte'),
   messageAttachments: loadSvelteStyle('../components/chat/message/message-attachments.svelte'),
-  markdownTable: loadSvelteStyle('../components/chat/message/markdown-table-scroller.svelte'),
+  markdownTable: load('../../../../cinder/src/components/markdown/markdown.css'),
   searchBar: loadSvelteStyle('../components/chat/container/chat-search-bar.svelte'),
   toolCallTimeline: loadSvelteStyle('../components/chat/message/tool-call-timeline.svelte'),
   chatImplementation: loadSvelteStyle('../components/chat/container/chat.svelte'),
@@ -109,7 +109,7 @@ describe('Chat focus-ring recipes', () => {
     [
       'markdown table scroller',
       styles.markdownTable,
-      '.message-markdown-table-scroller:focus-visible',
+      '.cinder-markdown-table-scroller:focus-visible',
     ],
   ] as const;
 
