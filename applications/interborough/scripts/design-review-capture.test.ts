@@ -569,7 +569,7 @@ describe('capture file names', () => {
       async screenshot() {},
       url: () => `http://127.0.0.1:${E2E_PORT}/runs`,
       evaluate: async () => ({ viewport: { width: 768, height: 900 } }),
-      locator: () => ({ evaluate: async () => 0 }),
+      locator: () => ({ count: async () => 0, evaluate: async () => 0 }),
     };
 
     test('under one name, fails instead of overwriting the first screen', async () => {
