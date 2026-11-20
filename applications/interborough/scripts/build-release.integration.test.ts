@@ -5,6 +5,7 @@ import { cp, mkdir, mkdtemp, readdir, rm, symlink, writeFile } from 'node:fs/pro
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { CINDER_GENERATED_OUTPUTS } from '../../../scripts/ensure-cinder-generated.ts';
 import { digestOf } from '../src/host/panel-build.ts';
 import { prebuiltPanelSchema } from '../src/host/panel-mounts.ts';
 import {
@@ -97,6 +98,7 @@ async function releaseFixture(
     readonly invalidExportMap?: boolean;
     /** A package of {@link PANEL_RUNTIME_FIXTURE} the frozen install leaves out. */
     readonly missingPanelRuntime?: string;
+    readonly missingGeneratedCinderAsset?: string;
     readonly runtimeFailure?:
       | 'missing-link'
       | 'wrong-link'
@@ -111,6 +113,7 @@ async function releaseFixture(
 ) {
   const root = await mkdtemp(join(tmpdir(), 'interborough-release-fixture-'));
   const source = join(root, 'source');
+  const cinderDirectory = join(root, 'generated-cinder');
   const dependencies = join(root, 'dependencies');
   const sdk = join(dependencies, '@lostgradient', 'interborough-plugin');
   await mkdir(join(sdk, 'src', 'testing'), { recursive: true });
@@ -154,9 +157,18 @@ async function releaseFixture(
     await symlink('/tmp/interborough-release-missing-target', join(sdk, 'escape'));
   const buildArguments: string[][] = [];
   const commands: string[][] = [];
-  const command = async (arguments_: string[]): Promise<void> => {
+  const command = async (arguments_: string[], cwd?: string): Promise<void> => {
     commands.push(arguments_);
-    if (arguments_[1] === 'build') {
+    if (arguments_[1] === 'run' && arguments_[2] === 'metadata') {
+      if (cwd !== cinderDirectory)
+        throw new Error('Cinder must generate from the release checkout');
+      for (const generated of CINDER_GENERATED_OUTPUTS) {
+        if (generated === options.missingGeneratedCinderAsset) continue;
+        const path = join(cinderDirectory, generated);
+        await mkdir(dirname(path), { recursive: true });
+        await writeFile(path, `generated: ${generated}`);
+      }
+    } else if (arguments_[1] === 'build') {
       buildArguments.push(arguments_);
       if (options.commandFailure) throw new Error('fixture command failed');
       const output = arguments_[arguments_.indexOf('--outfile') + 1];
@@ -254,6 +266,7 @@ await new Promise(() => {});
     platform: 'darwin',
     architecture: 'arm64',
     runCommand: command,
+    cinderDirectory,
     buildApplication: async (options) => {
       const outdir = options?.outdir;
       if (outdir === undefined) throw new Error('missing browser output');
@@ -709,6 +722,11 @@ describe('release arguments', () => {
           expect(await Bun.file(join(runtime, name, file)).exists(), `${name}/${file}`).toBe(true);
         }
       }
+      for (const generated of CINDER_GENERATED_OUTPUTS) {
+        expect(await Bun.file(join(runtime, '@lostgradient/cinder', generated)).text()).toBe(
+          `generated: ${generated}`,
+        );
+      }
       // The staged files the host reads: the compiler and the panel kit's entry.
       expect(await Bun.file(join(runtime, 'svelte', 'compiler', 'index.js')).exists()).toBe(true);
       expect(
@@ -723,6 +741,23 @@ describe('release arguments', () => {
   });
 
   // spawn-free: the release fixture controls every child process boundary deterministically.
+  test('rejects a release missing a generated Cinder runtime asset', async () => {
+    const missingGeneratedCinderAsset = 'src/styles/tokens-base.css';
+    const fixture = await releaseFixture({ missingGeneratedCinderAsset });
+    const output = await mkdtemp(join(tmpdir(), 'interborough-release-missing-generated-'));
+    try {
+      expect(
+        await throwingRejectionOf(
+          buildRelease(['--version', '0.0.0-test', '--outdir', output], fixture.operations),
+        ),
+      ).toThrow('tokens-base.css');
+      expect(await readdir(output)).toEqual([]);
+    } finally {
+      await rm(fixture.root, { recursive: true, force: true });
+      await rm(output, { recursive: true, force: true });
+    }
+  });
+
   test.each(PANEL_RUNTIME_PACKAGES.map((name) => [name]))(
     'rejects a release whose frozen install has no %s to stage',
     async (name) => {
