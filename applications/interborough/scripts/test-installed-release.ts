@@ -70,7 +70,7 @@ type Acceptance = {
   readonly details?: Record<string, unknown>;
 };
 
-export type InstalledReleaseReceipt = {
+type InstalledReleaseReceipt = {
   readonly version: 1;
   readonly outcome: 'pass' | 'fail';
   readonly archive?: {

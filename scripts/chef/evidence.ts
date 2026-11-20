@@ -179,6 +179,14 @@ export interface VerificationRequest {
     argv: string[];
     reportPaths: string[];
     artifactPaths?: string[];
+    installedRelease?: {
+      receiptPath: string;
+      archivePath: string;
+      archiveDigest: string;
+      sourceRevision: string;
+      target: 'darwin-arm64';
+      configuration: { path: string; sha256: string }[];
+    };
   }[];
 }
 
@@ -521,6 +529,26 @@ export function collectLocalEvidence(
       )
         throw new EvidenceRequestError('verification request has invalid local path');
       else if (existsSync(resolve(safeCwd, path))) validateLocalPath(safeCwd, path);
+    if (item.risk === 'installed-artifacts') {
+      const receipt = run.installedRelease;
+      if (
+        receipt === undefined ||
+        !safeProviderInput(receipt.receiptPath) ||
+        !safeProviderInput(receipt.archivePath) ||
+        !/^[0-9a-f]{64}$/.test(receipt.archiveDigest) ||
+        !/^[0-9a-f]{40}$/.test(receipt.sourceRevision) ||
+        receipt.target !== 'darwin-arm64' ||
+        !Array.isArray(receipt.configuration) ||
+        !receipt.configuration.every(
+          (entry) => safeProviderInput(entry.path) && /^[0-9a-f]{64}$/.test(entry.sha256),
+        ) ||
+        existsSync(resolve(safeCwd, receipt.receiptPath))
+      )
+        throw new EvidenceRequestError(
+          'installed-release obligation has an invalid or stale receipt',
+        );
+    } else if (run.installedRelease !== undefined)
+      throw new EvidenceRequestError('non-artifact obligation has an installed-release receipt');
     return { item, run };
   });
   const inputPaths = [...new Set(obligations.flatMap((item) => item.relevantInputs))];
@@ -544,6 +572,25 @@ export function collectLocalEvidence(
         const path = validateLocalPath(safeCwd, artifactPath);
         return { path: relative(safeCwd, path), digest: sha256(readFileSync(path)) };
       });
+      let installedReleasePassed = true;
+      if (run.installedRelease !== undefined) {
+        const receiptPath = validateLocalPath(safeCwd, run.installedRelease.receiptPath);
+        const archivePath = validateLocalPath(safeCwd, run.installedRelease.archivePath);
+        const receipt = JSON.parse(readFileSync(receiptPath, 'utf8')) as unknown;
+        const problems = compareInstalledReleaseReceipt(receipt, {
+          sourceRevision: run.installedRelease.sourceRevision,
+          target: run.installedRelease.target,
+          archiveDigest: run.installedRelease.archiveDigest,
+          configuration: run.installedRelease.configuration,
+        });
+        installedReleasePassed =
+          problems.length === 0 &&
+          sha256(readFileSync(archivePath)) === run.installedRelease.archiveDigest;
+        artifacts.push(
+          { path: relative(safeCwd, receiptPath), digest: sha256(readFileSync(receiptPath)) },
+          { path: relative(safeCwd, archivePath), digest: sha256(readFileSync(archivePath)) },
+        );
+      }
       const after = localProvenance(safeCwd, request.base, inputPaths);
       const stableInputs = before.inputIdentity === after.inputIdentity;
       const identityMatches =
@@ -562,7 +609,7 @@ export function collectLocalEvidence(
           !stableInputs ||
           lacksRequiredTestProof
             ? 'pending'
-            : result.exitCode === 0 && assertionPassed !== false
+            : result.exitCode === 0 && assertionPassed !== false && installedReleasePassed
               ? 'pass'
               : 'fail',
         revision: after.revision,
