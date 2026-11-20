@@ -61,6 +61,8 @@ type HostState = {
   durableCancelled: string[];
   /** The runs whose live workflow claim another process now holds. */
   claimedElsewhere: Set<string>;
+  /** Runs after a claim read and before the write it fences: where a takeover can land. */
+  afterClaimRead?: (taskId: string) => Promise<void> | void;
 };
 
 function build(
@@ -116,7 +118,15 @@ function build(
       held.durableCancelled.push(taskId);
       return held.durable;
     },
-    claimedElsewhere: async (taskId) => held.claimedElsewhere.has(taskId),
+    // The claim's holder record lives in the registry's own store here, as Weft's lives in the
+    // store Bureau's registry shares; it is read before `elsewhere` is judged, as the Bureau does.
+    claimFence: async (taskId) => {
+      const key = `claim-holder:${taskId}`;
+      const expectedValue = await kv.get(key);
+      const elsewhere = held.claimedElsewhere.has(taskId);
+      await held.afterClaimRead?.(taskId);
+      return { elsewhere, holder: { key, expectedValue } };
+    },
     sleep: (milliseconds) =>
       new Promise<void>((resolve) => {
         runtime.timers.setTimeout(resolve, milliseconds);
@@ -2030,6 +2040,26 @@ describe('usage and cost (COR-2524)', () => {
     held.claimedElsewhere.delete('run-1');
     await registry.recordUsage('run-1', SECOND_STEP);
     expect(await viewField(registry, 'run-1', 'usage')).toEqual(SECOND_STEP);
+  });
+
+  it('(m) loses a write to a takeover that lands between its claim read and its swap, and the retry sees the successor', async () => {
+    const { registry, held, kv } = build();
+    await admit(registry, 'run-1');
+    await registry.recordUsage('run-1', FIRST_STEP);
+
+    // The successor takes the claim after this process judged it held and before its write swaps:
+    // the holder record it read is stale, so the swap must fail instead of landing on the successor's task.
+    let reads = 0;
+    held.afterClaimRead = async (taskId) => {
+      reads += 1;
+      if (reads > 1) return;
+      held.claimedElsewhere.add(taskId);
+      await kv.set(`claim-holder:${taskId}`, 'successor');
+    };
+    await registry.recordUsage('run-1', SECOND_STEP);
+
+    expect(reads).toBe(2);
+    expect(await viewField(registry, 'run-1', 'usage')).toEqual(FIRST_STEP);
   });
 
   it('writes nothing for a task with no record', async () => {

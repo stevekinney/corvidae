@@ -1572,9 +1572,9 @@ describe('createSubagentTool', () => {
     });
 
     it('COR-2526: a run delegating through a tool with no parentContext is waiting on the child, not stalled', async () => {
-      // The tool dispatches into the run's own registry and puts no event on the run's emitter, so
-      // the run's child wait must come from the registry.
-      const { agent: child, settle } = makeControllableAgent();
+      // The tool has no `parentContext` and the run has no child registry: the child is announced on
+      // the emitter of the run that called the tool, which is what the run's liveness listens to.
+      const { agent: child, settle, calls } = makeControllableAgent();
       const tool = createSubagentTool({
         name: 'delegate',
         description: 'Delegate',
@@ -1595,10 +1595,9 @@ describe('createSubagentTool', () => {
         },
         tools: { delegate: tool },
       });
-      const registry = createChildRunRegistry();
-      const run = parent.run('go', { childRegistry: registry });
+      const run = parent.run('go');
 
-      await waitUntil(() => registry.children().some((entry) => entry.status === 'running'));
+      await waitUntil(() => calls.length > 0);
       expect(run.snapshot().declaredWait).toMatchObject({ reason: 'child' });
       expect(run.snapshot().status).toBe('waiting');
 

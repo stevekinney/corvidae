@@ -136,10 +136,7 @@ export function reattachDurableActiveRun(
   // a wait from the checkpoint — but this still covers a reattached run
   // that calls `requestHumanInput` again during its own remaining lifetime.
   const stopHumanWaitLiveness = wireHumanWaitLiveness(emitter, liveness);
-  const stopChildWaitLiveness = wireChildWaitLiveness(emitter, liveness, {
-    registry: childRegistry,
-    runId,
-  });
+  const stopChildWaitLiveness = wireChildWaitLiveness(emitter, liveness);
 
   // The awaited recovery hook already forwards toolbox actions into `emitter`.
   // Reattach owns the teardown so the subscription stops on completion, plus

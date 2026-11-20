@@ -5,11 +5,7 @@ import {
 } from '@lostgradient/lifecycle';
 import { describe, expect, it } from 'bun:test';
 
-import {
-  type ChildRunDescriptor,
-  type ChildRunRegistry,
-  createChildRunRegistry,
-} from '../child-run';
+import type { ChildRunDescriptor, ChildRunRegistry } from '../child-run';
 import { wireChildWaitLiveness } from '../durable/active-run-event-surface';
 import {
   ChildWorkflowAbortedEvent,
@@ -757,9 +753,13 @@ describe('createActiveRunLiveness', () => {
     // One child is still outstanding: the wait stands.
     liveness.endChildWait('child-1');
     expect(liveness.snapshot().assessment).toBe('legitimately-waiting');
-    // The last one settles and the tool call is still silent: the silence is a stall.
+    // The last one settles: that is the progress the tool call was waiting for, so the silence the
+    // wait excused is not a stall the instant it ends.
     liveness.endChildWait('child-2');
     expect(liveness.snapshot().declaredWait).toBeUndefined();
+    expect(liveness.snapshot().assessment).toBe('healthy');
+    // Silence after the child's end is a stall again, by the tool call's own policy.
+    for (let tick = 0; tick < 6; tick += 1) clock.advance(TOOL_CHECK_INTERVAL_MS);
     expect(liveness.snapshot().assessment).toBe('alive-but-stalled');
     // A child nobody started changes nothing.
     liveness.endChildWait('child-3');
@@ -816,68 +816,6 @@ describe('createActiveRunLiveness', () => {
     );
     expect(liveness.snapshot().declaredWait).toBeUndefined();
 
-    liveness.dispose();
-  });
-
-  it('declares the wait from the run’s child registry when no child event reaches its emitter (COR-2526)', () => {
-    // `createSubagentTool` without a `parentContext` dispatches into the run's own registry (the
-    // per-execution context supplies it) and dispatches no child event onto the run's emitter.
-    const clock = createManualClock();
-    const liveness = createActiveRunLiveness({ id: 'run-1', durability: 'process-local', clock });
-    const emitter = new CompletableEventTarget<CombinedOperativeEventMap>();
-    const registry = createChildRunRegistry();
-    const stop = wireChildWaitLiveness(emitter, liveness, { registry, runId: 'run-1' });
-    const child = (id: string, parentId: string) => ({
-      id,
-      parentId,
-      agentName: 'child',
-      durable: false,
-      abort: () => undefined,
-    });
-
-    liveness.beginToolCall();
-    registry.register(child('child-1', 'run-1'));
-    expect(liveness.snapshot().declaredWait).toMatchObject({ reason: 'child', owner: 'child-1' });
-    for (let tick = 0; tick < 6; tick += 1) clock.advance(TOOL_CHECK_INTERVAL_MS);
-    expect(liveness.snapshot().assessment).toBe('legitimately-waiting');
-
-    // A child of another run sharing the registry is not this run's wait, in either direction.
-    registry.register(child('other-1', 'run-2'));
-    registry.settle('other-1', 'completed');
-    expect(liveness.snapshot().declaredWait).toMatchObject({ reason: 'child', owner: 'child-1' });
-
-    // The wait ends when the child settles, however it ends; a silent tool call is then a stall.
-    registry.settle('child-1', 'failed');
-    expect(liveness.snapshot().declaredWait).toBeUndefined();
-    expect(liveness.snapshot().assessment).toBe('alive-but-stalled');
-
-    // A stopped wiring hears no later child.
-    stop();
-    registry.register(child('child-2', 'run-1'));
-    expect(liveness.snapshot().declaredWait).toBeUndefined();
-
-    liveness.dispose();
-  });
-
-  it('declares the wait for a child the registry already holds when the wiring is made (COR-2526)', () => {
-    const clock = createManualClock();
-    const liveness = createActiveRunLiveness({ id: 'run-1', durability: 'process-local', clock });
-    const registry = createChildRunRegistry();
-    registry.register({
-      id: 'child-1',
-      parentId: 'run-1',
-      agentName: 'child',
-      durable: false,
-      abort: () => undefined,
-    });
-    const stop = wireChildWaitLiveness(
-      new CompletableEventTarget<CombinedOperativeEventMap>(),
-      liveness,
-      { registry, runId: 'run-1' },
-    );
-    expect(liveness.snapshot().declaredWait).toMatchObject({ reason: 'child', owner: 'child-1' });
-
-    stop();
     liveness.dispose();
   });
 

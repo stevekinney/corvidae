@@ -57,7 +57,7 @@ import {
   SkillRejectedEvent,
 } from './skills';
 import { MemoryStorage, textValueStore } from '@lostgradient/storage';
-import { type Engine, Mailbox, type RecoveredWorkflowInfo } from '@lostgradient/weft';
+import { type Engine, KEYS, Mailbox, type RecoveredWorkflowInfo } from '@lostgradient/weft';
 import { type Tool, type ToolRequestContext } from 'armorer';
 import type { PluginHost } from '@lostgradient/interborough-plugin';
 import { shutdownThenRethrow } from './composition-failure';
@@ -3760,10 +3760,17 @@ async function constructBureau<const D extends AgentDefinitions>(
       engineRuns: () => engineRunTasks.list(),
       holdsEngineRun: (runId) => engineRunTasks.holds(runId),
       // COR-2526: a live claim another process holds is the same read recovery makes of a run
-      // "preparing elsewhere"; a lapsed or absent claim leaves the writer the holder.
-      claimedElsewhere: async (runId) => {
+      // "preparing elsewhere"; a lapsed or absent claim leaves the writer the holder. The holder
+      // record is read first, from the store the engine claims in, so a write can require it
+      // unchanged: Weft rewrites it at a takeover, a renewal and a release.
+      claimFence: async (runId) => {
+        const key = KEYS.workflowOwnerHolder(runId);
+        const observed = (await runtime.kv?.get(key)) ?? null;
         const claim = await runtime.durable?.engine.claimHolder(runId);
-        return claim?.heldByAnyProcess === true && !claim.heldByThisProcess;
+        return {
+          elsewhere: claim?.heldByAnyProcess === true && !claim.heldByThisProcess,
+          holder: { key, expectedValue: observed },
+        };
       },
     },
   });

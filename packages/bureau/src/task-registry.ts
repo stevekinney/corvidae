@@ -470,13 +470,23 @@ export interface TaskRegistryHost {
   /** COR-2423 — whether the engine still holds `runId` as one of those runs, so a page keeps it. */
   readonly holdsEngineRun?: ((runId: string) => Promise<boolean>) | undefined;
   /**
-   * COR-2526 — whether another process now holds the live workflow claim of `taskId`'s run: this
-   * process was deposed and the run runs there. A live write of the run's usage, stall or loop is
-   * the holder's, so one asked for by a process that is no longer it is dropped. `false` when no
-   * claim record exists, the claim has lapsed, or the Bureau has no `workflow-lease` ownership;
-   * absent for a Bureau without a durable engine. A rejection propagates to the write's caller.
+   * COR-2526 — the state of the workflow claim of `taskId`'s run, read for a live write of the
+   * run's usage, stall or loop, which only the run's current holder may make. `elsewhere` is
+   * whether another process now holds the live claim (this process was deposed and the run runs
+   * there); `holder` is the claim's holder record as it was read, which the write's
+   * compare-and-swap requires to be unchanged, so a takeover between this read and the write
+   * fails the write, and the retry reads the claim again. The record is read before `elsewhere` is
+   * judged. `elsewhere` is `false` when no claim record exists, the claim has lapsed, or the Bureau
+   * has no `workflow-lease` ownership; the function is absent for a Bureau without a durable
+   * engine. A rejection propagates to the write's caller.
    */
-  readonly claimedElsewhere?: ((taskId: string) => Promise<boolean>) | undefined;
+  readonly claimFence?: ((taskId: string) => Promise<TaskClaimFence>) | undefined;
+}
+
+/** The claim a live write is fenced on ({@link TaskRegistryHost.claimFence}). */
+export interface TaskClaimFence {
+  readonly elsewhere: boolean;
+  readonly holder: { readonly key: string; readonly expectedValue: string | null };
 }
 
 /** The receipt `bureau.tasks.cancel` answers with. */
@@ -1164,26 +1174,6 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
     return track(queued);
   }
 
-  /**
-   * COR-2526 — queues a usage, stall or loop write that only the run's current holder may make.
-   * Under `workflow-lease` a process that loses its claim (its renewal failed after a pause) keeps
-   * driving the run until the run settles, so its liveness watchdog goes on writing; once another
-   * process holds the claim those writes would land on the successor's record. The claim is read
-   * inside the queued write, immediately before its compare-and-swap, and a write from a process
-   * that another live claim has replaced is dropped: `dropped` is the answer, and nothing is
-   * written or announced. The read is not atomic with the write: a deposition inside that window
-   * (the record read and the compare-and-swap that follow the claim read) lets one stale write
-   * through, and it stands until the successor's next change of the same field or the run's
-   * settlement, which drops every attention mark. Fencing the write on the claim itself would need
-   * Weft to export the claim's fence; that is a published surface, not worth a race this narrow.
-   */
-  function queueHolderWrite<T>(taskId: string, dropped: T, write: () => Promise<T>): Promise<T> {
-    return queueLiveWrite(taskId, async () => {
-      if ((await host.claimedElsewhere?.(taskId)) === true) return dropped;
-      return write();
-    });
-  }
-
   /** The record with `attention` as given, left out of the record altogether when it holds nothing. */
   function withAttention(record: TaskRecord, attention: StoredTaskAttention): TaskRecord {
     const { attention: _previous, ...rest } = record;
@@ -1210,15 +1200,27 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
     return raw === null ? undefined : readable(key, raw);
   }
 
-  /** Applies `mutate` to the stored record with a compare-and-swap; no record, no write. */
+  /**
+   * Applies `mutate` to the stored record with a compare-and-swap; no record, no write. With
+   * `fenced`, the write is the run's holder's alone (COR-2526). Under `workflow-lease` a process
+   * that loses its claim (its renewal failed after a pause) keeps driving the run until it
+   * settles, so its liveness watchdog goes on writing usage, stalls and loops, which would land on
+   * the successor's record. The claim is read before each attempt; a run another process holds
+   * writes nothing (and `mutate` is never called); and the swap also requires the claim's holder
+   * record to be unchanged ({@link TaskRegistryHost.claimFence}), so a takeover after the read fails
+   * the swap and the retry sees the successor.
+   */
   async function update(
     taskId: string,
     mutate: (record: TaskRecord) => TaskRecord | undefined,
     counted = true,
     alsoWrite?: (next: TaskRecord) => readonly TextValueStoreBatchOperation[],
+    fenced = false,
   ): Promise<boolean> {
     const key = recordKey(taskId);
     for (let attempt = 0; attempt < MAX_UPDATE_ATTEMPTS; attempt += 1) {
+      const claim = fenced ? await host.claimFence?.(taskId) : undefined;
+      if (claim?.elsewhere === true) return false;
       const raw = await kv.get(key);
       if (raw === null) return false;
       const current = readable(key, raw);
@@ -1227,7 +1229,7 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
       const next = mutate(current);
       if (next === undefined) return true;
       const committed = await kv.conditionalBatch(
-        [{ key, expectedValue: raw }],
+        [{ key, expectedValue: raw }, ...(claim === undefined ? [] : [claim.holder])],
         [
           {
             type: 'set',
@@ -2011,7 +2013,7 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
     },
 
     recordUsage(taskId, usage) {
-      return queueHolderWrite(taskId, undefined, async () => {
+      return queueLiveWrite(taskId, async () => {
         await update(
           taskId,
           (record) => {
@@ -2020,12 +2022,14 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
             return sameUsage(record.usage, usage) ? undefined : { ...record, usage };
           },
           false,
+          undefined,
+          true,
         );
       });
     },
 
     recordStall(taskId, stalledAt) {
-      return queueHolderWrite(taskId, false, async () => {
+      return queueLiveWrite(taskId, async () => {
         let changed = false;
         await update(
           taskId,
@@ -2042,13 +2046,15 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
             });
           },
           false,
+          undefined,
+          true,
         );
         return changed;
       });
     },
 
     recordLooping(taskId, at) {
-      return queueHolderWrite(taskId, false, async () => {
+      return queueLiveWrite(taskId, async () => {
         let changed = false;
         await update(
           taskId,
@@ -2061,6 +2067,8 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
             return withAttention(record, { ...record.attention, loopingSince: at });
           },
           false,
+          undefined,
+          true,
         );
         return changed;
       });

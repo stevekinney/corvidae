@@ -396,9 +396,7 @@ export function createActiveRun(
   //
   // COR-2526 — a wait on a child run is not durable-only: an in-process run delegates to a
   // subagent too, and the tool call awaiting it reports no progress of its own.
-  cleanups.push(
-    wireChildWaitLiveness(emitter, liveness, { registry: options.childRegistry, runId }),
-  );
+  cleanups.push(wireChildWaitLiveness(emitter, liveness));
 
   // C3 — curated tool.* bubble events stamped with {agentName, runId, step}.
   // We track the current step by listening to StepStartedEvent (which fires at

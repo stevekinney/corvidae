@@ -575,6 +575,10 @@ export function createActiveRunLiveness(options: ActiveRunLivenessOptions): Acti
       if (!childWaits.delete(childRunId) || childWaits.size > 0) return;
       // Only a wait this run declared for its children ends here.
       if (declaredWait?.reason !== 'child' || status !== 'waiting') return;
+      // The child's end is the progress the tool call that awaited it was waiting for: the call
+      // is about to return the child's result, and the silence it kept while the child ran, which
+      // the declared wait excused, must not read as a stall the instant the wait ends.
+      toolWatchdog?.recordPulse('tool-progress', 0, { childRunId });
       declaredWait = undefined;
       status = 'running';
       lastTransitionAt = runtime.clock.nowISO();

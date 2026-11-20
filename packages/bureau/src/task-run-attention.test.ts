@@ -10,7 +10,12 @@
  * runs, and B is the process that does not.
  */
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
-import { createAgent, stopWhen, TOOL_CALL_POLICY } from '@lostgradient/operative';
+import {
+  createAgent,
+  createSubagentTool,
+  stopWhen,
+  TOOL_CALL_POLICY,
+} from '@lostgradient/operative';
 import { MemoryStorage } from '@lostgradient/storage';
 import { waitUntil } from '@lostgradient/testing/wait-until';
 import { createTool, createToolbox, type Toolbox } from 'armorer';
@@ -274,6 +279,74 @@ describe('a stalled run (COR-2526)', () => {
     expect(await world.peerField(task.id, 'attention')).toEqual([]);
     expect(await world.peerStoredAttention(task.id)).toBeUndefined();
     expect(world.stalled).toHaveLength(1);
+  });
+});
+
+describe('a run delegating to a subagent (COR-2526)', () => {
+  it('is waiting on the child, not stalled, through a subagent tool built with no parentContext', async () => {
+    // The tool dispatches into the run's own child registry and puts no child event on the run's
+    // emitter, so the wait on the child must come from the registry. The child outlasts every stall
+    // policy of the tool call that awaits it.
+    const runtime = createManualRuntimeServices({ origin: ORIGIN });
+    const childEntered = Promise.withResolvers<void>();
+    const childRelease = Promise.withResolvers<void>();
+    const child = createAgent({
+      generate: async () => {
+        childEntered.resolve();
+        await childRelease.promise;
+        return { content: 'Child done.', toolCalls: [] };
+      },
+      toolbox: createToolbox([]) as unknown as Toolbox,
+      stopWhen: stopWhen.noToolCalls(),
+    });
+    const delegate = createSubagentTool({
+      name: 'delegate',
+      version: '1.0.0',
+      description: 'Delegate',
+      agent: child,
+      agentName: 'child',
+      input: z.object({ q: z.string() }),
+      toAgentInput: (params) => params.q,
+    });
+    const world = await openBureau({
+      agents: {
+        parent: createAgent({
+          generate: async ({ step }: { step: number }) =>
+            step < 1
+              ? { content: '', toolCalls: [{ name: 'delegate', arguments: { q: 'Go.' } }] }
+              : { content: 'Done.', toolCalls: [] },
+          tools: { delegate },
+          stopWhen: stopWhen.noToolCalls(),
+        }),
+      },
+      bureauOptions: { runtime, maintenance: 'manual' },
+    });
+    opened.push(world);
+    const stalled: RunStalledEvent[] = [];
+    world.bureau.addEventListener('run.stalled', (event) => stalled.push(event));
+
+    const task = await world.bureau.tasks.start('parent', 'Delegate.');
+    await childEntered.promise;
+    const assessments: string[] = [];
+    const subscription = world.bureau.tasks.snapshot(task.id, (snapshot) =>
+      assessments.push(snapshot.assessment),
+    );
+
+    try {
+      // Far past three missed pulses of the tool call that awaits the child.
+      for (let check = 0; check < 8; check += 1) await runtime.advance(CHECK_MILLISECONDS);
+      expect(assessments.at(-1)).toBe('legitimately-waiting');
+    } finally {
+      // A failed assertion must not leave the child held, or the Bureau cannot be disposed.
+      childRelease.resolve();
+    }
+    await task.result();
+    subscription.unsubscribe();
+    await world.bureau.internals.whenTaskRecorded(task.id);
+    await world.bureau.internals.taskRegistry.flush();
+    expect(assessments).not.toContain('alive-but-stalled');
+    expect(stalled).toEqual([]);
+    expect(await fieldOf(world.bureau, task.id, 'attention')).toEqual([]);
   });
 });
 
