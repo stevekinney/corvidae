@@ -9,7 +9,7 @@ import { definePlugin, type PluginWorkflow } from '@lostgradient/interborough-pl
 import { quietFor, waitUntil } from '@lostgradient/testing/wait-until';
 import { MemoryStorage } from '@lostgradient/storage';
 import { decode, KEYS, workflow } from '@lostgradient/weft';
-import { afterEach, describe, expect, it } from 'bun:test';
+import { afterEach, describe, expect, it, spyOn } from 'bun:test';
 import { z } from 'zod';
 
 import { AGENT_STEP } from '../../testing/workflow-file-fixtures.test-support.ts';
@@ -207,6 +207,29 @@ describe('creating a schedule for a workflow', () => {
     expect(status(await create(served, { workflowType: 'digest' }, 'alice-key'))).toBe(404);
 
     expect(await scheduleTotal(served)).toBe(before);
+  });
+
+  it('is answered Unavailable, naming the schedule that exists, when the read after the write fails, so a retry does not make a second one', async () => {
+    const served = await serve();
+    const engine = served.bureau.durableEngine()!;
+    const registered = spyOn(engine, 'schedule');
+    const reading = spyOn(engine, 'getSchedule').mockImplementation(async (scheduleId) => {
+      // Only the read that follows the write is lost; the listing below reads as it always does.
+      if (registered.mock.calls.length > 0) throw new Error(`read of ${scheduleId} lost`);
+      return null;
+    });
+
+    const lost = await create(served, { workflowType: 'kit:echo' });
+    reading.mockRestore();
+    registered.mockRestore();
+
+    expect(status(lost)).toBe(503);
+    const listed = await call(served, 'list', {}, 'operator-key');
+    const schedules = (listed.result!['schedules'] as Array<{ id: string }>).filter(
+      (entry) => entry.id !== 'bureau-workflow-schedule:digest:1',
+    );
+    expect(schedules).toHaveLength(1);
+    expect(lost.error?.message).toContain(schedules[0]!.id);
   });
 
   it('refuses a workflowInput the workflow’s schema refuses, and stores nothing', async () => {
@@ -734,6 +757,39 @@ describe('changing what a schedule runs', () => {
     expect(await served.bureau.ownerOf({ kind: 'run', id: agentRunId })).toBe('api-key:operator');
   });
 
+  it('moves an agent schedule that continues a chat onto a workflow that overlaps, as the chat is no part of the workflow', async () => {
+    const served = await serve();
+    const engine = served.bureau.durableEngine()!;
+    const id = await created(
+      served,
+      { agentName: 'writer', input: 'hello', continueChat: true },
+      'operator-key',
+    );
+    // The chat and an overlap of `allow` stay refused for an agent.
+    const refused = await call(
+      served,
+      'update',
+      { scheduleId: id, spec: '2h', overlap: 'allow' },
+      'operator-key',
+    );
+    expect(status(refused)).toBe(400);
+
+    const moved = await call(
+      served,
+      'update',
+      { scheduleId: id, spec: '2h', workflowType: 'kit:echo', overlap: 'allow' },
+      'operator-key',
+    );
+    expect(moved.error).toBeUndefined();
+    const read = await viewOf(served, id, 'operator-key');
+    expect(read).toMatchObject({
+      target: { kind: 'workflow', workflowType: 'kit:echo' },
+      overlap: 'allow',
+      continuesChat: false,
+    });
+    expect((await readStored(engine, id))['input']).toBeNull();
+  });
+
   it('refuses a mixed target, a workflow it may not start, and a field of the other kind, and writes nothing', async () => {
     const served = await serve();
     const agentId = await created(served, { agentName: 'writer', input: 'hello' }, 'operator-key');
@@ -762,9 +818,11 @@ describe('changing what a schedule runs', () => {
     expect(
       status(await update(agentId, { workflowType: 'kit:echo' }, 'schedules-writer-key')),
     ).toBe(404);
-    expect(
-      status(await update(workflowId, { workflowInput: { n: 1 } }, 'schedules-writer-key')),
-    ).toBe(404);
+    const inputOnly = await update(workflowId, { workflowInput: { n: 1 } }, 'schedules-writer-key');
+    expect(status(inputOnly)).toBe(404);
+    // The refusal names the workflow the schedule runs, never the schedule's own id.
+    expect(inputOnly.error?.message).toContain('kit:echo');
+    expect(inputOnly.error?.message).not.toContain(workflowId);
     // The schema judges the input of an update as it judges a creation's.
     const strictId = await created(served, {
       workflowType: 'kit:strict',

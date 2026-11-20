@@ -1144,8 +1144,14 @@ export const schedulesUpdateOperation = defineOperation<
     assertKnownTimeZone(input.timeZone);
     // A workflow target is judged as `bureau.workflows.start` judges it, for the one that is named
     // and for a `workflowInput` given to the workflow a schedule already runs.
-    if (input.workflowType !== undefined || input.workflowInput !== undefined) {
-      workflowsForSchedule(host, principal, input.workflowType ?? input.scheduleId);
+    if (input.workflowType !== undefined) {
+      workflowsForSchedule(host, principal, input.workflowType);
+    } else if (input.workflowInput !== undefined) {
+      const stored = await host.schedules.get(input.scheduleId);
+      if (stored === null || stored === undefined) {
+        throw resourceNotFound('schedule', input.scheduleId);
+      }
+      workflowsForSchedule(host, principal, bureauNameOf(stored.workflowType));
     }
     // An agent the caller may not name (COR-1904) is as unknown to it as one the catalog lacks.
     if (

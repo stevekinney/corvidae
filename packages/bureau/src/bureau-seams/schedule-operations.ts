@@ -312,7 +312,13 @@ export function createScheduleOperations<D extends AgentDefinitions>(
         metadata: workflowScheduleMetadata(owner),
       },
     );
-    const summary = await engine.getSchedule(scheduleId);
+    // The schedule is registered, so a read that fails or finds nothing loses only its locator.
+    let summary;
+    try {
+      summary = await engine.getSchedule(scheduleId);
+    } catch (cause) {
+      throw new ScheduleLocatorUnavailableError(scheduleId, { cause });
+    }
     if (summary === null) throw new ScheduleLocatorUnavailableError(scheduleId);
     return summary;
   }
@@ -935,9 +941,14 @@ export function createScheduleOperations<D extends AgentDefinitions>(
     // A chat Bureau names itself is unguessable and not yet made (see `createSchedule`).
     const allocatedChat =
       update.continueChat === true ? runtimeServices.identifiers.next('session') : undefined;
-    const nextSession =
-      allocatedChat ??
-      (update.sessionId === undefined ? storedInput?.sessionId : (update.sessionId ?? undefined));
+    // An update that moves the schedule onto a workflow leaves the agent's chat behind: the chat
+    // checks below judge only a schedule that runs an agent when the update is done.
+    const nextSession = changesTarget
+      ? undefined
+      : (allocatedChat ??
+        (update.sessionId === undefined
+          ? storedInput?.sessionId
+          : (update.sessionId ?? undefined)));
     if (update.sessionId !== undefined && update.sessionId !== null) {
       const sessionId = update.sessionId.trim();
       rejectReservedIdentifier('"sessionId"', sessionId);
