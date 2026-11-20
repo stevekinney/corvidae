@@ -330,7 +330,9 @@ describe('Skeleton loading timing', () => {
         ".cinder-skeleton-group[data-cinder-variant='card'] > .cinder-skeleton-lines",
       );
       expect(surface.get('padding')).toBe('var(--cinder-density-pad-card)');
-      expect(surface.get('border')).toBe('1px solid var(--cinder-border-muted)');
+      expect(surface.get('border')).toBe(
+        'var(--cinder-border-width) solid var(--cinder-border-muted)',
+      );
     });
 
     test('a page’s own placeholder still takes the line in the block it marks', () => {
@@ -698,12 +700,14 @@ describe('Skeleton grouped variant', () => {
   test('a list that leads with a day band places the slow-load line under the band', () => {
     const flat = skeletonCss.replace(/\s+/g, ' ');
     expect(flat).toContain(
-      ".cinder-skeleton-group[data-cinder-variant='list']:has( > .cinder-skeleton-list > .cinder-skeleton-day-band:first-child ) > .cinder-skeleton-status { margin-block-start: calc( var(--cinder-text-xs) * var(--cinder-leading-normal) + 2 * var(--cinder-space-2) + 1px );",
+      ".cinder-skeleton-group[data-cinder-variant='list']:has( > .cinder-skeleton-list > .cinder-skeleton-day-band:first-child ) > .cinder-skeleton-status { margin-block-start: calc( var(--cinder-text-xs) * var(--cinder-leading-normal) + 2 * var(--cinder-space-2) + var(--cinder-border-width) );",
     );
     // The band is that tall: its padding, one xs line box (its bar sits in one) and its rule.
     const band = declarationsFor(skeletonCss, '.cinder-skeleton-day-band');
     expect(band.get('padding-block')).toBe('var(--cinder-space-2)');
-    expect(band.get('border-block-end')).toBe('1px solid var(--cinder-border-muted)');
+    expect(band.get('border-block-end')).toBe(
+      'var(--cinder-border-width) solid var(--cinder-border-muted)',
+    );
   });
 });
 

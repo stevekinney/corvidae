@@ -48,13 +48,13 @@
   .skeleton-still-loading {
     display: flex;
     flex-direction: column;
-    gap: 1.5rem;
-    padding: 1rem;
+    gap: var(--cinder-space-6);
+    padding: var(--cinder-space-4);
   }
 
   section {
     display: flex;
     flex-direction: column;
-    gap: 0.75rem;
+    gap: var(--cinder-space-3);
   }
 </style>

@@ -41,19 +41,21 @@
 
 <style>
   .empty-state-row-action {
+    --fixture-narrow-column: 22rem;
+
     display: flex;
     flex-direction: column;
-    gap: 1.5rem;
-    padding: 1rem;
+    gap: var(--cinder-space-6);
+    padding: var(--cinder-space-4);
   }
 
   .column {
     display: flex;
     flex-direction: column;
-    gap: 0.75rem;
+    gap: var(--cinder-space-3);
   }
 
   .column[data-column='narrow'] {
-    max-inline-size: 22rem;
+    max-inline-size: var(--fixture-narrow-column);
   }
 </style>

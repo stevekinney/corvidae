@@ -372,7 +372,8 @@
     )
     > .cinder-skeleton-status {
     margin-block-start: calc(
-      var(--cinder-text-xs) * var(--cinder-leading-normal) + 2 * var(--cinder-space-2) + 1px
+      var(--cinder-text-xs) * var(--cinder-leading-normal) + 2 * var(--cinder-space-2) +
+        var(--cinder-border-width)
     );
   }
 
