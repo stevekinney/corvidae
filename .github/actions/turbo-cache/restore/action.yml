@@ -33,10 +33,6 @@ runs:
         # Turborepo's default, written out so a change of its default cannot move the cache away
         # from the path this action saves.
         echo "TURBO_CACHE_DIR=$GITHUB_WORKSPACE/.turbo/cache" >> "$GITHUB_ENV"
-        # Test tasks hash this (turbo.json `env`), so a test result from another platform, such as
-        # a macOS run through the shared remote cache, never stands in for this runner's. Lint,
-        # type-check and generated files leave it out and are shared across platforms.
-        echo "CORVIDAE_TEST_PLATFORM=${RUNNER_OS}-${RUNNER_ARCH}" >> "$GITHUB_ENV"
     - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: .turbo/cache
