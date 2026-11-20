@@ -742,7 +742,8 @@ test.describe('/capabilities tool page, on a dark system', () => {
       .getByTestId('tool-input-schema')
       .locator(".cinder-schema-view__source pre.shiki span[style*='--shiki-dark']");
     await expect(tokens.first()).toBeVisible();
-    // Each token is drawn in a colour other than the light one Shiki wrote inline beside its dark one.
+    // Each token is drawn in a colour other than the light one Shiki wrote beside its dark one. Shiki
+    // writes both as variables (`--shiki-light`, `--shiki-dark`), and `light-dark()` picks one.
     const mismatches = await tokens.evaluateAll((spans) => {
       const probe = document.createElement('span');
       document.body.append(probe);
@@ -751,7 +752,7 @@ test.describe('/capabilities tool page, on a dark system', () => {
         return getComputedStyle(probe).color;
       };
       const wrong = spans.flatMap((span) => {
-        const light = span.style.color;
+        const light = span.style.getPropertyValue('--shiki-light').trim();
         const dark = span.style.getPropertyValue('--shiki-dark').trim();
         if (light === '' || dark === '' || resolve(light) === resolve(dark)) return [];
         const drawn = getComputedStyle(span).color;

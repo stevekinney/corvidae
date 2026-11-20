@@ -294,6 +294,21 @@ export const CONTRACT: Record<string, ComponentContract> = {
     snippets: {},
   },
 
+  // Markdown source rendered as formatted content, with a policy for images and links.
+  markdown: {
+    kind: 'intersection',
+    html_attrs: 'HTMLAttributes',
+    props: {
+      content: { optional: false, type_kind: 'TSStringKeyword', default: REQUIRED },
+      class: { optional: true, type_kind: 'TSStringKeyword', default: NO_DEFAULT },
+      markdownNode: { optional: true, type_kind: 'TSUnionType', default: NO_DEFAULT },
+      images: { optional: true, type_kind: 'TSUnionType', default: L(true) },
+      links: { optional: true, type_kind: 'TSUnionType', default: L(true) },
+      math: { optional: true, type_kind: 'TSUnionType', default: L(false) },
+    },
+    snippets: {},
+  },
+
   // A split button: inside a ButtonGroup the trigger draws as a Button and takes its variant and
   // size from the Button beside it, unless `variant` or `size` set them.
   'dropdown-trigger': {

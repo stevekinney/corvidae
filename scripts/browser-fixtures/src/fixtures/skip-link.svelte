@@ -6,8 +6,8 @@
   <SkipLink target="main" />
 
   <nav aria-label="Example navigation">
-    <a href="#main" class="a">Home</a>
-    <a href="#main" class="a">About</a>
+    <span class="margin-inline-end-4"><a href="#main">Home</a></span>
+    <span class="margin-inline-end-4"><a href="#main">About</a></span>
     <a href="#main">Contact</a>
   </nav>
 
@@ -21,9 +21,5 @@
     position: relative;
     min-height: var(--cinder-space-20);
     border: 1px dashed var(--cinder-border);
-  }
-
-  .a {
-    margin-right: var(--cinder-space-4);
   }
 </style>
