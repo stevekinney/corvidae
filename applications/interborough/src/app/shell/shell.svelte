@@ -25,7 +25,7 @@
   import { BureauEventSource } from '../../lib/live-source/bureau-event-source.svelte.ts';
   import { usePluginPages } from '../../lib/plugin-page-queries.svelte.ts';
   import { router } from '../../lib/router.svelte.ts';
-  import { shortcuts } from '../../lib/shortcuts.ts';
+  import { pressedAt, shortcuts } from '../../lib/shortcuts.ts';
   import { armWriteGuard } from '../../lib/write-guard.ts';
   import type { Principal } from '../../lib/scopes.svelte.ts';
   import {
@@ -302,7 +302,7 @@
           dialogOpen:
             shortcutMapOpen || paletteOpen || document.querySelector('dialog[open]') !== null,
         },
-        Date.now(),
+        pressedAt(event),
       );
       if (handled) event.preventDefault();
     }
