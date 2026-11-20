@@ -2,12 +2,15 @@ import { invalidParamsFault, type UnknownRestBinding } from '@lostgradient/backc
 import { purgeOutputSchema } from './bulk-output-schemas.ts';
 import {
   assertOperationEngineMethods,
+  engineFailureFault,
   faultMessage,
   readOptionalJsonBody,
 } from './operation-helpers.ts';
 
 import { defineOperation } from '@lostgradient/backchannel';
 import type { z } from 'zod';
+import { BulkOperationConfirmationError } from '../../core/engine.ts';
+import { PurgeIncompleteError } from '../../core/engine/bulk-operations-purge-commit.ts';
 import { coerceStartWorkflowTags } from '../../core/start-workflow-validation.ts';
 import { parseBulkListFilterFromBody } from './bulk-filter-body.ts';
 import {
@@ -15,8 +18,27 @@ import {
   listFilterFromBulkInput,
   type BulkListFilterInput,
 } from './bulk-filter-input.ts';
+import {
+  bulkOperationControlInputSchema,
+  bulkOperationOptionsFromInput,
+  bulkOperatorAccessPolicy,
+  parseBulkOperationControlFromBody,
+  type BulkOperationControlInput,
+} from './bulk-operation-controls.ts';
+import { staleConfirmationFault } from './bulk-operation-helpers.ts';
 
-export type PurgeWorkflowsInput = BulkListFilterInput;
+function workflowCount(count: number): string {
+  return `${String(count)} ${count === 1 ? 'workflow' : 'workflows'}`;
+}
+
+/** What a caller shows for a purge that failed part-way: how many it deleted and how many it failed for. */
+function partialPurgeMessage(error: PurgeIncompleteError): string {
+  return `Purge deleted ${workflowCount(error.deletedCount)} and failed for ${String(error.failedCount)}.`;
+}
+
+const purgeWorkflowsInput = bulkListFilterInputSchema.merge(bulkOperationControlInputSchema);
+
+export type PurgeWorkflowsInput = BulkListFilterInput & BulkOperationControlInput;
 export type PurgeWorkflowsOutput = z.output<typeof purgeOutputSchema>;
 
 export const purgeWorkflowsOperation = defineOperation({
@@ -27,16 +49,20 @@ export const purgeWorkflowsOperation = defineOperation({
     'Permanently delete terminal workflows (completed, failed, cancelled, or timed ' +
     'out) that match the filter, removing every record they own, and report how many ' +
     'were removed. Irreversible; with no filter it matches every terminal workflow. ' +
-    'Requires workflows:admin.',
+    'Run it first with `dryRun: true` to preview the matches and receive a ' +
+    '`confirmationToken`, then repeat the same filter with that token to commit; the commit ' +
+    'deletes the previewed workflows and is refused with `Conflict` when the filter no longer ' +
+    'produces the token; run the preview again. Requires workflows:admin.',
   destructive: true,
   tags: ['Workflows'],
-  inputSchema: bulkListFilterInputSchema,
+  inputSchema: purgeWorkflowsInput,
   outputSchema: purgeOutputSchema,
-  access: { kind: 'scoped', scopes: { kind: 'anyOf', scopes: ['workflows:admin'] } },
+  producibleFaults: ['Conflict'],
+  access: bulkOperatorAccessPolicy,
   discoverable: true,
   transports: { http: true, jsonRpcHttp: true, jsonRpcWebSocket: true, jsonRpcStdio: true },
   unknownKeyPolicy: { http: 'strip', jsonRpc: 'reject' },
-  invoke: async ({ input, host: engine }): Promise<PurgeWorkflowsOutput> => {
+  invoke: async ({ input, host: engine, principal }): Promise<PurgeWorkflowsOutput> => {
     assertOperationEngineMethods(engine, ['purge']);
     const e = engine;
 
@@ -60,8 +86,25 @@ export const purgeWorkflowsOperation = defineOperation({
       ...input,
       ...(validatedTags === undefined ? {} : { tags: validatedTags }),
     });
-    const result = await e.purge(Object.keys(filter).length === 0 ? undefined : filter);
-    return { deleted: result.deleted };
+    const scope = Object.keys(filter).length === 0 ? undefined : filter;
+    const operationOptions = bulkOperationOptionsFromInput(input, principal);
+
+    try {
+      if (operationOptions.dryRun === true) {
+        return await e.purge(scope, operationOptions);
+      }
+      return await e.purge(scope, operationOptions);
+    } catch (error) {
+      if (error instanceof BulkOperationConfirmationError) {
+        throw staleConfirmationFault(error);
+      }
+      if (error instanceof PurgeIncompleteError) {
+        // Deletes that committed cannot be undone, so the caller is told how many there were. Over
+        // JSON-RPC the message reaches the caller; REST masks every `EngineFailure`.
+        throw engineFailureFault(partialPurgeMessage(error));
+      }
+      throw error;
+    }
   },
 });
 
@@ -75,7 +118,7 @@ export const purgeWorkflowsRestBinding: UnknownRestBinding = {
     const raw = await readOptionalJsonBody(request, context);
 
     try {
-      return { ...parseBulkListFilterFromBody(raw) };
+      return { ...parseBulkListFilterFromBody(raw), ...parseBulkOperationControlFromBody(raw) };
     } catch (error) {
       throw invalidParamsFault(faultMessage(error));
     }

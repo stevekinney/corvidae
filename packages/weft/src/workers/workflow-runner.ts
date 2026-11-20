@@ -10,10 +10,8 @@ import {
   attachTransientCheckpointReplayPayload,
   pruneCheckpointReplayState,
 } from '../core/engine/checkpoint-replay.ts';
-import {
-  classifyErrorAsFailureCategory,
-  errorFromFailedOperationOutcome,
-} from '../core/failure-categories.ts';
+import { failedMessageForError } from '../core/failed-message.ts';
+import { errorFromFailedOperationOutcome } from '../core/failure-categories.ts';
 import type {
   Checkpoint,
   FailureCategory,
@@ -292,14 +290,7 @@ export async function handleRunMessage(
     return await processGeneratorStep(context, message.workflowId, generator, step);
   } catch (error) {
     cleanupWorkflowRunnerState(context, message.workflowId);
-    return {
-      type: 'failed',
-      workflowId: message.workflowId,
-      error: formatError(error),
-      failureCategory: classifyErrorAsFailureCategory(error, {
-        defaultErrorCategory: 'application',
-      }),
-    };
+    return failedMessageForError(message.workflowId, error, undefined);
   }
 }
 
@@ -342,14 +333,7 @@ export async function handleResumeMessage(
     return await processGeneratorStep(context, message.workflowId, generator, step);
   } catch (error) {
     cleanupWorkflowRunnerState(context, message.workflowId);
-    return {
-      type: 'failed',
-      workflowId: message.workflowId,
-      error: formatError(error),
-      failureCategory:
-        operationFailureCategory ??
-        classifyErrorAsFailureCategory(error, { defaultErrorCategory: 'application' }),
-    };
+    return failedMessageForError(message.workflowId, error, operationFailureCategory);
   }
 }
 
@@ -592,11 +576,4 @@ export function cleanupWorkflowRunnerState(
   // revision for the outbound `completed` message it is about to stamp and
   // send. The entry (`workflow-worker-entry.ts`) deletes the map entry
   // itself, AFTER stamping the terminal outbound message.
-}
-
-function formatError(error: unknown): string {
-  if (error instanceof Error) {
-    return error.message;
-  }
-  return String(error);
 }

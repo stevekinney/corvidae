@@ -49,6 +49,9 @@ export function createServerOperationRegistry(sources: {
     ...(options.workerStartOverrideSigningSecret === undefined
       ? {}
       : { workerStartOverrideSigningSecret: options.workerStartOverrideSigningSecret }),
+    ...(options.authorizeWorkflowRead === undefined
+      ? {}
+      : { authorizeWorkflowRead: options.authorizeWorkflowRead }),
     ...(options.operations === undefined ? {} : { additionalOperations: options.operations }),
     conformanceTargetRunner: options.conformanceTargetRunner,
   });

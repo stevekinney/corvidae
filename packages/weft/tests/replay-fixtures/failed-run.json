@@ -1,0 +1,66 @@
+{
+  "scenario": "failed-run",
+  "description": "A workflow fails after one named step with a Weft error, and the failure write stores the error code and the failing step.",
+  "events": [
+    {
+      "type": "workflow:checkpoint",
+      "timestamp": 0,
+      "data": {
+        "step": 1
+      }
+    }
+  ],
+  "timeline": [
+    {
+      "step": 1,
+      "stepIndex": 0,
+      "operationType": "activity",
+      "operationLabel": "reserve-stock",
+      "inputSummary": "undefined",
+      "timestamp": 0,
+      "status": "failed",
+      "versionTuple": {
+        "workflowVersion": "1"
+      },
+      "outputSummary": "\"Workflow \\\"order-7\\\" not found\"",
+      "duration": 0
+    }
+  ],
+  "finalState": {
+    "id": "wf-failed-run",
+    "type": "failed-run",
+    "status": "failed",
+    "input": null,
+    "versionTuple": {
+      "workflowVersion": "1"
+    },
+    "revision": "sha256:8973cd8ab241ecb3df529cdc77a8498517bd715facc6235fd8989f47e1c6122b",
+    "workflowExecutionToken": "00000000-0000-4000-8000-000000000001",
+    "executionStateOwnerId": "wf-failed-run",
+    "createdAt": 0,
+    "startedAt": 0,
+    "updatedAt": 0,
+    "error": "Workflow \"order-7\" not found",
+    "failureCategory": "application",
+    "errorStack": "WorkflowNotFoundError: Workflow \"order-7\" not found",
+    "errorCode": "WorkflowNotFoundError",
+    "failedStep": {
+      "index": 0,
+      "label": "reserve-stock"
+    }
+  },
+  "storage": {
+    "attr:wf-failed-run": "ga9mYWlsdXJlQ2F0ZWdvcnmrYXBwbGljYXRpb24=",
+    "catalog-active:failed-run": "g6hyZXZpc2lvbtlHc2hhMjU2Ojg5NzNjZDhhYjI0MWVjYjNkZjUyOWNkYzc3YTg0OTg1MTdiZDcxNWZhY2M2MjM1ZmQ4OTg5ZjQ3ZTFjNjEyMmKqZ2VuZXJhdGlvbgGrYWN0aXZhdGVkQXQA",
+    "catalog-entry:failed-run:sha256%3A8973cd8ab241ecb3df529cdc77a8498517bd715facc6235fd8989f47e1c6122b": "eyJtYW5pZmVzdCI6eyJtYW5pZmVzdFZlcnNpb24iOjEsIm5hbWUiOiJmYWlsZWQtcnVuIiwid29ya2Zsb3dWZXJzaW9uIjoiMSIsInJldmlzaW9uIjoic2hhMjU2Ojg5NzNjZDhhYjI0MWVjYjNkZjUyOWNkYzc3YTg0OTg1MTdiZDcxNWZhY2M2MjM1ZmQ4OTg5ZjQ3ZTFjNjEyMmIiLCJjb250cmFjdEhhc2giOiJzaGEyNTY6ZjM2MDIwNzYyZWExNDQ0MjRmZjZiZjIyZjkzNTJkMGQzMWJmYWU1OTFlMGZkZDUzNDU0MzlhY2JiZDM1MTczOCIsImNvbnRyYWN0Ijp7Im5hbWUiOiJmYWlsZWQtcnVuIiwid29ya2Zsb3dWZXJzaW9uIjoiMSIsImFjdGl2aXRpZXMiOnsicmVzZXJ2ZS1zdG9jayI6e319fX0sImluc3RhbGxlZEF0IjowfQ==",
+    "ev:wf-failed-run:0000000000": "h6R0eXBls3dvcmtmbG93OmNoZWNrcG9pbnSqd29ya2Zsb3dJZK13Zi1mYWlsZWQtcnVuqHNlcXVlbmNlAKhwcmV2SGFzaLAwMDAwMDAwMDAwMDAwMDAwp3BheWxvYWSBpHN0ZXABqXRpbWVzdGFtcACsdmVyc2lvblR1cGxlga93b3JrZmxvd1ZlcnNpb26hMQ==",
+    "ev:wf-failed-run:head": "gqhzZXF1ZW5jZQCobGFzdEhhc2iwMTI4YTZhNTFhZjJlNTk2Zg==",
+    "idx:failureCategory:s:application:wf-failed-run": "",
+    "wf-gen:wf-failed-run": "AAAAAAAAAAE=",
+    "wf-terminal:0000000000000000:wf-failed-run": "",
+    "wf:wf-failed-run": "3gAQomlkrXdmLWZhaWxlZC1ydW6kdHlwZapmYWlsZWQtcnVupnN0YXR1c6ZmYWlsZWSlaW5wdXTArHZlcnNpb25UdXBsZYGvd29ya2Zsb3dWZXJzaW9uoTGocmV2aXNpb27ZR3NoYTI1Njo4OTczY2Q4YWIyNDFlY2IzZGY1MjljZGM3N2E4NDk4NTE3YmQ3MTVmYWNjNjIzNWZkODk4OWY0N2UxYzYxMjJitndvcmtmbG93RXhlY3V0aW9uVG9rZW7ZJDAwMDAwMDAwLTAwMDAtNDAwMC04MDAwLTAwMDAwMDAwMDAwMbVleGVjdXRpb25TdGF0ZU93bmVySWStd2YtZmFpbGVkLXJ1bqljcmVhdGVkQXQAqXN0YXJ0ZWRBdACpdXBkYXRlZEF0AKVlcnJvcrxXb3JrZmxvdyAib3JkZXItNyIgbm90IGZvdW5kr2ZhaWx1cmVDYXRlZ29yeathcHBsaWNhdGlvbqplcnJvclN0YWNr2TNXb3JrZmxvd05vdEZvdW5kRXJyb3I6IFdvcmtmbG93ICJvcmRlci03IiBub3QgZm91bmSpZXJyb3JDb2RltVdvcmtmbG93Tm90Rm91bmRFcnJvcqpmYWlsZWRTdGVwgqVpbmRleAClbGFiZWytcmVzZXJ2ZS1zdG9jaw==",
+    "wf:wf-failed-run:ckpt": "iap3b3JrZmxvd0lkrXdmLWZhaWxlZC1ydW6kc3RlcAGmbG9jYWxzgLZ3b3JrZmxvd0V4ZWN1dGlvblRva2Vu2SQwMDAwMDAwMC0wMDAwLTQwMDAtODAwMC0wMDAwMDAwMDAwMDGyYWNjdW11bGF0ZWRSZXN1bHRzkLBzZWFyY2hBdHRyaWJ1dGVzgKd2ZXJzaW9uoTGtc2NoZW1hVmVyc2lvbgKpY3JlYXRlZEF0AA==",
+    "wf:wf-failed-run:ckpt:0000000001": "iap3b3JrZmxvd0lkrXdmLWZhaWxlZC1ydW6kc3RlcAGmbG9jYWxzgLZ3b3JrZmxvd0V4ZWN1dGlvblRva2Vu2SQwMDAwMDAwMC0wMDAwLTQwMDAtODAwMC0wMDAwMDAwMDAwMDGyYWNjdW11bGF0ZWRSZXN1bHRzkLBzZWFyY2hBdHRyaWJ1dGVzgKd2ZXJzaW9uoTGtc2NoZW1hVmVyc2lvbgKpY3JlYXRlZEF0AA==",
+    "wf:wf-failed-run:timeline:0000000001": "iqRzdGVwAalzdGVwSW5kZXgArW9wZXJhdGlvblR5cGWoYWN0aXZpdHmub3BlcmF0aW9uTGFiZWytcmVzZXJ2ZS1zdG9ja6xpbnB1dFN1bW1hcnmpdW5kZWZpbmVkqXRpbWVzdGFtcACmc3RhdHVzpmZhaWxlZKx2ZXJzaW9uVHVwbGWBr3dvcmtmbG93VmVyc2lvbqExrW91dHB1dFN1bW1hcnnZICJXb3JrZmxvdyBcIm9yZGVyLTdcIiBub3QgZm91bmQiqGR1cmF0aW9uAA=="
+  }
+}

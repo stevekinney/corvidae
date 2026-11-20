@@ -31,6 +31,7 @@ export async function sweepFenced(
     KEYS.workflowHeaders(workflowId),
     KEYS.signalSequence(workflowId),
     KEYS.workflowHasServices(workflowId),
+    KEYS.activityRetrying(workflowId),
     ...extraDeleteKeys,
   ];
   // The finalizer payload stays while a teardown is still owed; see the unfenced path.

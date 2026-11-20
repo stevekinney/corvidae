@@ -975,7 +975,7 @@ describe('engine lifecycle coverage helpers', () => {
     });
     const lineage = createForkLineage(
       {} as never,
-      'workflow-source',
+      createWorkflowState('workflow-source'),
       sourceCheckpoint,
       createLifecycleCallbacks() as never,
     );

@@ -13,10 +13,8 @@
 import type { ContextOperationRequest } from './context.ts';
 import { Context, endResumeReplay, setContextWorkflowInterceptor } from './context.ts';
 import type { ExecutionStrategy } from './execution-strategy.ts';
-import {
-  classifyErrorAsFailureCategory,
-  errorFromFailedOperationOutcome,
-} from './failure-categories.ts';
+import { failedMessageForError } from './failed-message.ts';
+import { errorFromFailedOperationOutcome } from './failure-categories.ts';
 import type {
   InlineExecutionDependencies,
   InlineStartWorkflowParameters,
@@ -380,20 +378,7 @@ export class InlineExecutionStrategy implements ExecutionStrategy {
             preserveTrackedAdvance: true,
             preserveTrackedTurn: true,
           });
-          const failedMessage: WorkerOutboundMessage = {
-            type: 'failed',
-            workflowId,
-            error: error instanceof Error ? error.message : String(error),
-            failureCategory:
-              fallbackFailureCategory ??
-              classifyErrorAsFailureCategory(error, {
-                defaultErrorCategory: 'application',
-              }),
-          };
-          if (error instanceof Error && error.stack !== undefined) {
-            failedMessage.errorStack = error.stack;
-          }
-          this.#emit(failedMessage);
+          this.#emit(failedMessageForError(workflowId, error, fallbackFailureCategory));
         }
       })(),
     );

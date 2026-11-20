@@ -20,7 +20,6 @@ import {
   buildForkCommitLostRaceError,
   createForkLineage,
   createForkedWorkflowState,
-  inheritForkWorkerBinding,
   loadForkSourceCheckpoint,
   reserveLegacyForkTargetRevision,
   resolveForkPersistedRevision,
@@ -30,6 +29,7 @@ import {
   assertForkSourceCheckpointMatchesState,
   assertForkSourceNotReplacedBeforeCommit,
 } from './fork-source-replacement-guards.ts';
+import { inheritForkWorkerBinding } from './fork-worker-binding.ts';
 import { derivePreparedExecutionState } from './persist.ts';
 import { isolateRecoveryFailure } from './recovery-isolation.ts';
 import {
@@ -405,7 +405,7 @@ export async function fork(
 
     const workflowId = crypto.randomUUID();
     const forkedAt = internals.options.getNow();
-    const lineage = createForkLineage(internals, sourceWorkflowId, sourceCheckpoint, callbacks);
+    const lineage = createForkLineage(internals, sourceState, sourceCheckpoint, callbacks);
     const forkState = createForkedWorkflowState(
       internals,
       workflowId,
