@@ -9,7 +9,11 @@
  * build does not ship cannot be evaluated, so only its source can leave.
  */
 
-import { renderThemeStylesheet, StylesheetError } from '@lostgradient/cinder/tokens/runtime';
+import {
+  type ContextProperties,
+  renderThemeStylesheet,
+  StylesheetError,
+} from '@lostgradient/cinder/tokens/runtime';
 
 import { THEME_CONTEXT_IDS, type ThemeContextId } from './theme-draft-types.ts';
 import { envelopeDownload, themeFileSlug } from './theme-envelope.ts';
@@ -20,8 +24,9 @@ import {
   type ReportFile,
 } from './theme-export-report.ts';
 import type { ExportSnapshot } from './theme-export-snapshot.ts';
+import { renderTailwindAliases } from './theme-export-tailwind.ts';
 
-export type ExportKind = 'source' | 'css' | 'portable' | 'portable-subset' | 'report';
+export type ExportKind = 'source' | 'css' | 'tailwind' | 'portable' | 'portable-subset' | 'report';
 
 export type ExportArtifact = {
   kind: ExportKind;
@@ -65,22 +70,66 @@ function normalBlock(
   return null;
 }
 
-function cssFile(snapshot: ExportSnapshot): ReportFile {
-  const maps = Object.fromEntries(
+function stylesheetProperties(snapshot: ExportSnapshot): ContextProperties {
+  return Object.fromEntries(
     THEME_CONTEXT_IDS.map((context: ThemeContextId) => {
       const evaluation = snapshot.evaluations[context];
       if (!evaluation.ok) throw new StylesheetError(`${context} did not evaluate.`);
       return [context, Object.fromEntries(evaluation.properties.map((p) => [p.name, p.value]))];
     }),
   ) as Record<ThemeContextId, Record<string, string>>;
+}
+
+function cssFile(snapshot: ExportSnapshot): ReportFile {
   const { envelope } = snapshot;
   return {
     filename: `${themeFileSlug(envelope.name)}-${envelope.id.slice(0, 8)}.cinder-theme.css`,
     mime: 'text/css',
-    text: renderThemeStylesheet(maps, {
+    text: renderThemeStylesheet(stylesheetProperties(snapshot), {
       identity: `${envelope.name}, revision ${snapshot.revision}, Cinder ${envelope.base.packageVersion} ${envelope.base.sourceDigest}`,
     }),
   };
+}
+
+function tailwindArtifact(snapshot: ExportSnapshot, blockedReason: Block): ExportArtifact {
+  const files: ReportFile[] = [];
+  if (blockedReason === null) {
+    try {
+      const maps = stylesheetProperties(snapshot);
+      const { envelope } = snapshot;
+      const css = renderThemeStylesheet(maps, {
+        // The source envelope is lossless theme data and does not encode the editor revision.
+        identity: `${envelope.name}, Cinder ${envelope.base.packageVersion} ${envelope.base.sourceDigest}`,
+      });
+      files.push({
+        filename: `${themeFileSlug(envelope.name)}-${envelope.id.slice(0, 8)}.tailwind-theme.css`,
+        mime: 'text/css',
+        text: `${css}\n${renderTailwindAliases(maps)}`,
+      });
+    } catch (error) {
+      blockedReason =
+        error instanceof Error ? error.message : 'The Tailwind stylesheet could not be written.';
+    }
+  }
+  return {
+    kind: 'tailwind',
+    title: 'Tailwind v4 theme CSS',
+    description:
+      'Import after Tailwind CSS. Includes the Cinder theme variables for all six contexts and aliases for semantic colors, typography, spacing, radii, and shadows.',
+    caveat: null,
+    files,
+    available: blockedReason === null,
+    blockedReason,
+  };
+}
+
+/** Generate the same checked Tailwind artifact for non-browser callers. */
+export function planTailwindExport(
+  snapshot: ExportSnapshot,
+  acknowledged: boolean,
+): ExportArtifact {
+  const acknowledgeable = snapshot.counts['needs-review'] + snapshot.counts.advisory;
+  return tailwindArtifact(snapshot, normalBlock(snapshot, acknowledged, acknowledgeable));
 }
 
 /** Build every artifact for a snapshot. Blocked artifacts carry no files. */
@@ -141,6 +190,7 @@ export function planExports(snapshot: ExportSnapshot, acknowledged: boolean): Ex
       available: cssBlock === null,
       blockedReason: cssBlock,
     },
+    tailwindArtifact(snapshot, normal),
     {
       kind: 'portable',
       title: 'Portable DTCG documents (complete, 6 files)',
