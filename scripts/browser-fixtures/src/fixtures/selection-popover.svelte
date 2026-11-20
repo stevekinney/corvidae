@@ -170,7 +170,7 @@
 <style>
   .selection-fixture {
     display: grid;
-    gap: 1rem;
+    gap: var(--cinder-space-4);
     max-inline-size: 56rem;
     padding-block-end: 120vh;
   }
@@ -181,7 +181,7 @@
     cursor: text;
   }
   .selection-surface p {
-    margin: 0 0 0.75rem;
+    margin: 0 0 var(--cinder-space-3);
   }
   .selection-surface a {
     color: inherit;
@@ -192,7 +192,7 @@
   }
   .external-controls {
     display: grid;
-    gap: 0.5rem;
+    gap: var(--cinder-space-2);
   }
   .external-controls p {
     margin: 0;

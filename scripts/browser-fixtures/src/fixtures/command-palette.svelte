@@ -17,7 +17,9 @@
   }
 </script>
 
-<div style="display: flex; flex-direction: column; gap: 1rem; align-items: flex-start;">
+<div
+  style="display: flex; flex-direction: column; gap: var(--cinder-space-4); align-items: flex-start;"
+>
   <Button
     label="Open palette"
     onclick={(event) => {
@@ -27,7 +29,7 @@
   />
 
   {#if lastSelected}
-    <p style="font-size: 0.875rem; color: var(--cinder-text-muted);">
+    <p style="font-size: var(--cinder-text-base); color: var(--cinder-text-muted);">
       Selected: <strong>{lastSelected}</strong>
     </p>
   {/if}

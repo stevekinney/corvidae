@@ -15,7 +15,7 @@
  * `border-left`, `border-inline`, `border-width`, logical/physical
  * longhands) so no future edit reintroduces a hardcoded per-variant border
  * here that could conflict with the composed recipe. The base `.cinder-alert`
- * rule's `border: 1px solid var(--cinder-border)` is the FALLBACK only —
+ * rule's `border: var(--cinder-border-width) solid var(--cinder-border)` is the FALLBACK only —
  * it's what resolves when the border-surface class is absent (e.g. a
  * consumer overriding `class`); with the class composed, the shared
  * partial's higher-specificity (0,2,0) rule wins and paints the per-variant
@@ -170,7 +170,7 @@ describe('alert chrome — composed status-surface border', () => {
     expect(widthDeclarations).toEqual(['border']);
   });
 
-  test('base rule declares the neutral FALLBACK border: 1px solid var(--cinder-border)', () => {
+  test('base rule declares the neutral FALLBACK border: var(--cinder-border-width) solid var(--cinder-border)', () => {
     // The base selector appears in two rules (one declares the scoped
     // --cinder-alert-info token, the other the box). Exactly one of them must
     // declare `border`. This is the fallback that resolves only when the
@@ -186,7 +186,7 @@ describe('alert chrome — composed status-surface border', () => {
       });
     }
     expect(count).toBe(1);
-    expect(border).toBe('1px solid var(--cinder-border)');
+    expect(border).toBe('var(--cinder-border-width) solid var(--cinder-border)');
   });
 
   for (const variant of VARIANTS) {

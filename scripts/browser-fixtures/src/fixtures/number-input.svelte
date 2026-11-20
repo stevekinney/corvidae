@@ -9,7 +9,7 @@
      the unit-less field's number starts on. -->
 <div
   data-testid="number-input-units"
-  style="display: grid; gap: 1rem; margin-block-start: 1rem; justify-items: start;"
+  style="display: grid; gap: var(--cinder-space-4); margin-block-start: var(--cinder-space-4); justify-items: start;"
 >
   <div data-testid="number-input-unit">
     <NumberInput id="number-input-unit" label="Timeout" value={15} adornment="seconds" />

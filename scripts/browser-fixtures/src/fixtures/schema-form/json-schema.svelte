@@ -25,7 +25,7 @@
   }
 </script>
 
-<div style="display: grid; gap: 1rem;">
+<div style="display: grid; gap: var(--cinder-space-4);">
   <SchemaForm
     {schema}
     name="payload"

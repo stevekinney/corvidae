@@ -7,7 +7,7 @@
     overflow: hidden;
     color: var(--cinder-text-default);
     background: var(--cinder-surface-inset);
-    border: 1px solid var(--cinder-border);
+    border: var(--cinder-border-width) solid var(--cinder-border);
     border-radius: var(--cinder-radius-lg);
   }
 
@@ -15,7 +15,7 @@
     min-block-size: 2.25rem;
     padding-inline: var(--cinder-space-3);
     align-items: center;
-    border-block-end: 1px solid var(--cinder-border-muted);
+    border-block-end: var(--cinder-border-width) solid var(--cinder-border-muted);
   }
 
   .cinder-terminal-frame__traffic-lights {

@@ -24,12 +24,12 @@
 <style>
   .grid-fixture {
     display: grid;
-    gap: 2rem;
+    gap: var(--cinder-space-8);
     min-inline-size: 48rem;
   }
   .grid-cell {
-    min-block-size: 4rem;
-    padding: 1rem;
+    min-block-size: var(--cinder-space-16);
+    padding: var(--cinder-space-4);
     background: var(--cinder-surface-raised, #eee);
   }
 </style>

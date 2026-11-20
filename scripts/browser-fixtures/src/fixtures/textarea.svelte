@@ -12,5 +12,7 @@
   placeholder="I'm a designer who…"
 />
 {#if bio.length > 0}
-  <p style="margin-top: 0.5rem; color: var(--cinder-text-muted);">{bio.length} characters</p>
+  <p style="margin-top: var(--cinder-space-2); color: var(--cinder-text-muted);">
+    {bio.length} characters
+  </p>
 {/if}

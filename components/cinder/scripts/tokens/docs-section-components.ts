@@ -231,6 +231,21 @@ export const COMPONENT_DOC_SECTIONS: readonly DocSection[] = ([] = [
     cssProperties: ['--cinder-status-dot-color', '--cinder-status-dot-size'],
   },
   {
+    slug: 'table-header',
+    headings: ['## Component tokens', '### Table Header'],
+    cssProperties: [
+      '--cinder-table-header-background',
+      '--cinder-table-header-foreground',
+      '--cinder-table-header-sorted-foreground',
+      '--cinder-table-header-font-size',
+      '--cinder-table-header-padding-block',
+      '--cinder-table-header-padding-inline',
+      '--cinder-table-header-padding-block-condensed',
+      '--cinder-table-header-padding-block-spacious',
+      '--cinder-table-header-padding-inline-spacious',
+    ],
+  },
+  {
     slug: 'table-of-contents',
     headings: ['## Component tokens', '### Table Of Contents'],
     cssProperties: [

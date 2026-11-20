@@ -7,13 +7,15 @@
   ];
 </script>
 
-<div style="display: flex; flex-direction: column; gap: 0.75rem;">
+<div style="display: flex; flex-direction: column; gap: var(--cinder-space-3);">
   <Skeleton height="1rem" width="60%" />
   <Skeleton height="1rem" width="80%" />
   <Skeleton height="1rem" width="40%" />
-  <div style="display: flex; align-items: center; gap: 1rem; margin-top: 0.5rem;">
+  <div
+    style="display: flex; align-items: center; gap: var(--cinder-space-4); margin-top: var(--cinder-space-2);"
+  >
     <Skeleton width="3rem" height="3rem" radius="50%" />
-    <div style="flex: 1; display: flex; flex-direction: column; gap: 0.5rem;">
+    <div style="flex: 1; display: flex; flex-direction: column; gap: var(--cinder-space-2);">
       <Skeleton height="0.875rem" width="50%" />
       <Skeleton height="0.875rem" width="30%" />
     </div>
@@ -47,7 +49,10 @@
   </div>
   <!-- The list placeholder beside the list it stands for (COR-2449): a two-line pair and a
        three-line pair, each as tall as the rows that load, and flat on the canvas. -->
-  <div style="display: flex; flex-direction: column; gap: 1rem;" data-testid="skeleton-footprint">
+  <div
+    style="display: flex; flex-direction: column; gap: var(--cinder-space-4);"
+    data-testid="skeleton-footprint"
+  >
     {#each [{ name: 'two', detail: false }, { name: 'three', detail: true }] as pair (pair.name)}
       <div data-testid={`skeleton-footprint-${pair.name}`}>
         <div data-testid="footprint-placeholder">
@@ -80,7 +85,7 @@
   </div>
   <!-- A page's own placeholder whose first block holds the line, beside the same page before the
        line appears: the real text and the blocks after it are in the same places. -->
-  <div style="display: flex; gap: 1rem;">
+  <div style="display: flex; gap: var(--cinder-space-4);">
     <div data-testid="skeleton-page-waiting" style="flex: 1;">
       <Skeleton
         stillLoadingAfter={600_000}

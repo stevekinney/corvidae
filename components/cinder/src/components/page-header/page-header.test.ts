@@ -32,6 +32,24 @@ describe('PageHeader actions row height', () => {
 });
 
 describe('PageHeader', () => {
+  test('regular actions use their own size and keep the error emphasis context', async () => {
+    const { getByRole, rerender } = render(Harness, {
+      props: { withActions: true, error: true },
+    });
+
+    const action = getByRole('button', { name: 'Add a memory' });
+    const create = getByRole('button', { name: 'New agent' });
+    expect(action.getAttribute('data-cinder-size')).toBe('xs');
+    expect(create.getAttribute('data-cinder-size')).toBe('xs');
+
+    await rerender({ compactActions: false });
+
+    expect(action.getAttribute('data-cinder-size')).toBe('md');
+    expect(create.getAttribute('data-cinder-size')).toBe('md');
+    expect(action.getAttribute('data-cinder-variant')).toBe('secondary');
+    expect(action.hasAttribute('data-cinder-compact')).toBe(false);
+  });
+
   test('schema requires a string title and supports an optional string description', () => {
     const validate = new Ajv2020({ strict: false }).compile(pageHeaderSchema);
 
@@ -41,6 +59,7 @@ describe('PageHeader', () => {
       description: { type: 'string' },
       headingLevel: { enum: [1, 2, 3, 4, 5, 6], default: 1 },
       error: { type: 'boolean', default: false },
+      compactActions: { type: 'boolean', default: true },
       statusPlacement: { enum: ['inline', 'below'], default: 'below' },
       variant: { enum: ['default', 'large', 'hero'], default: 'default' },
       tone: { enum: ['plain', 'tint', 'accent', 'night'], default: 'plain' },

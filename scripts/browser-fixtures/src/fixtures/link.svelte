@@ -14,7 +14,9 @@
 <!-- Underline/color variants shown as a standalone list (one link per row), not inside
      running prose. Outside a text block the hover/none treatments are an acceptable,
      intentional choice and don't trip axe's link-in-text-block rule. -->
-<ul style="list-style: none; padding: 0; display: flex; flex-direction: column; gap: 0.5rem;">
+<ul
+  style="list-style: none; padding: 0; display: flex; flex-direction: column; gap: var(--cinder-space-2);"
+>
   <li><Link href="/pricing" underline="always">Always underlined</Link></li>
   <li><Link href="/pricing" underline="hover">Underline on hover</Link></li>
   <li><Link href="/pricing" underline="none">No underline</Link></li>
@@ -27,13 +29,16 @@
   data-testid="link-more"
   style="display: flex; align-items: center; justify-content: space-between; max-inline-size: 24rem;"
 >
-  <h2 style="margin: 0; font-size: 1.125rem;">Needs you</h2>
+  <h2 style="margin: 0; font-size: var(--cinder-text-xl);">Needs you</h2>
   <Link href="/reviews" variant="more">Open Reviews</Link>
 </div>
 
 <!-- A more link with a list row directly beneath it: the row, itself positioned and drawn after
      the link, must not cover the bottom of the link's hit area. -->
-<div data-testid="link-more-over-row" style="max-inline-size: 24rem; margin-block-start: 2rem;">
+<div
+  data-testid="link-more-over-row"
+  style="max-inline-size: 24rem; margin-block-start: var(--cinder-space-8);"
+>
   <div style="display: flex; justify-content: flex-end;">
     <Link href="/health" variant="more">Open Health</Link>
   </div>

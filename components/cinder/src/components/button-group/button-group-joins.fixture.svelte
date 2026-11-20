@@ -103,7 +103,7 @@
     display: flex;
     flex-wrap: wrap;
     align-items: flex-start;
-    gap: 1.5rem;
-    padding: 1rem;
+    gap: var(--cinder-space-6);
+    padding: var(--cinder-space-4);
   }
 </style>

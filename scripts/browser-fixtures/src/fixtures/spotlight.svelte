@@ -1,8 +1,13 @@
 <script lang="ts">
-  import { Link, Spotlight } from '@lostgradient/cinder';
+  import { Container, Link, Spotlight } from '@lostgradient/cinder';
 </script>
 
-<div style="display: flex; flex-direction: column; gap: 2rem; max-inline-size: 40rem;">
+<Container
+  maxWidth="narrow"
+  centered={false}
+  padded={false}
+  style="display: flex; flex-direction: column; gap: var(--cinder-space-8);"
+>
   <Spotlight value="Ends in 45 min" status="online" statusLabel="Live">
     {#snippet caveat()}Updated 12 min ago{/snippet}
   </Spotlight>
@@ -19,4 +24,4 @@
       {#snippet action()}<Link href="/reviews" variant="more">Open Reviews</Link>{/snippet}
     </Spotlight>
   </div>
-</div>
+</Container>

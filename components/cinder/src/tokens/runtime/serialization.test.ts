@@ -65,14 +65,15 @@ describe('component alias declarations', () => {
   const alias = (overrides: Partial<CorpusEntry> = {}) =>
     entry('button.fill', { component: 'button', value: '{color.fill}', ...overrides });
 
-  test('declares every entry at the root while no component family defers its aliases', () => {
+  test('declares a component alias at the root unless its own family defers it', () => {
     expect(isRootDeclaredEntry(alias())).toBe(true);
   });
 
-  test('defers a bare alias of a deferred family and nothing else', () => {
+  test('defers only bare non-color aliases of a deferred family', () => {
     DEFERRED_COMPONENT_ALIAS_FAMILIES.add('button');
     try {
       expect(isRootDeclaredEntry(alias())).toBe(false);
+      expect(isRootDeclaredEntry(alias({ type: 'color' }))).toBe(true);
       expect(isRootDeclaredEntry(alias({ cssRecipe: 'literal' }))).toBe(true);
       expect(isRootDeclaredEntry(alias({ value: '1px' }))).toBe(true);
       expect(isRootDeclaredEntry(alias({ component: 'card' }))).toBe(true);

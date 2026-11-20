@@ -30,9 +30,9 @@ const message = greet('world');`;
 <style>
   .code-block-bar {
     display: grid;
-    gap: 1rem;
+    gap: var(--cinder-space-4);
     max-inline-size: 36rem;
-    padding: 1rem;
+    padding: var(--cinder-space-4);
   }
 
   .code-block-bar > p {

@@ -28,7 +28,7 @@
 <style>
   .card-fixture {
     display: grid;
-    gap: 2rem;
+    gap: var(--cinder-space-8);
     max-inline-size: 42rem;
   }
 </style>

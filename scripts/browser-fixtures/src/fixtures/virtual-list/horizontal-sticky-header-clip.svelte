@@ -44,8 +44,8 @@
   {#snippet row(item, context)}
     <div
       style={item.isHeader
-        ? 'display: flex; align-items: center; justify-content: center; inline-size: 120px; block-size: 96px; padding-inline: 0.75rem; background: var(--cinder-surface-raised); font-weight: 600; border-inline-end: 1px solid var(--cinder-border);'
-        : 'display: flex; align-items: center; justify-content: center; inline-size: 120px; block-size: 64px; padding-inline: 0.75rem; border-inline-end: 1px solid var(--cinder-border);'}
+        ? 'display: flex; align-items: center; justify-content: center; inline-size: 120px; block-size: 96px; padding-inline: var(--cinder-space-3); background: var(--cinder-surface-raised); font-weight: 600; border-inline-end: 1px solid var(--cinder-border);'
+        : 'display: flex; align-items: center; justify-content: center; inline-size: 120px; block-size: 64px; padding-inline: var(--cinder-space-3); border-inline-end: 1px solid var(--cinder-border);'}
       data-index={context.index}
     >
       <span>{item.label}</span>
