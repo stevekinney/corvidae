@@ -25,13 +25,23 @@
     aria-label="أعمدة قابلة للتمرير أفقيًا"
   >
     {#snippet row(column, context)}
-      <div
-        style={`display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--cinder-space-1); inline-size: ${columnWidth}px; block-size: 12rem; border-inline-end: 1px solid var(--cinder-border); font-size: var(--cinder-text-sm);`}
-        data-index={context.index}
-      >
+      <div class="virtual-column gap-1" data-index={context.index}>
         <strong>{column.label}</strong>
-        <span style="color: var(--cinder-text-muted);">الفهرس {context.index}</span>
+        <span class="text-muted">الفهرس {context.index}</span>
       </div>
     {/snippet}
   </VirtualList>
 </div>
+
+<style>
+  .virtual-column {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    inline-size: 160px;
+    block-size: 12rem;
+    border-inline-end: 1px solid var(--cinder-border);
+    font-size: var(--cinder-text-sm);
+  }
+</style>

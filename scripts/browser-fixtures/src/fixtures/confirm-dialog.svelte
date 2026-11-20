@@ -6,9 +6,7 @@
   let lastAction = $state('');
 </script>
 
-<div
-  style="display: flex; flex-direction: column; gap: var(--cinder-space-4); align-items: flex-start;"
->
+<div class="example-layout gap-4">
   <Button
     label="Delete item"
     variant="danger"
@@ -19,7 +17,7 @@
   />
 
   {#if lastAction}
-    <p style="margin: 0; color: var(--cinder-text-muted); font-size: var(--cinder-text-sm);">
+    <p class="paragraph text-muted">
       Last action: <strong>{lastAction}</strong>
     </p>
   {/if}
@@ -35,3 +33,16 @@
   onConfirm={() => (lastAction = 'confirmed')}
   onCancel={() => (lastAction = 'cancelled')}
 />
+
+<style>
+  .example-layout {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .paragraph {
+    margin: 0;
+    font-size: var(--cinder-text-sm);
+  }
+</style>

@@ -7,7 +7,7 @@
   let marketingEmails = $state(false);
 </script>
 
-<div style="display: flex; flex-direction: column; gap: var(--cinder-space-8);">
+<div class="example-layout gap-8">
   <FormSection
     heading="Account"
     headingLevel={2}
@@ -31,3 +31,10 @@
     <Toggle id="marketing-emails" bind:checked={marketingEmails} label="Marketing emails" />
   </FormSection>
 </div>
+
+<style>
+  .example-layout {
+    display: flex;
+    flex-direction: column;
+  }
+</style>

@@ -4,6 +4,6 @@
 </script>
 
 <Pagination bind:currentPage totalPages={10} />
-<p style="margin-top: var(--cinder-space-2); color: var(--cinder-text-muted);">
+<p class="margin-block-start-2 text-muted">
   Page {currentPage} of 10
 </p>

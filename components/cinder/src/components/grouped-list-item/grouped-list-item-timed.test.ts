@@ -30,10 +30,12 @@ describe('GroupedListItem time-led row', () => {
   test('the window never wraps, and the lead column is wide enough for the longest window', () => {
     const css = stylesheet();
     expect(css).toMatch(/__lead-window \{[^}]*white-space: nowrap/);
-    // 104px on a wide row and 96px on a narrow one, each wide enough for "11 pm–2 am" at the
+    // 112px on a wide row and 100px on a narrow one, each wide enough for "11 pm–2 am" at the
     // window's size there (measured in `grouped-list-time-led-fit.playwright.ts`).
-    expect(css).toMatch(/__lead--timed \{[^}]*inline-size: 6\.5rem/);
-    expect(css).toMatch(/--timed \.cinder-grouped-list-item__lead \{[^}]*inline-size: 6rem[^}]*\}/);
+    expect(css).toMatch(/__lead--timed \{[^}]*inline-size: 7rem/);
+    expect(css).toMatch(
+      /--timed \.cinder-grouped-list-item__lead \{[^}]*inline-size: 6\.25rem[^}]*\}/,
+    );
     expect(css).toMatch(/__lead--timed \{[^}]*flex: none/);
   });
 

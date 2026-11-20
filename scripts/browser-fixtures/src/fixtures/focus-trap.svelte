@@ -10,17 +10,16 @@
 
 {#if open}
   <FocusTrap
-    style="
-      display: inline-flex;
-      gap: var(--cinder-space-3);
-      margin-block-start: var(--cinder-space-4);
-      padding: var(--cinder-space-4);
-      border: var(--cinder-border-width) solid var(--cinder-border);
-      border-radius: var(--cinder-radius-lg);
-      background: var(--cinder-surface-raised);
-    "
+    class="focus-trap-fixture-panel gap-3 margin-block-start-4 padding-block-4 padding-inline-4 rounded-large background-surface-raised"
   >
     <Button variant="secondary">Cancel</Button>
     <Button>Save changes</Button>
   </FocusTrap>
 {/if}
+
+<style>
+  :global(.focus-trap-fixture-panel) {
+    display: inline-flex;
+    border: var(--cinder-border-width) solid var(--cinder-border);
+  }
+</style>

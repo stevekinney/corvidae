@@ -9,13 +9,10 @@
 {/snippet}
 
 <!-- A short flex column that scrolls: the case where a flex item with overflow hidden collapses. -->
-<div
-  id="section-scroll-parent"
-  style="display: flex; flex-direction: column; block-size: 10rem; overflow: auto;"
->
+<div id="section-scroll-parent" class="section-scroll-parent-layout">
   <Section title="Tonight" description="Eight stops" {actions}>
     {#each rows as row (row)}
-      <p class="section-row" style="margin: 0; block-size: 3rem; overflow: hidden;">Stop {row}</p>
+      <p class="section-row section-row-layout">Stop {row}</p>
     {/each}
   </Section>
   <Section title="Saved">
@@ -28,7 +25,7 @@
   <Section title="Activity">
     <Section level={3} title="Tool calls">
       <Section level={4} title="Lookup order">
-        <p style="margin: 0;">Ran in 0.4 s.</p>
+        <p class="paragraph">Ran in 0.4 s.</p>
       </Section>
     </Section>
   </Section>
@@ -38,6 +35,25 @@
 <div data-testid="section-more-link">
   <Section title="Needs attention">
     {#snippet actions()}<Link href="/health" variant="more">Open Health</Link>{/snippet}
-    <p style="margin: 0;">Nothing needs attention.</p>
+    <p class="paragraph">Nothing needs attention.</p>
   </Section>
 </div>
+
+<style>
+  .section-scroll-parent-layout {
+    display: flex;
+    flex-direction: column;
+    block-size: 10rem;
+    overflow: auto;
+  }
+
+  .section-row-layout {
+    margin: 0;
+    block-size: 3rem;
+    overflow: hidden;
+  }
+
+  .paragraph {
+    margin: 0;
+  }
+</style>
