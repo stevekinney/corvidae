@@ -257,6 +257,13 @@ export type OperationDefinitionBase<
   readonly producibleFaults?: ReadonlyArray<FaultCode>;
   /** Whether non-public operations should appear in generated discovery documents. */
   readonly discoverable?: boolean;
+  /**
+   * Whether the operation takes a boolean `dryRun` input: with it `true`, the operation performs
+   * its authorization and validation, writes nothing, and answers what the call would do instead
+   * of doing it. Absent or `false` means the input has no such field. A destructive operation a
+   * caller may want to preview declares this, and its input schema carries the `dryRun` field.
+   */
+  readonly supportsDryRun?: boolean;
   readonly transports: TransportAvailability;
   readonly unknownKeyPolicy: UnknownKeyPolicy;
   readonly authorize?: (context: OperationContext<Input, Host>) => Promise<AuthorizationDecision>;
@@ -401,6 +408,8 @@ type RegistrableOperationBase<Host> = {
   readonly producibleFaults?: ReadonlyArray<FaultCode>;
   /** Whether non-public operations should appear in generated discovery documents. */
   readonly discoverable?: boolean;
+  /** See {@link OperationDefinitionBase.supportsDryRun}. */
+  readonly supportsDryRun?: boolean;
   readonly transports: TransportAvailability;
   readonly unknownKeyPolicy: UnknownKeyPolicy;
   readonly dispatch: (

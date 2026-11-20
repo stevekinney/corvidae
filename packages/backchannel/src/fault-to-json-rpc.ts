@@ -8,10 +8,13 @@
  * everything else. This stable error-code allocation ensures cross-transport
  * parity.
  *
- * Every `data` object carries `{ weftCode, httpStatus }` plus the typed
- * fault-specific payload. The pair is a uniform machine-readable handle:
- * clients can route on `weftCode` when they want symbolic names, or on
- * `httpStatus` (number) when they want HTTP-equivalent semantics.
+ * Every `data` object carries `{ weftCode, httpStatus, retryable }` plus the typed
+ * fault-specific payload, and `remediation` when the fault carries one. The
+ * first two are a uniform machine-readable handle: clients can route on
+ * `weftCode` when they want symbolic names, or on `httpStatus` (number) when
+ * they want HTTP-equivalent semantics. `retryable` says whether repeating the
+ * identical call later can succeed, and `remediation` what to do next (see
+ * `faultWireAdvice` in `operation-fault.ts`).
  *
  * Here `weftCode` is the coarse `FaultCode` (`fault.code`, e.g. `NotFound`),
  * NOT the fine-grained `WeftErrorCode` (e.g. `WorkflowNotFoundError`) that
@@ -26,11 +29,12 @@
  * decides the wire shape.
  */
 
+import { FAULT_CODE_RETRYABLE, type FaultCode } from './fault-code.ts';
+import { faultWireAdvice } from './fault-remediation.ts';
+import { usableRetryAfterSeconds, wireSafeFault } from './fault-wire-safety.ts';
 import {
   FAULT_CODE_TO_HTTP_STATUS,
   FAULT_CODE_TO_JSON_RPC_CODE,
-  usableRetryAfterSeconds,
-  wireSafeFault,
   type OperationFault,
 } from './operation-fault.ts';
 
@@ -47,12 +51,34 @@ export function faultToJsonRpcError(unsafeFault: OperationFault): JsonRpcError {
   const httpStatus = FAULT_CODE_TO_HTTP_STATUS[fault.code];
   // Envelope keys are written LAST so a future payload field accidentally
   // named `weftCode` or `httpStatus` cannot overwrite the canonical metadata.
+  const { retryable, remediation } = faultWireAdvice(fault);
   const data: Record<string, unknown> = {
     ...extractFaultDataPayload(fault),
     weftCode: fault.code,
     httpStatus,
+    retryable,
+    ...(remediation === undefined ? {} : { remediation }),
   };
   return { code, message: fault.message, data };
+}
+
+/**
+ * The `error.data` of a JSON-RPC error a transport answers itself, before or beside the operation
+ * pipeline (a frame too large, a refused first frame, an unknown subscription): the envelope keys
+ * `faultToJsonRpcError` writes (`weftCode`, `httpStatus`, `retryable`) for the fault `code`, with
+ * `payload` as the fault's own fields. A transport that writes the keys by hand drops the ones a
+ * later field adds, so every such error builds its `data` here.
+ */
+export function faultErrorData(
+  code: FaultCode,
+  payload: Record<string, unknown> = {},
+): Record<string, unknown> {
+  return {
+    ...payload,
+    weftCode: code,
+    httpStatus: FAULT_CODE_TO_HTTP_STATUS[code],
+    retryable: FAULT_CODE_RETRYABLE[code],
+  };
 }
 
 /**
@@ -100,7 +126,12 @@ const FAULT_DATA_EXTRACTORS: FaultExtractors = {
   UnsupportedCapability: (data) => ({ capability: data.capability }),
 };
 
-function extractFaultDataPayload(fault: OperationFault): Record<string, unknown> {
+/**
+ * The fields of a fault's `data` a wire projection may send: the deny-by-default allowlist for its
+ * code. The JSON-RPC envelope and the Server-Sent Events error frame both build their `data` here,
+ * so a field is never sent by one transport and withheld by another.
+ */
+export function extractFaultDataPayload(fault: OperationFault): Record<string, unknown> {
   // The cast is sound because `FAULT_DATA_EXTRACTORS` is typed so each key
   // maps to an extractor for that fault's data — TypeScript cannot narrow
   // `fault.data` through the dynamic lookup, so we delegate to the table.

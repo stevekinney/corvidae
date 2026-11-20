@@ -74,6 +74,7 @@ describe('weft.workflows.timeout', () => {
       expect(await response.json()).toEqual({
         error: 'Workflow "missing-workflow" not found',
         data: { resource: 'workflow', identifier: 'missing-workflow' },
+        retryable: false,
       });
     } finally {
       engine.timeout = originalTimeout;
@@ -96,7 +97,7 @@ describe('weft.workflows.timeout', () => {
       );
 
       expect(response.status).toBe(500);
-      expect(await response.json()).toEqual({ error: 'Internal server error' });
+      expect(await response.json()).toEqual({ error: 'Internal server error', retryable: false });
       expect(response.headers.get('Content-Type')).toContain('application/json');
     } finally {
       engine.timeout = originalTimeout;

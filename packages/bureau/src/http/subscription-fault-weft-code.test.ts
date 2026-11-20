@@ -51,7 +51,7 @@ describe('the subscription route of a default createBureauHandler', () => {
   it('drops a weftCode that is not one of Weft error codes', async () => {
     const { status, body } = await subscriptionFaultBody('NotAWeftErrorCode');
     expect(status).toBe(404);
-    expect(body).toEqual({ error: 'gone', data: { resource: 'cursor' } });
+    expect(body).toEqual({ error: 'gone', data: { resource: 'cursor' }, retryable: false });
   });
 
   it('keeps a weftCode that is one of Weft error codes', async () => {
@@ -61,6 +61,7 @@ describe('the subscription route of a default createBureauHandler', () => {
       error: 'gone',
       weftCode: 'WorkflowNotFoundError',
       data: { resource: 'cursor' },
+      retryable: false,
     });
   });
 });

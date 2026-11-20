@@ -69,6 +69,7 @@ describe('weft.schedules.cancel', () => {
     expect(await response.json()).toEqual({
       error: 'Schedule "does-not-exist" not found',
       data: { resource: 'schedule', identifier: 'does-not-exist' },
+      retryable: false,
     });
   });
 
@@ -90,7 +91,7 @@ describe('weft.schedules.cancel', () => {
       );
 
       expect(response.status).toBe(500);
-      expect(await response.json()).toEqual({ error: 'Internal server error' });
+      expect(await response.json()).toEqual({ error: 'Internal server error', retryable: false });
     } finally {
       engine.cancelSchedule = originalCancelSchedule;
     }

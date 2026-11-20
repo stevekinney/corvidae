@@ -18,7 +18,7 @@ import type {
   CatalogTransport,
   ClientRestOperationBinding,
 } from '@lostgradient/backchannel/client';
-import { HttpClientError, request } from './http-request.ts';
+import { HttpClientError, parseFaultAdvice, request } from './http-request.ts';
 
 type JsonRpcSuccess = { readonly result: unknown };
 type JsonRpcFailure = {
@@ -132,6 +132,8 @@ export function httpClientCatalogTransport(
       throw new HttpClientError(httpStatus, message, {
         faultCode,
         data: isRecord(data) ? data : undefined,
+        // `retryable` and `remediation` ride in the envelope `data` beside `weftCode`.
+        ...parseFaultAdvice(data),
       });
     }
 

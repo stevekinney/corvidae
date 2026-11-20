@@ -65,7 +65,11 @@ describe('a fault with non-finite data', () => {
       });
       const body = (await response.json()) as { id: unknown; error: { data: unknown } };
       expect(body.id).toBe(1);
-      expect(body.error.data).toEqual({ weftCode: 'EngineFailure', httpStatus: 500 });
+      expect(body.error.data).toEqual({
+        weftCode: 'EngineFailure',
+        httpStatus: 500,
+        retryable: false,
+      });
       expect(
         errors.mock.calls.some((call) => String(call[0]).includes('data.currentRevision')),
       ).toBe(true);
@@ -90,7 +94,11 @@ describe('a fault with non-finite data', () => {
         );
         const message = (await reply) as { id: unknown; error: { data: unknown } };
         expect(message.id).toBe(2);
-        expect(message.error.data).toEqual({ weftCode: 'EngineFailure', httpStatus: 500 });
+        expect(message.error.data).toEqual({
+          weftCode: 'EngineFailure',
+          httpStatus: 500,
+          retryable: false,
+        });
       } finally {
         socket.close();
       }

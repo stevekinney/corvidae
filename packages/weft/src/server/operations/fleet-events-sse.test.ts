@@ -349,7 +349,7 @@ describe('weft.events.sse', () => {
     );
 
     expect(response.status).toBe(400);
-    expect(await response.json()).toEqual({ error: 'Invalid cursor' });
+    expect(await response.json()).toEqual({ error: 'Invalid cursor', retryable: false });
     expect(feed.subscribeCalls).toEqual([]);
   });
 
@@ -476,6 +476,6 @@ describe('weft.events.sse', () => {
     );
 
     expect(response.status).toBe(500);
-    expect(await response.json()).toEqual({ error: 'Internal server error' });
+    expect(await response.json()).toEqual({ error: 'Internal server error', retryable: false });
   });
 });

@@ -4,6 +4,7 @@
  * holds it goes on unread, and every one of the ten scopes gates something, so none is a name that
  * checks nothing.
  */
+import { faultToJsonRpcError } from '@lostgradient/backchannel/internals';
 import { describe, expect, test } from 'bun:test';
 
 import { API_SCOPES, type ApiScope } from '../lib/api-scopes.ts';
@@ -55,6 +56,7 @@ describe('bureauScopeRefusal', () => {
             scope,
             weftCode: 'Forbidden',
             httpStatus: 403,
+            retryable: false,
           },
         },
       });
@@ -87,6 +89,24 @@ describe('bureauScopeRefusal', () => {
     expect(await refusal?.json()).toMatchObject({
       id: 3,
       error: { data: { scope: 'runs:read', weftCode: 'Forbidden', httpStatus: 403 } },
+    });
+    // The envelope is the one a `Forbidden` fault has on the wire, so it says `retryable` as that does.
+    const forbidden = faultToJsonRpcError({
+      code: 'Forbidden',
+      message: 'x',
+      data: { reason: 'x' },
+    });
+    const refused = await bureauScopeRefusal(
+      jsonRpc(call('bureau.checks.list', 4)),
+      lacking('runs:read'),
+    );
+    expect(refused).toBeDefined();
+    const body: { error: { code: number; data: object } } = await refused!.json();
+    expect(body.error.code).toBe(forbidden.code);
+    expect(body.error.data).toEqual({
+      ...forbidden.data,
+      reason: expect.any(String),
+      scope: 'runs:read',
     });
     // A batch is refused for the one entry that needs the scope, whatever the others hold.
     const batch = await bureauScopeRefusal(

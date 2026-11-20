@@ -118,6 +118,7 @@ describe('weft.workflows.bulk.retryfailed', () => {
     expect(missingTokenResponse.status).toBe(400);
     expect(await missingTokenResponse.json()).toEqual({
       error: 'Field "confirmationToken" is required after a dry run',
+      retryable: false,
     });
 
     control.shouldFail = false;
@@ -161,7 +162,10 @@ describe('weft.workflows.bulk.retryfailed', () => {
     );
 
     expect(response.status).toBe(400);
-    expect(await response.json()).toEqual({ error: 'Field "dryRun" must be a boolean' });
+    expect(await response.json()).toEqual({
+      error: 'Field "dryRun" must be a boolean',
+      retryable: false,
+    });
     const untouched = await engine.get('rest-retry-malformed');
     expect(untouched?.status).toBe('failed');
   });

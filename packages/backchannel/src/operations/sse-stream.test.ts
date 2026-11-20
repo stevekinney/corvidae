@@ -237,6 +237,72 @@ describe('Server-Sent Event helpers', () => {
     expect(body).toContain('"message":"Workflow event replay window is too large"');
   });
 
+  /** The JSON of the one `event: error` frame a stream that throws `failure` writes. */
+  async function errorFrameOf(failure: unknown): Promise<Record<string, unknown>> {
+    const stream = createEventEnvelopeSSEStream({
+      iterable: (async function* () {
+        throw failure;
+      })(),
+      close: async () => undefined,
+    });
+    const body = await new Response(stream).text();
+    const line = body.split('\n').find((candidate) => candidate.startsWith('data: '));
+    return JSON.parse(line!.slice('data: '.length)) as Record<string, unknown>;
+  }
+
+  it('carries the fault’s retryable and remediation in its error frame, as the other transports do', async () => {
+    const withAdvice = await errorFrameOf({
+      code: 'Unavailable',
+      message: 'feed down',
+      data: { retryAfterSeconds: 2 },
+      remediation: 'Follow the feed again after the restart.',
+    } satisfies OperationFault);
+    expect(withAdvice).toEqual({
+      code: 'Unavailable',
+      message: 'feed down',
+      data: { retryAfterSeconds: 2 },
+      retryable: true,
+      remediation: 'Follow the feed again after the restart.',
+    });
+
+    const withoutRemediation = await errorFrameOf({
+      code: 'NotFound',
+      message: 'gone',
+      data: { resource: 'workflow' },
+    } satisfies OperationFault);
+    expect(withoutRemediation).toEqual({
+      code: 'NotFound',
+      message: 'gone',
+      data: { resource: 'workflow' },
+      retryable: false,
+    });
+  });
+
+  it('sends only the allowlisted fields of a fault’s data in its error frame', async () => {
+    const frame = await errorFrameOf({
+      code: 'NotFound',
+      message: 'gone',
+      data: { resource: 'workflow', identifier: 'wf-1', internalPath: '/srv/secret' },
+    });
+
+    expect(frame['data']).toEqual({ resource: 'workflow', identifier: 'wf-1' });
+  });
+
+  it('masks an EngineFailure fault in its error frame, with retryable false and no remediation', async () => {
+    const frame = await errorFrameOf({
+      code: 'EngineFailure',
+      message: 'storage secret leaked',
+      data: {},
+      remediation: 'Restart the storage node at db-3.',
+    } satisfies OperationFault);
+
+    expect(frame).toEqual({
+      code: 'EngineFailure',
+      message: 'Internal server error',
+      retryable: false,
+    });
+  });
+
   it('masks unexpected stream failures in error frames', async () => {
     const stream = createEventEnvelopeSSEStream({
       iterable: (async function* () {

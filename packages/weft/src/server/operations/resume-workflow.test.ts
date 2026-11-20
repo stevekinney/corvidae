@@ -69,6 +69,7 @@ describe('weft.workflows.resume', () => {
     expect(await response.json()).toEqual({
       error: 'Workflow "missing-workflow" not found in storage',
       data: { resource: 'workflow', identifier: 'missing-workflow' },
+      retryable: false,
     });
   });
 
@@ -107,7 +108,7 @@ describe('weft.workflows.resume', () => {
       );
 
       expect(response.status).toBe(500);
-      expect(await response.json()).toEqual({ error: 'Internal server error' });
+      expect(await response.json()).toEqual({ error: 'Internal server error', retryable: false });
       expect(response.headers.get('Content-Type')).toContain('application/json');
     } finally {
       engine.resume = originalResume;
