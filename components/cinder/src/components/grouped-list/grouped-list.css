@@ -63,7 +63,7 @@
     min-block-size: 2.75rem;
     margin: 0;
     padding-inline-end: var(--cinder-space-4);
-    border-block-end: 1px solid var(--cinder-border-faint);
+    border-block-end: var(--cinder-border-width) solid var(--cinder-border-faint);
   }
 
   .cinder-grouped-list__add:last-child > .cinder-grouped-list__add-form {

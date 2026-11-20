@@ -392,7 +392,7 @@ describe('loadToolSource for OpenAPI', () => {
   });
 });
 
-async function createMcpFixture() {
+async function createMcpFixture(options: Parameters<typeof createMCP>[1] = {}) {
   const toolbox = createToolbox([
     createTool({
       name: 'lookup',
@@ -413,6 +413,7 @@ async function createMcpFixture() {
     }),
   ]);
   const mcp = await createMCP(toolbox, {
+    ...options,
     toolConfiguration: (tool) =>
       tool.name === 'wipe' ? { annotations: { destructiveHint: true } } : {},
   });
@@ -455,6 +456,32 @@ describe('loadToolSource for MCP over HTTP', () => {
       expect(fixture.authorizations.every((value) => value === `Bearer ${SECRET}`)).toBe(true);
     } finally {
       await loaded.close();
+      await loaded.close();
+      await fixture.mcp.close();
+    }
+  });
+
+  it('carries what the server says of itself: its name, title, version and instructions (COR-2436)', async () => {
+    const fixture = await createMcpFixture({
+      serverInfo: { name: 'github-mcp', title: 'GitHub', version: '1.2.0' },
+      instructions: 'An MCP server for issues and files in your repositories.',
+    });
+    const loaded = await loadToolSource(
+      {
+        id: 'github',
+        kind: 'mcp',
+        transport: { type: 'http', url: 'http://mcp.example.test/mcp' },
+      },
+      { resolveCredential: () => undefined, fetch: fixture.fetch },
+    );
+    try {
+      expect(loaded.server).toEqual({
+        name: 'github-mcp',
+        title: 'GitHub',
+        version: '1.2.0',
+        instructions: 'An MCP server for issues and files in your repositories.',
+      });
+    } finally {
       await loaded.close();
       await fixture.mcp.close();
     }

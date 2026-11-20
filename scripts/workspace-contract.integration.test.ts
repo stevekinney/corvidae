@@ -6,6 +6,7 @@ import { dirname, isAbsolute, join } from 'node:path';
 import ts from 'typescript';
 
 import { runWithHangGuard } from '../testing/testing/src/hang-guard.ts';
+import { CINDER_GENERATED_OUTPUTS } from './ensure-cinder-generated.ts';
 import { type PluginManifest, pluginDependencyViolations } from './plugin-dependency-rules.ts';
 import {
   directoryGlob,
@@ -621,17 +622,23 @@ describe('internal workspace architecture', () => {
       // A component library's `svelte-check` cannot substitute declarations for Svelte source, so
       // its `types` condition names the `.d.ts` its `types` script emits (COR-2076).
       const isComponentLibrary = componentLibraries.includes(library);
+      const sourceExports = { ...manifest.exports };
+      if (library === 'cinder') {
+        const utilitiesTarget = './src/styles/token-utilities.css';
+        expect(sourceExports['./utilities.css']).toBe(utilitiesTarget);
+        // The stylesheet is generated and can be absent in a fresh checkout.
+        expect(CINDER_GENERATED_OUTPUTS).toContain(utilitiesTarget.slice(2));
+        delete sourceExports['./utilities.css'];
+      }
       expect(
-        sourceExportViolations(
-          manifest.exports,
-          (path) => existsSync(join(root, directory, path)),
-          { declarations: isComponentLibrary },
-        ),
+        sourceExportViolations(sourceExports, (path) => existsSync(join(root, directory, path)), {
+          declarations: isComponentLibrary,
+        }),
         `${library} exports`,
       ).toEqual([]);
       if (isComponentLibrary) {
-        expect(Object.keys(manifest.exports ?? {}).length, library).toBeGreaterThan(0);
-        for (const [subpath, target] of Object.entries(manifest.exports ?? {})) {
+        expect(Object.keys(sourceExports).length, library).toBeGreaterThan(0);
+        for (const [subpath, target] of Object.entries(sourceExports)) {
           if (isMetadataExport(subpath, target)) continue;
           expect(typeof target, `${library} ${subpath}`).toBe('object');
         }

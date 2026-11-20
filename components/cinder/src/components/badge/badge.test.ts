@@ -42,6 +42,19 @@ describe('Badge', () => {
     expect(container.querySelector('.cinder-badge')).not.toBeNull();
   });
 
+  test('opts into an outline without changing the effective status', async () => {
+    const { container, rerender } = render(Badge, {
+      props: { children: textSnippet('Done'), variant: 'success' },
+    });
+    const badge = container.querySelector('.cinder-badge');
+    expect(badge?.hasAttribute('data-cinder-appearance')).toBe(false);
+
+    await rerender({ appearance: 'outlined' });
+
+    expect(badge?.getAttribute('data-cinder-appearance')).toBe('outlined');
+    expect(badge?.getAttribute('data-cinder-variant')).toBe('success');
+  });
+
   test('applies class prop alongside cinder-badge', () => {
     const { container } = render(Badge, {
       children: textSnippet('label'),

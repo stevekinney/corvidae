@@ -1,6 +1,6 @@
 <script lang="ts" module>
   import type { MarkdownMessagePart } from '../../utilities/types.ts';
-  import type { MarkdownNodeOverride } from '../chat-message-parts.ts';
+  import type { MarkdownNodeOverride } from '@lostgradient/cinder';
 
   export type MarkdownPartProps = {
     /** The markdown render part to display. */

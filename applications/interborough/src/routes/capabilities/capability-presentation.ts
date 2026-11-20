@@ -8,11 +8,14 @@ import { CAPABILITIES_COPY } from '../../app/copy/capabilities.ts';
 import type { AgentCatalog, ToolApproval } from '../../lib/agent-definitions.ts';
 import type { Skill } from '../../lib/bureau-skills.ts';
 import { waitedFor } from '../../lib/format/clock.ts';
-import type {
-  SourceToolApproval,
-  ToolSourceStanding,
-  ToolSourceTool,
+import type { PluginStanding } from '../../lib/host-plugins.ts';
+import {
+  isToolOn,
+  type SourceToolApproval,
+  type ToolSourceStanding,
+  type ToolSourceTool,
 } from '../../lib/host-tool-sources.ts';
+import { API_KEY_CREDENTIAL, BEARER_CREDENTIAL } from '../../lib/tool-source-form.ts';
 import { standingOf, type ToolStanding } from '../../lib/tool-standing.ts';
 import { humanizeName } from '../settings/plugins/plugin-presentation.ts';
 
@@ -53,24 +56,31 @@ export function riskTooltip(tier: ToolTier): string {
   return TOOL.chips.riskTooltip[tier];
 }
 
+/** What the asks level of a tool is read from: its tier and default, and the level the Bureau enforces, when it says. */
+type AsksSource = Pick<CatalogTool, 'tier' | 'defaultApproval'> &
+  Pick<Partial<CatalogTool>, 'defaultAsks'>;
+
 /**
  * The asks level a tool has when an agent's file says nothing about it, in the words Access uses:
  * a dangerous tool defaults to Always (design row 30i), one that changes something or declares
  * nothing to On changes, and one that only reads to Never. Blocked is never a default: it belongs
  * to one agent's file, which the catalog does not carry.
  */
-export function defaultAsks(tool: Pick<CatalogTool, 'tier' | 'defaultApproval'>): ToolApproval {
+export function defaultAsks(tool: AsksSource): ToolApproval {
+  // The level the hook enforces, which the Bureau reports: a dangerous tool picked Never reads
+  // Never here and in every reader of this one value (the editor's "equals the default" rule too).
+  if (tool.defaultAsks !== undefined) return tool.defaultAsks;
   if (tool.tier === 'dangerous') return 'always';
   return tool.defaultApproval === 'ask' ? 'on-changes' : 'never';
 }
 
 /** The words of the asks chip: "Asks: Never". */
-export function asksLabel(tool: Pick<CatalogTool, 'tier' | 'defaultApproval'>): string {
+export function asksLabel(tool: AsksSource): string {
   return TOOL.chips.asks(AGENT_PAGE_COPY.access.approvals[defaultAsks(tool)]);
 }
 
 /** The sentence the asks chip's tooltip says: what the level does, then the four values. */
-export function asksTooltip(tool: Pick<CatalogTool, 'tier' | 'defaultApproval'>): string {
+export function asksTooltip(tool: AsksSource): string {
   return `${TOOL.chips.asksTooltip[defaultAsks(tool)]} ${TOOL.chips.asksValues}`;
 }
 
@@ -80,13 +90,40 @@ function serverOf(tool: Pick<CatalogTool, 'name'>): string | undefined {
   return index > 0 ? tool.name.slice(0, index) : undefined;
 }
 
-/** The words of the source chip: "Built in", "From notes", "From the Demo plugin". */
-export function toolSourceChip(tool: CatalogTool): string {
+/**
+ * The words of the source badge, which the list row and the tool's page both show: "Built in",
+ * "From Notes", "From the Demo plugin". An identifier with no saved name reads as words, as the
+ * row's group label reads it.
+ */
+export function toolSourceChip(
+  tool: ShownTool,
+  sourceNames: ReadonlyMap<string, string> = new Map(),
+): string {
   const chip = TOOL.chips.source;
   if (tool.source === 'bureau') return chip.bureau;
-  if (tool.source === 'plugin') return chip.plugin(tool.plugin ?? '');
-  if (tool.source === 'skill') return chip.skill(tool.skill ?? '');
-  return chip.host(serverOf(tool));
+  // A plugin that is off is named by its title, which its last listing kept (row 30p).
+  if (tool.lost?.kind === 'plugin') return chip.plugin(tool.lost.title);
+  if (tool.source === 'plugin') return chip.plugin(humanizeName(tool.plugin ?? ''));
+  if (tool.source === 'skill') return chip.skill(humanizeName(tool.skill ?? ''));
+  // A source is named as a person calls it ("GitHub"), when it has a name, and by its id otherwise.
+  if (tool.lost?.kind === 'source') return chip.host(tool.lost.name);
+  const server = serverOf(tool);
+  return chip.host(
+    server === undefined ? undefined : (sourceNames.get(server) ?? humanizeName(server)),
+  );
+}
+
+/** The names people call the saved sources, by source id, for the chips that say where a tool comes from. */
+export function sourceNamesOf(
+  sources: readonly Pick<ToolSourceStanding, 'id' | 'name'>[] | undefined,
+): Map<string, string> {
+  const names = new Map<string, string>();
+  for (const source of sources ?? []) {
+    if (source.name !== undefined && source.name !== null && source.name.trim() !== '') {
+      names.set(source.id, source.name.trim());
+    }
+  }
+  return names;
 }
 
 /** The sentence the source chip's tooltip says. */
@@ -106,8 +143,161 @@ export function toolHeading(tool: Pick<CatalogTool, 'name' | 'title'>): string {
 }
 
 /** The word of the asks level a tool defaults to, as the Access tab says it: "Never", "On changes", "Always". */
-export function asksWord(tool: Pick<CatalogTool, 'tier' | 'defaultApproval'>): string {
+export function asksWord(tool: AsksSource): string {
   return AGENT_PAGE_COPY.access.approvals[defaultAsks(tool)];
+}
+
+/**
+ * What an agent that uses `tool` asks for it, as Used by says it (rows 30c, 30d, 31j, 31w): the
+ * level the agent's own file states, else the tool's default marked as such. Blocked belongs to one
+ * agent, so it reads "Blocked on this agent" here and is never a property of the tool.
+ */
+export function userAsks(
+  tool: AsksSource & Pick<CatalogTool, 'userApprovals'>,
+  user: string,
+  /**
+   * The agents defined in code: the catalog carries no level for one, because its code sets it,
+   * so it reads "set in code" rather than claiming the default.
+   */
+  codeAgents: ReadonlySet<string> = new Set(),
+): { readonly text: string; readonly blocked: boolean } {
+  const copy = TOOL.userAsks;
+  const stated =
+    tool.userApprovals !== undefined && Object.hasOwn(tool.userApprovals, user)
+      ? tool.userApprovals[user]
+      : undefined;
+  if (stated === 'blocked') return { text: copy.blocked, blocked: true };
+  if (stated === undefined && codeAgents.has(user)) return { text: copy.inCode, blocked: false };
+  const words = AGENT_PAGE_COPY.access.approvals;
+  return stated === undefined
+    ? { text: copy.defaulted(words[defaultAsks(tool)]), blocked: false }
+    : { text: copy.level(words[stated]), blocked: false };
+}
+
+/**
+ * The agents that have `tool` blocked, in the order the host sends them: each one gets the "Allow
+ * all never overrides" note (row 31x), which names it, and an agent that does not has none.
+ */
+export function blockedUsers(tool: Pick<CatalogTool, 'userApprovals'>): string[] {
+  return Object.entries(tool.userApprovals ?? {})
+    .filter(([, level]) => level === 'blocked')
+    .map(([agent]) => agent);
+}
+
+/**
+ * Why a tool the Tools tab lists cannot run (rows 30n to 30p, COR-2435): its source is not
+ * connected (it failed, or waits for a sign-in), or its plugin is off. The tool comes from the last
+ * listing the host kept, so its chips and asks level are still the ones it had.
+ */
+export type LostCause =
+  | {
+      readonly kind: 'source';
+      readonly id: string;
+      readonly name: string;
+      readonly state: ToolSourceStanding['state'];
+    }
+  | { readonly kind: 'plugin'; readonly name: string; readonly title: string };
+
+/** A tool the Tools tab lists: one the catalog holds, or one of a last listing that cannot run now. */
+export type ShownTool = CatalogTool & { readonly lost?: LostCause };
+
+/** The plugin fields {@link lostTools} reads. */
+type LostPlugin = Pick<PluginStanding, 'status' | 'lastListing'> & {
+  readonly descriptor: Pick<PluginStanding['descriptor'], 'name' | 'title'>;
+};
+
+/**
+ * The tools that cannot run now, from the last listings the host kept (COR-2435): each tool of a
+ * source that is not loaded and of a plugin that is off, which the catalog does not hold. A tool
+ * the owner turned off is left out, as the catalog leaves it out. None has a user: an agent file
+ * that names it cannot run it.
+ */
+export function lostTools(
+  catalog: readonly Pick<CatalogTool, 'name'>[],
+  sources: readonly ToolSourceStanding[] | undefined,
+  plugins: readonly LostPlugin[] | undefined,
+): ShownTool[] {
+  const held = new Set(catalog.map((tool) => tool.name));
+  const lost: ShownTool[] = [];
+  const add = (tool: ShownTool): void => {
+    if (held.has(tool.name)) return;
+    held.add(tool.name);
+    lost.push(tool);
+  };
+  for (const source of sources ?? []) {
+    if (source.state === 'loaded' || source.lastListing === undefined) continue;
+    const cause: LostCause = {
+      kind: 'source',
+      id: source.id,
+      name: sourceHeading(source),
+      state: source.state,
+    };
+    for (const tool of source.lastListing.tools) {
+      if (!isToolOn(tool)) continue;
+      add({
+        name: tool.name,
+        description: tool.description,
+        shortDescription: tool.shortDescription,
+        title: tool.title,
+        inputSchema: tool.inputSchema,
+        tier: tool.tier,
+        defaultApproval: tool.tier === 'read-only' ? 'allow' : 'ask',
+        source: 'host',
+        plugin: null,
+        skill: null,
+        users: [],
+        userApprovals: {},
+        lost: cause,
+      });
+    }
+  }
+  for (const plugin of plugins ?? []) {
+    if (plugin.status !== 'disabled' || plugin.lastListing === undefined) continue;
+    const cause: LostCause = {
+      kind: 'plugin',
+      name: plugin.descriptor.name,
+      title: plugin.descriptor.title,
+    };
+    for (const tool of plugin.lastListing.tools) {
+      add({
+        name: tool.name,
+        description: tool.description,
+        shortDescription: tool.shortDescription,
+        title: tool.title,
+        inputSchema: tool.inputSchema,
+        tier: tool.tier,
+        defaultApproval: tool.tier === 'read-only' ? 'allow' : 'ask',
+        source: 'plugin',
+        plugin: plugin.descriptor.name,
+        skill: null,
+        users: [],
+        userApprovals: {},
+        lost: cause,
+      });
+    }
+  }
+  return lost;
+}
+
+/** The sentence of a lost tool's warning row (rows 30n, 30p). */
+export function lostToolWarning(cause: LostCause): string {
+  const copy = TOOL.lost;
+  if (cause.kind === 'plugin') return copy.plugin(cause.title);
+  return cause.state === 'needs-authorization' ? copy.signIn(cause.name) : copy.source(cause.name);
+}
+
+/**
+ * The tools of a source's table (row 31u): the ones it offers when it loaded, else the ones it
+ * listed last, which show paused. `remembered` is whether they are the last listing.
+ */
+export function sourceTableTools(source: ToolSourceStanding): {
+  readonly tools: ToolSourceTool[];
+  readonly remembered: boolean;
+} {
+  if (source.tools.length > 0 || source.lastListing === undefined) {
+    return { tools: source.tools, remembered: false };
+  }
+  return { tools: source.lastListing.tools, remembered: true };
 }
 
 /** The tools from which Capabilities groups its rows by source (row 32e, the "40 or more" frame). */
@@ -118,19 +308,28 @@ export const GROUP_TOOLS_FROM = 40;
  * server, plugin or skill that brings it, read as words ("github" is "Github"), because the
  * catalog carries no display name of a source.
  */
-export function toolRowSource(tool: CatalogTool): string {
+export function toolRowSource(
+  tool: ShownTool,
+  sourceNames: ReadonlyMap<string, string> = new Map(),
+): string {
   if (tool.source === 'bureau') return TOOL.chips.source.bureau;
   if (tool.source === 'plugin') return humanizeName(tool.plugin ?? '');
   if (tool.source === 'skill') return humanizeName(tool.skill ?? '');
+  // A source that has a saved name is called by it ("GitHub"), as the chip says it.
+  if (tool.lost?.kind === 'source') return tool.lost.name;
   const server = serverOf(tool);
-  return server === undefined ? TOOL.sources.host : humanizeName(server);
+  if (server === undefined) return TOOL.sources.host;
+  return sourceNames.get(server) ?? humanizeName(server);
 }
 
 /** The key of the group of tools Bureau adds, which a grouped list shows first. */
 const BUILT_IN_GROUP = 'bureau:';
 
 /** The group a tool's row belongs to when the list is grouped by source: one key per source, labelled as its rows say it. */
-export function toolGroup(tool: CatalogTool): { readonly key: string; readonly label: string } {
+export function toolGroup(
+  tool: ShownTool,
+  sourceNames: ReadonlyMap<string, string> = new Map(),
+): { readonly key: string; readonly label: string } {
   const origin =
     tool.source === 'plugin'
       ? tool.plugin
@@ -139,15 +338,15 @@ export function toolGroup(tool: CatalogTool): { readonly key: string; readonly l
         : tool.source === 'host'
           ? serverOf(tool)
           : null;
-  return { key: `${tool.source}:${origin ?? ''}`, label: toolRowSource(tool) };
+  return { key: `${tool.source}:${origin ?? ''}`, label: toolRowSource(tool, sourceNames) };
 }
 
 /**
  * The tools put in the order a grouped list needs: the rows of one source together, Built in
  * first and the other sources by name, each source's tools in the order the catalog gave them.
  */
-export function groupToolsBySource(tools: readonly CatalogTool[]): CatalogTool[] {
-  const groups = new Map<string, { label: string; tools: CatalogTool[] }>();
+export function groupToolsBySource<Tool extends CatalogTool>(tools: readonly Tool[]): Tool[] {
+  const groups = new Map<string, { label: string; tools: Tool[] }>();
   for (const tool of tools) {
     const { key, label } = toolGroup(tool);
     const group = groups.get(key) ?? { label, tools: [] };
@@ -351,6 +550,10 @@ export function sourceStatusFacts(
 ): string[] {
   const facts: string[] = [];
   if (source.authorized !== undefined) facts.push(SOURCE.status.auth.oauth);
+  // The connect form stores an API key as `key` and a bearer token as `token` (row 32k), so the
+  // names the host reports say which one the source holds; any other credential stays unnamed.
+  else if (source.credentials.includes(API_KEY_CREDENTIAL)) facts.push(SOURCE.status.auth.apiKey);
+  else if (source.credentials.includes(BEARER_CREDENTIAL)) facts.push(SOURCE.status.auth.bearer);
   else if (source.credentials.length > 0) facts.push(SOURCE.status.auth.credentials);
   const tested = source.lastTested === undefined ? Number.NaN : Date.parse(source.lastTested);
   if (!Number.isNaN(tested)) facts.push(SOURCE.status.lastTested(waitedFor(tested, now)));

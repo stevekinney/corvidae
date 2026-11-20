@@ -12,15 +12,12 @@
  *
  * Not run on this host (the browser suites run on GitHub, `main.yml`).
  */
-import type { Page } from '@playwright/test';
+import type { Page, Route } from '@playwright/test';
 
-import {
-  SAMPLE_NOW,
-  SAMPLE_NOW_MILLISECONDS,
-  SAMPLE_TIME_ZONE,
-} from '../../fixtures/sample-now.ts';
+import { SAMPLE_NOW, SAMPLE_TIME_ZONE } from '../../fixtures/sample-now.ts';
+import { SAMPLE_WORLD_DURATIONS } from '../../fixtures/sample-world-history.ts';
 import { readSampleWorldRecords } from '../../fixtures/sample-world-records.ts';
-import { rewriteBureauAnswer } from './bureau-answer-support.ts';
+import { isBureauCall } from './bureau-answer-support.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
 import { E2E_SHOWCASE_URL } from './e2e-constants.ts';
 import { expect, test } from './fixtures.ts';
@@ -32,6 +29,12 @@ const SOURCE = 'goal-page-states.spec.ts';
 const WIDTHS = [1280, 375] as const;
 
 type JsonRecord = Record<string, unknown>;
+
+/** When the captioned working goal was created and made its first attempt: Mon, Nov 2, 10:41 AM (67x). */
+const WORKING_GOAL_CREATED = Date.parse('2026-11-02T10:41:00-06:00');
+/** How long the run of the attempt being checked took: the sample world's second attempt's run. */
+const WORKING_ATTEMPT_RUN_MILLISECONDS =
+  SAMPLE_WORLD_DURATIONS.summarizeRefundsSecondAttempt * 1000;
 
 /** Opens `path` at `width` and waits until the goal's attempts are listed. */
 async function openGoal(page: Page, path: string, width: number): Promise<void> {
@@ -47,22 +50,63 @@ async function openGoal(page: Page, path: string, width: number): Promise<void> 
  * canceled it.
  */
 async function answerAsWorkingGoal(page: Page): Promise<void> {
-  await rewriteBureauAnswer(page, 'bureau.goals.get', (goal: JsonRecord) => {
+  await page.route(isBureauCall, async (route: Route) => {
+    const body = JSON.parse(route.request().postData() ?? '{}') as { method?: string };
+    if (body.method !== 'bureau.goals.get') {
+      await route.fallback();
+      return;
+    }
+    const response = await route.fetch();
+    const answer = (await response.json()) as { result?: JsonRecord };
+    const goal = answer.result ?? {};
     const attempts = (goal['attempts'] as JsonRecord[] | undefined) ?? [];
     const newest = Math.max(...attempts.map((attempt) => Number(attempt['attemptIndex'])));
-    return {
-      ...goal,
-      status: 'evaluating',
-      terminalReason: null,
-      closedAt: null,
-      cancellation: null,
-      updatedAt: new Date(SAMPLE_NOW_MILLISECONDS - 60_000).toISOString(),
-      attempts: attempts.map((attempt) =>
-        Number(attempt['attemptIndex']) === newest
-          ? { ...attempt, status: 'evaluating', completedAt: null, finishReason: null }
-          : attempt,
-      ),
-    };
+    // The captioned goal is today's (67x: created Mon, Nov 2, 10:41 AM, its first attempt then):
+    // every time the goal records moves by the same amount, so each attempt keeps its own span, and
+    // what each attempt's run took is still read from the run.
+    const first = attempts.find((attempt) => Number(attempt['attemptIndex']) === 0);
+    const shift =
+      WORKING_GOAL_CREATED - Date.parse(String(first?.['startedAt'] ?? goal['createdAt']));
+    const moved = (value: unknown): unknown =>
+      typeof value === 'string' && Number.isFinite(Date.parse(value))
+        ? new Date(Date.parse(value) + shift).toISOString()
+        : value;
+    const newestStarted = attempts.find((attempt) => Number(attempt['attemptIndex']) === newest)?.[
+      'startedAt'
+    ];
+    await route.fulfill({
+      response,
+      json: {
+        ...answer,
+        result: {
+          ...goal,
+          status: 'evaluating',
+          terminalReason: null,
+          closedAt: null,
+          cancellation: null,
+          createdAt: moved(goal['createdAt']),
+          // The move to checking is the goal's last write, made as the newest attempt's run ended.
+          updatedAt: new Date(
+            Date.parse(String(moved(newestStarted))) + WORKING_ATTEMPT_RUN_MILLISECONDS,
+          ).toISOString(),
+          attempts: attempts.map((attempt) =>
+            Number(attempt['attemptIndex']) === newest
+              ? {
+                  ...attempt,
+                  startedAt: moved(attempt['startedAt']),
+                  status: 'evaluating',
+                  completedAt: null,
+                  finishReason: null,
+                }
+              : {
+                  ...attempt,
+                  startedAt: moved(attempt['startedAt']),
+                  completedAt: moved(attempt['completedAt']),
+                },
+          ),
+        },
+      },
+    });
   });
 }
 
@@ -79,6 +123,8 @@ for (const width of WIDTHS) {
         'data-status-word',
         /Running/,
       );
+      // What its run took, never the time since it started (67x).
+      await expect(page.locator('[data-attempt]').first()).toContainText('Agent took 1 min 12 s');
       await captureForDesignReview(page, {
         route: '/goals/:goal',
         state: 'working',

@@ -718,6 +718,8 @@ const supervisor = createSupervisor({
 console.log(supervisor !== undefined);
 ```
 
+A `pass` may say why the attempt met the check, as its optional `reason` (`{ kind: 'pass', evidence: [], reason: 'Reply said hello' }`, COR-2425). The goal's record keeps it on the attempt's verdict, held to 1,024 characters; a reason that is not a string, or holds nothing but white space, is dropped and the check is still met, and a verdict recorded before a pass could say has none. The owner's `bureau.goals.get` serves it as `attempts[].reason`, as owner-only as a failing attempt's `feedback`, and `bureau.goals.verdict` as `reason`.
+
 ### Settings (`bureau.settings`)
 
 `bureau.settings` is the part of a deployment's configuration you can change while it runs, by a person through a control-plane caller or by an agent through a tool. The code options you pass to `createBureau` are the defaults; a stored value overrides them, and `settings: { locked: { key: reason } }` names the keys the store may not override and why: `deployment` for a key the deployment's own code holds, `shared-storage` for a key that processes sharing one store must agree on (Interborough's remote mode locks its ownership and maintenance settings so). `get()` reports each key's `locked` state and, for a locked one, its `lockReason`. Each key is a dotted name and takes the value its code option takes, except that every duration is a number of milliseconds.

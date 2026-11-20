@@ -234,6 +234,21 @@ describe('the sidebar', () => {
     expect(name?.parentElement).toBe(collapse.parentElement);
   });
 
+  test('shows the commit its build was made from, quietly, beside the name', () => {
+    onDesktop();
+    stubEngine();
+    landAt('/chats');
+    Reflect.set(globalThis, 'INTERBOROUGH_BUILD_COMMIT', 'abc1234 (edited)');
+    try {
+      const { container } = mount();
+      const commit = container.querySelector('.weft-shell-sidebar__commit');
+      expect(commit?.textContent).toBe('abc1234 (edited)');
+      expect(commit?.previousElementSibling?.className).toContain('weft-shell-sidebar__name');
+    } finally {
+      Reflect.deleteProperty(globalThis, 'INTERBOROUGH_BUILD_COMMIT');
+    }
+  });
+
   test('offers New chat as its primary action, with its key as plain text (COR-2315)', async () => {
     onDesktop();
     stubEngine();

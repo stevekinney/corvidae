@@ -12,6 +12,7 @@
 import type { StatusDotWordLabel } from '@lostgradient/cinder';
 
 import { RUN_DETAIL_COPY } from '../../../app/copy/runs.ts';
+import { SIGNAL_WAIT_WORD } from '../../../app/copy/tasks.ts';
 import { isTerminalState, type TaskView } from '../../../lib/bureau-tasks.ts';
 import type { StatusWord } from '../../../lib/status.ts';
 import { durationWords, waitedWords } from './run-rows.ts';
@@ -140,7 +141,7 @@ export function runStatusLine(input: RunStatusLineInput): RunStatusLine {
   // a signal needs nobody to be at the page, so it reads Waiting.
   const signals = input.waitingForSignals ?? [];
   if (!input.over && task === undefined && input.status === 'Running' && signals.length > 0) {
-    return { word: 'Waiting', phrases: [], signals };
+    return { word: SIGNAL_WAIT_WORD, phrases: [], signals };
   }
   if (!input.over && input.status === 'Running') {
     return {

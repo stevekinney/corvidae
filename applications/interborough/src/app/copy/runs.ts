@@ -589,6 +589,12 @@ export const RUN_DETAIL_COPY = {
     /** Under the heading of a run a schedule started, which has no chat. */
     scheduleDescription:
       'A schedule run has no chat, so the schedule’s prompt is the input and the result is the output.',
+    /**
+     * Under the heading of a goal's attempt, which no person sent in a chat: the goal's prompt went
+     * in, and what the agent answered is what the goal's check reads.
+     */
+    goalDescription:
+      'An attempt of a goal has no chat, so the goal’s prompt is the input and the reply is what its check reads.',
     input: 'Input',
     output: 'Output',
     /** The card of the message that started a chat run, and who it is from. */
@@ -600,6 +606,8 @@ export const RUN_DETAIL_COPY = {
     /** The card of a schedule run's prompt and result. */
     prompt: 'Prompt',
     fromSchedule: 'From the schedule',
+    /** Who a goal's attempt's prompt is from: the goal, never "you" or a chat. */
+    fromGoal: 'From the goal',
     result: 'Result',
     /** Under the message in: where and when it was sent. */
     sentInChat: (when: string): string => `Sent in the chat, ${when}`,

@@ -99,13 +99,13 @@
   import { resolveMessageTurnState } from '../message/turn-state.ts';
   import { resolveTurnLabels } from '../message/turn-labels.ts';
   import { resolveChatLabels } from '../chat-labels.ts';
-  import { preloadMarkdownPipeline } from '../message/markdown-pipeline.ts';
   import {
     Button,
     ConfirmDialog,
     dockedToBottom,
     EmptyState,
     MessageSquare,
+    preloadMarkdownPipeline,
     Quote,
     SelectionPopover,
   } from '@lostgradient/cinder';

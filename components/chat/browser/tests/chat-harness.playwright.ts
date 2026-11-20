@@ -1449,7 +1449,7 @@ test.describe('chat harness — wide Markdown tables (COR-2261)', () => {
       'data-state',
       'rendered',
     );
-    return assistant.locator('.message-markdown-table-scroller');
+    return assistant.locator('.cinder-markdown-table-scroller');
   }
 
   test('at 320px the scroller is a named region with a cue and scrolls from the keyboard', async ({
@@ -1463,7 +1463,7 @@ test.describe('chat harness — wide Markdown tables (COR-2261)', () => {
       await expect(scroller).toHaveAttribute('role', 'region');
       await expect(scroller).toHaveAccessibleName('Scrollable table');
       await expect(scroller).toHaveAttribute('tabindex', '0');
-      const cue = harness.locator('.message-markdown-table-cue').last();
+      const cue = harness.locator('.cinder-markdown-table-cue').last();
       await expect(cue).toBeVisible();
       await expect(cue).toContainText(/\+\d+ columns?/);
       // The table keeps its own semantics inside the region.
@@ -1514,16 +1514,16 @@ test.describe('chat harness — wide Markdown tables (COR-2261)', () => {
       await expect(scroller.locator('table')).toBeVisible();
       await expect(scroller).not.toHaveAttribute('tabindex', /.*/);
       await expect(scroller).not.toHaveAttribute('role', /.*/);
-      await expect(harness.locator('.message-markdown-table-cue')).toHaveCount(0);
+      await expect(harness.locator('.cinder-markdown-table-cue')).toHaveCount(0);
 
       await page.setViewportSize({ width: 320, height: 900 });
       await expect(scroller).toHaveAttribute('tabindex', '0');
       await expect(scroller).toHaveAttribute('role', 'region');
-      await expect(harness.locator('.message-markdown-table-cue')).toHaveCount(1);
+      await expect(harness.locator('.cinder-markdown-table-cue')).toHaveCount(1);
 
       await page.setViewportSize({ width: 1440, height: 900 });
       await expect(scroller).not.toHaveAttribute('tabindex', /.*/);
-      await expect(harness.locator('.message-markdown-table-cue')).toHaveCount(0);
+      await expect(harness.locator('.cinder-markdown-table-cue')).toHaveCount(0);
     } finally {
       await dispose();
     }

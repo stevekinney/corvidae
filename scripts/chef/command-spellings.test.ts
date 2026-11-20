@@ -114,10 +114,14 @@ describe('Usage headers match the parsers of the scripts they document', () => {
     fetch: async () => new Response('{}', { status: 500 }),
   };
   const parsers: Record<string, (subcommand: string | undefined, argv: string[]) => unknown> = {
+    // `tag` reads only text, so its header names no pull request and its parser takes none.
     'review-threads': (subcommand, argv) =>
-      runReviewThreads([subcommand!, '--pr', '7', '--repository', 'a/b', ...argv], {
-        runner: failingRunner,
-      }),
+      runReviewThreads(
+        subcommand === 'tag'
+          ? [subcommand, ...argv]
+          : [subcommand!, '--pr', '7', '--repository', 'a/b', ...argv],
+        { runner: failingRunner },
+      ),
     note: (subcommand, argv) => runNote([subcommand!, 'note.md', ...argv]),
     linear: (subcommand, argv) => runLinear([subcommand!, 'COR-1', ...argv], noNetwork),
     brief: (_subcommand, argv) => runBrief(['COR-1', ...argv], noNetwork),

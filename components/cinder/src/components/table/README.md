@@ -40,6 +40,10 @@ See the [tabular family boundaries](https://github.com/stevekinney/cinder/blob/m
 
 A table scrolls by default. The Table root stays a native `<table>`; Cinder generates a focusable `.cinder-table-scroll` wrapper that owns the frame (the border, the radius and the clip) and the horizontal overflow, with a visible scrollbar and a fade at the inline end, so the page never scrolls sideways. Use `scrollContainerProps` to label, style, or override attributes on that generated wrapper. When `stickyHeader` is set, the generated wrapper is the sticky header's scroll container; set a bounded block size on `scrollContainerProps` when the table should scroll vertically inside that wrapper.
 
+### Theme column headers
+
+Use the `--cinder-table-header-*` tokens on an ancestor to style the column headings independently of the body. The header background paints over the table’s existing header surface, so a sticky header keeps its backdrop when you use a translucent color. Use the padding tokens for the table’s density. The selection cell keeps padding sized for its checkbox. [Table header tokens](../../documentation/tokens.md#table-header)
+
 ### Tables with controls
 
 A table whose cells hold controls (a select, a switch, a checkbox, a button) stacks instead of scrolling. Set `controls` on every cell in a column of controls, and `controls="fit"` for a control that keeps its own size. Below `stackBelow` (640px), measured on the table's own container, each row becomes a card with the name and its muted detail on the first line and the controls full width at 44px beneath.
@@ -124,7 +128,16 @@ The leaves are also named exports of `@lostgradient/cinder`.
 
 <!-- generated:variables:start -->
 
-This component does not declare any local CSS variables.
+- `--cinder-table-header-background`
+- `--cinder-table-header-font-size`
+- `--cinder-table-header-foreground`
+- `--cinder-table-header-padding-block`
+- `--cinder-table-header-padding-block-condensed`
+- `--cinder-table-header-padding-block-spacious`
+- `--cinder-table-header-padding-inline`
+- `--cinder-table-header-padding-inline-spacious`
+- `--cinder-table-header-sorted-foreground`
+
 <!-- generated:variables:end -->
 
 ## Subcomponents

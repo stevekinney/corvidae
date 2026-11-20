@@ -52,6 +52,13 @@ export interface DeliveryMergeObservation {
   reviewedHead: string;
   base: string;
   integrationTree: string;
+  /**
+   * When `main` moved after the evidence and the landing queue verified that its new commits touch
+   * nothing the evidence covers (`direct-merge.ts`), `base` and `integrationTree` stay the
+   * attested ones, and these name the base and tree actually pushed.
+   */
+  landedBase?: string;
+  landedTree?: string;
   mergeCommit?: string;
   state: 'pending-provider-outcome' | 'confirmed-merge';
   branch?: string;

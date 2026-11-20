@@ -27,7 +27,8 @@ export const DEFAULT_PII_RULES = {
     replace: '[EMAIL_REDACTED]',
   },
   phone: {
-    regex: /\b(?:\+?\d{1,3}[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}\b/g,
+    regex:
+      /(?<![a-zA-Z0-9_-])(?:\+?\d{1,3}[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}(?![a-zA-Z0-9_-])/g,
     replace: '[PHONE_REDACTED]',
   },
   apiKey: {

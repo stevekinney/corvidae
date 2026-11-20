@@ -2,11 +2,18 @@
   import { CopyButton } from '@lostgradient/cinder';
 </script>
 
-<div class="example-preview-row" style="align-items: center;">
-  <code
-    style="padding: 0.25rem 0.5rem; background-color: var(--cinder-surface-inset); color: var(--cinder-text-default); border-radius: 4px;"
-    >npx cinder install</code
-  >
+<div class="example-preview-row example-preview-row-layout">
+  <code class="code background-surface-inset text-default rounded-small">npx cinder install</code>
   <CopyButton value="npx cinder install" label="Copy install command" />
   <CopyButton value="npx cinder install" label="Copy install command" textVisible />
 </div>
+
+<style>
+  .example-preview-row-layout {
+    align-items: center;
+  }
+
+  .code {
+    padding: var(--cinder-space-1) var(--cinder-space-2);
+  }
+</style>

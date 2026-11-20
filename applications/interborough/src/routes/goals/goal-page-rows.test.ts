@@ -288,7 +288,31 @@ describe('the attempts of a goal that gave up (rows 67i and 67l)', () => {
       ...goal,
       attempts: goal.attempts.map((attempt) =>
         attempt.attemptIndex === 4
-          ? { ...attempt, status: 'passed', feedback: 'Reply said hello' }
+          ? { ...attempt, status: 'passed', feedback: null, reason: 'Reply said hello' }
+          : attempt,
+      ),
+    };
+    const [newest] = attemptRows(passed, {
+      agent: 'Assistant',
+      zone: ZONE,
+      now: 0,
+      liveWait: undefined,
+    });
+    expect(newest?.lineTwo).toBe('Assistant, took 6 s, reply said hello');
+  });
+
+  test('say a met check’s reason, never the feedback a retry before it was turned with (67v)', () => {
+    const goal = draftReleaseNotes();
+    const passed: Goal = {
+      ...goal,
+      attempts: goal.attempts.map((attempt) =>
+        attempt.attemptIndex === 4
+          ? {
+              ...attempt,
+              status: 'passed',
+              feedback: 'An earlier retry’s feedback',
+              reason: 'Reply said hello',
+            }
           : attempt,
       ),
     };

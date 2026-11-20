@@ -20,7 +20,7 @@
      */
     gap: var(--cinder-space-8);
     padding: var(--cinder-space-6) var(--cinder-space-4);
-    border-top: 1px solid var(--cinder-border-muted);
+    border-top: var(--cinder-border-width) solid var(--cinder-border-muted);
     background: var(--cinder-surface);
   }
 
@@ -153,7 +153,7 @@
    */
   .cinder-footer__main + .cinder-footer__legal {
     padding-top: var(--cinder-space-2);
-    border-top: 1px solid var(--cinder-border-muted);
+    border-top: var(--cinder-border-width) solid var(--cinder-border-muted);
   }
 
   .cinder-footer__legal-links {

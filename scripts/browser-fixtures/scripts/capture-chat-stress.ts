@@ -719,11 +719,11 @@ export function measureInPage(options: {
       : undefined;
   const wideLayout: NonNullable<InPageMeasurement['wideLayout']>[number][] = [];
   for (const node of shell.querySelectorAll<HTMLElement>(
-    '.message-content-wide, .tool-payload-code',
+    '.message-content-wide, [data-cinder-markdown-node], .tool-payload-code',
   )) {
     if (!isVisible(node)) continue;
     const frame =
-      node.querySelector<HTMLElement>('.message-markdown-table-frame, .cinder-code-block') ?? node;
+      node.querySelector<HTMLElement>('.cinder-markdown-table-frame, .cinder-code-block') ?? node;
     const frameBox = frame.getBoundingClientRect();
     const clippingAncestors: string[] = [];
     let ancestor = node.parentElement;
@@ -742,7 +742,7 @@ export function measureInPage(options: {
       ancestor = ancestor.parentElement;
     }
     const scroller = node.querySelector<HTMLElement>(
-      '.message-markdown-table-scroller, .cinder-code-block__viewport',
+      '.cinder-markdown-table-scroller, .cinder-code-block__viewport',
     );
     const scrollerBox = scroller?.getBoundingClientRect();
     const firstCell = scroller?.querySelector<HTMLElement>('tr > :first-child');

@@ -347,6 +347,16 @@ describe('--pr spelling', () => {
     expect(result.code).toBe(0);
   });
 
+  test('tag prints the defect classes a finding carries, and none for a nit', () => {
+    const tagged = run(['tag', '--text', 'This contradicts the spec, which says it must cancel.']);
+    expect(tagged.code).toBe(0);
+    expect(JSON.parse(tagged.output)).toEqual({ classes: ['spec-contradiction'] });
+    expect(JSON.parse(run(['tag', '--text', 'Rename this variable.']).output)).toEqual({
+      classes: [],
+    });
+    expect(() => run(['tag'])).toThrow(UsageError);
+  });
+
   test('refuses an ambiguous or incomplete target as a usage error', () => {
     const runner = fakeGitHub([]).runner;
     expect(() => run(['list', 'acme/widgets', '7', '--pr', '8'], { runner })).toThrow(UsageError);

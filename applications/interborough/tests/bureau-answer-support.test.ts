@@ -5,6 +5,7 @@
  * and three specs silently showed the unrewritten world. Playwright does not run on every host, so
  * this holds the route to the transport's own request and drives its handler with a stand-in route.
  */
+import { Glob } from 'bun';
 import { describe, expect, test } from 'bun:test';
 
 import type { Page, Route } from '@playwright/test';
@@ -13,6 +14,7 @@ import { bureauTransport } from '../src/lib/bureau-transport.ts';
 import { isBureauCall, rewriteBureauAnswer } from './e2e/bureau-answer-support.ts';
 
 const ORIGIN = 'http://127.0.0.1:4100';
+const E2E_DIRECTORY = `${import.meta.dir}/e2e`;
 
 /** The URL the generated client's transport posts `method` to, read from the request it makes. */
 async function requestedUrl(method: string): Promise<URL> {
@@ -71,6 +73,18 @@ describe('the specs’ Bureau answer rewrite', () => {
     for (const method of ['bureau.goals.get', 'bureau.tasks.list', 'bureau.workflows.runs.get']) {
       expect(isBureauCall(await requestedUrl(method))).toBe(true);
     }
+  });
+
+  test('no spec routes the page’s Bureau calls on the old /bureau/jsonrpc path', async () => {
+    // A spec's own `page.route('**/bureau/jsonrpc', …)` matched nothing after the page moved to
+    // `/jsonrpc`, so its stub was skipped and the page drew the unrewritten world (the run page,
+    // goal page and Goals list specs, COR-2423). A direct request to `/bureau/jsonrpc` still works.
+    const offenders: string[] = [];
+    for await (const file of new Glob('*.ts').scan({ cwd: E2E_DIRECTORY })) {
+      const text = await Bun.file(`${E2E_DIRECTORY}/${file}`).text();
+      if (/\.route\(\s*['"`][^'"`]*\/bureau\/jsonrpc/.test(text)) offenders.push(file);
+    }
+    expect(offenders).toEqual([]);
   });
 
   test('does not match the old /bureau/jsonrpc path, or another of the host’s routes', () => {

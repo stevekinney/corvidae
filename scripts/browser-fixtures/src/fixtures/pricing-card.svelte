@@ -25,19 +25,17 @@
   let selectedPlan = $state('Pro');
 </script>
 
-<section style="padding-block: var(--cinder-space-10);">
+<section class="padding-block-10">
   <Container maxWidth="wide">
-    <div style="display: grid; gap: var(--cinder-space-6);">
-      <header style="display: grid; gap: var(--cinder-space-2); max-inline-size: 60ch;">
-        <h2 style="margin: 0;">Pricing for teams of every size</h2>
-        <p style="margin: 0; color: var(--cinder-text-muted);">
+    <div class="example-grid gap-6">
+      <header class="header gap-2">
+        <h2 class="h2">Pricing for teams of every size</h2>
+        <p class="h2 text-muted">
           Start free, then scale with advanced collaboration and enterprise controls.
         </p>
       </header>
 
-      <ul
-        style="list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); gap: var(--cinder-space-4); align-items: start;"
-      >
+      <ul class="ul gap-4">
         {#each plans as plan (plan.name)}
           <li>
             <PricingCard
@@ -56,3 +54,27 @@
     </div>
   </Container>
 </section>
+
+<style>
+  .example-grid {
+    display: grid;
+  }
+
+  .header {
+    display: grid;
+    max-inline-size: 60ch;
+  }
+
+  .h2 {
+    margin: 0;
+  }
+
+  .ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+    align-items: start;
+  }
+</style>

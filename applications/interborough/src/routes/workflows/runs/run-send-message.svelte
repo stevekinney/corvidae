@@ -68,7 +68,10 @@
   }
 </script>
 
-<form data-testid="run-send-message" onsubmit={submit}>
+<!-- The form draws no box (`display: contents`): the bar is sticky, and a sticky box sticks only
+     inside its parent's, so a form exactly the bar's height would hold it in the flow and never
+     dock it to the bottom of the screen (row 06b). The run's page is its parent's box. -->
+<form class="ib-run-send-message" data-testid="run-send-message" onsubmit={submit}>
   <DockedActionBar label={copy.label} variant="card">
     <Input
       id={`run-send-message-${runId}`}

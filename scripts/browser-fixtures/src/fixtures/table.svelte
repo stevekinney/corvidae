@@ -8,7 +8,11 @@
     TableHeader,
     TableHeaderCell,
     TableRow,
+    type TableDensity,
   } from '@lostgradient/cinder';
+
+  const headerTokens = new URLSearchParams(globalThis.location.search).get('header-tokens') === '1';
+  const densities = ['comfortable', 'condensed', 'spacious'] as const satisfies TableDensity[];
 
   const contributors = [
     { name: 'Ada Lovelace', role: 'Mathematician', commits: 142 },
@@ -23,6 +27,31 @@
     { key: 'settings', size: '1 KB' },
   ];
 </script>
+
+{#if headerTokens}
+  {#each densities as density (density)}
+    <Table caption={`Contributors (${density})`} {density} stickyHeader>
+      <TableHeader>
+        <TableRow>
+          <TableHeaderCell column="name" sortable>Name</TableHeaderCell>
+          <TableHeaderCell>Role</TableHeaderCell>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {#each contributors as contributor (contributor.name)}
+          <TableRow>
+            <TableCell>{contributor.name}</TableCell>
+            <TableCell>{contributor.role}</TableCell>
+          </TableRow>
+        {/each}
+        <TableRow>
+          <TableCell>Automation</TableCell>
+          <TableCell>{longKey}</TableCell>
+        </TableRow>
+      </TableBody>
+    </Table>
+  {/each}
+{/if}
 
 <div class="table-fixture">
   <Table caption="Recent contributors">
@@ -48,7 +77,7 @@
     </TableBody>
   </Table>
 
-  <Table caption="Build history" style="min-inline-size: 48rem">
+  <Table caption="Build history" class="table-fixture-table">
     <TableHeader>
       <TableRow>
         <TableHeaderCell>Name</TableHeaderCell>
@@ -86,7 +115,7 @@
 
   <!-- A Table inside a Card (COR-2449): frameless by default, since the card is the frame, and
        beside it the `framed` opt-in that draws the table's own frame within the card. -->
-  <div data-testid="table-in-card" class="table-in-card">
+  <div data-testid="table-in-card" class="table-in-card gap-6 margin-block-start-6">
     <div data-testid="table-in-card-flat">
       <Card title="Contributors">
         <Table caption="Contributors in a card">
@@ -137,7 +166,9 @@
 
   .table-in-card {
     display: grid;
-    gap: 1.5rem;
-    margin-block-start: 1.5rem;
+  }
+
+  :global(.table-fixture-table) {
+    min-inline-size: 48rem;
   }
 </style>

@@ -34,8 +34,8 @@
   .phone-input-sizing {
     display: flex;
     flex-direction: column;
-    gap: 1.5rem;
-    padding: 1rem;
+    gap: var(--cinder-space-6);
+    padding: var(--cinder-space-4);
     max-inline-size: 28rem;
   }
 

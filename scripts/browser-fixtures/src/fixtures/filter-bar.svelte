@@ -73,7 +73,10 @@
      about 945px (the controls run about 760px, a gap, then the search field at its 11rem basis);
      with the search as a 32px icon button it needs about 800px. 880px sits in the middle of the
      two, so a font that measures a little wider or narrower leaves the bar in the same form. -->
-<div data-testid="filter-bar-search-folded" style="inline-size: 880px; margin-block-start: 2rem;">
+<div
+  data-testid="filter-bar-search-folded"
+  class="filter-bar-search-folded-layout margin-block-start-8"
+>
   <FilterBar
     aria-label="Run filters in a narrower column"
     {segments}
@@ -89,3 +92,47 @@
     onFilterRemove={(key) => setFilter(key, [])}
   />
 </div>
+
+<!-- The tablet form of the Runs page (row 52x): three chips, two of them applied, in a column the
+     medium form cannot hold (its controls need about 640px with every chip in the row, and about
+     580px with Workflow folded). The unapplied Workflow chip moves into the Filter menu
+     (`foldOrder`, least used first) and the applied Started by and Agent chips stay in the row,
+     removable. -->
+<div data-testid="filter-bar-fold-order" class="filter-bar-fold-order-layout margin-block-start-8">
+  <FilterBar
+    aria-label="Run filters with chips folded in order"
+    {segments}
+    segmentValue="all"
+    facets={[
+      facets[0] as FacetDefinition,
+      {
+        type: 'choice',
+        key: 'workflow',
+        label: 'Workflow',
+        multiple: false,
+        options: [{ value: 'release-notes', label: 'Release notes' }],
+      },
+      facets[1] as FacetDefinition,
+    ]}
+    appliedFilters={[
+      { key: 'startedBy', value: 'chats', label: 'Started by' },
+      { key: 'agent', value: 'tool-runner', label: 'Agent' },
+    ]}
+    foldOrder={['workflow', 'agent', 'startedBy']}
+    searchPlaceholder="Search runs"
+    onSegmentChange={() => undefined}
+    onSearchChange={() => undefined}
+    onFacetChange={() => undefined}
+    onFilterRemove={() => undefined}
+  />
+</div>
+
+<style>
+  .filter-bar-search-folded-layout {
+    inline-size: 880px;
+  }
+
+  .filter-bar-fold-order-layout {
+    inline-size: 600px;
+  }
+</style>

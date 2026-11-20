@@ -142,10 +142,10 @@ describe('PageHeader decisions (COR-2320)', () => {
     }
   });
 
-  test('the overflow button never makes the header taller than its title (COR-2337)', () => {
+  test('the overflow button uses the title-aligned height for compact actions (COR-2337)', () => {
     const trigger = declarationsFor(
       stylesheet,
-      '.cinder-page-header__actions .cinder-page-header__overflow',
+      ':where(.cinder-page-header:not([data-cinder-regular-actions])) .cinder-page-header__actions .cinder-page-header__overflow',
     );
     expect(trigger.get('block-size')).toBe('var(--_cinder-compact-control-height)');
     expect(trigger.get('min-block-size')).toBe('var(--_cinder-compact-control-height)');

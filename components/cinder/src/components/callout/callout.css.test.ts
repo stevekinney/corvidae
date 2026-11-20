@@ -191,7 +191,7 @@ const VARIANTS: Array<{ variant: string; token: string }> = [
 describe('callout — one edge, no stripe', () => {
   test('base rule sets one box border and one radius on every corner', () => {
     const base = findRule('.cinder-callout');
-    expect(declValue(base, 'border')).toBe('1px solid var(--cinder-border)');
+    expect(declValue(base, 'border')).toBe('var(--cinder-border-width) solid var(--cinder-border)');
     expect(declValue(base, 'border-radius')).toBe('var(--cinder-radius-md)');
     expect(borderProps(base)).toEqual(['border']);
     for (const property of ['border-start-start-radius', 'border-end-start-radius']) {

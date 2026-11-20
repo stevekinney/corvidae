@@ -18,6 +18,7 @@ import {
 } from '../../../lib/bureau-schedules.ts';
 import { clockTime } from '../../../lib/format/clock.ts';
 import { scheduleDetailPath } from '../../../lib/router.svelte.ts';
+import { workflowTypeName } from '../../../lib/workflow-type-name.ts';
 import type { ScheduleCadence } from '../../schedules/cadence.ts';
 import { cadenceText } from '../../schedules/schedule-cadence-text.ts';
 import { cadenceClauseOf } from './run-schedule-cadence.ts';
@@ -97,6 +98,11 @@ export type RunSchedules = {
    * "every day at 3:00 AM" (row 53l).
    */
   readonly cadences?: ReadonlyMap<string, string>;
+  /**
+   * What holds each held schedule from starting, by its identifier: the workflow whose file cannot
+   * load, as a due run's row says it ("Order refund can’t load", row 10h).
+   */
+  readonly blockers?: ReadonlyMap<string, string>;
 };
 
 /**
@@ -111,9 +117,16 @@ export async function readRunSchedules(
   const schedules = await listBureauSchedules(request);
   const names = new Map<string, string>();
   const cadences = new Map<string, string>();
+  const blockers = new Map<string, string>();
   for (const schedule of schedules) {
     if (schedule.description !== null) names.set(schedule.id, schedule.description);
     cadences.set(schedule.id, cadenceClauseOf(schedule, undefined, { scheduleZone: false }));
+    if (schedule.blocker !== null) {
+      blockers.set(
+        schedule.id,
+        TASK_COPY.list.holds.cannotLoad(workflowTypeName(schedule.blocker.workflow)),
+      );
+    }
   }
   const missing = schedules.filter(
     (schedule) => schedule.status !== 'cancelled' && (schedule.missedFireCount ?? 0) > 0,
@@ -129,7 +142,7 @@ export async function readRunSchedules(
       return runs === null ? [] : [runs];
     })
     .toSorted((left, right) => right.loggedAt - left.loggedAt);
-  return { names, missed, cadences };
+  return { names, missed, cadences, blockers };
 }
 
 /** The day a missed row's time column shows: "Oct 30". */
@@ -153,21 +166,36 @@ export function occurrenceWords(at: number, zone: string): string {
 }
 
 /**
- * Line two of the missed row: "Schedule, missed 4 times since Oct 30, Assistant, every day at 3:00
- * AM (9:00 AM UTC)". The point of the row comes first, so a line cut short on a phone or a tablet
- * drops the cadence, then the agent, and keeps how many runs were missed. The schedule's own zone
- * stays in the cadence; the occurrences are the viewer's.
+ * Which line two the missed row says, by the room it has: `wide` the whole line (row 09q),
+ * `tablet` without the cadence (row 05x), `compact` the few words a phone has room for (row 05w).
+ */
+export type MissedLineForm = 'wide' | 'tablet' | 'compact';
+
+/**
+ * Line two of the missed row, in the order each width's row draws it:
+ *
+ * - wide: "Schedule, Assistant, every day at 3:00 AM (9:00 AM UTC), missed 4 times since Oct 30"
+ * - tablet: "Schedule, Assistant, missed 4 times since Oct 30"
+ * - compact: "Schedule, since Oct 30"
+ *
+ * Each form is whole, so none is cut into an ellipsis that hides how many runs were missed. The
+ * schedule's own zone stays in the cadence; the day of the first miss is the viewer's.
  */
 export function missedLineTwo(
   missed: MissedRuns,
   zone: string,
   agentLabel: (agentName: string) => string,
+  form: MissedLineForm = 'wide',
 ): string {
   const copy = TASK_COPY.list;
+  const day = missedDay(missed.since, zone);
+  if (form === 'compact') {
+    return [copy.kinds.schedule, copy.missed.sinceDay(day)].join(copy.separator);
+  }
   return [
     copy.kinds.schedule,
-    copy.missed.since(missed.count, missedDay(missed.since, zone)),
     ...(missed.agentName === null ? [] : [agentLabel(missed.agentName)]),
-    missed.cadence,
+    ...(form === 'wide' ? [missed.cadence] : []),
+    copy.missed.since(missed.count, day),
   ].join(copy.separator);
 }

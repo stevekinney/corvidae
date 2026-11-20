@@ -52,7 +52,7 @@
 <div
   data-testid="app-bar-over-content"
   bind:this={scroller}
-  style="block-size: 14rem; overflow: auto; margin-top: var(--cinder-space-4); border: 1px solid var(--cinder-border-muted);"
+  class="app-bar-over-content-layout margin-block-start-4"
 >
   <AppBar
     title="Saved bars"
@@ -63,18 +63,28 @@
       { label: 'Share', icon: shareIcon, onclick: () => {} },
     ]}
   />
-  <div style="padding: var(--cinder-space-4);">
+  <div class="padding-block-4 padding-inline-4">
     {#each [1, 2, 3, 4, 5, 6] as row (row)}
-      <div
-        aria-hidden="true"
-        style="margin-block-end: var(--cinder-space-3); block-size: 3rem; background: var(--cinder-accent-solid);"
-      ></div>
+      <div aria-hidden="true" class="example-content margin-block-end-3"></div>
     {/each}
   </div>
 </div>
 
 <!-- The large-title pairing: the bar's title appears once the header's large title scrolls away. -->
-<div data-testid="app-bar-large-title-pairing" style="margin-top: var(--cinder-space-4);">
+<div data-testid="app-bar-large-title-pairing" class="margin-block-start-4">
   <AppBar title="Runs" titleVisible={collapsed} />
   <PageHeader variant="large" title="Runs" bind:collapsed collapsedBar={false} />
 </div>
+
+<style>
+  .app-bar-over-content-layout {
+    block-size: 14rem;
+    overflow: auto;
+    border: 1px solid var(--cinder-border-muted);
+  }
+
+  .example-content {
+    block-size: 3rem;
+    background: var(--cinder-accent-solid);
+  }
+</style>

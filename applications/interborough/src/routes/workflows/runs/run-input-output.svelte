@@ -9,7 +9,15 @@
    * holds has its input and result here, and a run of a workflow file the engine does not hold has
    * the Bureau's record of its trigger, result and error.
    */
-  import { Badge, Button, Collapsible, Section, Stack, VisuallyHidden } from '@lostgradient/cinder';
+  import {
+    Badge,
+    Button,
+    Collapsible,
+    Markdown,
+    Section,
+    Stack,
+    VisuallyHidden,
+  } from '@lostgradient/cinder';
   import type { WorkflowState } from '@lostgradient/weft';
   import { CircleX } from '@lucide/svelte';
   import { createQuery } from '@tanstack/svelte-query';
@@ -33,8 +41,8 @@
     task?: TaskView | undefined;
     /** The thread the task's message is in, when it is not the task's `contextId` (a goal's attempt). */
     threadId?: string | null | undefined;
-    /** The agent's answer, as Markdown rendered to HTML (`renderMarkdown`), once there is one. */
-    answerHtml?: string | undefined;
+    /** The agent's answer, as the Markdown source Cinder's `Markdown` renders, once there is one. */
+    answer?: string | undefined;
     /** Whether the answer was cut short. */
     answerTruncated?: boolean | undefined;
     /** The state of the live follow of the task, for the sentence under the answer. */
@@ -70,7 +78,7 @@
   let {
     task,
     threadId,
-    answerHtml,
+    answer,
     answerTruncated = false,
     followState,
     workflow,
@@ -83,9 +91,13 @@
   }: RunInputOutputProps = $props();
 
   const copy = RUN_DETAIL_COPY.io;
-  const hasAnswer = $derived(answerHtml !== undefined && answerHtml.trim() !== '');
+  const hasAnswer = $derived(answer !== undefined && answer.trim() !== '');
   const errorStack = $derived(workflow?.errorStack ?? '');
   const scheduled = $derived(task !== undefined && isScheduleFire(task));
+  // A goal's attempt was started by its goal with the goal's prompt, in a session no person chats
+  // in: its message is the goal's, never "From you" and never "Sent in the chat".
+  const goalAttempt = $derived(task?.origin?.kind === 'goal');
+  const prompted = $derived(scheduled || goalAttempt);
   const agent = $derived(
     task?.agentName === null || task?.agentName === undefined
       ? TASK_COPY.unknownAgent
@@ -121,7 +133,9 @@
     task !== undefined
       ? scheduled
         ? copy.scheduleDescription
-        : copy.chatDescription
+        : goalAttempt
+          ? copy.goalDescription
+          : copy.chatDescription
       : workflowGoing
         ? copy.workflowDescriptionLive
         : copy.workflowDescription,
@@ -138,9 +152,7 @@
     }
     return TASK_COPY.noAnswerYet;
   });
-  const clamps = $derived(
-    answerHtml !== undefined && answerHtml.replace(/<[^>]*>/g, '').length > CLAMP_ABOVE,
-  );
+  const clamps = $derived(answer !== undefined && answer.length > CLAMP_ABOVE);
   let replyOpen = $state(false);
 </script>
 
@@ -148,10 +160,12 @@
   <Stack gap="var(--cinder-space-3)">
     {#if task !== undefined}
       <div class="ib-run__payloads">
-        <section class="ib-run__payload-card" aria-label={scheduled ? copy.prompt : copy.messageIn}>
+        <section class="ib-run__payload-card" aria-label={prompted ? copy.prompt : copy.messageIn}>
           <header class="ib-run__payload-title-row">
-            <h3 class="ib-run__heading-3">{scheduled ? copy.prompt : copy.messageIn}</h3>
-            <span class="ib-run__note">{scheduled ? copy.fromSchedule : copy.fromYou}</span>
+            <h3 class="ib-run__heading-3">{prompted ? copy.prompt : copy.messageIn}</h3>
+            <span class="ib-run__note"
+              >{scheduled ? copy.fromSchedule : goalAttempt ? copy.fromGoal : copy.fromYou}</span
+            >
           </header>
           {#if messageIn !== undefined}
             <p class="ib-run__message" data-testid="run-message-in">{messageIn}</p>
@@ -160,7 +174,7 @@
           {:else}
             <p class="ib-run__note">{copy.noMessageIn}</p>
           {/if}
-          {#if startedAt !== undefined && !scheduled}
+          {#if startedAt !== undefined && !prompted}
             <p class="ib-run__note">{copy.sentInChat(dayAndTime(startedAt, Date.now()))}</p>
           {/if}
         </section>
@@ -171,14 +185,12 @@
             <span class="ib-run__note">{copy.fromAgent(agent)}</span>
           </header>
           {#if hasAnswer}
-            <!-- eslint-disable-next-line svelte/no-at-html-tags -->
-            <div
+            <Markdown
               id="ib-run-reply"
-              class="cinder-markdown-content weft-artifact-markdown ib-run__answer"
+              content={answer ?? ''}
+              class="weft-artifact-markdown ib-run__answer"
               data-clamped={clamps && !replyOpen ? '' : undefined}
-            >
-              {@html answerHtml}
-            </div>
+            />
             {#if clamps}
               <button
                 type="button"
@@ -199,9 +211,10 @@
           {:else if followState === 'reconnecting'}
             <p class="ib-run__note" role="status">{TASK_COPY.followReconnecting}</p>
           {/if}
-          {#if hasAnswer && !scheduled}
+          {#if hasAnswer && (!prompted || (goalAttempt && onShowRaw !== undefined))}
             <p class="ib-run__note">
-              {copy.deliveredToChat}
+              <!-- A goal's attempt delivers nothing to a chat; its raw payloads are still there. -->
+              {#if !prompted}{copy.deliveredToChat}{/if}
               {#if onShowRaw !== undefined}
                 <Button
                   variant="ghost-accent"

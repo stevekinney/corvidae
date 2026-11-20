@@ -183,6 +183,59 @@ describe('the owner reads a verdict', () => {
     const listed = await rpc(opened.handler, 'bureau.goals.list', {}, 'alice-key');
     expect(JSON.stringify(listed)).not.toContain(FEEDBACK);
   });
+
+  it('carries a pass’s reason from the validator to the record, the owner’s view and the verdict, and to no one else (COR-2425, row 67v)', async () => {
+    const REASON = 'PASS-REASON-SENTINEL-61af';
+    const passing: Validator = {
+      identity: { name: 'judge', version: '1' },
+      determinism: 'deterministic',
+      validate: (): ValidatorOutcome => ({ kind: 'pass', evidence: [], reason: REASON }),
+    };
+    const opened = await serve({ validators: [passing] });
+    const goalRunId = await create(opened, 'alice-key');
+    await ended(opened, goalRunId);
+
+    // The record: what the validator said, kept on the attempt's verdict.
+    const record = await opened.bureau.goals.get(goalRunId);
+    expect(record?.attempts[0]?.validation?.outcome).toEqual({
+      kind: 'pass',
+      evidence: [],
+      reason: REASON,
+    });
+    // The owner's view of the goal.
+    const own = await rpc(opened.handler, 'bureau.goals.get', { goalRunId }, 'alice-key');
+    expect(own.result).toMatchObject({
+      status: 'succeeded',
+      attempts: [{ attemptIndex: 0, status: 'passed', reason: REASON, feedback: null }],
+    });
+    // The verdict, which is content.
+    const read = await verdict(opened, 'alice-key', goalRunId);
+    expect(read.result).toMatchObject({ outcome: 'pass', reason: REASON });
+    // Owner-only on the goal's view, exactly like a missed check's feedback: no scope widens it.
+    for (const key of ['operator-key', 'goals-reader-key', 'goals-content-key']) {
+      const other = await rpc(opened.handler, 'bureau.goals.get', { goalRunId }, key);
+      if (other.error !== undefined) continue;
+      expect(JSON.stringify(other), key).not.toContain(REASON);
+      for (const attempt of other.result!['attempts'] as Array<Record<string, unknown>>) {
+        expect(attempt, key).not.toHaveProperty('reason');
+      }
+    }
+    const listed = await rpc(opened.handler, 'bureau.goals.list', {}, 'alice-key');
+    expect(JSON.stringify(listed)).not.toContain(REASON);
+  });
+
+  it('reads null for the reason of a pass whose validator said nothing', async () => {
+    const opened = await serve({ generate: answering('done') });
+    const goalRunId = await create(opened, 'alice-key');
+    await ended(opened, goalRunId);
+
+    const own = await rpc(opened.handler, 'bureau.goals.get', { goalRunId }, 'alice-key');
+    expect(own.result).toMatchObject({
+      attempts: [{ attemptIndex: 0, status: 'passed', reason: null }],
+    });
+    const read = await verdict(opened, 'alice-key', goalRunId);
+    expect(read.result).toMatchObject({ outcome: 'pass', reason: null });
+  });
 });
 
 describe('who else may read a verdict', () => {
