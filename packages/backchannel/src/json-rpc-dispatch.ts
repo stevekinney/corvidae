@@ -25,8 +25,12 @@ import {
   type JsonRpcResponse,
 } from './json-rpc-protocol.ts';
 import { generateOpenRpcDocument } from './openrpc.ts';
-import { executeOperation, type OperationRegistry } from './operation-catalog.ts';
-import { type TransportKind } from './operation-fault.ts';
+import {
+  executeOperation,
+  executeSubscription,
+  type OperationRegistry,
+} from './operation-catalog.ts';
+import { type OperationFault, type TransportKind } from './operation-fault.ts';
 import { type Principal } from './principal.ts';
 
 export type DispatchJsonRpcContext = {
@@ -35,6 +39,12 @@ export type DispatchJsonRpcContext = {
   readonly host: unknown;
   readonly transport: Extract<TransportKind, 'jsonRpcHttp' | 'jsonRpcWebSocket' | 'jsonRpcStdio'>;
   readonly registry: OperationRegistry;
+  /**
+   * Accept a subscription started by a single request. The adapter owns the
+   * iterable and must close it when delivery ends. Start delivery after writing
+   * the returned response so events cannot overtake the acknowledgement.
+   */
+  readonly acceptSubscription?: (subscription: JsonRpcSubscription) => void;
   /**
    * The abort signal of the request that carried the body, when the transport has one (JSON-RPC
    * over HTTP passes the `Request`'s signal). Every call in the body reads it as
@@ -66,6 +76,15 @@ export type DispatchJsonRpcResult =
   | { readonly kind: 'notification' }
   | { readonly kind: 'batch'; readonly responses: ReadonlyArray<JsonRpcResponse> }
   | { readonly kind: 'notification-batch' };
+
+/** A validated subscription that an adapter can deliver after acknowledging its start. */
+export type JsonRpcSubscription = {
+  readonly subscriptionId: string;
+  readonly envelope: unknown;
+  readonly iterable: AsyncIterable<unknown>;
+  readonly close: () => Promise<void>;
+  readonly replayComplete?: Promise<void>;
+};
 
 const DISCOVER_METHOD_NAME = 'rpc.discover';
 
@@ -111,10 +130,10 @@ export async function dispatchJsonRpc(
       // response. Mutating ops "default to request-response" because
       // every caller-friendly client library includes id by default;
       // notifications are an explicit caller opt-in by omitting it.
-      await dispatchOne(parsed.request, context);
+      await dispatchSingle(parsed.request, context);
       return { kind: 'notification' };
     }
-    const response = await dispatchOne(parsed.request, context);
+    const response = await dispatchSingle(parsed.request, context);
     return { kind: 'single', response };
   }
 
@@ -166,27 +185,61 @@ async function dispatchOne(
   context: DispatchJsonRpcContext,
 ): Promise<JsonRpcResponse> {
   const id: JsonRpcId = request.id ?? null;
-  if (request.method === DISCOVER_METHOD_NAME && context.discoverDocument !== undefined) {
-    return { jsonrpc: JSON_RPC_VERSION, result: context.discoverDocument(), id };
-  }
   if (request.method === DISCOVER_METHOD_NAME) {
-    const document = generateOpenRpcDocument({
-      registry: context.registry,
-      transports: ['http', 'websocket'],
-    });
+    const document =
+      context.discoverDocument?.() ??
+      generateOpenRpcDocument({
+        registry: context.registry,
+        transports: ['http', 'websocket'],
+      });
     return { jsonrpc: JSON_RPC_VERSION, result: document, id };
   }
-  const result = await executeOperation(request.method, request.params ?? {}, {
+  const dispatch = {
     principal: context.principal,
     host: context.host,
     transport: context.transport,
     registry: context.registry,
     ...(context.signal === undefined ? {} : { signal: context.signal }),
-  });
+  };
+  const result = await executeOperation(request.method, request.params ?? {}, dispatch);
   if (result.ok) {
     return { jsonrpc: JSON_RPC_VERSION, result: result.value, id };
   }
-  const error = faultToJsonRpcError(result.fault);
+  return faultResponse(result.fault, id);
+}
+
+function dispatchSingle(
+  request: JsonRpcRequest,
+  context: DispatchJsonRpcContext,
+): Promise<JsonRpcResponse> {
+  if (
+    context.acceptSubscription !== undefined &&
+    context.registry.get(request.method)?.kind === 'subscription'
+  ) {
+    return dispatchSubscriptionRequest(request, context, context.acceptSubscription);
+  }
+  return dispatchOne(request, context);
+}
+
+async function dispatchSubscriptionRequest(
+  request: JsonRpcRequest,
+  context: DispatchJsonRpcContext,
+  accept: (subscription: JsonRpcSubscription) => void,
+): Promise<JsonRpcResponse> {
+  const id = request.id ?? null;
+  const started = await executeSubscription(request.method, request.params ?? {}, context);
+  if (!started.ok) return faultResponse(started.fault, id);
+  try {
+    accept(started.value);
+  } catch (error) {
+    await started.value.close().catch(() => {});
+    throw error;
+  }
+  return { jsonrpc: JSON_RPC_VERSION, result: started.value.envelope, id };
+}
+
+function faultResponse(fault: OperationFault, id: JsonRpcId): JsonRpcResponse {
+  const error = faultToJsonRpcError(fault);
   return {
     jsonrpc: JSON_RPC_VERSION,
     error: { code: error.code, message: error.message, data: error.data },

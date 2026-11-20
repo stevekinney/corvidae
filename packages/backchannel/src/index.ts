@@ -78,12 +78,19 @@ export {
   type InMemoryReplayLiveBackendOptions,
 } from './in-memory-replay-live-backend.ts';
 export {
+  dispatchJsonRpc,
+  type DispatchJsonRpcContext,
+  type DispatchJsonRpcResult,
+  type JsonRpcSubscription,
+} from './json-rpc-dispatch.ts';
+export {
   stringifyCatalogSnapshot,
   type CatalogAccessSnapshot,
   type CatalogOperationSnapshot,
   type CatalogRestBindingSnapshot,
   type CatalogSnapshot,
 } from './operation-catalog-snapshot.ts';
+export { createOperationRegistry, type OperationRegistry } from './operation-catalog/index.ts';
 export {
   OPERATION_NAME_PATTERN,
   isValidOperationName,
