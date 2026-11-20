@@ -1,7 +1,10 @@
 import type { BatchOperation, ConditionalBatchCondition } from '@lostgradient/storage';
 import { KEYS } from '../../../storage/keys.ts';
 import { inheritWorkflowWorkerBinding } from '../../../worker/binding-helpers.ts';
-import { assertInheritedWorkerBuildNotRemoved } from '../../../worker/inherited-worker-build.ts';
+import {
+  assertInheritedWorkerBuildNotRemoved,
+  throwIfWorkerBuildRemoved,
+} from '../../../worker/inherited-worker-build.ts';
 import { deserializeCheckpoint } from '../../checkpoint.ts';
 import { encode } from '../../codec.ts';
 import { withoutRetryingActivityNames } from '../../context/activity-retry-state.ts';
@@ -393,16 +396,32 @@ export async function inheritForkWorkerBinding(
   sourceState: WorkflowState,
   options: Parameters<typeof applyForkWorkerBindingInheritance>[2],
 ): Promise<void> {
+  await assertForkInheritedBuildNotRemoved(internals, sourceState, options.persistedRevision);
+  applyForkWorkerBindingInheritance(state, sourceState, options);
+}
+
+/**
+ * The read-only half of {@link inheritForkWorkerBinding}: throws the
+ * `WorkerDeploymentVersionRemovedError` a fork inheriting `sourceState`'s build would, and writes
+ * nothing, so `previewFork` refuses exactly what `fork()` refuses.
+ */
+export async function assertForkInheritedBuildNotRemoved(
+  internals: EngineInternals,
+  sourceState: WorkflowState,
+  persistedRevision: string | undefined,
+): Promise<void> {
   const inherited = sourceState.workerBinding?.current;
   if (
     inherited !== undefined &&
     sourceState.workerVersioningPolicy !== undefined &&
-    (options.persistedRevision === undefined ||
-      options.persistedRevision === inherited.workflowRevision)
+    (persistedRevision === undefined || persistedRevision === inherited.workflowRevision)
   ) {
     await assertInheritedWorkerBuildNotRemoved(internals.storage, inherited);
+    // A removal puts its tombstone before it marks the version, and the fork's commit refuses on
+    // the tombstone alone, so the preview reads it too rather than promise a fork that commit
+    // would refuse.
+    await throwIfWorkerBuildRemoved(internals.storage, inherited);
   }
-  applyForkWorkerBindingInheritance(state, sourceState, options);
 }
 
 export function buildForkBatchOperations(

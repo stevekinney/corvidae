@@ -223,6 +223,22 @@ describe('a fork', () => {
     expect(await runs(fx.storage)).toEqual([['checkout-1', 'completed', 'build-1']]);
   });
 
+  it('is previewed as refused, and writes nothing, when the build the fork would inherit has a tombstone', async () => {
+    await using fx = await finishedRunOnDrainedBuild();
+    await putTombstone(fx.storage, tombstoneKeyOf('build-1'));
+    const before = await shardsOf(fx.storage, 'build-1');
+
+    expect(await rejectionOf(fx.engine.previewFork('checkout-1'))).toMatchObject(REMOVED);
+    expect(
+      await faultOf(
+        invoke(forkWorkflowOperation, { workflowId: 'checkout-1', dryRun: true }, fx.engine),
+      ),
+    ).toMatchObject({ code: 'Conflict', data: { reason: 'version-removed' } });
+
+    expect(await runs(fx.storage)).toEqual([['checkout-1', 'completed', 'build-1']]);
+    expect(await shardsOf(fx.storage, 'build-1')).toEqual(before);
+  });
+
   it('puts a fresh stamp for the build it inherits', async () => {
     await using fx = await finishedRunOnDrainedBuild();
     const before = await shardsOf(fx.storage, 'build-1');

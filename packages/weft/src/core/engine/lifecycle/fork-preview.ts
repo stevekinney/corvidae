@@ -14,6 +14,7 @@ import type { EngineInternals } from '../internals.ts';
 import { normalizeForkStep } from '../state-utilities.ts';
 import { loadWorkflowState } from '../storage-io.ts';
 import {
+  assertForkInheritedBuildNotRemoved,
   loadForkSourceCheckpoint,
   resolveForkPersistedRevision,
   resolveForkTargetRevision,
@@ -47,6 +48,8 @@ export async function previewFork(
         ),
     );
   const forkRevision = resolveForkPersistedRevision(options, sourceState, resolvedRevision);
+  // Throws the removed-build refusal a fork inheriting the source's worker build would.
+  await assertForkInheritedBuildNotRemoved(internals, sourceState, forkRevision);
 
   const fromStep =
     options?.fromStep !== undefined ? normalizeForkStep(options.fromStep) : undefined;
