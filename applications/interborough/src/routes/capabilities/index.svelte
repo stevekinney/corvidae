@@ -65,8 +65,9 @@
     undefined,
   );
 
-  /** A tab's count: how many it holds, or a dash while that is not known (loading, or it could not be read). */
-  function countOf(length: number | undefined): string {
+  /** A tab's count, or a dash when it could not be read. Empty tabs have no tally. */
+  function countOf(length: number | undefined): string | undefined {
+    if (length === 0) return undefined;
     return length === undefined ? copy.tabCountPending : String(length);
   }
   // The plugins are read for the tools of one that is off, which the Tools tab lists too (COR-2435).
@@ -109,9 +110,11 @@
   });
 </script>
 
-{#snippet tabName(name: string, id: string, count: string)}
+{#snippet tabName(name: string, id: string, count: string | undefined)}
   {name}
-  <span class="ib-capabilities__tab-count" data-testid={`tab-count-${id}`}>{count}</span>
+  {#if count !== undefined}
+    <span class="ib-capabilities__tab-count" data-testid={`tab-count-${id}`}>{count}</span>
+  {/if}
 {/snippet}
 
 <section class="ib-capabilities" data-page="capabilities">

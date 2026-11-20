@@ -188,9 +188,7 @@
     {:else if catalog.isPending}
       <Skeleton variant="list" rows={5} label={VIEW_COPY.workflows.loading.title} />
     {:else if workflows.length === 0}
-      <!-- The one list-page first use (owner report, 2026-11-19): no toolbar over nothing, the
-           Workflows icon, New workflow and Ask an agent as buttons, the internal workflows named
-           with a way to them, and the folder behind a closed row, never in the sentence. -->
+      <!-- The internal workflows are the secondary action when this host has them. -->
       <ListPageEmpty
         view="workflows"
         title={copy.empty.title}
@@ -203,20 +201,17 @@
           onclick: (event) => go(event, newPath),
         }}
         secondary={[
-          {
-            label: copy.empty.askAction,
-            href: router.href(askPath),
-            onclick: (event) => go(event, askPath),
-          },
-          ...(engineRows.length > 0
-            ? [
-                {
-                  label: copy.empty.internalAction,
-                  href: router.href(internalPath),
-                  onclick: (event: MouseEvent) => go(event, internalPath),
-                },
-              ]
-            : []),
+          engineRows.length > 0
+            ? {
+                label: copy.empty.internalAction,
+                href: router.href(internalPath),
+                onclick: (event) => go(event, internalPath),
+              }
+            : {
+                label: copy.empty.askAction,
+                href: router.href(askPath),
+                onclick: (event) => go(event, askPath),
+              },
         ]}
         data-testid="workflows-empty"
       >

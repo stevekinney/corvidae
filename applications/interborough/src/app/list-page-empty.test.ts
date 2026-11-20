@@ -229,10 +229,9 @@ describe('every list page’s empty state', () => {
 
       // Its create action is a labelled primary button, never a "+" alone.
       if (page.create !== null) {
-        const header = page.view === 'chat' ? '.ib-chats__title' : '.cinder-page-header';
-        const create = [...(frame?.querySelectorAll(`${header} .cinder-button`) ?? [])].find(
-          (button) => button.textContent?.trim() === page.create,
-        );
+        const create = [
+          ...(frame?.querySelectorAll('.cinder-page-header .cinder-button') ?? []),
+        ].find((button) => button.textContent?.trim() === page.create);
         expect(create).toBeDefined();
         expect(create?.hasAttribute('data-cinder-icon-only')).toBe(false);
         expect(create?.getAttribute('data-cinder-variant')).toBe('primary');

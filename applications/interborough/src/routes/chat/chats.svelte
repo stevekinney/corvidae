@@ -39,6 +39,7 @@
     ErrorState,
     ListDetail,
     LoadMore,
+    PageHeader,
     SearchField,
     SectionHeading,
     Segment,
@@ -429,6 +430,16 @@
   </Button>
 {/snippet}
 
+{#snippet firstUse(headingLevel: 2 | 3)}
+  <ListPageEmpty
+    view="chat"
+    title={CHAT_COPY.list.emptyTitle}
+    description={CHAT_COPY.list.emptyDescription}
+    {headingLevel}
+    create={{ label: CHAT_COPY.newChat, href: router.href('/chats/new'), onclick: openNewChat }}
+  />
+{/snippet}
+
 {#snippet loadMore()}
   {#if shownList.hasNextPage || shownList.isFetchingNextPage}
     <LoadMore
@@ -497,13 +508,7 @@
       onRetry={() => void shownList.refetch()}
     />
   {:else if listState === 'first-use'}
-    <!-- The one list-page first use (owner report, 2026-11-19), in the list's pane. -->
-    <ListPageEmpty
-      view="chat"
-      title={CHAT_COPY.list.emptyTitle}
-      description={CHAT_COPY.list.emptyDescription}
-      create={{ label: CHAT_COPY.newChat, href: router.href('/chats/new'), onclick: openNewChat }}
-    />
+    {@render firstUse(3)}
   {:else if listState === 'all-archived'}
     {@const empty = CHAT_COPY.list.allArchived}
     <EmptyState
@@ -607,128 +612,143 @@
 
 <!-- On a phone the top bar's "‹ Chat" is the way back to the list (design rows 04y, 06m), so the pane
      draws no second Back of its own; between 640px and the width a pane stacks at, it still does. -->
-<div class="ib-chats" data-shortcut-region="list-detail" bind:this={listPane}>
-  <ListDetail
-    {items}
-    key={(row: SessionRow) => row.id}
-    label={CHAT_COPY.sessionsTitle}
-    detailLabel={CHAT_COPY.list.detailLabel}
-    selectedKey={openId}
-    onSelectedKeyChange={openChat}
-    selectionParameter={null}
-    storageKey="interborough-chats"
-    listCollapsible
-    collapseListLabel={CHAT_COPY.list.hideList}
-    expandListLabel={CHAT_COPY.list.showList}
-    flushDetail
-    backVisible={!phone.current}
-    {listBody}
-  >
-    {#snippet header()}
-      <!-- The header's rows are ListDetail's own column (the title row, then the search and the
+{#if listState === 'first-use' && openId === null}
+  <section class="ib-records" aria-label={CHAT_COPY.sessionsTitle} data-chat-first-use>
+    <PageHeader
+      title={phone.current ? CHAT_COPY.sessionsTitlePhone : CHAT_COPY.sessionsTitle}
+      description={CHAT_COPY.list.description}
+      createAction={{
+        label: CHAT_COPY.newChat,
+        href: router.href('/chats/new'),
+        onclick: openNewChat,
+      }}
+    />
+    {@render firstUse(2)}
+  </section>
+{:else}
+  <div class="ib-chats" data-shortcut-region="list-detail" bind:this={listPane}>
+    <ListDetail
+      {items}
+      key={(row: SessionRow) => row.id}
+      label={CHAT_COPY.sessionsTitle}
+      detailLabel={CHAT_COPY.list.detailLabel}
+      selectedKey={openId}
+      onSelectedKeyChange={openChat}
+      selectionParameter={null}
+      storageKey="interborough-chats"
+      listCollapsible
+      collapseListLabel={CHAT_COPY.list.hideList}
+      expandListLabel={CHAT_COPY.list.showList}
+      flushDetail
+      backVisible={!phone.current}
+      {listBody}
+    >
+      {#snippet header()}
+        <!-- The header's rows are ListDetail's own column (the title row, then the search and the
            status segments), so it starts the first row after its list toggle. -->
-      {#if showingArchived}
-        <!-- The archived view's way back to the chats, above its title. Its label says where it
+        {#if showingArchived}
+          <!-- The archived view's way back to the chats, above its title. Its label says where it
                goes, so it needs no tooltip, which would open on the focus it is given on arrival. -->
-        <div class="ib-chats__back-row">
-          <Button
-            data-chats-view-back
-            href={router.href(viewPath(false))}
-            variant="ghost"
-            size="sm"
-            onclick={(event: MouseEvent) => void switchView(event, false)}
-          >
-            <ChevronLeft aria-hidden="true" size={16} />
-            {CHAT_COPY.sessionsTitle}
-          </Button>
-        </div>
-      {/if}
-      <div class="ib-chats__title" bind:clientWidth={paneWidth}>
-        <SectionHeading
-          level={openId === null ? 1 : 2}
-          title={showingArchived
-            ? CHAT_COPY.list.archivedTitle
-            : phone.current
-              ? CHAT_COPY.sessionsTitlePhone
-              : CHAT_COPY.sessionsTitle}
-        >
-          {#snippet actions()}
-            <!-- New chat alone: the toggle that hides the list is ListDetail's, on its rail. -->
-            {@render newChatButton()}
-          {/snippet}
-        </SectionHeading>
-      </div>
-      <!-- No search or segments over nothing: they come with the first chat (owner report, 2026-11-19). -->
-      {#if !phone.current && listState !== 'first-use'}
-        <SearchField
-          size="md"
-          aria-label={CHAT_COPY.list.searchLabel}
-          placeholder={CHAT_COPY.list.searchPlaceholder}
-          bind:value={typed}
-        />
-        {#if segmentsFit && !showingArchived}
-          <SegmentedControl
-            id="chat-status"
-            label={CHAT_COPY.list.segmentsLabel}
-            labelVisible={false}
-            size="sm"
-            value={segment}
-            onValueChange={(next: ChatSegment) => (chosen = next)}
-          >
-            {#each CHAT_SEGMENTS as option (option)}
-              <Segment
-                value={option}
-                count={sessions.data === undefined ? 'pending' : counts[option]}
-              >
-                {CHAT_COPY.list.segments[option]}
-              </Segment>
-            {/each}
-          </SegmentedControl>
-        {/if}
-      {/if}
-    {/snippet}
-    {#snippet detail(row)}
-      <ChatPane
-        sessionId={row.id}
-        {isNew}
-        agent={row.agentName === '' ? undefined : agentName(row)}
-      />
-    {/snippet}
-    {#snippet empty()}
-      {#if listState === 'first-use'}
-        <!-- The list's first use is the page's one empty state; the open chat's pane stays blank
-             rather than say "No chat open" beside it (owner report, 2026-11-19). -->
-      {:else if noChats}
-        <EmptyState
-          kind="first-use"
-          headingLevel={2}
-          title={CHAT_COPY.list.noChatTitle}
-          description={CHAT_COPY.list.noChatDescription}
-        >
-          {#snippet icon()}<MessageSquarePlus size={28} aria-hidden="true" />{/snippet}
-        </EmptyState>
-      {:else}
-        <EmptyState
-          kind="first-use"
-          headingLevel={2}
-          title={listState === 'failed' ? CHAT_COPY.list.noChatTitle : CHAT_COPY.list.pickTitle}
-          description={listState === 'failed'
-            ? CHAT_COPY.list.noChatDescription
-            : CHAT_COPY.list.pickDescription}
-        >
-          {#snippet icon()}<MessageSquarePlus size={28} aria-hidden="true" />{/snippet}
-          {#snippet action()}
+          <div class="ib-chats__back-row">
             <Button
-              data-changes
-              href={router.href('/chats/new')}
-              variant="primary"
-              onclick={openNewChat}
+              data-chats-view-back
+              href={router.href(viewPath(false))}
+              variant="ghost"
+              size="sm"
+              onclick={(event: MouseEvent) => void switchView(event, false)}
             >
-              {CHAT_COPY.newChat}
+              <ChevronLeft aria-hidden="true" size={16} />
+              {CHAT_COPY.sessionsTitle}
             </Button>
-          {/snippet}
-        </EmptyState>
-      {/if}
-    {/snippet}
-  </ListDetail>
-</div>
+          </div>
+        {/if}
+        <div class="ib-chats__title" bind:clientWidth={paneWidth}>
+          <SectionHeading
+            level={openId === null ? 1 : 2}
+            title={showingArchived
+              ? CHAT_COPY.list.archivedTitle
+              : phone.current
+                ? CHAT_COPY.sessionsTitlePhone
+                : CHAT_COPY.sessionsTitle}
+          >
+            {#snippet actions()}
+              <!-- New chat alone: the toggle that hides the list is ListDetail's, on its rail. -->
+              {@render newChatButton()}
+            {/snippet}
+          </SectionHeading>
+        </div>
+        <!-- No search or segments over nothing: they come with the first chat (owner report, 2026-11-19). -->
+        {#if !phone.current && listState !== 'first-use'}
+          <SearchField
+            size="md"
+            aria-label={CHAT_COPY.list.searchLabel}
+            placeholder={CHAT_COPY.list.searchPlaceholder}
+            bind:value={typed}
+          />
+          {#if segmentsFit && !showingArchived}
+            <SegmentedControl
+              id="chat-status"
+              label={CHAT_COPY.list.segmentsLabel}
+              labelVisible={false}
+              size="sm"
+              value={segment}
+              onValueChange={(next: ChatSegment) => (chosen = next)}
+            >
+              {#each CHAT_SEGMENTS as option (option)}
+                <Segment
+                  value={option}
+                  count={sessions.data === undefined ? 'pending' : counts[option]}
+                >
+                  {CHAT_COPY.list.segments[option]}
+                </Segment>
+              {/each}
+            </SegmentedControl>
+          {/if}
+        {/if}
+      {/snippet}
+      {#snippet detail(row)}
+        <ChatPane
+          sessionId={row.id}
+          {isNew}
+          agent={row.agentName === '' ? undefined : agentName(row)}
+        />
+      {/snippet}
+      {#snippet empty()}
+        {#if listState === 'first-use'}
+          <!-- The list's first use is the page's one empty state; the open chat's pane stays blank
+             rather than say "No chat open" beside it (owner report, 2026-11-19). -->
+        {:else if noChats}
+          <EmptyState
+            kind="first-use"
+            headingLevel={2}
+            title={CHAT_COPY.list.noChatTitle}
+            description={CHAT_COPY.list.noChatDescription}
+          >
+            {#snippet icon()}<MessageSquarePlus size={28} aria-hidden="true" />{/snippet}
+          </EmptyState>
+        {:else}
+          <EmptyState
+            kind="first-use"
+            headingLevel={2}
+            title={listState === 'failed' ? CHAT_COPY.list.noChatTitle : CHAT_COPY.list.pickTitle}
+            description={listState === 'failed'
+              ? CHAT_COPY.list.noChatDescription
+              : CHAT_COPY.list.pickDescription}
+          >
+            {#snippet icon()}<MessageSquarePlus size={28} aria-hidden="true" />{/snippet}
+            {#snippet action()}
+              <Button
+                data-changes
+                href={router.href('/chats/new')}
+                variant="primary"
+                onclick={openNewChat}
+              >
+                {CHAT_COPY.newChat}
+              </Button>
+            {/snippet}
+          </EmptyState>
+        {/if}
+      {/snippet}
+    </ListDetail>
+  </div>
+{/if}

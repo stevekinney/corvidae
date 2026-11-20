@@ -15,7 +15,6 @@ import { readFile, rm, writeFile } from 'node:fs/promises';
 
 import { VIEW_COPY } from '../../src/app/copy/view-pages.ts';
 import { WORKFLOW_COPY } from '../../src/app/copy/workflows.ts';
-import { newChatFromWorkflowsPath } from '../../src/lib/new-chat-address.ts';
 import { describeCadence } from '../../src/routes/schedules/cadence.ts';
 import { bureau } from './agent-support.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
@@ -261,14 +260,13 @@ test.describe('the list', () => {
         await expect(area(page)).toHaveAttribute('data-state', 'ready');
         const empty = area(page).getByTestId('workflows-empty');
         await expect(empty).toContainText(WORKFLOW_COPY.list.empty.title);
-        // The header keeps New workflow and Internal workflows; the state has New workflow, Ask an
-        // agent and a way to the internal workflows, and the folder behind a closed row.
+        // The header and state each offer a way to internal workflows alongside New workflow.
         await expect(
           page.getByRole('link', { name: WORKFLOW_COPY.newAction }).first(),
         ).toBeVisible();
         await expect(
           empty.getByRole('link', { name: WORKFLOW_COPY.list.empty.askAction }),
-        ).toHaveAttribute('href', newChatFromWorkflowsPath());
+        ).toHaveCount(0);
         await expect(
           empty.getByRole('link', { name: WORKFLOW_COPY.list.empty.internalAction }),
         ).toHaveAttribute('href', '/internal-workflows');

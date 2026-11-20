@@ -87,8 +87,9 @@
  * on the outlet's own `data-width="panes"`, which the route's kind sets from the first frame
  * (`views.ts`), not on a descendant that appears when the page's code has loaded: the panes measure
  * their container once and keep a saved list width as a share of it, so an outlet that changed its
- * padding after that first measure widened the list. */
-.weft-shell-outlet[data-width='panes'] {
+ * padding after that first measure widened the list. Chat's page-level first use draws no panes
+ * and keeps the standard outlet gutter. */
+.weft-shell-outlet[data-width='panes']:not(:has([data-chat-first-use])) {
   padding: 0;
 }
 

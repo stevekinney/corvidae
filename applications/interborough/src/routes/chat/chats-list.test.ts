@@ -7,6 +7,7 @@
 import { cleanup, fireEvent, render, waitFor, within } from '@testing-library/svelte';
 import { afterEach, describe, expect, test } from 'bun:test';
 
+import { CHAT_COPY } from '../../app/copy/chat.ts';
 import { dateLine, viewerTimeZone, zoneLabel } from '../../lib/format/clock.ts';
 import { installFetchImplementation } from '../../lib/live-source/fetch.test-support.ts';
 import Chats from './chats.svelte';
@@ -237,7 +238,7 @@ describe('searching', () => {
 });
 
 describe('the states of the list', () => {
-  test('first use is the one list-page state "No chats yet" with New chat, no search or segments, and a blank pane beside it (17u)', async () => {
+  test('first use is the page-level state with New chat and no empty detail pane (17u)', async () => {
     const served = bureau({
       'bureau.contexts.list': () => ({ contexts: [], nextOffset: null }),
       'bureau.reviews.list': () => ({ reviews: [] }),
@@ -245,7 +246,7 @@ describe('the states of the list', () => {
     restore = served.restore;
     landAt('/chats');
 
-    const { findByRole, container } = mount();
+    const { findByRole, queryByRole, container } = mount();
 
     const title = await findByRole('heading', { level: 2, name: 'No chats yet' });
     const state = title.closest('.cinder-empty-state') as HTMLElement;
@@ -258,15 +259,16 @@ describe('the states of the list', () => {
       within(state).getByRole('link', { name: 'New chat' }).getAttribute('data-cinder-variant'),
     ).toBe('primary');
     // The header's New chat is labelled too, and nothing searches or filters nothing.
-    expect(container.querySelector('header a[href="/chats/new"]')?.textContent?.trim()).toBe(
-      'New chat',
-    );
+    expect(
+      container.querySelector('.cinder-page-header a[href="/chats/new"]')?.textContent?.trim(),
+    ).toBe('New chat');
     expect(container.querySelector('.cinder-search-field')).toBeNull();
     expect(container.querySelector('.cinder-segmented-control')).toBeNull();
-    // One empty state on the page: the pane beside the list stays blank.
+    expect(container.querySelector('.cinder-page-header')?.textContent).toContain(
+      CHAT_COPY.list.description,
+    );
     expect(container.querySelectorAll('.cinder-empty-state')).toHaveLength(1);
-    const pane = await findByRole('region', { name: 'Open chat' });
-    expect(pane.textContent).not.toContain('No chat open');
+    expect(queryByRole('region', { name: 'Open chat' })).toBeNull();
   });
 
   test('loading is skeleton rows under the live header, after 300 milliseconds (17w)', async () => {

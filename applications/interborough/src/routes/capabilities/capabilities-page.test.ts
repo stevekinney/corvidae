@@ -793,14 +793,12 @@ describe('the Skills tab', () => {
     await findByText(copy.skill.empty.title);
     expect(container.querySelector('[data-cinder-kind="first-use"]')).not.toBeNull();
     expect(container.textContent).toContain(copy.skill.empty.description);
-    // No filter row; the one primary button adds a plugin (row 31y), and the tab says 0.
+    // No filter row or tab tally. The primary button adds a plugin (row 31y).
     expect(container.querySelector('input[type="search"]')).toBeNull();
     const add = getByRole('link', { name: copy.skill.empty.action.label });
     expect(add.getAttribute('href')).toBe('/settings/plugins');
     expect(add.getAttribute('data-cinder-variant')).toBe('primary');
-    expect(container.querySelector('[data-testid="tab-count-skills"]')?.textContent?.trim()).toBe(
-      '0',
-    );
+    expect(container.querySelector('[data-testid="tab-count-skills"]')).toBeNull();
     await fireEvent.click(add);
     expect(router.pathname).toBe('/settings/plugins');
   });

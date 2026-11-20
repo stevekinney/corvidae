@@ -439,7 +439,9 @@ test.describe('the states of the chat list', () => {
       'data-cinder-variant',
       'primary',
     );
-    const header = list(page).locator('header').getByRole('link', { name: 'New chat' });
+    const header = list(page)
+      .locator('.cinder-page-header')
+      .getByRole('link', { name: 'New chat' });
     await expect(header).toHaveText('New chat');
     await expect(header).toHaveAttribute('data-cinder-variant', 'primary');
     // No search or segments over nothing (owner report, 2026-11-19).

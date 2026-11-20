@@ -17,6 +17,7 @@ import type { Page, Route } from '@playwright/test';
 
 import { SAMPLE_TIME_ZONE } from '../../fixtures/sample-now.ts';
 import { designReviewColorScheme } from '../../scripts/environment-configuration.ts';
+import { CHAT_COPY } from '../../src/app/copy/chat.ts';
 import { isBureauCall } from './bureau-answer-support.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
 import { E2E_BUREAU_URL, E2E_SHOWCASE_URL } from './e2e-constants.ts';
@@ -37,39 +38,34 @@ interface ListPage {
   readonly create: string | null;
   /** The host the page is read on. */
   readonly host: string;
-  /** Whether its state sits right under a page header (not Chat's pane, not under Capabilities' tabs). */
-  readonly measured: boolean;
 }
 
 const LIST_PAGES: readonly ListPage[] = [
-  { path: '/chats', view: 'chat', create: 'New chat', host: E2E_SHOWCASE_URL, measured: false },
-  { path: '/reviews', view: 'reviews', create: null, host: E2E_SHOWCASE_URL, measured: true },
-  { path: '/runs', view: 'runs', create: 'Start run', host: E2E_SHOWCASE_URL, measured: true },
-  { path: '/checks', view: 'checks', create: null, host: E2E_SHOWCASE_URL, measured: true },
-  { path: '/agents', view: 'agents', create: 'New agent', host: E2E_SHOWCASE_URL, measured: true },
+  { path: '/chats', view: 'chat', create: 'New chat', host: E2E_SHOWCASE_URL },
+  { path: '/reviews', view: 'reviews', create: null, host: E2E_SHOWCASE_URL },
+  { path: '/runs', view: 'runs', create: 'Start run', host: E2E_SHOWCASE_URL },
+  { path: '/checks', view: 'checks', create: null, host: E2E_SHOWCASE_URL },
+  { path: '/agents', view: 'agents', create: 'New agent', host: E2E_SHOWCASE_URL },
   {
     path: '/workflows',
     view: 'workflows',
     create: 'New workflow',
     host: E2E_BUREAU_URL,
-    measured: true,
   },
   {
     path: '/schedules',
     view: 'schedules',
     create: 'New schedule',
     host: E2E_SHOWCASE_URL,
-    measured: true,
   },
-  { path: '/goals', view: 'goals', create: 'New goal', host: E2E_SHOWCASE_URL, measured: true },
+  { path: '/goals', view: 'goals', create: 'New goal', host: E2E_SHOWCASE_URL },
   {
     path: '/capabilities',
     view: 'capabilities',
     create: 'Connect tools',
     host: E2E_SHOWCASE_URL,
-    measured: false,
   },
-  { path: '/hooks', view: 'hooks', create: 'New hook', host: E2E_SHOWCASE_URL, measured: true },
+  { path: '/hooks', view: 'hooks', create: 'New hook', host: E2E_SHOWCASE_URL },
 ];
 
 type JsonRecord = Record<string, unknown>;
@@ -163,14 +159,27 @@ for (const list of LIST_PAGES) {
         // The header stays, with its create action as a labelled primary button.
         await expect(main.getByRole('heading', { level: 1 })).toHaveCount(1);
         if (list.create !== null) {
-          const header = main.locator(
-            list.view === 'chat' ? '.ib-chats__title' : '.cinder-page-header',
-          );
+          const header = main.locator('.cinder-page-header');
           const create = header.locator('.cinder-button').filter({ hasText: list.create });
           await expect(create).toBeVisible();
           await expect(create).toHaveText(list.create);
           await expect(create).toHaveAttribute('data-cinder-variant', 'primary');
           await expect(create).not.toHaveAttribute('data-cinder-icon-only', /.*/);
+        }
+        if (list.view === 'chat') {
+          await expect(main.locator('.cinder-page-header')).toContainText(
+            CHAT_COPY.list.description,
+          );
+          await expect(main.getByRole('region', { name: 'Open chat' })).toHaveCount(0);
+          const { outlet, action } = await readBoxes(page, {
+            outlet: main,
+            action: state.getByRole('link', { name: CHAT_COPY.newChat }),
+          });
+          expect(outlet.x + outlet.width - (action.x + action.width)).toBeGreaterThanOrEqual(12);
+        }
+        if (list.view === 'capabilities') {
+          await expect(main.getByTestId('tab-count-tools')).toHaveCount(0);
+          await expect(main.getByTestId('tab-count-skills')).toHaveCount(0);
         }
 
         // One state in Cinder's one layout, with nothing around it drawing a border.
@@ -238,10 +247,13 @@ for (const width of WIDTHS) {
       page,
     }) => {
       const offsets: Record<string, number> = {};
-      for (const list of LIST_PAGES.filter((candidate) => candidate.measured)) {
+      for (const list of LIST_PAGES) {
         await openEmpty(page, list, width, theme);
         const { header, state } = await readBoxes(page, {
-          header: page.locator('main .cinder-page-header').first(),
+          header:
+            list.view === 'capabilities'
+              ? page.getByRole('tablist')
+              : page.locator('main .cinder-page-header').first(),
           state: page.locator(`main [data-list-empty="${list.view}"]`),
         });
         offsets[list.path] = Math.round(state.y - (header.y + header.height));
