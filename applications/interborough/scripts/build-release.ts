@@ -242,6 +242,21 @@ async function verifyFrozenInstall(
   };
 }
 
+/** Generate Cinder's ignored token outputs in the pinned release source before staging it. */
+async function materializePanelRuntimeAssets(
+  source: string,
+  command: ReleaseCommand = runCommand,
+): Promise<void> {
+  await command(
+    [process.execPath, 'components/cinder/scripts/tokens/generate-validators.ts'],
+    source,
+  );
+  await command(
+    [process.execPath, 'components/cinder/scripts/tokens/generate-artifacts.ts', '--ignored-only'],
+    source,
+  );
+}
+
 async function bundleSdk(
   runtime: string,
   source: string,
@@ -526,6 +541,7 @@ export async function buildRelease(
   const staging = await mkdtemp(join(options.outdir, '.interborough-staging-'));
   const root = join(staging, 'interborough');
   try {
+    await materializePanelRuntimeAssets(productionInstall.source, command);
     await mkdir(join(root, 'bin'), { recursive: true });
     await mkdir(join(root, 'share', 'interborough'), { recursive: true });
     await compile(join(root, 'bin', 'interborough'), options.version, command);

@@ -696,6 +696,15 @@ describe('release arguments', () => {
     const output = await mkdtemp(join(tmpdir(), 'interborough-release-staged-'));
     try {
       await buildRelease(['--version', '0.0.0-test', '--outdir', output], fixture.operations);
+      expect(fixture.commands).toEqual(
+        expect.arrayContaining([
+          expect.arrayContaining(['components/cinder/scripts/tokens/generate-validators.ts']),
+          expect.arrayContaining([
+            'components/cinder/scripts/tokens/generate-artifacts.ts',
+            '--ignored-only',
+          ]),
+        ]),
+      );
       const runtime = join(
         output,
         'interborough',
