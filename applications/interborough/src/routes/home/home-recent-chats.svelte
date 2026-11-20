@@ -1,8 +1,8 @@
 <script lang="ts">
   /**
    * Home's Recent chats section: the chats you were last in, newest first, as one Cinder
-   * `GroupedList`. Each row is the chat's title, then a subtitle that leads with its status (a dot
-   * and its word) and goes on with the latest message, and the time it last changed at the end
+   * `GroupedList`. Each row is the chat's title, then a subtitle that leads with its status badge and
+   * goes on with the latest message, and the time it last changed at the end
    * ("10:42 AM" today, "Yesterday, 4:12 PM" before). The whole row is a link that opens the chat.
    *
    * It reads what the chat list reads: the recent runs, so a chat whose latest run failed says
@@ -13,7 +13,13 @@
    * once a chat exists. A list that cannot be read says so in place, with a Try again and no link;
    * while it has not answered the section holds Cinder's grouped placeholder rows.
    */
-  import { GroupedList, GroupedListItem, Skeleton, StatusDot } from '@lostgradient/cinder';
+  import {
+    Badge,
+    GroupedList,
+    GroupedListItem,
+    Skeleton,
+    type BadgeVariant,
+  } from '@lostgradient/cinder';
   import { createQuery } from '@tanstack/svelte-query';
 
   import { HOME_COPY } from '../../app/copy/home.ts';
@@ -22,13 +28,21 @@
   import { chatsWithFailedRun, recentTasksQuery } from '../../lib/recent-tasks.ts';
   import { router } from '../../lib/router.svelte.ts';
   import { listIsClear } from '../../lib/worth-showing.ts';
-  import { pendingQuestions } from '../chat/session-groups.ts';
+  import { pendingQuestions, type ChatStatusWord } from '../chat/session-groups.ts';
   import { bureauReviewsQuery } from '../reviews/reviews-data.ts';
   import { useMinuteClock } from './home-clock.svelte.ts';
   import HomeCard from './home-card.svelte';
   import HomeCardError from './home-card-error.svelte';
   import { useRecentChats } from './home-queries.svelte.ts';
   import { recentChatRows } from './home-rows.ts';
+
+  const statusVariants: Record<ChatStatusWord, BadgeVariant> = {
+    'Waiting on you': 'warning',
+    Running: 'info',
+    Failed: 'danger',
+    Ended: 'neutral',
+    Done: 'success',
+  };
 
   const copy = HOME_COPY.recent;
   const clock = useMinuteClock();
@@ -49,6 +63,7 @@
 {#if !(chats.data !== undefined && listIsClear(rows))}
   <HomeCard
     title={copy.title}
+    class="ib-home-column-card"
     link={chats.data === undefined ? undefined : { label: copy.link, href: '/chats' }}
   >
     {#if chats.data === undefined && chats.isError}
@@ -59,12 +74,18 @@
     {:else if chats.data === undefined}
       <Skeleton variant="grouped" rows={3} />
     {:else}
-      <div {@attach followLinks}>
-        <GroupedList aria-label={copy.listLabel}>
+      <div class="ib-home-column-fill" {@attach followLinks}>
+        <GroupedList
+          class="ib-home-column-list ib-home-column-fill"
+          data-home-column-list
+          aria-label={copy.listLabel}
+        >
           {#each rows as row (row.id)}
             <GroupedListItem data-chat={row.id} href={router.href(chatSessionPath(row.id))}>
               {#snippet title()}{row.title}{/snippet}
-              {#snippet subtitle()}<StatusDot word={row.status} />{#if row.latest !== undefined}, {row.latest}{/if}{/snippet}
+              {#snippet subtitle()}<Badge variant={statusVariants[row.status]} size="xs"
+                  >{row.status}</Badge
+                >{#if row.latest !== undefined}, {row.latest}{/if}{/snippet}
               {#snippet trailing()}{row.time}{/snippet}
             </GroupedListItem>
           {/each}

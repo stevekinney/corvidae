@@ -58,6 +58,7 @@
 {#if !(items.data !== undefined && listIsClear(rows))}
   <HomeCard
     title={copy.title}
+    class="ib-home-column-card"
     link={items.data === undefined ? undefined : { label: copy.link, href: '/health' }}
   >
     {#if items.data === undefined && items.isError}
@@ -68,7 +69,11 @@
     {:else if items.data === undefined}
       <Skeleton variant="grouped" rows={3} action />
     {:else}
-      <GroupedList aria-label={copy.listLabel}>
+      <GroupedList
+        class="ib-home-column-list ib-home-column-fill"
+        data-home-column-list
+        aria-label={copy.listLabel}
+      >
         {#each rows as row (row.key)}
           <GroupedListItem
             data-attention={row.key}

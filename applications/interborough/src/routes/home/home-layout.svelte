@@ -204,7 +204,34 @@
       display: grid;
       grid-template-columns: minmax(0, 1fr) 23.75rem;
       column-gap: var(--ib-home-gap);
-      align-items: end;
+    }
+
+    /* When both lists have loaded, the final section in each column takes its remaining height.
+     * Both columns keep their starting positions and the same gap between sections. */
+    .ib-home__columns:has(.ib-home__needs-attention :global([data-home-column-list])):has(
+        .ib-home__recent :global([data-home-column-list])
+      )
+      :is(.ib-home__needs-attention, .ib-home__recent) {
+      display: grid;
+      flex: 1;
+      grid-template-rows: minmax(min-content, 1fr);
+    }
+
+    :is(.ib-home__needs-attention, .ib-home__recent) :global(.ib-home-column-card) {
+      display: grid;
+      grid-template-rows: auto minmax(min-content, 1fr);
+    }
+
+    :is(.ib-home__needs-attention, .ib-home__recent) :global(.ib-home-column-fill) {
+      block-size: 100%;
+    }
+
+    :is(.ib-home__needs-attention, .ib-home__recent) :global(.ib-home-column-list) {
+      display: grid;
+    }
+
+    :is(.ib-home__needs-attention, .ib-home__recent) :global([data-home-column-list]) {
+      display: grid;
     }
 
     /* The Spotlight is the title of the Needs you list in the wide column, so its line, and the
