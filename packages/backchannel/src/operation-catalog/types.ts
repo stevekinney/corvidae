@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import type { OperationHostFactory, OperationInterceptor } from './operation-interceptors.ts';
 
 import type { AccessPolicy } from '../authorization.ts';
 import type { FaultCode } from '../fault-code.ts';
@@ -470,7 +471,8 @@ export type DispatchContext<Host = unknown> = {
   /** The registry's {@link FaultPolicy}, which `createOperationRegistry` puts on every dispatch. */
   readonly faultPolicy?: FaultPolicy;
   /** See {@link OperationContext.host}. */
-  readonly host: Host;
+  readonly host: Host | OperationHostFactory<Host>;
+  readonly interceptors?: readonly OperationInterceptor[];
   readonly transport: TransportKind;
   readonly registry: OperationRegistry;
   readonly pipelineTrace?: PipelineTrace;

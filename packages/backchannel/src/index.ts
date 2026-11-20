@@ -90,7 +90,12 @@ export {
   type CatalogRestBindingSnapshot,
   type CatalogSnapshot,
 } from './operation-catalog-snapshot.ts';
-export { createOperationRegistry, type OperationRegistry } from './operation-catalog/index.ts';
+export {
+  createOperationRegistry,
+  type DispatchResult,
+  type OperationRegistry,
+  type OperationRegistryOptions,
+} from './operation-catalog/index.ts';
 export {
   OPERATION_NAME_PATTERN,
   isValidOperationName,
@@ -145,3 +150,9 @@ export {
   type Cursor,
   type SequencedEventEnvelope,
 } from './sequence-cursor.ts';
+
+export type {
+  OperationHostFactory,
+  OperationInterceptor,
+  OperationInterceptorContext,
+} from './operation-catalog/operation-interceptors.ts';

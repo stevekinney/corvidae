@@ -1,3 +1,4 @@
+import type { OperationHostFactory } from './operation-interceptors.ts';
 import { classifyEngineError } from './pipeline-helpers.ts';
 import {
   checkAccess,
@@ -10,12 +11,8 @@ import type {
   DispatchContext,
   DispatchResult,
   OperationContext,
+  OperationKind,
   OperationMetadata,
-  StreamOperationDefinition,
-  StreamOperationInvocation,
-  SubscriptionOperationDefinition,
-  SubscriptionOperationInvocation,
-  UnaryOperationDefinition,
 } from './types.ts';
 
 type DispatchableOperation<Host> = {
@@ -23,74 +20,47 @@ type DispatchableOperation<Host> = {
   readonly context: DispatchContext<Host>;
 };
 
-export async function dispatchUnary<Input, InvokeOutput, SchemaOutput, Host>(
-  operation: UnaryOperationDefinition<Input, InvokeOutput, SchemaOutput, Host>,
-  { rawInput, context }: DispatchableOperation<Host>,
-): Promise<DispatchResult<InvokeOutput>> {
-  const prepared = await prepareTypedInput(operation, rawInput, context);
-  if (!prepared.ok) return prepared;
-  try {
-    const output = await operation.invoke(operationContext(prepared.value.input, context));
-    tracePipeline(context.pipelineTrace, 'invoked');
-    return { ok: true, value: output };
-  } catch (error) {
-    return { ok: false, fault: classifyEngineError(error, operation, context.faultPolicy) };
-  }
-}
-
-export async function dispatchStream<
+type InvokableOperation<Input, SchemaOutput, Host> = OperationMetadata<
   Input,
-  InvokeOutput,
   SchemaOutput,
-  InvokeElement,
-  Element,
-  Host,
->(
-  operation: StreamOperationDefinition<
-    Input,
-    InvokeOutput,
-    SchemaOutput,
-    InvokeElement,
-    Element,
-    Host
-  >,
-  { rawInput, context }: DispatchableOperation<Host>,
-): Promise<DispatchResult<InvokeOutput | StreamOperationInvocation<InvokeElement>>> {
-  const prepared = await prepareTypedInput(operation, rawInput, context);
-  if (!prepared.ok) return prepared;
-  try {
-    const output = await operation.invoke(operationContext(prepared.value.input, context));
-    tracePipeline(context.pipelineTrace, 'invoked');
-    return { ok: true, value: output };
-  } catch (error) {
-    return { ok: false, fault: classifyEngineError(error, operation, context.faultPolicy) };
-  }
-}
+  Host
+> & {
+  readonly kind?: OperationKind;
+  readonly invoke: (context: OperationContext<Input, Host>) => Promise<unknown>;
+};
 
-export async function dispatchSubscription<
-  Input,
-  InvokeOutput,
-  SchemaOutput,
-  InvokeElement,
-  Element,
-  Host,
->(
-  operation: SubscriptionOperationDefinition<
-    Input,
-    InvokeOutput,
-    SchemaOutput,
-    InvokeElement,
-    Element,
-    Host
-  >,
+/** Run the common pipeline before any unary, stream, or subscription invocation. */
+export async function dispatchOperation<Input, SchemaOutput, Host>(
+  operation: InvokableOperation<Input, SchemaOutput, Host>,
   { rawInput, context }: DispatchableOperation<Host>,
-): Promise<DispatchResult<SubscriptionOperationInvocation<InvokeElement, InvokeOutput>>> {
+): Promise<DispatchResult<unknown>> {
   const prepared = await prepareTypedInput(operation, rawInput, context);
   if (!prepared.ok) return prepared;
+  const operationContext = prepared.value;
   try {
-    const output = await operation.invoke(operationContext(prepared.value.input, context));
-    tracePipeline(context.pipelineTrace, 'invoked');
-    return { ok: true, value: output };
+    const invoke = async (): Promise<DispatchResult<unknown>> => {
+      const value = await operation.invoke(operationContext);
+      tracePipeline(context.pipelineTrace, 'invoked');
+      return { ok: true, value };
+    };
+    if (context.interceptors === undefined || context.interceptors.length === 0)
+      return await invoke();
+
+    const { kind, summary, tags, destructive, access } = operation;
+    const { input, principal, transport, signal } = operationContext;
+    const interception = {
+      name: operation.name,
+      metadata: { ...(kind === undefined ? {} : { kind }), summary, tags, destructive, access },
+      input,
+      principal,
+      transport,
+      ...(signal === undefined ? {} : { signal }),
+    };
+    const chain = context.interceptors.reduceRight<typeof invoke>((next, interceptor) => {
+      let called: ReturnType<typeof invoke> | undefined;
+      return () => interceptor(interception, () => (called ??= next()));
+    }, invoke);
+    return await chain();
   } catch (error) {
     return { ok: false, fault: classifyEngineError(error, operation, context.faultPolicy) };
   }
@@ -100,7 +70,7 @@ async function prepareTypedInput<Input, SchemaOutput, Host>(
   operation: OperationMetadata<Input, SchemaOutput, Host>,
   rawInput: unknown,
   context: DispatchContext<Host>,
-): Promise<DispatchResult<{ input: Input }>> {
+): Promise<DispatchResult<OperationContext<Input, Host>>> {
   const transportFailure = checkTransport(operation, context);
   if (transportFailure !== null) return transportFailure;
   tracePipeline(context.pipelineTrace, 'transport-checked');
@@ -117,21 +87,26 @@ async function prepareTypedInput<Input, SchemaOutput, Host>(
   );
   if (parseOutcome.kind === 'failure') return { ok: false, fault: parseOutcome.fault };
 
-  const authorizationFailure = await checkAuthorization(operation, parseOutcome.input, context);
+  const { principal, transport, signal } = context;
+  const source = context.host;
+  let host: Host;
+  try {
+    host =
+      typeof source === 'function'
+        ? await (source as OperationHostFactory<Host>)({ principal, transport })
+        : source;
+  } catch {
+    return { ok: false, fault: { code: 'EngineFailure', message: 'internal error', data: {} } };
+  }
+  const invocation = {
+    input: parseOutcome.input,
+    principal,
+    host,
+    transport,
+    ...(signal === undefined ? {} : { signal }),
+  };
+  const authorizationFailure = await checkAuthorization(operation, invocation);
   if (authorizationFailure !== null) return authorizationFailure;
   tracePipeline(context.pipelineTrace, 'authorized');
-  return { ok: true, value: { input: parseOutcome.input } };
-}
-
-function operationContext<Input, Host>(
-  input: Input,
-  context: DispatchContext<Host>,
-): OperationContext<Input, Host> {
-  return {
-    input,
-    principal: context.principal,
-    host: context.host,
-    transport: context.transport,
-    ...(context.signal === undefined ? {} : { signal: context.signal }),
-  };
+  return { ok: true, value: invocation };
 }

@@ -13,7 +13,7 @@ export type { FaultCode } from '../fault-code.ts';
 export { DISPATCH_ALLOWLIST } from './dispatch-allowlist.ts';
 export { classifyEngineError } from './pipeline-helpers.ts';
 export { executeOperation } from './pipeline.ts';
-export { createOperationRegistry } from './registry.ts';
+export { createOperationRegistry, type OperationRegistryOptions } from './registry.ts';
 export {
   SubscriptionElementValidationError,
   executeStream,
@@ -46,3 +46,9 @@ export {
   type UnknownKeyPolicy,
 } from './types.ts';
 export { UNIVERSAL_FAULT_DEFAULTS } from './universal-faults.ts';
+
+export type {
+  OperationHostFactory,
+  OperationInterceptor,
+  OperationInterceptorContext,
+} from './operation-interceptors.ts';

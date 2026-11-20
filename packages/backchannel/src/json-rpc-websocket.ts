@@ -238,7 +238,7 @@ export function createJsonRpcWebSocketSession(
 
   async function startSubscription(
     request: SessionRequest,
-    execute: () => Promise<SubscriptionStart>,
+    execute: (signal: AbortSignal) => Promise<SubscriptionStart>,
     acquire?: () => ConnectionLease,
   ): Promise<void> {
     if (subscriptions.size >= maxSubscriptions) {
@@ -261,7 +261,7 @@ export function createJsonRpcWebSocketSession(
     pendingSubscriptions.add(pending);
     let result: SubscriptionStart;
     try {
-      result = await execute();
+      result = await execute(controller.signal);
     } finally {
       pendingSubscriptions.delete(pending);
     }
@@ -411,13 +411,14 @@ export function createJsonRpcWebSocketSession(
         });
         return true;
       }
-      await startSubscription(request, async () => {
+      await startSubscription(request, async (signal) => {
         let subscription: JsonRpcSubscription | undefined;
         const result = await dispatchJsonRpc(validation.parsed, {
           registry,
           host: engine,
           principal,
           transport,
+          signal,
           acceptSubscription(started) {
             subscription = started;
           },

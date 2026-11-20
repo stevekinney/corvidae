@@ -15,6 +15,8 @@ import {
   executeOperation,
   executeSubscription,
   type FaultPolicy,
+  type OperationHostFactory,
+  type OperationInterceptor,
   type OperationRegistry,
   type RegistrableOperation,
 } from '../operation-catalog.ts';
@@ -71,7 +73,9 @@ export type OperationHandlerOptions<Host> = {
    */
   readonly operations: ReadonlyArray<RegistrableOperation<NoInfer<Host>>>;
   /** Delivered as `host` to every `invoke` and `authorize` call. */
-  readonly host: Host;
+  readonly host: Host | OperationHostFactory<Host>;
+  /** Interceptors that wrap each authorized invocation in registration order. */
+  readonly interceptors?: readonly OperationInterceptor[];
   /**
    * Resolves the caller. Omitted, every request is anonymous and only
    * `public` operations pass. See `createOperationHandlerAuthenticator` for
@@ -244,6 +248,14 @@ function normalizedPathname(request: Request): string {
  * ```
  */
 export function createOperationHandler<Host>(
+  options: Omit<OperationHandlerOptions<Host>, 'host'> & {
+    readonly host: OperationHostFactory<Host>;
+  },
+): OperationHandler;
+export function createOperationHandler<Host>(
+  options: OperationHandlerOptions<Host>,
+): OperationHandler;
+export function createOperationHandler<Host>(
   options: OperationHandlerOptions<Host>,
 ): OperationHandler {
   assertPositiveInteger(options.maxRequestBodyBytes, 'maxRequestBodyBytes');
@@ -251,6 +263,7 @@ export function createOperationHandler<Host>(
   const authenticate = options.authenticate;
   const registry = createOperationRegistry<Host>(options.operations, {
     faultPolicy: options.faultPolicy,
+    interceptors: options.interceptors,
   });
   assertSubscriptionsAcceptFromCursor(registry);
   const mounts = resolveMounts(options.mounts ?? []);
@@ -286,7 +299,7 @@ export function createOperationHandler<Host>(
     const mount = mounts.match(pathname);
     if (mount !== undefined) {
       return guardWorkspaceResponse(
-        await mount.fetch(request, mountContext(registry, options.host, principal)),
+        await mount.fetch(request, mountContext(registry, options.host, principal, request.signal)),
         revalidate,
       );
     }
@@ -384,9 +397,10 @@ function mountContext(
   registry: OperationRegistry,
   host: unknown,
   principal: Principal,
+  signal: AbortSignal,
 ): OperationHandlerMountContext {
   const contextFor = (options: OperationHandlerMountDispatchOptions | undefined) =>
-    ({ principal, host, transport: options?.transport ?? 'http-rest', registry }) as const;
+    ({ principal, host, transport: options?.transport ?? 'http-rest', registry, signal }) as const;
   return {
     principal,
     operations: registry.list(),
