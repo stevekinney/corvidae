@@ -9,6 +9,7 @@ export const packageRoot = join(scriptDirectory, '..', '..');
 export const tokenRoot = join(packageRoot, 'src', 'tokens');
 export const schemaDirectory = join(scriptDirectory, 'schemas');
 export const tokensBaseCssPath = join(packageRoot, 'src', 'styles', 'tokens-base.css');
+export const tokenUtilitiesCssPath = join(packageRoot, 'src', 'styles', 'token-utilities.css');
 export const resolvedDirectory = join(tokenRoot, 'resolved');
 export const runtimeDirectory = join(tokenRoot, 'runtime');
 export const registryJsonPath = join(tokenRoot, 'registry.generated.json');

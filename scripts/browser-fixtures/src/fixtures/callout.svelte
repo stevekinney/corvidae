@@ -7,10 +7,7 @@
 </Callout>
 
 <!-- COR-2445 AC3: neutral callouts with actions, measured at 360, 768 and 1280 px. -->
-<div
-  style="display: grid; gap: var(--cinder-space-4); margin-block-start: var(--cinder-space-4);"
-  data-testid="callout-actions"
->
+<div class="callout-actions-layout gap-4 margin-block-start-4" data-testid="callout-actions">
   <Callout variant="neutral" title="Run paused" data-testid="callout-action-inline">
     The nightly backup is waiting for a person to approve the retention change.
     {#snippet action()}<Button size="sm" variant="secondary" label="Open run" />{/snippet}
@@ -28,3 +25,9 @@
     {/snippet}
   </Callout>
 </div>
+
+<style>
+  .callout-actions-layout {
+    display: grid;
+  }
+</style>

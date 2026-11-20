@@ -22,12 +22,23 @@
 <!-- The `fields` variant (COR-2449): flat by default, and beside it the `framed` opt-in. -->
 <div
   data-testid="description-list-fields"
-  style="display: flex; flex-wrap: wrap; gap: var(--cinder-space-6); margin-block-start: var(--cinder-space-6); padding-inline: var(--cinder-space-3);"
+  class="description-list-fields-layout gap-6 margin-block-start-6 padding-inline-3"
 >
-  <div data-testid="description-list-fields-flat" style="flex: 1 1 16rem;">
+  <div data-testid="description-list-fields-flat" class="field-column">
     <DescriptionList items={fields} variant="fields" />
   </div>
-  <div data-testid="description-list-fields-framed" style="flex: 1 1 16rem;">
+  <div data-testid="description-list-fields-framed" class="field-column">
     <DescriptionList items={fields} variant="fields" framed />
   </div>
 </div>
+
+<style>
+  .description-list-fields-layout {
+    display: flex;
+    flex-wrap: wrap;
+  }
+
+  .field-column {
+    flex: 1 1 16rem;
+  }
+</style>

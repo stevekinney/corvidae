@@ -16,6 +16,7 @@
       "outputs": [
         ".metadata/**",
         "src/styles/tokens-base.css",
+        "src/styles/token-utilities.css",
         "src/tokens/resolved/**",
         "src/tokens/index.json",
         "src/tokens/registry.generated.*",
@@ -25,6 +26,7 @@
         "$TURBO_DEFAULT$",
         "!**/*.test.ts",
         "!src/styles/tokens-base.css",
+        "!src/styles/token-utilities.css",
         "!src/tokens/resolved/**",
         "!src/tokens/index.json",
         "!src/tokens/registry.generated.*",
@@ -34,6 +36,7 @@
         "$TURBO_ROOT$/components/cinder/src/**",
         "!$TURBO_ROOT$/components/cinder/src/**/*.test.ts",
         "!$TURBO_ROOT$/components/cinder/src/styles/tokens-base.css",
+        "!$TURBO_ROOT$/components/cinder/src/styles/token-utilities.css",
         "!$TURBO_ROOT$/components/cinder/src/tokens/resolved/**",
         "!$TURBO_ROOT$/components/cinder/src/tokens/index.json",
         "!$TURBO_ROOT$/components/cinder/src/tokens/registry.generated.*",

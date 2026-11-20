@@ -28,7 +28,7 @@
     />
   </div>
 
-  <Surface style="display: flex; min-height: 24rem; overflow: hidden;">
+  <Surface class="sidebar-fixture-surface">
     <Sidebar bind:collapsed label="Workspace">
       {#snippet navigation()}
         <SideNavigation ariaLabel="Workspace sections">
@@ -60,16 +60,13 @@
       {/snippet}
     </Sidebar>
 
-    <main style="flex: 1; padding: var(--cinder-space-4);">
+    <main class="main padding-block-4 padding-inline-4">
       <p>Main content area.</p>
       <p>Resize the viewport below 640px to see the mobile drawer behavior.</p>
     </main>
   </Surface>
 
-  <Surface
-    data-testid="sidebar-rail-labels"
-    style="display: flex; min-height: 20rem; overflow: hidden;"
-  >
+  <Surface data-testid="sidebar-rail-labels" class="sidebar-fixture-sidebar-rail-labels-layout">
     <Sidebar collapsed railLabels label="Labelled rail">
       {#snippet navigation()}
         <SideNavigation ariaLabel="Labelled rail sections">
@@ -94,3 +91,21 @@
     </Sidebar>
   </Surface>
 </Stack>
+
+<style>
+  :global(.sidebar-fixture-surface) {
+    display: flex;
+    min-height: 24rem;
+    overflow: hidden;
+  }
+
+  .main {
+    flex: 1;
+  }
+
+  :global(.sidebar-fixture-sidebar-rail-labels-layout) {
+    display: flex;
+    min-height: 20rem;
+    overflow: hidden;
+  }
+</style>

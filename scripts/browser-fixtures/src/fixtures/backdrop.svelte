@@ -24,10 +24,19 @@
 </Stack>
 
 <Backdrop {open} {invisible} onclick={() => (open = false)}>
-  <Stack align="center" style="color: var(--cinder-text-default); pointer-events: none;">
+  <Stack align="center" class="backdrop-fixture-stack text-default">
     <Spinner size="lg" label="Loading" />
-    <span style="font-size: var(--cinder-text-lg); font-weight: 500;"
-      >Loading… click anywhere to dismiss</span
-    >
+    <span class="label-layout">Loading… click anywhere to dismiss</span>
   </Stack>
 </Backdrop>
+
+<style>
+  :global(.backdrop-fixture-stack) {
+    pointer-events: none;
+  }
+
+  .label-layout {
+    font-size: var(--cinder-text-lg);
+    font-weight: 500;
+  }
+</style>

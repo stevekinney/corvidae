@@ -25,7 +25,7 @@
   }
 </script>
 
-<div style="display: grid; gap: var(--cinder-space-4);">
+<div class="example-grid gap-4">
   <SchemaForm
     {schema}
     name="payload"
@@ -45,3 +45,9 @@
     <pre>{submitted}</pre>
   </section>
 </div>
+
+<style>
+  .example-grid {
+    display: grid;
+  }
+</style>
